@@ -44,6 +44,7 @@ import { cn } from "@/lib/utils";
  */
 export const MEAL_KIND_TIME: Record<MealKind, string> = {
   BREAKFAST: "08:30",
+  SNACK: "10:00",
   MID_MORNING_SNACK: "10:30",
   LUNCH: "12:30",
   AFTERNOON_SNACK: "15:00",
@@ -69,6 +70,12 @@ export const MEAL_KIND_STYLE: Record<
     card: "bg-mint/40",
     title: "text-mint-ink",
     dot: "bg-mint-ink",
+  },
+  SNACK: {
+    icon: <Apple size={18} aria-hidden="true" />,
+    card: "bg-sun/30",
+    title: "text-sun-ink",
+    dot: "bg-sun-ink",
   },
   MID_MORNING_SNACK: {
     icon: <Apple size={18} aria-hidden="true" />,
@@ -132,6 +139,8 @@ export interface MenuRowActions {
   photoEndpoint: string;
   onPhotoUploaded: (kind: MealKind, date: string, mediaId: string) => void;
   onPhotoRemoved: (kind: MealKind, date: string) => void;
+  /** Opens the compact add-meal form for this day. */
+  onAdd?: (date: string) => void;
   /** Opens the Excel panel — drawn above the week table. */
   onImport: () => void;
 }
@@ -157,7 +166,6 @@ export function FamilyMenu({
   todayIso,
   tomorrowIso,
   healthNotes,
-  footer,
   actions,
 }: {
   byDate: Map<string, MenuDay>;
@@ -166,8 +174,6 @@ export function FamilyMenu({
   todayIso: string;
   tomorrowIso: string;
   healthNotes: string | null | undefined;
-  /** The note box, passed in so this component stays about reading the menu. */
-  footer?: ReactNode;
   /** Staff controls on each sitting. Omitted for a family — see `MenuRowActions`. */
   actions?: MenuRowActions;
 }) {
@@ -239,11 +245,10 @@ export function FamilyMenu({
             day={byDate.get(activeDate)}
             healthNotes={healthNotes}
             actions={actions}
+            allowAdd={view === "today"}
           />
         </div>
       )}
-
-      {footer}
     </div>
   );
 }
@@ -292,11 +297,13 @@ function DayView({
   day,
   healthNotes,
   actions,
+  allowAdd,
 }: {
   date: string;
   day?: MenuDay;
   healthNotes: string | null | undefined;
   actions?: MenuRowActions;
+  allowAdd?: boolean;
 }) {
   const dishes = day?.dishes ?? [];
   const kinds = MEAL_KIND_ORDER.filter((kind) => dishesOf(dishes, kind).length > 0);
@@ -317,6 +324,19 @@ function DayView({
           <p className="truncate text-body font-semibold text-ink">{formatLongDate(date)}</p>
           <p className="text-caption text-muted">{WEEKDAY_NAME[weekdayIndex(date)]} гараг</p>
         </div>
+        {actions?.onAdd && allowAdd ? (
+          <Button
+            className="ml-auto shrink-0"
+            size="icon"
+            aria-label="Хоол нэмэх"
+            title="Хоол нэмэх"
+            onClick={() => actions.onAdd?.(date)}
+          >
+            <span className="text-lead leading-none" aria-hidden="true">
+              +
+            </span>
+          </Button>
+        ) : null}
       </div>
 
       {kinds.length === 0 ? (
@@ -460,7 +480,7 @@ function MealRow({
           </p>
           <span className="flex shrink-0 flex-col items-end">
             <span className="text-caption font-semibold tabular-nums text-muted">
-              {MEAL_KIND_TIME[kind]}
+              {dishes.find((dish) => dish.time)?.time ?? MEAL_KIND_TIME[kind]}
             </span>
             {hasCalories ? (
               <span className="inline-flex items-center gap-1 text-caption tabular-nums text-muted">
@@ -636,13 +656,21 @@ export function WeekTable({
                   />
                   <span className="min-w-0">
                     <span className="block">{MEAL_KIND_LABEL[kind]}</span>
-                    <span className="block tabular-nums text-muted">{MEAL_KIND_TIME[kind]}</span>
+                    <span className="block tabular-nums text-muted">
+                      {weekDates
+                        .flatMap((date) => dishesOf(byDate.get(date)?.dishes ?? [], kind))
+                        .find((dish) => dish.time)?.time ?? MEAL_KIND_TIME[kind]}
+                    </span>
                   </span>
                 </span>
               </th>
 
               {weekDates.map((date) => {
                 const named = dishesOf(byDate.get(date)?.dishes ?? [], kind);
+                const hasCalories = named.some(
+                  (dish) => dish.calories !== null && dish.calories !== undefined,
+                );
+                const calories = named.reduce((sum, dish) => sum + (dish.calories ?? 0), 0);
 
                 return (
                   <td
@@ -668,7 +696,15 @@ export function WeekTable({
                         }
                       />
                     ) : named.length > 0 ? (
-                      named.map((dish) => dish.name).join(", ")
+                      <span className="flex flex-col items-center gap-1">
+                        <span>{named.map((dish) => dish.name).join(", ")}</span>
+                        {hasCalories ? (
+                          <span className="inline-flex items-center gap-1 whitespace-nowrap text-faint">
+                            <Flame size={11} aria-hidden="true" className="text-primary" />
+                            {calories} ккал
+                          </span>
+                        ) : null}
+                      </span>
                     ) : (
                       <span className="text-faint">—</span>
                     )}

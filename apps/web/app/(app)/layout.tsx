@@ -373,18 +373,16 @@ function routeIcon(href: string | undefined) {
  * `GroupsSection` and `TeacherHero`), and `useMyGroup()` resolves the group in
  * the layout, so the tab can point straight at it without asking anything.
  *
- * The fallbacks are the honest part. A teacher with one group gets that
- * group's assessment sheet. An admin sees every group in the kindergarten, so
- * there is no single sheet to open and the tab goes to `/admin/groups`, whose
- * rows carry a Үнэлгээ link each. A teacher with no group assigned goes to
- * `/children`, where assessment can still be reached per child. No branch is a
- * dead link, and none of them opens a screen whose first act is "which group?".
+ * An administrator gets the kindergarten-wide overview, where every group's
+ * coverage and every development domain are visible together. A teacher with
+ * one group gets that group's assessment sheet; one with no group assigned
+ * goes to `/children`, where assessment can still be reached per child.
  */
 function staffNav(isAdmin: boolean, groupId: string | null): NavItem[] {
-  const assessmentHref = groupId
-    ? `/groups/${groupId}/assessment`
-    : isAdmin
-      ? "/admin/groups"
+  const assessmentHref = isAdmin
+    ? "/admin/assessment"
+    : groupId
+      ? `/groups/${groupId}/assessment`
       : "/children";
 
   return [
@@ -589,7 +587,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         ...adminEntry("Бүлгүүд", "/admin/groups"),
         {
           label: "Явцын үнэлгээ",
-          href: scoped("assessment"),
+          href: isAdmin ? "/admin/assessment" : scoped("assessment"),
           icon: artIcon("progress", 18),
         },
         /*
@@ -607,7 +605,11 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          * is per child, so there was no existing destination — and a row that
          * 404s is exactly what rule 1 above forbids.
          */
-        entry("Тайлан", "/reports"),
+        {
+          label: "Тайлан",
+          href: "/reports",
+          icon: artIcon(isAdmin ? "adminReport" : "report", 18),
+        },
         /*
          * ★ Neither review queue is a menu row — settled 2026-09-04, and this
          * time by the client rather than by the argument.
@@ -677,29 +679,13 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
           icon: artIcon("attendance", 18),
         },
         /*
-          ★ The menu first, the register second — 2026-09-11, at the client's
-          request: "хоолны хуучин бүртгэл гэсэн хэсгийг арилгаад эцэг эх дээр
-          хийгдсэн байгаа хоолны цэс хэсгийг яг тэр загвараар … оруул."
-
-          This row opened `/groups/:id/meals` — "Хоолны бүртгэл", which is who
-          ate what, not what is being served. The client asked for the menu
-          here, so the menu is here.
-
-          ★★ The register keeps a row of its own rather than being dropped.
-          It is the daily "did this child eat", and `нэмэлт.md` §3 multiplies
-          its "хооллосон өдөр" into the food-cost calculation — a screen with no
-          door is a funding figure that quietly stops being entered. If it is
-          meant to go entirely, that is a decision with a number attached and
-          the client should make it knowingly.
+          The shared weekly menu stays in daily work. The separate per-child
+          meal register is intentionally absent from both teacher and director
+          navigation; its route and API remain available for existing links.
         */
         {
           label: "Хоолны цэс",
           href: "/menu",
-          icon: artIcon("food", 18),
-        },
-        {
-          label: "Хоолны бүртгэл",
-          href: scoped("meals"),
           icon: artIcon("food", 18),
         },
         entry("Аюулгүй байдал", "/incidents"),
@@ -759,7 +745,11 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          * зүй, дотоод журам. Staff only, so it never appears in
          * `parentSections`.
          */
-        entry("Баримт бичгийн сан", "/documents"),
+        {
+          label: "Баримт бичгийн сан",
+          href: "/documents",
+          icon: artIcon(isAdmin ? "adminDocuments" : "documents", 18),
+        },
       ],
     },
     {

@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AdminDashboard } from "@kinder/contracts";
 import { renderWithProviders, sessionFor, setParams, stubApi } from "./support/render";
 import AdminPage from "@/app/(app)/admin/page";
 
@@ -21,7 +22,7 @@ import AdminPage from "@/app/(app)/admin/page";
  * route rather than to build the screen it wants.
  */
 
-const ADMIN_DASHBOARD = {
+const ADMIN_DASHBOARD: AdminDashboard = {
   currentTerm: null,
   counts: { children: 24, groups: 3, staff: 7, guardians: 31 },
   childrenAMonthAgo: 20,
@@ -44,10 +45,10 @@ const ADMIN_DASHBOARD = {
  * they render an error state for — enough for the figures above them, and
  * fewer stubs standing between the assertion and what it is about.
  */
-function renderAdminDashboard() {
+function renderAdminDashboard(dashboard = ADMIN_DASHBOARD) {
   stubApi([
     { path: "/auth/me", body: sessionFor(["ADMIN"]) },
-    { path: "/dashboard/admin", body: ADMIN_DASHBOARD },
+    { path: "/dashboard/admin", body: dashboard },
   ]);
 
   return renderWithProviders(<AdminPage />);
@@ -161,5 +162,41 @@ describe("the administration dashboard", () => {
     expect(within(figures()).queryByText("5")).toBeNull();
     expect(within(figures()).getByText("2 нийт")).toBeInTheDocument();
     expect(within(figures()).getByText("Тайлан")).toBeInTheDocument();
+  });
+
+  it("uses the supplied drawings on the document and report cards", async () => {
+    renderAdminDashboard();
+
+    await waitFor(() =>
+      expect(within(figures()).getByText("Баримт бичгийн сан")).toBeInTheDocument(),
+    );
+
+    expect(cardLink("Баримт бичгийн сан")?.querySelector("img")?.getAttribute("src")).toContain(
+      "icon-admin-documents-3d.png",
+    );
+    expect(cardLink("Тайлан")?.querySelector("img")?.getAttribute("src")).toContain(
+      "icon-admin-report-3d.png",
+    );
+  });
+
+  it("omits half-day and other from the attendance summary", async () => {
+    renderAdminDashboard({
+      ...ADMIN_DASHBOARD,
+      attendanceByGroup: [
+        {
+          groupId: "11111111-1111-4111-8111-111111111111",
+          name: "Бага бүлэг",
+          counts: { PRESENT: 12, HALF_DAY: 2, EXCUSED: 1, SICK: 1, ABSENT: 1, OTHER: 2 },
+        },
+      ],
+    });
+
+    const summary = await screen.findByRole("region", { name: "Ирцийн бүтэц" });
+
+    expect(within(summary).queryByText("Хагас өдөр")).toBeNull();
+    expect(within(summary).queryByText("Бусад")).toBeNull();
+    for (const visible of ["Ирсэн", "Чөлөөтэй", "Өвчтэй", "Тасалсан"]) {
+      expect(within(summary).getByText(visible)).toBeInTheDocument();
+    }
   });
 });

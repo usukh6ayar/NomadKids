@@ -266,7 +266,17 @@ export function SectionHeader({
           {lede ? <p className="mt-1 text-caption text-muted md:text-body">{lede}</p> : null}
         </div>
       </div>
-      {action ? <div className="shrink-0">{action}</div> : null}
+      {/*
+        ★ `ml-auto` — 2026-09-12, from a client report that a month picker was
+        "баруун тийш шахаагүй".
+
+        The row is `justify-between`, which right-aligns the action while it
+        shares a line with the heading. The moment it *wraps* — which on a phone
+        is most headers with a control — `justify-between` lays the single item
+        out from the start of its own line, and the action lands on the left.
+        `ml-auto` is a no-op on the shared line and the fix on the wrapped one.
+      */}
+      {action ? <div className="ml-auto shrink-0">{action}</div> : null}
     </div>
   );
 }

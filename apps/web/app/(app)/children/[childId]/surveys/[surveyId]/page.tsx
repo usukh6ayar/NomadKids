@@ -9,6 +9,7 @@ import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { PageHeader } from "@/components/shell/app-shell";
+import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { Card } from "@/components/ui/card";
@@ -80,19 +81,59 @@ export default function SurveyResponsePage() {
       */
       toast.success(survey?.closingNote?.trim() || "Саналыг хүлээж авлаа. Баярлалаа.");
       void queryClient.invalidateQueries({ queryKey: qk.childSurveys(childId) });
-      router.replace(`/children/${childId}/general`);
+      /*
+        ★ Back to the family's own surveys, not the child's record — 2026-09-12,
+        at the client's request: "хүүхдийн дэлгэрэнгүй рүү үсэрч байна, ингэж
+        болохгүй, миний судалгаанууд руу ор."
+
+        A parent answering one survey is working through a list of them. Landing
+        on the child's profile ends that errand and makes finding the next one a
+        navigation problem; the list they came from has the next one on it, now
+        marked answered.
+      */
+      router.replace(`/children/${childId}/surveys`);
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  if (active.isLoading) return <LoadingState rows={3} />;
-  if (active.isError) return <ErrorState description={errorMessage(active.error)} />;
+  /*
+    ★ A way out, on every branch — 2026-09-12, at the client's request: "эцэг эх
+    асуулгад хариулсны дараа гарч болохгүй байна."
+
+    A poll is one tap; the screen it leaves behind showed the class's answer and
+    no exit at all, so a parent's only way back was the browser's own button —
+    which this product does not rely on anywhere else. The two other branches
+    were no better: a survey that could not be found was a dead end too.
+
+    `BackButton` goes one step back through history, with the family's own
+    survey list as the fallback for a page opened from a notification link.
+  */
+  const back = <BackButton href={`/children/${childId}/surveys`} />;
+
+  if (active.isLoading) {
+    return (
+      <div className="flex flex-col gap-4 py-2">
+        {back}
+        <LoadingState rows={3} />
+      </div>
+    );
+  }
+
+  if (active.isError) {
+    return (
+      <div className="flex flex-col gap-4 py-2">
+        {back}
+        <ErrorState description={errorMessage(active.error)} />
+      </div>
+    );
+  }
 
   const survey = active.data!.find((s) => s.id === surveyId);
 
   if (!survey) {
     return (
-      <div className="py-6">
+      <div className="flex flex-col gap-4 py-2">
+        {back}
         <ErrorState title="Олдсонгүй" description="Энэ судалгаа олдсонгүй эсвэл хаагдсан байна." />
       </div>
     );
@@ -110,6 +151,7 @@ export default function SurveyResponsePage() {
   if (survey.kind === "POLL") {
     return (
       <div className="flex flex-col gap-6 py-2">
+        {back}
         <PageHeader title={survey.title} />
         <PollAnswer survey={survey} childId={childId} />
       </div>
@@ -134,6 +176,7 @@ export default function SurveyResponsePage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
+      {back}
       <PageHeader title={survey.title} />
 
       <form

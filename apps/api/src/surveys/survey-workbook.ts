@@ -51,6 +51,8 @@ export interface SurveyWave {
   title: string;
   schoolYear: string | null;
   period: string | null;
+  /** ISO, or null for a wave that was never published. Names a comparison column. */
+  publishedAt?: string | null;
   /**
    * Whether this wave promised its respondents anonymity — 2026-09-10.
    *

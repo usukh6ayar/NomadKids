@@ -155,7 +155,6 @@ describe("navigation icons", () => {
       "Явцын үнэлгээ",
       "Ирц",
       "Хоолны цэс",
-      "Хоолны бүртгэл",
       "Ангийн самбар / Мэдээ",
       "Судалгаа",
       // The screens that used to sit behind the "Удирдлага" hub, which no
@@ -183,6 +182,21 @@ describe("navigation icons", () => {
 
     const icon = within(nav).getByRole("link", { name: "Судалгаа" }).querySelector("img")!;
     expect(icon.getAttribute("width")).toBe("18");
+  });
+
+  it("uses the supplied document and report drawings for management", async () => {
+    renderShell(["ADMIN"]);
+    const nav = await sections();
+
+    expect(
+      within(nav)
+        .getByRole("link", { name: "Баримт бичгийн сан" })
+        .querySelector("img")
+        ?.getAttribute("src"),
+    ).toContain("icon-admin-documents-3d.png");
+    expect(
+      within(nav).getByRole("link", { name: "Тайлан" }).querySelector("img")?.getAttribute("src"),
+    ).toContain("icon-admin-report-3d.png");
   });
 
   /*
@@ -353,7 +367,10 @@ describe("role-based navigation", () => {
     const nav = await sidebar();
 
     // Хүүхдийн хөгжил ба үнэлгээ
-    expect(within(nav).getByRole("link", { name: "Явцын үнэлгээ" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Явцын үнэлгээ" })).toHaveAttribute(
+      "href",
+      "/admin/assessment",
+    );
     // Өдөр тутмын бүртгэл
     expect(within(nav).getByRole("link", { name: "Ирц" })).toBeInTheDocument();
     /*
@@ -366,7 +383,6 @@ describe("role-based navigation", () => {
       funding figure that quietly stops being entered.
     */
     expect(within(nav).getByRole("link", { name: "Хоолны цэс" })).toHaveAttribute("href", "/menu");
-    expect(within(nav).getByRole("link", { name: "Хоолны бүртгэл" })).toBeInTheDocument();
     // Харилцаа холбоо
     expect(within(nav).getByRole("link", { name: "Судалгаа" })).toBeInTheDocument();
     // Багш ба байгууллага: the foot's own row is the single route to /settings.
@@ -788,5 +804,22 @@ describe("mobile navigation", () => {
       // caption pattern every other tab bar in the shell already uses.
       expect(within(link).getByText(label)).not.toHaveClass("sr-only");
     }
+  });
+
+  it("keeps the meal register off a teacher's menu", async () => {
+    renderShell(["TEACHER"]);
+    const teacherNav = await sidebar();
+
+    expect(within(teacherNav).getByRole("link", { name: "Хоолны цэс" })).toBeInTheDocument();
+    expect(
+      within(teacherNav).queryByRole("link", { name: "Хоолны бүртгэл" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the meal register off a director's menu", async () => {
+    renderShell(["ADMIN"]);
+    const nav = await sidebar();
+
+    expect(within(nav).queryByRole("link", { name: "Хоолны бүртгэл" })).not.toBeInTheDocument();
   });
 });

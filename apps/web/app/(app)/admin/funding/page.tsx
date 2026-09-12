@@ -20,11 +20,7 @@ import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { formatMonthLabel, formatRelative, fullName } from "@/lib/format";
-import {
-  ATTENDANCE_STATUS_LABEL,
-  ATTENDANCE_STATUS_ORDER,
-  ATTENDANCE_STATUS_TONE,
-} from "@/lib/attendance-meta";
+import { ATTENDANCE_STATUS_LABEL, ATTENDANCE_STATUS_TONE } from "@/lib/attendance-meta";
 import {
   currentMonth,
   formatTugrug,
@@ -64,6 +60,10 @@ const groupsSchema = paginated(groupListItemSchema);
 const calculatedRowsSchema = z.array(z.object({ id: z.string() }));
 
 const PAGE_SIZE = 25;
+
+/** The four statuses shown in the management UI. Historical half-days are
+ * folded into PRESENT below; OTHER remains in the API payload only. */
+const VISIBLE_ATTENDANCE_STATUSES = ["PRESENT", "EXCUSED", "SICK", "ABSENT"] as const;
 
 /**
  * Ирц ба тооцоолол — нэмэлт.md §6.
@@ -491,7 +491,7 @@ function FilterBar({
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-caption text-muted">Ирцийн төлөв</span>
-        {ATTENDANCE_STATUS_ORDER.map((status) => (
+        {VISIBLE_ATTENDANCE_STATUSES.map((status) => (
           <FilterChip
             key={status}
             active={statuses.includes(status)}
@@ -545,13 +545,6 @@ function SummaryCards({ register }: { register: AttendanceRegister | undefined }
         value={register ? attended.toLocaleString("mn-MN") : "—"}
         tone="mint"
         art={<CheckCircle2 size={22} aria-hidden />}
-        footer={
-          register ? (
-            <p className="text-caption text-muted">
-              Хагас өдөр {register.totals.counts.HALF_DAY} орсон.
-            </p>
-          ) : undefined
-        }
       />
       <StatCard
         label="Суутгалын дүн"
@@ -658,12 +651,11 @@ function AttendanceTable({
       <thead className="bg-canvas">
         <tr>
           <Th className="w-[220px]">Хүүхэд</Th>
-          {ATTENDANCE_STATUS_ORDER.map((status) => (
+          {VISIBLE_ATTENDANCE_STATUSES.map((status) => (
             <Th key={status} numeric>
               {ATTENDANCE_STATUS_LABEL[status]}
             </Th>
           ))}
-          <Th numeric>Бусад</Th>
           <Th numeric>Хоолны хоног</Th>
           <Th numeric>Актгүй хоног</Th>
           <Th>Төлөв</Th>
@@ -676,14 +668,18 @@ function AttendanceTable({
             <Td>
               <ChildCell row={row} />
             </Td>
-            {ATTENDANCE_STATUS_ORDER.map((status) => (
+            {VISIBLE_ATTENDANCE_STATUSES.map((status) => (
               <Td key={status} numeric>
-                <StatusCount status={status} count={row.counts[status]} />
+                <StatusCount
+                  status={status}
+                  count={
+                    status === "PRESENT"
+                      ? row.counts.PRESENT + row.counts.HALF_DAY
+                      : row.counts[status]
+                  }
+                />
               </Td>
             ))}
-            <Td numeric>
-              <StatusCount status="OTHER" count={row.counts.OTHER} />
-            </Td>
             <Td numeric>{row.mealDays}</Td>
             <Td numeric>
               {/*
@@ -706,12 +702,13 @@ function AttendanceTable({
       <tfoot>
         <tr className="bg-canvas font-semibold">
           <Td>Нийт дүн</Td>
-          {ATTENDANCE_STATUS_ORDER.map((status) => (
+          {VISIBLE_ATTENDANCE_STATUSES.map((status) => (
             <Td key={status} numeric>
-              {totals.counts[status]}
+              {status === "PRESENT"
+                ? totals.counts.PRESENT + totals.counts.HALF_DAY
+                : totals.counts[status]}
             </Td>
           ))}
-          <Td numeric>{totals.counts.OTHER}</Td>
           <Td numeric>{totals.mealDays}</Td>
           <Td numeric>{totals.missingDocuments > 0 ? totals.missingDocuments : "—"}</Td>
           <Td />

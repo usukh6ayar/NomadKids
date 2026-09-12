@@ -231,7 +231,9 @@ services:
     networks: [internal]
 
   storage:
-    image: minio/minio:latest
+    # ★ quay.io, pinned — see the note in `docker-compose.yml`. Docker Hub
+    # stopped serving `minio/minio` anonymously on 2026-09-13.
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -254,7 +256,7 @@ services:
   # setting, and the alternative is a manual step somebody performs once and
   # nobody records — then a fresh server 404s every upload with no clue why.
   storage-init:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
     depends_on:
       storage:
         condition: service_healthy

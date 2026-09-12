@@ -165,13 +165,28 @@ export class TenantsService {
    * filters, so a teacher passing `?kindergartenId=…` for a kindergarten they
    * teach in still cannot see groups they are not assigned to.
    */
+  /**
+   * ★ An accountant reads the whole roster too — 2026-09-13.
+   *
+   * This narrowed anybody who is not an *admin* of the requested kindergarten
+   * to the groups they teach. A teacher is exactly who that is for; an
+   * accountant teaches none, so they got an empty page — which is why the
+   * "Бүлэг" select on Ирцийн дэлгэрэнгүй showed nothing for the one role that
+   * screen is gated to (`@Roles("ADMIN", "ACCOUNTANT")` on the register).
+   *
+   * It grants nothing new: `/attendance/register` already answers an
+   * accountant with a `groups` array carrying every class's name and counts,
+   * and `/funding` with a row each. They could read the names and not pick
+   * one. `wholeRosterKindergartenIds` is the authz module's own predicate
+   * rather than a role test re-derived here (§1.1).
+   */
   async listGroups(actor: Actor, query: ListGroupsQuery) {
-    const adminKindergartens = this.tenants.adminKindergartenIds(actor);
-    const isAdminOfRequested = query.kindergartenId
-      ? adminKindergartens.includes(query.kindergartenId)
-      : adminKindergartens.length > 0;
+    const wholeRoster = this.tenants.wholeRosterKindergartenIds(actor);
+    const readsWholeRoster = query.kindergartenId
+      ? wholeRoster.includes(query.kindergartenId)
+      : wholeRoster.length > 0;
 
-    const groupIds = isAdminOfRequested
+    const groupIds = readsWholeRoster
       ? undefined
       : await this.authz.loadActiveTeachingGroupIds(actor);
 
@@ -195,9 +210,13 @@ export class TenantsService {
     const group = await this.repo.findGroup(this.memberScope(actor), id);
     if (!group) throw new NotFoundException();
 
-    // Membership in the kindergarten is not enough: a teacher may only open a
-    // group they are assigned to.
-    if (!this.tenants.isAdmin(actor, group.kindergartenId)) {
+    /*
+      Membership in the kindergarten is not enough: a teacher may only open a
+      group they are assigned to. An accountant is not a teacher — they read
+      every class on the register and the funding sheet — so they pass here for
+      the same reason `listGroups` no longer narrows them.
+    */
+    if (!this.tenants.wholeRosterKindergartenIds(actor).includes(group.kindergartenId)) {
       const assigned = await this.authz.loadActiveTeachingGroupIds(actor);
       if (!assigned.includes(group.id)) throw new NotFoundException();
     }

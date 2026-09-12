@@ -40,6 +40,7 @@ let adminA: AuthSession;
 let teacherA: AuthSession;
 let parentA: AuthSession;
 let adminB: AuthSession;
+let accountantA: AuthSession;
 
 beforeAll(async () => {
   app = await createTestApp();
@@ -60,6 +61,16 @@ beforeEach(async () => {
   teacherA = await login(app, a.teacherUser.username);
   parentA = await login(app, a.parentUser.username);
   adminB = await login(app, b.adminUser.username);
+
+  /*
+    ★ An accountant of kindergarten A, teaching nothing — which is the whole
+    point of the cases at the foot of "GET /groups". The role exists in
+    `нэмэлт.md` §13 and reads the register and the funding sheet; it does not
+    appear in `createScenario`, so it is made here.
+  */
+  const accUser = await createUser({ username: uniq("acct") });
+  await createMembership(accUser.id, a.kindergarten.id, "ACCOUNTANT");
+  accountantA = await login(app, accUser.username);
 });
 
 const server = () => app.getHttpServer();
@@ -460,6 +471,36 @@ describe("GET /groups", () => {
     expect(res.body.items).toHaveLength(0);
   });
 
+  /*
+    ★ 2026-09-13, and it was a real defect rather than a missing nicety.
+
+    The client: "нягтлан хэсэг дээр ирцийн дэлгэрэнгүй дээр ороод бүлэг гээд
+    бүлэг сонгох гэхээр харагдахгүй байна." `/attendance/register` is gated to
+    ADMIN and ACCOUNTANT and answers with every class's name and counts — but
+    this route refused the role outright, and even once allowed in, the service
+    narrowed any non-admin to the groups they *teach*. An accountant teaches
+    none, so the "Бүлэг" select on the one screen built for them was empty and
+    no group could ever be chosen.
+  */
+  it("★ an accountant sees every group in their kindergarten", async () => {
+    await createGroup(a.kindergarten.id, a.schoolYear.id, "Хоёрдугаар бүлэг");
+
+    const res = await request(server()).get("/v1/groups").set("Cookie", accountantA.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(2);
+  });
+
+  /* The grant is to their own kindergarten, and a query parameter is a filter. */
+  it("★ an accountant cannot list another kindergarten's groups", async () => {
+    const res = await request(server())
+      .get(`/v1/groups?kindergartenId=${b.kindergarten.id}`)
+      .set("Cookie", accountantA.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(0);
+  });
+
   it("refuses a parent — wrong role", async () => {
     expect((await request(server()).get("/v1/groups").set("Cookie", parentA.cookies)).status).toBe(
       404,
@@ -521,6 +562,28 @@ describe("GET /groups/:id", () => {
     const res = await request(server())
       .get(`/v1/groups/${a.group.id}`)
       .set("Cookie", teacherA.cookies);
+    expect(res.status).toBe(404);
+  });
+
+  /*
+    ★ An accountant opens any class in their own kindergarten — 2026-09-13,
+    with the list fix above. They are not a teacher, so the assignment check
+    that narrows one does not apply to them; they read every class on the
+    register and the funding sheet already.
+  */
+  it("★ allows an accountant into a group they do not teach", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Өөр бүлэг");
+
+    const res = await request(server())
+      .get(`/v1/groups/${other.id}`)
+      .set("Cookie", accountantA.cookies);
+    expect(res.status).toBe(200);
+  });
+
+  it("★ refuses an accountant another kindergarten's group", async () => {
+    const res = await request(server())
+      .get(`/v1/groups/${b.group.id}`)
+      .set("Cookie", accountantA.cookies);
     expect(res.status).toBe(404);
   });
 });

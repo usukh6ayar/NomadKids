@@ -35,22 +35,21 @@ body:has([data-app-theme="teacher"]) {
   --workspace-button-start: #2582eb;
   --workspace-button-end: #3d9cf5;
   --workspace-button-hover: #1d73d3;
-  /*
-   * ★★★★ Plain white — 2026-09-09, at the client's instruction: "яг нь цав
-   * цагаан өнгөтэй болго fff өнгө. сонин шаргал цагаан байгаад байна."
-   *
-   * Every shell opened on a tinted gradient. Read one at a time they were
-   * pleasant; read as a set they were six slightly different off-whites, and
-   * the warm ones — the kitchen's ended on `#fff9e8` — do go yellow next to a
-   * white card. White is the one background that cannot be *slightly* wrong.
-   *
-   * ★ A card is still legible on it. `[data-ui="card"]` carries `border` and
-   * `shadow-sm` as well as `bg-surface`, so it is separated by its edge rather
-   * than by a tint — flatter than before, and deliberate. Each role keeps its
-   * identity in `--color-primary` and `--workspace-accent`, which is where a
-   * workspace's colour was always doing the work.
-   */
-  --workspace-background: #ffffff;
+  /* The supplied portrait artwork is the mobile-first teacher background. */
+  --workspace-background: #ffffff url("/background/teacher-mobile.png") top center / 100% auto
+    no-repeat;
+}
+
+/*
+ * The supplied landscape artwork replaces the portrait crop from `sm` up.
+ * Both images fade into white, so long pages continue without a visible seam.
+ * No fixed attachment: it causes scroll jank on mobile Safari.
+ */
+@media (min-width: 640px) {
+  body:has([data-app-theme="teacher"]) {
+    --workspace-background: #ffffff url("/background/teacher-web.png") top center / 100% auto
+      no-repeat;
+  }
 }
 
 body:has([data-app-theme="admin"]) {
@@ -196,6 +195,27 @@ body:has([data-app-theme="platform"]) {
   --workspace-button-end: #607f9c;
   --workspace-button-hover: #33495f;
   --workspace-background: #ffffff;
+}
+
+/*
+ * The same supplied sky belongs to the three management workspaces too.
+ * Keep the portrait crop mobile-first and switch all three to the landscape
+ * crop at the same breakpoint as the teacher workspace.
+ */
+body:has([data-app-theme="admin"]),
+body:has([data-app-theme="kitchen"]),
+body:has([data-app-theme="finance"]) {
+  --workspace-background: #ffffff url("/background/teacher-mobile.png") top center / 100% auto
+    no-repeat;
+}
+
+@media (min-width: 640px) {
+  body:has([data-app-theme="admin"]),
+  body:has([data-app-theme="kitchen"]),
+  body:has([data-app-theme="finance"]) {
+    --workspace-background: #ffffff url("/background/teacher-web.png") top center / 100% auto
+      no-repeat;
+  }
 }
 
 [data-app-theme] {

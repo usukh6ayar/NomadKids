@@ -21,6 +21,16 @@ import { cn } from "@/lib/utils";
  * The previous value is captured and restored on failure, so a rejected like
  * does not leave a heart filled in against a count that never moved.
  *
+ * ★★★ The optimistic value goes into the **cache**, not into this component —
+ * 2026-09-12, at the client's report: "зүрх дарахад тоо арилдаг."
+ *
+ * It used to live in `toggle.isPending`, so the moment the request resolved the
+ * heart fell back to the props — which are still the pre-press ones until the
+ * refetch lands a moment later. A first like therefore went 0 → 1 → *nothing*
+ * → 1, and the middle state hides the number entirely, because a count of zero
+ * draws no digit. Writing through the cache means the value the list renders is
+ * already the new one, and there is no window to fall back into.
+ *
  * The count is everyone's; `likedByMe` is only ever the viewer's own. Neither
  * the API nor this component can name who else reacted — a parent must not be
  * able to work out which other families are reading the board.
@@ -47,22 +57,30 @@ export function LikeButton({
       // Stop an in-flight refetch from landing on top of the optimistic value
       // and flickering the heart back.
       await queryClient.cancelQueries({ queryKey: ["notifications"] });
-      return { previous: { likeCount, likedByMe }, next };
+
+      const snapshot = queryClient.getQueriesData({ queryKey: ["notifications"] });
+      queryClient.setQueriesData({ queryKey: ["notifications"] }, (cached: unknown) =>
+        patchNotification(cached, notificationId, next),
+      );
+
+      return { snapshot };
+    },
+    /*
+      Every cached notifications query is put back exactly as it was. A rejected
+      like must not leave a heart filled in against a count that never moved,
+      and restoring the snapshot is the only way to be sure of that across the
+      three shapes this key holds.
+    */
+    onError: (_error, _next, context) => {
+      for (const [key, value] of context?.snapshot ?? []) queryClient.setQueryData(key, value);
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ["notifications"] });
     },
   });
 
-  // While a request is in flight, show where the user is going, not where they
-  // were. `variables` is the value passed to `mutate`.
-  const optimistic = toggle.isPending ? toggle.variables : likedByMe;
-  const count = toggle.isPending
-    ? Math.max(
-        0,
-        likeCount + (toggle.variables ? 1 : -1) * (toggle.variables === likedByMe ? 0 : 1),
-      )
-    : likeCount;
+  const optimistic = likedByMe;
+  const count = likeCount;
 
   return (
     <button
@@ -93,4 +111,48 @@ export function LikeButton({
       {count > 0 ? <span className="tabular-nums">{count}</span> : null}
     </button>
   );
+}
+
+/**
+ * Puts one notification's like state into whatever shape the cache holds it in.
+ *
+ * ★ Three shapes live under `["notifications"]`: the news page's infinite query
+ * (`{ pages: [{ items }] }`), the bell's single page (`{ items }`), and one
+ * notification on its own detail route. A patcher that knew only the list would
+ * leave the detail screen showing the old count after a like made on it.
+ *
+ * Anything it does not recognise is returned untouched — an unread count, for
+ * instance, which shares the prefix and has no likes in it.
+ *
+ * ★★ Exported for its own test. The alternative was a full news-page fixture to
+ * reach it, which tests the page's stubbing more than it tests this: three
+ * shapes in, three shapes out is the whole of what can go wrong here.
+ */
+export function patchNotification(cached: unknown, id: string, liked: boolean): unknown {
+  if (!cached || typeof cached !== "object") return cached;
+
+  const one = (row: unknown): unknown => {
+    if (!row || typeof row !== "object") return row;
+    const item = row as { id?: string; likeCount?: number; likedByMe?: boolean };
+    if (item.id !== id) return row;
+    if (item.likedByMe === liked) return row;
+
+    return {
+      ...item,
+      likedByMe: liked,
+      likeCount: Math.max(0, (item.likeCount ?? 0) + (liked ? 1 : -1)),
+    };
+  };
+
+  const record = cached as Record<string, unknown>;
+
+  if (Array.isArray(record.pages)) {
+    return { ...record, pages: record.pages.map((page) => patchNotification(page, id, liked)) };
+  }
+
+  if (Array.isArray(record.items)) {
+    return { ...record, items: record.items.map(one) };
+  }
+
+  return one(cached);
 }

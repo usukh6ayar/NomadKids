@@ -6,7 +6,7 @@ import { childKindergartenIds, isGuardianOf } from "../authz/child-access";
 import type { Actor } from "../authz/actor";
 import { SurveysRepository } from "./surveys.repository";
 import { buildSurveyWorkbook, type SurveyWave } from "./survey-workbook";
-import { compareWaves, compareWavesByChild } from "./survey-comparison";
+import { compareQuestions, compareWaves, compareWavesByChild } from "./survey-comparison";
 import { MAX_POLL_OPTIONS, matrixOptions, optionStrings } from "./survey-scoring";
 import { hasOptionList } from "@kinder/contracts";
 import type {
@@ -243,6 +243,37 @@ export class SurveysService {
     return { id: removed.id };
   }
 
+  /**
+   * Takes the lock off a closed survey — 2026-09-12, at the client's request:
+   * "цоожоо онгойлгоод нээж болдог бай."
+   *
+   * ★ The mirror of `close`, and deliberately not a toggle on one endpoint: a
+   * client that sent "flip it" would close a survey somebody else had just
+   * re-opened, and the audit row would say the opposite of what happened.
+   */
+  async reopen(actor: Actor, surveyId: string) {
+    const survey = await this.repo.findForAuthorization(surveyId);
+    if (!survey) throw new NotFoundException();
+    this.tenants.assertStaff(actor, survey.kindergartenId);
+
+    if (survey.status !== "CLOSED") {
+      throw new BadRequestException("Зөвхөн хаагдсан судалгааг дахин нээх боломжтой");
+    }
+
+    const updated = await this.repo.reopen(surveyId);
+
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId: survey.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "Survey",
+      objectId: surveyId,
+      metadata: { status: "PUBLISHED", reopened: true },
+    });
+
+    return updated;
+  }
+
   async close(actor: Actor, surveyId: string) {
     const survey = await this.repo.findForAuthorization(surveyId);
     if (!survey) throw new NotFoundException();
@@ -288,11 +319,31 @@ export class SurveysService {
     const now = Date.now();
     const surveys = all.filter((survey) => !survey.opensAt || survey.opensAt.getTime() <= now);
 
+    /*
+      ★ `myAnswers` — 2026-09-13, at the client's request: "хариулсан
+      хариултууд харагддаг баймаар байна."
+
+      The family's list said *that* they had replied and never *what* they
+      said, which is the one thing a parent reopens a survey for. It is their
+      own response and no one else's: `findResponse` is keyed on
+      `actor.userId` and on the child, so there is no other family's answer in
+      the payload to withhold.
+
+      ★★ An anonymous survey is no exception, and that is deliberate. The
+      promise anonymity makes is to the *other* families — `questionAnswers`
+      and `participation` both refuse names for exactly that reason — and a
+      guardian reading back the row they wrote themselves reveals nothing
+      about anybody else. The aggregate stays the teacher's either way.
+    */
     return Promise.all(
       surveys.map(async (survey) => {
         const responseChildId = survey.scope === "CHILD" ? childId : null;
         const existing = await this.repo.findResponse(survey.id, actor.userId, responseChildId);
-        return { ...survey, respondedByMe: Boolean(existing) };
+        return {
+          ...survey,
+          respondedByMe: Boolean(existing),
+          myAnswers: existing?.answers ?? [],
+        };
       }),
     );
   }
@@ -733,6 +784,36 @@ export class SurveysService {
     };
   }
 
+  /**
+   * "Хариултууд" — who said what to one question.
+   *
+   * ★ Refused outright for an anonymous survey, not filtered afterwards. The
+   * flag's whole purpose is that no reader can attach an answer to a name, and
+   * an endpoint that answers with an empty list for the anonymous case is one
+   * `if` away from answering with a full one. `participation` takes the same
+   * line and says why.
+   */
+  async questionAnswers(actor: Actor, surveyId: string, questionId: string) {
+    const survey = await this.repo.findForAuthorization(surveyId);
+    if (!survey) throw new NotFoundException();
+    this.tenants.assertStaff(actor, survey.kindergartenId);
+
+    if (survey.isAnonymous) return { anonymous: true as const, items: [] };
+
+    const withQuestions = await this.repo.findWithQuestions(surveyId);
+    const question = withQuestions?.questions.find((row) => row.id === questionId);
+    // 404, never 403 — §1.7. A question id from another survey is a question
+    // this survey does not have, and saying which it is would confirm it exists.
+    if (!question) throw new NotFoundException();
+
+    const rows = await this.repo.answersWithChild(surveyId, questionId);
+
+    return {
+      anonymous: false as const,
+      items: rows.map((row) => ({ child: row.child, value: row.value })),
+    };
+  }
+
   async results(actor: Actor, surveyId: string, groupId?: string) {
     const survey = await this.repo.findForAuthorization(surveyId);
     if (!survey) throw new NotFoundException();
@@ -932,14 +1013,23 @@ export class SurveysService {
       return {
         baseline: null,
         indicators: [],
+        questions: [],
         children: [],
         note: "Харьцуулах эхний үнэлгээ олдсонгүй",
       };
     }
 
     return {
-      baseline: { id: baseWave.id, title: baseWave.title, period: baseWave.period },
+      baseline: {
+        id: baseWave.id,
+        title: baseWave.title,
+        period: baseWave.period,
+        publishedAt: baseWave.publishedAt ?? null,
+      },
+      /** This wave's own date, so the two columns can be named by when they ran. */
+      endline: { id: endWave.id, title: endWave.title, publishedAt: endWave.publishedAt ?? null },
       indicators: compareWaves(baseWave, endWave),
+      questions: compareQuestions(baseWave, endWave),
       children: compareWavesByChild(baseWave, endWave),
       note: null,
     };
@@ -1064,6 +1154,16 @@ export class SurveysService {
       title: row.title,
       schoolYear: row.schoolYear,
       period: row.period,
+      /*
+       * ★ When the wave went out — 2026-09-12, for the comparison's own column
+       * headers ("2026.05" against "2026.09").
+       *
+       * `period` names which assessment it is in the year's cycle and cannot
+       * date it; two waves both called "Завсрын үнэлгээ" in different years
+       * would label two identical columns. The date is the one thing a reader
+       * pairs a bar with.
+       */
+      publishedAt: row.publishedAt ? row.publishedAt.toISOString() : null,
       // Carried into the workbook so Sheet 2 can keep the promise this survey
       // made — see `SurveyWave.isAnonymous`.
       isAnonymous: row.isAnonymous,

@@ -25,7 +25,7 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { AttendanceCalendar } from "@/components/child/attendance-calendar";
-import { formatDate, todayLocal } from "@/lib/format";
+import { formatDate, formatMonthLabel, todayLocal } from "@/lib/format";
 import { mediaUrl } from "@/lib/api/client";
 import {
   ATTENDANCE_COMPANION_ICON as COMPANION_ICON,
@@ -34,6 +34,7 @@ import {
   ATTENDANCE_STATUS_LABEL as STATUS_LABEL,
   attendanceCompanionDisplay as companionDisplay,
   attendanceCompanionSuffix as companionSuffix,
+  attendanceEventSentence,
 } from "@/lib/attendance-meta";
 import { cn } from "@/lib/utils";
 
@@ -103,6 +104,48 @@ function eventSentence(record: AttendanceRecord | undefined): string {
   return `Өнөөдрийн төлөв: ${STATUS_LABEL[record.status]}.`;
 }
 
+/**
+ * The family's own version of the same line — the child named, and the date in
+ * it. 2026-09-12: "Б. Бат аавтайгаа 2026. 9. 11-нд 10:23 минутад цэцэрлэгтээ
+ * ирлээ гэж өгүүлбэрээр харагд."
+ *
+ * The register row wins over the family's own report when both exist: a teacher
+ * may have corrected the time, and the corrected one is the fact.
+ */
+function guardianSentence(
+  childName: string | undefined,
+  today: string,
+  record: AttendanceRecord | undefined,
+  request: z.infer<typeof attendanceRequestSchema> | undefined,
+): string {
+  for (const source of [record, request]) {
+    if (!source) continue;
+    if (source.pickedUpWith) {
+      return attendanceEventSentence({
+        mode: "pickup",
+        childName,
+        companion: source.pickedUpWith,
+        companionName: source.pickedUpWithName,
+        date: today,
+        time: source.pickedUpAt ? toLocalTime(source.pickedUpAt) : null,
+      });
+    }
+    if (source.arrivedWith) {
+      return attendanceEventSentence({
+        mode: "arrival",
+        childName,
+        companion: source.arrivedWith,
+        companionName: source.arrivedWithName,
+        date: today,
+        time: source.arrivedAt ? toLocalTime(source.arrivedAt) : null,
+      });
+    }
+  }
+
+  if (record) return `Өнөөдрийн төлөв: ${STATUS_LABEL[record.status]}.`;
+  return "Өнөөдрийн ирц хараахан бүртгэгдээгүй байна.";
+}
+
 function LastRegistration({ record }: { record: AttendanceRecord | undefined }) {
   if (!record) {
     return (
@@ -145,17 +188,29 @@ function LastRegistration({ record }: { record: AttendanceRecord | undefined }) 
  * "Ирц" a family submits is an `AttendanceRequest`, reviewed like a parent
  * observation. Approving one is what turns it into the record staff sees.
  */
+/**
+ * The phone shape the three attendance buttons share.
+ *
+ * ★ Glyph over label below `sm`, an ordinary button from `sm` up.
+ *
+ * "Чөлөө хүсэх" is eleven characters and an icon; at a third of a 375px screen
+ * there is no line that holds both side by side. Stacking them keeps every
+ * label whole, which truncating to "Чөлөө х…" would not.
+ */
+const STACKED =
+  "h-auto min-h-[56px] flex-col gap-1 px-1 text-caption leading-tight sm:h-[44px] sm:flex-row sm:gap-2 sm:text-body";
+
 export function ChildAttendance({
   childId,
   isStaff,
-  childFirstName,
+  childName,
 }: {
   childId: string;
   isStaff: boolean;
   /** For the arrival panel's confirmation line ("Оюун ... ирлээ"). Omitted
    * entirely when the caller has no name handy — the sentence still reads
    * without it, just less personally. */
-  childFirstName?: string;
+  childName?: string;
 }) {
   const requests = useQuery({
     queryKey: qk.attendanceRequests(childId),
@@ -165,10 +220,11 @@ export function ChildAttendance({
   return (
     <div className="flex flex-col gap-6">
       {isStaff ? (
-        <TodayAttendanceRecorder childId={childId} childFirstName={childFirstName} />
+        <TodayAttendanceRecorder childId={childId} childName={childName} />
       ) : (
         <GuardianTodayAttendance
           childId={childId}
+          childName={childName}
           requests={requests.data ?? []}
           requestsPending={requests.isPending}
         />
@@ -190,7 +246,7 @@ export function ChildAttendance({
           <SectionHeader
             id="attendance-requests-heading"
             title="Хүсэлтийн түүх"
-            lede="Багшид илгээсэн ирц, гаралт болон чөлөөний хүсэлтүүд"
+            lede="Багшид мэдэгдсэн ирц, гаралт болон чөлөөний хүсэлтүүд"
           />
 
           {requests.isPending ? <LoadingState rows={2} /> : null}
@@ -207,44 +263,7 @@ export function ChildAttendance({
           ) : null}
 
           {requests.data && requests.data.length > 0 ? (
-            <Card className="divide-y divide-border">
-              {requests.data.map((req) => (
-                <div key={req.id} className="flex flex-col gap-1.5 px-4 py-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="font-medium text-ink">
-                      {formatDate(req.dateFrom)}
-                      {req.dateFrom !== req.dateTo ? ` – ${formatDate(req.dateTo)}` : ""}
-                    </p>
-                    <Badge tone={REVIEW_TONE[req.reviewStatus]}>
-                      {REVIEW_LABEL[req.reviewStatus]}
-                    </Badge>
-                  </div>
-                  <p className="text-body text-muted">
-                    {req.pickedUpWith && !req.arrivedWith
-                      ? "Явсан"
-                      : STATUS_LABEL[req.requestedStatus]}
-                    {req.arrivedWith
-                      ? ` · ${companionDisplay(req.arrivedWith, req.arrivedWithName)}${req.arrivedAt ? `, ${toLocalTime(req.arrivedAt)}` : ""}`
-                      : ""}
-                    {req.pickedUpWith
-                      ? ` · ${companionDisplay(req.pickedUpWith, req.pickedUpWithName)}${req.pickedUpAt ? `, ${toLocalTime(req.pickedUpAt)}` : ""}`
-                      : ""}
-                    {req.reason ? ` · ${req.reason}` : ""}
-                  </p>
-                  {req.attachment ? (
-                    <a
-                      href={mediaUrl(req.attachment.id)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-1 inline-flex items-center gap-1.5 self-start text-caption font-medium text-primary hover:underline"
-                    >
-                      <Paperclip size={14} aria-hidden="true" />
-                      {req.attachment.originalName}
-                    </a>
-                  ) : null}
-                </div>
-              ))}
-            </Card>
+            <RequestHistoryTable requests={requests.data} />
           ) : null}
         </section>
       ) : null}
@@ -252,14 +271,206 @@ export function ChildAttendance({
   );
 }
 
+type HistoryRow = {
+  key: string;
+  /** `YYYY-MM-DD` of the first day — what the table sorts on. */
+  date: string;
+  /** "11" or "12–13" — the day column, the month being the group's heading. */
+  days: string;
+  arrived: string | null;
+  left: string | null;
+  /** Set only on a leave request: "Чөлөөтэй · Эмчид үзүүлнэ". */
+  leave: string | null;
+  reviewStatus: string;
+  attachment: { id: string; originalName: string } | null;
+};
+
+/** "11", or "12–13" / "30 – 10 сарын 2" when a leave spans days. */
+function dayRange(from: string, to: string): string {
+  const a = localCalendarDate(from);
+  const b = localCalendarDate(to);
+  if (from.slice(0, 10) === to.slice(0, 10)) return String(a.getDate());
+  if (a.getMonth() === b.getMonth()) return `${a.getDate()}–${b.getDate()}`;
+  return `${a.getDate()} – ${b.getMonth() + 1} сарын ${b.getDate()}`;
+}
+
+/**
+ * One row per day, grouped under the month it falls in.
+ *
+ * ★ A table, not a card each — 2026-09-12, at the client's instruction: "ирцийн
+ * хамгийн доор байгаа хүсэлтийн түүхийг сар болон өдрөөр харахад хялбар
+ * минимал болгоод өг, жнь 9 сарын 11 ирсэн явсан нэг хүснэгтэд харагд."
+ *
+ * The arrival and the pickup of one day are two separate `AttendanceRequest`
+ * rows — that is what the API stores, and it is right, because they are sent
+ * hours apart. Rendered one card each they read as two unrelated events, and a
+ * week of them is fourteen cards to scroll. Here they collapse onto the day
+ * they belong to: one line, "ирсэн" in one column and "явсан" in the next.
+ *
+ * ★★ A leave request keeps its own line and spans those two columns. It is not
+ * a time of day, it is a range of days, and it is the only row in this table
+ * whose review status the family is actually waiting on.
+ */
+function RequestHistoryTable({
+  requests,
+}: {
+  requests: z.infer<typeof attendanceRequestSchema>[];
+}) {
+  const byDay = new Map<string, HistoryRow>();
+  const rows: HistoryRow[] = [];
+
+  for (const req of requests) {
+    const from = req.dateFrom.slice(0, 10);
+
+    if (req.requestedStatus === "PRESENT") {
+      let row = byDay.get(from);
+      if (!row) {
+        row = {
+          key: from,
+          date: from,
+          days: dayRange(from, req.dateTo),
+          arrived: null,
+          left: null,
+          leave: null,
+          reviewStatus: req.reviewStatus,
+          attachment: null,
+        };
+        byDay.set(from, row);
+        rows.push(row);
+      }
+      if (req.arrivedWith) {
+        row.arrived = `${req.arrivedAt ? toLocalTime(req.arrivedAt) : "—"} · ${companionDisplay(req.arrivedWith, req.arrivedWithName)}`;
+      }
+      if (req.pickedUpWith) {
+        row.left = `${req.pickedUpAt ? toLocalTime(req.pickedUpAt) : "—"} · ${companionDisplay(req.pickedUpWith, req.pickedUpWithName)}`;
+      }
+      // A rejected half must not make the whole day look rejected; a pending
+      // one is worth showing, so the "worst" status on the day wins.
+      if (req.reviewStatus === "PENDING") row.reviewStatus = "PENDING";
+      continue;
+    }
+
+    rows.push({
+      key: req.id,
+      date: from,
+      days: dayRange(from, req.dateTo),
+      arrived: null,
+      left: null,
+      leave: `${STATUS_LABEL[req.requestedStatus]}${req.reason ? ` · ${req.reason}` : ""}`,
+      reviewStatus: req.reviewStatus,
+      attachment: req.attachment ?? null,
+    });
+  }
+
+  rows.sort((a, b) => b.date.localeCompare(a.date) || a.key.localeCompare(b.key));
+
+  /** Newest month first, the rows inside it already in order. */
+  const months: { month: string; rows: HistoryRow[] }[] = [];
+  for (const row of rows) {
+    const month = row.date.slice(0, 7);
+    const last = months[months.length - 1];
+    if (last?.month === month) last.rows.push(row);
+    else months.push({ month, rows: [row] });
+  }
+
+  return (
+    <Card className="overflow-x-auto">
+      <table className="w-full min-w-[340px] border-collapse text-body">
+        <thead>
+          <tr className="border-b border-border text-caption text-muted">
+            <th scope="col" className="px-3 py-2 text-left font-medium">
+              Өдөр
+            </th>
+            <th scope="col" className="px-3 py-2 text-left font-medium">
+              Ирсэн
+            </th>
+            <th scope="col" className="px-3 py-2 text-left font-medium">
+              Явсан
+            </th>
+            <th scope="col" className="px-3 py-2 text-right font-medium">
+              Төлөв
+            </th>
+          </tr>
+        </thead>
+        {months.map((group) => (
+          <tbody key={group.month}>
+            <tr className="bg-sunken">
+              {/*
+                The month is a heading over its own days rather than a repeated
+                column — twenty rows of "2026 оны 9-р сар" is the noise the
+                client asked to be rid of.
+              */}
+              <th
+                scope="colgroup"
+                colSpan={4}
+                className="px-3 py-1.5 text-left text-caption font-semibold text-muted"
+              >
+                {formatMonthLabel(group.month)}
+              </th>
+            </tr>
+            {group.rows.map((row) => (
+              <tr key={row.key} className="border-b border-border last:border-0 align-top">
+                <th scope="row" className="px-3 py-2.5 text-left font-medium tabular-nums text-ink">
+                  {row.days}
+                </th>
+
+                {row.leave ? (
+                  <td colSpan={2} className="px-3 py-2.5 text-muted">
+                    {row.leave}
+                    {row.attachment ? (
+                      <a
+                        href={mediaUrl(row.attachment.id)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-1 flex items-center gap-1.5 text-caption font-medium text-primary hover:underline"
+                      >
+                        <Paperclip size={14} aria-hidden="true" />
+                        {row.attachment.originalName}
+                      </a>
+                    ) : null}
+                  </td>
+                ) : (
+                  <>
+                    <td className="px-3 py-2.5 tabular-nums text-muted">{row.arrived ?? "—"}</td>
+                    <td className="px-3 py-2.5 tabular-nums text-muted">{row.left ?? "—"}</td>
+                  </>
+                )}
+
+                <td className="px-3 py-2.5 text-right">
+                  {/*
+                    ★ An arrival carries no decision any more, so it shows the
+                    plain fact instead of a verdict — the teacher does not
+                    approve one ("багшаар баталгаажиж зөвшөөрөгдөхгүй"), and a
+                    green "Зөвшөөрсөн" badge against something nobody reviewed
+                    would say the opposite.
+                  */}
+                  {row.leave ? (
+                    <Badge tone={REVIEW_TONE[row.reviewStatus]}>
+                      {REVIEW_LABEL[row.reviewStatus]}
+                    </Badge>
+                  ) : (
+                    <span className="text-caption text-muted">Мэдэгдсэн</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        ))}
+      </table>
+    </Card>
+  );
+}
+
 /** The parent's task-first card. Reporting still creates a reviewable request;
  * only staff can write the attendance record itself. */
 function GuardianTodayAttendance({
   childId,
+  childName,
   requests,
   requestsPending,
 }: {
   childId: string;
+  childName?: string;
   requests: z.infer<typeof attendanceRequestSchema>[];
   requestsPending: boolean;
 }) {
@@ -274,7 +485,6 @@ function GuardianTodayAttendance({
   if (records.isError) return <ErrorState description={errorMessage(records.error)} />;
 
   const todayRecord = records.data.find((record) => record.date.slice(0, 10) === today);
-  const latestRecord = [...records.data].sort((a, b) => b.date.localeCompare(a.date))[0];
   const todayRequests = requests.filter(
     (request) =>
       request.requestedStatus === "PRESENT" &&
@@ -289,13 +499,25 @@ function GuardianTodayAttendance({
   const pendingArrival = todayRequests.find((r) => r.arrivedWith);
   const pendingPickup = todayRequests.find((r) => r.pickedUpWith);
   const requestForSentence = pendingPickup ?? pendingArrival;
-  const sentence = todayRecord
-    ? eventSentence(todayRecord)
-    : requestForSentence?.pickedUpWith
-      ? `${requestForSentence.pickedUpAt ? `${toLocalTime(requestForSentence.pickedUpAt)}-д ` : ""}${companionSuffix(requestForSentence.pickedUpWith, requestForSentence.pickedUpWithName)} явсныг багшид мэдэгдсэн.`
-      : requestForSentence?.arrivedWith
-        ? `${requestForSentence.arrivedAt ? `${toLocalTime(requestForSentence.arrivedAt)}-д ` : ""}${companionSuffix(requestForSentence.arrivedWith, requestForSentence.arrivedWithName)} ирснийг багшид мэдэгдсэн.`
-        : "Өнөөдрийн ирц хараахан бүртгэгдээгүй байна.";
+  const sentence = guardianSentence(childName, today, todayRecord, requestForSentence);
+
+  /*
+    ★ Saturday and Sunday the family's three buttons are closed — 2026-09-12,
+    at the client's instruction: "бямба ням гарагт ирлээ явлаа чөлөөний
+    хүснэгтийг ажиллуул болохгүй, учир нь цэцэрлэг амрах өдөр."
+
+    Only the family's controls. A teacher correcting a mistake writes through
+    their own day sheet, which the staff half of this file renders and which is
+    deliberately left open — the same sentence of the client's says so ("багш
+    алдааг залруулж засаж болно").
+
+    ★★ The three greyed buttons say it on their own. A line of explanation under
+    them was removed the same day it was added, at the client's instruction
+    ("энэ бичгийг арилгаад өгөөч") — a weekend needs no announcing to a family
+    who already knows the kindergarten is shut.
+  */
+  const weekday = localCalendarDate(today).getDay();
+  const closed = weekday === 0 || weekday === 6;
 
   return (
     <section aria-labelledby="today-attendance-heading">
@@ -305,27 +527,31 @@ function GuardianTodayAttendance({
             Өнөөдрийн ирц
           </h2>
           <p className="text-body text-muted">{todayLabel(today)}</p>
-          <p className="mt-1 flex items-start gap-2 text-body font-medium text-ink">
-            <span
-              className="mt-[7px] size-2 shrink-0 rounded-pill bg-mint-ink"
-              aria-hidden="true"
-            />
-            {sentence}
-          </p>
         </div>
 
-        <div className="mt-4 grid gap-2 sm:grid-cols-3">
-          {arrivalSent || requestsPending ? (
-            <Button disabled block className="bg-mint text-mint-ink">
-              <Check size={17} />
+        {/*
+          ★ Three across on a phone too — 2026-09-12, at the client's request.
+
+          It was one column below `sm`, so the three commonest actions a parent
+          takes were three full-width buttons stacked down the screen, pushing
+          the month's calendar under the fold. Three abreast at 375px leaves
+          about 110px each, which a worded button cannot hold on one line — so
+          on a phone the glyph sits above the label and the row is 56px tall,
+          and from `sm` up they are ordinary buttons again.
+        */}
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          {closed || arrivalSent || requestsPending ? (
+            <Button disabled block className={cn(STACKED, !closed && "bg-mint text-mint-ink")}>
+              {arrivalSent && !closed ? <Check size={17} /> : <LogIn size={17} />}
               Ирлээ
             </Button>
           ) : (
             <ReportAttendanceDialog
               childId={childId}
+              childName={childName}
               mode="arrival"
               trigger={
-                <Button block className="bg-mint text-mint-ink hover:bg-mint/80">
+                <Button block className={cn(STACKED, "bg-mint text-mint-ink hover:bg-mint/80")}>
                   <LogIn size={17} />
                   Ирлээ
                 </Button>
@@ -333,17 +559,18 @@ function GuardianTodayAttendance({
             />
           )}
 
-          {pickupSent || requestsPending || !arrivalSent ? (
-            <Button disabled block>
-              {pickupSent ? <Check size={17} /> : <LogOut size={17} />}
+          {closed || pickupSent || requestsPending || !arrivalSent ? (
+            <Button disabled block className={STACKED}>
+              {pickupSent && !closed ? <Check size={17} /> : <LogOut size={17} />}
               Явлаа
             </Button>
           ) : (
             <ReportAttendanceDialog
               childId={childId}
+              childName={childName}
               mode="pickup"
               trigger={
-                <Button block>
+                <Button block className={STACKED}>
                   <LogOut size={17} />
                   Явлаа
                 </Button>
@@ -351,20 +578,52 @@ function GuardianTodayAttendance({
             />
           )}
 
-          <RequestLeaveDialog
-            childId={childId}
-            trigger={
-              <Button block variant="secondary">
-                <FileText size={17} />
-                Чөлөө хүсэх
-              </Button>
-            }
-          />
+          {closed ? (
+            <Button disabled block variant="secondary" className={STACKED}>
+              <FileText size={17} />
+              Чөлөө хүсэх
+            </Button>
+          ) : (
+            <RequestLeaveDialog
+              childId={childId}
+              trigger={
+                <Button block variant="secondary" className={STACKED}>
+                  <FileText size={17} />
+                  Чөлөө хүсэх
+                </Button>
+              }
+            />
+          )}
         </div>
 
-        <div className="mt-4">
-          <LastRegistration record={latestRecord} />
-        </div>
+        {/*
+          ★ Under the buttons, not over them — 2026-09-12, at the client's
+          instruction: "Ирлээ Явлаа Чөлөө хүсэх товчны доор [өгүүлбэр]".
+
+          It sat between the date and the button row, which put a line that only
+          changes *after* an action above the action itself. Read top to bottom
+          the card now says what day it is, what you can do, and then what has
+          happened.
+        */}
+        <p
+          aria-live="polite"
+          className="mt-3 flex items-start gap-2 text-body font-medium text-ink"
+        >
+          <span className="mt-[7px] size-2 shrink-0 rounded-pill bg-mint-ink" aria-hidden="true" />
+          {sentence}
+        </p>
+
+        {/*
+          ★ No "Сүүлийн бүртгэл" footer here — 2026-09-12, at the client's
+          instruction ("энийг хас").
+
+          It repeated the date, the time and the companion the sentence above it
+          had just said in words, as three labelled cells. The family's card
+          carries one reading of today, and the month's own grid
+          (`AttendanceCalendar`, directly below) is where earlier days live. The
+          staff recorder keeps the block: a teacher marking a register does read
+          the last row as data rather than as a sentence.
+        */}
       </Card>
     </section>
   );
@@ -387,10 +646,10 @@ function GuardianTodayAttendance({
  */
 export function TodayAttendanceRecorder({
   childId,
-  childFirstName,
+  childName,
 }: {
   childId: string;
-  childFirstName?: string;
+  childName?: string;
 }) {
   const month = currentMonth();
   const today = todayLocal();
@@ -413,7 +672,7 @@ export function TodayAttendanceRecorder({
       today={today}
       todayRecord={todayRecord}
       latestRecord={latestRecord}
-      childFirstName={childFirstName}
+      childName={childName}
     />
   );
 }
@@ -439,14 +698,14 @@ function TodayRecorder({
   today,
   todayRecord,
   latestRecord,
-  childFirstName,
+  childName,
 }: {
   childId: string;
   month: string;
   today: string;
   todayRecord: AttendanceRecord | undefined;
   latestRecord: AttendanceRecord | undefined;
-  childFirstName?: string;
+  childName?: string;
 }) {
   const queryClient = useQueryClient();
   const [arrivalOpen, setArrivalOpen] = useState(false);
@@ -533,7 +792,7 @@ function TodayRecorder({
         {arrivalOpen ? (
           <ArrivalDetails
             today={today}
-            childFirstName={childFirstName}
+            childName={childName}
             pending={record.isPending}
             savedWith={currentStatus === "PRESENT" ? (todayRecord?.arrivedWith ?? null) : null}
             savedWithName={
@@ -554,7 +813,7 @@ function TodayRecorder({
             childId={childId}
             month={month}
             today={today}
-            childFirstName={childFirstName}
+            childName={childName}
             pickedUpWith={todayRecord?.pickedUpWith ?? null}
             pickedUpWithName={todayRecord?.pickedUpWithName ?? null}
             pickedUpAt={todayRecord?.pickedUpAt ?? null}
@@ -573,7 +832,7 @@ function TodayRecorder({
  */
 function ArrivalDetails({
   today,
-  childFirstName,
+  childName,
   savedWith,
   savedWithName,
   savedAt,
@@ -581,7 +840,7 @@ function ArrivalDetails({
   onConfirm,
 }: {
   today: string;
-  childFirstName?: string;
+  childName?: string;
   savedWith: string | null | undefined;
   savedWithName: string | null | undefined;
   savedAt: string | null | undefined;
@@ -641,7 +900,7 @@ function ArrivalDetails({
       {savedWith ? (
         <p className="flex items-center gap-1.5 text-body text-mint-ink">
           <Check size={16} className="shrink-0" aria-hidden="true" />
-          {childFirstName ? `${childFirstName} ` : "Хүүхэд "}
+          {childName ? `${childName} ` : "Хүүхэд "}
           {companionSuffix(savedWith, savedWithName)} цэцэрлэгтээ{" "}
           {savedAt ? toLocalTime(savedAt) : "—"} цагт ирлээ.
         </p>
@@ -683,7 +942,7 @@ function PickupDetails({
   childId,
   month,
   today,
-  childFirstName,
+  childName,
   pickedUpWith,
   pickedUpWithName,
   pickedUpAt,
@@ -691,7 +950,7 @@ function PickupDetails({
   childId: string;
   month: string;
   today: string;
-  childFirstName?: string;
+  childName?: string;
   pickedUpWith: string | null | undefined;
   pickedUpWithName: string | null | undefined;
   pickedUpAt: string | null | undefined;
@@ -769,7 +1028,7 @@ function PickupDetails({
       {pickedUpWith ? (
         <p className="flex items-center gap-1.5 text-body text-primary">
           <Check size={16} className="shrink-0" aria-hidden="true" />
-          {childFirstName ? `${childFirstName} ` : "Хүүхэд "}
+          {childName ? `${childName} ` : "Хүүхэд "}
           {companionSuffix(pickedUpWith, pickedUpWithName)}{" "}
           {pickedUpAt ? toLocalTime(pickedUpAt) : "—"} цагт явлаа.
         </p>
@@ -835,10 +1094,12 @@ const ATTENDANCE_REPORT_COPY = {
  */
 function ReportAttendanceDialog({
   childId,
+  childName,
   mode,
   trigger,
 }: {
   childId: string;
+  childName?: string;
   mode: "arrival" | "pickup";
   trigger: React.ReactNode;
 }) {
@@ -849,7 +1110,12 @@ function ReportAttendanceDialog({
         {trigger}
       </span>
       {open ? (
-        <ReportAttendanceModal childId={childId} mode={mode} onClose={() => setOpen(false)} />
+        <ReportAttendanceModal
+          childId={childId}
+          childName={childName}
+          mode={mode}
+          onClose={() => setOpen(false)}
+        />
       ) : null}
     </>
   );
@@ -857,10 +1123,12 @@ function ReportAttendanceDialog({
 
 function ReportAttendanceModal({
   childId,
+  childName,
   mode,
   onClose,
 }: {
   childId: string;
+  childName?: string;
   mode: "arrival" | "pickup";
   onClose: () => void;
 }) {
@@ -990,6 +1258,30 @@ function ReportAttendanceModal({
               />
             )}
           </Field>
+
+          {/*
+            ★ The sentence itself, written out as the form is filled —
+            2026-09-12: "ирлээ гэдэг дээр дарахаар … 2026. 9. 11-нд 10:23
+            минутад цэцэрлэгтээ ирлээ гэж өгүүлбэрээр харагд."
+
+            It reads back what is about to be sent, in the words a parent would
+            use, rather than leaving them to assemble three separate controls in
+            their head. The same builder writes the card's line afterwards, so
+            sending changes nothing about the wording.
+          */}
+          <p
+            aria-live="polite"
+            className="rounded-row bg-sunken px-3 py-2.5 text-body font-medium text-ink"
+          >
+            {attendanceEventSentence({
+              mode,
+              childName,
+              companion,
+              companionName: isOther ? name.trim() : null,
+              date: today,
+              time,
+            })}
+          </p>
 
           <div className="flex flex-wrap gap-2 border-t border-border pt-4">
             <Button type="submit" disabled={create.isPending || (isOther && !name.trim())}>

@@ -635,12 +635,34 @@ export type AttendanceJournalRow = z.infer<typeof attendanceJournalRowSchema>;
  * Two things called the register is how somebody eventually imports the wrong
  * schema and gets a type error at best.
  */
+/**
+ * One class's own figures over the range — "ангийн нийт ирсэн, нийт".
+ *
+ * ★ Counted across every matching child, never the page. The register pages
+ * over children, so a class total taken from the rows on screen would change
+ * when somebody turned to page two — which is the one thing a total must not
+ * do. Added 2026-09-12 at the client's request, and carried into the Excel
+ * export's own sheet so the file and the screen say the same thing.
+ */
+export const attendanceGroupTotalsSchema = z.object({
+  groupId: z.string(),
+  group: z.string(),
+  /** Children in this class matched by the filter, not the class's roster. */
+  children: z.number().int(),
+  counts: z.record(z.string(), z.number()),
+  /** Days that carry any status at all — the denominator behind the four. */
+  recorded: z.number().int(),
+});
+export type AttendanceGroupTotals = z.infer<typeof attendanceGroupTotalsSchema>;
+
 export const attendanceJournalSchema = paginated(attendanceJournalRowSchema).extend({
   from: z.string(),
   to: z.string(),
   days: z.array(z.string()),
   /** Across every matching child, not the page — a total that moved with the page would mislead. */
   totals: z.record(z.string(), z.number()),
+  /** The same totals, split by class. Same denominator, same caveat. */
+  groups: z.array(attendanceGroupTotalsSchema).default([]),
 });
 export type AttendanceJournal = z.infer<typeof attendanceJournalSchema>;
 
@@ -879,6 +901,7 @@ export type AttendanceRequest = z.infer<typeof attendanceRequestSchema>;
 
 export const mealKindSchema = z.enum([
   "BREAKFAST",
+  "SNACK",
   "MID_MORNING_SNACK",
   "LUNCH",
   "AFTERNOON_SNACK",
@@ -888,6 +911,7 @@ export type MealKind = z.infer<typeof mealKindSchema>;
 
 export const MEAL_KIND_LABEL: Record<string, string> = {
   BREAKFAST: "Өглөөний цай",
+  SNACK: "Зууш",
   MID_MORNING_SNACK: "Жүүс",
   LUNCH: "Өдрийн хоол",
   AFTERNOON_SNACK: "Их үдийн цай",
@@ -910,6 +934,11 @@ export const menuDishSchema = z.object({
   allergenTags: z.array(z.string()).default([]),
   /** Which sitting this dish belongs to. Absent on rows written before this existed. */
   kind: mealKindSchema.nullish(),
+  /** Optional kindergarten-selected serving time (`HH:mm`). */
+  time: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+    .nullish(),
   /** The cook's full recipe line — separate from `allergenTags`, which stays a
    * short controlled list for the cross-check to match on. */
   ingredients: z.string().nullish(),
@@ -1222,6 +1251,21 @@ export const surveySchema = z.object({
    * for this child (or, for a KINDERGARTEN-scope survey, at all)? */
   respondedByMe: z.boolean().nullish(),
   /**
+   * This guardian's own answers, on the child-facing list only.
+   *
+   * ★ Added 2026-09-13, at the client's request: "хариулсан хариултууд
+   * харагддаг баймаар байна." An answered survey had `respondedByMe` and
+   * nothing else, so the family's screen could say *that* they had replied and
+   * never *what* they said — the one thing a parent reopens a survey for.
+   *
+   * Their own response and no one else's: `findResponse` is keyed on
+   * `respondentId` and on the child, so there is no other family's answer in
+   * the payload to leak. An anonymous survey still withholds it — the promise
+   * is to the other families, and a guardian who can read their own row back
+   * has not broken it, but `listActiveForChild` documents that call.
+   */
+  myAnswers: z.array(z.object({ questionId: uuidSchema, value: z.unknown() })).nullish(),
+  /**
    * How far this survey has got, on the staff list only.
    *
    * ★ Counted in bulk by the API, never per card.
@@ -1296,11 +1340,40 @@ export const indicatorComparisonSchema = z.object({
 });
 export type IndicatorComparison = z.infer<typeof indicatorComparisonSchema>;
 
+/**
+ * One question's answers in each wave — the client's comparison table
+ * ("Маш сайн 8 (40%) → 12 (60%)").
+ *
+ * ★ Counts, not means. `indicatorComparisonSchema` above answers "did the
+ * average move"; this answers "what did the shape do", which is the chart a
+ * teacher shows a parents' meeting. Both are derived from the same two waves.
+ */
+export const questionComparisonSchema = z.object({
+  questionId: uuidSchema,
+  prompt: z.string(),
+  type: z.string(),
+  baselineCounts: z.record(z.string(), z.number()),
+  endlineCounts: z.record(z.string(), z.number()),
+});
+export type QuestionComparison = z.infer<typeof questionComparisonSchema>;
+
 export const surveyComparisonSchema = z.object({
   baseline: z
-    .object({ id: uuidSchema, title: z.string(), period: surveyPeriodSchema.nullish() })
+    .object({
+      id: uuidSchema,
+      title: z.string(),
+      period: surveyPeriodSchema.nullish(),
+      /** When that wave went out — the comparison's left-hand column header. */
+      publishedAt: z.string().nullish(),
+    })
     .nullable(),
+  /** This wave, named the same way. Absent from an API that predates the table. */
+  endline: z
+    .object({ id: uuidSchema, title: z.string(), publishedAt: z.string().nullish() })
+    .nullish(),
   indicators: z.array(indicatorComparisonSchema),
+  /** Defaulted for a response from an API that predates the table. */
+  questions: z.array(questionComparisonSchema).default([]),
   children: z.array(
     z.object({ childId: uuidSchema, indicators: z.array(indicatorComparisonSchema) }),
   ),
@@ -1414,6 +1487,20 @@ export type SurveyResults = z.infer<typeof surveyResultsSchema>;
 export const domainSchema = z.object({
   id: uuidSchema,
   name: z.string(),
+  /**
+   * The strand's stable key — `creative`, `language`, `physical`…
+   *
+   * ★ Added 2026-09-12, so a screen can recognise one strand without matching
+   * on its name. A name is a row an administrator may edit (§2.3); the code is
+   * the part that does not move, and the observation form uses it to file a
+   * Бүтээл note under Зураг, урлал on its own.
+   *
+   * `nullish`, not required: `listDomains` returns the whole row and always
+   * carries it, but this schema is also reused where a query selects a
+   * domain down to `id`/`name`/`color` (`assessmentSchema.domain`), and a
+   * required field would fail those parses for a key they never needed.
+   */
+  code: z.string().nullish(),
   color: z.string().nullish(),
   order: z.number().nullish(),
 });
@@ -4133,13 +4220,17 @@ export type FundingMonth = z.infer<typeof fundingMonthSchema>;
  *
  * ★ Not `attendanceSummarySchema`, and the difference is deliberate.
  *
- * That one is `z.record(attendanceStatusSchema, …)` over the five statuses the
- * web app had when it was written; `AttendanceStatus` in schema.prisma has
- * carried a sixth since 2026-08-25 (see its doc comment). A register that
- * silently dropped `OTHER` would show a child with twenty-one recorded days as
- * having twenty, and the missing day would appear as an unexplained gap in a
- * figure somebody bills against. Explicit fields, so adding a seventh status is
- * a type error here rather than a quiet zero.
+ * That one is `z.record(attendanceStatusSchema, …)`, which is exhaustive over
+ * whatever the enum holds — so when `OTHER` joined it on 2026-09-02 the record
+ * silently began *requiring* a sixth key the API did not send, and the family's
+ * "Ирцийн нэгтгэл" answered "Алдаа гарлаа" with no figures at all until
+ * `monthlyStatusCounts` was fixed on 2026-09-12.
+ *
+ * A register that silently dropped `OTHER` would show a child with twenty-one
+ * recorded days as having twenty, and the missing day would appear as an
+ * unexplained gap in a figure somebody bills against. Explicit fields, so
+ * adding a seventh status is a type error here rather than a quiet zero — and
+ * a loud one, rather than the record's all-or-nothing parse failure.
  */
 export const attendanceCountsSchema = z.object({
   PRESENT: z.number().int(),
@@ -4818,3 +4909,56 @@ export const applicationApprovalSchema = kindergartenApplicationSchema.extend({
   adminUsername: z.string(),
 });
 export type ApplicationApproval = z.infer<typeof applicationApprovalSchema>;
+
+/**
+ * "Тайлан" — one group over one stretch of time.
+ *
+ * ★ A month, a term and a school year are the same shape; only `range` differs.
+ * The client asked for all three ("1 сараар, улиралаар, бүтэн жилээр") and a
+ * report that changed shape per period is three screens to keep in step.
+ */
+export const groupReportSchema = z.object({
+  range: z.object({ from: z.string(), to: z.string() }),
+  group: namedRefSchema,
+  /** Currently enrolled — the denominator of every "n / total" on the report. */
+  children: z.number(),
+  terms: z.array(z.object({ id: uuidSchema, name: z.string(), number: z.number() })),
+
+  attendance: z.object({
+    /** Rows the register actually holds — the denominator of `percent`. */
+    recorded: z.number(),
+    attended: z.number(),
+    /** `null` when nothing was recorded: "no data" is not "0%". */
+    percent: z.number().nullable(),
+    byStatus: z.array(z.object({ status: z.string(), count: z.number() })),
+    byDay: z.array(z.object({ date: z.string(), percent: z.number().nullable() })),
+  }),
+
+  assessment: z.object({
+    assessed: z.number(),
+    byDomain: z.array(z.object({ id: uuidSchema, name: z.string(), count: z.number() })),
+  }),
+
+  observations: z.object({
+    total: z.number(),
+    /** How many *different* children were written about. */
+    children: z.number(),
+    byType: z.array(
+      z.object({
+        id: uuidSchema,
+        name: z.string(),
+        code: z.string().nullish(),
+        count: z.number(),
+      }),
+    ),
+  }),
+
+  surveys: z.object({
+    total: z.number(),
+    /** Distinct families that answered at least one — not a count of responses. */
+    responded: z.number(),
+    percent: z.number().nullable(),
+    byKind: z.array(z.object({ kind: z.string(), count: z.number() })),
+  }),
+});
+export type GroupReport = z.infer<typeof groupReportSchema>;

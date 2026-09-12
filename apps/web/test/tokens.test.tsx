@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { cn } from "@/lib/utils";
@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 
 const WEB_ROOT = join(__dirname, "..");
 const GLOBALS_CSS = readFileSync(join(WEB_ROOT, "app", "globals.css"), "utf8");
+const TEACHER_THEME_CSS = readFileSync(join(WEB_ROOT, "app", "teacher-theme.css"), "utf8");
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];
@@ -100,6 +101,30 @@ function offences(pattern: RegExp): string[] {
 
   return found;
 }
+
+describe("the teacher workspace background", () => {
+  it("uses the supplied portrait and landscape artwork at the responsive breakpoint", () => {
+    expect(TEACHER_THEME_CSS).toContain('url("/background/teacher-mobile.png")');
+    expect(TEACHER_THEME_CSS).toMatch(
+      /@media \(min-width: 640px\)[\s\S]*url\("\/background\/teacher-web\.png"\)/,
+    );
+    expect(existsSync(join(WEB_ROOT, "public", "background", "teacher-mobile.png"))).toBe(true);
+    expect(existsSync(join(WEB_ROOT, "public", "background", "teacher-web.png"))).toBe(true);
+  });
+
+  it("shares the responsive artwork with admin, kitchen, and finance", () => {
+    for (const theme of ["admin", "kitchen", "finance"]) {
+      expect(TEACHER_THEME_CSS).toContain(`body:has([data-app-theme="${theme}"])`);
+    }
+
+    expect(TEACHER_THEME_CSS).toMatch(
+      /body:has\(\[data-app-theme="admin"\]\),[\s\S]*body:has\(\[data-app-theme="kitchen"\]\),[\s\S]*body:has\(\[data-app-theme="finance"\]\)[\s\S]*url\("\/background\/teacher-mobile\.png"\)/,
+    );
+    expect(TEACHER_THEME_CSS).toMatch(
+      /@media \(min-width: 640px\)[\s\S]*body:has\(\[data-app-theme="admin"\]\),[\s\S]*url\("\/background\/teacher-web\.png"\)/,
+    );
+  });
+});
 
 describe("the type scale", () => {
   it("defines seven steps and nothing between them", () => {

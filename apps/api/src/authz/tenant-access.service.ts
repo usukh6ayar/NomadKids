@@ -328,6 +328,36 @@ export class TenantAccessService {
     ];
   }
 
+  /**
+   * The kindergartens whose *whole* roster this actor may read — ADMIN and
+   * ACCOUNTANT.
+   *
+   * ★ Added 2026-09-13. The accountant's own screens list every group by name
+   * already: `/attendance/register` answers with a `groups` array and
+   * `/funding` with a row per class. What they could not do was *choose* one,
+   * because `listGroups` narrowed anybody who is not an admin of the
+   * kindergarten to the groups they teach — and an accountant teaches none, so
+   * the "Бүлэг" select on Ирцийн дэлгэрэнгүй was empty for the one role that
+   * screen is built for.
+   *
+   * The plural of `canReadFinance`, and it lives here for the reason §1.1
+   * gives: a service deriving "is this person an accountant" from
+   * `memberships` is the second copy of an authorization rule.
+   *
+   * `[]` rather than a throw, like `adminKindergartenIds` above — a list
+   * endpoint scoping by an empty set correctly yields an empty list, and that
+   * filter must never be "optimised" into being omitted.
+   */
+  wholeRosterKindergartenIds(actor: Actor): string[] {
+    return [
+      ...new Set(
+        actor.memberships
+          .filter((m) => m.role === Role.ADMIN || m.role === Role.ACCOUNTANT)
+          .map((m) => m.kindergartenId),
+      ),
+    ];
+  }
+
   /** Every kindergarten the actor belongs to, in any role. */
   memberKindergartenIds(actor: Actor): string[] {
     return [...new Set(actor.memberships.map((m) => m.kindergartenId))];

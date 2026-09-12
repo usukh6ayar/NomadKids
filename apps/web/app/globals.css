@@ -467,6 +467,34 @@
   --text-figure: 2.25rem;
 
   /*
+   * ★ Three steps above `figure`, added 2026-09-13 — and the note above has
+   * to be amended rather than quietly contradicted.
+   *
+   * It said `figure` was "deliberately the last step: anything larger stops
+   * being typography and starts being an illustration". That is still the
+   * right instinct for a *tile* in a grid of six, which is what `figure` was
+   * written for. It is not right for the report screen's hero card, where one
+   * statistic is the whole content of a panel a director reads across a desk
+   * — and that card had already been built with `text-[4rem] sm:text-[5.5rem]`
+   * spelled at the call site, which is the shape this scale exists to prevent.
+   *
+   * So the rule moves to match the design rather than the reverse, for the
+   * reason `CLAUDE.md` gives about every rule it has moved: a constraint the
+   * codebase visibly contradicts stops being read. Two pairs, each a phone
+   * step and its `sm` step:
+   *
+   *   figure → figure-lg   a statistic in a panel  (2.25 → 3.25)
+   *   hero   → hero-lg     the one statistic on a hero card (4 → 5.5)
+   *
+   * These are the ceiling. Anything above `hero-lg` is the illustration the
+   * note above warns about, and `responsive.test.tsx` still holds every one of
+   * them to a Mongolian caption wrapping underneath it.
+   */
+  --text-figure-lg: 3.25rem;
+  --text-hero: 4rem;
+  --text-hero-lg: 5.5rem;
+
+  /*
    * Heading line-height, deliberately looser than the 1.2 a Latin-only design
    * would use. Mongolian compounds are long — "Хөгжлийн үнэлгээний явц",
    * "Бүртгэлийн дугаар" — and wrap onto two lines at almost every width, so a

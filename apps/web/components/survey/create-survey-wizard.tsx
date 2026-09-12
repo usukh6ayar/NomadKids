@@ -4,7 +4,19 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { z } from "zod";
-import { ArrowLeft, ArrowRight, Check, GripVertical, Plus, Trash2, X } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Eye,
+  GripVertical,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import {
   SURVEY_CATEGORY_LABEL,
   SURVEY_KIND_HINT,
@@ -18,6 +30,7 @@ import {
   termSchema,
   type SurveyCategory,
   type SurveyKind,
+  type SurveyPeriod,
   type SurveyQuestionType,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
@@ -25,7 +38,7 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
-import { Field, Input, Select, Switch, Textarea } from "@/components/ui/field";
+import { Field, Input, Select, Switch } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { cn } from "@/lib/utils";
 
@@ -61,6 +74,57 @@ interface DraftQuestion {
   prompt: string;
   options: string[];
 }
+
+type SurveyTemplate = {
+  title: string;
+  category: SurveyCategory;
+  questions: DraftQuestion[];
+};
+
+const SURVEY_TEMPLATES: Record<string, SurveyTemplate> = {
+  satisfaction: {
+    title: "Эцэг эхийн сэтгэл ханамжийн судалгаа",
+    category: "SATISFACTION",
+    questions: [
+      {
+        type: "RATING",
+        prompt: "Цэцэрлэгийн орчин, цэвэр байдалд хэр сэтгэл хангалуун байна вэ?",
+        options: [],
+      },
+      {
+        type: "RATING",
+        prompt: "Багштай харилцах боломжид хэр сэтгэл хангалуун байна вэ?",
+        options: [],
+      },
+      { type: "TEXT", prompt: "Санал, хүсэлтээ бичнэ үү.", options: [] },
+    ],
+  },
+  development: {
+    title: "Хөгжлийн үнэлгээний судалгаа",
+    category: "COGNITIVE_DEVELOPMENT",
+    questions: [
+      { type: "RATING", prompt: "Хүүхэд шинэ зүйл сурахдаа хэр идэвхтэй байна вэ?", options: [] },
+      { type: "RATING", prompt: "Үе тэнгийнхэнтэйгээ хэр сайн харилцаж байна вэ?", options: [] },
+      { type: "TEXT", prompt: "Сүүлийн үед гарсан ахиц дэвшлийг бичнэ үү.", options: [] },
+    ],
+  },
+  meals: {
+    title: "Хоолны чанарын судалгаа",
+    category: "OTHER",
+    questions: [
+      { type: "RATING", prompt: "Хоолны амт, чанарт хэр сэтгэл хангалуун байна вэ?", options: [] },
+      {
+        type: "SINGLE_CHOICE",
+        prompt: "Хүүхэд хоолоо хэр идэвхтэй иддэг вэ?",
+        options: ["Сайн", "Дунд", "Муу"],
+      },
+      { type: "TEXT", prompt: "Хоолтой холбоотой санал, хүсэлтээ бичнэ үү.", options: [] },
+    ],
+  },
+};
+
+const cloneQuestions = (questions: DraftQuestion[]) =>
+  questions.map((question) => ({ ...question, options: [...question.options] }));
 
 const emptyQuestion = (type: SurveyQuestionType): DraftQuestion => ({
   type,
@@ -100,17 +164,17 @@ export function CreateSurveyWizard({
 }) {
   const router = useRouter();
   const { hasRole, isLoading: sessionLoading } = useSession();
-  const canAddressEveryone = sessionLoading || hasRole("ADMIN");
+  const canAddressEveryone = hasRole("ADMIN");
 
   const isPoll = kind === "POLL";
 
-  const [step, setStep] = useState(0);
   const [created, setCreated] = useState<{ id: string; title: string } | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [draftLoaded, setDraftLoaded] = useState(false);
 
   // ── step 1 ──────────────────────────────────────────────────────────────
   const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [purpose, setPurpose] = useState("");
   /** A poll's own shape question: one question, or several. */
   const [multiQuestion, setMultiQuestion] = useState(false);
 
@@ -120,6 +184,9 @@ export function CreateSurveyWizard({
     isPoll ? "CLASS_GROUP" : "PARENT_ENGAGEMENT",
   );
   const [termId, setTermId] = useState("");
+  const [period, setPeriod] = useState<Extract<SurveyPeriod, "MIDLINE" | "ENDLINE"> | null>(
+    "MIDLINE",
+  );
   const [opensOn, setOpensOn] = useState("");
   const [closesOn, setClosesOn] = useState("");
 
@@ -132,7 +199,92 @@ export function CreateSurveyWizard({
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [allowMultipleResponses, setAllowMultipleResponses] = useState(false);
   const [shuffleQuestions, setShuffleQuestions] = useState(false);
-  const [closingNote, setClosingNote] = useState("");
+
+  const draftStorageKey = `nomadkids:survey-draft:${kindergartenId}:${kind}`;
+
+  /* A half-written form survives closing the sheet or refreshing the browser. */
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(draftStorageKey);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as Record<string, unknown>;
+      if (typeof saved.title === "string") setTitle(saved.title);
+      if (typeof saved.groupId === "string") setGroupId(saved.groupId);
+      if (
+        typeof saved.category === "string" &&
+        SURVEY_CATEGORIES.includes(saved.category as SurveyCategory)
+      ) {
+        setCategory(saved.category as SurveyCategory);
+      }
+      if (typeof saved.opensOn === "string") setOpensOn(saved.opensOn);
+      if (typeof saved.closesOn === "string") setClosesOn(saved.closesOn);
+      if (saved.period === "MIDLINE" || saved.period === "ENDLINE" || saved.period === null) {
+        setPeriod(saved.period);
+      }
+      if (typeof saved.isAnonymous === "boolean") setIsAnonymous(saved.isAnonymous);
+      if (typeof saved.allowMultipleResponses === "boolean") {
+        setAllowMultipleResponses(saved.allowMultipleResponses);
+      }
+      if (typeof saved.shuffleQuestions === "boolean") {
+        setShuffleQuestions(saved.shuffleQuestions);
+      }
+      if (Array.isArray(saved.questions)) {
+        const restored = saved.questions.filter(
+          (question): question is DraftQuestion =>
+            Boolean(question) &&
+            typeof question === "object" &&
+            WIZARD_QUESTION_TYPES.includes(
+              (question as { type?: SurveyQuestionType }).type as SurveyQuestionType,
+            ) &&
+            typeof (question as { prompt?: unknown }).prompt === "string" &&
+            Array.isArray((question as { options?: unknown }).options),
+        );
+        if (restored.length > 0) setQuestions(cloneQuestions(restored));
+      }
+    } catch {
+      window.localStorage.removeItem(draftStorageKey);
+    } finally {
+      setDraftLoaded(true);
+    }
+  }, [draftStorageKey]);
+
+  useEffect(() => {
+    if (!draftLoaded || created) return;
+    try {
+      window.localStorage.setItem(
+        draftStorageKey,
+        JSON.stringify({
+          title,
+          groupId,
+          category,
+          period,
+          opensOn,
+          closesOn,
+          questions,
+          isAnonymous,
+          allowMultipleResponses,
+          shuffleQuestions,
+          savedAt: new Date().toISOString(),
+        }),
+      );
+    } catch {
+      // Private browsing or a full storage quota must not block survey creation.
+    }
+  }, [
+    allowMultipleResponses,
+    category,
+    closesOn,
+    created,
+    draftLoaded,
+    draftStorageKey,
+    groupId,
+    isAnonymous,
+    opensOn,
+    period,
+    questions,
+    shuffleQuestions,
+    title,
+  ]);
 
   const groups = useQuery({
     queryKey: qk.groups({ pageSize: 100 }),
@@ -160,6 +312,20 @@ export function CreateSurveyWizard({
     }
   }, [sessionLoading, canAddressEveryone, groupId, firstGroupId]);
 
+  /* The active term is metadata, not another decision for the teacher. */
+  useEffect(() => {
+    if (termId || !terms.data?.length) return;
+    const today = new Date().toISOString().slice(0, 10);
+    const active =
+      terms.data.find(
+        (term) =>
+          Boolean(term.startsOn && term.endsOn) &&
+          term.startsOn!.slice(0, 10) <= today &&
+          term.endsOn!.slice(0, 10) >= today,
+      ) ?? terms.data.at(-1);
+    if (active) setTermId(active.id);
+  }, [termId, terms.data]);
+
   /**
    * ★ Three calls, in the order the API requires.
    *
@@ -177,13 +343,14 @@ export function CreateSurveyWizard({
         method: "POST",
         body: {
           title: title.trim(),
-          description: description.trim() || null,
-          purpose: purpose.trim() || null,
+          description: null,
+          purpose: null,
           category,
           scope: "CHILD",
           kind,
           groupId: groupId || null,
           termId: termId || null,
+          period,
           opensAt: opensOn ? new Date(`${opensOn}T00:00:00`).toISOString() : null,
           /*
             ★ End of the chosen day, not its midnight.
@@ -197,7 +364,7 @@ export function CreateSurveyWizard({
           isAnonymous,
           allowMultipleResponses,
           shuffleQuestions,
-          closingNote: closingNote.trim() || null,
+          closingNote: null,
         },
       });
 
@@ -221,18 +388,18 @@ export function CreateSurveyWizard({
 
       return { id: survey.id, title: survey.title };
     },
-    onSuccess: (survey) => setCreated(survey),
+    onSuccess: (survey) => {
+      try {
+        window.localStorage.removeItem(draftStorageKey);
+      } catch {
+        // Saving succeeded; storage cleanup is best effort only.
+      }
+      setCreated(survey);
+    },
   });
 
   const errors = fieldErrors(create.error);
 
-  /*
-    ★ Which steps exist, and what each one needs before Дараах lights up.
-
-    Validation sits on the step rather than on the submit, because a wizard
-    whose last button reports a fault three screens back is the failure the
-    steps exist to avoid.
-  */
   const questionsReady =
     questions.length > 0 &&
     questions.every(
@@ -241,23 +408,20 @@ export function CreateSurveyWizard({
         (!hasOptionList(q.type) || q.options.filter((o) => o.trim()).length >= 2),
     );
 
-  const steps = isPoll
-    ? [
-        { label: "Үндсэн мэдээлэл", ready: title.trim().length > 0 },
-        { label: "Асуулт тохируулах", ready: questionsReady },
-        { label: "Тохиргоо", ready: true },
-      ]
-    : [
-        { label: "Үндсэн мэдээлэл", ready: title.trim().length > 0 },
-        { label: "Хамрах хүрээ", ready: canAddressEveryone || Boolean(groupId) },
-        { label: "Асуулт нэмэх", ready: questionsReady },
-        { label: "Тохиргоо", ready: true },
-      ];
-
-  const last = step === steps.length - 1;
+  const ready =
+    title.trim().length > 0 && questionsReady && (canAddressEveryone || Boolean(groupId));
   const heading = created
     ? `${SURVEY_KIND_LABEL[kind]} үүслээ`
     : `Шинэ ${SURVEY_KIND_LABEL[kind].toLowerCase()}`;
+
+  const applyTemplate = (key: string) => {
+    const template = SURVEY_TEMPLATES[key];
+    if (!template) return;
+    setTitle(template.title);
+    setCategory(template.category);
+    setQuestions(cloneQuestions(template.questions));
+    setPreviewing(false);
+  };
 
   return (
     <div
@@ -266,7 +430,7 @@ export function CreateSurveyWizard({
       aria-label={heading}
       className="fixed inset-0 z-50 grid items-end overflow-y-auto bg-ink/50 p-0 sm:place-items-center sm:p-4"
     >
-      <div className="max-h-[calc(100dvh-0.5rem)] w-full max-w-[560px] overflow-y-auto rounded-t-card border border-border bg-surface p-4 shadow-lg sm:max-h-[calc(100vh-2rem)] sm:rounded-card sm:p-5">
+      <div className="max-h-[calc(100dvh-0.5rem)] w-full max-w-[680px] overflow-y-auto rounded-t-card border border-border bg-surface p-4 shadow-lg sm:max-h-[calc(100vh-2rem)] sm:rounded-card sm:p-5">
         <div className="mb-3 flex items-center gap-2">
           <h2 className="min-w-0 flex-1 text-title font-semibold leading-heading text-ink">
             {heading}
@@ -284,306 +448,219 @@ export function CreateSurveyWizard({
             onOpen={() => router.push(`/surveys/${created.id}`)}
           />
         ) : (
-          <>
-            <StepDots steps={steps} current={step} onGo={setStep} />
-
-            <p className="mb-3 mt-3 text-lead font-semibold leading-heading text-ink">
-              {steps[step]!.label}
-            </p>
-
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (ready && !create.isPending) create.mutate(true);
+            }}
+          >
             <FormError message={create.isError ? errorMessage(create.error) : null} />
 
             <div className="flex flex-col gap-3.5">
-              {steps[step]!.label === "Үндсэн мэдээлэл" ? (
-                <>
-                  <Field label="Гарчиг" error={errors.title} required>
-                    {({ id, describedBy, invalid }) => (
-                      <Input
-                        id={id}
-                        aria-describedby={describedBy}
-                        invalid={invalid}
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        placeholder={`${SURVEY_KIND_LABEL[kind]}ын гарчиг оруулах`}
-                        autoFocus
-                      />
-                    )}
-                  </Field>
+              {!isPoll ? (
+                <div className="rounded-card border border-border bg-canvas p-3">
+                  <label
+                    htmlFor="survey-template"
+                    className="mb-1.5 block text-body font-medium text-ink"
+                  >
+                    Бэлэн загвараас эхлэх
+                  </label>
+                  <Select
+                    id="survey-template"
+                    defaultValue=""
+                    onChange={(event) => {
+                      applyTemplate(event.target.value);
+                      event.target.value = "";
+                    }}
+                  >
+                    <option value="">Загвар сонгох…</option>
+                    <option value="satisfaction">Эцэг эхийн сэтгэл ханамж</option>
+                    <option value="development">Хүүхдийн хөгжил</option>
+                    <option value="meals">Хоолны чанар</option>
+                  </Select>
+                  <p className="mt-1.5 text-caption text-muted">
+                    Загварыг сонгосны дараа бүх асуултыг чөлөөтэй засаж болно.
+                  </p>
+                </div>
+              ) : null}
 
-                  <Field label={isPoll ? "Тайлбар (сонголттой)" : "Тайлбар"}>
-                    {({ id }) => (
-                      <Textarea
-                        id={id}
-                        rows={2}
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        placeholder="Товч тайлбар бичнэ үү."
-                      />
-                    )}
-                  </Field>
-
-                  {/*
-                    ★ Зорилго is the questionnaire's, not the poll's.
-
-                    It is what the kindergarten is trying to learn, read on the
-                    results sheet a year later. A poll asking who is coming on
-                    Friday has no such thing, and a field nobody fills is a
-                    field everybody scrolls past.
-                  */}
-                  {isPoll ? (
-                    <fieldset>
-                      <legend className="mb-2 text-body font-medium text-ink">
-                        Асуулгын төрөл
-                      </legend>
-                      <div className="grid grid-cols-2 gap-2">
-                        {[
-                          { many: false, label: "Нэг асуулттай", hint: "Хурдан санал авах" },
-                          { many: true, label: "Олон асуулттай", hint: "Богино судалгаа" },
-                        ].map((option) => (
-                          <label
-                            key={String(option.many)}
-                            className={cn(
-                              "cursor-pointer rounded-card border px-3 py-2.5 transition-colors",
-                              multiQuestion === option.many
-                                ? "border-primary bg-primary-soft"
-                                : "border-border hover:bg-canvas",
-                            )}
-                          >
-                            <input
-                              type="radio"
-                              name="poll-shape"
-                              checked={multiQuestion === option.many}
-                              onChange={() => {
-                                setMultiQuestion(option.many);
-                                // Going back to one question keeps the first,
-                                // rather than discarding what was typed.
-                                if (!option.many) setQuestions((q) => q.slice(0, 1));
-                              }}
-                              className="sr-only"
-                            />
-                            <span
-                              className={cn(
-                                "block text-body font-semibold",
-                                multiQuestion === option.many ? "text-primary" : "text-ink",
-                              )}
-                            >
-                              {option.label}
-                            </span>
-                            <span className="block text-caption text-muted">{option.hint}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </fieldset>
-                  ) : (
-                    <Field label="Зорилго" hint="Ямар мэдээлэл цуглуулах вэ?">
-                      {({ id }) => (
-                        <Textarea
-                          id={id}
-                          rows={2}
-                          value={purpose}
-                          onChange={(e) => setPurpose(e.target.value)}
-                        />
-                      )}
-                    </Field>
+              <div>
+                <Field label="Гарчиг" error={errors.title} required>
+                  {({ id, describedBy, invalid }) => (
+                    <Input
+                      id={id}
+                      aria-describedby={describedBy}
+                      invalid={invalid}
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder={`${SURVEY_KIND_LABEL[kind]}ын гарчиг оруулах`}
+                      autoFocus
+                    />
                   )}
-                </>
+                </Field>
+              </div>
+
+              {isPoll ? (
+                <fieldset>
+                  <legend className="mb-1.5 text-body font-medium text-ink">Асуулгын төрөл</legend>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { many: false, label: "Нэг асуулттай" },
+                      { many: true, label: "Олон асуулттай" },
+                    ].map((option) => (
+                      <label
+                        key={String(option.many)}
+                        className={cn(
+                          "cursor-pointer rounded-control border px-3 py-2 text-center text-compact font-medium",
+                          multiQuestion === option.many
+                            ? "border-primary bg-primary-soft text-primary"
+                            : "border-border text-ink",
+                        )}
+                      >
+                        <input
+                          type="radio"
+                          name="poll-shape"
+                          checked={multiQuestion === option.many}
+                          onChange={() => {
+                            setMultiQuestion(option.many);
+                            if (!option.many) setQuestions((q) => q.slice(0, 1));
+                          }}
+                          className="sr-only"
+                        />
+                        {option.label}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
               ) : null}
 
-              {steps[step]!.label === "Асуулт нэмэх" ||
-              steps[step]!.label === "Асуулт тохируулах" ? (
-                <QuestionBuilder
-                  questions={questions}
-                  onChange={setQuestions}
-                  allowMany={!isPoll || multiQuestion}
-                  fixedType={isPoll ? "SINGLE_CHOICE" : null}
-                />
+              <Audience
+                canAddressEveryone={canAddressEveryone}
+                groups={groups.data?.items ?? []}
+                groupId={groupId}
+                onGroup={setGroupId}
+                category={category}
+                onCategory={setCategory}
+                opensOn={opensOn}
+                onOpensOn={setOpensOn}
+                closesOn={closesOn}
+                onClosesOn={setClosesOn}
+                showDates={showSettings}
+              />
+
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-body font-semibold text-ink">Асуултууд</p>
+                  <p className="text-caption text-muted">Ноорог автоматаар хадгалагдана.</p>
+                </div>
+
+                <div className="w-[160px] max-w-[55vw] shrink-0">
+                  <label htmlFor="survey-period" className="sr-only">
+                    Үнэлгээний төрөл
+                  </label>
+                  <Select
+                    id="survey-period"
+                    value={period ?? "OTHER"}
+                    onChange={(event) =>
+                      setPeriod(
+                        event.target.value === "OTHER"
+                          ? null
+                          : (event.target.value as "MIDLINE" | "ENDLINE"),
+                      )
+                    }
+                    className="h-10"
+                  >
+                    <option value="MIDLINE">Явцын үнэлгээ</option>
+                    <option value="ENDLINE">Үр дүнгийн үнэлгээ</option>
+                    <option value="OTHER">Бусад</option>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                {questions.length > 0 ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    aria-expanded={previewing}
+                    onClick={() => setPreviewing((current) => !current)}
+                  >
+                    <Eye size={16} aria-hidden="true" />
+                    Урьдчилан харах
+                  </Button>
+                ) : null}
+              </div>
+
+              <QuestionBuilder
+                questions={questions}
+                onChange={setQuestions}
+                allowMany={!isPoll || multiQuestion}
+                fixedType={isPoll ? "SINGLE_CHOICE" : null}
+              />
+
+              {previewing && questions.length > 0 ? (
+                <SurveyDraftPreview title={title} questions={questions} />
               ) : null}
 
-              {steps[step]!.label === "Хамрах хүрээ" ||
-              (isPoll && steps[step]!.label === "Тохиргоо") ? (
-                <Audience
-                  canAddressEveryone={canAddressEveryone}
-                  groups={groups.data?.items ?? []}
-                  groupId={groupId}
-                  onGroup={setGroupId}
-                  category={category}
-                  onCategory={setCategory}
-                  terms={terms.data ?? []}
-                  termId={termId}
-                  onTerm={setTermId}
-                  opensOn={opensOn}
-                  onOpensOn={setOpensOn}
-                  closesOn={closesOn}
-                  onClosesOn={setClosesOn}
-                  compact={isPoll}
-                />
-              ) : null}
+              <button
+                type="button"
+                aria-expanded={showSettings}
+                onClick={() => setShowSettings((current) => !current)}
+                className="flex min-h-11 items-center rounded-control border border-border px-3 text-body font-medium text-ink"
+              >
+                Нэмэлт тохиргоо
+                {showSettings ? (
+                  <ChevronUp size={17} aria-hidden="true" className="ms-auto text-muted" />
+                ) : (
+                  <ChevronDown size={17} aria-hidden="true" className="ms-auto text-muted" />
+                )}
+              </button>
 
-              {steps[step]!.label === "Тохиргоо" ? (
-                <div className="flex flex-col divide-y divide-border-soft">
+              {showSettings ? (
+                <div className="grid gap-x-4 rounded-card bg-canvas px-3 sm:grid-cols-2">
                   <Switch
                     label="Хариулт нуух"
-                    description="Хариултыг нэрийг нь харуулахгүйгээр авна."
                     checked={isAnonymous}
                     onChange={(e) => setIsAnonymous(e.target.checked)}
                   />
                   <Switch
-                    label="Олон удаа хариулахыг зөвшөөрөх"
-                    description="Нэг гэр бүл дахин дахин хариулж болно."
+                    label="Олон удаа хариулах"
                     checked={allowMultipleResponses}
                     onChange={(e) => setAllowMultipleResponses(e.target.checked)}
                   />
-                  {/*
-                    ★ Only where there is an order to shuffle.
-
-                    A one-question poll has nothing to reorder, and a switch
-                    that provably does nothing is the kind of control that
-                    teaches people the settings are decorative.
-                  */}
                   {questions.length > 1 ? (
                     <Switch
-                      label="Асуултын дарааллыг санамсаргүй болгох"
-                      description="Эхний асуултад илүү өгөөмөр хариулдаг талыг бууруулна."
+                      label="Асуултын дарааллыг холих"
                       checked={shuffleQuestions}
                       onChange={(e) => setShuffleQuestions(e.target.checked)}
                     />
                   ) : null}
-
-                  <div className="pt-3">
-                    <Field label="Нэмэлт тэмдэглэл" hint="Хариулсны дараа эцэг эхэд харагдана.">
-                      {({ id }) => (
-                        <Textarea
-                          id={id}
-                          rows={2}
-                          value={closingNote}
-                          onChange={(e) => setClosingNote(e.target.value)}
-                          placeholder="Жишээ нь: Хариулж өгсөнд баярлалаа."
-                        />
-                      )}
-                    </Field>
-                  </div>
                 </div>
               ) : null}
             </div>
 
-            <div className="mt-4 flex items-center gap-2 border-t border-border pt-3.5">
-              {step > 0 ? (
-                <Button
-                  variant="secondary"
-                  onClick={() => setStep(step - 1)}
-                  disabled={create.isPending}
-                >
-                  <ArrowLeft size={16} aria-hidden="true" />
-                  Буцах
-                </Button>
-              ) : null}
-
-              <div className="ms-auto flex items-center gap-2">
-                {/*
-                  ★ The draft door stays open on the last step.
-
-                  Publishing is what the client's design does at the end of the
-                  wizard, and it is right — requiring a teacher to then hunt for
-                  Нийтлэх is the friction this screen exists to remove. But the
-                  Ноорог tab has to remain reachable from the only place a
-                  survey is made, or it becomes a tab for surveys nobody can
-                  create.
-                */}
-                {last ? (
-                  <Button
-                    variant="secondary"
-                    onClick={() => create.mutate(false)}
-                    disabled={create.isPending || !steps.every((s) => s.ready)}
-                  >
-                    Ноорог болгох
-                  </Button>
-                ) : null}
-
-                <Button
-                  onClick={() => (last ? create.mutate(true) : setStep(step + 1))}
-                  disabled={create.isPending || !steps[step]!.ready}
-                >
-                  {create.isPending ? (
-                    "Хадгалж байна…"
-                  ) : last ? (
-                    "Үүсгэх"
-                  ) : (
-                    <>
-                      Дараах
-                      <ArrowRight size={16} aria-hidden="true" />
-                    </>
-                  )}
-                </Button>
-              </div>
+            <div className="mt-4 flex justify-end gap-2 border-t border-border pt-3.5">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => create.mutate(false)}
+                disabled={create.isPending || !ready}
+              >
+                Ноорог болгох
+              </Button>
+              <Button type="submit" disabled={create.isPending || !ready}>
+                {create.isPending ? "Хадгалж байна…" : "Үүсгэх"}
+              </Button>
             </div>
-          </>
+          </form>
         )}
       </div>
     </div>
   );
 }
 
-/**
- * The numbered dots across the top.
- *
- * ★ A completed step is pressable; a future one is not.
- *
- * Going back to fix the title is the commonest thing anybody does in a wizard,
- * and making them press Буцах three times is why people abandon one. Jumping
- * *forward* past an incomplete step would produce a survey with no title, so
- * the same control refuses that direction.
- */
-function StepDots({
-  steps,
-  current,
-  onGo,
-}: {
-  steps: { label: string; ready: boolean }[];
-  current: number;
-  onGo: (index: number) => void;
-}) {
-  return (
-    <ol className="flex items-center gap-1.5">
-      {steps.map((entry, index) => {
-        const done = index < current;
-        const active = index === current;
-
-        return (
-          <li key={entry.label} className="flex flex-1 items-center gap-1.5">
-            <button
-              type="button"
-              disabled={index > current}
-              aria-current={active ? "step" : undefined}
-              onClick={() => onGo(index)}
-              className={cn(
-                "grid size-7 shrink-0 place-items-center rounded-pill text-caption font-semibold tabular-nums transition-colors",
-                active
-                  ? "bg-primary text-white"
-                  : done
-                    ? "bg-primary-soft text-primary"
-                    : "bg-sunken text-muted",
-              )}
-            >
-              {done ? <Check size={14} aria-hidden="true" /> : index + 1}
-              <span className="sr-only">
-                {index + 1}-р алхам: {entry.label}
-              </span>
-            </button>
-            {index < steps.length - 1 ? (
-              <span
-                aria-hidden="true"
-                className={cn("h-0.5 flex-1 rounded-pill", done ? "bg-primary-soft" : "bg-sunken")}
-              />
-            ) : null}
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
-/** Who it is asked of, and when — one step for a questionnaire, folded into
- * the poll's settings step because a poll has less to say. */
+/** Audience and dates, kept compact on the single creation screen. */
 function Audience({
   canAddressEveryone,
   groups,
@@ -591,14 +668,11 @@ function Audience({
   onGroup,
   category,
   onCategory,
-  terms,
-  termId,
-  onTerm,
   opensOn,
   onOpensOn,
   closesOn,
   onClosesOn,
-  compact,
+  showDates,
 }: {
   canAddressEveryone: boolean;
   groups: { id: string; name: string }[];
@@ -606,43 +680,30 @@ function Audience({
   onGroup: (next: string) => void;
   category: SurveyCategory;
   onCategory: (next: SurveyCategory) => void;
-  terms: { id: string; number: number; name: string }[];
-  termId: string;
-  onTerm: (next: string) => void;
   opensOn: string;
   onOpensOn: (next: string) => void;
   closesOn: string;
   onClosesOn: (next: string) => void;
-  compact: boolean;
+  showDates: boolean;
 }) {
   return (
     <>
-      <Field
-        label="Хэнд"
-        hint={
-          canAddressEveryone
-            ? "Сонгосон бүлгийн эцэг эхэд л харагдана."
-            : "Өөрийн бүлгээ сонгоно уу."
-        }
-      >
-        {({ id, describedBy }) => (
-          <Select
-            id={id}
-            aria-describedby={describedBy}
-            value={groupId}
-            onChange={(e) => onGroup(e.target.value)}
-          >
-            {canAddressEveryone ? <option value="">Бүх бүлэг</option> : null}
-            {groups.map((group) => (
-              <option key={group.id} value={group.id}>
-                {group.name}
-              </option>
-            ))}
-          </Select>
-        )}
-      </Field>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {canAddressEveryone ? (
+          <Field label="Хэнд">
+            {({ id }) => (
+              <Select id={id} value={groupId} onChange={(e) => onGroup(e.target.value)}>
+                <option value="">Бүх бүлэг</option>
+                {groups.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        ) : null}
 
-      <div className={cn("grid gap-3", compact ? "grid-cols-1" : "grid-cols-2")}>
         <Field label="Ангилал">
           {({ id }) => (
             <Select
@@ -658,53 +719,34 @@ function Audience({
             </Select>
           )}
         </Field>
+      </div>
 
-        {/*
-          ★ Only when the kindergarten has configured terms.
-
-          `Term` is administrator-editable (§2.3) and ships empty, so a fresh
-          deployment would otherwise draw a select whose only entry is "—".
-        */}
-        {terms.length > 0 ? (
-          <Field label="Улирал">
+      {showDates ? (
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Эхлэх огноо" hint="Хоосон бол нийтэлмэгц эхэлнэ.">
             {({ id }) => (
-              <Select id={id} value={termId} onChange={(e) => onTerm(e.target.value)}>
-                <option value="">Сонгоогүй</option>
-                {terms.map((term) => (
-                  <option key={term.id} value={term.id}>
-                    {term.name}
-                  </option>
-                ))}
-              </Select>
+              <Input
+                id={id}
+                type="date"
+                value={opensOn}
+                max={closesOn || undefined}
+                onChange={(e) => onOpensOn(e.target.value)}
+              />
             )}
           </Field>
-        ) : null}
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Эхлэх огноо" hint="Хоосон бол нийтэлмэгц эхэлнэ.">
-          {({ id }) => (
-            <Input
-              id={id}
-              type="date"
-              value={opensOn}
-              max={closesOn || undefined}
-              onChange={(e) => onOpensOn(e.target.value)}
-            />
-          )}
-        </Field>
-        <Field label="Дуусах огноо" hint="Хоосон бол гараар хаах хүртэл нээлттэй.">
-          {({ id }) => (
-            <Input
-              id={id}
-              type="date"
-              value={closesOn}
-              min={opensOn || undefined}
-              onChange={(e) => onClosesOn(e.target.value)}
-            />
-          )}
-        </Field>
-      </div>
+          <Field label="Дуусах огноо" hint="Хоосон бол гараар хаах хүртэл нээлттэй.">
+            {({ id }) => (
+              <Input
+                id={id}
+                type="date"
+                value={closesOn}
+                min={opensOn || undefined}
+                onChange={(e) => onClosesOn(e.target.value)}
+              />
+            )}
+          </Field>
+        </div>
+      ) : null}
     </>
   );
 }
@@ -733,6 +775,13 @@ function QuestionBuilder({
 }) {
   const update = (index: number, patch: Partial<DraftQuestion>) =>
     onChange(questions.map((q, i) => (i === index ? { ...q, ...patch } : q)));
+  const move = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= questions.length) return;
+    const next = [...questions];
+    [next[index], next[target]] = [next[target]!, next[index]!];
+    onChange(next);
+  };
 
   return (
     <div className="flex flex-col gap-3">
@@ -747,7 +796,50 @@ function QuestionBuilder({
             </span>
             <p className="flex-1 text-body font-medium text-ink">Асуулт</p>
             {questions.length > 1 ? (
+              <>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`${index + 1}-р асуултыг дээш зөөх`}
+                  disabled={index === 0}
+                  onClick={() => move(index, -1)}
+                >
+                  <ArrowUp size={15} aria-hidden="true" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`${index + 1}-р асуултыг доош зөөх`}
+                  disabled={index === questions.length - 1}
+                  onClick={() => move(index, 1)}
+                >
+                  <ArrowDown size={15} aria-hidden="true" />
+                </Button>
+              </>
+            ) : null}
+            {allowMany ? (
               <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={`${index + 1}-р асуултыг хувилах`}
+                onClick={() => {
+                  const duplicate = { ...question, options: [...question.options] };
+                  onChange([
+                    ...questions.slice(0, index + 1),
+                    duplicate,
+                    ...questions.slice(index + 1),
+                  ]);
+                }}
+              >
+                <Copy size={15} aria-hidden="true" />
+              </Button>
+            ) : null}
+            {questions.length > 1 ? (
+              <Button
+                type="button"
                 variant="ghost"
                 size="icon"
                 aria-label={`${index + 1}-р асуултыг хасах`}
@@ -859,6 +951,58 @@ function QuestionBuilder({
         </Button>
       ) : null}
     </div>
+  );
+}
+
+/** The phone-sized form a parent will see after publication. */
+function SurveyDraftPreview({ title, questions }: { title: string; questions: DraftQuestion[] }) {
+  return (
+    <section
+      aria-labelledby="survey-draft-preview-title"
+      className="rounded-card border border-primary-soft bg-canvas p-3"
+    >
+      <div className="mx-auto flex max-w-[430px] flex-col gap-3 rounded-card bg-surface p-3 shadow-sm">
+        <div>
+          <p id="survey-draft-preview-title" className="text-lead font-semibold text-ink">
+            {title.trim() || "Судалгааны гарчиг"}
+          </p>
+        </div>
+
+        {questions.map((question, index) => (
+          <div key={index} className="rounded-card border border-border bg-canvas p-3">
+            <p className="mb-2 text-body font-medium leading-snug text-ink">
+              {index + 1}. {question.prompt.trim() || "Асуултын текст"}
+            </p>
+            {hasOptionList(question.type) ? (
+              <div className="flex flex-col gap-1.5">
+                {question.options.map((option, optionIndex) => (
+                  <span
+                    key={optionIndex}
+                    className="rounded-control border border-border bg-surface px-3 py-2 text-compact text-muted"
+                  >
+                    {question.type === "CHECKBOX" ? "□" : "○"}{" "}
+                    {option.trim() || `Сонголт ${optionIndex + 1}`}
+                  </span>
+                ))}
+              </div>
+            ) : question.type === "RATING" ? (
+              <div className="grid grid-cols-5 gap-1.5">
+                {[1, 2, 3, 4, 5].map((score) => (
+                  <span
+                    key={score}
+                    className="rounded-control border border-border bg-surface py-2 text-center text-caption text-muted"
+                  >
+                    {score}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div className="h-10 rounded-control border border-border bg-surface" />
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

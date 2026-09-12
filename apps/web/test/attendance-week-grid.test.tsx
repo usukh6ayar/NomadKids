@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   renderWithProviders,
   sessionFor,
@@ -24,6 +24,23 @@ import GroupAttendancePage from "@/app/(app)/groups/[groupId]/attendance/page";
  * has to be registered before the bare `/attendance` day sheet or the day
  * sheet would answer it and the grid would fail its parse.
  */
+
+/*
+  ★ The clock is frozen to a Wednesday — 2026-09-12.
+
+  `TODAY` below is read from the real one, and the register treats Saturday and
+  Sunday as closed days: on a weekend there is no editable column, so the five
+  cases that press Засах and look for a status control failed twice a week and
+  passed the other five. The suite ran green for weeks and went red on a
+  Saturday with nobody having changed a line.
+
+  Set at module scope rather than in `beforeEach`, because the constants under
+  it are evaluated at import. `shouldAdvanceTime` so `userEvent`'s own waiting
+  still resolves — the pattern `child-attendance.test.tsx` already uses.
+*/
+vi.useFakeTimers({ shouldAdvanceTime: true });
+vi.setSystemTime(new Date("2026-09-09T09:00:00Z"));
+afterAll(() => vi.useRealTimers());
 
 const GROUP = "44444444-4444-4444-8444-444444444444";
 const CHILD_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -110,6 +127,68 @@ describe("the teacher's week register", () => {
     expect(within(table).getByText("Б.Ануужин")).toBeInTheDocument();
     expect(within(table).getByText("Г.Батбаяр")).toBeInTheDocument();
     expect(within(table).queryByText("Батжаргал Ануужин")).not.toBeInTheDocument();
+  });
+
+  /*
+    ★ 2026-09-12: "багшийн ирцийн харагдах хэсгийг зураг дээрх шиг том болгоод
+    өг."
+
+    Asserted on the classes, the way `responsive.test.tsx` does — jsdom has no
+    layout engine, so nothing here can measure a cell. What it defends is the
+    scale creeping back down, and the mobile-first floor beside it: a 36px chip
+    in a 40px column keeps a six-day week inside a 390px screen, which is the
+    constraint the grid's own note exists to protect.
+  */
+  it("draws the register at the size the client asked for", async () => {
+    stubRegister();
+    renderWithProviders(<GroupAttendancePage />);
+    const table = await grid();
+
+    const name = within(table).getByText("Г.Батбаяр");
+    expect(name.className).toContain("text-body");
+    expect(name.className).toContain("sm:text-lead");
+
+    const chip = name.closest("tr")!.querySelector("[class*='rounded-pill']")!;
+    expect(chip.className).toContain("size-9");
+    expect(chip.className).toContain("sm:size-11");
+
+    // Narrow enough that a week still fits a phone without scrolling sideways.
+    const monday = within(table).getAllByRole("columnheader")[2]!;
+    expect(monday.className).toContain("w-10");
+  });
+
+  /*
+    ★ 2026-09-12: "доор ангийн нийт ирсэн, нийт гэсэн тоон үзүүлэлтүүдийг хойно
+    нь бодож гарга."
+
+    The foot counted each day down a column and the journal counted each child
+    across a row; the corner where the two meet was empty. Rendered through the
+    journal, which is the screen that asks for the per-child columns.
+  */
+  it("★ totals the whole span at the foot of the journal", async () => {
+    stubRegister();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderWithProviders(<GroupAttendancePage />);
+
+    await user.click(await screen.findByRole("button", { name: /Ирцийн дэлгэрэнгүй/ }));
+
+    // Two grids are on the page now — the register above and the journal — so
+    // the second is the one this case is about.
+    const journal = (await screen.findAllByRole("table", { name: /Бүлгийн ирцийн бүртгэл/ })).at(
+      -1,
+    )!;
+    // By row header, not by text: the column heads carry the same four words.
+    const rows = within(journal).getAllByRole("row");
+    const rowNamed = (name: string) =>
+      rows.find((row) => within(row).queryByRole("rowheader", { name }))!;
+    const present = rowNamed("Ирсэн");
+    const total = rowNamed("нийт");
+
+    // The last cell of a tally row is that status across the whole span, and
+    // the last cell of "нийт" is every mark in the grid.
+    const lastOf = (row: HTMLElement) => within(row).getAllByRole("cell").at(-1)!.textContent;
+    expect(lastOf(present)).toMatch(/^\d+$/);
+    expect(lastOf(total)).toMatch(/^\d+$/);
   });
 
   it("draws a saved day from an earlier column and leaves it read-only", async () => {

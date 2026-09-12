@@ -2,6 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  ROUTER,
   renderWithProviders,
   sessionFor,
   setParams,
@@ -117,6 +118,28 @@ describe("answering a poll", () => {
     expect(await screen.findByRole("radio", { name: /Ирнэ/ })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Ирэхгүй/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Илгээх" })).not.toBeInTheDocument();
+  });
+
+  /*
+    ★ A way out — 2026-09-12, at the client's request: "эцэг эх асуулгад
+    хариулсны дараа гарч болохгүй байна."
+
+    A poll is one tap, and the screen it left behind showed the class's answer
+    and no exit at all: a parent's only way back was the browser's own button,
+    which this product does not rely on anywhere else.
+  */
+  it("gives a parent a way back, before and after answering", async () => {
+    const user = userEvent.setup();
+    stubPoll();
+    renderWithProviders(<SurveyResponsePage />);
+
+    const back = await screen.findByRole("link", { name: "Буцах" });
+    expect(back).toHaveAttribute("href", `/children/${CHILD}/surveys`);
+
+    await user.click(await screen.findByRole("radio", { name: /Ирнэ/ }));
+
+    // Still there once the tally has replaced the choices.
+    await waitFor(() => expect(screen.getByRole("link", { name: "Буцах" })).toBeInTheDocument());
   });
 
   it("submits on the tap, without waiting for a second action", async () => {
@@ -290,6 +313,32 @@ describe("a questionnaire, which is not a poll", () => {
  * worse than a missing feature — it tells the person who set it that they
  * changed the survey — so each is tested against the behaviour it promises.
  */
+/*
+  ★ Where a family lands after answering — 2026-09-12, at the client's request:
+  "хүүхдийн дэлгэрэнгүй рүү үсэрч байна, ингэж болохгүй, миний судалгаанууд руу
+  ор."
+
+  A parent answering one survey is working through a list of them. Landing on
+  the child's profile ends that errand and makes finding the next one a
+  navigation problem; the list they came from has the next one on it.
+*/
+describe("where answering leaves a family", () => {
+  it("returns to their own surveys, not the child's record", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+      { path: `/surveys/${SURVEY}/responses`, method: "POST", body: {} },
+      { path: `/children/${CHILD}/surveys`, body: [{ ...POLL, kind: "FORM" }] },
+    ]);
+    renderWithProviders(<SurveyResponsePage />);
+
+    await user.click(await screen.findByRole("radio", { name: "Ирнэ" }));
+    await user.click(screen.getByRole("button", { name: "Илгээх" }));
+
+    await waitFor(() => expect(ROUTER.replace).toHaveBeenCalledWith(`/children/${CHILD}/surveys`));
+  });
+});
+
 describe("a questionnaire's own settings", () => {
   const FORM_ID = "77777777-7777-4777-8777-777777777777";
 

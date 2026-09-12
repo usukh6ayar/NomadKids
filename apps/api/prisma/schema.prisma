@@ -1775,6 +1775,7 @@ model ConsentRecord {
 /// Which sitting — `нэмэлт.md` §2.
 enum MealKind {
   BREAKFAST // Өглөөний цай
+  SNACK // Зууш
   /// Added 2026-08-28, on the client's instruction — нэмэлт.md §2 names four
   /// sittings; a fifth, between breakfast and lunch, is this one.
   MID_MORNING_SNACK // Жүүс

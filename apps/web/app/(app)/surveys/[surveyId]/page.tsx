@@ -4,31 +4,35 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import {
-  SURVEY_CATEGORY_LABEL,
+  type SurveyQuestion,
   surveyResultsSchema,
-  type SurveyGroupResult,
   surveySchema,
   SURVEY_QUESTION_TYPE_LABEL,
   hasOptionList,
   type MatrixOptions,
   type SurveyQuestionType,
+  type SurveyKind,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { downloadUrl } from "@/lib/api/client";
-import { SurveyComparison } from "@/components/survey/survey-comparison";
+import { SurveyResultsView } from "@/components/survey/survey-results-view";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
-import { PageHeader } from "@/components/shell/app-shell";
+import { useSession } from "@/lib/auth/session";
+import { canManageSurvey, staffSurveySchema } from "@/lib/survey-access";
+import { BackButton } from "@/components/ui/back-button";
 import { RequireRole } from "@/components/shell/require-role";
 import {
   ArrowDown,
   ArrowUp,
+  ClipboardList,
   Copy,
   Download,
+  Eye,
   LockKeyhole,
+  LockKeyholeOpen,
   Plus,
   Printer,
-  Star,
   Trash2,
   X,
 } from "lucide-react";
@@ -36,13 +40,16 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 import { Card, SectionHeader } from "@/components/ui/card";
-import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
-import { BarRow } from "@/components/ui/chart/bar-row";
-import { Donut } from "@/components/ui/chart/donut";
-import { Ring } from "@/components/ui/chart/ring";
-import { Field, Input, Select, Textarea } from "@/components/ui/field";
-import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { Field, Input, Select, Textarea } from "@/components/ui/field";
+import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
+
+/** "Судалгааны дүн" for a form, "Асуулгын дүн" for a poll — the screen's title. */
+const RESULTS_TITLE: Record<SurveyKind, string> = {
+  POLL: "Асуулгын дүн",
+  FORM: "Судалгааны дүн",
+};
 
 type DraftQuestion = {
   order: number;
@@ -74,6 +81,28 @@ type DraftQuestion = {
  */
 const TYPE_LABEL = SURVEY_QUESTION_TYPE_LABEL;
 
+/**
+ * The status as the client's own header card words it.
+ *
+ * ★ "Идэвхтэй", not "Нийтэлсэн" — 2026-09-12, from their drawing. The board's
+ * three tabs are already named Идэвхтэй · Дууссан · Ноорог, so the card now
+ * agrees with the tab a teacher found it under; the board's own badge keeps
+ * saying what *happened* to the survey, which is the right word in a list of
+ * them.
+ */
+const STATUS_LABEL: Record<string, string> = {
+  DRAFT: "Ноорог",
+  PUBLISHED: "Идэвхтэй",
+  CLOSED: "Дууссан",
+};
+
+/** The word's own colour, since the card writes the state rather than badging it. */
+const STATUS_INK: Record<string, string> = {
+  DRAFT: "text-muted",
+  PUBLISHED: "text-mint-ink",
+  CLOSED: "text-sun-ink",
+};
+
 export default function SurveyDetailPage() {
   return (
     <RequireRole roles={["TEACHER", "ADMIN"]}>
@@ -86,38 +115,173 @@ function SurveyDetail() {
   const params = useParams<{ surveyId: string }>();
   const surveyId = params.surveyId;
   const queryClient = useQueryClient();
+  const { hasRole, session } = useSession();
+  const isAdmin = hasRole("ADMIN");
+  /** Whether the parent's-eye-view card is open — see the eye button below. */
+  const [previewing, setPreviewing] = useState(false);
 
   const survey = useQuery({
     queryKey: qk.survey(surveyId),
-    queryFn: () => get(`/surveys/${surveyId}`, surveySchema),
+    queryFn: () => get(`/surveys/${surveyId}`, staffSurveySchema),
   });
 
-  if (survey.isLoading) return <LoadingState rows={4} />;
-  if (survey.isError) return <ErrorState description={errorMessage(survey.error)} />;
+  const mayManage = survey.data ? canManageSurvey(survey.data, session?.user.id, isAdmin) : false;
+
+  /*
+    ★ The roster, for the header card's "1А бүлэг · 25 хүүхэд" — 2026-09-12,
+    from the client's drawing.
+
+    It is the same query `SurveyResultsView` reads below, on the same key, so
+    the two share one request rather than each asking — and the headcount over
+    the card cannot disagree with the ring inside it. A draft has nobody to
+    count yet, so it is not asked for.
+  */
+  const results = useQuery({
+    queryKey: qk.surveyResults(surveyId, ""),
+    queryFn: () => get(`/surveys/${surveyId}/results`, surveyResultsSchema),
+    enabled: mayManage && survey.data ? survey.data.status !== "DRAFT" : false,
+  });
+
+  /*
+    ★ A way back, on every branch — 2026-09-12, at the client's request:
+    "дэлгэрэнгүй гэдэг дээр дарахаар буцаж болохгүй байна."
+
+    This screen is reached from one of the two boards and had no exit of its
+    own, so a teacher opening a survey to read its answers was left with the
+    browser's own button — which this product does not rely on anywhere else.
+    The fallback is the board the survey belongs to, and the hub while the
+    survey is still loading and its kind unknown.
+  */
+  if (survey.isLoading) {
+    return (
+      <div className="flex flex-col gap-4">
+        <BackButton href="/surveys" />
+        <LoadingState rows={4} />
+      </div>
+    );
+  }
+
+  if (survey.isError) {
+    return (
+      <div className="flex flex-col gap-4">
+        <BackButton href="/surveys" />
+        <ErrorState description={errorMessage(survey.error)} />
+      </div>
+    );
+  }
 
   const data = survey.data!;
 
+  if (!mayManage) {
+    return (
+      <div className="flex flex-col gap-4">
+        <BackButton href="/surveys" />
+        <EmptyState
+          title="Судалгаа олдсонгүй"
+          description="Таны үүсгэсэн судалгаа, асуулга энд харагдана."
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
-      <PageHeader
-        title={data.title}
-        compact
-        /*
-          ★ The purpose leads the category when there is one — 2026-09-10.
+      {/*
+        ★ The drawing's own header — 2026-09-12.
 
-          "Сэтгэл ханамжийн судалгаа" is a filing label; "Сургуулийн үйл
-          ажиллагаа, орчин, хоолны чанарт эцэг эхийн сэтгэл ханамжийг
-          тодруулах" is why this survey was run, and it is what a director
-          reads a year later to decide whether it answered anything. The
-          category is on the card in the list and in the filter above it, so it
-          is not lost.
-        */
-        lede={data.purpose?.trim() || SURVEY_CATEGORY_LABEL[data.category]}
-        actions={
+        `PageHeader` put the survey's title across the top with the controls
+        beside it, which is the shape every screen in the product uses for a
+        *page*. The client's is a screen called "Судалгааны дүн" with the survey
+        as a **card** inside it: icon, title, the dates it runs between, whether
+        it is live, and who it went to. That card is the thing a teacher is
+        looking at; the page is just where it sits.
+
+        ★★ The title follows the kind — 2026-09-12, at the client's request:
+        "Судалгааны дүн гэж бичсэн байна, Асуулгын дүн болго." A poll is an
+        асуулга everywhere else in the product — its board, its composer tab,
+        `SURVEY_KIND_LABEL` — and this screen was the one place that called it
+        a судалгаа. Genitive, so it cannot be `SURVEY_KIND_LABEL` plus a word.
+      */}
+      <div className="flex items-center gap-2">
+        <BackButton href={data.kind === "POLL" ? "/surveys/polls" : "/surveys/forms"} />
+        <h1 className="min-w-0 flex-1 truncate text-center text-title font-semibold text-ink">
+          {RESULTS_TITLE[data.kind]}
+        </h1>
+        <span className="size-11 shrink-0" aria-hidden="true" />
+      </div>
+
+      {/*
+        ★ The card as the client drew it — 2026-09-12, second pass.
+
+        Three rows: the icon and the title with the clone period beside it; the
+        date and the state under it; then the audience on the left of a row of
+        round controls. What moved from the first attempt is that the controls
+        left the top — they are what you do *after* reading the card, so they
+        sit at its foot — and the state stopped being a badge, which is a shape
+        for a list of twenty surveys rather than for the one on screen.
+      */}
+      <Card pad="roomy" className="flex flex-col gap-4">
+        <div className="flex items-start gap-3">
+          <span
+            aria-hidden="true"
+            className="grid size-12 shrink-0 place-items-center rounded-card bg-cornflower text-cornflower-ink"
+          >
+            <ClipboardList size={22} />
+          </span>
+
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <h2 className="text-title font-bold leading-tight text-ink">{data.title}</h2>
+
+            <p className="flex flex-wrap items-baseline gap-x-3 text-body tabular-nums text-muted">
+              {data.publishedAt || data.closesAt ? (
+                <span>
+                  {[data.publishedAt, data.closesAt ?? data.closedAt]
+                    .filter(Boolean)
+                    .map((value) => formatDate(value as string))
+                    .join(" - ")}
+                </span>
+              ) : null}
+              <span className={cn("font-medium italic", STATUS_INK[data.status])}>
+                {STATUS_LABEL[data.status]}
+              </span>
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-body text-muted">
+            {data.group?.name ?? "Бүх бүлэг"}
+            {results.data ? ` · ${results.data.expectedResponses} хүүхэд` : ""}
+          </p>
+
+          {/*
+            ★ Round, via `[&_button]` rather than a prop on each: six components
+            render their own `Button`, and threading a shape through all of them
+            would put one style decision in six files that share nothing else.
+          */}
           <div
             data-ui="survey-actions"
-            className="flex w-full max-w-full items-center gap-1.5 overflow-x-auto pb-1 sm:w-auto sm:flex-wrap sm:justify-end sm:overflow-visible sm:pb-0"
+            className="ms-auto flex max-w-full items-center gap-2 overflow-x-auto [&_a]:rounded-pill [&_button]:rounded-pill"
           >
+            {/*
+              ★ The eye comes first, before Хувилах — 2026-09-12, at the
+              client's request: "хувилах гэдгийн урд нүдний зураг нэм, тэрэн
+              дээр дарахаар эцэг эхэд ямар харагдаж байгааг харуул."
+            */}
+            {data.questions.length > 0 ? (
+              <Button
+                size="icon"
+                variant={previewing ? "primary" : "secondary"}
+                className="shrink-0"
+                aria-pressed={previewing}
+                aria-label="Эцэг эхэд харагдах байдал"
+                title="Эцэг эхэд харагдах байдал"
+                onClick={() => setPreviewing((current) => !current)}
+              >
+                <Eye size={15} aria-hidden="true" />
+              </Button>
+            ) : null}
+
             {data.status !== "DRAFT" ? (
               <>
                 <CloneButton surveyId={surveyId} schoolYear={data.schoolYear ?? null} />
@@ -129,11 +293,21 @@ function SurveyDetail() {
               <PublishButton surveyId={surveyId} />
             ) : data.status === "PUBLISHED" ? (
               <CloseButton surveyId={surveyId} />
+            ) : data.status === "CLOSED" ? (
+              <ReopenButton surveyId={surveyId} />
             ) : null}
             <DeleteSurveyButton surveyId={surveyId} title={data.title} />
           </div>
-        }
-      />
+        </div>
+
+        {data.purpose?.trim() ? (
+          <p className="text-caption text-muted">{data.purpose.trim()}</p>
+        ) : null}
+      </Card>
+
+      {previewing && data.questions.length > 0 ? (
+        <SurveyFormPreview questions={data.questions} />
+      ) : null}
 
       {data.status === "DRAFT" ? (
         <QuestionEditor
@@ -142,9 +316,70 @@ function SurveyDetail() {
           onSaved={() => void queryClient.invalidateQueries({ queryKey: qk.survey(surveyId) })}
         />
       ) : (
-        <PublishedSurvey surveyId={surveyId} questionCount={data.questions.length} />
+        <PublishedSurvey surveyId={surveyId} />
       )}
     </div>
+  );
+}
+
+/** What a parent will actually see, placed before results and editing controls. */
+function SurveyFormPreview({ questions }: { questions: SurveyQuestion[] }) {
+  return (
+    <Card pad="compact" className="flex flex-col gap-3" aria-labelledby="survey-preview-title">
+      <SectionHeader id="survey-preview-title" title="Асуулгын харагдац" />
+      <div className="flex flex-col gap-2.5">
+        {questions.map((question, index) => {
+          const options = Array.isArray(question.options)
+            ? question.options.filter((option): option is string => typeof option === "string")
+            : [];
+          return (
+            <div key={question.id} className="rounded-card border border-border bg-canvas p-3">
+              <div className="mb-2 flex items-start justify-between gap-2">
+                <p className="text-body font-medium leading-snug text-ink">
+                  {index + 1}. {question.prompt}
+                </p>
+                <span className="shrink-0 rounded-pill bg-primary-soft px-2 py-1 text-caption font-medium text-primary">
+                  {SURVEY_QUESTION_TYPE_LABEL[question.type]}
+                </span>
+              </div>
+              {options.length > 0 ? (
+                <div className="grid grid-cols-2 gap-1.5">
+                  {options.map((option) => (
+                    <span
+                      key={option}
+                      className="rounded-control border border-border bg-surface px-2.5 py-2 text-compact text-muted"
+                    >
+                      {question.type === "CHECKBOX" ? "□" : "○"} {option}
+                    </span>
+                  ))}
+                </div>
+              ) : question.type === "RATING" ? (
+                <div className="grid grid-cols-5 gap-1.5">
+                  {[1, 2, 3, 4, 5].map((value) => (
+                    <span
+                      key={value}
+                      className="rounded-control border border-border bg-surface py-2 text-center text-compact text-muted"
+                    >
+                      {value}
+                    </span>
+                  ))}
+                </div>
+              ) : question.type === "YES_NO" ? (
+                <div className="grid grid-cols-2 gap-1.5 text-center text-compact text-muted">
+                  <span className="rounded-control border border-border bg-surface py-2">Тийм</span>
+                  <span className="rounded-control border border-border bg-surface py-2">Үгүй</span>
+                </div>
+              ) : (
+                <div
+                  className="h-10 rounded-control border border-border bg-surface"
+                  aria-hidden="true"
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Card>
   );
 }
 
@@ -168,230 +403,24 @@ function SurveyDetail() {
  * foot of Тойм goes straight to Хариултууд rather than asking them to find the
  * tab again.
  */
-function PublishedSurvey({ surveyId, questionCount }: { surveyId: string; questionCount: number }) {
-  const [tab, setTab] = useState<"overview" | "questions" | "answers">("overview");
-
-  const TABS = [
-    { key: "overview" as const, label: "Тойм" },
-    { key: "questions" as const, label: "Асуултууд" },
-    { key: "answers" as const, label: "Хариултууд" },
-  ];
-
-  return (
-    <div className="flex flex-col gap-5">
-      <div
-        role="tablist"
-        aria-label="Судалгааны үр дүн"
-        data-ui="communication-tabs"
-        className="grid grid-cols-3 gap-1 rounded-card bg-sunken p-1 sm:w-[420px]"
-      >
-        {TABS.map((entry) => (
-          <button
-            key={entry.key}
-            type="button"
-            role="tab"
-            aria-selected={tab === entry.key}
-            onClick={() => setTab(entry.key)}
-            className={cn(
-              "min-h-10 rounded-card px-3 text-body font-semibold transition-colors",
-              tab === entry.key ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink",
-            )}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </div>
-
-      {tab === "overview" ? (
-        <SurveyOverview
-          surveyId={surveyId}
-          questionCount={questionCount}
-          onOpenAnswers={() => setTab("answers")}
-        />
-      ) : null}
-
-      {tab === "questions" ? (
-        <SurveyQuestionIndex surveyId={surveyId} onOpenAnswers={() => setTab("answers")} />
-      ) : null}
-
-      {tab === "answers" ? (
-        <>
-          <Results surveyId={surveyId} />
-          {/*
-            Shown once a survey has answers, because that is when a comparison
-            can mean anything. It reports its own "no baseline" state rather
-            than being hidden — an administrator who set up two waves and sees
-            nothing needs to be told why.
-          */}
-          <SurveyComparison surveyId={surveyId} />
-        </>
-      ) : null}
-    </div>
-  );
-}
-
 /**
- * Тойм — four figures and who has replied.
+ * A published survey's results.
  *
- * ★ It reads the same query the Хариултууд tab does, unfiltered.
+ * ★ REDESIGN 2026-09-12 — the three tabs became two, in `SurveyResultsView`.
  *
- * `qk.surveyResults(surveyId, "")` is already in the cache by the time anybody
- * presses a tab, so this is a render rather than a request — and the two tabs
- * cannot disagree about a total, which two endpoints would eventually do.
+ * Тойм · Асуултууд · Хариултууд answered one question between them and split it
+ * three ways: the first was four tiles, the second a list whose rows scrolled
+ * the third into view, and the third every chart stacked down one page. The
+ * client's own drawing asks it as "Ерөнхий дүн" and "Асуулт тус бүр" — how many
+ * replied, then what they said to the question you picked — and the roster of
+ * who has not replied moved to a screen of its own.
+ *
+ * `questionCount` is no longer read here: the results payload carries the
+ * questions, and a count passed down beside them was a second source for the
+ * same fact.
  */
-function SurveyOverview({
-  surveyId,
-  questionCount,
-  onOpenAnswers,
-}: {
-  surveyId: string;
-  questionCount: number;
-  onOpenAnswers: () => void;
-}) {
-  const results = useQuery({
-    queryKey: qk.surveyResults(surveyId, ""),
-    queryFn: () => get(`/surveys/${surveyId}/results`, surveyResultsSchema),
-  });
-
-  if (results.isLoading) return <LoadingState rows={3} />;
-  if (results.isError) return <ErrorState description={errorMessage(results.error)} />;
-
-  const data = results.data!;
-  const coverage =
-    data.expectedResponses > 0
-      ? Math.round((data.totalResponses / data.expectedResponses) * 100)
-      : null;
-  const audience = data.survey.group?.name ?? "Бүх бүлэг";
-
-  return (
-    <div className="flex flex-col gap-4">
-      <dl className="grid grid-cols-2 gap-3">
-        <SummaryTile label="Нийт асуулт" value={questionCount} />
-        <SummaryTile label="Нийт хариулт" value={data.totalResponses} />
-
-        {/*
-          ★ The ring carries the figure and the tile does not repeat it.
-
-          Every other `SummaryTile` on this screen is a number with a word under
-          it; this one is a number with a *shape* behind it, because coverage is
-          the one figure on the tab that means something as a proportion. `Ring`
-          is `aria-hidden` by default and named here for exactly that reason —
-          it is the sole carrier.
-        */}
-        <Card pad="compact" className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <dt className="text-caption text-muted">Хамралт</dt>
-            <dd className="text-title font-semibold tabular-nums leading-none text-ink">
-              {coverage === null ? "—" : `${coverage}%`}
-            </dd>
-          </div>
-          <Ring
-            percent={coverage ?? 0}
-            muted={coverage === null}
-            size="sm"
-            label={
-              coverage === null
-                ? "Хамралт тодорхойгүй"
-                : `${data.expectedResponses}-аас ${data.totalResponses} нь хариулсан`
-            }
-          >
-            <span className="sr-only">{coverage ?? 0}%</span>
-          </Ring>
-        </Card>
-
-        <SummaryTile label="Хэнд зориулсан" value={audience} />
-      </dl>
-
-      {data.byGroup.length > 0 ? <GroupResponseChart groups={data.byGroup} /> : null}
-
-      <Button size="lg" onClick={onOpenAnswers}>
-        Үр дүнг дэлгэрэнгүй харах
-      </Button>
-    </div>
-  );
-}
-
-/**
- * Асуултууд — the questionnaire itself, with how many answered each.
- *
- * ★ Not the same list as Хариултууд, and the difference is the point.
- *
- * This one is scannable: six rows, each a prompt, its type and a count. It
- * answers "what did we ask" and "did anybody skip one" — two questions the
- * results tab buries under charts, because a card carrying a distribution is
- * half a screen tall and six of them are not a list you can scan.
- *
- * ★★ A row opens Хариултууд rather than a page of its own.
- *
- * The client's design pages through questions one at a time with arrows. The
- * content of that page is exactly the card the results tab already draws, so a
- * second route rendering it would be a second copy of every chart. The row
- * scrolls to that card instead.
- */
-function SurveyQuestionIndex({
-  surveyId,
-  onOpenAnswers,
-}: {
-  surveyId: string;
-  onOpenAnswers: () => void;
-}) {
-  const results = useQuery({
-    queryKey: qk.surveyResults(surveyId, ""),
-    queryFn: () => get(`/surveys/${surveyId}/results`, surveyResultsSchema),
-  });
-
-  if (results.isLoading) return <LoadingState rows={4} />;
-  if (results.isError) return <ErrorState description={errorMessage(results.error)} />;
-
-  const questions = results.data!.questions;
-
-  return (
-    <div className="flex flex-col gap-2.5">
-      <p className="text-caption text-muted">Нийт {questions.length} асуулт</p>
-
-      <ul className="flex flex-col gap-2">
-        {questions.map((q, index) => (
-          <li key={q.question.id}>
-            <button
-              type="button"
-              onClick={() => {
-                onOpenAnswers();
-                /*
-                  After the tab has rendered. The results card does not exist
-                  in the DOM until the state change flushes, so scrolling now
-                  would find nothing — and a silent no-op reads as a dead row.
-                */
-                requestAnimationFrame(() =>
-                  document
-                    .getElementById(`question-${q.question.id}`)
-                    ?.scrollIntoView({ block: "start" }),
-                );
-              }}
-              className="flex w-full items-center gap-3 rounded-card border border-border bg-surface px-3.5 py-3 text-left transition-colors hover:border-primary hover:bg-canvas"
-            >
-              <span
-                aria-hidden="true"
-                className="grid size-6 shrink-0 place-items-center rounded-pill bg-primary-soft text-caption font-semibold tabular-nums text-primary"
-              >
-                {index + 1}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-body font-medium leading-snug text-ink">
-                  {q.question.prompt}
-                </span>
-                <span className="block text-caption text-muted">
-                  {SURVEY_QUESTION_TYPE_LABEL[q.question.type]}
-                </span>
-              </span>
-              <span className="shrink-0 text-caption tabular-nums text-muted">
-                {q.responseCount} хариулт
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
+function PublishedSurvey({ surveyId }: { surveyId: string }) {
+  return <SurveyResultsView surveyId={surveyId} />;
 }
 
 /**
@@ -454,10 +483,22 @@ function ExportButton({ surveyId }: { surveyId: string }) {
  * makes a survey that only looks like September's — different rows, no shared
  * indicator keys, nothing to pair.
  */
+/**
+ * Хувилах — this questionnaire again, as the next wave.
+ *
+ * ★ No period picker — 2026-09-12, at the client's instruction ("харшлын
+ * судалгаа гэсний ард байгаа хайрцаг хэсэг арилга").
+ *
+ * It was a select beside the title choosing between "Явцын үнэлгээ" and "Үр
+ * дүнгийн үнэлгээ". A copy is filed as the midline, which is what the great
+ * majority of copies are; the wave a survey belongs to is editable on the copy
+ * itself, which is the screen somebody is already looking at once they have
+ * made one.
+ */
 function CloneButton({ surveyId, schoolYear }: { surveyId: string; schoolYear: string | null }) {
   const toast = useToast();
   const router = useRouter();
-  const [period, setPeriod] = useState<"MIDLINE" | "ENDLINE">("MIDLINE");
+  const period = "MIDLINE" as const;
 
   const clone = useMutation({
     mutationFn: () =>
@@ -473,31 +514,17 @@ function CloneButton({ surveyId, schoolYear }: { surveyId: string; schoolYear: s
   });
 
   return (
-    <div className="flex shrink-0 items-center gap-1">
-      <label className="sr-only" htmlFor="clone-period">
-        Хувилах үе
-      </label>
-      <Select
-        id="clone-period"
-        value={period}
-        onChange={(e) => setPeriod(e.target.value as "MIDLINE" | "ENDLINE")}
-        className="h-9 w-[174px] text-caption sm:w-auto"
-      >
-        <option value="MIDLINE">Явцын үнэлгээ</option>
-        <option value="ENDLINE">Үр дүнгийн үнэлгээ</option>
-      </Select>
-      <Button
-        size="icon"
-        variant="secondary"
-        disabled={clone.isPending}
-        onClick={() => clone.mutate()}
-        className="shrink-0"
-        aria-label={clone.isPending ? "Хувилж байна…" : "Хувилах"}
-        title="Хувилах"
-      >
-        <Copy size={15} aria-hidden="true" />
-      </Button>
-    </div>
+    <Button
+      size="icon"
+      variant="secondary"
+      disabled={clone.isPending}
+      onClick={() => clone.mutate()}
+      className="shrink-0"
+      aria-label={clone.isPending ? "Хувилж байна…" : "Хувилах"}
+      title="Хувилах"
+    >
+      <Copy size={15} aria-hidden="true" />
+    </Button>
   );
 }
 
@@ -559,6 +586,42 @@ function CloseButton({ surveyId }: { surveyId: string }) {
       title="Хаах"
     >
       <LockKeyhole size={15} aria-hidden="true" />
+    </Button>
+  );
+}
+
+/**
+ * Takes the lock off — 2026-09-12, at the client's request: "цоожоо онгойлгоод
+ * нээж болдог бай."
+ *
+ * ★ A second button rather than a toggle on the first. `POST .../reopen` is its
+ * own route for the same reason: a "flip it" press would close a survey a
+ * colleague had just re-opened, and the audit row would say the opposite of
+ * what happened.
+ */
+function ReopenButton({ surveyId }: { surveyId: string }) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const reopen = useMutation({
+    mutationFn: () => mutate(`/surveys/${surveyId}/reopen`, surveySchema, { method: "POST" }),
+    onSuccess: () => {
+      toast.success("Судалгааг дахин нээлээ. Хариулт хүлээж авна.");
+      void queryClient.invalidateQueries({ queryKey: qk.survey(surveyId) });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return (
+    <Button
+      className="shrink-0"
+      size="icon"
+      variant="secondary"
+      disabled={reopen.isPending}
+      onClick={() => reopen.mutate()}
+      aria-label={reopen.isPending ? "Нээж байна…" : "Дахин нээх"}
+      title="Дахин нээх"
+    >
+      <LockKeyholeOpen size={15} aria-hidden="true" />
     </Button>
   );
 }
@@ -946,577 +1009,6 @@ function QuestionEditor({
   );
 }
 
-/**
- * A survey's answers — as a whole, per group, and compared between groups.
- *
- * ★ Three questions of one dataset, which the screen used to answer one of.
- *
- * It rendered a flat list of questions with each answer as a `Badge` — "Тийм:
- * 12  Үгүй: 3" — which is a legend with no chart. Three things were missing and
- * all three come from the same read:
- *
- *  · **A shape.** A bar whose length is the share answers a "which is the
- *    biggest" at a glance; a row of pills makes a reader compare numerals.
- *  · **One group at a time.** A director asks "what did Дэлбээ бүлэг say", and
- *    the only answer available was the kindergarten's average.
- *  · **Group against group.** Which is the actual question — a problem in one
- *    group disappears into an average across four, and disappearing is exactly
- *    what a survey is run to stop.
- *
- * ★★ The filter narrows the headline and never the comparison.
- *
- * A comparison filtered to one group is a chart with one bar. So the chips
- * change what the question cards count and leave the chart beneath them whole.
- */
-function Results({ surveyId }: { surveyId: string }) {
-  const [groupId, setGroupId] = useState("");
-
-  const results = useQuery({
-    queryKey: qk.surveyResults(surveyId, groupId),
-    queryFn: () =>
-      get(
-        `/surveys/${surveyId}/results${groupId ? `?groupId=${groupId}` : ""}`,
-        surveyResultsSchema,
-      ),
-    // The chart below is the same for every filter, so it must not blink to a
-    // skeleton each time a chip is pressed.
-    placeholderData: (previous) => previous,
-  });
-
-  if (results.isLoading) return <LoadingState rows={3} />;
-  if (results.isError) return <ErrorState description={errorMessage(results.error)} />;
-
-  const data = results.data!;
-  const groups = data.byGroup;
-
-  /*
-    Who the counts are counting. A CHILD survey is answered once per child, so
-    the number under "Бөглөсөн" is children; a kindergarten-wide one is answered
-    once per person. Naming it matters because the two denominators differ and
-    a bare "18" beside "Бөглөөгүй" does not say 18 of what.
-  */
-  const respondentNoun = data.survey.scope === "CHILD" ? "хүүхэд" : "эцэг эх";
-  const selected = groups.find((entry) => entry.group.id === groupId);
-
-  return (
-    <section aria-labelledby="results-heading" className="flex flex-col gap-4">
-      <SectionHeader
-        id="results-heading"
-        title="Хариултууд"
-        lede={selected ? `${selected.group.name}-ийн хариултууд.` : undefined}
-        action={<span className="text-body text-muted">{data.totalResponses} хариулт</span>}
-      />
-
-      {/*
-        ★ Бөглөсөн and Бөглөөгүй, the client's two headline numbers.
-
-        The second is the one that could not be shown before: the API now
-        returns how many responses the survey is *waiting on* — enrolled
-        children for a CHILD survey, distinct guardians for a kindergarten-wide
-        one — because only the server can see enrolments and memberships.
-
-        Rendered only when there is a population to compare against. A survey
-        whose expected count is zero (a kindergarten with no active enrolments,
-        or an older API that does not send the field) would otherwise show
-        "0 бөглөөгүй" beside a real response count, which reads as complete
-        when it is really unknown.
-      */}
-      {data.expectedResponses > 0 ? (
-        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <SummaryTile label="Бөглөсөн" value={data.totalResponses} hint={respondentNoun} />
-          <SummaryTile label="Бөглөөгүй" value={data.missingResponses} hint={respondentNoun} />
-          <SummaryTile
-            label="Хамралт"
-            value={`${Math.round((data.totalResponses / data.expectedResponses) * 100)}%`}
-            hint={`${data.expectedResponses}-аас`}
-          />
-        </dl>
-      ) : null}
-
-      {/*
-        ★ Rendered only when there is more than one group to choose between.
-
-        A single-group kindergarten gets a chip row whose only effect is to
-        re-fetch the same numbers — the rule `GroupSwitcher` and `Pagination`
-        are both held to.
-      */}
-      {groups.length > 1 ? (
-        <FilterChipRow label="Бүлгээр шүүх">
-          <FilterChip active={!groupId} onClick={() => setGroupId("")}>
-            Бүх бүлэг
-          </FilterChip>
-          {groups.map((entry) => (
-            <FilterChip
-              key={entry.group.id ?? "none"}
-              active={groupId === entry.group.id}
-              onClick={() => setGroupId(entry.group.id ?? "")}
-            >
-              {entry.group.name} ({entry.responseCount})
-            </FilterChip>
-          ))}
-        </FilterChipRow>
-      ) : null}
-
-      {groups.length > 1 ? <GroupResponseChart groups={groups} /> : null}
-
-      <div className="flex flex-col gap-3">
-        {data.questions.map((q, index) => (
-          <Card
-            key={q.question.id}
-            id={`question-${q.question.id}`}
-            className="flex flex-col gap-3 px-4 py-4 scroll-mt-4"
-          >
-            {/*
-              ★ Numbered, because the client's design numbers them and because
-              a results sheet is read alongside the questionnaire it came from.
-
-              "Гурав дахь асуулт дээр эцэг эхчүүд..." is how a teacher refers to
-              one of these in a meeting, and a card that does not carry the
-              number makes them count down the page to find it.
-            */}
-            <div className="flex items-start gap-2.5">
-              <span
-                aria-hidden="true"
-                className="grid size-6 shrink-0 place-items-center rounded-pill bg-primary-soft text-caption font-semibold tabular-nums text-primary"
-              >
-                {index + 1}
-              </span>
-              <div className="min-w-0">
-                <p className="font-medium leading-snug text-ink">{q.question.prompt}</p>
-                <p className="text-caption text-muted">
-                  {SURVEY_QUESTION_TYPE_LABEL[q.question.type]} · {q.responseCount} хариулсан
-                </p>
-              </div>
-            </div>
-
-            {/*
-              ★ The chart follows the question's type, not its data shape.
-
-              Every one of these arrives as the same `Record<string, number>`,
-              and drawing them all as sorted bars was the screen treating a
-              five-point scale, a yes/no and a list of activities as one thing.
-              They are read differently: a scale is a distribution (order is the
-              information), a yes/no is a share of a whole, a choice list is a
-              ranking. `question.type` is the only thing that knows which.
-            */}
-            {q.counts && q.question.type === "RATING" ? (
-              <RatingResult counts={q.counts} total={q.responseCount} />
-            ) : q.counts && q.question.type === "YES_NO" ? (
-              <YesNoResult counts={q.counts} total={q.responseCount} />
-            ) : q.counts ? (
-              <AnswerBars counts={q.counts} total={q.responseCount} />
-            ) : null}
-
-            {/*
-              ★ The per-group split sits under the question it splits, not in a
-              section of its own.
-
-              "Тийм 12 / Үгүй 3" is only interesting beside "and eleven of the
-              Тийм were one group" — putting the two on different parts of the
-              page asks a reader to hold the first while scrolling to the
-              second.
-            */}
-            {q.counts && groups.length > 1 ? (
-              <QuestionByGroup questionId={q.question.id} groups={groups} />
-            ) : null}
-
-            {q.responses ? (
-              <ul className="flex flex-col gap-1.5">
-                {q.responses.map((text, i) => (
-                  <li key={i} className="rounded-control bg-canvas px-3 py-2 text-body text-ink">
-                    {text}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </Card>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-/**
- * How many families in each group answered at all.
- *
- * ★ The first thing to check, before any answer is read.
- *
- * A group that did not respond has no opinion in the results, and an average
- * that quietly excludes it reads as the kindergarten's view. This is the bar
- * that says which groups are actually in the figures below.
- */
-/**
- * Бүлэг тус бүрийн оролцоо — each group against its own roster.
- *
- * ★ A share of the group, not of the biggest group — changed 2026-09-10 at
- * the client's request ("5 / 6 (83%)").
- *
- * The bars were scaled to whichever group had replied most, which answers "who
- * replied most" — a question nobody asks. A group of six with five replies is
- * nearly done; a group of four with one has barely started; scaled against each
- * other they were drawn five-to-one and the second looked merely quieter. The
- * denominator is `expectedChildren`, which only the API can know.
- *
- * ★★ A group with no roster falls back to the old scaling rather than
- * disappearing. "Бүлэггүй" — staff answers, which belong to no group — has
- * nothing to be a share of, and a bar of zero beside a real count would read as
- * "nobody replied" rather than "this is not a group".
- */
-function GroupResponseChart({ groups }: { groups: SurveyGroupResult[] }) {
-  const most = Math.max(...groups.map((entry) => entry.responseCount), 0);
-
-  return (
-    <Card pad="roomy" className="flex flex-col gap-2.5">
-      <SectionHeader title="Бүлэг тус бүрийн оролцоо" as="h3" />
-      {groups.map((entry) => {
-        const expected = entry.expectedChildren;
-        const share = expected > 0 ? (entry.responseCount / expected) * 100 : null;
-
-        return (
-          <BarRow
-            key={entry.group.id ?? "none"}
-            inline
-            label={entry.group.name}
-            percent={share ?? (most === 0 ? 0 : (entry.responseCount / most) * 100)}
-            value={
-              <span className="tabular-nums">
-                {expected > 0 ? `${entry.responseCount} / ${expected}` : entry.responseCount}
-                {share === null ? null : (
-                  <span className="ms-1 text-muted">({Math.round(share)}%)</span>
-                )}
-              </span>
-            }
-            tone="sky"
-            accessibleLabel={
-              expected > 0
-                ? `${entry.group.name}: ${expected}-аас ${entry.responseCount} хариулсан`
-                : `${entry.group.name}: ${entry.responseCount} хариулт`
-            }
-          />
-        );
-      })}
-    </Card>
-  );
-}
-
-/**
- * A RATING question, read the way a rating is read — 2026-09-10's design.
- *
- * ★ The average first, then the distribution, then what it means.
- *
- * "3.7 / 5" is the number a teacher repeats to a parent; the five bars are how
- * they check whether it is 3.7 because everyone said 3.7 or because half said 5
- * and half said 2. The row of stars is the same figure a third time and earns
- * its place: it is the one form of it a reader takes in without reading.
- *
- * ★★ Fixed at 5 → 1, never sorted by size and never dropping an empty score.
- *
- * A distribution whose rows move is not a distribution — the shape is the
- * information, and "nobody gave this a 1" is one of the more useful things on
- * the card. `AnswerBars` sorts by count because a list of named options has no
- * inherent order; a scale does.
- */
-function RatingResult({ counts, total }: { counts: Record<string, number>; total: number }) {
-  const scores = [5, 4, 3, 2, 1];
-  const answered = scores.reduce((sum, score) => sum + (counts[String(score)] ?? 0), 0);
-  const average =
-    answered === 0
-      ? null
-      : scores.reduce((sum, score) => sum + score * (counts[String(score)] ?? 0), 0) / answered;
-
-  /*
-    ★ The insight line, and it is computed rather than written.
-
-    The client's mock reads "Ихэнх эцэг эх 3-5 оноо өгсөн байна", which is a
-    sentence about *this* data — so it has to be derived, or it becomes a
-    caption that keeps saying the same thing under a chart that changed. Stated
-    only when a clear majority actually sits at one end; a spread with no story
-    gets no sentence rather than a hedged one.
-  */
-  const high = (counts["4"] ?? 0) + (counts["5"] ?? 0);
-  const low = (counts["1"] ?? 0) + (counts["2"] ?? 0);
-  const insight =
-    answered === 0
-      ? null
-      : high / answered >= 0.6
-        ? "Ихэнх эцэг эх 4–5 оноо өгсөн байна."
-        : low / answered >= 0.6
-          ? "Ихэнх эцэг эх 1–2 оноо өгсөн байна."
-          : null;
-
-  return (
-    <div className="flex flex-col gap-3">
-      {average === null ? null : (
-        <div className="flex items-center gap-3 rounded-card bg-sunken px-3.5 py-3">
-          <span className="text-title font-semibold tabular-nums leading-none text-ink">
-            {average.toFixed(1)}
-            <span className="text-body font-normal text-muted"> / 5</span>
-          </span>
-          <Stars value={average} />
-          <span className="ms-auto text-caption tabular-nums text-muted">{answered} хариулт</span>
-        </div>
-      )}
-
-      <div className="flex flex-col gap-2">
-        {scores.map((score) => {
-          const count = counts[String(score)] ?? 0;
-          const percent = answered === 0 ? 0 : Math.round((count / answered) * 100);
-
-          return (
-            <BarRow
-              key={score}
-              inline
-              labelWidth="w-6"
-              label={String(score)}
-              percent={percent}
-              value={
-                <span className="tabular-nums">
-                  {count}
-                  <span className="ms-1 text-muted">({percent}%)</span>
-                </span>
-              }
-              tone="sky"
-              accessibleLabel={`${score} оноо: ${count} хариулт, ${percent} хувь`}
-            />
-          );
-        })}
-      </div>
-
-      {insight ? (
-        <p className="rounded-card bg-sun/25 px-3 py-2 text-caption text-ink">{insight}</p>
-      ) : null}
-      {total > answered ? (
-        <p className="text-caption text-muted">
-          {total - answered} хариулт энэ хуваарилалтад ороогүй (1–5-аас гадуур утга).
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * Five stars, filled to a fraction.
- *
- * ★ `aria-hidden`, because the number is right beside it.
- *
- * A screen reader hearing "3.7 / 5" and then "three and a half stars" is told
- * one fact twice in two units. The stars are for the eye that has not read the
- * number yet.
- */
-function Stars({ value }: { value: number }) {
-  return (
-    <span aria-hidden="true" className="flex gap-0.5">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <Star
-          key={i}
-          size={16}
-          className={cn(
-            value >= i - 0.5 ? "fill-sun text-sun" : "fill-track text-track",
-            "shrink-0",
-          )}
-        />
-      ))}
-    </span>
-  );
-}
-
-/**
- * A YES_NO question as a donut — 2026-09-10's design.
- *
- * ★ A donut here, bars everywhere else, and the difference is the question.
- *
- * Two mutually exclusive answers that sum to the whole is the one shape a
- * donut reads well: "is this mostly yes" is answered by the arc without
- * reading either number. A five-point scale in a donut would be five wedges
- * nobody can compare, which is why `RatingResult` next door is bars.
- *
- * The counts stay beside it as bars — the arc says "mostly yes" and the rows
- * say how many, and neither replaces the other.
- */
-function YesNoResult({ counts, total }: { counts: Record<string, number>; total: number }) {
-  /*
-    The stored value is a JSON boolean, so the tally's keys are the strings
-    "true" and "false". Read explicitly rather than by position: a question
-    nobody answered "no" would otherwise draw its "yes" in the no colour.
-  */
-  const yes = counts["true"] ?? 0;
-  const no = counts["false"] ?? 0;
-  const answered = yes + no;
-  const share = (n: number) => (answered === 0 ? 0 : Math.round((n / answered) * 100));
-
-  return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
-      <Donut
-        size={120}
-        segments={[
-          { label: "Тийм", value: yes, tone: "sky" },
-          { label: "Үгүй", value: no, tone: "cornflower" },
-        ]}
-        label={`${answered} хариултаас Тийм ${share(yes)} хувь, Үгүй ${share(no)} хувь`}
-        centre={
-          <span className="text-center">
-            <span className="block text-lead font-semibold tabular-nums leading-none text-ink">
-              {answered}
-            </span>
-            <span className="block text-caption text-muted">хариулт</span>
-          </span>
-        }
-      />
-
-      <div className="flex min-w-0 flex-1 flex-col gap-2">
-        {[
-          { label: "Тийм", count: yes, tone: "sky" as const },
-          { label: "Үгүй", count: no, tone: "cornflower" as const },
-        ].map((row) => (
-          <BarRow
-            key={row.label}
-            inline
-            labelWidth="w-12"
-            label={row.label}
-            percent={share(row.count)}
-            value={
-              <span className="tabular-nums">
-                {row.count}
-                <span className="ms-1 text-muted">({share(row.count)}%)</span>
-              </span>
-            }
-            tone={row.tone}
-            accessibleLabel={`${row.label}: ${row.count} хариулт`}
-          />
-        ))}
-        {total > answered ? (
-          <p className="text-caption text-muted">{total - answered} хариулт тодорхойгүй.</p>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-/**
- * One question's answers as bars — the share, not a row of pills.
- *
- * ★ Percentages of the answers to *this* question, not of the survey.
- *
- * A question somebody skipped has fewer answers than the survey has responses,
- * and dividing by the larger figure would make every bar on that card short for
- * a reason the card does not explain.
- */
-function AnswerBars({ counts, total }: { counts: Record<string, number>; total: number }) {
-  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-
-  return (
-    <div className="flex flex-col gap-2">
-      {entries.map(([key, count]) => (
-        <BarRow
-          key={key}
-          inline
-          label={key}
-          percent={total === 0 ? 0 : (count / total) * 100}
-          value={
-            <span className="tabular-nums">
-              {count}
-              <span className="ms-1 text-muted">
-                ({total === 0 ? 0 : Math.round((count / total) * 100)}%)
-              </span>
-            </span>
-          }
-          tone="sky"
-          accessibleLabel={`${key}: ${count} хариулт`}
-        />
-      ))}
-    </div>
-  );
-}
-
-/**
- * The same question, group beside group.
- *
- * ★ A table, and deliberately.
- *
- * Four groups × four answers is a cross-tab, and the question a reader brings
- * to it — "is one column different from the others" — is answered by scanning a
- * column, which is what a table is for. Bars would need sixteen of them and a
- * legend nobody reads.
- *
- * Percentages **within each group**, because the groups are different sizes: a
- * group of eight and a group of twenty compared by raw count says only that one
- * is bigger, which is not what anybody is asking.
- */
-function QuestionByGroup({
-  questionId,
-  groups,
-}: {
-  questionId: string;
-  groups: SurveyGroupResult[];
-}) {
-  const rows = groups
-    .map((entry) => ({
-      name: entry.group.name,
-      key: entry.group.id ?? "none",
-      result: entry.questions.find((q) => q.questionId === questionId),
-    }))
-    .filter((row) => (row.result?.responseCount ?? 0) > 0);
-
-  if (rows.length < 2) return null;
-
-  // The columns are every answer anybody gave, in one fixed order — so a group
-  // that never chose an option still has a cell for it rather than a shifted
-  // row.
-  const options = [...new Set(rows.flatMap((row) => Object.keys(row.result?.counts ?? {})))].sort();
-
-  if (options.length === 0) return null;
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[420px] border-collapse text-caption">
-        <caption className="sr-only">Бүлэг тус бүрийн хариулт</caption>
-        <thead>
-          <tr>
-            <th scope="col" className="border-b border-border py-1.5 pe-3 text-left text-muted">
-              Бүлэг
-            </th>
-            {options.map((option) => (
-              <th
-                key={option}
-                scope="col"
-                className="border-b border-border px-2 py-1.5 text-right text-muted"
-              >
-                {option}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.key}>
-              <th
-                scope="row"
-                className="border-b border-border-soft py-1.5 pe-3 text-left font-medium text-ink"
-              >
-                {row.name}
-              </th>
-              {options.map((option) => {
-                const count = row.result?.counts?.[option] ?? 0;
-                const answered = row.result?.responseCount ?? 0;
-                const share = answered === 0 ? 0 : Math.round((count / answered) * 100);
-
-                return (
-                  <td
-                    key={option}
-                    className="border-b border-border-soft px-2 py-1.5 text-right tabular-nums text-ink"
-                  >
-                    {count === 0 ? <span className="text-faint">—</span> : `${share}%`}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 /** Two questions traded, without mutating the array React is rendering. */
 function swap<T>(items: T[], a: number, b: number): T[] {
   if (b < 0 || b >= items.length) return items;
@@ -1574,29 +1066,4 @@ function parseColumns(text: string): { value: number; label: string }[] {
       return Number.isFinite(value) && label ? { value, label } : null;
     })
     .filter((column): column is { value: number; label: string } => column !== null);
-}
-
-/**
- * One headline number in the results summary.
- *
- * A `<dl>` cell rather than a `<div>`: "Бөглөсөн / 12" is a term and its
- * definition, and the pairing is what a screen reader needs to read them as
- * belonging together instead of as six loose numbers.
- */
-function SummaryTile({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: number | string;
-  hint?: string;
-}) {
-  return (
-    <div className="rounded-card border border-border bg-surface px-3 py-2.5">
-      <dt className="text-caption text-muted">{label}</dt>
-      <dd className="text-lead font-semibold tabular-nums text-ink">{value}</dd>
-      {hint ? <p className="text-caption text-faint">{hint}</p> : null}
-    </div>
-  );
 }

@@ -167,6 +167,31 @@ describe("the grid", () => {
     expect(res.body.totals.PRESENT).toBe(2);
   });
 
+  /*
+   * ★ 2026-09-12, at the client's request: "доор ангийн нийт ирсэн, нийт гэсэн
+   * тоон үзүүлэлтүүдийг хойно нь бодож гарга."
+   *
+   * Counted here rather than on the screen for the same reason `totals` is: the
+   * response pages over children, and a class total assembled from one page
+   * would change when the reader turned to the next.
+   */
+  it("★ totals each class over every matching child, not the page", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-02", "PRESENT");
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "SICK");
+
+    const res = await register(
+      admin,
+      a.kindergarten.id,
+      "from=2026-03-02&to=2026-03-06&pageSize=1",
+    );
+
+    const group = res.body.groups.find((row: { group: string }) => row.group === a.group.name);
+    expect(group).toBeDefined();
+    expect(group.children).toBe(1);
+    expect(group.counts).toEqual({ PRESENT: 1, SICK: 1 });
+    expect(group.recorded).toBe(2);
+  });
+
   it("ignores another kindergarten's children", async () => {
     await mark(b, b.enrollment.id, b.child.id, "2026-03-03", "PRESENT");
 
@@ -322,6 +347,46 @@ describe("the spreadsheet", () => {
     expect(row.getCell(5).value ?? "").toBe("");
   });
 
+  /*
+   * ★ 2026-09-12: "татаж авахаар нийт бодолтууд ерөөсөө орохгүй байна."
+   *
+   * The grid sheet was the grid and only the grid — every figure the screen
+   * computes under and beside it was missing from the one sheet that looks
+   * like what the reader was just looking at.
+   */
+  it("★ carries the screen's own totals onto the grid sheet", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-04", "SICK");
+
+    const res = await download(admin);
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(res.body as Buffer);
+    const sheet = book.getWorksheet("Өдөр тутмын ирц")!;
+
+    // Two title rows, the header, then the children. Columns: child, group,
+    // five days, then Ирсэн · Өвчтэй · Чөлөөтэй · Тасалсан · Нийт.
+    const header = sheet.getRow(3);
+    expect(String(header.getCell(8).value)).toBe("Ирсэн");
+    expect(String(header.getCell(12).value)).toBe("Нийт");
+
+    // The child's own row carries their counts across the range.
+    const child = sheet.getRow(4);
+    expect(child.getCell(8).value).toBe(1);
+    expect(child.getCell(9).value).toBe(1);
+    expect(child.getCell(12).value).toBe(2);
+
+    // Then a blank line and the per-day tally, ending in the range total.
+    const tally = sheet.getRow(6);
+    expect(String(tally.getCell(1).value)).toBe("Ирсэн");
+    // 2026-03-03 is the second day column, which is column 4.
+    expect(tally.getCell(4).value).toBe(1);
+    expect(tally.getCell(8).value).toBe(1);
+
+    const total = sheet.getRow(10);
+    expect(String(total.getCell(1).value)).toBe("Нийт");
+    expect(total.getCell(12).value).toBe(2);
+  });
+
   it("writes the summary counts as numbers an accountant can sum", async () => {
     // A right-aligned string that looks like a number does not add up.
     await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
@@ -335,6 +400,31 @@ describe("the spreadsheet", () => {
     const value = sheet.getRow(2).getCell(3).value;
     expect(typeof value).toBe("number");
     expect(value).toBe(2);
+  });
+
+  /*
+   * ★ "Татахад энэ мэдээлэл бүхлээрээ татагддаг байна, бодолтууд бүгд орно" —
+   * the class totals on screen come down with the file, on a sheet of their
+   * own, counted by the same function rather than summed again here.
+   */
+  it("★ carries the class totals into the file, on their own sheet", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-04", "SICK");
+
+    const res = await download(admin);
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(res.body as Buffer);
+    const sheet = book.getWorksheet("Ангийн дүн")!;
+
+    expect(sheet).toBeDefined();
+    expect(String(sheet.getRow(1).getCell(1).value)).toBe("Анги");
+    expect(String(sheet.getRow(2).getCell(1).value)).toBe(a.group.name);
+    // Анги, Хүүхэд, then the six statuses in order — PRESENT is the third.
+    expect(sheet.getRow(2).getCell(2).value).toBe(1);
+    expect(sheet.getRow(2).getCell(3).value).toBe(1);
+    // The last column is every recorded day: one present, one sick.
+    expect(sheet.getRow(2).getCell(9).value).toBe(2);
+    expect(String(sheet.getRow(3).getCell(1).value)).toBe("Нийт");
   });
 
   it("exports every row, not the page the screen stopped at", async () => {

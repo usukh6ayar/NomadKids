@@ -34,7 +34,7 @@ export function DashboardChatPreview() {
 
   return (
     <BoardCard
-      title="Сургуулийн чат"
+      title="Чат"
       footer={
         <Link
           href="/chat"

@@ -57,7 +57,17 @@ beforeEach(() => {
 });
 
 describe("growth age navigation and editing", () => {
-  it("renders a compact comparison link above four white illustrated age cards", () => {
+  /*
+    ★ REDESIGN 2026-09-12, to the client's own drawing: four *tinted* cards,
+    the drawn numeral, "N нас" under it, and a round arrow at the foot.
+
+    They were four identical white cards each labelled "Нас", so the drawing
+    was the only thing telling them apart and the word under it said nothing.
+    What this case holds is the part a refactor can quietly lose: the label is
+    the age, each card carries its own numeral, and the tint is a gradient of
+    that age's accent rather than white.
+  */
+  it("★ renders a comparison link above four tinted, numbered age cards", () => {
     renderWithProviders(<AgeFolderLandingPage />);
 
     const navigation = screen.getByRole("navigation", { name: "Насны хуудсууд" });
@@ -68,11 +78,21 @@ describe("growth age navigation and editing", () => {
       `/children/${CHILD_ID}/portfolio/growth/compare`,
     );
 
+    /* The wash a card is painted in, by the accent each age was drawn in. */
+    const WASH: Record<number, string> = { 2: "sky", 3: "mint", 4: "sun", 5: "pink" };
+
     for (const age of [2, 3, 4, 5] as const) {
       const link = within(navigation).getByRole("link", { name: `${age} нас` });
-      expect(link).toHaveClass("bg-white");
+      expect(link).not.toHaveClass("bg-white");
       expect(link.getAttribute("href")).toBe(`/children/${CHILD_ID}/portfolio/growth/age/${age}`);
       expect(link.querySelector("img")?.getAttribute("src")).toContain(`icon-age-${age}-3d.png`);
+
+      // The label is the age itself, not the word "Нас" on all four.
+      expect(within(link).getByText(`${age} нас`)).toBeInTheDocument();
+
+      // The tint follows the numeral's own colour — a card whose wash
+      // disagreed with the number sitting on it would read as a mistake.
+      expect(link.innerHTML).toContain(`from-${WASH[age]}/55`);
     }
 
     expect(navigation.querySelector("ul")).toHaveClass("grid-cols-2");

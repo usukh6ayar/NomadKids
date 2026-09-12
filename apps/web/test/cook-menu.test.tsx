@@ -124,9 +124,11 @@ function stubWeek(
       method: "PUT",
       body: {
         id: "44444444-4444-4444-8444-444444444444",
-        date: "2026-01-05",
+        date: todayIso(),
         dishes: [],
         totalCalories: null,
+        status: "DRAFT",
+        warnings: [],
       },
     },
   ]);
@@ -147,6 +149,37 @@ function stubWeek(
  * `MenuDishEditor` (`components/menu/menu-dish-editor.tsx`).
  */
 describe("the cook's weekly menu", () => {
+  it("adds a compact meal from Today and gives lunch two dish rows", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubWeek();
+    renderWithProviders(<MenuPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Хоол нэмэх" }));
+    const dialog = await screen.findByRole("dialog", { name: "Хоол нэмэх" });
+    await selectOption(user, "Хугацаа", "Өдрийн хоол");
+
+    expect(within(dialog).getByLabelText("1-р хоол")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("2-р хоол")).toBeInTheDocument();
+    expect(within(dialog).getAllByLabelText("Илчлэг")).toHaveLength(2);
+    expect(within(dialog).getByLabelText("Цаг")).toBeInTheDocument();
+
+    await user.type(within(dialog).getByLabelText("1-р хоол"), "Шөл");
+    await user.type(within(dialog).getByLabelText("2-р хоол"), "Будаа");
+    await user.click(within(dialog).getByRole("button", { name: "Нэмэх" }));
+
+    await waitFor(() => expect(calls.some((call) => call.method === "PUT")).toBe(true));
+    const saved = calls.find((call) => call.method === "PUT")?.body as {
+      dishes: { name: string; kind: string; time: string }[];
+    };
+    expect(saved.dishes.slice(-2)).toEqual([
+      expect.objectContaining({ name: "Шөл", kind: "LUNCH", time: "12:30" }),
+      expect.objectContaining({ name: "Будаа", kind: "LUNCH", time: "12:30" }),
+    ]);
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Хоол нэмэх" })).not.toBeInTheDocument(),
+    );
+  });
+
   it("saves every field a dish carries, not just its name", async () => {
     const user = userEvent.setup();
     const { calls } = stubApi([

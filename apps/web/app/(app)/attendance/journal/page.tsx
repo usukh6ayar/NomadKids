@@ -7,6 +7,7 @@ import {
   attendanceJournalSchema,
   groupListItemSchema,
   paginated,
+  type AttendanceJournal,
   type AttendanceJournalRow,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
@@ -52,10 +53,28 @@ export default function AttendanceJournalPage() {
   );
 }
 
-/** The six the column can hold — `OTHER` included, since 2026-09-02. */
 const groupsSchema = paginated(groupListItemSchema);
 
-const STATUS_ORDER = ["PRESENT", "HALF_DAY", "EXCUSED", "SICK", "ABSENT", "OTHER"] as const;
+/** The four statuses visible to management. Legacy HALF_DAY rows are displayed
+ * as PRESENT; OTHER stays readable by the API but has no UI category. */
+const VISIBLE_STATUS_ORDER = ["PRESENT", "EXCUSED", "SICK", "ABSENT"] as const;
+
+/**
+ * The four a director may filter by — Ирсэн · Чөлөөтэй · Өвчтэй · Тасалсан.
+ *
+ * ★ 2026-09-12, at the client's request: "Ирсэн · Хагас өдөр — хас · Чөлөөтэй ·
+ * Өвчтэй · Тасалсан · Бусад — хас."
+ *
+ * The same narrowing the teacher's day sheet already has
+ * (`TEACHER_ATTENDANCE_STATUSES`, 2026-09-10: "4 сонголт л байна"), arriving
+ * here for the same reason: no new day can be recorded as `HALF_DAY` or
+ * `OTHER`, so a chip for either filters a set only history can fill.
+ *
+ * Historical HALF_DAY rows are folded into Ирсэн in the summaries and grid.
+ * OTHER stays in the response for compatibility but is not exposed as a
+ * management category.
+ */
+const FILTERABLE_STATUSES = ["PRESENT", "EXCUSED", "SICK", "ABSENT"] as const;
 
 /**
  * One letter per status, for a grid where a word would not fit.
@@ -66,11 +85,9 @@ const STATUS_ORDER = ["PRESENT", "HALF_DAY", "EXCUSED", "SICK", "ABSENT", "OTHER
  */
 const STATUS_SHORT: Record<string, string> = {
   PRESENT: "И",
-  HALF_DAY: "Х",
   EXCUSED: "Ч",
   SICK: "Ө",
   ABSENT: "Т",
-  OTHER: "Б",
 };
 
 /**
@@ -94,11 +111,9 @@ const STATUS_SHORT: Record<string, string> = {
  */
 const STATUS_TONE: Record<string, string> = {
   PRESENT: "bg-mint text-mint-ink",
-  HALF_DAY: "bg-sun text-sun-ink",
   EXCUSED: "bg-sky text-sky-ink",
   SICK: "bg-sun text-sun-ink",
   ABSENT: "bg-peach text-peach-ink",
-  OTHER: "bg-canvas text-muted",
 };
 
 function AttendanceJournal() {
@@ -286,7 +301,7 @@ function AttendanceJournal() {
         </div>
 
         <FilterChipRow label="Ирцийн төлөв" scroll>
-          {STATUS_ORDER.map((status) => (
+          {FILTERABLE_STATUSES.map((status) => (
             <FilterChip
               key={status}
               active={statuses.includes(status)}
@@ -332,6 +347,20 @@ function AttendanceJournal() {
           <Grid rows={data.items} days={data.days} selection={selection} />
 
           {/*
+            ★ Class totals under the register — 2026-09-12, at the client's
+            request ("доор ангийн нийт ирсэн, нийт гэсэн тоон үзүүлэлтүүдийг
+            хойно нь бодож гарга").
+
+            The figures come from the API, not from `data.items`: this screen
+            pages over children, and a class total assembled from the twenty-five
+            rows on screen would change when somebody turned to page two. They
+            are counted across every child the filter matched, which is the same
+            set the "Хугацааны дүн" card above reports, and the Excel export
+            carries them on a sheet of their own.
+          */}
+          <GroupTotals groups={data.groups} totals={data.totals} />
+
+          {/*
             ★ The register's own export, narrowed to the ticked rows.
 
             `?childId=` is a filter like `groupId` — it is ANDed into the same
@@ -362,20 +391,156 @@ function AttendanceJournal() {
   );
 }
 
-/** The period's totals, across every matching child rather than the page. */
+/**
+ * The period's totals, across every matching child rather than the page.
+ *
+ * ★ A box each — 2026-09-12, at the client's request: "энийг тусдаа жижиг
+ * хайрцгуудад хий."
+ *
+ * They were six columns wrapping inside one roomy card, which on a phone put
+ * "Өвчтэй" under "37" and left a reader pairing labels with figures by
+ * eye. One card per figure is the same information with the pairing settled by
+ * the border, and it is the shape every other count in this product already
+ * has.
+ *
+ * Historical half-days are added to Ирсэн. The API may still return older
+ * categories, but this management summary deliberately presents only the four
+ * current statuses.
+ */
 function Totals({ totals }: { totals: Record<string, number> }) {
-  const present = STATUS_ORDER.filter((status) => (totals[status] ?? 0) > 0);
-  if (present.length === 0) return null;
+  const visible = VISIBLE_STATUS_ORDER.map((status) => ({
+    status,
+    count:
+      status === "PRESENT" ? (totals.PRESENT ?? 0) + (totals.HALF_DAY ?? 0) : (totals[status] ?? 0),
+  })).filter((item) => item.count > 0);
+  if (visible.length === 0) return null;
 
   return (
-    <Card pad="roomy" className="flex flex-wrap gap-x-6 gap-y-2">
-      {present.map((status) => (
-        <div key={status} className="flex flex-col">
-          <span className="text-caption text-muted">{ATTENDANCE_STATUS_LABEL[status]}</span>
-          <span className="text-title text-ink">{totals[status]}</span>
-        </div>
+    <div
+      /*
+        Named, so the six boxes are one addressable region. "Ирсэн" also labels
+        a filter chip a few rows up, and without a landmark a reader — or a
+        test — has no way to say which of the two they mean.
+      */
+      role="group"
+      aria-label="Хугацааны дүн"
+      className="grid grid-cols-2 gap-2 sm:grid-cols-4"
+    >
+      {visible.map(({ status, count }) => (
+        <Card key={status} pad="compact" className="flex flex-col gap-1">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span
+              aria-hidden="true"
+              /*
+                `STATUS_TONE`, this screen's own map — the same colour the grid
+                cell and the legend below already give this status. Importing
+                `ATTENDANCE_STATUS_BG` instead would put two disagreeing
+                palettes on one screen: it paints SICK peach and this one
+                paints it sun.
+              */
+              className={cn("size-2.5 shrink-0 rounded-pill", STATUS_TONE[status] ?? "bg-track")}
+            />
+            <span className="min-w-0 truncate text-caption text-muted">
+              {ATTENDANCE_STATUS_LABEL[status]}
+            </span>
+          </span>
+          <span className="text-title font-bold tabular-nums text-ink">{count}</span>
+        </Card>
       ))}
-    </Card>
+    </div>
+  );
+}
+
+/**
+ * Ангийн дүн — a row per class, and the kindergarten's own row under it.
+ *
+ * ★ The same four columns the grid ends in, and deliberately: a director
+ * reading "Ирсэн" across a child's row and "Ирсэн" across their class's row is
+ * reading one definition, `TOTAL_COLUMNS`, rendered twice.
+ *
+ * "Нийт" is every recorded day, which is what the four are a breakdown of —
+ * `OTHER` included, so a class with an unexplained status still adds up. The
+ * four columns need not sum to it, for the reason `TOTAL_COLUMNS` gives.
+ */
+function GroupTotals({
+  groups,
+  totals,
+}: {
+  groups: AttendanceJournal["groups"];
+  totals: Record<string, number>;
+}) {
+  if (groups.length === 0) return null;
+
+  const recorded = groups.reduce((sum, group) => sum + group.recorded, 0);
+  const children = groups.reduce((sum, group) => sum + group.children, 0);
+  const sumOf = (counts: Record<string, number>, of: readonly string[]) =>
+    of.reduce((sum, status) => sum + (counts[status] ?? 0), 0);
+
+  return (
+    <>
+      <SectionHeader
+        title="Ангийн дүн"
+        lede="Шүүлтэд тохирсон бүх хүүхдээр бодсон — хуудсаар өөрчлөгдөхгүй"
+      />
+
+      <Card pad="none" className="overflow-x-auto">
+        <table className="w-full border-collapse text-caption">
+          <caption className="sr-only">Ангийн дүн</caption>
+          <thead>
+            <tr className="border-b-2 border-border bg-sunken text-ink">
+              <th scope="col" className="px-3 py-2 text-left font-semibold">
+                Анги
+              </th>
+              <th scope="col" className="px-2 py-2 text-right font-semibold">
+                Хүүхэд
+              </th>
+              {TOTAL_COLUMNS.map((column) => (
+                <th key={column.key} scope="col" className="px-2 py-2 text-right font-semibold">
+                  {column.key}
+                </th>
+              ))}
+              <th scope="col" className="px-3 py-2 text-right font-semibold">
+                Нийт
+              </th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {groups.map((group) => (
+              <tr key={group.groupId} className="border-b border-line last:border-0">
+                <th scope="row" className="px-3 py-2 text-left font-normal text-ink">
+                  {group.group}
+                </th>
+                <td className="px-2 py-2 text-right tabular-nums text-muted">{group.children}</td>
+                {TOTAL_COLUMNS.map((column) => (
+                  <td key={column.key} className="px-2 py-2 text-right tabular-nums text-ink">
+                    {sumOf(group.counts, column.of)}
+                  </td>
+                ))}
+                <td className="px-3 py-2 text-right font-semibold tabular-nums text-ink">
+                  {group.recorded}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+
+          <tfoot>
+            <tr className="border-t-2 border-border bg-sunken font-semibold text-ink">
+              <th scope="row" className="px-3 py-2 text-left">
+                Нийт
+              </th>
+              <td className="px-2 py-2 text-right tabular-nums">{children}</td>
+              {TOTAL_COLUMNS.map((column) => (
+                <td key={column.key} className="px-2 py-2 text-right tabular-nums">
+                  {sumOf(totals, column.of)}
+                </td>
+              ))}
+              <td className="px-3 py-2 text-right tabular-nums">{recorded}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </Card>
+    </>
   );
 }
 
@@ -400,6 +565,18 @@ function Totals({ totals }: { totals: Record<string, number> }) {
  * folding an unexplained status into Тасалсан is a policy call that moves a
  * funding figure, and it is not this table's to make. The four therefore need
  * not sum to the days in the range.
+ *
+ * ★★ A fifth Бусад column was added and reverted on 2026-09-13.
+ *
+ * The client asked for the accountant's class figures to read complete
+ * ("бүлгийн сарын доод тооцоолол бүгд бүрэн харагд") and the columns not
+ * summing to Нийт looked like the gap. It is not this one: what blocked that
+ * screen was `GET /groups` refusing an accountant, so no group could be
+ * selected at all (`TenantsService.listGroups`). Meanwhile `VISIBLE_STATUS_ORDER`
+ * above deliberately keeps Хагас өдөр and Бусад off this screen, with tests
+ * holding it — so a Бусад column here would contradict a decision, not fill a
+ * hole. The export's "Дүн" and "Ангийн дүн" sheets do carry a Бусад column,
+ * which is where a reconciliation to Нийт is available.
  */
 const TOTAL_COLUMNS = [
   { key: "Ирсэн", of: ["PRESENT", "HALF_DAY"] },
@@ -455,6 +632,16 @@ function isWeekend(day: string): boolean {
  * and had nothing but a matching background to say so; it has a right border
  * and a shadow now, which is what makes a frozen column look frozen.
  *
+ * ★★★ It is drawn to fit the screen — 2026-09-12, at the client's instruction
+ * ("хойшоо скролдож явдаг биш дэлгэцэд бүхлээрээ харагддаг бай").
+ *
+ * A month is 31 columns, so the only way a register of this shape fits without
+ * scrolling sideways is for a day to be narrow: a 20px box, no horizontal
+ * padding on a day cell, and the four totals set in the compact size. That is
+ * about 940px for a full month, which a laptop holds. `overflow-x-auto` stays
+ * on the wrapper — a phone cannot hold 31 columns at any size that can be read,
+ * and a grid clipped is worse than a grid scrolled.
+ *
  * ★★ The letters are explained on the page rather than in a tooltip.
  *
  * И, Х, Ч, Ө, Т, Б were readable only by hovering each square. A legend under
@@ -479,7 +666,7 @@ function Grid({
               <tr className="border-b-2 border-border bg-sunken">
                 <th
                   scope="col"
-                  className="sticky left-0 z-20 border-r border-border bg-sunken px-3 py-2 text-left font-semibold text-ink shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]"
+                  className="sticky left-0 z-20 border-r border-border bg-sunken px-2 py-1.5 text-left font-semibold text-ink shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]"
                 >
                   {/*
                     The select-all sits inside the sticky name header rather
@@ -507,14 +694,14 @@ function Grid({
                        rather than "Лх 3". */
                     aria-label={day}
                     className={cn(
-                      "px-1 py-1.5 text-center font-medium",
+                      "px-0 py-1 text-center font-medium",
                       isWeekend(day) ? "bg-canvas text-faint" : "text-muted",
                     )}
                   >
-                    <span className="block text-caption font-normal leading-tight">
+                    <span className="block text-compact font-normal leading-tight">
                       {WEEKDAY_SHORT[weekdayOf(day)]}
                     </span>
-                    <span className="block text-caption font-semibold tabular-nums leading-tight text-ink">
+                    <span className="block text-compact font-semibold tabular-nums leading-tight text-ink">
                       {Number(day.slice(8, 10))}
                     </span>
                   </th>
@@ -525,7 +712,7 @@ function Grid({
                     key={column.key}
                     scope="col"
                     className={cn(
-                      "whitespace-nowrap px-3 py-2 text-right font-semibold text-ink",
+                      "whitespace-nowrap px-1.5 py-1.5 text-right text-compact font-semibold text-ink",
                       // A rule where the days end and the totals begin: without
                       // it the last day and the first total read as neighbours.
                       index === 0 && "border-l border-border",
@@ -542,7 +729,7 @@ function Grid({
                 <tr key={row.childId} className="border-b border-line last:border-0">
                   <th
                     scope="row"
-                    className="sticky left-0 z-10 max-w-[14rem] border-r border-border bg-surface px-3 py-2 text-left font-normal text-ink shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]"
+                    className="sticky left-0 z-10 max-w-[11rem] border-r border-border bg-surface px-2 py-1 text-left font-normal text-ink shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]"
                   >
                     <span className="flex items-center gap-2">
                       <SelectBox
@@ -552,21 +739,29 @@ function Grid({
                       />
                       <span className="min-w-0 truncate">
                         {row.child.lastName} {row.child.firstName}
-                        <span className="block text-caption text-muted">{row.group.name}</span>
+                        <span className="block text-compact text-muted">{row.group.name}</span>
                       </span>
                     </span>
                   </th>
 
                   {row.days.map((cell, index) => {
                     const day = days[index]!;
-                    const label = cell
-                      ? `${day} — ${ATTENDANCE_STATUS_LABEL[cell.status] ?? cell.status}`
-                      : `${day} — бүртгэлгүй`;
+                    const visibleStatus =
+                      cell?.status === "HALF_DAY"
+                        ? "PRESENT"
+                        : cell?.status === "OTHER"
+                          ? null
+                          : cell?.status;
+                    const label = visibleStatus
+                      ? `${day} — ${ATTENDANCE_STATUS_LABEL[visibleStatus] ?? visibleStatus}`
+                      : cell
+                        ? `${day} — бүртгэлтэй`
+                        : `${day} — бүртгэлгүй`;
 
                     return (
                       <td
                         key={day}
-                        className={cn("px-1 py-1.5 text-center", isWeekend(day) && "bg-canvas")}
+                        className={cn("px-0 py-1 text-center", isWeekend(day) && "bg-canvas")}
                       >
                         {/*
                           ★ One 24px box per cell, filled or hollow.
@@ -587,13 +782,15 @@ function Grid({
                           title={label}
                           aria-label={label}
                           className={cn(
-                            "inline-flex h-6 w-6 items-center justify-center rounded-control text-caption font-semibold",
-                            cell
-                              ? (STATUS_TONE[cell.status] ?? "bg-canvas text-muted")
-                              : "border border-dashed border-border text-transparent",
+                            "inline-flex h-5 w-5 items-center justify-center rounded-control text-compact font-semibold",
+                            visibleStatus
+                              ? (STATUS_TONE[visibleStatus] ?? "bg-canvas text-muted")
+                              : cell
+                                ? "bg-canvas text-muted"
+                                : "border border-dashed border-border text-transparent",
                           )}
                         >
-                          {cell ? (STATUS_SHORT[cell.status] ?? "?") : "·"}
+                          {visibleStatus ? (STATUS_SHORT[visibleStatus] ?? "?") : "·"}
                         </span>
                       </td>
                     );
@@ -603,7 +800,7 @@ function Grid({
                     <td
                       key={column.key}
                       className={cn(
-                        "px-3 py-2 text-right tabular-nums text-ink",
+                        "px-1.5 py-1 text-right text-compact tabular-nums text-ink",
                         index === 0 && "border-l border-border",
                       )}
                     >
@@ -636,7 +833,7 @@ function Grid({
 function StatusLegend() {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-1 text-caption text-muted">
-      {Object.entries(STATUS_SHORT).map(([status, short]) => (
+      {VISIBLE_STATUS_ORDER.map((status) => (
         <span key={status} className="flex items-center gap-1.5">
           <span
             aria-hidden="true"
@@ -645,7 +842,7 @@ function StatusLegend() {
               STATUS_TONE[status] ?? "bg-canvas text-muted",
             )}
           >
-            {short}
+            {STATUS_SHORT[status]}
           </span>
           {ATTENDANCE_STATUS_LABEL[status] ?? status}
         </span>

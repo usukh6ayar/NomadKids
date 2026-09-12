@@ -249,6 +249,35 @@ function NewObservationForm() {
    * array because the review screen tags several after the fact.
    */
   const [domainId, setDomainId] = useState(draft?.domainId ?? "");
+
+  /*
+    ★ Бүтээл files itself under Зураг, урлал — 2026-09-12, at the client's
+    request: "бүтээлд дүн шинжилгээ хийх хэсгийг сонгон шинээр бичихэд
+    сургалтын чиглэл автоматаар зураг урлал сонгогдоно, учир нь бүтээлд дан
+    зураг бүтээлүүд ордог."
+
+    An artwork note is about a drawing or a craft by definition, so the strand
+    was a required answer this screen already had — and it is exactly the answer
+    a teacher skips, which is what left "Сургалтын чиглэлийн хамралт" counting
+    almost nothing (the note on the field below tells that story).
+
+    Only while the field is empty, so a restored draft and a teacher's own
+    choice both stand: `creative` is offered, not enforced. The type cannot
+    change under it either — the type select was removed on 2026-09-11 and
+    `?typeId=` is fixed for the life of the form — so "empty" is the whole of
+    the guard this needs.
+
+    Matched on `code`, not on the name: a strand is a row an administrator may
+    rename (§2.3), and the code is the part that does not move. A kindergarten
+    with no `creative` strand simply gets the field it had, unfilled.
+  */
+  useEffect(() => {
+    if (domainId) return;
+    const code = (types.data ?? []).find((row) => row.id === typeId)?.code;
+    if (code !== "artwork") return;
+    const creative = (config.data?.domains ?? []).find((domain) => domain.code === "creative");
+    if (creative) setDomainId(creative.id);
+  }, [domainId, typeId, types.data, config.data]);
   /** Which СҮД indicator this note evidences, and the level judged. */
   const [indicatorId, setIndicatorId] = useState(draft?.indicatorId ?? "");
   const [indicatorLevel, setIndicatorLevel] = useState(draft?.indicatorLevel ?? "");

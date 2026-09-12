@@ -48,12 +48,28 @@ export class AttendanceRepository {
       _count: { _all: true },
     });
 
+    /*
+      ★ Every status, seeded at zero — all six.
+
+      `OTHER` was missing here until 2026-09-12, and the failure was total
+      rather than partial: `attendanceSummarySchema` is
+      `z.record(attendanceStatusSchema, …)`, and an enum-keyed record is
+      exhaustive in Zod — one absent key rejects the whole object. A family
+      opening "Ирцийн нэгтгэл" got "Алдаа гарлаа" and no figures at all, for a
+      status their child had never been marked with.
+
+      CLAUDE.md §7 records the same omission twice before, in
+      `attendanceStatusSchema` and `recordAttendanceSchema`: "A status list
+      written out by hand in four places is how that happens." This is the
+      fourth place.
+    */
     const counts: Record<string, number> = {
       PRESENT: 0,
       HALF_DAY: 0,
       EXCUSED: 0,
       SICK: 0,
       ABSENT: 0,
+      OTHER: 0,
     };
     for (const row of rows) counts[row.status] = row._count._all;
     return counts as Record<AttendanceStatus, number>;
@@ -633,6 +649,13 @@ export interface CreateAttendanceRequestData {
   dateFrom: Date;
   dateTo: Date;
   requestedStatus: AttendanceStatus;
+  /**
+   * Whether a teacher has to decide on this.
+   *
+   * ★ Defaults to PENDING in the schema; an arrival or pickup report passes
+   * APPROVED — see `requestAttendance` for why those are told, not asked.
+   */
+  reviewStatus?: AttendanceRequestStatus;
   reason: string | null;
   arrivedWith?: AttendanceCompanion | null;
   arrivedWithName?: string | null;

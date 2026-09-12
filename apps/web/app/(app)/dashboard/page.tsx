@@ -64,7 +64,7 @@ import { ArrowRight, CalendarDays, UsersRound } from "lucide-react";
  *   Судалгаа              GET /kindergartens/:id/surveys → /surveys/:id/results
  *   Бүлгийн хүүхдүүд      GET /children/summary
  *   Явцын үнэлгээ         observationsByType, from this endpoint
- *   Төрсөн өдөр           birthdaysThisMonth
+ *   Төрсөн өдөрийн булан   birthdaysThisMonth
  *   Сүүлийн нийтлэл       boardNotice + GET /notifications/:id for the photo
  *
  * ★★★★ The 2026-08-28 desktop pass restructured the first three bands to the

@@ -7,6 +7,15 @@ export interface DonutSegment {
   value: number;
   /** Omit to take the next colour from `SERIES_TONES`. */
   tone?: Tone;
+  /**
+   * A CSS colour, used verbatim and in preference to `tone`.
+   *
+   * ★ For the one segment a tone cannot express: "not recorded". The accent
+   * palette is seven meanings and grey is deliberately not among them —
+   * `--color-track` is the absence of a reading, which is exactly what an
+   * unmarked child is. Anything that has a meaning should still take a `tone`.
+   */
+  color?: string;
 }
 
 /**
@@ -83,7 +92,9 @@ export function Donut({
                 key={`${segment.label}-${index}`}
                 r={RADIUS}
                 fill="none"
-                stroke={segment.tone ? TONE_VAR[segment.tone] : seriesColor(index)}
+                stroke={
+                  segment.color ?? (segment.tone ? TONE_VAR[segment.tone] : seriesColor(index))
+                }
                 strokeWidth={stroke}
                 strokeDasharray={`${dash} ${CIRCUMFERENCE - dash}`}
                 strokeDashoffset={offset}

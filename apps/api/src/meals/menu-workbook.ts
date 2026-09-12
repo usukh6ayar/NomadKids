@@ -15,13 +15,21 @@ import type { MenuDishLike } from "./dish-json";
 
 const MEAL_KIND_LABEL: Record<string, string> = {
   BREAKFAST: "Өглөөний цай",
+  SNACK: "Зууш",
   MID_MORNING_SNACK: "Жүүс",
   LUNCH: "Өдрийн хоол",
   AFTERNOON_SNACK: "Их үдийн цай",
   EXTRA: "Оройн хоол",
 };
 
-const MEAL_KIND_ORDER = ["BREAKFAST", "MID_MORNING_SNACK", "LUNCH", "AFTERNOON_SNACK", "EXTRA"];
+const MEAL_KIND_ORDER = [
+  "BREAKFAST",
+  "SNACK",
+  "MID_MORNING_SNACK",
+  "LUNCH",
+  "AFTERNOON_SNACK",
+  "EXTRA",
+];
 
 const WEEKDAY_LABEL = ["Ням", "Даваа", "Мягмар", "Лхагва", "Пүрэв", "Баасан", "Бямба"];
 
