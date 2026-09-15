@@ -47,11 +47,11 @@ same document. §7 is that document.
 
 The instruction was checked against all three:
 
-| Sense                                                            | Verdict                     |
-| ---------------------------------------------------------------- | --------------------------- |
-| (a) demo/fixture rows standing in for real answers                | Already deleted 2026-09-14  |
-| (b) fields ESIS sent that a hand-written schema silently dropped  | **A real defect. Fix it.**  |
-| (c) fields refused in code, with the refusal shown in the catalog | Keep — but narrow it (§4)   |
+| Sense                                                             | Verdict                    |
+| ----------------------------------------------------------------- | -------------------------- |
+| (a) demo/fixture rows standing in for real answers                | Already deleted 2026-09-14 |
+| (b) fields ESIS sent that a hand-written schema silently dropped  | **A real defect. Fix it.** |
+| (c) fields refused in code, with the refusal shown in the catalog | Keep — but narrow it (§4)  |
 
 (b) is the one that matters. `ESIS_API_READINESS.md` §1.1 records nine of
 thirty-six readers getting this wrong: the reader parsed, the unnamed keys fell
@@ -83,9 +83,14 @@ method and path:
 
 ### 2.2 The 17 not wired
 
-| Count | Services                                                                       | Disposition                                                                                   |
-| ----- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| 14    | 150, 152, 162, 119, 165, 167, 170, …784, 73, 129, 131, 85, 72, 186              | **Wire.** The seven writes go behind prepare → approve → send (§6)                            |
+| Count | Services                                                           | Disposition                                                                                    |
+| ----- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| 14    | 150, 152, 162, 119, 165, 167, 170, …784, 73, 129, 131, 85, 72, 186 | **Wire.** The seven writes go behind prepare → approve → send (§6)                             |
+| 2     | …793 (`attendance/save`), 105 (`attendance/save/v2`)               | **SUPERSEDED** by 171 (v3), which is wired and live. Wiring all three invites divergent writes |
+| 1     | …776 (`Суралцагчийн шилжилт хөдөлгөөний мэдээлэл`)                 | **URL column is empty in the ministry's own xlsx.** Matrix says "path requested from ministry" |
+
+`SUPERSEDED` and `BLOCKED_ON_MINISTRY` are matrix states, not omissions. Both
+are better evidence than a silent gap.
 
 Two of the fourteen do not fit the client's path assumptions and need naming
 before they are wired, not after:
@@ -97,11 +102,6 @@ before they are wired, not after:
 - **186** is `/svc/api/hub/v2/MOF/ORGANIZATION/BUILDING/{registerNumber}` —
   brace placeholders and upper-case segments, the only row in the file shaped
   that way, and tagged `OPEN` rather than `EBS`.
-| 2     | …793 (`attendance/save`), 105 (`attendance/save/v2`)                            | **SUPERSEDED** by 171 (v3), which is wired and live. Wiring all three invites divergent writes |
-| 1     | …776 (`Суралцагчийн шилжилт хөдөлгөөний мэдээлэл`)                              | **URL column is empty in the ministry's own xlsx.** Matrix says "path requested from ministry" |
-
-`SUPERSEDED` and `BLOCKED_ON_MINISTRY` are matrix states, not omissions. Both
-are better evidence than a silent gap.
 
 ### 2.3 Two live probes that changed the design
 
@@ -115,7 +115,7 @@ against a 13-row roster and **never call the national-scope service at all**.
 `esis.endpoints.ts:701` documents why that matters. API 49
 (`/svc/api/public/worker/info/:primaryNidNumber`) takes no `institutionId`,
 sits under `/public/`, and on 2026-09-14 resolved register numbers belonging to
-staff of *other* institutions. A registration route built on it would be an
+staff of _other_ institutions. A registration route built on it would be an
 unauthenticated national register-number lookup. It is not used in this design.
 
 Both list services also return `googleEmailPass`, `microsoftEmailPass` and
@@ -136,14 +136,14 @@ Working tree at time of writing: 64 files changed, 6550 insertions, 3234
 deletions, plus 12 untracked files. Verified on 2026-09-15, before any of this
 design was implemented:
 
-| Check                                       | Result                                     |
-| ------------------------------------------- | ------------------------------------------ |
-| Conflict markers, `TODO`/`FIXME`, `@ts-ignore` | none                                    |
-| `pnpm typecheck` (contracts, api, web)      | clean                                      |
-| `pnpm lint`                                 | clean                                      |
-| `prisma migrate status`                     | 79 migrations, schema up to date           |
-| `pnpm --filter api test`                    | **2213 passed**, 1 skipped, 0 failed (811s) |
-| `pnpm --filter web test`                    | **1004 passed**, 0 failed (42s)            |
+| Check                                          | Result                                      |
+| ---------------------------------------------- | ------------------------------------------- |
+| Conflict markers, `TODO`/`FIXME`, `@ts-ignore` | none                                        |
+| `pnpm typecheck` (contracts, api, web)         | clean                                       |
+| `pnpm lint`                                    | clean                                       |
+| `prisma migrate status`                        | 79 migrations, schema up to date            |
+| `pnpm --filter api test`                       | **2213 passed**, 1 skipped, 0 failed (811s) |
+| `pnpm --filter web test`                       | **1004 passed**, 0 failed (42s)             |
 
 The suites were run **serially**. Run concurrently they starve Postgres and
 produce `beforeEach` hook timeouts that impersonate the CLAUDE.md §4.4 flake —
@@ -162,14 +162,14 @@ So each of the 52 readers was called once against institution 42778 through the
 real service code path — `EsisService.read()`, not a raw request — one call per
 service, per-child services against one child (`scripts/esis-probe.ts`):
 
-| Outcome                | Count |
-| ---------------------- | ----- |
-| Parsed rows            | 32    |
-| Empty (`203`)          | 16    |
-| **Parse failure**      | **2** |
+| Outcome           | Count |
+| ----------------- | ----- |
+| Parsed rows       | 32    |
+| Empty (`203`)     | 16    |
+| **Parse failure** | **2** |
 
 Three further failures in the first pass were the probe's own fault — a
-*student's* `personId` passed to `teacherAcademicOrg`, `teacherCheck` and
+_student's_ `personId` passed to `teacherAcademicOrg`, `teacherCheck` and
 `teacherProfile`. With a teacher's id all three return rows. They are recorded
 here because the same mistake in product code would look exactly like a broken
 reader.
@@ -184,11 +184,27 @@ live answer. §3.1 removes the hand-written schema.
 **`teacherMovements` (…782) answers `HTTP 205` with an empty body.** The client
 treats `203` as "no data" but not `205`, so an empty answer is read as a broken
 contract. `ESIS_API_READINESS.md` §1.1 lists three empty shapes; this is a
-**fourth**, and it is an empty *status* rather than an empty `RESULT`. §3.3's
+**fourth**, and it is an empty _status_ rather than an empty `RESULT`. §3.3's
 rule must be widened to cover it.
 
-Neither is fixed here. Both belong to spec 1, and both are evidence that the
-pass-through default is the right call rather than a tidy-up.
+★ **Both are fixed, and the probe now reports `PARSE: 0`** across all 52
+readers — 33 parsed, 19 empty. Implemented as
+`docs/superpowers/plans/2026-09-15-esis-passthrough-and-register-numbers.md`;
+`ESIS_API_READINESS.md` §1.1.5 records the measurements.
+
+Three things the work turned up that this section did not anticipate:
+
+- The empty-body rule had to be written into **three** parsers, not one. Each
+  builds its own envelope, so the fix to `esisListParser` never reached
+  `esisCheckParser` or `esisContactsParser`. The third matters most: two of the
+  eighty-three children probed have a guardian-contacts record, so an empty
+  answer is that service's ordinary case.
+- Adding `civilId` to the hand-written schemas as a string **broke the roster
+  on every row** — ESIS sends it as a JSON number from every service. The fix
+  that closes §1.2(b) is capable of re-opening it; the live probe is what
+  caught it, and 2228 passing tests did not.
+- Seven readers keep a hand-written schema, not eight. `groupAttendance` was on
+  the list in error — nothing reads its named fields.
 
 ---
 
@@ -274,13 +290,13 @@ and storing half a credential is worse than storing neither.
 The pass-through schema has no "not named ⇒ not taken" protection, so without
 this table a register number lands in **every** discovered response body.
 
-| Route / surface                        | Register number |
-| -------------------------------------- | --------------- |
-| Staff registration match (§5)          | Compared internally, **never** in a response |
-| `GET …/esis/resource` (ADMIN)          | Yes, with an `AuditLog` `VIEW` row           |
-| Child ↔ ESIS reconciliation (ADMIN)    | Yes                                          |
-| Teacher screens, `…/esis/my-profile`   | No                                           |
-| Any guardian payload                   | **Never**                                    |
+| Route / surface                      | Register number                              |
+| ------------------------------------ | -------------------------------------------- |
+| Staff registration match (§5)        | Compared internally, **never** in a response |
+| `GET …/esis/resource` (ADMIN)        | Yes, with an `AuditLog` `VIEW` row           |
+| Child ↔ ESIS reconciliation (ADMIN)  | Yes                                          |
+| Teacher screens, `…/esis/my-profile` | No                                           |
+| Any guardian payload                 | **Never**                                    |
 
 `esis.fields.test.ts` pins the refused set. It is updated **deliberately** as
 part of this work — not relaxed when it fails.
@@ -348,11 +364,11 @@ issues a link rather than setting a password.
 Three tiers plus a manual button. All four paths run the same code and each
 writes an `EsisSyncRun` row.
 
-| Tier            | Services                                                                         | Trigger                                      |
-| --------------- | -------------------------------------------------------------------------------- | -------------------------------------------- |
-| Reference       | cook (111, 112, 123, 124, 125, 126, 127), programs, buildings, rooms, vaccine ref | Monthly                                      |
-| Roster          | `movement/v2/:beginDate`, groups, students, staff, teachers                       | Daily, incremental from the last run's date  |
-| Per-child       | health, vaccination, allergy, disability, measurements, screening, awards (85)    | **Only when staff opens that child's screen** |
+| Tier      | Services                                                                          | Trigger                                       |
+| --------- | --------------------------------------------------------------------------------- | --------------------------------------------- |
+| Reference | cook (111, 112, 123, 124, 125, 126, 127), programs, buildings, rooms, vaccine ref | Monthly                                       |
+| Roster    | `movement/v2/:beginDate`, groups, students, staff, teachers                       | Daily, incremental from the last run's date   |
+| Per-child | health, vaccination, allergy, disability, measurements, screening, awards (85)    | **Only when staff opens that child's screen** |
 
 `stdnt/awards` (85, read) belongs to tier 3 with the rest of the per-child
 reads. Its write half (72) belongs to §6.1, not to any tier — a write has an
@@ -400,12 +416,12 @@ This report is **user-facing and ministry-facing**, so its text is Mongolian.
 
 ## 8. Order
 
-| # | Spec  | Contains                                          |
-| - | ----- | ------------------------------------------------- |
-| 1 | A + B | §3, §4 — pass-through default, probe, refused set |
-| 2 | C     | §5 — staff self-registration                      |
-| 3 | D     | §6 — three tiers, manual pull, seven writes       |
-| 4 | E     | §7 — the monthly matrix                           |
+| #   | Spec  | Contains                                          |
+| --- | ----- | ------------------------------------------------- |
+| 1   | A + B | §3, §4 — pass-through default, probe, refused set |
+| 2   | C     | §5 — staff self-registration                      |
+| 3   | D     | §6 — three tiers, manual pull, seven writes       |
+| 4   | E     | §7 — the monthly matrix                           |
 
 Each gets its own implementation plan and its own PR. A + B first because it
 decides the shape every later screen reads.

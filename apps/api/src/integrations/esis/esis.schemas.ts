@@ -690,6 +690,25 @@ const CONTACT_SECTIONS = [
  *
  * `status` and `message` sit beside the eleven lists in `RESULT` and are not
  * entries; they are skipped rather than parsed into empty rows.
+ *
+ * ★ **The absent-body guard, for the third time — 2026-09-15.**
+ *
+ * This rule has now been written into all three parsers on three separate
+ * occasions, because each builds its own envelope: `esisListParser` first,
+ * then `esisCheckParser` when `teacher/check` answered `205` with zero bytes,
+ * and now here. `EsisClient` hands an empty body on as `null`, and
+ * `z.object()` rejects `null` outright, so without this line an empty answer
+ * is reported as a broken contract.
+ *
+ * It matters most on exactly this service: of the eighty-three children probed
+ * on institution 42778, **two** had a contacts record. "No guardian details
+ * filed" is the ordinary answer here, not the exception, and it must not read
+ * as the ministry having changed their API.
+ *
+ * ★★ Three copies of one rule is the argument for a shared guard rather than a
+ * fourth. It is left duplicated for now because merging the three envelopes is
+ * a larger change than this one, and a wrong merge fails silently — but the
+ * next parser that needs this line should be the one that ends the pattern.
  */
 export function esisContactsParser(): (
   body: unknown,
@@ -701,6 +720,8 @@ export function esisContactsParser(): (
   });
 
   return (body) => {
+    if (body === null || body === undefined) return [];
+
     const { RESULT } = envelope.parse(body);
     if (!RESULT || typeof RESULT !== "object") return [];
 

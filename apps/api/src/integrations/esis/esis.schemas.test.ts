@@ -320,6 +320,29 @@ describe("esisContactsParser", () => {
     expect(rows).toHaveLength(3);
     expect(rows.some((row) => row.section === "status" || row.section === "message")).toBe(false);
   });
+
+  /*
+   * ★ The absent-body guard, which this parser was the third to need.
+   *
+   * The test above covers an envelope whose eleven lists are all empty. This
+   * one covers no envelope at all — `EsisClient` renders an empty response body
+   * as `null`, and `z.object()` rejects `null`, so the parser threw where it
+   * should have answered "nobody is on file".
+   *
+   * It matters more here than anywhere else: two of the eighty-three children
+   * probed on institution 42778 had a contacts record, so an empty answer is
+   * this service's ordinary case.
+   */
+  it("reads an absent body as no rows", () => {
+    expect(parse(null)).toEqual([]);
+    expect(parse(undefined)).toEqual([]);
+  });
+
+  /* …and the limit that keeps the line above from excusing a real break. */
+  it("still rejects a payload that is neither an envelope nor absent", () => {
+    expect(() => parse("unexpected")).toThrow();
+    expect(() => parse({ SUCCESS_CODE: 200 })).toThrow();
+  });
 });
 
 /**
