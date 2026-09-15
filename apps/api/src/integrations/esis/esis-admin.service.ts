@@ -917,9 +917,18 @@ const REDACTED_READ_PARAMS = new Set(["personRegNumber", "primaryNidNumber"]);
  * `null`, and the column is still there.
  *
  * ★★ Nothing that is not an ingested field can appear here. The refused
- * fields — civil id, register number, provider passwords — are already gone,
- * stripped by the zod schema one layer up; this function could not surface one
- * even if a schema were widened by mistake.
+ * credentials — provider passwords and the username beside them — are
+ * already gone, stripped by the zod schema one layer up; this function could
+ * not surface one even if a schema were widened by mistake.
+ *
+ * ★★★ **Register numbers are a different case — 2026-09-15.** They are no
+ * longer refused at the parser (`ESIS_IDENTIFIER_FIELDS`), and this function
+ * has no notion of *who is asking*, so it draws a `civilId`/`personRegNumber`
+ * column for any caller reachable here. `EsisAdminService.visibleRows` is
+ * where that is meant to be gated per caller — see the note on
+ * `esisVisibleRows` in `esis.schemas.ts` — and as of this change nothing calls
+ * it yet. Until that lands, a teacher reading `resource=students` receives
+ * every child's register number over this same path.
  */
 /**
  * The service a read called, for the screen to name when nothing came back.

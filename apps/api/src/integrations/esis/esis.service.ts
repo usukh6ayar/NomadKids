@@ -59,9 +59,11 @@ import type { EsisRequest, EsisResponse } from "./esis.types";
  * rename must break the build. Everywhere else `esisDiscoveredSchema` keeps
  * whatever arrived, and `esisFieldsFor` reads the columns off the response.
  *
- * ★★ The refusals still run. `esisDiscoveredSchema` strips the refused fields
- * by name, because a passthrough cannot express "I did not ask for that" by
- * omission — see `ESIS_REFUSED_FIELDS`.
+ * ★★ The credential refusals still run. `esisDiscoveredSchema` strips them by
+ * name, because a passthrough cannot express "I did not ask for that" by
+ * omission — see `ESIS_REFUSED_CREDENTIALS`. Register numbers and civil ids
+ * survive this parse since 2026-09-15 and are gated per caller instead — see
+ * `ESIS_IDENTIFIER_FIELDS`.
  *
  * ★★★ **`groupAttendance` was declared as an eighth exception until
  * 2026-09-15, on the assumption that attendance reconciliation read its named

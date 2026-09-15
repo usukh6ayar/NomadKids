@@ -5,7 +5,8 @@ import { ESIS_ENDPOINTS } from "./esis.endpoints";
 import { ESIS_DISCOVERED_SHAPE, ESIS_FIELDS, esisFieldsFor, ingestedFieldNames } from "./esis.fields";
 import { ESIS_READ_PARAMS, ESIS_WRITE_RESOURCES } from "./esis.dto";
 import {
-  ESIS_REFUSED_FIELDS,
+  ESIS_IDENTIFIER_FIELDS,
+  ESIS_REFUSED_CREDENTIALS,
   esisDiscoveredSchema,
   esisStudentCheckSchema,
   esisStudentContactSchema,
@@ -103,23 +104,54 @@ describe("ESIS field catalog", () => {
    * child's civil id would be a breach of what `ESIS_REQUEST.md` §1.1 (b)
    * promises the ministry, so it is asserted directly rather than inferred.
    */
-  it("strips every refused identifier from a discovered-shape row", () => {
-    expect(ESIS_DISCOVERED_SHAPE.size).toBeGreaterThan(0);
-
+  /*
+   * The passthrough's own guarantee, in the two halves it now has.
+   *
+   * ★ A credential is destroyed at the parse boundary. There is no caller and
+   * no role that recovers it, which is the point: a password we hold is a
+   * password we can leak, and this product has no use for a Google account's.
+   */
+  it("destroys every refused credential in a discovered-shape row", () => {
     const row = {
       personId: 9129027526058,
-      studentAllergyId: 5,
       allergenName: "Сүү",
-      ...Object.fromEntries(ESIS_REFUSED_FIELDS.map((name) => [name, "leaked"])),
+      ...Object.fromEntries(ESIS_REFUSED_CREDENTIALS.map((name) => [name, "leaked"])),
     };
 
     const parsed = esisDiscoveredSchema.parse(row) as Record<string, unknown>;
 
-    for (const name of ESIS_REFUSED_FIELDS) {
+    for (const name of ESIS_REFUSED_CREDENTIALS) {
       expect({ name, present: name in parsed }).toEqual({ name, present: false });
     }
-    // …while everything the service actually carries survives.
-    expect(parsed).toMatchObject({ studentAllergyId: 5, allergenName: "Сүү" });
+    expect(parsed).toMatchObject({ allergenName: "Сүү" });
+  });
+
+  /*
+   * ★★ An identifier survives the parse — the client asked for register
+   * numbers on 2026-09-15, and a deterministic child match needs one. Who may
+   * *see* it is a separate question, answered per caller in
+   * `EsisAdminService.visibleRows`, not here.
+   */
+  it("keeps a register number at the parse boundary", () => {
+    const parsed = esisDiscoveredSchema.parse({
+      personId: 9129027526058,
+      personRegNumber: "УЛ24270406",
+      civilId: "4812345619",
+    }) as Record<string, unknown>;
+
+    expect(parsed).toMatchObject({ personRegNumber: "УЛ24270406", civilId: "4812345619" });
+  });
+
+  /*
+   * ★★★ The two lists cannot overlap. A name in both would be refused by the
+   * schema and then "gated" by a check that never sees it — an access rule
+   * that looks enforced and is dead.
+   */
+  it("keeps credentials and identifiers disjoint", () => {
+    const overlap = ESIS_REFUSED_CREDENTIALS.filter((name) =>
+      (ESIS_IDENTIFIER_FIELDS as readonly string[]).includes(name),
+    );
+    expect(overlap).toEqual([]);
   });
 
   /*
@@ -139,10 +171,16 @@ describe("ESIS field catalog", () => {
     expect(ESIS_RESOURCE_CATALOG.every((entry) => entry.fields.length > 0)).toBe(true);
   });
 
-  it("never ingests a civil id, a register number or a provider password", () => {
+  /*
+   * ★ Narrowed 2026-09-15 — `civilId` and `personRegNumber` moved out of this
+   * list the same day `ESIS_REFUSED_CREDENTIALS` and `ESIS_IDENTIFIER_FIELDS`
+   * split in `esis.schemas.ts`. The client's decision was explicit: register
+   * numbers yes, passwords no. What this test still pins is the half that did
+   * not move — a provider-issued credential is refused everywhere, with no
+   * per-caller exception.
+   */
+  it("never ingests a provider password or its username", () => {
     const refused = [
-      "civilId",
-      "personRegNumber",
       "microsoftPassword",
       "googlePassword",
       "microsoftEmailPass",

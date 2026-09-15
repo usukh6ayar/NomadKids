@@ -79,9 +79,20 @@ const send = (name: string, label: string): EsisField => ({
   ingested: true,
 });
 
-const NO_CIVIL_ID = "ESIS_REQUEST.md §1.1 (b) — иргэний бүртгэлийн дугаар татахгүй";
-const NO_REG_NUMBER = "ESIS_REQUEST.md §1.1 (b) — регистрийн дугаар татахгүй";
 const NO_CREDENTIAL = "ESIS_REQUEST.md §1.2 — нэвтрэх мэдээлэл хүсэхгүй";
+
+/*
+ * ★ **`NO_CIVIL_ID` and `NO_REG_NUMBER` are gone — 2026-09-15, the client's
+ * decision "РД-г тийм, нууц үгийг үгүй" (register numbers yes, passwords no).
+ * `civilId`, `personRegNumber` and `registerNumber` move from `drop(…)` to
+ * `keep(…)` below: `esisDiscoveredSchema` no longer refuses them, and
+ * `ESIS_REQUEST.md` §1.1 (b) is now a decision this project overrode rather
+ * than one it still keeps.
+ *
+ * ★★ Who may **see** one is a separate question — `EsisAdminService.visibleRows`
+ * gates it per caller, not this catalogue — see `ESIS_IDENTIFIER_FIELDS` in
+ * `esis.schemas.ts`. This file only says what the code now ingests.
+ */
 
 /**
  * The child record shared by the two roster services.
@@ -120,18 +131,18 @@ const STUDENT_FIELDS: EsisField[] = [
   keep("instructorName", "Багшийн нэр"),
   keep("programStatus", "Суралцах төлөв"),
   keep("programStatusName", "Суралцах төлөвийн нэр"),
-  drop("civilId", "Иргэний бүртгэлийн дугаар", NO_CIVIL_ID),
-  drop("personRegNumber", "Регистрийн дугаар", NO_REG_NUMBER),
+  keep("civilId", "Иргэний бүртгэлийн дугаар"),
+  keep("personRegNumber", "Регистрийн дугаар"),
   drop("microsoftPassword", "Microsoft нууц үг", NO_CREDENTIAL),
   drop("googlePassword", "Google нууц үг", NO_CREDENTIAL),
 ];
 
-/** Exact API-000144 output contract, with the four sensitive values refused. */
+/** Exact API-000144 output contract, with the two provider passwords refused. */
 const STUDENT_BY_REGISTER_FIELDS: EsisField[] = [
   keep("institutionId", "Байгууллагын код"),
   keep("personId", "ESIS хүний дугаар"),
-  drop("civilId", "Иргэний бүртгэлийн дугаар", NO_CIVIL_ID),
-  drop("personRegNumber", "Регистрийн дугаар", NO_REG_NUMBER),
+  keep("civilId", "Иргэний бүртгэлийн дугаар"),
+  keep("personRegNumber", "Регистрийн дугаар"),
   keep("familyName", "Ургийн овог"),
   keep("firstName", "Нэр"),
   keep("lastName", "Овог"),
@@ -184,9 +195,13 @@ const OFFICIAL_EMAIL_FIELDS: EsisField[] = [
   keep("allEmail", "Бүх и-мэйл"),
 ];
 
+/** Kept, not refused — see the 2026-09-15 note above `NO_CREDENTIAL`. */
+const IDENTIFIER_FIELDS: EsisField[] = [
+  keep("civilId", "Иргэний бүртгэлийн дугаар"),
+  keep("personRegNumber", "Регистрийн дугаар"),
+];
+
 const CREDENTIAL_FIELDS: EsisField[] = [
-  drop("civilId", "Иргэний бүртгэлийн дугаар", NO_CIVIL_ID),
-  drop("personRegNumber", "Регистрийн дугаар", NO_REG_NUMBER),
   drop("microsoftEmailPass", "Microsoft нууц үг", NO_CREDENTIAL),
   drop("googleEmailPass", "Google нууц үг", NO_CREDENTIAL),
 ];
@@ -311,6 +326,7 @@ const ESIS_FIELD_CATALOG: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
     keep("subjectDepartmentName", "Заах аргын нэгдэл"),
     keep("instructorAvailability", "Ажиллах боломж"),
     ...OFFICIAL_EMAIL_FIELDS,
+    ...IDENTIFIER_FIELDS,
     ...CREDENTIAL_FIELDS,
     drop("username", "Нэвтрэх нэр", NO_CREDENTIAL),
   ],
@@ -332,6 +348,7 @@ const ESIS_FIELD_CATALOG: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
     keep("propertyClassificationCode", "Өмчийн ангиллын код"),
     keep("propertyClassificationName", "Өмчийн ангилал"),
     ...OFFICIAL_EMAIL_FIELDS,
+    ...IDENTIFIER_FIELDS,
     ...CREDENTIAL_FIELDS,
   ],
   groupAttendance: [
@@ -424,14 +441,16 @@ const ESIS_FIELD_CATALOG: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
   /**
    * The state's meal-subsidy list — `нэмэлт.md` §3.
    *
-   * ★ **`civilId` and `registerNumber` are refused, and this service is the
-   * hardest case for that rule so far.** They are the only two fields it
-   * carries that identify a child *uniquely*: there is no `dateOfBirth` here,
-   * so the matching this feeds has to fall back to `personId` — which is why
-   * `personId` is kept and those two are not. `ESIS_REQUEST.md` §1.1 (b)
-   * refuses to receive and keep a register number, and "it would have made the
-   * join easier" is not an exception; it is the situation the rule was written
-   * for.
+   * ★ **`civilId` and `registerNumber` were refused, and this is the service
+   * that changed the rule.** They were the only two fields it carries that
+   * identify a child *uniquely*: there is no `dateOfBirth` here, so a name
+   * shared by two children could never be told apart, and `Child.esisPersonId`
+   * is written only where a name and birth date match exactly one child. That
+   * was the argument raised against `ESIS_REQUEST.md` §1.1 (b), and on
+   * 2026-09-15 the client answered it: register numbers yes, passwords no. Both
+   * are `keep(…)` below now — see `ESIS_IDENTIFIER_FIELDS` in
+   * `esis.schemas.ts`, which is where *who may see one* is decided, per caller,
+   * not in this catalogue.
    *
    * ★★ `isFoodDiscount` arrives as the words "Тийм"/"Үгүй", not a boolean.
    * It is kept verbatim and interpreted once, in `foodDiscountByPerson` —
@@ -446,8 +465,8 @@ const ESIS_FIELD_CATALOG: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
     keep("orgName", "Байгууллагын нэр"),
     keep("orgProperty", "Өмчийн хэлбэр"),
     keep("orderNum", "Тушаалын дугаар"),
-    drop("civilId", "Иргэний бүртгэлийн дугаар", NO_CIVIL_ID),
-    drop("registerNumber", "Регистрийн дугаар", NO_REG_NUMBER),
+    keep("civilId", "Иргэний бүртгэлийн дугаар"),
+    keep("registerNumber", "Регистрийн дугаар"),
   ],
   foodKit: [
     keep("productId", "Бүтээгдэхүүний код"),
@@ -971,8 +990,8 @@ const ESIS_FIELD_CATALOG: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
     keep("programStageId", "Үе шатны код"),
     keep("academicLevel", "Түвшний код"),
     keep("academicYear", "Хичээлийн жил"),
-    drop("civilId", "Иргэний бүртгэлийн дугаар", NO_CIVIL_ID),
-    drop("personRegNumber", "Регистрийн дугаар", NO_REG_NUMBER),
+    keep("civilId", "Иргэний бүртгэлийн дугаар"),
+    keep("personRegNumber", "Регистрийн дугаар"),
   ],
   teacherProfile: [
     keep("assignmentId", "Томилгооны дугаар"),

@@ -26,6 +26,7 @@ const organizationRow = { institutionId, institutionName: "Цэцэрлэг A" }
 const studentRow = {
   institutionId,
   personId: "90000000000001",
+  personRegNumber: "УБ99223344",
   lastName: "Баяр",
   firstName: "Ану",
   dateOfBirth: "2021-03-04",
@@ -592,10 +593,16 @@ describe("single-resource ESIS read", () => {
 
   /*
    * ★ `studentByRegister` left this list on 2026-09-09 — the client asked that
-   * a teacher be able to search by register number. It is a service they may
-   * *use*, not a number they may read: `personRegNumber` is a refused output
-   * on it as on every roster service, and `read` keeps the value they typed
-   * out of the audit row.
+   * a teacher be able to search by register number. `read` still keeps the
+   * value they typed out of the audit row (`REDACTED_READ_PARAMS`).
+   *
+   * ★★ **The second half of this comment stopped being true on 2026-09-15.**
+   * `personRegNumber` was a refused *output* on every roster service; the
+   * client's decision that day ("РД-г тийм") ended that, and nothing yet gates
+   * it per caller (`EsisAdminService.visibleRows` is unwired — see the note on
+   * `esisVisibleRows` in `esis.schemas.ts`). A teacher reading `students` or
+   * `studentByRegister` through this same route now receives every matched
+   * child's register number until that gate lands.
    */
   it.each([
     ["organization", "resource=organization"],
@@ -678,10 +685,26 @@ describe("single-resource ESIS read", () => {
     expect(res.body.status).toBe("SUCCEEDED");
     expect(res.body.count).toBe(1);
     expect(res.body.rows[0]).toMatchObject({ firstName: "Ану", personId: "90000000000001" });
+    /*
+     * ★ `personRegNumber` flows through — 2026-09-15, "РД-г тийм, нууц үгийг
+     * үгүй". It is no longer refused at the parser (`esisStudentSchema` now
+     * names it) or at the catalog (`esis.fields.ts`'s `students` entry marks
+     * it `keep(…)`), and this is a live value, not a `null` column: the
+     * operator screen's column list is built from that same catalog
+     * (`rowValues`), so a schema that still dropped the field would show a
+     * column claiming ingestion of a value it silently discarded — the exact
+     * defect `esis.fields.test.ts`'s "matches the parsing schema key for key"
+     * exists to catch.
+     *
+     * ★★ Who besides an admin may see it is not decided here — nothing gates
+     * it per caller yet (`EsisAdminService.visibleRows` is unwired), so this
+     * assertion is deliberately about the admin caller this test already uses.
+     */
+    expect(res.body.rows[0]).toMatchObject({ personRegNumber: "УБ99223344" });
     // Refused fields are described, never valued.
     const refused = res.body.fields.filter((field: { ingested: boolean }) => !field.ingested);
-    expect(refused.map((field: { name: string }) => field.name)).toContain("personRegNumber");
-    expect(Object.keys(res.body.rows[0])).not.toContain("personRegNumber");
+    expect(refused.map((field: { name: string }) => field.name)).toContain("microsoftPassword");
+    expect(Object.keys(res.body.rows[0])).not.toContain("microsoftPassword");
 
     expect(await db.child.count({ where: { kindergartenId: a.kindergarten.id } })).toBe(
       beforeChildren,

@@ -145,7 +145,14 @@ describe("ESIS v2 domain methods", () => {
     expect(JSON.stringify(response.data)).not.toContain("secretField");
   });
 
-  it("drops register numbers and provider passwords from student rows", async () => {
+  /*
+   * ★ Renamed 2026-09-15. Register numbers used to be dropped alongside
+   * provider passwords; the client's decision that day ("РД-г тийм, нууц үгийг
+   * үгүй") split the two, and `esisStudentSchema` now names `personRegNumber`
+   * — see the note above it in `esis.schemas.ts`. What this test still proves
+   * is the half that did not move.
+   */
+  it("drops provider passwords from student rows, but keeps the register number", async () => {
     const { service } = serviceFor({
       SUCCESS_CODE: 200,
       RESPONSE_MESSAGE: "Амжилттай",
@@ -173,6 +180,7 @@ describe("ESIS v2 domain methods", () => {
       firstName: "Ану",
       dateOfBirth: "2021-03-04",
       genderCode: "F",
+      personRegNumber: "АА00000000",
     });
   });
 

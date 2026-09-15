@@ -113,21 +113,24 @@ export function esisListParser<T>(row: z.ZodType<T>): (body: unknown) => T[] {
 }
 
 /**
- * The identifiers and credentials this product refuses from any ESIS payload.
+ * Credentials this product refuses from any ESIS payload, permanently.
  *
- * ★ A list, in code, because `esisDiscoveredSchema` below keeps **every** key a
- * service sends. The refusals in `esis.fields.ts` are documentation — they tell
- * a reviewer what we declined — but they are enforced by each hand-written
- * schema simply not naming the field. A passthrough schema has no such
- * accident-proofing, so the refusal has to be executable.
+ * ★ Destroyed at the parse boundary, so no caller and no role recovers them.
+ * `school/staff` and `teacher/list` return `googleEmailPass`,
+ * `microsoftEmailPass` and `username` on every row — verified live against
+ * institution 42778 on 2026-09-15. A password this product holds is a password
+ * this product can leak, and it has no use for a Google account's.
  *
- * `ESIS_REQUEST.md` §1.1 (b) and §1.2. Keep this in step with the `refused`
- * array in `esis.fields.test.ts`.
+ * ★★ `username` is here rather than among the identifiers deliberately. It is
+ * the handle on the account whose password is refused above; half a credential
+ * is worth less than none and carries the same risk.
+ *
+ * ★★★ A list, in code, because `esisDiscoveredSchema` keeps every key a service
+ * sends. A declared schema refuses by not naming the field and
+ * `esis.fields.test.ts` proves it still does; a passthrough has no such
+ * accident-proofing, so the refusal has to execute.
  */
-export const ESIS_REFUSED_FIELDS: readonly string[] = [
-  "civilId",
-  "personRegNumber",
-  "registerNumber",
+export const ESIS_REFUSED_CREDENTIALS: readonly string[] = [
   "microsoftPassword",
   "googlePassword",
   "microsoftEmailPass",
@@ -136,16 +139,76 @@ export const ESIS_REFUSED_FIELDS: readonly string[] = [
   /*
    * ★ Added 2026-09-15, moving `vaccinePlan` to `esisDiscoveredSchema`.
    *
-   * A guardian's telephone number, from an immunisation service. It used to be
-   * refused by the hand-written schema simply not naming it — see the deleted
-   * `esisVaccinePlanSchema`'s note and `esis.fields.ts`'s `drop("PHONE_NO", …)`
-   * on the same reader. A passthrough cannot refuse by omission, so it has to
-   * be named here or it reaches the operator screen and the audit metadata.
+   * A guardian's telephone number, from an immunisation service. It is not a
+   * credential in the login-secret sense, but it is refused the same way and
+   * belongs in this list rather than a third one: `esis.fields.ts`'s
+   * `drop("PHONE_NO", …)` on the same reader explains why — the guardian block
+   * on a child's record is fed by `studentContacts`, and a second source for
+   * the same fact is how two screens come to disagree about how to reach a
+   * family. A passthrough cannot refuse by omission, so it has to be named
+   * here or it reaches the operator screen and the audit metadata.
    */
   "PHONE_NO",
 ];
 
-const REFUSED = new Set(ESIS_REFUSED_FIELDS);
+/**
+ * Register numbers: kept at the boundary, shown only to an ADMIN.
+ *
+ * ★ **Requested by the client on 2026-09-15** — "РД-г тийм, нууц үгийг үгүй".
+ * `ESIS_REQUEST.md` §1.1 (b) refused these; that document was never filed with
+ * the ministry, so this is a project decision rather than a change to an
+ * agreement.
+ *
+ * ★★ The gain is not cosmetic. `Child.esisPersonId` is written only where a
+ * name and date of birth match exactly one child on the live roster, so two
+ * children sharing both cannot be matched at all. A register number makes the
+ * join deterministic.
+ *
+ * ★★★ `registerNumber` is an organisation's rather than a person's — API 186's
+ * building lookup keys on it. It is the same class of value and is listed here
+ * so the catalog does not end up showing a child's register number while
+ * hiding a building's.
+ *
+ * Who may see one is decided per caller in `EsisAdminService.visibleRows`, not
+ * here. Removing a name from this list makes it visible to everybody.
+ */
+export const ESIS_IDENTIFIER_FIELDS: readonly string[] = [
+  "civilId",
+  "personRegNumber",
+  "registerNumber",
+];
+
+const REFUSED = new Set(ESIS_REFUSED_CREDENTIALS);
+const IDENTIFIERS = new Set(ESIS_IDENTIFIER_FIELDS);
+
+/**
+ * The rows that may leave this service, given who asked.
+ *
+ * ★ Credentials are removed **unconditionally**, even though
+ * `esisDiscoveredSchema` already destroyed them. That is deliberate
+ * belt-and-braces: seven of the declared readers do not use the passthrough,
+ * and a future hand-written schema that names `username` by accident would
+ * otherwise reach a screen. One rule at one boundary is also the only version
+ * a reviewer can check in a single read.
+ *
+ * ★★ Register numbers are removed unless the caller administers this
+ * kindergarten. Applied here rather than in the schema because the answer
+ * depends on who asked, and a schema is built once at module load.
+ *
+ * Every ESIS row this product returns to a client goes through
+ * `EsisAdminService.visibleRows`, and `test/esis-admin.test.ts` proves it over
+ * HTTP for each route.
+ */
+export function esisVisibleRows<T>(rows: T[], options: { identifiers: boolean }): T[] {
+  return rows.map((row) => {
+    if (typeof row !== "object" || row === null) return row;
+    return Object.fromEntries(
+      Object.entries(row as Record<string, unknown>).filter(
+        ([name]) => !REFUSED.has(name) && (options.identifiers || !IDENTIFIERS.has(name)),
+      ),
+    ) as T;
+  });
+}
 
 /**
  * A row whose shape ESIS has never shown us.
@@ -171,10 +234,13 @@ const REFUSED = new Set(ESIS_REFUSED_FIELDS);
  * returns it and a row without one cannot be attached to a child. Everything
  * else is unconstrained.
  *
- * ★★★ The refusals are enforced here rather than trusted to the field list —
- * this is the one schema that cannot express "I did not ask for that" by
- * omission. A widened schema elsewhere is a bug; a passthrough that leaked a
- * civil id would be a breach.
+ * ★★★ **Only credentials are refused here — 2026-09-15.** Register numbers
+ * and civil ids now survive the parse; `ESIS_REFUSED_CREDENTIALS` is what this
+ * schema still cannot express by omission, because a passthrough has no
+ * omission to rely on. Removing an identifier from the response is
+ * `esisVisibleRows`'s job, decided per caller, not this schema's — a widened
+ * schema here is still a bug, but a discovered row carrying a register number
+ * is no longer one.
  */
 export const esisDiscoveredSchema = z
   .looseObject({ personId: nullableIdentifier })
@@ -228,10 +294,20 @@ export const esisGroupSchema = z.object({
   academicYear: z.string(),
 });
 
-/** Deliberately excludes civil/register numbers and provider-issued passwords. */
+/**
+ * Still excludes the two provider-issued passwords. `civilId` and
+ * `personRegNumber` were dropped by omission until 2026-09-15 — the client's
+ * decision, "РД-г тийм, нууц үгийг үгүй", now names them below. `esis.fields.ts`
+ * marks both `keep(…)` for this reader, and `esisFieldsFor`/`rowValues` build
+ * the operator screen's columns from that catalog, so a schema that still
+ * dropped them would show a column of `null` for a value ESIS actually sends —
+ * see `esis.fields.test.ts`'s "matches the parsing schema key for key".
+ */
 export const esisStudentSchema = z.object({
   institutionId: identifier,
   personId: identifier,
+  civilId: nullableString,
+  personRegNumber: nullableString,
   familyName: nullableString,
   lastName: z.string(),
   firstName: z.string(),
@@ -303,11 +379,17 @@ const officialEmailFields = {
   allEmail: nullableString,
 };
 
-/** Deliberately excludes civil/register numbers, provider passwords and usernames. */
+/**
+ * Still excludes the provider password and the username beside it.
+ * `civilId`/`personRegNumber` moved from omitted to named on 2026-09-15 — see
+ * the note above `esisStudentSchema`; the same reasoning applies here.
+ */
 export const esisTeacherSchema = z.object({
   institutionId: identifier,
   assignmentId: identifier,
   personId: identifier,
+  civilId: nullableString,
+  personRegNumber: nullableString,
   instructorId: nullableIdentifier,
   displayName: nullableString,
   ...personNameFields,
@@ -320,7 +402,11 @@ export const esisTeacherSchema = z.object({
   ...officialEmailFields,
 });
 
-/** Deliberately excludes civil/register numbers, provider passwords and salary. */
+/**
+ * Still excludes the provider password and salary. `civilId`/`personRegNumber`
+ * moved from omitted to named on 2026-09-15 — see the note above
+ * `esisStudentSchema`.
+ */
 export const esisStaffSchema = z.object({
   institutionId: identifier,
   institutionName: nullableString,
@@ -328,6 +414,8 @@ export const esisStaffSchema = z.object({
   parentInstitutionName: nullableString,
   assignmentId: identifier,
   personId: identifier,
+  civilId: nullableString,
+  personRegNumber: nullableString,
   ...personNameFields,
   positionName: nullableString,
   positionCode: nullableString,
@@ -344,11 +432,15 @@ export const esisStaffSchema = z.object({
 /**
  * The state's meal-subsidy list — `нэмэлт.md` §3.
  *
- * ★ `civilId` and `registerNumber` are **absent from this schema on purpose**,
- * which is what actually enforces `ESIS_REQUEST.md` §1.1 (b): zod strips what
- * it does not name, so the two values are gone before any code downstream —
- * including the row projection and the audit log — can see them. The field
- * catalog `drop()`s them for the operator to read; this is the mechanism.
+ * ★ **`civilId` and `registerNumber` were absent from this schema on purpose,
+ * until 2026-09-15.** This was the service that made the case against that
+ * choice: there is no `dateOfBirth` here, so a name shared by two children
+ * could never be told apart, and `Child.esisPersonId` needs an exact match to
+ * write. The client's answer on 2026-09-15 — "РД-г тийм, нууц үгийг үгүй" —
+ * names both below. `esis.fields.ts` marks them `keep(…)` for this reader now,
+ * and the operator screen's columns are built from that catalog
+ * (`esisFieldsFor`/`rowValues`), so the schema has to actually carry the value
+ * or the column reads `null` for something ESIS sent.
  *
  * ★★ `isFoodDiscount` is the ministry's Mongolian word, kept as it arrives.
  * Interpreting it into a boolean here would bury the mapping in a schema;
@@ -356,6 +448,8 @@ export const esisStaffSchema = z.object({
  */
 export const esisFoodDiscountStudentSchema = z.object({
   personId: identifier,
+  civilId: nullableString,
+  registerNumber: nullableString,
   lastName: nullableString,
   firstName: nullableString,
   isFoodDiscount: nullableString,
