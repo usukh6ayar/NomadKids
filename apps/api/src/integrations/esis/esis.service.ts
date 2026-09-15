@@ -3,42 +3,18 @@ import { EsisClient } from "./esis.client";
 import { EsisConfig } from "./esis.config";
 import { ESIS_ENDPOINTS, esisPath } from "./esis.endpoints";
 import {
-  esisAcademicYearSchema,
   esisAttendanceSchema,
   esisAttendanceUploadSchema,
-  esisFoodMaterialGroupSchema,
-  esisFoodMaterialSchema,
-  esisFoodKitProductSchema,
   esisFoodDiscountStudentSchema,
-  esisFoodKitSchema,
-  esisBuildingSchema,
-  esisLivelihoodForm1Schema,
-  esisLivelihoodForm2Schema,
-  esisFoodProductMaterialSchema,
-  esisFoodProductSchema,
-  esisFoodProductTypeSchema,
   esisGroupSchema,
   esisListParser,
-  esisMovementSchema,
   esisOrganizationSchema,
   esisStaffSchema,
   esisStudentSchema,
-  esisStudentByRegisterSchema,
   esisTeacherSchema,
-  esisStudentCheckSchema,
   esisCheckParser,
   esisContactsParser,
   esisDiscoveredSchema,
-  esisStudentAssessmentSchema,
-  esisStudentMeasurementSchema,
-  esisGroupMeasurementSchema,
-  esisVaccineCatalogSchema,
-  esisVaccineHistorySchema,
-  esisVaccinePlanSchema,
-  esisScreeningQuestionSchema,
-  esisSchoolAttendanceSchema,
-  esisWorkerInfoSchema,
-  esisTeacherProfileSchema,
   esisStudentAllergyUploadSchema,
   esisStudentProhibitedFoodUploadSchema,
   esisStudentDisabilityUploadSchema,
@@ -57,19 +33,6 @@ import {
   type EsisStudentIncidentUpload,
   type EsisGroupMeasurementUpload,
   type EsisStudentScreeningUpload,
-  esisStudentContactSchema,
-  esisStudentStatisticsSchema,
-  esisStudentConditionSchema,
-  esisTeacherAcademicOrgSchema,
-  esisTeacherMovementSchema,
-  esisGroupNextYearSchema,
-  esisProgramSchema,
-  esisProgramStageSchema,
-  esisProgramPlanSchema,
-  esisProgramCourseSchema,
-  esisRoomSchema,
-  esisAcademicOrgSchema,
-  esisSubjectAreaSchema,
   esisStudentContactsUploadSchema,
   esisStudentStatisticsUploadSchema,
   esisStudentConditionUploadSchema,
@@ -81,22 +44,31 @@ import {
 import type { EsisRequest, EsisResponse } from "./esis.types";
 
 /**
- * Every readable service, with the schema that parses it and the path values
- * it needs.
+ * Every ESIS service this product may read, and how its rows are parsed.
  *
- * ★ One table, so a generic "read this resource" caller and the named domain
- * methods below cannot disagree about which schema belongs to which path. The
- * operator screen fetches by key; the future sync job will call the named
- * method. Both end up here.
+ * ★ **A hand-written schema is the exception, not the rule** — 2026-09-15.
  *
- * `institution` is false for the food catalog: those services are national
- * reference data and reject an `institutionId` filter.
+ * `z.object()` drops what it does not name. Nine of thirty-six hand-written
+ * readers named the wrong things, parsed happily and threw the ministry's real
+ * payload away; a screen drew an empty column and it read as "this institution
+ * has no data" (`ESIS_API_READINESS.md` §1.1). Two more were still doing it on
+ * 2026-09-15.
+ *
+ * So a declared schema now exists only where a TypeScript file reads a named
+ * property off the row — eight readers, listed and asserted in
+ * `esis.service.test.ts`. There the field names are load-bearing and a silent
+ * rename must break the build. Everywhere else `esisDiscoveredSchema` keeps
+ * whatever arrived, and `esisFieldsFor` reads the columns off the response.
+ *
+ * ★★ The refusals still run. `esisDiscoveredSchema` strips the refused fields
+ * by name, because a passthrough cannot express "I did not ask for that" by
+ * omission — see `ESIS_REFUSED_FIELDS`.
  */
 export const ESIS_READERS = {
   organization: { endpoint: ESIS_ENDPOINTS.organization, schema: esisOrganizationSchema },
   academicYearStatuses: {
     endpoint: ESIS_ENDPOINTS.academicYearStatuses,
-    schema: esisAcademicYearSchema,
+    schema: esisDiscoveredSchema,
   },
   groups: { endpoint: ESIS_ENDPOINTS.groups, schema: esisGroupSchema },
   students: { endpoint: ESIS_ENDPOINTS.students, schema: esisStudentSchema },
@@ -108,12 +80,12 @@ export const ESIS_READERS = {
    */
   studentByRegister: {
     endpoint: ESIS_ENDPOINTS.studentByRegister,
-    schema: esisStudentByRegisterSchema,
+    schema: esisDiscoveredSchema,
     params: ["personRegNumber"],
   },
   studentInfo: {
     endpoint: ESIS_ENDPOINTS.studentInfo,
-    schema: esisStudentSchema,
+    schema: esisDiscoveredSchema,
     params: ["personRegNumber"],
   },
   groupStudents: {
@@ -123,7 +95,7 @@ export const ESIS_READERS = {
   },
   studentMovements: {
     endpoint: ESIS_ENDPOINTS.studentMovements,
-    schema: esisMovementSchema,
+    schema: esisDiscoveredSchema,
     params: ["beginDate"],
   },
   teachers: { endpoint: ESIS_ENDPOINTS.teachers, schema: esisTeacherSchema },
@@ -135,39 +107,39 @@ export const ESIS_READERS = {
   },
   foodProductTypes: {
     endpoint: ESIS_ENDPOINTS.foodProductTypes,
-    schema: esisFoodProductTypeSchema,
+    schema: esisDiscoveredSchema,
     institution: false,
   },
   foodMaterialGroups: {
     endpoint: ESIS_ENDPOINTS.foodMaterialGroups,
-    schema: esisFoodMaterialGroupSchema,
+    schema: esisDiscoveredSchema,
     institution: false,
   },
   foodMaterials: {
     endpoint: ESIS_ENDPOINTS.foodMaterials,
-    schema: esisFoodMaterialSchema,
+    schema: esisDiscoveredSchema,
     institution: false,
   },
   foodProducts: {
     endpoint: ESIS_ENDPOINTS.foodProducts,
-    schema: esisFoodProductSchema,
+    schema: esisDiscoveredSchema,
     institution: false,
   },
   // Institution-scoped, like `organization` — the flag defaults to true.
-  buildings: { endpoint: ESIS_ENDPOINTS.buildings, schema: esisBuildingSchema },
+  buildings: { endpoint: ESIS_ENDPOINTS.buildings, schema: esisDiscoveredSchema },
   livelihoodForm1: {
     endpoint: ESIS_ENDPOINTS.livelihoodForm1,
-    schema: esisLivelihoodForm1Schema,
+    schema: esisDiscoveredSchema,
     params: ["academicYear", "academicMonth"],
   },
   livelihoodForm2: {
     endpoint: ESIS_ENDPOINTS.livelihoodForm2,
-    schema: esisLivelihoodForm2Schema,
+    schema: esisDiscoveredSchema,
     params: ["academicYear", "academicMonth", "studentGroupId"],
   },
   foodProductMaterials: {
     endpoint: ESIS_ENDPOINTS.foodProductMaterials,
-    schema: esisFoodProductMaterialSchema,
+    schema: esisDiscoveredSchema,
     institution: false,
   },
   /*
@@ -183,13 +155,13 @@ export const ESIS_READERS = {
   },
   foodKit: {
     endpoint: ESIS_ENDPOINTS.foodKit,
-    schema: esisFoodKitSchema,
+    schema: esisDiscoveredSchema,
     institution: false,
     params: ["productId"],
   },
   foodKitProducts: {
     endpoint: ESIS_ENDPOINTS.foodKitProducts,
-    schema: esisFoodKitProductSchema,
+    schema: esisDiscoveredSchema,
     institution: false,
     params: ["productId"],
   },
@@ -214,7 +186,7 @@ export const ESIS_READERS = {
    */
   studentCheck: {
     endpoint: ESIS_ENDPOINTS.studentCheck,
-    schema: esisStudentCheckSchema,
+    schema: esisDiscoveredSchema,
     params: ["personId"],
     parse: esisCheckParser(),
   },
@@ -226,65 +198,65 @@ export const ESIS_READERS = {
    */
   studentContacts: {
     endpoint: ESIS_ENDPOINTS.studentContacts,
-    schema: esisStudentContactSchema,
+    schema: esisDiscoveredSchema,
     params: ["personId"],
     bodyParams: ["personId"],
     parse: esisContactsParser(),
   },
   studentStatistics: {
     endpoint: ESIS_ENDPOINTS.studentStatistics,
-    schema: esisStudentStatisticsSchema,
+    schema: esisDiscoveredSchema,
     params: ["personId"],
   },
   studentCondition: {
     endpoint: ESIS_ENDPOINTS.studentCondition,
-    schema: esisStudentConditionSchema,
+    schema: esisDiscoveredSchema,
     params: ["personId"],
   },
   teacherAcademicOrg: {
     endpoint: ESIS_ENDPOINTS.teacherAcademicOrg,
-    schema: esisTeacherAcademicOrgSchema,
+    schema: esisDiscoveredSchema,
     params: ["personId"],
   },
   teacherMovements: {
     endpoint: ESIS_ENDPOINTS.teacherMovements,
-    schema: esisTeacherMovementSchema,
+    schema: esisDiscoveredSchema,
     params: ["beginDate"],
   },
   groupsNextYear: {
     endpoint: ESIS_ENDPOINTS.groupsNextYear,
-    schema: esisGroupNextYearSchema,
+    schema: esisDiscoveredSchema,
   },
   programs: {
     endpoint: ESIS_ENDPOINTS.programs,
-    schema: esisProgramSchema,
+    schema: esisDiscoveredSchema,
   },
   programStages: {
     endpoint: ESIS_ENDPOINTS.programStages,
-    schema: esisProgramStageSchema,
+    schema: esisDiscoveredSchema,
     params: ["programOfStudyId"],
   },
   programPlans: {
     endpoint: ESIS_ENDPOINTS.programPlans,
-    schema: esisProgramPlanSchema,
+    schema: esisDiscoveredSchema,
     params: ["programOfStudyId", "programStageId"],
   },
   programCourses: {
     endpoint: ESIS_ENDPOINTS.programCourses,
-    schema: esisProgramCourseSchema,
+    schema: esisDiscoveredSchema,
     params: ["programOfStudyId", "programStageId", "programPlanId"],
   },
   rooms: {
     endpoint: ESIS_ENDPOINTS.rooms,
-    schema: esisRoomSchema,
+    schema: esisDiscoveredSchema,
   },
   academicOrg: {
     endpoint: ESIS_ENDPOINTS.academicOrg,
-    schema: esisAcademicOrgSchema,
+    schema: esisDiscoveredSchema,
   },
   subjectAreas: {
     endpoint: ESIS_ENDPOINTS.subjectAreas,
-    schema: esisSubjectAreaSchema,
+    schema: esisDiscoveredSchema,
   },
 
   /*
@@ -327,12 +299,12 @@ export const ESIS_READERS = {
   },
   studentAssessments: {
     endpoint: ESIS_ENDPOINTS.studentAssessments,
-    schema: esisStudentAssessmentSchema,
+    schema: esisDiscoveredSchema,
     params: ["personId"],
   },
   studentMeasurements: {
     endpoint: ESIS_ENDPOINTS.studentMeasurements,
-    schema: esisStudentMeasurementSchema,
+    schema: esisDiscoveredSchema,
     params: ["personId"],
   },
   /*
@@ -343,32 +315,32 @@ export const ESIS_READERS = {
    */
   vaccineCatalog: {
     endpoint: ESIS_ENDPOINTS.vaccineCatalog,
-    schema: esisVaccineCatalogSchema,
+    schema: esisDiscoveredSchema,
   },
   vaccineHistory: {
     endpoint: ESIS_ENDPOINTS.vaccineHistory,
-    schema: esisVaccineHistorySchema,
+    schema: esisDiscoveredSchema,
     params: ["personId"],
   },
   vaccinePlan: {
     endpoint: ESIS_ENDPOINTS.vaccinePlan,
-    schema: esisVaccinePlanSchema,
+    schema: esisDiscoveredSchema,
     params: ["personId"],
   },
   groupMeasurements: {
     endpoint: ESIS_ENDPOINTS.groupMeasurements,
-    schema: esisGroupMeasurementSchema,
+    schema: esisDiscoveredSchema,
     params: ["studentGroupId"],
   },
   /* The instrument itself: 25 questions, no institution filter accepted. */
   screeningQuestions: {
     endpoint: ESIS_ENDPOINTS.screeningQuestions,
-    schema: esisScreeningQuestionSchema,
+    schema: esisDiscoveredSchema,
     institution: false,
   },
   schoolAttendance: {
     endpoint: ESIS_ENDPOINTS.schoolAttendance,
-    schema: esisSchoolAttendanceSchema,
+    schema: esisDiscoveredSchema,
     params: ["academicYear", "dayDate"],
   },
   /*
@@ -381,19 +353,19 @@ export const ESIS_READERS = {
    */
   workerInfo: {
     endpoint: ESIS_ENDPOINTS.workerInfo,
-    schema: esisWorkerInfoSchema,
+    schema: esisDiscoveredSchema,
     institution: false,
     params: ["primaryNidNumber"],
   },
   teacherProfile: {
     endpoint: ESIS_ENDPOINTS.teacherProfile,
-    schema: esisTeacherProfileSchema,
+    schema: esisDiscoveredSchema,
     params: ["personId"],
   },
   /* Answers `["false"]` — the same scalar parser `studentCheck` uses. */
   teacherCheck: {
     endpoint: ESIS_ENDPOINTS.teacherCheck,
-    schema: esisStudentCheckSchema,
+    schema: esisDiscoveredSchema,
     params: ["personId"],
     parse: esisCheckParser(),
   },

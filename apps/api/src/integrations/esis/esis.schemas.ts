@@ -30,21 +30,6 @@ const identifier = z.union([z.string(), z.number()]).transform(String);
  */
 const nullableIdentifier = identifier.nullable().optional();
 const nullableString = z.string().nullable().optional();
-/*
- * ★ `nullableNumber` takes the mixed shape too — 2026-09-09.
- *
- * It was a bare `z.number()`, and the note below explains exactly why that
- * fails: one field arriving as `"187"` throws away every row. The demo
- * fixtures are the proof — they are built from the catalog's own sample
- * values, which are strings, so every service with a numeric field answered
- * `INVALID_RESPONSE` in demo mode. That is why the food services were marked
- * `NOT_ENABLED` on the operator screen rather than fixed.
- */
-const nullableNumber = z
-  .union([z.string(), z.number()])
-  .nullable()
-  .optional()
-  .transform((value) => (value === null || value === undefined ? value : Number(value)));
 
 /**
  * A scalar whose live JSON representation may vary from the catalog type.
@@ -58,9 +43,13 @@ const nullableNumber = z
  * to match the schema.
  *
  * The portal names a JSON type, but the published samples already contain
- * mixed scalar forms in a few services. `identifier`, `tardyMinutes` and
- * `grossWeight` take this shape for the same reason: accept both, normalise
- * once, and tighten after C4 shows what ESIS sends for the kindergarten scope.
+ * mixed scalar forms in a few services. `identifier` and `tardyMinutes` take
+ * this shape for the same reason: accept both, normalise once, and tighten
+ * after C4 shows what ESIS sends for the kindergarten scope.
+ *
+ * ★★ `grossWeight`, the schema this comment once also named, was deleted
+ * 2026-09-15 with `esisFoodProductMaterialSchema` — `foodProductMaterials`
+ * has no domain consumer and moved to `esisDiscoveredSchema`.
  */
 const nullableCount = z
   .union([z.string(), z.number()])
@@ -144,6 +133,16 @@ export const ESIS_REFUSED_FIELDS: readonly string[] = [
   "microsoftEmailPass",
   "googleEmailPass",
   "username",
+  /*
+   * ★ Added 2026-09-15, moving `vaccinePlan` to `esisDiscoveredSchema`.
+   *
+   * A guardian's telephone number, from an immunisation service. It used to be
+   * refused by the hand-written schema simply not naming it — see the deleted
+   * `esisVaccinePlanSchema`'s note and `esis.fields.ts`'s `drop("PHONE_NO", …)`
+   * on the same reader. A passthrough cannot refuse by omission, so it has to
+   * be named here or it reaches the operator screen and the audit metadata.
+   */
+  "PHONE_NO",
 ];
 
 const REFUSED = new Set(ESIS_REFUSED_FIELDS);
@@ -200,14 +199,6 @@ export const esisOrganizationSchema = z.object({
   institutionAddress: nullableString,
   institutionClassificationId: nullableIdentifier,
   institutionClassificationName: nullableString,
-});
-
-export const esisAcademicYearSchema = z.object({
-  academicYear: z.string(),
-  currentAcademicYearFlag: z.string(),
-  openDate: nullableString,
-  closedDate: nullableString,
-  academicYearStatus: z.string(),
 });
 
 export const esisGroupSchema = z.object({
@@ -276,59 +267,6 @@ export const esisStudentSchema = z.object({
   instructorName: nullableString,
   programStatus: nullableString,
   programStatusName: nullableString,
-});
-
-/** API-000144 output after data-minimisation; sensitive upstream keys are ignored. */
-export const esisStudentByRegisterSchema = esisStudentSchema.pick({
-  institutionId: true,
-  personId: true,
-  familyName: true,
-  firstName: true,
-  lastName: true,
-  familyNameMgl: true,
-  firstNameMgl: true,
-  lastNameMgl: true,
-  dateOfBirth: true,
-  genderCode: true,
-  genderName: true,
-  academicLevel: true,
-  academicLevelName: true,
-  studentGroupId: true,
-  studentGroupName: true,
-  programOfStudyId: true,
-  programOfStudyName: true,
-  programPlanId: true,
-  programPlanName: true,
-  microsoftEmail: true,
-  googleEmail: true,
-  academicYear: true,
-});
-
-export const esisMovementSchema = z.object({
-  institutionId: identifier,
-  studentProgramId: nullableIdentifier,
-  academicLevel: nullableString,
-  academicLevelName: nullableString,
-  studentGroupId: nullableIdentifier,
-  studentGroupName: nullableString,
-  programOfStudyId: nullableIdentifier,
-  programOfStudyName: nullableString,
-  programPlanId: nullableIdentifier,
-  programPlanName: nullableString,
-  programStatusCode: nullableString,
-  programStatusName: nullableString,
-  approvalStatusCode: nullableString,
-  approvalStatusName: nullableString,
-  personId: identifier,
-  familyName: nullableString,
-  lastName: z.string(),
-  firstName: z.string(),
-  dateOfBirth: z.string(),
-  genderCode: z.string(),
-  genderName: nullableString,
-  actionId: nullableIdentifier,
-  actionName: nullableString,
-  actionDate: z.string(),
 });
 
 /**
@@ -412,93 +350,6 @@ export const esisAttendanceSchema = z.object({
   tardyMinutes: z.union([z.string(), z.number()]).transform(Number),
 });
 
-export const esisFoodProductTypeSchema = z.object({
-  productType: z.string(),
-  productTypeName: z.string(),
-});
-
-export const esisFoodMaterialGroupSchema = z.object({
-  groupId: identifier,
-  parentGroupId: identifier.nullable().optional(),
-  orgGroup: nullableString,
-  groupCode: nullableString,
-  groupName: z.string(),
-});
-
-export const esisFoodMaterialSchema = z.object({
-  materialId: identifier,
-  groupId: identifier,
-  materialCode: nullableString,
-  materialName: z.string(),
-  measureCode: z.string(),
-  supplierType: nullableString,
-  nutrition: nullableNumber,
-  calories: nullableNumber,
-  proteins: nullableNumber,
-  fats: nullableNumber,
-  carbohydrate: nullableNumber,
-  sequence: nullableCount,
-});
-
-export const esisFoodProductSchema = z.object({
-  productId: identifier,
-  productCode: nullableString,
-  productName: nullableString,
-  measureCode: nullableString,
-  productType: z.string(),
-  nutrition: nullableNumber,
-  calories: nullableNumber,
-  proteins: nullableNumber,
-  fats: nullableNumber,
-  carbohydrate: nullableNumber,
-  hasRecipeFlag: nullableString,
-  kitFlag: nullableString,
-  sequence: nullableCount,
-});
-
-/** `API-000229` — one row: the school's month, and what it owes against it. */
-/** `api-28` — one building, with its purpose, capacity and valuation. */
-export const esisBuildingSchema = z.object({
-  buildingId: identifier,
-  buildingName: nullableString,
-  createdYear: nullableString,
-  buildingPurposeCode: nullableString,
-  buildingPurposeName: nullableString,
-  standardFlag: nullableFlag,
-  buildingPropertyType: nullableIdentifier,
-  buildingPropertyTypeName: nullableString,
-  normalCapacity: nullableCount,
-  totalCapacity: nullableCount,
-  firstCost: nullableNumber,
-  lastCost: nullableNumber,
-  approvalStatusCode: nullableString,
-});
-
-export const esisLivelihoodForm1Schema = z.object({
-  orgName: nullableString,
-  academicYear: nullableString,
-  academicMonth: nullableString,
-  studentCnt: nullableCount,
-  livelihoodCnt: nullableCount,
-  livelihoodBudget: nullableNumber,
-  livelihoodAmount: nullableNumber,
-});
-
-/** `API-000231` — one row per child in a group, with days and money. */
-export const esisLivelihoodForm2Schema = z.object({
-  orgName: nullableString,
-  academicYear: nullableString,
-  academicMonth: nullableString,
-  studentGroupId: nullableIdentifier,
-  studentGroupName: nullableString,
-  personId: nullableIdentifier,
-  comingDays: nullableCount,
-  arrivalDays: nullableCount,
-  amountDue: nullableNumber,
-  amountPaid: nullableNumber,
-  livelihoodDiscount: nullableNumber,
-});
-
 /**
  * The state's meal-subsidy list — `нэмэлт.md` §3.
  *
@@ -520,39 +371,6 @@ export const esisFoodDiscountStudentSchema = z.object({
   orgName: nullableString,
   orgProperty: nullableString,
   orderNum: nullableString,
-});
-
-export const esisFoodKitSchema = z.object({
-  productId: identifier,
-  productType: z.string(),
-  nutrition: nullableNumber,
-  calories: nullableNumber,
-  proteins: nullableNumber,
-  fats: nullableNumber,
-  carbohydrate: nullableNumber,
-});
-
-export const esisFoodKitProductSchema = z.object({
-  productCode: nullableString,
-  productName: nullableString,
-  productType: z.string(),
-  nutrition: nullableNumber,
-  calories: nullableNumber,
-  proteins: nullableNumber,
-  fats: nullableNumber,
-  carbohydrate: nullableNumber,
-  orgType: nullableString,
-});
-
-export const esisFoodProductMaterialSchema = z.object({
-  productMaterialId: identifier,
-  productId: identifier,
-  groupId: identifier,
-  materialId: identifier,
-  measureCode: z.string(),
-  grossWeight: z.union([z.string(), z.number()]).transform(String),
-  netWeight: z.union([z.string(), z.number()]).transform(String),
-  sequence: nullableCount,
 });
 
 /*
@@ -749,509 +567,6 @@ export function esisContactsParser(): (
   };
 }
 
-/**
- * One child's household statistics — өрхийн мэдээлэл.
- *
- * ★ **Every one of the thirteen keys this carried was invented** —
- * `familyMemberCount`, `childrenCount`, `familyTypeId/Name`,
- * `incomeTypeId/Name`, `livelihoodTypeId/Name`, `isHerderFamily`,
- * `isSingleParent`, `hasDisabledMember`, `socialWelfareFlag`, `updatedDate`.
- * All were nullable, so the row parsed and the whole payload was discarded.
- * Corrected 2026-09-14 from a live read.
- *
- * ★★ **What ESIS actually sends is unlabelled**: `infoFlag1`–`infoFlag13`,
- * `infoText4/5/6`, `infoNumber5/6`. The flags carry `"Y"` / `"N"` / `null` and
- * the ministry publishes no legend for which question each number answers.
- *
- * That is why nothing here renames them. The invented schema *was* a legend —
- * `infoFlag1` guessed to be "herder family", say — and a guessed legend is how
- * a screen tells a director that a family is something it has no idea whether
- * they are. The numbered keys travel through as they arrive, are shown as
- * codes, and stay unmapped until the ministry supplies the meanings. There is
- * no `targetModel` for the same reason: nothing here can be stored against a
- * column when nobody can say what it means.
- *
- * ★★★ `infoFlag8` is absent from the live payload. It is listed anyway — the
- * gap is the ministry's, and a schema that renumbered around it would disagree
- * with the next institution that does send it.
- */
-export const esisStudentStatisticsSchema = z.object({
-  studentStatisticsId: nullableIdentifier,
-  institutionId: nullableIdentifier,
-  personId: identifier,
-  infoFlag1: nullableFlag,
-  infoFlag2: nullableFlag,
-  infoFlag3: nullableFlag,
-  infoFlag4: nullableFlag,
-  infoFlag5: nullableFlag,
-  infoFlag6: nullableFlag,
-  infoFlag7: nullableFlag,
-  infoFlag8: nullableFlag,
-  infoFlag9: nullableFlag,
-  infoFlag10: nullableFlag,
-  infoFlag11: nullableFlag,
-  infoFlag12: nullableFlag,
-  infoFlag13: nullableFlag,
-  infoText4: nullableString,
-  infoText5: nullableString,
-  infoText6: nullableString,
-  infoNumber5: nullableCount,
-  infoNumber6: nullableCount,
-});
-
-/**
- * One child's living conditions — амьдрах орчин.
- *
- * ★ Rewritten 2026-09-14: all fifteen keys it carried were invented, and the
- * service is not the dwelling survey they described. What it returns is where
- * the child lives relative to the institution — `studentLivingPalace`, the
- * distance, and a dormitory block that is empty for a kindergarten and exists
- * because the same service serves schools with boarding.
- *
- * ★★ `annualTuitionFee` arrives here, from a service about living conditions.
- * It is parsed and **not** ingested: a fee the ministry holds is not the fee
- * this kindergarten invoices, and letting the two meet in one screen is how a
- * family gets shown a number nobody here set. See `esis.fields.ts`.
- *
- * ★★★ `studentStatisticId` — singular, no `s` — is not a typo on our side.
- * `studentStatistics` above spells the same id `studentStatisticsId`. The two
- * services disagree, and both spellings are copied as they arrive.
- */
-export const esisStudentConditionSchema = z.object({
-  studentStatisticId: nullableIdentifier,
-  institutionId: nullableIdentifier,
-  personId: identifier,
-  academicYear: nullableIdentifier,
-  studentLivingPalace: nullableString,
-  livingPlaceDistance: nullableNumber,
-  enrollYear: nullableString,
-  annualTuitionFee: nullableNumber,
-  dormitoryPropertyType: nullableString,
-  dormitoryOwner: nullableString,
-  dormitorySchoolId: nullableIdentifier,
-  dormitoryId: nullableIdentifier,
-});
-
-/**
- * A teacher's заах аргын нэгдэл — the academic unit they belong to.
- *
- * ★ **Rewritten from a live read, 2026-09-14.** Seven of the nine keys here
- * were invented — `academicOrgId/Name`, `parentAcademicOrgId/Name`,
- * `positionName`, `beginDate`, `endDate` — and every one of them was
- * `nullable().optional()`, so Zod accepted the row and threw away the whole
- * payload. The panel drew four empty columns and looked like an institution
- * with no academic units rather than a mapping written against the wrong
- * service. A schema that cannot fail is worse than one that does.
- *
- * `GET /svc/api/hub/v2/teacher/academic/org/:personId?institutionId=` returns
- * the job and the department, and nothing else.
- */
-export const esisTeacherAcademicOrgSchema = z.object({
-  institutionId: nullableIdentifier,
-  personId: identifier,
-  jobCode: nullableString,
-  jobName: nullableString,
-  subjectDepartmentId: nullableIdentifier,
-  subjectDepartmentName: nullableString,
-});
-
-/**
- * A teacher assignment movement — appointment, transfer, release.
- *
- * ★ Rewritten from a live read, 2026-09-14, for the same reason as the schema
- * above: `movementTypeId/Name`, `positionName`, `beginDate`, `endDate` and
- * `orderNumber` do not exist. The movement itself is `actionId` / `actionName`
- * / `actionDate`, and the row is otherwise a thin copy of the teacher record.
- *
- * ★★ On this institution every `action*` came back null while the names and
- * assignment ids were populated, so the service answers "who holds an
- * assignment" more reliably than "what changed". `esis.fields.ts` says so
- * rather than implying a movement history that may be empty in practice.
- */
-export const esisTeacherMovementSchema = z.object({
-  institutionId: nullableIdentifier,
-  personId: identifier,
-  assignmentId: nullableIdentifier,
-  assignmentName: nullableString,
-  displayName: nullableString,
-  instructorId: nullableIdentifier,
-  instructorTypeId: nullableIdentifier,
-  typeName: nullableString,
-  subjectDepartmentId: nullableIdentifier,
-  subjectDepartmentName: nullableString,
-  instructorAvailability: nullableString,
-  actionId: nullableIdentifier,
-  actionName: nullableString,
-  actionDate: nullableString,
-  ...personNameFields,
-});
-
-/** A group as it will stand in the next academic year. */
-export const esisGroupNextYearSchema = z.object({
-  institutionId: nullableIdentifier,
-  studentGroupId: nullableIdentifier,
-  studentGroupName: nullableString,
-  academicYear: nullableIdentifier,
-  academicLevel: nullableIdentifier,
-  academicLevelName: nullableString,
-  programOfStudyId: nullableIdentifier,
-  programOfStudyName: nullableString,
-  studentCount: nullableCount,
-});
-
-/* ── Хөтөлбөрийн шатлал: программ → үе шат → төлөвлөгөө → хичээл ─────────── */
-
-/**
- * One programme of study.
- *
- * ★ `programTypeName` and `activeFlag` were invented; the classification
- * arrives as an id and a name instead, and there is an education-level **code**
- * beside the level name. 2026-09-14, live.
- *
- * ★★ `programClassficationName` is spelled that way by the ministry. It is
- * copied verbatim rather than corrected — a key renamed on our side is a key
- * that does not match the payload.
- */
-export const esisProgramSchema = z.object({
-  institutionId: nullableIdentifier,
-  programOfStudyId: identifier,
-  programOfStudyName: nullableString,
-  programClassificationId: nullableIdentifier,
-  programClassficationName: nullableString,
-  educationLevelCode: nullableString,
-  educationLevelName: nullableString,
-});
-
-export const esisProgramStageSchema = z.object({
-  programOfStudyId: nullableIdentifier,
-  programStageId: identifier,
-  programStageName: nullableString,
-  sequence: nullableCount,
-  academicLevel: nullableIdentifier,
-  academicLevelName: nullableString,
-});
-
-export const esisProgramPlanSchema = z.object({
-  programOfStudyId: nullableIdentifier,
-  programStageId: nullableIdentifier,
-  programPlanId: identifier,
-  programPlanName: nullableString,
-  academicYear: nullableIdentifier,
-  activeFlag: nullableFlag,
-});
-
-export const esisProgramCourseSchema = z.object({
-  programOfStudyId: nullableIdentifier,
-  programStageId: nullableIdentifier,
-  programPlanId: nullableIdentifier,
-  courseId: identifier,
-  courseName: nullableString,
-  courseCode: nullableString,
-  subjectAreaId: nullableIdentifier,
-  subjectAreaName: nullableString,
-  credit: nullableNumber,
-  hours: nullableCount,
-});
-
-/* ── Сургалтын орчин ────────────────────────────────────────────────────── */
-
-/**
- * One room, as the ministry keeps it.
- *
- * ★ **This one threw**, and it is the reason the whole catalog was checked
- * against live responses on 2026-09-14. The schema required `roomId`; ESIS
- * calls it `facilityId`. A required key that never arrives fails the row, the
- * row fails the list, and `rooms` is in `ESIS_PREVIEW_RESOURCES` — so the
- * operator's dry-run, the screen whose entire job is proving the fields are
- * ready, reported `invalid_response` on a service that was answering perfectly.
- *
- * ★★ The dimensions are real and separate: `roomWidth`, `roomLength` and
- * `roomHeight` in metres, where the old schema had a single invented `area`.
- * Nothing multiplies them here — a floor area the ministry did not state is a
- * number we would be making up.
- */
-export const esisRoomSchema = z.object({
-  facilityId: identifier,
-  institutionId: nullableIdentifier,
-  buildingId: nullableIdentifier,
-  buildingPurposeCode: nullableString,
-  facilityTypeId: nullableIdentifier,
-  classRoomType: nullableString,
-  roomName: nullableString,
-  roomNumber: nullableString,
-  description: nullableString,
-  floorNumber: nullableCount,
-  roomCapacity: nullableCount,
-  roomWidth: nullableNumber,
-  roomLength: nullableNumber,
-  roomHeight: nullableNumber,
-});
-
-/**
- * An academic unit — заах аргын нэгдэл.
- *
- * ★ The second schema that threw, 2026-09-14: it required `academicOrgId` and
- * ESIS sends `subjectDepartmentId`. The unit is named by the same pair
- * `teacherAcademicOrg` uses, which is what makes a teacher joinable to it —
- * the invented `academicOrgId` could never have joined to anything.
- */
-export const esisAcademicOrgSchema = z.object({
-  institutionId: nullableIdentifier,
-  subjectDepartmentId: identifier,
-  subjectDepartmentName: nullableString,
-  shortName: nullableString,
-  institutionTypeId: nullableIdentifier,
-  institutionTypeName: nullableString,
-  parentGroupId: nullableIdentifier,
-  parentGroupName: nullableString,
-  managerId: nullableIdentifier,
-  managerName: nullableString,
-});
-
-/**
- * A subject area.
- *
- * ★ Three of the five keys were invented — `subjectAreaCode`,
- * `parentSubjectAreaId`, `educationLevelName`. What ESIS actually adds is the
- * name in the traditional Mongolian script, which the roster services already
- * carry for people (`familyNameMgl` and its pair) and which this product
- * displays wherever it is offered.
- */
-export const esisSubjectAreaSchema = z.object({
-  subjectAreaId: identifier,
-  subjectAreaName: nullableString,
-  subjectAreaNameMgl: nullableString,
-});
-
-/* ══ Эрүүл мэнд, вакцин, хэмжилт, эрт илрүүлэг — 2026-09-14 ═══════════════ */
-
-/**
- * One health examination — үзлэг, шинжилгээ.
- *
- * Captured live from institution 42778. `consultationType` and
- * `consultationResult` arrive as codes (`COMPREHENSIVE_PHYSICAL`, `HEALTHY`)
- * with no published legend, so they are carried through as codes rather than
- * translated into labels this side cannot verify.
- *
- * ★ The attachment block is metadata only — `attachmentUrl` is ESIS's own
- * address and is never fetched or proxied from here. CLAUDE.md §1.4 governs
- * files this product serves; a ministry URL shown to staff is a link, not a
- * media object, and it does not enter `MediaFile`.
- */
-export const esisStudentAssessmentSchema = z.object({
-  studentAssessmentId: nullableIdentifier,
-  institutionId: nullableIdentifier,
-  personId: identifier,
-  consultationType: nullableString,
-  consultationSubtype: nullableString,
-  consultationDate: nullableString,
-  nextConsultationDate: nullableString,
-  examinerOrganization: nullableString,
-  examinerPerson: nullableString,
-  consultationResult: nullableString,
-  consultationResultDetail: nullableString,
-  treatmentFlag: nullableFlag,
-  treatmentDetails: nullableString,
-  description: nullableString,
-  descriptionUrl: nullableString,
-  studentAssessAttachmentId: nullableIdentifier,
-  attachmentName: nullableString,
-  attachmentUrl: nullableString,
-  fileType: nullableString,
-  fileSize: nullableCount,
-});
-
-/** One child's growth measurement — өсөлт, хөгжил. Captured live. */
-export const esisStudentMeasurementSchema = z.object({
-  studentMeasurementId: nullableIdentifier,
-  institutionId: nullableIdentifier,
-  personId: identifier,
-  academicYear: nullableIdentifier,
-  measurementDate: nullableString,
-  height: nullableNumber,
-  weight: nullableNumber,
-  weightIndex: nullableNumber,
-});
-
-/**
- * A group's measurement worksheet — one row per child, nulls where unmeasured.
- *
- * ★ Captured live: 14 rows for бага бүлэг with every measurement field null,
- * and `institutionId` and `personId` null too. So `personId` is **not**
- * required here, unlike every other per-child schema in this file — the row is
- * a slot in a worksheet before it is a record about a person.
- */
-export const esisGroupMeasurementSchema = z.object({
-  institutionId: nullableIdentifier,
-  studentGroupId: nullableIdentifier,
-  personId: nullableIdentifier,
-  measurementDate: nullableString,
-  measurementFlag: nullableFlag,
-  reason: nullableString,
-  weight: nullableNumber,
-  height: nullableNumber,
-  waist: nullableNumber,
-  hips: nullableNumber,
-});
-
-/*
- * ── Вакцин ──────────────────────────────────────────────────────────────────
- * ★ SCREAMING_SNAKE_CASE, alone in this file. These rows come from the
- * immunisation registry behind ESIS rather than from ESIS's own tables, and
- * the naming follows that system. Renaming them to match the house style would
- * mean the schema no longer matches the payload — see `programClassficationName`
- * for the same decision about a ministry typo.
- */
-
-/** The national vaccine catalogue — name and dose only. */
-export const esisVaccineCatalogSchema = z.object({
-  VACCINE_NAME: nullableString,
-  VACCINE_DOSE: nullableString,
-});
-
-/** One dose a child has received. Captured live: 17 rows for one child. */
-export const esisVaccineHistorySchema = z.object({
-  PERSON_ID: nullableIdentifier,
-  VACCINE_NAME: nullableString,
-  VACCINE_GROUP_TYPE: nullableString,
-  VACCINE_DOSE: nullableString,
-  APPROVED_DATE: nullableString,
-  HOSPITAL_NAME: nullableString,
-  SERIAL_NUMBER: nullableString,
-  STATUS: nullableString,
-  OBJECT_VERSION_NUMBER: nullableCount,
-  CREATED_BY: nullableString,
-  CREATION_DATE: nullableString,
-  LAST_UPDATED_BY: nullableString,
-  LAST_UPDATE_DATE: nullableString,
-});
-
-/**
- * One scheduled future dose — товлолт вакцин.
- *
- * ★ `PHONE_NO` — a **guardian's telephone number**, arriving from an
- * immunisation service — is **absent from this schema on purpose**, so Zod
- * strips it before it reaches anything. `esis.fields.ts` still lists it as a
- * refused output, which is how a reviewer sees that we knew about it and
- * declined; the refusal itself is enforced here, by omission, exactly as it is
- * for `civilId` on the roster services.
- *
- * The guardian block on a child's record is fed by `studentContacts`, which is
- * the service whose job that is. A second source for the same fact is how two
- * screens come to disagree about how to reach a family.
- */
-export const esisVaccinePlanSchema = z.object({
-  PERSON_ID: nullableIdentifier,
-  VACCINE_NAME: nullableString,
-  VACCINE_GROUP_NAME: nullableString,
-  VACCINE_GROUP_TYPE_NAME: nullableString,
-  VACCINE_GROUP_TYPE_NAME_ENG: nullableString,
-  STEP_AGE: nullableString,
-  STEP_NAME: nullableString,
-  STEP_NAME_ENG: nullableString,
-  PLAN_DATE: nullableString,
-  PLAN_HOSPITAL_NAME: nullableString,
-  PLAN_OFFICE_NAME: nullableString,
-  SUB_OFFICE_NAME: nullableString,
-  /* PHONE_NO is deliberately not here — see the note above. */
-  STATUS: nullableString,
-  OBJECT_VERSION_NUMBER: nullableCount,
-  CREATED_BY: nullableString,
-  CREATION_DATE: nullableString,
-  LAST_UPDATED_BY: nullableString,
-  LAST_UPDATE_DATE: nullableString,
-});
-
-/** One question of the ministry's screening instrument. 25 came back live. */
-export const esisScreeningQuestionSchema = z.object({
-  surveyNameId: identifier,
-  surveyName: nullableString,
-});
-
-/**
- * One group's attendance for one day, as the ministry has it.
- *
- * ★ One row **per group**, not per child — captured live: four rows, one for
- * each of the institution's groups, all reading `status: "Бүртгээгүй"` with
- * zero counts.
- */
-export const esisSchoolAttendanceSchema = z.object({
-  dayDate: nullableString,
-  studentGroupId: nullableIdentifier,
-  studentGroupName: nullableString,
-  programStageId: nullableIdentifier,
-  academicLevel: nullableString,
-  instructorId: nullableIdentifier,
-  displayName: nullableString,
-  status: nullableString,
-  allStu: nullableCount,
-  reasonPresent: nullableCount,
-  reasonSick: nullableCount,
-  reasonExcused: nullableCount,
-  reasonUnexcused: nullableCount,
-  reasonOnline: nullableCount,
-  tardyMinuteSum: nullableCount,
-});
-
-/*
- * ── Багш, ажилтныг бүртгэх ──────────────────────────────────────────────────
- */
-
-/**
- * One worker, found by register number. Captured live.
- *
- * ★ `civilId` and `personRegNumber` come back and are **not** parsed. The
- * number is typed by an operator and sent; keeping the copy ESIS returns would
- * be the thing `ESIS_REQUEST.md` §1.1 (b) refuses, and the response is the
- * easiest place to acquire it by accident.
- */
-export const esisWorkerInfoSchema = z.object({
-  userRole: nullableString,
-  personId: identifier,
-  institutionId: nullableIdentifier,
-  institutionName: nullableString,
-  firstName: nullableString,
-  lastName: nullableString,
-  familyName: nullableString,
-  employeeId: nullableIdentifier,
-  instructorId: nullableIdentifier,
-  jobCode: nullableString,
-  jobName: nullableString,
-  studentGroupId: nullableIdentifier,
-  studentGroupName: nullableString,
-  programStageId: nullableIdentifier,
-  academicLevel: nullableString,
-  academicYear: nullableIdentifier,
-});
-
-/**
- * A teacher's employment record — the fields a `StaffRecord` is filled from.
- *
- * ★ The years are decimals (`totalWorkYears: 8.8`), not whole years, so they
- * take `nullableNumber` rather than `nullableCount`. Rounding a length of
- * service on the way in would be a silent edit to somebody's record.
- */
-export const esisTeacherProfileSchema = z.object({
-  assignmentId: nullableIdentifier,
-  personId: identifier,
-  institutionId: nullableIdentifier,
-  jobCode: nullableString,
-  jobName: nullableString,
-  positionId: nullableIdentifier,
-  positionName: nullableString,
-  instructorTypeName: nullableString,
-  subjectDepartmentId: nullableIdentifier,
-  subjectDepartmentName: nullableString,
-  totalWorkYears: nullableNumber,
-  educationSectorYears: nullableNumber,
-  professionalExperience: nullableNumber,
-  yearOfService: nullableNumber,
-  publicServiceYears: nullableNumber,
-  civilServiceYears: nullableNumber,
-  higherEducationYears: nullableNumber,
-  ...officialEmailFields,
-});
-
 /*
  * ── The three writes ────────────────────────────────────────────────────────
  *
@@ -1427,7 +742,14 @@ export const esisStudentIncidentUploadSchema = z
   .strict();
 export type EsisStudentIncidentUpload = z.input<typeof esisStudentIncidentUploadSchema>;
 
-/** Mirrors `esisStudentAssessmentSchema`, which has been observed live. */
+/**
+ * Mirrors the `studentAssessments` read, which has been observed live.
+ *
+ * ★ The read schema this once named (`esisStudentAssessmentSchema`) was
+ * deleted 2026-09-15 — `studentAssessments` has no domain consumer reading a
+ * named field, so it moved to `esisDiscoveredSchema`. This write shape still
+ * mirrors what the read observed; only the reference changed.
+ */
 export const esisStudentAssessmentUploadSchema = z
   .object({
     ...healthWriteSubject,
@@ -1447,7 +769,12 @@ export const esisStudentAssessmentUploadSchema = z
   .strict();
 export type EsisStudentAssessmentUpload = z.input<typeof esisStudentAssessmentUploadSchema>;
 
-/** Mirrors `esisStudentMeasurementSchema`, which has been observed live. */
+/**
+ * Mirrors the `studentMeasurements` read, which has been observed live.
+ *
+ * ★ Same note as the schema above: `esisStudentMeasurementSchema` was deleted
+ * 2026-09-15 when `studentMeasurements` moved to `esisDiscoveredSchema`.
+ */
 export const esisStudentMeasurementUploadSchema = z
   .object({
     ...healthWriteSubject,

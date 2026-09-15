@@ -3,7 +3,8 @@ import type { Env } from "../../config/env";
 import type { EsisClient } from "./esis.client";
 import { EsisConfig } from "./esis.config";
 import { ESIS_ENDPOINTS, esisPath } from "./esis.endpoints";
-import { EsisService } from "./esis.service";
+import { ESIS_READABLE_KEYS, ESIS_READERS, EsisService } from "./esis.service";
+import { esisDiscoveredSchema } from "./esis.schemas";
 import type { EsisRequest } from "./esis.types";
 
 function serviceFor(body: unknown) {
@@ -249,5 +250,65 @@ describe("ESIS v2 domain methods", () => {
         ],
       },
     });
+  });
+});
+
+/*
+ * ★ The boundary, asserted rather than described.
+ *
+ * A hand-written schema is a promise about field names, and every promise of
+ * that kind made without a live response has been wrong at least once
+ * (`ESIS_API_READINESS.md` §1.1 — nine of thirty-six). So the list of readers
+ * allowed to make one is closed, and it is exactly the readers whose named
+ * properties some TypeScript file reads.
+ *
+ * Adding a reader here without a consumer re-opens the defect. Adding a
+ * consumer without adding the reader here breaks the build, which is the
+ * intended direction for that mistake to fail in.
+ */
+describe("the declared-schema boundary", () => {
+  const DECLARED = [
+    "organization",
+    "groups",
+    "students",
+    "groupStudents",
+    "foodDiscountStudents",
+    "staff",
+    "teachers",
+    "groupAttendance",
+  ] as const;
+
+  it("hand-writes a schema for exactly the readers a domain consumer reads", () => {
+    const handWritten = ESIS_READABLE_KEYS.filter(
+      (key) => ESIS_READERS[key].schema !== esisDiscoveredSchema,
+    ).sort();
+
+    expect(handWritten).toEqual([...DECLARED].sort());
+  });
+
+  it("passes every other reader through unchanged", () => {
+    for (const key of ESIS_READABLE_KEYS) {
+      if ((DECLARED as readonly string[]).includes(key)) continue;
+      expect({ key, passthrough: ESIS_READERS[key].schema === esisDiscoveredSchema }).toEqual({
+        key,
+        passthrough: true,
+      });
+    }
+  });
+
+  /*
+   * ★★ The live regression this replaces. `student/info` types `dateOfBirth` as
+   * a string in the portal's documentation and sends a number; the declared
+   * schema failed the whole service with `invalid_union` for every child on
+   * institution 42778.
+   */
+  it("keeps a numeric dateOfBirth that a declared schema rejected", () => {
+    const parsed = ESIS_READERS.studentInfo.schema.parse({
+      personId: 9425579614258,
+      dateOfBirth: 1_419_000_000_000,
+      firstName: "Болд",
+    }) as Record<string, unknown>;
+
+    expect(parsed).toMatchObject({ dateOfBirth: 1_419_000_000_000, firstName: "Болд" });
   });
 });

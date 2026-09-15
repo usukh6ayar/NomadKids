@@ -557,7 +557,8 @@ const ESIS_FIELD_CATALOG: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
    * own key and nothing more. A screen showing "Тэмдэглэгээ 9: Тийм" is
    * uninformative; a screen showing "Малчин өрх: Тийм" against the same value
    * is wrong, and only one of those can be corrected later by someone who
-   * notices. See `esisStudentStatisticsSchema`.
+   * notices. See the `studentStatistics` reader in `esis.service.ts` — its
+   * hand-written schema was deleted 2026-09-15; it now reads `esisDiscoveredSchema`.
    */
   studentStatistics: [
     keep("studentStatisticsId", "Бүртгэлийн дугаар"),

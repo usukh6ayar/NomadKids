@@ -27,21 +27,21 @@ describe("ESIS field catalog", () => {
   it("matches the parsing schema key for key", () => {
     for (const key of ESIS_READABLE_KEYS) {
       /*
-       * ★ The discovered-shape services are exempt, and the exemption is the
-       * feature rather than a hole in it — 2026-09-14.
+       * ★ Pass-through readers are exempt, and the exemption is the feature
+       * rather than a hole in it — widened 2026-09-15 from "the six services
+       * that answered 203 for every child" to every reader with no domain
+       * consumer, per `esis.service.test.ts`'s "declared-schema boundary".
        *
        * This assertion pins a *declared* field list against a *declared*
-       * schema. Six services have neither: they answered 203 for every child
-       * on institution 42778, so their columns are read off the first real
-       * response instead of written down. Their schema is a passthrough, which
-       * has no `.shape` to compare against — asking it this question is a
-       * category error, not a failure.
+       * schema, so it is asserted only for the eight readers that still hand-
+       * write one. `esisDiscoveredSchema` has no `.shape` to compare against —
+       * asking it this question is a category error, not a failure.
        *
-       * What replaces the check for them is the assertion below, which is the
-       * one that actually matters for a passthrough: that it cannot leak an
+       * What replaces the check for a passthrough is the assertion below,
+       * which is the one that actually matters for it: that it cannot leak an
        * identifier we refused.
        */
-      if (ESIS_DISCOVERED_SHAPE.has(key)) continue;
+      if (ESIS_READERS[key as EsisReadableKey]?.schema === esisDiscoveredSchema) continue;
 
       const schema = ESIS_READERS[key].schema as z.ZodObject<z.ZodRawShape>;
 
