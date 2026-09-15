@@ -1442,19 +1442,25 @@ export const ESIS_DISCOVERED_SHAPE: ReadonlySet<keyof typeof ESIS_ENDPOINTS> = n
 /**
  * The fields to show for one read, given what came back.
  *
- * ★ For a declared service this is just `ESIS_FIELDS[key]` — the columns must
- * not depend on the data, or "ESIS stopped sending this" and "this child has no
- * value" become the same picture, and only one of those is worth waking up for.
+ * ★ Every declared field is returned, whether or not the rows carried it — the
+ * columns must not depend on the data, or "ESIS stopped sending this" and
+ * "this child has no value" become the same picture, and only one of those is
+ * worth waking up for.
  *
- * ★★ For a discovered service there is nothing else to go on. Declared anchors
- * come first so `personId` keeps its Mongolian label, then every other key the
- * rows carried, in first-seen order, labelled with its own name. A name we
- * cannot translate is shown untranslated rather than guessed at.
+ * ★★ **Discovery now runs for every service, not only the unseen six.**
+ *
+ * Until 2026-09-15 a declared schema dropped anything it did not name, so a
+ * declared service could not carry a surprise and returning `ESIS_FIELDS[key]`
+ * unchanged was accurate. Readers now pass through what ESIS sends, so any of
+ * them can — and a field in the payload that the screen refuses to draw is the
+ * same defect, moved.
+ *
+ * Declared anchors still come first, for the reason in ★. Discovered keys
+ * follow in first-seen order, labelled with their own name. A name we cannot
+ * translate is shown untranslated rather than guessed at.
  */
 export function esisFieldsFor(key: keyof typeof ESIS_ENDPOINTS, rows: unknown[]): EsisField[] {
   const declared = ESIS_FIELDS[key];
-  if (!ESIS_DISCOVERED_SHAPE.has(key)) return declared;
-
   const known = new Set(declared.map((field) => field.name));
   const discovered: EsisField[] = [];
 

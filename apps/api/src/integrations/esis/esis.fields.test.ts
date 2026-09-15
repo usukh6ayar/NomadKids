@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { ESIS_RESOURCE_CATALOG } from "./esis.catalog";
 import { ESIS_ENDPOINTS } from "./esis.endpoints";
-import { ESIS_DISCOVERED_SHAPE, ESIS_FIELDS, ingestedFieldNames } from "./esis.fields";
+import { ESIS_DISCOVERED_SHAPE, ESIS_FIELDS, esisFieldsFor, ingestedFieldNames } from "./esis.fields";
 import { ESIS_READ_PARAMS, ESIS_WRITE_RESOURCES } from "./esis.dto";
 import { ESIS_REFUSED_FIELDS, esisDiscoveredSchema } from "./esis.schemas";
 import {
@@ -405,6 +405,39 @@ describe("ESIS field catalog", () => {
     for (const key of ESIS_READABLE_KEYS as EsisReadableKey[]) {
       expect(ESIS_READERS[key].endpoint.path).toBe(ESIS_ENDPOINTS[key].path);
     }
+  });
+
+  /*
+   * ★ A declared service that sends something we never declared.
+   *
+   * Before 2026-09-15 this was unobservable: the hand-written schema dropped
+   * the key long before a field list was built. Now the row survives, so the
+   * column has to appear — otherwise the payload carries a value the screen
+   * refuses to admit exists, which is the defect this whole change removes.
+   */
+  it("shows an undeclared field that a declared service actually sent", () => {
+    const fields = esisFieldsFor("organization", [
+      { institutionId: 42778, institutionName: "Дэгдээхий үрс", unexpectedFromEsis: "x" },
+    ]);
+
+    const names = fields.map((field) => field.name);
+    expect(names).toContain("unexpectedFromEsis");
+    // Declared columns keep their order and come first.
+    expect(names.slice(0, ingestedFieldNames("organization").length)).toEqual(
+      ESIS_FIELDS.organization.map((field) => field.name),
+    );
+  });
+
+  /*
+   * ★★ …and a declared column survives a response that omitted it. This is the
+   * half that must not regress: columns cannot depend on the data, or an
+   * outage and an empty value look identical.
+   */
+  it("keeps a declared column that the response did not carry", () => {
+    const fields = esisFieldsFor("organization", [{ institutionId: 42778 }]);
+    expect(fields.map((field) => field.name)).toEqual(
+      expect.arrayContaining(ESIS_FIELDS.organization.map((field) => field.name)),
+    );
   });
 });
 
