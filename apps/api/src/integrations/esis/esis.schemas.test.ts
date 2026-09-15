@@ -106,6 +106,30 @@ describe("esisListParser", () => {
   it("still rejects a body that is not the ESIS envelope", () => {
     expect(() => parse({ status: -1, message: "Зам олдсонгүй" })).toThrow();
   });
+
+  /*
+   * ★ ESIS answered `205` with a zero-length body for `teacher/movements` on
+   * 2026-09-15. `EsisClient` turns an empty body into `null`, so the parser
+   * receives `null` where it expects an envelope.
+   *
+   * Read as a contract break this reports "the ministry changed their API" for
+   * what is in fact "nobody moved this month" — the same mistake the three
+   * empty `RESULT` shapes above already avoid, one level further out.
+   */
+  it("reads an absent body as no rows", () => {
+    expect(parse(null)).toEqual([]);
+    expect(parse(undefined)).toEqual([]);
+  });
+
+  /*
+   * …and the guarantee that makes the line above safe: an empty body is not a
+   * licence for any malformed payload to pass as empty.
+   */
+  it("still rejects a payload that is neither an envelope nor absent", () => {
+    expect(() => parse("unexpected")).toThrow();
+    expect(() => parse(42)).toThrow();
+    expect(() => parse({ SUCCESS_CODE: 200 })).toThrow();
+  });
 });
 
 /**

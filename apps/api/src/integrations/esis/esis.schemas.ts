@@ -101,6 +101,13 @@ const nullableFlag = z
  * as "nothing came back". Anything else — an object where a list belongs, a
  * string that is not empty — is still a genuine `invalid_response`, because a
  * contract break must not be able to hide as an empty one.
+ *
+ * ★★★ **An absent body is the fourth empty shape**, found on 2026-09-15:
+ * `teacher/movements` answered `205` with zero bytes, which `EsisClient` hands
+ * on as `null`. The three shapes above are an empty `RESULT` inside an
+ * envelope; this is no envelope at all. It is read as "nothing came back" for
+ * the same reason and with the same limit — anything that *is* present and
+ * *is not* an envelope still fails.
  */
 export function esisListParser<T>(row: z.ZodType<T>): (body: unknown) => T[] {
   const envelope = z.object({
@@ -113,7 +120,7 @@ export function esisListParser<T>(row: z.ZodType<T>): (body: unknown) => T[] {
       .optional()
       .transform((value) => (Array.isArray(value) ? value : [])),
   });
-  return (body) => envelope.parse(body).RESULT;
+  return (body) => (body === null || body === undefined ? [] : envelope.parse(body).RESULT);
 }
 
 /**
