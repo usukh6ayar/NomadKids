@@ -38,6 +38,15 @@ const read = vi.fn(async (key: string) => ({
   status: 200,
   durationMs: 9,
 }));
+/*
+ * ★ `myProfile()` calls `this.esis.teachers(...)` / `this.esis.staff(...)`
+ * directly — they are their own methods on `EsisService`, not routed through
+ * the generic `read` this file already mocks — so they need mocks of their
+ * own. Empty by default; each test that exercises `/esis/my-profile` sets its
+ * own `mockResolvedValueOnce`.
+ */
+const teachers = vi.fn(async () => ({ data: [] as unknown[], status: 200, durationMs: 5 }));
+const staff = vi.fn(async () => ({ data: [] as unknown[], status: 200, durationMs: 5 }));
 const esis = {
   status: () => ({
     configured: true,
@@ -45,8 +54,12 @@ const esis = {
     institutionId,
     hasToken: true,
   }),
+  // `myProfile()` checks `this.esis.isConfigured` directly, not `.status()`.
+  isConfigured: true,
   organization,
   read,
+  teachers,
+  staff,
 } as unknown as Partial<EsisService>;
 
 const mapInstitution = (kindergartenId: string, session: AuthSession) =>
@@ -78,6 +91,8 @@ beforeEach(async () => {
   await app.get(RateLimitService).resetAll();
   organization.mockClear();
   read.mockClear();
+  teachers.mockClear();
+  staff.mockClear();
 
   a = await createScenario("esis-a");
   b = await createScenario("esis-b");
@@ -859,5 +874,130 @@ describe("per-child ESIS reads are gated by canAccessChild", () => {
     const res = await authed(request(server()).get(resourceUrl(a.kindergarten.id, MINE)), teacherB);
 
     expect(res.status).toBe(404);
+  });
+});
+
+/*
+ * ★ CLAUDE.md §4.1 — through HTTP, against the real route. A unit test on
+ * `esisVisibleRows` passes whether or not any controller calls it, which is
+ * exactly the failure mode that rule exists to catch.
+ */
+describe("register numbers by role", () => {
+  const url = (kindergartenId: string, query: string) =>
+    `/v1/kindergartens/${kindergartenId}/esis/resource?${query}`;
+
+  const REG = "УЛ24270406";
+  const CIVIL = "4812345619";
+  const rosterRow = {
+    personId: "90000000000001",
+    firstName: "Ану",
+    personRegNumber: REG,
+    civilId: CIVIL,
+    googleEmailPass: "leaked",
+    microsoftEmailPass: "leaked",
+    username: "leaked",
+  };
+
+  it("shows an admin of this kindergarten the register number", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    read.mockResolvedValueOnce({ data: [rosterRow] });
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id, "resource=students")), adminA);
+
+    expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).toContain(REG);
+  });
+
+  it("hides it from a teacher reading the same service", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    read.mockResolvedValueOnce({ data: [rosterRow] });
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id, "resource=students")), teacherA);
+
+    expect(res.status).toBe(200);
+    const body = JSON.stringify(res.body);
+    expect({ reg: body.includes(REG), civil: body.includes(CIVIL) }).toEqual({
+      reg: false,
+      civil: false,
+    });
+    // …and the row is still there, minus the two fields.
+    expect(body).toContain("Ану");
+  });
+
+  /*
+   * ★ `myProfile()` does not call the generic `read` mock — it calls
+   * `this.esis.teachers(...)` directly (teacherA holds a TEACHER membership,
+   * so `myProfile` picks the `teachers` resource) and matches the returned
+   * rows against the signed-in user's own name before rendering one. A row
+   * shaped like `rosterRow` above would never match — it carries no
+   * `lastName`, and `createUser`'s default identity is "Овог Nэр" — so the
+   * match would fail with 0 results and the assertions below would pass
+   * vacuously against a conflict error rather than against a stripped row.
+   * This row is teacherA's own identity (`createScenario` does not override
+   * it), so the match succeeds and there is a real row to strip.
+   */
+  const teacherProfileRow = {
+    personId: "90000000000002",
+    lastName: "Овог",
+    firstName: "Нэр",
+    personRegNumber: REG,
+    civilId: CIVIL,
+    googleEmailPass: "leaked",
+    microsoftEmailPass: "leaked",
+    username: "leaked",
+  };
+
+  it("hides it from a teacher's own ESIS profile", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    teachers.mockResolvedValueOnce({ data: [teacherProfileRow], status: 200, durationMs: 5 });
+
+    const res = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/esis/my-profile`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(200);
+    const body = JSON.stringify(res.body);
+    expect({ reg: body.includes(REG), civil: body.includes(CIVIL) }).toEqual({
+      reg: false,
+      civil: false,
+    });
+  });
+
+  /*
+   * ★★ Spec §4.3's "any guardian payload: never" is already covered — see
+   * "returns 404 to a guardian and never calls ESIS" earlier in this file. A
+   * parent never reaches the route, so there is no body to strip. Confirm that
+   * test still passes rather than writing a third.
+   */
+
+  /*
+   * ★★★ The credential half, asserted on the route that shows the most. If an
+   * ADMIN cannot see a provider password, no narrower caller needs checking.
+   *
+   * ★ Scoped to `res.body.rows`, not the whole response — a change from the
+   * literal draft. `res.body.fields` is the catalog's description of every
+   * known field, refused ones included (`CREDENTIAL_FIELDS` declares
+   * `googleEmailPass`, `microsoftEmailPass` and `username` by name so the
+   * operator screen can say *why* a column is empty — see "returns every
+   * ingested field…" above, which pins that behaviour deliberately). Checking
+   * the whole JSON body would fail on that description string every time,
+   * whether or not any *value* leaked, which is not what this test is for.
+   */
+  it("never shows a provider password, even to an admin", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    read.mockResolvedValueOnce({ data: [rosterRow] });
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id, "resource=staff")), adminA);
+
+    const rows = JSON.stringify(res.body.rows);
+    // No leaked value, under any key.
+    expect(rows).not.toContain("leaked");
+    // And no leaked key either — `username` has no declared field for
+    // `staff` (only for `teachers`), so without the gate it would arrive as
+    // a *discovered* field and `esisFieldsFor` would mark it `ingested: true`.
+    for (const name of ["googleEmailPass", "microsoftEmailPass", "username"]) {
+      expect({ name, present: rows.includes(`"${name}"`) }).toEqual({ name, present: false });
+    }
   });
 });

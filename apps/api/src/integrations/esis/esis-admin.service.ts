@@ -9,7 +9,8 @@ import { AuditRepository } from "../../audit/audit.repository";
 import { PlatformAccessService } from "../../authz/platform-access.service";
 import { TenantAccessService } from "../../authz/tenant-access.service";
 import { ChildAccessService } from "../../authz/child-access.service";
-import type { Actor } from "../../authz/actor";
+import { hasRoleIn, type Actor } from "../../authz/actor";
+import { Role } from "../../domain/enums";
 import { EsisError } from "./esis.client";
 import {
   ESIS_REQUEST_REGISTER,
@@ -21,6 +22,7 @@ import type { EsisPreviewDto, EsisReadDto, EsisWriteDto, UpdateEsisMappingDto } 
 import { ESIS_ENDPOINTS } from "./esis.endpoints";
 import { ESIS_FIELDS, esisFieldsFor, ingestedFieldNames } from "./esis.fields";
 import { EsisRepository } from "./esis.repository";
+import { esisVisibleRows } from "./esis.schemas";
 import { EsisService, esisReaderParams, type EsisReadableKey } from "./esis.service";
 
 type PreviewResource = EsisPreviewDto["resources"][number];
@@ -242,6 +244,7 @@ export class EsisAdminService {
         .catch((error: unknown) => {
           throw esisUserError(error, "суралцагчийн мэдээлэл");
         });
+      const visible = this.visibleRows(actor, kindergartenId, response.data);
       return {
         mode: "LIVE" as const,
         resource: "students" as const,
@@ -252,7 +255,7 @@ export class EsisAdminService {
         syncedAt: new Date().toISOString(),
         fields: student.fields,
         row:
-          rowValues("students", response.data, 1)[0] ??
+          rowValues("students", visible, 1)[0] ??
           Object.fromEntries(ingestedFieldNames("students").map((name) => [name, null])),
       };
     }
@@ -325,6 +328,7 @@ export class EsisAdminService {
       );
     }
 
+    const visible = this.visibleRows(actor, kindergartenId, matches);
     return {
       mode: "LIVE" as const,
       resource,
@@ -334,7 +338,7 @@ export class EsisAdminService {
       syncedAt: new Date().toISOString(),
       institutionId: kindergarten.esisInstitutionId,
       fields: ESIS_FIELDS[resource],
-      row: rowValues(resource, matches, 1)[0]!,
+      row: rowValues(resource, visible, 1)[0]!,
     };
   }
 
@@ -559,6 +563,60 @@ export class EsisAdminService {
     }
   }
 
+  /**
+   * The rows this caller may see.
+   *
+   * ★ One gate, applied by every method that returns ESIS rows to a client.
+   *
+   * Register numbers reach this service because `esisDiscoveredSchema`
+   * deliberately keeps them (`ESIS_IDENTIFIER_FIELDS`). An administrator of
+   * this kindergarten is reconciling children against the ministry's roster
+   * and needs one; a teacher reading the same service does not, and a guardian
+   * must never.
+   *
+   * ★★ `hasRoleIn(…, kindergartenId)` rather than the actor's role alone: an
+   * ADMIN of *another* kindergarten is not an admin here. This runs after the
+   * route's own tenant check, never instead of it.
+   *
+   * ★★★ `myProfile` routes through this same rule, which means an ADMIN
+   * opening their *own* "миний ESIS мэдээлэл" screen sees their own register
+   * number — a narrower reading of the policy would say "no register number
+   * on `my-profile`, full stop." This is deliberate: it is one role-based
+   * rule applied uniformly rather than a route-by-route carve-out.
+   *
+   * ★★★★ **The "already visible via `resource=staff`" argument covers every
+   * field `myProfile` returns, not only the identifiers — checked, not
+   * assumed.** `esisServicesForActor` gives an ADMIN `ALL_KEYS`
+   * (`esis.catalog.ts`), so both branches `myProfile` can choose —
+   * `resource=teachers` and `resource=staff` — are ones that admin can already
+   * call directly. Both routes draw their displayed columns from the same
+   * source: `myProfile`'s `row` is `rowValues(resource, visible, 1)` with no
+   * `fields` argument, which falls back to the static `ingestedFieldNames
+   * (resource)`; `read()`'s `rows` for the same resource key uses
+   * `esisFieldsFor(resource, visible)`, which returns exactly that declared
+   * list plus anything *undeclared* the row carries — and `staff`/`teachers`
+   * parse through `esisStaffSchema`/`esisTeacherSchema`, plain `z.object()`
+   * schemas that drop unnamed keys at parse time, so no row reaching either
+   * method can carry an undeclared field to discover. Same field set, same
+   * values, for the same person's row. The one difference is row *count*:
+   * `myProfile` renders one row, `read()` up to `READ_ROWS` — so `myProfile`
+   * is a strict subset of what `resource=staff`/`resource=teachers` already
+   * shows that admin, never a superset. A non-admin caller — every teacher and
+   * cook this screen actually serves — still sees no register number either
+   * way.
+   *
+   * The one thing `myProfile` shows that a `read()` row does not is metadata
+   * about the *call*, not the ESIS record — `apiId`, `slug`, `institutionId`,
+   * `syncedAt`. None of it is drawn from `rowValues`, none of it is gated by
+   * this method, and none of it is new to an admin who already performed the
+   * institution mapping themselves.
+   */
+  private visibleRows<T>(actor: Actor, kindergartenId: string, rows: T[]): T[] {
+    return esisVisibleRows(rows, {
+      identifiers: hasRoleIn(actor, Role.ADMIN, kindergartenId),
+    });
+  }
+
   private async assertReadable(actor: Actor, kindergartenId: string, resource?: EsisEndpointKey) {
     /*
      * ★ Tenant first, then the service — 2026-09-09.
@@ -744,8 +802,16 @@ export class EsisAdminService {
        * table against the ministry's real payload needs to see it, not have it
        * silently dropped because this call site still trusted the old six.
        */
-      const liveFields = esisFieldsFor(dto.resource, response.data);
-      const rows = rowValues(dto.resource, response.data, rowLimit, liveFields);
+      /*
+       * ★ The gate runs on `response.data`, before either `esisFieldsFor` or
+       * `rowValues` reads it — 2026-09-15. Both derive their output from the
+       * rows they are given, so a register number stripped afterwards would
+       * already have been drawn into a column or a display value. See
+       * `visibleRows`.
+       */
+      const visible = this.visibleRows(actor, kindergartenId, response.data);
+      const liveFields = esisFieldsFor(dto.resource, visible);
+      const rows = rowValues(dto.resource, visible, rowLimit, liveFields);
       return {
         resource: dto.resource,
         endpoint: calledEndpoint(dto.resource),
@@ -812,11 +878,20 @@ export class EsisAdminService {
     const settled = await Promise.allSettled(
       dto.resources.map(async (resource) => {
         const response = await this.fetchResource(resource, institutionId);
+        /*
+         * ★ Gated like every other reader — 2026-09-15. `assertSuperAdmin`
+         * above proves this caller operates the platform, not that they
+         * administer *this* kindergarten, and `visibleRows` asks exactly that
+         * question. A superadmin dry run exists to prove the connection
+         * works, which a row count and a set of field names already answer;
+         * it does not need a register number to do it.
+         */
+        const visible = this.visibleRows(actor, kindergartenId, response.data);
         return {
           resource,
           count: response.data.length,
           durationMs: response.durationMs,
-          preview: rowValues(resource, response.data, PREVIEW_ROWS),
+          preview: rowValues(resource, visible, PREVIEW_ROWS),
           source: response.source,
         };
       }),
@@ -924,11 +999,13 @@ const REDACTED_READ_PARAMS = new Set(["personRegNumber", "primaryNidNumber"]);
  * ★★★ **Register numbers are a different case — 2026-09-15.** They are no
  * longer refused at the parser (`ESIS_IDENTIFIER_FIELDS`), and this function
  * has no notion of *who is asking*, so it draws a `civilId`/`personRegNumber`
- * column for any caller reachable here. `EsisAdminService.visibleRows` is
- * where that is meant to be gated per caller — see the note on
- * `esisVisibleRows` in `esis.schemas.ts` — and as of this change nothing calls
- * it yet. Until that lands, a teacher reading `resource=students` receives
- * every child's register number over this same path.
+ * column for any caller reachable here. The gate is `EsisAdminService.
+ * visibleRows`, and every caller of `rowValues` in this file passes rows that
+ * have already been through it — `read`, `myProfile` and
+ * `studentRegistrationTemplate` each call `visibleRows` first, so a value this
+ * function draws into a column was one the caller was allowed to see. If a
+ * new call site adds `rowValues` without gating its rows first, this is the
+ * hole that reopens.
  */
 /**
  * The service a read called, for the screen to name when nothing came back.

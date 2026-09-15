@@ -5,8 +5,8 @@ import { ESIS_ENDPOINTS } from "./esis.endpoints";
 import { ESIS_DISCOVERED_SHAPE, ESIS_FIELDS, esisFieldsFor, ingestedFieldNames } from "./esis.fields";
 import { ESIS_READ_PARAMS, ESIS_WRITE_RESOURCES } from "./esis.dto";
 import {
+  ESIS_DESTROYED_FIELDS,
   ESIS_IDENTIFIER_FIELDS,
-  ESIS_REFUSED_CREDENTIALS,
   esisDiscoveredSchema,
   esisStudentCheckSchema,
   esisStudentContactSchema,
@@ -115,12 +115,12 @@ describe("ESIS field catalog", () => {
     const row = {
       personId: 9129027526058,
       allergenName: "Сүү",
-      ...Object.fromEntries(ESIS_REFUSED_CREDENTIALS.map((name) => [name, "leaked"])),
+      ...Object.fromEntries(ESIS_DESTROYED_FIELDS.map((name) => [name, "leaked"])),
     };
 
     const parsed = esisDiscoveredSchema.parse(row) as Record<string, unknown>;
 
-    for (const name of ESIS_REFUSED_CREDENTIALS) {
+    for (const name of ESIS_DESTROYED_FIELDS) {
       expect({ name, present: name in parsed }).toEqual({ name, present: false });
     }
     expect(parsed).toMatchObject({ allergenName: "Сүү" });
@@ -148,7 +148,7 @@ describe("ESIS field catalog", () => {
    * that looks enforced and is dead.
    */
   it("keeps credentials and identifiers disjoint", () => {
-    const overlap = ESIS_REFUSED_CREDENTIALS.filter((name) =>
+    const overlap = ESIS_DESTROYED_FIELDS.filter((name) =>
       (ESIS_IDENTIFIER_FIELDS as readonly string[]).includes(name),
     );
     expect(overlap).toEqual([]);
@@ -173,7 +173,7 @@ describe("ESIS field catalog", () => {
 
   /*
    * ★ Narrowed 2026-09-15 — `civilId` and `personRegNumber` moved out of this
-   * list the same day `ESIS_REFUSED_CREDENTIALS` and `ESIS_IDENTIFIER_FIELDS`
+   * list the same day `ESIS_DESTROYED_FIELDS` and `ESIS_IDENTIFIER_FIELDS`
    * split in `esis.schemas.ts`. The client's decision was explicit: register
    * numbers yes, passwords no. What this test still pins is the half that did
    * not move — a provider-issued credential is refused everywhere, with no

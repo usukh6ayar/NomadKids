@@ -113,24 +113,34 @@ export function esisListParser<T>(row: z.ZodType<T>): (body: unknown) => T[] {
 }
 
 /**
- * Credentials this product refuses from any ESIS payload, permanently.
+ * Fields destroyed at the parse boundary, permanently, for any caller.
  *
- * ★ Destroyed at the parse boundary, so no caller and no role recovers them.
+ * ★ **Renamed from `ESIS_REFUSED_CREDENTIALS` on 2026-09-15.** Every entry
+ * used to be a provider password or the username beside it, so the name read
+ * true. `PHONE_NO` joined the same day, and a guardian's telephone number is
+ * not a credential in the login-secret sense — the name started describing
+ * only part of what the list held, and a name the list contradicts is the
+ * exact failure CLAUDE.md warns a mandatory rule stops being read for. What
+ * every entry *does* share is the one property this name states: none of them
+ * survive the parse, for anybody, ever — unlike `ESIS_IDENTIFIER_FIELDS`
+ * below, which survives and is gated per caller instead.
+ *
+ * ★★ Destroyed at the parse boundary, so no caller and no role recovers them.
  * `school/staff` and `teacher/list` return `googleEmailPass`,
  * `microsoftEmailPass` and `username` on every row — verified live against
  * institution 42778 on 2026-09-15. A password this product holds is a password
  * this product can leak, and it has no use for a Google account's.
  *
- * ★★ `username` is here rather than among the identifiers deliberately. It is
+ * ★★★ `username` is here rather than among the identifiers deliberately. It is
  * the handle on the account whose password is refused above; half a credential
  * is worth less than none and carries the same risk.
  *
- * ★★★ A list, in code, because `esisDiscoveredSchema` keeps every key a service
- * sends. A declared schema refuses by not naming the field and
+ * ★★★★ A list, in code, because `esisDiscoveredSchema` keeps every key a
+ * service sends. A declared schema refuses by not naming the field and
  * `esis.fields.test.ts` proves it still does; a passthrough has no such
  * accident-proofing, so the refusal has to execute.
  */
-export const ESIS_REFUSED_CREDENTIALS: readonly string[] = [
+export const ESIS_DESTROYED_FIELDS: readonly string[] = [
   "microsoftPassword",
   "googlePassword",
   "microsoftEmailPass",
@@ -139,9 +149,10 @@ export const ESIS_REFUSED_CREDENTIALS: readonly string[] = [
   /*
    * ★ Added 2026-09-15, moving `vaccinePlan` to `esisDiscoveredSchema`.
    *
-   * A guardian's telephone number, from an immunisation service. It is not a
-   * credential in the login-secret sense, but it is refused the same way and
-   * belongs in this list rather than a third one: `esis.fields.ts`'s
+   * A guardian's telephone number, from an immunisation service. Not a
+   * credential in the login-secret sense — which is exactly why this list is
+   * no longer named as though everything in it were one — but destroyed the
+   * same way and belonging here rather than a third list: `esis.fields.ts`'s
    * `drop("PHONE_NO", …)` on the same reader explains why — the guardian block
    * on a child's record is fed by `studentContacts`, and a second source for
    * the same fact is how two screens come to disagree about how to reach a
@@ -178,7 +189,7 @@ export const ESIS_IDENTIFIER_FIELDS: readonly string[] = [
   "registerNumber",
 ];
 
-const REFUSED = new Set(ESIS_REFUSED_CREDENTIALS);
+const REFUSED = new Set(ESIS_DESTROYED_FIELDS);
 const IDENTIFIERS = new Set(ESIS_IDENTIFIER_FIELDS);
 
 /**
@@ -235,7 +246,7 @@ export function esisVisibleRows<T>(rows: T[], options: { identifiers: boolean })
  * else is unconstrained.
  *
  * ★★★ **Only credentials are refused here — 2026-09-15.** Register numbers
- * and civil ids now survive the parse; `ESIS_REFUSED_CREDENTIALS` is what this
+ * and civil ids now survive the parse; `ESIS_DESTROYED_FIELDS` is what this
  * schema still cannot express by omission, because a passthrough has no
  * omission to rely on. Removing an identifier from the response is
  * `esisVisibleRows`'s job, decided per caller, not this schema's — a widened

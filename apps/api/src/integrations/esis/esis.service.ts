@@ -61,7 +61,7 @@ import type { EsisRequest, EsisResponse } from "./esis.types";
  *
  * ★★ The credential refusals still run. `esisDiscoveredSchema` strips them by
  * name, because a passthrough cannot express "I did not ask for that" by
- * omission — see `ESIS_REFUSED_CREDENTIALS`. Register numbers and civil ids
+ * omission — see `ESIS_DESTROYED_FIELDS`. Register numbers and civil ids
  * survive this parse since 2026-09-15 and are gated per caller instead — see
  * `ESIS_IDENTIFIER_FIELDS`.
  *
