@@ -3,7 +3,6 @@ import { EsisClient } from "./esis.client";
 import { EsisConfig } from "./esis.config";
 import { ESIS_ENDPOINTS, esisPath } from "./esis.endpoints";
 import {
-  esisAttendanceSchema,
   esisAttendanceUploadSchema,
   esisFoodDiscountStudentSchema,
   esisGroupSchema,
@@ -55,7 +54,7 @@ import type { EsisRequest, EsisResponse } from "./esis.types";
  * 2026-09-15.
  *
  * So a declared schema now exists only where a TypeScript file reads a named
- * property off the row — eight readers, listed and asserted in
+ * property off the row — seven readers, listed and asserted in
  * `esis.service.test.ts`. There the field names are load-bearing and a silent
  * rename must break the build. Everywhere else `esisDiscoveredSchema` keeps
  * whatever arrived, and `esisFieldsFor` reads the columns off the response.
@@ -63,6 +62,19 @@ import type { EsisRequest, EsisResponse } from "./esis.types";
  * ★★ The refusals still run. `esisDiscoveredSchema` strips the refused fields
  * by name, because a passthrough cannot express "I did not ask for that" by
  * omission — see `ESIS_REFUSED_FIELDS`.
+ *
+ * ★★★ **`groupAttendance` was declared as an eighth exception until
+ * 2026-09-15, on the assumption that attendance reconciliation read its named
+ * fields.** No such consumer exists — `attendance.service.ts` reads `groups`,
+ * `groupStudents` and writes through `saveAttendance`, never this reader — so
+ * it moved here with the rest. It was also the most fragile of the eight:
+ * `esisAttendanceSchema` required `dayDate` and `attendanceReasonCode` as
+ * non-nullable strings, unlike its siblings in this file that were hardened
+ * after a live `null` in a required field threw away a whole list
+ * (`group/list`'s `instructorId`, `teacher/list`'s `subjectDepartmentId`).
+ * `groupAttendance` is reachable by a teacher through `GET …/esis/resource`,
+ * so a `null` there would have landed on a real screen as "хариу гэрээнд
+ * тохирохгүй" instead of a day's attendance.
  */
 export const ESIS_READERS = {
   organization: { endpoint: ESIS_ENDPOINTS.organization, schema: esisOrganizationSchema },
@@ -102,7 +114,7 @@ export const ESIS_READERS = {
   staff: { endpoint: ESIS_ENDPOINTS.staff, schema: esisStaffSchema },
   groupAttendance: {
     endpoint: ESIS_ENDPOINTS.groupAttendance,
-    schema: esisAttendanceSchema,
+    schema: esisDiscoveredSchema,
     params: ["studentGroupId", "dayDate"],
   },
   foodProductTypes: {
@@ -180,9 +192,18 @@ export const ESIS_READERS = {
    *
    * Two services do not put their rows in `RESULT`: `student/check` answers
    * with a bare scalar and `stdnt/all/contacts` with an object of named lists.
-   * Both are documented on their schemas. `schema` stays because it is what
-   * types `EsisRow<K>` and what `esis.fields.ts` is checked against; only the
-   * envelope reading differs.
+   *
+   * ★★ **`schema` below is not what parses a row here** — 2026-09-15. It reads
+   * `esisDiscoveredSchema`, the same as every reader with no domain consumer,
+   * but `studentCheck`, `studentContacts` and `teacherCheck` are not
+   * passthroughs: `getList`'s `parse ?? esisListParser(schema)` means the
+   * override runs *instead of* `esisListParser(schema)`, and inside each
+   * override every row is still validated against a hand-written schema —
+   * `esisStudentCheckSchema` for the two check services below,
+   * `esisStudentContactSchema` for contacts — with the same "drops what it
+   * does not name" guarantee a declared reader has. `esis.fields.test.ts`'s
+   * key-for-key check follows the real parsing schema for these three, not
+   * this field. Read `schema` here as only "the type `EsisRow<K>` gets."
    */
   studentCheck: {
     endpoint: ESIS_ENDPOINTS.studentCheck,
@@ -191,10 +212,18 @@ export const ESIS_READERS = {
     parse: esisCheckParser(),
   },
   /*
-   * ★★ `bodyParams` — the only reader that sends one. `personId` travels in the
-   * JSON body, not in the path (there is no `:personId` in it) and not in the
-   * query. Without it the service answers `400 personId шаардлагатай`, which is
-   * what the institution-level dry-run was getting.
+   * ★★★ `bodyParams` — the only reader that sends one. `personId` travels in
+   * the JSON body, not in the path (there is no `:personId` in it) and not in
+   * the query. Without it the service answers `400 personId шаардлагатай`,
+   * which is what the institution-level dry-run was getting.
+   *
+   * ★★★★ **Do not read the `esisDiscoveredSchema` line above as "this is a
+   * true passthrough."** It is the richest PII surface in this catalogue —
+   * guardian phone numbers, emails, job titles — and it stays whitelisted by
+   * `esisContactsParser`'s call into `esisStudentContactSchema`. Converting it
+   * to an actual passthrough is a real design question (the parser flattens
+   * eleven named lists into rows first), not a cleanup, and is out of scope
+   * here.
    */
   studentContacts: {
     endpoint: ESIS_ENDPOINTS.studentContacts,

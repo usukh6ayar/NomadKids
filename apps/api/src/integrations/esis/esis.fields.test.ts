@@ -4,13 +4,39 @@ import { ESIS_RESOURCE_CATALOG } from "./esis.catalog";
 import { ESIS_ENDPOINTS } from "./esis.endpoints";
 import { ESIS_DISCOVERED_SHAPE, ESIS_FIELDS, esisFieldsFor, ingestedFieldNames } from "./esis.fields";
 import { ESIS_READ_PARAMS, ESIS_WRITE_RESOURCES } from "./esis.dto";
-import { ESIS_REFUSED_FIELDS, esisDiscoveredSchema } from "./esis.schemas";
+import {
+  ESIS_REFUSED_FIELDS,
+  esisDiscoveredSchema,
+  esisStudentCheckSchema,
+  esisStudentContactSchema,
+} from "./esis.schemas";
 import {
   ESIS_READABLE_KEYS,
   ESIS_READERS,
   esisReaderParams,
   type EsisReadableKey,
 } from "./esis.service";
+
+/**
+ * The schema that actually validates a reader's rows, for the three readers
+ * whose `parse` override bypasses `ESIS_READERS[key].schema` entirely.
+ *
+ * ★ Added 2026-09-15. `studentCheck`, `studentContacts` and `teacherCheck` all
+ * read `schema: esisDiscoveredSchema` — the same value every true passthrough
+ * has — but `getList`'s `parse ?? esisListParser(schema)` means their `parse`
+ * override runs *instead of* `esisListParser(schema)`, and each override still
+ * validates every row against a hand-written schema of its own:
+ * `esisStudentCheckSchema` for the two check services, `esisStudentContactSchema`
+ * for contacts. Keying the exemption below on `.schema` identity alone would
+ * have silently stopped checking these three — exactly the class of defect
+ * this file exists to catch. See the note beside `studentCheck` in
+ * `esis.service.ts`.
+ */
+const PARSED_BY_OVERRIDE: Partial<Record<EsisReadableKey, z.ZodObject<z.ZodRawShape>>> = {
+  studentCheck: esisStudentCheckSchema,
+  teacherCheck: esisStudentCheckSchema,
+  studentContacts: esisStudentContactSchema,
+};
 
 /**
  * The field catalog is what an operator checks against the ministry's own
@@ -26,6 +52,9 @@ import {
 describe("ESIS field catalog", () => {
   it("matches the parsing schema key for key", () => {
     for (const key of ESIS_READABLE_KEYS) {
+      const reader = ESIS_READERS[key as EsisReadableKey] as { schema: unknown; parse?: unknown };
+      const overrideSchema = PARSED_BY_OVERRIDE[key as EsisReadableKey];
+
       /*
        * ★ Pass-through readers are exempt, and the exemption is the feature
        * rather than a hole in it — widened 2026-09-15 from "the six services
@@ -33,17 +62,27 @@ describe("ESIS field catalog", () => {
        * consumer, per `esis.service.test.ts`'s "declared-schema boundary".
        *
        * This assertion pins a *declared* field list against a *declared*
-       * schema, so it is asserted only for the eight readers that still hand-
+       * schema, so it is asserted only for the seven readers that still hand-
        * write one. `esisDiscoveredSchema` has no `.shape` to compare against —
        * asking it this question is a category error, not a failure.
        *
        * What replaces the check for a passthrough is the assertion below,
        * which is the one that actually matters for it: that it cannot leak an
        * identifier we refused.
+       *
+       * ★★ **Keying this on `.schema` identity alone is wrong** — found
+       * 2026-09-15. `studentCheck`, `studentContacts` and `teacherCheck` all
+       * read `schema: esisDiscoveredSchema` but are not passthroughs: their
+       * `parse` override runs instead of `esisListParser(schema)` and still
+       * validates every row against a hand-written schema (`PARSED_BY_OVERRIDE`
+       * above). A reader with a `parse` override is therefore never exempt
+       * here, even when `.schema` says `esisDiscoveredSchema` — only a reader
+       * with *neither* a `parse` override *nor* a declared schema is a true
+       * passthrough.
        */
-      if (ESIS_READERS[key as EsisReadableKey]?.schema === esisDiscoveredSchema) continue;
+      if (reader.parse === undefined && reader.schema === esisDiscoveredSchema) continue;
 
-      const schema = ESIS_READERS[key].schema as z.ZodObject<z.ZodRawShape>;
+      const schema = (overrideSchema ?? reader.schema) as z.ZodObject<z.ZodRawShape>;
 
       expect({ key, fields: [...ingestedFieldNames(key)].sort() }).toEqual({
         key,

@@ -341,15 +341,6 @@ export const esisStaffSchema = z.object({
   ...officialEmailFields,
 });
 
-export const esisAttendanceSchema = z.object({
-  academicLevel: nullableString,
-  personId: identifier,
-  dayDate: z.string(),
-  attendanceReasonCode: z.string(),
-  attendanceReasonName: nullableString,
-  tardyMinutes: z.union([z.string(), z.number()]).transform(Number),
-});
-
 /**
  * The state's meal-subsidy list — `нэмэлт.md` §3.
  *

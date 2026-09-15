@@ -265,6 +265,17 @@ describe("ESIS v2 domain methods", () => {
  * Adding a reader here without a consumer re-opens the defect. Adding a
  * consumer without adding the reader here breaks the build, which is the
  * intended direction for that mistake to fail in.
+ *
+ * ★★ **`groupAttendance` was on this list until 2026-09-15 and is not any
+ * more.** It was kept declared on the assumption that attendance
+ * reconciliation read its named fields; no such consumer exists —
+ * `attendance.service.ts` reads `groups` and `groupStudents` and writes
+ * through `saveAttendance`, never this reader. It was also the least
+ * hardened of the eight: `esisAttendanceSchema` required `dayDate` and
+ * `attendanceReasonCode` as non-nullable, unlike siblings in this file that
+ * were hardened after a live `null` in a required field threw away a whole
+ * list. It is now `esisDiscoveredSchema`, like every other reader with no
+ * consumer, and `esisAttendanceSchema` was deleted.
  */
 describe("the declared-schema boundary", () => {
   const DECLARED = [
@@ -275,7 +286,6 @@ describe("the declared-schema boundary", () => {
     "foodDiscountStudents",
     "staff",
     "teachers",
-    "groupAttendance",
   ] as const;
 
   it("hand-writes a schema for exactly the readers a domain consumer reads", () => {
