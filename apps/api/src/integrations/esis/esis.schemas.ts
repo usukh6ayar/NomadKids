@@ -568,6 +568,15 @@ export const esisStudentCheckSchema = z.object({
  * shared parser to accept a bare string would have made it accept one for every
  * other service too, and `RESULT: ""` — which twenty services use to mean *no
  * rows* — would have started parsing as a row with an empty value.
+ *
+ * ★★ **An absent body is empty here too — found live, 2026-09-15, the same day
+ * as `esisListParser`'s equivalent fix, but not applied here at the time.**
+ * `teacher/check` answered `205` with zero bytes for a `personId` that does not
+ * belong to a teacher at this institution — `EsisClient` hands that on as
+ * `null` — and `envelope.parse(null)` threw, because `z.object()` rejects
+ * `null` outright. The probe in `scripts/esis-probe.ts` caught it: `PARSE 1`
+ * where the fix below makes it `PARSE 0`. Guarded the same way
+ * `esisListParser` already is, before the envelope is parsed at all.
  */
 export function esisCheckParser(): (body: unknown) => z.infer<typeof esisStudentCheckSchema>[] {
   const envelope = z.object({
@@ -577,6 +586,7 @@ export function esisCheckParser(): (body: unknown) => z.infer<typeof esisStudent
   });
 
   return (body) => {
+    if (body === null || body === undefined) return [];
     const { RESULT, RESPONSE_MESSAGE } = envelope.parse(body);
     const value = Array.isArray(RESULT) ? RESULT[0] : RESULT;
 
