@@ -28,20 +28,13 @@ const esisReadQuerySchema = esisReadSchema.shape.params
 export class KindergartenEsisController {
   constructor(private readonly service: EsisAdminService) {}
 
-  @Get()
-  overview(
-    @CurrentActor() actor: Actor,
-    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
-  ) {
-    return this.service.overview(actor, params.id);
-  }
-
   /**
    * The catalog, scoped to the caller's role.
    *
-   * ★ Separate from `overview()` above, which stays `@Roles("ADMIN")`. That one
-   * is the operator's view — token state, base URL, blockers, run history — and
-   * the working screens need none of it. See `catalogForActor`.
+   * ★ Separate from the operator's `overview()`, which is on
+   * `PlatformEsisController` — token state, base URL, granted scope, blockers,
+   * run history — and the working screens need none of it. See
+   * `catalogForActor`.
    */
   @Get("catalog")
   @Roles("ADMIN", "TEACHER", "COOK", "ACCOUNTANT")
@@ -105,6 +98,32 @@ export class KindergartenEsisController {
   ) {
     return this.service.write(actor, params.id, body);
   }
+}
+
+/**
+ * The platform operator's ESIS routes.
+ *
+ * ★ `overview` and `preview` moved here from the kindergarten controller on
+ * 2026-09-14, at the client's request ("superadmin дээр байх нь зөв"). Every
+ * fact they carry belongs to the deployment rather than to a tenant: one ESIS
+ * developer account and one `ESIS_TOKEN` serve every kindergarten, the granted
+ * scope is that account's, and the institution mapping below was already
+ * superadmin-only — so the old screen showed a director blockers only somebody
+ * else could clear. The tenant's working routes — `catalog`, `resource`,
+ * `write`, `my-profile` — stayed exactly where they were.
+ */
+@Controller("platform/kindergartens/:id/esis")
+@SuperAdmin()
+export class PlatformEsisController {
+  constructor(private readonly service: EsisAdminService) {}
+
+  @Get()
+  overview(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.overview(actor, params.id);
+  }
 
   @Post("preview")
   preview(
@@ -114,11 +133,6 @@ export class KindergartenEsisController {
   ) {
     return this.service.preview(actor, params.id, body);
   }
-}
-@Controller("platform/kindergartens/:id/esis")
-@SuperAdmin()
-export class PlatformEsisController {
-  constructor(private readonly service: EsisAdminService) {}
 
   @Put("mapping")
   updateMapping(

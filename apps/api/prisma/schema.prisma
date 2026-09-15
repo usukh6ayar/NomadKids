@@ -832,6 +832,31 @@ model Child {
   dateOfBirth DateTime    @db.Date
   status      ChildStatus @default(ACTIVE)
 
+  /// The child's ESIS `personId`, once something has proven the match.
+  ///
+  /// ★ **An authorization input, which is what makes it worth a column.**
+  /// Added 2026-09-15. Every per-child ESIS service — харшил, хөгжлийн
+  /// бэрхшээл, хэмжилт, үзлэг, өрхийн байдал — is addressed by `personId`, and
+  /// until this existed there was no way to ask whether the caller may see
+  /// *that* child: `assertReadable` could check the tenant and the service but
+  /// not the subject. A teacher of one group could read another group's child
+  /// by supplying their id, which the roster service hands out freely. That is
+  /// CLAUDE.md §4.1's first case, and this column is how the gate resolves
+  /// `personId` → `Child` before `canAccessChild` runs.
+  ///
+  /// ★★ Nullable, and unset means *unproven*, never *absent*. It is written
+  /// only where the product has already established the match against the live
+  /// roster by name and date of birth — `resolveAttendanceDrafts`. A child
+  /// without it is refused the per-child ESIS reads for a teacher rather than
+  /// waved through, because "we do not know whose record this is" is not a
+  /// reason to show it.
+  ///
+  /// ★★★ Unique per kindergarten rather than globally. ESIS ids are global, but
+  /// the same child can be enrolled by two kindergartens over time and each
+  /// holds its own `Child` row; a global unique would make the second
+  /// enrolment fail to save.
+  esisPersonId String?
+
   /// Гадаад иргэн — a child who is not a Mongolian citizen.
   ///
   /// ★ A flag rather than a citizenship/country field, and that is deliberate.
@@ -891,6 +916,8 @@ model Child {
   invoices            Invoice[]
 
   @@unique([kindergartenId, nationalId])
+  /// The lookup the ESIS authorization gate does on every per-child read.
+  @@unique([kindergartenId, esisPersonId])
   @@index([kindergartenId, status])
   @@index([kindergartenId, lastName, firstName])
   @@index([kindergartenId, dateOfBirth])

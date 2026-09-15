@@ -175,8 +175,8 @@ function CurrentEnrollmentCard({ current }: { current: Current }) {
         <h3 className="text-lead font-semibold text-ink">Одоогийн бүртгэл</h3>
         <div className="flex flex-wrap items-center justify-end gap-2">
           {current.esis ? (
-            <Badge tone={current.esis.mode === "DEMO" ? "sun" : "sky"}>
-              {current.esis.mode === "DEMO" ? "ESIS demo data" : "ESIS синк"}
+            <Badge tone="sky">
+              {"ESIS синк"}
             </Badge>
           ) : null}
           <Badge tone="mint">Суралцаж байгаа</Badge>
@@ -505,8 +505,8 @@ function KindergartenInfoCard({ current }: { current: Current }) {
       <Card pad="roomy">
         {esis ? (
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
-            <Badge tone={esis.mode === "DEMO" ? "sun" : "mint"}>
-              {esis.mode === "DEMO" ? "ESIS DEMO DATA" : "ESIS LIVE"}
+            <Badge tone="mint">
+              {"ESIS LIVE"}
             </Badge>
             <p className="text-caption text-muted">
               Сүүлийн синк: {formatDate(esis.syncedAt)} · {esis.status}

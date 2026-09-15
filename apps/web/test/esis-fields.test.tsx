@@ -5,10 +5,11 @@ import {
   ROUTER,
   renderWithProviders,
   sessionFor,
+  setParams,
   setSearchParams,
   stubApi,
 } from "./support/render";
-import EsisIntegrationPage from "@/app/(app)/admin/integrations/esis/page";
+import EsisIntegrationPage from "@/app/(app)/platform/[id]/esis/page";
 
 /**
  * "Гаралтын утгуудыг бүгдийг нь дэлгэцэнд харуулах" — the client, 2026-09-08.
@@ -21,7 +22,27 @@ import EsisIntegrationPage from "@/app/(app)/admin/integrations/esis/page";
  */
 
 const KG = "33333333-3333-4333-8333-333333333333";
-const ESIS_PATH = `/kindergartens/${KG}/esis`;
+/*
+ * ★ The platform route, since 2026-09-14. This screen was
+ * `/admin/integrations/esis` on `GET /kindergartens/:id/esis` and is now the
+ * operator's, on `GET /platform/kindergartens/:id/esis` — the token, the
+ * granted scope and the institution mapping are one deployment's properties,
+ * and a director could clear none of the blockers it lists.
+ */
+const ESIS_PATH = `/platform/kindergartens/${KG}/esis`;
+
+/**
+ * A platform operator.
+ *
+ * ★ **No memberships**, which is the whole point of the role (CLAUDE.md §1.1)
+ * and the reason this screen had to stop reading the tenant's own routes. A
+ * stub that gave them an `ADMIN` membership would pass while the real operator
+ * got 404s.
+ */
+const operator = () => {
+  const base = sessionFor([]);
+  return { ...base, memberships: [], user: { ...base.user, isSuperAdmin: true } };
+};
 
 const organizationFields: StubField[] = [
   {
@@ -88,14 +109,14 @@ const endpoint = (
   fields,
   fieldSource: "PORTAL",
   ingestedFieldCount: fields.filter((field) => field.ingested).length,
-  sampleRow: Object.fromEntries(
-    fields.filter((field) => field.ingested).map((field) => [field.name, field.sample]),
-  ),
-  sampleRows: [
-    Object.fromEntries(
-      fields.filter((field) => field.ingested).map((field) => [field.name, field.sample]),
-    ),
-  ],
+  /*
+    ★ `grant` and `portalName` joined `esisOverviewSchema` on 2026-09-14 with
+    the request register. Same trap the two notes below describe: omit them and
+    the Zod parse throws, the page falls to its error state, and every test
+    here reports a missing tab rather than a short payload.
+  */
+  grant: "APPROVED",
+  portalName: name,
   accessStatus: "UNKNOWN",
   /*
     ★ The sync-state half of the catalog row, added to `esisOverviewSchema`
@@ -111,8 +132,8 @@ const endpoint = (
   direction: "ESIS_TO_NOMADKIDS",
   targetModel: "Child",
   mappings: [],
-  responseMode: "DEMO",
-  syncStatus: "DEMO_SUCCESS",
+  responseMode: "LIVE",
+  syncStatus: "PENDING",
   syncErrorCode: null,
   httpStatus: null,
   lastSyncAt: null,
@@ -122,19 +143,16 @@ const endpoint = (
 function overview(canPreview: boolean) {
   return {
     /*
-      ★ `demoMode` and `mode` are required by `esisOverviewSchema` as of
-      2026-09-09, and a stub that omits them does not fail where you would
+      ★ `mode` is required by `esisOverviewSchema` and is now the literal
+      `"LIVE"` — `demoMode` left the payload on 2026-09-14 with the mock
+      transport. A stub that omits a required key does not fail where you would
       expect: the typed client validates with Zod, the parse throws, and the
-      page renders its error state — so all nine tests below reported "the
-      Сервис ба талбар tab does not exist" rather than "the payload is short
-      two fields". `canPreview` doubles as "is this deployment talking to the
-      real ESIS", which is what it already meant for `configured` and
-      `hasToken`.
+      page renders its error state, so every test below reports "the Сервис ба
+      талбар tab does not exist" rather than "the payload is short a field".
     */
     deployment: {
       configured: canPreview,
-      demoMode: !canPreview,
-      mode: canPreview ? "LIVE" : "MOCK",
+      mode: "LIVE",
       baseUrl: "https://hubv2.esis.edu.mn",
       hasToken: canPreview,
     },
@@ -170,6 +188,51 @@ function overview(canPreview: boolean) {
     recentRuns: [],
     canPreview,
     blockers: canPreview ? [] : ["Server дээр ESIS token болон endpoint тохируулаагүй байна."],
+    requests: {
+      reviewedAt: "2026-09-14",
+      counts: {
+        total: 4,
+        approved: 3,
+        pending: 1,
+        cancelled: 0,
+        wired: 2,
+        approvedUnwired: 1,
+      },
+      items: [
+        {
+          apiId: 59,
+          name: "Байгууллагын ерөнхий мэдээлэл",
+          group: "EBS",
+          status: "APPROVED",
+          requestedAt: "2026-09-11",
+          serviceKey: "organization",
+        },
+        {
+          apiId: 100004874669777,
+          name: "Суралцагчийн жагсаалт",
+          group: "EBS",
+          status: "APPROVED",
+          requestedAt: "2026-09-11",
+          serviceKey: "students",
+        },
+        {
+          apiId: 62,
+          name: "Вакциний мэдээлэл",
+          group: "EBS",
+          status: "APPROVED",
+          requestedAt: "2026-09-11",
+          serviceKey: null,
+        },
+        {
+          apiId: 147,
+          name: "Сүү хөтөлбөрийн гүйцэтгэл хадгалах",
+          group: "EBS",
+          status: "PENDING",
+          requestedAt: "2026-09-11",
+          serviceKey: null,
+        },
+      ],
+    },
   };
 }
 
@@ -207,12 +270,15 @@ async function openFieldsTab() {
 beforeEach(() => {
   vi.clearAllMocks();
   setSearchParams("");
+  // The screen reads the kindergarten from the route now, not from the session:
+  // an operator holds no membership to read a "primary" kindergarten from.
+  setParams({ id: KG });
 });
 
 describe("ESIS гаралтын талбарууд", () => {
   it("names every output field, including the ones it refuses", async () => {
     stubApi([
-      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: "/auth/me", body: operator() },
       { path: ESIS_PATH, body: overview(false) },
     ]);
     renderWithProviders(<EsisIntegrationPage />);
@@ -228,7 +294,7 @@ describe("ESIS гаралтын талбарууд", () => {
 
   it("shows the catalog source for every published field set", async () => {
     stubApi([
-      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: "/auth/me", body: operator() },
       { path: ESIS_PATH, body: overview(false) },
     ]);
     renderWithProviders(<EsisIntegrationPage />);
@@ -243,21 +309,15 @@ describe("ESIS гаралтын талбарууд", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows the demo ESIS field contract without an extra pull action", async () => {
+  it("shows the field contract without an extra pull action", async () => {
     stubApi([
-      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: "/auth/me", body: operator() },
       { path: ESIS_PATH, body: overview(false) },
     ]);
     renderWithProviders(<EsisIntegrationPage />);
 
     await openFieldsTab();
     const details = await fieldsFor("Байгууллагын мэдээлэл");
-    // ★ Renamed 2026-09-09: the badge was "Demo ESIS синк" and is now explicit
-    // that nothing is connected. Same guarantee — a demo row is never shown
-    // unlabelled — asserted against the wording the screen actually carries.
-    expect(
-      within(details).getByText(/ESIS DEMO DATA — LIVE CONNECTION NOT ACTIVE/),
-    ).toBeInTheDocument();
     // ★ `getAllByText`, because a field name now appears twice in this block:
     // once in the definition row that names the service's key field, once in
     // the field list itself. The assertion is that the catalog names the
@@ -271,248 +331,86 @@ describe("ESIS гаралтын талбарууд", () => {
   });
 
   /*
-   * ★ The demo row is useful before a live token exists and remains explicitly
-   * labelled. The paired live test verifies that it disappears once ESIS
-   * returns real rows.
+   * ★ **Inverted on 2026-09-14.** This test used to assert that the screen
+   * showed "Бяцхан нүүдэлчид (жишээ)" and "Төвийн бүс" — invented values for
+   * an invented tenant — before anything had been read, behind a badge saying
+   * so. The client ended that arrangement, so the test now pins the opposite:
+   * those strings must not be on the screen at all.
+   *
+   * Kept rather than deleted because it is the regression that matters. The
+   * easiest way to "fix" an empty-looking operator screen is to put a sample
+   * back, and this fails the moment somebody does.
    */
-  it("shows populated demo ESIS values before any action", async () => {
+  it("shows no invented values before anything has been read", async () => {
     stubApi([
-      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: "/auth/me", body: operator() },
       { path: ESIS_PATH, body: overview(false) },
     ]);
     renderWithProviders(<EsisIntegrationPage />);
 
     await openFieldsTab();
     const details = await fieldsFor("Байгууллагын мэдээлэл");
-    // ★ Renamed 2026-09-09: the badge was "Demo ESIS синк" and is now explicit
-    // that nothing is connected. Same guarantee — a demo row is never shown
-    // unlabelled — asserted against the wording the screen actually carries.
-    expect(
-      within(details).getByText(/ESIS DEMO DATA — LIVE CONNECTION NOT ACTIVE/),
-    ).toBeInTheDocument();
-    expect(within(details).getByText("Төвийн бүс")).toBeInTheDocument();
-    expect(within(details).getByText("Бяцхан нүүдэлчид (жишээ)")).toBeInTheDocument();
+
+    expect(within(details).queryByText("Төвийн бүс")).not.toBeInTheDocument();
+    expect(within(details).queryByText("Бяцхан нүүдэлчид (жишээ)")).not.toBeInTheDocument();
+    // The contract is still there — it is a published fact, not a sample.
+    expect(within(details).getByText("regionName")).toBeInTheDocument();
   });
 
   /*
-   * ★ "Гаралтын утгуудыг бүгдийг нь" is a plural, and a roster service is where
-   * that bites: one child under a heading that says ten is a screen the
-   * operator cannot check anything against. Every demo record renders, and the
-   * count beside them is the number of records rendered rather than a figure
-   * kept by hand somewhere else.
+   * ★ **Removed on 2026-09-14: "renders every demo record of a list service".**
+   *
+   * It asserted that a roster service drew all three of its invented children
+   * — Батбаяр, Ануужин, Хулан — with "3 бичлэг" beside them. The reasoning was
+   * sound for what it was ("one child under a heading that says ten is a
+   * screen the operator cannot check anything against"), and the whole feature
+   * it protected is gone: the operator screen shows the field contract now,
+   * and records only when ESIS has actually returned some.
+   *
+   * The test above it — "shows no invented values before anything has been
+   * read" — is what guards this area now.
    */
-  it("renders every demo record of a list service, not only the first", async () => {
-    const roster = endpoint("students", "Суралцагчийн жагсаалт", studentFields, {
-      key: "students",
-      domain: "ROSTER",
-      sampleRows: [
-        { personId: "90000000000001", firstName: "Батбаяр" },
-        { personId: "90000000000002", firstName: "Ануужин" },
-        { personId: "90000000000003", firstName: "Хулан" },
-      ],
-    });
-    const body = overview(false);
-    body.endpoints = [body.endpoints[0]!, roster];
 
+  /*
+   * ★ The register tab, added 2026-09-14 with the move to the operator's
+   * surface. "Хэдэн хүсэлт зөвшөөрөгдсөн, хэдийг ашиглаж байна" was the
+   * client's own question, and the answer is a platform figure: one ESIS
+   * developer account holds the grants for every kindergarten.
+   */
+  it("counts the ESIS grants and says how many are unused", async () => {
     stubApi([
-      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
-      { path: ESIS_PATH, body },
+      { path: "/auth/me", body: operator() },
+      { path: ESIS_PATH, body: overview(false) },
     ]);
     renderWithProviders(<EsisIntegrationPage />);
 
-    await openFieldsTab();
-    const details = await fieldsFor("Суралцагчийн жагсаалт");
+    await userEvent.click(await screen.findByRole("tab", { name: /Эрхийн хүсэлт/ }));
 
-    expect(within(details).getByText("Батбаяр")).toBeInTheDocument();
-    expect(within(details).getByText("Ануужин")).toBeInTheDocument();
-    expect(within(details).getByText("Хулан")).toBeInTheDocument();
-    expect(within(details).getByText("3 бичлэг")).toBeInTheDocument();
-    // Three records and a header row, under the catalog's own labels.
-    expect(within(details).getAllByRole("row")).toHaveLength(4);
-  });
-
-  it("drops the example entirely once ESIS returns real rows", async () => {
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
-      {
-        path: `${ESIS_PATH}/resource`,
-        body: {
-          resource: "organization",
-          /*
-            ★ `source` and `response` joined `esisResourceReadSchema` on
-            2026-09-09: which transport answered, and the upstream envelope
-            verbatim. These stubs are all LIVE pulls, and `response.RESULT`
-            mirrors `rows` because that is what the real endpoint returns —
-            `rows` is the parsed view of the same records.
-          */
-          source: "LIVE",
-          status: "SUCCEEDED",
-          errorCode: null,
-          count: 1,
-          durationMs: 42,
-          fields: organizationFields,
-          rows: [
-            { institutionId: "77777", institutionName: "Жинхэнэ цэцэрлэг", regionName: "Баруун" },
-          ],
-          response: {
-            SUCCESS_CODE: 200,
-            RESPONSE_MESSAGE: "OK",
-            RESULT: [
-              { institutionId: "77777", institutionName: "Жинхэнэ цэцэрлэг", regionName: "Баруун" },
-            ],
-          },
-        },
-      },
-      { path: ESIS_PATH, body: overview(true) },
-    ]);
-    renderWithProviders(<EsisIntegrationPage />);
-
-    await openFieldsTab();
-    await userEvent.click(
-      within(await fieldsFor("Байгууллагын мэдээлэл")).getByRole("button", {
-        name: /ESIS-ээс татах/,
-      }),
-    );
-
-    const dialog = await screen.findByRole("dialog");
-    expect(await within(dialog).findByText("Жинхэнэ цэцэрлэг")).toBeInTheDocument();
+    // The date the register was read off the portal, not "now".
+    expect(await screen.findByText(/2026-09-14/)).toBeInTheDocument();
     expect(
-      within(dialog).queryByText(/ESIS DEMO DATA — LIVE CONNECTION NOT ACTIVE/),
-    ).not.toBeInTheDocument();
-    // The invented tenant name is not on screen beside the real one.
-    expect(within(dialog).queryByText("Бяцхан нүүдэлчид (жишээ)")).not.toBeInTheDocument();
+      screen.getByText(/Зөвшөөрөгдсөн 3 сервисийн 2-г нь систем дуудаж байна/),
+    ).toBeInTheDocument();
+
+    // A granted service nothing calls is named as such rather than omitted.
+    const row = screen.getByText("Вакциний мэдээлэл").closest("tr") as HTMLElement;
+    expect(within(row).getByText("Холбоогүй")).toBeInTheDocument();
   });
 
-  it("asks for the ESIS ids a parameterised service needs before calling", async () => {
-    const { calls } = stubApi([
-      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
-      { path: `${ESIS_PATH}/resource`, body: { detail: "unused" } },
-      { path: ESIS_PATH, body: overview(true) },
-    ]);
-    renderWithProviders(<EsisIntegrationPage />);
-
-    await openFieldsTab();
-    await userEvent.click(
-      within(await fieldsFor("Бүлгийн ирцийн тулгалт")).getByRole("button", {
-        name: /ESIS-ээс татах/,
-      }),
-    );
-
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByLabelText("ESIS бүлгийн дугаар")).toBeInTheDocument();
-    expect(within(dialog).getByLabelText("Огноо")).toBeInTheDocument();
-    // Nothing is fetched until the operator supplies the ministry's own id.
-    expect(calls.some((call) => call.url.includes("/esis/resource"))).toBe(false);
-  });
-
-  it("renders returned values under the catalog's own field labels", async () => {
+  /*
+   * ★ The authorization half of the move. `RequireSuperAdmin` renders nothing
+   * and redirects, so a director who kept the old bookmark lands back on their
+   * own dashboard — and the API answers 404 regardless, which is
+   * `esis-admin`'s test, not this one.
+   */
+  it("keeps a kindergarten admin off the operator screen", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
-      {
-        path: `${ESIS_PATH}/resource`,
-        body: {
-          resource: "organization",
-          /*
-            ★ `source` and `response` joined `esisResourceReadSchema` on
-            2026-09-09: which transport answered, and the upstream envelope
-            verbatim. These stubs are all LIVE pulls, and `response.RESULT`
-            mirrors `rows` because that is what the real endpoint returns —
-            `rows` is the parsed view of the same records.
-          */
-          source: "LIVE",
-          status: "SUCCEEDED",
-          errorCode: null,
-          count: 1,
-          durationMs: 42,
-          fields: organizationFields,
-          rows: [{ institutionId: "40305", institutionName: "Бяцхан нүүдэлчид", regionName: null }],
-          response: {
-            SUCCESS_CODE: 200,
-            RESPONSE_MESSAGE: "OK",
-            RESULT: [
-              { institutionId: "40305", institutionName: "Бяцхан нүүдэлчид", regionName: null },
-            ],
-          },
-        },
-      },
       { path: ESIS_PATH, body: overview(true) },
     ]);
     renderWithProviders(<EsisIntegrationPage />);
 
-    await openFieldsTab();
-    await userEvent.click(
-      within(await fieldsFor("Байгууллагын мэдээлэл")).getByRole("button", {
-        name: /ESIS-ээс татах/,
-      }),
-    );
-
-    const dialog = await screen.findByRole("dialog");
-    expect(await within(dialog).findByText("Бяцхан нүүдэлчид")).toBeInTheDocument();
-    expect(within(dialog).getByText("1 бичлэг")).toBeInTheDocument();
-    /*
-     * A field ESIS left empty is still shown, and says so. One record renders
-     * as a definition list rather than a one-row table, matching how
-     * `/admin/kindergarten` shows the same record — so the empty marker is that
-     * page's "Бөглөөгүй", not a bare dash.
-     */
-    // "Бүс" labels both the record and its row in the field catalog below.
-    expect(within(dialog).getAllByText("Бүс").length).toBeGreaterThan(0);
-    expect(within(dialog).getAllByText("Бөглөөгүй").length).toBeGreaterThan(0);
-  });
-
-  it("explains an upstream refusal instead of showing an empty table", async () => {
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
-      {
-        path: `${ESIS_PATH}/resource`,
-        body: {
-          resource: "organization",
-          /*
-            ★ `source` and `response` joined `esisResourceReadSchema` on
-            2026-09-09: which transport answered, and the upstream envelope
-            verbatim. These stubs are all LIVE pulls, and `response.RESULT`
-            mirrors `rows` because that is what the real endpoint returns —
-            `rows` is the parsed view of the same records.
-          */
-          source: "LIVE",
-          status: "FAILED",
-          errorCode: "SCOPE_DENIED",
-          count: 0,
-          durationMs: null,
-          fields: organizationFields,
-          rows: [],
-          response: {
-            SUCCESS_CODE: 403,
-            RESPONSE_MESSAGE: "SCOPE_DENIED",
-            RESULT: [],
-          },
-        },
-      },
-      { path: ESIS_PATH, body: overview(true) },
-    ]);
-    renderWithProviders(<EsisIntegrationPage />);
-
-    await openFieldsTab();
-    await userEvent.click(
-      within(await fieldsFor("Байгууллагын мэдээлэл")).getByRole("button", {
-        name: /ESIS-ээс татах/,
-      }),
-    );
-
-    const dialog = await screen.findByRole("dialog");
-    expect(await within(dialog).findByText(/эрх олгоогүй/)).toBeInTheDocument();
-  });
-
-  it("hides the pull control from a teacher", async () => {
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      { path: ESIS_PATH, body: overview(true) },
-    ]);
-    renderWithProviders(<EsisIntegrationPage />);
-
-    // `RequireRole` renders nothing and redirects, so the whole screen is gone.
     await waitFor(() => expect(ROUTER.replace).toHaveBeenCalledWith("/"));
-    expect(screen.queryByRole("button", { name: /ESIS-ээс татах/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: /API эрх/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Сервис ба талбар/ })).not.toBeInTheDocument();
   });
 });

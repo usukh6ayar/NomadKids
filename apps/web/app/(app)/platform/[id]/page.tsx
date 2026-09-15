@@ -154,6 +154,11 @@ function EsisMappingCard({ kindergarten }: { kindergarten: PlatformKindergartenD
         id="platform-esis-heading"
         title="ESIS байгууллагын mapping"
         lede="Энэ тохиргоо тухайн цэцэрлэгийн админ ямар ESIS institution уншихыг хязгаарлана."
+        action={
+          <Button asChild variant="secondary" size="sm">
+            <Link href={`/platform/${kindergarten.id}/esis`}>ESIS мэдээллийн төв</Link>
+          </Button>
+        }
       />
       <Card pad="roomy">
         <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px_auto] md:items-end">

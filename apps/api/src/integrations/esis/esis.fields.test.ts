@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { ESIS_RESOURCE_CATALOG } from "./esis.catalog";
 import { ESIS_ENDPOINTS } from "./esis.endpoints";
-import { ESIS_FIELDS, ingestedFieldNames } from "./esis.fields";
-import { sampleRows, unknownOverrideKeys } from "./esis.samples";
-import { ESIS_READ_PARAMS } from "./esis.dto";
+import { ESIS_DISCOVERED_SHAPE, ESIS_FIELDS, ingestedFieldNames } from "./esis.fields";
+import { ESIS_READ_PARAMS, ESIS_WRITE_RESOURCES } from "./esis.dto";
+import { ESIS_REFUSED_FIELDS, esisDiscoveredSchema } from "./esis.schemas";
 import {
   ESIS_READABLE_KEYS,
   ESIS_READERS,
@@ -26,12 +26,72 @@ import {
 describe("ESIS field catalog", () => {
   it("matches the parsing schema key for key", () => {
     for (const key of ESIS_READABLE_KEYS) {
+      /*
+       * ★ The discovered-shape services are exempt, and the exemption is the
+       * feature rather than a hole in it — 2026-09-14.
+       *
+       * This assertion pins a *declared* field list against a *declared*
+       * schema. Six services have neither: they answered 203 for every child
+       * on institution 42778, so their columns are read off the first real
+       * response instead of written down. Their schema is a passthrough, which
+       * has no `.shape` to compare against — asking it this question is a
+       * category error, not a failure.
+       *
+       * What replaces the check for them is the assertion below, which is the
+       * one that actually matters for a passthrough: that it cannot leak an
+       * identifier we refused.
+       */
+      if (ESIS_DISCOVERED_SHAPE.has(key)) continue;
+
       const schema = ESIS_READERS[key].schema as z.ZodObject<z.ZodRawShape>;
 
       expect({ key, fields: [...ingestedFieldNames(key)].sort() }).toEqual({
         key,
         fields: Object.keys(schema.shape).sort(),
       });
+    }
+  });
+
+  /*
+   * The passthrough's own guarantee.
+   *
+   * ★ Every other schema refuses a civil id by simply not naming it, and the
+   * test above is what proves each one still does. `esisDiscoveredSchema` keeps
+   * whatever ESIS sends, so omission cannot be its defence — the refusal has to
+   * run, and this is what proves it runs.
+   *
+   * ★★ A widened schema elsewhere is a bug. A passthrough that forwarded a
+   * child's civil id would be a breach of what `ESIS_REQUEST.md` §1.1 (b)
+   * promises the ministry, so it is asserted directly rather than inferred.
+   */
+  it("strips every refused identifier from a discovered-shape row", () => {
+    expect(ESIS_DISCOVERED_SHAPE.size).toBeGreaterThan(0);
+
+    const row = {
+      personId: 9129027526058,
+      studentAllergyId: 5,
+      allergenName: "Сүү",
+      ...Object.fromEntries(ESIS_REFUSED_FIELDS.map((name) => [name, "leaked"])),
+    };
+
+    const parsed = esisDiscoveredSchema.parse(row) as Record<string, unknown>;
+
+    for (const name of ESIS_REFUSED_FIELDS) {
+      expect({ name, present: name in parsed }).toEqual({ name, present: false });
+    }
+    // …while everything the service actually carries survives.
+    expect(parsed).toMatchObject({ studentAllergyId: 5, allergenName: "Сүү" });
+  });
+
+  /*
+   * ★ A discovered service declares the anchor and nothing else. If somebody
+   * later writes a guessed field list for one of these, this fails — which is
+   * the whole point of the set existing rather than the guesses being quietly
+   * added back.
+   */
+  it("declares only the anchor for a service whose contract is unseen", () => {
+    for (const key of ESIS_DISCOVERED_SHAPE) {
+      expect({ key, fields: ingestedFieldNames(key) }).toEqual({ key, fields: ["personId"] });
     }
   });
 
@@ -95,6 +155,14 @@ describe("ESIS field catalog", () => {
       // and `programPlanId` exist: each service takes the ids the one above it
       // returned, which is what makes it a drill-down rather than four panels.
       studentCheck: ["personId"],
+      /*
+       * ★ Added 2026-09-14. `studentContacts` was declared parameterless and
+       * listed as an institution-level preview, because the catalog described
+       * it as the whole roster's guardians. It is a per-child lookup: without a
+       * `personId` in its POST body it answers `400 personId шаардлагатай`.
+       * This assertion is what will now fail if that is ever undone.
+       */
+      studentContacts: ["personId"],
       studentStatistics: ["personId"],
       studentCondition: ["personId"],
       teacherAcademicOrg: ["personId"],
@@ -102,6 +170,30 @@ describe("ESIS field catalog", () => {
       programStages: ["programOfStudyId"],
       programPlans: ["programOfStudyId", "programStageId"],
       programCourses: ["programOfStudyId", "programStageId", "programPlanId"],
+
+      /*
+       * ── Added 2026-09-14 ──────────────────────────────────────────────
+       *
+       * ★ `workerInfo` takes `primaryNidNumber` — a **worker's** register
+       * number, not a child's. It is the second personal identifier a reader
+       * accepts, and `esis-admin.service.ts` keeps it out of the audit row
+       * alongside `personRegNumber`; `REDACTED_READ_PARAMS` is the list.
+       */
+      studentAllergy: ["personId"],
+      studentProhibitedFood: ["personId"],
+      studentDisability: ["personId"],
+      studentAssessments: ["personId"],
+      studentMeasurements: ["personId"],
+      studentSurgery: ["personId"],
+      studentIncident: ["personId"],
+      studentScreening: ["personId"],
+      vaccineHistory: ["personId"],
+      vaccinePlan: ["personId"],
+      groupMeasurements: ["studentGroupId"],
+      schoolAttendance: ["academicYear", "dayDate"],
+      workerInfo: ["primaryNidNumber"],
+      teacherProfile: ["personId"],
+      teacherCheck: ["personId"],
     });
     /*
      * The write services are not readable, so no read button can reach one.
@@ -114,9 +206,51 @@ describe("ESIS field catalog", () => {
       "studentContactsSave",
       "studentStatisticsSave",
       "studentConditionSave",
+      // The ten added 2026-09-14. Each is reached from an explicit operator
+      // action; none may be pulled by the generic "ESIS-ээс татах" button.
+      "studentAllergySave",
+      "studentProhibitedFoodSave",
+      "studentDisabilitySave",
+      "studentAssessmentsSave",
+      "studentMeasurementSave",
+      "studentSurgerySave",
+      "studentIncidentSave",
+      "studentAttachmentSave",
+      "groupMeasurementsSave",
+      "studentScreeningSave",
     ]) {
       expect(ESIS_READABLE_KEYS as string[]).not.toContain(key);
     }
+  });
+
+  /*
+   * Every write in the catalogue is reachable, or deliberately is not.
+   *
+   * ★ Added 2026-09-15, after ten writes were added to `ESIS_ENDPOINTS`, given
+   * `EsisService` methods, given `send()` field lists and put in a role's
+   * service list — and were still **unreachable**, because `POST …/esis/write`
+   * validates its `resource` against `ESIS_WRITE_RESOURCES` and nothing had
+   * added them there. The route rejected them at schema validation with no
+   * hint that the method existed one layer down.
+   *
+   * ★★ Wiring a service touches seven files and this was the seventh. A count
+   * assertion would not have caught it — the catalogue was complete, the tests
+   * were green, and the only symptom was a button that could never work. So
+   * the check is "can this be called?", asked of every write there is.
+   *
+   * ★★★ `studentAttachmentSave` is the one deliberate exclusion, and it is
+   * named rather than filtered by a rule: it sends a child's medical document
+   * to a third party, which CLAUDE.md §1.4 makes a consent decision rather
+   * than a route. Adding a second exclusion should require editing this line.
+   */
+  it("makes every write reachable, except the one held back on purpose", () => {
+    const writes = Object.keys(ESIS_ENDPOINTS).filter((key) => key.endsWith("Save"));
+    const reachable = new Set<string>(ESIS_WRITE_RESOURCES);
+
+    expect(writes.filter((key) => !reachable.has(key))).toEqual(["studentAttachmentSave"]);
+
+    // And nothing is routable that the catalogue does not carry.
+    expect([...reachable].filter((key) => !writes.includes(key))).toEqual([]);
   });
 
   /*
@@ -145,134 +279,98 @@ describe("ESIS field catalog", () => {
     expect(keysBySource("ADAPTER").sort()).toEqual(
       [
         "studentInfo",
-        "studentCheck",
-        "studentContacts",
         "studentContactsSave",
-        "studentStatistics",
         "studentStatisticsSave",
-        "studentCondition",
         "studentConditionSave",
-        "teacherAcademicOrg",
-        "teacherMovements",
         "groupsNextYear",
-        "programs",
         "programStages",
         "programPlans",
         "programCourses",
+        /*
+         * ── Added 2026-09-14 ────────────────────────────────────────────
+         *
+         * ★ The six reads whose contract has never been seen: they answered
+         * 203 for every child on this institution, so nothing is declared and
+         * `esisFieldsFor` reads their columns off the first real record.
+         * `ADAPTER` is the honest badge for a list that does not exist yet.
+         *
+         * ★★ The ten writes, because an input contract cannot be observed by
+         * reading. They mirror their own reads and are settled by the first
+         * real send — the position `saveAttendanceV3` has always been in.
+         */
+        "studentAllergy",
+        "studentProhibitedFood",
+        "studentDisability",
+        "studentSurgery",
+        "studentIncident",
+        "studentScreening",
+        "studentAllergySave",
+        "studentProhibitedFoodSave",
+        "studentDisabilitySave",
+        "studentAssessmentsSave",
+        "studentMeasurementSave",
+        "studentSurgerySave",
+        "studentIncidentSave",
+        "studentAttachmentSave",
+        "groupMeasurementsSave",
+        "studentScreeningSave",
+      ].sort(),
+    );
+
+    /*
+     * ★ `LIVE` — added 2026-09-14, and it is nine of the eighteen that used to
+     * be `ADAPTER`. Each was compared with a real response from institution
+     * 42778, and **every one of them was wrong**: `rooms` and `academicOrg`
+     * required an id ESIS does not send and failed outright, and the other
+     * seven parsed while silently discarding the payload.
+     *
+     * That is the argument for the third value existing. `ADAPTER` was being
+     * read as "not confirmed yet" when it meant "invented", and one badge for
+     * both left nothing on the operator screen to tell a verified field list
+     * from an unverified one.
+     *
+     * ★★ What stays `ADAPTER` is what still cannot be checked: the four writes,
+     * whose inputs no read reveals; the three curriculum drill-downs, which
+     * need ids this institution's single programme does not produce;
+     * `groupsNextYear`, which answers 203 here; and `studentInfo`, whose
+     * section the catalog page truncates before.
+     */
+    expect(keysBySource("LIVE").sort()).toEqual(
+      [
+        "studentCheck",
+        "studentContacts",
+        "studentStatistics",
+        "studentCondition",
+        "teacherAcademicOrg",
+        /* Added 2026-09-14 — each captured from a real response. */
+        "studentAssessments",
+        "studentMeasurements",
+        "vaccineCatalog",
+        "vaccineHistory",
+        "vaccinePlan",
+        "groupMeasurements",
+        "screeningQuestions",
+        "schoolAttendance",
+        "workerInfo",
+        "teacherProfile",
+        "teacherCheck",
+        "teacherMovements",
+        "programs",
         "rooms",
         "academicOrg",
         "subjectAreas",
       ].sort(),
     );
-    expect([...keysBySource("PORTAL"), ...keysBySource("ADAPTER")].sort()).toEqual(
-      Object.keys(ESIS_ENDPOINTS).sort(),
-    );
+    expect(
+      [...keysBySource("PORTAL"), ...keysBySource("LIVE"), ...keysBySource("ADAPTER")].sort(),
+    ).toEqual(Object.keys(ESIS_ENDPOINTS).sort());
   });
 
-  /*
-   * ★ The samples exist to demonstrate the screen before a token is issued,
-   * which makes "could this be mistaken for a real ESIS response?" the only
-   * question that matters about them. A sample on a refused field would be a
-   * fabricated register number or password rendered on screen — precisely the
-   * thing the refusal list exists to say this product does not hold.
-   */
-  it("gives every ingested field a sample and every refused field none", () => {
-    for (const entry of ESIS_RESOURCE_CATALOG) {
-      for (const field of entry.fields) {
-        expect({ key: entry.key, name: field.name, hasSample: field.sample !== undefined }).toEqual(
-          {
-            key: entry.key,
-            name: field.name,
-            hasSample: field.ingested,
-          },
-        );
-      }
-    }
-  });
 
-  it("builds a sample row with exactly the live row's columns", () => {
-    for (const entry of ESIS_RESOURCE_CATALOG) {
-      expect({ key: entry.key, columns: Object.keys(entry.sampleRow).sort() }).toEqual({
-        key: entry.key,
-        columns: [...ingestedFieldNames(entry.key)].sort(),
-      });
-      // No column may be blank, or the demonstration shows a hole.
-      expect(Object.values(entry.sampleRow).every((value) => Boolean(value))).toBe(true);
-    }
-  });
 
-  /*
-   * ★ The demo set is the whole answer to "show me the outputs" before a token
-   * exists, so a row missing a column is a hole on screen with nothing to
-   * explain it. Column equality with the live row is what keeps the
-   * demonstration and a real response the same shape.
-   */
-  it("gives every demo record the live row's columns, all filled", () => {
-    for (const entry of ESIS_RESOURCE_CATALOG) {
-      const columns = Object.keys(entry.sampleRow).sort();
-      for (const row of sampleRows(entry.key)) {
-        /*
-         * A write service has no outputs; its demo row is the request body.
-         *
-         * ★ Keyed off `direction` rather than the name `saveAttendanceV3` —
-         * 2026-09-10. It was the only write for as long as there was one, and
-         * naming it worked until three суралцагч saves arrived and this test
-         * failed for each of them in turn. The catalog already knows which
-         * way a service points; asking it means the next write needs no edit
-         * here at all.
-         */
-        const isWrite = entry.direction === "NOMADKIDS_TO_ESIS";
-        const expected = isWrite ? Object.keys(row).sort() : columns;
-        expect({ key: entry.key, columns: Object.keys(row).sort() }).toEqual({
-          key: entry.key,
-          columns: expected,
-        });
-        expect(Object.values(row).every((value) => Boolean(value))).toBe(true);
-      }
-    }
-  });
 
-  it("starts the demo set with the row the field catalog illustrates", () => {
-    for (const entry of ESIS_RESOURCE_CATALOG) {
-      expect(entry.sampleRows.length).toBeGreaterThan(0);
-      // Same reasoning as the test above: a write service's `sampleRow` is
-      // empty by construction, because `sampleRow` keeps outputs only.
-      if (entry.direction === "NOMADKIDS_TO_ESIS") continue;
-      expect({ key: entry.key, first: entry.sampleRows[0] }).toEqual({
-        key: entry.key,
-        first: entry.sampleRow,
-      });
-    }
-  });
 
-  /*
-   * ★ A row is built from the field catalog's key set, so an override naming a
-   * field the service does not return is dropped rather than shown — correct on
-   * screen, silent in the source. This is the noise that makes it loud.
-   */
-  it("has no demo override naming a field its service does not return", () => {
-    expect(unknownOverrideKeys()).toEqual([]);
-  });
 
-  /*
-   * ★★ The refusals are the point of the catalog, and a demo row is the one
-   * place a refused name could come back — an override is a bare object with no
-   * type to stop it. A fabricated register number on screen is exactly what
-   * `ESIS_REQUEST.md` §1.1 (b) says this product does not hold.
-   */
-  it("never gives a refused field a value in any demo record", () => {
-    const refused = new Set(
-      ESIS_RESOURCE_CATALOG.flatMap((entry) =>
-        entry.fields.filter((field) => !field.ingested).map((field) => field.name),
-      ),
-    );
-
-    for (const entry of ESIS_RESOURCE_CATALOG) {
-      for (const row of sampleRows(entry.key)) {
-        expect(Object.keys(row).filter((name) => refused.has(name))).toEqual([]);
-      }
-    }
-  });
 
   /*
    * ★ The DTO must accept every path value a reader asks for.
@@ -348,6 +446,69 @@ describe("ESIS data direction", () => {
       expect(entry.direction, entry.key).toBe(
         readable.has(entry.key) ? "ESIS_TO_NOMADKIDS" : "NOMADKIDS_TO_ESIS",
       );
+    }
+  });
+});
+
+/**
+ * Nothing here may invent an ESIS value — 2026-09-14.
+ *
+ * ★ The catalog used to carry `sample` on every field, `sampleRow` per service
+ * and `sampleRows` for a whole demo roster, and `ESIS_DEMO_MODE=true` served
+ * committed fixtures instead of calling the ministry. All of it existed so the
+ * screens could be shown before the token had scope; institution 42778 answers
+ * now, and the client's instruction was plain — "ene esis ni real zuil shuu …
+ * demo ugugdul ntr ywuulj tenegtewee".
+ *
+ * ★★ These tests exist because deleting code does not keep it deleted. The
+ * cheapest way to fix an empty-looking screen is to reintroduce exactly one
+ * fallback "just for the demo", and the next reader cannot tell which values
+ * on their screen came from the ministry. Structure is what makes that a test
+ * failure rather than a judgement call.
+ */
+describe("no fabricated ESIS data", () => {
+  /*
+   * ★ The assertion is about *values*, not about the key set.
+   *
+   * `summary` is allowed and is not a sample: it carries a column's position
+   * in the table's reading order, which is a decision about layout, not a
+   * claim about what ESIS returned. `omitReason` is allowed for the same kind
+   * of reason — it cites the document that refuses the field.
+   *
+   * What must never come back is a key holding a *value a service might have
+   * returned*. `sample` was exactly that, so the test names the keys a field
+   * may carry rather than checking for one forbidden name: a future
+   * `example`, `demo` or `placeholder` fails here without anybody remembering
+   * to add it to a list.
+   */
+  it("gives no field an invented value", () => {
+    const allowed = new Set(["name", "label", "io", "ingested", "omitReason", "summary"]);
+
+    for (const entry of ESIS_RESOURCE_CATALOG) {
+      for (const field of entry.fields) {
+        const unexpected = Object.keys(field).filter((key) => !allowed.has(key));
+        expect(unexpected, `${entry.key}.${field.name}`).toEqual([]);
+      }
+    }
+  });
+
+  it("publishes no demo row on any catalog entry", () => {
+    for (const entry of ESIS_RESOURCE_CATALOG) {
+      const keys = Object.keys(entry);
+      expect(keys.filter((key) => /^sample/i.test(key)), entry.key).toEqual([]);
+      expect(keys.filter((key) => /^(demo|mock|fixture)/i.test(key)), entry.key).toEqual([]);
+    }
+  });
+
+  /*
+   * ★ The transport has one mode. `EsisResponse.source` is narrowed to `"LIVE"`
+   * in `esis.types.ts`, so a second transport cannot be added without widening
+   * it back — which is a change a reviewer sees. This pins the runtime half:
+   * every service reachable here is one the client will actually call.
+   */
+  it("routes every readable service through the live client", () => {
+    for (const key of ESIS_READABLE_KEYS) {
+      expect(ESIS_READERS[key].endpoint.path, key).toMatch(/^\/svc\//);
     }
   });
 });

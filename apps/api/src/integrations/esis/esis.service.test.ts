@@ -15,7 +15,6 @@ function serviceFor(body: unknown) {
   const config = new EsisConfig({
     ESIS_BASE_URL: "https://hubv2.esis.edu.mn",
     ESIS_TOKEN: "test-token-not-a-secret",
-    ESIS_INSTITUTION_ID: "40305",
     ESIS_TIMEOUT_MS: 15_000,
   } as Env);
   return { service: new EsisService({ request } as unknown as EsisClient, config), request };
@@ -26,28 +25,62 @@ describe("ESIS v2 endpoint registry", () => {
     const endpoints = Object.values(ESIS_ENDPOINTS);
     const withId = endpoints.filter((item) => item.apiId !== null);
 
-    expect(endpoints).toHaveLength(39);
+    /*
+     * ★ 67 since 2026-09-14, was 40. The twenty-seven added that day are the
+     * services the ministry's own granted-service export (`apis-granted.xlsx`)
+     * listed as approved and this catalogue was not calling: the health block
+     * and its writes, the three immunisation reads, group measurement and its
+     * bulk save, the эрт илрүүлэг instrument, the three teacher-registration
+     * reads, and the daily attendance roll-up.
+     *
+     * The export has **84** approved services. The seventeen still unwired are
+     * the ones with an open question — a civil id we do not hold, an input
+     * that duplicates a wired save, a state register number no column carries,
+     * a subsystem on a domain `ESIS_BASE_URL` does not answer, and one row
+     * whose URL cell is empty.
+     */
+    expect(endpoints).toHaveLength(67);
     expect(new Set(withId.map((item) => item.apiId)).size).toBe(withId.length);
-    expect(endpoints.every((item) => item.path.startsWith("/svc/api/hub/v2/"))).toBe(true);
+
+    /*
+     * ★★ **One service is not under `/hub/v2/`, and it is the one to watch.**
+     *
+     * This was `every(...startsWith("/svc/api/hub/v2/"))` until `workerInfo`
+     * (api 49) arrived at `/svc/api/public/worker/info/:primaryNidNumber`. The
+     * prefix is not cosmetic: `/hub/v2/` services take an `institutionId` and
+     * are refused for an institution this token does not hold — proven live,
+     * `403 Таны компанид энэ institutionId дээр эрх байхгүй`. The `public`
+     * service takes no institution at all and answers for any worker in the
+     * national database.
+     *
+     * So this assertion is pinned as a **list** rather than relaxed to a
+     * predicate: a second unscoped path should have to be added here
+     * deliberately, by someone who has read this note.
+     */
+    const outsideHub = endpoints.filter((item) => !item.path.startsWith("/svc/api/hub/v2/"));
+    expect(outsideHub.map((item) => item.path)).toEqual([
+      "/svc/api/public/worker/info/:primaryNidNumber",
+    ]);
   });
 
   /*
    * A null id is a service whose numeric portal id has not been read.
    *
-   * ★ **This assertion was `toEqual([])` until 2026-09-10**, when seventeen
-   * services were added and every one of them arrived without a numeric id.
-   * That is not catalog work left undone, which is what the empty expectation
-   * was written to catch — it is two different facts about the portal:
+   * ★ **This is `toEqual([])` again**, and the round trip is the point.
    *
-   *   - the public catalog page prints a numeric id only for the `API-0000nn`
-   *     services, not for the `api-nn` ones, so `api-34`, `api-12`, `api-42`
-   *     and their neighbours have a slug and no number;
-   *   - the суралцагч section is not publicly rendered at all, so the seven
-   *     services taken from the client's own URLs have neither.
+   * It was empty until 2026-09-10, when seventeen services arrived without a
+   * numeric id and the expectation was widened to name them: the public
+   * catalog page prints a number only for the `API-0000nn` services, and the
+   * суралцагч section is not publicly rendered at all, so nine slugs and seven
+   * client-supplied URLs had no id to carry. The list was written to say which
+   * services were waiting on what, and every one of them "resolves when
+   * somebody reads it from a signed-in portal session".
    *
-   * Pinning the exact set keeps the original intent — a *new* null still fails
-   * this test — while saying out loud which services are waiting on what. Each
-   * one resolves when somebody reads it from a signed-in portal session.
+   * ★★ That happened on 2026-09-14: the deployment's own request register
+   * (`esis.requests.ts`) lists an id beside the portal's own name for all
+   * seventeen. So the expectation returns to its original, stricter form — a
+   * *new* null fails this test — and `esis.requests.test.ts` carries the half
+   * this one cannot see, that each id is one the ministry actually approved.
    */
   it("names every service still missing its portal id", () => {
     const missing = Object.entries(ESIS_ENDPOINTS)
@@ -55,29 +88,7 @@ describe("ESIS v2 endpoint registry", () => {
       .map(([key]) => key)
       .sort();
 
-    expect(missing).toEqual(
-      [
-        // Not on the public catalog page — paths from the client, 2026-09-10.
-        "studentCheck",
-        "studentContacts",
-        "studentContactsSave",
-        "studentStatistics",
-        "studentStatisticsSave",
-        "studentCondition",
-        "studentConditionSave",
-        // Listed on the page under an `api-nn` slug, which carries no number.
-        "teacherAcademicOrg",
-        "teacherMovements",
-        "groupsNextYear",
-        "programs",
-        "programStages",
-        "programPlans",
-        "programCourses",
-        "rooms",
-        "academicOrg",
-        "subjectAreas",
-      ].sort(),
-    );
+    expect(missing).toEqual([]);
   });
 
   it("pins the official API ids and encodes path parameters", () => {
@@ -217,15 +228,13 @@ describe("ESIS v2 domain methods", () => {
       ],
     });
 
-    // ★ `demoFixture` names which built-in response answers this call when the
-    // deployment is in MOCK mode — added 2026-09-09. It is routing metadata for
-    // our own client, never sent upstream, so the path, the method and the body
-    // below are still the whole of what ESIS receives, which is what the test's
-    // name is about.
+    // ★ `demoFixture` was in this payload until 2026-09-14 — routing metadata
+    // that told the client which built-in response to serve in MOCK mode. The
+    // mock transport is gone, so the object below is now exactly what goes on
+    // the wire, which is what this test's name always claimed.
     expect(request).toHaveBeenCalledWith({
       path: "/svc/api/hub/v2/group/school/attendance/save/v3",
       method: "POST",
-      demoFixture: "saveAttendanceV3",
       body: {
         institutionId: 40305,
         studentGroupId: 10001,

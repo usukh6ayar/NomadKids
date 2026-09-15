@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { AuthzModule } from "../../authz/authz.module";
 import { loadEnv } from "../../config/env";
 import { EsisClient } from "./esis.client";
 import { EsisConfig } from "./esis.config";
@@ -18,6 +19,15 @@ import { KindergartenEsisController, PlatformEsisController } from "./esis.contr
  * declaring it is one whose blast radius nobody can measure.
  */
 @Module({
+  /*
+   * ★ `AuthzModule` — imported 2026-09-15 for `ChildAccessService`.
+   *
+   * A per-child ESIS read is gated by `canAccessChild`, the same rule every
+   * other child route uses (CLAUDE.md §1.1). Importing the module is how this
+   * one says it reaches child data, which the note below asks of anything that
+   * consumes an integration.
+   */
+  imports: [AuthzModule],
   controllers: [KindergartenEsisController, PlatformEsisController],
   providers: [
     /*

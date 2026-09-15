@@ -1,6 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { EsisConfig } from "./esis.config";
-import { esisDemoFixture } from "./esis.fixtures";
 import type { EsisErrorKind, EsisRequest, EsisResponse } from "./esis.types";
 
 /**
@@ -88,38 +87,37 @@ export class EsisClient {
       );
     }
 
+    /*
+     * ★ One transport — 2026-09-14. There was a second: `ESIS_DEMO_MODE=true`
+     * synthesised a response from a committed fixture and never opened a
+     * socket. It existed so the screens could be demonstrated before the token
+     * had scope, and it was removed the day institution 42778 started
+     * answering, at the client's instruction ("ene esis ni real zuil shuu").
+     *
+     * A read now reaches the ministry or fails, and a failure is reported as
+     * one — which is the behaviour the fixture branch was quietly preventing.
+     */
     let response: Response;
-    if (this.config.isDemoMode) {
-      if (!options.demoFixture) {
-        throw new EsisError("invalid_response", "ESIS demo request has no deterministic fixture", {
-          path: options.path,
-        });
-      }
-      response = new Response(JSON.stringify(esisDemoFixture(options.demoFixture, options)), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    } else
-      try {
-        const url = this.buildUrl(options.path, options.query);
-        response = await this.fetchWithRetry(url, method, options);
-      } catch (cause) {
-        const durationMs = Date.now() - startedAt;
-        // `AbortSignal.timeout` rejects with a TimeoutError; everything else here
-        // is a connection-level fault. They are separated because only one of
-        // them is worth retrying.
-        const timedOut = cause instanceof Error && cause.name === "TimeoutError";
+    try {
+      const url = this.buildUrl(options.path, options.query);
+      response = await this.fetchWithRetry(url, method, options);
+    } catch (cause) {
+      const durationMs = Date.now() - startedAt;
+      // `AbortSignal.timeout` rejects with a TimeoutError; everything else here
+      // is a connection-level fault. They are separated because only one of
+      // them is worth retrying.
+      const timedOut = cause instanceof Error && cause.name === "TimeoutError";
 
-        this.logFailure(method, options.path, timedOut ? "timeout" : "network", durationMs);
+      this.logFailure(method, options.path, timedOut ? "timeout" : "network", durationMs);
 
-        throw new EsisError(
-          timedOut ? "timeout" : "network",
-          timedOut
-            ? `ESIS request timed out after ${options.timeoutMs ?? this.config.timeoutMs}ms`
-            : `ESIS request failed: ${this.redact(cause instanceof Error ? cause.message : "unknown")}`,
-          { path: options.path, durationMs },
-        );
-      }
+      throw new EsisError(
+        timedOut ? "timeout" : "network",
+        timedOut
+          ? `ESIS request timed out after ${options.timeoutMs ?? this.config.timeoutMs}ms`
+          : `ESIS request failed: ${this.redact(cause instanceof Error ? cause.message : "unknown")}`,
+        { path: options.path, durationMs },
+      );
+    }
 
     const durationMs = Date.now() - startedAt;
     const rawBody = await response.text().catch(() => "");
@@ -167,7 +165,7 @@ export class EsisClient {
       }
     }
 
-    const source = this.config.isDemoMode ? "MOCK" : "LIVE";
+    const source = "LIVE" as const;
     this.logger.log(
       `ESIS ${source} ${method} ${options.path} → ${response.status} (${durationMs}ms)`,
     );

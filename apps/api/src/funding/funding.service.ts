@@ -5,7 +5,11 @@ import type { Actor } from "../authz/actor";
 import type { AttendanceCounts } from "@kinder/contracts";
 import { paginate, toSkipTake, type PageParams } from "../common/pagination";
 import { withActorLabel } from "../dashboard/audit-actor";
+import { EsisError } from "../integrations/esis/esis.client";
+import { ESIS_ENDPOINTS } from "../integrations/esis/esis.endpoints";
+import { EsisService } from "../integrations/esis/esis.service";
 import { FundingRepository } from "./funding.repository";
+import { countByStatus, foodDiscountByChild } from "./food-discount";
 import { calculateFunding, ruleAppliesOn, splitBilling, type RuleInput } from "./funding-rules";
 import { buildRegisterWorkbook } from "./register-workbook";
 import type {
@@ -23,7 +27,89 @@ export class FundingService {
     private readonly repo: FundingRepository,
     private readonly tenants: TenantAccessService,
     private readonly audit: AuditRepository,
+    private readonly esis: EsisService,
   ) {}
+
+  /**
+   * Which children the state subsidises the meals of — `нэмэлт.md` §3.
+   *
+   * ★ Read live, stored nowhere. Eligibility is the ministry's fact and it
+   * changes without telling us, so a copy in our database would be right on
+   * the day it was written and silently wrong afterwards. Reading it on demand
+   * means the screen is either current or visibly unavailable — which is the
+   * same argument `food-discount.ts` makes at greater length.
+   *
+   * ★★ A failure is **reported, never softened into a default**. Every child
+   * comes back `UNASSESSED` and the caller is told why, because the honest
+   * answer to "did ESIS say this family pays?" when ESIS did not answer is
+   * "we do not know" — and "not eligible" would bill them.
+   *
+   * ★★★ `assertCanReadFinance`, so an accountant reaches it and a teacher does
+   * not. It names children against a fact about their family's circumstances;
+   * §13 keeps teachers out of the kindergarten-wide financial picture and this
+   * is part of it.
+   */
+  async foodDiscounts(actor: Actor, kindergartenId: string) {
+    this.tenants.assertCanReadFinance(actor, kindergartenId);
+
+    const [kindergarten, children] = await Promise.all([
+      this.repo.findKindergartenEsisMapping(kindergartenId),
+      this.repo.childrenForEsisMatch(kindergartenId),
+    ]);
+
+    const unavailable = (reason: string) => ({
+      status: "UNAVAILABLE" as const,
+      reason,
+      endpoint: {
+        method: ESIS_ENDPOINTS.foodDiscountStudents.method,
+        path: ESIS_ENDPOINTS.foodDiscountStudents.path,
+      },
+      counts: { eligible: 0, notEligible: 0, unassessed: children.length },
+      rows: [] as ReturnType<typeof foodDiscountByChild>,
+    });
+
+    if (!this.esis.isConfigured) return unavailable("ESIS_NOT_CONFIGURED");
+    const institutionId = kindergarten?.esisInstitutionId;
+    if (!institutionId) return unavailable("INSTITUTION_NOT_MAPPED");
+
+    try {
+      const [roster, discounts] = await Promise.all([
+        this.esis.students(institutionId),
+        this.esis.foodDiscountStudents(institutionId),
+      ]);
+
+      /*
+       * ★ Two reads, and the roster is the one that carries birth dates.
+       * `cook/levelHood/students` has none — its only unique identifiers are
+       * the civil id and the register number, both of which
+       * `ESIS_REQUEST.md` §1.1 (b) refuses — so the join runs
+       * local child → roster (name + date of birth) → `personId` → subsidy.
+       */
+      const rows = foodDiscountByChild(children, roster.data, discounts.data);
+
+      await this.audit.append({
+        action: "VIEW",
+        kindergartenId,
+        actorUserId: actor.userId,
+        objectType: "EsisResource",
+        objectId: "foodDiscountStudents",
+        metadata: { ...countByStatus(rows), children: children.length },
+      });
+
+      return {
+        status: "READ" as const,
+        reason: null,
+        endpoint: {
+          method: ESIS_ENDPOINTS.foodDiscountStudents.method,
+          path: ESIS_ENDPOINTS.foodDiscountStudents.path,
+        },
+        counts: countByStatus(rows),
+        rows,
+      };
+    } catch (error) {
+      return unavailable(safeEsisErrorCode(error));
+    }
+  }
 
   /**
    * ★ The accountant and the administrator, throughout this service.
@@ -724,4 +810,20 @@ function max(a: Date, b: Date): Date {
 
 function sum<T>(items: T[], of: (item: T) => number): number {
   return items.reduce((total, item) => total + of(item), 0);
+}
+
+/**
+ * The upstream failure, as a code a screen can label.
+ *
+ * ★ A code, never the message. An `EsisError` detail can quote the request
+ * back, and the request carries the Bearer token — the same reason
+ * `esis-admin.service.ts` keeps its own `safeErrorCode`.
+ */
+function safeEsisErrorCode(error: unknown): string {
+  if (error instanceof EsisError) {
+    if (error.kind === "http" && error.detail.status === 401) return "UNAUTHORIZED";
+    if (error.kind === "http" && error.detail.status === 403) return "SCOPE_DENIED";
+    return error.kind.toUpperCase();
+  }
+  return "UNKNOWN";
 }

@@ -61,6 +61,22 @@ export const ESIS_READ_PARAMS = {
   programOfStudyId: z.string().trim().min(1).max(64).optional(),
   programStageId: z.string().trim().min(1).max(64).optional(),
   programPlanId: z.string().trim().min(1).max(64).optional(),
+  /*
+   * ── Added 2026-09-14 ────────────────────────────────────────────────────
+   *
+   * ★ A worker's register number, for `workerInfo` (api 49). It is the same
+   * kind of value as `personRegNumber` above and gets the same treatment: an
+   * operator types it from the document in front of them, it is sent and never
+   * stored, and `read()` keeps it out of the audit row.
+   *
+   * ★★ It is a **separate** key rather than a reuse of `personRegNumber`
+   * because the two name different people — one a child, one a member of
+   * staff — and the audit redaction has to be able to tell them apart if it is
+   * ever narrowed. Shape-checked only, for the reason given above: the
+   * ministry owns the format, and Mongolian register numbers start with two
+   * Cyrillic letters, so anything tighter would refuse valid input.
+   */
+  primaryNidNumber: z.string().trim().min(1).max(32).optional(),
 } as const;
 
 export const esisReadSchema = z.object({
@@ -89,6 +105,29 @@ export const ESIS_WRITE_RESOURCES = [
   "studentContactsSave",
   "studentStatisticsSave",
   "studentConditionSave",
+  /*
+   * ── Added 2026-09-15 ────────────────────────────────────────────────────
+   *
+   * ★ Adding a service to `ESIS_ENDPOINTS` and giving `EsisService` a `save…`
+   * method does **not** make it reachable. This list is what `POST
+   * …/esis/write` accepts, and the ten below were wired everywhere else first
+   * and stayed unreachable until they were named here — the route rejected
+   * them at schema validation with no hint that the method existed.
+   *
+   * ★★ `studentAttachmentSave` is deliberately **absent**. It is in the
+   * catalogue so the grant is visible and it has no method on `EsisService`
+   * either: sending a child's medical document to a third party is a consent
+   * decision, not a route. See the endpoint's note and CLAUDE.md §1.4.
+   */
+  "studentAllergySave",
+  "studentProhibitedFoodSave",
+  "studentDisabilitySave",
+  "studentAssessmentsSave",
+  "studentMeasurementSave",
+  "studentSurgerySave",
+  "studentIncidentSave",
+  "groupMeasurementsSave",
+  "studentScreeningSave",
 ] as const;
 
 export type EsisWriteResource = (typeof ESIS_WRITE_RESOURCES)[number];

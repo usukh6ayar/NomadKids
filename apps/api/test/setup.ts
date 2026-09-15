@@ -86,24 +86,24 @@ process.env.ACCESS_FEE_AMOUNT ??= "0";
 /*
  * ★★ ESIS gets the same treatment, and for a sharper reason — 2026-09-11.
  *
- * The paragraph above is written about QPay, but every word of it applies here
- * and ESIS was left out because at the time no machine had a token: `.env`
- * shipped `ESIS_BASE_URL=` empty and `ESIS_DEMO_MODE` absent, so the schema
- * default (`"true"`) made the transport a fixture no matter what.
+ * The paragraph above is written about QPay, but every word of it applies
+ * here: `.env` is loaded above, and it carries a real ministry token. Without
+ * the deletion below, `pnpm test` would run against hubv2.esis.edu.mn — a
+ * government system, on someone else's quota.
  *
- * That stopped being true the day a real one-month ministry token was issued
- * and `.env` was set to `ESIS_DEMO_MODE=false` to use it. `.env` is loaded
- * above, so from that moment the suite would have run with a live token
- * against hubv2.esis.edu.mn — a government system, on someone else's quota,
- * from `pnpm test`.
+ * ★★★ **Deleting the token is now the whole of the protection — 2026-09-14.**
  *
- * Forcing demo mode rather than deleting the token alone is deliberate: with
- * the token gone but the mode still `false`, `isConfigured` turns false and
- * the tests that assert the *configured* path would fail for a reason that has
- * nothing to do with them.
+ * This block also set `ESIS_DEMO_MODE = "true"`, which routed every read to a
+ * committed fixture so the suite could exercise the ESIS paths without a
+ * token. Demo mode is gone, and the consequence is worth stating plainly:
+ * with no token, `isConfigured` is false and every ESIS-dependent route
+ * answers 503 or 502 rather than a fixture. The tests assert that, because it
+ * is what the product now does.
+ *
+ * A test that needs a *successful* ESIS read has to stub `EsisService` for
+ * itself. That is more work than a global fixture and it is the point — a
+ * fixture reachable from anywhere is how invented data got onto the screens.
  */
-process.env.ESIS_DEMO_MODE = "true";
-
 for (const key of [
   "QPAY_BASE_URL",
   "QPAY_USERNAME",

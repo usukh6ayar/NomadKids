@@ -1,12 +1,43 @@
 import { Role } from "../../domain/enums";
 import { ESIS_ENDPOINTS } from "./esis.endpoints";
-import { ESIS_FIELDS, ESIS_FIELD_SOURCE, sampleRow } from "./esis.fields";
-import { sampleRows } from "./esis.samples";
+import { ESIS_FIELDS, ESIS_FIELD_SOURCE } from "./esis.fields";
 import { ESIS_READABLE_KEYS, esisReaderParams, type EsisReadableKey } from "./esis.service";
 import { fieldMappings } from "./esis.mapping";
+import { esisGrant, esisPortalRequest, esisRequestRegister } from "./esis.requests";
 
 export type EsisEndpointKey = keyof typeof ESIS_ENDPOINTS;
-export type EsisDomain = "ORGANIZATION" | "ROSTER" | "ATTENDANCE" | "FOOD";
+/**
+ * ★ `HEALTH` added 2026-09-14 with the twenty health, vaccine, measurement and
+ * screening services. They would otherwise have gone under `ROSTER`, which is
+ * where a child's name and group live — and a screen that files a вакцины
+ * бүртгэл beside a бүлгийн жагсаалт tells an operator the two are the same
+ * kind of fact. They are not: one is a medical record.
+ */
+export type EsisDomain = "ORGANIZATION" | "ROSTER" | "ATTENDANCE" | "FOOD" | "HEALTH";
+
+/** Shared by the six services whose output contract has never been seen. */
+const DISCOVERED_NOTE =
+  "★ Энэ сервис институт 42778-ийн бүх 83 хүүхдэд `203` буцаасан тул гаралтын " +
+  "талбарууд нь **тодорхойгүй**. Тиймээс баганыг зохиогоогүй — эхний бодит " +
+  "хариу ирэхэд ЭСИС-ийн өөрийнх нь талбарын нэрсийг утгатай нь харуулна. " +
+  "Ингэснээр 2026-09-14-нд 11 сервист илэрсэн «зохиосон талбарын жагсаалт» " +
+  "алдааг давтахгүй.";
+
+/** Shared by the three immunisation-registry services. */
+const VACCINE_NOTE =
+  "★★ **Тасалданги сервис.** 2026-09-14-нд нэг хүүхдэд 17 бодит вакцин " +
+  "буцаасан бөгөөд нэг цагийн дараа яг тэр хүүхдэд `203` буцаав — ижил токен, " +
+  "ижил байгууллага. Тиймээс хоосон хариуг **«вакцин хийлгээгүй» гэж " +
+  "ойлгож болохгүй**: тэр нь хүүхдийн талаарх эмнэлгийн дүгнэлт болох бөгөөд " +
+  "хариу өгөөгүй сервисээс гаргасан байх болно. «Мэдээлэл ирсэнгүй» гэж " +
+  "харуулна. Талбарын нэр нь SCREAMING_CASE — өөр бүртгэлийн системээс ирдэг.";
+
+/** Shared by the ten writes whose input contract cannot be observed. */
+const WRITE_NOTE =
+  "★ Бичих сервис. Доорх талбарууд нь гаралт биш, илгээх орц. **Орцын гэрээ " +
+  "батлагдаагүй** — унших замаар орцыг мэдэх боломжгүй, тул эдгээр нь " +
+  "холбогдох унших сервисээс гаргасан дүгнэлт. Зөвхөн хүний шууд үйлдлээр " +
+  "илгээнэ, автоматаар хэзээ ч биш.";
 
 interface EsisEndpointMeta {
   name: string;
@@ -141,6 +172,13 @@ const META: Record<EsisEndpointKey, EsisEndpointMeta> = {
     usage: "Жорын орц, бохир болон цэвэр жин",
     previewable: true,
   },
+  foodDiscountStudents: {
+    name: "Хоолны хөнгөлөлттэй хүүхэд",
+    domain: "FOOD",
+    usage: "Төрийн хоолны хөнгөлөлтөд хамрагдах хүүхдийн жагсаалт",
+    previewable: true,
+    note: "ЯАМ-ын шийдвэр. Жагсаалтад байхгүй хүүхэд нь хөнгөлөлтгүй биш, дүгнэгдээгүй гэсэн үг.",
+  },
   livelihoodForm1: {
     name: "Хоолны төвлөрүүлэх орлого — маягт 1",
     domain: "FOOD",
@@ -173,22 +211,28 @@ const META: Record<EsisEndpointKey, EsisEndpointMeta> = {
   studentCheck: {
     name: "ЭСИС-д бүртгэлтэй эсэх",
     domain: "ROSTER",
-    usage: "Хүүхэд ЭСИС-д бүртгэлтэй эсэх, ямар бүлэгт байгааг шалгах",
+    usage: "Хүүхэд ЭСИС-д бүртгэлтэй эсэхийг шалгах",
     previewable: false,
     note:
-      "★ Порталын нээлттэй каталогт **баталгаажаагүй**. Тэнд байгаа цорын ганц " +
-      "`check` сервис нь `api-11` — багшийнх (`teacher/check/:personId`). " +
-      "Суралцагчийн хэсэг нээлттэй хуудсанд ачаалагддаггүй тул «байхгүй» гэж " +
-      "дүгнэх ч боломжгүй. Token ирэхэд эхний дуудлагаар тодорно.",
+      "★ Зам нь 2026-09-14-нд **баталгаажлаа**. Энэ мөр өмнө нь «эрх нь нээгдсэн " +
+      "ч зам нь баталгаажаагүй» гэж байсан — амьд дуудлага хариулав: " +
+      "`RESULT: \"true\"` ба тайлбар өгүүлбэр. `institutionId` заавал шаардана " +
+      "(эс бөгөөс 400). ★★ Бүлэг, төлөв, элссэн огноо **буцаадаггүй** — тэр " +
+      "гурав манай схемд байсан бөгөөд ESIS-д байхгүй.",
   },
   studentContacts: {
-    name: "Асран хамгаалагчийн жагсаалт",
+    name: "Хүүхдийн холбоо барих мэдээлэл",
     domain: "ROSTER",
-    usage: "Цэцэрлэгийн бүх хүүхдийн асран хамгаалагчийн холбоо барих мэдээлэл",
-    previewable: true,
+    usage: "Нэг хүүхдийн асран хамгаалагч, тэдний утас, и-мэйл",
+    previewable: false,
     note:
-      "Регистрийн дугаар, иргэний бүртгэлийн дугаарыг авахгүй — эцэг эхийн утас " +
-      "харуулахад үндэсний дугаар шаардлагагүй (ESIS_REQUEST.md §1.1 (b)).",
+      "★ 2026-09-14: энэ нь **нэг хүүхдийн** лавлагаа, бүх бүртгэлийнх биш. " +
+      "`personId`-г POST body-гоор илгээнэ — эс бөгөөс «personId шаардлагатай» " +
+      "гэж 400 буцаана. ★★ Хариу нь нэрлэсэн жагсаалтуудын объект: `relInfo` " +
+      "асран хамгаалагч, `rel*` тэдний холбоо барих хэрэгсэл, `contact*` " +
+      "хүүхдийн өөрийнх. Мөр бүр аль жагсаалтаас ирснээ `section`-оор хэлнэ. " +
+      "Регистрийн дугаар, иргэний бүртгэлийн дугаарыг авахгүй " +
+      "(ESIS_REQUEST.md §1.1 (b)).",
   },
   studentContactsSave: {
     name: "Асран хамгаалагч илгээх",
@@ -241,9 +285,11 @@ const META: Record<EsisEndpointKey, EsisEndpointMeta> = {
     usage: "Дараагийн хичээлийн жилд бүлэг хэрхэн бүрэлдэхийг ЭСИС-ээс харах",
     previewable: true,
     note:
-      "★ Бүлэг ИЛГЭЭХ сервис порталын каталогт байхгүй тул зохиогоогүй. Энэ бол " +
-      "`POST /v1/groups/:id/promotions` бүлэг ахиулахдаа эх сурвалж болгох унших " +
-      "сервис.",
+      "Энэ бол `POST /v1/groups/:id/promotions` бүлэг ахиулахдаа эх сурвалж " +
+      "болгох унших сервис. ★ Энэ мөр өмнө нь «бүлэг илгээх сервис порталын " +
+      "каталогт байхгүй» гэж байсан — 2026-09-14-нд зөвшөөрөгдсөн сервисийн " +
+      "жагсаалтад гурав байв: 150 (нэмэх), 152 (засах, устгах), 162 (багш " +
+      "тохируулах). Хараахан холбоогүй байгаа нь өөр асуудал.",
   },
   programs: {
     name: "Сургалтын хөтөлбөр",
@@ -290,6 +336,228 @@ const META: Record<EsisEndpointKey, EsisEndpointMeta> = {
     usage: "Хөтөлбөрийн хичээлүүдийн судлагдахууны лавлах",
     previewable: true,
   },
+
+  /* ══ Added 2026-09-14 ═══════════════════════════════════════════════════
+   *
+   * ★ **None of these is `previewable`.** The operator dry-run calls a service
+   * with no operator input, and every read below either needs a `personId`, a
+   * group, a date or a register number. `vaccineCatalog` and
+   * `screeningQuestions` are the two that take none — and they are still off
+   * the list, because that list is the connection test and adding reference
+   * lookups to it spends the deployment's rate limit proving nothing new.
+   */
+
+  studentAllergy: {
+    name: "Харшлын мэдээлэл",
+    domain: "HEALTH",
+    usage: "Хүүхдийн харшлын ЭСИС дэх бүртгэл",
+    previewable: false,
+    note: DISCOVERED_NOTE,
+  },
+  studentProhibitedFood: {
+    name: "Хориотой хүнс",
+    domain: "HEALTH",
+    usage: "Хүүхдэд хориотой хүнсний ЭСИС дэх бүртгэл",
+    previewable: false,
+    note: DISCOVERED_NOTE,
+  },
+  studentDisability: {
+    name: "Хөгжлийн бэрхшээл",
+    domain: "HEALTH",
+    usage: "Хүүхдийн хөгжлийн бэрхшээлийн ЭСИС дэх бүртгэл",
+    previewable: false,
+    note: DISCOVERED_NOTE,
+  },
+  studentSurgery: {
+    name: "Мэс заслын түүх",
+    domain: "HEALTH",
+    usage: "Хүүхдийн мэс заслын ЭСИС дэх бүртгэл",
+    previewable: false,
+    note: DISCOVERED_NOTE,
+  },
+  studentIncident: {
+    name: "Осол гэмтэл",
+    domain: "HEALTH",
+    usage: "Хүүхдийн осол гэмтлийн ЭСИС дэх бүртгэл",
+    previewable: false,
+    note: DISCOVERED_NOTE,
+  },
+  studentScreening: {
+    name: "Эрт илрүүлгийн хариу",
+    domain: "HEALTH",
+    usage: "Дунд бүлгийн хүүхдийн эрт илрүүлгийн бөглөсөн хариу",
+    previewable: false,
+    note: DISCOVERED_NOTE,
+  },
+  studentAssessments: {
+    name: "Үзлэг, шинжилгээ",
+    domain: "HEALTH",
+    usage: "Хүүхдийн эмнэлгийн үзлэг, дүгнэлт, дараагийн үзлэгийн товлол",
+    previewable: false,
+    note:
+      "Үзлэгийн төрөл, дүгнэлт нь ЭСИС-ийн код хэвээр ирнэ (COMPREHENSIVE_PHYSICAL, " +
+      "HEALTHY) — тайлал нийтлэгдээгүй тул орчуулахгүй. Хавсралтын холбоос нь " +
+      "ЭСИС-ийн хаяг бөгөөд эндээс татаж авахгүй (CLAUDE.md §1.4).",
+  },
+  studentMeasurements: {
+    name: "Өсөлт, хөгжил",
+    domain: "HEALTH",
+    usage: "Хүүхдийн өндөр, жингийн ЭСИС дэх хэмжилт",
+    previewable: false,
+  },
+  vaccineCatalog: {
+    name: "Вакцины лавлах",
+    domain: "HEALTH",
+    usage: "Улсын хэмжээнд бүртгэлтэй вакцин, тун",
+    previewable: false,
+    note: VACCINE_NOTE,
+  },
+  vaccineHistory: {
+    name: "Хийлгэсэн вакцин",
+    domain: "HEALTH",
+    usage: "Хүүхдийн хийлгэсэн вакцины түүх, эмнэлэг, цуврал дугаар",
+    previewable: false,
+    note: VACCINE_NOTE,
+  },
+  vaccinePlan: {
+    name: "Товлолт вакцин",
+    domain: "HEALTH",
+    usage: "Хүүхдийн товлогдсон дараагийн вакцин",
+    previewable: false,
+    note: VACCINE_NOTE,
+  },
+  groupMeasurements: {
+    name: "Бүлгийн хэмжилт",
+    domain: "HEALTH",
+    usage: "Нэг бүлгийн хүүхэд бүрийн өндөр, жин, бэлхүүс, ташаа",
+    previewable: false,
+    note:
+      "★ Хүүхэд бүрээр нэг мөр буцаана — хэмжээгүй бол утгууд нь хоосон. Энэ нь " +
+      "үр дүнгийн жагсаалт биш, сувилагчийн хэмжилт хийх хуудас. Бүлэг сонгосны " +
+      "дараа татна.",
+  },
+  screeningQuestions: {
+    name: "Эрт илрүүлгийн асуулга",
+    domain: "HEALTH",
+    usage: "Яамны эрт илрүүлгийн 25 асуулт",
+    previewable: false,
+    note:
+      "★ Энэ бол хэмжих хэрэгсэл нь өөрөө. Дэргэд нь өөрсдийн асуулт зохиохгүй — " +
+      "ирсэн 25 асуулт л хэмжинэ.",
+  },
+  schoolAttendance: {
+    name: "Өдрийн ирцийн нэгдсэн дүн",
+    domain: "ATTENDANCE",
+    usage: "Бүлэг тус бүрийн өдрийн ирц, шалтгаанаар нь",
+    previewable: false,
+    note:
+      "★ Хүүхэд тус бүрээр биш, **бүлэг тус бүрээр** нэг мөр. Аль бүлэг ирцээ " +
+      "бүртгээгүйг эрхлэгч эндээс харна, мөн илгээсэн ирцийг ЭСИС талаас нь " +
+      "тулгана. Жил, огноо сонгосны дараа татна.",
+  },
+  workerInfo: {
+    name: "Ажилтны ерөнхий мэдээлэл",
+    domain: "ROSTER",
+    usage: "Регистрийн дугаараар ажилтныг ЭСИС-ээс олох",
+    previewable: false,
+    note:
+      "★★ Энэ сервис **байгууллагаар хязгаарлагдахгүй** — `/svc/api/public/` " +
+      "дор байх ба `institutionId` авдаггүй. Өөрөөр хэлбэл улсын боловсролын " +
+      "санд байгаа ямар ч ажилтныг олно. Тухайн хүн энэ цэцэрлэгийнх мөн эсэхийг " +
+      "`teacherCheck` баталгаажуулна. ★ Регистрийн дугаарыг ЭСИС рүү илгээнэ, " +
+      "хадгалахгүй — буцаж ирсэн `civilId`, `personRegNumber`-ийг авахгүй " +
+      "(ESIS_REQUEST.md §1.1 (b)).",
+  },
+  teacherProfile: {
+    name: "Багшийн ерөнхий мэдээлэл",
+    domain: "ROSTER",
+    usage: "Багшийн албан тушаал, ажилласан жил, заах аргын нэгдэл",
+    previewable: false,
+  },
+  teacherCheck: {
+    name: "Энэ байгууллагын багш эсэх",
+    domain: "ROSTER",
+    usage: "Тухайн хүн энэ цэцэрлэгт багшаар ажилладаг эсэхийг шалгах",
+    previewable: false,
+    note:
+      "`institutionId` заавал шаардана (эс бөгөөс 400). Хариу нь `[\"false\"]` — " +
+      "`studentCheck`-тэй адил скаляр.",
+  },
+
+  /* ── Бичих сервисүүд ──────────────────────────────────────────────────── */
+  studentAllergySave: {
+    name: "Харшил илгээх",
+    domain: "HEALTH",
+    usage: "Хүүхдийн харшлын мэдээллийг ЭСИС рүү илгээх",
+    previewable: false,
+    note: WRITE_NOTE,
+  },
+  studentProhibitedFoodSave: {
+    name: "Хориотой хүнс илгээх",
+    domain: "HEALTH",
+    usage: "Хүүхдэд хориотой хүнсний мэдээллийг ЭСИС рүү илгээх",
+    previewable: false,
+    note: WRITE_NOTE,
+  },
+  studentDisabilitySave: {
+    name: "Хөгжлийн бэрхшээл илгээх",
+    domain: "HEALTH",
+    usage: "Хүүхдийн хөгжлийн бэрхшээлийн мэдээллийг ЭСИС рүү илгээх",
+    previewable: false,
+    note: WRITE_NOTE,
+  },
+  studentAssessmentsSave: {
+    name: "Үзлэг, шинжилгээ илгээх",
+    domain: "HEALTH",
+    usage: "Хүүхдийн эмнэлгийн үзлэгийн дүгнэлтийг ЭСИС рүү илгээх",
+    previewable: false,
+    note: WRITE_NOTE,
+  },
+  studentMeasurementSave: {
+    name: "Өсөлт, хөгжил илгээх",
+    domain: "HEALTH",
+    usage: "Нэг хүүхдийн өндөр, жинг ЭСИС рүү илгээх",
+    previewable: false,
+    note: WRITE_NOTE,
+  },
+  studentSurgerySave: {
+    name: "Мэс засал илгээх",
+    domain: "HEALTH",
+    usage: "Хүүхдийн мэс заслын мэдээллийг ЭСИС рүү илгээх",
+    previewable: false,
+    note: WRITE_NOTE,
+  },
+  studentIncidentSave: {
+    name: "Осол гэмтэл илгээх",
+    domain: "HEALTH",
+    usage: "Хүүхдийн осол гэмтлийн мэдээллийг ЭСИС рүү илгээх",
+    previewable: false,
+    note: WRITE_NOTE,
+  },
+  groupMeasurementsSave: {
+    name: "Бүлгийн хэмжилт илгээх",
+    domain: "HEALTH",
+    usage: "Бүлгийн хүүхэд бүрийн хэмжилтийг нэг дор ЭСИС рүү илгээх",
+    previewable: false,
+    note: WRITE_NOTE,
+  },
+  studentScreeningSave: {
+    name: "Эрт илрүүлгийн хариу илгээх",
+    domain: "HEALTH",
+    usage: "Дунд бүлгийн хүүхдийн эрт илрүүлгийн хариултыг ЭСИС рүү илгээх",
+    previewable: false,
+    note: WRITE_NOTE,
+  },
+  studentAttachmentSave: {
+    name: "Үзлэгийн хавсралт илгээх",
+    domain: "HEALTH",
+    usage: "Эмнэлгийн үзлэгийн хавсралт файлыг ЭСИС рүү илгээх",
+    previewable: false,
+    note:
+      "★ **Дэлгэц байхгүй, зориуд.** Хүүхдийн эмнэлгийн баримтыг гуравдагч " +
+      "байгууллага руу илгээх нь товчлуур биш, зөвшөөрлийн шийдвэр " +
+      "(CLAUDE.md §1.4). Каталогт байгаа нь эрх нээлттэйг харуулахын тулд.",
+  },
 };
 
 const READABLE = new Set<string>(ESIS_READABLE_KEYS);
@@ -305,9 +573,20 @@ const isReadable = (key: EsisEndpointKey): key is EsisReadableKey => READABLE.ha
  * without our help. `params` tells the screen which services need a group or a
  * date before the button can do anything.
  *
- * ★★ `sampleRows` is every demo record; `sampleRow` is the first of them, kept
- * because two callers want exactly one — the child-registration template and
- * "my ESIS profile" describe one person, not a roster.
+ * ★★ **`sampleRow` and `sampleRows` are gone — 2026-09-14**, at the client's
+ * instruction: "odoonoos demo zuil ashiglahgui. buh zuil esis ees baih ystoi.
+ * data irehgui baigaa bol teriig aldaa nii message eer haruulah."
+ *
+ * They carried invented records that every ESIS surface fell back to when a
+ * read had not happened or had failed. That was defensible while the token had
+ * no scope and the screens could not be shown any other way; it stopped being
+ * defensible the day institution 42778 started answering, because from then on
+ * the only thing a fabricated row could do was hide a live failure behind
+ * something that looked like data.
+ *
+ * What replaces them is `EsisNoAnswer`: the endpoint that did not answer, and
+ * why. `fields` stays — the contract is a real fact about the service and is
+ * not invented.
  */
 export const ESIS_RESOURCE_CATALOG = (Object.keys(ESIS_ENDPOINTS) as EsisEndpointKey[]).map(
   (key) => ({
@@ -316,10 +595,24 @@ export const ESIS_RESOURCE_CATALOG = (Object.keys(ESIS_ENDPOINTS) as EsisEndpoin
     ...META[key],
     fields: ESIS_FIELDS[key],
     fieldSource: ESIS_FIELD_SOURCE[key],
+    /*
+     * ★ Whether the ministry has granted this service, and under what name.
+     *
+     * Derived from the deployment's request register by `apiId` rather than
+     * written out per service: a hand-kept status on 40-odd rows is a second
+     * copy of the portal's answer, and the copy is what goes stale. A service
+     * whose id is not in the register reads `NOT_REQUESTED`, which is the
+     * honest answer for one the client asked for before the request was filed.
+     *
+     * ★★ `portalName` is the register's own name for the id. It is what lets
+     * an operator check a row against the portal without our help — and it is
+     * how `studentInfo`'s wrong id was caught: the name beside 147 was a milk
+     * service.
+     */
+    grant: esisGrant(ESIS_ENDPOINTS[key].apiId),
+    portalName: esisPortalRequest(ESIS_ENDPOINTS[key].apiId)?.name ?? null,
     ingestedFieldCount: ESIS_FIELDS[key].filter((field) => field.io === "OUTPUT" && field.ingested)
       .length,
-    sampleRow: sampleRow(key),
-    sampleRows: sampleRows(key),
     /*
      * ★ Which way the data moves, from **readability** rather than from the
      * HTTP verb.
@@ -385,6 +678,56 @@ function targetModel(key: EsisEndpointKey): string {
   if (key === "rooms") return "Kindergarten premises (DISPLAY_ONLY)";
   if (key === "academicOrg" || key === "subjectAreas") return "Reference (DISPLAY_ONLY)";
 
+  /* ── Added 2026-09-14 ────────────────────────────────────────────────── */
+
+  if (key === "studentAllergy" || key === "studentAllergySave") return "AllergyRecord";
+  /*
+   * ★ Хориотой хүнс is an `AllergyRecord` too. The RFP's Module 2 cross-check
+   * asks one question — "may this child eat what is on the menu?" — and a
+   * dietary restriction that is not an allergy still answers it. A second table would
+   * mean the kitchen screen had two lists to consult and one of them would
+   * eventually be forgotten.
+   */
+  if (key === "studentProhibitedFood" || key === "studentProhibitedFoodSave") {
+    return "AllergyRecord";
+  }
+  if (key === "studentDisability" || key === "studentDisabilitySave") return "SpecialNeedRecord";
+  if (key === "studentIncident" || key === "studentIncidentSave") return "SafetyIncident";
+  if (
+    key === "studentMeasurements" ||
+    key === "studentMeasurementSave" ||
+    key === "groupMeasurements" ||
+    key === "groupMeasurementsSave"
+  ) {
+    return "GrowthMeasurement";
+  }
+  if (key === "vaccineHistory" || key === "vaccinePlan") return "VaccinationRecord";
+  if (key === "vaccineCatalog") return "Vaccine reference (DISPLAY_ONLY)";
+  if (
+    key === "studentScreening" ||
+    key === "studentScreeningSave" ||
+    key === "screeningQuestions"
+  ) {
+    return "Survey / SurveyResponse";
+  }
+  /*
+   * ★ No column holds a ministry consultation record. `ChildProfile` carries
+   * this kindergarten's own health notes, and an ESIS үзлэг is a different
+   * fact with a different author — merging them would make it impossible to
+   * say later which of the two a nurse had actually read.
+   */
+  if (key === "studentAssessments" || key === "studentAssessmentsSave") {
+    return "Child ESIS reference (NOT STORED)";
+  }
+  if (key === "studentSurgery" || key === "studentSurgerySave") {
+    return "Child ESIS reference (NOT STORED)";
+  }
+  if (key === "studentAttachmentSave") return "MediaFile (NO SCREEN)";
+  if (key === "schoolAttendance") return "Attendance";
+  if (key === "workerInfo" || key === "teacherProfile" || key === "teacherCheck") {
+    return "User / Membership / StaffRecord";
+  }
+
   return "Ingredient / Recipe (NOT ENABLED)";
 }
 
@@ -401,8 +744,16 @@ export const ESIS_PREVIEW_RESOURCES = [
   "foodMaterials",
   "foodProducts",
   "foodProductMaterials",
-  // Added 2026-09-10 — the institution-level reads that need no operator input.
-  "studentContacts",
+  /*
+   * Added 2026-09-10 — the institution-level reads that need no operator input.
+   *
+   * ★ `studentContacts` was one of them and is **not** — removed 2026-09-14.
+   * It is a per-child lookup that takes `{ personId }` in its POST body, proven
+   * live: without one it answers `400 personId шаардлагатай`. It was listed
+   * here because the catalog described it as the whole roster's guardians,
+   * which it never was, so the dry-run this list drives had a guaranteed
+   * failure in it. It is reached from a child's own record instead.
+   */
   "groupsNextYear",
   "programs",
   "rooms",
@@ -415,8 +766,11 @@ export const ESIS_PREVIEW_RESOURCES = [
  *
  * ★ A role gets the services its own screens draw, and nothing else — this is
  * the list, not a filter applied on the way out. The overview at
- * `/admin/integrations/esis` is the operator's whole-catalog view and stays
- * `@Roles("ADMIN")`; a teacher's screens need six of the catalog and have no
+ * `/platform/[id]/esis` is the operator's whole-catalog view and is
+ * `@SuperAdmin()` as of 2026-09-14 — it was `@Roles("ADMIN")`, and the move is
+ * the reason this map matters more than it did: a director's ESIS capability is
+ * now entirely what their screens draw, which is what this list has always
+ * described. A teacher's screens need sixteen of the catalog and have no
  * business knowing the token's state, the deployment's base URL or which
  * kindergarten has been mapped.
  *
@@ -484,6 +838,41 @@ const ROLE_SERVICES: Partial<Record<Role, readonly EsisEndpointKey[]>> = {
     "studentCondition",
     "studentConditionSave",
     "teacherAcademicOrg",
+    /*
+     * ★ Added 2026-09-14, and the split is per service rather than per block.
+     *
+     * A teacher gets the three facts the day depends on — харшил, хориотой
+     * хүнс, хөгжлийн бэрхшээл — because a child who must not eat something is
+     * classroom information, and `child-health.tsx` already draws those
+     * sections for staff.
+     *
+     * ★★ Үзлэг, мэс засал and the two вакцин services are **not** here. A
+     * consultation result, a surgical history and a vaccine serial number are
+     * a medical record; no screen a teacher opens draws them, and a role gets
+     * the services its own screens draw. They stay ADMIN-only.
+     *
+     * ★★★ The two measurement reads are a teacher's because a teacher runs
+     * the measuring session, and `groupMeasurements` is group-shaped with no
+     * medical detail in it at all.
+     */
+    "studentAllergy",
+    "studentProhibitedFood",
+    "studentDisability",
+    "studentMeasurements",
+    "groupMeasurements",
+    "vaccineCatalog",
+    /*
+     * The writes that pair with the reads above. A form with nothing to
+     * correct is the failure mode the 2026-09-10 note warned about: a read and
+     * its write travel together or neither is useful.
+     */
+    "studentAllergySave",
+    "studentProhibitedFoodSave",
+    "studentDisabilitySave",
+    "studentMeasurementSave",
+    "groupMeasurementsSave",
+    /* Ирцийн өдрийн нэгдсэн дүн — the teacher's own day sheet, verified. */
+    "schoolAttendance",
   ],
   /*
    * The cook's seven — every `cook/*` read in the catalog.
@@ -524,11 +913,48 @@ const ROLE_SERVICES: Partial<Record<Role, readonly EsisEndpointKey[]>> = {
    * made against a ledger, and nothing in this product is yet the thing that
    * files it. When it is, they arrive the way `saveAttendanceV3` did.
    */
-  [Role.ACCOUNTANT]: ["livelihoodForm1", "livelihoodForm2"],
+  /*
+   * ★ `foodDiscountStudents` joined the accountant's list on 2026-09-14, and
+   * it is the first entry here that names children rather than totals.
+   *
+   * That is the point of it: `нэмэлт.md` §3 asks for a meal cost split by
+   * source, and a split needs to know which children the state pays for. The
+   * two forms above give a month's totals and cannot answer it.
+   *
+   * ★★ **Not the cook's**, although every other `cook/*` read is. A cook plans
+   * meals and orders food; who the state subsidises changes no quantity they
+   * work with, and it is a fact about a family's circumstances. Least
+   * privilege puts it with the role that prices the month.
+   */
+  [Role.ACCOUNTANT]: ["livelihoodForm1", "livelihoodForm2", "foodDiscountStudents"],
 };
 
 /** Every service key, for the role that gets all of them. */
 const ALL_KEYS = Object.keys(ESIS_ENDPOINTS) as EsisEndpointKey[];
+
+/** Portal id → the catalog key that calls it. */
+const WIRED_API_IDS: ReadonlyMap<number, string> = new Map(
+  ALL_KEYS.flatMap((key) => {
+    const { apiId } = ESIS_ENDPOINTS[key];
+    return apiId === null ? [] : [[apiId, key] as [number, string]];
+  }),
+);
+
+/**
+ * The deployment's ESIS grants, joined against the services this product calls.
+ *
+ * ★ This is the platform operator's answer to "хэдэн хүсэлт зөвшөөрөгдсөн,
+ * хэдийг ашиглаж байна" — 96 requests on the portal, of which the catalog
+ * above calls a known number. It is computed, never maintained: add a service
+ * to `ESIS_ENDPOINTS` with its id and the count moves on its own.
+ *
+ * ★★ It belongs to the **platform**, not to a kindergarten. The token, the
+ * base URL and the granted scope are one deployment's properties — one ESIS
+ * developer account serves every tenant — so a director cannot act on any of
+ * it. `PlatformEsisController` is where it is served, beside the institution
+ * mapping that was already superadmin-only.
+ */
+export const ESIS_REQUEST_REGISTER = esisRequestRegister(WIRED_API_IDS);
 
 /**
  * The services this actor may see in this kindergarten, in catalog order.

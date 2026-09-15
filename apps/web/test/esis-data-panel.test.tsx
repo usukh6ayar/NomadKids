@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
@@ -131,14 +131,6 @@ const endpoint = (
   fields,
   fieldSource: "PORTAL",
   ingestedFieldCount: fields.filter((field) => field.ingested).length,
-  sampleRow: Object.fromEntries(
-    fields.filter((field) => field.ingested).map((field) => [field.name, field.sample]),
-  ),
-  sampleRows: [
-    Object.fromEntries(
-      fields.filter((field) => field.ingested).map((field) => [field.name, field.sample]),
-    ),
-  ],
   accessStatus: "UNKNOWN",
   /*
     ★ The sync-state half of the catalog row, required by
@@ -149,8 +141,8 @@ const endpoint = (
   direction: "ESIS_TO_NOMADKIDS",
   targetModel: "Child",
   mappings: [],
-  responseMode: "DEMO",
-  syncStatus: "DEMO_SUCCESS",
+  responseMode: "LIVE",
+  syncStatus: "PENDING",
   syncErrorCode: null,
   httpStatus: null,
   lastSyncAt: null,
@@ -160,14 +152,19 @@ const endpoint = (
 /**
  * `GET /kindergartens/:id/esis/catalog` — what the panel actually reads.
  *
- * ★ It read the operator's `/esis` until 2026-09-09, which is `@Roles("ADMIN")`
- * and carries the deployment's token state, blockers and run history. The panel
- * needed the service list and one flag; the teacher's screens needed to render
- * at all. This payload is that, and nothing else.
+ * ★ It read the operator's `/esis` until 2026-09-09 — the payload with the
+ * deployment's token state, blockers and run history. The panel needed the
+ * service list and one flag; the teacher's screens needed to render at all.
+ * This payload is that, and nothing else.
+ *
+ * ★★ The split earned its keep on 2026-09-14, when that operator route moved to
+ * `GET /platform/kindergartens/:id/esis` and `@SuperAdmin()`. Every panel here
+ * kept working without an edit, because none of them had read it for three
+ * years' worth of reasons written above.
  */
 function catalog(live: boolean) {
   return {
-    mode: live ? ("LIVE" as const) : ("DEMO" as const),
+    mode: "LIVE" as const,
     canRead: live,
     endpoints: [
       endpoint("organization", "Байгууллагын мэдээлэл", organizationFields),
@@ -203,23 +200,27 @@ beforeEach(() => {
 });
 
 describe("ESIS мэдээллийн панел", () => {
-  it("shows the ESIS record on the screen without anything being pressed", async () => {
+  /*
+   * ★ **Inverted on 2026-09-14.** This asserted that the panel painted
+   * "Бяцхан нүүдэлчид (жишээ)" and institution 40305 before anything was
+   * pressed — a fabricated tenant, on a director's screen, deliberately
+   * unlabelled since 2026-09-08. The client ended it: "ene esis ni real zuil
+   * shuu".
+   *
+   * What the panel owes on first paint is now the opposite — no values, the
+   * service named, and the control that fetches real ones.
+   */
+  it("paints no invented record before anything is pressed", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
       { path: CATALOG_PATH, body: catalog(false) },
     ]);
     renderWithProviders(<EsisDataPanel resource="organization" />);
 
-    expect(await screen.findByText("Бяцхан нүүдэлчид (жишээ)")).toBeInTheDocument();
-    expect(screen.getByText("40305")).toBeInTheDocument();
-    /*
-     * ★ No `Demo ESIS` badge — removed 2026-09-08 at the client's explicit
-     * instruction, given twice. The panel reads as a connected source; where
-     * the values actually come from is recorded in `esis-data-panel.tsx` and
-     * shown on `/admin/integrations/esis`, which keeps its badges.
-     */
-    expect(screen.queryByText(/Demo ESIS/)).toBeNull();
-    expect(screen.getByRole("button", { name: /ESIS-ээс мэдээллээ татах/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /ESIS-ээс мэдээллээ татах/ }))
+      .toBeInTheDocument();
+    expect(screen.queryByText("Бяцхан нүүдэлчид (жишээ)")).toBeNull();
+    expect(screen.queryByText("40305")).toBeNull();
   });
 
   /*
@@ -319,6 +320,61 @@ describe("ESIS мэдээллийн панел", () => {
       "href",
       "/children/bbb/general",
     );
+  });
+
+  /*
+   * ★ A live row still opens the child it names — 2026-09-14.
+   *
+   * `hrefs` is index-aligned with the caller's rows and is therefore dropped
+   * the moment ESIS answers: the ministry's roster is not in our order and
+   * need not be the same set of children. `liveHref` is the replacement — the
+   * caller looks at the returned row and decides where it leads.
+   *
+   * ★★ The case that must lead nowhere is asserted too. A row matching no
+   * local child, or matching two, gets no link rather than a guess: opening
+   * somebody else's record is worse than opening nothing.
+   */
+  it("links a live row to the child it names, and only when that is unambiguous", async () => {
+    const rows = [
+      { institutionId: "1", institutionName: "Ганболд Батбаяр" },
+      { institutionId: "2", institutionName: "Тодорхойгүй Хүүхэд" },
+    ];
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: `${ESIS_PATH}/resource`,
+        body: {
+          resource: "organization",
+          source: "LIVE",
+          status: "SUCCEEDED",
+          errorCode: null,
+          count: rows.length,
+          durationMs: 12,
+          fields: organizationFields,
+          rows,
+          response: { SUCCESS_CODE: 200, RESPONSE_MESSAGE: "OK", RESULT: rows },
+        },
+      },
+      { path: CATALOG_PATH, body: catalog(true) },
+    ]);
+
+    renderWithProviders(
+      <EsisDataPanel
+        resource="organization"
+        autoRead
+        linkField="institutionName"
+        liveHref={(row) =>
+          row.institutionName === "Ганболд Батбаяр" ? "/children/aaa/general" : null
+        }
+      />,
+    );
+
+    expect(await screen.findByRole("link", { name: "Ганболд Батбаяр" })).toHaveAttribute(
+      "href",
+      "/children/aaa/general",
+    );
+    expect(screen.queryByRole("link", { name: "Тодорхойгүй Хүүхэд" })).toBeNull();
+    expect(screen.getByText("Тодорхойгүй Хүүхэд")).toBeInTheDocument();
   });
 
   /*
@@ -525,9 +581,15 @@ describe("ESIS мэдээллийн панел", () => {
     renderWithProviders(<EsisDataPanel resource="studentByRegister" askForParams={false} />);
 
     expect(await screen.findByText("Суралцагчийг РД-ээр хайх")).toBeInTheDocument();
+    /*
+     * The assertion this test is named for: `askForParams={false}` means no
+     * register-number box on a screen that already identifies its child.
+     *
+     * ★ It used to add "and the record is still drawn", proved by finding
+     * "Батбаяр" — a sample. With the samples gone the panel draws nothing
+     * until a live read lands, so what remains is the absence of the input.
+     */
     expect(screen.queryByLabelText("Регистрийн дугаар")).toBeNull();
-    // The record is still drawn, which is the point of not asking.
-    expect(screen.getByText("Батбаяр")).toBeInTheDocument();
   });
 
   it("asks for nothing the caller already supplied", async () => {
@@ -580,7 +642,13 @@ describe("ESIS мэдээллийн панел", () => {
             ★ `source` and `response` joined `esisResourceReadSchema` on
             2026-09-09: which transport answered, and the upstream envelope
             verbatim. `rows` is the parsed view of the same records.
+
+            ★★ `endpoint` joined it on 2026-09-14 so a failed read can name the
+            service that did not answer. It is optional in the schema — older
+            payloads still parse — so a fixture that omits it simply renders no
+            path, which is why it is spelled out here.
           */
+          endpoint: { method: "GET", path: "/svc/api/hub/v2/organization" },
           source: "LIVE",
           status: "FAILED",
           errorCode: "SCOPE_DENIED",
@@ -603,7 +671,23 @@ describe("ESIS мэдээллийн панел", () => {
 
     const failure = await screen.findByText(/эрх олгоогүй/);
     expect(failure).toBeInTheDocument();
-    // The demo record stays: a refused scope is not a reason to blank the screen.
-    expect(within(document.body).getByText("Бяцхан нүүдэлчид (жишээ)")).toBeInTheDocument();
+
+    /*
+     * ★ **Inverted on 2026-09-14.** The line here read "the demo record stays:
+     * a refused scope is not a reason to blank the screen", and it was exactly
+     * backwards — a refused scope is the one moment the screen must not look
+     * populated. A director who could not tell a fabricated tenant from their
+     * own was being shown a working integration over a failed call.
+     *
+     * The endpoint is named instead, which is the thing they can act on.
+     */
+    expect(screen.queryByText("Бяцхан нүүдэлчид (жишээ)")).toBeNull();
+    /*
+     * `getAllByText`: the panel names the endpoint in two places on a failed
+     * read — the `EsisNoAnswer` card where the table would have been, and the
+     * request/response block below it. Both are the point; pinning one would
+     * break on the next layout change without protecting anything.
+     */
+    expect(screen.getAllByText(/\/svc\/api\/hub\/v2\/organization/).length).toBeGreaterThan(0);
   });
 });

@@ -486,7 +486,7 @@ export class ChildrenService {
     if (!this.esis.isAvailable) return null;
 
     const institutionId =
-      active.kindergarten.esisInstitutionId ?? (this.esis.isDemoMode ? "40305" : null);
+      active.kindergarten.esisInstitutionId;
     if (!institutionId) return null;
 
     try {
@@ -510,11 +510,9 @@ export class ChildrenService {
       const group = student?.studentGroupId
         ? (groupsResponse.data.find((row) => row.studentGroupId === student.studentGroupId) ?? null)
         : null;
-      const mode = organizationResponse.source === "MOCK" ? "DEMO" : "LIVE";
-
       return {
-        mode,
-        status: mode === "DEMO" ? "DEMO_SUCCESS" : "SUCCESS",
+        mode: "LIVE" as const,
+        status: "SUCCESS" as const,
         syncedAt: new Date().toISOString(),
         organization: {
           name: organization.institutionName,

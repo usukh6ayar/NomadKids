@@ -19,6 +19,26 @@ export class EsisRepository {
     });
   }
 
+  /**
+   * The child an ESIS `personId` refers to, within one kindergarten.
+   *
+   * ★ This is an **authorization** lookup, so it deliberately does not filter
+   * on `status` or anything else a screen might care about: a child who has
+   * left is still a child whose record has an owner, and narrowing here would
+   * quietly turn "you may not see this" into "this does not exist" for a
+   * teacher who legitimately kept the record.
+   *
+   * ★★ `deletedAt: null` stays, per CLAUDE.md §2.2 — the base filter every
+   * repository query carries. A soft-deleted child is not reachable by any
+   * route, and an ESIS read must not be the exception that resurrects one.
+   */
+  findChildIdByEsisPersonId(kindergartenId: string, esisPersonId: string) {
+    return this.prisma.child.findFirst({
+      where: { kindergartenId, esisPersonId, deletedAt: null },
+      select: { id: true },
+    });
+  }
+
   findUserIdentity(userId: string) {
     return this.prisma.user.findFirst({
       where: { id: userId, deletedAt: null },

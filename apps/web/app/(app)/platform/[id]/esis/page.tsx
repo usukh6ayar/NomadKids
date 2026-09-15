@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useParams } from "next/navigation";
 import {
   CheckCircle2,
   CircleAlert,
@@ -8,6 +9,7 @@ import {
   Eye,
   FlaskConical,
   History,
+  KeyRound,
   Network,
   RefreshCw,
   ShieldCheck,
@@ -23,48 +25,102 @@ import {
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
-import { errorMessage } from "@/lib/api/errors";
+import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { useSession } from "@/lib/auth/session";
-import { EsisPullButton } from "@/components/esis/esis-pull-button";
 import { esisApiIdLabel } from "@/components/esis/esis-params";
 import { EsisRowValues, esisSampleColumns } from "@/components/esis/esis-rows";
 import { PageHeader } from "@/components/shell/app-shell";
-import { RequireRole } from "@/components/shell/require-role";
+import { RequireSuperAdmin } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
+import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader, SunkenPanel } from "@/components/ui/card";
 import { IconChip } from "@/components/ui/icon-chip";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { TableShell, Td, Th } from "@/components/ui/table";
 
-type Tab = "overview" | "apis" | "preview" | "history";
+type Tab = "overview" | "apis" | "requests" | "preview" | "history";
 
 const TABS: { value: Tab; label: string; icon: typeof Database }[] = [
   { value: "overview", label: "Ерөнхий", icon: Network },
   { value: "apis", label: "Сервис ба талбар", icon: ShieldCheck },
+  { value: "requests", label: "Эрхийн хүсэлт", icon: KeyRound },
   { value: "preview", label: "Синк шалгалт", icon: FlaskConical },
   { value: "history", label: "Түүх", icon: History },
 ];
+
+/** How a grant reads on screen, and in which colour. */
+const GRANT_LABEL: Record<
+  EsisOverview["endpoints"][number]["grant"],
+  { text: string; tone: "mint" | "sun" | "danger" | "neutral" }
+> = {
+  APPROVED: { text: "Зөвшөөрөгдсөн", tone: "mint" },
+  PENDING: { text: "Хүлээгдэж байна", tone: "sun" },
+  CANCELLED: { text: "Цуцлагдсан", tone: "danger" },
+  NOT_REQUESTED: { text: "Хүсэлт гараагүй", tone: "neutral" },
+};
+
+/**
+ * Where a service's field names came from, as the operator sees it.
+ *
+ * ★ Three values, not two — 2026-09-14. This was a ternary on `=== "PORTAL"`,
+ * so everything that was not read off the catalogue page shared one badge, and
+ * a field list verified against a real ESIS response looked exactly like one
+ * nobody had ever checked. Nine services were in the second group and all nine
+ * were wrong.
+ *
+ * "Амьд хариунаас" is the strongest of the three: the catalogue documents a
+ * name, a payload proves it.
+ */
+const FIELD_SOURCE_LABEL: Record<
+  EsisOverview["endpoints"][number]["fieldSource"],
+  { text: string; tone: "mint" | "sky" | "peach" }
+> = {
+  LIVE: { text: "Амьд хариунаас", tone: "mint" },
+  PORTAL: { text: "Каталогоос", tone: "sky" },
+  ADAPTER: { text: "Адаптерын схемээр", tone: "peach" },
+};
 
 const DOMAIN_LABEL: Record<EsisOverview["endpoints"][number]["domain"], string> = {
   ORGANIZATION: "Байгууллага",
   ROSTER: "Хүүхэд ба хүний нөөц",
   ATTENDANCE: "Ирц",
   FOOD: "Хоолны лавлах",
+  // Added 2026-09-15 with the twenty health, vaccine, measurement and
+  // screening services — kept apart from ROSTER because one is a medical
+  // record and the other is a child's name and group.
+  HEALTH: "Эрүүл мэнд",
 };
 
+/**
+ * The platform operator's ESIS hub, for one kindergarten.
+ *
+ * ★ **This screen was `/admin/integrations/esis` until 2026-09-14**, where a
+ * kindergarten's own director reached it. It moved at the client's request
+ * ("захирал дээр ESIS системийн зүйл байх нь зөв уу? superadmin дээр байх нь
+ * зөв"), and the request is right on the facts: `ESIS_TOKEN` and
+ * `ESIS_BASE_URL` are deployment environment settings, one ESIS developer
+ * account serves every kindergarten, and the institution mapping on
+ * `/platform/[id]` was already superadmin-only. A director could read every
+ * blocker here and clear none of them.
+ *
+ * ★★ What a director kept is the working surface, and it never lived here: the
+ * "ESIS-ээс татах" buttons on the roster, the child record and the day sheet
+ * (`EsisDataPanel`, `GET …/esis/catalog` + `…/esis/resource`). This screen is
+ * the operator's — token state, granted scope, the dry run, the run history.
+ */
 export default function EsisIntegrationPage() {
   return (
-    <RequireRole roles={["ADMIN"]}>
+    <RequireSuperAdmin>
       <EsisIntegration />
-    </RequireRole>
+    </RequireSuperAdmin>
   );
 }
 
 function EsisIntegration() {
-  const { primaryKindergartenId } = useSession();
+  const params = useParams<{ id: string }>();
+  const kindergartenId = params.id;
   const queryClient = useQueryClient();
   // The catalog is the working surface: demo values are visible before any
   // live ESIS action. Readiness remains one tab away for setup work.
@@ -76,26 +132,26 @@ function EsisIntegration() {
   const [preview, setPreview] = useState<EsisPreviewResult | null>(null);
 
   const overview = useQuery({
-    queryKey: qk.esis(primaryKindergartenId ?? "none"),
-    queryFn: () => get(`/kindergartens/${primaryKindergartenId}/esis`, esisOverviewSchema),
-    enabled: Boolean(primaryKindergartenId),
+    queryKey: qk.esis(kindergartenId),
+    queryFn: () => get(`/platform/kindergartens/${kindergartenId}/esis`, esisOverviewSchema),
   });
 
   const runPreview = useMutation({
     mutationFn: () =>
-      mutate(`/kindergartens/${primaryKindergartenId}/esis/preview`, esisPreviewResultSchema, {
+      mutate(`/platform/kindergartens/${kindergartenId}/esis/preview`, esisPreviewResultSchema, {
         method: "POST",
         body: { resources: selected },
       }),
     onSuccess: (result) => {
       setPreview(result);
-      void queryClient.invalidateQueries({ queryKey: qk.esis(primaryKindergartenId!) });
+      void queryClient.invalidateQueries({ queryKey: qk.esis(kindergartenId) });
     },
   });
 
   const header = (
     <PageHeader
       title="ESIS мэдээллийн төв"
+      lede="Платформын ESIS хандалт — token, зөвшөөрөгдсөн сервис, шалгалт"
       icon={<IconChip icon={<Database />} tone="primary" size="lg" />}
       actions={
         <Button
@@ -111,18 +167,10 @@ function EsisIntegration() {
     />
   );
 
-  if (!primaryKindergartenId) {
-    return (
-      <div className="page-band">
-        {header}
-        <EmptyState title="Цэцэрлэг олдсонгүй" description="Танд удирдах цэцэрлэг алга." />
-      </div>
-    );
-  }
-
   if (overview.isPending) {
     return (
       <div className="page-band">
+        <BackButton href={`/platform/${kindergartenId}`} className="ml-0" />
         {header}
         <LoadingState rows={4} shape="cards" />
       </div>
@@ -132,9 +180,13 @@ function EsisIntegration() {
   if (overview.isError) {
     return (
       <div className="page-band">
+        <BackButton href={`/platform/${kindergartenId}`} className="ml-0" />
         {header}
         <ErrorState
-          description={errorMessage(overview.error)}
+          title={isNotFound(overview.error) ? "Олдсонгүй" : "Алдаа гарлаа"}
+          description={
+            isNotFound(overview.error) ? "Энэ цэцэрлэг олдсонгүй." : errorMessage(overview.error)
+          }
           action={
             <Button variant="secondary" onClick={() => void overview.refetch()}>
               Дахин оролдох
@@ -149,22 +201,9 @@ function EsisIntegration() {
 
   return (
     <div className="page-band">
+      <BackButton href={`/platform/${kindergartenId}`} className="ml-0" />
       {header}
 
-      {data.deployment.demoMode ? (
-        <Card pad="compact" tone="sun" className="mb-6">
-          <div className="flex items-start gap-3">
-            <FlaskConical className="mt-0.5 shrink-0 text-sun-ink" size={20} aria-hidden />
-            <div>
-              <p className="text-body font-semibold text-ink">ESIS integration demo / Mock data</p>
-              <p className="mt-1 text-caption text-muted">
-                Жинхэнэ ESIS холболт хийгдээгүй. Энэ горимд production request огт илгээгдэхгүй,
-                зөвхөн зохиомол test өгөгдөл ашиглана.
-              </p>
-            </div>
-          </div>
-        </Card>
-      ) : null}
 
       <section
         aria-label="ESIS бэлэн байдлын үе шат"
@@ -224,6 +263,7 @@ function EsisIntegration() {
       <div className="mt-6">
         {tab === "overview" ? <Overview data={data} /> : null}
         {tab === "apis" ? <ApiScope data={data} /> : null}
+        {tab === "requests" ? <RequestRegister requests={data.requests} /> : null}
         {tab === "preview" ? (
           <PreviewPanel
             data={data}
@@ -254,13 +294,9 @@ function Overview({ data }: { data: EsisOverview }) {
           id="esis-connection-heading"
           title="Холболтын төлөв"
           action={
-            <Badge tone={data.deployment.demoMode ? "sun" : "mint"}>
-              {data.deployment.demoMode ? (
-                <FlaskConical size={13} aria-hidden />
-              ) : (
-                <CheckCircle2 size={13} aria-hidden />
-              )}
-              {data.deployment.demoMode ? "Mock data · холболтгүй" : "Live холбогдсон"}
+            <Badge tone="mint">
+              <CheckCircle2 size={13} aria-hidden />
+              Live холбогдсон
             </Badge>
           }
         />
@@ -268,11 +304,17 @@ function Overview({ data }: { data: EsisOverview }) {
           <dl className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
             <Definition
               label="Орчин"
-              value={
-                data.deployment.demoMode ? "DEMO / TEST" : (data.connection.environment ?? "LIVE")
-              }
+              value={data.connection.environment ?? "LIVE"}
             />
-            <Definition label="Байгууллагын код" value={data.connection.institutionId ?? "40305"} />
+            {/*
+              ★ "Холбогдоогүй", not a fallback id — 2026-09-14. This read
+              `?? "40305"`, the demo institution, so an unmapped kindergarten
+              displayed somebody else's code as though it were its own.
+            */}
+            <Definition
+              label="Байгууллагын код"
+              value={data.connection.institutionId ?? "Холбогдоогүй"}
+            />
             <Definition
               label="Token"
               value={data.deployment.hasToken ? "Server дээр байна" : "Token хүлээгдэж байна"}
@@ -286,28 +328,6 @@ function Overview({ data }: { data: EsisOverview }) {
         </Card>
       </section>
 
-      {data.deployment.demoMode ? (
-        <Card pad="compact" tone="sun">
-          <p className="flex items-center gap-2 text-body font-medium text-ink">
-            <CircleAlert size={18} className="text-sun-ink" aria-hidden />
-            MOCK transport идэвхтэй · ESIS сервер рүү сүлжээний дуудлага хийхгүй
-          </p>
-        </Card>
-      ) : data.blockers.length > 0 ? (
-        <section aria-labelledby="esis-blockers-heading">
-          <SectionHeader id="esis-blockers-heading" title="Үлдсэн тохиргоо" />
-          <Card pad="roomy" tone="sun">
-            <ul className="flex flex-col gap-3">
-              {data.blockers.map((blocker) => (
-                <li key={blocker} className="flex items-start gap-3 text-body text-ink">
-                  <CircleAlert className="mt-0.5 shrink-0 text-sun-ink" size={18} aria-hidden />
-                  {blocker}
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </section>
-      ) : null}
 
       <section aria-labelledby="esis-domains-heading">
         <SectionHeader id="esis-domains-heading" title="Ашиглах мэдээллийн хүрээ" />
@@ -344,7 +364,7 @@ function ApiScope({ data }: { data: EsisOverview }) {
       <SectionHeader
         id="esis-api-heading"
         title="API эрхийн матриц"
-        lede={`${data.endpoints.length} endpoint · ${totalOutputs} гаралтын талбар · ${totalInputs} илгээх талбар · ${data.deployment.demoMode ? "mock transport" : "live access"} идэвхтэй.`}
+        lede={`${data.endpoints.length} endpoint · ${totalOutputs} гаралтын талбар · ${totalInputs} илгээх талбар · live access идэвхтэй.`}
       />
       <TableShell
         caption="ESIS endpoint-ийн ашиглалт ба эрхийн төлөв"
@@ -425,7 +445,7 @@ function ApiScope({ data }: { data: EsisOverview }) {
           ))}
         </select>
       </label>
-      <EndpointFields endpoint={selected} demoMode={data.deployment.demoMode} />
+      <EndpointFields endpoint={selected} />
 
       <RoleCoverage />
     </section>
@@ -445,18 +465,11 @@ function ApiScope({ data }: { data: EsisOverview }) {
  * different question — what is declared, what is kept, and what was read in the
  * ministry's catalog and refused, with the document that refused it.
  */
-function EndpointFields({
-  endpoint,
-  demoMode,
-}: {
-  endpoint: EsisOverview["endpoints"][number];
-  demoMode: boolean;
-}) {
+function EndpointFields({ endpoint }: { endpoint: EsisOverview["endpoints"][number] }) {
   const [view, setView] = useState<"request" | "response" | "mapping" | "log">("response");
   const outputs = endpoint.fields.filter((field) => field.io === "OUTPUT");
   const inputs = endpoint.fields.filter((field) => field.io === "INPUT");
   const omitted = outputs.filter((field) => !field.ingested).length;
-  const columns = esisSampleColumns(endpoint.fields);
   const mapped = endpoint.mappings.filter((mapping) =>
     ["DIRECT", "MATCH", "TRANSFORM", "REQUEST"].includes(mapping.strategy),
   ).length;
@@ -472,21 +485,32 @@ function EndpointFields({
             <p className="mt-1 break-all font-mono text-caption text-muted">
               {endpoint.slug} · {esisApiIdLabel(endpoint.apiId)} · {endpoint.method} {endpoint.path}
             </p>
+            {/*
+              The portal's own name for the id, when it differs from ours. It is
+              how an operator checks a row against the developer portal without
+              our help — and how a wrong id shows itself, as `studentInfo`'s did.
+            */}
+            {endpoint.portalName && endpoint.portalName !== endpoint.name ? (
+              <p className="mt-1 text-caption text-muted">Порталын нэр: {endpoint.portalName}</p>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={GRANT_LABEL[endpoint.grant].tone}>
+              {GRANT_LABEL[endpoint.grant].text}
+            </Badge>
             {outputs.length > 0 ? <Badge tone="sky">{outputs.length} гаралт</Badge> : null}
             {inputs.length > 0 ? <Badge tone="peach">{inputs.length} оролт</Badge> : null}
             {omitted > 0 ? <Badge tone="sun">{omitted} авахгүй</Badge> : null}
-            <Badge tone={endpoint.fieldSource === "PORTAL" ? "mint" : "peach"}>
-              {endpoint.fieldSource === "PORTAL" ? "Каталогоос" : "Адаптерын схемээр"}
+            <Badge tone={FIELD_SOURCE_LABEL[endpoint.fieldSource].tone}>
+              {FIELD_SOURCE_LABEL[endpoint.fieldSource].text}
             </Badge>
           </div>
         </div>
 
         {endpoint.fieldSource === "ADAPTER" ? (
           <p className="mt-3 text-caption text-muted">
-            Эдгээр нь манай адаптер уншиж авдаг талбарууд. ESIS каталогийн бүрэн жагсаалтыг token
-            олгогдож, test орчинд дуудсаны дараа тулгана.
+            Эдгээр нь манай адаптер уншиж авдаг талбарууд. ESIS-ээс бодит хариу ирээгүй тул
+            баталгаажаагүй байна.
           </p>
         ) : null}
         {endpoint.note ? <p className="mt-3 text-caption text-muted">{endpoint.note}</p> : null}
@@ -509,7 +533,7 @@ function EndpointFields({
             value={
               endpoint.httpStatus === null
                 ? "Хариу хүлээгдэж байна"
-                : `${endpoint.httpStatus} ${demoMode ? "MOCK" : ""}`.trim()
+                : String(endpoint.httpStatus)
             }
           />
           <Definition label="Response mode" value={endpoint.responseMode} />
@@ -521,13 +545,9 @@ function EndpointFields({
         </dl>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Badge tone={demoMode ? "sun" : "mint"}>
-            {demoMode ? (
-              <FlaskConical size={13} aria-hidden />
-            ) : (
-              <CheckCircle2 size={13} aria-hidden />
-            )}
-            {demoMode ? "ESIS DEMO DATA — LIVE CONNECTION NOT ACTIVE" : "LIVE"}
+          <Badge tone="mint">
+            <CheckCircle2 size={13} aria-hidden />
+            LIVE
           </Badge>
           <Badge
             tone={
@@ -586,22 +606,21 @@ function EndpointFields({
         {view === "response" ? (
           <div className="mt-4">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-body font-semibold text-ink">Response output · бүх safe field</p>
-              <Badge tone={endpoint.httpStatus === null ? "peach" : demoMode ? "sun" : "mint"}>
-                {endpoint.httpStatus === null
-                  ? "NOT ENABLED"
-                  : demoMode
-                    ? `${endpoint.httpStatus} MOCK`
-                    : "LIVE"}
+              {/*
+                ★ "Гэрээ", not "Response output" — 2026-09-14. This block shows
+                the shape a response takes, never a response: the samples that
+                used to fill it were invented, and an operator checking whether
+                the integration works must not be shown something that looks
+                like it already did.
+              */}
+              <p className="text-body font-semibold text-ink">
+                Хариуны бүтэц · бүх safe field
+              </p>
+              <Badge tone={endpoint.httpStatus === null ? "peach" : "mint"}>
+                {endpoint.httpStatus === null ? "NOT ENABLED" : "LIVE"}
               </Badge>
-              <Badge tone="sky">{endpoint.sampleRows.length} бичлэг</Badge>
             </div>
             <JsonBlock value={responseExample(endpoint)} />
-            {outputs.length > 0 ? (
-              <div className="mt-4">
-                <EsisRowValues columns={columns} rows={endpoint.sampleRows} />
-              </div>
-            ) : null}
             <p className="mt-5 text-body font-semibold text-ink">
               {outputs.length > 0
                 ? `Гаралтын бүх талбар (${outputs.length})`
@@ -648,7 +667,7 @@ function EndpointFields({
               value={
                 endpoint.httpStatus === null
                   ? "—"
-                  : `${endpoint.httpStatus} ${demoMode ? "MOCK" : ""}`.trim()
+                  : String(endpoint.httpStatus)
               }
             />
             <Definition label="Mode" value={endpoint.responseMode} />
@@ -656,14 +675,19 @@ function EndpointFields({
           </dl>
         ) : null}
 
-        {endpoint.readable && endpoint.accessStatus !== "NOT_ENABLED" ? (
-          <div className="mt-4 flex justify-end border-t border-border pt-4">
-            <EsisPullButton
-              resource={endpoint.key}
-              label={demoMode ? "Mock response шалгах" : "Бодит ESIS-ээс татах"}
-            />
-          </div>
-        ) : null}
+        {/*
+          ★ The per-service "ESIS-ээс татах" button is **not** here, and was
+          removed when this screen became the operator's on 2026-09-14.
+          `EsisPullButton` calls `GET /kindergartens/:id/esis/resource`, which a
+          platform operator cannot reach: a superadmin holds no `Membership`
+          (CLAUDE.md §1.1), so the route answers 404 for them by design. A
+          button that always fails is worse than no button.
+
+          The operator's live check is the "Синк шалгалт" tab, which spends the
+          same token against the same services through a route that is theirs.
+          The staff-facing pull buttons are unchanged on the screens that draw
+          them — the roster, a child's record, the day sheet.
+        */}
       </section>
     </Card>
   );
@@ -738,23 +762,29 @@ function requestExample(endpoint: Endpoint): unknown {
   );
 }
 
+/**
+ * The envelope shape this service answers in — **field names, not values.**
+ *
+ * ★ Rewritten 2026-09-14. It used to return a `DEMO_SUCCESS` envelope wrapped
+ * around the catalog's invented rows, so the operator screen rendered a
+ * complete-looking ESIS response for a service nobody had called. With the
+ * samples gone the honest version of the same answer is the *contract*: the
+ * envelope's own keys, and the field names a `RESULT` row carries, each mapped
+ * to its type rather than to a made-up value.
+ *
+ * A reader comparing this against the ministry's portal can still check every
+ * name. What they can no longer do is mistake it for a response.
+ */
 function responseExample(endpoint: Endpoint): unknown {
-  if (endpoint.method === "POST") {
-    return {
-      SUCCESS_CODE: 200,
-      RESPONSE_MESSAGE: "DEMO_SUCCESS",
-      RESULT: {
-        status: "MOCK",
-        accepted: true,
-        acceptedCount: 1,
-        referenceId: "MOCK-ATTENDANCE-20260908-001",
-      },
-    };
-  }
+  const direction = endpoint.method === "POST" && !endpoint.readable ? "INPUT" : "OUTPUT";
+  const names = endpoint.fields
+    .filter((field) => field.io === direction && field.ingested)
+    .map((field) => field.name);
+
   return {
-    SUCCESS_CODE: 200,
-    RESPONSE_MESSAGE: "DEMO_SUCCESS",
-    RESULT: endpoint.sampleRows,
+    SUCCESS_CODE: "number",
+    RESPONSE_MESSAGE: "string",
+    RESULT: [Object.fromEntries(names.map((name) => [name, "string | null"]))],
   };
 }
 
@@ -768,7 +798,6 @@ function JsonBlock({ value }: { value: unknown }) {
 
 function accessTone(status: Endpoint["accessStatus"]): "mint" | "sun" | "peach" | "sky" {
   if (status === "ENABLED") return "mint";
-  if (status === "MOCK") return "sun";
   if (status === "NOT_ENABLED") return "peach";
   return "sky";
 }
@@ -782,16 +811,35 @@ function mappingTone(
   return "sun";
 }
 
+/**
+ * Who sees which ESIS services, as `esisServicesForActor` decides it.
+ *
+ * ★ Rewritten 2026-09-14 with the move of this screen to the platform
+ * operator. Two of these rows had gone stale and the lede had become false:
+ * it said raw endpoint detail is for "удирдлага", and after the move the
+ * director does not see this screen at all. The cook's seven `cook/*` reads
+ * and the accountant's two income statements landed on 2026-09-09 and were
+ * still listed here as NOT ENABLED.
+ */
 function RoleCoverage() {
   const rows = [
-    ["Удирдлага", "Байгууллага, бүлэг, багш, хүүхэд, enrollment, progression", "ENABLED"],
-    ["Багш", "Өөрийн профайл, бүлэг, хүүхэд, хөтөлбөр, ирцийн request/response", "ENABLED"],
+    [
+      "Платформын оператор",
+      "Token, base URL, эрхийн бүртгэл, blocker, dry-run, ажиллагааны түүх — энэ дэлгэц",
+      "ENABLED",
+    ],
+    [
+      "Удирдлага (эрхлэгч)",
+      "Каталогийн бүх сервис ажлын дэлгэцээс: байгууллага, бүлэг, багш, хүүхэд, хөтөлбөр. Token болон deployment-ийн төлөв харахгүй",
+      "ENABLED",
+    ],
+    ["Багш", "Өөрийн профайл, бүлэг, хүүхэд, өрхийн маягт, ирцийн request/response", "ENABLED"],
     ["Эцэг эх", "Өөрийн хүүхдэд sync болсон safe талбар; raw API болон token харахгүй", "LIMITED"],
-    ["Тогооч", "Food catalog endpoint-ийн service access баталгаажаагүй", "NOT ENABLED"],
+    ["Тогооч", "Хоолны лавлахын 7 унших сервис; бичих сервис байхгүй", "ENABLED"],
     [
       "Нягтлан",
-      "ESIS finance/payment endpoint тодорхойлогдоогүй; fake endpoint үүсгээгүй",
-      "NOT ENABLED",
+      "Хоолны төвлөрүүлэх орлогын маягт 1, 2 — зөвхөн унших. ESIS-д тусдаа finance endpoint байхгүй тул зохиогоогүй",
+      "ENABLED",
     ],
   ] as const;
 
@@ -800,7 +848,7 @@ function RoleCoverage() {
       <SectionHeader
         id="esis-role-coverage"
         title="Role тус бүрийн ESIS харагдац"
-        lede="Raw endpoint мэдээллийг зөвхөн удирдлага харна; бусад role ажлын хүрээндээ багасгасан мэдээлэл авна."
+        lede="Raw endpoint, token болон deployment-ийн төлөвийг зөвхөн платформын оператор харна; цэцэрлэгийн role бүр ажлын хүрээндээ багасгасан мэдээлэл авна."
       />
       <TableShell caption="Role бүрийн ESIS мэдээллийн хүрээ" minWidth="min-w-0" stacked>
         <thead>
@@ -849,7 +897,6 @@ function PreviewPanel({
   error: string | null;
   onRun: () => void;
 }) {
-  const demoMode = data.deployment.demoMode;
   const canRun = data.canPreview;
   const resources = data.endpoints.filter(
     (endpoint): endpoint is typeof endpoint & { key: EsisPreviewResourceKey } =>
@@ -879,18 +926,6 @@ function PreviewPanel({
           }
         />
 
-        {demoMode ? (
-          <Card pad="compact" tone="sun" className="mb-4">
-            <p className="flex items-center gap-2 text-body font-medium text-ink">
-              <FlaskConical size={18} className="text-sun-ink" aria-hidden />
-              Mock dry-run ажиллана. ESIS сервер рүү request илгээгдэхгүй.
-            </p>
-          </Card>
-        ) : !data.canPreview ? (
-          <Card pad="compact" tone="sun" className="mb-4">
-            <p className="text-body font-medium text-ink">Live ESIS dry-run эрх хүлээгдэж байна.</p>
-          </Card>
-        ) : null}
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {resources.map((resource) => {
@@ -955,11 +990,7 @@ function PreviewPanel({
                       <p className="mt-1 text-title font-semibold text-ink">{item.count} бичлэг</p>
                     </div>
                     <Badge tone={item.status === "SUCCEEDED" ? "mint" : "danger"}>
-                      {item.status === "SUCCEEDED"
-                        ? item.source === "MOCK"
-                          ? "DEMO_SUCCESS · MOCK"
-                          : "Амжилттай"
-                        : item.errorCode}
+                      {item.status === "SUCCEEDED" ? "Амжилттай" : item.errorCode}
                     </Badge>
                   </div>
                   {item.preview.length > 0 && endpoint ? (
@@ -989,6 +1020,95 @@ function PreviewPanel({
         </section>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The deployment's ESIS request register — what the ministry granted, and how
+ * much of it this product calls.
+ *
+ * ★ The operator's own question, and the reason this screen is theirs: the
+ * grants belong to one ESIS developer account that serves every kindergarten,
+ * so "хэдэн хүсэлт зөвшөөрөгдсөн, хэдийг нь ашиглаж байна" is a platform
+ * figure. A director cannot file a request and cannot answer for one.
+ *
+ * ★★ The counts are computed from the register joined against the catalog by
+ * `apiId` — no hand-kept total to drift. `reviewedAt` is on screen because no
+ * ESIS service reports a token's own scope: this is a list read off the portal
+ * by hand, and the date is what keeps it a snapshot rather than a claim.
+ */
+function RequestRegister({ requests }: { requests: EsisOverview["requests"] }) {
+  const { counts } = requests;
+  const summary: { label: string; value: number; tone: "mint" | "sun" | "sky" | "peach" }[] = [
+    { label: "Зөвшөөрөгдсөн", value: counts.approved, tone: "mint" },
+    { label: "Ашиглаж байгаа", value: counts.wired, tone: "sky" },
+    { label: "Хүлээгдэж байна", value: counts.pending, tone: "sun" },
+    { label: "Цуцлагдсан", value: counts.cancelled, tone: "peach" },
+  ];
+
+  return (
+    <section aria-labelledby="esis-requests-heading">
+      <SectionHeader
+        id="esis-requests-heading"
+        title="ЭСИС-д илгээсэн эрхийн хүсэлт"
+        lede={`Нийт ${counts.total} хүсэлт · порталаас ${requests.reviewedAt}-нд тулгав`}
+      />
+
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        {summary.map((item) => (
+          <Card key={item.label} pad="compact" tone={item.tone}>
+            <p className="text-caption font-semibold text-muted">{item.label}</p>
+            <p className="mt-1 text-display font-semibold text-ink">{item.value}</p>
+          </Card>
+        ))}
+      </div>
+
+      <p className="mt-4 text-caption text-muted">
+        Зөвшөөрөгдсөн {counts.approved} сервисийн {counts.wired}-г нь систем дуудаж байна. Үлдсэн{" "}
+        {counts.approvedUnwired} нь эрх нь нээлттэй боловч энэ бүтээгдэхүүнд хараахан холбогдоогүй —
+        дуудах дэлгэц, талбарын жагсаалт нь бэлэн болсон үед нэмэгдэнэ.
+      </p>
+
+      <TableShell
+        className="mt-4"
+        caption="ЭСИС-д илгээсэн хүсэлт бүрийн төлөв"
+        minWidth="min-w-0"
+        stacked
+      >
+        <thead>
+          <tr>
+            <Th>API</Th>
+            <Th>Нэр</Th>
+            <Th>Бүлэг</Th>
+            <Th>Огноо</Th>
+            <Th>Төлөв</Th>
+            <Th>Ашиглалт</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {requests.items.map((item) => (
+            <tr key={item.apiId}>
+              <Td data-label="API">
+                <span className="break-all font-mono text-caption">{item.apiId}</span>
+              </Td>
+              <Td data-label="Нэр">{item.name}</Td>
+              <Td data-label="Бүлэг">{item.group}</Td>
+              <Td data-label="Огноо">{item.requestedAt}</Td>
+              <Td data-label="Төлөв">
+                <Badge tone={GRANT_LABEL[item.status].tone}>{GRANT_LABEL[item.status].text}</Badge>
+              </Td>
+              <Td data-label="Ашиглалт">
+                {item.serviceKey ? (
+                  <Badge tone="sky">{item.serviceKey}</Badge>
+                ) : (
+                  <span className="text-caption text-muted">Холбоогүй</span>
+                )}
+              </Td>
+            </tr>
+          ))}
+        </tbody>
+      </TableShell>
+    </section>
   );
 }
 
@@ -1023,7 +1143,7 @@ function RunHistory({ runs }: { runs: EsisOverview["recentRuns"] }) {
               <Td data-label="Мэдээллийн багц">{run.resources.length} багц</Td>
               <Td data-label="Ажиллуулсан">{run.initiatedBy}</Td>
               <Td data-label="Эх үүсвэр">
-                <Badge tone={run.mode === "MOCK" ? "sun" : "mint"}>{run.mode}</Badge>
+                <Badge tone="mint">{run.mode}</Badge>
               </Td>
               <Td data-label="Төлөв">
                 <RunStatus status={run.status} />

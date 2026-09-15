@@ -14,7 +14,6 @@ import {
   Menu,
   CalendarDays,
   CalendarRange,
-  Database,
   ScrollText,
   Settings,
   ShieldAlert,
@@ -336,8 +335,13 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
   "/admin/terms": CalendarDays,
   "/admin/assessment-config": SlidersHorizontal,
   "/admin/audit": ScrollText,
-  "/admin/integrations/esis": Database,
   "/admin/curriculum": BookOpen,
+  /*
+   * ★ `/admin/integrations/esis` had a `Database` row here until 2026-09-14.
+   * The screen is `/platform/[id]/esis` now and this map is keyed by literal
+   * href — a dynamic segment would never match one — so the entry is removed
+   * rather than rewritten into something that silently never fires.
+   */
 };
 
 /** The section-level icon for a route, or nothing if it has no destination. */
@@ -803,11 +807,22 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         /*
          * ★ Added 2026-09-10 with the four ESIS curriculum services. It sits
          * after Улирал because it answers the same kind of question — what
-         * shape does the year take — and before the ESIS hub, which is the
-         * operator's whole-catalog view rather than a working screen.
+         * shape does the year take.
          */
         ...adminEntry("Сургалтын хөтөлбөр", "/admin/curriculum", "adminCurriculum"),
-        ...adminEntry("ESIS мэдээллийн төв", "/admin/integrations/esis", "adminEsisHub"),
+        /*
+         * ★ **"ESIS мэдээллийн төв" was the next row and is gone** — 2026-09-14,
+         * at the client's request ("superadmin дээр байх нь зөв"). The screen
+         * moved to `/platform/[id]/esis`, reached from a kindergarten's page on
+         * the operator's own surface, because everything on it is a property of
+         * the deployment: the token, the base URL, the granted ESIS scope and
+         * the institution mapping, which was superadmin-only to begin with.
+         *
+         * ★★ A director did not lose an ESIS capability. The screens that
+         * actually call ESIS — the roster, a child's record, the day sheet,
+         * Сургалтын хөтөлбөр just above — draw their own services through
+         * `…/esis/catalog` and are untouched.
+         */
         /*
          * ★ "Үнэлгээний тохиргоо" and "Аудит" lost their rows on 2026-09-06,
          * at the client's request — and, as with the two review queues above,

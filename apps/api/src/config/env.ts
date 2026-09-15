@@ -109,16 +109,48 @@ export const envSchema = z.object({
    */
   ESIS_BASE_URL: z.string().default(""),
   ESIS_TOKEN: z.string().default(""),
-  /**
-   * Uses deterministic, schema-shaped fixtures and makes no outbound ESIS
-   * request. Disable only after the production Bearer token has been issued.
+  /*
+   * ★ `ESIS_DEMO_MODE` was removed on 2026-09-14, and its default is the
+   * reason to record it rather than delete the note.
+   *
+   * It defaulted to **`"true"`**, so any deployment that had not thought about
+   * the variable served invented fixtures from every ESIS surface and never
+   * opened a socket to the ministry. That was a reasonable default while no
+   * token had scope; it is a trap once one does, because the failure mode is a
+   * screen full of plausible data rather than an error.
+   *
+   * ★★ `ESIS_INSTITUTION_ID` went with it. It was already marked deprecated —
+   * institution scope is per kindergarten, in `Kindergarten.esisInstitutionId`
+   * — and nothing read it, so an operator setting it saw no effect at all.
+   *
+   * ★★★ **One token, many kindergartens: the ministry scopes it, and this was
+   * measured** — 2026-09-14, against the real credential:
+   *
+   * ```
+   * GET /organization/info?institutionId=42778  → 200 "Дэгдээхий үрс цэцэрлэг"
+   * GET /organization/info?institutionId=40284  → 403 "Таны компанид энэ institutionId дээр эрх байхгүй байна."
+   * GET /organization/info?institutionId=42779  → 403  (same)
+   * ```
+   *
+   * So the token carries a **set** of institutions the ESIS developer account
+   * has been granted, and an id outside it is refused upstream. Two
+   * consequences, both worth knowing before a second kindergarten exists:
+   *
+   *   1. `Kindergarten.esisInstitutionId` is not the only thing standing
+   *      between tenant A and tenant B's roster. It is the first check; the
+   *      ministry is the second, and it is the one we do not control and cannot
+   *      accidentally regress. That is the right order.
+   *   2. Onboarding a kindergarten is a **paperwork** step, not a code step:
+   *      the ministry adds its institution to this account, then a superadmin
+   *      sets the column. Nothing here is per-deployment.
+   *
+   * ★★★★ The message says "Таны **компанид**" — the account is a company, and
+   * institutions are attached to it. That is the vendor model, and it is why
+   * one `ESIS_TOKEN` can serve every tenant. If the ministry ever requires a
+   * kindergarten to hold its *own* developer account, this single variable is
+   * what breaks, and the credential has to move to a per-tenant encrypted
+   * store. Nothing observed so far points that way.
    */
-  ESIS_DEMO_MODE: z
-    .enum(["true", "false"])
-    .default("true")
-    .transform((v) => v === "true"),
-  /** @deprecated Institution scope is stored per kindergarten. */
-  ESIS_INSTITUTION_ID: z.string().default(""),
   /**
    * Milliseconds before an ESIS request is abandoned.
    *

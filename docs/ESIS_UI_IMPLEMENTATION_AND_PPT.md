@@ -7,8 +7,20 @@
 
 - A platform-admin-only tenant mapping links each kindergarten to one ESIS
   `institutionId`.
-- The ADMIN route `/admin/integrations/esis` shows C1-C5 readiness, the 17
-  selected endpoints, blockers, dry-run controls, and recent run history.
+- The operator route `/platform/[id]/esis` shows C1-C5 readiness, the selected
+  endpoints, blockers, dry-run controls, the ESIS request register, and recent
+  run history.
+
+  ★ **It was the ADMIN route `/admin/integrations/esis` until 2026-09-14**, and
+  moved at the client's request ("superadmin дээр байх нь зөв"). Everything on
+  it is a property of the deployment rather than of a kindergarten: `ESIS_TOKEN`
+  and `ESIS_BASE_URL` are environment settings, one ESIS developer account holds
+  the grants for every tenant, and the institution mapping it reports was
+  already platform-only — so a director read blockers only somebody else could
+  clear. `GET /v1/platform/kindergartens/:id/esis` and its `…/esis/preview` are
+  the routes; a director's working "ESIS-ээс татах" buttons read
+  `…/esis/catalog` and `…/esis/resource` and did not move.
+
 - A read-only dry-run calls up to four GET services at a time. It changes no
   local records and returns counts plus up to five rows, **field by field**.
 - ★ **Completed 2026-09-08, at the client's request** ("гаралтын утгуудыг бүгдийг нь
@@ -57,29 +69,29 @@
 
 - Нэг бичлэгийг label/value detail, олон бичлэгийг scroll-той хүснэгтээр
   харуулна. Live хариу амжилттай ирмэгц demo мөр бүрэн алга болно.
-- ESIS төв нээгдэхэд `Сервис ба талбар` tab анхдагчаар харагдаж, 17 сервисийн
-  demo бичлэг ба бүх input/output талбар collapse-гүй шууд харагдана. Demo
-  харахын тулд `ESIS-ээс татах` дарах шаардлагагүй; уг товч зөвхөн бодит
-  read-only хариугаар шинэчилнэ.
-- ★ **Сервис бүр demo бичлэгийн бүрэн багцтай** (нийт 74 мөр): 10 суралцагч,
-  2 бүлэг, 2 багш, 3 ажилтан, 6 ирцийн мөр, хоолны лавлахын 8 материал/8
-  бүтээгдэхүүн гэх мэт. `personId`, `studentGroupId`, `instructorId` нь
-  сервисүүдийн хооронд тохирдог тул нэг цэцэрлэгийн зураг болж уншигдана —
-  `apps/api/src/integrations/esis/esis.samples.ts`. Утга нь бичлэгийн харагдацад
-  байх бөгөөд талбарын жагсаалт нь зөвхөн нэр, төлөв, авахгүй шалтгааныг
-  харуулна: нэг утгыг хоёр газар давхардуулбал ижил зохиомол өгөгдөл хоёр
-  эх сурвалж мэт харагдана.
-- `ESIS_DEMO_MODE=true` үед UI нь **ESIS integration demo / Mock data**,
-  **жинхэнэ ESIS холболт хийгдээгүй** гэж тогтмол харуулна. C3-C5 live үе шат
-  хүлээгдсэн хэвээр, mock dry-run болон түүх `DEMO_SUCCESS · MOCK` төлөвтэй
-  байна. Энэ горимд production request огт илгээгдэхгүй.
-- Багшийн `/settings` дээр token байхгүй үед demo, token байгаа үед
+- ESIS төв нээгдэхэд `Сервис ба талбар` tab анхдагчаар харагдаж, сервис бүрийн
+  бүх input/output талбар collapse-гүй шууд харагдана.
+- ★★ **Demo бичлэгүүд 2026-09-14-нд бүрэн устсан.** Энэ хэсэг өмнө нь «сервис
+  бүр demo бичлэгийн бүрэн багцтай (нийт 74 мөр): 10 суралцагч, 2 бүлэг …»
+  гэж бичээстэй байв. Захиалагчийн заавар: «ene esis ni real zuil shuu chi
+  demo ugugdul ntr ywuulj tenegtewee».
+
+  Одоо дэлгэц дараах хоёрын аль нэгийг харуулна:
+  - **Бодит хариу** — ЯАМ-аас ирсэн мөрүүд;
+  - **`EsisNoAnswer`** — «ESIS-ээс хариу ирсэнгүй», хариу өгөөгүй endpoint-ын
+    зам (`GET /svc/api/hub/v2/…`) ба шалтгаан.
+
+  Талбарын жагсаалт (нэр, шошго, авах/авахгүй шалтгаан) хэвээр — тэр нь
+  нийтлэгдсэн гэрээ, зохиомол утга биш. `ESIS_DEMO_MODE` тохиргоо,
+  `esis.samples.ts`, `esis.fixtures.ts` бүгд устсан.
+- Багшийн `/settings` дээр token байхгүй үед алдааны мессеж, token байгаа үед
   `teacher/list` эсвэл `school/staff`-ийн бодит гаралтын бүх зөвшөөрөгдсөн
   талбар автоматаар харагдана. Ирц дээр API-000269 payload хүүхэд бүрээр
   бэлтгэгдэж, live үед ESIS POST амжилттай болсны дараа local төлөв хадгалагдана.
 - `/children/new` нь `students` сервисийн 33 гаралтын талбарыг backend
   contract-оос авч collapse-гүй харуулна. Овог, нэр, хүйс, төрсөн огноо,
-  бүлгийг ESIS demo мөрөөс автоматаар бөглөж, регистр болон provider credential
+  бүлгийг ESIS-ийн бодит хариунаас автоматаар бөглөж (татаагүй үед хоосон),
+  регистр болон provider credential
   зэрэг татахгүй талбарыг нэр ба шалтгаантай нь `Авахгүй` гэж ялгана.
 
 ### Endpoint evidence дэлгэц
@@ -202,21 +214,24 @@ Order A/261 has 94 checks: 51 mandatory and 43 recommended.
 - Every output field of every service, named, labelled, and marked kept or
   refused — visible before any token exists
 - "ESIS-ээс татах" on each screen the data lands on
+- The ESIS request register: 96 requests, how many are approved, and how many of
+  the approved services the product actually calls
 - TEST/PRODUCTION, institution mapping, and actionable blockers
 - Read-only dry-run and recent activity history
-- Demo route: `/admin/integrations/esis`
+- Demo route: `/platform/[id]/esis` (platform operator)
 
 ### Slide 7 - Safe import flow
 
 - Platform admin approves the tenant institution mapping
-- Kindergarten ADMIN runs up to four read-only datasets
+- The platform operator runs up to four read-only datasets
 - Counts and limited previews are shown; local data is unchanged
 - Next phase: match -> field conflict -> approve -> background import
 
 ### Slide 8 - Access and data protection
 
 - A tenant ID mismatch blocks the ESIS request at the API
-- Teachers and parents do not see ESIS administration controls
+- Teachers, parents and kindergarten directors do not see ESIS
+  administration controls; the operator screen answers them 404, not 403
 - Platform admin maps institutions without reading kindergarten payloads
 - ESIS passwords, registration numbers, and unused identifiers are stripped
 
@@ -241,7 +256,7 @@ and approved local food import.
 
 ## 5. Screenshots to include
 
-1. `/admin/integrations/esis` - C1-C5 overview.
+1. `/platform/[id]/esis` - C1-C5 overview.
 2. `Сервис ба талбар` tab - endpoint matrix and all field values.
 3. `Туршилтын таталт` tab - selection and dry-run result.
 4. `Түүх` tab - actor, time, and status.

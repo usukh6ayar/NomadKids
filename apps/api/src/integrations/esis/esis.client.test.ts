@@ -122,14 +122,14 @@ describe("configuration", () => {
   it("reports readiness without revealing the token", () => {
     const described = configured().describe();
 
-    // ★ `demoMode` and `mode` joined the payload on 2026-09-09, so the admin
-    // screen can say which of the two ESIS modes is live. They are booleans
-    // and a literal, not credentials — the assertion below is what this test
-    // is actually for, and it walks the whole serialised object, so a field
-    // added here can never smuggle the token past it.
+    // ★ `demoMode` left the payload on 2026-09-14 with the mock transport;
+    // `mode` stays as the literal `"LIVE"` because the operator screen and the
+    // stored sync runs both render it. Neither is a credential — the assertion
+    // below is what this test is actually for, and it walks the whole
+    // serialised object, so a field added here can never smuggle the token
+    // past it.
     expect(described).toEqual({
       configured: true,
-      demoMode: false,
       mode: "LIVE",
       baseUrl: "https://esis.example.test/api",
       hasToken: true,
@@ -142,7 +142,7 @@ describe("configuration", () => {
 
   it("needs only the token because URL and tenant scope have other sources", () => {
     expect(configured({ ESIS_TOKEN: "" }).isConfigured).toBe(false);
-    expect(configured({ ESIS_BASE_URL: "", ESIS_INSTITUTION_ID: "" }).isConfigured).toBe(true);
+    expect(configured({ ESIS_BASE_URL: "" }).isConfigured).toBe(true);
     expect(configured().isConfigured).toBe(true);
   });
 });

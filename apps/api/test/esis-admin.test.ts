@@ -9,9 +9,12 @@ import { createTestApp } from "./support/app";
 import { resetData, testDb, uniq } from "./support/db";
 import {
   authed,
+  createChild,
+  createGroup,
   createMembership,
   createScenario,
   createUser,
+  enrollChild,
   login,
   type AuthSession,
   type Scenario,
@@ -87,36 +90,91 @@ beforeEach(async () => {
   ]);
 });
 
+/**
+ * The operator's readiness view — `GET /platform/kindergartens/:id/esis`.
+ *
+ * ★ **It was `GET /kindergartens/:id/esis` and `@Roles("ADMIN")` until
+ * 2026-09-14**, when the client asked for the ESIS system screens to sit with
+ * the platform operator rather than a kindergarten's director. The facts on it
+ * are the deployment's: `ESIS_TOKEN` and `ESIS_BASE_URL` are environment
+ * settings, one ESIS developer account serves every tenant, and the institution
+ * mapping it reports was already superadmin-only — so a director read blockers
+ * that only somebody else could clear.
+ *
+ * ★★ Through HTTP against the real route, per §4.1. `assertSuperAdmin` inside
+ * the service is the decision, but only a request proves the controller asks.
+ */
 describe("ESIS administration authorization", () => {
-  it("lets a kindergarten admin read only their own readiness", async () => {
-    const own = await authed(
-      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/esis`),
-      adminA,
-    );
-    const other = await authed(
-      request(server()).get(`/v1/kindergartens/${b.kindergarten.id}/esis`),
-      adminA,
-    );
+  const overviewUrl = (kindergartenId: string) =>
+    `/v1/platform/kindergartens/${kindergartenId}/esis`;
 
-    expect(own.status).toBe(200);
-    expect(own.body.endpoints).toHaveLength(39);
-    expect(other.status).toBe(404);
+  it("lets the platform operator read any tenant's readiness", async () => {
+    const [first, second] = await Promise.all([
+      authed(request(server()).get(overviewUrl(a.kindergarten.id)), superAdmin),
+      authed(request(server()).get(overviewUrl(b.kindergarten.id)), superAdmin),
+    ]);
+
+    expect(first.status).toBe(200);
+    /*
+     * ★ 67 since 2026-09-15, was 40. The twenty-seven added are the services
+     * the ministry's granted-service export listed as approved and the
+     * catalogue was not calling — the health block and its saves, the three
+     * immunisation reads, group measurement and its bulk save, the эрт
+     * илрүүлэг instrument, the three teacher-registration reads, and the daily
+     * attendance roll-up.
+     */
+    expect(first.body.endpoints).toHaveLength(67);
+    // Every kindergarten, because the token and the grants are one account's.
+    expect(second.status).toBe(200);
   });
 
+  /*
+   * ★ The director is refused with **404**, not 403 — CLAUDE.md §1.7. They
+   * administer the kindergarten in the path and still learn nothing about the
+   * route, which is what keeps its existence from being an oracle.
+   */
   it.each([
+    ["kindergarten admin", () => adminA],
     ["teacher", () => teacherA],
     ["guardian", () => parentA],
   ])("refuses a %s before any ESIS data is returned", async (_label, session) => {
+    const res = await authed(request(server()).get(overviewUrl(a.kindergarten.id)), session());
+    expect(res.status).toBe(404);
+  });
+
+  /*
+   * ★ The old route is gone rather than left answering. A director's bookmark
+   * gets a 404 from the router, not a payload from a controller that kept its
+   * `@Roles("ADMIN")`.
+   */
+  it("no longer serves the tenant-scoped overview route", async () => {
     const res = await authed(
       request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/esis`),
-      session(),
+      adminA,
     );
     expect(res.status).toBe(404);
   });
 
   it("requires authentication", async () => {
-    const res = await request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/esis`);
+    const res = await request(server()).get(overviewUrl(a.kindergarten.id));
     expect(res.status).toBe(401);
+  });
+
+  /*
+   * ★ "Хэдэн хүсэлт зөвшөөрөгдсөн, хэдийг ашиглаж байна" — the client's own
+   * question, and the reason the register is on this payload and no other. The
+   * counts are computed from `esis.requests.ts` joined against the catalog by
+   * `apiId`; `esis.requests.test.ts` pins the join itself.
+   */
+  it("reports the deployment's ESIS grants and how many are in use", async () => {
+    const res = await authed(request(server()).get(overviewUrl(a.kindergarten.id)), superAdmin);
+
+    expect(res.status).toBe(200);
+    expect(res.body.requests.counts.approved).toBeGreaterThan(0);
+    expect(res.body.requests.counts.wired).toBeGreaterThan(0);
+    expect(res.body.requests.counts.total).toBe(res.body.requests.items.length);
+    // A snapshot read off the portal by hand says when it was read.
+    expect(res.body.requests.reviewedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
   it("allows only the platform operator to map an institution", async () => {
@@ -139,11 +197,31 @@ describe("ESIS administration authorization", () => {
   });
 });
 
+/**
+ * The dry run behind "Синк шалгалт".
+ *
+ * ★ On the platform route since 2026-09-14, with `overview()`. It spends the
+ * deployment's token against the ministry's rate limits to prove the connection
+ * works — the operator's job. The staff-facing "ESIS-ээс татах" reads are
+ * `…/esis/resource` and did not move; the describe below them is unchanged.
+ */
 describe("read-only preview", () => {
+  it("refuses a kindergarten admin, who no longer owns the dry run", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+
+    const res = await authed(
+      request(server()).post(`/v1/platform/kindergartens/${a.kindergarten.id}/esis/preview`),
+      adminA,
+    ).send({ resources: ["organization"] });
+
+    expect(res.status).toBe(404);
+    expect(organization).not.toHaveBeenCalled();
+  });
+
   it("refuses a preview before the platform mapping exists", async () => {
     const res = await authed(
-      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/esis/preview`),
-      adminA,
+      request(server()).post(`/v1/platform/kindergartens/${a.kindergarten.id}/esis/preview`),
+      superAdmin,
     ).send({ resources: ["organization"] });
 
     expect(res.status).toBe(409);
@@ -158,8 +236,8 @@ describe("read-only preview", () => {
 
     const beforeChildren = await db.child.count({ where: { kindergartenId: a.kindergarten.id } });
     const res = await authed(
-      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/esis/preview`),
-      adminA,
+      request(server()).post(`/v1/platform/kindergartens/${a.kindergarten.id}/esis/preview`),
+      superAdmin,
     ).send({ resources: ["organization"] });
 
     expect(res.status).toBe(201);
@@ -197,8 +275,8 @@ describe("read-only preview", () => {
     });
 
     const res = await authed(
-      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/esis/preview`),
-      adminA,
+      request(server()).post(`/v1/platform/kindergartens/${a.kindergarten.id}/esis/preview`),
+      superAdmin,
     ).send({ resources: ["organization"] });
 
     expect(res.status).toBe(201);
@@ -234,7 +312,9 @@ describe("role-scoped ESIS catalog", () => {
     const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
 
     expect(res.status).toBe(200);
-    expect(res.body.endpoints).toHaveLength(39);
+    // ADMIN takes every key, so this moves with the catalogue — 67 since
+    // 2026-09-15.
+    expect(res.body.endpoints).toHaveLength(67);
   });
 
   /*
@@ -296,7 +376,17 @@ describe("role-scoped ESIS catalog", () => {
     }
   });
 
-  it("gives an accountant the two income statements, and no roster", async () => {
+  /*
+   * ★ Three services since 2026-09-14, and the third is the interesting one.
+   *
+   * `foodDiscountStudents` names children, where the two income statements are
+   * monthly totals — so it is the first entry on the accountant's list that
+   * carries people. It is here rather than on the cook's list, which holds
+   * every other `cook/*` read: who the state subsidises changes no quantity a
+   * cook works with, and it is a fact about a family's circumstances. Least
+   * privilege puts it with the role that prices the month.
+   */
+  it("gives an accountant the income statements and the subsidy list, and no roster", async () => {
     const accountant = await createUser({ username: uniq("esis-accountant") });
     await createMembership(accountant.id, a.kindergarten.id, "ACCOUNTANT");
     const session = await login(app, accountant.username);
@@ -307,6 +397,7 @@ describe("role-scoped ESIS catalog", () => {
     expect(res.body.endpoints.map((e: { key: string }) => e.key)).toEqual([
       "livelihoodForm1",
       "livelihoodForm2",
+      "foodDiscountStudents",
     ]);
   });
 
@@ -325,7 +416,7 @@ describe("role-scoped ESIS catalog", () => {
    * whole institution's appointments and releases — a director's question —
    * and lives on `/admin/users`, so it must not appear here.
    */
-  it("gives a teacher the sixteen their screens draw, and no others", async () => {
+  it("gives a teacher the twenty-eight their screens draw, and no others", async () => {
     const res = await authed(request(server()).get(url(a.kindergarten.id)), teacherA);
 
     expect(res.status).toBe(200);
@@ -347,9 +438,54 @@ describe("role-scoped ESIS catalog", () => {
         "studentCondition",
         "studentConditionSave",
         "teacherAcademicOrg",
+        /*
+         * ★ Added 2026-09-15, and the split is per service rather than per
+         * block. A teacher gets the three facts the day depends on — харшил,
+         * хориотой хүнс, хөгжлийн бэрхшээл — because a child who must not eat
+         * something is classroom information, and `child-health.tsx` already
+         * draws those sections for staff. The measurement pair is theirs
+         * because a teacher runs the measuring session.
+         */
+        "studentAllergy",
+        "studentAllergySave",
+        "studentProhibitedFood",
+        "studentProhibitedFoodSave",
+        "studentDisability",
+        "studentDisabilitySave",
+        "studentMeasurements",
+        "studentMeasurementSave",
+        "groupMeasurements",
+        "groupMeasurementsSave",
+        "vaccineCatalog",
+        "schoolAttendance",
       ].sort(),
     );
-    expect(res.body.endpoints.map((e: { key: string }) => e.key)).not.toContain("teacherMovements");
+    /*
+     * ★★ The medical record a teacher does not get. Consultation results,
+     * surgical history and vaccine serial numbers are not classroom
+     * information, and no screen a teacher opens draws them — so the absence
+     * is asserted rather than left to the list above being read carefully.
+     */
+    const keys = res.body.endpoints.map((e: { key: string }) => e.key);
+    for (const withheld of [
+      "teacherMovements",
+      "studentAssessments",
+      "studentAssessmentsSave",
+      "studentSurgery",
+      "studentSurgerySave",
+      "studentIncident",
+      "studentIncidentSave",
+      "vaccineHistory",
+      "vaccinePlan",
+      "studentScreening",
+      "studentScreeningSave",
+      "studentAttachmentSave",
+      "workerInfo",
+      "teacherProfile",
+      "teacherCheck",
+    ]) {
+      expect({ withheld, present: keys.includes(withheld) }).toEqual({ withheld, present: false });
+    }
   });
 
   /*
@@ -379,6 +515,14 @@ describe("role-scoped ESIS catalog", () => {
       "syncStatus",
       "syncErrorCode",
       "lastSyncAt",
+      /*
+       * ★★★ And the grant half, since 2026-09-14. "Which ESIS scopes has this
+       * deployment been granted, and under what name in the portal" is the
+       * operator's question about their own developer account; a teacher's
+       * panel draws the services their screens use and needs no opinion on it.
+       */
+      "grant",
+      "portalName",
     ]) {
       expect(res.body.endpoints[0], key).not.toHaveProperty(key);
     }
@@ -596,5 +740,101 @@ describe("single-resource ESIS read", () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ status: "FAILED", errorCode: "SCOPE_DENIED", count: 0 });
     expect(res.body.fields.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Who may read *this child's* ESIS record.
+ *
+ * ★ **The subject was never checked until 2026-09-15**, and these are the
+ * cases CLAUDE.md §4.1 makes mandatory for any route touching child data.
+ *
+ * `assertReadable` asked two questions — is the caller in this tenant, does
+ * their role reach this service — and neither is about the child. Every
+ * per-child ESIS service is addressed by a `personId` the caller supplies, and
+ * `students` hands the whole roster's ids to any teacher. So a teacher of one
+ * group could read another group's харшил or хэмжилт by substituting an id.
+ *
+ * ★★ Through HTTP against the real route, not by calling `canAccessChild` —
+ * §4.1 is explicit that the latter passes even when the endpoint never calls
+ * it, which is precisely the defect these cover.
+ */
+describe("per-child ESIS reads are gated by canAccessChild", () => {
+  const resourceUrl = (kindergartenId: string, personId: string) =>
+    `/v1/kindergartens/${kindergartenId}/esis/resource` +
+    `?resource=studentMeasurements&personId=${personId}`;
+
+  /** The teacher's own child, with the ESIS match already proven. */
+  const MINE = "90000000000777";
+  /** A child of the same kindergarten, in a group this teacher does not teach. */
+  const THEIRS = "90000000000888";
+
+  beforeEach(async () => {
+    const otherGroup = await createGroup(a.kindergarten.id, a.schoolYear.id, "Бусад бүлэг");
+    const otherChild = await createChild(a.kindergarten.id);
+    await enrollChild(a.kindergarten.id, otherChild.id, otherGroup.id, a.schoolYear.id);
+
+    await db.child.update({ where: { id: a.child.id }, data: { esisPersonId: MINE } });
+    await db.child.update({ where: { id: otherChild.id }, data: { esisPersonId: THEIRS } });
+    await mapInstitution(a.kindergarten.id, superAdmin);
+  });
+
+  it("lets a teacher read a child in their own group", async () => {
+    const res = await authed(request(server()).get(resourceUrl(a.kindergarten.id, MINE)), teacherA);
+
+    expect(res.status).toBe(200);
+  });
+
+  /* The case this whole block exists for. */
+  it("returns 404 to a teacher for a child in another group", async () => {
+    const res = await authed(
+      request(server()).get(resourceUrl(a.kindergarten.id, THEIRS)),
+      teacherA,
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  /*
+   * ★ Unproven is refused, not waved through. `esisPersonId` is written only
+   * where the product has established the match against the live roster; a
+   * child without one cannot be attributed to anybody, and "we do not know
+   * whose record this is" is not a reason to show it.
+   */
+  it("returns 404 to a teacher for a personId no child is mapped to", async () => {
+    const res = await authed(
+      request(server()).get(resourceUrl(a.kindergarten.id, "90000000000999")),
+      teacherA,
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  /*
+   * ★★ An admin is exempt, and the exemption is not a hole: `isAdminOver`
+   * passes for every child of a kindergarten they administer, so the gate could
+   * only ever answer yes. Running it anyway would refuse an admin a child whose
+   * ESIS id nobody has proven yet — denying access the rule itself grants.
+   */
+  it("lets an admin read a child whose ESIS id is not mapped", async () => {
+    const res = await authed(
+      request(server()).get(resourceUrl(a.kindergarten.id, "90000000000999")),
+      adminA,
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 404 to a guardian, who reaches no ESIS service at all", async () => {
+    const res = await authed(request(server()).get(resourceUrl(a.kindergarten.id, MINE)), parentA);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 to a teacher of another kindergarten", async () => {
+    const teacherB = await login(app, b.teacherUser.username);
+    const res = await authed(request(server()).get(resourceUrl(a.kindergarten.id, MINE)), teacherB);
+
+    expect(res.status).toBe(404);
   });
 });
