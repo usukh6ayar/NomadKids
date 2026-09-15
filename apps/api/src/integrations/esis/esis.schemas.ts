@@ -102,11 +102,11 @@ const nullableFlag = z
  * string that is not empty — is still a genuine `invalid_response`, because a
  * contract break must not be able to hide as an empty one.
  *
- * ★★★ **An absent body is the fourth empty shape**, found on 2026-09-15:
+ * ★★★ **An absent body is empty at the envelope level**, found on 2026-09-15:
  * `teacher/movements` answered `205` with zero bytes, which `EsisClient` hands
- * on as `null`. The three shapes above are an empty `RESULT` inside an
- * envelope; this is no envelope at all. It is read as "nothing came back" for
- * the same reason and with the same limit — anything that *is* present and
+ * on as `null`. The shapes above are an empty `RESULT` inside an envelope;
+ * this is no envelope at all. It is read as "nothing came back" for the same
+ * reason and with the same limit — anything that *is* present and
  * *is not* an envelope still fails.
  */
 export function esisListParser<T>(row: z.ZodType<T>): (body: unknown) => T[] {
@@ -614,9 +614,7 @@ export const esisStudentCheckSchema = z.object({
  * other service too, and `RESULT: ""` — which twenty services use to mean *no
  * rows* — would have started parsing as a row with an empty value.
  */
-export function esisCheckParser(): (
-  body: unknown,
-) => z.infer<typeof esisStudentCheckSchema>[] {
+export function esisCheckParser(): (body: unknown) => z.infer<typeof esisStudentCheckSchema>[] {
   const envelope = z.object({
     SUCCESS_CODE: z.number(),
     RESPONSE_MESSAGE: z.string(),
@@ -1395,9 +1393,7 @@ export const esisStudentProhibitedFoodUploadSchema = z
     description: z.string().optional(),
   })
   .strict();
-export type EsisStudentProhibitedFoodUpload = z.input<
-  typeof esisStudentProhibitedFoodUploadSchema
->;
+export type EsisStudentProhibitedFoodUpload = z.input<typeof esisStudentProhibitedFoodUploadSchema>;
 
 export const esisStudentDisabilityUploadSchema = z
   .object({

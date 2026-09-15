@@ -24,6 +24,12 @@ import {
  * could be shown before the token had scope, and its only remaining effect was
  * to hide live failures behind something that looked like data. These are
  * inputs to a unit test of a parsing function. Nothing reads them at runtime.
+ *
+ * ★★★ **Exception: the absent-body cases below are synthetic.** `null` and
+ * `undefined` are not something ESIS sent — they are `EsisClient`'s own
+ * rendering of the zero-byte `205` it read from `teacher/movements` on
+ * 2026-09-15 (see `esis.client.ts`). There is no envelope to paste verbatim
+ * because the point being tested is that none arrived.
  */
 describe("esisListParser", () => {
   const row = z.object({ personId: z.union([z.string(), z.number()]) });
@@ -78,7 +84,11 @@ describe("esisListParser", () => {
 
   it("reads a null RESULT as no rows", () => {
     expect(
-      parse({ SUCCESS_CODE: 203, RESPONSE_MESSAGE: "Хүсэлтэд тохирох утга олдсонгүй", RESULT: null }),
+      parse({
+        SUCCESS_CODE: 203,
+        RESPONSE_MESSAGE: "Хүсэлтэд тохирох утга олдсонгүй",
+        RESULT: null,
+      }),
     ).toEqual([]);
   });
 
@@ -149,9 +159,7 @@ describe("esisCheckParser", () => {
         RESPONSE_MESSAGE: "9425579614258 ID дугаартай сурагч байна.",
         RESULT: "true",
       }),
-    ).toEqual([
-      { isRegistered: "true", message: "9425579614258 ID дугаартай сурагч байна." },
-    ]);
+    ).toEqual([{ isRegistered: "true", message: "9425579614258 ID дугаартай сурагч байна." }]);
   });
 
   it("reads teacher/check's one-element array", () => {
@@ -167,7 +175,11 @@ describe("esisCheckParser", () => {
    */
   it("reads an empty RESULT as no answer rather than as false", () => {
     expect(
-      parse({ SUCCESS_CODE: 203, RESPONSE_MESSAGE: "Хүсэлтэд тохирох утга олдсонгүй.", RESULT: "" }),
+      parse({
+        SUCCESS_CODE: 203,
+        RESPONSE_MESSAGE: "Хүсэлтэд тохирох утга олдсонгүй.",
+        RESULT: "",
+      }),
     ).toEqual([]);
   });
 });

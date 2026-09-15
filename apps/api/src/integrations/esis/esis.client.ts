@@ -134,16 +134,44 @@ export class EsisClient {
     }
 
     let data: unknown;
-    try {
-      // An empty 204 is a success with nothing to parse.
-      data = rawBody === "" ? null : JSON.parse(rawBody);
-    } catch {
-      throw new EsisError("invalid_response", "ESIS returned a body that is not JSON", {
-        status: response.status,
-        path: options.path,
-        durationMs,
-        bodyExcerpt: this.excerpt(rawBody),
-      });
+    if (rawBody === "") {
+      /*
+       * ★ 2026-09-15 — an empty body is a statement only when the status says
+       * so. 204 means "no content" by definition, and `teacher/movements`
+       * showed the ministry also uses 205 that way. Every other 2xx keeps its
+       * body, so an empty one there is a truncated response — proxy
+       * truncation, a ministry-side hiccup — not an answer, and collapsing it
+       * to `null` would let that pass as "nothing came back" instead of the
+       * broken contract it is. 203 is deliberately not in this list: ESIS
+       * uses it for "no rows" but the 2026-09-15 probe confirmed it always
+       * carries a full envelope — see `esisListParser`'s doc comment for the
+       * three shapes `RESULT` arrives in on a 203.
+       */
+      if (response.status === 204 || response.status === 205) {
+        data = null;
+      } else {
+        throw new EsisError(
+          "invalid_response",
+          `ESIS returned an empty body on ${response.status}`,
+          {
+            status: response.status,
+            path: options.path,
+            durationMs,
+            bodyExcerpt: this.excerpt(rawBody),
+          },
+        );
+      }
+    } else {
+      try {
+        data = JSON.parse(rawBody);
+      } catch {
+        throw new EsisError("invalid_response", "ESIS returned a body that is not JSON", {
+          status: response.status,
+          path: options.path,
+          durationMs,
+          bodyExcerpt: this.excerpt(rawBody),
+        });
+      }
     }
 
     if (options.parse) {

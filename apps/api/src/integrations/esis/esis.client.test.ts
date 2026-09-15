@@ -306,6 +306,27 @@ describe("error handling", () => {
 
     expect(error.detail.bodyExcerpt!.length).toBeLessThanOrEqual(501);
   });
+
+  /*
+   * ★ 2026-09-15 — an empty body means "no content" only on the statuses that
+   * say so (204, 205). Collapsing every empty 2xx to `null` would let a
+   * truncated `200` — proxy truncation, a ministry-side hiccup — pass as an
+   * empty response instead of the broken contract it is. 203 is deliberately
+   * excluded even though ESIS uses it for "no rows": the 2026-09-15 probe
+   * confirmed a 203 always carries a full envelope, empty-string or empty
+   * `RESULT` included, never a zero-length body.
+   */
+  it("reports an empty body on a 200 as invalid_response, not as success", async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 200 }));
+
+    const error = (await new EsisClient(configured())
+      .request({ path: "/v1/thing" })
+      .catch((e: unknown) => e)) as EsisError;
+
+    expect(error).toBeInstanceOf(EsisError);
+    expect(error.kind).toBe("invalid_response");
+    expect(error.detail.status).toBe(200);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -350,6 +371,22 @@ describe("successful requests", () => {
 
     expect(result.status).toBe(204);
     expect(result.data).toBeNull();
+  });
+
+  it("treats an empty 205 as success, and hands null to parse", async () => {
+    // The real case: `teacher/movements` answered 205 with zero bytes on
+    // 2026-09-15, and `esisListParser` reads that null as no rows.
+    fetchMock.mockResolvedValue(new Response(null, { status: 205 }));
+    const parse = vi.fn(() => [] as unknown[]);
+
+    const result = await new EsisClient(configured()).request({
+      path: "/v1/thing",
+      parse,
+    });
+
+    expect(parse).toHaveBeenCalledWith(null);
+    expect(result.status).toBe(205);
+    expect(result.data).toEqual([]);
   });
 
   it("drops undefined query values rather than sending the string 'undefined'", async () => {
