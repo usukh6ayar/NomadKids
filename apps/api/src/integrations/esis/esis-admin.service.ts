@@ -727,17 +727,22 @@ export class EsisAdminService {
       const response = await this.esis.read(dto.resource, params, institutionId);
       const rowLimit = dto.resource === "foodProducts" ? response.data.length : READ_ROWS;
       /*
-       * ★ The field list can depend on the response — but only for the six
-       * services that have no declared list at all.
+       * ★ `esisFieldsFor`, not `fields`, is what this screen shows — 2026-09-15.
        *
-       * Everywhere else `esisFieldsFor` returns `ESIS_FIELDS[key]` unchanged,
-       * and that is deliberate: columns derived from data would make "ESIS
-       * stopped sending this field" and "this child has no value" the same
-       * picture on screen, and only one of those is worth investigating.
+       * Every declared column still comes back whether or not this response
+       * carried it: that half is unconditional, and it is why `fields` above
+       * stays around for the `catch` block below, where there is no response
+       * to read a discovered key off of. Columns derived from data would make
+       * "ESIS stopped sending this field" and "this child has no value" the
+       * same picture on screen, and only one of those is worth investigating.
        *
-       * For a discovered service there is nothing else to go on, and showing
-       * the ministry's own field names the first time a record exists is
-       * exactly what a guessed list would have got wrong.
+       * What is no longer true of this call is that the discovered half was
+       * six services' business. A hand-written schema used to drop whatever it
+       * did not name, so nothing beyond those six could ever surprise this
+       * screen with an extra key. Readers now keep what they are not told to
+       * expect, so any resource can carry one — and an operator comparing this
+       * table against the ministry's real payload needs to see it, not have it
+       * silently dropped because this call site still trusted the old six.
        */
       const liveFields = esisFieldsFor(dto.resource, response.data);
       const rows = rowValues(dto.resource, response.data, rowLimit, liveFields);
