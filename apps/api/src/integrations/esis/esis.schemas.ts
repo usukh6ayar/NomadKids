@@ -313,11 +313,31 @@ export const esisGroupSchema = z.object({
  * the operator screen's columns from that catalog, so a schema that still
  * dropped them would show a column of `null` for a value ESIS actually sends —
  * see `esis.fields.test.ts`'s "matches the parsing schema key for key".
+ *
+ * ★ **`civilId` was `nullableString` for one commit and broke every row** —
+ * measured live against institution 42778, 2026-09-15, same day it was added.
+ * `students/list` sends `civilId` as a JSON **number** on all 94 rows;
+ * `personRegNumber` arrives as a **string** on all 94 — never null, never the
+ * other type. `esisListParser` validates the whole `RESULT` array against this
+ * schema, so a bare `z.string()`-shaped field failed every row at once and the
+ * roster was unreadable through the real service, invisible to the suite
+ * because `test/setup.ts` deletes `ESIS_TOKEN` and every route answers from a
+ * stub. `civilId` now takes `nullableIdentifier` — the same union the id-typed
+ * neighbours below already use — so it accepts either JSON form ESIS might
+ * send and normalises to a string.
+ *
+ * ★★ `personRegNumber` stays `nullableString` rather than following `civilId`
+ * to `nullableIdentifier`, and it is not an oversight: a Mongolian register
+ * number is two letters and eight digits (`УБ12345678`), so it cannot be
+ * serialised as a bare JSON number the way a purely numeric id like `civilId`
+ * can. The string/number ambiguity `identifier` exists to absorb does not
+ * apply to a value that must contain letters — measured the same way, the same
+ * day, across all 94 rows, with no exception.
  */
 export const esisStudentSchema = z.object({
   institutionId: identifier,
   personId: identifier,
-  civilId: nullableString,
+  civilId: nullableIdentifier,
   personRegNumber: nullableString,
   familyName: nullableString,
   lastName: z.string(),
@@ -394,12 +414,18 @@ const officialEmailFields = {
  * Still excludes the provider password and the username beside it.
  * `civilId`/`personRegNumber` moved from omitted to named on 2026-09-15 — see
  * the note above `esisStudentSchema`; the same reasoning applies here.
+ *
+ * ★ `civilId` is `nullableIdentifier`, not `nullableString` — measured live,
+ * 2026-09-15: `teacher/list` sends it as a JSON number on all 10 rows, the
+ * same defect and the same fix as `esisStudentSchema`'s. `personRegNumber`
+ * arrives as a string on all 10 and stays `nullableString`, for the same
+ * structural reason given there.
  */
 export const esisTeacherSchema = z.object({
   institutionId: identifier,
   assignmentId: identifier,
   personId: identifier,
-  civilId: nullableString,
+  civilId: nullableIdentifier,
   personRegNumber: nullableString,
   instructorId: nullableIdentifier,
   displayName: nullableString,
@@ -417,6 +443,12 @@ export const esisTeacherSchema = z.object({
  * Still excludes the provider password and salary. `civilId`/`personRegNumber`
  * moved from omitted to named on 2026-09-15 — see the note above
  * `esisStudentSchema`.
+ *
+ * ★ `civilId` is `nullableIdentifier`, not `nullableString` — measured live,
+ * 2026-09-15: `school/staff` sends it as a JSON number on all 13 rows, the
+ * same defect and the same fix as `esisStudentSchema`'s. `personRegNumber`
+ * arrives as a string on all 13 and stays `nullableString`, for the same
+ * structural reason given there.
  */
 export const esisStaffSchema = z.object({
   institutionId: identifier,
@@ -425,7 +457,7 @@ export const esisStaffSchema = z.object({
   parentInstitutionName: nullableString,
   assignmentId: identifier,
   personId: identifier,
-  civilId: nullableString,
+  civilId: nullableIdentifier,
   personRegNumber: nullableString,
   ...personNameFields,
   positionName: nullableString,
@@ -456,10 +488,19 @@ export const esisStaffSchema = z.object({
  * ★★ `isFoodDiscount` is the ministry's Mongolian word, kept as it arrives.
  * Interpreting it into a boolean here would bury the mapping in a schema;
  * `foodDiscountByPerson` does it in one named place instead.
+ *
+ * ★★★ `civilId` is `nullableIdentifier`, not `nullableString` — measured
+ * live, 2026-09-15: `cook/levelHood/students` sends it as a JSON number on
+ * all 72 rows, the same defect and the same fix as `esisStudentSchema`'s.
+ * `registerNumber` — this service's name for the same value
+ * `esisStudentSchema` calls `personRegNumber` — arrives as a string on all 72
+ * and stays `nullableString`: it is the same alphanumeric register-number
+ * format (letters mandatory), so the number/string ambiguity `identifier`
+ * absorbs does not apply to it either.
  */
 export const esisFoodDiscountStudentSchema = z.object({
   personId: identifier,
-  civilId: nullableString,
+  civilId: nullableIdentifier,
   registerNumber: nullableString,
   lastName: nullableString,
   firstName: nullableString,
