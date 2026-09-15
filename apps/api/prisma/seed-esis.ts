@@ -21,13 +21,21 @@
  * invented demo responses; that is the only roster shape this repository
  * stores.
  *
- * ★★★★ **What is dropped is dropped mechanically.** Every record is projected
- * through `ESIS_FIELDS`' own `ingested` flag before any code reads a property,
- * so `civilId`, `personRegNumber`, `googlePassword` and `microsoftPassword`
- * are gone before the mapping below can see them. A hand-written "don't copy
- * these four" is a comment somebody edits; this is the field catalogue that
- * `esis.controller.ts` already enforces, used as a filter. See
- * `ESIS_REQUEST.md` §1.1 (b) and §1.2 for why those four are refused.
+ * ★★★★ **What is dropped is dropped mechanically — two filters since
+ * 2026-09-15, not one.** Every record is still projected through
+ * `ESIS_FIELDS`' own `ingested` flag before any code reads a property, which
+ * removes `googlePassword` and `microsoftPassword` as it always did. It no
+ * longer removes `civilId` and `personRegNumber` on its own — the client
+ * asked for register numbers that day, and the catalogue now says so, because
+ * an ADMIN's operator screen reads its columns off that same flag. `readEsis`
+ * filters a second time with `esisVisibleRows(rows, { identifiers: false })`,
+ * so those two are still gone before the mapping below can see them — a
+ * development database has no more business holding a register number than
+ * a password. A hand-written "don't copy these four" is a comment somebody
+ * edits; this is two field catalogues, `ESIS_FIELDS` and
+ * `ESIS_IDENTIFIER_FIELDS`, used as filters. See `ESIS_REQUEST.md` §1.1 (b)
+ * and §1.2 for the document this project has since partly overridden, and
+ * `esis.schemas.ts` for the 2026-09-15 decision.
  *
  * Not idempotent, and not trying to be: `children` carries no ESIS external id
  * — `нэмэлт.md` §15, the external-ID history, is not built — so there is no key
@@ -46,6 +54,7 @@ import { resolve } from "node:path";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { ESIS_ENDPOINTS } from "../src/integrations/esis/esis.endpoints";
 import { ESIS_FIELDS } from "../src/integrations/esis/esis.fields";
+import { esisVisibleRows } from "../src/integrations/esis/esis.schemas";
 
 // ★ Loads the repository-root `.env` — see `seed-demo.ts` for the full reason.
 // A seed script is its own process and never imports the application, so
@@ -118,6 +127,21 @@ function ingestedNames(key: keyof typeof ESIS_ENDPOINTS): Set<string> {
  * ★ The projection happens here rather than at the call sites so there is no
  * path from `fetch` to a mapping function that carries a refused value. A
  * caller cannot forget to filter because a caller never sees the raw row.
+ *
+ * ★★ **Two filters, not one — 2026-09-15.** `ingestedNames` used to be
+ * enough on its own, because `civilId` and `personRegNumber` were `drop()`-ed
+ * in `esis.fields.ts` and so never survived it. They are `keep()`-ed there
+ * now — the client asked for register numbers on 2026-09-15, and the
+ * catalogue's `ingested` flag has to say so, because an ADMIN's operator
+ * screen reads columns off that same flag. A local development database is
+ * not an ADMIN screen, so this script filters again, after `ingestedNames`,
+ * with `esisVisibleRows(rows, { identifiers: false })` — the same
+ * list-driven, executable refusal `esis-admin.service.ts` uses, keyed on
+ * `ESIS_IDENTIFIER_FIELDS` rather than on a catalogue flag that now
+ * legitimately varies by who is asking. Credentials pass through
+ * `esisVisibleRows` unaffected — they were never `keep()`-ed anywhere and
+ * `ingestedNames` already removes them — so this is additive, not a
+ * relaxation of the first filter.
  */
 async function readEsis(
   key: keyof typeof ESIS_ENDPOINTS,
@@ -144,11 +168,12 @@ async function readEsis(
   const rows = Array.isArray(payload.RESULT) ? payload.RESULT : [];
   const allowed = ingestedNames(key);
 
-  return rows.map((row) =>
+  const ingested = rows.map((row) =>
     Object.fromEntries(
       Object.entries(row as Record<string, unknown>).filter(([name]) => allowed.has(name)),
     ),
   );
+  return esisVisibleRows(ingested, { identifiers: false });
 }
 
 /**
@@ -281,9 +306,16 @@ async function main(): Promise<void> {
   /*
    * ★ `nationalId` stays null for every child, and that is the point.
    *
-   * ESIS returns `civilId` and `personRegNumber` on this service and both are
-   * `drop()`-ed in `esis.fields.ts`, so `readEsis` has already removed them —
-   * there is no value here to write even by accident. Postgres allows repeated
+   * ESIS returns `civilId` and `personRegNumber` on this service. As of
+   * 2026-09-15 neither is `drop()`-ed in `esis.fields.ts` any more — the
+   * client asked for register numbers that day, and the product does ingest
+   * them elsewhere, gated per caller on an ADMIN's screen. A development
+   * database seeded from a live roster is not that screen and has no business
+   * holding ninety-four children's register numbers, so `readEsis` removes
+   * both explicitly, via `esisVisibleRows(rows, { identifiers: false })`, on
+   * top of the catalogue projection. There is still no value here to write
+   * even by accident; the reason moved from "the catalogue never let it
+   * through" to "this script refuses it itself". Postgres allows repeated
    * NULLs under `children_kindergartenId_nationalId_key`, so eighty-three
    * unidentified children do not collide.
    *
