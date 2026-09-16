@@ -352,11 +352,24 @@ export class EsisAdminService {
    * route reads instead, and it is ADMIN-only because a refresh spends the
    * deployment's one token against the ministry's rate limits.
    *
-   * ★★ Built from `school/staff`, not `teacher/list` — `staff` is the
-   * superset (13 rows against 10 on institution 42778, all ten of the smaller
-   * list present in the larger by `personId`). `isInstructor` records whether
-   * `teacher/list` also names the person, since the two lists disagree with
-   * each other on who counts as an instructor.
+   * ★★ Built from `school/staff`, not `teacher/list`, for two independent
+   * reasons — both measured on institution 42778, 2026-09-16.
+   *
+   * `staff` is the **superset**: 13 rows to `teacher/list`'s 10, and no
+   * teacher id is missing from it. The three people only the larger list names
+   * are the two тогооч and the жижүүр, and the cooks have every right to an
+   * account — they map to `COOK` through jobCode `5120`.
+   *
+   * And `teacher/list` **repeats a person**: 10 rows carry 9 distinct
+   * `personId`s, the duplicate pair differing in nothing but `username` (a
+   * refused credential this product strips anyway). Building the roster from
+   * it would violate `@@unique([kindergartenId, esisPersonId])` and fail the
+   * whole transaction.
+   *
+   * `isInstructor` records whether `teacher/list` also names the person — 9 of
+   * the 13, not 10, for the duplication reason above. The two lists disagree
+   * about who counts as an instructor, which is the ministry's business and
+   * not ours to reconcile.
    */
   async refreshStaffRoster(actor: Actor, kindergartenId: string) {
     this.tenants.assertAdmin(actor, kindergartenId);
