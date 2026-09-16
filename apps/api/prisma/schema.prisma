@@ -684,6 +684,7 @@ model Kindergarten {
   chatReads              ChatRead[]
   esisSyncRuns           EsisSyncRun[]
   esisStaffRoster        EsisStaffRoster[]
+  esisReference          EsisReference[]
 
   @@index([deletedAt])
   @@map("kindergartens")
@@ -696,23 +697,85 @@ model Kindergarten {
 /// but are not persisted here; importing them requires a separate approval
 /// workflow and external-id mapping.
 model EsisSyncRun {
-  id             String         @id @default(uuid()) @db.Uuid
-  kindergartenId String         @db.Uuid
-  initiatedById  String         @db.Uuid
-  status         EsisSyncStatus @default(RUNNING)
-  resources      Json
-  summary        Json?
-  errorCode      String?
-  startedAt      DateTime       @default(now())
-  finishedAt     DateTime?
-  createdAt      DateTime       @default(now())
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+
+  /// NULL when the schedule ran it rather than a person.
+  ///
+  /// ★ Nullable since 2026-09-16, when tiers 1 and 2 became repeatable jobs.
+  /// The alternative was a fabricated "system" user row, which is worse in the
+  /// exact way it looks better: it can be granted a membership, it shows up in
+  /// a user list, and an audit trail that names it cannot distinguish the
+  /// scheduler from somebody who logged in as it. `AuditLog.actorUserId` is
+  /// nullable for the same reason and has been all along.
+  initiatedById String? @db.Uuid
+
+  status     EsisSyncStatus @default(RUNNING)
+  resources  Json
+  summary    Json?
+  errorCode  String?
+  startedAt  DateTime       @default(now())
+  finishedAt DateTime?
+  createdAt  DateTime       @default(now())
 
   kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  initiatedBy  User         @relation("EsisSyncInitiator", fields: [initiatedById], references: [id], onDelete: Restrict)
+  initiatedBy  User?        @relation("EsisSyncInitiator", fields: [initiatedById], references: [id], onDelete: Restrict)
 
   @@index([kindergartenId, startedAt])
   @@index([status, startedAt])
   @@map("esis_sync_runs")
+}
+
+/// One row of ESIS reference data, copied so a screen does not have to ask the
+/// ministry for it.
+///
+/// ★ **Why a copy at all.** `cook/product` returns a thousand rows and the
+/// menu form fetches every one of them each time a teacher opens it. Ten
+/// teachers in a morning is ten thousand rows pulled from the ministry for a
+/// catalogue that changes monthly. A monthly copy is fewer calls in their log,
+/// not more — and it is the difference between a screen that works when ESIS
+/// is down and one that does not.
+///
+/// ★★ **`kindergartenId` is nullable, and that is a deliberate exception to
+/// CLAUDE.md §3.1.** The seven `cook/*` services and `screeningQuestions` take
+/// no `institutionId`: they are the ministry's **national** catalogues, the
+/// same rows for every kindergarten in the country. Storing a copy per tenant
+/// would duplicate a thousand food products per kindergarten to express a fact
+/// that is not about any of them.
+///
+/// The rule §3.1 protects — one filter enforcing isolation — is kept by the
+/// repository instead: `findNationalReference` and `findInstitutionReference`
+/// are separate methods, so a caller cannot reach another tenant's buildings by
+/// forgetting an argument. NULL means national; a value means that
+/// kindergarten's, and the unique index below covers both shapes.
+///
+/// ★★★ Not soft-deleted. A superseded copy of somebody else's catalogue is not
+/// a record anyone needs to read back (§3.2's rule is for records that are),
+/// and a replace that left the old rows behind would serve a discontinued
+/// product as though the ministry still listed it. `EsisSyncRun` records that
+/// the refresh happened.
+model EsisReference {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// NULL for a national catalogue. See the note above.
+  kindergartenId String? @db.Uuid
+
+  /// The `ESIS_READERS` key this row came from — `foodProducts`, `rooms`, …
+  resource   String
+  /// The ministry's own identifier within that resource.
+  externalId String
+  /// The row as ESIS sent it, after `esisVisibleRows` has taken the refusals
+  /// out. Stored whole because nothing maps these into domain models: the
+  /// screens render the ministry's own field names.
+  payload    Json
+
+  syncedAt DateTime @default(now())
+
+  kindergarten Kindergarten? @relation(fields: [kindergartenId], references: [id], onDelete: Cascade)
+
+  @@unique([kindergartenId, resource, externalId])
+  @@index([resource, syncedAt])
+  @@map("esis_reference")
 }
 
 /// One row of the ministry's staff list for one kindergarten, stored so an

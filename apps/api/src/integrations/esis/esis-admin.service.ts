@@ -190,7 +190,9 @@ export class EsisAdminService {
       }),
       recentRuns: recentRuns.map((run) => ({
         ...run,
-        initiatedBy: `${run.initiatedBy.lastName} ${run.initiatedBy.firstName}`.trim(),
+        initiatedBy: run.initiatedBy
+          ? `${run.initiatedBy.lastName} ${run.initiatedBy.firstName}`.trim()
+          : null,
         mode: syncRunMode(run.summary),
       })),
       canPreview,
