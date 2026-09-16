@@ -86,7 +86,13 @@ export class EsisRepository {
     });
   }
 
-  createRun(kindergartenId: string, initiatedById: string, resources: string[]) {
+  /**
+   * ★ `initiatedById` is `string | null` since 2026-09-16 — NULL is a
+   * scheduled run, a person's id is a manual one. Both are the same kind of
+   * row; only the initiator differs. See `EsisSyncRun.initiatedById`'s doc
+   * comment for why NULL beats a fabricated system user.
+   */
+  createRun(kindergartenId: string, initiatedById: string | null, resources: string[]) {
     return this.prisma.esisSyncRun.create({
       data: { kindergartenId, initiatedById, resources },
       select: { id: true, status: true, startedAt: true },
@@ -156,6 +162,86 @@ export class EsisRepository {
     return this.prisma.esisStaffRoster.findUnique({
       where: { kindergartenId_registerNumber: { kindergartenId, registerNumber } },
     });
+  }
+
+  /**
+   * Swaps one resource's stored rows for the sweep that just came back.
+   *
+   * ★ Delete-then-insert in one transaction, not `upsert`. Prisma's generated
+   * compound-unique `where` type (`kindergartenId_resource_externalId`) types
+   * `kindergartenId` as non-nullable, so an `upsert` cannot express the
+   * national shape (`kindergartenId: null`) at all — and if a cast made it
+   * compile, Postgres treats NULLs as distinct in a unique index, so the
+   * constraint would never match an existing national row and every sweep
+   * would insert a fresh duplicate rather than replace one.
+   * `replaceStaffRoster` above is the precedent this follows.
+   *
+   * ★★ Scoped by `kindergartenId` **including when it is NULL** — Prisma's
+   * `null` in a `where` compiles to `IS NULL`, which is exactly the behaviour
+   * wanted: a national catalogue's refresh must delete only the national rows
+   * for `resource`, never an institution's rows for the same resource key,
+   * and vice versa. Passing `null` here is not a bug to guard against.
+   */
+  replaceReference(
+    kindergartenId: string | null,
+    resource: string,
+    rows: { externalId: string; payload: Prisma.InputJsonValue }[],
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.esisReference.deleteMany({ where: { kindergartenId, resource } });
+      if (rows.length === 0) return 0;
+      const created = await tx.esisReference.createMany({
+        data: rows.map((row) => ({
+          kindergartenId,
+          resource,
+          externalId: row.externalId,
+          payload: row.payload,
+        })),
+      });
+      return created.count;
+    });
+  }
+
+  /**
+   * ★ `findNationalReference` and `findInstitutionReference` are two methods
+   * rather than one taking a nullable `kindergartenId`, on purpose: a single
+   * method invites a caller to pass whatever variable is in scope, and a
+   * `kindergartenId` that is `undefined` by mistake would silently widen a
+   * `findMany` from "this tenant's rows" to "every tenant's" — the same class
+   * of leak CLAUDE.md §2.2 forbids. Splitting the method makes "which tenant"
+   * a choice of *function name*, not of argument, so a caller reading another
+   * tenant's rows would have had to call the wrong one by name.
+   */
+  findNationalReference(resource: string, page: { skip: number; take: number }) {
+    return this.prisma.esisReference.findMany({
+      where: { kindergartenId: null, resource },
+      orderBy: { externalId: "asc" },
+      skip: page.skip,
+      take: page.take,
+    });
+  }
+
+  findInstitutionReference(
+    kindergartenId: string,
+    resource: string,
+    page: { skip: number; take: number },
+  ) {
+    return this.prisma.esisReference.findMany({
+      where: { kindergartenId, resource },
+      orderBy: { externalId: "asc" },
+      skip: page.skip,
+      take: page.take,
+    });
+  }
+
+  /** When `resource` was last swept for this scope, or `null` if never. */
+  async referenceSyncedAt(kindergartenId: string | null, resource: string): Promise<Date | null> {
+    const row = await this.prisma.esisReference.findFirst({
+      where: { kindergartenId, resource },
+      orderBy: { syncedAt: "desc" },
+      select: { syncedAt: true },
+    });
+    return row?.syncedAt ?? null;
   }
 
   listRecentRuns(kindergartenId: string) {

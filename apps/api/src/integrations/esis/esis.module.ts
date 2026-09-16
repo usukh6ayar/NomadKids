@@ -5,6 +5,7 @@ import { EsisClient } from "./esis.client";
 import { EsisConfig } from "./esis.config";
 import { EsisService } from "./esis.service";
 import { EsisAdminService } from "./esis-admin.service";
+import { EsisSyncService } from "./esis-sync.service";
 import { EsisRepository } from "./esis.repository";
 import { KindergartenEsisController, PlatformEsisController } from "./esis.controller";
 
@@ -40,6 +41,13 @@ import { KindergartenEsisController, PlatformEsisController } from "./esis.contr
     EsisClient,
     EsisService,
     EsisAdminService,
+    /*
+     * ★ `EsisSyncService` — added 2026-09-16 for tier 1's reference sweep
+     * (plan Task 3). Registered here, not exported: Task 5's route and Task
+     * 8's scheduler both live inside this module, so nothing outside it needs
+     * to reach a sweep directly.
+     */
+    EsisSyncService,
     EsisRepository,
   ],
   /*
