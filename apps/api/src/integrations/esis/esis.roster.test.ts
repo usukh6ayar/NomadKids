@@ -53,6 +53,22 @@ describe("normalizeRegisterNumber", () => {
   });
 
   /*
+   * ★ The upper-casing is not tidiness, and this test is why it must not be
+   * removed as redundant.
+   *
+   * Measured against institution 42778 on 2026-09-16: `school/staff` returns
+   * register numbers in **lower case** — 0 of its 13 matched the pattern as
+   * sent, 13 of 13 after upper-casing — while `teacher/list` returns the same
+   * thirteen people's numbers in upper case. The roster is built from
+   * `school/staff`, so a normaliser that passed lower case through would mean
+   * no member of staff could ever register, and the screen would tell them
+   * they are not on the list.
+   */
+  it("reads a lower-case number the way school/staff actually sends it", () => {
+    expect(normalizeRegisterNumber("ул24270406")).toBe("УЛ24270406");
+  });
+
+  /*
    * ★ Cyrillic У (U+0423) and Latin Y (U+0059) are different characters that
    * look identical in most fonts. A teacher with a Latin keyboard layout types
    * the wrong one and gets "register number not found" forever, with no way to
