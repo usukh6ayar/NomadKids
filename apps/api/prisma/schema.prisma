@@ -372,6 +372,20 @@ model User {
   phone        String? @unique
   passwordHash String
 
+  /// The ESIS person this account belongs to, when it was created by
+  /// self-registration.
+  ///
+  /// ★ Globally unique, not per kindergarten, because one person in the
+  /// ministry's database is one person: the same `personId` registering twice
+  /// must be refused rather than given a second account. `Child.esisPersonId`
+  /// is scoped per kindergarten for the opposite reason — a child's record
+  /// belongs to the kindergarten holding it.
+  ///
+  /// ★★ NULL for every account made by invitation, which is most of them. It
+  /// is the marker for "this person registered themselves", and the
+  /// director's review list reads it.
+  esisPersonId String? @unique
+
   lastName  String
   firstName String
 
@@ -579,6 +593,16 @@ model Kindergarten {
   esisEnvironment   EsisEnvironment?
   esisMappedAt      DateTime?
 
+  /// The code a director gives their staff so they can register themselves.
+  ///
+  /// ★ Hashed, like a password, though it is not one. It is a secret shared
+  /// among thirteen people and it is a **throttle, not authentication** — the
+  /// roster match is the real gate. Hashed anyway: a plaintext column is one
+  /// database read away from letting anybody register as any member of staff at
+  /// any kindergarten, and the cost of hashing it is nothing.
+  staffRegistrationCodeHash  String?
+  staffRegistrationCodeSetAt DateTime?
+
   /// ★ RFP §3.2 (лого) and §10.3, which requires the logo on every generated
   /// PDF.
   ///
@@ -659,6 +683,7 @@ model Kindergarten {
   chatMessages           ChatMessage[]
   chatReads              ChatRead[]
   esisSyncRuns           EsisSyncRun[]
+  esisStaffRoster        EsisStaffRoster[]
 
   @@index([deletedAt])
   @@map("kindergartens")
@@ -688,6 +713,54 @@ model EsisSyncRun {
   @@index([kindergartenId, startedAt])
   @@index([status, startedAt])
   @@map("esis_sync_runs")
+}
+
+/// One row of the ministry's staff list for one kindergarten, stored so an
+/// unauthenticated registration attempt never has to reach ESIS.
+///
+/// ★ **Not a cache.** A cache may be missed and refilled on demand; this table
+/// is the only thing `POST /v1/staff-registration` is allowed to read, because
+/// that route is public and a public route must not put traffic into the
+/// ministry's logs (design §1.1). If the table is empty or stale, registration
+/// refuses — see `StaffRegistrationService`.
+///
+/// ★★ Replaced wholesale on each refresh rather than merged. The ministry's
+/// list is the truth about who works here; a merge would keep somebody who has
+/// left, and "left the kindergarten" is exactly the case this must get right.
+/// Rows are hard-deleted on replace — the CLAUDE.md §3.2 soft-delete rule
+/// protects records somebody may need to read back, and a superseded copy of an
+/// upstream list is not one. `AuditLog` records that a refresh happened.
+model EsisStaffRoster {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+
+  /// ESIS's own identifier for the person. The join key for everything else.
+  esisPersonId   String
+  /// Регистрийн дугаар — what the teacher types. Stored normalised (upper-case,
+  /// no spaces) so a match is an equality test rather than a scan.
+  registerNumber String
+  lastName       String
+  firstName      String
+
+  /// ISCO-08 occupation code, e.g. `2342-13`. The role is derived from this and
+  /// never from `positionName`, which is free text — the live data disagrees
+  /// with itself on capitalisation.
+  jobCode      String?
+  positionName String?
+  /// Whether `teacher/list` (API …812) also returned this person, not only
+  /// `school/staff` (55). Recorded because the two lists disagree: on 42778
+  /// `teacher/list` reports two арга зүйч and `school/staff` reports one.
+  isInstructor Boolean @default(false)
+
+  syncedAt DateTime @default(now())
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Cascade)
+
+  /// The registration lookup, and the guarantee that one register number
+  /// resolves to one person within a kindergarten.
+  @@unique([kindergartenId, registerNumber])
+  @@unique([kindergartenId, esisPersonId])
+  @@map("esis_staff_roster")
 }
 
 model SchoolYear {
