@@ -493,16 +493,25 @@ describe("staff roster refresh", () => {
   const url = (kindergartenId: string) =>
     `/v1/kindergartens/${kindergartenId}/esis/staff-roster/refresh`;
 
+  /*
+   * ★ The register number is **lower case here on purpose.**
+   *
+   * Measured live on 2026-09-16: `school/staff` returns register numbers in
+   * lower case — 0 of 13 matched the pattern as sent, 13 of 13 after
+   * upper-casing — while `teacher/list` returns the same thirteen people's
+   * numbers in upper case. The roster is built from `school/staff` because it
+   * is the superset, so this fixture is what the service actually receives.
+   */
   const staffRow = {
     personId: "90000000000001",
-    personRegNumber: "УЛ24270406",
+    personRegNumber: "ул24270406",
     lastName: "Овог",
     firstName: "Нэр",
     jobCode: "2342-13",
     positionName: "Багш, цэцэрлэгийн /мэргэжлийн/ /СӨБ/",
   };
 
-  it("stores what the ministry returned", async () => {
+  it("stores the register number normalised, not as the ministry cased it", async () => {
     await mapInstitution(a.kindergarten.id, superAdmin);
     read.mockResolvedValue({ data: [staffRow] });
 
@@ -515,7 +524,24 @@ describe("staff roster refresh", () => {
       where: { kindergartenId: a.kindergarten.id },
     });
     expect(stored).toHaveLength(1);
+    /*
+     * Upper case, though the fixture was lower. Storing it raw would make the
+     * registration lookup fail for every member of staff, and the screen would
+     * say "you are not on the list" — indistinguishable from the truth.
+     */
     expect(stored[0]).toMatchObject({ registerNumber: "УЛ24270406", jobCode: "2342-13" });
+  });
+
+  /* A row nobody could ever match is counted and skipped, not stored. */
+  it("skips a row whose register number cannot be read", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    read.mockResolvedValue({
+      data: [staffRow, { ...staffRow, personId: "90000000000002", personRegNumber: "" }],
+    });
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.body).toMatchObject({ count: 1, skipped: 1 });
   });
 
   /*
@@ -624,9 +650,23 @@ In `esis-admin.service.ts`, add a method that:
 4. Builds rows from `staff` — it is the superset, 13 rows against `teacher/list`'s
    10, all ten present in it by `personId`. Sets `isInstructor` from whether the
    `teacher/list` response contains that `personId`.
-5. Skips any row whose `personRegNumber` does not normalise
-   (`normalizeRegisterNumber`) and counts them; a row nobody can match is not
-   worth storing.
+5. Passes every `personRegNumber` through `normalizeRegisterNumber` and
+   **stores the normalised value**, skipping and counting any row that returns
+   `null`.
+
+   ★ **Storing the raw value would break the whole feature**, and the reason is
+   not obvious. Measured live on 2026-09-16: `school/staff` returns register
+   numbers in **lower case** — 0 of 13 match the pattern as sent, 13 of 13
+   after upper-casing — while `teacher/list` returns the same people's numbers
+   in upper case, 10 of 10 as sent. Two services, the same thirteen people,
+   different casing. The roster is built from `school/staff` because it is the
+   superset, so a roster of raw values would never match a teacher typing their
+   number normally, and the failure would look exactly like "you are not on the
+   list".
+
+   Normalising on both sides is what makes the lookup an equality test. The
+   store side is the one that is easy to forget.
+
 6. Calls `repo.replaceStaffRoster`.
 7. Writes an `AuditLog` row with action **`UPDATE`**. `AuditAction` has no
    `SYNC` value — verified 2026-09-16, the enum is `LOGIN`, `LOGIN_FAILED`,
