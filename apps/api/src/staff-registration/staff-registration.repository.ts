@@ -35,4 +35,20 @@ export class StaffRegistrationRepository {
       data: { staffRegistrationCodeHash: hash, staffRegistrationCodeSetAt: setAt },
     });
   }
+
+  /**
+   * Every kindergarten that has ever issued a registration code.
+   *
+   * ★ There is no index on a hash — hashes are designed to make exactly this
+   * kind of lookup impossible, which is the point of hashing the code at all.
+   * `StaffRegistrationService.register` verifies a submitted code against
+   * each of these in turn. See that method's doc comment for why the loop is
+   * acceptable rather than a defect.
+   */
+  findKindergartensWithRegistrationCode() {
+    return this.prisma.kindergarten.findMany({
+      where: { deletedAt: null, staffRegistrationCodeHash: { not: null } },
+      select: { id: true, staffRegistrationCodeHash: true },
+    });
+  }
 }

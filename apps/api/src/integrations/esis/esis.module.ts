@@ -42,6 +42,12 @@ import { KindergartenEsisController, PlatformEsisController } from "./esis.contr
     EsisAdminService,
     EsisRepository,
   ],
-  exports: [EsisService, EsisConfig],
+  /*
+   * ★ `EsisRepository` exported 2026-09-16 for `StaffRegistrationModule` —
+   * `POST /v1/staff-registration` reads `EsisStaffRoster` through it, the one
+   * ESIS-derived table a public route may touch (see the repository method's
+   * doc comment). Nothing else outside this module needs it yet.
+   */
+  exports: [EsisService, EsisConfig, EsisRepository],
 })
 export class EsisModule {}

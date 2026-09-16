@@ -114,6 +114,18 @@ export class UsersRepository {
     return this.prisma.user.findUnique({ where: { phone }, select: { id: true } });
   }
 
+  /**
+   * The account, if any, already tied to this ESIS person.
+   *
+   * ★ `esisPersonId` is globally unique (schema.prisma), which is what makes
+   * this a yes/no question rather than a search: one person in the ministry's
+   * database is one account, so `StaffRegistrationService` refuses a second
+   * registration for the same person by checking this before it creates one.
+   */
+  async findByEsisPersonId(esisPersonId: string) {
+    return this.prisma.user.findUnique({ where: { esisPersonId }, select: { id: true } });
+  }
+
   async create(data: CreateUserData) {
     return this.prisma.user.create({
       data,
@@ -261,6 +273,8 @@ export interface CreateUserData {
   passwordHash: string;
   lastName: string;
   firstName: string;
+  /** Set only by self-registration — see `User.esisPersonId` in schema.prisma. */
+  esisPersonId?: string | null;
 }
 
 export interface UpdateUserData {

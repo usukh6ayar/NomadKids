@@ -142,6 +142,22 @@ export class EsisRepository {
     });
   }
 
+  /**
+   * The stored roster row for one kindergarten's register number, if any.
+   *
+   * ★ This is the only ESIS-derived read `POST /v1/staff-registration`
+   * (`StaffRegistrationService`) is allowed to make — it is a public route
+   * and must never call ESIS itself (design §1.1, plan §0). The compound
+   * unique index (`kindergartenId`, `registerNumber`) is what makes this an
+   * equality lookup rather than a scan, which only works because
+   * `registerNumber` is stored normalised — see `normalizeRegisterNumber`.
+   */
+  findRosterEntryByRegisterNumber(kindergartenId: string, registerNumber: string) {
+    return this.prisma.esisStaffRoster.findUnique({
+      where: { kindergartenId_registerNumber: { kindergartenId, registerNumber } },
+    });
+  }
+
   listRecentRuns(kindergartenId: string) {
     return this.prisma.esisSyncRun.findMany({
       where: { kindergartenId },

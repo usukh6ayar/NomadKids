@@ -146,7 +146,41 @@ export class UsersService {
     throw new ConflictException("Урилга үүсгэж чадсангүй. Дахин оролдоно уу");
   }
 
-  private async createInvitedAccount(actor: Actor, kindergartenId: string, dto: CreateUserDto) {
+  /**
+   * Creates a member of staff's account from the ESIS roster match in
+   * `StaffRegistrationService.register` — a teacher registering themselves.
+   *
+   * ★ **No actor, and no tenant check here — by construction.** Nobody is
+   * signed in yet; that is the entire premise of self-registration. This is
+   * the same shape as `createGuardianAccount`: the caller has already run the
+   * authorization that matters, so re-running one here would either refuse
+   * every call (there is no actor for `assertAdmin` to check) or be redundant
+   * with a stronger check the caller already made. There, it is
+   * `ChildrenService.inviteGuardian` proving the teacher may act on this
+   * child; here, it is `StaffRegistrationService` having matched the
+   * submitted register number against `EsisStaffRoster` for this exact
+   * kindergarten. `esisPersonId` is passed through to `createInvitedAccount`
+   * so the created row carries the ministry identity that justified it, and
+   * `AuditRepository` records `source: "self-registration"` rather than
+   * inventing a second audit call.
+   */
+  async createSelfRegisteredAccount(
+    kindergartenId: string,
+    dto: CreateUserDto,
+    esisPersonId: string,
+  ) {
+    return this.createInvitedAccount(null, kindergartenId, dto, {
+      extraMetadata: { source: "self-registration" },
+      esisPersonId,
+    });
+  }
+
+  private async createInvitedAccount(
+    actor: Actor | null,
+    kindergartenId: string,
+    dto: CreateUserDto,
+    options: { extraMetadata?: Record<string, unknown>; esisPersonId?: string } = {},
+  ) {
     // Checked explicitly so a collision is a readable 409 rather than a raw
     // unique-constraint error surfacing as a 500.
     if (await this.repo.findByUsername(dto.username)) {
@@ -168,6 +202,7 @@ export class UsersService {
       // Unusable by construction: nobody knows the input, so nobody can log in
       // until the invitation is accepted.
       passwordHash: await this.passwords.hash(randomBytes(32).toString("hex")),
+      esisPersonId: options.esisPersonId ?? null,
     });
 
     await this.repo.createMembership(user.id, kindergartenId, dto.role);
@@ -184,10 +219,10 @@ export class UsersService {
     await this.audit.append({
       action: "INVITE",
       kindergartenId,
-      actorUserId: actor.userId,
+      actorUserId: actor?.userId ?? null,
       objectType: "User",
       objectId: user.id,
-      metadata: { role: dto.role },
+      metadata: { role: dto.role, ...options.extraMetadata },
     });
 
     // Returned so the caller can deliver it. Never logged in production.
