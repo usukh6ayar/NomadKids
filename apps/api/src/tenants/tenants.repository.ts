@@ -39,21 +39,58 @@ export class TenantsRepository {
    * `scopedWhere` shape does not fit, and writing the filter out is clearer
    * than contorting the helper.
    */
+  /**
+   * What a member of a kindergarten may read about it.
+   *
+   * ★ **Added 2026-09-16, after the row started carrying a credential.**
+   *
+   * These three queries returned `prisma.kindergarten` rows whole. That was
+   * harmless while the table held a name and an address, and stopped being
+   * harmless when `staffRegistrationCodeHash` was added: `getKindergarten` is
+   * gated on *membership*, so a teacher, a cook and a parent all reached it,
+   * and nine columns went with it — the hash, `esisInstitutionId` and the
+   * ministry mapping beside it, `isActive`, `deletedAt` and the timestamps.
+   *
+   * Nothing was directly usable: the hash is a hash, and the ESIS ids are not
+   * secrets so much as somebody else's business. But no client reads any of
+   * them — `admin/kindergarten/page.tsx` parses exactly the seven names below
+   * — and "not exploitable today" is the argument that ages worst.
+   *
+   * ★★ Adding a column to this model no longer publishes it. That is the
+   * property worth having, more than this particular fix: the next person to
+   * put a secret on `Kindergarten` does not have to remember this file.
+   */
+  private static readonly MEMBER_FIELDS = {
+    id: true,
+    name: true,
+    address: true,
+    phone: true,
+    email: true,
+    description: true,
+    logoMediaFileId: true,
+  } as const;
+
   async listKindergartens(scope: TenantScope) {
     return this.prisma.kindergarten.findMany({
       where: { deletedAt: null, id: { in: [...scope.kindergartenIds] } },
       orderBy: { name: "asc" },
+      select: TenantsRepository.MEMBER_FIELDS,
     });
   }
 
   async findKindergarten(scope: TenantScope, id: string) {
     return this.prisma.kindergarten.findFirst({
       where: { deletedAt: null, id, AND: [{ id: { in: [...scope.kindergartenIds] } }] },
+      select: TenantsRepository.MEMBER_FIELDS,
     });
   }
 
   async updateKindergarten(id: string, data: KindergartenUpdate) {
-    return this.prisma.kindergarten.update({ where: { id }, data });
+    return this.prisma.kindergarten.update({
+      where: { id },
+      data,
+      select: TenantsRepository.MEMBER_FIELDS,
+    });
   }
 
   // ── School years ──────────────────────────────────────────────────────────

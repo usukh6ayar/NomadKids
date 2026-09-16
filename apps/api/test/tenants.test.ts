@@ -122,6 +122,67 @@ describe("GET /kindergartens/:id", () => {
       .set("Cookie", adminA.cookies);
     expect(res.status).toBe(400);
   });
+
+  /*
+   * ★ The row is not the payload — 2026-09-16.
+   *
+   * `findKindergarten` had no `select`, so every column reached every member
+   * of the kindergarten. That was harmless while the table held a name and an
+   * address; it stopped being harmless the moment
+   * `staffRegistrationCodeHash` was added, because a hash is a credential
+   * shaped value and a teacher, a cook and a parent all pass this route's
+   * membership check.
+   *
+   * It is a hash, not the code, so nothing was directly usable — but there is
+   * no reading of this product under which a client needs it, and "not
+   * exploitable today" is the argument that ages worst. The route now returns
+   * a named set of fields, which is also CLAUDE.md §3.4's rule about
+   * deliberate `select`s applied where it happens to matter most.
+   */
+  it("never sends a kindergarten's own columns beyond what a client reads", async () => {
+    await db.kindergarten.update({
+      where: { id: a.kindergarten.id },
+      data: { staffRegistrationCodeHash: "argon2-hash-of-a-real-code" },
+    });
+
+    for (const session of [adminA, teacherA, parentA]) {
+      const res = await request(server())
+        .get(`/v1/kindergartens/${a.kindergarten.id}`)
+        .set("Cookie", session.cookies);
+
+      expect(res.status).toBe(200);
+      expect(Object.keys(res.body as object).sort()).toEqual([
+        "address",
+        "description",
+        "email",
+        "id",
+        "logoMediaFileId",
+        "name",
+        "phone",
+      ]);
+    }
+  });
+
+  /*
+   * ★★ The write answers with the same shape as the read. `updateKindergarten`
+   * returns a fresh `prisma.update`, which is a second place the whole row
+   * used to escape — narrower, because only an ADMIN reaches it, and worth
+   * closing anyway for the reason above.
+   */
+  it("does not send them back on a write either", async () => {
+    await db.kindergarten.update({
+      where: { id: a.kindergarten.id },
+      data: { staffRegistrationCodeHash: "argon2-hash-of-a-real-code" },
+    });
+
+    const res = await authed(
+      request(server()).patch(`/v1/kindergartens/${a.kindergarten.id}`),
+      adminA,
+    ).send({ phone: "99112233" });
+
+    expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).not.toContain("argon2-hash-of-a-real-code");
+  });
 });
 
 describe("PATCH /kindergartens/:id", () => {
