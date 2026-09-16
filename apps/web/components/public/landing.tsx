@@ -346,12 +346,29 @@ function LoginCard() {
         </Button>
       </form>
 
-      <div className="mt-2 text-center">
+      <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center">
         <Link
           href="/forgot-password"
           className="inline-flex min-h-11 items-center text-caption font-semibold text-[#2588ed] hover:underline"
         >
           Нууц үгээ мартсан?
+        </Link>
+        <span aria-hidden="true" className="text-caption text-slate-300">
+          ·
+        </span>
+        {/*
+          ★ "Байгууллагын бүртгэл" above is a director applying to onboard a
+          whole kindergarten (`/register`, `docs/CONTRACT_ONBOARDING.md`). This
+          is a teacher who already has a kindergarten and a code to enter
+          (`/staff-register`). Both land near the login card, so the label
+          names who it is for — a director and a teacher pressing
+          same-looking links here would each land on the other's form.
+        */}
+        <Link
+          href="/staff-register"
+          className="inline-flex min-h-11 items-center text-caption font-semibold text-[#2588ed] hover:underline"
+        >
+          Багш, ажилтан бүртгүүлэх
         </Link>
       </div>
 

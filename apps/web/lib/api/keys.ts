@@ -357,6 +357,8 @@ export const qk = {
   adminSchoolYears: (kindergartenId: string) => ["admin", "school-years", kindergartenId] as const,
   adminKindergarten: (kindergartenId: string) => ["admin", "kindergarten", kindergartenId] as const,
   adminTerms: (kindergartenId: string) => ["admin", "terms", kindergartenId] as const,
+  adminStaffRegistrations: (kindergartenId: string, page: number) =>
+    ["admin", "staff-registrations", kindergartenId, page] as const,
 
   profile: () => ["me", "profile"] as const,
 

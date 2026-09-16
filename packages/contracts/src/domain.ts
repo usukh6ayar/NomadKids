@@ -5109,6 +5109,65 @@ export type ApplicationApproval = z.infer<typeof applicationApprovalSchema>;
  * The client asked for all three ("1 сараар, улиралаар, бүтэн жилээр") and a
  * report that changed shape per period is three screens to keep in step.
  */
+// ── Staff self-registration ─────────────────────────────────────────────────
+
+/**
+ * `POST /staff-registration` — the teacher's public form.
+ *
+ * ★ The only field is the token: on success the screen redirects to
+ * `/invitation/[token]`, which already collects the password. On refusal the
+ * API answers 401 with a `Problem.detail` — the same uniform sentence for a
+ * wrong code, an unmatched register number or anything else — which the form
+ * renders verbatim rather than deriving its own message.
+ */
+export const staffSelfRegistrationResultSchema = z.object({
+  invitationToken: z.string(),
+});
+export type StaffSelfRegistrationResult = z.infer<typeof staffSelfRegistrationResultSchema>;
+
+/**
+ * `POST /kindergartens/:id/staff-registration-code` — the plaintext code,
+ * returned exactly once.
+ *
+ * ★ Nothing later re-reads it. `staffRegistrationCodeSetAt` on the
+ * kindergarten record is the only trace this response leaves once the
+ * director's screen has shown it.
+ */
+export const staffRegistrationCodeIssuedSchema = z.object({
+  code: z.string(),
+  setAt: z.string(),
+});
+export type StaffRegistrationCodeIssued = z.infer<typeof staffRegistrationCodeIssuedSchema>;
+
+/** `POST /kindergartens/:id/esis/staff-roster/refresh`. */
+export const staffRosterRefreshSchema = z.object({
+  count: z.number(),
+  skipped: z.number(),
+  syncedAt: z.string(),
+});
+export type StaffRosterRefresh = z.infer<typeof staffRosterRefreshSchema>;
+
+/**
+ * One row of `GET /kindergartens/:id/staff-registrations` — the director's
+ * review list, "хэн хэн бүртгүүлсэн байгаа эсэх мэдээлэл".
+ *
+ * ★ No register number and no `esisPersonId`. The API keeps both out of this
+ * list on purpose (`StaffRegistrationService.listSelfRegistered`), so this
+ * schema does not model them either — a field added here by mirroring the
+ * database would be the one place a typed register number could leak onto a
+ * screen.
+ */
+export const selfRegisteredStaffSchema = z.object({
+  membershipId: uuidSchema,
+  lastName: z.string(),
+  firstName: z.string(),
+  role: roleSchema,
+  registeredAt: z.string(),
+  source: z.literal("SELF_REGISTERED"),
+});
+export type SelfRegisteredStaff = z.infer<typeof selfRegisteredStaffSchema>;
+export const selfRegisteredStaffListSchema = paginated(selfRegisteredStaffSchema);
+
 export const groupReportSchema = z.object({
   range: z.object({ from: z.string(), to: z.string() }),
   group: namedRefSchema,

@@ -26,6 +26,7 @@ import {
   FileCheck2,
   Headphones,
   HelpCircle,
+  KeyRound,
   LifeBuoy,
   LockKeyhole,
   // `X` was the picker modal's close button and went with it. The type stays:
@@ -331,6 +332,7 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
 
   /* Administration screens without supplied feature artwork. */
   "/admin/users": UserCog,
+  "/admin/staff-code": KeyRound,
   "/admin/school-years": CalendarRange,
   "/admin/terms": CalendarDays,
   "/admin/assessment-config": SlidersHorizontal,
@@ -802,6 +804,13 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          */
         ...adminEntry("Цэцэрлэгийн мэдээлэл", "/admin/kindergarten"),
         ...adminEntry("Хэрэглэгч ба эрх", "/admin/users", "adminUsersPermissions"),
+        /*
+         * ★ Added with staff self-registration — the director's code, the
+         * roster refresh and who has registered themselves. Sits beside
+         * "Хэрэглэгч ба эрх" because it is how an account gets onto that list
+         * in the first place, not a directory of its own.
+         */
+        ...adminEntry("Ажилтны бүртгэлийн код", "/admin/staff-code"),
         ...adminEntry("Хичээлийн жил", "/admin/school-years", "adminSchoolYear"),
         ...adminEntry("Улирал", "/admin/terms", "adminTerm"),
         /*
