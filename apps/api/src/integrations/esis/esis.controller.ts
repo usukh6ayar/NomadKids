@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Query } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Param, Post, Put, Query } from "@nestjs/common";
 import { idParamSchema } from "@kinder/contracts";
 import { CurrentActor } from "../../auth/decorators/actor.decorator";
 import { Roles } from "../../auth/decorators/roles.decorator";
@@ -79,6 +79,25 @@ export class KindergartenEsisController {
     @Query(new ZodValidationPipe(esisReadQuerySchema)) query: EsisReadDto,
   ) {
     return this.service.read(actor, params.id, query);
+  }
+
+  /**
+   * Refills this kindergarten's stored staff roster from live ESIS.
+   *
+   * ★ ADMIN-only and a `POST`, not a `GET` — it spends the deployment's token
+   * against the ministry's rate limits, which a read-only route must not
+   * shrug off as free. `@HttpCode(200)` rather than Nest's default 201: this
+   * replaces the whole table (Task 3's repository note) rather than creating
+   * a resource, so "200 with a summary" reads truer than "201 Created".
+   */
+  @Post("staff-roster/refresh")
+  @HttpCode(200)
+  @Roles("ADMIN")
+  refreshStaffRoster(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.refreshStaffRoster(actor, params.id);
   }
 
   /**

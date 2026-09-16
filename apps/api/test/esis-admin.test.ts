@@ -72,6 +72,7 @@ let app: INestApplication;
 let a: Scenario;
 let b: Scenario;
 let adminA: AuthSession;
+let adminB: AuthSession;
 let teacherA: AuthSession;
 let parentA: AuthSession;
 let superAdmin: AuthSession;
@@ -98,8 +99,9 @@ beforeEach(async () => {
   b = await createScenario("esis-b");
   const operator = await createUser({ username: uniq("esis-operator"), isSuperAdmin: true });
 
-  [adminA, teacherA, parentA, superAdmin] = await Promise.all([
+  [adminA, adminB, teacherA, parentA, superAdmin] = await Promise.all([
     login(app, a.adminUser.username),
+    login(app, b.adminUser.username),
     login(app, a.teacherUser.username),
     login(app, a.parentUser.username),
     login(app, operator.username),
@@ -999,5 +1001,107 @@ describe("register numbers by role", () => {
     for (const name of ["googleEmailPass", "microsoftEmailPass", "username"]) {
       expect({ name, present: rows.includes(`"${name}"`) }).toEqual({ name, present: false });
     }
+  });
+});
+
+/*
+ * ★ The roster exists so that `POST /v1/staff-registration` — which is public —
+ * never has to call ESIS. This is the only route that fills it, and it is
+ * ADMIN-only: a refresh spends the deployment's token against the ministry's
+ * rate limits.
+ */
+describe("staff roster refresh", () => {
+  const url = (kindergartenId: string) =>
+    `/v1/kindergartens/${kindergartenId}/esis/staff-roster/refresh`;
+
+  /*
+   * ★ The register number is **lower case here on purpose.**
+   *
+   * Measured live on 2026-09-16: `school/staff` returns register numbers in
+   * lower case — 0 of 13 matched the pattern as sent, 13 of 13 after
+   * upper-casing — while `teacher/list` returns the same thirteen people's
+   * numbers in upper case. The roster is built from `school/staff` because it
+   * is the superset, so this fixture is what the service actually receives.
+   */
+  const staffRow = {
+    personId: "90000000000001",
+    personRegNumber: "ул24270406",
+    lastName: "Овог",
+    firstName: "Нэр",
+    jobCode: "2342-13",
+    positionName: "Багш, цэцэрлэгийн /мэргэжлийн/ /СӨБ/",
+  };
+
+  it("stores the register number normalised, not as the ministry cased it", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    read.mockResolvedValue({ data: [staffRow] });
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(1);
+
+    const stored = await db.esisStaffRoster.findMany({
+      where: { kindergartenId: a.kindergarten.id },
+    });
+    expect(stored).toHaveLength(1);
+    /*
+     * Upper case, though the fixture was lower. Storing it raw would make the
+     * registration lookup fail for every member of staff, and the screen would
+     * say "you are not on the list" — indistinguishable from the truth.
+     */
+    expect(stored[0]).toMatchObject({ registerNumber: "УЛ24270406", jobCode: "2342-13" });
+  });
+
+  /* A row nobody could ever match is counted and skipped, not stored. */
+  it("skips a row whose register number cannot be read", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    read.mockResolvedValue({
+      data: [staffRow, { ...staffRow, personId: "90000000000002", personRegNumber: "" }],
+    });
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.body).toMatchObject({ count: 1, skipped: 1 });
+  });
+
+  /*
+   * ★★ Replace, not merge. Somebody who has left the kindergarten must stop
+   * being able to register, and a merge would leave their row behind.
+   */
+  it("replaces the previous roster rather than merging into it", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+
+    read.mockResolvedValue({ data: [staffRow] });
+    await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    read.mockResolvedValue({
+      data: [{ ...staffRow, personId: "90000000000002", personRegNumber: "УБ11112222" }],
+    });
+    await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    const stored = await db.esisStaffRoster.findMany({
+      where: { kindergartenId: a.kindergarten.id },
+    });
+    expect(stored.map((row) => row.registerNumber)).toEqual(["УБ11112222"]);
+  });
+
+  it("returns 404 to a teacher and stores nothing", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), teacherA).send({});
+
+    expect(res.status).toBe(404);
+    expect(await db.esisStaffRoster.count({ where: { kindergartenId: a.kindergarten.id } })).toBe(
+      0,
+    );
+  });
+
+  it("returns 404 to an admin of another kindergarten", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminB).send({});
+
+    expect(res.status).toBe(404);
   });
 });

@@ -107,6 +107,41 @@ export class EsisRepository {
     });
   }
 
+  /**
+   * Swaps one kindergarten's stored roster for the list ESIS just returned.
+   *
+   * ★ Delete-then-insert inside one transaction, so a reader never sees a
+   * half-written roster and a failed refresh leaves the previous one intact.
+   * A registration attempt landing mid-refresh must match against a complete
+   * list or an old one, never a partial one.
+   *
+   * ★★ Hard delete. CLAUDE.md §3.2 protects records somebody may need to read
+   * back; a superseded copy of somebody else's list is not one, and keeping
+   * them would leave a person who has left the kindergarten able to register.
+   * `AuditLog` records that the refresh happened and who ran it.
+   */
+  replaceStaffRoster(
+    kindergartenId: string,
+    rows: {
+      esisPersonId: string;
+      registerNumber: string;
+      lastName: string;
+      firstName: string;
+      jobCode: string | null;
+      positionName: string | null;
+      isInstructor: boolean;
+    }[],
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.esisStaffRoster.deleteMany({ where: { kindergartenId } });
+      if (rows.length === 0) return 0;
+      const created = await tx.esisStaffRoster.createMany({
+        data: rows.map((row) => ({ ...row, kindergartenId })),
+      });
+      return created.count;
+    });
+  }
+
   listRecentRuns(kindergartenId: string) {
     return this.prisma.esisSyncRun.findMany({
       where: { kindergartenId },

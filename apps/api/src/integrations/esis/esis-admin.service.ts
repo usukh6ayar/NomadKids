@@ -22,6 +22,7 @@ import type { EsisPreviewDto, EsisReadDto, EsisWriteDto, UpdateEsisMappingDto } 
 import { ESIS_ENDPOINTS } from "./esis.endpoints";
 import { ESIS_FIELDS, esisFieldsFor, ingestedFieldNames } from "./esis.fields";
 import { EsisRepository } from "./esis.repository";
+import { normalizeRegisterNumber } from "./esis.roster";
 import { esisVisibleRows } from "./esis.schemas";
 import { EsisService, esisReaderParams, type EsisReadableKey } from "./esis.service";
 
@@ -340,6 +341,100 @@ export class EsisAdminService {
       fields: ESIS_FIELDS[resource],
       row: rowValues(resource, visible, 1)[0]!,
     };
+  }
+
+  /**
+   * Refills one kindergarten's stored staff roster from live ESIS.
+   *
+   * ★ This exists because `POST /v1/staff-registration` is public — a teacher
+   * has no account yet — and a public route must never call ESIS (design §1.1,
+   * plan §0). Somebody authenticated has to fill the table the registration
+   * route reads instead, and it is ADMIN-only because a refresh spends the
+   * deployment's one token against the ministry's rate limits.
+   *
+   * ★★ Built from `school/staff`, not `teacher/list` — `staff` is the
+   * superset (13 rows against 10 on institution 42778, all ten of the smaller
+   * list present in the larger by `personId`). `isInstructor` records whether
+   * `teacher/list` also names the person, since the two lists disagree with
+   * each other on who counts as an instructor.
+   */
+  async refreshStaffRoster(actor: Actor, kindergartenId: string) {
+    this.tenants.assertAdmin(actor, kindergartenId);
+    const kindergarten = await this.repo.findKindergarten(kindergartenId);
+    if (!kindergarten || !kindergarten.esisInstitutionId) throw new NotFoundException();
+
+    if (!this.esis.isConfigured) {
+      throw new ServiceUnavailableException(
+        "ESIS холболт тохируулагдаагүй байна. Платформын оператор байгууллагын кодыг холбосны дараа ажиллана.",
+      );
+    }
+
+    /*
+     * ★ `this.esis.read("staff"/"teachers", …)` rather than the `staff()` /
+     * `teachers()` wrappers `myProfile` calls. They are the same call —
+     * `EsisService.staff(id)` is itself `read("staff", {}, id)` — and this is
+     * the form `test/esis-admin.test.ts` can drive: that file mocks
+     * `EsisService` as an object literal, so the wrappers are separate
+     * `vi.fn()`s the generic `read` mock never reaches.
+     */
+    const [staffResponse, teacherResponse] = await Promise.all([
+      this.esis.read("staff", {}, kindergarten.esisInstitutionId),
+      this.esis.read("teachers", {}, kindergarten.esisInstitutionId),
+    ]);
+
+    const instructorIds = new Set(
+      teacherResponse.data.map((row) => String((row as { personId: unknown }).personId)),
+    );
+
+    let skipped = 0;
+    const rows: {
+      esisPersonId: string;
+      registerNumber: string;
+      lastName: string;
+      firstName: string;
+      jobCode: string | null;
+      positionName: string | null;
+      isInstructor: boolean;
+    }[] = [];
+
+    for (const raw of staffResponse.data as Record<string, unknown>[]) {
+      const registerNumber = normalizeRegisterNumber(raw.personRegNumber as string | null);
+      if (!registerNumber) {
+        skipped += 1;
+        continue;
+      }
+      const esisPersonId = String(raw.personId);
+      rows.push({
+        esisPersonId,
+        registerNumber,
+        lastName: String(raw.lastName ?? ""),
+        firstName: String(raw.firstName ?? ""),
+        jobCode: (raw.jobCode as string | null | undefined) ?? null,
+        positionName: (raw.positionName as string | null | undefined) ?? null,
+        isInstructor: instructorIds.has(esisPersonId),
+      });
+    }
+
+    const count = await this.repo.replaceStaffRoster(kindergartenId, rows);
+    const syncedAt = new Date();
+
+    /*
+     * ★ No register number here, or anywhere else in this row's metadata.
+     * `REDACTED_READ_PARAMS` already keeps a typed register number out of
+     * every audit row this service writes, and a roster refresh must not be
+     * the exception — `count` and `skipped` say what happened without saying
+     * to whom.
+     */
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "EsisStaffRoster",
+      objectId: kindergartenId,
+      metadata: { count, skipped },
+    });
+
+    return { count, skipped, syncedAt };
   }
 
   async updateMapping(actor: Actor, kindergartenId: string, dto: UpdateEsisMappingDto) {
