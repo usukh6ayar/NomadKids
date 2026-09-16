@@ -5,10 +5,12 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
+import type { PaginationQuery } from "@kinder/contracts";
 import { PasswordService } from "../auth/password.service";
 import { AuditRepository } from "../audit/audit.repository";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import type { Actor } from "../authz/actor";
+import { paginate, toSkipTake, type PageParams } from "../common/pagination";
 import { EsisRepository } from "../integrations/esis/esis.repository";
 import { normalizeRegisterNumber, roleForJobCode } from "../integrations/esis/esis.roster";
 import { UsersRepository } from "../users/users.repository";
@@ -201,6 +203,48 @@ export class StaffRegistrationService {
     }
 
     throw new ConflictException("Бүртгэл үүсгэж чадсангүй. Дахин оролдоно уу.");
+  }
+
+  /**
+   * The director's review list — Task 6, and the client's own instruction:
+   * "захирал заавал батлах хэрэг байхгүй зүгээр хянахад л болно хэн хэн
+   * бүртгүүлсэн байгаа эсэх мэдээлэл." There is no approval step to build;
+   * this is a paginated read (CLAUDE.md §3.4), and the link a director needs
+   * next — revoking one — already exists as `DELETE /v1/memberships/:id`
+   * (`UsersController.revokeMembership`), which this does not duplicate.
+   *
+   * ★ **`registeredAt` is `Membership.createdAt`, not `User.createdAt`.**
+   * They are the same instant for the common case — `createSelfRegisteredAccount`
+   * creates both rows in the one call — but can diverge: a person who
+   * self-registered at one kindergarten and was later *invited* into a second
+   * (`addMembership`, which does not touch `esisPersonId`) would still show
+   * up here for the second kindergarten, because the marker is the user's
+   * `esisPersonId`, not anything membership-scoped. For that row, `User.
+   * createdAt` would be the older, first kindergarten's registration date —
+   * the wrong answer to "when did this person register *here*". Whichever
+   * kindergarten's admin views this list wants the date of the membership in
+   * front of them, which `Membership.createdAt` always is.
+   */
+  async listSelfRegistered(actor: Actor, kindergartenId: string, query: PaginationQuery) {
+    this.tenants.assertAdmin(actor, kindergartenId);
+
+    const kindergarten = await this.repo.findKindergarten(kindergartenId);
+    if (!kindergarten) throw new NotFoundException();
+
+    const page: PageParams = { page: query.page, pageSize: query.pageSize };
+    const { skip, take } = toSkipTake(page);
+    const [rows, total] = await this.repo.listSelfRegistered(kindergartenId, { skip, take });
+
+    const items = rows.map((row) => ({
+      membershipId: row.id,
+      lastName: row.user.lastName,
+      firstName: row.user.firstName,
+      role: row.role,
+      registeredAt: row.createdAt,
+      source: "SELF_REGISTERED" as const,
+    }));
+
+    return paginate(items, total, page);
   }
 
   /**

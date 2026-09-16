@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { paginationQuerySchema } from "@kinder/contracts";
 
 /**
  * Shape only. This deliberately does not reject a malformed register number
@@ -14,3 +15,11 @@ export const staffSelfRegistrationSchema = z.object({
 });
 
 export type StaffSelfRegistrationDto = z.infer<typeof staffSelfRegistrationSchema>;
+
+/**
+ * The director's review list — Task 6. No filters beyond pagination: the
+ * client asked to see who registered, not to search them.
+ */
+export const listSelfRegisteredQuerySchema = paginationQuerySchema;
+
+export type ListSelfRegisteredQuery = z.infer<typeof listSelfRegisteredQuerySchema>;

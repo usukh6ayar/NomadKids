@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common";
 import { idParamSchema } from "@kinder/contracts";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
 import { Public } from "../auth/decorators/public.decorator";
@@ -7,7 +7,9 @@ import type { Actor } from "../authz/actor";
 import { RateLimit, RateLimitGuard } from "../common/rate-limit/rate-limit.guard";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import {
+  listSelfRegisteredQuerySchema,
   staffSelfRegistrationSchema,
+  type ListSelfRegisteredQuery,
   type StaffSelfRegistrationDto,
 } from "./staff-registration.dto";
 import { StaffRegistrationService } from "./staff-registration.service";
@@ -36,6 +38,22 @@ export class StaffRegistrationController {
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
   ) {
     return this.service.issueCode(actor, params.id);
+  }
+
+  /**
+   * The director's review list — "хэн хэн бүртгүүлсэн байгаа эсэх мэдээлэл",
+   * not an approval queue: there is nothing here to accept or reject.
+   * Revocation is `DELETE /v1/memberships/:id`, already built
+   * (`UsersController.revokeMembership`) — this route only reads.
+   */
+  @Get("staff-registrations")
+  @Roles("ADMIN")
+  listSelfRegistered(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(listSelfRegisteredQuerySchema)) query: ListSelfRegisteredQuery,
+  ) {
+    return this.service.listSelfRegistered(actor, params.id, query);
   }
 }
 

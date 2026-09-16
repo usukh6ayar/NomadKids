@@ -84,6 +84,29 @@ beforeEach(async () => {
   b = await createTenant("b");
 });
 
+/**
+ * The register number both `describe` blocks below match against, and the
+ * roster row that carries it — the teacher self-registration matches, and the
+ * one "who registered" reads back once a registration has gone through it.
+ * Lifted to file scope rather than repeated per block, the way `issueCode` is.
+ */
+const REG = "УЛ24270406";
+
+const seedRoster = (kindergartenId: string, overrides = {}) =>
+  db.esisStaffRoster.create({
+    data: {
+      kindergartenId,
+      esisPersonId: "90000000000001",
+      registerNumber: REG,
+      lastName: "Овог",
+      firstName: "Нэр",
+      jobCode: "2342-13",
+      positionName: "Багш, цэцэрлэгийн /мэргэжлийн/ /СӨБ/",
+      isInstructor: true,
+      ...overrides,
+    },
+  });
+
 /*
  * ★ The route is **public** — the teacher has no account yet. So it must not
  * reach ESIS: public traffic in the ministry's logs is what the roster table
@@ -91,22 +114,6 @@ beforeEach(async () => {
  */
 describe("staff self-registration", () => {
   const url = "/v1/staff-registration";
-  const REG = "УЛ24270406";
-
-  const seedRoster = (kindergartenId: string, overrides = {}) =>
-    db.esisStaffRoster.create({
-      data: {
-        kindergartenId,
-        esisPersonId: "90000000000001",
-        registerNumber: REG,
-        lastName: "Овог",
-        firstName: "Нэр",
-        jobCode: "2342-13",
-        positionName: "Багш, цэцэрлэгийн /мэргэжлийн/ /СӨБ/",
-        isInstructor: true,
-        ...overrides,
-      },
-    });
 
   it("registers a teacher who is on the roster and knows the code", async () => {
     const code = await issueCode(a.kindergarten.id);
@@ -343,5 +350,100 @@ describe("staff self-registration", () => {
     }
 
     expect(attempts.some((res) => res.status === 429)).toBe(true);
+  });
+});
+
+/*
+ * ★ The client's instruction: "захирал заавал батлах хэрэг байхгүй зүгээр
+ * хянадад л болно хэн хэн бүртгүүлсэн байгаа эсэх мэдээлэл" — review, not
+ * approval. This is a read; revocation already exists as `DELETE
+ * /v1/memberships/:id` and is not rebuilt here.
+ */
+describe("who registered themselves", () => {
+  const url = (kindergartenId: string) => `/v1/kindergartens/${kindergartenId}/staff-registrations`;
+
+  it("lists self-registered staff with when and as what", async () => {
+    const code = await issueCode(a.kindergarten.id);
+    await seedRoster(a.kindergarten.id);
+    await request(server()).post("/v1/staff-registration").send({ code, registerNumber: REG });
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), a.adminSession);
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+    expect(res.body.items[0]).toMatchObject({
+      lastName: "Овог",
+      firstName: "Нэр",
+      role: "TEACHER",
+      source: "SELF_REGISTERED",
+    });
+  });
+
+  /*
+   * A register number must not appear on a list a screen renders. `REG` alone
+   * cannot fail here — it lives only on `EsisStaffRoster`, which this route
+   * never joins against — so `esisPersonId` is checked too: it lives on the
+   * very row the query selects from, and a widened `select` would ship it.
+   */
+  it("does not return a register number or an esisPersonId", async () => {
+    const code = await issueCode(a.kindergarten.id);
+    await seedRoster(a.kindergarten.id);
+    await request(server()).post("/v1/staff-registration").send({ code, registerNumber: REG });
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), a.adminSession);
+    const text = JSON.stringify(res.body);
+
+    expect(text).not.toContain(REG);
+    expect(text).not.toContain("90000000000001");
+  });
+
+  it("returns 404 to a teacher", async () => {
+    const teacherUser = await createUser({ username: uniq("teacher-a") });
+    await createMembership(teacherUser.id, a.kindergarten.id, "TEACHER");
+    const teacherSession = await login(app, teacherUser.username);
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), teacherSession);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 to an admin of another kindergarten", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), b.adminSession);
+
+    expect(res.status).toBe(404);
+  });
+
+  /* An invited account leaves `esisPersonId` NULL, so it never appears here. */
+  it("does not list an account created by invitation", async () => {
+    const invitedUser = await createUser({ username: uniq("invited-a") });
+    await createMembership(invitedUser.id, a.kindergarten.id, "TEACHER");
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), a.adminSession);
+
+    expect(res.body.items).toHaveLength(0);
+  });
+
+  /*
+   * A membership `DELETE /v1/memberships/:id` has already revoked has nothing
+   * left to review — pins both the `isActive: true` filter and that
+   * `membershipId` is the exact field that route accepts, which is the whole
+   * reason this list exists: to hand the director something to revoke with.
+   */
+  it("drops a membership the director has already revoked", async () => {
+    const code = await issueCode(a.kindergarten.id);
+    await seedRoster(a.kindergarten.id);
+    await request(server()).post("/v1/staff-registration").send({ code, registerNumber: REG });
+
+    const before = await authed(request(server()).get(url(a.kindergarten.id)), a.adminSession);
+    const membershipId = before.body.items[0].membershipId as string;
+
+    const revoke = await authed(
+      request(server()).delete(`/v1/memberships/${membershipId}`),
+      a.adminSession,
+    );
+    expect(revoke.status).toBeLessThan(300);
+
+    const after = await authed(request(server()).get(url(a.kindergarten.id)), a.adminSession);
+    expect(after.body.items).toHaveLength(0);
   });
 });
