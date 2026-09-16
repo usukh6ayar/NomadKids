@@ -43,6 +43,10 @@ log, not more, and the screens get faster and keep working when ESIS does not.
 | **National** (no `institutionId`) | the seven `cook/*` services, `screeningQuestions`                                                         |
 | **Institution-scoped**            | `buildings`, `rooms`, `programs`, `subjectAreas`, `academicOrg`, `vaccineCatalog`, `academicYearStatuses` |
 
+Of the seven `cook/*`, only **five** are sweepable — `foodKit` and
+`foodKitProducts` take a `productId` and are excluded for the reason Task 2
+gives. Thirteen resources are copied in all.
+
 So `EsisReference.kindergartenId` is **nullable**, which is a deliberate
 exception to CLAUDE.md §3.1 and is argued for in Task 1.
 
