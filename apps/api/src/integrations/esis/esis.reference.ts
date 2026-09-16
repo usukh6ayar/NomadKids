@@ -48,6 +48,30 @@ export interface EsisReferenceResource {
  * the check is general. Every reader considered for this list was checked
  * against its own `params` in `esis.service.ts` before being added; none of
  * the thirteen below carries one.
+ *
+ * ★★★★ **Every `idField` below was verified against a live response on
+ * 2026-09-16** — 13 of 13 present on every row, and unique across the rows the
+ * ministry returned:
+ *
+ * | resource | rows | resource | rows |
+ * | --- | --- | --- | --- |
+ * | `foodProductTypes` | 6 | `buildings` | 1 |
+ * | `foodMaterialGroups` | 40 | `rooms` | 5 |
+ * | `foodMaterials` | 294 | `programs` | 2 |
+ * | `foodProducts` | 1000 | `subjectAreas` | 287 |
+ * | `foodProductMaterials` | 1000 | `academicOrg` | 1 |
+ * | `screeningQuestions` | 25 | `vaccineCatalog` | 26 |
+ * | | | `academicYearStatuses` | 2 |
+ *
+ * That check matters more than it looks. Seven of these names came from the
+ * portal's documentation rather than from an observed response, and a wrong
+ * one fails **silently**: `externalIdFor` returns `null` for every row, the
+ * sweep stores nothing, and the run finishes green with `stored: 0`. There is
+ * no error to notice. `esis.reference.test.ts` cannot catch it either — it
+ * checks the shape of this file, not what the ministry sends.
+ *
+ * Re-run the check after any change here. The script is a dozen lines: read
+ * each resource once, map its rows through `externalIdFor`, count the nulls.
  */
 export const REFERENCE_RESOURCES: readonly EsisReferenceResource[] = [
   // ── National — cook/* catalogues, `institution: false` ────────────────
