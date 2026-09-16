@@ -904,7 +904,10 @@ describe("register numbers by role", () => {
     await mapInstitution(a.kindergarten.id, superAdmin);
     read.mockResolvedValueOnce({ data: [rosterRow] });
 
-    const res = await authed(request(server()).get(url(a.kindergarten.id, "resource=students")), adminA);
+    const res = await authed(
+      request(server()).get(url(a.kindergarten.id, "resource=students")),
+      adminA,
+    );
 
     expect(res.status).toBe(200);
     expect(JSON.stringify(res.body)).toContain(REG);
@@ -914,7 +917,10 @@ describe("register numbers by role", () => {
     await mapInstitution(a.kindergarten.id, superAdmin);
     read.mockResolvedValueOnce({ data: [rosterRow] });
 
-    const res = await authed(request(server()).get(url(a.kindergarten.id, "resource=students")), teacherA);
+    const res = await authed(
+      request(server()).get(url(a.kindergarten.id, "resource=students")),
+      teacherA,
+    );
 
     expect(res.status).toBe(200);
     const body = JSON.stringify(res.body);
@@ -990,7 +996,10 @@ describe("register numbers by role", () => {
     await mapInstitution(a.kindergarten.id, superAdmin);
     read.mockResolvedValueOnce({ data: [rosterRow] });
 
-    const res = await authed(request(server()).get(url(a.kindergarten.id, "resource=staff")), adminA);
+    const res = await authed(
+      request(server()).get(url(a.kindergarten.id, "resource=staff")),
+      adminA,
+    );
 
     const rows = JSON.stringify(res.body.rows);
     // No leaked value, under any key.
@@ -1063,6 +1072,49 @@ describe("staff roster refresh", () => {
     const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
 
     expect(res.body).toMatchObject({ count: 1, skipped: 1 });
+  });
+
+  /*
+   * ★ The two services are not interchangeable, and every test above this one
+   * would pass if they were swapped.
+   *
+   * `read.mockResolvedValue(...)` answers both `read("staff", …)` and
+   * `read("teachers", …)` with the same array, so nothing above can tell the
+   * two apart. That matters: on institution 42778 `school/staff` returns 13
+   * rows and `teacher/list` returns 10, and the three who appear only in the
+   * larger list are the two тогооч and the жижүүр. Building the roster from
+   * `teacher/list` would silently lock the cooks out of registering — they map
+   * to `COOK` through jobCode `5120` and have every right to an account.
+   *
+   * This mock answers per service, so a transposition fails here.
+   */
+  it("builds the roster from school/staff, and flags who teacher/list also names", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+
+    const cook = {
+      ...staffRow,
+      personId: "90000000000002",
+      personRegNumber: "аб11112222",
+      jobCode: "5120-11",
+      positionName: "ахлах Тогооч",
+    };
+
+    read.mockImplementation(async (resource: string) => ({
+      data: resource === "teachers" ? [staffRow] : [staffRow, cook],
+    }));
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.body.count).toBe(2);
+
+    const stored = await db.esisStaffRoster.findMany({
+      where: { kindergartenId: a.kindergarten.id },
+      orderBy: { registerNumber: "asc" },
+    });
+
+    /* The cook is on the roster — she is in `school/staff` and not in `teacher/list`. */
+    expect(stored.map((row) => row.registerNumber)).toEqual(["АБ11112222", "УЛ24270406"]);
+    expect(stored.map((row) => row.isInstructor)).toEqual([false, true]);
   });
 
   /*
