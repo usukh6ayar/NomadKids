@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { EsisAdminService } from "./esis-admin.service";
 import { EsisError } from "./esis.client";
-import { EsisRepository } from "./esis.repository";
+import { EsisRepository, type EsisSyncKind } from "./esis.repository";
 import { externalIdFor, REFERENCE_RESOURCES, type EsisReferenceResource } from "./esis.reference";
 import { esisVisibleRows } from "./esis.schemas";
 import { EsisService } from "./esis.service";
@@ -30,6 +31,34 @@ export interface ReferenceSyncOutcome {
   results: ReferenceSyncResourceResult[];
 }
 
+/** The resources `runRosterSync` reads — passed to `createRun` the same way `REFERENCE_RESOURCES` is. */
+const ROSTER_RESOURCES = ["staff", "teachers", "studentMovements"] as const;
+
+/**
+ * How far back `studentMovements` looks when there has never been a
+ * successful roster run for this kindergarten to anchor on.
+ *
+ * ★ **Seven days, not a fixed calendar window or "since forever".** The
+ * roster itself carries no correctness burden from this choice —
+ * `refreshStaffRosterCore` replaces the whole staff table every run, so
+ * `studentMovements` is read only to tell an operator how many enrolments
+ * moved since the roster was last known current (see `runRosterSync`'s doc
+ * comment). A week is enough to answer "quiet" or "busy" without asking the
+ * ministry for months of history the one time this fallback is used — every
+ * run after the first has a real prior run to anchor on instead, and this
+ * job is scheduled nightly (plan Task 8), so the fallback is a first-boot
+ * concern, not a steady-state one.
+ */
+export const ROSTER_MOVEMENTS_FALLBACK_DAYS = 7;
+
+/** One roster sync's outcome. */
+export interface RosterSyncOutcome {
+  runId: string;
+  status: "SUCCEEDED" | "PARTIAL" | "FAILED";
+  roster: { stored: number; skipped: number };
+  movements: { beginDate: string; count: number | null; errorCode: string | null };
+}
+
 /**
  * Sweeps `REFERENCE_RESOURCES` and stores the answer in `EsisReference`.
  *
@@ -43,6 +72,13 @@ export class EsisSyncService {
   constructor(
     private readonly esis: EsisService,
     private readonly repo: EsisRepository,
+    /*
+     * ★ For `refreshStaffRosterCore` — `runRosterSync`'s staff-roster half is
+     * spec №2's work (plan §"What it does"), not rebuilt here. See that
+     * method's doc comment in `esis-admin.service.ts` for why the extraction
+     * exists rather than a second implementation of the same read.
+     */
+    private readonly admin: EsisAdminService,
   ) {}
 
   /**
@@ -133,6 +169,134 @@ export class EsisSyncService {
     });
 
     return { runId: run.id, status, results };
+  }
+
+  /**
+   * Tier 2 (plan §0, Task 4): the daily roster refresh.
+   *
+   * ★ `actorUserId` is `null` for the nightly schedule, exactly as
+   * `runReferenceSync` above — one method, called by Task 5's manual route
+   * and Task 8's scheduler with only the initiator differing.
+   *
+   * Does two things:
+   *
+   * 1. Refreshes `EsisStaffRoster` via `EsisAdminService.
+   *    refreshStaffRosterCore` — spec №2's work, reused rather than rewritten
+   *    (see that method's doc comment for why it is a separate method from
+   *    the ADMIN-gated `refreshStaffRoster` rather than a loosened version of
+   *    it).
+   * 2. Reads `studentMovements` since the last successful roster run and
+   *    counts the rows.
+   *
+   * ★★ **`studentMovements` is read and not stored.** There is no table for
+   * it and this plan does not add one — it exists purely so the run summary
+   * can report how many enrolments moved, which is what tells an operator
+   * whether the roster in front of them is current or has been stale for a
+   * week. A read whose result is only counted looks like dead code to
+   * whoever finds it next without this line: the count is the point, not a
+   * side effect of some other reason to call it.
+   */
+  async runRosterSync(params: {
+    kindergartenId: string;
+    actorUserId: string | null;
+  }): Promise<RosterSyncOutcome> {
+    const { kindergartenId, actorUserId } = params;
+    const { institutionId } = await this.assertOperable(kindergartenId);
+
+    // Same run-lock preamble as `runReferenceSync` — one lock per kindergarten,
+    // regardless of tier, so a roster pull and a reference sweep never overlap
+    // and contend for the deployment's one rate-limited token.
+    await this.repo.expireStaleRuns(kindergartenId, new Date(Date.now() - 15 * 60_000));
+    if (await this.repo.findRunning(kindergartenId)) {
+      throw new ConflictException("Энэ цэцэрлэгийн ESIS синк аль хэдийн ажиллаж байна.");
+    }
+
+    let run;
+    try {
+      run = await this.repo.createRun(kindergartenId, actorUserId, [...ROSTER_RESOURCES]);
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new ConflictException("Энэ цэцэрлэгийн ESIS синк аль хэдийн ажиллаж байна.");
+      }
+      throw error;
+    }
+
+    let roster: { count: number; skipped: number };
+    try {
+      roster = await this.admin.refreshStaffRosterCore(kindergartenId, actorUserId);
+    } catch (error) {
+      /*
+       * ★ The roster refresh is the part this sync exists for; if it failed,
+       * nothing was stored and the run is FAILED outright — there is no
+       * partial success to report the way a reference sweep's thirteen
+       * independent resources have.
+       */
+      await this.repo.finishRun(run.id, {
+        status: "FAILED",
+        summary: { kind: "ROSTER" as const, roster: null, movements: null } as unknown as JsonValue,
+        errorCode: safeErrorCode(error),
+      });
+      throw error;
+    }
+
+    const beginDate = await this.rosterBeginDate(kindergartenId);
+
+    /*
+     * ★ Read and discarded — see this method's doc comment. A failure here
+     * must not undo a roster refresh that already succeeded and already
+     * committed, so it does not rethrow — but it also must not finish
+     * SUCCEEDED, or `lastSuccessfulRun` would anchor tomorrow's window on a
+     * run that never actually read one, silently skipping the gap forever
+     * (see `EsisRepository.lastSuccessfulRun`'s "SUCCEEDED only" note — this
+     * is the case that note exists to keep out). PARTIAL says "the roster is
+     * current, the movement count is not" and, being excluded from
+     * `lastSuccessfulRun`, leaves the next run to re-read the same window
+     * rather than skip past it.
+     */
+    let movementCount: number | null = null;
+    let movementsErrorCode: string | null = null;
+    try {
+      const response = await this.esis.read("studentMovements", { beginDate }, institutionId);
+      movementCount = response.data.length;
+    } catch (error) {
+      movementsErrorCode = safeErrorCode(error);
+    }
+
+    const status: "SUCCEEDED" | "PARTIAL" = movementsErrorCode === null ? "SUCCEEDED" : "PARTIAL";
+
+    const summary = {
+      kind: "ROSTER" as const,
+      roster: { stored: roster.count, skipped: roster.skipped },
+      movements: { beginDate, count: movementCount, errorCode: movementsErrorCode },
+    } as unknown as JsonValue;
+
+    await this.repo.finishRun(run.id, { status, summary, errorCode: movementsErrorCode });
+
+    return {
+      runId: run.id,
+      status,
+      roster: { stored: roster.count, skipped: roster.skipped },
+      movements: { beginDate, count: movementCount, errorCode: movementsErrorCode },
+    };
+  }
+
+  /**
+   * How far back `studentMovements` looks: since the **last successful
+   * roster run** (`kind: "ROSTER"` in `EsisSyncRun.summary`), or
+   * `ROSTER_MOVEMENTS_FALLBACK_DAYS` back when there has never been one.
+   *
+   * ★ `lastSuccessfulRun` filters on kind precisely so a kindergarten's
+   * monthly reference sweep — which finishes SUCCEEDED far more reliably
+   * than a daily roster pull — can never be picked up here by mistake. See
+   * `EsisRepository.lastSuccessfulRun`'s doc comment.
+   */
+  private async rosterBeginDate(kindergartenId: string): Promise<string> {
+    const kind: EsisSyncKind = "ROSTER";
+    const lastRun = await this.repo.lastSuccessfulRun(kindergartenId, kind);
+    const anchor =
+      lastRun?.finishedAt ??
+      new Date(Date.now() - ROSTER_MOVEMENTS_FALLBACK_DAYS * 24 * 60 * 60_000);
+    return anchor.toISOString().slice(0, 10);
   }
 
   /**

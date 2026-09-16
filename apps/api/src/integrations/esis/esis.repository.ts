@@ -2,6 +2,15 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { Prisma } from "../../generated/prisma/client";
 
+/**
+ * The two kinds of sync run `esis-sync.service.ts` writes, matching the
+ * `kind` field each one's `summary` JSON carries — `"REFERENCE"` from
+ * `runReferenceSync`, `"ROSTER"` from `runRosterSync`. Named here, the lower
+ * layer, rather than imported from the service, so this file does not depend
+ * on the file that depends on it.
+ */
+export type EsisSyncKind = "REFERENCE" | "ROSTER";
+
 @Injectable()
 export class EsisRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -242,6 +251,33 @@ export class EsisRepository {
       select: { syncedAt: true },
     });
     return row?.syncedAt ?? null;
+  }
+
+  /**
+   * The most recently finished **SUCCEEDED** run of one kind, for one
+   * kindergarten — or `null` if there has never been one.
+   *
+   * ★ Filtered on `summary.kind`, a JSON path lookup, not a column.
+   * `runReferenceSync` already writes `{ kind: "REFERENCE", … }` into
+   * `summary`, and `runRosterSync` writes `{ kind: "ROSTER", … }` the same
+   * way — a `kind` column would duplicate a fact the JSON the run already
+   * carries. This is also what keeps the two tiers from being confused for
+   * each other: a kindergarten's monthly reference sweep finishes SUCCEEDED
+   * far more reliably than a daily roster pull ever will, and without this
+   * filter its timestamp would win the "most recent success" race for a
+   * caller that actually wanted the roster's.
+   *
+   * ★★ `status: "SUCCEEDED"` only. A run that finished PARTIAL or FAILED
+   * did not produce a trustworthy roster, so its timestamp must not become
+   * the anchor a later `beginDate` is computed from — that would silently
+   * narrow the window past a gap `runRosterSync` never actually filled.
+   */
+  lastSuccessfulRun(kindergartenId: string, kind: EsisSyncKind) {
+    return this.prisma.esisSyncRun.findFirst({
+      where: { kindergartenId, status: "SUCCEEDED", summary: { path: ["kind"], equals: kind } },
+      orderBy: { finishedAt: "desc" },
+      select: { finishedAt: true },
+    });
   }
 
   listRecentRuns(kindergartenId: string) {

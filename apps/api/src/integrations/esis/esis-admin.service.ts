@@ -375,6 +375,33 @@ export class EsisAdminService {
    */
   async refreshStaffRoster(actor: Actor, kindergartenId: string) {
     this.tenants.assertAdmin(actor, kindergartenId);
+    return this.refreshStaffRosterCore(kindergartenId, actor.userId);
+  }
+
+  /**
+   * The staff-roster refresh itself, with no `Actor` and no authorization
+   * check — the work `refreshStaffRoster` above does once it has confirmed
+   * ADMIN.
+   *
+   * ★ Extracted 2026-09-16 for `EsisSyncService.runRosterSync` (plan Task 4,
+   * tier 2's daily roster refresh), which has no `Actor` to assert ADMIN
+   * against when the schedule runs it — the same reason
+   * `EsisSyncRun.initiatedById` became nullable. Rewriting this method's
+   * body a second time inside `esis-sync.service.ts` was the alternative,
+   * and it is the worse one: institution 42778's own history is the
+   * argument (see the doc comment two above this one) for why `staff` vs.
+   * `teachers`, upper-casing the register number and building from the
+   * superset are not details a second implementation could be trusted to
+   * copy correctly.
+   *
+   * ★★ Deliberately **not** routed through a controller. The ADMIN
+   * assertion lives only in `refreshStaffRoster`; a route calling this
+   * method directly would reintroduce the unauthenticated path this
+   * extraction was careful not to create. Only `EsisSyncService` calls it,
+   * and it is reachable there solely through Task 5's ADMIN-gated route and
+   * Task 8's scheduler — neither takes a request from outside the process.
+   */
+  async refreshStaffRosterCore(kindergartenId: string, actorUserId: string | null) {
     const kindergarten = await this.repo.findKindergarten(kindergartenId);
     if (!kindergarten || !kindergarten.esisInstitutionId) throw new NotFoundException();
 
@@ -439,11 +466,15 @@ export class EsisAdminService {
      * every audit row this service writes, and a roster refresh must not be
      * the exception — `count` and `skipped` say what happened without saying
      * to whom.
+     *
+     * ★★ `actorUserId` may be `null` here — a scheduled refresh has nobody to
+     * name, and `AuditRepository.append` already accepts that the same way
+     * every other system-initiated row does.
      */
     await this.audit.append({
       action: "UPDATE",
       kindergartenId,
-      actorUserId: actor.userId,
+      actorUserId,
       objectType: "EsisStaffRoster",
       objectId: kindergartenId,
       metadata: { count, skipped },

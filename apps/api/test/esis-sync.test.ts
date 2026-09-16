@@ -2,7 +2,10 @@ import type { INestApplication } from "@nestjs/common";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
 import { EsisError } from "../src/integrations/esis/esis.client";
-import { EsisSyncService } from "../src/integrations/esis/esis-sync.service";
+import {
+  EsisSyncService,
+  ROSTER_MOVEMENTS_FALLBACK_DAYS,
+} from "../src/integrations/esis/esis-sync.service";
 import type { EsisService } from "../src/integrations/esis/esis.service";
 import { createTestApp } from "./support/app";
 import { resetData, testDb } from "./support/db";
@@ -261,6 +264,235 @@ describe("EsisSyncService.runReferenceSync", () => {
     const b = await createScenario("sync-unmapped");
     await expect(
       sync.runReferenceSync({ kindergartenId: b.kindergarten.id, actorUserId: b.adminUser.id }),
+    ).rejects.toThrow();
+  });
+});
+
+describe("EsisSyncService.runRosterSync", () => {
+  const staffRow = {
+    personId: "90000000000001",
+    personRegNumber: "ул24270406",
+    lastName: "Овог",
+    firstName: "Нэр",
+    jobCode: "2342-13",
+    positionName: "Багш",
+  };
+
+  /**
+   * `staff` and `teachers` answer with one matching row each, so
+   * `refreshStaffRosterCore` stores exactly one person; `studentMovements`
+   * answers with whatever `movements` says, defaulting to none. Every other
+   * key falls through to the reference-sweep default so a stray call during
+   * these tests still resolves instead of returning `undefined`.
+   */
+  function mockRosterReads(movements: Record<string, unknown>[] = []) {
+    read.mockImplementation(async (key: string) => {
+      if (key === "staff" || key === "teachers") {
+        return { data: [staffRow], status: 200, durationMs: 3 };
+      }
+      if (key === "studentMovements") {
+        return { data: movements, status: 200, durationMs: 3 };
+      }
+      return { data: [DEFAULT_ROWS[key]].filter(Boolean), status: 200, durationMs: 3 };
+    });
+  }
+
+  function movementsCall() {
+    return read.mock.calls.find((call) => call[0] === "studentMovements");
+  }
+
+  it("stores the staff roster and records a run whose summary names the roster kind", async () => {
+    mockRosterReads([{ actionName: "ELMENTED", actionDate: "2026-09-10" }]);
+
+    const outcome = await sync.runRosterSync({
+      kindergartenId: a.kindergarten.id,
+      actorUserId: a.adminUser.id,
+    });
+
+    expect(outcome.status).toBe("SUCCEEDED");
+    expect(outcome.roster).toMatchObject({ stored: 1, skipped: 0 });
+    expect(outcome.movements.count).toBe(1);
+
+    const stored = await db.esisStaffRoster.findMany({
+      where: { kindergartenId: a.kindergarten.id },
+    });
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({ registerNumber: "УЛ24270406" });
+
+    const run = await db.esisSyncRun.findUniqueOrThrow({ where: { id: outcome.runId } });
+    expect(run.status).toBe("SUCCEEDED");
+    expect(run.summary).toMatchObject({ kind: "ROSTER" });
+  });
+
+  it("reads studentMovements with a beginDate derived from the last successful roster run", async () => {
+    mockRosterReads();
+    const finishedAt = new Date("2026-08-20T10:00:00.000Z");
+    await db.esisSyncRun.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        initiatedById: a.adminUser.id,
+        resources: [],
+        status: "SUCCEEDED",
+        summary: {
+          kind: "ROSTER",
+          roster: { stored: 1, skipped: 0 },
+          movements: { beginDate: "2026-08-13", count: 0, errorCode: null },
+        },
+        finishedAt,
+      },
+    });
+
+    await sync.runRosterSync({ kindergartenId: a.kindergarten.id, actorUserId: a.adminUser.id });
+
+    expect(movementsCall()?.[1]).toEqual({ beginDate: "2026-08-20" });
+  });
+
+  it("falls back to a sensible span when there has never been a successful roster run", async () => {
+    mockRosterReads();
+
+    // Computed before the call, not after — recomputing `Date.now() - 7d`
+    // afterwards would flake if the two calls straddled UTC midnight.
+    const expected = new Date(Date.now() - ROSTER_MOVEMENTS_FALLBACK_DAYS * 24 * 60 * 60_000)
+      .toISOString()
+      .slice(0, 10);
+
+    await sync.runRosterSync({ kindergartenId: a.kindergarten.id, actorUserId: a.adminUser.id });
+
+    expect(movementsCall()?.[1]).toEqual({ beginDate: expected });
+  });
+
+  /*
+   * ★ The case that would otherwise be found in production: a REFERENCE run
+   * finishes SUCCEEDED far more reliably than a roster pull does, and if
+   * `lastSuccessfulRun` were not filtered by kind, its timestamp would win
+   * the "most recent success" race even though it has nothing to do with the
+   * roster.
+   */
+  it("does not mistake a REFERENCE run for a ROSTER run when picking the date", async () => {
+    mockRosterReads();
+    await db.esisSyncRun.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        initiatedById: a.adminUser.id,
+        resources: [],
+        status: "SUCCEEDED",
+        summary: { kind: "REFERENCE", resources: [] },
+        finishedAt: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    });
+
+    // The REFERENCE run's ancient date must not have been picked up — the
+    // fallback span applies exactly as if no run existed at all. Computed
+    // before the call for the same reason as the case above.
+    const expected = new Date(Date.now() - ROSTER_MOVEMENTS_FALLBACK_DAYS * 24 * 60 * 60_000)
+      .toISOString()
+      .slice(0, 10);
+
+    await sync.runRosterSync({ kindergartenId: a.kindergarten.id, actorUserId: a.adminUser.id });
+
+    expect(movementsCall()?.[1]).toEqual({ beginDate: expected });
+  });
+
+  /*
+   * ★ The pairing this test exists to catch: a run that finished SUCCEEDED
+   * despite never actually reading `studentMovements` would let
+   * `lastSuccessfulRun` anchor the *next* sync on a window nothing ever
+   * covered — the gap `EsisRepository.lastSuccessfulRun`'s doc comment
+   * names. PARTIAL keeps that run out of the running entirely, so the
+   * following sync re-reads the same span rather than skipping past it.
+   */
+  it("does not advance the anchor past a run whose movements read failed", async () => {
+    mockRosterReads();
+    read.mockImplementation(async (key: string) => {
+      if (key === "staff" || key === "teachers") {
+        return { data: [staffRow], status: 200, durationMs: 3 };
+      }
+      if (key === "studentMovements") {
+        throw new EsisError("http", "ESIS responded 500", {
+          status: 500,
+          path: "/student/movement/v2",
+        });
+      }
+      return { data: [DEFAULT_ROWS[key]].filter(Boolean), status: 200, durationMs: 3 };
+    });
+
+    const first = await sync.runRosterSync({
+      kindergartenId: a.kindergarten.id,
+      actorUserId: a.adminUser.id,
+    });
+    expect(first.status).toBe("PARTIAL");
+
+    const firstRun = await db.esisSyncRun.findUniqueOrThrow({ where: { id: first.runId } });
+    expect(firstRun.status).toBe("PARTIAL");
+
+    // The window the next sync should ask for is still the pre-first-run
+    // fallback — the PARTIAL run's `finishedAt` must not have become the
+    // anchor.
+    const expected = new Date(Date.now() - ROSTER_MOVEMENTS_FALLBACK_DAYS * 24 * 60 * 60_000)
+      .toISOString()
+      .slice(0, 10);
+
+    mockRosterReads();
+    await sync.runRosterSync({ kindergartenId: a.kindergarten.id, actorUserId: a.adminUser.id });
+
+    expect(movementsCall()?.[1]).toEqual({ beginDate: expected });
+  });
+
+  /*
+   * ★ The sharper version of the case two tests above: a PARTIAL run sitting
+   * **more recently** than a genuinely SUCCEEDED one must not win just for
+   * being newer. `lastSuccessfulRun` orders by `finishedAt DESC` but filters
+   * `status: "SUCCEEDED"` first, so the PARTIAL row is never a candidate at
+   * all — the anchor reaches back past it to the last run that actually read
+   * a window, rather than falling all the way to the fallback span the way
+   * the case above does when there is no SUCCEEDED run to reach back to.
+   */
+  it("reaches past a more recent PARTIAL run to the last genuinely successful one", async () => {
+    mockRosterReads();
+    const succeededAt = new Date("2026-08-10T09:00:00.000Z");
+    await db.esisSyncRun.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        initiatedById: a.adminUser.id,
+        resources: [],
+        status: "SUCCEEDED",
+        summary: {
+          kind: "ROSTER",
+          roster: { stored: 1, skipped: 0 },
+          movements: { beginDate: "2026-08-03", count: 2, errorCode: null },
+        },
+        finishedAt: succeededAt,
+      },
+    });
+    await db.esisSyncRun.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        initiatedById: a.adminUser.id,
+        resources: [],
+        status: "PARTIAL",
+        summary: {
+          kind: "ROSTER",
+          roster: { stored: 1, skipped: 0 },
+          movements: { beginDate: "2026-08-10", count: null, errorCode: "HTTP" },
+        },
+        // Later than the SUCCEEDED run above — the newer timestamp must lose.
+        finishedAt: new Date("2026-08-15T09:00:00.000Z"),
+      },
+    });
+
+    await sync.runRosterSync({ kindergartenId: a.kindergarten.id, actorUserId: a.adminUser.id });
+
+    expect(movementsCall()?.[1]).toEqual({ beginDate: "2026-08-10" });
+  });
+
+  it("refuses a second roster sync while one is already running", async () => {
+    mockRosterReads();
+    await db.esisSyncRun.create({
+      data: { kindergartenId: a.kindergarten.id, initiatedById: a.adminUser.id, resources: [] },
+    });
+
+    await expect(
+      sync.runRosterSync({ kindergartenId: a.kindergarten.id, actorUserId: a.adminUser.id }),
     ).rejects.toThrow();
   });
 });
