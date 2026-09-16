@@ -1157,3 +1157,39 @@ describe("staff roster refresh", () => {
     expect(res.status).toBe(404);
   });
 });
+
+/*
+ * ★ The code is a **throttle, not authentication** — a secret shared among
+ * thirteen people. The roster match is the real gate. It is hashed anyway: a
+ * plaintext column is one database read away from registering as anybody.
+ */
+describe("the kindergarten's registration code", () => {
+  const url = (kindergartenId: string) =>
+    `/v1/kindergartens/${kindergartenId}/staff-registration-code`;
+
+  it("issues a code to an admin, and stores only its hash", async () => {
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(201);
+    expect(typeof res.body.code).toBe("string");
+    expect(res.body.code.length).toBeGreaterThanOrEqual(8);
+
+    const row = await db.kindergarten.findUniqueOrThrow({ where: { id: a.kindergarten.id } });
+    expect(row.staffRegistrationCodeHash).not.toBeNull();
+    expect(row.staffRegistrationCodeHash).not.toContain(res.body.code);
+    expect(row.staffRegistrationCodeSetAt).not.toBeNull();
+  });
+
+  /* Rotating invalidates the old one — that is the whole point of rotating. */
+  it("replaces the previous code", async () => {
+    const first = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+    const second = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(second.body.code).not.toBe(first.body.code);
+  });
+
+  it("returns 404 to a teacher", async () => {
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), teacherA).send({});
+    expect(res.status).toBe(404);
+  });
+});
