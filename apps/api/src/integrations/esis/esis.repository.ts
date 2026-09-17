@@ -337,6 +337,36 @@ export class EsisRepository {
     return { items, total };
   }
 
+  /**
+   * Every kindergarten mapped to an ESIS institution — the sweep list for
+   * `esis-sync.scheduler.ts` (plan Task 8).
+   *
+   * ★ Not scoped to a tenant, because the caller has no actor to scope it to:
+   * the alternative — scheduling per tenant from somewhere that has one, e.g.
+   * a request — would silently stop syncing a kindergarten whose admin left.
+   * This is that documented exception (CLAUDE.md §3.1's rule is about a
+   * tenant filter; there is no single tenant here to filter to). It is kept
+   * to exactly this and no wider.
+   *
+   * ★★ `deletedAt: null` stays, per CLAUDE.md §2.2 — the base filter every
+   * repository query carries, extended here rather than dropped. `deletedAt`
+   * is still selected, and `esisInstitutionId` still typed as nullable in the
+   * result: `selectEsisSyncTargets` re-checks both. That is not this query
+   * being distrusted — it is what makes "a soft-deleted kindergarten is not
+   * selected" and "an unmapped one is not selected" provable by a unit test
+   * that never touches Postgres, rather than only by this `where` clause,
+   * which a test can't reach without a database. If a future caller of this
+   * method ever forgets the pure function, the SQL filter is still the one
+   * that actually protects them.
+   */
+  findKindergartensWithEsisMapping() {
+    return this.prisma.kindergarten.findMany({
+      where: { deletedAt: null, esisInstitutionId: { not: null } },
+      select: { id: true, esisInstitutionId: true, deletedAt: true },
+      orderBy: { id: "asc" },
+    });
+  }
+
   listRecentRuns(kindergartenId: string) {
     return this.prisma.esisSyncRun.findMany({
       where: { kindergartenId },

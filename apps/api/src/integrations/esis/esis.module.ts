@@ -6,6 +6,7 @@ import { EsisConfig } from "./esis.config";
 import { EsisService } from "./esis.service";
 import { EsisAdminService } from "./esis-admin.service";
 import { EsisSyncService } from "./esis-sync.service";
+import { EsisSyncScheduler } from "./esis-sync.scheduler";
 import { EsisRepository } from "./esis.repository";
 import { KindergartenEsisController, PlatformEsisController } from "./esis.controller";
 
@@ -48,6 +49,14 @@ import { KindergartenEsisController, PlatformEsisController } from "./esis.contr
      * to reach a sweep directly.
      */
     EsisSyncService,
+    /*
+     * ★ `EsisSyncScheduler` — added 2026-09-17, plan Task 8. The two
+     * repeatable jobs that drive tiers 1 and 2 without an admin pulling
+     * either by hand; see the class's own doc comment for the schedule and
+     * why it copies `MaintenanceScheduler`'s structure. Not exported: it has
+     * no methods anything outside this module would call.
+     */
+    EsisSyncScheduler,
     EsisRepository,
   ],
   /*
