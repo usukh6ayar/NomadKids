@@ -7,6 +7,7 @@ import {
   Boxes,
   Carrot,
   ClipboardList,
+  CloudDownload,
   FileText,
   Home,
   Images,
@@ -343,7 +344,14 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
    * The screen is `/platform/[id]/esis` now and this map is keyed by literal
    * href — a dynamic segment would never match one — so the entry is removed
    * rather than rewritten into something that silently never fires.
+   *
+   * ★★ `/admin/esis-sync` is new on 2026-09-17 — not a return of that row.
+   * It carries only the manual "Татах" buttons and their run history, which
+   * moved back to the director's shell because a sync spends *this*
+   * kindergarten's token; the token state, granted scope and institution
+   * mapping stay on `/platform/[id]/esis`, superadmin-only, unchanged.
    */
+  "/admin/esis-sync": CloudDownload,
 };
 
 /** The section-level icon for a route, or nothing if it has no destination. */
@@ -831,7 +839,23 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          * actually call ESIS — the roster, a child's record, the day sheet,
          * Сургалтын хөтөлбөр just above — draw their own services through
          * `…/esis/catalog` and are untouched.
+         *
+         * ★★★ **2026-09-17 — one row returns, but not this one.** The manual
+         * "Татах" buttons for the two sync tiers briefly landed on
+         * `/platform/[id]/esis` (`929fd0b`) and called
+         * `POST /kindergartens/:id/esis/sync` — tenant `ADMIN`-scoped
+         * (`KindergartenEsisController`, `TenantAccessService.assertAdmin`),
+         * not the platform flag that screen is gated on, so a real platform
+         * operator with no kindergarten membership could not press either
+         * button. The 2026-09-14 rule already drew the line that settles
+         * this: "системийн зүйл" (token, base URL, granted scope, institution
+         * mapping) is the superadmin's; "ажлын гадаргуу" is the director's. A
+         * sync spends *this* kindergarten's token against *its* roster and
+         * feeds *its* screens — a working-surface action, not a systemic one
+         * — so it moves to `/admin/esis-sync` below, its own row, rather than
+         * back into the removed one above. The API did not change.
          */
+        ...adminEntry("ESIS синк", "/admin/esis-sync"),
         /*
          * ★ "Үнэлгээний тохиргоо" and "Аудит" lost their rows on 2026-09-06,
          * at the client's request — and, as with the two review queues above,

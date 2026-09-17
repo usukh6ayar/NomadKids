@@ -5,7 +5,6 @@ import { useParams } from "next/navigation";
 import {
   CheckCircle2,
   CircleAlert,
-  CloudDownload,
   Database,
   Eye,
   FlaskConical,
@@ -19,15 +18,10 @@ import { useState } from "react";
 import {
   esisOverviewSchema,
   esisPreviewResultSchema,
-  esisReferenceSyncOutcomeSchema,
-  esisRosterSyncOutcomeSchema,
-  esisSyncRunsPageSchema,
   type EsisOverview,
   type EsisPreviewResourceKey,
   type EsisPreviewResult,
   type EsisResourceKey,
-  type EsisSyncRunsPage,
-  type EsisSyncTier,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -43,10 +37,8 @@ import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader, SunkenPanel } from "@/components/ui/card";
 import { IconChip } from "@/components/ui/icon-chip";
-import { Pagination } from "@/components/ui/pagination";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { TableShell, Td, Th } from "@/components/ui/table";
-import { useToast } from "@/components/ui/toast";
 
 type Tab = "overview" | "apis" | "requests" | "preview" | "history";
 
@@ -117,6 +109,17 @@ const DOMAIN_LABEL: Record<EsisOverview["endpoints"][number]["domain"], string> 
  * "ESIS-ээс татах" buttons on the roster, the child record and the day sheet
  * (`EsisDataPanel`, `GET …/esis/catalog` + `…/esis/resource`). This screen is
  * the operator's — token state, granted scope, the dry run, the run history.
+ *
+ * ★★★ **2026-09-17 — the manual "Татах" buttons briefly lived on this screen
+ * and moved to `/admin/esis-sync`.** They called `POST …/kindergartens/:id/
+ * esis/sync`, which sits behind `KindergartenEsisController`'s tenant `ADMIN`
+ * membership check, not the platform flag this page is gated on — the same
+ * "системийн зүйл" (systemic) vs. "ажлын гадаргуу" (working surface) line the
+ * 2026-09-14 move itself drew. A sync spends *that* kindergarten's token
+ * against *its* roster and feeds *its* screens, which is a working-surface
+ * action a director presses, not a platform one. The read-only dry run stays
+ * here, on the operator's own route (`POST …/platform/kindergartens/:id/
+ * esis/preview`), because it changes nothing tenant-scoped to gate.
  */
 export default function EsisIntegrationPage() {
   return (
@@ -130,7 +133,6 @@ function EsisIntegration() {
   const params = useParams<{ id: string }>();
   const kindergartenId = params.id;
   const queryClient = useQueryClient();
-  const toast = useToast();
   // The catalog is the working surface: demo values are visible before any
   // live ESIS action. Readiness remains one tab away for setup work.
   const [tab, setTab] = useState<Tab>("apis");
@@ -139,7 +141,6 @@ function EsisIntegration() {
     "academicYearStatuses",
   ]);
   const [preview, setPreview] = useState<EsisPreviewResult | null>(null);
-  const [runsPage, setRunsPage] = useState(1);
 
   const overview = useQuery({
     queryKey: qk.esis(kindergartenId),
@@ -156,73 +157,6 @@ function EsisIntegration() {
       setPreview(result);
       void queryClient.invalidateQueries({ queryKey: qk.esis(kindergartenId) });
     },
-  });
-
-  /*
-   * ★ Plan `2026-09-16-esis-sync-tiers.md` Task 10 — the manual pull, on
-   * `POST /kindergartens/:id/esis/sync`. Tenant-`ADMIN`-scoped
-   * (`KindergartenEsisController`), not the platform route `overview` and
-   * `runPreview` above call — see `runSyncTiers`'s doc comment for what that
-   * means for who can press these buttons.
-   *
-   * Two mutations, not one parameterised by tier: the two outcomes are
-   * different shapes on the wire (`esisReferenceSyncOutcomeSchema` carries
-   * `results`, `esisRosterSyncOutcomeSchema` carries `roster`/`movements`),
-   * and `mutate`'s schema argument is fixed per call site.
-   */
-  const runReferenceSync = useMutation({
-    mutationFn: () =>
-      mutate(`/kindergartens/${kindergartenId}/esis/sync`, esisReferenceSyncOutcomeSchema, {
-        method: "POST",
-        body: { tier: "REFERENCE" satisfies EsisSyncTier },
-      }),
-    onSuccess: (result) => {
-      const succeeded = result.results.filter((entry) => entry.status === "SUCCEEDED").length;
-      toast.success(
-        `Лавлах мэдээллийг татлаа: ${succeeded}/${result.results.length} багц амжилттай.`,
-      );
-      void queryClient.invalidateQueries({ queryKey: qk.esis(kindergartenId) });
-      void queryClient.invalidateQueries({
-        queryKey: ["admin", "esis", kindergartenId, "sync-runs"],
-      });
-    },
-    onError: (error) => toast.error(errorMessage(error)),
-  });
-
-  const runRosterSync = useMutation({
-    mutationFn: () =>
-      mutate(`/kindergartens/${kindergartenId}/esis/sync`, esisRosterSyncOutcomeSchema, {
-        method: "POST",
-        body: { tier: "ROSTER" satisfies EsisSyncTier },
-      }),
-    onSuccess: (result) => {
-      toast.success(
-        `Ажилтны бүртгэл шинэчлэгдлээ: ${result.roster.stored} бүртгэгдэв, ${result.roster.skipped} алгассан.`,
-      );
-      void queryClient.invalidateQueries({ queryKey: qk.esis(kindergartenId) });
-      void queryClient.invalidateQueries({
-        queryKey: ["admin", "esis", kindergartenId, "sync-runs"],
-      });
-    },
-    onError: (error) => toast.error(errorMessage(error)),
-  });
-
-  /*
-   * ★ The run history behind the "Түүх" tab — `sync-runs`, paginated
-   * (CLAUDE.md §3.4), not `overview.recentRuns`'s fixed ten. It is fetched
-   * unconditionally rather than lazily behind the tab: unlike `EsisPullButton`
-   * or `runPreview`, this is a plain paginated read of `EsisSyncRun` — no
-   * ESIS call, no rate limit spent — so there is no cost to pay for having it
-   * ready before the operator switches tabs, and the per-tier cards below
-   * read it too.
-   */
-  const syncRuns = useQuery({
-    queryKey: qk.esisSyncRuns(kindergartenId, runsPage),
-    queryFn: () =>
-      get(
-        `/kindergartens/${kindergartenId}/esis/sync-runs?page=${runsPage}&pageSize=10`,
-        esisSyncRunsPageSchema,
-      ),
   });
 
   const header = (
@@ -351,21 +285,7 @@ function EsisIntegration() {
             onRun={() => runPreview.mutate()}
           />
         ) : null}
-        {tab === "history" ? (
-          <SyncPanel
-            recentRuns={data.recentRuns}
-            runsPending={syncRuns.isPending}
-            runsError={syncRuns.isError ? syncRuns.error : null}
-            runsResult={syncRuns.data ?? null}
-            onPage={setRunsPage}
-            onRunReference={() => runReferenceSync.mutate()}
-            onRunRoster={() => runRosterSync.mutate()}
-            referencePending={runReferenceSync.isPending}
-            rosterPending={runRosterSync.isPending}
-            referenceError={runReferenceSync.isError ? errorMessage(runReferenceSync.error) : null}
-            rosterError={runRosterSync.isError ? errorMessage(runRosterSync.error) : null}
-          />
-        ) : null}
+        {tab === "history" ? <RunHistory runs={data.recentRuns} /> : null}
       </div>
     </div>
   );
@@ -1190,329 +1110,66 @@ function RequestRegister({ requests }: { requests: EsisOverview["requests"] }) {
 }
 
 /**
- * Which tier a run belongs to, read off `EsisSyncRun.summary` — the only place
- * it is recorded (plan Task 3/4: `runReferenceSync` writes `{ kind:
- * "REFERENCE", … }`, `runRosterSync` writes `{ kind: "ROSTER", … }`).
+ * The "Түүх" tab: `overview.recentRuns`, the platform's own fixed-ten list.
  *
- * ★ `null` is a real answer, not a parsing failure: `EsisAdminService.preview`
- * — the "Синк шалгалт" tab's dry run — writes to the same `EsisSyncRun` table
- * with a summary of `{ mode: "LIVE", resources: {...} }` and no `kind` at all,
- * so a preview run and a tier sync sit in the same history and are told apart
- * by this field alone.
+ * ★ **Not `sync-runs`.** That paginated route lives on
+ * `KindergartenEsisController`, gated `@Roles("ADMIN")` with no
+ * `@AllowSuperAdmin` marker, then `TenantAccessService.assertAdmin` inside
+ * `EsisSyncService.listRuns` — it asks whether *this* actor holds an `ADMIN`
+ * membership at *this* kindergarten, which a pure platform operator's
+ * `isSuperAdmin` flag does not answer (verified directly against
+ * `roles.guard.ts` and `tenant-access.service.ts` — no bypass exists for
+ * either). This screen's own `overview` route
+ * (`GET /platform/kindergartens/:id/esis`) is the one thing an operator can
+ * always reach, so the history here reads its `recentRuns` rather than a list
+ * that would 404 for exactly the account this screen is built for.
+ *
+ * The manual "Татах" buttons and the paginated history behind them moved to
+ * `/admin/esis-sync` — the kindergarten's own `ADMIN`-gated screen — for the
+ * same reason: a sync spends *that* kindergarten's token on *its* roster, and
+ * `sync-runs` only ever answers for someone who holds that membership.
  */
-function runTier(summary: unknown): "REFERENCE" | "ROSTER" | null {
-  if (summary && typeof summary === "object" && "kind" in summary) {
-    const kind = (summary as { kind?: unknown }).kind;
-    if (kind === "REFERENCE" || kind === "ROSTER") return kind;
+function RunHistory({ runs }: { runs: EsisOverview["recentRuns"] }) {
+  if (runs.length === 0) {
+    return (
+      <EmptyState
+        title="Синк ажиллагааны түүх"
+        description="Dry-run ажиллуулсны дараа MOCK эсвэл LIVE төлөвтэй түүх энд бүртгэгдэнэ."
+        icon={<History aria-hidden />}
+      />
+    );
   }
-  return null;
-}
-
-function tierLabel(summary: unknown): string {
-  const tier = runTier(summary);
-  if (tier === "REFERENCE") return "Лавлах мэдээлэл";
-  if (tier === "ROSTER") return "Ажилтны бүртгэл";
-  return "Синк шалгалт";
-}
-
-/** `runReferenceSync`'s summary, read defensively — see `runTier`'s note. */
-function referenceTotals(
-  summary: unknown,
-): { stored: number; skipped: number; count: number } | null {
-  if (runTier(summary) !== "REFERENCE") return null;
-  const resources = (summary as { resources?: unknown }).resources;
-  if (!Array.isArray(resources)) return null;
-  let stored = 0;
-  let skipped = 0;
-  for (const entry of resources) {
-    if (!entry || typeof entry !== "object") continue;
-    stored += Number((entry as { stored?: unknown }).stored) || 0;
-    skipped += Number((entry as { skipped?: unknown }).skipped) || 0;
-  }
-  return { stored, skipped, count: resources.length };
-}
-
-/** `runRosterSync`'s summary, read defensively — see `runTier`'s note. */
-function rosterTotals(
-  summary: unknown,
-): { stored: number; skipped: number; movementCount: number | null } | null {
-  if (runTier(summary) !== "ROSTER") return null;
-  const roster = (summary as { roster?: { stored?: unknown; skipped?: unknown } | null }).roster;
-  const movements = (summary as { movements?: { count?: unknown } | null }).movements;
-  return {
-    stored: roster ? Number(roster.stored) || 0 : 0,
-    skipped: roster ? Number(roster.skipped) || 0 : 0,
-    movementCount: movements && typeof movements.count === "number" ? movements.count : null,
-  };
-}
-
-/**
- * Shown on a tier card instead of letting the button fail — see
- * `SyncPanel`'s `cannotSync`.
- */
-const SYNC_DENIED_NOTE =
-  "Танд энэ цэцэрлэгийн ADMIN эрх байхгүй тул эндээс татах боломжгүй. Энэ цэцэрлэгийн ADMIN хэрэглэгч татна.";
-
-/**
- * The "Түүх" tab: what each tier last did, a **"Татах"** button per tier, and
- * the full run history behind it.
- *
- * ★ **The per-tier cards read `recentRuns` (from the platform's own `GET
- * …/platform/kindergartens/:id/esis`), not the paginated `sync-runs` list
- * below them.** That is a deliberate tradeoff, not an oversight — `sync-runs`
- * lives on `KindergartenEsisController`, gated `@Roles("ADMIN")` and then
- * `TenantAccessService.assertAdmin`, which asks whether *this* actor holds an
- * `ADMIN` membership at *this* kindergarten. A platform operator's
- * `isSuperAdmin` flag does not answer that — `esis.controller.ts`'s own
- * comment on `EsisPullButton` describes exactly this gap for the per-child
- * pull button, and it applies here unchanged. `recentRuns` comes from the
- * platform-only `overview` route this screen already depends on to render at
- * all, so the cards keep working for an operator who is not also this
- * kindergarten's `ADMIN` — the case seen in this deployment's own `superadmin`
- * account, which holds no memberships at all. The `sync-runs` table below can
- * still 404 for that operator; see `runsError` below for how that is shown
- * rather than hidden.
- *
- * ★★ Reading the latest ten mixed runs rather than the true latest of each
- * tier is the cost of that choice: a kindergarten that ran ten dry-run
- * previews between two reference sweeps would show the card as never having
- * run, when `sync-runs`, paginated, would still find it. Ten runs between two
- * monthly or nightly syncs is not the deployment this product has today.
- */
-function SyncPanel({
-  recentRuns,
-  runsPending,
-  runsError,
-  runsResult,
-  onPage,
-  onRunReference,
-  onRunRoster,
-  referencePending,
-  rosterPending,
-  referenceError,
-  rosterError,
-}: {
-  recentRuns: EsisOverview["recentRuns"];
-  runsPending: boolean;
-  runsError: unknown;
-  runsResult: EsisSyncRunsPage | null;
-  onPage: (page: number) => void;
-  onRunReference: () => void;
-  onRunRoster: () => void;
-  referencePending: boolean;
-  rosterPending: boolean;
-  referenceError: string | null;
-  rosterError: string | null;
-}) {
-  const lastReference = recentRuns.find((run) => runTier(run.summary) === "REFERENCE") ?? null;
-  const lastRoster = recentRuns.find((run) => runTier(run.summary) === "ROSTER") ?? null;
-  const referenceTotalsText = summaryText(lastReference && referenceTotals(lastReference.summary));
-  const rosterTotalsText = summaryText(lastRoster && rosterTotals(lastRoster.summary));
-  // Neither route can run while the other's is in flight — the server holds
-  // one run lock per kindergarten, so a second press while one tier is
-  // running would only come back as a 409. Disabling both while either is
-  // pending says so before the round trip rather than after it.
-  const anyPending = referencePending || rosterPending;
-  /*
-   * ★ `POST …/esis/sync` sits behind the same authorization as `GET
-   * …/esis/sync-runs` — `KindergartenEsisController`'s class-level
-   * `@Roles("ADMIN")`, then `TenantAccessService.assertAdmin` inside both
-   * `EsisSyncService.sync` and `listRuns`. A 404 on the history read is
-   * therefore a sound predictor that the same operator's press of "Татах"
-   * would 404 too — this deployment's own `superadmin` account (isSuperAdmin,
-   * no memberships) is exactly that case. Pressing the button anyway would be
-   * the pattern `esis.controller.ts`'s comment on the removed `EsisPullButton`
-   * already rejects: "a button that always fails is worse than no button".
-   * `runsPending` is folded in too, so the buttons stay disabled for the one
-   * render before the answer is known rather than flashing enabled first.
-   */
-  const cannotSync = runsPending || isNotFound(runsError);
 
   return (
-    <div className="flex flex-col gap-6">
-      <section aria-labelledby="esis-sync-tiers-heading">
-        <SectionHeader
-          id="esis-sync-tiers-heading"
-          title="Гараар татах"
-          lede="Хоёр тохиргоо шөнөөр өөрсдөө ажилладаг — энд шаардлагатай үед гараар ажиллуулна."
-        />
-        <div className="grid gap-3 md:grid-cols-2">
-          <SyncTierCard
-            title="Лавлах мэдээлэл"
-            description="ЭСИС-ийн үндэсний болон байгууллагын лавлах (хоолны бүтээгдэхүүн, өрөө, хөтөлбөр…) — сард нэг удаа."
-            lastRun={lastReference}
-            totalsText={referenceTotalsText}
-            onRun={onRunReference}
-            pending={referencePending}
-            disabled={anyPending || cannotSync}
-            deniedNote={cannotSync && !runsPending ? SYNC_DENIED_NOTE : null}
-            error={referenceError}
-          />
-          <SyncTierCard
-            title="Ажилтны бүртгэл"
-            description="Багш, ажилтны жагсаалт болон хүүхдийн шилжилт хөдөлгөөн — өдөр бүр."
-            lastRun={lastRoster}
-            totalsText={rosterTotalsText}
-            onRun={onRunRoster}
-            pending={rosterPending}
-            disabled={anyPending || cannotSync}
-            deniedNote={cannotSync && !runsPending ? SYNC_DENIED_NOTE : null}
-            error={rosterError}
-          />
-        </div>
-      </section>
-
-      <section aria-labelledby="esis-history-heading">
-        <SectionHeader id="esis-history-heading" title="Синкийн түүх" />
-
-        {runsPending ? <LoadingState rows={3} /> : null}
-
-        {runsError ? (
-          <EmptyState
-            title={isNotFound(runsError) ? "Энд хандах эрхгүй байна" : "Алдаа гарлаа"}
-            description={
-              isNotFound(runsError)
-                ? "Синкийн бүрэн түүхийг зөвхөн энэ цэцэрлэгийн ADMIN эрхтэй хэрэглэгч харна. Дээрх карт нь платформын мэдээллээс сүүлийн ажиллагааг харуулж байна."
-                : errorMessage(runsError)
-            }
-            icon={<History aria-hidden />}
-          />
-        ) : null}
-
-        {!runsPending && !runsError && runsResult ? (
-          runsResult.items.length === 0 ? (
-            <EmptyState
-              title="Синк ажиллагааны түүх"
-              description="Дээрх товчоор эхний синкээ ажиллуулаарай — түүх энд бүртгэгдэнэ."
-              icon={<History aria-hidden />}
-            />
-          ) : (
-            <>
-              <TableShell caption="ESIS синк ажиллагааны түүх" minWidth="min-w-0" stacked>
-                <thead>
-                  <tr>
-                    <Th>Эхэлсэн</Th>
-                    <Th>Төрөл</Th>
-                    <Th>Мэдээллийн багц</Th>
-                    <Th>Ажиллуулсан</Th>
-                    <Th>Төлөв</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {runsResult.items.map((run) => (
-                    <tr key={run.id}>
-                      <Td data-label="Эхэлсэн">{formatRelative(run.startedAt)}</Td>
-                      <Td data-label="Төрөл">{tierLabel(run.summary)}</Td>
-                      <Td data-label="Мэдээллийн багц">{run.resources.length} багц</Td>
-                      <Td data-label="Ажиллуулсан">{run.initiatedBy ?? "хуваарь"}</Td>
-                      <Td data-label="Төлөв">
-                        <RunStatus status={run.status} />
-                      </Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </TableShell>
-              <Pagination
-                className="mt-4"
-                page={runsResult.page}
-                totalPages={runsResult.totalPages}
-                onPage={onPage}
-              />
-            </>
-          )
-        ) : null}
-      </section>
-    </div>
-  );
-}
-
-/**
- * One line, in Mongolian, describing what a tier's last run stored —
- * `null` when there is nothing to say (no run yet, or a run of the other
- * tier). Kept as a plain string rather than a component: `referenceTotals`
- * and `rosterTotals` return different shapes and neither needs more than one
- * sentence on this card.
- */
-function summaryText(
-  totals:
-    | { stored: number; skipped: number; count: number }
-    | { stored: number; skipped: number; movementCount: number | null }
-    | null
-    | undefined,
-): string | null {
-  if (!totals) return null;
-  if ("count" in totals) {
-    return `${totals.count} багц · ${totals.stored} мөр хадгалав, ${totals.skipped} алгассан`;
-  }
-  const movements = totals.movementCount === null ? "" : ` · ${totals.movementCount} шилжилт`;
-  return `${totals.stored} бүртгэгдэв, ${totals.skipped} алгассан${movements}`;
-}
-
-function SyncTierCard({
-  title,
-  description,
-  lastRun,
-  totalsText,
-  onRun,
-  pending,
-  disabled,
-  deniedNote,
-  error,
-}: {
-  title: string;
-  description: string;
-  lastRun: EsisOverview["recentRuns"][number] | null;
-  totalsText: string | null;
-  onRun: () => void;
-  pending: boolean;
-  disabled: boolean;
-  /** Shown instead of a button that would only ever 404 — see `SYNC_DENIED_NOTE`. */
-  deniedNote: string | null;
-  error: string | null;
-}) {
-  return (
-    <Card pad="roomy">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-body font-semibold text-ink">{title}</p>
-          <p className="mt-1 text-caption text-muted">{description}</p>
-        </div>
-        {lastRun ? <RunStatus status={lastRun.status} /> : null}
-      </div>
-
-      <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-        <div>
-          <dt className="text-caption font-semibold text-muted">Сүүлд ажилласан</dt>
-          <dd className="mt-1 text-body font-medium text-ink">
-            {lastRun ? formatRelative(lastRun.startedAt) : "Ажиллуулаагүй"}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-caption font-semibold text-muted">Хадгалсан</dt>
-          <dd className="mt-1 text-body font-medium text-ink">{totalsText ?? "—"}</dd>
-        </div>
-      </dl>
-
-      {deniedNote ? (
-        <p className="mt-3 rounded-control bg-canvas px-3 py-2 text-caption text-muted">
-          {deniedNote}
-        </p>
-      ) : null}
-
-      {error ? (
-        <p
-          role="alert"
-          className="mt-3 rounded-control bg-danger-soft px-3 py-2 text-caption text-danger"
-        >
-          {error}
-        </p>
-      ) : null}
-
-      <Button className="mt-4" size="sm" onClick={onRun} disabled={disabled}>
-        <CloudDownload aria-hidden />
-        {pending ? "Татаж байна…" : "Татах"}
-      </Button>
-    </Card>
+    <section aria-labelledby="esis-history-heading">
+      <SectionHeader id="esis-history-heading" title="Сүүлийн ажиллагаа" />
+      <TableShell caption="ESIS dry-run ажиллагааны түүх" minWidth="min-w-0" stacked>
+        <thead>
+          <tr>
+            <Th>Эхэлсэн</Th>
+            <Th>Мэдээллийн багц</Th>
+            <Th>Ажиллуулсан</Th>
+            <Th>Эх үүсвэр</Th>
+            <Th>Төлөв</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {runs.map((run) => (
+            <tr key={run.id}>
+              <Td data-label="Эхэлсэн">{formatRelative(run.startedAt)}</Td>
+              <Td data-label="Мэдээллийн багц">{run.resources.length} багц</Td>
+              <Td data-label="Ажиллуулсан">{run.initiatedBy ?? "хуваарь"}</Td>
+              <Td data-label="Эх үүсвэр">
+                <Badge tone="mint">{run.mode}</Badge>
+              </Td>
+              <Td data-label="Төлөв">
+                <RunStatus status={run.status} />
+              </Td>
+            </tr>
+          ))}
+        </tbody>
+      </TableShell>
+    </section>
   );
 }
 

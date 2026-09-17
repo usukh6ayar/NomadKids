@@ -416,111 +416,16 @@ describe("ESIS гаралтын талбарууд", () => {
 });
 
 /**
- * Plan `2026-09-16-esis-sync-tiers.md` Task 10 — the operator's sync panel:
- * when each tier last ran, what it stored, a "Татах" button per tier, and the
- * paginated run history behind `GET …/kindergartens/:id/esis/sync-runs`.
- *
- * ★ `SYNC_RUNS_PATH` is tenant-scoped (`KindergartenEsisController`,
- * `@Roles("ADMIN")`), not the platform route `ESIS_PATH` above. `operator()`
- * above holds **no memberships** — deliberately, per its own comment — so a
- * real deployment's pure superadmin gets a 404 from this route exactly as
- * `esis.controller.ts`'s comment on the removed `EsisPullButton` describes for
- * a different route. The tests below stub it as reachable except the one
- * named for the 404 case, which is what an operator who is *also* this
- * kindergarten's ADMIN and one who is not respectively see — both personas
- * exist in this deployment's own database.
+ * The "Түүх" tab, since 2026-09-17 restored to `overview.recentRuns` — the
+ * paginated `sync-runs` history and its "Татах" buttons moved to
+ * `/admin/esis-sync/page.tsx`'s test file (`admin-esis-sync.test.tsx`), the
+ * kindergarten `ADMIN`'s own screen. See that page's doc comment for why: the
+ * platform operator's `isSuperAdmin` flag does not carry a tenant `ADMIN`
+ * membership, so `sync-runs` 404s for a pure operator — this screen's own
+ * `recentRuns` is the one history feed such an account can always reach.
  */
-describe("ESIS синкийн панел", () => {
-  const SYNC_RUNS_PATH = `/kindergartens/${KG}/esis/sync-runs`;
-  const SYNC_ACTION_PATH = `/kindergartens/${KG}/esis/sync`;
-
-  async function openHistoryTab() {
-    await userEvent.click(await screen.findByRole("tab", { name: /Түүх/ }));
-  }
-
-  function run(
-    overrides: Partial<{
-      id: string;
-      status: "RUNNING" | "SUCCEEDED" | "PARTIAL" | "FAILED";
-      resources: string[];
-      summary: unknown;
-      errorCode: string | null;
-      startedAt: string;
-      finishedAt: string | null;
-      initiatedBy: string | null;
-    }> = {},
-  ) {
-    return {
-      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      status: "SUCCEEDED" as const,
-      resources: [],
-      summary: null,
-      errorCode: null,
-      startedAt: "2026-09-17T03:10:00.000Z",
-      finishedAt: "2026-09-17T03:10:05.000Z",
-      initiatedBy: null,
-      // Extra key, ignored by `esisSyncRunSchema` — kept so the same factory
-      // also serves `overview().recentRuns`, which does require it.
-      mode: "LIVE" as const,
-      ...overrides,
-    };
-  }
-
-  function runsPage(
-    items: ReturnType<typeof run>[],
-    overrides: Partial<{ page: number; totalPages: number; total: number }> = {},
-  ) {
-    return {
-      items,
-      page: overrides.page ?? 1,
-      pageSize: 10,
-      total: overrides.total ?? items.length,
-      totalPages: overrides.totalPages ?? 1,
-    };
-  }
-
-  /*
-   * ★ The known gap this task exists to close: `run.initiatedBy ?? "хуваарь"`
-   * was typechecked and unexercised. `EsisSyncRun.initiatedById` is nullable
-   * (plan Task 1) and the scheduler (Task 8) passes `null` for exactly this
-   * case — a run nobody at a keyboard started.
-   */
+describe("ESIS-ийн ажиллагааны түүх", () => {
   it("shows a scheduled run as having no initiator", async () => {
-    stubApi([
-      { path: "/auth/me", body: operator() },
-      { path: ESIS_PATH, body: overview(true) },
-      {
-        path: SYNC_RUNS_PATH,
-        method: "GET",
-        body: runsPage([
-          run({
-            id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-            resources: ["staff", "teachers", "studentMovements"],
-            summary: {
-              kind: "ROSTER",
-              roster: { stored: 13, skipped: 0 },
-              movements: { beginDate: "2026-09-10", count: 2, errorCode: null },
-            },
-            initiatedBy: null,
-          }),
-        ]),
-      },
-    ]);
-    renderWithProviders(<EsisIntegrationPage />);
-
-    await openHistoryTab();
-
-    expect(await screen.findByText("хуваарь")).toBeInTheDocument();
-  });
-
-  /*
-   * ★ The per-tier cards read `overview().recentRuns`, not `sync-runs` —
-   * see `SyncPanel`'s doc comment in the page for why. This proves both
-   * halves at once: the REFERENCE card finds its own run among a mixed list
-   * that also has a ROSTER run, and reads the stored/skipped counts out of
-   * `runReferenceSync`'s summary shape.
-   */
-  it("shows what each tier last did, from the platform overview", async () => {
     stubApi([
       { path: "/auth/me", body: operator() },
       {
@@ -528,73 +433,16 @@ describe("ESIS синкийн панел", () => {
         body: {
           ...overview(true),
           recentRuns: [
-            run({
-              id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-              resources: ["foodProducts", "buildings"],
-              startedAt: "2026-09-17T04:10:00.000Z",
-              initiatedBy: "Бат Дорж",
-              summary: {
-                kind: "REFERENCE",
-                resources: [
-                  {
-                    resource: "foodProducts",
-                    status: "SUCCEEDED",
-                    stored: 1000,
-                    skipped: 0,
-                    errorCode: null,
-                  },
-                  {
-                    resource: "buildings",
-                    status: "SUCCEEDED",
-                    stored: 3,
-                    skipped: 1,
-                    errorCode: null,
-                  },
-                ],
-              },
-            }),
-            run({
-              id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-              resources: ["staff", "teachers", "studentMovements"],
-              startedAt: "2026-09-17T03:40:00.000Z",
-              initiatedBy: null,
-              summary: {
-                kind: "ROSTER",
-                roster: { stored: 13, skipped: 0 },
-                movements: { beginDate: "2026-09-10", count: 2, errorCode: null },
-              },
-            }),
-          ],
-        },
-      },
-      { path: SYNC_RUNS_PATH, method: "GET", body: runsPage([]) },
-    ]);
-    renderWithProviders(<EsisIntegrationPage />);
-
-    await openHistoryTab();
-
-    expect(await screen.findByText(/1003 мөр хадгалав/)).toBeInTheDocument();
-    expect(screen.getByText(/13 бүртгэгдэв/)).toBeInTheDocument();
-  });
-
-  it("pulls the reference tier through the Татах button", async () => {
-    const { calls } = stubApi([
-      { path: "/auth/me", body: operator() },
-      { path: ESIS_PATH, body: overview(true) },
-      { path: SYNC_RUNS_PATH, method: "GET", body: runsPage([]) },
-      {
-        path: SYNC_ACTION_PATH,
-        method: "POST",
-        body: {
-          runId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-          status: "SUCCEEDED",
-          results: [
             {
-              resource: "foodProducts",
+              id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
               status: "SUCCEEDED",
-              stored: 1000,
-              skipped: 0,
+              resources: ["staff", "teachers"],
+              summary: null,
               errorCode: null,
+              startedAt: "2026-09-17T03:10:00.000Z",
+              finishedAt: "2026-09-17T03:10:05.000Z",
+              initiatedBy: null,
+              mode: "LIVE",
             },
           ],
         },
@@ -602,83 +450,8 @@ describe("ESIS синкийн панел", () => {
     ]);
     renderWithProviders(<EsisIntegrationPage />);
 
-    await openHistoryTab();
-    await userEvent.click((await screen.findAllByRole("button", { name: /Татах/ }))[0]!);
+    await userEvent.click(await screen.findByRole("tab", { name: /Түүх/ }));
 
-    expect(await screen.findByText(/Лавлах мэдээллийг татлаа/)).toBeInTheDocument();
-    const posted = calls.find(
-      (call) => call.url.startsWith(SYNC_ACTION_PATH) && call.method === "POST",
-    );
-    expect(posted?.body).toEqual({ tier: "REFERENCE" });
-  });
-
-  /*
-   * ★ The role mismatch this task's report calls out: `operator()` holds no
-   * membership anywhere, so the real API would answer 404 here exactly as it
-   * does in `esis-admin.test.ts`'s cross-kindergarten cases. The panel must
-   * not crash or blank the whole tab — the per-tier cards (fed by the
-   * reachable platform overview) still render, and the history section says
-   * why it has nothing to show instead of silently rendering empty.
-   */
-  it("explains rather than crashes when the sync history is out of reach", async () => {
-    stubApi([
-      { path: "/auth/me", body: operator() },
-      { path: ESIS_PATH, body: overview(true) },
-      {
-        path: SYNC_RUNS_PATH,
-        method: "GET",
-        status: 404,
-        body: { title: "Олдсонгүй", status: 404 },
-      },
-    ]);
-    renderWithProviders(<EsisIntegrationPage />);
-
-    await openHistoryTab();
-
-    expect(await screen.findByText("Энд хандах эрхгүй байна")).toBeInTheDocument();
-    // The tier cards still render — they read the platform overview, which
-    // this operator can always reach.
-    expect(screen.getByText("Лавлах мэдээлэл")).toBeInTheDocument();
-    expect(screen.getByText("Ажилтны бүртгэл")).toBeInTheDocument();
-
-    /*
-     * ★ The part a 404 on the *read* proves about the *write*: `POST
-     * …/esis/sync` sits behind the same `@Roles("ADMIN")` +
-     * `TenantAccessService.assertAdmin` as `GET …/esis/sync-runs`
-     * (`esis.controller.ts`) — the actor is the same for both calls in one
-     * page load, so a refusal on one predicts the other. A pressable button
-     * that only ever comes back 404 is exactly the pattern this file's own
-     * comment on the removed `EsisPullButton` rejects.
-     */
-    for (const button of screen.getAllByRole("button", { name: /Татах/ })) {
-      expect(button).toBeDisabled();
-    }
-    expect(screen.getAllByText(/ADMIN эрх байхгүй/).length).toBeGreaterThan(0);
-  });
-
-  it("asks for the next page of sync history", async () => {
-    const { calls } = stubApi([
-      { path: "/auth/me", body: operator() },
-      { path: ESIS_PATH, body: overview(true) },
-      {
-        path: SYNC_RUNS_PATH,
-        method: "GET",
-        body: runsPage([run({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" })], {
-          total: 12,
-          totalPages: 2,
-        }),
-      },
-    ]);
-    renderWithProviders(<EsisIntegrationPage />);
-
-    await openHistoryTab();
-    await screen.findByRole("navigation", { name: "Хуудаслалт" });
-    await userEvent.click(screen.getByRole("button", { name: "Дараах" }));
-
-    await waitFor(() =>
-      expect(
-        calls.some((call) => call.url.startsWith(SYNC_RUNS_PATH) && call.url.includes("page=2")),
-      ).toBe(true),
-    );
+    expect(await screen.findByText("хуваарь")).toBeInTheDocument();
   });
 });
