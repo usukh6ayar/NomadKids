@@ -3763,7 +3763,21 @@ export const esisOverviewSchema = z.object({
       errorCode: z.string().nullable(),
       startedAt: z.string(),
       finishedAt: z.string().nullable(),
-      initiatedBy: z.string(),
+      /**
+       * `null` when the schedule ran it rather than a person.
+       *
+       * ★ Was `z.string()` until 2026-09-17, which is a Zod schema silently
+       * *dropping* the field for a run with no initiator rather than
+       * rejecting it (this repo's memory has the general form of that bug).
+       * `EsisSyncRun.initiatedById` became nullable when tiers 1 and 2 turned
+       * into repeatable jobs (`esis-sync.service.ts`), and `EsisAdminService.
+       * overview()` already renders `null` for that case — the schema just
+       * had not caught up. Nothing produces a NULL run yet (every caller so
+       * far passes an actor), so this was unreachable until the scheduler
+       * ships; fixing it now means the first scheduled run does not surface
+       * as a silently blanked column.
+       */
+      initiatedBy: z.string().nullable(),
       mode: z.literal("LIVE"),
     }),
   ),

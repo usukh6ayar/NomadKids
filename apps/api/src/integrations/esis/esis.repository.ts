@@ -280,6 +280,41 @@ export class EsisRepository {
     });
   }
 
+  /**
+   * One kindergarten's sync history, newest first, paginated (CLAUDE.md §3.4).
+   *
+   * ★ A second method rather than a `take` argument on `listRecentRuns` —
+   * that one is fixed at ten rows for the operator's readiness screen and
+   * carries no `total`, because nothing there paginates. `GET
+   * …/esis/sync-runs` (plan Task 5) is a real list screen and needs both a
+   * page and a count to render one; reusing the fixed-ten method would mean
+   * either bolting pagination onto a query another route already depends on
+   * being unpaginated, or a second copy of the `select`. This is the second
+   * copy made explicit and named for what it is.
+   */
+  async listRuns(kindergartenId: string, page: { skip: number; take: number }) {
+    const [items, total] = await Promise.all([
+      this.prisma.esisSyncRun.findMany({
+        where: { kindergartenId },
+        orderBy: { startedAt: "desc" },
+        skip: page.skip,
+        take: page.take,
+        select: {
+          id: true,
+          status: true,
+          resources: true,
+          summary: true,
+          errorCode: true,
+          startedAt: true,
+          finishedAt: true,
+          initiatedBy: { select: { firstName: true, lastName: true } },
+        },
+      }),
+      this.prisma.esisSyncRun.count({ where: { kindergartenId } }),
+    ]);
+    return { items, total };
+  }
+
   listRecentRuns(kindergartenId: string) {
     return this.prisma.esisSyncRun.findMany({
       where: { kindergartenId },

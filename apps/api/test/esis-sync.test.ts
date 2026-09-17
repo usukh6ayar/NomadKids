@@ -1,4 +1,5 @@
 import type { INestApplication } from "@nestjs/common";
+import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
 import { EsisError } from "../src/integrations/esis/esis.client";
@@ -9,18 +10,18 @@ import {
 import type { EsisService } from "../src/integrations/esis/esis.service";
 import { createTestApp } from "./support/app";
 import { resetData, testDb } from "./support/db";
-import { createScenario, type Scenario } from "./support/fixtures";
+import { authed, createScenario, login, type AuthSession, type Scenario } from "./support/fixtures";
 
 /*
- * ★ Driven through `app.get(EsisSyncService)`, not through HTTP — Task 5's
- * route (`POST /v1/kindergartens/:id/esis/sync`) does not exist yet on this
- * branch. Hitting the unbuilt route would make every case in this file fail
- * identically with the router's 404, which cannot distinguish "not built"
- * from "built wrong" — the exact test that is not worth having. Calling the
+ * ★ The two describe blocks above `describe("POST …/esis/sync"...)` are
+ * driven through `app.get(EsisSyncService)`, not through HTTP — they predate
+ * Task 5's route (`POST /v1/kindergartens/:id/esis/sync`,
+ * `GET …/esis/sync-runs`), which this file now also covers. Calling the
  * service directly still exercises the real repository, the real Prisma
- * transaction and the real `EsisReference` table; only the controller layer
- * (authorization, param parsing) is untested here, and that is Task 5's
- * job, with its own authorization cases.
+ * transaction and the real `EsisReference` table; they are left as-is because
+ * rewriting them through HTTP would add nothing but a router hop — the
+ * controller layer (authorization, param parsing) is exactly what the new
+ * HTTP-driven blocks below test, with their own authorization cases.
  */
 
 const institutionId = "40305";
@@ -69,8 +70,13 @@ const esis = {
 let app: INestApplication;
 let sync: EsisSyncService;
 let a: Scenario;
+let b: Scenario;
+let adminA: AuthSession;
+let adminB: AuthSession;
+let teacherA: AuthSession;
 
 const db = testDb();
+const server = () => app.getHttpServer();
 
 beforeAll(async () => {
   app = await createTestApp({ esis });
@@ -92,7 +98,14 @@ beforeEach(async () => {
   }));
 
   a = await createScenario("sync");
+  b = await createScenario("sync-b");
   await mapInstitution(a.kindergarten.id);
+
+  [adminA, adminB, teacherA] = await Promise.all([
+    login(app, a.adminUser.username),
+    login(app, b.adminUser.username),
+    login(app, a.teacherUser.username),
+  ]);
 });
 
 /** Sets the tenant's ESIS mapping directly — the mapping endpoint is not under test here. */
@@ -494,5 +507,163 @@ describe("EsisSyncService.runRosterSync", () => {
     await expect(
       sync.runRosterSync({ kindergartenId: a.kindergarten.id, actorUserId: a.adminUser.id }),
     ).rejects.toThrow();
+  });
+});
+
+/**
+ * Task 5: the manual pull, driven through the real route.
+ *
+ * ★ This calls the **same** `EsisSyncService` methods the two describe blocks
+ * above already cover in depth — the point of the route is that there is no
+ * second implementation to test separately. What is new here, and what only
+ * an HTTP-level test can prove (CLAUDE.md §4.1), is the controller's own
+ * layer: the role gate, the tenant scope and the request shape.
+ */
+describe("POST /v1/kindergartens/:id/esis/sync", () => {
+  const url = (id: string) => `/v1/kindergartens/${id}/esis/sync`;
+
+  it("lets an admin pull the reference tier", async () => {
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+      tier: "REFERENCE",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("SUCCEEDED");
+
+    expect(await db.esisReference.count({ where: { resource: "foodProducts" } })).toBe(1);
+
+    const run = await db.esisSyncRun.findUniqueOrThrow({ where: { id: res.body.runId } });
+    expect(run.initiatedById).toBe(a.adminUser.id);
+  });
+
+  it("lets an admin pull the roster tier", async () => {
+    read.mockImplementation(async (key: string) => {
+      if (key === "staff" || key === "teachers") {
+        return {
+          data: [
+            {
+              personId: "90000000000001",
+              personRegNumber: "ул24270406",
+              lastName: "Овог",
+              firstName: "Нэр",
+              jobCode: "2342-13",
+              positionName: "Багш",
+            },
+          ],
+          status: 200,
+          durationMs: 3,
+        };
+      }
+      if (key === "studentMovements") return { data: [], status: 200, durationMs: 3 };
+      return { data: [DEFAULT_ROWS[key]].filter(Boolean), status: 200, durationMs: 3 };
+    });
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+      tier: "ROSTER",
+    });
+
+    expect(res.status).toBe(200);
+    expect(await db.esisStaffRoster.count({ where: { kindergartenId: a.kindergarten.id } })).toBe(
+      1,
+    );
+  });
+
+  /* CLAUDE.md §1.7 — 404, and no run left behind for a caller who was refused. */
+  it("returns 404 to a teacher, and writes no run", async () => {
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), teacherA).send({
+      tier: "REFERENCE",
+    });
+
+    expect(res.status).toBe(404);
+    expect(await db.esisSyncRun.count({ where: { kindergartenId: a.kindergarten.id } })).toBe(0);
+  });
+
+  it("returns 404 to an admin of another kindergarten", async () => {
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminB).send({
+      tier: "REFERENCE",
+    });
+
+    expect(res.status).toBe(404);
+    expect(await db.esisSyncRun.count({ where: { kindergartenId: a.kindergarten.id } })).toBe(0);
+  });
+
+  /* The schema refuses it before the controller method body — and so before ESIS or the run table. */
+  it("rejects an unknown tier before anything runs", async () => {
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+      tier: "NOT_A_TIER",
+    });
+
+    expect(res.status).toBe(400);
+    expect(read).not.toHaveBeenCalled();
+    expect(await db.esisSyncRun.count({ where: { kindergartenId: a.kindergarten.id } })).toBe(0);
+  });
+});
+
+describe("GET /v1/kindergartens/:id/esis/sync-runs", () => {
+  const url = (id: string, query = "") => `/v1/kindergartens/${id}/esis/sync-runs${query}`;
+
+  it("lists runs newest first, paginated", async () => {
+    await sync.runReferenceSync({
+      kindergartenId: a.kindergarten.id,
+      actorUserId: a.adminUser.id,
+    });
+    await sync.runReferenceSync({
+      kindergartenId: a.kindergarten.id,
+      actorUserId: a.adminUser.id,
+    });
+
+    const paged = await authed(
+      request(server()).get(url(a.kindergarten.id, "?page=1&pageSize=1")),
+      adminA,
+    );
+    expect(paged.status).toBe(200);
+    expect(paged.body.items).toHaveLength(1);
+    expect(paged.body.total).toBe(2);
+    expect(paged.body.page).toBe(1);
+    expect(paged.body.pageSize).toBe(1);
+
+    const full = await authed(
+      request(server()).get(url(a.kindergarten.id, "?page=1&pageSize=10")),
+      adminA,
+    );
+    expect(new Date(full.body.items[0].startedAt).getTime()).toBeGreaterThanOrEqual(
+      new Date(full.body.items[1].startedAt).getTime(),
+    );
+  });
+
+  /*
+   * ★ The case this task's plan calls out by name: nothing produces a NULL
+   * `initiatedById` yet (every caller so far passes an actor), but Task 8's
+   * scheduler will, and this is the route where that first becomes visible.
+   * Seeded directly through the test db client for exactly that reason.
+   */
+  it("names who started a manual run, and shows a scheduled run as having no initiator", async () => {
+    await sync.runReferenceSync({
+      kindergartenId: a.kindergarten.id,
+      actorUserId: a.adminUser.id,
+    });
+    await db.esisSyncRun.create({
+      data: { kindergartenId: a.kindergarten.id, initiatedById: null, resources: [] },
+    });
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
+
+    expect(res.status).toBe(200);
+    const named = res.body.items.find((run: { initiatedBy: string | null }) => run.initiatedBy);
+    const scheduled = res.body.items.find(
+      (run: { initiatedBy: string | null }) => run.initiatedBy === null,
+    );
+    expect(named?.initiatedBy).toContain(a.adminUser.lastName);
+    expect(scheduled).toBeTruthy();
+  });
+
+  it("returns 404 to a teacher", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), teacherA);
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 to an admin of another kindergarten", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), adminB);
+    expect(res.status).toBe(404);
   });
 });

@@ -138,6 +138,21 @@ export const esisWriteSchema = z.object({
 });
 export type EsisWriteDto = z.infer<typeof esisWriteSchema>;
 
+/**
+ * `POST …/esis/sync`'s body — which tier to pull, nothing else.
+ *
+ * ★ An unknown tier is rejected here, by the `ZodValidationPipe`, before the
+ * controller method runs at all — so a typo never reaches the run lock, never
+ * calls ESIS and never writes an `EsisSyncRun` row. See `EsisSyncService.sync`
+ * for why `REFERENCE` and `ROSTER` are the only two values: they are the two
+ * tiers Tasks 3 and 4 built, and tier 3 (per-child) is deliberately never
+ * scheduled or manually swept (plan §"What this plan does not do").
+ */
+export const esisSyncTierSchema = z.object({
+  tier: z.enum(["REFERENCE", "ROSTER"]),
+});
+export type EsisSyncTierDto = z.infer<typeof esisSyncTierSchema>;
+
 export const updateEsisMappingSchema = z.discriminatedUnion("mapped", [
   z.object({ mapped: z.literal(false) }),
   z.object({

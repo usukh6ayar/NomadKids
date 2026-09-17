@@ -1,10 +1,14 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import type { Actor } from "../../authz/actor";
+import { TenantAccessService } from "../../authz/tenant-access.service";
+import { paginate, toSkipTake, type PageParams } from "../../common/pagination";
 import { EsisAdminService } from "./esis-admin.service";
 import { EsisError } from "./esis.client";
 import { EsisRepository, type EsisSyncKind } from "./esis.repository";
 import { externalIdFor, REFERENCE_RESOURCES, type EsisReferenceResource } from "./esis.reference";
 import { esisVisibleRows } from "./esis.schemas";
 import { EsisService } from "./esis.service";
+import type { EsisSyncTierDto } from "./esis.dto";
 
 /*
  * ★ A local JSON type, not `Prisma.InputJsonValue` — this file is a service,
@@ -79,7 +83,60 @@ export class EsisSyncService {
      * exists rather than a second implementation of the same read.
      */
     private readonly admin: EsisAdminService,
+    /*
+     * ★ For `sync` and `listRuns` (plan Task 5) — the only two entry points
+     * on this service that take an `Actor` rather than a bare
+     * `kindergartenId`. `runReferenceSync` and `runRosterSync` stay
+     * unauthorized on purpose (see `assertOperable`'s doc comment): the
+     * scheduler (Task 8) has no actor to check, so the tenant scope has to
+     * live at the one caller that does.
+     */
+    private readonly tenants: TenantAccessService,
   ) {}
+
+  /**
+   * The manual pull behind `POST …/esis/sync` — ADMIN only, one kindergarten.
+   *
+   * ★ Calls the **same** `runReferenceSync` / `runRosterSync` the scheduler
+   * will (plan Task 8), with `actor.userId` where the schedule would pass
+   * `null`. That is the whole point of Task 5: a manual run and a scheduled
+   * one are the same kind of row, distinguished only by who asked.
+   */
+  async sync(actor: Actor, kindergartenId: string, tier: EsisSyncTierDto["tier"]) {
+    this.tenants.assertAdmin(actor, kindergartenId);
+    if (tier === "REFERENCE") {
+      return this.runReferenceSync({ kindergartenId, actorUserId: actor.userId });
+    }
+    return this.runRosterSync({ kindergartenId, actorUserId: actor.userId });
+  }
+
+  /**
+   * The history behind `GET …/esis/sync-runs` — newest first, paginated
+   * (CLAUDE.md §3.4).
+   *
+   * ★ `initiatedBy` renders a name or `null`, matching
+   * `EsisAdminService.overview()`'s own convention for the same fact — never
+   * the empty string a missing `?.` would otherwise produce. `null` is a
+   * scheduled run (`EsisSyncRun.initiatedById` is nullable since Task 1);
+   * turning that into the Mongolian "хуваарь" is the screen's job, not this
+   * one's — see `apps/web/app/(app)/platform/[id]/esis/page.tsx`'s
+   * `RunHistory`, which already does exactly that for `overview()`'s runs.
+   */
+  async listRuns(actor: Actor, kindergartenId: string, page: PageParams) {
+    this.tenants.assertAdmin(actor, kindergartenId);
+    const { skip, take } = toSkipTake(page);
+    const { items, total } = await this.repo.listRuns(kindergartenId, { skip, take });
+    return paginate(
+      items.map((run) => ({
+        ...run,
+        initiatedBy: run.initiatedBy
+          ? `${run.initiatedBy.lastName} ${run.initiatedBy.firstName}`.trim()
+          : null,
+      })),
+      total,
+      page,
+    );
+  }
 
   /**
    * Runs the whole closed list once, replacing each resource's stored rows.

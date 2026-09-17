@@ -1,18 +1,21 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Put, Query } from "@nestjs/common";
-import { idParamSchema } from "@kinder/contracts";
+import { idParamSchema, paginationQuerySchema, type PaginationQuery } from "@kinder/contracts";
 import { CurrentActor } from "../../auth/decorators/actor.decorator";
 import { Roles } from "../../auth/decorators/roles.decorator";
 import { SuperAdmin } from "../../auth/decorators/super-admin.decorator";
 import type { Actor } from "../../authz/actor";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { EsisAdminService } from "./esis-admin.service";
+import { EsisSyncService } from "./esis-sync.service";
 import {
   esisPreviewSchema,
   esisReadSchema,
+  esisSyncTierSchema,
   esisWriteSchema,
   updateEsisMappingSchema,
   type EsisPreviewDto,
   type EsisReadDto,
+  type EsisSyncTierDto,
   type EsisWriteDto,
   type UpdateEsisMappingDto,
 } from "./esis.dto";
@@ -26,7 +29,10 @@ const esisReadQuerySchema = esisReadSchema.shape.params
 @Controller("kindergartens/:id/esis")
 @Roles("ADMIN")
 export class KindergartenEsisController {
-  constructor(private readonly service: EsisAdminService) {}
+  constructor(
+    private readonly service: EsisAdminService,
+    private readonly sync: EsisSyncService,
+  ) {}
 
   /**
    * The catalog, scoped to the caller's role.
@@ -116,6 +122,38 @@ export class KindergartenEsisController {
     @Body(new ZodValidationPipe(esisWriteSchema)) body: EsisWriteDto,
   ) {
     return this.service.write(actor, params.id, body);
+  }
+
+  /**
+   * The manual pull — plan Task 5.
+   *
+   * ★ ADMIN-only and a `POST`, for the same reason as `staff-roster/refresh`
+   * above: it spends the deployment's one rate-limited token, whichever tier
+   * is asked for. It calls the **same** `EsisSyncService` methods the
+   * scheduler (Task 8) will, with `actor.userId` set — one code path, one run
+   * record, a history where a manual run and a scheduled one differ only in
+   * who started them.
+   */
+  @Post("sync")
+  @HttpCode(200)
+  @Roles("ADMIN")
+  runSync(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(esisSyncTierSchema)) body: EsisSyncTierDto,
+  ) {
+    return this.sync.sync(actor, params.id, body.tier);
+  }
+
+  /** The run history behind the sync panel — newest first, paginated (CLAUDE.md §3.4). */
+  @Get("sync-runs")
+  @Roles("ADMIN")
+  syncRuns(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(paginationQuerySchema)) query: PaginationQuery,
+  ) {
+    return this.sync.listRuns(actor, params.id, query);
   }
 }
 

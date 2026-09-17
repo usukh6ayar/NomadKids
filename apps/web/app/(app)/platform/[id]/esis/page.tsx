@@ -1141,7 +1141,7 @@ function RunHistory({ runs }: { runs: EsisOverview["recentRuns"] }) {
             <tr key={run.id}>
               <Td data-label="Эхэлсэн">{formatRelative(run.startedAt)}</Td>
               <Td data-label="Мэдээллийн багц">{run.resources.length} багц</Td>
-              <Td data-label="Ажиллуулсан">{run.initiatedBy}</Td>
+              <Td data-label="Ажиллуулсан">{run.initiatedBy ?? "хуваарь"}</Td>
               <Td data-label="Эх үүсвэр">
                 <Badge tone="mint">{run.mode}</Badge>
               </Td>
