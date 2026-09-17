@@ -17,7 +17,7 @@ not built here, and the reason is the same for all four in different words:
 | Service                      | Why not now                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **129, 131** cook form 1 / 2 | `esis.endpoints.ts` and `esis.catalog.ts` each already refuse them, in writing: filing a school's food-income return is a decision made against a ledger, and nothing here is the thing that files it. The **read** halves (130, 132) are wired                                                                                                                                                                                                                      |
-| **73** өрхийн мэдээлэл       | Three separate refusals. `esis.endpoints.ts` has **no entry for apiId 73** — its path is not known in this codebase. `esis.catalog.ts` says of the household services: _"No column holds these yet… A `Child` field for өрхийн төрөл is a schema decision nobody has asked for"_. And `ESIS_REQUEST.md` §1.3 excludes "суралцагчийн өрхийн байдал" **deliberately**, on data-minimisation grounds — `ESIS_API_READINESS.md` records it as "эрхтэй ч зориуд хүсээгүй" |
+| **73** өрхийн мэдээлэл       | `esis.endpoints.ts` has **no entry for apiId 73** — its path is not known in this codebase. See §1.2: the household writes that _do_ have paths are already built, by a different mechanism, and neither of them is 73                                                                                                                                                                                                                                              |
 | **72** цол, шагнал           | Also no endpoint entry. And its read half, `studentAwards` (**85**), answered **203** against a real child on institution 42778, so the field names are unknown. A write whose shape is a guess is a write into the ministry's production record                                                                                                                                                                                                                     |
 
 That is not a gap in coverage. It is four **named states** on the 84/84 matrix
@@ -41,6 +41,33 @@ All three are the client's own request — the "татах, илгээх" pair o
 screen, whose read half (`groupsNextYear`, 14) shipped with №3а and has been
 waiting for this. And all three send data this product **holds**: `Group`,
 its `schoolYearId`, its `ageBand`, and the teacher assigned to it.
+
+### 1.2 There is already a write path, and it is not this one
+
+`POST /kindergartens/:id/esis/write` exists and works:
+`EsisAdminService.write()` → a `switch` → `EsisService.saveStudentContacts()`
+and its siblings. It covers the child-record saves a teacher fills in,
+**including `studentStatisticsSave` (86) and `studentConditionSave` (71)** —
+the household and living-condition writes. So "there is nothing to send" is
+not true of household writes in general; it is true of **apiId 73**, which is
+a different service whose path nobody here has.
+
+That existing path is **pass-through**: the screen shows what ESIS sent, the
+family corrects it, and it goes back. Nothing is stored — the catalog says so
+(_"No column holds these yet"_), and `ESIS_REQUEST.md` §1.3's exclusion of
+"суралцагчийн өрхийн байдал" is why nothing should be. It sends immediately,
+with an audit row and no approval step, which is right for a field a teacher
+just typed and read back.
+
+★ **The group writes cannot use it.** Pass-through means the caller supplies
+the payload; §3 rejects that for these three, because a group write is built
+from `Group` rather than echoed, and because the thing being approved has to
+be the thing being sent. Two mechanisms, two arguments, and this spec does not
+touch the older one.
+
+★★ It also means the plan must not extend `esisWriteSchema`'s
+`ESIS_WRITE_RESOURCES`. Adding `groupCreate` there would put an unapproved,
+immediate group write behind a route a **teacher** can call.
 
 ---
 
