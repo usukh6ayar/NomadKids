@@ -26,7 +26,8 @@ import { get, mutate } from "@/lib/api/browser";
 import { rememberCsrfToken } from "@/lib/api/csrf";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
-import { BRAND } from "@/lib/vocabulary";
+import { BRAND_LATIN } from "@/lib/vocabulary";
+import { BrandWordmark } from "@/components/ui/brand-wordmark";
 
 const navigationItems = [
   { label: "Эхлэл", href: "#home" },
@@ -140,18 +141,25 @@ const landingFaqItems = [
 
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
-    <Link href="#home" className="inline-flex items-center gap-2" aria-label={`${BRAND} нүүр`}>
-      <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-control bg-white p-0.5 shadow-sm">
+    <Link
+      href="#home"
+      className="inline-flex items-center gap-2"
+      aria-label={`${BRAND_LATIN} нүүр`}
+    >
+      {/* The whole artwork, lettering included — see `app-shell.tsx`. The box is
+          square because the supplied file is, and `object-contain` keeps the
+          lettering under the drawing rather than cropping it away. */}
+      <span className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-control bg-white p-0.5 shadow-sm">
         <Image
-          src="/brand-mark.png"
+          src="/brand-logo.png"
           alt=""
-          width={40}
-          height={29}
-          className="w-full object-contain"
+          width={44}
+          height={44}
+          className="size-full object-contain"
         />
       </span>
       <span className="min-w-0">
-        <span className="block text-title font-extrabold leading-none text-[#123d73]">{BRAND}</span>
+        <BrandWordmark className="block text-title" />
         {!compact ? (
           <span className="mt-1 block text-caption font-medium text-slate-500">
             Хүүхдийн хөгжил, жаргалтай мөч бүр
@@ -580,7 +588,7 @@ export function PublicLanding() {
       <section id="features" className="px-5 py-16 sm:px-8 sm:py-20">
         <SectionHeading
           eyebrow="Бүтээгдэхүүн"
-          title={`${BRAND} гэж юу вэ?`}
+          title={`${BRAND_LATIN} гэж юу вэ?`}
           copy="Цэцэрлэг, сургуулийн өдөр тутмын үйл ажиллагааг хялбар, ил тод, үр дүнтэй болгох цогц веб систем."
         />
         <div className="mx-auto mt-9 grid max-w-[1100px] gap-4 md:grid-cols-3">
@@ -655,7 +663,7 @@ export function PublicLanding() {
 
       <section id="benefits" className="bg-[#fbfdff] px-5 py-16 sm:px-8 sm:py-20">
         <SectionHeading
-          eyebrow={`Яагаад ${BRAND}`}
+          eyebrow={`Яагаад ${BRAND_LATIN}`}
           title="Хүүхэд бүрд илүү сайн ирээдүй"
           copy="Жижиг өөрчлөлтүүд том боломжуудыг бүтээнэ."
         />
@@ -710,7 +718,7 @@ export function PublicLanding() {
               Өнөөдрөөс илүү ойр байцгаая
             </h2>
             <p className="mt-3 text-body leading-6 text-slate-600">
-              {BRAND} системд нэгдэж, хүүхэд бүрийн гэрэлт ирээдүйг хамтдаа бүтээлцээрэй.
+              {BRAND_LATIN} системд нэгдэж, хүүхэд бүрийн гэрэлт ирээдүйг хамтдаа бүтээлцээрэй.
             </p>
             <a
               href="#login-card"
@@ -745,7 +753,7 @@ export function PublicLanding() {
           </nav>
         </div>
         <div className="mx-auto mt-7 flex max-w-[1180px] flex-col items-center justify-between gap-2 border-t border-[#edf2f7] pt-5 text-caption text-slate-400 sm:flex-row">
-          <span>© 2026 {BRAND}. Бүх эрх хуулиар хамгаалагдсан.</span>
+          <span>© 2026 {BRAND_LATIN}. Бүх эрх хуулиар хамгаалагдсан.</span>
           <span>Хүүхэд бүрийн гэрэлт ирээдүйн төлөө.</span>
         </div>
       </footer>

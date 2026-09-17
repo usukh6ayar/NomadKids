@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   renderWithProviders,
+  mockSearchParams,
   ROUTER,
   selectOption,
   sessionFor,
@@ -974,6 +975,64 @@ describe("Шинэ ажиглалт — зураг", () => {
     expect((form.getAll("file") as File[]).map((f) => f.name)).toEqual(["a.png", "b.png"]);
   });
 
+  it("tags a Бүтээл photo so it appears in the progress timeline", async () => {
+    const user = userEvent.setup();
+    setSearchParams(`typeId=${ARTWORK_TYPE}`);
+    const { calls } = stubApi(savingRoutes());
+
+    renderWithProviders(<NewObservationPage />);
+    const type = await screen.findByRole("combobox", { name: /^Төрөл/ });
+    await user.click(type);
+    await user.click(await screen.findByRole("option", { name: "Наамал" }));
+    await user.upload(screen.getByLabelText("Нэмэх"), [photo("naamal.png")]);
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+
+    const upload = await waitFor(() => {
+      const found = calls.find((c) => c.url.endsWith("/media") && c.method === "POST");
+      expect(found).toBeTruthy();
+      return found!;
+    });
+    expect((upload.body as FormData).get("category")).toBe("ARTWORK");
+  });
+
+  it("opens the next artwork with its type preselected and returns to the progress sequence", async () => {
+    const user = userEvent.setup();
+    const query = new URLSearchParams({
+      type: "artwork",
+      activityName: "Наамал",
+      returnTo: "progress",
+    });
+    setSearchParams(query.toString());
+    expect(mockSearchParams.get("activityName")).toBe("Наамал");
+    const { calls } = stubApi(savingRoutes());
+
+    renderWithProviders(<NewObservationPage />);
+
+    /*
+      ★ `toHaveTextContent`, not `toHaveValue`. `Select` is Radix, so the
+      element carrying `role="combobox"` is the trigger button, which has no
+      `value` at all — the assertion read empty however well the screen worked.
+      The trigger shows the chosen item's own label, so an unfilled type still
+      fails this: the placeholder says "Сонгоно уу". `survey-wizard.test.tsx`
+      asserts the same thing the same way.
+    */
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: /^Төрөл/ })).toHaveTextContent("Наамал"),
+    );
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+
+    await waitFor(() => {
+      const request = calls.find(
+        (call) => call.url === `/children/${CHILD}/observations` && call.method === "POST",
+      );
+      expect(request).toBeTruthy();
+      expect(request?.body).toMatchObject({ typeId: ARTWORK_TYPE, activityName: "Наамал" });
+    });
+    expect(ROUTER.replace).toHaveBeenCalledWith(
+      `/children/${CHILD}/observations?type=artwork&panel=progress`,
+    );
+  });
+
   /** The note, then the photograph — never the other way round. */
   it("does not upload before the observation exists", async () => {
     const user = userEvent.setup();
@@ -1062,6 +1121,20 @@ describe("Шинэ ажиглалт — зураг", () => {
   which is what left "Сургалтын чиглэлийн хамралт" counting almost nothing.
 */
 describe("Бүтээл — сургалтын чиглэл автоматаар", () => {
+  it("uses Төрөл and the fixed artwork vocabulary only for Бүтээл", async () => {
+    const user = userEvent.setup();
+    setSearchParams(`typeId=${ARTWORK_TYPE}`);
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    const type = await screen.findByRole("combobox", { name: /^Төрөл/ });
+    expect(screen.queryByLabelText("Үйл ажиллагааны төрөл")).not.toBeInTheDocument();
+    await user.click(type);
+    expect(await screen.findByRole("option", { name: "Наамал" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Холимог техникээр бүтээх" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Өглөөний дасгал" })).not.toBeInTheDocument();
+  });
+
   /*
     `waitFor`, not `findBy`: the trigger exists on the first paint and reads
     "Сонгоно уу" until `assessment-config` answers — a `findBy` would resolve

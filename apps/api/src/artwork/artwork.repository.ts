@@ -18,6 +18,13 @@ export class ArtworkRepository {
       takenAt: true,
       uploadedAt: true,
       originalName: true,
+      observation: {
+        select: {
+          activityName: true,
+          observedOn: true,
+          type: { select: { code: true } },
+        },
+      },
     },
   };
 
@@ -47,7 +54,7 @@ export class ArtworkRepository {
         childId,
         deletedAt: null,
         status: "READY",
-        category: "ARTWORK",
+        OR: [{ category: "ARTWORK" }, { observation: { is: { type: { code: "artwork" } } } }],
       },
       orderBy: [{ takenAt: { sort: "asc", nulls: "last" } }, { uploadedAt: "asc" }],
       select: {
@@ -57,6 +64,13 @@ export class ArtworkRepository {
         uploadedAt: true,
         originalName: true,
         observationId: true,
+        observation: {
+          select: {
+            activityName: true,
+            observedOn: true,
+            type: { select: { code: true } },
+          },
+        },
       },
     });
   }
@@ -72,8 +86,20 @@ export class ArtworkRepository {
   /** The two photographs, checked to belong to this child before pairing. */
   async findMediaForComparison(childId: string, ids: string[]) {
     return this.prisma.mediaFile.findMany({
-      where: { id: { in: ids }, childId, deletedAt: null, status: "READY" },
-      select: { id: true, takenAt: true, uploadedAt: true, category: true },
+      where: {
+        id: { in: ids },
+        childId,
+        deletedAt: null,
+        status: "READY",
+        OR: [{ category: "ARTWORK" }, { observation: { is: { type: { code: "artwork" } } } }],
+      },
+      select: {
+        id: true,
+        takenAt: true,
+        uploadedAt: true,
+        category: true,
+        observation: { select: { activityName: true, observedOn: true } },
+      },
     });
   }
 

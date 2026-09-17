@@ -937,6 +937,111 @@ describe("notice photos", () => {
     // Sniffed from content, not trusted from the extension — §1.6.
     expect(res.status).toBe(400);
   });
+
+  // ── Removing one — 2026-09-16 ───────────────────────────────────────────
+
+  /**
+   * The client asked that a picture on a notice can be swapped for another,
+   * which the screen could not do: `POST …/media` existed and nothing undid
+   * it, so the edit form carried a line of copy apologising for it.
+   */
+  describe("removing a photo", () => {
+    it("the author can remove one, and it stops being fetchable", async () => {
+      const id = await notify([{ groupId: a.group.id }], { as: teacherA });
+      const attached = await attach(id, teacherA);
+
+      const res = await authed(
+        request(server()).delete(`/v1/notifications/${id}/media/${attached.body.id}`),
+        teacherA,
+      );
+
+      expect(res.status).toBe(200);
+
+      const gone = await request(server())
+        .get(`/v1/media/${attached.body.id}`)
+        .set("Cookie", parentA.cookies)
+        .redirects(0);
+      expect(gone.status).toBe(404);
+    });
+
+    /**
+     * ★ Not even an administrator — 2026-09-17, at the client's request that
+     * a notice is its author's alone ("өөрийн оруулсан мэдээгээ л засаж
+     * устгаж болно"). This case asserted the opposite until that day.
+     */
+    it("an admin cannot remove a photo from a teacher's notice", async () => {
+      const id = await notify([{ groupId: a.group.id }], { as: teacherA });
+      const attached = await attach(id, teacherA);
+
+      const res = await authed(
+        request(server()).delete(`/v1/notifications/${id}/media/${attached.body.id}`),
+        adminA,
+      );
+
+      expect(res.status).toBe(404);
+      const row = await testDb().mediaFile.findUnique({ where: { id: attached.body.id } });
+      expect(row?.deletedAt).toBeNull();
+    });
+
+    it("another teacher in the same kindergarten gets 404", async () => {
+      const user = await createUser({ username: uniq("teacher-a3") });
+      await createMembership(user.id, a.kindergarten.id, "TEACHER");
+      const otherTeacher = await login(app, user.username);
+
+      const id = await notify([{ groupId: a.group.id }], { as: teacherA });
+      const attached = await attach(id, teacherA);
+
+      const res = await authed(
+        request(server()).delete(`/v1/notifications/${id}/media/${attached.body.id}`),
+        otherTeacher,
+      );
+
+      expect(res.status).toBe(404);
+      const row = await testDb().mediaFile.findUnique({ where: { id: attached.body.id } });
+      expect(row?.deletedAt).toBeNull();
+    });
+
+    it("a teacher from another kindergarten gets 404", async () => {
+      const teacherB = await login(app, b.teacherUser.username);
+      const id = await notify([{ groupId: a.group.id }], { as: teacherA });
+      const attached = await attach(id, teacherA);
+
+      const res = await authed(
+        request(server()).delete(`/v1/notifications/${id}/media/${attached.body.id}`),
+        teacherB,
+      );
+
+      expect([403, 404]).toContain(res.status);
+    });
+
+    it("a guardian gets 404", async () => {
+      const id = await notify([{ groupId: a.group.id }], { as: teacherA });
+      const attached = await attach(id, teacherA);
+
+      const res = await authed(
+        request(server()).delete(`/v1/notifications/${id}/media/${attached.body.id}`),
+        parentA,
+      );
+
+      expect([403, 404]).toContain(res.status);
+    });
+
+    /** A media id from another notice must not be reachable through this one. */
+    it("refuses a photo that belongs to a different notice", async () => {
+      const mine = await notify([{ groupId: a.group.id }], { as: teacherA });
+      const other = await notify([{ groupId: a.group.id }], { as: teacherA });
+      const attached = await attach(other, teacherA);
+
+      const res = await authed(
+        request(server()).delete(`/v1/notifications/${mine}/media/${attached.body.id}`),
+        teacherA,
+      );
+
+      expect(res.status).toBe(404);
+      const row = await testDb().mediaFile.findUnique({ where: { id: attached.body.id } });
+      expect(row?.deletedAt).toBeNull();
+    });
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -989,6 +1094,46 @@ describe("post ownership", () => {
     expect(res.status).toBe(404);
     const row = await testDb().notification.findUnique({ where: { id } });
     expect(row?.deletedAt).toBeNull();
+  });
+
+  /**
+   * ★ An administrator is bound by authorship too — 2026-09-17, the client:
+   * "удирдлага ... өөрийн оруулсан мэдээгээ л засаж устгаж болно."
+   *
+   * The 2026-08-30 rule above left the administrative permission untouched on
+   * purpose, and this is the note that narrows it. A director writes their own
+   * notices and edits those; a teacher's post is the teacher's.
+   */
+  it("refuses an admin editing a teacher's post", async () => {
+    const id = await notify([{ groupId: a.group.id }], { as: teacherA, publish: false });
+
+    const res = await authed(request(server()).patch(`/v1/notifications/${id}`), adminA).send({
+      body: "Захирал өөрчиллөө",
+    });
+
+    expect(res.status).toBe(404);
+    const row = await testDb().notification.findUnique({ where: { id } });
+    expect(row?.body).not.toBe("Захирал өөрчиллөө");
+  });
+
+  it("refuses an admin deleting a teacher's post", async () => {
+    const id = await notify([{ groupId: a.group.id }], { as: teacherA });
+
+    const res = await authed(request(server()).delete(`/v1/notifications/${id}`), adminA);
+
+    expect(res.status).toBe(404);
+    const row = await testDb().notification.findUnique({ where: { id } });
+    expect(row?.deletedAt).toBeNull();
+  });
+
+  it("lets an admin edit their own post", async () => {
+    const id = await notify([{ groupId: a.group.id }], { as: adminA, publish: false });
+
+    const res = await authed(request(server()).patch(`/v1/notifications/${id}`), adminA).send({
+      body: "Захирлын өөрийн мэдээ",
+    });
+
+    expect(res.status).toBe(200);
   });
 
   it("refuses a teacher editing another teacher's post", async () => {

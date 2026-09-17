@@ -13,7 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
-import { MEAL_KIND_LABEL, type MealKind, type MenuDish } from "@kinder/contracts";
+import { MEAL_KIND_LABEL, mealKindSchema, type MealKind, type MenuDish } from "@kinder/contracts";
 import type { EsisFoodProduct } from "@/components/esis/use-esis-food-products";
 import { MediaThumb } from "@/components/media/media-image";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
@@ -56,14 +56,15 @@ import { cn } from "@/lib/utils";
  * on every dish, `saveMenuDaySchema` has always accepted it, and no screen
  * had ever rendered a field for it.
  */
-export const MEAL_KIND_ORDER: MealKind[] = [
-  "BREAKFAST",
-  "SNACK",
-  "MID_MORNING_SNACK",
-  "LUNCH",
-  "AFTERNOON_SNACK",
-  "EXTRA",
-];
+/**
+ * ★ The day's order, and it now comes from one place — 2026-09-16.
+ *
+ * `mealKindSchema` declares the six sittings in the sequence they are served
+ * (Өглөөний хоол → Их үдийн цай) and `MEAL_KIND_LABEL` names them in it, so
+ * this is that order rather than a second hand-written copy of it that a
+ * rename can leave behind.
+ */
+export const MEAL_KIND_ORDER: MealKind[] = [...mealKindSchema.options];
 
 export interface DishDraft {
   /** Stable per-row identity for React's reconciliation — removing a middle

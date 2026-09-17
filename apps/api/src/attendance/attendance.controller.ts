@@ -2,6 +2,7 @@ import type { Response } from "express";
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -23,6 +24,9 @@ import { RateLimit, RateLimitGuard } from "../common/rate-limit/rate-limit.guard
 import { MAX_PDF_BYTES } from "../media/upload-validation";
 import { AttendanceService } from "./attendance.service";
 import {
+  calendarDayParamsSchema,
+  calendarDaySchema,
+  calendarRangeSchema,
   createAttendanceRequestSchema,
   dateParamSchema,
   groupDaySheetQuerySchema,
@@ -34,6 +38,8 @@ import {
   submitAttendanceSchema,
   recordPickupSchema,
   reviewAttendanceRequestSchema,
+  type CalendarDayDto,
+  type CalendarRangeQuery,
   type CreateAttendanceRequestDto,
   type DateParam,
   type GroupDaySheetQuery,
@@ -176,6 +182,45 @@ export class KindergartenAttendanceController {
     @Query(new ZodValidationPipe(attendanceRegisterQuerySchema)) query: AttendanceRegisterQuery,
   ) {
     return this.service.register(actor, params.id, query);
+  }
+
+  /**
+   * The working-week exceptions — public holidays, closures, and the make-up
+   * Saturdays announced by resolution.
+   *
+   * ★ Read by anyone who may read the register, written by an administrator.
+   * A date added here changes every figure on the daily screen and every
+   * funding calculation that counts attendance days, which is why it is a
+   * setting rather than something a teacher can toggle from a register.
+   */
+  @Get("calendar")
+  @Roles("ADMIN", "ACCOUNTANT")
+  async calendar(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(calendarRangeSchema)) query: CalendarRangeQuery,
+  ) {
+    return this.service.listCalendarDays(actor, params.id, query);
+  }
+
+  @Post("calendar")
+  @Roles("ADMIN")
+  async saveCalendarDay(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(calendarDaySchema)) body: CalendarDayDto,
+  ) {
+    return this.service.saveCalendarDay(actor, params.id, body);
+  }
+
+  @Delete("calendar/:date")
+  @Roles("ADMIN")
+  async removeCalendarDay(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(calendarDayParamsSchema))
+    params: { id: string; date: string },
+  ) {
+    return this.service.removeCalendarDay(actor, params.id, params.date);
   }
 
   /**

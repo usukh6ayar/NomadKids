@@ -22,7 +22,6 @@ import {
 } from "@/components/admin/dashboard-sections";
 import { ToggleActiveButton } from "@/components/admin/toggle-kindergarten-active";
 import { Badge } from "@/components/ui/badge";
-import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
@@ -85,9 +84,8 @@ function KindergartenDetail() {
 
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
-      <BackButton href="/platform" className="ml-0" />
-
       <PageHeader
+        backHref="/platform"
         title={kg.name}
         actions={
           <span className="flex items-center gap-2">

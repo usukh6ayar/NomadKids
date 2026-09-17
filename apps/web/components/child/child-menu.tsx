@@ -118,7 +118,7 @@ function groupByKind(dishes: MenuDish[]): Partial<Record<MealKind, MenuDish[]>> 
  * git history for the original reasoning (this replaced seven always-open
  * `DayCard`s with the compact grid `AttendanceCalendar` already used).
  *
- * ★★★ Dishes group into sitting cards (Өглөөний цай / Үдийн хоол / …), each
+ * ★★★ Dishes group into sitting cards (Өглөөний хоол / Үндсэн хоол / …), each
  * with its own allergy badge and calorie/portion totals — 2026-08-28, once
  * `MenuDish` carried a `kind`, `calories` and `portions` of its own. Before
  * this, a day was one flat list with a single whole-day calorie figure typed

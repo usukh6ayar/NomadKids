@@ -338,34 +338,40 @@ export class NotificationsService {
 
   // ── internals ─────────────────────────────────────────────────────────────
 
-  /** Staff in the notice's kindergarten. Any of them may edit; §8.1 is a shared queue. */
   /**
-   * The notice, if this actor may change it.
+   * The notice, if this actor may change it — **its author, and nobody else**.
    *
    * ★ It now checks what its name always claimed.
    *
    * Until 2026-08-30 this asserted only that the actor was staff of the
-   * notice's kindergarten — so **any teacher could edit any other teacher's
-   * post**, and every caller (`update`, `publish`, `remove`) inherited that.
-   * The name said "owned" and the body did not check it; found while adding
-   * delete, which the client asked to scope to a teacher's own posts.
+   * notice's kindergarten — so any teacher could edit any other teacher's
+   * post, and every caller (`update`, `publish`, `remove`) inherited that. The
+   * name said "owned" and the body did not check it.
    *
-   * The rule, as the client stated it:
+   * ★★ The administrator's exemption is gone — 2026-09-17, at the client's
+   * request: "удирдлага ... өөрийн оруулсан мэдээгээ л засаж устгаж болно."
    *
-   *   - a **teacher** may change their own notice and nobody else's
-   *   - an **admin** may change any notice in their kindergarten, which is the
-   *     existing administrative permission and is not being narrowed here
+   * It stood from 2026-08-30 as "the existing administrative permission, not
+   * being narrowed here", and the client has now narrowed it. Authorship is
+   * the whole rule for a notice: whoever wrote it may change or withdraw it,
+   * and everyone else — a teacher, a director, the person who hired them —
+   * reads it and answers 404 to anything else.
    *
-   * 404 rather than 403 — §1.7. A teacher who cannot touch another teacher's
-   * post should not learn from the status code that it exists.
+   * ★★★ What that costs, so nobody re-adds the exemption by accident: a
+   * director can no longer withdraw a post a teacher should not have made.
+   * The author can, and the audit log records every edit and delete with its
+   * actor; if moderation is ever wanted it belongs in a named endpoint that
+   * says so — not in a silent "and admins too" on the ordinary edit path.
+   *
+   * 404 rather than 403 — §1.7. Somebody who may not touch a post should not
+   * learn from the status code that it exists.
    */
   private async requireStaffOwned(actor: Actor, id: string) {
     const row = await this.repo.findForAuthorization(id);
     if (!row) throw new NotFoundException();
     this.tenants.assertStaff(actor, row.kindergartenId);
 
-    const isAdmin = this.tenants.isAdmin(actor, row.kindergartenId);
-    if (!isAdmin && row.authorId !== actor.userId) throw new NotFoundException();
+    if (row.authorId !== actor.userId) throw new NotFoundException();
 
     return row;
   }

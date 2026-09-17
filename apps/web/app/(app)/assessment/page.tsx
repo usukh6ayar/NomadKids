@@ -46,7 +46,7 @@ function AssessmentLanding() {
   if (groups.isError) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title="Явцын үнэлгээ" />
+        <PageHeader title="Явцын үнэлгээ" backHref="/dashboard" />
         <ErrorState description={errorMessage(groups.error)} />
       </div>
     );
@@ -55,7 +55,7 @@ function AssessmentLanding() {
   if (groups.data && groups.data.items.length === 0) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title="Явцын үнэлгээ" />
+        <PageHeader title="Явцын үнэлгээ" backHref="/dashboard" />
         <EmptyState
           title="Бүлэг байхгүй байна"
           description="Үнэлгээ хийхийн өмнө бүлэг үүсгэх шаардлагатай."

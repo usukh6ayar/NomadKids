@@ -469,7 +469,18 @@ describe("term reports", () => {
     expect(res.body.strengths).toBeNull();
   });
 
-  it("a guardian CAN read it once finalised", async () => {
+  /**
+   * ★ **Not once it is finalised either — the client, 2026-09-14.**
+   *
+   * "Удирдлага бичсэнг харна, эцэг эх харахгүй." A term report is the
+   * teacher's professional judgement, written for the kindergarten's own
+   * record and read by the office. What a family reads is the portfolio, the
+   * notes marked visible and the assessments released to them.
+   *
+   * The answer is the one an unwritten report gives, so it cannot be read as
+   * "one exists and is being kept from you".
+   */
+  it("★ a guardian CANNOT read it once finalised", async () => {
     await writeReport();
     await authed(
       request(server()).post(`/v1/children/${a.child.id}/term-report/finalize`),
@@ -480,7 +491,22 @@ describe("term reports", () => {
       .get(`/v1/children/${a.child.id}/term-report?termId=${termId}`)
       .set("Cookie", parentA.cookies);
 
-    expect(res.body.status).toBe("FINAL");
+    expect(res.status).toBe(200);
+    expect(res.body.exists).toBe(false);
+    expect(res.body.status).toBeNull();
+    expect(res.body.strengths).toBeNull();
+    expect(res.body.adviceForParents).toBeNull();
+  });
+
+  it("an administrator reads what the teacher wrote", async () => {
+    await writeReport();
+
+    const res = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/term-report?termId=${termId}`),
+      adminA,
+    );
+
+    expect(res.status).toBe(200);
     expect(res.body.strengths).toBe("Хамтран ажиллах чадвартай");
   });
 

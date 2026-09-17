@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { Prisma } from "../generated/prisma/client";
-import type { InvoiceStatus } from "../domain/enums";
+import type { InvoiceLineType, InvoiceStatus } from "../domain/enums";
 import { anyOf, searchRelation, searchWhere } from "../common/repository/search";
 import { isPastDue } from "./invoice-math";
 
@@ -102,7 +102,14 @@ export class InvoicesRepository {
 
   async listInvoices(
     kindergartenId: string,
-    filters: { month?: Date; childId?: string; status?: InvoiceStatus; q?: string },
+    filters: {
+      month?: Date;
+      childId?: string;
+      groupId?: string;
+      lineType?: string;
+      status?: InvoiceStatus;
+      q?: string;
+    },
     page: { skip: number; take: number },
   ) {
     const where: Prisma.InvoiceWhereInput = {
@@ -110,6 +117,22 @@ export class InvoicesRepository {
       deletedAt: null,
       ...(filters.month ? { month: filters.month } : {}),
       ...(filters.childId ? { childId: filters.childId } : {}),
+      /*
+        The active enrolment, which is the one the row's group column shows —
+        history would match a child who has since moved class.
+      */
+      ...(filters.groupId
+        ? {
+            child: {
+              enrollments: {
+                some: { groupId: filters.groupId, status: "ACTIVE", deletedAt: null },
+              },
+            },
+          }
+        : {}),
+      ...(filters.lineType
+        ? { lineItems: { some: { type: filters.lineType as InvoiceLineType } } }
+        : {}),
       ...(filters.status ? { status: filters.status } : {}),
       /*
        * ★ The invoice number and the child it belongs to.
@@ -130,12 +153,69 @@ export class InvoicesRepository {
         orderBy: [{ month: "desc" }, { child: { lastName: "asc" } }],
         skip: page.skip,
         take: page.take,
-        include: { child: { select: CHILD_SELECT } },
+        /*
+          ★ The child's current group rides along — 2026-09-17, for the
+          accountant's register, which the client's design lists by class.
+
+          One enrolment, the active one, selected here rather than fetched per
+          row on the screen: twenty-five invoices would otherwise be
+          twenty-five requests for a column (§3.4). `take: 1` because a child
+          has one live enrolment; the ordering makes "which one" deterministic
+          if history ever produces two.
+        */
+        include: {
+          child: {
+            select: {
+              ...CHILD_SELECT,
+              enrollments: {
+                where: { status: "ACTIVE", deletedAt: null },
+                orderBy: { startedOn: "desc" },
+                take: 1,
+                select: { group: { select: { id: true, name: true } } },
+              },
+            },
+          },
+        },
       }),
       this.prisma.invoice.count({ where }),
     ]);
 
     return { items, total };
+  }
+
+  /**
+   * The month's invoices counted and summed by status — the four figures at
+   * the head of the accountant's register.
+   *
+   * ★ Two aggregates, not a page of rows.
+   *
+   * The screen shows 25 invoices and states totals over all 126; computing
+   * those from what is on screen is the mistake the funding register records
+   * making once. `groupBy` answers both the count and the sum in one pass, so
+   * the tiles and the tabs cannot disagree with each other.
+   */
+  async summariseInvoices(kindergartenId: string, month?: Date) {
+    const where: Prisma.InvoiceWhereInput = {
+      kindergartenId,
+      deletedAt: null,
+      ...(month ? { month } : {}),
+    };
+
+    const [byStatus, all] = await Promise.all([
+      this.prisma.invoice.groupBy({
+        by: ["status"],
+        where,
+        _count: { _all: true },
+        _sum: { totalDue: true, balance: true },
+      }),
+      this.prisma.invoice.aggregate({
+        where,
+        _count: { _all: true },
+        _sum: { totalDue: true, balance: true },
+      }),
+    ]);
+
+    return { byStatus, all };
   }
 
   /**

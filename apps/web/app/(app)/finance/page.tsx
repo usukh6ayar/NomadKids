@@ -23,7 +23,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Disclosure } from "@/components/ui/disclosure";
-import { Field, Input, Select } from "@/components/ui/field";
+import { Field, Select } from "@/components/ui/field";
+import { MonthSelect } from "@/components/ui/month-select";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { FinanceDashboardPanel } from "@/components/finance/finance-dashboard";
@@ -198,13 +199,7 @@ function Finance() {
             </Button>
             <Field label="Сар">
               {({ id }) => (
-                <Input
-                  id={id}
-                  type="month"
-                  value={month}
-                  onChange={(event) => setMonth(event.target.value)}
-                  className="w-[170px]"
-                />
+                <MonthSelect id={id} value={month} onValueChange={setMonth} className="w-[170px]" />
               )}
             </Field>
             {/*

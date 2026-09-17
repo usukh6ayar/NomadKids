@@ -50,6 +50,17 @@ export type GenerateInvoiceDto = z.infer<typeof generateInvoiceSchema>;
 export const listInvoicesQuerySchema = z.object({
   month: isoMonth.optional(),
   childId: uuidSchema.optional(),
+  /**
+   * The child's current class — 2026-09-17, for the accountant's register,
+   * which the client's design filters by group.
+   *
+   * ★ Matched against the **active** enrolment, the same one the row's own
+   * group column is read from. Filtering on enrolment history would return a
+   * child who left the group in October for a November invoice.
+   */
+  groupId: uuidSchema.optional(),
+  /** Invoices carrying at least one line of this type — the design's "Бүх төлбөрийн төрөл". */
+  lineType: invoiceLineTypeSchema.optional(),
   status: z.enum(["UNPAID", "PARTIALLY_PAID", "PAID", "OVERDUE", "REFUNDED"]).optional(),
   /** А/261 шалгуур 21 — added 2026-09-05 with the rest of the sweep. */
   q: searchTermSchema,
@@ -57,6 +68,9 @@ export const listInvoicesQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
 export type ListInvoicesQuery = z.infer<typeof listInvoicesQuerySchema>;
+
+/** `GET …/invoices/summary?month=` — the register's four figures. */
+export const invoiceSummaryQuerySchema = z.object({ month: isoMonth.optional() });
 
 /** Correcting an unpaid invoice's note or due date — never its charges once issued. */
 export const updateInvoiceSchema = z

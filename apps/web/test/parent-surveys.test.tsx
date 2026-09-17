@@ -9,6 +9,7 @@ import {
   stubApi,
 } from "./support/render";
 import ChildSurveysPage from "@/app/(app)/children/[childId]/surveys/page";
+import SurveyDetailPage from "@/app/(app)/children/[childId]/surveys/[surveyId]/page";
 
 /**
  * Эцэг эхийн судалгаанууд — a guardian's own list for one child.
@@ -129,7 +130,17 @@ describe("эцэг эхийн судалгааны жагсаалт", () => {
     expect(row).toHaveTextContent("2 асуулт");
   });
 
-  it("links only the survey that can still be answered", async () => {
+  /**
+   * ★ Every row is a link now, whatever its state — the client, 2026-09-17:
+   * "Хариулсан статустай хэсгийг сонгоход доошоо дэлгэгддэг цэс харагдаж
+   * байгааг болиулна ... дарсан даруйд дэлгэрэнгүй эсвэл хариулсан үр дүнгийн
+   * хуудас руу шилжинэ."
+   *
+   * What this replaces is a list with three behaviours in it: an unanswered
+   * row was a link, an answered one unfolded a panel, and a closed one did
+   * nothing at all. One of the three had to be discovered by pressing.
+   */
+  it("links every survey, answered or not", async () => {
     stub();
     renderWithProviders(<ChildSurveysPage />);
 
@@ -137,139 +148,74 @@ describe("эцэг эхийн судалгааны жагсаалт", () => {
       "href",
       `/children/${CHILD}/surveys/${OPEN_POLL.id}`,
     );
-    // An answered one has no form to return to — it opens instead.
-    expect(
-      screen.queryByRole("link", { name: new RegExp(ANSWERED.title) }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: new RegExp(ANSWERED.title) })).toHaveAttribute(
+      "href",
+      `/children/${CHILD}/surveys/${ANSWERED.id}`,
+    );
   });
 
-  /*
-    ★ The change the client asked for by name: "хариулсан хариултууд харагддаг
-    баймаар байна." The row used to be inert.
-  */
-  it("★ opens an answered survey onto the family's own answers", async () => {
-    const user = userEvent.setup();
+  /**
+   * ★ Flat, not folded — the client, 2026-09-17: "хариулсан байдал ил
+   * харагдах ... дарахад харагддаг биш".
+   *
+   * The toggle is gone and so is the panel it opened; what it used to hold is
+   * drawn on the card instead, so the answer is readable without a press and
+   * the press is reserved for going to the survey itself.
+   */
+  it("shows an answered survey's answer without a press", async () => {
     stub();
     renderWithProviders(<ChildSurveysPage />);
 
-    const toggle = await screen.findByRole("button", { name: new RegExp(ANSWERED.title) });
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    await user.click(toggle);
+    await screen.findByText(ANSWERED.title);
 
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText(`1. ${RATING_Q.prompt}`)).toBeInTheDocument();
-    // A rating reads as the score they chose, not as the teacher's band word.
+    expect(screen.queryByRole("button", { name: new RegExp(ANSWERED.title) })).toBeNull();
+    expect(document.getElementById(`survey-answers-${ANSWERED.id}`)).toBeNull();
+
+    // The rating they chose, on the card, with no interaction at all.
     expect(screen.getByText("4 / 5")).toBeInTheDocument();
-    expect(screen.queryByText("Сайн")).not.toBeInTheDocument();
+    // And the question it answers, in one line rather than a stacked panel.
+    expect(screen.getByText(RATING_Q.prompt)).toBeInTheDocument();
+  });
 
-    /*
-      Every question, including the one they skipped — a questionnaire read back
-      with its blanks dropped is a different questionnaire.
-    */
-    expect(screen.getByText(`2. ${TEXT_Q.prompt}`)).toBeInTheDocument();
+  /**
+   * ★ The list asks for no tally.
+   *
+   * It never did — a form's aggregate is the teacher's (§1.7) — and now that
+   * nothing expands, a poll's shares are not this screen's either. They are
+   * drawn where the row leads: `poll-answer.test.tsx` holds them.
+   */
+  it("fetches no tally for a list", async () => {
+    const { calls } = stub();
+    renderWithProviders(<ChildSurveysPage />);
 
-    /*
-      Scoped to the panel: "Хариулаагүй" is also the state word on the open
-      poll's own row, and an unscoped query cannot say which one it found.
-    */
-    const panel = within(document.getElementById(`survey-answers-${ANSWERED.id}`)!);
-    expect(panel.getByText("Хариулаагүй")).toBeInTheDocument();
+    await screen.findByText(ANSWERED.title);
+    expect(calls.some((call) => call.url.includes("/tally"))).toBe(false);
   });
 });
 
-/*
-  ★ 2026-09-13, at the client's request: "эцэг эх дээр миний судалгааны
-  асуулгын бусад хүмүүсийн хариулсан хувь болон өөрийн хариулт харагд."
-
-  An answered асуулга opens onto the same bars the voting screen draws — every
-  choice with its share, and the family's own marked. A questionnaire does not:
-  `/tally` answers a poll and 404s a form, because a poll's running count is
-  what a poll is and a form's aggregate is the teacher's (§1.7).
-*/
-describe("асуулгын хувь", () => {
-  const ANSWERED_POLL = {
-    ...OPEN_POLL,
-    id: "44444444-4444-4444-8444-444444444444",
-    title: "Ангийн хурлын цаг",
-    respondedByMe: true,
-    myAnswers: [{ questionId: CHOICE_Q.id, value: "Ботаник" }],
-  };
-
-  const TALLY = {
-    surveyId: ANSWERED_POLL.id,
-    respondedByMe: true,
-    questions: [
-      {
-        questionId: CHOICE_Q.id,
-        prompt: CHOICE_Q.prompt,
-        type: "SINGLE_CHOICE",
-        totalResponses: 8,
-        options: [
-          { label: "Ботаник", count: 6 },
-          { label: "Үзэсгэлэн", count: 2 },
-        ],
-        myAnswer: "Ботаник",
-      },
-    ],
-  };
-
-  function stubPoll(tally: Record<string, unknown> | null = TALLY, status = 200) {
-    return stubApi([
-      { path: "/auth/me", body: sessionFor(["PARENT"]) },
-      // Before `/children/:id/surveys`, which is its own prefix.
-      {
-        path: `/children/${CHILD}/surveys/${ANSWERED_POLL.id}/tally`,
-        body: tally,
-        status,
-      },
-      { path: `/children/${CHILD}/surveys`, body: [ANSWERED_POLL] },
-      { path: `/children/${CHILD}`, body: CHILD_DETAIL },
-    ]);
-  }
-
-  it("★ shows every share and marks the family's own choice", async () => {
-    const user = userEvent.setup();
-    stubPoll();
-    renderWithProviders(<ChildSurveysPage />);
-
-    await user.click(await screen.findByRole("button", { name: new RegExp(ANSWERED_POLL.title) }));
-
-    const panel = within(document.getElementById(`survey-answers-${ANSWERED_POLL.id}`)!);
-
-    // 6 of 8 and 2 of 8 — the shares are of who answered, not of the class.
-    expect(await panel.findByText("75%")).toBeInTheDocument();
-    expect(panel.getByText("25%")).toBeInTheDocument();
-    // Twice by design — once on the row, once in the row's `sr-only` sentence.
-    expect(panel.getAllByText(/таны сонголт/).length).toBeGreaterThan(0);
-    expect(panel.getByText("8 хүн хариулсан")).toBeInTheDocument();
-  });
-
-  /*
-    A tally this family may not read is not worth a red panel — their own
-    answers still are, and that is the fallback.
-  */
-  it("falls back to the family's own answer when the tally is refused", async () => {
-    const user = userEvent.setup();
-    stubPoll(null, 404);
-    renderWithProviders(<ChildSurveysPage />);
-
-    await user.click(await screen.findByRole("button", { name: new RegExp(ANSWERED_POLL.title) }));
-
-    const panel = within(document.getElementById(`survey-answers-${ANSWERED_POLL.id}`)!);
-    expect(await panel.findByText(`1. ${CHOICE_Q.prompt}`)).toBeInTheDocument();
-    expect(panel.getByText("Ботаник")).toBeInTheDocument();
-  });
-
-  /* A questionnaire asks for no tally at all — its aggregate is the teacher's. */
-  it("★ never asks for a questionnaire's tally", async () => {
-    const user = userEvent.setup();
-    const { calls } = stub([ANSWERED]);
-    renderWithProviders(<ChildSurveysPage />);
-
-    await user.click(await screen.findByRole("button", { name: new RegExp(ANSWERED.title) }));
+/**
+ * Where an answered row now leads.
+ *
+ * ★ A questionnaire reads back rather than asking again. Following the link
+ * onto a blank form would offer the questions a second time and the API would
+ * refuse the answers — which is why this case lives beside the list that sends
+ * a family here.
+ */
+describe("хариулсан судалгааны хуудас", () => {
+  it("reads the family's own answers back", async () => {
+    setParams({ childId: CHILD, surveyId: ANSWERED.id });
+    stub();
+    renderWithProviders(<SurveyDetailPage />);
 
     expect(await screen.findByText(`1. ${RATING_Q.prompt}`)).toBeInTheDocument();
-    expect(calls.some((call) => call.url.includes("/tally"))).toBe(false);
+    // The score they chose, not the teacher's band word.
+    expect(screen.getByText("4 / 5")).toBeInTheDocument();
+    // Every question, including the one they skipped — a questionnaire read
+    // back with its blanks dropped is a different questionnaire.
+    expect(screen.getByText(`2. ${TEXT_Q.prompt}`)).toBeInTheDocument();
+    expect(screen.getByText("Хариулаагүй")).toBeInTheDocument();
+    // And no form to fill in again.
+    expect(screen.queryByRole("button", { name: "Илгээх" })).toBeNull();
   });
 });
 

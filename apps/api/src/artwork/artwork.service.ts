@@ -22,6 +22,11 @@ export class ArtworkService {
       this.repo.listComparisons(childId),
     ]);
 
+    // An observation photo normally has no separate `takenAt`; its note's
+    // calendar day is the date the work was made. Sorting again here lets the
+    // progress sequence read September → October instead of upload order.
+    artwork.sort((a, b) => madeAt(a) - madeAt(b));
+
     return { artwork, comparisons };
   }
 
@@ -50,6 +55,11 @@ export class ArtworkService {
     }
 
     const [first, second] = media as [(typeof media)[number], (typeof media)[number]];
+    const firstType = first.observation?.activityName;
+    const secondType = second.observation?.activityName;
+    if (firstType !== secondType) {
+      throw new BadRequestException("Ижил төрлийн хоёр бүтээл сонгоно уу");
+    }
     const [earlier, later] = madeAt(first) <= madeAt(second) ? [first, second] : [second, first];
 
     const saved = await this.repo.create({
@@ -121,6 +131,10 @@ export class ArtworkService {
  * the pair in the order the caller sent them. That is the best available answer
  * when the system genuinely does not know which came first.
  */
-function madeAt(media: { takenAt: Date | null; uploadedAt: Date }): number {
-  return (media.takenAt ?? media.uploadedAt).getTime();
+function madeAt(media: {
+  takenAt: Date | null;
+  uploadedAt: Date;
+  observation?: { observedOn: Date } | null;
+}): number {
+  return (media.takenAt ?? media.observation?.observedOn ?? media.uploadedAt).getTime();
 }

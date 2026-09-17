@@ -28,6 +28,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { SelectBox, SelectionBar, useSelection } from "@/components/ui/selection";
 import { formatDate } from "@/lib/format";
+import { TEACHER_ATTENDANCE_STATUSES } from "@/lib/attendance-meta";
 import { cn } from "@/lib/utils";
 
 /**
@@ -57,10 +58,11 @@ const groupsSchema = paginated(groupListItemSchema);
 
 /** The four statuses visible to management. Legacy HALF_DAY rows are displayed
  * as PRESENT; OTHER stays readable by the API but has no UI category. */
-const VISIBLE_STATUS_ORDER = ["PRESENT", "EXCUSED", "SICK", "ABSENT"] as const;
+const VISIBLE_STATUS_ORDER = TEACHER_ATTENDANCE_STATUSES;
 
 /**
- * The four a director may filter by — Ирсэн · Чөлөөтэй · Өвчтэй · Тасалсан.
+ * The four a director may filter by — Ирсэн · Өвчтэй · Чөлөөтэй · Тасалсан,
+ * in the same order as the teacher's journal totals.
  *
  * ★ 2026-09-12, at the client's request: "Ирсэн · Хагас өдөр — хас · Чөлөөтэй ·
  * Өвчтэй · Тасалсан · Бусад — хас."
@@ -74,7 +76,7 @@ const VISIBLE_STATUS_ORDER = ["PRESENT", "EXCUSED", "SICK", "ABSENT"] as const;
  * OTHER stays in the response for compatibility but is not exposed as a
  * management category.
  */
-const FILTERABLE_STATUSES = ["PRESENT", "EXCUSED", "SICK", "ABSENT"] as const;
+const FILTERABLE_STATUSES = TEACHER_ATTENDANCE_STATUSES;
 
 /**
  * One letter per status, for a grid where a word would not fit.
@@ -184,6 +186,12 @@ function AttendanceJournal() {
   }
 
   const data = journal.data;
+  const selectedGroupName = groups.data?.items.find((group) => group.id === groupId)?.name;
+  const exportHref = primaryKindergartenId
+    ? downloadUrl(
+        `/kindergartens/${primaryKindergartenId}/attendance/register/export?${queryString}`,
+      )
+    : null;
 
   /*
    * ★ Ticking rows so the export can be a hand-picked set — 2026-09-04.
@@ -223,13 +231,9 @@ function AttendanceJournal() {
               nothing to an anchor, so the control is absent until there is a
               kindergarten to point it at rather than present and inert.
             */}
-            {primaryKindergartenId ? (
+            {exportHref ? (
               <Button size="sm" variant="secondary" asChild>
-                <a
-                  href={downloadUrl(
-                    `/kindergartens/${primaryKindergartenId}/attendance/register/export?${queryString}`,
-                  )}
-                >
+                <a href={exportHref}>
                   <Download size={16} aria-hidden /> Excel татах
                 </a>
               </Button>
@@ -344,7 +348,7 @@ function AttendanceJournal() {
             title="Ирцийн бүртгэл"
             lede="Хүүхэд бүрийн өдөр тутмын ирц. Мөрийг сонгож Excel-ээр татаж болно."
           />
-          <Grid rows={data.items} days={data.days} selection={selection} />
+          <Grid rows={data.items} days={data.days} totals={data.totals} selection={selection} />
 
           {/*
             ★ Class totals under the register — 2026-09-12, at the client's
@@ -358,7 +362,12 @@ function AttendanceJournal() {
             set the "Хугацааны дүн" card above reports, and the Excel export
             carries them on a sheet of their own.
           */}
-          <GroupTotals groups={data.groups} totals={data.totals} />
+          <GroupTotals
+            groups={data.groups}
+            totals={data.totals}
+            selectedGroupName={selectedGroupName}
+            exportHref={exportHref}
+          />
 
           {/*
             ★ The register's own export, narrowed to the ticked rows.
@@ -412,8 +421,15 @@ function Totals({ totals }: { totals: Record<string, number> }) {
     status,
     count:
       status === "PRESENT" ? (totals.PRESENT ?? 0) + (totals.HALF_DAY ?? 0) : (totals[status] ?? 0),
-  })).filter((item) => item.count > 0);
-  if (visible.length === 0) return null;
+  }));
+  const recorded = Object.values(totals).reduce((sum, count) => sum + count, 0);
+
+  /*
+    Out of every recorded day, never out of a roster or a calendar: the four
+    boxes are a breakdown of "Нийт", and a percentage of anything else would
+    not add up to the hundred the row visibly spends.
+  */
+  const share = (count: number) => (recorded > 0 ? Math.round((count / recorded) * 100) : 0);
 
   return (
     <div
@@ -424,7 +440,7 @@ function Totals({ totals }: { totals: Record<string, number> }) {
       */
       role="group"
       aria-label="Хугацааны дүн"
-      className="grid grid-cols-2 gap-2 sm:grid-cols-4"
+      className="grid grid-cols-2 gap-2 sm:grid-cols-5"
     >
       {visible.map(({ status, count }) => (
         <Card key={status} pad="compact" className="flex flex-col gap-1">
@@ -444,9 +460,46 @@ function Totals({ totals }: { totals: Record<string, number> }) {
               {ATTENDANCE_STATUS_LABEL[status]}
             </span>
           </span>
-          <span className="text-title font-bold tabular-nums text-ink">{count}</span>
+          <span className="flex items-baseline gap-1.5">
+            <span className="text-title font-bold tabular-nums text-ink">{count}</span>
+            {/*
+              ★ The share beside the count — 2026-09-17, at the client's
+              request for "цэвэрхэн жижиг хувь график".
+
+              48 means nothing without the 63 it is out of, and a director
+              comparing two months compares proportions rather than rosters. It
+              sits on the figure's own baseline, so the box gains a number and
+              not a row.
+            */}
+            <span className="text-caption tabular-nums text-muted">{share(count)}%</span>
+          </span>
+
+          {/*
+            A 4px rule under the figure, in the status's own colour and on the
+            same track for all four — so the boxes read as one chart laid out
+            in a row rather than four unrelated bars. Decorative: the
+            percentage above it is the accessible value.
+          */}
+          <span aria-hidden="true" className="h-1 overflow-hidden rounded-pill bg-track">
+            <span
+              className={cn("block h-full rounded-pill", STATUS_TONE[status] ?? "bg-track")}
+              style={{ width: `${share(count)}%` }}
+            />
+          </span>
         </Card>
       ))}
+      <Card pad="compact" className="flex flex-col gap-1">
+        <span className="text-caption text-muted">Нийт</span>
+        <span className="text-title font-bold tabular-nums text-ink">{recorded}</span>
+        {/*
+          The whole bar, so the row ends on the thing the other four divide.
+          `bg-border` rather than a status colour: it is every status at once,
+          and painting it one of them would claim a meaning it has not got.
+        */}
+        <span aria-hidden="true" className="h-1 overflow-hidden rounded-pill bg-track">
+          <span className="block h-full w-full rounded-pill bg-border" />
+        </span>
+      </Card>
     </div>
   );
 }
@@ -465,9 +518,13 @@ function Totals({ totals }: { totals: Record<string, number> }) {
 function GroupTotals({
   groups,
   totals,
+  selectedGroupName,
+  exportHref,
 }: {
   groups: AttendanceJournal["groups"];
   totals: Record<string, number>;
+  selectedGroupName?: string;
+  exportHref: string | null;
 }) {
   if (groups.length === 0) return null;
 
@@ -479,8 +536,20 @@ function GroupTotals({
   return (
     <>
       <SectionHeader
-        title="Ангийн дүн"
-        lede="Шүүлтэд тохирсон бүх хүүхдээр бодсон — хуудсаар өөрчлөгдөхгүй"
+        title={
+          selectedGroupName ? `${selectedGroupName} бүлгийн нэгтгэл` : "Бүлэг тус бүрийн нэгтгэл"
+        }
+        lede="Хүүхэд тус бүрийн бодолтоос бүх хүүхдээр нэгтгэсэн — хуудсаар өөрчлөгдөхгүй"
+        action={
+          exportHref ? (
+            <Button size="sm" variant="secondary" asChild>
+              <a href={exportHref}>
+                <Download size={16} aria-hidden />
+                {selectedGroupName ? "Бүлгийн нэгтгэлийг Excel" : "Нэгтгэлийг Excel"}
+              </a>
+            </Button>
+          ) : undefined
+        }
       />
 
       <Card pad="none" className="overflow-x-auto">
@@ -580,8 +649,8 @@ function GroupTotals({
  */
 const TOTAL_COLUMNS = [
   { key: "Ирсэн", of: ["PRESENT", "HALF_DAY"] },
-  { key: "Чөлөөтэй", of: ["EXCUSED"] },
   { key: "Өвчтэй", of: ["SICK"] },
+  { key: "Чөлөөтэй", of: ["EXCUSED"] },
   { key: "Тасалсан", of: ["ABSENT"] },
 ] as const;
 
@@ -651,17 +720,22 @@ function isWeekend(day: string): boolean {
 function Grid({
   rows,
   days,
+  totals,
   selection,
 }: {
   rows: AttendanceJournalRow[];
   days: string[];
+  totals: Record<string, number>;
   selection: ReturnType<typeof useSelection>;
 }) {
+  const recorded = Object.values(totals).reduce((sum, count) => sum + count, 0);
+
   return (
     <div className="flex flex-col gap-2">
       <Card pad="none" className="overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full border-collapse text-caption">
+            <caption className="sr-only">Хүүхэд тус бүрийн ирцийн дүн</caption>
             <thead>
               <tr className="border-b-2 border-border bg-sunken">
                 <th
@@ -721,6 +795,12 @@ function Grid({
                     {column.key}
                   </th>
                 ))}
+                <th
+                  scope="col"
+                  className="whitespace-nowrap px-1.5 py-1.5 text-right text-compact font-bold text-ink"
+                >
+                  Нийт
+                </th>
               </tr>
             </thead>
 
@@ -807,9 +887,39 @@ function Grid({
                       {column.of.reduce((sum, status) => sum + (row.counts[status] ?? 0), 0)}
                     </td>
                   ))}
+                  <td className="px-1.5 py-1 text-right text-compact font-bold tabular-nums text-ink">
+                    {row.recorded}
+                  </td>
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-border bg-sunken">
+                <th
+                  scope="row"
+                  className="sticky left-0 z-10 border-r border-border bg-sunken px-2 py-2 text-left font-bold text-ink shadow-[2px_0_4px_-2px_rgba(0,0,0,0.12)]"
+                >
+                  Нийт
+                </th>
+                {days.map((day) => (
+                  <td key={day} aria-hidden="true" className="bg-sunken" />
+                ))}
+                {TOTAL_COLUMNS.map((column, index) => (
+                  <td
+                    key={column.key}
+                    className={cn(
+                      "px-1.5 py-2 text-right text-compact font-bold tabular-nums text-ink",
+                      index === 0 && "border-l border-border",
+                    )}
+                  >
+                    {column.of.reduce((sum, status) => sum + (totals[status] ?? 0), 0)}
+                  </td>
+                ))}
+                <td className="px-1.5 py-2 text-right text-compact font-bold tabular-nums text-ink">
+                  {recorded}
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </Card>

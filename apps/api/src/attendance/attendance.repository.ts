@@ -418,6 +418,61 @@ export class AttendanceRepository {
    * be the N+1 this repository refuses. The service maps the result onto its
    * own rows.
    */
+  /**
+   * The dated exceptions to the working week, for one span.
+   *
+   * ★ One query for the whole register, like `findSubmissions` beside it: the
+   * grid asks "is this a working day" once per column, and a query per day
+   * would be the N+1 this repository exists to refuse (§3.4).
+   */
+  async findCalendarDays(kindergartenId: string, from: Date, to: Date) {
+    return this.prisma.calendarDay.findMany({
+      where: { kindergartenId, deletedAt: null, date: { gte: from, lte: to } },
+      select: { date: true, name: true, isWorkingDay: true },
+      orderBy: { date: "asc" },
+    });
+  }
+
+  /**
+   * Writes one exception, or revives the one that date already had.
+   *
+   * ★ An upsert rather than a create, because `(kindergartenId, date)` is
+   * unique and the delete beside it is a **soft** delete (§3.2). Without this,
+   * a holiday removed in January could never be added again: the row is still
+   * there, the constraint still sees it, and the administrator meets a
+   * uniqueness error about a day their screen says is empty.
+   */
+  async upsertCalendarDay(input: {
+    kindergartenId: string;
+    date: Date;
+    name: string;
+    isWorkingDay: boolean;
+    createdById: string;
+  }) {
+    return this.prisma.calendarDay.upsert({
+      where: {
+        kindergartenId_date: { kindergartenId: input.kindergartenId, date: input.date },
+      },
+      create: input,
+      update: {
+        name: input.name,
+        isWorkingDay: input.isWorkingDay,
+        createdById: input.createdById,
+        deletedAt: null,
+      },
+      select: { id: true, date: true, name: true, isWorkingDay: true },
+    });
+  }
+
+  /** Soft delete, and only within the kindergarten that owns it. */
+  async softDeleteCalendarDay(kindergartenId: string, date: Date) {
+    const result = await this.prisma.calendarDay.updateMany({
+      where: { kindergartenId, date, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+    return result.count;
+  }
+
   async findSubmissions(kindergartenId: string, from: Date, to: Date, groupIds?: string[]) {
     return this.prisma.attendanceSubmission.findMany({
       where: {

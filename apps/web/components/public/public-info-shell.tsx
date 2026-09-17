@@ -2,7 +2,8 @@ import { ArrowLeft, Mail } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { BRAND } from "@/lib/vocabulary";
+import { BRAND_LATIN } from "@/lib/vocabulary";
+import { BrandWordmark } from "@/components/ui/brand-wordmark";
 
 const PUBLIC_LINKS = [
   { href: "/privacy", label: "Нууцлал" },
@@ -30,18 +31,19 @@ export function PublicInfoShell({
           <Link
             href="/login"
             className="inline-flex items-center gap-2.5"
-            aria-label={`${BRAND} нүүр`}
+            aria-label={`${BRAND_LATIN} нүүр`}
           >
-            <span className="grid size-12 shrink-0 place-items-center">
+            {/* The whole artwork, lettering included — see `app-shell.tsx`. */}
+            <span className="grid size-[52px] shrink-0 place-items-center">
               <Image
-                src="/brand-mark.png"
+                src="/brand-logo.png"
                 alt=""
-                width={48}
-                height={48}
+                width={52}
+                height={52}
                 className="size-full object-contain"
               />
             </span>
-            <span className="text-lead font-extrabold text-[#123d73]">{BRAND}</span>
+            <BrandWordmark className="text-lead" />
           </Link>
 
           <nav
@@ -95,7 +97,7 @@ export function PublicInfoShell({
       <footer className="border-t border-[#e8eff6] bg-[#fbfdff] px-5 py-8 sm:px-8">
         <div className="mx-auto flex max-w-[1080px] flex-col justify-between gap-5 sm:flex-row sm:items-center">
           <div>
-            <p className="font-bold text-[#173e70]">{BRAND}</p>
+            <BrandWordmark className="text-lead" />
             <a
               href="mailto:Nomadkidsmn@gmail.com"
               className="mt-2 inline-flex min-h-10 items-center gap-2 text-caption text-slate-600 hover:text-[#1686f5]"
@@ -119,7 +121,7 @@ export function PublicInfoShell({
           </nav>
         </div>
         <p className="mx-auto mt-5 max-w-[1080px] border-t border-[#e8eff6] pt-5 text-caption text-slate-400">
-          © 2026 {BRAND}. Бүх эрх хуулиар хамгаалагдсан.
+          © 2026 {BRAND_LATIN}. Бүх эрх хуулиар хамгаалагдсан.
         </p>
       </footer>
     </div>

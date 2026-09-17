@@ -62,13 +62,14 @@ export default function GrowthComparePage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <BackButton href={`/children/${childId}/portfolio/growth/age`} />
-
-      <header>
-        <h1 className="text-heading font-semibold text-ink">2-5 насны мэдээлэл</h1>
-        <p className="mt-1 text-body text-muted">
-          {data.firstName}-ийн нас насны мэдээллийг хажуу тийш гүйлгэн харьцуулна уу.
-        </p>
+      <header className="flex items-center gap-3">
+        <BackButton href={`/children/${childId}/portfolio/growth/age`} />
+        <div className="min-w-0">
+          <h1 className="text-heading font-semibold text-ink">2-5 насны мэдээлэл</h1>
+          <p className="mt-1 text-body text-muted">
+            {data.firstName}-ийн нас насны мэдээллийг хажуу тийш гүйлгэн харьцуулна уу.
+          </p>
+        </div>
       </header>
 
       <AgeDevelopmentComparison profiles={profiles} />

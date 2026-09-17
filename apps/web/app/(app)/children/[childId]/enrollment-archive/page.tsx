@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { BackButton } from "@/components/ui/back-button";
+import { PageHeader } from "@/components/shell/app-shell";
 import { ChildEnrollmentArchive } from "@/components/child/enrollment-archive";
 
 /**
@@ -21,7 +21,7 @@ export default function EnrollmentArchivePage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <BackButton href={`/children/${childId}/general`} />
+      <PageHeader backHref={`/children/${childId}/general`} title="Элсэлтийн түүх" />
 
       <ChildEnrollmentArchive childId={childId} />
     </div>

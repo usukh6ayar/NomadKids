@@ -195,7 +195,8 @@ function StaffChildren() {
   return (
     <div className="page-band">
       <PageHeader
-        title="Хүүхдүүд"
+        title="Суралцагч"
+        backHref="/dashboard"
         actions={
           /*
             ★ `flex-wrap`, and `gap-2` until there is room for `gap-3`.
@@ -641,7 +642,12 @@ function MyChildren() {
 
   return (
     <div className="page-band">
-      <PageHeader title={MY_CHILDREN} />
+      {/*
+        ★ The same Буцах the staff header above carries — 2026-09-16. A family
+        arrives here from the dashboard's own Суралцагч tile, and this was the
+        one branch of the route that opened without a way back to it.
+      */}
+      <PageHeader title={MY_CHILDREN} backHref="/dashboard" />
 
       {isLoading ? <LoadingState rows={2} /> : null}
 

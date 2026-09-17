@@ -239,7 +239,11 @@ function AuthenticatedShell({
     <AppShell
       nav={nav}
       sections={
-        isStaff ? staffSections(isAdmin, groupId) : parentSections(myChildren, selectedChildId)
+        isStaff
+          ? isAdmin
+            ? staffSections(true, groupId)
+            : teacherSections(groupId)
+          : parentSections(myChildren, selectedChildId)
       }
       variant={isStaff ? "teacher" : "parent"}
       teacherTheme={isStaff && !isAdmin}
@@ -400,7 +404,11 @@ function staffNav(isAdmin: boolean, groupId: string | null): NavItem[] {
       : "/children";
 
   return [
-    { href: "/dashboard", label: "Самбар", icon: artIcon("dashboard", 20) },
+    {
+      href: isAdmin ? "/admin" : "/dashboard",
+      label: "Самбар",
+      icon: artIcon("dashboard", 20),
+    },
     { href: "/notifications", label: "Мэдээ", icon: artIcon("notice", 20), badge: "unread" },
     { href: assessmentHref, label: "Явцын үнэлгээ", icon: artIcon("progress", 20) },
     { href: "/surveys", label: "Судалгаа", icon: artIcon("survey", 20) },
@@ -496,6 +504,58 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
    */
   const scoped = (feature: string) => (groupId ? `/groups/${groupId}/${feature}` : `/${feature}`);
 
+  if (isAdmin) {
+    return [
+      {
+        title: "",
+        entries: [
+          entry("Суралцагч", "/children"),
+          entry("Анги бүлэг", "/admin/groups"),
+          entry("Багш, ажилтан", "/admin/users", "adminUsersPermissions"),
+          entry("Байгууллага", "/admin/kindergarten"),
+        ],
+      },
+      {
+        title: "Сургалт, үйл ажиллагаа",
+        entries: [
+          entry("Ирц", "/attendance/daily", "attendance"),
+          entry("Явцын үнэлгээ", "/admin/assessment", "progress"),
+          entry("Судалгаа", "/surveys", "survey"),
+          entry("Мэдээ", "/notifications", "notice"),
+          entry("Чат", "/chat", "chat"),
+        ],
+      },
+      {
+        title: "Хоол, санхүү",
+        entries: [
+          entry("Хоолны цэс", "/menu", "food"),
+          entry("Санхүү", "/finance", "finance"),
+          entry("Ирц ба тооцоолол", "/admin/funding", "finance"),
+          entry("Ирцийн дэлгэрэнгүй", "/attendance/journal", "attendance"),
+        ],
+      },
+      {
+        title: "Тайлан, баримт",
+        entries: [
+          entry("Тайлан", "/reports", "adminReport"),
+          entry("Баримт бичгийн сан", "/documents", "adminDocuments"),
+        ],
+      },
+      {
+        title: "Сургалтын төлөвлөгөө",
+        entries: [
+          entry("Хичээлийн жил", "/admin/school-years", "adminSchoolYear"),
+          entry("Улирал", "/admin/terms", "adminTerm"),
+          entry("Сургалтын хөтөлбөр", "/admin/curriculum", "adminCurriculum"),
+        ],
+      },
+      {
+        title: "Интеграц",
+        entries: [entry("ESIS мэдээллийн төв", "/admin/integrations/esis", "adminEsisHub")],
+      },
+    ];
+  }
+
   return [
     /*
      * ★ Three sections, named after the client's own 2026-08-29 drawing.
@@ -586,7 +646,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
     {
       title: "Хүүхдийн хөгжил ба үнэлгээ",
       entries: [
-        entry("Хүүхдүүд", "/children"),
+        entry("Суралцагч", "/children"),
         /*
          * ★ Directly under Хүүхдүүд, moved there 2026-09-04 at the client's
          * request — and it is the right place for it.
@@ -876,6 +936,40 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
   ];
 }
 
+/** The teacher rail, in the client's daily-work order. */
+function teacherSections(groupId: string | null): NavSection[] {
+  const scoped = (feature: string) => (groupId ? `/groups/${groupId}/${feature}` : `/${feature}`);
+
+  return [
+    {
+      title: "",
+      entries: [
+        navEntry("Суралцагч", "/children"),
+        {
+          label: "Ирц",
+          href: scoped("attendance"),
+          icon: artIcon("attendance", 18),
+        },
+        {
+          label: "Хоолны цэс",
+          href: "/menu",
+          icon: artIcon("food", 18),
+        },
+        {
+          label: "Явцын үнэлгээ",
+          href: scoped("assessment"),
+          icon: artIcon("progress", 18),
+        },
+        navEntry("Судалгаа", "/surveys", "survey"),
+        navEntry("Тайлан", "/reports", "report"),
+        navEntry("Мэдээ", "/notifications", "notice"),
+        navEntry("Чат", "/chat", "chat"),
+        navEntry("Баримт бичгийн сан", "/documents", "documents"),
+      ],
+    },
+  ];
+}
+
 /**
  * The cook's and the accountant's bottom bar.
  *
@@ -892,9 +986,9 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
  * "Цэс" and its icon to `Menu` is enough to make it read as the same hamburger
  * button every other role's last tab already is. The drawer is where
  * everything this bar has no room for still lives — Түүхий эд, Хүнсний
- * захиалга, Нөөц, Ирц, Тайлан, Мэдээ (COOK only, 2026-09-08), Чат — unchanged
- * from `supportSections`. ("Нийлүүлэгч" is off `supportSections` itself right
- * now, so it is not in the drawer either — see that array's own comment.)
+ * захиалга, Нөөц, Ирц, Тайлан. Мэдээ and Чат are intentionally absent from
+ * both support roles. ("Нийлүүлэгч" is off `supportSections` itself right now,
+ * so it is not in the drawer either — see that array's own comment.)
  *
  * This does put `/menu` and `/kitchen/recipes` on two surfaces at once, both
  * already reachable from the sidebar. The 2026-09-04 note this replaced
@@ -976,6 +1070,18 @@ function supportSections(isCook: boolean): NavSection[] {
       title: isCook ? "Гал тогоо" : "Санхүү",
       entries: isCook
         ? [
+            /*
+              ★ The client's own order — 2026-09-17: Самбар · Ирц · Хоолны цэс ·
+              Түүхий эд · Технологийн карт · Хүнсний захиалга · Нөөц · Тайлан.
+
+              Ирц comes first because it is the first thing the kitchen does
+              with the day: how many children are here decides how much is
+              cooked, and it sat at the foot of the list under the reference
+              screens. Самбар is not a row here — `supportNav`'s first entry is
+              the board and the rail draws it above the sections, so a row for
+              it would print the name twice.
+            */
+            navEntry("Ирц", "/kitchen/attendance"),
             navEntry("Хоолны цэс", "/menu"),
             navEntry("Түүхий эд", "/kitchen/ingredients"),
             navEntry("Технологийн карт", "/kitchen/recipes"),
@@ -987,7 +1093,6 @@ function supportSections(isCook: boolean): NavSection[] {
             // bring it back.
             navEntry("Хүнсний захиалга", "/kitchen/orders"),
             navEntry("Нөөц", "/kitchen/stock"),
-            navEntry("Ирц", "/kitchen/attendance"),
             navEntry("Тайлан", "/kitchen/reports"),
           ]
         : [
@@ -1030,29 +1135,6 @@ function supportSections(isCook: boolean): NavSection[] {
             navEntry("Ирцийн дэлгэрэнгүй", "/attendance/journal", "accountingAttendanceDetails"),
             navEntry("Санхүүгийн аудит", "/finance/audit-log", "accountingAudit"),
           ],
-    },
-    {
-      /*
-       * ★ Чат, not "Ангийн самбар / Мэдээ" — 2026-09-05.
-       *
-       * The row pointed at `/notifications`, which is a class's board: posts
-       * scoped to a group a cook or an accountant does not belong to. Neither
-       * role had a full-page door onto chat before this — only the floating
-       * widget (`chat-widget.tsx`) — while `staffSections` has carried one
-       * beside its own notifications row since 2026-08-31. This gives them
-       * that same page, in the one slot this section has.
-       *
-       * ★★ "Мэдээ" returns for COOK only, 2026-09-08 — client decision. The
-       * board is no longer a class-scoped thing this role can't reach:
-       * `NotificationsService.audienceFilter` now reads a cook's own
-       * kindergarten-wide, published notices (closures, holidays) the same
-       * way staff do, while `create()` still refuses them — read, not post.
-       * Accountant is untouched; that role's audience filter was not widened.
-       */
-      title: "Харилцаа холбоо",
-      entries: isCook
-        ? [navEntry("Мэдээ", "/notifications"), navEntry("Чат", "/chat")]
-        : [navEntry("Чат", "/chat")],
     },
     {
       title: "Миний мэдээлэл",

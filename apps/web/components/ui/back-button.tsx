@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { canGoBack, useGoBack } from "@/lib/nav-history";
@@ -53,7 +53,16 @@ export function BackButton({
   const goBack = useGoBack(href);
 
   return (
-    <Button asChild variant="ghost" size="icon" className={cn("-ml-2 self-start", className)}>
+    <Button
+      asChild
+      variant="ghost"
+      size="icon"
+      className={cn(
+        "h-12 w-12 shrink-0 self-center rounded-pill border border-white/80 bg-surface",
+        "text-ink shadow-md hover:bg-canvas hover:shadow-lg active:shadow-sm",
+        className,
+      )}
+    >
       <Link
         href={href}
         onClick={(event) => {
@@ -75,7 +84,7 @@ export function BackButton({
           goBack();
         }}
       >
-        <ArrowLeft size={20} aria-hidden />
+        <ChevronLeft size={30} strokeWidth={3} aria-hidden />
         <span className="sr-only">{label}</span>
       </Link>
     </Button>

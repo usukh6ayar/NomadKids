@@ -98,6 +98,7 @@ function DocumentLibrary() {
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
         title="Баримт бичгийн сан"
+        backHref="/dashboard"
         actions={
           !adding ? (
             <Button size="sm" onClick={() => setAdding(true)}>
@@ -199,12 +200,17 @@ function DocumentLibrary() {
         line of text you have to read. A page of first pages is recognisable at
         a glance, the way a shelf is.
 
-        The grid is capped at four across rather than filling a 1336px screen
-        with eight postage stamps — "дунд зэргийн" is the size that shows a
-        heading on the page you are looking at.
+        ★★ Five and six across on the wide screens — 2026-09-16, the client:
+        "оруулсан баримт бичгүүдийг хэмжээ хэт том байна арай жижиг болгоод өг".
+
+        Four across a 1512px monitor is a cover about 350px wide, which is a
+        poster rather than a shelf. The phone keeps its two — that is where
+        "дунд зэргийн" was judged and it is right there — and the extra columns
+        arrive only where there is width to spend: five from `lg`, six from
+        `xl`, which lands each cover back around 200px.
       */}
       {documents.data && documents.data.items.length > 0 ? (
-        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 lg:gap-4">
+        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {documents.data.items.map((doc) => (
             <DocumentCard
               key={doc.id}
@@ -334,8 +340,8 @@ function DocumentCard({
             )}
           </span>
 
-          <span className="flex min-w-0 flex-col gap-0.5 px-3 py-2.5">
-            <span className="line-clamp-2 text-body font-medium leading-snug text-ink">
+          <span className="flex min-w-0 flex-col gap-0.5 px-2.5 py-2">
+            <span className="line-clamp-2 text-caption font-semibold leading-snug text-ink sm:text-body sm:font-medium">
               {document.title}
             </span>
             <span className="text-caption text-muted">

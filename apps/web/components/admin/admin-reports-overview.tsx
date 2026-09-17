@@ -24,6 +24,7 @@ import { BarRow } from "@/components/ui/chart/bar-row";
 import { LineChart } from "@/components/ui/chart/line-chart";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { StatCard } from "@/components/ui/stat-card";
+import { MonthSelect } from "@/components/ui/month-select";
 import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
@@ -197,13 +198,11 @@ export function AdminReportsOverview() {
         {period === "month" ? (
           <label className="flex w-full flex-col gap-1 text-caption text-muted sm:w-56">
             Сар
-            <input
+            <MonthSelect
               aria-label="Тайлангийн сар"
-              type="month"
               max={currentMonth()}
               value={month}
-              onChange={(event) => setMonth(event.target.value)}
-              className="min-h-11 rounded-control border border-border bg-surface px-3 text-body text-ink"
+              onValueChange={setMonth}
             />
           </label>
         ) : null}

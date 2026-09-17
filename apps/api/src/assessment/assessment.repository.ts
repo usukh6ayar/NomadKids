@@ -404,15 +404,33 @@ export class AssessmentRepository {
 
   // ── Term reports ──────────────────────────────────────────────────────────
 
+  /**
+   * ★ **A term report is staff-only — the client, 2026-09-14.**
+   *
+   * "Удирдлага бичсэнг харна, эцэг эх харахгүй." It used to be a guardian's
+   * to read once `FINAL`, and that is the line that moved: the conclusion is
+   * the teacher's professional judgement about a child, written for the
+   * kindergarten's own record and read by the office, not a letter home.
+   * What a family reads is the portfolio, the notes marked visible, and the
+   * assessments released to them — all of which stay exactly as they were.
+   *
+   * The guard is here rather than at each call site because three of them
+   * exist (the read, the PDF job's precheck, and the generator), and a policy
+   * spelled out three times is a policy one of them will eventually spell
+   * differently.
+   *
+   * A guardian gets `null`, which the service turns into the same "nothing
+   * here" shape an unwritten report has — so the answer cannot be read as
+   * "one exists but is withheld".
+   */
   async findTermReport(childId: string, termId: string, isGuardian: boolean) {
+    if (isGuardian) return null;
+
     return this.prisma.termReport.findFirst({
       where: {
         childId,
         termId,
         deletedAt: null,
-        // ★ A draft is the teacher's working text; a guardian sees it only once
-        // finalised.
-        ...(isGuardian ? { status: "FINAL" } : {}),
       },
       include: {
         author: { select: { id: true, lastName: true, firstName: true } },

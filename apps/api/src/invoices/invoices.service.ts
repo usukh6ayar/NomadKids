@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import Decimal from "decimal.js";
+import type { InvoiceStatus } from "../domain/enums";
 import { AuditRepository } from "../audit/audit.repository";
 import { TenantAccessService } from "../authz/tenant-access.service";
+import { AuthzRepository } from "../authz/authz.repository";
 import { ChildAccessService } from "../authz/child-access.service";
 import { childKindergartenIds } from "../authz/child-access";
 import { NotificationsService } from "../notifications/notifications.service";
@@ -17,6 +19,7 @@ import {
   type Tariff,
 } from "./invoice-math";
 import { InvoicesRepository } from "./invoices.repository";
+import { buildInvoiceRegisterWorkbook } from "./invoice-register-workbook";
 import type {
   GenerateInvoiceDto,
   GenerateMonthDto,
@@ -28,6 +31,13 @@ import type {
 } from "./invoices.dto";
 
 const EXTRA_LINE_TYPES = new Set(["CLUB", "BUS", "EXTRA", "OTHER"]);
+
+/**
+ * The widest export this route will answer — §3.4's "no endpoint returns an
+ * unbounded set", in the unit a spreadsheet is measured in. A kindergarten
+ * bills a few hundred invoices a month; five thousand is a year of them.
+ */
+const EXPORT_ROW_LIMIT = 5000;
 
 /** Shared zero, so no call site builds one from a literal number. */
 const ZERO = new Decimal(0);
@@ -55,6 +65,8 @@ export class InvoicesService {
     private readonly childAccess: ChildAccessService,
     private readonly audit: AuditRepository,
     private readonly notifications: NotificationsService,
+    /* Only for the export's sheet title — the kindergarten's own name. */
+    private readonly authz: AuthzRepository,
   ) {}
 
   /**
@@ -92,13 +104,125 @@ export class InvoicesService {
       {
         month: query.month ? toMonthDate(query.month) : undefined,
         childId: query.childId,
+        groupId: query.groupId,
+        lineType: query.lineType,
         status: query.status,
         q: query.q,
       },
       toSkipTake(page),
     );
 
-    return paginate(items, total, page);
+    /*
+      The group is flattened off the child's one active enrolment: the client
+      reads a class name, not an enrolment. Null where a child has none —
+      which happens between a transfer out and the next enrolment, and is not
+      an error.
+    */
+    const rows = items.map((invoice) => {
+      const { enrollments, ...child } = invoice.child as typeof invoice.child & {
+        enrollments?: { group: { id: string; name: string } | null }[];
+      };
+      return { ...invoice, child: { ...child, group: enrollments?.[0]?.group ?? null } };
+    });
+
+    return paginate(rows, total, page);
+  }
+
+  /**
+   * The month's four figures — `нэмэлт.md` §7's register, as the client drew
+   * it on 2026-09-17: how many invoices, how many paid, unpaid and overdue,
+   * each with its money.
+   *
+   * ★ Counted over the whole month, never over the page on screen.
+   *
+   * ★★ `OVERDUE` is a status the register carries, so the fourth figure is a
+   * status count like the other three rather than a date comparison made here
+   * — two definitions of "overdue" on one screen is how a tile and a tab come
+   * to disagree.
+   */
+  async summary(actor: Actor, kindergartenId: string, month?: string) {
+    this.tenants.assertCanReadFinance(actor, kindergartenId);
+
+    const { byStatus, all } = await this.repo.summariseInvoices(
+      kindergartenId,
+      month ? toMonthDate(month) : undefined,
+    );
+
+    const status = (name: InvoiceStatus) => {
+      const row = byStatus.find((entry) => entry.status === name);
+      return {
+        count: row?._count._all ?? 0,
+        billed: new Decimal(row?._sum.totalDue?.toString() ?? 0).toFixed(2),
+        outstanding: new Decimal(row?._sum.balance?.toString() ?? 0).toFixed(2),
+      };
+    };
+
+    return {
+      month: month ?? null,
+      total: all._count._all,
+      billed: new Decimal(all._sum.totalDue?.toString() ?? 0).toFixed(2),
+      outstanding: new Decimal(all._sum.balance?.toString() ?? 0).toFixed(2),
+      byStatus: {
+        UNPAID: status("UNPAID"),
+        PARTIALLY_PAID: status("PARTIALLY_PAID"),
+        PAID: status("PAID"),
+        OVERDUE: status("OVERDUE"),
+        REFUNDED: status("REFUNDED"),
+      },
+    };
+  }
+
+  /**
+   * The register as a spreadsheet — the design's "Экспорт".
+   *
+   * ★ The same filters, and no page.
+   *
+   * A file that held page one would be a smaller lie than a file that held
+   * everything: an accountant exports what they are looking at. So the query
+   * is the screen's, and the size cap is the one the schema already sets on a
+   * page — raised to the sheet's own ceiling rather than removed, because
+   * §3.4 has no exception for downloads.
+   */
+  async exportRegister(actor: Actor, kindergartenId: string, query: ListInvoicesQuery) {
+    this.tenants.assertCanReadFinance(actor, kindergartenId);
+
+    const { items } = await this.repo.listInvoices(
+      kindergartenId,
+      {
+        month: query.month ? toMonthDate(query.month) : undefined,
+        childId: query.childId,
+        groupId: query.groupId,
+        lineType: query.lineType,
+        status: query.status,
+        q: query.q,
+      },
+      { skip: 0, take: EXPORT_ROW_LIMIT },
+    );
+
+    const rows = items.map((invoice) => {
+      const { enrollments, ...child } = invoice.child as typeof invoice.child & {
+        enrollments?: { group: { id: string; name: string } | null }[];
+      };
+      return {
+        ...invoice,
+        number: invoice.number,
+        child: { ...child, group: enrollments?.[0]?.group ?? null },
+        baseAmount: invoice.baseAmount.toString(),
+        mealAmount: invoice.mealAmount.toString(),
+        extraAmount: invoice.extraAmount.toString(),
+        discountAmount: invoice.discountAmount.toString(),
+        totalDue: invoice.totalDue.toString(),
+        paidAmount: invoice.paidAmount.toString(),
+        balance: invoice.balance.toString(),
+      };
+    });
+
+    const names = await this.authz.loadKindergartenNames(actor);
+    const label = query.month ?? "бүх сар";
+
+    const buffer = await buildInvoiceRegisterWorkbook(rows, names[kindergartenId] ?? "", label);
+
+    return { buffer, filename: `nekhemjlel-${query.month ?? "all"}.xlsx` };
   }
 
   async get(actor: Actor, id: string) {

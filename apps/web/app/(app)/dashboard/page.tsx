@@ -318,7 +318,7 @@ function TeacherDashboard() {
           description="Өнөөдрийн ирц бүртгэх"
           art="attendance"
         />
-        <QuickAction href="/children" title="Хүүхдүүд" description="Бүлгийн нэрс" art="child" />
+        <QuickAction href="/children" title="Суралцагч" description="Бүлгийн нэрс" art="child" />
         {/*
           ★ Group-scoped, like Ирц and Явцын үнэлгээ beside it.
 

@@ -7,7 +7,9 @@ import { NotebookPen } from "lucide-react";
 import { z } from "zod";
 import {
   groupMealRowSchema,
+  mealKindSchema,
   mealRecordSchema,
+  MEAL_KIND_LABEL,
   type MealKind,
   type MealStatus,
 } from "@kinder/contracts";
@@ -35,13 +37,29 @@ import { useSession } from "@/lib/auth/session";
 const sheetSchema = z.array(groupMealRowSchema);
 const savedSchema = z.array(mealRecordSchema);
 
-/** The four sittings `MealKind` defines — `нэмэлт.md` §2, in serving order. */
-const SITTINGS: { value: MealKind; label: string; short: string }[] = [
-  { value: "BREAKFAST", label: "Өглөөний цай", short: "Өглөө" },
-  { value: "LUNCH", label: "Өдрийн хоол", short: "Өдөр" },
-  { value: "AFTERNOON_SNACK", label: "Их үдийн цай", short: "Их үд" },
-  { value: "EXTRA", label: "Оройн хоол", short: "Орой" },
-];
+/**
+ * The four sittings this register records — `нэмэлт.md` §2, in serving order.
+ *
+ * ★ The names come from `MEAL_KIND_LABEL` — 2026-09-16, when the client
+ * renamed the six. They were spelled out here as well, so the same `MealKind`
+ * read one way on the menu and another on the register, which is the drift a
+ * second copy of a list always produces. The short forms stay local: they are
+ * a column heading on a phone, not a second name.
+ */
+const SITTING_SHORT: Partial<Record<MealKind, string>> = {
+  BREAKFAST: "Өглөө",
+  LUNCH: "Үндсэн",
+  EXTRA: "Ундаа",
+  AFTERNOON_SNACK: "Их үд",
+};
+
+const SITTINGS: { value: MealKind; label: string; short: string }[] = mealKindSchema.options
+  .filter((kind): kind is MealKind => kind in SITTING_SHORT)
+  .map((kind) => ({
+    value: kind,
+    label: MEAL_KIND_LABEL[kind] ?? kind,
+    short: SITTING_SHORT[kind]!,
+  }));
 
 /**
  * The four statuses, with the tone each is scanned by.

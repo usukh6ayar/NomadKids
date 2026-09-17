@@ -290,11 +290,28 @@ export class MediaRepository {
     return this.prisma.mediaFile.create({ data });
   }
 
-  /** The notice a photo is being attached to. Only what authorization needs. */
+  /**
+   * The notice a photo is being attached to or removed from. Only what
+   * authorization needs.
+   *
+   * ★ `authorId` joined the select on 2026-09-16, for removal. Attaching is
+   * any staff member's to do; taking a photograph back off somebody else's
+   * post is not, and the rule has to match the one the edit screen already
+   * runs on — the author or an administrator.
+   */
   async findNotificationForAttachment(id: string) {
     return this.prisma.notification.findFirst({
       where: { id, deletedAt: null },
-      select: { id: true, kindergartenId: true },
+      select: { id: true, kindergartenId: true, authorId: true },
+    });
+  }
+
+  /** One photograph of one notice — the pairing is the point: a media id from
+   *  another notice must not be removable through this notice's route. */
+  async findNotificationMedia(mediaId: string, notificationId: string) {
+    return this.prisma.mediaFile.findFirst({
+      where: { id: mediaId, notificationId, deletedAt: null },
+      select: { id: true, kindergartenId: true, storageKey: true },
     });
   }
 

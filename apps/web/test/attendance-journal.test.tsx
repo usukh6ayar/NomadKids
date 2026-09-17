@@ -1,12 +1,19 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
-import { renderWithProviders, sessionFor, setParams, stubApi } from "./support/render";
+import {
+  renderWithProviders,
+  selectOption,
+  sessionFor,
+  setParams,
+  stubApi,
+} from "./support/render";
 import AttendanceJournalPage from "@/app/(app)/attendance/journal/page";
 
 /** The kindergarten `sessionFor` puts every membership in. */
 const KG_ID = "33333333-3333-4333-8333-333333333333";
 const CHILD_ID = "11111111-1111-4111-8111-111111111111";
+const GROUP_ID = "44444444-4444-4444-8444-444444444444";
 
 /**
  * Ирцийн дэлгэрэнгүй — the whole kindergarten, a child per row and a day per
@@ -27,7 +34,7 @@ function journal(overrides: Record<string, unknown> = {}) {
         childId: CHILD_ID,
         child: { id: CHILD_ID, lastName: "Дорж", firstName: "Намуун", status: "ACTIVE" },
         group: {
-          id: "g1",
+          id: GROUP_ID,
           name: "Бэлтгэл",
           ageBand: "SENIOR",
           programKind: "MAIN",
@@ -48,7 +55,7 @@ function journal(overrides: Record<string, unknown> = {}) {
     totals: { PRESENT: 1, SICK: 1 },
     groups: [
       {
-        groupId: "g1",
+        groupId: GROUP_ID,
         group: "Бэлтгэл",
         children: 1,
         counts: { PRESENT: 1, SICK: 1 },
@@ -59,11 +66,25 @@ function journal(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function stub(body: unknown = journal(), extra: Parameters<typeof stubApi>[0] = []) {
+function stub(
+  body: unknown = journal(),
+  extra: Parameters<typeof stubApi>[0] = [],
+  role: "ADMIN" | "ACCOUNTANT" = "ADMIN",
+) {
   return stubApi([
-    { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+    { path: "/auth/me", body: sessionFor([role]) },
     ...extra,
-    { path: "/groups", method: "GET", body: { items: [], total: 0, page: 1, pageSize: 100 } },
+    {
+      path: "/groups",
+      method: "GET",
+      body: {
+        items: [{ id: GROUP_ID, name: "Бэлтгэл", _count: { enrollments: 1 } }],
+        total: 1,
+        page: 1,
+        pageSize: 100,
+        totalPages: 1,
+      },
+    },
     { path: `/kindergartens/${KG_ID}/attendance/register`, method: "GET", body },
   ]);
 }
@@ -93,6 +114,18 @@ describe("the grid", () => {
     expect(screen.getByRole("columnheader", { name: "2026-03-04" })).toBeInTheDocument();
     // Weekday and day-of-month are what a sighted reader actually sees.
     expect(screen.getByText("Да")).toBeInTheDocument();
+  });
+
+  it("uses the teacher journal order and total for every child", async () => {
+    stub();
+    renderWithProviders(<AttendanceJournalPage />);
+
+    const row = (await screen.findByText(/Дорж/)).closest("tr")!;
+    const cells = within(row).getAllByRole("cell");
+
+    // Ирсэн · Өвчтэй · Чөлөөтэй · Тасалсан · Нийт — багшийн хүснэгтийн
+    // төгсгөлийн таван баганатай ижил дараалал, ижил recorded дүн.
+    expect(cells.slice(-5).map((cell) => cell.textContent)).toEqual(["1", "1", "0", "0", "2"]);
   });
 
   it("distinguishes a day nobody marked from a recorded absence", async () => {
@@ -127,7 +160,25 @@ describe("the grid", () => {
       within(row)
         .getAllByRole("cell")
         .map((cell) => cell.textContent),
-    ).toEqual(["1", "1", "0", "1", "0", "2"]);
+    ).toEqual(["1", "1", "1", "0", "0", "2"]);
+  });
+
+  it("shows the same child and class calculations to an accountant", async () => {
+    stub(journal(), [], "ACCOUNTANT");
+    renderWithProviders(<AttendanceJournalPage />);
+
+    const childRow = (await screen.findByText(/Дорж/)).closest("tr")!;
+    expect(
+      within(childRow)
+        .getAllByRole("cell")
+        .slice(-5)
+        .map((cell) => cell.textContent),
+    ).toEqual(["1", "1", "0", "0", "2"]);
+
+    const classTable = screen.getByRole("table", { name: /Ангийн дүн/ });
+    const classRow = within(classTable).getByRole("rowheader", { name: "Бэлтгэл" }).closest("tr")!;
+    expect(classRow).toHaveTextContent("Бэлтгэл");
+    expect(classRow).toHaveTextContent("2");
   });
 
   it("shows the period's totals across every child, not just this page", async () => {
@@ -158,9 +209,10 @@ describe("the grid", () => {
 
     for (const [label, count] of [
       ["Ирсэн", "40"],
-      ["Чөлөөтэй", "2"],
       ["Өвчтэй", "5"],
+      ["Чөлөөтэй", "2"],
       ["Тасалсан", "4"],
+      ["Нийт", "53"],
     ] as const) {
       const box = totals.getByText(label).closest('[data-ui="card"]');
       expect(box).not.toBeNull();
@@ -170,17 +222,16 @@ describe("the grid", () => {
     expect(totals.queryByText("Бусад")).not.toBeInTheDocument();
   });
 
-  /*
-    A status with nothing in it draws no box. Six empty cards on a March filter
-    would be five statements that nothing happened.
-  */
-  it("draws no box for a status the period has none of", async () => {
+  it("keeps every summary indicator visible when its value is zero", async () => {
     stub(journal({ totals: { PRESENT: 4 } }));
     renderWithProviders(<AttendanceJournalPage />);
 
     const totals = within(await screen.findByRole("group", { name: "Хугацааны дүн" }));
-    expect(totals.getByText("Ирсэн")).toBeInTheDocument();
-    expect(totals.queryByText("Хагас өдөр")).not.toBeInTheDocument();
+    for (const label of ["Ирсэн", "Өвчтэй", "Чөлөөтэй", "Тасалсан", "Нийт"]) {
+      expect(totals.getByText(label)).toBeInTheDocument();
+    }
+    expect(totals.getByText("Өвчтэй").closest('[data-ui="card"]')).toHaveTextContent("0");
+    expect(totals.getByText("Нийт").closest('[data-ui="card"]')).toHaveTextContent("4");
   });
 
   it("folds historical half-days into present and hides other in the day grid", async () => {
@@ -241,6 +292,37 @@ describe("the filters", () => {
     const link = screen.getByRole("link", { name: /Excel татах/ });
     expect(link.getAttribute("href")).toContain("attendance/register/export");
     expect(link.getAttribute("href")).toContain("status=SICK");
+  });
+
+  it("shows the selected group's complete summary with its own Excel action", async () => {
+    const user = userEvent.setup();
+    stub();
+    renderWithProviders(<AttendanceJournalPage />);
+    await screen.findByText(/Дорж/);
+
+    await selectOption(user, "Бүлэг", "Бэлтгэл");
+
+    expect(await screen.findByText("Бэлтгэл бүлгийн нэгтгэл")).toBeInTheDocument();
+    const childTable = screen.getByRole("table", { name: "Хүүхэд тус бүрийн ирцийн дүн" });
+    const totalRow = within(childTable).getByRole("rowheader", { name: "Нийт" }).closest("tr")!;
+    expect(
+      within(totalRow)
+        .getAllByRole("cell")
+        .slice(-5)
+        .map((cell) => cell.textContent),
+    ).toEqual(["1", "1", "0", "0", "2"]);
+
+    const table = screen.getByRole("table", { name: /Ангийн дүн/ });
+    const groupRow = within(table).getByRole("rowheader", { name: "Бэлтгэл" }).closest("tr")!;
+    expect(
+      within(groupRow)
+        .getAllByRole("cell")
+        .map((cell) => cell.textContent),
+    ).toEqual(["1", "1", "1", "0", "0", "2"]);
+
+    const exportLink = screen.getByRole("link", { name: /Бүлгийн нэгтгэлийг Excel/ });
+    expect(exportLink.getAttribute("href")).toContain("attendance/register/export");
+    expect(exportLink.getAttribute("href")).toContain(`groupId=${GROUP_ID}`);
   });
 
   /*

@@ -202,6 +202,143 @@ describe("who may read the register", () => {
   });
 });
 
+/**
+ * Which days a register is expected to cover — the client's correction of
+ * 2026-09-17: "БҮХ НИЙТИЙН АМРАЛТ болон БҮТЭН/ХАГАС САЙН өдрүүдэд ирц бүртгэх
+ * шаардлагагүй ... бодолтоос хасах. улс нийтээр нөхөж ажиллах онцгой
+ * тохиолдолд л бүртгэх."
+ *
+ * ★ What it was before: every calendar date in the span. A two-group
+ * kindergarten asked for a fortnight was told it had 34 group-days to fill in,
+ * ten of them Saturdays and Sundays — so "Ирц бүртгээгүй" counted the weekend,
+ * the completeness bar divided by it, and a director chasing an unfinished
+ * register was chasing days nobody works.
+ */
+describe("the working week", () => {
+  const calendar = (query: string) =>
+    authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/attendance/calendar?${query}`),
+      admin,
+    );
+
+  const addDay = (body: Record<string, unknown>) =>
+    authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/attendance/calendar`),
+      admin,
+    ).send(body);
+
+  it("leaves Saturday and Sunday out of the register", async () => {
+    // 2026-03-07 is a Saturday, 2026-03-08 a Sunday.
+    const res = await register(admin, a.kindergarten.id, "from=2026-03-06&to=2026-03-09");
+
+    expect(res.status).toBe(200);
+    expect(res.body.days).toEqual(["2026-03-06", "2026-03-09"]);
+  });
+
+  it("leaves a holiday out, once the kindergarten has named one", async () => {
+    expect((await addDay({ date: "2026-03-04", name: "Цагаан сар" })).status).toBe(201);
+
+    const res = await register(admin, a.kindergarten.id, "from=2026-03-02&to=2026-03-06");
+
+    expect(res.body.days).toEqual(["2026-03-02", "2026-03-03", "2026-03-05", "2026-03-06"]);
+  });
+
+  it("puts a make-up Saturday back in", async () => {
+    expect(
+      (await addDay({ date: "2026-03-07", name: "Нөхөж ажиллах", isWorkingDay: true })).status,
+    ).toBe(201);
+
+    const res = await register(admin, a.kindergarten.id, "from=2026-03-06&to=2026-03-09");
+
+    expect(res.body.days).toEqual(["2026-03-06", "2026-03-07", "2026-03-09"]);
+  });
+
+  /**
+   * ★ The forgiving direction: a day somebody actually recorded is shown
+   * whatever the calendar says. Dropping it would hide real marks — they would
+   * exist in the database and on no screen.
+   */
+  it("keeps a weekend that was actually worked", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-07", "PRESENT");
+
+    const res = await register(admin, a.kindergarten.id, "from=2026-03-06&to=2026-03-09");
+
+    expect(res.body.days).toContain("2026-03-07");
+  });
+
+  it("stops counting the weekend as unrecorded", async () => {
+    const res = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/attendance/daily?from=2026-03-06&to=2026-03-09`,
+      ),
+      admin,
+    );
+
+    expect(res.status).toBe(200);
+    // Two working days × one group, not four calendar days.
+    expect(res.body.totals.days).toBe(2);
+  });
+
+  it("removes a day again, and the register gets it back", async () => {
+    await addDay({ date: "2026-03-04", name: "Цагаан сар" });
+
+    const removed = await authed(
+      request(server()).delete(
+        `/v1/kindergartens/${a.kindergarten.id}/attendance/calendar/2026-03-04`,
+      ),
+      admin,
+    );
+    expect(removed.status).toBe(200);
+
+    const res = await register(admin, a.kindergarten.id, "from=2026-03-02&to=2026-03-06");
+    expect(res.body.days).toContain("2026-03-04");
+  });
+
+  /** A soft-deleted row still holds the unique key; adding the date again must work. */
+  it("can re-add a day that was removed", async () => {
+    await addDay({ date: "2026-03-04", name: "Цагаан сар" });
+    await authed(
+      request(server()).delete(
+        `/v1/kindergartens/${a.kindergarten.id}/attendance/calendar/2026-03-04`,
+      ),
+      admin,
+    );
+
+    expect((await addDay({ date: "2026-03-04", name: "Цагаан сар" })).status).toBe(201);
+    expect((await calendar("from=2026-03-01&to=2026-03-31")).body).toHaveLength(1);
+  });
+
+  // ── Authorization — CLAUDE.md §4.1 ────────────────────────────────────────
+
+  it("refuses a teacher reading the calendar", async () => {
+    const res = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/attendance/calendar?from=2026-03-01&to=2026-03-31`,
+      ),
+      teacher,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses an accountant writing one — it is a setting, not a register entry", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/attendance/calendar`),
+      accountant,
+    ).send({ date: "2026-03-04", name: "Цагаан сар" });
+
+    expect([403, 404]).toContain(res.status);
+  });
+
+  it("refuses an administrator of another kindergarten", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/attendance/calendar`),
+      adminB,
+    ).send({ date: "2026-03-04", name: "Цагаан сар" });
+
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("the grid", () => {
   it("returns one column per day in the range, both ends included", async () => {
     const res = await register(admin, a.kindergarten.id, "from=2026-03-02&to=2026-03-06");

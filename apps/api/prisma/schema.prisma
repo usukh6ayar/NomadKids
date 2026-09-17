@@ -439,6 +439,7 @@ model User {
   attendanceRequested   AttendanceRequest[]       @relation("AttendanceRequestedBy")
   attendanceReviewed    AttendanceRequest[]       @relation("AttendanceReviewedBy")
   attendanceSubmitted   AttendanceSubmission[]    @relation("AttendanceSubmittedBy")
+  calendarDaysCreated   CalendarDay[]             @relation("CalendarDayCreatedBy")
   menuDaysCreated       MenuDay[]                 @relation("MenuDayCreatedBy")
   menuDaysApproved      MenuDay[]                 @relation("MenuDayApprovedBy")
   ingredientsCreated    Ingredient[]              @relation("IngredientCreatedBy")
@@ -647,6 +648,7 @@ model Kindergarten {
   attendanceRecords      Attendance[]
   attendanceSubmissions  AttendanceSubmission[]
   attendanceRequests     AttendanceRequest[]
+  calendarDays           CalendarDay[]
   menuDays               MenuDay[]
   surveys                Survey[]
   surveyQuestions        SurveyQuestion[]
@@ -4470,6 +4472,52 @@ model Contract {
 /// ★★★ `@@unique` is partial on `deletedAt`, matching `Attendance` itself: a
 /// day whose submission was withdrawn and made again must not collide with the
 /// soft-deleted row only the database still remembers.
+/// One dated exception to the working week — RFP's attendance register, and
+/// the client's correction of 2026-09-17: "БҮХ НИЙТИЙН АМРАЛТ болон БҮТЭН/ХАГАС
+/// САЙН өдрүүдэд ирц бүртгэх шаардлагагүй ... бодолтоос хасах. улс нийтээр
+/// нөхөж ажиллах онцгой тохиолдолд л бүртгэх."
+///
+/// ★ A table, not a hard-coded list of dates — CLAUDE.md §2.3. Mongolia's
+/// public holidays include Цагаан сар, which moves with the lunar calendar,
+/// and the make-up working Saturdays are announced by government resolution a
+/// few weeks ahead. Neither is a rule any code can derive, and both are things
+/// an administrator knows before the register does.
+///
+/// ★★ Two directions, one table. `isWorkingDay = false` closes a day that the
+/// week would otherwise call a working one; `true` opens a Saturday the
+/// country has been told to work. Without the second, a kindergarten that
+/// works a make-up Saturday could record the day and still be told the
+/// register was incomplete for every other Saturday of the month.
+///
+/// ★★★ Scoped to one kindergarten. The national holidays are the same
+/// everywhere, but a kindergarten's own closures — a repair week, a local
+/// quarantine — are not, and one shared table would make the first
+/// administrator to add a closure close every kindergarten on the platform.
+model CalendarDay {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  date           DateTime @db.Date
+
+  /// What it is called on the screen — "Цагаан сар", "Их засварын өдөр".
+  name String
+
+  /// False closes the day; true opens one the week would have closed.
+  isWorkingDay Boolean @default(false)
+
+  createdById String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("CalendarDayCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([kindergartenId, date])
+  @@index([kindergartenId, date])
+  @@map("calendar_days")
+}
+
 model AttendanceSubmission {
   id             String   @id @default(uuid()) @db.Uuid
   kindergartenId String   @db.Uuid
