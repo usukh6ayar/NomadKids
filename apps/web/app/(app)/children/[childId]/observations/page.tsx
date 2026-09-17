@@ -8,7 +8,7 @@ import { z } from "zod";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
-import { BackButton } from "@/components/ui/back-button";
+import { PageHeader } from "@/components/shell/app-shell";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildObservations } from "@/components/child/child-observations";
 import { ObservationHub } from "@/components/child/observation-hub";
@@ -37,6 +37,7 @@ function Body() {
   const childId = params.childId;
   const searchParams = useSearchParams();
   const typeCode = searchParams.get("type") ?? "";
+  const initialPanel = searchParams.get("panel") === "progress" ? "reports" : "notes";
   const { hasRole } = useSession();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
 
@@ -85,15 +86,24 @@ function Body() {
   if (typeCode && isStaff) {
     const type = (types.data ?? []).find((row) => (row.code ?? "") === typeCode);
 
-    return (
-      <div className="flex flex-col gap-4 py-2">
-        <BackButton href="/dashboard" />
-        <h1 className="text-title font-semibold leading-heading text-ink">
-          {type?.name ?? "Тэмдэглэл"}
-        </h1>
+    /*
+      ★ Буцах and the title belong to the hub, not to this route — 2026-09-14.
 
+      They share a row with the school-year picker now, and that picker is the
+      hub's own state. Drawing two thirds of a control strip here and the rest
+      a component away is how the two halves drift apart.
+    */
+    return (
+      /* No top padding: the header row is the first thing, hard against it. */
+      <div className="flex flex-col gap-3 pb-2">
         {type ? (
-          <ObservationHub childId={childId} typeCode={typeCode} typeId={type.id} />
+          <ObservationHub
+            childId={childId}
+            typeCode={typeCode}
+            typeId={type.id}
+            title={type.name}
+            initialPanel={initialPanel}
+          />
         ) : (
           <LoadingState rows={4} />
         )}
@@ -103,7 +113,7 @@ function Body() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <BackButton href="/dashboard" />
+      <PageHeader backHref="/dashboard" title="Явцын үнэлгээ" />
 
       {/* ★ Staff only, 2026-09-09 — see assessments/page.tsx's note. */}
       {isStaff ? <ChildHeroProfile child={data} showHealthAlert={isStaff} /> : null}

@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/field";
+import { MonthSelect } from "@/components/ui/month-select";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
@@ -97,13 +98,7 @@ function PlatformRevenue() {
         actions={
           <Field label="Сар">
             {({ id }) => (
-              <Input
-                id={id}
-                type="month"
-                value={month}
-                onChange={(event) => setMonth(event.target.value)}
-                className="w-[170px]"
-              />
+              <MonthSelect id={id} value={month} onValueChange={setMonth} className="w-[170px]" />
             )}
           </Field>
         }

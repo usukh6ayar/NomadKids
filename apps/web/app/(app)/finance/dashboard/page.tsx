@@ -4,12 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowRight,
-  Baby,
   Info,
+  Landmark,
   Receipt,
   UtensilsCrossed,
   Wallet,
-  type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
@@ -23,7 +22,9 @@ import { RequireRole } from "@/components/shell/require-role";
 import { Art } from "@/components/ui/art";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
-import { Field, Input } from "@/components/ui/field";
+import { cn } from "@/lib/utils";
+import { Field } from "@/components/ui/field";
+import { MonthSelect } from "@/components/ui/month-select";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { money, monthLabel } from "@/components/finance/money";
 
@@ -78,6 +79,7 @@ function FinanceBoardScreen() {
   const header = (
     <PageHeader
       title="Самбар"
+      lede="Сарын орлого, төлөгдөөгүй төлбөр, хоолны зардлыг нэг дор харах"
       actions={
         <div className="flex flex-wrap items-end gap-3">
           <Button asChild variant="secondary" size="sm">
@@ -94,13 +96,7 @@ function FinanceBoardScreen() {
           </Button>
           <Field label="Сар">
             {({ id }) => (
-              <Input
-                id={id}
-                type="month"
-                value={month}
-                onChange={(event) => setMonth(event.target.value)}
-                className="w-[170px]"
-              />
+              <MonthSelect id={id} value={month} onValueChange={setMonth} className="w-[170px]" />
             )}
           </Field>
         </div>
@@ -163,62 +159,69 @@ function Figures({ data, month }: { data: FinanceBoard; month: string }) {
   const hasPending = pending !== "0.00";
 
   return (
-    <section aria-labelledby="finance-board-heading" className="flex flex-col gap-4">
-      <SectionHeader
-        id="finance-board-heading"
-        title="Санхүүгийн тойм"
-        lede={`${monthLabel(month)} · ирц, хоол, нэхэмжлэлээс автоматаар нэгтгэв.`}
-      />
+    /*
+      ★ No "Санхүүгийн тойм" heading — 2026-09-17, at the client's request.
 
-      <Card pad="roomy" tone="sky" className="flex flex-col gap-1.5">
-        <div className="flex items-center gap-2">
-          <Wallet size={16} aria-hidden="true" className="shrink-0 text-muted" />
-          <h3 className="text-caption font-medium text-muted">Энэ сарын нийт орлого</h3>
-        </div>
-        <p className="text-figure font-bold leading-heading text-ink">{money(data.income.total)}</p>
-        {/*
-          ★ "Орсон" is said out loud, because the difference between this and
-          the billed total is the whole point of the tile: a month that counted
-          its invoices as income would report money it is still chasing.
-        */}
-        <p className="text-caption text-muted">
-          Орсон дүн · Эцэг эх {money(data.income.parents)} · Улс {money(data.income.state)}
-          {hasPending ? ` · улсаас хүлээгдэж буй ${money(pending)}` : ""}
-        </p>
-      </Card>
+      The screen is called Самбар and the four cards are the whole of what it
+      shows, so a heading over them named the page a second time. The month it
+      carried is on the page header's own lede instead, where the month picker
+      that changes it already is.
+    */
+    <section aria-label={`${monthLabel(month)}-ын санхүүгийн тойм`} className="flex flex-col gap-4">
+      {/*
+        ★★★★ Four tiles across, in the accountant's own register shape —
+        2026-09-17, the client: "нягтлан самбар хэсэг ийм болго."
 
-      <div className="grid grid-cols-2 gap-3 md:gap-4 lg:grid-cols-3">
-        <Tile
-          icon={Receipt}
+        It was one wide tinted hero over three plain cards, which is two
+        designs for four figures and put the月's most-quoted number in a
+        different visual language from every other number this role reads.
+        Same card, same chip, same "figure over its own detail" as
+        `/invoices` — so the board and the register read as one product.
+
+        The tones still mean what `tone.ts` says: sky for information, mint for
+        money received, sun for what is still owed, peach for attention.
+      */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <BoardStat
+          label="Энэ сарын нийт орлого"
+          value={money(data.income.total)}
+          detail={`Эцэг эх ${money(data.income.parents)} · Улс ${money(data.income.state)}`}
+          tone="sky"
+          icon={<Wallet size={20} aria-hidden="true" />}
+        />
+        <BoardStat
+          label="Улсаас хүлээгдэж буй"
+          value={money(pending)}
+          detail={hasPending ? "Батлагдсан, шилжээгүй" : "Бүрэн шилжсэн"}
+          tone="mint"
+          icon={<Landmark size={20} aria-hidden="true" />}
+        />
+        <BoardStat
           label="Төлөгдөөгүй төлбөр"
           value={money(data.unpaid.amount)}
-          footer={
+          detail={
             data.unpaid.overdueCount > 0
               ? `Хугацаа хэтэрсэн ${money(data.unpaid.overdueAmount)}`
-              : `${data.unpaid.invoices} нэхэмжлэл`
+              : `${data.unpaid.invoices} нэхэмжлэл · ${data.unpaid.children} хүүхэд`
           }
+          tone="sun"
+          icon={<Receipt size={20} aria-hidden="true" />}
         />
-        <Tile
-          icon={Baby}
-          label="Төлбөр төлөх ёстой хүүхэд"
-          value={`${data.unpaid.children}`}
-          footer="Үлдэгдэлтэй, бүх сарын дүнгээр"
-        />
-        <Tile
-          icon={UtensilsCrossed}
+        <BoardStat
           label="Хоолны зардал"
           value={money(data.meals.total)}
           /*
             ★ Says what it is derived from. This is `daysFed × dailyRate` out of
             the funding register — a cost to serve, computed whether or not a
             supplier has been paid — and not money observed leaving an account.
-            The kindergarten's actual outgoings are not in this product.
           */
-          footer={
+          detail={
             data.meals.children > 0
-              ? `Нэг хүүхдэд ${money(data.meals.perChild)} · ${data.meals.fedDays} хооллосон өдөр`
+              ? `Нэг хүүхдэд ${money(data.meals.perChild)} · ${data.meals.fedDays} өдөр`
               : "Хоолны бүртгэл алга"
           }
+          tone="peach"
+          icon={<UtensilsCrossed size={20} aria-hidden="true" />}
         />
       </div>
     </section>
@@ -226,65 +229,73 @@ function Figures({ data, month }: { data: FinanceBoard; month: string }) {
 }
 
 /**
- * One figure.
+ * One of the board's four figures — the register's card, in the same shape
+ * `/invoices` draws (2026-09-17).
  *
- * ★ Proportional figures, not `tabular-nums`. Tabular gives every digit the
- * width of a `0`, which lines up a column of numbers and makes a large
- * standalone one look loose — reserve it for columns that must align.
+ * ★ White, with the tone on a 40px chip. Four tinted panels across the head of
+ * a screen is a band of paint; the chip carries the same meaning in a tenth of
+ * the area, and the figure keeps the card's own ink.
  *
- * ★★ No tinted icon chip. An accent above every number would repaint the screen
- * rather than label it — the same argument `board-card.tsx` makes about the
- * class dashboard. The glyph is muted and decorative; the label carries the
- * meaning.
+ * ★★ Proportional figures, not `tabular-nums`: tabular gives every digit the
+ * width of a `0`, which lines up a column and makes a large standalone number
+ * look loose. Columns align; headline figures do not have to.
  */
-function Tile({
-  icon: Icon,
+function BoardStat({
   label,
   value,
-  footer,
+  detail,
+  tone,
+  icon,
 }: {
-  icon: LucideIcon;
   label: string;
   value: string;
-  footer: ReactNode;
+  detail: ReactNode;
+  tone: "sky" | "mint" | "sun" | "peach";
+  icon: ReactNode;
 }) {
+  const chips = {
+    sky: "bg-sky text-sky-ink",
+    mint: "bg-mint text-mint-ink",
+    sun: "bg-sun text-sun-ink",
+    peach: "bg-peach text-peach-ink",
+  } as const;
+
   return (
-    <Card pad="roomy" className="flex h-full flex-col gap-1.5">
-      <div className="flex items-center gap-2">
-        <Icon size={16} aria-hidden="true" className="shrink-0 text-muted" />
-        <h3 className="min-w-0 text-caption font-medium text-muted">{label}</h3>
-      </div>
-      <p className="text-display font-bold leading-heading text-ink">{value}</p>
-      <p className="mt-auto text-caption text-muted">{footer}</p>
+    <Card pad="compact" className="flex items-start gap-3">
+      <span
+        aria-hidden="true"
+        className={cn("grid size-10 shrink-0 place-items-center rounded-card", chips[tone])}
+      >
+        {icon}
+      </span>
+
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-caption font-medium text-muted">{label}</span>
+        <span className="mt-0.5 block truncate text-title font-bold leading-none text-ink">
+          {value}
+        </span>
+        <span className="mt-1 block text-caption leading-snug text-muted">{detail}</span>
+      </span>
     </Card>
   );
 }
 
-/**
- * Анхаарах зүйлс.
- *
- * ★ The list comes from the API, not from re-reading the figures above.
- * "What needs attention" is a business rule — an unrun month, an arrear, an
- * unrecorded payroll — and deriving it here would be a second, quieter
- * definition of the same rule.
- *
- * ★★ Every row is a link. An alert that names a problem and leaves the reader
- * to find the screen that fixes it is a notification, not a dashboard; §5's
- * "empty states say what to do next" applies to full ones as well.
- */
 function Alerts({ alerts }: { alerts: FinanceBoard["alerts"] }) {
+  /*
+    ★ Nothing at all when there is nothing to attend to — 2026-09-17, at the
+    client's request that the "Анхаарах зүйл алга" sentence go.
+
+    The heading went with it rather than standing over an empty space: a
+    section that says only its own name is the same noise the sentence was.
+    The whole point of this block is that its presence means something.
+  */
+  if (alerts.length === 0) return null;
+
   return (
     <section aria-labelledby="finance-alerts-heading" className="flex flex-col gap-3">
       <SectionHeader id="finance-alerts-heading" title="Анхаарах зүйлс" as="h2" />
 
-      {alerts.length === 0 ? (
-        <Card pad="roomy" className="flex items-center gap-3">
-          <Info size={20} aria-hidden="true" className="shrink-0 text-muted" />
-          <p className="text-body text-muted">
-            Анхаарах зүйл алга. Энэ сарын тооцоо, нэхэмжлэл, зардал бүрэн бүртгэгдсэн байна.
-          </p>
-        </Card>
-      ) : (
+      {alerts.length === 0 ? null : (
         <div className="flex flex-col gap-2">
           {alerts.map((alert) => (
             <Card

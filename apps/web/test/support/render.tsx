@@ -184,7 +184,26 @@ export async function selectOption(
   await user.click(await screen.findByRole("option", { name: optionName }));
 }
 
-export function renderWithProviders(ui: ReactElement): RenderResult {
+export function renderWithProviders(
+  ui: ReactElement,
+  options: {
+    /**
+     * Mount `SelectedChildProvider` around the page.
+     *
+     * ★ Default true, and **false is the honest case for a support role** —
+     * 2026-09-17, after a page shipped that crashed for the one role it was
+     * written for.
+     *
+     * `(app)/layout.tsx` returns the cook's and the accountant's shell
+     * *before* the provider ("a cook and an accountant have no selected child
+     * to provide"), and the superadmin's before that. A page on one of those
+     * rails that calls `useSelectedChild()` throws in production and passes
+     * every test, because this wrapper supplied a context the real layout
+     * never mounts. Pass `false` for a screen that lives on those rails.
+     */
+    selectedChild?: boolean;
+  } = {},
+): RenderResult {
   const queryClient = new QueryClient({
     defaultOptions: {
       // No retries in tests: a retried 404 turns a fast assertion into a
@@ -208,15 +227,25 @@ export function renderWithProviders(ui: ReactElement): RenderResult {
         <ToastProvider>
           <SessionProvider>
             {/*
-              Always present in production — `AppLayout` mounts it unconditionally
-              for every authenticated route, before any page-level component ever
-              renders (`SelectedChildProvider`, `(app)/layout.tsx`). `myChildIds`
-              is `undefined` here rather than a real list: no test asserts on the
-              switcher through this generic wrapper, and a page that does
-              (`landmarks.test.tsx`, `roles.test.tsx`) wraps itself explicitly with
-              real ids where the assertion needs them.
+              ★ Present for a teacher, a parent and an administrator — and
+              deliberately skippable, because `AppLayout` does **not** mount it
+              for every authenticated route.
+
+              The superadmin, cook and accountant branches return their shell
+              above it. This comment used to say "always present in production",
+              which is what let a page calling `useSelectedChild()` ship green
+              and crash on the accountant's own screen.
+
+              `myChildIds` is `undefined` rather than a real list: no test
+              asserts on the switcher through this generic wrapper, and a page
+              that does (`landmarks.test.tsx`, `roles.test.tsx`) wraps itself
+              with real ids where the assertion needs them.
             */}
-            <SelectedChildProvider myChildIds={undefined}>{children}</SelectedChildProvider>
+            {options.selectedChild === false ? (
+              children
+            ) : (
+              <SelectedChildProvider myChildIds={undefined}>{children}</SelectedChildProvider>
+            )}
           </SessionProvider>
         </ToastProvider>
       </QueryClientProvider>

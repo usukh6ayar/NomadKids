@@ -39,11 +39,13 @@ import { qk } from "@/lib/api/keys";
 import { useLogout, useSession } from "@/lib/auth/session";
 import { formatRelative, fullName, initials } from "@/lib/format";
 import { BRAND } from "@/lib/vocabulary";
+import { BrandWordmark } from "@/components/ui/brand-wordmark";
 import { Art } from "@/components/ui/art";
 import { cn } from "@/lib/utils";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
 import { ChildAvatar } from "@/components/media/media-image";
 import { ChatWidget } from "@/components/chat/chat-widget";
+import { BackButton } from "@/components/ui/back-button";
 
 /** The bell panel reads five rows; the feed reads fifteen and paginates. */
 const bellListSchema = paginated(notificationSchema);
@@ -183,8 +185,11 @@ export function PageHeader({
   compact = false,
   meta,
   lede,
+  backHref,
 }: {
   title: string;
+  /** Keeps the back control on the title row; it is never a row of its own. */
+  backHref?: string;
   /** Trailing controls — a count, a filter, a primary action. */
   actions?: ReactNode;
   /** Shows the header search field. Screens with something to search set it. */
@@ -225,6 +230,7 @@ export function PageHeader({
       {/* `icon` remains a compatibility prop, but the compact header does not
           spend a second visual slot on decorative artwork. */}
       <div className="flex min-w-0 flex-1 items-start gap-3">
+        {backHref ? <BackButton href={backHref} /> : null}
         <div className="min-w-0">
           <h1
             className={cn(
@@ -654,6 +660,7 @@ export function AppShell({
   const pathname = usePathname();
   const resolvedTheme = workspaceTheme ?? (teacherTheme ? "teacher" : null);
   const isTeacherWorkspace = resolvedTheme === "teacher";
+  const isSupportWorkspace = resolvedTheme === "kitchen" || resolvedTheme === "finance";
   /*
    * ★ Restored 2026-09-10. It was dropped — with the `<ChatWidget />` below —
    * by `d8af069`, a commit about ESIS demo mode that had no business touching
@@ -728,7 +735,7 @@ export function AppShell({
           />
         ) : null}
 
-        <MobileHeader subtitle={subtitle} />
+        <MobileHeader subtitle={subtitle} showNotifications={!isSupportWorkspace} />
 
         {/*
         ★ Padding on the frame, a capped column inside it — not a margin.
@@ -794,12 +801,11 @@ export function AppShell({
         <BottomBar nav={bottomNav} hideOnDesktop={desktopSidebar} />
 
         {/*
-          Teachers and administrators already have Chat in the sidebar, the
-          mobile menu and the dashboard preview. The floating trigger covered
-          register actions and form controls, so it stays only for audiences
-          without that navigation — a parent, a cook, an accountant.
+          Teachers and administrators already have Chat in navigation. Parents
+          reach it from the floating trigger. Kitchen and finance workspaces
+          intentionally have no communications surface.
         */}
-        {!hasDedicatedChatNavigation ? <ChatWidget /> : null}
+        {!hasDedicatedChatNavigation && !isSupportWorkspace ? <ChatWidget /> : null}
 
         <MobileMenuDrawer
           open={menuOpen}
@@ -838,17 +844,34 @@ function Brand({ subtitle }: { subtitle: string }) {
         colour did. It is also the arbitrary-colour mistake the token system
         exists to prevent, sitting in the shell.
       */}
-      <span data-brand-mark className="grid size-[52px] shrink-0 place-items-center">
+      {/*
+        ★ `brand-logo.png`, the whole artwork — 2026-09-16, the client: "logo
+        тал орсон хэвээр байна, бяцхан нүүдэлчид гэсэн бичиг гүйцэт орохгүй
+        байна, бүтэн оруул".
+
+        `brand-mark.png` is the same illustration with the lettering cropped
+        off — two faces under the arc and nothing else — which is what made
+        every screen but the login one carry half a logo. The supplied file is
+        square and includes "БЯЦХАН НҮҮДЭЛЧИД" under the drawing, so it goes in
+        whole, `object-contain` inside a square box so nothing is trimmed.
+      */}
+      <span data-brand-mark className="grid size-[58px] shrink-0 place-items-center">
         <Image
-          src="/brand-mark.png"
+          src="/brand-logo.png"
           alt={BRAND}
-          width={52}
-          height={52}
+          width={58}
+          height={58}
           className="size-full object-contain"
         />
       </span>
+      {/*
+        ★ The name is the gradient wordmark — 2026-09-16, at the client's
+        request that every screen but the login one carry it. The drawn mark
+        beside it has no lettering of its own, so this is the half of the
+        lockup that says what the product is called.
+      */}
       <span className="min-w-0">
-        <span className="block text-body font-semibold leading-[1.25] text-ink">{BRAND}</span>
+        <BrandWordmark className="block text-lead" />
         <span className="block text-caption text-muted">{subtitle}</span>
       </span>
     </Link>
@@ -1115,14 +1138,16 @@ function SidebarContent({
                   {isAdmin && sections
                     ? sections.map((section, sectionIndex) => (
                         <div key={section.title} className="contents">
-                          <p
-                            className={cn(
-                              "px-3 pb-1 pt-5 text-caption font-semibold uppercase tracking-wide text-faint",
-                              sectionIndex === 0 && "pt-2",
-                            )}
-                          >
-                            {section.title}
-                          </p>
+                          {section.title ? (
+                            <p
+                              className={cn(
+                                "px-3 pb-1 pt-5 text-caption font-semibold uppercase tracking-wide text-faint",
+                                sectionIndex === 0 && "pt-2",
+                              )}
+                            >
+                              {section.title}
+                            </p>
+                          ) : null}
                           {/*
                             ★ `/settings` filtered here too — 2026-09-11.
 
@@ -1585,7 +1610,13 @@ function MobileMenuDrawer({
  * the brand and identity. Showing them twice is what crowded
  * the page title in the reference, which solved it the same way.
  */
-function MobileHeader({ subtitle }: { subtitle: string }) {
+function MobileHeader({
+  subtitle,
+  showNotifications,
+}: {
+  subtitle: string;
+  showNotifications: boolean;
+}) {
   return (
     <header
       className={cn(
@@ -1593,19 +1624,17 @@ function MobileHeader({ subtitle }: { subtitle: string }) {
       )}
     >
       <Link href="/" className="flex min-h-[44px] items-center gap-3">
-        <span data-brand-mark className="grid size-[42px] shrink-0 place-items-center">
+        <span data-brand-mark className="grid size-[46px] shrink-0 place-items-center">
           <Image
-            src="/brand-mark.png"
+            src="/brand-logo.png"
             alt={BRAND}
-            width={42}
-            height={42}
+            width={46}
+            height={46}
             className="size-full object-contain"
           />
         </span>
         <span className="min-w-0">
-          <span className="block truncate text-body font-semibold leading-[1.2] text-ink">
-            {BRAND}
-          </span>
+          <BrandWordmark className="block text-body" />
           <span className="block text-caption text-muted">{subtitle}</span>
         </span>
       </Link>
@@ -1619,9 +1648,11 @@ function MobileHeader({ subtitle }: { subtitle: string }) {
         renders the signed-in name as the route to `/settings`. Sign-out lives
         inside that profile screen for every role.
       */}
-      <div className="ml-auto flex items-center">
-        <NotificationBell />
-      </div>
+      {showNotifications ? (
+        <div className="ml-auto flex items-center">
+          <NotificationBell />
+        </div>
+      ) : null}
     </header>
   );
 }

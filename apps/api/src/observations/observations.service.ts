@@ -64,9 +64,10 @@ export class ObservationsService {
       if (!assigned.includes(groupId)) throw new NotFoundException();
     }
 
-    const [stats, byMonth, types, domains] = await Promise.all([
+    const [stats, byMonth, byDate, types, domains] = await Promise.all([
       this.repo.groupObservationStats(groupId, from, to),
       this.repo.observationsByMonth(groupId, from, to),
+      this.repo.observationsByDate(groupId, from, to),
       this.repo.listTypes(group.kindergartenId),
       this.repo.listDomainsForStats(group.kindergartenId),
     ]);
@@ -105,6 +106,8 @@ export class ObservationsService {
         .filter((row) => row.activityName)
         .map((row) => ({ name: row.activityName as string, count: row._count._all })),
       byMonth,
+      /* One bucket per day that has notes — the window's own bar chart. */
+      byDate,
     };
   }
 

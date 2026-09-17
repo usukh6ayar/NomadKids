@@ -104,7 +104,7 @@ describe("the teacher's report", () => {
     stub();
     renderWithProviders(<ReportsPage />);
 
-    expect(await screen.findByRole("heading", { name: "Судалгааны мэдээлэл" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Тайлан" })).toBeInTheDocument();
     expect(await screen.findByText("Нийт хүүхэд")).toBeInTheDocument();
     expect(screen.getByText("28")).toBeInTheDocument();
     expect(screen.getByText("91%")).toBeInTheDocument();

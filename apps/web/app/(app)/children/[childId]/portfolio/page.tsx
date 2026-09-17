@@ -78,13 +78,12 @@ export default function PortfolioPage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <BackButton href={`/children/${childId}/general`} />
-
       <section
         aria-labelledby="portfolio-heading"
         className="flex h-28 w-full items-center justify-between gap-5 overflow-hidden rounded-card border border-gray-100 bg-gradient-to-r from-white to-gray-100/80 px-6 shadow-sm"
       >
-        <h1 id="portfolio-heading" className="text-title font-bold text-gray-800">
+        <BackButton href={`/children/${childId}/general`} />
+        <h1 id="portfolio-heading" className="min-w-0 flex-1 text-title font-bold text-gray-800">
           {PORTFOLIO}
         </h1>
         {profileArt ? (

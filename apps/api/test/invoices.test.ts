@@ -106,6 +106,154 @@ async function generate(
   ).send(body);
 }
 
+/**
+ * The register's filters and its spreadsheet — 2026-09-17, with the client's
+ * redesign of the accountant's screen.
+ */
+describe("the register's filters", () => {
+  it("narrows to one group, by the child's active enrolment", async () => {
+    await generate(accountant, a.kindergarten.id, generateBody(a.child.id));
+
+    const mine = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/invoices?groupId=${a.group.id}`,
+      ),
+      accountant,
+    );
+    expect(mine.status).toBe(200);
+    expect(mine.body.items).toHaveLength(1);
+
+    const other = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/invoices?groupId=${b.group.id}`,
+      ),
+      accountant,
+    );
+    expect(other.body.items).toHaveLength(0);
+  });
+
+  it("narrows to invoices carrying a line of one type", async () => {
+    await generate(accountant, a.kindergarten.id, generateBody(a.child.id));
+
+    const meals = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/invoices?lineType=MEAL`),
+      accountant,
+    );
+    expect(meals.body.items).toHaveLength(1);
+
+    const bus = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/invoices?lineType=BUS`),
+      accountant,
+    );
+    expect(bus.body.items).toHaveLength(0);
+  });
+
+  it("carries the child's group on every row", async () => {
+    await generate(accountant, a.kindergarten.id, generateBody(a.child.id));
+
+    const res = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/invoices`),
+      accountant,
+    );
+
+    expect(res.body.items[0].child.group?.name).toBe(a.group.name);
+    expect(res.body.items[0].number).toMatch(/^\d{4}-\d{6}$/);
+  });
+
+  it("exports the same rows as a spreadsheet", async () => {
+    await generate(accountant, a.kindergarten.id, generateBody(a.child.id));
+
+    const res = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/invoices/export?month=2026-08`),
+      accountant,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toContain("spreadsheetml");
+    expect(res.headers["content-disposition"]).toContain("nekhemjlel-2026-08.xlsx");
+  });
+
+  it("refuses a teacher the export — §13", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/invoices/export`),
+      teacher,
+    );
+
+    expect([403, 404]).toContain(res.status);
+  });
+});
+
+/**
+ * The register's head — counts and money by status, over the whole month.
+ *
+ * ★ Added 2026-09-17 with the client's redesign of the accountant's screen.
+ * The figures are whole-month on purpose: the list beside them is paged, and a
+ * total assembled from a page changes when somebody turns to page two.
+ */
+describe("the month's summary", () => {
+  it("counts and sums by status over the month, not the page", async () => {
+    const created = await generate(accountant, a.kindergarten.id, generateBody(a.child.id));
+    expect(created.status).toBe(201);
+
+    const res = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/invoices/summary?month=2026-08`,
+      ),
+      accountant,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.byStatus.UNPAID.count).toBe(1);
+    // 150000 + 40000 + 10000 − 5000 discount.
+    expect(Number(res.body.byStatus.UNPAID.outstanding)).toBe(195000);
+    expect(Number(res.body.billed)).toBe(195000);
+  });
+
+  it("moves an invoice between the figures when it is paid", async () => {
+    const created = await generate(accountant, a.kindergarten.id, generateBody(a.child.id));
+    const id = created.body.id as string;
+
+    const paid = await authed(
+      request(server()).post(`/v1/invoices/${id}/payments`),
+      accountant,
+    ).send({ amount: "195000", method: "CASH" });
+    expect(paid.status).toBe(201);
+    expect(paid.body.status).toBe("PAID");
+
+    const res = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/invoices/summary?month=2026-08`,
+      ),
+      accountant,
+    );
+
+    expect(res.body.byStatus.PAID.count).toBe(1);
+    expect(res.body.byStatus.UNPAID.count).toBe(0);
+    expect(Number(res.body.outstanding)).toBe(0);
+  });
+
+  // ── Authorization — CLAUDE.md §4.1 ────────────────────────────────────────
+
+  it("refuses a teacher — §13 keeps them out of the finance figures", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/invoices/summary`),
+      teacher,
+    );
+
+    expect([403, 404]).toContain(res.status);
+  });
+
+  it("refuses an accountant of another kindergarten", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/invoices/summary`),
+      accountantB,
+    );
+
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("who may reach an invoice", () => {
   it("refuses a teacher — §13's exclusion, not just a role gate", async () => {
     const res = await generate(teacher, a.kindergarten.id, generateBody(a.child.id));

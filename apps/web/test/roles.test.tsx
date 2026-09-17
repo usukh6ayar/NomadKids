@@ -44,11 +44,9 @@ describe("navigation is built from the session's roles", () => {
     // sidebar sections now (and behind the phone's Цэс tab) rather than being
     // tabs of their own, which is what this is checking.
     //
-    // ★★ "Хүүхдүүд" became "Хүүхдүүд" on 2026-08-30, when the sidebar
-    // was rewritten to the client's reference grouping and took its row names
-    // with it.
+    // ★★ The teacher's child list is named "Суралцагч" in the role menu.
     await waitFor(() => expect(screen.getAllByText("Самбар").length).toBeGreaterThan(0));
-    expect(screen.getAllByText("Хүүхдүүд").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Суралцагч").length).toBeGreaterThan(0);
     // "Ажиглалт хянах" was asserted here until 2026-08-30, when the review
     // queues left the menu for the screens they belong to. Ирц is the
     // staff-only destination that replaced it as the check.
@@ -102,9 +100,7 @@ describe("navigation is built from the session's roles", () => {
       own, so this reads one of those screens instead of the hub's name. The
       hub page is still where the root redirect lands an admin.
     */
-    await waitFor(() =>
-      expect(screen.getAllByText("Цэцэрлэгийн мэдээлэл").length).toBeGreaterThan(0),
-    );
+    await waitFor(() => expect(screen.getAllByText("Байгууллага").length).toBeGreaterThan(0));
   });
 
   /**
@@ -215,6 +211,8 @@ describe("navigation is built from the session's roles", () => {
       ),
     );
     expect(calls.some((call) => call.url.startsWith("/children/mine"))).toBe(false);
+    expect(calls.some((call) => call.url.startsWith("/notifications"))).toBe(false);
+    expect(calls.some((call) => call.url.startsWith("/chat"))).toBe(false);
   });
 
   it("gives accountants their theme without loading parent children", async () => {
@@ -236,6 +234,8 @@ describe("navigation is built from the session's roles", () => {
       ),
     );
     expect(calls.some((call) => call.url.startsWith("/children/mine"))).toBe(false);
+    expect(calls.some((call) => call.url.startsWith("/notifications"))).toBe(false);
+    expect(calls.some((call) => call.url.startsWith("/chat"))).toBe(false);
   });
 
   it("gives a platform operator the platform workspace theme", async () => {

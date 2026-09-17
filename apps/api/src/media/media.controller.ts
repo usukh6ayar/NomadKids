@@ -14,7 +14,7 @@ import {
   UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor, FilesInterceptor } from "@nestjs/platform-express";
-import { idParamSchema } from "@kinder/contracts";
+import { idParamSchema, uuidSchema } from "@kinder/contracts";
 import { z } from "zod";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { RateLimit, RateLimitGuard } from "../common/rate-limit/rate-limit.guard";
@@ -185,6 +185,10 @@ export class ChildMediaController {
  * would mean one method with two authorization paths — the shape mistake
  * CLAUDE.md §1.1 exists to prevent.
  */
+/** Both ids in the path, validated together: `:id` is the notice and
+ *  `:mediaId` the photograph, and neither may be anything but a uuid. */
+const notificationMediaParamsSchema = z.object({ id: uuidSchema, mediaId: uuidSchema });
+
 @Controller("notifications/:id/media")
 @UseGuards(RateLimitGuard)
 export class NotificationMediaController {
@@ -208,6 +212,24 @@ export class NotificationMediaController {
     if (!file) throw new BadRequestException("Файл хавсаргаагүй байна");
 
     return this.service.uploadForNotification(actor, params.id, file, body.caption ?? null);
+  }
+
+  /**
+   * Removes one photograph from a notice — 2026-09-16.
+   *
+   * Until this existed the edit screen carried a line of copy explaining that
+   * a picture could be added and never taken back, which is a feature gap
+   * written out as an apology. The service decides who may: the post's author
+   * or an administrator, answering 404 to anyone else.
+   */
+  @Delete(":mediaId")
+  @Roles("TEACHER", "ADMIN")
+  async remove(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(notificationMediaParamsSchema))
+    params: { id: string; mediaId: string },
+  ) {
+    return this.service.removeFromNotification(actor, params.id, params.mediaId);
   }
 }
 

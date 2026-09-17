@@ -26,6 +26,8 @@ import { buildJournalWorkbook } from "./journal-workbook";
 import { summariseDays } from "./daily-summary";
 import type { AttendanceRegisterQuery } from "./attendance.dto";
 import type {
+  CalendarDayDto,
+  CalendarRangeQuery,
   CreateAttendanceRequestDto,
   RecordAttendanceDto,
   RecordGroupAttendanceDto,
@@ -180,6 +182,69 @@ export class AttendanceService {
    * two queries answer both. `summariseDays` is shared with the Excel sheet for
    * the same reason.
    */
+  /**
+   * The kindergarten's own working-week exceptions.
+   *
+   * ★ Readable by the same people the register is, and writable by an
+   * administrator alone — a holiday moves every figure on the daily screen and
+   * every funding calculation that counts attendance days, so it is a setting
+   * rather than a register entry.
+   */
+  async listCalendarDays(actor: Actor, kindergartenId: string, range: CalendarRangeQuery) {
+    this.tenants.assertCanReadFinance(actor, kindergartenId);
+    const days = await this.repo.findCalendarDays(
+      kindergartenId,
+      toUtcDate(range.from),
+      toUtcDate(range.to),
+    );
+    return days.map((day) => ({
+      date: toDateOnly(day.date),
+      name: day.name,
+      isWorkingDay: day.isWorkingDay,
+    }));
+  }
+
+  async saveCalendarDay(actor: Actor, kindergartenId: string, dto: CalendarDayDto) {
+    this.tenants.assertAdmin(actor, kindergartenId);
+
+    const saved = await this.repo.upsertCalendarDay({
+      kindergartenId,
+      date: toUtcDate(dto.date),
+      name: dto.name,
+      isWorkingDay: dto.isWorkingDay,
+      createdById: actor.userId,
+    });
+
+    await this.audit.append({
+      action: "CREATE",
+      kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "CalendarDay",
+      objectId: saved.id,
+      metadata: { date: dto.date, name: dto.name, isWorkingDay: dto.isWorkingDay },
+    });
+
+    return { date: toDateOnly(saved.date), name: saved.name, isWorkingDay: saved.isWorkingDay };
+  }
+
+  async removeCalendarDay(actor: Actor, kindergartenId: string, date: string) {
+    this.tenants.assertAdmin(actor, kindergartenId);
+
+    const removed = await this.repo.softDeleteCalendarDay(kindergartenId, toUtcDate(date));
+    if (removed === 0) throw new NotFoundException();
+
+    await this.audit.append({
+      action: "DELETE",
+      kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "CalendarDay",
+      objectId: date,
+      metadata: { date },
+    });
+
+    return { date };
+  }
+
   async dailySummary(actor: Actor, kindergartenId: string, query: AttendanceRegisterQuery) {
     const built = await this.buildRegister(actor, kindergartenId, query);
     const [kindergarten, submissions] = await Promise.all([
@@ -492,7 +557,24 @@ export class AttendanceService {
       });
     }
 
-    const days = eachDay(from, to);
+    /*
+      ★ Working days, not calendar days — 2026-09-17. See `workingDays`: the
+      weekend and the kindergarten's own closures come out, its make-up
+      Saturdays go in, and any day somebody actually recorded stays whatever
+      the calendar says.
+
+      Read here rather than in each caller so every figure the register feeds —
+      the grid, the daily summary, the Excel sheet, the ESIS preview — divides
+      by the same set of days. Two definitions of "working day" is the way a
+      screen and a spreadsheet come to disagree about who is behind.
+    */
+    const calendar = await this.repo.findCalendarDays(kindergartenId, from, to);
+    const recordedDays = new Set<string>();
+    for (const marked of byEnrollment.values()) {
+      for (const day of marked.keys()) recordedDays.add(day);
+    }
+
+    const days = workingDays(eachDay(from, to), calendar, recordedDays);
 
     const rows = enrollments.map((enrollment) => {
       const marked = byEnrollment.get(enrollment.id) ?? new Map();
@@ -1519,4 +1601,54 @@ function eachDay(from: Date, to: Date): string[] {
     days.push(new Date(t).toISOString().slice(0, 10));
   }
   return days;
+}
+
+/** Saturday or Sunday, in UTC — every date in this product is a UTC date-only. */
+function isWeekend(day: string): boolean {
+  const weekday = new Date(`${day}T00:00:00.000Z`).getUTCDay();
+  return weekday === 0 || weekday === 6;
+}
+
+/**
+ * The days a register is actually expected to cover.
+ *
+ * ★ 2026-09-17, at the client's correction: "БҮХ НИЙТИЙН АМРАЛТ болон
+ * БҮТЭН/ХАГАС САЙН өдрүүдэд ирц бүртгэх шаардлагагүй ... бодолтоос хасах.
+ * улс нийтээр нөхөж ажиллах онцгой тохиолдолд л бүртгэх."
+ *
+ * Until this existed, `eachDay` handed the register every date in the span,
+ * so a two-group kindergarten over a fortnight was told it had 34 group-days
+ * to fill in — of which ten were Saturdays and Sundays nobody works. The
+ * "Ирц бүртгээгүй" tile counted them, the completeness bar divided by them,
+ * and a director chasing an unfinished register was chasing the weekend.
+ *
+ * Three rules, in order:
+ *
+ *   1. A day the kindergarten has marked as a working day is one, whatever
+ *      the week says — the make-up Saturdays announced by resolution.
+ *   2. A day it has marked as a holiday is not, whatever the week says.
+ *   3. Otherwise, Monday to Friday.
+ *
+ * ★★ And one exception on top: **a day somebody actually recorded counts**,
+ * whatever the calendar says. A register that dropped a column a teacher had
+ * filled in would hide real records — the marks would exist and no screen
+ * would show them. It also means a kindergarten that works a weekend without
+ * telling the calendar still sees that day, which is the forgiving direction
+ * for a rule nobody has configured yet.
+ */
+export function workingDays(
+  days: string[],
+  calendar: { date: Date; isWorkingDay: boolean }[],
+  recordedDays: ReadonlySet<string> = new Set(),
+): string[] {
+  const overrides = new Map(
+    calendar.map((entry) => [entry.date.toISOString().slice(0, 10), entry.isWorkingDay] as const),
+  );
+
+  return days.filter((day) => {
+    if (recordedDays.has(day)) return true;
+    const override = overrides.get(day);
+    if (override !== undefined) return override;
+    return !isWeekend(day);
+  });
 }

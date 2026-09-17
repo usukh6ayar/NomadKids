@@ -8,7 +8,7 @@ import { birthdaySectionSchema, childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
-import { BackButton } from "@/components/ui/back-button";
+import { PageHeader } from "@/components/shell/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/ui/states";
@@ -104,12 +104,19 @@ export default function AboutMePage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <BackButton href={`/children/${childId}/portfolio`} />
+      {editing ? (
+        <PageHeader backHref={`/children/${childId}/portfolio`} title="Миний тухай" />
+      ) : null}
 
       <Card pad="roomy" className="flex flex-col gap-5">
         {!editing ? (
           <>
-            <AboutMeSummaryCard child={data} editing={editing} onEdit={() => setEditing(true)} />
+            <AboutMeSummaryCard
+              child={data}
+              editing={editing}
+              backHref={`/children/${childId}/portfolio`}
+              onEdit={() => setEditing(true)}
+            />
 
             {!birthdays.isLoading && birthdays.data ? (
               <ChildBirthdayFacts section={birthdays.data} />

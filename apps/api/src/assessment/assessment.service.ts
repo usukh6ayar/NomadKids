@@ -505,11 +505,13 @@ export class AssessmentService {
   // ── Term reports ──────────────────────────────────────────────────────────
 
   /**
-   * A guardian sees a term report only once it is FINAL.
+   * A term report is read by staff only — the client, 2026-09-14.
    *
-   * ★ Absent and not-yet-final return the **same** shape. Distinguishing them
-   * would tell a parent that a draft about their child exists, which is its own
-   * disclosure — and the teacher has not finished writing it.
+   * ★ A guardian gets the same shape an unwritten report has, which is the
+   * point: absent, unfinished and not-for-families are one answer, so the
+   * response cannot tell a parent that text about their child exists and is
+   * being kept from them. `AssessmentRepository.findTermReport` carries the
+   * rule; see its note for why it lives there.
    *
    * The empty case is an explicit object rather than `null`, for the reason
    * given in PortfolioService: a bare null sends an empty HTTP body, which a

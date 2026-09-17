@@ -21,6 +21,7 @@ import { z } from "zod";
 import {
   ingredientUnitSchema,
   MEAL_KIND_LABEL,
+  mealKindSchema,
   menuDayWithWarningsSchema,
   recipeSummarySchema,
   type MealKind,
@@ -179,22 +180,22 @@ export default function MenuPage() {
   );
 }
 
-const QUICK_MEAL_KINDS: MealKind[] = [
-  "BREAKFAST",
-  "LUNCH",
-  "SNACK",
-  "MID_MORNING_SNACK",
-  "AFTERNOON_SNACK",
-  "EXTRA",
-];
+/**
+ * ★ Served order, not "the two big ones first" — 2026-09-16, with the client's
+ * renaming of the six sittings. Шөл · Үндсэн хоол · Уух зүйл are one lunch, so
+ * the list a teacher picks from reads the way the day does.
+ */
+const QUICK_MEAL_KINDS: MealKind[] = [...mealKindSchema.options];
 
+/** The serving time each sitting prefills with. A kindergarten edits it; this
+ *  is only what the field opens on. */
 const QUICK_MEAL_TIME: Record<MealKind, string> = {
   BREAKFAST: "08:30",
-  LUNCH: "12:30",
-  SNACK: "10:00",
-  MID_MORNING_SNACK: "11:00",
+  MID_MORNING_SNACK: "10:30",
+  SNACK: "12:30",
+  LUNCH: "12:40",
+  EXTRA: "12:50",
   AFTERNOON_SNACK: "15:00",
-  EXTRA: "17:30",
 };
 
 /** Compact entry from the + on Өнөөдөр/Маргааш. */
@@ -645,7 +646,17 @@ function WeeklyMenu() {
         "what does the week look like" and "let me change a day", and the design
         puts the first one on screen and the second behind a control.
       */}
+      {/*
+        ★ Буцах on the title row, pointing at the dashboard — 2026-09-16, the
+        same header every other screen reached from the sidebar now opens with.
+
+        It is not the two Буцах buttons further down: those leave a *state* of
+        this screen — the editor, and the one day open inside it — and are
+        drawn beside the controls of the state they close. This one leaves the
+        screen.
+      */}
       <PageHeader
+        backHref="/dashboard"
         title={openDay === null ? "Хоолны цэс" : "Хоолны цэс засах"}
         lede={
           openDay !== null

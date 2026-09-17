@@ -13,7 +13,8 @@ import { RequireRole } from "@/components/shell/require-role";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
 import { GroupSwitcher, useSwitchableGroups } from "@/components/shell/group-switcher";
 import { Card, SectionHeader } from "@/components/ui/card";
-import { Field, Input, Select } from "@/components/ui/field";
+import { Field, Select } from "@/components/ui/field";
+import { MonthSelect } from "@/components/ui/month-select";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { BarRow } from "@/components/ui/chart/bar-row";
 import { ColumnChart } from "@/components/ui/chart/columns";
@@ -23,6 +24,7 @@ import { ATTENDANCE_STATUS_CHART_TONE, ATTENDANCE_STATUS_LABEL } from "@/lib/att
 import { formatDayMonth } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { AdminReportsOverview } from "@/components/admin/admin-reports-overview";
+import { BackButton } from "@/components/ui/back-button";
 
 const termsSchema = z.array(termSchema);
 
@@ -150,9 +152,15 @@ function Reports() {
     group?.name ?? items.find((item) => item.id === groupId)?.name ?? "Бүлгийн тайлан";
   const header = (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3 lg:mb-5">
-      <h1 className="min-w-0 flex-1 text-display font-semibold leading-heading tracking-[-0.02em] text-ink">
-        Судалгааны мэдээлэл
-      </h1>
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <BackButton href="/dashboard" />
+        {/* ★ "Тайлан" — 2026-09-16, the client's word. It is the name of the
+            screen in the sidebar and on the dashboard tile that opens it;
+            "Судалгааны мэдээлэл" named one of the four panels below. */}
+        <h1 className="min-w-0 flex-1 text-display font-semibold leading-heading tracking-[-0.02em] text-ink">
+          Тайлан
+        </h1>
+      </div>
       <span className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-pill bg-sky px-3 text-caption font-semibold text-sky-ink sm:px-4 sm:text-body">
         <UsersRound aria-hidden="true" className="size-5" />
         {selectedGroupName}
@@ -162,7 +170,7 @@ function Reports() {
 
   if (!groupId && !groups.isLoading) {
     return (
-      <div className="page-band">
+      <div className="page-band mx-auto w-full max-w-6xl">
         {header}
         <EmptyState
           title="Бүлэг хараахан хуваарилагдаагүй байна"
@@ -172,8 +180,18 @@ function Reports() {
     );
   }
 
+  /*
+    ★ The report stops growing at 1152px — 2026-09-16, the client: "утсан
+    дээр яг болж байна харин вэб дээр хэт том байна".
+
+    Nothing here is wrong on a phone, and the sizes below are deliberately the
+    phone's: what a desktop added was a second, larger scale on top of a layout
+    that was already right. A figure at 88px and a metric card two-to-a-row
+    across a 1920px monitor is one number the width of a hand. The band plus
+    the phone's own type is the whole fix — no `sm:` upscale left to drift.
+  */
   return (
-    <div className="page-band">
+    <div className="page-band mx-auto w-full max-w-6xl">
       {header}
 
       <GroupSwitcher groups={items} activeGroupId={groupId} href={(id) => `/reports?group=${id}`} />
@@ -220,13 +238,7 @@ function Reports() {
         {period === "month" ? (
           <Field label="Сар" className="w-full sm:w-56">
             {({ id }) => (
-              <Input
-                id={id}
-                type="month"
-                max={currentMonth()}
-                value={month}
-                onChange={(event) => setMonth(event.target.value)}
-              />
+              <MonthSelect id={id} max={currentMonth()} value={month} onValueChange={setMonth} />
             )}
           </Field>
         ) : null}
@@ -304,24 +316,26 @@ function ReportBody({
   return (
     <div className="flex flex-col gap-4">
       <section aria-label="Бүлгийн тайлангийн нэгтгэл" className="flex flex-col gap-3">
-        <Card className="relative min-h-52 overflow-hidden border-sky bg-gradient-to-br from-white via-sky/25 to-sky/60 p-5 sm:min-h-64 sm:p-8">
+        <Card className="relative min-h-52 overflow-hidden border-sky bg-gradient-to-br from-white via-sky/25 to-sky/60 p-5 sm:min-h-56 sm:p-6">
           <div className="relative z-10 max-w-[55%]">
             <h2 className="text-lead font-semibold text-ink">Нийт хүүхэд</h2>
-            <p className="mt-2 text-hero font-bold leading-none tracking-tight text-primary tabular-nums sm:text-hero-lg">
+            <p className="mt-2 text-hero font-bold leading-none tracking-tight text-primary tabular-nums">
               {children}
             </p>
-            <p className="mt-3 text-body font-medium text-ink sm:text-lead">{report.group.name}</p>
+            <p className="mt-3 text-body font-medium text-ink">{report.group.name}</p>
           </div>
           <div aria-hidden="true" className="absolute inset-y-0 right-0 w-[55%] overflow-hidden">
             <Art
               name="reportChildrenStar"
               size={360}
-              className="absolute -bottom-8 right-0 h-auto w-full max-w-[360px] object-contain object-bottom sm:-bottom-12"
+              className="absolute -bottom-8 right-0 h-auto w-full max-w-[280px] object-contain object-bottom sm:-bottom-10"
             />
           </div>
         </Card>
 
-        <div className="grid grid-cols-2 gap-3">
+        {/* Two on a phone as before; three from `md`, so six cards are two
+            tidy rows rather than three very wide ones. */}
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
           <ReportMetricCard
             label="Ирцийн хувь"
             value={attendance.percent === null ? "—" : `${attendance.percent}%`}
@@ -458,18 +472,16 @@ function ReportMetricCard({
 
   return (
     <Card
-      className={cn("relative min-h-40 overflow-hidden p-4 sm:min-h-52 sm:p-6", backgrounds[tone])}
+      className={cn("relative min-h-40 overflow-hidden p-4 sm:min-h-44 sm:p-5", backgrounds[tone])}
     >
       <div className="relative z-10 flex h-full flex-col">
-        <h3 className="max-w-[78%] text-body font-semibold leading-snug text-ink sm:text-lead">
-          {label}
-        </h3>
-        <p className="mt-3 text-figure font-bold leading-none tracking-tight text-primary tabular-nums sm:text-figure-lg">
+        <h3 className="max-w-[78%] text-body font-semibold leading-snug text-ink">{label}</h3>
+        <p className="mt-3 text-figure font-bold leading-none tracking-tight text-primary tabular-nums">
           {value}
         </p>
         <div className="mt-auto pt-3">
           {children}
-          <p className="mt-2 text-caption font-medium text-ink sm:text-body">{footer}</p>
+          <p className="mt-2 text-caption font-medium text-ink">{footer}</p>
         </div>
       </div>
       <Art

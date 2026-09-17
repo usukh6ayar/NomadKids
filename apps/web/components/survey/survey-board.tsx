@@ -363,8 +363,18 @@ function SurveysList({ kind }: { kind: SurveyKind }) {
         worth keeping: it is the only place on either screen that says what
         distinguishes a poll from a questionnaire.
       */}
-      <header className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+      {/*
+        ★★ Буцах on the heading's row, back to the hub — 2026-09-16.
+
+        Both boards are reached by pressing one of the two cards on
+        `/surveys`, and neither had a way back to it: the only exit was the
+        sidebar, which lands on the hub's own parent rather than on the choice
+        that was made. `/surveys` is the href for the same reason the group
+        board above uses it — it is where the card that opened this screen is.
+      */}
+      <header className="flex items-start gap-3">
+        <BackButton href="/surveys" />
+        <div className="min-w-0 flex-1 pt-1">
           <h1 className="text-title font-semibold leading-heading text-ink">
             {SURVEY_KIND_LABEL[kind]}
           </h1>

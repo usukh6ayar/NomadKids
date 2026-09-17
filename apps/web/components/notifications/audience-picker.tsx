@@ -12,6 +12,7 @@ import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { Checkbox, Select } from "@/components/ui/field";
+import { cn } from "@/lib/utils";
 
 /** The roster, already scoped by `canAccessChild` — see the note below. */
 const childListSchema = paginated(childSummarySchema);
@@ -90,12 +91,41 @@ export function AudiencePicker({
   onChange,
   disabled,
   showSummary = true,
+  legendHidden = false,
+  allowChildren = true,
 }: {
   value: Audience;
   onChange: (next: Audience) => void;
   disabled: boolean;
   /** The compact composer already makes the selected audience explicit. */
   showSummary?: boolean;
+  /**
+   * Keeps the legend for a screen reader and does not draw it.
+   *
+   * ★ For a caller whose own row already says "Хэнд харагдах" — the edit
+   * screen folds this behind a disclosure of that name, and printing it twice,
+   * once on the row you press and once immediately under it, reads as two
+   * headings for one control. The `<legend>` itself stays: it is what names
+   * the `<fieldset>`, and a fieldset announced as "group" and nothing else is
+   * the accessibility failure this prop must not cause.
+   */
+  legendHidden?: boolean;
+  /**
+   * Whether an audience may name individual children.
+   *
+   * ★ False for a notice — 2026-09-17, the client: "удирдлага шинэ мэдээ
+   * оруулахад хэнд харагдах нь зөвхөн бүх бүлэг болон бүлэг сонгох байна".
+   *
+   * A notice is a board post: it goes to a group's families or to all of
+   * them, and naming three children makes it a message rather than a notice —
+   * which is what the chat is. A survey still addresses a child, because a
+   * survey is *about* one, so the prop rather than deleting the list.
+   *
+   * It also drops a scrolling list of every child in the kindergarten out of
+   * the compose form, which on a roster of any size was the tallest thing on
+   * the screen.
+   */
+  allowChildren?: boolean;
 }) {
   /*
     ★ "Бүх хүүхэд" is the administrator's option — client, 2026-09-10: "багш
@@ -198,7 +228,9 @@ export function AudiencePicker({
 
   return (
     <fieldset className="flex flex-col gap-3">
-      <legend className="mb-1 text-body font-medium text-ink">Хэнд харагдах</legend>
+      <legend className={cn("mb-1 text-body font-medium text-ink", legendHidden && "sr-only")}>
+        Хэнд харагдах
+      </legend>
 
       {/*
         ★ A two-option select rather than the checkbox this used to be.
@@ -215,34 +247,44 @@ export function AudiencePicker({
           onChange={(event) => setScope(event.target.value as "all" | "named")}
           className="max-w-[280px]"
         >
-          <option value="all">Бүх хүүхэд</option>
-          <option value="named">Сонгосон бүлэг, хүүхэд</option>
+          {/*
+            ★ The words follow `allowChildren` — 2026-09-17. A notice goes to
+            groups, so its options say so: offering "Бүх хүүхэд · Сонгосон
+            бүлэг, хүүхэд" over a picker with no child list in it names a
+            choice the screen does not have.
+          */}
+          <option value="all">{allowChildren ? "Бүх хүүхэд" : "Бүх бүлэг"}</option>
+          <option value="named">
+            {allowChildren ? "Сонгосон бүлэг, хүүхэд" : "Сонгосон бүлэг"}
+          </option>
         </Select>
-      ) : (
-        /*
-          ★ A sentence, not a select with one option.
-
-          A teacher has exactly one audience shape available, and a dropdown
-          that cannot be changed is a control that invites a press and does
-          nothing. This says why the choice is not there — which is the thing a
-          teacher would otherwise ask about.
-        */
-        <p className="text-caption text-muted">
-          Та өөрийн бүлгийн эцэг эхэд илгээнэ. Бүх цэцэрлэгт зориулсан мэдэгдлийг удирдлага
-          нийтэлнэ.
-        </p>
-      )}
+      ) : null}
 
       {!everyone ? (
         <div className="flex flex-col gap-3">
+          {/*
+            ★ Two across and inside its own scroll — 2026-09-17, the client:
+            "20 бүлэгтэй цэцэрлэг байгаа, хойш гүйхээр урт байна".
+
+            Twenty groups in one column is a 900px list between the note and
+            the publish button, so the section grows past the screen and the
+            control under it moves every time the roster does. Two columns
+            halve it, and the 220px cap — the same one the child list carries
+            for the same reason — keeps the rest of the form where it was.
+          */}
           <div>
-            <p className="mb-1.5 text-caption font-medium text-muted">Бүлэг</p>
+            <p className="mb-1.5 text-caption font-medium text-muted">
+              Бүлэг
+              {groupIds.length > 0 ? (
+                <span className="text-muted"> · {groupIds.length} сонгосон</span>
+              ) : null}
+            </p>
             {groups.isLoading ? (
               <p className="text-caption text-muted">Ачаалж байна…</p>
             ) : groupItems.length === 0 ? (
               <p className="text-caption text-muted">Бүлэг олдсонгүй.</p>
             ) : (
-              <ul className="flex flex-col gap-2">
+              <ul className="grid max-h-[220px] grid-cols-1 gap-x-3 gap-y-1 overflow-y-auto sm:grid-cols-2">
                 {groupItems.map((group) => (
                   <li key={group.id}>
                     <Checkbox
@@ -264,49 +306,58 @@ export function AudiencePicker({
             It sat behind a `<details>` whose note said why: forty checkboxes
             under the group list would push the publish button off a phone
             screen. That concern is real and is answered by the height cap
-            below rather than by the fold — the list scrolls inside its own
-            220px, so it can be open without moving anything under it. What
-            the fold cost was a teacher having to know the option existed.
-          */}
-          <div className="rounded-card border border-border">
-            <p className="px-3.5 py-2.5 text-body text-ink">
-              Тодорхой хүүхэд сонгох
-              {childIds.length > 0 ? (
-                <span className="text-muted"> · {childIds.length} сонгосон</span>
-              ) : null}
-            </p>
+            rather than by the fold — the list scrolls inside its own 220px,
+            so it can be open without moving anything under it.
 
-            <div className="max-h-[220px] overflow-y-auto border-t border-border p-3">
-              {children.isLoading ? (
-                <p className="text-caption text-muted">Ачаалж байна…</p>
-              ) : childItems.length === 0 ? (
-                <p className="text-caption text-muted">Хүүхэд олдсонгүй.</p>
-              ) : (
-                <ul className="flex flex-col gap-2">
-                  {childItems.map((child) => (
-                    <li key={child.id}>
-                      <Checkbox
-                        label={`${child.lastName ? `${child.lastName} ` : ""}${child.firstName}`}
-                        checked={childIds.includes(child.id)}
-                        disabled={disabled}
-                        onChange={() => toggleChild(child.id)}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              )}
+            ★★ A notice does not draw it at all (`allowChildren`): a board post
+            goes to groups, not to three named families.
+          */}
+          {allowChildren ? (
+            <div className="rounded-card border border-border">
+              <p className="px-3.5 py-2.5 text-body text-ink">
+                Тодорхой хүүхэд сонгох
+                {childIds.length > 0 ? (
+                  <span className="text-muted"> · {childIds.length} сонгосон</span>
+                ) : null}
+              </p>
+
+              <div className="max-h-[220px] overflow-y-auto border-t border-border p-3">
+                {children.isLoading ? (
+                  <p className="text-caption text-muted">Ачаалж байна…</p>
+                ) : childItems.length === 0 ? (
+                  <p className="text-caption text-muted">Хүүхэд олдсонгүй.</p>
+                ) : (
+                  <ul className="flex flex-col gap-2">
+                    {childItems.map((child) => (
+                      <li key={child.id}>
+                        <Checkbox
+                          label={`${child.lastName ? `${child.lastName} ` : ""}${child.firstName}`}
+                          checked={childIds.includes(child.id)}
+                          disabled={disabled}
+                          onChange={() => toggleChild(child.id)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
       ) : null}
 
-      {showSummary ? (
+      {/*
+        ★ The summary says what is still *missing*, and nothing else —
+        2026-09-16, at the client's request that the explanatory lines go.
+
+        "Бүх бүлгийн эцэг эхэд харагдана" under a select that already reads
+        "Бүх хүүхэд" restated the control directly above it, and the count line
+        restated the ticks. What survives is the one case a teacher cannot see
+        for themselves: nothing chosen yet, which does not mean nobody.
+      */}
+      {showSummary && !everyone && named === 0 ? (
         <p className="text-caption text-muted">
-          {everyone
-            ? "Бүх бүлгийн эцэг эхэд харагдана."
-            : named === 0
-              ? "Хараахан сонгоогүй байна — сонгохгүй бол бүх бүлэгт харагдана."
-              : `${groupIds.length} бүлэг, ${childIds.length} хүүхдийн эцэг эхэд харагдана.`}
+          Хараахан сонгоогүй байна — сонгохгүй бол бүх бүлэгт харагдана.
         </p>
       ) : null}
     </fieldset>

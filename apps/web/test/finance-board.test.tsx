@@ -52,11 +52,17 @@ describe("the accountant's board", () => {
     stub();
     renderWithProviders(<FinanceDashboardPage />);
 
+    /*
+      ★ The four are the register's own card since 2026-09-17 — the client
+      asked for the board to read as the invoice screen does. "Төлбөр төлөх
+      ёстой хүүхэд" folded into the unpaid tile's own detail line, and the
+      state's pending transfer took the fourth place: it is money, and a count
+      of children was the one tile here that was not.
+    */
     expect(await screen.findByText("Энэ сарын нийт орлого")).toBeInTheDocument();
+    expect(screen.getByText("Улсаас хүлээгдэж буй")).toBeInTheDocument();
     expect(screen.getByText("Төлөгдөөгүй төлбөр")).toBeInTheDocument();
-    expect(screen.getByText("Төлбөр төлөх ёстой хүүхэд")).toBeInTheDocument();
     expect(screen.getByText("Хоолны зардал")).toBeInTheDocument();
-    expect(screen.getByText("Анхаарах зүйлс")).toBeInTheDocument();
   });
 
   it("formats every amount rather than printing the raw decimal", async () => {
@@ -86,32 +92,44 @@ describe("the accountant's board", () => {
     );
     renderWithProviders(<FinanceDashboardPage />);
 
-    expect(await screen.findByText(/Орсон дүн/)).toBeInTheDocument();
-    expect(screen.getByText(/улсаас хүлээгдэж буй 200 000₮/)).toBeInTheDocument();
+    /* The tile names both halves of what arrived, and the pending transfer
+       has a figure of its own beside it. */
+    expect(await screen.findByText(/Эцэг эх 0₮ · Улс 600 000₮/)).toBeInTheDocument();
+    const pending = screen.getByText("Улсаас хүлээгдэж буй").closest("[data-ui='card']")!;
+    expect(within(pending as HTMLElement).getByText("200 000₮")).toBeInTheDocument();
+    expect(within(pending as HTMLElement).getByText("Батлагдсан, шилжээгүй")).toBeInTheDocument();
   });
 
-  it("counts the children who owe, not the invoices", async () => {
+  it("names the invoices and the children behind the unpaid figure", async () => {
     stub();
     renderWithProviders(<FinanceDashboardPage />);
 
-    const tile = (await screen.findByText("Төлбөр төлөх ёстой хүүхэд")).closest(
-      "[data-ui='card']",
-    )!;
-    expect(within(tile as HTMLElement).getByText("4")).toBeInTheDocument();
+    const tile = (await screen.findByText("Төлөгдөөгүй төлбөр")).closest("[data-ui='card']")!;
+    // Both counts, on the tile's own detail line rather than in a tile of
+    // their own — the count of children was never money.
+    expect(within(tile as HTMLElement).getByText(/12 нэхэмжлэл · 4 хүүхэд/)).toBeInTheDocument();
   });
 
   it("prices the meals per child who ate, and says how many days", async () => {
     stub();
     renderWithProviders(<FinanceDashboardPage />);
 
-    expect(await screen.findByText(/Нэг хүүхдэд 30 000₮ · 220 хооллосон өдөр/)).toBeInTheDocument();
+    expect(await screen.findByText(/Нэг хүүхдэд 30 000₮ · 220 өдөр/)).toBeInTheDocument();
   });
 
-  it("says so when there is nothing to attend to", async () => {
+  /**
+   * ★ Nothing at all when there is nothing to attend to — 2026-09-17, at the
+   * client's request. The block used to print "Анхаарах зүйл алга" under its
+   * own heading; a section that says only its own name is noise, and the
+   * presence of this one is the signal.
+   */
+  it("draws no attention block when there is nothing to attend to", async () => {
     stub();
     renderWithProviders(<FinanceDashboardPage />);
 
-    expect(await screen.findByText(/Анхаарах зүйл алга/)).toBeInTheDocument();
+    await screen.findByText("Энэ сарын нийт орлого");
+    expect(screen.queryByText("Анхаарах зүйлс")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Анхаарах зүйл алга/)).not.toBeInTheDocument();
   });
 
   /**

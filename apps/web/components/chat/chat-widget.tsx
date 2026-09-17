@@ -18,7 +18,13 @@ import {
 } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { z } from "zod";
-import { chatMessageSchema, chatRoomSchema, unreadCountSchema } from "@kinder/contracts";
+import {
+  chatMessageSchema,
+  chatRoomSchema,
+  unreadCountSchema,
+  type ChatRoom as ChatRoomData,
+  type Role,
+} from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { mediaUrl } from "@/lib/api/client";
 import { MAX_CHAT_IMAGES } from "@/lib/chat-media";
@@ -39,6 +45,34 @@ const historySchema = z.object({
 });
 
 export const chatRoomsSchema = roomsSchema;
+
+/**
+ * The short room name a person sees; API names remain stable room metadata.
+ *
+ * A group room currently contains its teachers and enrolled children's
+ * guardians, while a staff room contains employees. The role-specific label
+ * describes that same real audience without changing keys or access rules.
+ * A qualifier is only needed when two rooms would otherwise have the same
+ * label (two groups or two kindergarten memberships).
+ */
+export function chatRoomDisplayName(
+  room: ChatRoomData,
+  roles: ReadonlySet<Role>,
+  rooms: readonly ChatRoomData[] = [room],
+): string {
+  if (room.kind === "STAFF") {
+    const hasSeveralStaffRooms = rooms.filter((candidate) => candidate.kind === "STAFF").length > 1;
+    const kindergartenName = room.name.split("·").slice(1).join("·").trim();
+    return hasSeveralStaffRooms && kindergartenName ? `Багш нар · ${kindergartenName}` : "Багш нар";
+  }
+
+  const hasSeveralGroupRooms = rooms.filter((candidate) => candidate.kind === "GROUP").length > 1;
+  const qualifier = hasSeveralGroupRooms ? ` · ${room.name}` : "";
+
+  if (roles.has("TEACHER")) return `Манай анги${qualifier}`;
+  if (roles.has("PARENT")) return `Багш, эцэг эхчүүд${qualifier}`;
+  return room.name;
+}
 
 /**
  * How the surrounding frame renders a pane's title and its dismiss control.
@@ -87,7 +121,7 @@ const dialogChrome: ChatChrome = { Title: Dialog.Title, Close: Dialog.Close };
  * that opens an empty panel is worse than no button.
  */
 export function ChatWidget() {
-  const { session } = useSession();
+  const { session, roles } = useSession();
   const [open, setOpen] = useState(false);
   const [roomKey, setRoomKey] = useState<string | null>(null);
 
@@ -171,7 +205,11 @@ export function ChatWidget() {
           )}
         >
           {active ? (
-            <ChatRoom room={active} onBack={() => setRoomKey(null)} />
+            <ChatRoom
+              room={active}
+              displayName={chatRoomDisplayName(active, roles, rooms.data)}
+              onBack={() => setRoomKey(null)}
+            />
           ) : (
             <ChatList
               rooms={rooms.data}
@@ -218,13 +256,19 @@ export function ChatList({
   chrome?: ChatChrome;
 }) {
   const { Title, Close } = chrome;
+  const { roles } = useSession();
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLocaleLowerCase("mn");
+  const roomNames = useMemo(
+    () => new Map(rooms?.map((room) => [room.key, chatRoomDisplayName(room, roles, rooms)])),
+    [roles, rooms],
+  );
   const visibleRooms = useMemo(
     () =>
       rooms?.filter((room) => {
         if (!normalizedQuery) return true;
         return [
+          roomNames.get(room.key),
           room.name,
           room.lastMessage?.body,
           room.lastMessage?.author ? fullName(room.lastMessage.author) : undefined,
@@ -232,7 +276,7 @@ export function ChatList({
           .filter(Boolean)
           .some((value) => value!.toLocaleLowerCase("mn").includes(normalizedQuery));
       }),
-    [normalizedQuery, rooms],
+    [normalizedQuery, roomNames, rooms],
   );
 
   return (
@@ -323,12 +367,14 @@ export function ChatList({
                       : "bg-primary-soft text-primary",
                   )}
                 >
-                  {room.name.slice(0, 1)}
+                  {(roomNames.get(room.key) ?? room.name).slice(0, 1)}
                 </span>
 
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline justify-between gap-2">
-                    <span className="truncate text-body font-bold text-ink">{room.name}</span>
+                    <span className="truncate text-body font-bold text-ink">
+                      {roomNames.get(room.key) ?? room.name}
+                    </span>
                     {room.lastMessage ? (
                       <span className="shrink-0 text-caption tabular-nums text-muted">
                         {roomListTime(room.lastMessage.createdAt)}
@@ -359,11 +405,14 @@ export function ChatList({
 /** One room: a header that goes back, the messages, and the composer. */
 export function ChatRoom({
   room,
+  displayName = room.name,
   onBack,
   hideBackAtLg = false,
   chrome = dialogChrome,
 }: {
   room: z.infer<typeof chatRoomSchema>;
+  /** Role-specific label already resolved by the frame that owns the room list. */
+  displayName?: string;
   /**
    * Omitted by `/chat` at desktop width, where the list is already beside this
    * pane — a "back" arrow pointing at something visible is a control that
@@ -509,11 +558,11 @@ export function ChatRoom({
               room.kind === "GROUP" ? "bg-mint text-mint-ink" : "bg-primary-soft text-primary",
             )}
           >
-            {room.name.slice(0, 1)}
+            {displayName.slice(0, 1)}
           </span>
 
           <div className="min-w-0 flex-1">
-            <Title className="truncate text-lead font-bold text-ink">{room.name}</Title>
+            <Title className="truncate text-lead font-bold text-ink">{displayName}</Title>
             <p className="mt-0.5 truncate text-caption text-muted">{room.memberCount} гишүүн</p>
           </div>
 

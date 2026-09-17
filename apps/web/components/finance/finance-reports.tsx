@@ -20,6 +20,7 @@ import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
+import { MonthSelect } from "@/components/ui/month-select";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { money } from "./money";
 
@@ -84,13 +85,7 @@ export function FinanceReports({ kindergartenId }: { kindergartenId: string }) {
         {kind === "month" && (
           <Field label="Сар">
             {({ id }) => (
-              <Input
-                id={id}
-                type="month"
-                value={month}
-                onChange={(event) => setMonth(event.target.value)}
-                className="w-[170px]"
-              />
+              <MonthSelect id={id} value={month} onValueChange={setMonth} className="w-[170px]" />
             )}
           </Field>
         )}

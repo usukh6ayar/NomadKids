@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import { MEAL_KIND_LABEL, mealKindSchema } from "@kinder/contracts";
 import type { MenuDishLike } from "./dish-json";
 
 /**
@@ -13,23 +14,17 @@ import type { MenuDishLike } from "./dish-json";
  * warning the screen it was downloaded from did not already show.
  */
 
-const MEAL_KIND_LABEL: Record<string, string> = {
-  BREAKFAST: "Өглөөний цай",
-  SNACK: "Зууш",
-  MID_MORNING_SNACK: "Жүүс",
-  LUNCH: "Өдрийн хоол",
-  AFTERNOON_SNACK: "Их үдийн цай",
-  EXTRA: "Оройн хоол",
-};
-
-const MEAL_KIND_ORDER = [
-  "BREAKFAST",
-  "SNACK",
-  "MID_MORNING_SNACK",
-  "LUNCH",
-  "AFTERNOON_SNACK",
-  "EXTRA",
-];
+/**
+ * ★ The names and the order are the contracts' — 2026-09-16.
+ *
+ * Both lists were written out again here, and the client's renaming of the six
+ * sittings is exactly the event that finds a second copy: the screen would say
+ * Үндсэн хоол and the spreadsheet downloaded from it Өдрийн хоол, for the same
+ * dish, with no way for a cook to tell which one was wrong. `menu-import.ts`
+ * reads the file back, so the two have to agree by construction rather than by
+ * somebody remembering.
+ */
+const MEAL_KIND_ORDER: readonly string[] = mealKindSchema.options;
 
 const WEEKDAY_LABEL = ["Ням", "Даваа", "Мягмар", "Лхагва", "Пүрэв", "Баасан", "Бямба"];
 

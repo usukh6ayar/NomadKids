@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { formatLongDate, formatWeekday } from "@/lib/format";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
+import { formatDayMonthLong, formatLongDate, formatWeekday } from "@/lib/format";
+import { MonthSelect } from "@/components/ui/month-select";
 
 /**
  * Dates in Mongolian, written out rather than asked of `Intl`.
@@ -33,8 +36,44 @@ describe("Mongolian dates", () => {
     expect(formatLongDate(new Date(2026, 8, 10))).toBe("2026 оны 9-р сарын 10");
   });
 
+  /**
+   * ★ The short form is Mongolian too, and `9/15` is not.
+   *
+   * A note card carries the day inside a list already scoped to a school year,
+   * so the year is dropped and the month is still written out — the numeric
+   * `formatDayMonth` stays for axis ticks, where the label has to be two
+   * glyphs wide.
+   */
+  it("writes a day without its year in Mongolian", () => {
+    expect(formatDayMonthLong(new Date(2026, 8, 15))).toBe("9-р сарын 15");
+    expect(formatDayMonthLong(new Date(2026, 11, 1))).toBe("12-р сарын 1");
+    expect(formatDayMonthLong(null)).toBe("—");
+  });
+
   it("says so rather than inventing a day for nothing", () => {
     expect(formatWeekday(null)).toBe("—");
     expect(formatLongDate(undefined)).toBe("—");
+  });
+
+  it("renders browser-independent Mongolian month names", async () => {
+    const user = userEvent.setup();
+    const onValueChange = vi.fn();
+    render(
+      <MonthSelect
+        aria-label="Сар"
+        min="2026-01"
+        max="2026-12"
+        value="2026-09"
+        onValueChange={onValueChange}
+      />,
+    );
+
+    const picker = screen.getByRole("combobox", { name: "Сар" });
+    expect(picker).toHaveTextContent("2026 оны 9-р сар");
+    expect(picker).not.toHaveTextContent("September");
+
+    await user.click(picker);
+    await user.click(await screen.findByRole("option", { name: "2026 оны 8-р сар" }));
+    expect(onValueChange).toHaveBeenCalledWith("2026-08");
   });
 });

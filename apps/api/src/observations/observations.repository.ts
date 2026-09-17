@@ -432,6 +432,41 @@ export class ObservationsRepository {
    * `groupId`, `from` and `to` are bound parameters via the tagged template, so
    * this is not string interpolation and carries no injection surface.
    */
+  /**
+   * One bucket per day that has notes — the month's bar chart.
+   *
+   * ★ Days with none are absent, and the screen fills them in.
+   *
+   * The chart draws every date of the month, weekends shaded, so the gaps are
+   * the point — and a server that padded them would have to know which
+   * calendar the reader is looking at. `observationsByMonth` beside this makes
+   * the same choice for the same reason.
+   */
+  async observationsByDate(
+    groupId: string,
+    from: Date,
+    to: Date,
+  ): Promise<{ date: string; count: number }[]> {
+    const rows = await this.prisma.$queryRaw<{ date: Date; count: bigint }[]>`
+      SELECT o."observedOn"::date AS date,
+             COUNT(*) AS count
+      FROM observations o
+      JOIN enrollments e ON e.id = o."enrollmentId"
+      WHERE e."groupId" = ${groupId}::uuid
+        AND o."deletedAt" IS NULL
+        AND o."observedOn" >= ${from}
+        AND o."observedOn" <= ${to}
+      GROUP BY 1
+      ORDER BY 1
+    `;
+
+    // `COUNT(*)` comes back as bigint, which `JSON.stringify` throws on.
+    return rows.map((row) => ({
+      date: row.date.toISOString().slice(0, 10),
+      count: Number(row.count),
+    }));
+  }
+
   async observationsByMonth(
     groupId: string,
     from: Date,

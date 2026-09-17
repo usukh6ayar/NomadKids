@@ -489,6 +489,21 @@ export const curriculumIndicatorSchema = curriculumIndicatorRefSchema.extend({
 });
 export type CurriculumIndicator = z.infer<typeof curriculumIndicatorSchema>;
 
+/** Fixed categories used by artwork entry, search and development sequences. */
+export const ARTWORK_TYPES = [
+  "Зураг",
+  "Наамал",
+  "Баримал",
+  "Зохион бүтээх",
+  "Зохиомжлох",
+  "Сэдэвчилсэн зураг",
+  "Байгалийн материалаар бүтээх",
+  "Дахивар материалаар бүтээх",
+  "Холимог техникээр бүтээх",
+  "Хамтын бүтээл хийх",
+] as const;
+export type ArtworkType = (typeof ARTWORK_TYPES)[number];
+
 export const observationSchema = z.object({
   id: uuidSchema,
   childId: uuidSchema.nullish(),
@@ -901,21 +916,47 @@ export type AttendanceRequest = z.infer<typeof attendanceRequestSchema>;
 
 export const mealKindSchema = z.enum([
   "BREAKFAST",
-  "SNACK",
   "MID_MORNING_SNACK",
+  "SNACK",
   "LUNCH",
-  "AFTERNOON_SNACK",
   "EXTRA",
+  "AFTERNOON_SNACK",
 ]);
 export type MealKind = z.infer<typeof mealKindSchema>;
 
+/**
+ * What a sitting is called on screen — the client's own six names, 2026-09-16:
+ * Өглөөний хоол · Бага үдийн цай · Шөл · Үндсэн хоол · Уух зүйл · Их үдийн цай.
+ *
+ * ★ The keys did not change, and could not.
+ *
+ * `MenuDish.kind` is stored, so renaming a key would orphan every dish already
+ * written against the old one — and an enum value is not what a cook reads.
+ * Four of the six still mean what their key says; the two that do not
+ * (`SNACK` → Шөл, `EXTRA` → Уух зүйл) are the two whose keys were vague to
+ * begin with, which is why the new names landed on them rather than on
+ * `AFTERNOON_SNACK`, the one sitting whose name is unchanged and whose records
+ * therefore keep reading exactly as they were entered.
+ *
+ * ★★ The declaration order is the order the day runs in, and every screen
+ * takes its order from here — the menu builder, the quick-add dialog, the
+ * cook's recipe filters, the family's day card. `Шөл · Үндсэн хоол · Уух
+ * зүйл` are the three courses of one lunch, so they read in sequence rather
+ * than being sorted apart by the alphabet of their keys.
+ *
+ * ★★★ One map, read by both apps. The Excel export used to carry its own copy
+ * of these six strings (`apps/api/src/meals/menu-workbook.ts`), which is how a
+ * rename leaves a spreadsheet saying "Зууш" a fortnight after the screen
+ * stopped — a list written out by hand in four places, as §7 of CLAUDE.md puts
+ * it. It imports this now.
+ */
 export const MEAL_KIND_LABEL: Record<string, string> = {
-  BREAKFAST: "Өглөөний цай",
-  SNACK: "Зууш",
-  MID_MORNING_SNACK: "Жүүс",
-  LUNCH: "Өдрийн хоол",
+  BREAKFAST: "Өглөөний хоол",
+  MID_MORNING_SNACK: "Бага үдийн цай",
+  SNACK: "Шөл",
+  LUNCH: "Үндсэн хоол",
+  EXTRA: "Уух зүйл",
   AFTERNOON_SNACK: "Их үдийн цай",
-  EXTRA: "Оройн хоол",
 };
 
 /** Whether a child ate — `нэмэлт.md` §2. */
@@ -1763,6 +1804,13 @@ const comparisonMediaSchema = z.object({
   takenAt: z.string().nullish(),
   uploadedAt: z.string().nullish(),
   originalName: z.string().nullish(),
+  observation: z
+    .object({
+      activityName: z.string().nullish(),
+      observedOn: z.string().nullish(),
+      type: z.object({ code: z.string().nullish() }).nullish(),
+    })
+    .nullish(),
 });
 
 export const artworkComparisonSchema = z.object({
@@ -3251,6 +3299,42 @@ export const cookDashboardSchema = z.object({
   /** Ingredients at or below their own `minStock` — opt-in per ingredient,
    * so this is never inflated by ingredients nobody has set a threshold on. */
   lowStockCount: z.number(),
+  /**
+   * One row per active group — the kitchen's portion table (2026-09-17).
+   *
+   * `recorded` is how many marks that group's register holds today: zero means
+   * nobody has filled it in, which is a different fact from nobody coming.
+   */
+  groups: z
+    .array(
+      z.object({
+        groupId: uuidSchema,
+        name: z.string(),
+        enrolled: z.number(),
+        present: z.number(),
+        recorded: z.number(),
+      }),
+    )
+    .default([]),
+  /**
+   * What the meal register holds for today — `нэмэлт.md` §2.
+   *
+   * ★ Served, not planned. A portion count taken from the roster is what the
+   * kitchen intends to cook; this is what was recorded as served, and the
+   * screen labels the two differently.
+   */
+  meals: z
+    .object({
+      byKind: z.array(z.object({ kind: z.string(), portions: z.number() })).default([]),
+      served: z.number(),
+      /** Plates recorded as `SPECIAL` — a diet cooked apart. */
+      special: z.number(),
+      /** Children marked as not taking the meal. */
+      excused: z.number(),
+      /** Distinct children with a food allergy on record. */
+      allergyChildren: z.number(),
+    })
+    .default({ byKind: [], served: 0, special: 0, excused: 0, allergyChildren: 0 }),
 });
 export type CookDashboard = z.infer<typeof cookDashboardSchema>;
 
@@ -4415,6 +4499,12 @@ export const groupObservationStatsSchema = z.object({
   byDomain: z.array(statBucketSchema).default([]),
   /** The busiest activity names — free text, so keyed by name rather than id. */
   byActivity: z.array(z.object({ name: z.string(), count: z.number() })).default([]),
+  /**
+   * `yyyy-mm-dd` buckets, ascending — the daily chart on the assessment
+   * screen. Days with no notes are absent; the screen draws the calendar and
+   * fills the gaps, because only it knows which month is on view.
+   */
+  byDate: z.array(z.object({ date: z.string(), count: z.number() })).default([]),
   /** `yyyy-mm` buckets, ascending. Months with no notes are absent. */
   byMonth: z
     .array(
@@ -4517,6 +4607,16 @@ export type Payment = z.infer<typeof paymentSchema>;
  */
 export const invoiceSchema = z.object({
   id: uuidSchema,
+  /**
+   * The human-readable number a parent quotes on a transfer — `нэмэлт.md` §7.
+   *
+   * ★ Exposed 2026-09-17, for the accountant's register: the column existed
+   * and was searchable (`listInvoices` matches on it) while no response
+   * carried it, so the one field an accountant is read over the telephone
+   * could be searched for and never displayed. Nullable, because invoices
+   * raised before the numbering landed have none.
+   */
+  number: z.string().nullable().default(null),
   month: z.string(),
   baseAmount: z.string(),
   mealAmount: z.string(),
@@ -4533,12 +4633,51 @@ export const invoiceSchema = z.object({
     id: uuidSchema,
     lastName: z.string().nullable(),
     firstName: z.string(),
+    /**
+     * The class the child is in now — the register lists by group.
+     *
+     * ★ Nullable and never a fallback. A child between a transfer out and
+     * their next enrolment has no group, and printing the last one they were
+     * in would put a class on an invoice they have left.
+     */
+    group: z.object({ id: uuidSchema, name: z.string() }).nullable().default(null),
   }),
   lineItems: z.array(invoiceLineItemSchema).default([]),
   payments: z.array(paymentSchema).default([]),
   createdAt: z.string(),
 });
 export type Invoice = z.infer<typeof invoiceSchema>;
+
+/**
+ * The month's invoices, counted and summed by status — the four figures at the
+ * head of the accountant's register (`нэмэлт.md` §7, the client's 2026-09-17
+ * design).
+ *
+ * ★ Whole-month figures, never the page on screen: a register showing 25 rows
+ * states totals over all of them.
+ */
+export const invoiceSummarySchema_ = z.object({
+  count: z.number(),
+  /** What was billed under this status. */
+  billed: z.string(),
+  /** What is still owed under it. */
+  outstanding: z.string(),
+});
+
+export const invoiceRegisterSummarySchema = z.object({
+  month: z.string().nullable(),
+  total: z.number(),
+  billed: z.string(),
+  outstanding: z.string(),
+  byStatus: z.object({
+    UNPAID: invoiceSummarySchema_,
+    PARTIALLY_PAID: invoiceSummarySchema_,
+    PAID: invoiceSummarySchema_,
+    OVERDUE: invoiceSummarySchema_,
+    REFUNDED: invoiceSummarySchema_,
+  }),
+});
+export type InvoiceRegisterSummary = z.infer<typeof invoiceRegisterSummarySchema>;
 
 /** The list view — no line items or payments, one row per invoice. */
 export const invoiceSummarySchema = invoiceSchema.omit({ lineItems: true, payments: true });

@@ -10,7 +10,7 @@ import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
-import { BackButton } from "@/components/ui/back-button";
+import { PageHeader } from "@/components/shell/app-shell";
 import { Button } from "@/components/ui/button";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
@@ -154,7 +154,7 @@ export default function GrowthPage() {
   if (!isStaff) {
     return (
       <div className="flex flex-col gap-6 py-2">
-        <BackButton href={`/children/${childId}/portfolio`} />
+        <PageHeader backHref={`/children/${childId}/portfolio`} title="Хөгжил" />
 
         <ParentGrowthLauncher child={data} />
       </div>
@@ -163,7 +163,7 @@ export default function GrowthPage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <BackButton href={`/children/${childId}/portfolio`} />
+      <PageHeader backHref={`/children/${childId}/portfolio`} title="Хөгжил" />
 
       <ChildHeroProfile child={data} showHealthAlert={isStaff} />
 

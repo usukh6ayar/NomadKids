@@ -81,7 +81,7 @@ describe("the administration dashboard", () => {
   it("is a dashboard rather than a hub", async () => {
     renderAdminDashboard();
 
-    await waitFor(() => expect(within(figures()).getByText("Нийт хүүхэд")).toBeInTheDocument());
+    await waitFor(() => expect(within(figures()).getByText("Нийт суралцагч")).toBeInTheDocument());
 
     // The name the screen took when it stopped being a list of links. It was
     // "Удирдлага", which was also the sidebar section it sat in.
@@ -96,10 +96,10 @@ describe("the administration dashboard", () => {
   it("sends each figure to the screen that explains it", async () => {
     renderAdminDashboard();
 
-    await waitFor(() => expect(within(figures()).getByText("Нийт хүүхэд")).toBeInTheDocument());
+    await waitFor(() => expect(within(figures()).getByText("Нийт суралцагч")).toBeInTheDocument());
 
     for (const [label, href] of [
-      ["Нийт хүүхэд", "/children"],
+      ["Нийт суралцагч", "/children"],
       ["Өнөөдрийн ирц", "/attendance/journal"],
       ["Бүлэг", "/admin/groups"],
       ["Багш, ажилтан", "/admin/users"],
@@ -129,7 +129,7 @@ describe("the administration dashboard", () => {
     );
 
     for (const label of [
-      "Нийт хүүхэд",
+      "Нийт суралцагч",
       "Өнөөдрийн ирц",
       "Бүлэг",
       "Багш, ажилтан",

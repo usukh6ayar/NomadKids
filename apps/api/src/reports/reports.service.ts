@@ -184,7 +184,7 @@ export class ReportsService {
     if (!report) {
       throw new BadRequestException(
         isGuardian
-          ? "Улирлын тайлан хараахан бэлэн болоогүй байна"
+          ? "Улирлын дүгнэлтийг зөвхөн багш, удирдлага үзнэ"
           : "Эхлээд улирлын тайланг бичнэ үү",
       );
     }

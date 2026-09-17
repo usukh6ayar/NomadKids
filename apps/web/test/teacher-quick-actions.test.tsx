@@ -77,7 +77,7 @@ describe("the teacher dashboard's quick actions", () => {
 
     const expected = [
       ["Ирц", "/attendance", "icon-attendance-3d.png"],
-      ["Хүүхдүүд", "/children", "icon-children-3d.png"],
+      ["Суралцагч", "/children", "icon-children-3d.png"],
       ["Хоолны цэс", "/menu", "icon-food-3d.png"],
       ["Мэдээ", "/notifications/new", "icon-notice-3d.png"],
       ["Судалгаа", "/surveys", "icon-survey-3d.png"],
@@ -110,7 +110,7 @@ describe("the teacher dashboard's quick actions", () => {
       "href",
       "/documents",
     );
-    expect(band.getByRole("link", { name: /Хүүхдүүд/ })).toHaveAttribute("href", "/children");
+    expect(band.getByRole("link", { name: /Суралцагч/ })).toHaveAttribute("href", "/children");
   });
 
   /**

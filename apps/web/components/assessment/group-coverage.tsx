@@ -4,16 +4,25 @@ import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Eye, Lightbulb, MessageCircle, Palette, Target } from "lucide-react";
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
-import { groupObservationStatsSchema, groupSchema } from "@kinder/contracts";
+import {
+  MAX_PAGE_SIZE,
+  childSummarySchema,
+  groupObservationStatsSchema,
+  groupSchema,
+  paginated,
+} from "@kinder/contracts";
 import { useSession } from "@/lib/auth/session";
-import { Donut } from "@/components/ui/chart/donut";
 import { GoalDialog } from "./goal-dialog";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Card } from "@/components/ui/card";
+import { Disclosure } from "@/components/ui/disclosure";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { TONE_VAR, type Tone } from "@/components/ui/tone";
+import { ChildAvatar } from "@/components/media/media-image";
+import { shortName } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 const ACADEMIC_MONTHS = [9, 10, 11, 12, 1, 2, 3, 4, 5] as const;
 const OBSERVATION_TYPES = ["Ажиглалт", "Ярилцлага", "Бүтээл"] as const;
@@ -328,10 +337,6 @@ export function GroupCoverage({
     (data?.enrolled ?? 0) > 0;
 
   const enrolled = data?.enrolled ?? 0;
-  const coverageBase = target && target > 0 ? target : enrolled;
-  const coverageCompleted = Math.min(completed, coverageBase);
-  const coveragePercent =
-    coverageBase === 0 ? 0 : Math.min(100, Math.round((completed / coverageBase) * 100));
   /*
     ★ Any member of staff on this screen may set it, not only an administrator.
 
@@ -407,7 +412,18 @@ export function GroupCoverage({
         number used to be exactly that, whatever each teacher had typed into
         their own browser.
       */}
-      <Card tone="mint" pad="compact" className="flex flex-col gap-4">
+      {/*
+        ★★ No panel behind it — 2026-09-16, the client: "энэ сарын зорилт гэсэн
+        хэсгийн арын цагаан хайрцаг арилгаад тунгалаг болго."
+
+        The same move the observation hub's header made two days earlier, and
+        for the same reason: a tinted card drew a box around the month picker
+        and the goal figures, and its padding pushed the ring below it off the
+        first screen. The content is unchanged — it sits on the page's own
+        ground now, and the one rule left inside is the hairline that separates
+        the composer from the figures.
+      */}
+      <section aria-label="Энэ сарын зорилт" className="flex flex-col gap-4">
         <div className="flex items-center gap-1.5 text-body font-semibold text-ink">
           <Target size={16} aria-hidden="true" className="text-mint-ink" />
           Энэ сарын зорилт
@@ -459,117 +475,104 @@ export function GroupCoverage({
           </div>
         ) : null}
 
-        <div className="rounded-row border border-mint/70 bg-surface/80 p-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-body font-semibold text-ink">Зорилтын биелэлт</p>
-              <p className="text-caption text-muted">
-                {target && notesPerChildTarget
-                  ? `${target} хүүхэд · хүүхэд бүрт ${notesPerChildTarget} тэмдэглэл`
-                  : "Хүүхэд болон тэмдэглэлийн зорилтоо сонгоно уу."}
-              </p>
-            </div>
-            <strong className="text-title tabular-nums text-mint-ink">
-              {target ? `${percent}%` : "—"}
-            </strong>
-          </div>
+        {/*
+          ★ Four figures across, the client's 2026-09-17 drawing.
 
-          {target ? (
-            <div className="mt-3 flex flex-col gap-3">
-              <GoalProgressRow
-                label="Тэмдэглэлтэй хүүхэд"
-                value={completed}
-                total={target}
-                tone="sky"
-              />
-              {notesPerChildTarget ? (
-                <GoalProgressRow
-                  label={`${notesPerChildTarget} тэмдэглэлтэй болсон`}
-                  value={childrenMeetingNoteTarget}
-                  total={target}
-                  tone="mint"
-                />
-              ) : null}
-              {totalNoteTarget && totalNotePercent !== null ? (
-                <GoalProgressRow
-                  label="Нийт тэмдэглэл"
-                  value={data?.total ?? 0}
-                  total={totalNoteTarget}
-                  tone="sun"
-                />
-              ) : null}
-              <p className="text-caption text-muted">
-                {targetMet
-                  ? `${selectedMonthGenitive} зорилт биелсэн байна.`
-                  : `${Math.max(target - goalCompleted, 0)} хүүхдийн тэмдэглэлийг гүйцээх үлдсэн.`}
-              </p>
-            </div>
-          ) : null}
-        </div>
-      </Card>
+          They were three stacked progress rows under a single percentage —
+          the same facts, read one line at a time. A row of cards says the
+          month in one look: how many children are covered, how much was
+          written, whether the floor is met and who is still missing.
 
-      {/*
-        ★ Ангийн хамрагдалт — the ring is the headline and the parts are named.
-
-        "80%" alone does not say of what; the three lines under it add up to the
-        roster, so a reader can check the ring against the numbers rather than
-        trusting it.
-
-        ★★ The client's design has a third slice, "Шинэ хүүхэд". Nothing in the
-        product distinguishes a newly enrolled child from any other child with
-        no note yet, and inventing the distinction here would put a number on
-        screen that no query stands behind. Two slices, honestly.
-      */}
-      <Card pad="roomy" className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="text-body font-semibold text-ink">Нийт ангийн хамрагдалт</h3>
-        </div>
-
-        <div className="flex items-center gap-5">
-          <Donut
-            size={120}
-            segments={[
-              { label: "Хамрагдсан", value: coverageCompleted, tone: "mint" },
-              {
-                label: "Хараахан баримтгүй",
-                value: Math.max(0, coverageBase - coverageCompleted),
-                tone: "sun",
-              },
-            ]}
-            label={
+          No fill behind them: the section is transparent (see above) and each
+          card is the product's ordinary white one.
+        */}
+        <div className="grid grid-cols-2 gap-2.5 border-t border-border-soft pt-3 lg:grid-cols-4">
+          <GoalStat
+            label="Зорилго хангасан хүүхэд"
+            value={target ? `${childrenMeetingNoteTarget} / ${target}` : String(completed)}
+            percent={target ? percent : null}
+            tone="mint"
+            hint={
               target
-                ? `${target} хүүхдийн зорилтоос ${completed} нь хамрагдсан`
-                : `${enrolled} хүүхдээс ${completed} нь баримттай`
-            }
-            centre={
-              <span className="text-lead font-semibold tabular-nums leading-none text-ink">
-                {coverageBase === 0 ? "—" : `${coveragePercent}%`}
-              </span>
+                ? targetMet
+                  ? "Бүх хүүхэд шаардлагатай тэмдэглэлтэй"
+                  : `${Math.max(target - goalCompleted, 0)} хүүхэд дутуу`
+                : "Зорилтоо тохируулна уу"
             }
           />
 
-          <dl className="min-w-0 flex-1 text-body">
-            <dt className="text-caption text-muted">
-              {target ? "Зорилтот хүүхэд" : "Нийт хүүхэд"}
-            </dt>
-            <dd className="mb-2 text-title font-semibold tabular-nums leading-none text-ink">
-              {coverageBase}
-            </dd>
-            <div className="flex items-center gap-2">
-              <span aria-hidden="true" className="size-2.5 shrink-0 rounded-pill bg-mint-ink" />
-              <dt className="flex-1 text-muted">Хамрагдсан</dt>
-              <dd className="font-semibold tabular-nums text-ink">{completed}</dd>
-            </div>
-            <div className="mt-1 flex items-center gap-2">
-              <span aria-hidden="true" className="size-2.5 shrink-0 rounded-pill bg-sun-ink" />
-              <dt className="flex-1 text-muted">Үлдсэн</dt>
-              <dd className="font-semibold tabular-nums text-ink">
-                {Math.max(0, coverageBase - completed)}
-              </dd>
-            </div>
-          </dl>
+          <GoalStat
+            label="Нийт бичсэн тэмдэглэл"
+            value={String(data?.total ?? 0)}
+            percent={null}
+            tone="sky"
+            hint={
+              totalNoteTarget
+                ? (data?.total ?? 0) >= totalNoteTarget
+                  ? `Сарын зорилтоос +${(data?.total ?? 0) - totalNoteTarget}`
+                  : `Зорилтод ${totalNoteTarget - (data?.total ?? 0)} дутуу`
+                : `${selectedMonthGenitive} нийт тэмдэглэл`
+            }
+          />
+
+          <GoalStat
+            label="Шаардлагатай тэмдэглэл"
+            value={
+              totalNoteTarget
+                ? `${Math.min(data?.total ?? 0, totalNoteTarget)} / ${totalNoteTarget}`
+                : "—"
+            }
+            percent={totalNotePercent}
+            tone="sun"
+            hint={
+              totalNoteTarget
+                ? totalNotePercent === 100
+                  ? "Доод зорилго биелсэн"
+                  : "Доод зорилго хүрээгүй"
+                : "Хүүхэд бүрийн зорилтоо сонгоно уу"
+            }
+          />
+
+          <GoalStat
+            label="Одоогоор дутуу хүүхэд"
+            value={target ? `${Math.max(target - childrenMeetingNoteTarget, 0)} / ${target}` : "—"}
+            percent={
+              target
+                ? Math.round((Math.max(target - childrenMeetingNoteTarget, 0) / target) * 100)
+                : null
+            }
+            tone={target && childrenMeetingNoteTarget >= target ? "mint" : "peach"}
+            hint={
+              target && childrenMeetingNoteTarget >= target
+                ? "Бүх хүүхэд шаардлагатай тоонд хүрсэн"
+                : "Тэмдэглэл дутуу хүүхдүүд байна"
+            }
+          />
         </div>
-      </Card>
+      </section>
+
+      {/*
+        ★ Хүүхэд бүрийн хамрагдалт — the client's 2026-09-17 drawing.
+
+        The figures above say how many children are covered; this says **which**,
+        and that is the difference between a report and a worklist. A teacher
+        chasing the two children nobody has written about this month could not
+        get their names off this screen at all — they went to the picker, opened
+        each child and counted.
+
+        ★★ The names come from the roster, not from the stats.
+
+        `groupObservationStats` deliberately carries ids and counts and no
+        names ("sending who they are would put a roster into a payload that
+        reports on a group"), so the join happens here against the same
+        `/children` the pickers read — one bounded request the shell usually
+        has warm.
+      */}
+      <ChildCoverage
+        groupId={groupId}
+        byChild={data?.byChild ?? []}
+        notesPerChildTarget={notesPerChildTarget}
+      />
 
       <section aria-labelledby="record-kinds" className="flex flex-col gap-2.5">
         <div className="flex items-center justify-between gap-2">
@@ -657,6 +660,8 @@ export function GroupCoverage({
         tone="sun"
       />
 
+      <DailyNotes month={selected.key} byDate={data?.byDate ?? []} />
+
       <MonthBalance months={months} href={href("months")} />
 
       {steady ? (
@@ -692,6 +697,233 @@ export function GroupCoverage({
   );
 }
 
+/**
+ * Who has notes this month and who has not — the drawing's own table.
+ *
+ * ★ Sorted by how far behind each child is, not alphabetically.
+ *
+ * The screen is read to answer "who still needs writing about", so the answer
+ * is the first row. A register sorted by name makes a teacher scan twenty rows
+ * for the two that matter — and on the last week of the month those two are
+ * the whole reason the screen is open.
+ *
+ * ★★ The bar is per child, against the per-child goal rather than the group's.
+ * Without a goal set there is nothing to be behind, so the column shows the
+ * count alone and no state.
+ */
+function ChildCoverage({
+  groupId,
+  byChild,
+  notesPerChildTarget,
+}: {
+  groupId: string;
+  byChild: { childId: string; count: number }[];
+  notesPerChildTarget: number | null;
+}) {
+  const roster = useQuery({
+    queryKey: qk.children({ groupId, page: 1, pageSize: MAX_PAGE_SIZE }),
+    queryFn: () =>
+      get(
+        `/children?groupId=${groupId}&page=1&pageSize=${MAX_PAGE_SIZE}`,
+        paginated(childSummarySchema),
+      ),
+    enabled: Boolean(groupId),
+    staleTime: 60_000,
+  });
+
+  if (roster.isPending) return <LoadingState rows={3} />;
+  /* A roster this reader may not have is not worth a red panel over a summary
+     that renders perfectly well without it. */
+  if (roster.isError) return null;
+
+  const counts = new Map(byChild.map((row) => [row.childId, row.count]));
+  const target = notesPerChildTarget ?? 0;
+
+  const rows = (roster.data?.items ?? [])
+    .map((child) => {
+      const count = counts.get(child.id) ?? 0;
+      return {
+        child,
+        count,
+        met: target > 0 ? count >= target : count > 0,
+        percent:
+          target > 0 ? Math.min(100, Math.round((count / target) * 100)) : count > 0 ? 100 : 0,
+      };
+    })
+    /* Furthest behind first; ties keep the roster's own order. */
+    .sort((x, y) => x.percent - y.percent || x.count - y.count);
+
+  if (rows.length === 0) return null;
+
+  const met = rows.filter((row) => row.met).length;
+
+  return (
+    /*
+      ★ Folded, and three across when it opens — 2026-09-17, the client: "50
+      хүүхэдтэй анги байх тул дэлгэрэнгүй харагддаг болго ... 3 бүлгээр
+      харуулж болох билүү".
+
+      Fifty rows at 56px is three screens of scrolling between the month's
+      figures and the breakdowns under them, on a list most readings do not
+      need opened at all. Shut, it is one row that says how many are covered;
+      open, it is three columns of compact cards, so fifty children are about
+      a screen.
+
+      ★★ No "Биелсэн / Дутуу" word on each card — also theirs. The bar and the
+      count say it, the words repeated fifty times were most of the card's
+      width, and the ordering already puts whoever is behind at the top.
+    */
+    <Disclosure title="Хүүхэд бүрийн хамрагдалт" hint={`${met} / ${rows.length} хүүхэд`}>
+      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {rows.map(({ child, count, met: isMet, percent }) => (
+          <li key={child.id}>
+            {/*
+              ★ The card is the link, and it opens the child's hub — 2026-09-17,
+              the client: "тухайн хүүхэд дээр дарахаар ... хүүхдийн хамрагдалт
+              бүхлээрээ харагддаг болго."
+
+              `?type=daily` rather than the bare route: the bare one is the
+              child's whole record as a family sees it, and the hub is the
+              screen with the strand chart, the search and the three kind
+              buttons on it — which is where a teacher who has just found a
+              name goes next.
+            */}
+            <Link
+              href={`/children/${child.id}/observations?type=daily`}
+              className="flex items-center gap-2.5 rounded-card border border-border-soft px-2.5 py-2 transition-colors hover:border-primary hover:bg-canvas"
+            >
+              <ChildAvatar child={child} size={32} />
+
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-caption font-semibold leading-snug text-ink">
+                  {shortName(child)}
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="mt-1 block h-1 overflow-hidden rounded-pill bg-track"
+                >
+                  <span
+                    className={cn(
+                      "block h-full rounded-pill",
+                      isMet ? "bg-mint-ink" : "bg-sun-ink",
+                    )}
+                    style={{ width: `${percent}%` }}
+                  />
+                </span>
+              </span>
+
+              <span
+                className={cn(
+                  "shrink-0 text-caption font-semibold tabular-nums",
+                  isMet ? "text-mint-ink" : count > 0 ? "text-sun-ink" : "text-muted",
+                )}
+              >
+                {target > 0 ? `${count}/${target}` : count}
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </Disclosure>
+  );
+}
+
+/**
+ * Notes per day of the month — the drawing's bar chart.
+ *
+ * ★ Every day of the month, including the empty ones.
+ *
+ * The API sends only the days that have notes (`byDate`), because only this
+ * screen knows which month is on view. The gaps are the finding: a month
+ * documented in two bursts and a month documented steadily produce the same
+ * total and a very different picture.
+ *
+ * ★★ Weekends are drawn on a shaded track rather than dropped. A blank
+ * Saturday between two working days is information — it is *why* the run
+ * stopped — and a chart that removed them would compress the week and make
+ * the rhythm unreadable.
+ */
+function DailyNotes({
+  month,
+  byDate,
+}: {
+  month: string;
+  byDate: { date: string; count: number }[];
+}) {
+  const counts = new Map(byDate.map((row) => [row.date, row.count]));
+  const [year, monthIndex] = month.split("-").map(Number);
+  if (!year || !monthIndex) return null;
+
+  const days = new Date(Date.UTC(year, monthIndex, 0)).getUTCDate();
+  const points = Array.from({ length: days }, (_, index) => {
+    const day = index + 1;
+    const date = `${month}-${String(day).padStart(2, "0")}`;
+    const weekday = new Date(`${date}T00:00:00.000Z`).getUTCDay();
+    return { day, date, count: counts.get(date) ?? 0, weekend: weekday === 0 || weekday === 6 };
+  });
+
+  const peak = Math.max(...points.map((point) => point.count), 1);
+  const total = points.reduce((sum, point) => sum + point.count, 0);
+
+  return (
+    <section aria-labelledby="daily-notes" className="flex flex-col gap-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 id="daily-notes" className="text-body font-semibold text-ink">
+          Өдөр тус бүрийн тэмдэглэлийн тоо
+        </h3>
+        <span className="flex items-center gap-3 text-caption text-muted">
+          <span className="flex items-center gap-1.5">
+            <span aria-hidden="true" className="size-2.5 rounded-pill bg-sky-ink" />
+            Тэмдэглэлийн тоо
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span aria-hidden="true" className="size-2.5 rounded-pill bg-canvas" />
+            Амралтын өдөр
+          </span>
+        </span>
+      </div>
+
+      <Card pad="compact">
+        <div
+          role="img"
+          aria-label={`${month} сард өдөр бүрийн тэмдэглэл, нийт ${total}`}
+          className="flex h-28 items-end gap-[3px]"
+        >
+          {points.map((point) => (
+            <span
+              key={point.date}
+              title={`${point.day} — ${point.count} тэмдэглэл`}
+              className={cn(
+                "flex min-w-0 flex-1 flex-col justify-end self-stretch rounded-t-control",
+                point.weekend && "bg-canvas",
+              )}
+            >
+              <span
+                className="block rounded-t-control bg-sky-ink transition-[height]"
+                style={{
+                  height: `${point.count === 0 ? 0 : Math.max(6, (point.count / peak) * 100)}%`,
+                }}
+              />
+            </span>
+          ))}
+        </div>
+
+        {/* Every fifth date, so the axis stays readable at 31 columns. */}
+        <div
+          aria-hidden="true"
+          className="mt-1 flex gap-[3px] text-compact tabular-nums text-faint"
+        >
+          {points.map((point) => (
+            <span key={point.date} className="min-w-0 flex-1 text-center">
+              {point.day % 5 === 0 || point.day === 1 ? point.day : ""}
+            </span>
+          ))}
+        </div>
+      </Card>
+    </section>
+  );
+}
+
 export function observationTypeIcon(name: string): ReactNode {
   const value = normalized(name);
   if (value.includes("ярилц")) return <MessageCircle size={14} aria-hidden="true" />;
@@ -699,41 +931,54 @@ export function observationTypeIcon(name: string): ReactNode {
   return <Eye size={14} aria-hidden="true" />;
 }
 
-function GoalProgressRow({
+/**
+ * One of the month's four figures — the client's 2026-09-17 drawing.
+ *
+ * ★ A white card with the tone kept to the bar under the figure. The drawing
+ * tints each box; a row of four pastel panels is a band of paint across the
+ * top of a screen whose job is the table below it, and the colour carries
+ * nothing the bar does not.
+ */
+function GoalStat({
   label,
   value,
-  total,
+  percent,
   tone,
+  hint,
 }: {
   label: string;
-  value: number;
-  total: number;
+  value: string;
+  /** Null draws no bar — a figure with no denominator has no share to show. */
+  percent: number | null;
   tone: Tone;
+  hint: string;
 }) {
-  const percent = total > 0 ? Math.min(100, Math.round((value / total) * 100)) : 0;
-
   return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between gap-3 text-caption">
-        <span className="text-muted">{label}</span>
-        <strong className="tabular-nums text-ink">
-          {value} / {total}
-        </strong>
-      </div>
-      <div
-        role="progressbar"
-        aria-label={`${label}: ${value} / ${total}`}
-        aria-valuemin={0}
-        aria-valuemax={total}
-        aria-valuenow={Math.min(value, total)}
-        className="h-2.5 overflow-hidden rounded-pill bg-track"
-      >
-        <div
-          className="h-full rounded-pill transition-[width]"
-          style={{ width: `${percent}%`, background: TONE_VAR[tone] }}
-        />
-      </div>
-    </div>
+    <Card pad="compact" className="flex flex-col gap-1.5">
+      <span className="text-caption font-medium leading-snug text-muted">{label}</span>
+
+      <span className="flex items-baseline gap-1.5">
+        <span className="text-title font-bold tabular-nums leading-none text-ink">{value}</span>
+        {percent !== null ? (
+          <span className="text-caption tabular-nums text-muted">{percent}%</span>
+        ) : null}
+      </span>
+
+      {percent !== null ? (
+        <span
+          role="img"
+          aria-label={`${label}: ${percent}%`}
+          className="h-1.5 overflow-hidden rounded-pill bg-track"
+        >
+          <span
+            className="block h-full rounded-pill transition-[width]"
+            style={{ width: `${Math.min(100, percent)}%`, background: TONE_VAR[tone] }}
+          />
+        </span>
+      ) : null}
+
+      <span className="text-caption leading-snug text-muted">{hint}</span>
+    </Card>
   );
 }
 

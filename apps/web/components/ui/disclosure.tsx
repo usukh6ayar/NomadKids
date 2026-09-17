@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 /**
  * A section that opens on demand.
@@ -26,16 +27,19 @@ export function Disclosure({
   title,
   hint,
   disabled = false,
+  className,
   children,
 }: {
   title: string;
   hint?: string;
   disabled?: boolean;
+  /** For a caller that places this in a row rather than in a column. */
+  className?: string;
   children: ReactNode;
 }) {
   if (disabled) {
     return (
-      <Card pad="roomy" className="flex items-center justify-between gap-3">
+      <Card pad="roomy" className={cn("flex items-center justify-between gap-3", className)}>
         <span className="text-lead font-semibold text-faint">{title}</span>
         {hint ? <span className="text-caption text-muted">{hint}</span> : null}
       </Card>
@@ -43,7 +47,7 @@ export function Disclosure({
   }
 
   return (
-    <details className="group rounded-card border border-border bg-surface">
+    <details className={cn("group rounded-card border border-border bg-surface", className)}>
       <summary className="flex min-h-[60px] cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
         <ChevronRight
           size={18}

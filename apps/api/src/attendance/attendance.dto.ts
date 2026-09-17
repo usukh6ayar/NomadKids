@@ -316,3 +316,31 @@ export const attendanceRegisterQuerySchema = z
   });
 
 export type AttendanceRegisterQuery = z.infer<typeof attendanceRegisterQuerySchema>;
+
+/**
+ * A dated exception to the working week — the calendar behind `workingDays`.
+ *
+ * ★ `date` is a plain `YYYY-MM-DD`, like every other date this API takes: the
+ * register works in UTC date-onlys and a timestamp would drift a holiday into
+ * the previous evening for anyone east of Greenwich.
+ */
+export const calendarDaySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Огноо YYYY-MM-DD хэлбэртэй байна"),
+  name: z.string().trim().min(1, "Нэр оруулна уу").max(120),
+  /** False closes the day; true opens one the week would have closed. */
+  isWorkingDay: z.boolean().default(false),
+});
+export type CalendarDayDto = z.infer<typeof calendarDaySchema>;
+
+/** The span a calendar is read for — a year at most, like the register's own. */
+export const calendarRangeSchema = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+export type CalendarRangeQuery = z.infer<typeof calendarRangeSchema>;
+
+/** `/kindergartens/:id/attendance/calendar/:date` — both halves, validated. */
+export const calendarDayParamsSchema = z.object({
+  id: z.uuid(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});

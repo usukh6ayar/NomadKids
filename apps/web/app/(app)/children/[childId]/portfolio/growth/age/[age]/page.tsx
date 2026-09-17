@@ -7,6 +7,7 @@ import { ageProfileSchema, childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
+import { PageHeader } from "@/components/shell/app-shell";
 import { BackButton } from "@/components/ui/back-button";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { AgeProfileProgress } from "@/components/child/age-profile-progress";
@@ -58,14 +59,12 @@ export default function AgeProfilePage() {
     enabled: age !== undefined,
   });
 
-  const backLink = <BackButton href={`/children/${childId}/portfolio/growth/age`} />;
-
   // RFP §4.3 fixes this at 2–5; anything else in the URL is a bad link, not a
   // record this page can render.
   if (age === undefined) {
     return (
       <div className="flex flex-col gap-6 py-2">
-        {backLink}
+        <PageHeader backHref={`/children/${childId}/portfolio/growth/age`} title="Насны мэдээлэл" />
         <ErrorState title="Олдсонгүй" description="Энэ нас бүртгэлгүй байна." />
       </div>
     );
@@ -90,16 +89,18 @@ export default function AgeProfilePage() {
 
   return (
     <div className="flex flex-col gap-4 py-1 sm:gap-5 sm:py-2">
-      {backLink}
-
       {/*
         ★ One heading, not a heading over a subtitle — 2026-09-10.
         "Миний {age} нас" with "{age} насны дурсамж" beneath it said the same
         thing twice at two weights, which reads as a mistake rather than
         emphasis. The subtitle was never carrying anything the title did not.
       */}
-      <div className="text-center">
-        <h1 className="text-display font-bold text-ink">Миний {age} нас дурсамжууд</h1>
+      <div className="flex items-center gap-3">
+        <BackButton href={`/children/${childId}/portfolio/growth/age`} />
+        <h1 className="min-w-0 flex-1 text-center text-display font-bold text-ink">
+          Миний {age} нас дурсамжууд
+        </h1>
+        <span className="size-12 shrink-0" aria-hidden="true" />
       </div>
 
       <AgeProfileProgress

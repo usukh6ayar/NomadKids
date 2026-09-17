@@ -52,13 +52,14 @@ export default function PhotoAlbumLandingPage() {
         fallback, which is also the honest control: this link named a screen the
         reader may never have come from.
       */}
-      <BackButton href={`/children/${childId}/portfolio`} />
-
       <DevelopmentHistoryLink childId={childId} />
 
-      <header>
-        <h1 className="text-heading font-semibold text-ink">Зургийн цомог</h1>
-        <p className="mt-1 text-body text-muted">Насыг сонгож тухайн үеийн дурсамжуудаа үзээрэй.</p>
+      <header className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3">
+        <BackButton href={`/children/${childId}/portfolio`} />
+        <h1 className="min-w-0 text-heading font-semibold text-ink">Зургийн цомог</h1>
+        <p className="col-start-2 mt-1 text-body text-muted">
+          Насыг сонгож тухайн үеийн дурсамжуудаа үзээрэй.
+        </p>
       </header>
 
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
