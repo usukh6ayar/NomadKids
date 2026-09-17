@@ -603,21 +603,25 @@ describe("GET /v1/kindergartens/:id/esis/sync-runs", () => {
   const url = (id: string, query = "") => `/v1/kindergartens/${id}/esis/sync-runs${query}`;
 
   it("lists runs newest first, paginated", async () => {
-    await sync.runReferenceSync({
+    const first = await sync.runReferenceSync({
       kindergartenId: a.kindergarten.id,
       actorUserId: a.adminUser.id,
     });
-    await sync.runReferenceSync({
+    const second = await sync.runReferenceSync({
       kindergartenId: a.kindergarten.id,
       actorUserId: a.adminUser.id,
     });
 
+    // Pinned by id, not just by comparing timestamps — two runs seconds
+    // apart would "pass" a timestamp comparison even with the order
+    // reversed, if the wrong field were sorted on.
     const paged = await authed(
       request(server()).get(url(a.kindergarten.id, "?page=1&pageSize=1")),
       adminA,
     );
     expect(paged.status).toBe(200);
     expect(paged.body.items).toHaveLength(1);
+    expect(paged.body.items[0].id).toBe(second.runId);
     expect(paged.body.total).toBe(2);
     expect(paged.body.page).toBe(1);
     expect(paged.body.pageSize).toBe(1);
@@ -626,9 +630,10 @@ describe("GET /v1/kindergartens/:id/esis/sync-runs", () => {
       request(server()).get(url(a.kindergarten.id, "?page=1&pageSize=10")),
       adminA,
     );
-    expect(new Date(full.body.items[0].startedAt).getTime()).toBeGreaterThanOrEqual(
-      new Date(full.body.items[1].startedAt).getTime(),
-    );
+    expect(full.body.items.map((run: { id: string }) => run.id)).toEqual([
+      second.runId,
+      first.runId,
+    ]);
   });
 
   /*
