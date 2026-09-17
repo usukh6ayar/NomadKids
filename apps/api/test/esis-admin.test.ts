@@ -877,6 +877,36 @@ describe("per-child ESIS reads are gated by canAccessChild", () => {
 
     expect(res.status).toBe(404);
   });
+
+  /*
+   * ★ Tier 3 (plan `2026-09-16-esis-sync-tiers.md` Task 6) was already built
+   * before this plan started — `EsisAdminService.read` gates on
+   * `assertCanReadEsisChild` and writes one `AuditLog` `VIEW` row. This is the
+   * case that proves the row is attributable, not merely present: it names
+   * who looked (`actorUserId`), what they looked at (`objectId`, the
+   * resource), and whose record it was (`metadata.params.personId`) — the
+   * three facts a ministry reviewer would ask for about any per-child read.
+   */
+  it("leaves exactly one AuditLog row naming the actor, the child and the resource", async () => {
+    read.mockResolvedValueOnce({ data: [] });
+
+    const res = await authed(request(server()).get(resourceUrl(a.kindergarten.id, MINE)), teacherA);
+
+    expect(res.status).toBe(200);
+
+    const rows = await db.auditLog.findMany({
+      where: { kindergartenId: a.kindergarten.id, objectType: "EsisResource", action: "VIEW" },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      actorUserId: teacherA.userId,
+      objectId: "studentMeasurements",
+    });
+    expect(rows[0]!.metadata).toMatchObject({
+      resource: "studentMeasurements",
+      params: { personId: MINE },
+    });
+  });
 });
 
 /*

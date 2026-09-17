@@ -6,11 +6,51 @@ import { EsisError } from "../src/integrations/esis/esis.client";
 import {
   EsisSyncService,
   ROSTER_MOVEMENTS_FALLBACK_DAYS,
+  ROSTER_RESOURCES,
 } from "../src/integrations/esis/esis-sync.service";
-import type { EsisService } from "../src/integrations/esis/esis.service";
+import { REFERENCE_RESOURCES } from "../src/integrations/esis/esis.reference";
+import { ESIS_READERS } from "../src/integrations/esis/esis.service";
 import { createTestApp } from "./support/app";
 import { resetData, testDb } from "./support/db";
 import { authed, createScenario, login, type AuthSession, type Scenario } from "./support/fixtures";
+
+/*
+ * ★ The sentence a ministry reviewer will care about most (plan
+ * `2026-09-16-esis-sync-tiers.md` Task 6): no scheduled or manual sweep can
+ * reach a per-child ESIS service. `esis.reference.test.ts` already proves
+ * this for tier 1 alone (`REFERENCE_RESOURCES`); this covers tier 2
+ * (`ROSTER_RESOURCES`, what `runRosterSync` actually reads — `staff` and
+ * `teachers` via `EsisAdminService.refreshStaffRosterCore`, plus
+ * `studentMovements` read directly) and, by combining both lists in one
+ * assertion, proves the claim over everything either tier touches rather than
+ * one list at a time.
+ *
+ * ★★ **A path parameter is not the whole signal — this is where T2 already
+ * found the gap.** The plan's first draft checked only `endpoint.path` for
+ * `:personId`. `studentContacts` defeats that check: it carries `personId` in
+ * its JSON body (`bodyParams`), not its path, and `esis.service.ts`'s own
+ * doc comment calls it "the richest PII surface in the catalogue" — exactly
+ * the resource a path-only guard would wave through. This reads `params` and
+ * `bodyParams` together, the same combined form `esis.reference.test.ts`
+ * uses for the same reason.
+ */
+describe("no scheduled sweep reaches a per-child resource", () => {
+  const SWEPT_RESOURCES = [
+    ...REFERENCE_RESOURCES.map((entry) => entry.resource),
+    ...ROSTER_RESOURCES,
+  ];
+
+  it("touches no reader that takes a personId, in the path or the body", () => {
+    const perChild = SWEPT_RESOURCES.filter((resource) => {
+      const reader = ESIS_READERS[resource] as {
+        params?: readonly string[];
+        bodyParams?: readonly string[];
+      };
+      return [...(reader.params ?? []), ...(reader.bodyParams ?? [])].includes("personId");
+    });
+    expect(perChild).toEqual([]);
+  });
+});
 
 /*
  * ★ The two describe blocks above `describe("POST …/esis/sync"...)` are
@@ -335,6 +375,18 @@ describe("EsisSyncService.runRosterSync", () => {
     const run = await db.esisSyncRun.findUniqueOrThrow({ where: { id: outcome.runId } });
     expect(run.status).toBe("SUCCEEDED");
     expect(run.summary).toMatchObject({ kind: "ROSTER" });
+
+    /*
+     * ★ Closes the gap between `ROSTER_RESOURCES` (a declared list the guard
+     * above reads) and what a roster sync actually calls `this.esis.read`
+     * with. The two coincide today by inspection of `refreshStaffRosterCore`
+     * and `runRosterSync` — this observes the runtime calls directly, so a
+     * fourth read added to either method without updating `ROSTER_RESOURCES`
+     * fails here rather than silently slipping past "no scheduled sweep
+     * reaches a per-child resource" above.
+     */
+    const touched = new Set(read.mock.calls.map((call) => call[0]));
+    expect(touched).toEqual(new Set(ROSTER_RESOURCES));
   });
 
   it("reads studentMovements with a beginDate derived from the last successful roster run", async () => {

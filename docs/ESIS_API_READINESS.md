@@ -302,6 +302,50 @@ ADMIN-ы дүүргэсэн `EsisStaffRoster` хүснэгтийг уншина.
 дуудлага руу унахгүй. Хуучирсан roster нь гарсан хүмүүсийг жагсаасан хэвээр
 байдаг — яг тэд данс авах ёсгүй.
 
+### 1.1.7 Гурван давхаргат sync — товлогдсон уншилт хэзээ ч хүүхдэд хүрдэггүй нь батлагдсан — 2026-09-17
+
+`2026-09-16-esis-sync-tiers.md` төлөвлөгөө ESIS-ээс уншихыг гурван давхаргад
+хуваасан:
+
+| Давхарга | Давтамж      | Юу                                                             | Хаана                                       |
+| -------- | ------------ | -------------------------------------------------------------- | ------------------------------------------- |
+| 1        | Сар бүр      | Лавлах каталог (хоол, байр, өрөө, программ…) → `EsisReference` | `REFERENCE_RESOURCES` (`esis.reference.ts`) |
+| 2        | Өдөр бүр     | Ажилтны roster + `studentMovements` тоолол                     | `ROSTER_RESOURCES` (`esis-sync.service.ts`) |
+| 3        | Дуудалт бүрд | Хүүхэд тус бүрийн унших, `canAccessChild`-аар хаалттай         | `EsisAdminService.read`                     |
+
+**3-р давхарга шинээр бичигдээгүй** — энэ бол §1.1.4-т аль хэдийн баталсан
+зам (`assertCanReadEsisChild` → `AuditLog` `VIEW` мөр). Энэ ажил зөвхөн
+баталгааг батлаад бичив:
+
+1. **Хүүхэд тус бүрийн унших нь яг нэг `AuditLog` мөр үлдээдэг, тэр мөр
+   дуудагч, унших зүйл, хэний бичлэгийг нэрлэдэг** — `actorUserId`, `objectId`
+   (сервисийн нэр), `metadata.params.personId`. Тест:
+   `apps/api/test/esis-admin.test.ts` → _"leaves exactly one AuditLog row
+   naming the actor, the child and the resource"_.
+
+2. **Хамгийн чухал баталгаа: товлогдсон буюу гараар эхлүүлсэн ямар ч sync
+   хүүхэд тус бүрийн сервист хүрч чадахгүй.** `1`, `2`-р давхаргын бүх
+   сервисийг (`REFERENCE_RESOURCES` ∪ `ROSTER_RESOURCES`) нэгтгээд, алийг нь ч
+   `personId` авдаггүйг шалгадаг тест:
+   `apps/api/test/esis-sync.test.ts` → _"no scheduled sweep reaches a
+   per-child resource"_ (1-р давхаргын хувилбар нь
+   `apps/api/src/integrations/esis/esis.reference.test.ts`-д аль хэдийн байсан).
+
+   Анхны хувилбар зөвхөн `endpoint.path`-д `:personId` байгаа эсэхийг
+   шалгадаг байсан — энэ **хангалтгүй**: `studentContacts` бол `personId`-г
+   замдаа биш, **JSON body-гоороо** (`bodyParams`) авдаг, мөн `esis.service.ts`-ийн
+   өөрийнх нь тайлбараар энэ бол каталогийн хамгийн их хувийн мэдээлэл
+   агуулсан сервис. Тиймээс шалгалт `params` болон `bodyParams`-ыг хамтад нь
+   үздэг хэлбэрт шилжсэн.
+
+3. **Хамгаалалт бодитоор эвдэрвэл унадаг эсэхийг шалгасан.**
+   `REFERENCE_RESOURCES`-д `studentAllergy` (`personId` авдаг сервис)-г түр
+   нэмээд ажиллуулахад гурван тест унасан (`esis.reference.test.ts`-ийн хоёр,
+   `esis-sync.test.ts`-ийн нэг). `ROSTER_RESOURCES`-д ижил зүйлийг түр нэмэхэд
+   `esis-sync.test.ts`-ийн _"touches no reader that takes a personId, in the
+   path or the body"_ тест унасан. Хоёуланг нь буцаагаад арилгахад бүгд
+   дахин амжилттай болсон.
+
 ### 1.2 Олон байгууллага — token хэрхэн хуваагддаг
 
 2026-09-14-нд хэмжсэн: `organization/info` дээр `42778` → `200`, харин `40284`,

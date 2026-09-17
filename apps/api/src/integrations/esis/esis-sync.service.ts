@@ -35,8 +35,27 @@ export interface ReferenceSyncOutcome {
   results: ReferenceSyncResourceResult[];
 }
 
-/** The resources `runRosterSync` reads — passed to `createRun` the same way `REFERENCE_RESOURCES` is. */
-const ROSTER_RESOURCES = ["staff", "teachers", "studentMovements"] as const;
+/**
+ * The resources `runRosterSync` reads — passed to `createRun` the same way
+ * `REFERENCE_RESOURCES` is.
+ *
+ * ★ Exported so `test/esis-sync.test.ts` can assert against this exact list
+ * rather than a hand-copied one — "no scheduled sweep reaches a per-child
+ * resource" is only as good as its coverage of what `runRosterSync` actually
+ * touches, and a constant a test can import cannot drift from the code path
+ * it describes the way a second, hand-maintained list could.
+ *
+ * ★★ **This array is a label, not the calls themselves.** `staff` and
+ * `teachers` are read inside `refreshStaffRosterCore`, `studentMovements`
+ * inside `runRosterSync` below — both as string literals, not by iterating
+ * this constant. So the two can drift: a fifth read added to either method
+ * without updating this list would slip past the per-child guard above
+ * without either failing. `"stores the staff roster and records a run whose
+ * summary names the roster kind"` in `test/esis-sync.test.ts` closes that gap
+ * by asserting the *observed* `this.esis.read` calls equal this set, not just
+ * that this set itself contains no per-child reader.
+ */
+export const ROSTER_RESOURCES = ["staff", "teachers", "studentMovements"] as const;
 
 /**
  * How far back `studentMovements` looks when there has never been a
