@@ -29,7 +29,6 @@ const activeSurveysSchema = z.array(surveySchema);
  */
 const childBirthSchema = z.object({ dateOfBirth: z.string().nullish() });
 
-
 /**
  * A guardian's own surveys for one child — the "Судалгаа" tile's permanent
  * landing page.
