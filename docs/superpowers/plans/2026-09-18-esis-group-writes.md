@@ -1480,7 +1480,18 @@ export class EsisWriteWorker implements OnModuleInit, OnApplicationShutdown {
 
   onModuleInit() {
     const env = loadEnv(process.env);
-    if (env.REPORTS_WORKER_ENABLED !== true) {
+    /*
+     * ★ Its **own** flag, not `REPORTS_WORKER_ENABLED`.
+     *
+     * That flag means two things at once: "drain the report queue" and, by
+     * implication, "this host has Chromium and a gigabyte of RAM" — CLAUDE.md
+     * §6 says the report worker cannot run on Vercel for exactly that reason.
+     * Gating ESIS writes on it would mean a deployment that turns reports off
+     * silently stops sending to the ministry: approvals would queue, the
+     * director would see APPROVED forever, and nothing would log an error.
+     * An ESIS write needs no browser and no memory.
+     */
+    if (env.ESIS_WRITE_WORKER_ENABLED !== true) {
       this.logger.log("ESIS write worker disabled");
       return;
     }
@@ -1501,6 +1512,42 @@ export class EsisWriteWorker implements OnModuleInit, OnApplicationShutdown {
 
 `concurrency: 1` because the deployment has one rate-limited ESIS token and
 this is a month the ministry is watching.
+
+- [ ] **Step 3b: Add the flag**
+
+In `apps/api/src/config/env.ts`, beside `REPORTS_WORKER_ENABLED`:
+
+```ts
+  /**
+   * Whether this process drains the ESIS write queue.
+   *
+   * ★ Separate from `REPORTS_WORKER_ENABLED`, which also carries "Chromium is
+   * installed here". An ESIS write needs neither a browser nor a gigabyte, and
+   * a deployment that turns reports off must not silently stop writing to the
+   * ministry. Off in tests, where the sender is called directly.
+   */
+  ESIS_WRITE_WORKER_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
+```
+
+In `.env.example`, beside the reports line (CLAUDE.md §1.5 — every new setting
+gets one):
+
+```
+ESIS_WRITE_WORKER_ENABLED=true
+```
+
+In `apps/api/test/setup.ts`, beside `REPORTS_WORKER_ENABLED`:
+
+```ts
+process.env.ESIS_WRITE_WORKER_ENABLED = "false";
+```
+
+Then check the local `.env` has it, or relies on the `"true"` default — Task 15
+Step 3's live exercise does nothing at all if this process is not draining the
+queue, and the symptom is a row that stays `APPROVED` with no error anywhere.
 
 - [ ] **Step 4: Write the sender**
 
@@ -2049,6 +2096,21 @@ function readGroupId(data: unknown): string | null {
 and in `esis-write.repository.ts`:
 
 ```ts
+  /**
+   * Stamps the ministry's own group id onto our `Group`.
+   *
+   * ★ The second repository in this codebase that writes `Group`, and the one
+   * exception to this file's own "one base filter per repository" note — so it
+   * says why rather than being noticed later. It runs **inside the worker**,
+   * where there is no actor and no tenant to scope by: the `groupId` comes
+   * from an `EsisWriteRequest` row that a tenant-scoped read produced at
+   * prepare time and that nothing can edit afterwards, so the id has already
+   * been proved to belong to the kindergarten that approved the write.
+   *
+   * ★★ It writes one column that only this flow ever sets. If a second caller
+   * ever needs it, move it to the groups repository instead of copying it —
+   * two places stamping an external id is how they diverge.
+   */
   setGroupEsisId(groupId: string, esisGroupId: string) {
     return this.prisma.group.update({ where: { id: groupId }, data: { esisGroupId } });
   }
