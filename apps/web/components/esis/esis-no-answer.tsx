@@ -23,6 +23,17 @@ export const ESIS_ERROR_LABEL: Record<string, string> = {
   NOT_CONFIGURED: "Server дээр ESIS тохиргоо алга байна.",
   HTTP: "ESIS алдаатай хариу буцаалаа.",
   UNKNOWN: "Тодорхойгүй алдаа гарлаа.",
+  /*
+   * ★ Added 2026-09-17, plan `2026-09-16-esis-sync-tiers.md` Task 7. A
+   * reference resource (cook/*, screening questions, buildings, rooms, …) is
+   * read from the copy tier 1's monthly sweep keeps, never from ESIS
+   * directly — an empty copy means "nobody has synced it yet", not "the
+   * connection failed", and there is deliberately no live fallback that would
+   * quietly hide the difference. The sentence names the fix rather than just
+   * the fact, per CLAUDE.md §5.
+   */
+  NOT_SYNCED:
+    "ESIS лавлах мэдээлэл хараахан синк хийгдээгүй байна. Платформын оператороос синк хийлгэнэ үү.",
 };
 
 /**

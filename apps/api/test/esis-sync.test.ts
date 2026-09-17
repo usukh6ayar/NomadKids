@@ -724,3 +724,92 @@ describe("GET /v1/kindergartens/:id/esis/sync-runs", () => {
     expect(res.status).toBe(404);
   });
 });
+
+/*
+ * ★ Plan Task 7 — "the screens read the copy". Tier 1 stores reference data
+ * so `GET …/esis/resource` stops reaching the ministry for it; these prove the
+ * route actually takes that branch, that the empty case never falls back to a
+ * live call, and — the regression guard that matters most, since most of the
+ * catalogue is not reference data — that every non-reference resource still
+ * reads live exactly as it did before this task.
+ *
+ * ★★ Put here rather than in `esis-admin.test.ts`. That file's "single-resource
+ * ESIS read" describe covers the route's authorization and its live-read shape
+ * in general, but has no story for getting a row into `EsisReference` short of
+ * inserting one by hand and hoping its shape matches what a real sweep would
+ * store. This file already has `sync.runReferenceSync` and the same `read`
+ * mock the route calls for a live fetch, so a test here seeds the store the
+ * same way a scheduled sweep would and can assert that very mock was never
+ * touched by the route under test.
+ */
+describe("GET /v1/kindergartens/:id/esis/resource — reference resources are served from the store", () => {
+  const url = (id: string, resource: string) =>
+    `/v1/kindergartens/${id}/esis/resource?resource=${resource}`;
+
+  it("serves the stored rows and never calls ESIS", async () => {
+    await sync.runReferenceSync({ kindergartenId: a.kindergarten.id, actorUserId: a.adminUser.id });
+    read.mockClear();
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id, "foodProducts")), adminA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("SUCCEEDED");
+    expect(res.body.source).toBe("STORE");
+    expect(res.body.rows).toHaveLength(1);
+    expect(res.body.rows[0]).toMatchObject({ productId: "30", productName: "Цагаан будаа" });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("serves an institution-scoped resource against the kindergarten's own copy", async () => {
+    await sync.runReferenceSync({ kindergartenId: a.kindergarten.id, actorUserId: a.adminUser.id });
+    read.mockClear();
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id, "buildings")), adminA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.rows[0]).toMatchObject({ buildingId: "60", buildingName: "Байр А" });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("carries syncedAt, so the screen can say when the copy was made", async () => {
+    const before = new Date();
+    await sync.runReferenceSync({ kindergartenId: a.kindergarten.id, actorUserId: a.adminUser.id });
+    read.mockClear();
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id, "buildings")), adminA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.syncedAt).toBeTruthy();
+    expect(new Date(res.body.syncedAt).getTime()).toBeGreaterThanOrEqual(before.getTime() - 1000);
+  });
+
+  /*
+   * ★ The decision plan §0(a) exists to protect: a fallback would make the
+   * store's staleness invisible and put the thousand-row fetch back in the
+   * ministry's log at exactly the moment the copy runs dry.
+   */
+  it("does not fall back to a live call when the store is empty, and says so in Mongolian", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id, "foodProducts")), adminA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("FAILED");
+    expect(res.body.source).toBe("STORE");
+    expect(res.body.errorCode).toBe("NOT_SYNCED");
+    expect(res.body.rows).toEqual([]);
+    expect(res.body.syncedAt).toBeNull();
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  /*
+   * ★ The regression guard that matters most: most of the catalogue is not
+   * reference data, and this route must keep reading it live exactly as
+   * before this task.
+   */
+  it("still reads a non-reference resource live, unchanged", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id, "students")), adminA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("SUCCEEDED");
+    expect(read).toHaveBeenCalledWith("students", {}, institutionId);
+  });
+});

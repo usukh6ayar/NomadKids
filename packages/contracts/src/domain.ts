@@ -3919,13 +3919,30 @@ export const esisResourceReadSchema = z.object({
    * consumer that finds it missing omits the line rather than guessing.
    */
   endpoint: z.object({ method: z.string(), path: z.string() }).optional(),
-  source: z.literal("LIVE"),
+  /**
+   * `"LIVE"` when this read called the ministry directly. `"STORE"` — added
+   * 2026-09-17, plan `2026-09-16-esis-sync-tiers.md` Task 7 — when it was
+   * served from `EsisReference` instead, the copy tier 1's monthly sweep
+   * keeps. Every resource on `REFERENCE_RESOURCES` (`esis.reference.ts`)
+   * answers `"STORE"`; nothing else can, so a caller can tell whether a value
+   * on screen came from the ministry just now or from last month's sweep.
+   */
+  source: z.enum(["LIVE", "STORE"]),
   status: z.enum(["SUCCEEDED", "FAILED"]),
   errorCode: z.string().nullable(),
   count: z.number(),
   durationMs: z.number().nullable(),
   fields: z.array(esisFieldSchema),
   rows: z.array(esisRowSchema),
+  /**
+   * When the stored copy behind this read was last swept — present only when
+   * `source` is `"STORE"`, `null`/absent for a live read.
+   *
+   * ★ An operator reading a catalogue needs to know whether they are looking
+   * at this morning's roster or last month's, and nothing else on this
+   * payload says that: `count` and `rows` look identical either way.
+   */
+  syncedAt: z.string().nullable().optional(),
   response: z.object({
     SUCCESS_CODE: z.number(),
     RESPONSE_MESSAGE: z.string(),

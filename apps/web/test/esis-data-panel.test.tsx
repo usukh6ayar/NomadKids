@@ -217,8 +217,9 @@ describe("ESIS мэдээллийн панел", () => {
     ]);
     renderWithProviders(<EsisDataPanel resource="organization" />);
 
-    expect(await screen.findByRole("button", { name: /ESIS-ээс мэдээллээ татах/ }))
-      .toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: /ESIS-ээс мэдээллээ татах/ }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Бяцхан нүүдэлчид (жишээ)")).toBeNull();
     expect(screen.queryByText("40305")).toBeNull();
   });
@@ -689,5 +690,81 @@ describe("ESIS мэдээллийн панел", () => {
      * break on the next layout change without protecting anything.
      */
     expect(screen.getAllByText(/\/svc\/api\/hub\/v2\/organization/).length).toBeGreaterThan(0);
+  });
+
+  /*
+   * ★ Plan `2026-09-16-esis-sync-tiers.md` Task 7 — "the screens read the
+   * copy". A reference resource (buildings, rooms, the cook/* catalogues, …)
+   * now answers `source: "STORE"` with a `syncedAt`, and this panel is where
+   * a director or a cook actually looks at one. The screen has to say the
+   * value came from a monthly copy rather than reading as though it just
+   * asked the ministry.
+   */
+  it("renders the stored copy and says when it was synced", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: `${ESIS_PATH}/resource`,
+        body: {
+          resource: "organization",
+          source: "STORE",
+          status: "SUCCEEDED",
+          errorCode: null,
+          count: 1,
+          durationMs: null,
+          fields: organizationFields,
+          rows: [{ institutionId: "77777", institutionName: "Жинхэнэ цэцэрлэг" }],
+          syncedAt: "2026-09-01T03:10:00.000Z",
+          response: {
+            SUCCESS_CODE: 200,
+            RESPONSE_MESSAGE: "SUCCESS",
+            RESULT: [{ institutionId: "77777", institutionName: "Жинхэнэ цэцэрлэг" }],
+          },
+        },
+      },
+      { path: CATALOG_PATH, body: catalog(true) },
+    ]);
+    renderWithProviders(<EsisDataPanel resource="organization" />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /ESIS-ээс мэдээллээ татах/ }));
+
+    expect(await screen.findByText("Жинхэнэ цэцэрлэг")).toBeInTheDocument();
+    // The sweep's own date, not the moment this browser happened to press the button.
+    expect(screen.getByText(/Синк хийсэн:/)).toBeInTheDocument();
+  });
+
+  /*
+   * ★ **No live fallback when the store is empty — a decision, not an
+   * oversight** (plan §0(a), Task 7). The screen must say what to do next
+   * (CLAUDE.md §5) rather than rendering an empty table that looks like ESIS
+   * simply had nothing.
+   */
+  it("tells the reader to sync rather than rendering an empty table", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: `${ESIS_PATH}/resource`,
+        body: {
+          resource: "organization",
+          endpoint: { method: "GET", path: "/svc/api/hub/v2/cook/product" },
+          source: "STORE",
+          status: "FAILED",
+          errorCode: "NOT_SYNCED",
+          count: 0,
+          durationMs: null,
+          fields: organizationFields,
+          rows: [],
+          syncedAt: null,
+          response: { SUCCESS_CODE: 0, RESPONSE_MESSAGE: "NOT_SYNCED", RESULT: [] },
+        },
+      },
+      { path: CATALOG_PATH, body: catalog(true) },
+    ]);
+    renderWithProviders(<EsisDataPanel resource="organization" />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /ESIS-ээс мэдээллээ татах/ }));
+
+    expect(await screen.findByText(/синк хийгдээгүй байна/)).toBeInTheDocument();
+    expect(screen.queryByRole("table")).toBeNull();
   });
 });

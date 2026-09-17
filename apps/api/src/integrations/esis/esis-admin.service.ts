@@ -21,6 +21,7 @@ import {
 import type { EsisPreviewDto, EsisReadDto, EsisWriteDto, UpdateEsisMappingDto } from "./esis.dto";
 import { ESIS_ENDPOINTS } from "./esis.endpoints";
 import { ESIS_FIELDS, esisFieldsFor, ingestedFieldNames } from "./esis.fields";
+import { REFERENCE_RESOURCES, type EsisReferenceResource } from "./esis.reference";
 import { EsisRepository } from "./esis.repository";
 import { normalizeRegisterNumber } from "./esis.roster";
 import { esisVisibleRows } from "./esis.schemas";
@@ -77,6 +78,31 @@ const READ_ROWS = 500;
  * so the short list can never be read as "ESIS returned five".
  */
 const ENVELOPE_ROWS = 5;
+
+/**
+ * `REFERENCE_RESOURCES` keyed by resource, for a single lookup per read.
+ *
+ * ★ Plan `2026-09-16-esis-sync-tiers.md` Task 7 — this is what turns "is this
+ * a reference resource?" from a `.find()` over thirteen entries into a `Map`
+ * lookup on every call to `read()`, which every ESIS pull on every screen now
+ * goes through.
+ */
+const REFERENCE_RESOURCE_BY_KEY = new Map<string, EsisReferenceResource>(
+  REFERENCE_RESOURCES.map((entry) => [entry.resource, entry]),
+);
+
+/**
+ * The row cap for a stored `foodProducts` read — carried over from
+ * `READ_ROWS`'s own exception, not a new decision.
+ *
+ * ★ `foodProducts` is searched by a text box (the menu form's dish picker), so
+ * a cap here would silently hide a row behind a name that never surfaces. The
+ * live path already gave this one resource `response.data.length` instead of
+ * `READ_ROWS` for exactly that reason. The store holds the same count the
+ * ministry did — 1000, verified 2026-09-16 in `esis.reference.ts` — so it can
+ * afford to ask for all of them rather than a display slice.
+ */
+const REFERENCE_FOOD_PRODUCTS_ROWS = 1200;
 
 @Injectable()
 export class EsisAdminService {
@@ -921,6 +947,26 @@ export class EsisAdminService {
       metadata: { resource: dto.resource, params: auditedParams },
     });
 
+    /*
+     * ★ Tier 1's payoff — plan `2026-09-16-esis-sync-tiers.md` Task 7,
+     * 2026-09-17. A resource on `REFERENCE_RESOURCES` is copied into
+     * `EsisReference` monthly for exactly one reason: so this call stops
+     * reaching the ministry. `cook/product` alone is a thousand rows, and this
+     * button fetched every one of them each time a teacher opened the menu
+     * form — ten teachers in a morning, ten thousand rows, for a catalogue
+     * that changes monthly. Storing the copy and then reading live anyway
+     * would keep the defect and add a table nobody consulted.
+     *
+     * Everything above this line stays identical for a reference resource —
+     * the tenant and role gate, the missing-params check, `assertCanReadEsisChild`,
+     * the audit row already written above. Only where the rows come from
+     * changes; `readReference` is what decides that.
+     */
+    const referenceEntry = REFERENCE_RESOURCE_BY_KEY.get(dto.resource);
+    if (referenceEntry) {
+      return this.readReference(actor, kindergartenId, dto.resource, referenceEntry);
+    }
+
     const fields = ESIS_FIELDS[dto.resource];
     try {
       const response = await this.esis.read(dto.resource, params, institutionId);
@@ -987,6 +1033,101 @@ export class EsisAdminService {
         },
       };
     }
+  }
+
+  /**
+   * Serves one reference resource from `EsisReference` instead of the
+   * ministry — the branch `read()` takes for anything on
+   * `REFERENCE_RESOURCES`.
+   *
+   * ★ **No live fallback when the store is empty, and that is a decision, not
+   * an oversight.** A fallback would make the store's staleness invisible and
+   * put the thousand-row fetch this tier exists to remove back in the
+   * ministry's log at exactly the moment the copy runs dry — the same defect
+   * plan §0(a) removed, moved one layer along. `NOT_SYNCED` is reported the
+   * same way every other read failure is (`status: "FAILED"`,
+   * `errorCode`) rather than thrown, for the same reason the doc comment on
+   * `read()` gives: the button's job is to report what is there, and an
+   * operator learns more from a named reason than a red toast.
+   *
+   * ★★ `visibleRows` and `esisFieldsFor` run on the stored `payload` exactly
+   * as they do on a live row, because both are written against `unknown[]`
+   * with no notion of where a row came from — verified by reading them, not
+   * assumed. `payload` is the row exactly as `EsisSyncService.
+   * runReferenceSync` stored it: already through `esisVisibleRows` at sweep
+   * time (`identifiers: false`, so a reference row never carried a register
+   * number to begin with), and stored as the plain object ESIS sent, keyed by
+   * the ministry's own field names. That is what lets `rowValues` read
+   * `productName`/`buildingId`/… off it the same way it reads them off a live
+   * row.
+   *
+   * ★★★ `count` is `referenceCount`, not `stored.length`. A page from the
+   * store cannot say how many rows it left behind the way a live call could
+   * report `response.data.length` for a response it already held in full —
+   * and `foodProductMaterials` is the case that would have gotten this wrong
+   * silently: 1000 rows stored, `READ_ROWS` = 500, so `count: stored.length`
+   * would have reported 500 next to 500 rows and erased the "showing the
+   * first N of M" signal the row cap depends on being visible.
+   */
+  private async readReference(
+    actor: Actor,
+    kindergartenId: string,
+    resource: EsisEndpointKey,
+    entry: EsisReferenceResource,
+  ) {
+    const scopeId = entry.scope === "NATIONAL" ? null : kindergartenId;
+    const take = resource === "foodProducts" ? REFERENCE_FOOD_PRODUCTS_ROWS : READ_ROWS;
+
+    const [stored, total, syncedAt] = await Promise.all([
+      entry.scope === "NATIONAL"
+        ? this.repo.findNationalReference(resource, { skip: 0, take })
+        : this.repo.findInstitutionReference(kindergartenId, resource, { skip: 0, take }),
+      this.repo.referenceCount(scopeId, resource),
+      this.repo.referenceSyncedAt(scopeId, resource),
+    ]);
+
+    if (stored.length === 0) {
+      return {
+        resource,
+        endpoint: calledEndpoint(resource),
+        source: "STORE" as const,
+        status: "FAILED" as const,
+        errorCode: "NOT_SYNCED",
+        count: 0,
+        durationMs: null,
+        fields: ESIS_FIELDS[resource],
+        rows: [],
+        syncedAt: null,
+        response: {
+          SUCCESS_CODE: 0,
+          RESPONSE_MESSAGE: "NOT_SYNCED",
+          RESULT: [],
+        },
+      };
+    }
+
+    const payloadRows: unknown[] = stored.map((row) => row.payload);
+    const visible = this.visibleRows(actor, kindergartenId, payloadRows);
+    const liveFields = esisFieldsFor(resource, visible);
+    const rows = rowValues(resource, visible, take, liveFields);
+
+    return {
+      resource,
+      endpoint: calledEndpoint(resource),
+      source: "STORE" as const,
+      status: "SUCCEEDED" as const,
+      errorCode: null,
+      count: total,
+      durationMs: null,
+      fields: liveFields,
+      rows,
+      syncedAt: syncedAt ? syncedAt.toISOString() : null,
+      response: {
+        SUCCESS_CODE: 200,
+        RESPONSE_MESSAGE: "SUCCESS",
+        RESULT: rows.slice(0, ENVELOPE_ROWS),
+      },
+    };
   }
 
   /**

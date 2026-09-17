@@ -14,11 +14,7 @@ import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { EsisNoAnswer } from "@/components/esis/esis-no-answer";
 import { EsisRowValues, esisSampleColumns } from "@/components/esis/esis-rows";
-import {
-  ESIS_PARAM_LABEL,
-  esisApiIdLabel,
-  isPersonalParam,
-} from "@/components/esis/esis-params";
+import { ESIS_PARAM_LABEL, esisApiIdLabel, isPersonalParam } from "@/components/esis/esis-params";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -185,7 +181,8 @@ export function EsisDataPanel({
   const { primaryKindergartenId } = useSession();
   const [entered, setEntered] = useState<Record<string, string>>({});
   const [pulled, setPulled] = useState(false);
-  const [syncedAt, setSyncedAt] = useState<string | null>(null);
+  /** When the reader last pressed "татах" for a **live** service — see `pull()`. */
+  const [pulledAt, setPulledAt] = useState<string | null>(null);
 
   /*
    * ★ The role-scoped catalog, not the operator's overview — 2026-09-09.
@@ -217,8 +214,7 @@ export function EsisDataPanel({
    * complete on first paint. It never pre-fills a personal identifier — see
    * `esis-params.ts`.
    */
-  const value = (name: string) =>
-    entered[name] ?? params?.[name] ?? "";
+  const value = (name: string) => entered[name] ?? params?.[name] ?? "";
   const missing = required.filter((name) => !value(name));
 
   /*
@@ -343,8 +339,22 @@ export function EsisDataPanel({
       // No token: re-read our own catalog, which is what is actually shown.
       await catalog.refetch();
     }
-    setSyncedAt(new Date().toLocaleString("mn-MN"));
+    setPulledAt(new Date().toLocaleString("mn-MN"));
   }
+
+  /*
+   * ★ **The stored copy's own date, not the moment somebody pressed "татах"**
+   * — 2026-09-17, plan Task 7. `pulledAt` says when this browser last asked;
+   * for a reference resource that is not the fact worth showing, because the
+   * answer came from `EsisReference` and can be weeks old regardless of when
+   * it was read just now. `read.data.syncedAt` is when the sweep itself ran,
+   * which is the date an operator comparing this table against the ministry's
+   * own catalogue actually needs.
+   */
+  const storeSyncedAt =
+    read.data?.source === "STORE" && read.data.syncedAt
+      ? new Date(read.data.syncedAt).toLocaleString("mn-MN")
+      : null;
 
   return (
     <section aria-label={title ?? endpoint.name} className={cn("w-full", className)}>
@@ -363,11 +373,7 @@ export function EsisDataPanel({
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {showResponseDetails ? (
-              <Badge tone="mint">
-                {"ESIS LIVE"}
-              </Badge>
-            ) : null}
+            {showResponseDetails ? <Badge tone="mint">{"ESIS LIVE"}</Badge> : null}
             <Badge tone="sky">{rows.length} бичлэг</Badge>
             <Button
               size="sm"
@@ -423,17 +429,10 @@ export function EsisDataPanel({
           <div className="flex flex-col gap-4" aria-label="ESIS хүсэлт ба хариу">
             <dl className="grid overflow-hidden rounded-control border border-border-soft sm:grid-cols-2 xl:grid-cols-4">
               <ResponseFact label="Method" value={endpoint.method} />
-              <ResponseFact
-                label="Response mode"
-                value={read.data?.source ?? "LIVE"}
-              />
+              <ResponseFact label="Response mode" value={read.data?.source ?? "LIVE"} />
               <ResponseFact
                 label="HTTP status"
-                value={
-                  read.data
-                    ? String(read.data.response.SUCCESS_CODE)
-                    : "Хүлээж байна"
-                }
+                value={read.data ? String(read.data.response.SUCCESS_CODE) : "Хүлээж байна"}
               />
               <ResponseFact label="Sync status" value={read.data?.status ?? "PENDING"} />
               <ResponseFact
@@ -561,7 +560,11 @@ export function EsisDataPanel({
         )}
 
         <p className="border-t border-border-soft pt-4 text-caption text-muted">
-          {syncedAt ? `Шинэчилсэн: ${syncedAt} · ` : null}
+          {storeSyncedAt
+            ? `Синк хийсэн: ${storeSyncedAt} · `
+            : pulledAt
+              ? `Шинэчилсэн: ${pulledAt} · `
+              : null}
           Татахгүй талбар: регистр, иргэний бүртгэлийн дугаар, нэвтрэх мэдээлэл.
         </p>
       </Card>

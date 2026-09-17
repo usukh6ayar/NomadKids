@@ -243,6 +243,28 @@ export class EsisRepository {
     });
   }
 
+  /**
+   * How many rows a scope's copy of `resource` actually holds — the true
+   * total behind a capped `findNationalReference`/`findInstitutionReference`
+   * page.
+   *
+   * ★ Added 2026-09-17, plan Task 7. `EsisAdminService.readReference` pages
+   * through the store the same way the live path capped its own response
+   * (`READ_ROWS`), but the live path could still report the ministry's true
+   * `response.data.length` as `count` because that number came back in the
+   * same call. A page from the store cannot: `findMany` with `take` has no
+   * way to say how many rows it left behind. Without this, `count` would
+   * silently become "however many this page held" — for `foodProductMaterials`
+   * (1000 stored rows, `READ_ROWS` = 500) that reads as `count: 500` next to
+   * `rows.length: 500`, which erases the "showing the first N of M" signal
+   * `esis-pull-button.tsx` and the operator panel both key off. `READ_ROWS`'s
+   * own doc comment is the rule this exists to keep: "a cap the reader cannot
+   * see must not sit under a filter."
+   */
+  referenceCount(kindergartenId: string | null, resource: string): Promise<number> {
+    return this.prisma.esisReference.count({ where: { kindergartenId, resource } });
+  }
+
   /** When `resource` was last swept for this scope, or `null` if never. */
   async referenceSyncedAt(kindergartenId: string | null, resource: string): Promise<Date | null> {
     const row = await this.prisma.esisReference.findFirst({
