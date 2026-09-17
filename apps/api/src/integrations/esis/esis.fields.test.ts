@@ -271,6 +271,11 @@ describe("ESIS field catalog", () => {
       workerInfo: ["primaryNidNumber"],
       teacherProfile: ["personId"],
       teacherCheck: ["personId"],
+
+      // Closed 2026-09-17, plan `2026-09-16-esis-sync-tiers.md` Task 9.
+      studentAwards: ["personId"],
+      studentSearch: ["civilId"],
+      buildingByRegisterNumber: ["registerNumber"],
     });
     /*
      * The write services are not readable, so no read button can reach one.
@@ -391,6 +396,13 @@ describe("ESIS field catalog", () => {
         "studentAttachmentSave",
         "groupMeasurementsSave",
         "studentScreeningSave",
+        /*
+         * ── Added 2026-09-17 ────────────────────────────────────────────
+         * `studentAwards` and `buildingByRegisterNumber` both answered `203`
+         * live — the same "unseen contract" position as the six above.
+         */
+        "studentAwards",
+        "buildingByRegisterNumber",
       ].sort(),
     );
 
@@ -436,6 +448,11 @@ describe("ESIS field catalog", () => {
         "rooms",
         "academicOrg",
         "subjectAreas",
+        /*
+         * ★ Added 2026-09-17. `studentSearch` answered `200` live with
+         * API-000144's exact shape — a captured response, not an invented one.
+         */
+        "studentSearch",
       ].sort(),
     );
     expect(

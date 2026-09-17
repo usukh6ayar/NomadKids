@@ -1023,6 +1023,25 @@ const ESIS_FIELD_CATALOG: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
   ],
 
   /*
+   * ── Closed 2026-09-17, plan `2026-09-16-esis-sync-tiers.md` Task 9 ──────
+   * `studentAwards` answered `203` for a real child on institution 42778 —
+   * anchor only, like the six health reads above. See `ESIS_DISCOVERED_SHAPE`.
+   */
+  studentAwards: [keep("personId", "Хүүхдийн ESIS дугаар")],
+  /*
+   * ★ `studentSearch` answered `200` live, 2026-09-17, and the row was
+   * field-for-field API-000144's own shape — `STUDENT_BY_REGISTER_FIELDS`,
+   * reused rather than retyped.
+   */
+  studentSearch: STUDENT_BY_REGISTER_FIELDS,
+  /*
+   * ★ `buildingByRegisterNumber` answered `203` for a made-up register
+   * number — the route is real (see the endpoint's note) but no record has
+   * been seen, so only the value the operator supplied is declared.
+   */
+  buildingByRegisterNumber: [keep("registerNumber", "Улсын бүртгэлийн дугаар")],
+
+  /*
    * ══ Бичих сервисүүд ═══════════════════════════════════════════════════
    * ★ These are **inputs**, not outputs — `io: "INPUT"`, so the operator
    * screen labels them as what we send rather than what comes back. Every
@@ -1168,6 +1187,7 @@ export const ESIS_SUMMARY_FIELDS: Partial<Record<keyof typeof ESIS_ENDPOINTS, st
   students: ["lastName", "firstName", "studentGroupName", "dateOfBirth", "genderName"],
   studentByRegister: ["lastName", "firstName", "studentGroupName", "dateOfBirth", "genderName"],
   studentInfo: ["lastName", "firstName", "studentGroupName", "dateOfBirth", "genderName"],
+  studentSearch: ["lastName", "firstName", "studentGroupName", "dateOfBirth", "genderName"],
   groupStudents: ["lastName", "firstName", "studentGroupName", "dateOfBirth", "genderName"],
   studentMovements: ["lastName", "firstName", "studentGroupName", "actionName", "actionDate"],
   teachers: ["displayName", "positionName", "instructorTypeName", "subjectDepartmentName"],
@@ -1421,6 +1441,16 @@ export const ESIS_FIELD_SOURCE: Record<keyof typeof ESIS_ENDPOINTS, EsisFieldSou
   studentAttachmentSave: "ADAPTER",
   groupMeasurementsSave: "ADAPTER",
   studentScreeningSave: "ADAPTER",
+
+  /*
+   * ── Closed 2026-09-17 ─────────────────────────────────────────────────
+   * `studentAwards` and `buildingByRegisterNumber` both answered `203` live —
+   * `ADAPTER`, the same as the discovered-shape six. `studentSearch` answered
+   * `200` with API-000144's exact shape — `LIVE`, like `studentByRegister`.
+   */
+  studentAwards: "ADAPTER",
+  studentSearch: "LIVE",
+  buildingByRegisterNumber: "ADAPTER",
 };
 
 /** Output names NomadKids keeps — the exact key set of the parsing schema. */
@@ -1457,6 +1487,15 @@ export const ESIS_DISCOVERED_SHAPE: ReadonlySet<keyof typeof ESIS_ENDPOINTS> = n
   "studentSurgery",
   "studentIncident",
   "studentScreening",
+  /*
+   * ★ Added 2026-09-17. `studentAwards` is per-child and answered `203` live,
+   * so it belongs here exactly like its six health siblings above.
+   * `buildingByRegisterNumber` also answered `203` but is **not** added: this
+   * set's test pins every member's anchor to `personId`, which is a per-child
+   * fact a building record has no reason to carry. It keeps its own one-field
+   * declaration in `ESIS_FIELDS` instead, outside this set.
+   */
+  "studentAwards",
 ]);
 
 /**

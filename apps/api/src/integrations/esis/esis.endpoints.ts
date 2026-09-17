@@ -753,6 +753,81 @@ export const ESIS_ENDPOINTS = {
     method: "GET",
     path: "/svc/api/hub/v2/student/attendance/school/:academicYear/:dayDate",
   }),
+
+  /*
+   * ── Six granted services that were still uncalled, closed 2026-09-17 ────
+   * Plan `2026-09-16-esis-sync-tiers.md` Task 9. Four are decided below; the
+   * other two (167, 170) have no path here at all — `esis.requests.ts`'s
+   * `ESIS_DISPOSITIONS` records why they stay unwired rather than a path
+   * nobody calls.
+   */
+
+  /**
+   * A child's titles, awards and degrees — api 85.
+   *
+   * ★ Per-child, institution-scoped like every `stdnt/…` and `student/…`
+   * reader beside it — proven live, 2026-09-17: `400 institutionId дутуу
+   * байна` without the query param, `203` with a real `personId` and no
+   * matching record on institution 42778. Gated by `assertCanReadEsisChild`
+   * exactly like `studentAllergy` and its neighbours, since its param is
+   * `personId`.
+   */
+  studentAwards: endpoint({
+    apiId: 85,
+    slug: "GRANTED",
+    method: "GET",
+    path: "/svc/api/hub/v2/stdnt/awards/:personId",
+  }),
+  /**
+   * One child, found by the civil registry number an operator types.
+   *
+   * ★ Api 100004874669784, "Суралцагчийн мэдээлэл хайх /УБЕГ -аас татаж
+   * шинэчлэх/" in the request register — a lookup against the state civil
+   * registry, not this deployment's own roster. Institution-scoped, proven
+   * live 2026-09-17: `400 institutionId дутуу байна` without the query
+   * param, `200` with a real civil id and the full API-000144-shaped record.
+   *
+   * ★★ **`studentByRegister` is the precedent, followed exactly**: the civil
+   * id travels *to* ESIS, sent because an operator already holds it, and is
+   * never received and kept — `ESIS_REQUEST.md` §1.1 (b). `read` keeps it out
+   * of the audit row the same way (`REDACTED_READ_PARAMS`).
+   */
+  studentSearch: endpoint({
+    apiId: 100004874669784,
+    slug: "GRANTED",
+    method: "GET",
+    path: "/svc/api/hub/v2/student/search/:civilId",
+  }),
+  /**
+   * One building, by the kindergarten's own government register number.
+   *
+   * ★ Api 186, "Байгууллагын барилга байгууламж" — **live-probed 2026-09-17**,
+   * because the granted-service export lists this one with brace
+   * placeholders (`{registerNumber}`) and an `OPEN` subsystem tag, unlike
+   * every other row here. Neither turned out to matter: a live call under the
+   * standard `/svc/api/hub/v2/` root, with the value substituted the way
+   * `esisPath` already does it, answered the standard envelope —
+   * `203 Хүсэлтэд тохирох утга олдсонгүй` for a made-up register number,
+   * exactly the shape every other "no match" answer here has, not a routing
+   * error. A nonsense path segment answers a *different* 404 (`Зам
+   * олдсонгүй`), which is what makes the 203 above evidence the route is
+   * real rather than a coincidence. The brace notation was the export's
+   * documentation style, not a second grammar to support.
+   *
+   * ★★ **The plan that asked for this probe also said `organization/info`
+   * "may carry" the register number this path needs. It does not** —
+   * checked against the live response and against `esisOrganizationSchema`,
+   * which has never named one. Nothing in this deployment's ESIS reads holds
+   * an organisation's own government register number, so it is an
+   * operator-typed value here, the same shape `studentByRegister` and
+   * `workerInfo` already use for a person's.
+   */
+  buildingByRegisterNumber: endpoint({
+    apiId: 186,
+    slug: "GRANTED",
+    method: "GET",
+    path: "/svc/api/hub/v2/MOF/ORGANIZATION/BUILDING/:registerNumber",
+  }),
 } as const;
 
 export function esisPath(template: string, values: Record<string, string | number>): string {

@@ -1257,12 +1257,32 @@ export class EsisAdminService {
 /**
  * Path values that must never reach `AuditLog.metadata`.
  *
- * Both are register numbers an operator types — one a child's
- * (`studentByRegister`, `studentInfo`), one a worker's (`workerInfo`). They are
- * sent to ESIS and kept nowhere, and "nowhere" includes the row recording that
- * somebody asked. `ESIS_REQUEST.md` §1.1 (b).
+ * `personRegNumber` and `primaryNidNumber` are register numbers an operator
+ * types — one a child's (`studentByRegister`, `studentInfo`), one a worker's
+ * (`workerInfo`). They are sent to ESIS and kept nowhere, and "nowhere"
+ * includes the row recording that somebody asked. `ESIS_REQUEST.md` §1.1 (b).
+ *
+ * ★ **`civilId` joined 2026-09-17, with `studentSearch`.** Same identifier,
+ * same treatment: `ESIS_REQUEST.md` §1.1 (b) names it beside the register
+ * numbers, and it is a civil registry id an operator typed in, not one this
+ * product keeps.
+ *
+ * ★★ **`registerNumber` joined the same day, with `buildingByRegisterNumber`,
+ * and it is not the same argument.** It is the kindergarten's own government
+ * register number — an organisation's, not a person's — so §1.1 (b) does not
+ * reach it on its own terms. It is redacted anyway, for a narrower reason:
+ * `foodDiscountStudents` already uses the field name `registerNumber` for a
+ * *child's* register number (`esis.schemas.ts`), so the same key in this
+ * file's audit metadata would read as a child's identifier to anyone checking
+ * the log without also reading which resource wrote it. One name, one
+ * redaction, regardless of whose number it is this time.
  */
-const REDACTED_READ_PARAMS = new Set(["personRegNumber", "primaryNidNumber"]);
+const REDACTED_READ_PARAMS = new Set([
+  "personRegNumber",
+  "primaryNidNumber",
+  "civilId",
+  "registerNumber",
+]);
 
 /**
  * Turns parsed rows into one string per catalog field.

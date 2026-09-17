@@ -736,6 +736,54 @@ export const ESIS_PORTAL_REQUESTS: readonly EsisPortalRequest[] = [
   },
 ];
 
+/**
+ * Granted services this product deliberately does not call, and why.
+ *
+ * ★ Added 2026-09-17, plan `2026-09-16-esis-sync-tiers.md` Task 9. An
+ * approved-but-unwired row in `ESIS_REQUEST_REGISTER` says only that nothing
+ * calls it — which reads the same whether the grant was declined on purpose
+ * or simply not reached yet. Spec №4's 84/84 matrix needs to tell those apart,
+ * or an unwired-but-defensible row becomes indistinguishable from a silent
+ * gap. This is what a matrix generator joins by `apiId`, the same way
+ * `WIRED_API_IDS` is — a reason, not a second copy of the grant itself.
+ *
+ * 167 and 170 are the degree-request decisions and history reads: this
+ * product has no teacher-qualification module, so there is no screen either
+ * would feed. 119 is the one live-probed and still refused — see
+ * `buildingByRegisterNumber`'s sibling note in `esis.endpoints.ts` for what
+ * 186 needed instead, and the reasoning below for why 119 came out differently.
+ */
+export const ESIS_DISPOSITIONS: Readonly<Record<number, string>> = {
+  167:
+    "Багшийн мэргэшлийн зэргийн модуль энэ бүтээгдэхүүнд байхгүй — хүсэлтийн " +
+    "шийдвэрлэлтийг харуулах дэлгэц алга.",
+  170:
+    "Багшийн мэргэшлийн зэргийн модуль энэ бүтээгдэхүүнд байхгүй — хүсэлтийн " +
+    "түүхийг харуулах дэлгэц алга.",
+  /*
+   * ★ Live-probed 2026-09-17, plan Task 9 Step 2. The export's own stated root
+   * (`/svc/api/zereg/get/request/:registerNum`) answers `404 Зам олдсонгүй` —
+   * the same shape a nonsense path returns, so that root does not exist on
+   * this host. The standard `/svc/api/hub/v2/` root, with the same final
+   * path segment, answers `403 Энэ API-д хандах эрх байхгүй` — the shape a
+   * *real, recognised* route gives an unauthorised token (proven by
+   * disambiguation: every neighbouring path under that segment, and the same
+   * path over POST, all answer the 404 instead). So a route is registered at
+   * `/svc/api/hub/v2/zereg/get/request/:registerNum` and this token is
+   * refused it, despite the portal listing 119 as APPROVED — a discrepancy
+   * between the grant register and the live gateway, not a grammar this
+   * client cannot express. Nothing was guessed into `esisPath` to work around
+   * a 403; the standard grammar already reaches a real route and still fails
+   * on access.
+   */
+  119:
+    "Стандарт /svc/api/hub/v2/zereg/get/request/:registerNum замаар " +
+    "амьд шалгахад тухайн зам БОДИТ хэмээн танигдсан ч токен 403 « Энэ API-д " +
+    "хандах эрх байхгүй» гэж буцаав — экспортод бичсэн /svc/api/zereg/ язгуур " +
+    "нь 404 (Зам олдсонгүй) буцаадаг тул зам биш. Портал дээр 119 " +
+    "APPROVED ч, live gateway дээрх эрх нээгдээгүй тул холбосонгүй.",
+};
+
 const BY_API_ID = new Map(ESIS_PORTAL_REQUESTS.map((request) => [request.apiId, request]));
 
 /** The portal's row for a service id, or `null` when it was never requested. */
@@ -764,6 +812,11 @@ export interface EsisRequestRegister {
   items: (EsisPortalRequest & {
     /** The catalog key that calls this service, or `null` when none does. */
     serviceKey: string | null;
+    /**
+     * Why an approved-and-unwired grant is deliberately uncalled, or `null`
+     * for a grant nobody has decided against yet. See `ESIS_DISPOSITIONS`.
+     */
+    dispositionReason: string | null;
   })[];
 }
 
@@ -778,6 +831,7 @@ export function esisRequestRegister(wiredApiIds: ReadonlyMap<number, string>): E
   const items = ESIS_PORTAL_REQUESTS.map((request) => ({
     ...request,
     serviceKey: wiredApiIds.get(request.apiId) ?? null,
+    dispositionReason: ESIS_DISPOSITIONS[request.apiId] ?? null,
   }));
 
   const approved = items.filter((item) => item.status === "APPROVED");

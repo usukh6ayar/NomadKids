@@ -77,6 +77,22 @@ export const ESIS_READ_PARAMS = {
    * Cyrillic letters, so anything tighter would refuse valid input.
    */
   primaryNidNumber: z.string().trim().min(1).max(32).optional(),
+  /*
+   * ── Added 2026-09-17, plan `2026-09-16-esis-sync-tiers.md` Task 9 ───────
+   *
+   * ★ A civil registry id, for `studentSearch` (api …784). The same treatment
+   * as `personRegNumber`: an operator types it from a document already in
+   * front of them, it travels to ESIS and nowhere else, and `read()` keeps it
+   * out of the audit row (`REDACTED_READ_PARAMS`).
+   */
+  civilId: z.string().trim().min(1).max(32).optional(),
+  /**
+   * The kindergarten's own government register number, for
+   * `buildingByRegisterNumber` (api 186). An organisation's identifier
+   * rather than a person's, but shape-checked and redacted the same way —
+   * see `REDACTED_READ_PARAMS`'s note on why.
+   */
+  registerNumber: z.string().trim().min(1).max(32).optional(),
 } as const;
 
 export const esisReadSchema = z.object({

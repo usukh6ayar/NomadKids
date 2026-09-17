@@ -134,14 +134,13 @@ describe("ESIS administration authorization", () => {
 
     expect(first.status).toBe(200);
     /*
-     * ★ 67 since 2026-09-15, was 40. The twenty-seven added are the services
-     * the ministry's granted-service export listed as approved and the
-     * catalogue was not calling — the health block and its saves, the three
-     * immunisation reads, group measurement and its bulk save, the эрт
-     * илрүүлэг instrument, the three teacher-registration reads, and the daily
-     * attendance roll-up.
+     * ★ 70 since 2026-09-17, was 67 since 2026-09-15 (which was 40). Task 9 of
+     * `2026-09-16-esis-sync-tiers.md` wired three more — `studentAwards`,
+     * `studentSearch`, `buildingByRegisterNumber` — and dispositioned rather
+     * than wired the other three the task named (`esis.requests.ts`'s
+     * `ESIS_DISPOSITIONS`).
      */
-    expect(first.body.endpoints).toHaveLength(67);
+    expect(first.body.endpoints).toHaveLength(70);
     // Every kindergarten, because the token and the grants are one account's.
     expect(second.status).toBe(200);
   });
@@ -330,9 +329,9 @@ describe("role-scoped ESIS catalog", () => {
     const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
 
     expect(res.status).toBe(200);
-    // ADMIN takes every key, so this moves with the catalogue — 67 since
-    // 2026-09-15.
-    expect(res.body.endpoints).toHaveLength(67);
+    // ADMIN takes every key, so this moves with the catalogue — 70 since
+    // 2026-09-17.
+    expect(res.body.endpoints).toHaveLength(70);
   });
 
   /*

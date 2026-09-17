@@ -484,6 +484,40 @@ const META: Record<EsisEndpointKey, EsisEndpointMeta> = {
       "`studentCheck`-тэй адил скаляр.",
   },
 
+  /* ── Closed 2026-09-17, plan `2026-09-16-esis-sync-tiers.md` Task 9 ───── */
+  studentAwards: {
+    name: "Цол, шагнал, зэргийн мэдээлэл",
+    domain: "ROSTER",
+    usage: "Нэг хүүхдийн цол, шагнал, зэргийн бүртгэл",
+    previewable: false,
+    note:
+      "★ Институт 42778-ийн бодит хүүхдэд `203` буцаасан тул талбарууд " +
+      "тодорхойгүй — эхний бодит хариу ирэхэд ЭСИС-ийн өөрийнх нь нэрсийг " +
+      "харуулна.",
+  },
+  studentSearch: {
+    name: "Суралцагчийг иргэний бүртгэлийн дугаараар хайх",
+    domain: "ROSTER",
+    usage: "Улсын бүртгэлээс (УБЕГ) нэг хүүхдийг иргэний дугаараар олох",
+    previewable: false,
+    note:
+      "Иргэний бүртгэлийн дугаарыг эрхлэгч гараар бичиж **илгээнэ** — " +
+      "`studentByRegister`-тай адил ESIS_REQUEST.md §1.1 (b) хадгалахыг " +
+      "татгалзсан утга. Буцаж ирсэн `civilId`, `personRegNumber`-ийг манай " +
+      "тал хадгалахгүй.",
+  },
+  buildingByRegisterNumber: {
+    name: "Байгууллагын барилга байгууламж (улсын бүртгэлийн дугаараар)",
+    domain: "ORGANIZATION",
+    usage: "Цэцэрлэгийн улсын бүртгэлийн дугаараар барилгын мэдээлэл олох",
+    previewable: false,
+    note:
+      "★ Улсын бүртгэлийн дугаарыг эрхлэгч гараар бичнэ — энэ талбарыг ЭСИС-ийн " +
+      "өөр ямар ч унших сервис буцаадаггүй тул `organization/info`-оос авах " +
+      "боломжгүй. 2026-09-17-нд амьд шалгав: хуурмаг дугаараар `203` буцаасан " +
+      "боловч зам бодит бөгөөд стандарт замын дүрэмтэй ижил.",
+  },
+
   /* ── Бичих сервисүүд ──────────────────────────────────────────────────── */
   studentAllergySave: {
     name: "Харшил илгээх",
@@ -727,6 +761,11 @@ function targetModel(key: EsisEndpointKey): string {
   if (key === "workerInfo" || key === "teacherProfile" || key === "teacherCheck") {
     return "User / Membership / StaffRecord";
   }
+
+  /* ── Closed 2026-09-17 ──────────────────────────────────────────────── */
+  if (key === "studentAwards") return "Child ESIS reference (NOT STORED)";
+  if (key === "studentSearch") return "Child / Enrollment";
+  if (key === "buildingByRegisterNumber") return "Kindergarten premises (DISPLAY_ONLY)";
 
   return "Ingredient / Recipe (NOT ENABLED)";
 }

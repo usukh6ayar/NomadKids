@@ -27,20 +27,22 @@ describe("ESIS v2 endpoint registry", () => {
     const withId = endpoints.filter((item) => item.apiId !== null);
 
     /*
-     * ★ 67 since 2026-09-14, was 40. The twenty-seven added that day are the
-     * services the ministry's own granted-service export (`apis-granted.xlsx`)
-     * listed as approved and this catalogue was not calling: the health block
-     * and its writes, the three immunisation reads, group measurement and its
-     * bulk save, the эрт илрүүлэг instrument, the three teacher-registration
-     * reads, and the daily attendance roll-up.
+     * ★ 70 since 2026-09-17, was 67 since 2026-09-14 (which was 40). Plan
+     * `2026-09-16-esis-sync-tiers.md` Task 9 closed three more:
+     * `studentAwards` (85), `studentSearch` (…784) and
+     * `buildingByRegisterNumber` (186). Two of the six the task named stay
+     * unwired on purpose — `esis.requests.ts`'s `ESIS_DISPOSITIONS` carries
+     * 167 and 170 — and 119 was live-probed and refused (403 under the
+     * standard root), also recorded there rather than guessed into a path
+     * here.
      *
-     * The export has **84** approved services. The seventeen still unwired are
-     * the ones with an open question — a civil id we do not hold, an input
-     * that duplicates a wired save, a state register number no column carries,
-     * a subsystem on a domain `ESIS_BASE_URL` does not answer, and one row
-     * whose URL cell is empty.
+     * The export has **84** approved services. Fourteen still unwired are the
+     * ones with an open question — a civil id we do not hold, an input that
+     * duplicates a wired save, a subsystem on a domain `ESIS_BASE_URL` does
+     * not answer, one row whose URL cell is empty, and the three dispositioned
+     * above.
      */
-    expect(endpoints).toHaveLength(67);
+    expect(endpoints).toHaveLength(70);
     expect(new Set(withId.map((item) => item.apiId)).size).toBe(withId.length);
 
     /*

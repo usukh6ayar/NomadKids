@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { ESIS_ENDPOINTS } from "./esis.endpoints";
 import { ESIS_REQUEST_REGISTER, ESIS_RESOURCE_CATALOG } from "./esis.catalog";
-import { ESIS_PORTAL_REQUESTS, esisGrant, esisPortalRequest } from "./esis.requests";
+import {
+  ESIS_DISPOSITIONS,
+  ESIS_PORTAL_REQUESTS,
+  esisGrant,
+  esisPortalRequest,
+} from "./esis.requests";
 
 /**
  * The join between the services this product calls and the ESIS grants it has.
@@ -103,5 +108,31 @@ describe("ESIS request register", () => {
     expect(ESIS_REQUEST_REGISTER.counts.approvedUnwired).toBe(
       ESIS_REQUEST_REGISTER.counts.approved - keys.length,
     );
+  });
+
+  /*
+   * ★ Plan `2026-09-16-esis-sync-tiers.md` Task 9: an approved-but-unwired
+   * grant must say *why*, or spec №4's matrix cannot tell "declined on
+   * purpose" from "not reached yet". Every disposition names an id that is
+   * actually approved and actually uncalled — a reason attached to a wired
+   * service, or to one the ministry never granted, would be a note nobody can
+   * act on.
+   */
+  it("gives every disposition a real, unwired grant to explain", () => {
+    for (const apiId of Object.keys(ESIS_DISPOSITIONS).map(Number)) {
+      const request = esisPortalRequest(apiId);
+      expect({ apiId, status: request?.status ?? null }).toEqual({ apiId, status: "APPROVED" });
+      expect({ apiId, wired: keys.some((key) => ESIS_ENDPOINTS[key].apiId === apiId) }).toEqual({
+        apiId,
+        wired: false,
+      });
+    }
+  });
+
+  it("carries the disposition reason through to the register", () => {
+    for (const apiId of Object.keys(ESIS_DISPOSITIONS).map(Number)) {
+      const item = ESIS_REQUEST_REGISTER.items.find((entry) => entry.apiId === apiId);
+      expect(item?.dispositionReason).toBe(ESIS_DISPOSITIONS[apiId]);
+    }
   });
 });

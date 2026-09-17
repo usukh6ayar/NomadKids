@@ -400,6 +400,27 @@ export const ESIS_READERS = {
     params: ["personId"],
     parse: esisCheckParser(),
   },
+
+  /*
+   * ── Closed 2026-09-17, plan `2026-09-16-esis-sync-tiers.md` Task 9 ──────
+   * See the endpoint notes in `esis.endpoints.ts` for what each was probed
+   * against and what it answered live.
+   */
+  studentAwards: {
+    endpoint: ESIS_ENDPOINTS.studentAwards,
+    schema: esisDiscoveredSchema,
+    params: ["personId"],
+  },
+  studentSearch: {
+    endpoint: ESIS_ENDPOINTS.studentSearch,
+    schema: esisDiscoveredSchema,
+    params: ["civilId"],
+  },
+  buildingByRegisterNumber: {
+    endpoint: ESIS_ENDPOINTS.buildingByRegisterNumber,
+    schema: esisDiscoveredSchema,
+    params: ["registerNumber"],
+  },
 } as const satisfies Record<
   string,
   {
@@ -781,6 +802,31 @@ export class EsisService {
 
   teacherCheck(institutionId: string | number, personId: string | number) {
     return this.read("teacherCheck", { personId }, institutionId);
+  }
+
+  /* ── Closed 2026-09-17 ────────────────────────────────────────────────── */
+
+  studentAwards(institutionId: string | number, personId: string | number) {
+    return this.read("studentAwards", { personId }, institutionId);
+  }
+
+  /**
+   * A child found by the civil registry number an operator types.
+   *
+   * ★ Institution-scoped, unlike `workerInfo` — see the endpoint's note.
+   */
+  studentSearch(institutionId: string | number, civilId: string) {
+    return this.read("studentSearch", { civilId }, institutionId);
+  }
+
+  /**
+   * One building, by the kindergarten's own government register number.
+   *
+   * ★ The number is operator-typed and institution-scoped — see the
+   * endpoint's note on why `organization/info` cannot supply it.
+   */
+  buildingByRegisterNumber(institutionId: string | number, registerNumber: string) {
+    return this.read("buildingByRegisterNumber", { registerNumber }, institutionId);
   }
 
   /*

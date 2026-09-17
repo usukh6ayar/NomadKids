@@ -71,6 +71,12 @@ async function main(): Promise<void> {
   const studentsRaw = await raw(`/svc/api/hub/v2/students/list?institutionId=${institutionId}`);
   const workerNid = String(staffRaw[0]?.personRegNumber ?? "");
   const childNid = String(studentsRaw[0]?.personRegNumber ?? "");
+  /*
+   * ★ Added 2026-09-17, with `studentSearch`. Same treatment as the two
+   * register numbers above: read from the raw envelope, masked in every
+   * printed line, never surfaced through a parsed row.
+   */
+  const civilId = String(studentsRaw[0]?.civilId ?? "");
 
   const studentGroupId = String(firstGroup?.studentGroupId ?? "");
   const personId = String(firstChild?.personId ?? "");
@@ -117,11 +123,17 @@ async function main(): Promise<void> {
     dayDate: "2026-09-11",
     personRegNumber: childNid,
     primaryNidNumber: workerNid,
+    civilId,
+    // No source resolves this — see `buildingByRegisterNumber`'s note in
+    // esis.endpoints.ts. Left unresolved so the row reports SKIP honestly
+    // rather than probing with a made-up value.
+    registerNumber: "",
   };
 
   console.log("resolved parameters");
   for (const [name, value] of Object.entries(params)) {
-    const secret = name === "personRegNumber" || name === "primaryNidNumber";
+    const secret =
+      name === "personRegNumber" || name === "primaryNidNumber" || name === "civilId";
     console.log(`  ${name.padEnd(18)} ${value ? (secret ? mask(value) : value) : "(unresolved)"}`);
   }
   console.log("");
