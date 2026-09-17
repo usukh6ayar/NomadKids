@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useSearchParams } from "next/navigation";
-import { BackButton } from "@/components/ui/back-button";
+import { PageHeader } from "@/components/shell/app-shell";
 import { ChildOverviewContent } from "@/components/child/child-overview-content";
 
 /**
@@ -36,7 +36,10 @@ export default function ChildOverviewPage() {
         The parameter still picks the right landing place for a cold open,
         which is the one case history cannot answer.
       */}
-      <BackButton href={`/children/${childId}/${fromPortfolio ? "portfolio" : "general"}`} />
+      <PageHeader
+        backHref={`/children/${childId}/${fromPortfolio ? "portfolio" : "general"}`}
+        title="Суралцагчийн мэдээлэл"
+      />
 
       <ChildOverviewContent childId={childId} />
     </div>

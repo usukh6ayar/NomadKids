@@ -20,6 +20,7 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { canManageSurvey, staffSurveySchema } from "@/lib/survey-access";
+import { PageHeader } from "@/components/shell/app-shell";
 import { BackButton } from "@/components/ui/back-button";
 import { RequireRole } from "@/components/shell/require-role";
 import {
@@ -155,7 +156,7 @@ function SurveyDetail() {
   if (survey.isLoading) {
     return (
       <div className="flex flex-col gap-4">
-        <BackButton href="/surveys" />
+        <PageHeader backHref="/surveys" title="Судалгаа, асуулга" />
         <LoadingState rows={4} />
       </div>
     );
@@ -164,7 +165,7 @@ function SurveyDetail() {
   if (survey.isError) {
     return (
       <div className="flex flex-col gap-4">
-        <BackButton href="/surveys" />
+        <PageHeader backHref="/surveys" title="Судалгаа, асуулга" />
         <ErrorState description={errorMessage(survey.error)} />
       </div>
     );
@@ -175,7 +176,7 @@ function SurveyDetail() {
   if (!mayManage) {
     return (
       <div className="flex flex-col gap-4">
-        <BackButton href="/surveys" />
+        <PageHeader backHref="/surveys" title="Судалгаа, асуулга" />
         <EmptyState
           title="Судалгаа олдсонгүй"
           description="Таны үүсгэсэн судалгаа, асуулга энд харагдана."

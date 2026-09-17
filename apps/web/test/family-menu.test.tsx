@@ -75,12 +75,12 @@ describe("the family's meal screen", () => {
     render();
 
     const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
-    expect(within(panel).getByText("Өглөөний цай")).toBeInTheDocument();
+    expect(within(panel).getByText("Өглөөний хоол")).toBeInTheDocument();
     expect(within(panel).getByText("Тараг")).toBeInTheDocument();
     expect(within(panel).getByText("Мюсли")).toBeInTheDocument();
 
     // A sitting with no dish that day is not drawn as an empty card.
-    expect(within(panel).queryByText("Өдрийн хоол")).not.toBeInTheDocument();
+    expect(within(panel).queryByText("Үндсэн хоол")).not.toBeInTheDocument();
   });
 
   it("prints the time of each sitting", async () => {
@@ -123,7 +123,7 @@ describe("the family's meal screen", () => {
 
     const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
     // Шөл carries no `calories`, so its card has no figure.
-    const soup = within(panel).getByText("Оройн хоол").closest('[data-ui="card"]')!;
+    const soup = within(panel).getByText("Уух зүйл").closest('[data-ui="card"]')!;
     expect(within(soup as HTMLElement).queryByText(/ккал/)).not.toBeInTheDocument();
   });
 
@@ -154,7 +154,7 @@ describe("the family's meal screen", () => {
     await user.click(await screen.findByRole("tab", { name: "7 хоног" }));
 
     const table = await screen.findByRole("table", { name: "Долоо хоногийн цэс" });
-    expect(within(table).getByRole("rowheader", { name: /Өглөөний цай/ })).toBeInTheDocument();
+    expect(within(table).getByRole("rowheader", { name: /Өглөөний хоол/ })).toBeInTheDocument();
     expect(within(table).getAllByRole("columnheader")).toHaveLength(8); // Хоолны цаг + 7 days
     expect(within(table).getByText("Тараг, Мюсли")).toBeInTheDocument();
 

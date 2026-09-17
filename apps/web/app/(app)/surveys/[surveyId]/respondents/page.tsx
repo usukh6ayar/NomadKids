@@ -9,6 +9,7 @@ import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { canManageSurvey, staffSurveySchema } from "@/lib/survey-access";
+import { PageHeader } from "@/components/shell/app-shell";
 import { BackButton } from "@/components/ui/back-button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/field";
@@ -111,7 +112,7 @@ export default function SurveyRespondentsPage() {
   if (!mayManage) {
     return (
       <div className="flex flex-col gap-4 py-2">
-        <BackButton href="/surveys" />
+        <PageHeader backHref="/surveys" title="Судалгаа, асуулга" />
         <EmptyState
           title="Судалгаа олдсонгүй"
           description="Таны үүсгэсэн судалгаа, асуулга энд харагдана."

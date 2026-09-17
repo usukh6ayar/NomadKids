@@ -6,7 +6,7 @@ import { childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
-import { BackButton } from "@/components/ui/back-button";
+import { PageHeader } from "@/components/shell/app-shell";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAttendance } from "@/components/child/child-attendance";
 import { shortName } from "@/lib/format";
@@ -50,9 +50,7 @@ export default function ChildAttendancePage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <BackButton href={`/children/${childId}/general`} />
-
-      <h1 className="sr-only">{data.firstName}-ийн ирц</h1>
+      <PageHeader backHref={`/children/${childId}/general`} title={`${data.firstName}-ийн ирц`} />
 
       <ChildAttendance childId={childId} isStaff={isStaff} childName={shortName(data)} />
     </div>

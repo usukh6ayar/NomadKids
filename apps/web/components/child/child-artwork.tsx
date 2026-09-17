@@ -1,17 +1,19 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { useState } from "react";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Check, GitCompareArrows, Plus } from "lucide-react";
 import { z } from "zod";
-import { artworkTimelineSchema, type ArtworkComparison } from "@kinder/contracts";
+import { ARTWORK_TYPES, artworkTimelineSchema, type ArtworkComparison } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { formatDate } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
-import { Field, Textarea } from "@/components/ui/field";
+import { Disclosure } from "@/components/ui/disclosure";
+import { Field, Select, Textarea } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { MediaThumb } from "@/components/media/media-image";
 import { cn } from "@/lib/utils";
@@ -32,6 +34,8 @@ import { cn } from "@/lib/utils";
  */
 export function ChildArtwork({ childId, isStaff }: { childId: string; isStaff: boolean }) {
   const [selected, setSelected] = useState<string[]>([]);
+  const [typeFilter, setTypeFilter] = useState("");
+  const [comparing, setComparing] = useState(false);
 
   const timeline = useQuery({
     queryKey: qk.artwork(childId),
@@ -42,10 +46,30 @@ export function ChildArtwork({ childId, isStaff }: { childId: string; isStaff: b
   if (timeline.isError) return <ErrorState description={errorMessage(timeline.error)} />;
 
   const { artwork, comparisons } = timeline.data;
+  const visibleArtwork = artwork.filter((work) => !typeFilter || artworkType(work) === typeFilter);
+  const selectedType = artworkType(artwork.find((work) => work.id === selected[0]));
+  const groupedArtwork = [...new Set(visibleArtwork.map((work) => artworkType(work)))]
+    .sort((a, b) => {
+      const aIndex = ARTWORK_TYPES.indexOf(a as (typeof ARTWORK_TYPES)[number]);
+      const bIndex = ARTWORK_TYPES.indexOf(b as (typeof ARTWORK_TYPES)[number]);
+      return (
+        (aIndex < 0 ? ARTWORK_TYPES.length : aIndex) -
+          (bIndex < 0 ? ARTWORK_TYPES.length : bIndex) || a.localeCompare(b, "mn")
+      );
+    })
+    .map((type) => ({
+      type,
+      works: visibleArtwork.filter((work) => artworkType(work) === type),
+    }));
 
   function toggle(id: string) {
     setSelected((current) => {
       if (current.includes(id)) return current.filter((x) => x !== id);
+      const nextType = artworkType(artwork.find((work) => work.id === id));
+      const currentType = artworkType(artwork.find((work) => work.id === current[0]));
+      // A progress sequence compares like with like. Choosing another kind
+      // begins a new sequence instead of producing a misleading pair.
+      if (current.length > 0 && nextType !== currentType) return [id];
       // Two at a time: the third tap replaces the older selection rather than
       // refusing, which is what "I meant this one" looks like.
       return current.length < 2 ? [...current, id] : [current[1]!, id];
@@ -57,103 +81,207 @@ export function ChildArtwork({ childId, isStaff }: { childId: string; isStaff: b
       <section aria-labelledby="artwork-timeline-heading" className="flex flex-col gap-3">
         <SectionHeader
           id="artwork-timeline-heading"
-          title="Бүтээлүүд"
-          lede="Хийсэн огноогоор эрэмбэлэгдсэн."
+          title="Ахицын цуваа"
+          lede="Төрөл бүрийн бүтээлийг хугацааны дарааллаар харж, шинэ бүтээл нэмнэ."
         />
+
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="min-w-[220px] max-w-xs flex-1">
+            <Field label="Бүтээлийн төрөл">
+              {({ id }) => (
+                <Select
+                  id={id}
+                  value={typeFilter}
+                  onChange={(event) => {
+                    setTypeFilter(event.target.value);
+                    setSelected([]);
+                  }}
+                >
+                  <option value="">Бүх төрөл</option>
+                  {ARTWORK_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          </div>
+
+          {isStaff ? (
+            <Button asChild>
+              <Link href={newArtworkHref(childId, typeFilter)}>
+                <Plus size={18} aria-hidden="true" />
+                {typeFilter ? `${typeFilter} нэмэх` : "Шинэ бүтээл нэмэх"}
+              </Link>
+            </Button>
+          ) : null}
+
+          {isStaff && artwork.length >= 2 ? (
+            <Button
+              variant="secondary"
+              aria-pressed={comparing}
+              onClick={() => {
+                setComparing((current) => !current);
+                setSelected([]);
+              }}
+            >
+              <GitCompareArrows size={18} aria-hidden="true" />
+              {comparing ? "Харьцуулахаа болих" : "Харьцуулах"}
+            </Button>
+          ) : null}
+        </div>
 
         {artwork.length === 0 ? (
           <EmptyState
             title="Бүтээл алга"
             description={
               isStaff
-                ? "Зургийн цомогт «Бүтээл» ангилалтай зураг нэмбэл энд харагдана."
+                ? "Шинэ бүтээл нэмэх товчоор анхны бүтээлээ оруулна уу."
                 : "Багш бүтээлийн зураг нэмсний дараа энд харагдана."
             }
           />
+        ) : visibleArtwork.length === 0 ? (
+          <EmptyState title="Энэ төрлийн бүтээл алга" />
         ) : (
-          <ul className="flex flex-wrap gap-3">
-            {artwork.map((work) => {
-              const isSelected = selected.includes(work.id);
-              return (
-                <li key={work.id}>
-                  {/*
-                    A real button when it does something, a plain figure when it
-                    does not — a guardian tapping an inert control learns the app
-                    is broken.
-                  */}
-                  {isStaff ? (
-                    <button
-                      type="button"
-                      onClick={() => toggle(work.id)}
-                      aria-pressed={isSelected}
-                      className={cn(
-                        "flex flex-col items-center gap-1 rounded-control border-2 p-1.5 transition-colors",
-                        isSelected ? "border-primary bg-primary-soft" : "border-transparent",
-                      )}
-                    >
-                      <MediaThumb
-                        mediaId={work.id}
-                        caption={work.caption ?? "Бүтээл"}
-                        className="h-24 w-24"
-                      />
-                      <span className="text-caption text-muted">
-                        {work.takenAt ? formatDate(work.takenAt) : "Огноогүй"}
-                      </span>
-                    </button>
-                  ) : (
-                    <figure className="flex flex-col items-center gap-1 p-1.5">
-                      <MediaThumb
-                        mediaId={work.id}
-                        caption={work.caption ?? "Бүтээл"}
-                        className="h-24 w-24"
-                      />
-                      <figcaption className="text-caption text-muted">
-                        {work.takenAt ? formatDate(work.takenAt) : "Огноогүй"}
-                      </figcaption>
-                    </figure>
-                  )}
-                </li>
-              );
-            })}
+          <ul className="flex flex-col gap-4">
+            {groupedArtwork.map(({ type, works }) => (
+              <li key={type}>
+                <Card pad="compact" className="flex flex-col gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-body font-semibold text-ink">{type}</h3>
+                      <p className="text-caption text-muted">{works.length} бүтээл</p>
+                    </div>
+                    {isStaff ? (
+                      <Button asChild size="sm" variant="secondary">
+                        <Link
+                          href={newArtworkHref(childId, type)}
+                          aria-label={`${type} төрлийн шинэ бүтээл нэмэх`}
+                        >
+                          <Plus size={16} aria-hidden="true" />
+                          Шинэ бүтээл
+                        </Link>
+                      </Button>
+                    ) : null}
+                  </div>
+
+                  <ol className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                    {works.map((work) => {
+                      const isSelected = selected.includes(work.id);
+                      return (
+                        <li
+                          key={work.id}
+                          className="relative rounded-card border border-border bg-surface p-2"
+                        >
+                          <figure className="flex flex-col gap-1.5">
+                            <MediaThumb
+                              mediaId={work.id}
+                              caption={work.caption ?? "Бүтээл"}
+                              className={cn(
+                                "h-28 w-full border-2",
+                                isSelected ? "border-primary" : "border-transparent",
+                              )}
+                            />
+                            <figcaption className="text-caption text-muted">
+                              {artworkDate(work) ? formatDate(artworkDate(work)!) : "Огноогүй"}
+                            </figcaption>
+                            {isStaff && comparing ? (
+                              <button
+                                type="button"
+                                onClick={() => toggle(work.id)}
+                                aria-pressed={isSelected}
+                                aria-label={`${type} бүтээлийг харьцуулахад ${
+                                  isSelected ? "хасах" : "сонгох"
+                                }`}
+                                className={cn(
+                                  "absolute right-3 top-3 grid size-8 place-items-center rounded-pill border-2 shadow-sm",
+                                  isSelected
+                                    ? "border-primary bg-primary text-primary-ink"
+                                    : "border-white bg-surface text-peach-solid",
+                                )}
+                              >
+                                <Check size={17} aria-hidden="true" />
+                              </button>
+                            ) : null}
+                          </figure>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </Card>
+              </li>
+            ))}
           </ul>
         )}
 
-        {isStaff && selected.length === 2 ? (
+        {isStaff && comparing && selected.length === 2 ? (
           <ComparisonForm
             childId={childId}
             mediaIds={selected as [string, string]}
-            onDone={() => setSelected([])}
+            artworkType={selectedType}
+            onDone={() => {
+              setSelected([]);
+              setComparing(false);
+            }}
           />
-        ) : isStaff && artwork.length >= 2 ? (
+        ) : isStaff && comparing ? (
           <p className="text-caption text-muted" role="status">
-            Харьцуулах хоёр бүтээлээ сонгоно уу. ({selected.length}/2)
+            {selected.length === 1
+              ? `${selectedType}: дараагийн ижил төрлийн бүтээлээ сонгоно уу. (1/2)`
+              : "Харьцуулах ижил төрлийн хоёр бүтээлээ сонгоно уу. (0/2)"}
           </p>
         ) : null}
       </section>
 
-      <section aria-labelledby="artwork-comparisons-heading" className="flex flex-col gap-3">
-        <SectionHeader id="artwork-comparisons-heading" title="Хөгжлийн харьцуулалт" />
+      {/*
+        ★ Folded shut — 2026-09-16, the client: "хөгжлийн харьцуулалтыг
+        дропдаун болгочих, ил байхаар олон юм харагдаад байна".
 
-        {comparisons.length === 0 ? (
-          <EmptyState
-            title="Харьцуулалт хийгээгүй"
-            description="Хоёр бүтээлийг зэрэгцүүлж, ямар өөрчлөлт гарсныг тэмдэглэнэ."
-          />
-        ) : (
-          <ul className="flex flex-col gap-3">
-            {comparisons.map((comparison) => (
-              <ComparisonCard
-                key={comparison.id}
-                childId={childId}
-                comparison={comparison}
-                isStaff={isStaff}
-              />
-            ))}
-          </ul>
-        )}
+        Every comparison is two photographs side by side plus the teacher's
+        note, so three of them is most of a screen below the timeline that is
+        what this tab is for. The count sits on the row, which is the part a
+        teacher is checking most of the time — whether there are any, and how
+        many — and the pictures come out when they are being read.
+
+        `Disclosure` is the product's own `<details>`: it opens with no
+        JavaScript and the browser's find-in-page expands it to reveal a match
+        inside, which a scripted accordion silently fails.
+      */}
+      <section aria-label="Хөгжлийн харьцуулалт">
+        <Disclosure
+          title="Хөгжлийн харьцуулалт"
+          hint={
+            comparisons.length > 0 ? `${comparisons.length} харьцуулалт` : "Харьцуулалт хийгээгүй"
+          }
+        >
+          {comparisons.length === 0 ? (
+            <EmptyState
+              title="Харьцуулалт хийгээгүй"
+              description="Хоёр бүтээлийг зэрэгцүүлж, ямар өөрчлөлт гарсныг тэмдэглэнэ."
+            />
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {comparisons.map((comparison) => (
+                <ComparisonCard
+                  key={comparison.id}
+                  childId={childId}
+                  comparison={comparison}
+                  isStaff={isStaff}
+                />
+              ))}
+            </ul>
+          )}
+        </Disclosure>
       </section>
     </div>
   );
+}
+
+function newArtworkHref(childId: string, type: string): string {
+  const query = new URLSearchParams({ type: "artwork", returnTo: "progress" });
+  if (type) query.set("activityName", type);
+  return `/children/${childId}/observations/new?${query.toString()}`;
 }
 
 function ComparisonCard({
@@ -177,6 +305,9 @@ function ComparisonCard({
   return (
     <li>
       <Card pad="roomy" className="flex flex-col gap-3">
+        <p className="text-caption font-semibold text-peach-solid">
+          {artworkType(comparison.earlierMedia)}
+        </p>
         {/*
           Side by side with an arrow between them — RFP §5.3's "зэрэгцүүлэн
           харах". The arrow carries the direction the dates already imply, so it
@@ -191,8 +322,8 @@ function ComparisonCard({
               className="h-28 w-full max-w-[140px]"
             />
             <figcaption className="text-caption text-muted">
-              {comparison.earlierMedia.takenAt
-                ? formatDate(comparison.earlierMedia.takenAt)
+              {artworkDate(comparison.earlierMedia)
+                ? formatDate(artworkDate(comparison.earlierMedia)!)
                 : "Огноогүй"}
             </figcaption>
           </figure>
@@ -206,8 +337,8 @@ function ComparisonCard({
               className="h-28 w-full max-w-[140px]"
             />
             <figcaption className="text-caption text-muted">
-              {comparison.laterMedia.takenAt
-                ? formatDate(comparison.laterMedia.takenAt)
+              {artworkDate(comparison.laterMedia)
+                ? formatDate(artworkDate(comparison.laterMedia)!)
                 : "Огноогүй"}
             </figcaption>
           </figure>
@@ -256,10 +387,12 @@ function ComparisonCard({
 function ComparisonForm({
   childId,
   mediaIds,
+  artworkType: type,
   onDone,
 }: {
   childId: string;
   mediaIds: [string, string];
+  artworkType: string;
   onDone: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -298,6 +431,8 @@ function ComparisonForm({
           }
         />
 
+        <p className="text-body font-semibold text-peach-solid">{type} — ахицын цуваа</p>
+
         <Field
           label="Хөгжлийн өөрчлөлтийн дүгнэлт"
           error={errors.conclusion}
@@ -328,4 +463,27 @@ function ComparisonForm({
       </form>
     </Card>
   );
+}
+
+function artworkType(
+  work:
+    | {
+        observation?: { activityName?: string | null } | null;
+      }
+    | null
+    | undefined,
+): string {
+  return work?.observation?.activityName?.trim() || "Төрөлгүй";
+}
+
+function artworkDate(
+  work:
+    | {
+        takenAt?: string | null;
+        observation?: { observedOn?: string | null } | null;
+      }
+    | null
+    | undefined,
+): string | null {
+  return work?.takenAt ?? work?.observation?.observedOn ?? null;
 }

@@ -210,7 +210,7 @@ describe("хоолны цаг", () => {
     expect(sheetCalls).toHaveLength(1);
     expect(sheetCalls[0]!.url).toContain("kind=BREAKFAST");
     expect(screen.getByRole("button", { name: /Өглөө/ })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("heading", { name: "Өглөөний цай" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Өглөөний хоол" })).toBeInTheDocument();
   });
 
   it("switching sitting fetches the newly selected one", async () => {
@@ -236,7 +236,7 @@ describe("хоолны цаг", () => {
 
     const picker = await screen.findByRole("group", { name: "Хоолны цаг" });
     expect(within(picker).getAllByRole("button")).toHaveLength(4);
-    expect(within(picker).getByRole("button", { name: /Орой/ })).toBeInTheDocument();
+    expect(within(picker).getByRole("button", { name: /Ундаа/ })).toBeInTheDocument();
   });
 });
 
@@ -377,13 +377,13 @@ describe("хадгалаагүй өөрчлөлт", () => {
       ),
     );
 
-    expect(screen.getByRole("button", { name: /Өдөр/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Үндсэн/ })).toBeDisabled();
     expect(screen.getByLabelText(/Огноо/)).toBeDisabled();
     // The one that is already selected stays pressable — it is a no-op.
     expect(screen.getByRole("button", { name: /Өглөө/ })).toBeEnabled();
 
     await u.click(screen.getByRole("button", { name: "Болих" }));
-    expect(screen.getByRole("button", { name: /Өдөр/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Үндсэн/ })).toBeEnabled();
   });
 });
 

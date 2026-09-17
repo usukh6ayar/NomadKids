@@ -787,6 +787,49 @@ export class MediaService {
   }
 
   /**
+   * Takes one photograph back off a notice — 2026-09-16, at the client's
+   * request that a picture on a published post can be swapped for another.
+   *
+   * ★ Narrower than the upload beside it. Attaching is any staff member's to
+   * do; removing is the **author's alone**, which is the rule
+   * `NotificationsService.requireStaffOwned` applies to editing the post
+   * itself — including for an administrator, since 2026-09-17. Nobody must be
+   * able to strip the photographs off somebody else's notice, and answering
+   * 404 rather than 403 keeps the route from confirming whose post it is
+   * (§1.7).
+   *
+   * ★★ The row is archived, never deleted (§3.2), and the object in the
+   * bucket is left where it is. `MediaFile.storageKey` is the only thing that
+   * can find it, so an archived row is unreachable through `/media/:id` —
+   * `getDownloadUrl` filters `deletedAt`. Sweeping the bytes belongs to a
+   * cleanup job that can reason about every purpose at once, not to the one
+   * screen that happened to ask first.
+   */
+  async removeFromNotification(actor: Actor, notificationId: string, mediaId: string) {
+    const notification = await this.repo.findNotificationForAttachment(notificationId);
+    if (!notification) throw new NotFoundException();
+
+    this.tenants.assertStaff(actor, notification.kindergartenId);
+    if (notification.authorId !== actor.userId) throw new NotFoundException();
+
+    const media = await this.repo.findNotificationMedia(mediaId, notificationId);
+    if (!media) throw new NotFoundException();
+
+    await this.repo.archive(mediaId);
+
+    await this.audit.append({
+      action: "DELETE",
+      kindergartenId: notification.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "MediaFile",
+      objectId: mediaId,
+      metadata: { purpose: "NOTIFICATION", notificationId },
+    });
+
+    return { id: mediaId };
+  }
+
+  /**
    * A photograph of a dish on the weekly menu — Хоол үйлдвэрлэл.
    *
    * ★ Kindergarten-scoped, like a class photo — not tied to a `MenuDay` row or

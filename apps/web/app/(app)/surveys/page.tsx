@@ -24,6 +24,7 @@ import { SearchField } from "@/components/ui/search-field";
 import { formatDate } from "@/lib/format";
 import { canManageSurvey, staffSurveysSchema } from "@/lib/survey-access";
 import { cn } from "@/lib/utils";
+import { BackButton } from "@/components/ui/back-button";
 
 const groupsSchema = paginated(groupListItemSchema);
 
@@ -154,9 +155,14 @@ function SurveysHub() {
 
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
-      <header>
-        <h1 className="text-title font-semibold leading-heading text-ink">Судалгаа, асуулга</h1>
-        <p className="mt-0.5 text-body text-muted">Эцэг эхийн санал, оролцоог хялбархан аваарай.</p>
+      <header className="flex items-center gap-3">
+        <BackButton href="/dashboard" />
+        <div className="min-w-0">
+          <h1 className="text-title font-semibold leading-heading text-ink">Судалгаа, асуулга</h1>
+          <p className="mt-0.5 text-body text-muted">
+            Эцэг эхийн санал, оролцоог хялбархан аваарай.
+          </p>
+        </div>
       </header>
 
       {/*

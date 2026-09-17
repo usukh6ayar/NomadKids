@@ -111,33 +111,22 @@ describe("the assessment summary", () => {
    * roster, so a reader can check the ring against the numbers rather than
    * trusting it.
    */
-  it("reports the class's coverage as a ring and its parts", async () => {
-    stubStats();
-    summary();
-
-    expect(await screen.findByText("Нийт ангийн хамрагдалт")).toBeInTheDocument();
-    // The selected month's five children are measured against the goal of two.
-    expect(
-      screen.getByRole("img", { name: "2 хүүхдийн зорилтоос 5 нь хамрагдсан" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Хамрагдсан")).toBeInTheDocument();
-    expect(screen.getByText("Үлдсэн")).toBeInTheDocument();
-  });
-
   /**
-   * ★ The client's design has a third slice, "Шинэ хүүхэд".
+   * ★ The ring is gone — 2026-09-17, at the client's request ("Нийт ангийн
+   * хамрагдалт ... хас").
    *
-   * Nothing in the product distinguishes a newly enrolled child from any other
-   * child with no note yet, and inventing the distinction would put a number
-   * on screen that no query stands behind. Asserted as an absence so it cannot
-   * arrive later as a plausible-looking guess.
+   * It answered the same question as the first of the four figures above it —
+   * how much of the goal is covered — in a second shape and a second
+   * denominator, which is how one screen comes to state a month two ways.
+   * Asserted as an absence so it cannot quietly return.
    */
-  it("does not invent a slice the data cannot support", async () => {
+  it("no longer draws the class coverage ring", async () => {
     stubStats();
     summary();
 
-    await screen.findByText("Нийт ангийн хамрагдалт");
-    expect(screen.queryByText("Шинэ хүүхэд")).not.toBeInTheDocument();
+    await screen.findByText("Энэ сарын зорилт");
+    expect(screen.queryByText("Нийт ангийн хамрагдалт")).not.toBeInTheDocument();
+    expect(screen.queryByText("Үлдсэн")).not.toBeInTheDocument();
   });
 
   /**
@@ -206,12 +195,17 @@ describe("the assessment summary", () => {
    * A goal counted in notes is met by writing twenty about one child. This one
    * is only met by reaching twenty different children.
    */
+  /*
+    ★ The three progress rows became four figures — 2026-09-17, the client's
+    drawing. What is asserted is the arithmetic rather than the shape: the goal
+    still counts children, and the card still reads "covered / target".
+  */
   it("reads the group's goal and counts children against it", async () => {
     stubStats(2);
     summary();
 
     expect(await screen.findByText("Энэ сарын зорилт")).toBeInTheDocument();
-    expect(screen.getByText("Зорилтын биелэлт")).toBeInTheDocument();
+    expect(screen.getByText("Зорилго хангасан хүүхэд")).toBeInTheDocument();
     expect(screen.getByText("5 / 2")).toBeInTheDocument();
   });
 
@@ -219,9 +213,7 @@ describe("the assessment summary", () => {
     stubStats(null);
     summary();
 
-    expect(
-      await screen.findByText(/Хүүхэд болон тэмдэглэлийн зорилтоо сонгоно уу/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Зорилтоо тохируулна уу/)).toBeInTheDocument();
   });
 
   /**
@@ -278,10 +270,13 @@ describe("the assessment summary", () => {
     const api = stubStats(5, ["TEACHER"], 2);
     summary();
 
-    expect(
-      await screen.findByRole("progressbar", { name: "2 тэмдэглэлтэй болсон: 2 / 5" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("5 хүүхэд · хүүхэд бүрт 2 тэмдэглэл")).toBeInTheDocument();
+    /*
+      The per-child target drives two of the four figures: how many children
+      reached it, and how many notes the month therefore needs (5 × 2 = 10).
+    */
+    expect(await screen.findByText("Шаардлагатай тэмдэглэл")).toBeInTheDocument();
+    expect(screen.getByText(/\/ 10$/)).toBeInTheDocument();
+    expect(screen.getByText("Одоогоор дутуу хүүхэд")).toBeInTheDocument();
 
     await user.click(
       screen.getByRole("button", { name: /Нэг хүүхдэд бичих тэмдэглэлийн тоо — нэмэх/ }),
@@ -335,7 +330,7 @@ describe("the assessment summary", () => {
     stubStats();
     summary();
 
-    await screen.findByText("Нийт ангийн хамрагдалт");
+    await screen.findByText("Энэ сарын зорилт");
     // October has one child documented and every later month none, so the
     // months are not steady and the green card stays away.
     expect(screen.queryByText("Сайн байна")).not.toBeInTheDocument();
@@ -552,8 +547,15 @@ describe("the new-record strip", () => {
       ),
     );
     const observation = await screen.findByRole("button", { name: /Ажиглалт/ });
-    for (const door of ["Ярилцлага", "Бүтээл"]) {
-      expect(screen.getByRole("button", { name: new RegExp(door) })).toBeInTheDocument();
+    const doors = [
+      ["Ажиглалт", "icon-observation-3d.png"],
+      ["Ярилцлага", "icon-conversation-3d.png"],
+      ["Бүтээл", "icon-artwork-3d.png"],
+    ] as const;
+    for (const [name, asset] of doors) {
+      const door = screen.getByRole("button", { name: new RegExp(name) });
+      expect(door).toBeInTheDocument();
+      expect(door.querySelector("img")?.getAttribute("src")).toContain(asset);
     }
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -586,7 +588,15 @@ describe("the new-record strip", () => {
     expect(within(picker).getByText("7")).toBeInTheDocument();
     expect(within(picker).getByText("Ажиглалт · ангийн хамралт")).toBeInTheDocument();
     expect(within(picker).getByText("1/1 хүүхэд")).toBeInTheDocument();
-    expect(within(picker).getByText("Зорилт биелсэн")).toBeInTheDocument();
+    // The tile's own line is the count now — three tiles to a phone row has no
+    // width for "Зорилт биелсэн", and the colour says which are done. The word
+    // survives in the radio's accessible name.
+    const tile = within(picker).getByRole("radio", {
+      name: /Батжаргал Ану.* — зорилт биелсэн/,
+    });
+    // The tile's own line is one word wide now — three tiles fit a phone row,
+    // so "Зорилт биелсэн" lives in the accessible name and "Биелсэн" is drawn.
+    expect(within(tile).getByText("Биелсэн")).toBeInTheDocument();
   });
 
   /**

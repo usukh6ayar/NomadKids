@@ -26,7 +26,6 @@ import { useSession } from "@/lib/auth/session";
 import { useSelectedChild } from "@/lib/selected-child";
 import {
   CalendarRange,
-  ChevronRight,
   PenLine,
   MoreVertical,
   Search,
@@ -41,11 +40,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
-import { Field, Input } from "@/components/ui/field";
+import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { excerpt, formatRelative, shortName } from "@/lib/format";
-import { SURVEY_CATEGORY_META, SURVEY_TONE_BG } from "@/lib/survey-meta";
+import { FamilySurveyCard } from "@/components/survey/family-survey-card";
 import { cn } from "@/lib/utils";
 
 const listSchema = paginated(notificationSchema);
@@ -409,22 +408,34 @@ export default function NotificationsPage() {
                 administrator-only.
               */}
               {isStaff && (boardGroups.data?.items.length ?? 0) > 1 ? (
-                <FilterChipRow label="Бүлгийн самбар">
-                  {isAdmin ? (
-                    <FilterChip active={!groupId} onClick={() => setGroupId("")}>
-                      Бүх бүлэг
-                    </FilterChip>
-                  ) : null}
-                  {(boardGroups.data?.items ?? []).map((group) => (
-                    <FilterChip
-                      key={group.id}
-                      active={groupId === group.id}
-                      onClick={() => setGroupId(group.id)}
-                    >
-                      {group.name}
-                    </FilterChip>
-                  ))}
-                </FilterChipRow>
+                /*
+                  ★★ A select, at any size — 2026-09-17, the client: "шинэ
+                  мэдээний доор байгаа бүлгүүд дропдаун харагд".
+
+                  It was a chip row, which is the right control for the two or
+                  three groups a teacher has and the wrong one at twenty: a
+                  horizontal scroller whose chosen chip can sit off the edge,
+                  where finding Хангай бүлэг means dragging through the
+                  alphabet. This first shipped with a "more than six" threshold
+                  and that was the mistake — the screen a director was looking
+                  at had four, so nothing changed for them. One control at
+                  every size, naming the current board without being opened.
+                */
+                <label className="flex flex-col gap-1">
+                  <span className="text-caption font-medium text-muted">Бүлгийн самбар</span>
+                  <Select
+                    value={groupId}
+                    onChange={(event) => setGroupId(event.target.value)}
+                    className="sm:max-w-[320px]"
+                  >
+                    {isAdmin ? <option value="">Бүх бүлэг</option> : null}
+                    {(boardGroups.data?.items ?? []).map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
               ) : null}
 
               {/*
@@ -670,14 +681,16 @@ export default function NotificationsPage() {
                     key={notification.id}
                     notification={notification}
                     /*
-                      An admin may withdraw any post in their kindergarten; a
-                      teacher only their own. The same rule `requireStaffOwned`
-                      applies on the server — this only decides whether the
-                      button is drawn.
+                      ★ Whoever wrote it, and nobody else — 2026-09-17, at the
+                      client's request that an administrator edit and withdraw
+                      only their own posts.
+
+                      `requireStaffOwned` is the authority and answers 404 to
+                      everyone else; this only decides whether the menu is
+                      drawn, and drawing it for a director who would then meet
+                      a 404 is the failure the two have to agree about.
                     */
-                    canDelete={
-                      hasRole("ADMIN") || (isStaff && notification.author?.id === session?.user?.id)
-                    }
+                    canDelete={isStaff && notification.author?.id === session?.user?.id}
                     savableChildren={isGuardian ? surveyChildren : undefined}
                   />
                 ))}
@@ -805,82 +818,25 @@ function SurveysTab({
         />
       ) : null}
 
+      {/*
+        ★★ The family's own card, not a second design — 2026-09-17, the client:
+        "Миний судалгаанууд хуудсан дээрх жагсаалтын шиг картууд харагд".
+
+        This tab drew 220px tiles with an icon chip, two badges and a footer;
+        the list a parent reaches from their own Судалгаа tile drew a row. Same
+        surveys, same reader, two answers to "what does a survey look like" —
+        and the tile version had no way into an answered one at all, since only
+        an unanswered card was a link. `FamilySurveyCard` is the one card, and
+        every state of it navigates.
+      */}
       {data.length > 0 ? (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {data.map((survey) => {
-            const answered = Boolean(survey.respondedByMe);
-            const open = !answered && survey.status !== "CLOSED";
-            const meta = SURVEY_CATEGORY_META[survey.category];
-            const questionCount = survey.questions.length;
-
-            const body = (
-              <>
-                <span className="flex items-start justify-between gap-3">
-                  <span
-                    className={cn(
-                      "grid size-12 shrink-0 place-items-center rounded-control",
-                      SURVEY_TONE_BG[meta.tone],
-                    )}
-                    aria-hidden="true"
-                  >
-                    <meta.Icon size={22} aria-hidden="true" />
-                  </span>
-
-                  <span className="flex flex-wrap justify-end gap-1.5">
-                    <Badge tone={meta.tone}>{meta.label}</Badge>
-                    {answered ? (
-                      <Badge tone="mint">Хариулсан</Badge>
-                    ) : open ? (
-                      <Badge tone="sun">Хариулаагүй</Badge>
-                    ) : (
-                      <Badge tone="neutral">Хаагдсан</Badge>
-                    )}
-                  </span>
-                </span>
-
-                <span className="min-w-0 flex-1">
-                  <span className="block text-lead font-semibold leading-snug text-ink">
-                    {survey.title}
-                  </span>
-                  {survey.description ? (
-                    <span className="mt-1 line-clamp-2 block text-body text-muted">
-                      {survey.description}
-                    </span>
-                  ) : null}
-                </span>
-
-                <span className="flex items-center justify-between border-t border-border-soft pt-3 text-caption text-muted">
-                  <span>{questionCount} асуулт</span>
-                  {open ? (
-                    <span className="inline-flex items-center gap-1 font-semibold text-primary">
-                      Хариулах
-                      <ChevronRight size={16} aria-hidden />
-                    </span>
-                  ) : (
-                    <span>{answered ? "Хариулт илгээгдсэн" : "Хугацаа дууссан"}</span>
-                  )}
-                </span>
-              </>
-            );
-
-            return open ? (
-              <Link
-                key={survey.id}
-                href={`/children/${selectedChild?.id}/surveys/${survey.id}`}
-                className="group flex min-h-[220px] flex-col gap-4 rounded-card border border-border bg-surface p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary hover:shadow-md sm:p-5"
-              >
-                {body}
-              </Link>
-            ) : (
-              <article
-                key={survey.id}
-                className="flex min-h-[220px] flex-col gap-4 rounded-card border border-border-soft bg-sunken p-4 sm:p-5"
-              >
-                {body}
-              </article>
-            );
-          })}
-        </div>
+        <ul className="flex flex-col gap-2">
+          {data.map((survey) => (
+            <li key={survey.id}>
+              <FamilySurveyCard childId={selectedChild.id} survey={survey} />
+            </li>
+          ))}
+        </ul>
       ) : null}
     </section>
   );

@@ -16,7 +16,6 @@ import { formatRelative } from "@/lib/format";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
-import { BackButton } from "@/components/ui/back-button";
 import { Card, RowCard, RowList } from "@/components/ui/card";
 import { Pagination, ResultCount } from "@/components/ui/pagination";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
@@ -61,9 +60,7 @@ function FinancialAuditLog() {
 
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
-      <BackButton href="/finance" />
-
-      <PageHeader title="Санхүүгийн үйлдлийн түүх" />
+      <PageHeader backHref="/finance" title="Санхүүгийн үйлдлийн түүх" />
 
       {entries.isLoading ? <LoadingState rows={6} /> : null}
       {entries.isError ? <ErrorState description={errorMessage(entries.error)} /> : null}

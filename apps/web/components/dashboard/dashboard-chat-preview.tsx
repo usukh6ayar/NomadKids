@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, CloudOff } from "lucide-react";
-import { chatRoomsSchema, roomPreview } from "@/components/chat/chat-widget";
+import { chatRoomDisplayName, chatRoomsSchema, roomPreview } from "@/components/chat/chat-widget";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { formatRelative, fullName } from "@/lib/format";
@@ -11,9 +11,11 @@ import { BoardCard, BoardCardEmpty } from "./board-card";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/states";
 import { Art } from "@/components/ui/art";
+import { useSession } from "@/lib/auth/session";
 
 /** A real room preview; the full conversation stays on the dedicated chat page. */
 export function DashboardChatPreview() {
+  const { roles } = useSession();
   const rooms = useQuery({
     queryKey: qk.chatRooms(),
     queryFn: () => get("/chat/rooms", chatRoomsSchema),
@@ -61,7 +63,10 @@ export function DashboardChatPreview() {
       ) : (
         <ul className="divide-y divide-border-soft">
           {rooms.data.slice(0, 3).map((room) => {
-            const author = room.lastMessage?.author ? fullName(room.lastMessage.author) : room.name;
+            const displayName = chatRoomDisplayName(room, roles, rooms.data);
+            const author = room.lastMessage?.author
+              ? fullName(room.lastMessage.author)
+              : displayName;
 
             return (
               <li key={room.key}>
@@ -70,7 +75,7 @@ export function DashboardChatPreview() {
                     aria-hidden="true"
                     className="grid size-10 shrink-0 place-items-center rounded-pill bg-primary-soft text-body font-bold text-primary"
                   >
-                    {room.name.slice(0, 1)}
+                    {displayName.slice(0, 1)}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline justify-between gap-2">
@@ -82,7 +87,7 @@ export function DashboardChatPreview() {
                       ) : null}
                     </span>
                     <span className="block truncate text-caption text-muted">
-                      {roomPreview(room.lastMessage, `${room.name} · ${room.memberCount} гишүүн`)}
+                      {roomPreview(room.lastMessage, `${displayName} · ${room.memberCount} гишүүн`)}
                     </span>
                   </span>
                   {room.unreadCount > 0 ? (

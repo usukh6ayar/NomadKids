@@ -36,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Field, Input, Select } from "@/components/ui/field";
+import { MonthSelect } from "@/components/ui/month-select";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { Pagination, ResultCount } from "@/components/ui/pagination";
 import { StatCard } from "@/components/ui/stat-card";
@@ -421,13 +422,7 @@ function FilterBar({
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="Сар">
           {({ id }) => (
-            <Input
-              id={id}
-              type="month"
-              max={thisMonth}
-              value={month}
-              onChange={(e) => onMonth(e.target.value)}
-            />
+            <MonthSelect id={id} max={thisMonth} value={month} onValueChange={onMonth} />
           )}
         </Field>
 

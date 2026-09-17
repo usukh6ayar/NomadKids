@@ -105,13 +105,14 @@ export default function PhotoHistoryPage() {
         fallback, which is also the honest control: this link named a screen the
         reader may never have come from.
       */}
-      <BackButton href={`/children/${childId}/portfolio/gallery`} />
-
-      <header>
-        <h1 className="text-heading font-semibold text-ink">Зургийн цомог 2-5 нас</h1>
-        <p className="mt-1 text-body text-muted">
-          Зургийн төрлөөр насны ахицыг харьцуулна · {total} зураг
-        </p>
+      <header className="flex items-center gap-3">
+        <BackButton href={`/children/${childId}/portfolio/gallery`} />
+        <div className="min-w-0">
+          <h1 className="text-heading font-semibold text-ink">Зургийн цомог 2-5 нас</h1>
+          <p className="mt-1 text-body text-muted">
+            Зургийн төрлөөр насны ахицыг харьцуулна · {total} зураг
+          </p>
+        </div>
       </header>
 
       {total === 0 ? (

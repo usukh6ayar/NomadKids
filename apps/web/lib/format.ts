@@ -82,6 +82,24 @@ export function formatLongDate(value: string | Date | null | undefined): string 
 }
 
 /**
+ * `9-р сарын 15` — a day inside a period the reader already has.
+ *
+ * ★ The Mongolian counterpart of `formatDayMonth`, which writes `9/15`.
+ *
+ * The numeric form is for an axis tick and a range caption, where the label
+ * has to be two glyphs wide. Anywhere it is read as a sentence — a note's
+ * date, a conclusion's citation — it is written out, because CLAUDE.md §5 asks
+ * for Mongolian and `9/15` is nobody's Mongolian. The year is left out on
+ * purpose: these sit in a list already scoped to a term or a school year, and
+ * `formatLongDate` is the one to use where it is not.
+ */
+export function formatDayMonthLong(value: string | Date | null | undefined): string {
+  const date = toDate(value);
+  if (!date) return "—";
+  return `${MONTHS[date.getMonth()]}ын ${date.getDate()}`;
+}
+
+/**
  * "3 хоногийн өмнө".
  *
  * Falls back to an absolute date past a fortnight: "23 хоногийн өмнө" is

@@ -823,6 +823,67 @@ export class DashboardRepository {
   // ── Cook ─────────────────────────────────────────────────────────────────
 
   /**
+   * Every active group with its roster size — the kitchen's "Нийт хүүхэд"
+   * column, and the denominator its portion counts are checked against.
+   *
+   * ★ One query with a relation count, not a query per group (§3.4). Ordered
+   * by name so the table reads the same way twice running.
+   */
+  async groupRosterSizes(kindergartenIds: string[]) {
+    if (kindergartenIds.length === 0) return [];
+
+    return this.prisma.group.findMany({
+      where: { kindergartenId: { in: kindergartenIds }, deletedAt: null, status: "ACTIVE" },
+      select: {
+        id: true,
+        name: true,
+        _count: { select: { enrollments: { where: { status: "ACTIVE", deletedAt: null } } } },
+      },
+      orderBy: { name: "asc" },
+      take: 50,
+    });
+  }
+
+  /**
+   * What the kitchen actually served today, by sitting — `нэмэлт.md` §2's meal
+   * register, summed across the kindergarten.
+   *
+   * ★ Counts what was *recorded*, never what was expected.
+   *
+   * A portion figure taken from the roster is a plan; this is the register. The
+   * screen shows both and says which is which — a kitchen that cooked 421 and a
+   * kitchen that has not filled the register in yet must not read the same.
+   */
+  async mealCountsToday(kindergartenIds: string[], date: Date) {
+    if (kindergartenIds.length === 0) return [];
+
+    return this.prisma.mealRecord.groupBy({
+      by: ["kind", "status"],
+      where: { kindergartenId: { in: kindergartenIds }, deletedAt: null, date },
+      _count: { _all: true },
+    });
+  }
+
+  /**
+   * Children with a **food** allergy on record — the "Харшилтай" figure.
+   *
+   * ★ Distinct children, not records: one child with three allergies is one
+   * plate to think about, and counting rows would tell the kitchen to prepare
+   * three.
+   */
+  async foodAllergyChildren(kindergartenIds: string[]): Promise<number> {
+    if (kindergartenIds.length === 0) return 0;
+
+    const rows = await this.prisma.allergyRecord.findMany({
+      where: { kindergartenId: { in: kindergartenIds }, deletedAt: null, kind: "FOOD" },
+      select: { childId: true },
+      distinct: ["childId"],
+    });
+
+    return rows.length;
+  }
+
+  /**
    * Orders still `DRAFT` or `ORDERED` — placed with a supplier but nothing has
    * arrived yet. The cook's dashboard flags this as a count, not a list: the
    * detail already lives at `/kitchen/orders`, so this answers only "is there

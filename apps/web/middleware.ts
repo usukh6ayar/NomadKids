@@ -63,7 +63,27 @@ export function middleware(request: NextRequest) {
    * The exact origin, never a wildcard. Presigned URLs are unguessable and
    * short-lived, but `img-src *` would let an injected tag exfiltrate by URL.
    */
-  const storageOrigin = originOf(process.env.NEXT_PUBLIC_MEDIA_URL);
+  /*
+    ★★ A development fallback, the same shape `apiOrigin` above has had all
+    along — 2026-09-16, and it is the reason document covers were invisible on
+    a laptop.
+
+    `NEXT_PUBLIC_MEDIA_URL` lives in the repository's root `.env`, which the
+    API reads and Next does not: `next dev` loads `.env` files from the app's
+    own directory. `apiOrigin` survived that because it falls back to
+    `http://localhost:3001`; this had no fallback, so `img-src` went out
+    without a storage origin and the browser refused every 302 to MinIO. The
+    served header said so plainly — `img-src 'self' data: blob:
+    http://localhost:3001` — while the request chain was correct end to end,
+    which is exactly the failure mode the note above describes.
+
+    Production is untouched: an unset `MEDIA_ORIGIN` there still yields no
+    origin rather than a localhost one that would be nonsense on a server.
+    `docs/PRODUCTION_READINESS.md` lists setting it as a deployment step.
+  */
+  const storageOrigin =
+    originOf(process.env.NEXT_PUBLIC_MEDIA_URL) ??
+    (isProduction ? undefined : "http://localhost:9002");
 
   const csp = [
     "default-src 'self'",

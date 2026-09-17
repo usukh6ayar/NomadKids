@@ -46,11 +46,13 @@ export async function uploadChildPhotos({
   files,
   observationId,
   purpose,
+  category,
 }: {
   childId: string;
   files: File[];
   observationId?: string;
   purpose?: "CHILD_PHOTO" | "OBSERVATION" | "MILESTONE";
+  category?: string;
 }): Promise<PhotoUploadResult> {
   const combined: PhotoUploadResult = { items: [], failed: [] };
 
@@ -61,6 +63,7 @@ export async function uploadChildPhotos({
     }
     if (observationId) form.append("observationId", observationId);
     if (purpose) form.append("purpose", purpose);
+    if (category) form.append("category", category);
 
     const result = await mutate(`/children/${childId}/media`, uploadResultSchema, {
       method: "POST",

@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 
 export function Field({
   label,
+  labelHidden = false,
   error,
   hint,
   required,
@@ -39,6 +40,17 @@ export function Field({
   className,
 }: {
   label: string;
+  /**
+   * Draws the label for screen readers only.
+   *
+   * ★ `sr-only`, never absent — CLAUDE.md §5 asks for a label on every field
+   * and the reason is not decorative: a control whose only description is its
+   * placeholder loses that description the moment somebody types into it, and
+   * a screen reader announces "edit text" and nothing else. This is for the
+   * one field on a screen whose purpose the surrounding copy already states,
+   * where the printed word is noise rather than information.
+   */
+  labelHidden?: boolean;
   error?: string | null;
   hint?: string;
   required?: boolean;
@@ -55,7 +67,10 @@ export function Field({
 
   return (
     <div data-ui="field" className={cn("flex flex-col gap-1.5", className)}>
-      <LabelPrimitive.Root htmlFor={id} className="text-body font-medium text-ink">
+      <LabelPrimitive.Root
+        htmlFor={id}
+        className={cn("text-body font-medium text-ink", labelHidden && "sr-only")}
+      >
         {label}
         {required ? (
           <span className="text-danger" aria-hidden="true">

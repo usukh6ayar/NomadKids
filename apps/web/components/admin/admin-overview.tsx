@@ -213,8 +213,10 @@ export function AdminOverview() {
           aria-label="Товч мэдээлэл"
           className={cn("grid grid-cols-2 gap-3", storage ? "lg:grid-cols-3" : "lg:grid-cols-4")}
         >
+          {/* ★ "Суралцагч", not "хүүхэд" — 2026-09-17, at the client's request,
+              and the same word the roster this card links to now uses. */}
           <StatCard
-            label="Нийт хүүхэд"
+            label="Нийт суралцагч"
             value={counts.children}
             href="/children"
             tone="cornflower"

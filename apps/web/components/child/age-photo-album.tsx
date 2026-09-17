@@ -210,14 +210,15 @@ export function AgePhotoAlbum({ childId, age }: { childId: string; age: Age }) {
         fallback, which is also the honest control: this link named a screen the
         reader may never have come from.
       */}
-      <BackButton href={`/children/${childId}/portfolio/gallery`} />
-
-      <DevelopmentHistoryLink childId={childId} />
-
       <section aria-labelledby="age-photo-library-heading">
-        <h1 id="age-photo-library-heading" className="text-heading font-semibold text-ink">
-          {age} насны зургийн сан
-        </h1>
+        <div className="mb-4 flex items-center gap-3">
+          <BackButton href={`/children/${childId}/portfolio/gallery`} />
+          <h1 id="age-photo-library-heading" className="text-heading font-semibold text-ink">
+            {age} насны зургийн сан
+          </h1>
+        </div>
+
+        <DevelopmentHistoryLink childId={childId} />
 
         <TeacherAlbumCard
           childId={childId}

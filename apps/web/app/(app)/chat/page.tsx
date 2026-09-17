@@ -5,12 +5,18 @@ import { MessageCircle, Plus, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import { chatRoomSchema } from "@kinder/contracts";
-import { ChatList, ChatRoom, type ChatChrome } from "@/components/chat/chat-widget";
+import {
+  ChatList,
+  ChatRoom,
+  chatRoomDisplayName,
+  type ChatChrome,
+} from "@/components/chat/chat-widget";
 import { Button } from "@/components/ui/button";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
+import { useSession } from "@/lib/auth/session";
 
 const roomsSchema = z.array(chatRoomSchema);
 
@@ -50,6 +56,7 @@ const pageChrome: ChatChrome = {
  * ten-second poll are written once and behave identically in both frames.
  */
 export default function ChatPage() {
+  const { roles } = useSession();
   const [roomKey, setRoomKey] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -131,6 +138,7 @@ export default function ChatPage() {
             <ChatRoom
               key={active.key}
               room={active}
+              displayName={chatRoomDisplayName(active, roles, rooms.data)}
               onBack={() => setRoomKey(null)}
               // From `lg` the list is beside this pane, so an arrow pointing
               // back at it would appear to do nothing.
@@ -174,10 +182,12 @@ export default function ChatPage() {
                 aria-hidden="true"
                 className="grid size-11 shrink-0 place-items-center rounded-pill bg-primary-soft font-bold text-primary"
               >
-                {room.name.slice(0, 1)}
+                {chatRoomDisplayName(room, roles, rooms.data).slice(0, 1)}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-body font-semibold text-ink">{room.name}</span>
+                <span className="block truncate text-body font-semibold text-ink">
+                  {chatRoomDisplayName(room, roles, rooms.data)}
+                </span>
                 <span className="mt-0.5 flex items-center gap-1.5 text-caption text-muted">
                   <Users size={14} aria-hidden="true" />
                   {room.memberCount} гишүүн

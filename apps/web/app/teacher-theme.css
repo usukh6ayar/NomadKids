@@ -267,8 +267,18 @@ body:has([data-app-theme="teacher"]) [data-brand-mark] {
   background: #ffffff;
 }
 
+/*
+ * ★ No `color` here any more — 2026-09-16.
+ *
+ * The first line of the brand block is the gradient wordmark now
+ * (`brand-wordmark.tsx`), which paints itself by clipping a background to the
+ * letterforms and setting the text transparent. This rule is far more specific
+ * than a utility class, so the navy it used to set would have repainted the
+ * name solid and thrown the gradient away silently. The weight stays: it is
+ * the teacher theme's own emphasis and the wordmark does not set one of the
+ * theme's own.
+ */
 body:has([data-app-theme="teacher"]) [data-brand-mark] + span > span:first-child {
-  color: #143d72;
   font-weight: 800;
 }
 

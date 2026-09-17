@@ -258,15 +258,84 @@ export class DashboardService {
     const kindergartenIds = this.tenants.memberKindergartenIds(actor);
     const today = startOfDay(new Date());
 
-    const [attendanceToday, attendanceByGroup, pendingFoodOrders, lowStockCount] =
-      await Promise.all([
-        this.repo.attendanceToday(kindergartenIds, today),
-        this.repo.attendanceByGroup(kindergartenIds, today, today),
-        this.repo.pendingFoodOrders(kindergartenIds),
-        this.repo.lowStockCount(kindergartenIds),
-      ]);
+    const [
+      attendanceToday,
+      attendanceByGroup,
+      pendingFoodOrders,
+      lowStockCount,
+      rosters,
+      mealRows,
+      allergyChildren,
+    ] = await Promise.all([
+      this.repo.attendanceToday(kindergartenIds, today),
+      this.repo.attendanceByGroup(kindergartenIds, today, today),
+      this.repo.pendingFoodOrders(kindergartenIds),
+      this.repo.lowStockCount(kindergartenIds),
+      this.repo.groupRosterSizes(kindergartenIds),
+      this.repo.mealCountsToday(kindergartenIds, today),
+      this.repo.foodAllergyChildren(kindergartenIds),
+    ]);
 
-    return { attendanceToday, attendanceByGroup, pendingFoodOrders, lowStockCount };
+    /*
+      ★ The kitchen's own table — 2026-09-17, the client's design: one row per
+      group with the roster, who came, and how many plates that is.
+
+      Assembled here rather than in a third query: `attendanceByGroup` already
+      counts the day by status and `groupRosterSizes` is the denominator, so
+      joining them in memory over at most fifty groups beats a query that would
+      have to do the same join anyway.
+
+      "Present" counts `PRESENT` and `HALF_DAY` — a child who came for the
+      morning eats. `recorded` is whether that group's register exists at all,
+      which is the difference between "nobody came" and "nobody said".
+    */
+    const attendance = new Map(attendanceByGroup.map((row) => [row.groupId, row.counts]));
+    const groups = rosters.map((group) => {
+      const counts = attendance.get(group.id) ?? {};
+      const present = (counts.PRESENT ?? 0) + (counts.HALF_DAY ?? 0);
+      const recorded = Object.values(counts).reduce((sum, value) => sum + value, 0);
+
+      return {
+        groupId: group.id,
+        name: group.name,
+        enrolled: group._count.enrollments,
+        present,
+        recorded,
+      };
+    });
+
+    /*
+      Portions by sitting, from the register. `TAKEN`, `PARTIAL` and `SPECIAL`
+      are plates that were served; `NOT_TAKEN` is a child excused from the meal
+      and is reported separately rather than folded into the total.
+    */
+    const served = new Map<string, number>();
+    let special = 0;
+    let excused = 0;
+    for (const row of mealRows) {
+      const count = row._count._all;
+      if (row.status === "NOT_TAKEN") {
+        excused += count;
+        continue;
+      }
+      served.set(row.kind, (served.get(row.kind) ?? 0) + count);
+      if (row.status === "SPECIAL") special += count;
+    }
+
+    return {
+      attendanceToday,
+      attendanceByGroup,
+      pendingFoodOrders,
+      lowStockCount,
+      groups,
+      meals: {
+        byKind: [...served.entries()].map(([kind, portions]) => ({ kind, portions })),
+        served: [...served.values()].reduce((sum, value) => sum + value, 0),
+        special,
+        excused,
+        allergyChildren,
+      },
+    };
   }
 
   /**

@@ -156,7 +156,7 @@ describe("the cook's weekly menu", () => {
 
     await user.click(await screen.findByRole("button", { name: "Хоол нэмэх" }));
     const dialog = await screen.findByRole("dialog", { name: "Хоол нэмэх" });
-    await selectOption(user, "Хугацаа", "Өдрийн хоол");
+    await selectOption(user, "Хугацаа", "Үндсэн хоол");
 
     expect(within(dialog).getByLabelText("1-р хоол")).toBeInTheDocument();
     expect(within(dialog).getByLabelText("2-р хоол")).toBeInTheDocument();
@@ -172,8 +172,8 @@ describe("the cook's weekly menu", () => {
       dishes: { name: string; kind: string; time: string }[];
     };
     expect(saved.dishes.slice(-2)).toEqual([
-      expect.objectContaining({ name: "Шөл", kind: "LUNCH", time: "12:30" }),
-      expect.objectContaining({ name: "Будаа", kind: "LUNCH", time: "12:30" }),
+      expect.objectContaining({ name: "Шөл", kind: "LUNCH", time: "12:40" }),
+      expect.objectContaining({ name: "Будаа", kind: "LUNCH", time: "12:40" }),
     ]);
     await waitFor(() =>
       expect(screen.queryByRole("dialog", { name: "Хоол нэмэх" })).not.toBeInTheDocument(),
@@ -217,7 +217,7 @@ describe("the cook's weekly menu", () => {
     const portionInputs = screen.getAllByLabelText("Порц");
     await user.type(portionInputs[0]!, "1");
 
-    await selectOption(user, "Хоолны цаг", "Өдрийн хоол");
+    await selectOption(user, "Хоолны цаг", "Үндсэн хоол");
 
     const saveButtons = screen.getAllByRole("button", { name: /Хадгалах/ });
     await user.click(saveButtons[0]!);
@@ -833,7 +833,7 @@ describe("the menu as a spreadsheet", () => {
     const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
     expect(within(panel).getByLabelText("Зураг нэмэх")).toBeInTheDocument();
 
-    await user.click(within(panel).getByRole("button", { name: /Өглөөний цай — үйлдэл/ }));
+    await user.click(within(panel).getByRole("button", { name: /Өглөөний хоол — үйлдэл/ }));
     expect(screen.getByRole("menuitem", { name: "Засах" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /Хуулах/ })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Устгах" })).toBeInTheDocument();
@@ -849,13 +849,13 @@ describe("the menu as a spreadsheet", () => {
     renderWithProviders(<MenuPage />);
 
     const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
-    await user.click(within(panel).getByRole("button", { name: /Өглөөний цай — үйлдэл/ }));
+    await user.click(within(panel).getByRole("button", { name: /Өглөөний хоол — үйлдэл/ }));
     await user.click(screen.getByRole("menuitem", { name: "Засах" }));
 
     // Still on the same screen.
     expect(screen.queryByText("Хоолны цэс засах")).not.toBeInTheDocument();
 
-    const box = await screen.findByLabelText("Өглөөний цай — хоолны нэрс");
+    const box = await screen.findByLabelText("Өглөөний хоол — хоолны нэрс");
     expect(box).toHaveValue("Тараг");
 
     await user.clear(box);
@@ -876,13 +876,13 @@ describe("the menu as a spreadsheet", () => {
     renderWithProviders(<MenuPage />);
 
     const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
-    await user.click(within(panel).getByRole("button", { name: /Өглөөний цай — үйлдэл/ }));
+    await user.click(within(panel).getByRole("button", { name: /Өглөөний хоол — үйлдэл/ }));
     await user.click(screen.getByRole("menuitem", { name: "Засах" }));
 
-    await user.type(await screen.findByLabelText("Өглөөний цай — хоолны нэрс"), " өөрчлөв");
+    await user.type(await screen.findByLabelText("Өглөөний хоол — хоолны нэрс"), " өөрчлөв");
     await user.click(screen.getByRole("button", { name: "Болих" }));
 
-    expect(screen.queryByLabelText("Өглөөний цай — хоолны нэрс")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Өглөөний хоол — хоолны нэрс")).not.toBeInTheDocument();
     expect(calls.some((call) => call.method === "PUT")).toBe(false);
   });
 
@@ -893,7 +893,7 @@ describe("the menu as a spreadsheet", () => {
     renderWithProviders(<MenuPage />);
 
     const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
-    await user.click(within(panel).getByRole("button", { name: /Өглөөний цай — үйлдэл/ }));
+    await user.click(within(panel).getByRole("button", { name: /Өглөөний хоол — үйлдэл/ }));
     await user.click(screen.getByRole("menuitem", { name: "Устгах" }));
 
     await waitFor(() => expect(calls.some((call) => call.method === "PUT")).toBe(true));
@@ -907,7 +907,7 @@ describe("the menu as a spreadsheet", () => {
     renderWithProviders(<MenuPage />);
 
     const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
-    await user.click(within(panel).getByRole("button", { name: /Өглөөний цай — үйлдэл/ }));
+    await user.click(within(panel).getByRole("button", { name: /Өглөөний хоол — үйлдэл/ }));
     await user.click(screen.getByRole("menuitem", { name: /Хуулах/ }));
 
     await waitFor(() => expect(calls.some((call) => call.method === "PUT")).toBe(true));
