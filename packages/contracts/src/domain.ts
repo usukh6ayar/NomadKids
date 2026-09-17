@@ -3581,7 +3581,14 @@ export const esisPreviewResourceKeySchema = z.enum([
 ]);
 export type EsisPreviewResourceKey = z.infer<typeof esisPreviewResourceKeySchema>;
 
-const esisSyncStatusSchema = z.enum(["RUNNING", "SUCCEEDED", "PARTIAL", "FAILED"]);
+/**
+ * ★ Exported since 2026-09-17, plan `2026-09-16-esis-sync-tiers.md` Task 10.
+ * It was local to this file while only `esisOverviewSchema.recentRuns` read
+ * it; `esisSyncRunSchema` below needs the same four values for `GET
+ * …/kindergartens/:id/esis/sync-runs`, and a second, hand-copied enum is
+ * exactly the drift CLAUDE.md §2.3 exists to prevent.
+ */
+export const esisSyncStatusSchema = z.enum(["RUNNING", "SUCCEEDED", "PARTIAL", "FAILED"]);
 
 /**
  * One input or output field of an ESIS service, and whether NomadKids keeps it.
@@ -3821,6 +3828,94 @@ export const esisOverviewSchema = z.object({
   }),
 });
 export type EsisOverview = z.infer<typeof esisOverviewSchema>;
+
+/**
+ * `{ tier: "REFERENCE" | "ROSTER" }` — the body of `POST
+ * …/kindergartens/:id/esis/sync` (plan `2026-09-16-esis-sync-tiers.md` Task
+ * 5). Shared rather than re-typed on the web side so the two tier buttons on
+ * the operator's panel cannot name a tier the API does not recognise.
+ */
+export const esisSyncTierSchema = z.enum(["REFERENCE", "ROSTER"]);
+export type EsisSyncTier = z.infer<typeof esisSyncTierSchema>;
+
+/**
+ * One resource's outcome within a reference sweep — `EsisSyncService.
+ * runReferenceSync`'s `ReferenceSyncResourceResult`, unchanged across the
+ * wire.
+ */
+export const esisReferenceSyncResultSchema = z.object({
+  resource: z.string(),
+  status: z.enum(["SUCCEEDED", "FAILED"]),
+  stored: z.number().int().min(0),
+  skipped: z.number().int().min(0),
+  errorCode: z.string().nullable(),
+});
+
+/**
+ * `POST …/esis/sync` with `{ tier: "REFERENCE" }` answers this shape —
+ * `EsisSyncService.runReferenceSync`'s `ReferenceSyncOutcome`. Thirteen
+ * entries in `results`, one per `REFERENCE_RESOURCES` row, whether or not
+ * that resource's read succeeded (`esis-sync.service.ts`'s `Promise.
+ * allSettled` — one resource failing does not shrink this array).
+ */
+export const esisReferenceSyncOutcomeSchema = z.object({
+  runId: uuidSchema,
+  status: z.enum(["SUCCEEDED", "PARTIAL", "FAILED"]),
+  results: z.array(esisReferenceSyncResultSchema),
+});
+export type EsisReferenceSyncOutcome = z.infer<typeof esisReferenceSyncOutcomeSchema>;
+
+/**
+ * `POST …/esis/sync` with `{ tier: "ROSTER" }` answers this shape —
+ * `EsisSyncService.runRosterSync`'s `RosterSyncOutcome`.
+ *
+ * ★ `movements.count` is nullable rather than the whole `movements` object,
+ * matching the service: the roster half can succeed while `studentMovements`
+ * fails, and the run still reports `PARTIAL` with a `beginDate` and an
+ * `errorCode` rather than losing the roster counts along with it.
+ */
+export const esisRosterSyncOutcomeSchema = z.object({
+  runId: uuidSchema,
+  status: z.enum(["SUCCEEDED", "PARTIAL"]),
+  roster: z.object({ stored: z.number().int().min(0), skipped: z.number().int().min(0) }),
+  movements: z.object({
+    beginDate: z.string(),
+    count: z.number().int().min(0).nullable(),
+    errorCode: z.string().nullable(),
+  }),
+});
+export type EsisRosterSyncOutcome = z.infer<typeof esisRosterSyncOutcomeSchema>;
+
+/**
+ * One row of `GET …/kindergartens/:id/esis/sync-runs` — plan Task 5's paginated
+ * history, alongside `esisOverviewSchema.recentRuns`'s fixed-ten list rather
+ * than folded into it: the operator's overview is a platform-only route
+ * (`PlatformEsisController`) and this one is tenant-`ADMIN`-scoped
+ * (`KindergartenEsisController`), so the two payloads come from different
+ * controllers even though `EsisSyncRun` is the one table behind both.
+ *
+ * ★ `summary` stays `z.unknown()`, exactly as it does on `recentRuns` above —
+ * it carries a different shape per run kind (a reference sweep's per-resource
+ * array, a roster run's `{ roster, movements }`, a dry-run preview's
+ * `{ mode, resources }`) and no screen needs to validate it structurally, only
+ * to read `summary.kind` defensively to tell a tier sync from a preview run.
+ * See `apps/web/app/(app)/platform/[id]/esis/page.tsx`'s `runTier`.
+ */
+export const esisSyncRunSchema = z.object({
+  id: uuidSchema,
+  status: esisSyncStatusSchema,
+  resources: z.array(z.string()),
+  summary: z.unknown().nullable(),
+  errorCode: z.string().nullable(),
+  startedAt: z.string(),
+  finishedAt: z.string().nullable(),
+  /** `null` for a scheduled run — see `esisOverviewSchema.recentRuns.initiatedBy`. */
+  initiatedBy: z.string().nullable(),
+});
+export type EsisSyncRun = z.infer<typeof esisSyncRunSchema>;
+
+export const esisSyncRunsPageSchema = paginated(esisSyncRunSchema);
+export type EsisSyncRunsPage = z.infer<typeof esisSyncRunsPageSchema>;
 
 /**
  * `GET /kindergartens/:id/esis/catalog` — the services this role uses.

@@ -68,6 +68,9 @@ export const qk = {
   consent: (childId: string) => ["child", childId, "consent"] as const,
   audit: (filters: Record<string, unknown> = {}) => ["admin", "audit", filters] as const,
   esis: (kindergartenId: string) => ["admin", "esis", kindergartenId] as const,
+  /** `GET …/esis/sync-runs`, paginated — the operator's manual-pull history. */
+  esisSyncRuns: (kindergartenId: string, page: number) =>
+    ["admin", "esis", kindergartenId, "sync-runs", page] as const,
   /** The role-scoped service list every working screen's panel reads. */
   esisCatalog: (kindergartenId: string) => ["esis", kindergartenId, "catalog"] as const,
   esisStudentRegistration: (kindergartenId: string) =>
