@@ -62,6 +62,12 @@ process.env.NODE_ENV = "test";
 // The generator is exercised directly instead, by calling
 // `ReportGeneratorService.run()`, which is the same code the worker calls.
 process.env.REPORTS_WORKER_ENABLED = "false";
+/*
+ * ★ And the ESIS write worker, for a second reason on top of the timing one:
+ * a suite that drained this queue would post an approved group write at a real
+ * ministry service. `EsisWriteSender` is called directly in the tests instead.
+ */
+process.env.ESIS_WRITE_WORKER_ENABLED = "false";
 
 // ★ QPay is unconfigured under test, always — never "unconfigured if the
 // developer happens not to have filled it in".

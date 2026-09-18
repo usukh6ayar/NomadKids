@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ESIS_PREVIEW_RESOURCES } from "./esis.catalog";
 import { ESIS_READABLE_KEYS, type EsisReadableKey } from "./esis.service";
+import { ESIS_WRITE_SERVICES } from "./esis-group-writes";
 
 export const esisPreviewSchema = z.object({
   resources: z.array(z.enum(ESIS_PREVIEW_RESOURCES)).min(1).max(4),
@@ -178,3 +179,29 @@ export const updateEsisMappingSchema = z.discriminatedUnion("mapped", [
   }),
 ]);
 export type UpdateEsisMappingDto = z.infer<typeof updateEsisMappingSchema>;
+
+/**
+ * `POST …/esis/group-writes` — which write, about which group. Spec №3б.
+ *
+ * ★ **No `payload` field.** The caller names a service and a subject; the body
+ * is built from our own `Group` by `esis-group-writes.ts`. A payload field
+ * here would be the pass-through model this design rejected, and would let a
+ * browser post whatever it liked into the ministry's production register.
+ *
+ * ★★ `confirmGroupName` is required for `groupDelete` only, and the service
+ * rather than this schema enforces that — the refusal is one a director reads
+ * ("бүлгийн нэрийг яг бичнэ үү"), not a 422 about a missing field.
+ */
+export const prepareEsisGroupWriteSchema = z.object({
+  service: z.enum(ESIS_WRITE_SERVICES),
+  groupId: z.uuid(),
+  confirmGroupName: z.string().min(1).optional(),
+});
+export type PrepareEsisGroupWriteDto = z.infer<typeof prepareEsisGroupWriteSchema>;
+
+/** `:id` is the kindergarten, `:writeId` the request being approved or cancelled. */
+export const esisWriteParamSchema = z.object({
+  id: z.uuid(),
+  writeId: z.uuid(),
+});
+export type EsisWriteParams = z.infer<typeof esisWriteParamSchema>;

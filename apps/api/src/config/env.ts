@@ -237,6 +237,26 @@ export const envSchema = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((v) => v === "true"),
+
+  /**
+   * Whether this process drains the ESIS write queue.
+   *
+   * ★ Separate from `REPORTS_WORKER_ENABLED`, which carries a second meaning —
+   * "Chromium is installed here" — and is the reason the report worker cannot
+   * run on Vercel (CLAUDE.md §6). An ESIS write needs neither a browser nor a
+   * gigabyte, and a deployment that turns reports off must not silently stop
+   * writing to the ministry: the approvals would queue, the director would see
+   * APPROVED for ever, and nothing would log a thing.
+   *
+   * ★★ Off in tests, for the same reason as the flag above: `EsisWriteSender`
+   * is called directly there, which exercises the same code with none of the
+   * timing — and, here, with none of the risk that a test's approval reaches a
+   * real ministry service.
+   */
+  ESIS_WRITE_WORKER_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
 });
 
 export type Env = z.infer<typeof envSchema>;

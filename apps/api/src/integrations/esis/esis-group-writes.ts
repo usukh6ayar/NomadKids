@@ -41,18 +41,27 @@ export const ESIS_WRITE_ENDPOINT: Record<EsisWriteServiceKey, EsisApprovalWrite>
 };
 
 /**
- * The age band as the ministry counts it — our `AgeBand` enum's own number.
+ * Our `AgeBand` as the ministry's level code.
  *
- * ★ A map rather than a regex over the enum name. An `AgeBand` an administrator
- * adds later would silently parse to something plausible under a regex and be
- * sent; here it throws `ESIS_AGE_BAND_UNMAPPED`, which the director reads as a
- * refusal rather than discovering in the ministry's register.
+ * ★ **The numbers are unverified**, in the same sense and for the same reason
+ * as the field names below. The authority is ESIS's own `academicLevel`, which
+ * the read half (`groupsNextYear`, 14) returns beside `academicLevelName` — and
+ * that service answered `203` for institution 42778, so no real pair has been
+ * seen. These are the four bands in curriculum order (Бага · Дунд · Ахлах ·
+ * Бэлтгэл), which is what the names mean, and they must be confirmed against a
+ * live `groupsNextYear` row before any group write is approved.
+ *
+ * ★★ An explicit map rather than an index into the enum. A band an
+ * administrator adds later would silently take a plausible-looking number under
+ * any positional scheme and be sent; here it throws `ESIS_AGE_BAND_UNMAPPED`,
+ * which a director reads as a refusal rather than discovering in the ministry's
+ * register.
  */
 const AGE_BAND_NUMBER: Record<string, number> = {
-  AGE_2: 2,
-  AGE_3: 3,
-  AGE_4: 4,
-  AGE_5: 5,
+  NURSERY: 1,
+  JUNIOR: 2,
+  MIDDLE: 3,
+  SENIOR: 4,
 };
 
 /*

@@ -48,6 +48,47 @@ export class EsisRepository {
     });
   }
 
+  /** The group a write is about — tenant-scoped and soft-delete filtered. */
+  findGroupForWrite(kindergartenId: string, groupId: string) {
+    return this.prisma.group.findFirst({
+      where: { id: groupId, kindergartenId, deletedAt: null },
+      select: { id: true, name: true, ageBand: true, esisGroupId: true },
+    });
+  }
+
+  /**
+   * The ESIS person id of the teacher who leads this group.
+   *
+   * ★ From `User.esisPersonId` — the column spec №2's self-registration fills
+   * when a teacher proves themselves against `EsisStaffRoster` — and never from
+   * anything the request supplies. A `personId` a caller could name is a
+   * caller who could assign any person in the ministry's database to a group.
+   *
+   * ★★ NULL is the ordinary case for a teacher an administrator created by
+   * hand rather than one who registered themselves, so
+   * `EsisWriteRequestService.prepare` turns it into a refusal the director can
+   * act on rather than a job that fails after they have already approved it.
+   *
+   * ★★★ `LEAD` first, then whoever else is assigned: 162 sets one instructor,
+   * and a group with an assistant and a lead should send the lead. `endedOn`
+   * must be unset — a teacher who has left the group is not who the ministry
+   * should be told about.
+   */
+  async findGroupTeacherEsisPersonId(kindergartenId: string, groupId: string) {
+    const assignment = await this.prisma.groupTeacher.findFirst({
+      where: {
+        groupId,
+        kindergartenId,
+        deletedAt: null,
+        endedOn: null,
+        membership: { isActive: true, user: { deletedAt: null, esisPersonId: { not: null } } },
+      },
+      select: { membership: { select: { user: { select: { esisPersonId: true } } } } },
+      orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+    });
+    return assignment?.membership.user.esisPersonId ?? null;
+  }
+
   findUserIdentity(userId: string) {
     return this.prisma.user.findFirst({
       where: { id: userId, deletedAt: null },

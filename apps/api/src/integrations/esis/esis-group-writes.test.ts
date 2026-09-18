@@ -4,7 +4,7 @@ import { buildGroupPayload, ESIS_WRITE_ENDPOINT, ESIS_WRITE_SERVICES } from "./e
 const GROUP = {
   id: "11111111-1111-4111-8111-111111111111",
   name: "Дэлбээ",
-  ageBand: "AGE_4",
+  ageBand: "MIDDLE",
   esisGroupId: null as string | null,
 };
 
@@ -15,7 +15,7 @@ describe("group write payloads", () => {
     ).toEqual({
       institutionId: 42778,
       groupName: "Дэлбээ",
-      ageBand: 4,
+      ageBand: 3,
     });
   });
 
@@ -30,7 +30,7 @@ describe("group write payloads", () => {
       institutionId: 42778,
       studentGroupId: 9987,
       groupName: "Дэлбээ",
-      ageBand: 4,
+      ageBand: 3,
     });
   });
 
@@ -91,7 +91,7 @@ describe("group write payloads", () => {
     expect(() =>
       buildGroupPayload({
         service: "groupCreate",
-        group: { ...GROUP, ageBand: "AGE_9" },
+        group: { ...GROUP, ageBand: "PRIMARY" },
         institutionId: 42778,
       }),
     ).toThrow("ESIS_AGE_BAND_UNMAPPED");

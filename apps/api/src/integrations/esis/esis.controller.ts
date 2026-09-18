@@ -7,16 +7,21 @@ import type { Actor } from "../../authz/actor";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { EsisAdminService } from "./esis-admin.service";
 import { EsisSyncService } from "./esis-sync.service";
+import { EsisWriteRequestService } from "./esis-write.service";
 import {
   esisPreviewSchema,
   esisReadSchema,
   esisSyncTierSchema,
+  esisWriteParamSchema,
   esisWriteSchema,
+  prepareEsisGroupWriteSchema,
   updateEsisMappingSchema,
   type EsisPreviewDto,
   type EsisReadDto,
   type EsisSyncTierDto,
   type EsisWriteDto,
+  type EsisWriteParams,
+  type PrepareEsisGroupWriteDto,
   type UpdateEsisMappingDto,
 } from "./esis.dto";
 
@@ -32,6 +37,7 @@ export class KindergartenEsisController {
   constructor(
     private readonly service: EsisAdminService,
     private readonly sync: EsisSyncService,
+    private readonly writes: EsisWriteRequestService,
   ) {}
 
   /**
@@ -143,6 +149,62 @@ export class KindergartenEsisController {
     @Body(new ZodValidationPipe(esisSyncTierSchema)) body: EsisSyncTierDto,
   ) {
     return this.sync.sync(actor, params.id, body.tier);
+  }
+
+  /*
+   * ── Бүлгийн бичих гурав, spec №3б ──────────────────────────────────────
+   *
+   * ★ **ADMIN only**, unlike `write` above. That route's `@Roles` includes
+   * TEACHER because the three child-record saves behind it are a teacher's own
+   * fields, filled in and sent back. A group write changes the ministry's
+   * register of this kindergarten's classes, which the client's 2026-09-14 rule
+   * puts on the director.
+   *
+   * ★★ A separate path from `write`, not a fourth resource on it. Sharing the
+   * route would mean sharing its `@Roles` and its immediacy — no stored
+   * payload, no approval, nothing to show anyone before it went.
+   */
+  @Post("group-writes")
+  @Roles("ADMIN")
+  prepareGroupWrite(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(prepareEsisGroupWriteSchema)) body: PrepareEsisGroupWriteDto,
+  ) {
+    return this.writes.prepare(actor, params.id, body);
+  }
+
+  /** The approval that sends it — enqueued after the commit, never inside it. */
+  @Post("group-writes/:writeId/approve")
+  @HttpCode(200)
+  @Roles("ADMIN")
+  approveGroupWrite(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(esisWriteParamSchema)) params: EsisWriteParams,
+  ) {
+    return this.writes.approve(actor, params.id, params.writeId);
+  }
+
+  /** Thought better of, before anything was sent. */
+  @Post("group-writes/:writeId/cancel")
+  @HttpCode(200)
+  @Roles("ADMIN")
+  cancelGroupWrite(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(esisWriteParamSchema)) params: EsisWriteParams,
+  ) {
+    return this.writes.cancel(actor, params.id, params.writeId);
+  }
+
+  /** Every write this kindergarten has sent or is about to — paginated (§3.4). */
+  @Get("group-writes")
+  @Roles("ADMIN")
+  listGroupWrites(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(paginationQuerySchema)) query: PaginationQuery,
+  ) {
+    return this.writes.list(actor, params.id, query);
   }
 
   /** The run history behind the sync panel — newest first, paginated (CLAUDE.md §3.4). */

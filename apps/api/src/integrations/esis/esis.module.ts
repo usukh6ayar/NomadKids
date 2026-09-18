@@ -8,6 +8,10 @@ import { EsisAdminService } from "./esis-admin.service";
 import { EsisSyncService } from "./esis-sync.service";
 import { EsisSyncScheduler } from "./esis-sync.scheduler";
 import { EsisRepository } from "./esis.repository";
+import { EsisWriteRepository } from "./esis-write.repository";
+import { EsisWriteRequestService } from "./esis-write.service";
+import { EsisWriteSender } from "./esis-write.sender";
+import { EsisWriteQueue, EsisWriteWorker } from "./esis-write.worker";
 import { KindergartenEsisController, PlatformEsisController } from "./esis.controller";
 
 /**
@@ -58,6 +62,18 @@ import { KindergartenEsisController, PlatformEsisController } from "./esis.contr
      */
     EsisSyncScheduler,
     EsisRepository,
+    /*
+     * ★ The write harness — spec №3б. `EsisWriteQueue` and `EsisWriteWorker`
+     * are two providers rather than one because the service depends on "a
+     * thing that enqueues" and not on Redis: that is what lets a test replace
+     * `add` and assert that approving enqueues exactly one job, which is the
+     * assertion this whole design turns on.
+     */
+    EsisWriteRepository,
+    EsisWriteRequestService,
+    EsisWriteSender,
+    EsisWriteQueue,
+    EsisWriteWorker,
   ],
   /*
    * ★ `EsisRepository` exported 2026-09-16 for `StaffRegistrationModule` —
