@@ -754,6 +754,39 @@ export const ESIS_PORTAL_REQUESTS: readonly EsisPortalRequest[] = [
  * 186 needed instead, and the reasoning below for why 119 came out differently.
  */
 export const ESIS_DISPOSITIONS: Readonly<Record<number, string>> = {
+  /*
+   * ── Added 2026-09-18, for the 84/84 matrix ─────────────────────────────
+   *
+   * ★ Each of these six was already decided and written down — in the spec, in
+   * `esis.endpoints.ts`'s notes, in `ESIS_API_READINESS.md` — but not **here**,
+   * which is the only place the matrix reads. `esis-coverage.test.ts` is what
+   * found them: it refuses to let a granted service report zero calls without a
+   * reason a ministry reviewer can read, and these six were the zeros with the
+   * reason kept somewhere else.
+   *
+   * ★★ The point of writing them at the source rather than in the report: a
+   * sentence in the report is this product explaining itself after the fact; a
+   * sentence here is the decision, and the report quotes it.
+   */
+  72:
+    "Цол, шагналын бичих сервис. Яамны олгосон жагсаалтад зам нь байхгүй тул " +
+    "дуудах боломжгүй; унших тал нь (85) бодит хүүхдэд 203 буцаадаг учир " +
+    "талбарын нэрс ч тодорхойгүй.",
+  73:
+    "Өрхийн нэмэлт мэдээлэл хадгалах. Яамны жагсаалтад зам нь байхгүй. Өрхийн " +
+    "бичилтийг 86, 71 хоёроор хийдэг бөгөөд тэдгээр нь холбогдсон.",
+  129:
+    "Хоолны төвлөрүүлэх орлого — Маягт 1 хадгалах. Сургуулийн орлогын тайланг " +
+    "нягтлан өөрийн дэвтэртэй тулгаж гаргадаг; энэ бүтээгдэхүүнд түүнийг " +
+    "бүрдүүлдэг зүйл байхгүй. Унших тал нь (130) холбогдсон.",
+  131: "Маягт 2 хадгалах — 129-тэй ижил шалтгаан. Унших тал нь (132) холбогдсон.",
+  165:
+    "Мэргэшлийн зэргийн хүсэлт хадгалах. Багшийн мэргэшлийн зэргийн модуль энэ " +
+    "бүтээгдэхүүнд байхгүй — 167, 170-тай ижил шалтгаан.",
+  100004874669776:
+    "Яамны өөрийн олгосон жагсаалтад энэ мөрийн URL багана хоосон байна. " +
+    "Зам нь мэдэгдэхгүй тул дуудах боломжгүй — яамнаас тодруулах зүйл.",
+
   167:
     "Багшийн мэргэшлийн зэргийн модуль энэ бүтээгдэхүүнд байхгүй — хүсэлтийн " +
     "шийдвэрлэлтийг харуулах дэлгэц алга.",

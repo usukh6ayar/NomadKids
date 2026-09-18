@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Put, Query } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Param, Post, Put, Query, Res } from "@nestjs/common";
+import type { Response } from "express";
 import { idParamSchema, paginationQuerySchema, type PaginationQuery } from "@kinder/contracts";
 import { CurrentActor } from "../../auth/decorators/actor.decorator";
 import { Roles } from "../../auth/decorators/roles.decorator";
@@ -7,6 +8,7 @@ import type { Actor } from "../../authz/actor";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { EsisAdminService } from "./esis-admin.service";
 import { EsisSyncService } from "./esis-sync.service";
+import { EsisCoverageService } from "./esis-coverage.service";
 import { EsisWriteRequestService } from "./esis-write.service";
 import {
   esisPreviewSchema,
@@ -38,6 +40,7 @@ export class KindergartenEsisController {
     private readonly service: EsisAdminService,
     private readonly sync: EsisSyncService,
     private readonly writes: EsisWriteRequestService,
+    private readonly coverage: EsisCoverageService,
   ) {}
 
   /**
@@ -205,6 +208,51 @@ export class KindergartenEsisController {
     @Query(new ZodValidationPipe(paginationQuerySchema)) query: PaginationQuery,
   ) {
     return this.writes.list(actor, params.id, query);
+  }
+
+  /*
+   * ── Яаманд өгөх 84/84 матриц ───────────────────────────────────────────
+   *
+   * ★ **Nothing here calls ESIS.** It is built from `AuditLog` and
+   * `EsisSyncRun`, which are records of calls that already happened — a report
+   * that reached the ministry to say how often we reach the ministry would add
+   * traffic to a watched trial month for no reason a reviewer could name.
+   *
+   * ★★ ADMIN only, and tenant-scoped: this is the document a director hands the
+   * ministry about **their own** institution, so a deployment-wide count would
+   * put another kindergarten's traffic on it.
+   */
+  @Get("coverage")
+  @Roles("ADMIN")
+  coverageMatrix(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.coverage.matrix(actor, params.id);
+  }
+
+  /**
+   * The same matrix as the spreadsheet that leaves the building.
+   *
+   * ★ `coverage/export`, not `coverage.xlsx`. A dot in a path segment is not a
+   * route Nest matches, so the pretty version answered 404 — the finance export
+   * beside it uses a segment for the same reason.
+   */
+  @Get("coverage/export")
+  @Roles("ADMIN")
+  async coverageWorkbook(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.coverage.workbook(actor, params.id);
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(buffer);
   }
 
   /** The run history behind the sync panel — newest first, paginated (CLAUDE.md §3.4). */

@@ -235,3 +235,15 @@ export const esisWriteParamSchema = z.object({
   writeId: z.uuid(),
 });
 export type EsisWriteParams = z.infer<typeof esisWriteParamSchema>;
+
+/**
+ * `GET …/esis/coverage` — how far back to count.
+ *
+ * ★ One month by default, because that is the trial's own unit and the window
+ * the ministry asked about. Capped at twelve: a wider one would read the whole
+ * audit table for a question nobody asked.
+ */
+export const esisCoverageQuerySchema = z.object({
+  months: z.coerce.number().int().min(1).max(12).default(1),
+});
+export type EsisCoverageQuery = z.infer<typeof esisCoverageQuerySchema>;

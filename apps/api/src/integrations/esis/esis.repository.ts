@@ -117,6 +117,56 @@ export class EsisRepository {
     return { esisPersonId: found.membership.user.esisPersonId, role: found.role };
   }
 
+  /**
+   * How often each ESIS service has been called here, and when it was last.
+   *
+   * ★ From `AuditLog`, which is append-only and cannot be edited (§3.2) — so
+   * this is evidence rather than a counter somebody could have reset. Every
+   * ESIS read and write appends a row with the service key as `objectId`, and
+   * that is what makes the 84/84 matrix derivable at all.
+   *
+   * ★★ Tenant-scoped, unlike the sweep queries above. The matrix is what one
+   * kindergarten's director hands the ministry about their own institution; a
+   * deployment-wide count would put another kindergarten's traffic on it.
+   *
+   * ★★★ `groupBy` rather than reading the rows: this table grows without bound
+   * and the question is two aggregates, not a list (§3.4).
+   */
+  async countEsisCallsByService(kindergartenId: string) {
+    const rows = await this.prisma.auditLog.groupBy({
+      by: ["objectId"],
+      where: {
+        kindergartenId,
+        objectType: { in: ["EsisResource", "EsisWriteRequest", "EsisStaffRoster", "EsisSyncRun"] },
+        objectId: { not: null },
+      },
+      _count: { _all: true },
+      _max: { createdAt: true },
+    });
+    return rows.map((row) => ({
+      objectId: row.objectId ?? "",
+      calls: row._count._all,
+      lastCalledAt: row._max.createdAt,
+    }));
+  }
+
+  /**
+   * Which resources each completed sync run touched, newest first.
+   *
+   * ★ A sync's audit row names the run, not the thirteen services it swept —
+   * so a count from `AuditLog` alone would report every scheduled reference
+   * sweep as one call to nothing. `EsisSyncRun.resources` is the record of what
+   * a run actually did (the argument `esis-sync.service.ts` makes for storing
+   * it), and the matrix needs both halves.
+   */
+  async listSyncRunResources(kindergartenId: string, since: Date) {
+    return this.prisma.esisSyncRun.findMany({
+      where: { kindergartenId, startedAt: { gte: since } },
+      select: { resources: true, startedAt: true, status: true },
+      orderBy: { startedAt: "desc" },
+    });
+  }
+
   findUserIdentity(userId: string) {
     return this.prisma.user.findFirst({
       where: { id: userId, deletedAt: null },

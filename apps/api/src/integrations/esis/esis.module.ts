@@ -8,6 +8,7 @@ import { EsisAdminService } from "./esis-admin.service";
 import { EsisSyncService } from "./esis-sync.service";
 import { EsisSyncScheduler } from "./esis-sync.scheduler";
 import { EsisRepository } from "./esis.repository";
+import { EsisCoverageService } from "./esis-coverage.service";
 import { EsisWriteRepository } from "./esis-write.repository";
 import { EsisWriteRequestService } from "./esis-write.service";
 import { EsisWriteSender } from "./esis-write.sender";
@@ -71,6 +72,12 @@ import { KindergartenEsisController, PlatformEsisController } from "./esis.contr
      */
     EsisWriteRepository,
     EsisWriteRequestService,
+    /*
+     * ★ The 84/84 matrix — spec `2026-09-15-esis-full-coverage-design` §7. It
+     * reads `AuditLog` and `EsisSyncRun` and never ESIS itself, so it carries
+     * no client dependency at all.
+     */
+    EsisCoverageService,
     EsisWriteSender,
     EsisWriteQueue,
     EsisWriteWorker,
