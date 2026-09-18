@@ -755,9 +755,15 @@ export const ESIS_ENDPOINTS = {
    * there. `esis-admin.service.ts` keeps the typed value out of the audit row
    * while still recording that a lookup happened.
    */
+  /*
+   * ★ `slug` corrected 2026-09-18 from `"GRANTED"` to the portal's own
+   * `API-000148`, found by `scripts/esis-portal-reconcile.ts`. It was a
+   * placeholder for "granted but the public catalogue page does not render it",
+   * and the page does render this one — the reconcile script now says so.
+   */
   workerInfo: endpoint({
     apiId: 49,
-    slug: "GRANTED",
+    slug: "API-000148",
     method: "GET",
     path: "/svc/api/public/worker/info/:primaryNidNumber",
   }),
