@@ -15,6 +15,8 @@ import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
+import { useSession } from "@/lib/auth/session";
+import { EsisGroupWrite } from "@/components/esis/esis-group-write";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
@@ -66,6 +68,7 @@ export default function GroupDetailPage() {
 function GroupDetail() {
   const params = useParams<{ groupId: string }>();
   const groupId = params.groupId;
+  const { hasRole, primaryKindergartenId } = useSession();
 
   const group = useQuery({
     // The same key `ManageTeachersDialog` uses, so opening this from the list
@@ -214,6 +217,20 @@ function GroupDetail() {
         <p className="text-caption text-muted">
           Нийт {roster.data.total} хүүхдээс эхний {roster.data.items.length} нь харагдаж байна.
         </p>
+      ) : null}
+
+      {/*
+        ★ The director's only. The routes behind it are `@Roles("ADMIN")`, and a
+        teacher seeing a button that always answers 403 is worse than not seeing
+        it — the client's 2026-09-14 rule puts the ministry's register of this
+        kindergarten's classes on the director.
+      */}
+      {hasRole("ADMIN") && primaryKindergartenId ? (
+        <EsisGroupWrite
+          kindergartenId={primaryKindergartenId}
+          groupId={groupId}
+          groupName={data.name}
+        />
       ) : null}
     </div>
   );

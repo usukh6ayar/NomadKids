@@ -20,6 +20,7 @@ import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
+import { EsisWriteQueue } from "@/components/esis/esis-write-queue";
 import { Pagination } from "@/components/ui/pagination";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { TableShell, Td, Th } from "@/components/ui/table";
@@ -206,6 +207,15 @@ function EsisSyncPanel() {
   return (
     <div className="flex w-full flex-col gap-6 lg:gap-8">
       <PageHeader title="ESIS синк" lede="ЭСИС-ээс энэ цэцэрлэгийн мэдээллийг гараар татах" />
+
+      <section aria-labelledby="esis-writes-heading">
+        <SectionHeader
+          id="esis-writes-heading"
+          title="Бичих"
+          lede="Бүлгийн дэлгэцээс бэлтгэж, энд баталгаажсан илгээлтүүд — ЭСИС-ийн хариуг бүтнээр нь харуулна."
+        />
+        {kindergartenId ? <EsisWriteQueue kindergartenId={kindergartenId} /> : null}
+      </section>
 
       <section aria-labelledby="esis-sync-tiers-heading">
         <SectionHeader

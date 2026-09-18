@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import { AuditRepository } from "../../audit/audit.repository";
+import { paginate, toSkipTake } from "../../common/pagination";
 import type { Actor } from "../../authz/actor";
 import { TenantAccessService } from "../../authz/tenant-access.service";
 import {
@@ -280,11 +281,9 @@ export class EsisWriteRequestService {
 
   async list(actor: Actor, kindergartenId: string, page: { page: number; pageSize: number }) {
     this.tenants.assertAdmin(actor, kindergartenId);
-    const { items, total } = await this.repo.list(kindergartenId, {
-      skip: (page.page - 1) * page.pageSize,
-      take: page.pageSize,
-    });
-    return { items, total, page: page.page, pageSize: page.pageSize };
+    // The house envelope, so the shared `paginated()` contract validates it.
+    const { items, total } = await this.repo.list(kindergartenId, toSkipTake(page));
+    return paginate(items, total, page);
   }
 }
 

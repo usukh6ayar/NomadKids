@@ -4002,6 +4002,49 @@ export const esisSyncRunsPageSchema = paginated(esisSyncRunSchema);
 export type EsisSyncRunsPage = z.infer<typeof esisSyncRunsPageSchema>;
 
 /**
+ * One ESIS group write — spec №3б's prepare → approve → send.
+ *
+ * ★ `payload` is `z.record(z.string(), z.unknown())` rather than a typed shape,
+ * and that is the contract rather than laziness: what the screen must show is
+ * **the bytes that will be sent**, under ESIS's own field names. Typing it here
+ * would mean this file deciding which of the ministry's fields are worth
+ * showing, which is the opposite of the client's instruction on output —
+ * "garaltiin utguudiig bugdiig ni haruulna nuuj haaj bolohgui".
+ */
+export const esisWriteStateSchema = z.enum(["PREPARED", "APPROVED", "SENT", "FAILED", "CANCELLED"]);
+export type EsisWriteState = z.infer<typeof esisWriteStateSchema>;
+
+export const esisWriteServiceSchema = z.enum([
+  "groupCreate",
+  "groupUpdate",
+  "groupDelete",
+  "groupInstructor",
+]);
+export type EsisWriteServiceKey = z.infer<typeof esisWriteServiceSchema>;
+
+const esisWritePersonSchema = z.object({ lastName: z.string(), firstName: z.string() });
+
+export const esisWriteRequestSchema = z.object({
+  id: uuidSchema,
+  service: esisWriteServiceSchema,
+  apiId: z.number().int(),
+  state: esisWriteStateSchema,
+  payload: z.record(z.string(), z.unknown()),
+  response: z.record(z.string(), z.unknown()).nullish(),
+  errorCode: z.string().nullish(),
+  sentAt: z.string().nullish(),
+  createdAt: z.string(),
+  groupId: uuidSchema,
+  group: z.object({ id: uuidSchema, name: z.string() }).nullish(),
+  preparedBy: esisWritePersonSchema.nullish(),
+  approvedBy: esisWritePersonSchema.nullish(),
+});
+export type EsisWriteRequest = z.infer<typeof esisWriteRequestSchema>;
+
+export const esisWriteRequestsPageSchema = paginated(esisWriteRequestSchema);
+export type EsisWriteRequestsPage = z.infer<typeof esisWriteRequestsPageSchema>;
+
+/**
  * `GET /kindergartens/:id/esis/catalog` — the services this role uses.
  *
  * ★ Not a subset of `esisOverviewSchema`, and deliberately so. The overview
