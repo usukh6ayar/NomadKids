@@ -78,20 +78,42 @@ async function main(): Promise<void> {
    * not come back, re-read the list and find the group by the name we gave it —
    * the exercise must still be able to clean up after itself.
    */
+  /*
+   * ★ The id comes from the **create's own response**, not from a later read.
+   * 2026-09-18: 150 answered `200 Бүлэг амжилттай үүсгэлээ` with a
+   * `studentGroupId` and the very next api-40 read returned the original four
+   * rows without it. A name lookup here found nothing, the exercise stopped,
+   * and a real record was left in the ministry's register.
+   */
+  const newId = createdGroupId(created);
   const after = await groups(service, institutionId);
-  const mine = after.find((row) => row.studentGroupName.trim() === TEST_GROUP_NAME);
-  if (!mine) {
-    console.log(`AFTER ${after.length} groups — nothing named "${TEST_GROUP_NAME}". Stopping.`);
+  console.log(`AFTER ${after.length} groups (api-40 may not list it yet)`);
+  if (!newId) {
+    console.log("No studentGroupId in the create response. Stopping — nothing to clean up by.");
     return;
   }
-  console.log(`CREATED studentGroupId=${mine.studentGroupId}`);
+  console.log(`CREATED studentGroupId=${newId}`);
 
-  const withId = { ...group, esisGroupId: mine.studentGroupId, name: RENAMED };
+  const withId = { ...group, esisGroupId: newId, name: RENAMED };
+  /*
+   * ★★ The update needs the group's own row, which api-40 may not have yet. So
+   * the exercise builds it against a list that includes the new group,
+   * described by the sibling row the create copied from — the same programme,
+   * stage and classification, which is what a create at that level produces.
+   * If api-40 does list it by now, that row is used instead.
+   */
+  const template = after.find((row) => row.academicLevelName.trim() === "Ахлах");
+  const listForUpdate = after.some((row) => row.studentGroupId === newId)
+    ? after
+    : template
+      ? [...after, { ...template, studentGroupId: newId, studentGroupName: TEST_GROUP_NAME }]
+      : after;
+
   const updatePayload = buildGroupPayload({
     service: "groupUpdate",
     group: withId,
     institutionId: Number(institutionId),
-    ministryGroups: after,
+    ministryGroups: listForUpdate,
   });
   console.log(`UPDATE payload ${JSON.stringify(updatePayload)}`);
   console.log(`UPDATE → ${await attempt(() => service.sendGroupUpdate(updatePayload))}`);
@@ -109,6 +131,12 @@ async function main(): Promise<void> {
   const leftover = final.find((row) => row.studentGroupName.trim().startsWith("ЗЗЗ"));
   console.log(`FINAL ${final.length} groups`);
   console.log(leftover ? `LEFTOVER ${JSON.stringify(leftover)}` : "CLEAN — nothing of ours left");
+}
+
+/** The ministry's own id for the group 150 just made, out of its response. */
+function createdGroupId(outcome: string): string | null {
+  const match = /"studentGroupId":"(\d+)"/.exec(outcome);
+  return match ? match[1]! : null;
 }
 
 async function groups(service: EsisService, institutionId: string) {
