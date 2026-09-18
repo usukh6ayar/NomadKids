@@ -1296,3 +1296,222 @@ describe("POST /kindergartens/:id/esis/write", () => {
     expect(res.status).toBe(404);
   });
 });
+
+/**
+ * `GET /kindergartens/:id/esis/coverage` — the 84/84 matrix.
+ *
+ * ★ The artifact that argues for the next institutions: the ministry granted 84
+ * services for one month and will ask both "did you use them?" and "did you
+ * call anything without a reason?". These two questions pull against each
+ * other, and the matrix is the one page that answers both.
+ */
+describe("GET /kindergartens/:id/esis/coverage", () => {
+  const url = (kindergartenId: string) => `/v1/kindergartens/${kindergartenId}/esis/coverage`;
+
+  it("reports one row per approved grant, and no unexplained zero", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.rows.length).toBeGreaterThan(50);
+    /*
+       The claim the whole report rests on. A granted service reading zero calls
+       must be either wired to a screen or carry a named reason; `UNDECIDED`
+       means a grant was left lying around.
+    */
+    expect(res.body.totals.undecided).toBe(0);
+    for (const row of res.body.rows) {
+      if (row.calls > 0) continue;
+      expect({ apiId: row.apiId, explained: row.serviceKey !== null || row.reason !== null }).toEqual(
+        { apiId: row.apiId, explained: true },
+      );
+    }
+  });
+
+  /*
+   * ★★ **It reaches ESIS not at all.** A report that called the ministry to say
+   * how often it calls the ministry would add traffic with no purpose a
+   * reviewer could name, in the month they are reading the logs.
+   */
+  it("makes no ESIS call to produce itself", async () => {
+    read.mockClear();
+    organization.mockClear();
+    staff.mockClear();
+
+    await authed(request(server()).get(url(a.kindergarten.id)), adminA);
+
+    expect(read).not.toHaveBeenCalled();
+    expect(organization).not.toHaveBeenCalled();
+    expect(staff).not.toHaveBeenCalled();
+  });
+
+  it("counts a sync run's resources, not just the run", async () => {
+    await db.esisSyncRun.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        initiatedById: a.adminUser.id,
+        status: "SUCCEEDED",
+        resources: ["buildings", "rooms"],
+      },
+    });
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
+    const buildings = res.body.rows.find(
+      (row: { serviceKey: string | null }) => row.serviceKey === "buildings",
+    );
+
+    expect(buildings.calls).toBeGreaterThan(0);
+    expect(buildings.state).toBe("IN_USE");
+  });
+
+  /*
+   * ★ One kindergarten's matrix is what its director hands the ministry about
+   * their own institution. Another tenant's traffic must not appear on it.
+   */
+  it("counts only this kindergarten's calls", async () => {
+    await db.esisSyncRun.create({
+      data: {
+        kindergartenId: b.kindergarten.id,
+        initiatedById: b.adminUser.id,
+        status: "SUCCEEDED",
+        resources: ["subjectAreas"],
+      },
+    });
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
+    const subjectAreas = res.body.rows.find(
+      (row: { serviceKey: string | null }) => row.serviceKey === "subjectAreas",
+    );
+
+    expect(subjectAreas.calls).toBe(0);
+  });
+
+  it("returns 404 to an administrator of another kindergarten", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), adminB);
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 to a teacher of this kindergarten", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), teacherA);
+    expect(res.status).toBe(404);
+  });
+
+  it("serves the same matrix as a spreadsheet", async () => {
+    /*
+       ★ `.buffer()` alone is not enough — supertest still runs its default
+       text parser over a binary body and `res.body` comes back as something
+       with no `slice`. The explicit binary parser is what makes the assertion
+       about a real xlsx rather than about a mangled string.
+    */
+    const res = await authed(request(server()).get(`${url(a.kindergarten.id)}/export`), adminA)
+      .buffer()
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
+        response.on("end", () => callback(null, Buffer.concat(chunks)));
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toContain("spreadsheetml");
+    expect(res.headers["content-disposition"]).toContain("esis-coverage-");
+    // "PK" — a real zip, which is what an xlsx is.
+    expect((res.body as Buffer).subarray(0, 2).toString()).toBe("PK");
+  });
+});
+
+/**
+ * `GET /kindergartens/:id/esis/coverage` — the 84/84 matrix the ministry reads.
+ *
+ * ★ Spec `2026-09-15-esis-full-coverage-design` §7. It answers two questions
+ * that pull against each other — "did you use what we granted?" and "did you
+ * call anything without a reason?" — and a page answering only one argues for
+ * nothing.
+ */
+describe("GET /kindergartens/:id/esis/coverage", () => {
+  const url = (kindergartenId: string) => `/v1/kindergartens/${kindergartenId}/esis/coverage`;
+
+  it("reports one row per approved grant, every one explained", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.rows.length).toBeGreaterThan(0);
+    expect(res.body.totals.granted).toBe(res.body.rows.length);
+    /*
+       The assertion the report exists for: a granted service reading zero calls
+       must be either wired to a screen or carry a stated reason. `UNDECIDED` is
+       the state meaning somebody left a grant lying around.
+    */
+    expect(res.body.totals.undecided).toBe(0);
+  });
+
+  /*
+   * ★ A sync run's audit row names the run, not the thirteen services it swept.
+   * Counting `AuditLog` alone would report the whole reference block as unused —
+   * the largest part of the grant.
+   */
+  it("counts a sweep as a call to each resource it touched", async () => {
+    await testDb().esisSyncRun.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        initiatedById: a.adminUser.id,
+        status: "SUCCEEDED",
+        resources: ["buildings", "rooms"],
+        summary: {},
+      },
+    });
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
+
+    const buildings = res.body.rows.find(
+      (row: { serviceKey: string | null }) => row.serviceKey === "buildings",
+    );
+    expect(buildings.calls).toBe(1);
+    expect(buildings.state).toBe("IN_USE");
+  });
+
+  /*
+   * ★★ Tenant-scoped, and this is the case that matters: the matrix is what one
+   * director hands the ministry about **their own** institution, so another
+   * kindergarten's traffic must not appear on it.
+   */
+  it("never counts another kindergarten's calls", async () => {
+    await testDb().esisSyncRun.create({
+      data: {
+        kindergartenId: b.kindergarten.id,
+        initiatedById: b.adminUser.id,
+        status: "SUCCEEDED",
+        resources: ["buildings"],
+        summary: {},
+      },
+    });
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
+
+    const buildings = res.body.rows.find(
+      (row: { serviceKey: string | null }) => row.serviceKey === "buildings",
+    );
+    expect(buildings.calls).toBe(0);
+  });
+
+  it("returns 404 to an administrator of another kindergarten", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), adminB);
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 to a teacher", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), teacherA);
+    expect(res.status).toBe(404);
+  });
+
+  it("serves the same matrix as a spreadsheet", async () => {
+    const res = await authed(
+      request(server()).get(`${url(a.kindergarten.id)}/export`),
+      adminA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toContain("spreadsheetml");
+    expect(res.headers["content-disposition"]).toContain("esis-coverage-");
+    // A real workbook, not an empty body: `PK` is the zip magic every xlsx opens with.
+    expect(res.body.slice(0, 2).toString()).toBe("PK");
+  });
+});
