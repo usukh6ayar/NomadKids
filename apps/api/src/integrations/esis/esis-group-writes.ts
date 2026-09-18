@@ -92,6 +92,27 @@ export const groupInstructorPayloadSchema = z
   })
   .strict();
 
+/**
+ * Whether the three group writes' contract has been proved against ESIS.
+ *
+ * ★ `false` until the live probe runs. Two things are still guesses: the field
+ * names (the portal documents none of these services, and the ministry's export
+ * carries only id, method and URL) and `AGE_BAND_NUMBER`, whose authority is
+ * ESIS's own `academicLevel`.
+ *
+ * ★★ **A constant rather than a comment, because a comment stops no one.**
+ * `EsisWriteSender` refuses to post while this is `false`, so a director can
+ * prepare, read and approve — every part of the harness works and can be
+ * exercised — and the one irreversible step is closed. There is no test
+ * environment: a `groupCreate` with a wrong field name is a row in the
+ * ministry's production register that 152 then has to remove.
+ *
+ * ★★★ Flipping this to `true` is the last step of the probe task, in the same
+ * commit that replaces the guessed names with the captured ones. It should
+ * never be flipped on its own.
+ */
+export const ESIS_GROUP_WRITE_CONTRACT_PROVEN = false;
+
 export interface GroupForWrite {
   id: string;
   name: string;

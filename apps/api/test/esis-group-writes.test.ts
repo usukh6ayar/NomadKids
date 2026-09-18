@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
 import { EsisService } from "../src/integrations/esis/esis.service";
 import { EsisWriteSender } from "../src/integrations/esis/esis-write.sender";
+import { EsisWriteRequestService } from "../src/integrations/esis/esis-write.service";
 import { EsisWriteQueue } from "../src/integrations/esis/esis-write.worker";
 import { createTestApp } from "./support/app";
 import { resetData, testDb } from "./support/db";
@@ -148,6 +149,17 @@ describe("preparing a group write", () => {
 });
 
 describe("approving a group write", () => {
+  /*
+   * ★ The gate is lifted for the mechanics below and asserted on its own in the
+   * test after them. Approving is what cannot be taken back, so while the field
+   * names and age-band codes are still guesses it refuses — and the way to keep
+   * both facts demonstrable is to override the one method, exactly as this file
+   * already overrides `EsisWriteQueue.add`.
+   */
+  beforeEach(() => {
+    app.get(EsisWriteRequestService).contractProven = () => true;
+  });
+
   async function prepared() {
     const res = await authed(
       request(app.getHttpServer()).post(url(scenario.kindergarten.id)),
@@ -193,6 +205,28 @@ describe("approving a group write", () => {
     ).send({});
 
     expect(res.status).toBe(409);
+  });
+
+  /*
+   * ★★ And with the gate in place — its real value — nothing can be approved at
+   * all. There is no test environment: an approved `groupCreate` built from a
+   * guessed field name is a row in the ministry's production register that 152
+   * then has to remove.
+   */
+  it("refuses to approve at all while the contract is unproven", async () => {
+    const id = await prepared();
+    const service = app.get(EsisWriteRequestService);
+    delete (service as { contractProven?: unknown }).contractProven;
+
+    const res = await authed(
+      request(app.getHttpServer()).post(url(scenario.kindergarten.id, `/${id}/approve`)),
+      admin,
+    ).send({});
+
+    expect(res.status).toBe(409);
+    const row = await testDb().esisWriteRequest.findFirstOrThrow({ where: { id } });
+    expect(row.state).toBe("PREPARED");
+    expect(row.approvedById).toBeNull();
   });
 
   it("cancels a prepared write without sending anything", async () => {

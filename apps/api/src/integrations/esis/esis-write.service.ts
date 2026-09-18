@@ -8,7 +8,11 @@ import { createHash } from "node:crypto";
 import { AuditRepository } from "../../audit/audit.repository";
 import type { Actor } from "../../authz/actor";
 import { TenantAccessService } from "../../authz/tenant-access.service";
-import { buildGroupPayload, ESIS_WRITE_ENDPOINT } from "./esis-group-writes";
+import {
+  buildGroupPayload,
+  ESIS_GROUP_WRITE_CONTRACT_PROVEN,
+  ESIS_WRITE_ENDPOINT,
+} from "./esis-group-writes";
 import type { PrepareEsisGroupWriteDto } from "./esis.dto";
 import { ESIS_ENDPOINTS } from "./esis.endpoints";
 import { EsisRepository } from "./esis.repository";
@@ -152,6 +156,29 @@ export class EsisWriteRequestService {
       throw new ConflictException("Энэ илгээлт аль хэдийн шийдэгдсэн байна.");
     }
 
+    /*
+     * ★ The contract gate, and it sits on **approve** rather than on the
+     * sender.
+     *
+     * Approval is the human decision that cannot be taken back, so it is the
+     * step to close while the field names and the age-band codes are still
+     * guesses (`esis-group-writes.ts`). Everything before it — preparing,
+     * reading the exact payload, cancelling — works and can be exercised by a
+     * director today, which is the half that needs the trial's feedback anyway.
+     *
+     * ★★ Not on the sender, because a gate there would make the send path
+     * untestable: the tests drive `EsisWriteSender` directly against a row they
+     * set to APPROVED, and a guard in front of `dispatch` would stop them
+     * proving that a sent row is never sent twice. The guarantee has to stay
+     * demonstrable.
+     */
+    if (!this.contractProven()) {
+      throw new ConflictException(
+        "ЭСИС-ийн бүлгийн сервисүүдийн талбарууд хараахан батлагдаагүй тул " +
+          "илгээх боломжгүй. Эхлээд амьд шалгалт хийнэ үү.",
+      );
+    }
+
     const approved = await this.repo.approve(row.id, actor.userId);
 
     await this.audit.append({
@@ -178,6 +205,19 @@ export class EsisWriteRequestService {
     await this.queue.add(row.id);
 
     return approved;
+  }
+
+  /**
+   * Whether the three services' contract has been proved against live ESIS.
+   *
+   * ★ A method rather than the constant read inline, so a test can override it
+   * the same way this suite already overrides `EsisWriteQueue.add` and
+   * `EsisService.sendGroupCreate`. That keeps both halves demonstrable: the
+   * gate refuses by default, and the approval mechanics behind it still have
+   * tests. A guard nobody can get past is a guard nobody has seen work.
+   */
+  contractProven(): boolean {
+    return ESIS_GROUP_WRITE_CONTRACT_PROVEN;
   }
 
   async cancel(actor: Actor, kindergartenId: string, writeRequestId: string) {

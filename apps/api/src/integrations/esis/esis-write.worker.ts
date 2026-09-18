@@ -20,16 +20,29 @@ const JOB_NAME = "esis-write-send";
  */
 @Injectable()
 export class EsisWriteQueue implements OnApplicationShutdown {
-  private readonly connection: Redis;
-  private readonly queue: Queue;
+  private connection?: Redis;
+  private queue?: Queue;
 
-  constructor() {
-    const env = loadEnv();
-    this.connection = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
-    this.queue = new Queue(ESIS_WRITE_QUEUE, {
-      connection: this.connection,
-      prefix: queuePrefix(env.NODE_ENV),
-    });
+  /**
+   * ★ Connected on first use, not in the constructor.
+   *
+   * Every API process instantiates this provider and every `createTestApp()`
+   * in the suite instantiates it 84 more times; connecting eagerly would open
+   * that many Redis connections for a queue most of them never touch. The
+   * worker already gates on its flag before reaching Redis, and this is the
+   * producer side doing the same thing by a different route — the sync
+   * scheduler's shape, not a second one.
+   */
+  private lazy() {
+    if (!this.queue) {
+      const env = loadEnv();
+      this.connection = new IORedis(env.REDIS_URL, { maxRetriesPerRequest: null });
+      this.queue = new Queue(ESIS_WRITE_QUEUE, {
+        connection: this.connection,
+        prefix: queuePrefix(env.NODE_ENV),
+      });
+    }
+    return this.queue;
   }
 
   /**
@@ -43,12 +56,12 @@ export class EsisWriteQueue implements OnApplicationShutdown {
    * is left `FAILED` for a director to look at and prepare again.
    */
   async add(writeRequestId: string) {
-    await this.queue.add(JOB_NAME, { writeRequestId }, { jobId: writeRequestId, attempts: 1 });
+    await this.lazy().add(JOB_NAME, { writeRequestId }, { jobId: writeRequestId, attempts: 1 });
   }
 
   async onApplicationShutdown() {
-    await this.queue.close();
-    this.connection.disconnect();
+    await this.queue?.close();
+    this.connection?.disconnect();
   }
 }
 

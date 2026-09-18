@@ -69,24 +69,43 @@ export class EsisRepository {
    * `EsisWriteRequestService.prepare` turns it into a refusal the director can
    * act on rather than a job that fails after they have already approved it.
    *
-   * ★★★ `LEAD` first, then whoever else is assigned: 162 sets one instructor,
-   * and a group with an assistant and a lead should send the lead. `endedOn`
-   * must be unset — a teacher who has left the group is not who the ministry
-   * should be told about.
+   * ★★★ **`LEAD` explicitly, then anyone else** — two queries, not
+   * `orderBy: { role: "asc" }`. Prisma sorts an enum by its **declared** order
+   * in the Postgres type, so that one-liner works only while `TeacherRole`
+   * happens to list `LEAD` before `ASSISTANT` (it does, today). Reordering an
+   * enum in another file would then start sending the assistant to the
+   * ministry as the group's instructor, silently, and no test with one teacher
+   * in it would notice. 162 sets one instructor; which one should not depend on
+   * a declaration order.
+   *
+   * `endedOn` must be unset — a teacher who has left the group is not who the
+   * ministry should be told about.
    */
   async findGroupTeacherEsisPersonId(kindergartenId: string, groupId: string) {
-    const assignment = await this.prisma.groupTeacher.findFirst({
-      where: {
-        groupId,
-        kindergartenId,
-        deletedAt: null,
-        endedOn: null,
-        membership: { isActive: true, user: { deletedAt: null, esisPersonId: { not: null } } },
-      },
-      select: { membership: { select: { user: { select: { esisPersonId: true } } } } },
-      orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+    const base = {
+      groupId,
+      kindergartenId,
+      deletedAt: null,
+      endedOn: null,
+      membership: { isActive: true, user: { deletedAt: null, esisPersonId: { not: null } } },
+    } as const;
+    const select = {
+      membership: { select: { user: { select: { esisPersonId: true } } } },
+    } as const;
+
+    const lead = await this.prisma.groupTeacher.findFirst({
+      where: { ...base, role: "LEAD" },
+      select,
+      orderBy: { createdAt: "asc" },
     });
-    return assignment?.membership.user.esisPersonId ?? null;
+    if (lead) return lead.membership.user.esisPersonId;
+
+    const other = await this.prisma.groupTeacher.findFirst({
+      where: base,
+      select,
+      orderBy: { createdAt: "asc" },
+    });
+    return other?.membership.user.esisPersonId ?? null;
   }
 
   findUserIdentity(userId: string) {
