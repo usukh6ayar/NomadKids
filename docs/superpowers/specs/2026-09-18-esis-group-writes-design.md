@@ -215,6 +215,25 @@ means in Mongolian.
   after approving. A **delete is exempt** — it carries no name, and the
   ministry's own groups are all longer than five.
 
+### 3.2b Two things the first live create taught
+
+★ **api-40 does not list a group it has just created.** 150 answered `200` with
+a `studentGroupId` and the next read came back with the original four rows. So
+a **delete works from the id alone** — requiring a match in the list would make
+a freshly created group impossible to remove through this product, which is the
+row most likely to need removing. An **update** still requires the row, because
+it carries the programme ids and those must be the group's own.
+
+★★ **A delete is not an update with fewer fields.** Both post to 152, so they
+shared `sendGroupUpdate` — whose `.strict()` schema demands `studentGroupName`
+and the programme ids that a delete does not carry. The boundary parse was
+checking the right shape against the wrong contract. `sendGroupDelete` is its
+own method.
+
+★★★ **152's delete deactivates rather than deletes**: "Бүлэг амжилттай
+идэвхгүй болголоо". The group leaves api-40's list, which is what makes it
+invisible to everything downstream.
+
 ### 3.3 162 is blocked on the ministry
 
 `group/instructor/save` answers "Багшийн хариуцах үүрэг оруулна уу." and no

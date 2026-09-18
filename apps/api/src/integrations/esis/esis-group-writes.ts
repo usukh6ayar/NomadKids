@@ -143,21 +143,32 @@ export interface GroupForWrite {
 }
 
 /**
- * Whether the three services' contract has been proved end to end.
+ * Whether the group writes' contract has been proved against live ESIS.
  *
- * ★ Still `false` on 2026-09-18, and the probe is why it is worth having. The
- * shape this branch shipped that morning — `{ institutionId, groupName,
- * ageBand }` — was wrong in its **structure**, not merely its names: every one
- * of these services is discriminated by an `event`, 152 needs an
+ * ★ **`true` since 2026-09-18**, and it was earned rather than assumed. On
+ * institution 42778, driven by the builder in this file and the send methods in
+ * `esis.service.ts` — not by a script assembling its own JSON:
+ *
+ *   150  `200 Бүлэг амжилттай үүсгэлээ.`  studentGroupId 100006693991734
+ *   152  `200 Бүлэг амжилттай идэвхгүй болголоо.`
+ *
+ * Group count before 4, after 4: nothing was left behind.
+ * `ESIS_API_READINESS.md` §1.1.9 carries every request and response.
+ *
+ * ★★ It stood at `false` for a day and paid for itself. The payload this branch
+ * shipped that morning — `{ institutionId, groupName, ageBand }` — was wrong in
+ * **structure**: every service is discriminated by an `event`, 152 needs an
  * `academicYear` and a `studentGroupId`, and a create needs eight ministry-side
- * ids. No test could have caught that, and the gate meant no director could
- * approve it.
+ * ids this database does not hold. No test could have caught that, and the gate
+ * meant no director could approve it.
  *
- * ★★ What is still missing before this becomes `true`: 150's own `event` value
- * and its required fields, which only the first deliberate create can settle,
- * and the instructor role 162 asks for, which is a question for the ministry.
+ * ★★★ **162 is not covered by this flag and is still refused**, one layer down,
+ * by `ESIS_INSTRUCTOR_ROLE_UNKNOWN`. Its blocker is not a contract anyone could
+ * probe: it asks for "Багшийн хариуцах үүрэг" and no vocabulary for that field
+ * exists anywhere we can read. That is a question for the ministry, and it
+ * belongs beside the write it blocks rather than holding 150 and 152 shut.
  */
-export const ESIS_GROUP_WRITE_CONTRACT_PROVEN = false;
+export const ESIS_GROUP_WRITE_CONTRACT_PROVEN = true;
 
 /**
  * How long a group's name may be, as far as ESIS is concerned.
@@ -261,24 +272,41 @@ export function buildGroupPayload(input: {
     });
   }
 
-  /*
-   * ★ For everything else the template is the group's **own** ministry row,
-   * found by the id a successful create stored. That is stricter than matching
-   * on level: an update must carry the programme the group actually has, not
-   * the programme a sibling at the same level happens to have.
-   */
   if (group.esisGroupId === null) throw new Error("ESIS_GROUP_ID_UNKNOWN");
-  const own = ministryGroups.find((row) => row.studentGroupId === group.esisGroupId);
-  if (!own) throw new Error("ESIS_GROUP_NOT_IN_MINISTRY");
 
+  /*
+   * ★ A delete needs **only the id**, so it must not require the ministry's
+   * list to carry the group — and on 2026-09-18 it was proved that the list
+   * sometimes does not. A create answered `200 Бүлэг амжилттай үүсгэлээ` with a
+   * `studentGroupId`, and the very next api-40 read came back with the original
+   * four rows and no sign of the new group. Requiring a match here would have
+   * made a freshly created group **impossible to remove through this product**
+   * — which is precisely the row most likely to need removing.
+   *
+   * `academicYear` comes from any of the institution's rows: every one of
+   * 42778's carries "2026", and a delete's year is the school year the write
+   * happens in rather than anything about the group.
+   */
   if (service === "groupDelete") {
+    const year = ministryGroups[0]?.academicYear;
+    if (year === undefined) throw new Error("ESIS_ACADEMIC_YEAR_UNKNOWN");
     return groupDeletePayloadSchema.parse({
       institutionId,
       event,
-      academicYear: own.academicYear,
-      studentGroupId: own.studentGroupId,
+      academicYear: year,
+      studentGroupId: group.esisGroupId,
     });
   }
+
+  /*
+   * ★★ An update **does** need the group's own row, and here the strictness is
+   * right: it carries the programme, the stage and the classification, and
+   * those have to be the ones the group actually has rather than a sibling's at
+   * the same level. If the list does not carry it — the case above — the
+   * refusal tells the director to sync rather than sending a guess.
+   */
+  const own = ministryGroups.find((row) => row.studentGroupId === group.esisGroupId);
+  if (!own) throw new Error("ESIS_GROUP_NOT_IN_MINISTRY");
 
   if (service === "groupInstructor") {
     if (!input.esisPersonId) throw new Error("ESIS_PERSON_ID_UNKNOWN");

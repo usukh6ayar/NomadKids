@@ -103,7 +103,7 @@ async function main(): Promise<void> {
     ministryGroups: after,
   });
   console.log(`DELETE payload ${JSON.stringify(deletePayload)}`);
-  console.log(`DELETE → ${await attempt(() => service.sendGroupUpdate(deletePayload))}`);
+  console.log(`DELETE → ${await attempt(() => service.sendGroupDelete(deletePayload))}`);
 
   const final = await groups(service, institutionId);
   const leftover = final.find((row) => row.studentGroupName.trim().startsWith("ЗЗЗ"));

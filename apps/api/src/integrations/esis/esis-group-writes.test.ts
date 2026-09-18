@@ -180,6 +180,28 @@ describe("group write payloads", () => {
     ).toThrow("ESIS_GROUP_ID_UNKNOWN");
   });
 
+  /*
+   * ★ Proved necessary on 2026-09-18: a create answered `200` with a
+   * `studentGroupId` and the next api-40 read did not list the new group. If a
+   * delete needed a match here, a freshly created group would be impossible to
+   * remove through this product — the row most likely to need removing.
+   */
+  it("deletes a group the ministry's list does not carry, on its id alone", () => {
+    expect(
+      buildGroupPayload({
+        service: "groupDelete",
+        group: { ...GROUP, esisGroupId: "100006693991734" },
+        institutionId: 42778,
+        ministryGroups: MINISTRY,
+      }),
+    ).toEqual({
+      institutionId: 42778,
+      event: "delete",
+      academicYear: "2026",
+      studentGroupId: "100006693991734",
+    });
+  });
+
   it("refuses an update for an id the ministry's list does not carry", () => {
     expect(() =>
       buildGroupPayload({

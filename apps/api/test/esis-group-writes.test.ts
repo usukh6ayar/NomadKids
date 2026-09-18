@@ -228,17 +228,6 @@ describe("preparing a group write", () => {
 });
 
 describe("approving a group write", () => {
-  /*
-   * ★ The gate is lifted for the mechanics below and asserted on its own in the
-   * test after them. Approving is what cannot be taken back, so while the field
-   * names and age-band codes are still guesses it refuses — and the way to keep
-   * both facts demonstrable is to override the one method, exactly as this file
-   * already overrides `EsisWriteQueue.add`.
-   */
-  beforeEach(() => {
-    app.get(EsisWriteRequestService).contractProven = () => true;
-  });
-
   async function prepared() {
     const res = await authed(
       request(app.getHttpServer()).post(url(scenario.kindergarten.id)),
@@ -287,15 +276,18 @@ describe("approving a group write", () => {
   });
 
   /*
-   * ★★ And with the gate in place — its real value — nothing can be approved at
-   * all. There is no test environment: an approved `groupCreate` built from a
-   * guessed field name is a row in the ministry's production register that 152
-   * then has to remove.
+   * ★★ The gate, still enforced and still worth a test even though it is open.
+   *
+   * It stood shut for a day and paid for itself: the payload this branch
+   * shipped on the morning of 2026-09-18 was wrong in structure, and the gate
+   * is what kept it out of the ministry's register until the live probe found
+   * out. If a future service's contract comes into doubt, closing it again must
+   * still stop an approval dead — so that is asserted here rather than assumed
+   * from a constant nobody exercises.
    */
-  it("refuses to approve at all while the contract is unproven", async () => {
+  it("refuses to approve anything while the contract is unproven", async () => {
     const id = await prepared();
-    const service = app.get(EsisWriteRequestService);
-    delete (service as { contractProven?: unknown }).contractProven;
+    app.get(EsisWriteRequestService).contractProven = () => false;
 
     const res = await authed(
       request(app.getHttpServer()).post(url(scenario.kindergarten.id, `/${id}/approve`)),

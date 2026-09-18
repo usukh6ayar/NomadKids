@@ -100,8 +100,10 @@ export class EsisWriteSender {
       case "groupCreate":
         return this.esis.sendGroupCreate(payload);
       case "groupUpdate":
-      case "groupDelete":
         return this.esis.sendGroupUpdate(payload);
+      case "groupDelete":
+        // Same endpoint, different body — see `sendGroupDelete`.
+        return this.esis.sendGroupDelete(payload);
       case "groupInstructor":
         return this.esis.sendGroupInstructor(payload);
       default:

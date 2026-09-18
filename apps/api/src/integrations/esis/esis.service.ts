@@ -43,6 +43,7 @@ import {
 import type { EsisRequest, EsisResponse } from "./esis.types";
 import {
   groupCreatePayloadSchema,
+  groupDeletePayloadSchema,
   groupInstructorPayloadSchema,
   groupUpdatePayloadSchema,
 } from "./esis-group-writes";
@@ -969,6 +970,18 @@ export class EsisService {
    */
   async sendGroupCreate(body: unknown) {
     return this.send(ESIS_ENDPOINTS.groupCreate, groupCreatePayloadSchema.parse(body));
+  }
+
+  /*
+   * ★ A delete has its **own** method and its own schema, found the hard way on
+   * 2026-09-18: it posts to 152 exactly as an update does, so it was routed
+   * through `sendGroupUpdate` — whose `.strict()` update schema then rejected
+   * it, because a delete carries no `studentGroupName` and no programme ids.
+   * The boundary parse is supposed to catch a shape nobody checked; here it was
+   * catching the right shape against the wrong contract.
+   */
+  async sendGroupDelete(body: unknown) {
+    return this.send(ESIS_ENDPOINTS.groupUpdate, groupDeletePayloadSchema.parse(body));
   }
 
   async sendGroupUpdate(body: unknown) {
