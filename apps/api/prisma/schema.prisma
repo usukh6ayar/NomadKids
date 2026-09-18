@@ -470,6 +470,8 @@ model User {
   chatMessages          ChatMessage[]             @relation("ChatAuthor")
   chatReads             ChatRead[]                @relation("ChatReader")
   esisSyncRuns          EsisSyncRun[]             @relation("EsisSyncInitiator")
+  esisWritesPrepared    EsisWriteRequest[]        @relation("EsisWritePreparer")
+  esisWritesApproved    EsisWriteRequest[]        @relation("EsisWriteApprover")
 
   @@index([deletedAt])
   @@map("users")
@@ -685,6 +687,7 @@ model Kindergarten {
   chatMessages           ChatMessage[]
   chatReads              ChatRead[]
   esisSyncRuns           EsisSyncRun[]
+  esisWriteRequests      EsisWriteRequest[]
   esisStaffRoster        EsisStaffRoster[]
   esisReference          EsisReference[]
 
@@ -828,6 +831,75 @@ model EsisStaffRoster {
   @@map("esis_staff_roster")
 }
 
+/// One ESIS write, from the payload a director was shown to the answer the
+/// ministry gave. Spec №3б.
+///
+/// ★ The payload is stored **before** approval and never rebuilt after it. The
+/// human approved those bytes; rebuilding at send time would mean they had
+/// approved a description of a write rather than the write.
+///
+/// ★★ There is no test environment. Every row here that reaches `SENT` changed
+/// the ministry's production register, which is why this table exists at all
+/// rather than a service method that posts and returns.
+model EsisWriteRequest {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+
+  /// The registry key — `groupCreate`, `groupUpdate`, `groupDelete`,
+  /// `groupInstructor`. Not the apiId: 152 is two services here, and a rename
+  /// must not read as a removal in the queue or in the audit row.
+  service String
+  apiId   Int
+
+  /// The group this is about, on our side. Required, including for a create:
+  /// «Илгээх» pushes a group that already exists here.
+  groupId String @db.Uuid
+
+  payload Json
+
+  state EsisWriteState @default(PREPARED)
+
+  /// Enforced by us. ESIS honours no idempotency header, and a retried 150
+  /// would create a second group nothing here could remove.
+  idempotencyKey String @unique
+
+  preparedById String    @db.Uuid
+  approvedById String?   @db.Uuid
+  approvedAt   DateTime?
+
+  /// ESIS's answer, whole.
+  ///
+  /// ★ For `groupCreate` this is an **input** as well as a record: an update or
+  /// a delete needs the ministry's own group id, and this is the only place it
+  /// is ever sent to us.
+  response  Json?
+  sentAt    DateTime?
+  failedAt  DateTime?
+  errorCode String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  group        Group        @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  preparedBy   User         @relation("EsisWritePreparer", fields: [preparedById], references: [id], onDelete: Restrict)
+  approvedBy   User?        @relation("EsisWriteApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+
+  @@index([kindergartenId, createdAt])
+  @@index([state, createdAt])
+  @@index([kindergartenId, groupId, service])
+  @@map("esis_write_requests")
+}
+
+enum EsisWriteState {
+  PREPARED
+  APPROVED
+  SENT
+  FAILED
+  CANCELLED
+}
+
 model SchoolYear {
   id             String   @id @default(uuid()) @db.Uuid
   kindergartenId String   @db.Uuid
@@ -882,6 +954,15 @@ model Group {
   ageBand                  AgeBand
   status                   GroupStatus @default(ACTIVE)
 
+  /// ESIS's own id for this group, filled from `groupCreate`'s response.
+  ///
+  /// ★ NULL means "the ministry has not seen this group", which is what lets an
+  /// update be refused **before** it is prepared rather than after it is sent.
+  /// A body naming no group is a well-formed request about nothing, and what
+  /// ESIS does with one is not a thing to find out on their production
+  /// register. Spec №3б.
+  esisGroupId              String?     @db.VarChar(64)
+
   /// Order А/261, Annex 2 §1 items 5, 6, 13, 14 and 16. Both default to the
   /// ordinary case, so every group that existed before this migration is a
   /// main-programme, standard-hours group — which is what they were.
@@ -912,6 +993,7 @@ model Group {
   surveys               Survey[]               @relation("SurveyGroup")
   documents             Document[]             @relation("DocumentGroup")
   mealServings          MealServing[]
+  esisWriteRequests     EsisWriteRequest[]
 
   @@unique([schoolYearId, name])
   @@index([kindergartenId, status])
