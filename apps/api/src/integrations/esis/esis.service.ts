@@ -41,6 +41,11 @@ import {
   type EsisStudentConditionUpload,
 } from "./esis.schemas";
 import type { EsisRequest, EsisResponse } from "./esis.types";
+import {
+  groupCreatePayloadSchema,
+  groupInstructorPayloadSchema,
+  groupUpdatePayloadSchema,
+} from "./esis-group-writes";
 
 /**
  * Every ESIS service this product may read, and how its rows are parsed.
@@ -947,6 +952,32 @@ export class EsisService {
    * to a third party is a consent decision rather than a call — see the
    * endpoint's note and CLAUDE.md §1.4.
    */
+
+  /*
+   * ── Бүлгийн бичих гурав, spec №3б ──────────────────────────────────────
+   *
+   * ★ These are **not** reachable from `EsisAdminService.write`, and must not
+   * become so. That route is the immediate one, open to a teacher, and it
+   * takes the payload from the caller. A group write is built from our own
+   * `Group` by `esis-group-writes.ts`, stored, shown to a director and only
+   * then sent — `esis-write.sender.ts` is the one caller of these three.
+   *
+   * ★★ The payload is parsed **again** here, after the harness already parsed
+   * it at prepare time. That is deliberate rather than redundant: the row has
+   * been sitting in a table between those two moments, and this is the layer
+   * that must not post a shape nobody checked.
+   */
+  async sendGroupCreate(body: unknown) {
+    return this.send(ESIS_ENDPOINTS.groupCreate, groupCreatePayloadSchema.parse(body));
+  }
+
+  async sendGroupUpdate(body: unknown) {
+    return this.send(ESIS_ENDPOINTS.groupUpdate, groupUpdatePayloadSchema.parse(body));
+  }
+
+  async sendGroupInstructor(body: unknown) {
+    return this.send(ESIS_ENDPOINTS.groupInstructor, groupInstructorPayloadSchema.parse(body));
+  }
 
   /** One write, parsed and posted. Never retried — see `EsisClient.request`. */
   private send(endpoint: { method: "GET" | "POST"; path: string }, body: unknown) {
