@@ -41,8 +41,15 @@ describe("ESIS v2 endpoint registry", () => {
      * duplicates a wired save, a subsystem on a domain `ESIS_BASE_URL` does
      * not answer, one row whose URL cell is empty, and the three dispositioned
      * above.
+     *
+     * ★★★ **73 since 2026-09-18** — spec №3б wired the three group writes the
+     * client asked for: 150 (үүсгэх), 152 (засах, устгах) and 162 (багш
+     * тохируулах). Eleven of the fourteen remain, and four of those now have a
+     * reason rather than a silence: 72 and 73 have no entry in the ministry's
+     * export to give them a path, and 129/131 file a school's income return,
+     * which nothing in this product produces. See the spec's §1.
      */
-    expect(endpoints).toHaveLength(70);
+    expect(endpoints).toHaveLength(73);
     expect(new Set(withId.map((item) => item.apiId)).size).toBe(withId.length);
 
     /*

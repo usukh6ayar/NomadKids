@@ -709,6 +709,31 @@ const ESIS_FIELD_CATALOG: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
     keep("dateOfBirth", "Төрсөн огноо"),
   ],
 
+  /*
+   * ── Бүлгийн бичих гурав, spec №3б ──────────────────────────────────────
+   *
+   * ★ **The anchor and nothing else**, the same shape the six `203` health
+   * reads above take and for the same reason: the contract has not been seen.
+   * The developer portal does not document these three and the ministry's
+   * export carries only id, method and URL, so the rest of each body is read
+   * off the service's own `400` — the way `studentContacts`'s `{ personId }`
+   * was, 2026-09-14 — rather than invented here.
+   *
+   * ★★ `institutionId` is the anchor rather than a guess. Every
+   * institution-scoped service in this catalogue takes it, and
+   * `EsisAdminService.write` already puts it into every body it sends without
+   * asking the caller. It is the one field these three cannot fail to want.
+   *
+   * ★★★ This array is what a panel **renders**, so a guessed name here is a
+   * wrong label in front of a director, which reads as fact.
+   * `esis-group-writes.ts` carries the draft names the payload builder needs
+   * and marks them unverified in the same words; the probe corrects both at
+   * once.
+   */
+  groupCreate: [send("institutionId", "Байгууллагын код")],
+  groupUpdate: [send("institutionId", "Байгууллагын код")],
+  groupInstructor: [send("institutionId", "Байгууллагын код")],
+
   groupsNextYear: [
     keep("institutionId", "Байгууллагын код"),
     // Наран бүлэг's own id, so this row *is* the first demo record — the
@@ -1387,6 +1412,15 @@ export const ESIS_FIELD_SOURCE: Record<keyof typeof ESIS_ENDPOINTS, EsisFieldSou
    * emptiness is the ministry's rather than ours.
    */
   groupsNextYear: "ADAPTER",
+  /*
+   * ★ `ADAPTER`, the weakest of the three, and correctly so: these field lists
+   * have met neither a portal page nor a live response. They become `LIVE` when
+   * the probe in spec №3б's plan reads the names out of each service's own
+   * refusal.
+   */
+  groupCreate: "ADAPTER",
+  groupUpdate: "ADAPTER",
+  groupInstructor: "ADAPTER",
   programs: "LIVE",
   programStages: "ADAPTER",
   programPlans: "ADAPTER",

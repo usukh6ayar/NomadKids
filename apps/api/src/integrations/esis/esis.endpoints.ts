@@ -398,6 +398,49 @@ export const ESIS_ENDPOINTS = {
   }),
 
   /*
+   * The write half the note above says exists. Spec №3б.
+   *
+   * ★ `slug: "GRANTED"` rather than an `API-000…` string, the same value
+   * `studentAwards` carries: these three are in the ministry's granted-service
+   * export (`apis-granted.xlsx`) with an id, a method and a URL, and the public
+   * catalogue page does not render them — so there is no portal slug to copy,
+   * and inventing one would make `esis.requests.ts`'s join look sounder than
+   * it is.
+   *
+   * ★★ **No `…Save` suffix**, and that is load-bearing rather than taste.
+   * `esis.fields.test.ts` treats a `…Save` key as reachable through
+   * `POST …/esis/write` — the immediate route whose `@Roles` includes TEACHER,
+   * because the three child-record saves behind it are a teacher's own fields.
+   * These go through the approval harness and a director instead; naming them
+   * `…Save` would either fail that test or be "fixed" by putting an unapproved
+   * group write behind a teacher's button.
+   *
+   * ★★★ The request fields are **not known yet**. The portal does not document
+   * these services and the ministry's export carries only id, method and URL —
+   * so `ESIS_FIELDS` holds an empty list for each until the live probe reads
+   * them out of the service's own `400`, the way `studentContacts`'s
+   * `{ personId }` body was read on 2026-09-14.
+   */
+  groupCreate: endpoint({
+    apiId: 150,
+    slug: "GRANTED",
+    method: "POST",
+    path: "/svc/api/hub/v2/student/group/info/create",
+  }),
+  groupUpdate: endpoint({
+    apiId: 152,
+    slug: "GRANTED",
+    method: "POST",
+    path: "/svc/api/hub/v2/student/group/info/update",
+  }),
+  groupInstructor: endpoint({
+    apiId: 162,
+    slug: "GRANTED",
+    method: "POST",
+    path: "/svc/api/hub/v2/group/instructor/save",
+  }),
+
+  /*
    * ── Хөтөлбөр ────────────────────────────────────────────────────────────
    * Four services in one chain: программ → үе шат → төлөвлөгөө → хичээл. Each
    * takes the ids the one above it returns, which is why they get a screen of

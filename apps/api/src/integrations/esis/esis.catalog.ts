@@ -289,7 +289,46 @@ const META: Record<EsisEndpointKey, EsisEndpointMeta> = {
       "болгох унших сервис. ★ Энэ мөр өмнө нь «бүлэг илгээх сервис порталын " +
       "каталогт байхгүй» гэж байсан — 2026-09-14-нд зөвшөөрөгдсөн сервисийн " +
       "жагсаалтад гурав байв: 150 (нэмэх), 152 (засах, устгах), 162 (багш " +
-      "тохируулах). Хараахан холбоогүй байгаа нь өөр асуудал.",
+      "тохируулах). ★★ 2026-09-18-наас гурвуулан холбогдсон — spec №3б.",
+  },
+  /*
+   * ── Бүлгийн бичих гурав, spec №3б ──────────────────────────────────────
+   *
+   * ★ `previewable: false` бөгөөд талбарын жагсаалт нь хоосон. Эдгээрийн орцын
+   * нэрсийг яам баримтжуулаагүй — `esis.fields.ts`-ийн тэмдэглэлийг үзнэ үү —
+   * тул таамагласан шошготой маягт зурахын оронд «талбар тодорхойгүй» гэж
+   * харуулна.
+   *
+   * ★★ Эдгээр нь `POST …/esis/write`-аар **явахгүй**. Тэр маршрут багшид
+   * нээлттэй, шууд илгээдэг; эдгээр нь захирлын бэлтгэх → батлах → илгээх
+   * дараалалтай (`esis-write.service.ts`).
+   */
+  groupCreate: {
+    name: "Бүлэг үүсгэх",
+    domain: "ROSTER",
+    usage: "Цэцэрлэгийн бүлгийг ЭСИС-д шинээр бүртгүүлэх",
+    previewable: false,
+    note:
+      "Бичих сервис (150). Захирал батална. Доорх талбарууд нь гаралт биш, " +
+      "илгээх орц.",
+  },
+  groupUpdate: {
+    name: "Бүлэг засах, устгах",
+    domain: "ROSTER",
+    usage: "Бүртгэгдсэн бүлгийн нэр, түвшнийг засах, эсвэл бүлгийг устгах",
+    previewable: false,
+    note:
+      "Бичих сервис (152). Устгах нь буцаах боломжгүй тул зөвхөн энэ системээс " +
+      "ЭСИС-д үүсгэсэн бүлэгт нээлттэй — spec №3б §5.",
+  },
+  groupInstructor: {
+    name: "Бүлгийн багш тохируулах",
+    domain: "ROSTER",
+    usage: "Бүлгийг хариуцах багшийг ЭСИС-д тохируулах",
+    previewable: false,
+    note:
+      "Бичих сервис (162). Багшийн `esisPersonId` нь `EsisStaffRoster`-оос " +
+      "гарах бөгөөд roster-т байхгүй багшийг бэлтгэх үе шатанд татгалзана.",
   },
   programs: {
     name: "Сургалтын хөтөлбөр",
@@ -701,6 +740,8 @@ function targetModel(key: EsisEndpointKey): string {
   }
   if (key === "teacherAcademicOrg" || key === "teacherMovements") return "User / Membership";
   if (key === "groupsNextYear") return "Group (promotion source)";
+  if (key === "groupCreate" || key === "groupUpdate") return "Group";
+  if (key === "groupInstructor") return "Group / Membership";
   if (
     key === "programs" ||
     key === "programStages" ||

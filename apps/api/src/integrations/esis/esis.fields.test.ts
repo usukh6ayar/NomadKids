@@ -5,6 +5,11 @@ import { ESIS_ENDPOINTS } from "./esis.endpoints";
 import { ESIS_DISCOVERED_SHAPE, ESIS_FIELDS, esisFieldsFor, ingestedFieldNames } from "./esis.fields";
 import { ESIS_READ_PARAMS, ESIS_WRITE_RESOURCES } from "./esis.dto";
 import {
+  ESIS_APPROVAL_WRITES,
+  ESIS_WRITE_ENDPOINT,
+  ESIS_WRITE_SERVICES,
+} from "./esis-group-writes";
+import {
   ESIS_DESTROYED_FIELDS,
   ESIS_IDENTIFIER_FIELDS,
   esisDiscoveredSchema,
@@ -335,6 +340,59 @@ describe("ESIS field catalog", () => {
     expect([...reachable].filter((key) => !writes.includes(key))).toEqual([]);
   });
 
+  it("carries the three group writes the client asked for", () => {
+    expect(ESIS_ENDPOINTS.groupCreate).toEqual({
+      apiId: 150,
+      slug: "GRANTED",
+      method: "POST",
+      path: "/svc/api/hub/v2/student/group/info/create",
+    });
+    expect(ESIS_ENDPOINTS.groupUpdate).toEqual({
+      apiId: 152,
+      slug: "GRANTED",
+      method: "POST",
+      path: "/svc/api/hub/v2/student/group/info/update",
+    });
+    expect(ESIS_ENDPOINTS.groupInstructor).toEqual({
+      apiId: 162,
+      slug: "GRANTED",
+      method: "POST",
+      path: "/svc/api/hub/v2/group/instructor/save",
+    });
+  });
+
+  /*
+   * ★ The rule above keys off a `…Save` suffix, and the three group writes
+   * deliberately do not have one — a `…Save` key is asserted to be reachable
+   * through `POST …/esis/write`, whose `@Roles` includes TEACHER. These go
+   * through the approval harness and a director instead.
+   *
+   * ★★ Without this test the older one's guarantee — every write is reachable,
+   * or deliberately is not — would stay **green while three writes were
+   * unreachable**, which is the exact failure its own comment describes. The
+   * guarantee now covers both doors, and asserts they do not overlap.
+   */
+  it("makes every approval-gated write reachable too, by its own door", () => {
+    expect([...ESIS_APPROVAL_WRITES].sort()).toEqual([
+      "groupCreate",
+      "groupInstructor",
+      "groupUpdate",
+    ]);
+
+    for (const key of ESIS_APPROVAL_WRITES) {
+      expect(ESIS_ENDPOINTS[key].method).toBe("POST");
+      expect(ESIS_WRITE_RESOURCES as readonly string[]).not.toContain(key);
+      expect(key.endsWith("Save")).toBe(false);
+    }
+
+    // Every registry key posts to one of them, including the delete that shares 152.
+    for (const service of ESIS_WRITE_SERVICES) {
+      expect(ESIS_APPROVAL_WRITES as readonly string[]).toContain(
+        ESIS_WRITE_ENDPOINT[service],
+      );
+    }
+  });
+
   /*
    * Every selected service is pinned to a field list checked against the
    * developer portal rather than inferred from a neighbouring API.
@@ -360,6 +418,16 @@ describe("ESIS field catalog", () => {
      */
     expect(keysBySource("ADAPTER").sort()).toEqual(
       [
+        /*
+         * ★ Added 2026-09-18, spec №3б. `ADAPTER` is the honest source for the
+         * three group writes: the developer portal documents none of them, so
+         * each declares its `institutionId` anchor and nothing else until the
+         * live probe reads the rest out of the service's own `400`. They
+         * become `LIVE` then, and move to the list below.
+         */
+        "groupCreate",
+        "groupUpdate",
+        "groupInstructor",
         "studentInfo",
         "studentContactsSave",
         "studentStatisticsSave",
