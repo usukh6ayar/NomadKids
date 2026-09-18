@@ -751,6 +751,31 @@ export function esisContactsParser(): (
  * real call is the confirmation.
  */
 
+/**
+ * ESIS's own `'Y'`/`'N'`, which is what its flags are.
+ *
+ * ★ Not a `z.boolean()`. 86 answered "infoFlag9 утгыг шалгана уу!('Y' эсвэл
+ * 'N' байна.)" on 2026-09-18, and a `true` serialises to `true` — a value the
+ * service does not accept. Coercing a boolean here would hide which of the two
+ * vocabularies a caller is in; refusing anything else makes it explicit.
+ */
+const esisFlag = z.enum(["Y", "N"]);
+
+/**
+ * 101 — гэр бүлийн мэдээлэл хадгалах.
+ *
+ * ★ Its rows were named by this product, not by ESIS: `relationTypeId`,
+ * `occupation`, `workplace`, `email`, `address`, `liveTogetherFlag`. The
+ * **read** half of the same service calls them `relationshipType`, `jobTitle`,
+ * `legalEmployerName`, `emailAddress`, `note` — and `.strict()` here meant the
+ * ministry's own names would have been rejected outright.
+ *
+ * ★★ `personId` is what keeps 101 from throwing: without one it answers a bare
+ * `500 Серверийн алдаа`, an unhandled exception rather than a validation
+ * refusal, so it never reaches the check that would have listed these fields.
+ * The read is the source instead, and a better one than a guess — it met live
+ * rows.
+ */
 export const esisStudentContactsUploadSchema = z
   .object({
     institutionId: z.number().int().positive(),
@@ -758,17 +783,18 @@ export const esisStudentContactsUploadSchema = z
     contactList: z.array(
       z
         .object({
-          contactId: z.number().int().positive().optional(),
-          relationTypeId: z.number().int().positive(),
+          studentContactId: z.number().int().positive().optional(),
+          relationshipType: z.union([z.string(), z.number()]),
+          familyName: z.string().optional(),
           lastName: z.string().min(1),
           firstName: z.string().min(1),
+          dateOfBirth: z.string().optional(),
+          jobTitle: z.string().optional(),
+          legalEmployerName: z.string().optional(),
           phoneNumber: z.string().min(1),
-          email: z.string().optional(),
-          address: z.string().optional(),
-          occupation: z.string().optional(),
-          workplace: z.string().optional(),
-          primaryFlag: z.boolean().default(false),
-          liveTogetherFlag: z.boolean().default(true),
+          emailAddress: z.string().optional(),
+          note: z.string().optional(),
+          primaryFlag: esisFlag.optional(),
         })
         .strict(),
     ),
@@ -777,36 +803,74 @@ export const esisStudentContactsUploadSchema = z
 
 export type EsisStudentContactsUpload = z.input<typeof esisStudentContactsUploadSchema>;
 
+/**
+ * 86 — өрхийн мэдээлэл хадгалах.
+ *
+ * ★ **Every field name here was invented until 2026-09-18**, and the service
+ * said so: `familyMemberCount`, `familyTypeId`, `socialWelfareFlag` and the
+ * rest were this product's guess at a household survey. ESIS keeps the record
+ * as `infoFlag1..13` / `infoText4..6` / `infoNumber5..6` — precisely what the
+ * **read** half has always declared. `.strict()` meant this schema would have
+ * rejected the ministry's own field names.
+ *
+ * ★★ Everything but the two ids is optional. The service takes one record with
+ * thirteen flags; a caller filling three of them is the ordinary case, and
+ * requiring all thirteen would force a screen to invent ten answers.
+ */
 export const esisStudentStatisticsUploadSchema = z
   .object({
     institutionId: z.number().int().positive(),
     personId: z.number().int().positive(),
-    familyMemberCount: z.number().int().min(1),
-    childrenCount: z.number().int().min(0),
-    familyTypeId: z.number().int().positive().optional(),
-    incomeTypeId: z.number().int().positive().optional(),
-    livelihoodTypeId: z.number().int().positive().optional(),
-    isHerderFamily: z.boolean().default(false),
-    isSingleParent: z.boolean().default(false),
-    hasDisabledMember: z.boolean().default(false),
-    socialWelfareFlag: z.boolean().default(false),
+    infoFlag1: esisFlag.optional(),
+    infoFlag2: esisFlag.optional(),
+    infoFlag3: esisFlag.optional(),
+    infoFlag4: esisFlag.optional(),
+    infoFlag5: esisFlag.optional(),
+    infoFlag6: esisFlag.optional(),
+    infoFlag7: esisFlag.optional(),
+    infoFlag8: esisFlag.optional(),
+    infoFlag9: esisFlag.optional(),
+    infoFlag10: esisFlag.optional(),
+    infoFlag11: esisFlag.optional(),
+    infoFlag12: esisFlag.optional(),
+    infoFlag13: esisFlag.optional(),
+    infoText4: z.string().optional(),
+    infoText5: z.string().optional(),
+    infoText6: z.string().optional(),
+    infoNumber5: z.number().optional(),
+    infoNumber6: z.number().optional(),
   })
   .strict();
 
 export type EsisStudentStatisticsUpload = z.input<typeof esisStudentStatisticsUploadSchema>;
 
+/**
+ * 71 — амьдрах орчны мэдээлэл хадгалах.
+ *
+ * ★ The other half of a correction made on 2026-09-14, when a live read
+ * replaced fifteen invented names on the **read** side and this save kept its
+ * own eight (`dwellingTypeId`, `heatingTypeId`, `waterSourceId`…). The read's
+ * own note says "the service is not the dwelling survey they described"; this
+ * was that survey, still standing four days later.
+ *
+ * ★★ Probing `{ institutionId }` answered a bare "Алдаа гарлаа" naming no
+ * field, so unlike 86 there is no refusal pinning these. They mirror the read,
+ * which met a live row — inference, but from the ministry's own record rather
+ * than from what a survey ought to contain.
+ */
 export const esisStudentConditionUploadSchema = z
   .object({
     institutionId: z.number().int().positive(),
     personId: z.number().int().positive(),
-    dwellingTypeId: z.number().int().positive().optional(),
-    ownershipTypeId: z.number().int().positive().optional(),
-    heatingTypeId: z.number().int().positive().optional(),
-    waterSourceId: z.number().int().positive().optional(),
-    toiletTypeId: z.number().int().positive().optional(),
-    electricityFlag: z.boolean().default(true),
-    internetFlag: z.boolean().default(false),
-    roomCount: z.number().int().min(0).optional(),
+    academicYear: z.string().optional(),
+    studentLivingPalace: z.union([z.string(), z.number()]).optional(),
+    livingPlaceDistance: z.union([z.string(), z.number()]).optional(),
+    enrollYear: z.union([z.string(), z.number()]).optional(),
+    dormitoryPropertyType: z.union([z.string(), z.number()]).optional(),
+    dormitoryOwner: z.union([z.string(), z.number()]).optional(),
+    dormitorySchoolId: z.union([z.string(), z.number()]).optional(),
+    dormitoryId: z.union([z.string(), z.number()]).optional(),
+    annualTuitionFee: z.union([z.string(), z.number()]).optional(),
   })
   .strict();
 

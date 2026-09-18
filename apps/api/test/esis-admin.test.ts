@@ -1225,3 +1225,74 @@ describe("the kindergarten's registration code", () => {
     expect(res.status).toBe(404);
   });
 });
+
+/**
+ * `POST /kindergartens/:id/esis/write` — the immediate write route.
+ *
+ * ★ It had **no test at all** until 2026-09-18, which is how six services whose
+ * field names nothing has ever confirmed stayed reachable by a teacher. The
+ * gate below is the product's answer; this is the part that proves it, because
+ * a comment saying "unproven" stopped nothing when 162 had the same problem.
+ */
+describe("POST /kindergartens/:id/esis/write", () => {
+  const url = (kindergartenId: string) => `/v1/kindergartens/${kindergartenId}/esis/write`;
+
+  /*
+   * ★ Their read halves answered `203` for every child on institution 42778,
+   * the portal renders none of them, and the probe cannot reach their
+   * validation — so the field lists are inference with nothing behind them.
+   * These describe a child's allergies, disability, surgery and safety
+   * incidents; a wrong field there is a wrong medical record.
+   */
+  for (const resource of [
+    "studentAllergySave",
+    "studentProhibitedFoodSave",
+    "studentDisabilitySave",
+    "studentSurgerySave",
+    "studentIncidentSave",
+    "studentScreeningSave",
+  ]) {
+    it(`refuses ${resource}, whose fields ESIS has never documented`, async () => {
+      const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+        resource,
+        payload: { personId: 1 },
+      });
+
+      expect(res.status).toBe(409);
+    });
+  }
+
+  /*
+   * ★★ And the three that were corrected are **not** refused — 86, 71 and 101
+   * now carry the ministry's own field names rather than this product's
+   * inventions, so the gate has to let them past or it is just an outage.
+   */
+  it("lets a corrected service through the gate", async () => {
+    /*
+     * ★ The mapping matters: without a confirmed `esisInstitutionId` the route
+     * answers 409 for an entirely different reason ("байгууллагын код
+     * баталгаажаагүй"), which would make this assertion pass while proving
+     * nothing about the gate.
+     */
+    await testDb().kindergarten.update({
+      where: { id: a.kindergarten.id },
+      data: { esisInstitutionId: "42778", esisEnvironment: "PRODUCTION", esisMappedAt: new Date() },
+    });
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+      resource: "studentStatisticsSave",
+      payload: { personId: 1, infoFlag9: "N" },
+    });
+
+    expect(res.status).not.toBe(409);
+  });
+
+  it("returns 404 to an administrator of another kindergarten", async () => {
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminB).send({
+      resource: "studentStatisticsSave",
+      payload: { personId: 1 },
+    });
+
+    expect(res.status).toBe(404);
+  });
+});

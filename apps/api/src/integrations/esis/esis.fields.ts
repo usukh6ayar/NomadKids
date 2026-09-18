@@ -548,21 +548,36 @@ const ESIS_FIELD_CATALOG: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
     keep("primaryFlag", "Үндсэн эсэх"),
   ],
 
+  /*
+   * ★ **The third list of invented names found on 2026-09-18**, after 86 and
+   * 71. The `contactList` rows carried `relationTypeId`, `occupation`,
+   * `workplace`, `liveTogetherFlag` — none of which ESIS uses. Its own **read**
+   * half, four entries above, names the same record `relationshipType`,
+   * `jobTitle`, `legalEmployerName`, `primaryFlag`.
+   *
+   * ★★ The probe could not name these itself: 101 answers a bare **500
+   * Серверийн алдаа** to any body without a `personId` — an unhandled
+   * exception rather than a refusal, so it never reaches the field validation
+   * that would list them. With `{ institutionId, personId }` it settles to
+   * "Алдаа гарлаа", which also names nothing. So the read is the source, and
+   * it is a better one than a guess: it met live rows.
+   */
   studentContactsSave: [
     send("institutionId", "Байгууллагын код"),
     send("personId", "Хүүхдийн ESIS дугаар"),
     send("contactList", "Асран хамгаалагчийн жагсаалт"),
-    send("contactList[].contactId", "Засах бичлэгийн дугаар"),
-    send("contactList[].relationTypeId", "Хамаарлын код"),
+    send("contactList[].studentContactId", "Засах бичлэгийн дугаар"),
+    send("contactList[].relationshipType", "Хамаарлын код"),
+    send("contactList[].familyName", "Ургийн овог"),
     send("contactList[].lastName", "Овог"),
     send("contactList[].firstName", "Нэр"),
+    send("contactList[].dateOfBirth", "Төрсөн огноо"),
+    send("contactList[].jobTitle", "Албан тушаал"),
+    send("contactList[].legalEmployerName", "Ажлын газар"),
     send("contactList[].phoneNumber", "Утас"),
-    send("contactList[].email", "И-мэйл"),
-    send("contactList[].address", "Хаяг"),
-    send("contactList[].occupation", "Мэргэжил"),
-    send("contactList[].workplace", "Ажлын газар"),
+    send("contactList[].emailAddress", "И-мэйл"),
+    send("contactList[].note", "Тэмдэглэл"),
     send("contactList[].primaryFlag", "Үндсэн эсэх"),
-    send("contactList[].liveTogetherFlag", "Хамт амьдардаг эсэх"),
   ],
 
   /*
@@ -603,18 +618,50 @@ const ESIS_FIELD_CATALOG: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
     keep("infoNumber6", "Тоон утга 6"),
   ],
 
+  /*
+   * ★ **Every name here was invented, and the service said so** — 2026-09-18.
+   * A body of `{ institutionId }` answered:
+   *
+   *     infoFlag9 утгыг шалгана уу!('Y' эсвэл 'N' байна.)
+   *
+   * The eleven fields that stood here — `familyMemberCount`, `familyTypeId`,
+   * `socialWelfareFlag` and the rest — are this product's guesses at what a
+   * household survey ought to contain. ESIS keeps the same record as
+   * `infoFlag1..13`, `infoText4..6` and `infoNumber5..6`, which is exactly what
+   * the **read** half (`studentStatistics`, above) has always declared: the two
+   * halves of one service disagreed, and only the read had met a live row.
+   *
+   * ★★ This is the same defect `studentCondition` had until 2026-09-14, when a
+   * live read corrected fifteen invented names — and the save beside it was
+   * left alone that day. A write's field list is harder to catch precisely
+   * because nothing renders it.
+   *
+   * ★★★ The read is the source now. `infoFlag9`'s refusal proves the naming and
+   * the `'Y'/'N'` domain; the rest follow it, because a service that reads back
+   * `infoFlag9` and writes something else would be two different records.
+   * Flags carry `'Y'`/`'N'`, not booleans.
+   */
   studentStatisticsSave: [
     send("institutionId", "Байгууллагын код"),
     send("personId", "Хүүхдийн ESIS дугаар"),
-    send("familyMemberCount", "Өрхийн гишүүдийн тоо"),
-    send("childrenCount", "Хүүхдийн тоо"),
-    send("familyTypeId", "Өрхийн төрлийн код"),
-    send("incomeTypeId", "Орлогын төрлийн код"),
-    send("livelihoodTypeId", "Амьжиргааны код"),
-    send("isHerderFamily", "Малчин өрх эсэх"),
-    send("isSingleParent", "Өрх толгойлсон эсэх"),
-    send("hasDisabledMember", "Хөгжлийн бэрхшээлтэй гишүүнтэй эсэх"),
-    send("socialWelfareFlag", "Нийгмийн халамж авдаг эсэх"),
+    send("infoFlag1", "Тэмдэглэгээ 1 ('Y'/'N')"),
+    send("infoFlag2", "Тэмдэглэгээ 2 ('Y'/'N')"),
+    send("infoFlag3", "Тэмдэглэгээ 3 ('Y'/'N')"),
+    send("infoFlag4", "Тэмдэглэгээ 4 ('Y'/'N')"),
+    send("infoFlag5", "Тэмдэглэгээ 5 ('Y'/'N')"),
+    send("infoFlag6", "Тэмдэглэгээ 6 ('Y'/'N')"),
+    send("infoFlag7", "Тэмдэглэгээ 7 ('Y'/'N')"),
+    send("infoFlag8", "Тэмдэглэгээ 8 ('Y'/'N')"),
+    send("infoFlag9", "Тэмдэглэгээ 9 ('Y'/'N')"),
+    send("infoFlag10", "Тэмдэглэгээ 10 ('Y'/'N')"),
+    send("infoFlag11", "Тэмдэглэгээ 11 ('Y'/'N')"),
+    send("infoFlag12", "Тэмдэглэгээ 12 ('Y'/'N')"),
+    send("infoFlag13", "Тэмдэглэгээ 13 ('Y'/'N')"),
+    send("infoText4", "Тэмдэглэл 4"),
+    send("infoText5", "Тэмдэглэл 5"),
+    send("infoText6", "Тэмдэглэл 6"),
+    send("infoNumber5", "Тоон утга 5"),
+    send("infoNumber6", "Тоон утга 6"),
   ],
 
   /*
@@ -645,17 +692,36 @@ const ESIS_FIELD_CATALOG: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
     keep("annualTuitionFee", "Жилийн сургалтын төлбөр (ЭСИС-ийн дүн)"),
   ],
 
+  /*
+   * ★ **The other half of the 2026-09-14 correction, finally made.** That day a
+   * live read replaced fifteen invented names on `studentCondition` above — and
+   * this save, which describes the same record, kept its own eight inventions
+   * (`dwellingTypeId`, `heatingTypeId`, `waterSourceId`…). The note above still
+   * says "the service is not the dwelling survey they described"; this list was
+   * that survey, left standing.
+   *
+   * ★★ Mirrors the read, minus the fields ESIS assigns itself
+   * (`studentStatisticId`) and the ones it derives. `studentLivingPalace` and
+   * `livingPlaceDistance` are what "amьдрах орчин" actually means here.
+   *
+   * ★★★ Unconfirmed in one respect and it is said rather than hidden: probing
+   * with `{ institutionId }` answered a bare "Алдаа гарлаа" with no field
+   * named, so unlike `studentStatisticsSave` there is no refusal pinning these.
+   * They follow the read, which met a live row — inference, but inference from
+   * the ministry's own document rather than from what a survey ought to hold.
+   */
   studentConditionSave: [
     send("institutionId", "Байгууллагын код"),
     send("personId", "Хүүхдийн ESIS дугаар"),
-    send("dwellingTypeId", "Орон сууцны төрлийн код"),
-    send("ownershipTypeId", "Эзэмшлийн код"),
-    send("heatingTypeId", "Халаалтын код"),
-    send("waterSourceId", "Ус хангамжийн код"),
-    send("toiletTypeId", "Ариун цэврийн байгууламжийн код"),
-    send("electricityFlag", "Цахилгаантай эсэх"),
-    send("internetFlag", "Интернэттэй эсэх"),
-    send("roomCount", "Өрөөний тоо"),
+    send("academicYear", "Хичээлийн жил"),
+    send("studentLivingPalace", "Амьдарч буй байрны код"),
+    send("livingPlaceDistance", "Цэцэрлэг хүртэлх зай"),
+    send("enrollYear", "Элссэн огноо"),
+    send("dormitoryPropertyType", "Дотуур байрны өмчийн хэлбэр"),
+    send("dormitoryOwner", "Дотуур байрны эзэмшигч"),
+    send("dormitorySchoolId", "Дотуур байртай сургуулийн код"),
+    send("dormitoryId", "Дотуур байрны код"),
+    send("annualTuitionFee", "Жилийн сургалтын төлбөр"),
   ],
 
   /*
@@ -1069,8 +1135,34 @@ const ESIS_FIELD_CATALOG: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
   /*
    * ══ Бичих сервисүүд ═══════════════════════════════════════════════════
    * ★ These are **inputs**, not outputs — `io: "INPUT"`, so the operator
-   * screen labels them as what we send rather than what comes back. Every
-   * shape is unproven; see the note above `esisStudentAllergyUploadSchema`.
+   * screen labels them as what we send rather than what comes back.
+   *
+   * ★★ **What "unproven" now means here, after 2026-09-18.** All thirteen were
+   * probed with an empty body (`scripts/esis-write-probe.ts`), and they fall
+   * into three groups:
+   *
+   *  1. **Corrected from a refusal or from their own read** — 86, 71 and 101.
+   *     Every field name on those three was this product's invention; the
+   *     services keep the same records as `infoFlag1..13`, as the condition
+   *     read's own columns, and as `relationshipType` / `jobTitle` /
+   *     `legalEmployerName`. They are fixed, and each says so above itself.
+   *
+   *  2. **Matching a read that has met live rows** — `studentAssessmentsSave`,
+   *     `studentMeasurementSave`, `groupMeasurementsSave`. Their read halves
+   *     carry real columns and the write lists agree with them field for
+   *     field. That is the strongest evidence available short of a POST.
+   *
+   *  3. **Still unverifiable, and it is the ministry's silence rather than
+   *     ours** — allergy, prohibited food, disability, surgery, incident,
+   *     screening. Their read halves answered `203` for every child on
+   *     institution 42778, so there is no live row to compare against; the
+   *     portal does not render them; and the probe cannot reach their field
+   *     validation, because each one answers `institutionId дутуу байна` and
+   *     then `NJS-105: value is not a number (NaN)` — an Oracle driver error
+   *     from a missing `personId`, not a list of what it wanted.
+   *
+   * ★★★ Group 3 must not be treated as done. Sending one means finding out on
+   * a child's medical record what 162 found out on a group.
    */
   studentAllergySave: [
     send("institutionId", "Байгууллагын код"),

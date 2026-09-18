@@ -18,6 +18,7 @@ import {
   esisServicesForActor,
   type EsisEndpointKey,
 } from "./esis.catalog";
+import { ESIS_UNPROVEN_WRITES } from "./esis.dto";
 import type { EsisPreviewDto, EsisReadDto, EsisWriteDto, UpdateEsisMappingDto } from "./esis.dto";
 import { ESIS_ENDPOINTS } from "./esis.endpoints";
 import { ESIS_FIELDS, esisFieldsFor, ingestedFieldNames } from "./esis.fields";
@@ -629,6 +630,26 @@ export class EsisAdminService {
    */
   async write(actor: Actor, kindergartenId: string, dto: EsisWriteDto) {
     const { institutionId } = await this.assertReadable(actor, kindergartenId, dto.resource);
+
+    /*
+     * ★ Six writes are refused here, and it is the ministry's silence rather
+     * than ours — `ESIS_UNPROVEN_WRITES` in `esis.dto.ts` carries the evidence.
+     * Their field names have never been confirmed by a live row, by the portal
+     * or by a refusal, which is what 162's were until the client produced the
+     * ministry's own page on 2026-09-18 and three of its five fields turned out
+     * to be wrong. These describe a child's allergies, disability, surgery and
+     * safety incidents; a wrong field there is a wrong medical record.
+     *
+     * ★★ The refusal is placed **after** `assertReadable`, so a caller who may
+     * not reach this service still gets that answer first and learns nothing
+     * from this one.
+     */
+    if ((ESIS_UNPROVEN_WRITES as readonly string[]).includes(dto.resource)) {
+      throw new ConflictException(
+        "Энэ сервисийн талбаруудыг ЭСИС баримтжуулаагүй тул илгээх боломжгүй. " +
+          "Яамнаас гэрээг нь тодруулсны дараа нээгдэнэ.",
+      );
+    }
 
     const body = { ...dto.payload, institutionId: Number(institutionId) };
     const personId = typeof dto.payload.personId === "number" ? dto.payload.personId : null;

@@ -149,6 +149,36 @@ export const ESIS_WRITE_RESOURCES = [
 
 export type EsisWriteResource = (typeof ESIS_WRITE_RESOURCES)[number];
 
+/**
+ * The writes whose field names have never been confirmed by anything.
+ *
+ * ★ Six of the thirteen. Their **read** halves answered `203` for every child
+ * on institution 42778, so no live row exists to compare against; the developer
+ * portal renders none of them; and the probe cannot reach their validation —
+ * each answers `institutionId дутуу байна`, then `NJS-105: value is not a
+ * number (NaN)`, an Oracle driver error from the missing `personId` rather than
+ * a list of what it wanted (`scripts/esis-write-probe.ts`, 2026-09-18).
+ *
+ * ★★ So their field lists are **inference with nothing behind it** — which is
+ * exactly what 162's were until the client produced the ministry's own page
+ * and three of its five fields turned out to be wrong, including the verb. The
+ * difference is the subject: 162 describes a group, these describe a child's
+ * allergies, disability, surgery and safety incidents.
+ *
+ * ★★★ Refused at the route rather than noted in a comment, because a comment
+ * stopped nothing last time. Everything else about them stays wired — the
+ * catalogue shows the grant, the panel shows the fields, the method exists —
+ * so confirming one is an edit to this list and nothing else.
+ */
+export const ESIS_UNPROVEN_WRITES = [
+  "studentAllergySave",
+  "studentProhibitedFoodSave",
+  "studentDisabilitySave",
+  "studentSurgerySave",
+  "studentIncidentSave",
+  "studentScreeningSave",
+] as const satisfies readonly EsisWriteResource[];
+
 export const esisWriteSchema = z.object({
   resource: z.enum(ESIS_WRITE_RESOURCES),
   payload: z.record(z.string(), z.unknown()),
