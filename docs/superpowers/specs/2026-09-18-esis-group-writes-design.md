@@ -14,11 +14,11 @@ exact payload → a human approves → send**, and the record that survives it.
 not built here, and the reason is the same for all four in different words:
 **there is nothing in this product to send.**
 
-| Service                      | Why not now                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **129, 131** cook form 1 / 2 | `esis.endpoints.ts` and `esis.catalog.ts` each already refuse them, in writing: filing a school's food-income return is a decision made against a ledger, and nothing here is the thing that files it. The **read** halves (130, 132) are wired                                                                                                                                                                                                                      |
-| **73** өрхийн мэдээлэл       | `esis.endpoints.ts` has **no entry for apiId 73** — its path is not known in this codebase. See §1.2: the household writes that _do_ have paths are already built, by a different mechanism, and neither of them is 73                                                                                                                                                                                                                                              |
-| **72** цол, шагнал           | Also no endpoint entry. And its read half, `studentAwards` (**85**), answered **203** against a real child on institution 42778, so the field names are unknown. A write whose shape is a guess is a write into the ministry's production record                                                                                                                                                                                                                     |
+| Service                      | Why not now                                                                                                                                                                                                                                      |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **129, 131** cook form 1 / 2 | `esis.endpoints.ts` and `esis.catalog.ts` each already refuse them, in writing: filing a school's food-income return is a decision made against a ledger, and nothing here is the thing that files it. The **read** halves (130, 132) are wired  |
+| **73** өрхийн мэдээлэл       | `esis.endpoints.ts` has **no entry for apiId 73** — its path is not known in this codebase. See §1.2: the household writes that _do_ have paths are already built, by a different mechanism, and neither of them is 73                           |
+| **72** цол, шагнал           | Also no endpoint entry. And its read half, `studentAwards` (**85**), answered **203** against a real child on institution 42778, so the field names are unknown. A write whose shape is a guess is a write into the ministry's production record |
 
 That is not a gap in coverage. It is four **named states** on the 84/84 matrix
 (§7), which is stronger evidence than a silent omission: everything granted is
@@ -163,60 +163,88 @@ answer; the director reads it.
 
 ---
 
-## 3. The registry, server-side
+## 3. The registry, and where a payload comes from
 
-One closed map, in the shape `esis.reference.ts` already uses for the read
-side:
+★★ **Amended 2026-09-18, after the live probe.** This section said the payload
+was built from our own `Group` columns. That was wrong, and wrong in a way no
+test could have caught — see `ESIS_API_READINESS.md` §1.1.9. What follows is
+what the services themselves said.
 
-```ts
-export const ESIS_WRITERS = {
-  groupCreate: {
-    apiId: 150,
-    endpoint: "groupCreate",
-    subject: "group",
-    build: buildGroupCreate, // (group, ctx) => payload
-    schema: groupCreatePayloadSchema,
-  },
-  // groupUpdate, groupDelete, groupInstructor
-} as const;
-```
+One closed registry, keyed by service, in the shape `esis.reference.ts` already
+uses for the read side. The screen names a key and a subject id; it never
+composes JSON.
 
-**The screen never composes a payload.** It names a registry key and a subject
-id; the builder reads our own tables and produces the body; a Zod schema
-validates it before the row is written. Nothing reaches the ministry that did
-not come out of this database, which is also what makes the preview honest —
-the JSON shown is the JSON stored is the JSON sent.
+### 3.1 The payload is copied from the ministry's own rows
 
-Layering per §2.1: controller parses and calls, service builds and audits,
-and a repository is the only file importing `PrismaClient`.
+A create needs **eight ids this database does not hold and cannot invent** —
+`programOfStudyId`, the `programStageId` for that level, `programPlanId`,
+`groupTypeCode`, `groupShiftId`, `groupClassificationId`, `groupCategoryCode`,
+`academicGroupId`. The only authority is api-40 (`groups`), which returns them
+on every row.
+
+So `buildGroupPayload` takes the institution's group rows and copies:
+
+- a **create** from a sibling at the same level, matched on the ministry's own
+  `academicLevelName`
+- an **update** and a **delete** from the group's **own** row, found by the id a
+  successful create stored
+
+`prepare` therefore makes a live read before it can show anyone anything —
+unavoidable, because the payload cannot be displayed until those ids are in
+hand, and displaying it is the point of the step. Read, never stored: the ids
+are the ministry's and change without telling us.
+
+★ This replaced `AgeBand → 1..4`, a guess that was wrong (the levels are Бага
+15 · Дунд 16 · Ахлах 17 · Бэлтгэл 18). Hard-coding 15..18 would have been the
+same guess one level down, since those numbers belong to _this_ institution's
+programme. The only thing still written by hand is what our own enum already
+means in Mongolian.
+
+### 3.2 Three things the services insisted on
+
+- **An `event` on every body.** 152 accepts exactly `update` and `delete` —
+  which is what "бүлэг засах, устгах" meant — and rejects `create`. 150 takes
+  `create`. **152 wants lower case; 162's stored procedure wants UPPER.** One
+  gateway, two layers, two rules, pinned by a test so that normalising the case
+  "for consistency" fails here rather than at the ministry.
+- **`academicYear` and `studentGroupId`** on 152.
+- **A group name of five characters or fewer.** Undocumented anywhere;
+  discovered by the first live create, which it refused. Nothing else in this
+  product limits `Group.name`, so an ordinary "Дэлбээ" is six. Checked at
+  prepare, so a director meets it with a sentence naming the limit rather than
+  after approving. A **delete is exempt** — it carries no name, and the
+  ministry's own groups are all longer than five.
+
+### 3.3 162 is blocked on the ministry
+
+`group/instructor/save` answers "Багшийн хариуцах үүрэг оруулна уу." and no
+vocabulary for that field exists: not in the thirteen swept reference
+resources, and not as an example, because all four of institution 42778's
+groups carry `instructorId: null`. Our own `TeacherRole` is `LEAD | ASSISTANT`
+and there is no reason to think the ministry shares it.
+
+`buildGroupPayload` throws `ESIS_INSTRUCTOR_ROLE_UNKNOWN`, and prepare turns
+that into a sentence saying so. Inventing a value would be sending a guess into
+the ministry's register and calling it an integration. It is a question to ask,
+not a field to fill.
+
+### 3.4 Layering
+
+Controller parses and calls, service builds and audits, and a repository is the
+only file importing `PrismaClient`.
 
 ★ A **new** `esis-write.repository.ts`, not more methods on `EsisRepository`.
-That file already carries three unrelated concerns — reference rows, sync runs
-and the staff roster — and a fourth would make it the place where "anything
-ESIS touches the database" lives. The base filter differs too: a write request
-is tenant-scoped and soft-deleted, where reference rows are hard-replaced and
-may be national (`kindergartenId` NULL). Two different base filters in one
-repository is how a forgotten one becomes a leak.
+That file already carries three unrelated concerns, and the base filter differs:
+a write request is tenant-scoped and soft-deleted, where reference rows are
+hard-replaced and may be national (`kindergartenId` NULL). Two different base
+filters in one repository is how a forgotten one becomes a leak.
 
-### 3.1 162 needs an `esisPersonId`, and may not have one
+### 3.5 A teacher's ESIS id
 
-`group/instructor/save` identifies the teacher by ESIS's own person id. Our
-only source is `EsisStaffRoster`, which is **replaced wholesale** on each sync
-— so a teacher who registered before a sync, or whose row a replace dropped,
-has no id.
-
-**Prepare refuses, with a named reason, and offers the fix.** Not the worker:
-a failure discovered after approval is a failure the director already signed.
-The refusal says which teacher and that the roster needs refreshing, and the
-roster refresh is one button away on `/admin/esis-sync`.
-
-This is the one refusal in this spec that is allowed to be specific. §1.7's
-identical-refusal rule protects the _public_ staff-registration route (spec
-№2); this one is behind `@Roles("ADMIN")` and membership, and a director who
-cannot tell "the roster is stale" from "this teacher does not exist" cannot
-act.
-
----
+162 identifies the teacher by `User.esisPersonId` — the column spec №2's
+self-registration fills — and never by anything the request supplies. NULL is
+the ordinary case for a teacher an administrator created by hand, and prepare
+refuses rather than leaving it to a worker running after the approval.
 
 ## 4. Idempotency is ours to enforce
 
