@@ -60,7 +60,23 @@ export const ESIS_WRITE_EVENT: Record<EsisWriteServiceKey, string> = {
   groupCreate: "create",
   groupUpdate: "update",
   groupDelete: "delete",
-  groupInstructor: "UPDATE",
+  /*
+   * ★★★ **`CREATE`, not `UPDATE`** — corrected 2026-09-18 from the ministry's
+   * documentation, which is explicit: "UPDATE зөвхөн instructorRole өөрчлөх
+   * үед хийнэ. Багшийг солихдоо өмнөх багшийг устгах үйлдэл хийсний дараа
+   * шинэ багшийг оруулна уу!"
+   *
+   * So assigning a teacher is `CREATE`. `UPDATE` changes only the role of a
+   * teacher already assigned, and **swapping teachers is DELETE then CREATE** —
+   * two writes, not one. This product assigns; the other two operations are
+   * named in §3.3 of the spec and deliberately not built, because a swap that
+   * half-succeeds leaves a group with no teacher in the ministry's register.
+   *
+   * The earlier `UPDATE` here came from the probe, which got further with upper
+   * case than lower and stopped there. It would have been the wrong verb for
+   * the one thing this product wants to do.
+   */
+  groupInstructor: "CREATE",
 };
 
 /**
@@ -77,6 +93,30 @@ export const ESIS_WRITE_EVENT: Record<EsisWriteServiceKey, string> = {
  * `AGE_BAND_LABEL` uses on the child's screen. Every id that follows is copied
  * from the ministry's matching row.
  */
+/**
+ * `instructorRole` — "Багшийн хариуцах үүрэг", in the words this product
+ * already shows on the group screen.
+ *
+ * ★ **The field is free text, proved live 2026-09-18.** The documentation marks
+ * it required and names it, but lists no vocabulary — and none exists anywhere
+ * readable: no reference resource carries it, and all four of 42778's groups
+ * read `instructorId: null`. So it was asked of the service directly, with
+ * `studentGroupId: 0` so that an accepted value could not attach anybody to a
+ * real group. `""` was refused ("Багшийн хариуцах үүрэг оруулна уу."); `LEAD`,
+ * `MAIN`, `ҮНДСЭН`, `Үндсэн багш` and `1` all got **past** it to the next check.
+ * The service wants a non-empty string and nothing narrower.
+ *
+ * ★★ Given a free field, the honest value is the one our own screens already
+ * use for the same fact — `role === "LEAD" ? "Үндсэн" : "Туслах"` on the group
+ * page. Sending `LEAD` would put an English enum name into a ministry record
+ * that Mongolian staff read; sending an invented code would put a private
+ * vocabulary there.
+ */
+const INSTRUCTOR_ROLE_LABEL: Record<string, string> = {
+  LEAD: "Үндсэн",
+  ASSISTANT: "Туслах",
+};
+
 const AGE_BAND_LEVEL_NAME: Record<string, string> = {
   NURSERY: "Бага",
   JUNIOR: "Дунд",
@@ -226,10 +266,28 @@ export const groupDeletePayloadSchema = basePayloadSchema
   .extend({ studentGroupId: z.string() })
   .strict();
 
-export const groupInstructorPayloadSchema = basePayloadSchema
-  .extend({
-    studentGroupId: z.string(),
-    personId: z.number().int(),
+/**
+ * 162's body, from the ministry's own documentation — 2026-09-18.
+ *
+ * ★ **Not built on `basePayloadSchema`**, and that is the correction. 162 takes
+ * five fields and `academicYear` is **not** one of them: `event`,
+ * `institutionId`, `studentGroupId`, `instructorId`, `instructorRole`. Sharing
+ * the base would have sent a sixth field the service never asked for.
+ *
+ * ★★ `instructorId`, not `personId`. Both are "the teacher's number" in
+ * conversation and the wrong name is a `400` at best — this one was written
+ * from the pattern the суралцагч services use, where the key really is
+ * `personId`.
+ *
+ * ★★★ Both ids are **numbers** here, unlike 150/152 where `studentGroupId` is
+ * a string. The documentation says `number` for each, so that is what it gets.
+ */
+export const groupInstructorPayloadSchema = z
+  .object({
+    event: z.string().min(1),
+    institutionId: z.number().int(),
+    studentGroupId: z.number().int(),
+    instructorId: z.number().int(),
     instructorRole: z.string().min(1),
   })
   .strict();
@@ -248,6 +306,8 @@ export function buildGroupPayload(input: {
   institutionId: number;
   ministryGroups: EsisGroupRow[];
   esisPersonId?: string | null;
+  /** Our own `TeacherRole`, which names what ESIS calls `instructorRole`. */
+  teacherRole?: string | null;
 }): Record<string, unknown> {
   const { service, group, institutionId, ministryGroups } = input;
   const event = ESIS_WRITE_EVENT[service];
@@ -310,21 +370,30 @@ export function buildGroupPayload(input: {
 
   if (service === "groupInstructor") {
     if (!input.esisPersonId) throw new Error("ESIS_PERSON_ID_UNKNOWN");
-    const personId = Number(input.esisPersonId);
-    if (!Number.isFinite(personId)) throw new Error("ESIS_PERSON_ID_UNKNOWN");
+    const instructorId = Number(input.esisPersonId);
+    if (!Number.isFinite(instructorId)) throw new Error("ESIS_PERSON_ID_UNKNOWN");
+
+    const studentGroupId = Number(group.esisGroupId);
+    if (!Number.isFinite(studentGroupId)) throw new Error("ESIS_GROUP_ID_UNKNOWN");
+
+    const instructorRole = INSTRUCTOR_ROLE_LABEL[input.teacherRole ?? "LEAD"];
+    if (instructorRole === undefined) throw new Error("ESIS_INSTRUCTOR_ROLE_UNMAPPED");
 
     /*
-     * ★★ **162 cannot be built yet, and this is where that stops.** The
-     * service answers "Багшийн хариуцах үүрэг оруулна уу." and no vocabulary
-     * for that field exists anywhere: not in the thirteen swept reference
-     * resources, and not as an example, because all four of 42778's groups
-     * carry `instructorId: null`. Our own `TeacherRole` is `LEAD | ASSISTANT`
-     * and there is no reason to believe the ministry shares it.
-     *
-     * Refusing here is the honest answer. Inventing a value would send a guess
-     * into the ministry's register and call it an integration.
+     * ★ `event: "CREATE"`, which is what assigning is. The documentation is
+     * explicit that `UPDATE` changes only the role of a teacher already
+     * assigned, and that **swapping teachers is DELETE then CREATE** — two
+     * writes. This product assigns; a swap is not built, because one that
+     * half-succeeds leaves a group with no teacher at all in the ministry's
+     * register, and nothing here could tell which half ran.
      */
-    throw new Error("ESIS_INSTRUCTOR_ROLE_UNKNOWN");
+    return groupInstructorPayloadSchema.parse({
+      event,
+      institutionId,
+      studentGroupId,
+      instructorId,
+      instructorRole,
+    });
   }
 
   assertNameFits(group.name);

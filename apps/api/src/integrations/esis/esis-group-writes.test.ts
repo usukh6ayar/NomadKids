@@ -214,13 +214,54 @@ describe("group write payloads", () => {
   });
 
   /*
-   * ★★ 162 refuses even with everything else in hand. The service asks for
-   * "Багшийн хариуцах үүрэг" and no vocabulary for it exists: not in the
-   * thirteen swept reference resources, and not as an example, because all four
-   * of 42778's groups carry `instructorId: null`. Inventing a value would send
-   * a guess into the ministry's register and call it an integration.
+   * ★★ 162's five fields, from the ministry's own documentation — and
+   * `academicYear` is **not** one of them, which is why this payload does not
+   * share the base the other three use.
+   *
+   * ★★★ `event: "CREATE"`. The documentation is explicit: "UPDATE зөвхөн
+   * instructorRole өөрчлөх үед хийнэ" — assigning is a create, and swapping
+   * teachers is DELETE then CREATE.
    */
-  it("refuses an instructor write until the ministry names the role vocabulary", () => {
+  it("assigns a teacher with CREATE and the five fields 162 documents", () => {
+    expect(
+      buildGroupPayload({
+        service: "groupInstructor",
+        group: { ...GROUP, esisGroupId: "100006351517832" },
+        institutionId: 42778,
+        ministryGroups: MINISTRY,
+        esisPersonId: "5512",
+        teacherRole: "LEAD",
+      }),
+    ).toEqual({
+      event: "CREATE",
+      institutionId: 42778,
+      studentGroupId: 100006351517832,
+      instructorId: 5512,
+      instructorRole: "Үндсэн",
+    });
+  });
+
+  /*
+   * ★ `instructorRole` is free text — proved live, with `studentGroupId: 0` so
+   * that an accepted value could not attach anybody to a real group. `""` was
+   * refused; `LEAD`, `MAIN`, `ҮНДСЭН`, `Үндсэн багш` and `1` all got past it.
+   * Given a free field, the value sent is the word this product already shows
+   * on its own group screen rather than an English enum name or an invented
+   * code.
+   */
+  it("sends the assistant's role in the words the group screen uses", () => {
+    const payload = buildGroupPayload({
+      service: "groupInstructor",
+      group: { ...GROUP, esisGroupId: "100006351517832" },
+      institutionId: 42778,
+      ministryGroups: MINISTRY,
+      esisPersonId: "5512",
+      teacherRole: "ASSISTANT",
+    });
+    expect(payload).toMatchObject({ instructorRole: "Туслах" });
+  });
+
+  it("refuses a teacher role our own enum does not name", () => {
     expect(() =>
       buildGroupPayload({
         service: "groupInstructor",
@@ -228,8 +269,9 @@ describe("group write payloads", () => {
         institutionId: 42778,
         ministryGroups: MINISTRY,
         esisPersonId: "5512",
+        teacherRole: "SUBSTITUTE",
       }),
-    ).toThrow("ESIS_INSTRUCTOR_ROLE_UNKNOWN");
+    ).toThrow("ESIS_INSTRUCTOR_ROLE_UNMAPPED");
   });
 
   it("refuses an instructor write with no person id first", () => {
@@ -302,14 +344,29 @@ describe("the ministry's own name rule", () => {
 
 describe("what the services answered", () => {
   /*
-   * ★ 152 takes a lower-case event, 162's stored procedure takes UPPER — proved
-   * live on 2026-09-18, not a style choice. Pinning it here means normalising
-   * the case "for consistency" fails a test instead of failing at the ministry.
+   * ★ 152 takes a lower-case event, 162 takes UPPER — proved live on
+   * 2026-09-18 and then confirmed by the ministry's documentation, which spells
+   * 162's as "(CREATE, UPDATE, DELETE)". Pinning both means normalising the
+   * case "for consistency" fails a test instead of failing at the ministry.
    */
   it("keeps 152 lower case and 162 upper case", () => {
+    expect(ESIS_WRITE_EVENT.groupCreate).toBe("create");
     expect(ESIS_WRITE_EVENT.groupUpdate).toBe("update");
     expect(ESIS_WRITE_EVENT.groupDelete).toBe("delete");
-    expect(ESIS_WRITE_EVENT.groupInstructor).toBe("UPDATE");
+    expect(ESIS_WRITE_EVENT.groupInstructor).toBe("CREATE");
+  });
+
+  /*
+   * ★★ **162's assign is CREATE, not UPDATE**, and it is worth its own
+   * assertion because the probe pointed the wrong way: upper-case `UPDATE` got
+   * further than lower-case, so it looked like the answer. The documentation
+   * settled it — "UPDATE зөвхөн instructorRole өөрчлөх үед хийнэ. Багшийг
+   * солихдоо өмнөх багшийг устгах үйлдэл хийсний дараа шинэ багшийг оруулна
+   * уу!" — so assigning is a create, and a swap is two writes this product does
+   * not make.
+   */
+  it("assigns with CREATE, because a swap is two writes and is not built", () => {
+    expect(ESIS_WRITE_EVENT.groupInstructor).toBe("CREATE");
   });
 
   /*

@@ -201,13 +201,13 @@ describe("preparing a group write", () => {
   });
 
   /*
-   * ★★ Even with the teacher's id in hand, 162 refuses. The service asks for
-   * "Багшийн хариуцах үүрэг" and no vocabulary for it exists — not in the
-   * thirteen swept reference resources, and not as an example, because all four
-   * of 42778's groups carry `instructorId: null`. The refusal names that, so a
-   * director learns what is missing rather than meeting a blank screen.
+   * ★★ 162 assigns the group's teacher, with the five fields the ministry
+   * documents and `event: "CREATE"` — assigning is a create, and `UPDATE`
+   * changes only a role. The id and the role are read together from the same
+   * `GroupTeacher` row, so a group's lead cannot be sent under the assistant's
+   * role.
    */
-  it("refuses an instructor write until the ministry names the role vocabulary", async () => {
+  it("assigns the group's teacher, with the role in the words our screens use", async () => {
     await testDb().group.update({
       where: { id: scenario.group.id },
       data: { esisGroupId: "100006351517832" },
@@ -222,8 +222,15 @@ describe("preparing a group write", () => {
       admin,
     ).send({ service: "groupInstructor", groupId: scenario.group.id });
 
-    expect(res.status).toBe(400);
-    expect(await testDb().esisWriteRequest.count()).toBe(0);
+    expect(res.status).toBe(201);
+    expect(res.body.apiId).toBe(162);
+    expect(res.body.payload).toEqual({
+      event: "CREATE",
+      institutionId: Number(INSTITUTION),
+      studentGroupId: 100006351517832,
+      instructorId: 5512,
+      instructorRole: "Үндсэн",
+    });
   });
 });
 

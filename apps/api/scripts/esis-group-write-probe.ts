@@ -40,31 +40,32 @@ async function main(): Promise<void> {
   const institutionId = Number(process.env.ESIS_INSTITUTION_ID ?? "42778");
 
   /*
-   * ★ Step three, 2026-09-18. The ladder so far, each rung a `400` that told us
-   * the next one:
+   * ★ Step four, 2026-09-18 — the last unknown: what does `instructorRole`
+   * accept?
    *
-   *   {}                          → "institutionId дутуу байна"
-   *   { institutionId }           → "event утга буруу байна"
-   *   { …, event: "update" }      → 152: "Хичээлийн жил шалгана уу."
-   *                                 162: "Үйлдлийн утга буруу байна. (CREATE, UPDATE, DELETE)"
+   * The ministry's documentation for 162 lists the field as required and names
+   * it "Багшийн хариуцах үүрэг", but gives no vocabulary. Nothing else has it
+   * either: none of the thirteen swept reference resources carries it, and all
+   * four of 42778's groups read `instructorId: null`, so there is no example to
+   * copy.
    *
-   * So 152 takes a lower-case `event` and 162's stored procedure wants it in
-   * upper case; `academicYear` comes from the ministry's own
-   * `academicYearStatuses` reference, where 2026 carries
-   * `currentAcademicYearFlag: "Y"`.
-   *
-   * Every body below still names no group, so none of them can change a record.
+   * ★★ Every body below names a **studentGroupId of 0** and an
+   * **instructorId of 0**. That is deliberate: a rejected value teaches the
+   * vocabulary, and a value the service happens to accept must not be able to
+   * attach anybody to any real group. The documentation is also explicit that
+   * assigning is `CREATE` — "UPDATE зөвхөн instructorRole өөрчлөх үед хийнэ" —
+   * so that is the event used.
    */
-  const academicYear = "2026";
+  const roles: string[] = ["", "LEAD", "MAIN", "ҮНДСЭН", "Үндсэн багш", "1"];
   const probes: Record<string, Record<string, unknown>[]> = {
-    groupUpdate: [
-      { institutionId, event: "update", academicYear },
-      { institutionId, event: "delete", academicYear },
-    ],
-    groupInstructor: [
-      { institutionId, event: "UPDATE" },
-      { institutionId, event: "UPDATE", academicYear },
-    ],
+    groupUpdate: [],
+    groupInstructor: roles.map((instructorRole) => ({
+      event: "CREATE",
+      institutionId,
+      studentGroupId: 0,
+      instructorId: 0,
+      instructorRole,
+    })),
   };
 
   for (const key of PROBED) {

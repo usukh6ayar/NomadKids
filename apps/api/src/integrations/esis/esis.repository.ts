@@ -81,7 +81,7 @@ export class EsisRepository {
    * `endedOn` must be unset — a teacher who has left the group is not who the
    * ministry should be told about.
    */
-  async findGroupTeacherEsisPersonId(kindergartenId: string, groupId: string) {
+  async findGroupTeacherForEsis(kindergartenId: string, groupId: string) {
     const base = {
       groupId,
       kindergartenId,
@@ -90,6 +90,7 @@ export class EsisRepository {
       membership: { isActive: true, user: { deletedAt: null, esisPersonId: { not: null } } },
     } as const;
     const select = {
+      role: true,
       membership: { select: { user: { select: { esisPersonId: true } } } },
     } as const;
 
@@ -98,14 +99,22 @@ export class EsisRepository {
       select,
       orderBy: { createdAt: "asc" },
     });
-    if (lead) return lead.membership.user.esisPersonId;
+    const found =
+      lead ??
+      (await this.prisma.groupTeacher.findFirst({
+        where: base,
+        select,
+        orderBy: { createdAt: "asc" },
+      }));
 
-    const other = await this.prisma.groupTeacher.findFirst({
-      where: base,
-      select,
-      orderBy: { createdAt: "asc" },
-    });
-    return other?.membership.user.esisPersonId ?? null;
+    if (!found) return null;
+    /*
+     * ★ The role travels with the id. 162 wants both — `instructorId` and
+     * `instructorRole` — and reading them in two places would let a group's
+     * lead teacher be sent under the assistant's role the day the two queries
+     * disagreed about who came first.
+     */
+    return { esisPersonId: found.membership.user.esisPersonId, role: found.role };
   }
 
   findUserIdentity(userId: string) {

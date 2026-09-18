@@ -42,9 +42,7 @@ const REFUSALS: Record<string, string> = {
     "ЭСИС бүлгийн нэрийг 5 тэмдэгтэд багтаахыг шаарддаг. Нэрийг богиносгоно уу.",
   ESIS_ACADEMIC_YEAR_UNKNOWN:
     "ЭСИС-ээс хичээлийн жил тодорхойлж чадсангүй. Лавлахыг шинэчлээд дахин үзнэ үү.",
-  ESIS_INSTRUCTOR_ROLE_UNKNOWN:
-    "«Багшийн хариуцах үүрэг»-ийн утгыг яамнаас тодруулаагүй тул багш тохируулах " +
-    "сервисийг ашиглах боломжгүй.",
+  ESIS_INSTRUCTOR_ROLE_UNMAPPED: "Багшийн үүргийн төрлийг ЭСИС-ийн утгатай тааруулаагүй байна.",
   ESIS_PERSON_ID_UNKNOWN:
     "Энэ бүлгийн багшид ЭСИС-ийн дугаар алга. Багш өөрөө ЭСИС-ийн бүртгэлээр " +
     "нэвтэрсэн байх шаардлагатай.",
@@ -86,9 +84,9 @@ export class EsisWriteRequestService {
       await this.assertDeletable(kindergartenId, dto, group.name);
     }
 
-    const esisPersonId =
+    const teacher =
       dto.service === "groupInstructor"
-        ? await this.esisRepo.findGroupTeacherEsisPersonId(kindergartenId, dto.groupId)
+        ? await this.esisRepo.findGroupTeacherForEsis(kindergartenId, dto.groupId)
         : null;
 
     /*
@@ -117,7 +115,8 @@ export class EsisWriteRequestService {
         group,
         institutionId: Number(kindergarten.esisInstitutionId),
         ministryGroups,
-        esisPersonId,
+        esisPersonId: teacher?.esisPersonId ?? null,
+        teacherRole: teacher?.role ?? null,
       });
     } catch (error) {
       const code = error instanceof Error ? error.message : "UNKNOWN";
