@@ -159,6 +159,24 @@ export interface GroupForWrite {
  */
 export const ESIS_GROUP_WRITE_CONTRACT_PROVEN = false;
 
+/**
+ * How long a group's name may be, as far as ESIS is concerned.
+ *
+ * ★ **Five.** 2026-09-18, from 150 itself: "Анги бүлгийн нэрийг 5 буюу түүнээс
+ * багаар өгнө үү!". Nothing documents it and nothing else in this product
+ * limits `Group.name`, so a kindergarten's perfectly ordinary "Дэлбээ" — six
+ * characters — is refused by the ministry.
+ *
+ * ★★ Checked here so the director meets it at **prepare**, with a sentence
+ * naming the limit, rather than after they have approved a write that was
+ * always going to fail. That is the same argument as the roster refusal in
+ * §3.1; this one simply has a number.
+ *
+ * ★★★ Ironically the ministry's own four groups break it — "ахлах бүлэг" is
+ * eleven. The rule is enforced on the way in, not on what is already stored.
+ */
+export const ESIS_GROUP_NAME_MAX = 5;
+
 const basePayloadSchema = z.object({
   institutionId: z.number().int(),
   event: z.string().min(1),
@@ -224,6 +242,7 @@ export function buildGroupPayload(input: {
   const event = ESIS_WRITE_EVENT[service];
 
   if (service === "groupCreate") {
+    assertNameFits(group.name);
     const template = templateForBand(ministryGroups, group.ageBand);
     return groupCreatePayloadSchema.parse({
       institutionId,
@@ -280,6 +299,7 @@ export function buildGroupPayload(input: {
     throw new Error("ESIS_INSTRUCTOR_ROLE_UNKNOWN");
   }
 
+  assertNameFits(group.name);
   return groupUpdatePayloadSchema.parse({
     institutionId,
     event,
@@ -307,6 +327,11 @@ export function buildGroupPayload(input: {
  * ESIS yet, so there is nothing to copy" — rather than "somebody guessed a
  * number wrong".
  */
+/** The ministry's own name-length rule, met before anything is approved. */
+function assertNameFits(name: string): void {
+  if ([...name.trim()].length > ESIS_GROUP_NAME_MAX) throw new Error("ESIS_GROUP_NAME_TOO_LONG");
+}
+
 function templateForBand(rows: EsisGroupRow[], ageBand: string): EsisGroupRow {
   const levelName = AGE_BAND_LEVEL_NAME[ageBand];
   if (levelName === undefined) throw new Error("ESIS_AGE_BAND_UNMAPPED");

@@ -44,7 +44,7 @@ const MINISTRY = [AHLAH, BAGA];
 
 const GROUP = {
   id: "11111111-1111-4111-8111-111111111111",
-  name: "Дэлбээ",
+  name: "Дэлб",
   ageBand: "MIDDLE",
   esisGroupId: null as string | null,
 };
@@ -67,7 +67,7 @@ describe("group write payloads", () => {
       institutionId: 42778,
       event: "create",
       academicYear: "2026",
-      studentGroupName: "Дэлбээ",
+      studentGroupName: "Дэлб",
       academicLevel: "17",
       programOfStudyId: "100000287145352",
       programStageId: "100000287145361",
@@ -219,6 +219,62 @@ describe("group write payloads", () => {
         ministryGroups: MINISTRY,
       }),
     ).toThrow("ESIS_PERSON_ID_UNKNOWN");
+  });
+});
+
+describe("the ministry's own name rule", () => {
+  /*
+   * ★ Five characters, learned from 150 on 2026-09-18: "Анги бүлгийн нэрийг 5
+   * буюу түүнээс багаар өгнө үү!". The first live create used "ЗЗЗ туршилт" and
+   * was refused, which is the best outcome a first create can have — a rule
+   * learned and no record made.
+   */
+  it("refuses a name longer than the ministry accepts, before anything is approved", () => {
+    expect(() =>
+      buildGroupPayload({
+        service: "groupCreate",
+        group: { ...GROUP, name: "Дэлбээ" },
+        institutionId: 42778,
+        ministryGroups: MINISTRY,
+      }),
+    ).toThrow("ESIS_GROUP_NAME_TOO_LONG");
+  });
+
+  it("accepts a name of exactly five", () => {
+    const payload = buildGroupPayload({
+      service: "groupCreate",
+      group: { ...GROUP, name: "ЗЗЗ01" },
+      institutionId: 42778,
+      ministryGroups: MINISTRY,
+    });
+    expect(payload).toMatchObject({ studentGroupName: "ЗЗЗ01" });
+  });
+
+  it("applies the same rule to a rename", () => {
+    expect(() =>
+      buildGroupPayload({
+        service: "groupUpdate",
+        group: { ...GROUP, esisGroupId: "100006351518106", name: "Хэтэрхий урт" },
+        institutionId: 42778,
+        ministryGroups: MINISTRY,
+      }),
+    ).toThrow("ESIS_GROUP_NAME_TOO_LONG");
+  });
+
+  /*
+   * ★★ A delete carries no name, so the rule must not reach it. The ministry's
+   * own groups are all longer than five ("ахлах бүлэг" is eleven) — refusing to
+   * remove one because of a limit on the way *in* would be this product
+   * inventing a rule the ministry does not have.
+   */
+  it("lets a delete through whatever the group is called", () => {
+    const payload = buildGroupPayload({
+      service: "groupDelete",
+      group: { ...GROUP, esisGroupId: "100006351517832", name: "ахлах бүлэг" },
+      institutionId: 42778,
+      ministryGroups: MINISTRY,
+    });
+    expect(payload).toMatchObject({ event: "delete" });
   });
 });
 

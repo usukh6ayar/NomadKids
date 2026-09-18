@@ -88,11 +88,18 @@ beforeEach(async () => {
     where: { id: scenario.kindergarten.id },
     data: { esisInstitutionId: INSTITUTION, esisMappedAt: new Date() },
   });
-  // The fixture group is the ministry's Ахлах level.
+  /*
+   * The fixture group is the ministry's Ахлах level, and its name is shortened
+   * to five characters — 150's own rule, learned live on 2026-09-18: "Анги
+   * бүлгийн нэрийг 5 буюу түүнээс багаар өгнө үү!". `createScenario` names
+   * groups longer than that, which is realistic and is exactly why the refusal
+   * has its own tests rather than being left to surprise a director.
+   */
   await testDb().group.update({
     where: { id: scenario.group.id },
-    data: { ageBand: "MIDDLE" },
+    data: { ageBand: "MIDDLE", name: "ЗЗЗ01" },
   });
+  scenario.group.name = "ЗЗЗ01";
   stubMinistryGroups();
 });
 
@@ -139,6 +146,27 @@ describe("preparing a group write", () => {
 
     expect(second.body.id).toBe(first.body.id);
     expect(await testDb().esisWriteRequest.count()).toBe(1);
+  });
+
+  /*
+   * ★ The ministry's own name rule, met where a director can act on it. 150
+   * answers "Анги бүлгийн нэрийг 5 буюу түүнээс багаар өгнө үү!" and nothing
+   * else in this product limits `Group.name`, so an ordinary "Дэлбээ" is six
+   * characters and would have failed after approval.
+   */
+  it("refuses a group whose name ESIS will not accept", async () => {
+    await testDb().group.update({
+      where: { id: scenario.group.id },
+      data: { name: "Дэлбээ" },
+    });
+
+    const res = await authed(
+      request(app.getHttpServer()).post(url(scenario.kindergarten.id)),
+      admin,
+    ).send({ service: "groupCreate", groupId: scenario.group.id });
+
+    expect(res.status).toBe(400);
+    expect(await testDb().esisWriteRequest.count()).toBe(0);
   });
 
   it("refuses an update for a group ESIS has never seen", async () => {
@@ -509,6 +537,10 @@ describe("who may write a group to ESIS", () => {
       where: { id: other.kindergarten.id },
       data: { esisInstitutionId: "42779", esisMappedAt: new Date() },
     });
+    await testDb().group.update({
+      where: { id: other.group.id },
+      data: { ageBand: "MIDDLE", name: "ЗЗЗ02" },
+    });
     const otherAdmin = await login(app, other.adminUser.username);
 
     const theirs = await authed(
@@ -534,7 +566,7 @@ describe("the write queue", () => {
       data: {
         kindergartenId: scenario.kindergarten.id,
         schoolYearId: scenario.schoolYear.id,
-        name: `Навч-${Date.now()}`,
+        name: "ЗЗЗ03",
         ageBand: "MIDDLE",
       },
     });
