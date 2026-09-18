@@ -37,6 +37,40 @@ function esisAnswer(data: Record<string, unknown>) {
   return { data, source: "LIVE" as const, durationMs: 1 } as never;
 }
 
+/*
+ * ★ One of api-40's four rows for institution 42778, captured 2026-09-18 and
+ * trimmed to what a write sends. `prepare` reads the ministry's groups live —
+ * a create copies eight ids this database does not hold — so the suite has to
+ * answer that read, and it answers with the ministry's own values rather than
+ * invented ones.
+ */
+const MINISTRY_GROUPS = [
+  {
+    studentGroupId: "100006351517832",
+    studentGroupName: "ахлах бүлэг",
+    academicLevel: "17",
+    academicLevelName: "Ахлах",
+    programOfStudyId: "100000287145352",
+    programStageId: "100000287145361",
+    programPlanId: "100000287145358",
+    groupTypeCode: "STREAM",
+    groupShiftId: "108004001",
+    groupClassificationId: "1",
+    groupCategoryCode: "MAIN_STUDENT_GROUP",
+    academicGroupId: "42778",
+    academicYear: "2026",
+  },
+];
+
+/** Answers prepare's live group read. */
+function stubMinistryGroups(rows: Record<string, unknown>[] = MINISTRY_GROUPS) {
+  app.get(EsisService).read = (async () => ({
+    data: rows,
+    source: "LIVE",
+    durationMs: 1,
+  })) as never;
+}
+
 beforeAll(async () => {
   app = await createTestApp();
 });
@@ -54,6 +88,12 @@ beforeEach(async () => {
     where: { id: scenario.kindergarten.id },
     data: { esisInstitutionId: INSTITUTION, esisMappedAt: new Date() },
   });
+  // The fixture group is the ministry's Ахлах level.
+  await testDb().group.update({
+    where: { id: scenario.group.id },
+    data: { ageBand: "MIDDLE" },
+  });
+  stubMinistryGroups();
 });
 
 describe("preparing a group write", () => {
@@ -67,7 +107,12 @@ describe("preparing a group write", () => {
     expect(res.body.state).toBe("PREPARED");
     expect(res.body.payload).toMatchObject({
       institutionId: Number(INSTITUTION),
-      groupName: scenario.group.name,
+      event: "create",
+      academicYear: "2026",
+      studentGroupName: scenario.group.name,
+      // Copied from the ministry's Ахлах row, never computed.
+      academicLevel: "17",
+      programStageId: "100000287145361",
     });
 
     const row = await testDb().esisWriteRequest.findFirstOrThrow({ where: { id: res.body.id } });
@@ -115,7 +160,7 @@ describe("preparing a group write", () => {
   it("refuses an instructor write for a teacher with no ESIS person id", async () => {
     await testDb().group.update({
       where: { id: scenario.group.id },
-      data: { esisGroupId: "9987" },
+      data: { esisGroupId: "100006351517832" },
     });
 
     const res = await authed(
@@ -127,10 +172,17 @@ describe("preparing a group write", () => {
     expect(await testDb().esisWriteRequest.count()).toBe(0);
   });
 
-  it("carries the teacher's ESIS person id once they have one", async () => {
+  /*
+   * ★★ Even with the teacher's id in hand, 162 refuses. The service asks for
+   * "Багшийн хариуцах үүрэг" and no vocabulary for it exists — not in the
+   * thirteen swept reference resources, and not as an example, because all four
+   * of 42778's groups carry `instructorId: null`. The refusal names that, so a
+   * director learns what is missing rather than meeting a blank screen.
+   */
+  it("refuses an instructor write until the ministry names the role vocabulary", async () => {
     await testDb().group.update({
       where: { id: scenario.group.id },
-      data: { esisGroupId: "9987" },
+      data: { esisGroupId: "100006351517832" },
     });
     await testDb().user.update({
       where: { id: scenario.teacherUser.id },
@@ -142,9 +194,8 @@ describe("preparing a group write", () => {
       admin,
     ).send({ service: "groupInstructor", groupId: scenario.group.id });
 
-    expect(res.status).toBe(201);
-    expect(res.body.payload).toMatchObject({ studentGroupId: 9987, personId: 5512 });
-    expect(res.body.apiId).toBe(162);
+    expect(res.status).toBe(400);
+    expect(await testDb().esisWriteRequest.count()).toBe(0);
   });
 });
 
@@ -303,7 +354,8 @@ describe("the sender's one guarantee", () => {
       data: { state: "APPROVED", approvedById: scenario.adminUser.id },
     });
 
-    app.get(EsisService).sendGroupCreate = async () => esisAnswer({ studentGroupId: 9987 });
+    app.get(EsisService).sendGroupCreate = async () =>
+      esisAnswer({ studentGroupId: "100006351517832" });
 
     await app.get(EsisWriteSender).send(id);
 
@@ -312,7 +364,7 @@ describe("the sender's one guarantee", () => {
     expect(row.sentAt).not.toBeNull();
 
     const group = await testDb().group.findFirstOrThrow({ where: { id: scenario.group.id } });
-    expect(group.esisGroupId).toBe("9987");
+    expect(group.esisGroupId).toBe("100006351517832");
   });
 
   it("records a failure without pretending it was sent", async () => {
@@ -339,7 +391,7 @@ describe("deleting a group in ESIS", () => {
   beforeEach(async () => {
     await testDb().group.update({
       where: { id: scenario.group.id },
-      data: { esisGroupId: "9987" },
+      data: { esisGroupId: "100006351517832" },
     });
   });
 
@@ -379,12 +431,12 @@ describe("deleting a group in ESIS", () => {
         service: "groupCreate",
         apiId: 150,
         groupId: scenario.group.id,
-        payload: { institutionId: Number(INSTITUTION) },
+        payload: { institutionId: Number(INSTITUTION), event: "create" },
         idempotencyKey: "seed-create",
         preparedById: scenario.adminUser.id,
         state: "SENT",
         sentAt: new Date(),
-        response: { studentGroupId: 9987 },
+        response: { studentGroupId: "100006351517832" },
       },
     });
 
@@ -398,7 +450,12 @@ describe("deleting a group in ESIS", () => {
     });
 
     expect(res.status).toBe(201);
-    expect(res.body.payload).toMatchObject({ studentGroupId: 9987 });
+    expect(res.body.payload).toEqual({
+      institutionId: Number(INSTITUTION),
+      event: "delete",
+      academicYear: "2026",
+      studentGroupId: "100006351517832",
+    });
     expect(res.body.apiId).toBe(152);
   });
 });

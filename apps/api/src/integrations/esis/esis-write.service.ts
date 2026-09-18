@@ -12,7 +12,9 @@ import {
   buildGroupPayload,
   ESIS_GROUP_WRITE_CONTRACT_PROVEN,
   ESIS_WRITE_ENDPOINT,
+  readGroupRows,
 } from "./esis-group-writes";
+import { EsisService } from "./esis.service";
 import type { PrepareEsisGroupWriteDto } from "./esis.dto";
 import { ESIS_ENDPOINTS } from "./esis.endpoints";
 import { EsisRepository } from "./esis.repository";
@@ -31,6 +33,13 @@ import { EsisWriteRepository } from "./esis-write.repository";
 const REFUSALS: Record<string, string> = {
   ESIS_GROUP_ID_UNKNOWN:
     "ЭСИС энэ бүлгийг хараахан хараагүй байна. Эхлээд «Бүлэг үүсгэх»-ийг илгээнэ үү.",
+  ESIS_GROUP_NOT_IN_MINISTRY:
+    "Энэ бүлэг ЭСИС-ийн жагсаалтад олдсонгүй. Устгагдсан эсвэл өөр хичээлийн жилд байж магадгүй.",
+  ESIS_LEVEL_TEMPLATE_MISSING:
+    "Энэ насны түвшинд ЭСИС-д бүртгэлтэй бүлэг алга тул хөтөлбөрийн мэдээллийг хуулах эх байхгүй.",
+  ESIS_INSTRUCTOR_ROLE_UNKNOWN:
+    "«Багшийн хариуцах үүрэг»-ийн утгыг яамнаас тодруулаагүй тул багш тохируулах " +
+    "сервисийг ашиглах боломжгүй.",
   ESIS_PERSON_ID_UNKNOWN:
     "Энэ бүлгийн багшид ЭСИС-ийн дугаар алга. Багш өөрөө ЭСИС-ийн бүртгэлээр " +
     "нэвтэрсэн байх шаардлагатай.",
@@ -46,6 +55,7 @@ export class EsisWriteRequestService {
     private readonly tenants: TenantAccessService,
     private readonly repo: EsisWriteRepository,
     private readonly esisRepo: EsisRepository,
+    private readonly esis: EsisService,
     private readonly queue: EsisWriteQueue,
     private readonly audit: AuditRepository,
   ) {}
@@ -76,12 +86,32 @@ export class EsisWriteRequestService {
         ? await this.esisRepo.findGroupTeacherEsisPersonId(kindergartenId, dto.groupId)
         : null;
 
+    /*
+     * ★ A live read, inside prepare, and it is not avoidable.
+     *
+     * A create needs eight ministry-side ids — the programme, its stage for
+     * this level, the plan, the shift, the classification — none of which this
+     * database holds or could invent (`EsisGroupRow`). They are copied from
+     * api-40's own rows. So the payload cannot be shown to anyone until those
+     * rows are in hand, and showing the exact payload is the point of the step.
+     *
+     * ★★ Read, not stored. The ids belong to the ministry and change without
+     * telling us; a cached copy would be quietly wrong on the day it mattered —
+     * the same argument `funding/food-discount.ts` makes for reading
+     * eligibility live.
+     */
+    const ministryGroups = readGroupRows(
+      ((await this.esis.read("groups", {}, kindergarten.esisInstitutionId)).data ??
+        []) as unknown[],
+    );
+
     let payload: Record<string, unknown>;
     try {
       payload = buildGroupPayload({
         service: dto.service,
         group,
         institutionId: Number(kindergarten.esisInstitutionId),
+        ministryGroups,
         esisPersonId,
       });
     } catch (error) {

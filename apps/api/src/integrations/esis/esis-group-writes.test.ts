@@ -1,5 +1,46 @@
 import { describe, expect, it } from "vitest";
-import { buildGroupPayload, ESIS_WRITE_ENDPOINT, ESIS_WRITE_SERVICES } from "./esis-group-writes";
+import {
+  buildGroupPayload,
+  ESIS_WRITE_ENDPOINT,
+  ESIS_WRITE_EVENT,
+  ESIS_WRITE_SERVICES,
+  readGroupRows,
+  type EsisGroupRow,
+} from "./esis-group-writes";
+
+/*
+ * ★ These rows are **captured, not invented** — two of the four api-40 returned
+ * for institution 42778 on 2026-09-18, trimmed of the fields a write does not
+ * send. Every id below is the ministry's own. A fixture written by hand would
+ * have agreed with whatever the builder did, which is exactly how the shape
+ * this file replaced went unnoticed.
+ */
+const AHLAH: EsisGroupRow = {
+  studentGroupId: "100006351517832",
+  studentGroupName: "ахлах бүлэг",
+  academicLevel: "17",
+  academicLevelName: "Ахлах",
+  programOfStudyId: "100000287145352",
+  programStageId: "100000287145361",
+  programPlanId: "100000287145358",
+  groupTypeCode: "STREAM",
+  groupShiftId: "108004001",
+  groupClassificationId: "1",
+  groupCategoryCode: "MAIN_STUDENT_GROUP",
+  academicGroupId: "42778",
+  academicYear: "2026",
+};
+
+const BAGA: EsisGroupRow = {
+  ...AHLAH,
+  studentGroupId: "100006351518106",
+  studentGroupName: "бага бүлэг",
+  academicLevel: "15",
+  academicLevelName: "Бага",
+  programStageId: "100000287145359",
+};
+
+const MINISTRY = [AHLAH, BAGA];
 
 const GROUP = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -9,101 +50,213 @@ const GROUP = {
 };
 
 describe("group write payloads", () => {
-  it("builds a create from the group's own row", () => {
-    expect(
-      buildGroupPayload({ service: "groupCreate", group: GROUP, institutionId: 42778 }),
-    ).toEqual({
-      institutionId: 42778,
-      groupName: "Дэлбээ",
-      ageBand: 3,
-    });
-  });
-
-  it("names the ministry's group id on an update, not ours", () => {
+  /*
+   * ★ `MIDDLE` is Ахлах, which is `academicLevel` 17 with programme stage
+   * …361 — copied from the ministry's row, never computed. The mapping this
+   * file used to hold (`MIDDLE → 4`) was a guess and was wrong.
+   */
+  it("copies the programme ids from the ministry's group at the same level", () => {
     expect(
       buildGroupPayload({
-        service: "groupUpdate",
-        group: { ...GROUP, esisGroupId: "9987" },
+        service: "groupCreate",
+        group: GROUP,
         institutionId: 42778,
+        ministryGroups: MINISTRY,
       }),
     ).toEqual({
       institutionId: 42778,
-      studentGroupId: 9987,
-      groupName: "Дэлбээ",
-      ageBand: 3,
+      event: "create",
+      academicYear: "2026",
+      studentGroupName: "Дэлбээ",
+      academicLevel: "17",
+      programOfStudyId: "100000287145352",
+      programStageId: "100000287145361",
+      programPlanId: "100000287145358",
+      groupTypeCode: "STREAM",
+      groupShiftId: "108004001",
+      groupClassificationId: "1",
+      groupCategoryCode: "MAIN_STUDENT_GROUP",
+      academicGroupId: "42778",
     });
+  });
+
+  it("takes the other level's stage for the other band", () => {
+    const payload = buildGroupPayload({
+      service: "groupCreate",
+      group: { ...GROUP, ageBand: "NURSERY" },
+      institutionId: 42778,
+      ministryGroups: MINISTRY,
+    });
+    expect(payload).toMatchObject({ academicLevel: "15", programStageId: "100000287145359" });
   });
 
   /*
-   * ★ The refusal that keeps an update from becoming a create. A body with
-   * `studentGroupId: NaN` would be a well-formed request about no group, and
-   * what the ministry does with one is not a thing to find out on their
-   * production register.
+   * ★ A real and fixable refusal, unlike the old `AGE_BAND_UNMAPPED`: it means
+   * "ЭСИС has no group at this level to copy from yet", which a director can
+   * answer by creating that level's group first.
    */
-  it("refuses an update for a group ESIS has never seen", () => {
-    expect(() =>
-      buildGroupPayload({ service: "groupUpdate", group: GROUP, institutionId: 42778 }),
-    ).toThrow("ESIS_GROUP_ID_UNKNOWN");
-  });
-
-  it("refuses an update whose stored ESIS id is not a number", () => {
+  it("refuses a create when ESIS has no group at that level to copy", () => {
     expect(() =>
       buildGroupPayload({
-        service: "groupUpdate",
-        group: { ...GROUP, esisGroupId: "not-a-number" },
+        service: "groupCreate",
+        group: { ...GROUP, ageBand: "SENIOR" },
         institutionId: 42778,
+        ministryGroups: MINISTRY,
       }),
-    ).toThrow("ESIS_GROUP_ID_UNKNOWN");
+    ).toThrow("ESIS_LEVEL_TEMPLATE_MISSING");
   });
 
-  it("carries the teacher's ESIS person id on an instructor write", () => {
-    expect(
-      buildGroupPayload({
-        service: "groupInstructor",
-        group: { ...GROUP, esisGroupId: "9987" },
-        institutionId: 42778,
-        esisPersonId: "5512",
-      }),
-    ).toEqual({
-      institutionId: 42778,
-      studentGroupId: 9987,
-      personId: 5512,
-    });
-  });
-
-  /*
-   * ★ `EsisStaffRoster` is replaced wholesale on every sync, so a teacher who
-   * registered since the last one has no `esisPersonId`. That is a refusal the
-   * director can fix — refresh the roster — and it has to happen at prepare,
-   * not in a worker running after they have already approved.
-   */
-  it("refuses an instructor write with no person id", () => {
-    expect(() =>
-      buildGroupPayload({
-        service: "groupInstructor",
-        group: { ...GROUP, esisGroupId: "9987" },
-        institutionId: 42778,
-      }),
-    ).toThrow("ESIS_PERSON_ID_UNKNOWN");
-  });
-
-  it("refuses an age band nobody has mapped to the ministry's code", () => {
+  it("refuses a band our own enum does not name", () => {
     expect(() =>
       buildGroupPayload({
         service: "groupCreate",
         group: { ...GROUP, ageBand: "PRIMARY" },
         institutionId: 42778,
+        ministryGroups: MINISTRY,
       }),
     ).toThrow("ESIS_AGE_BAND_UNMAPPED");
   });
 
   /*
-   * ★ A delete posts to 152, the same endpoint an update does. If this ever
-   * stops being true the guards in `esis-write.service.ts` — the typed name and
-   * "we created it ourselves" — would be protecting the wrong call.
+   * ★ An update carries the group's **own** programme, not a sibling's at the
+   * same level. Matching on level would quietly move a group onto another
+   * programme the day the two disagreed.
+   */
+  it("builds an update from the group's own ministry row", () => {
+    expect(
+      buildGroupPayload({
+        service: "groupUpdate",
+        group: { ...GROUP, esisGroupId: "100006351518106", name: "Навч" },
+        institutionId: 42778,
+        ministryGroups: MINISTRY,
+      }),
+    ).toEqual({
+      institutionId: 42778,
+      event: "update",
+      academicYear: "2026",
+      studentGroupId: "100006351518106",
+      studentGroupName: "Навч",
+      academicLevel: "15",
+      programOfStudyId: "100000287145352",
+      programStageId: "100000287145359",
+      programPlanId: "100000287145358",
+      groupTypeCode: "STREAM",
+      groupShiftId: "108004001",
+      groupClassificationId: "1",
+      groupCategoryCode: "MAIN_STUDENT_GROUP",
+      academicGroupId: "42778",
+    });
+  });
+
+  /*
+   * ★ A delete names the group and nothing about it. A body that also carried
+   * a name would be one field away from being an update, and there is no undo
+   * on the other side of this call.
+   */
+  it("sends a delete that describes nothing", () => {
+    expect(
+      buildGroupPayload({
+        service: "groupDelete",
+        group: { ...GROUP, esisGroupId: "100006351517832" },
+        institutionId: 42778,
+        ministryGroups: MINISTRY,
+      }),
+    ).toEqual({
+      institutionId: 42778,
+      event: "delete",
+      academicYear: "2026",
+      studentGroupId: "100006351517832",
+    });
+  });
+
+  it("refuses an update for a group ESIS has never seen", () => {
+    expect(() =>
+      buildGroupPayload({
+        service: "groupUpdate",
+        group: GROUP,
+        institutionId: 42778,
+        ministryGroups: MINISTRY,
+      }),
+    ).toThrow("ESIS_GROUP_ID_UNKNOWN");
+  });
+
+  it("refuses an update for an id the ministry's list does not carry", () => {
+    expect(() =>
+      buildGroupPayload({
+        service: "groupUpdate",
+        group: { ...GROUP, esisGroupId: "999999" },
+        institutionId: 42778,
+        ministryGroups: MINISTRY,
+      }),
+    ).toThrow("ESIS_GROUP_NOT_IN_MINISTRY");
+  });
+
+  /*
+   * ★★ 162 refuses even with everything else in hand. The service asks for
+   * "Багшийн хариуцах үүрэг" and no vocabulary for it exists: not in the
+   * thirteen swept reference resources, and not as an example, because all four
+   * of 42778's groups carry `instructorId: null`. Inventing a value would send
+   * a guess into the ministry's register and call it an integration.
+   */
+  it("refuses an instructor write until the ministry names the role vocabulary", () => {
+    expect(() =>
+      buildGroupPayload({
+        service: "groupInstructor",
+        group: { ...GROUP, esisGroupId: "100006351517832" },
+        institutionId: 42778,
+        ministryGroups: MINISTRY,
+        esisPersonId: "5512",
+      }),
+    ).toThrow("ESIS_INSTRUCTOR_ROLE_UNKNOWN");
+  });
+
+  it("refuses an instructor write with no person id first", () => {
+    expect(() =>
+      buildGroupPayload({
+        service: "groupInstructor",
+        group: { ...GROUP, esisGroupId: "100006351517832" },
+        institutionId: 42778,
+        ministryGroups: MINISTRY,
+      }),
+    ).toThrow("ESIS_PERSON_ID_UNKNOWN");
+  });
+});
+
+describe("what the services answered", () => {
+  /*
+   * ★ 152 takes a lower-case event, 162's stored procedure takes UPPER — proved
+   * live on 2026-09-18, not a style choice. Pinning it here means normalising
+   * the case "for consistency" fails a test instead of failing at the ministry.
+   */
+  it("keeps 152 lower case and 162 upper case", () => {
+    expect(ESIS_WRITE_EVENT.groupUpdate).toBe("update");
+    expect(ESIS_WRITE_EVENT.groupDelete).toBe("delete");
+    expect(ESIS_WRITE_EVENT.groupInstructor).toBe("UPDATE");
+  });
+
+  /*
+   * ★ A delete posts to 152, the same endpoint an update does — the probe's
+   * finding, and the reason `groupDelete` is a registry key rather than an
+   * endpoint.
    */
   it("sends a delete down the same endpoint as an update", () => {
     expect(ESIS_WRITE_ENDPOINT.groupDelete).toBe("groupUpdate");
     expect(ESIS_WRITE_SERVICES).toContain("groupDelete");
+  });
+});
+
+describe("reading the ministry's rows", () => {
+  it("keeps a row carrying every id a write needs", () => {
+    expect(readGroupRows([AHLAH])).toEqual([AHLAH]);
+  });
+
+  /*
+   * ★ A row missing one id is dropped rather than half-used. A payload built
+   * from a partial template would be a well-formed request naming the wrong
+   * programme.
+   */
+  it("drops a row with an id missing", () => {
+    const { programStageId: _dropped, ...partial } = AHLAH;
+    expect(readGroupRows([partial, BAGA])).toEqual([BAGA]);
   });
 });
