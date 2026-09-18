@@ -139,8 +139,11 @@ describe("ESIS administration authorization", () => {
      * `studentSearch`, `buildingByRegisterNumber` — and dispositioned rather
      * than wired the other three the task named (`esis.requests.ts`'s
      * `ESIS_DISPOSITIONS`).
+     *
+     * ★★ **73 since 2026-09-18** — spec №3б wired the three group writes the
+     * client asked for: 150, 152 and 162.
      */
-    expect(first.body.endpoints).toHaveLength(70);
+    expect(first.body.endpoints).toHaveLength(73);
     // Every kindergarten, because the token and the grants are one account's.
     expect(second.status).toBe(200);
   });
@@ -329,9 +332,9 @@ describe("role-scoped ESIS catalog", () => {
     const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
 
     expect(res.status).toBe(200);
-    // ADMIN takes every key, so this moves with the catalogue — 70 since
-    // 2026-09-17.
-    expect(res.body.endpoints).toHaveLength(70);
+    // ADMIN takes every key, so this moves with the catalogue — 73 since
+    // 2026-09-18, when spec №3б added the three group writes.
+    expect(res.body.endpoints).toHaveLength(73);
   });
 
   /*
