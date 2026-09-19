@@ -730,7 +730,7 @@ describe("the sidebar footer", () => {
     renderShell(["TEACHER", "ADMIN"]);
     const nav = await sidebar();
 
-    expect(within(nav).getByText("Админ")).toBeInTheDocument();
+    expect(within(nav).getByText("Захирал/Эрхлэгч")).toBeInTheDocument();
     // `GET /groups` returns every group to an admin; naming the first would
     // say they run one when they run all of them.
     expect(within(nav).queryByText("Дэлбээ бүлэг")).not.toBeInTheDocument();

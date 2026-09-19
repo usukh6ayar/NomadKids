@@ -35,7 +35,7 @@ export type Role = z.infer<typeof roleSchema>;
  * inline, which is how a fourth screen ends up saying "Багш нар".
  */
 export const ROLE_LABEL: Record<Role, string> = {
-  ADMIN: "Админ",
+  ADMIN: "Захирал/Эрхлэгч",
   TEACHER: "Багш",
   PARENT: "Эцэг эх",
   COOK: "Тогооч",
