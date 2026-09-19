@@ -32,9 +32,8 @@ let adminA: AuthSession;
  *
  * Four eager logins in `beforeEach` is 120 across this file, of which about a
  * dozen are used. The suite shares one machine's sockets and one Redis, and
- * `IMPLEMENTATION_STATUS.md` (Phase 5) records what that pressure looks like
- * when it tips over: a login answering 404 or 400, in a different file on every
- * run. Not paying for sessions a test never touches is the cheap half of
+ * CLAUDE.md §4.4 records what that pressure looks like when it tips over: a
+ * login answering 404 or 400, in a different file on every run. Not paying for sessions a test never touches is the cheap half of
  * staying under it.
  */
 let sessions: Map<string, Promise<AuthSession>>;

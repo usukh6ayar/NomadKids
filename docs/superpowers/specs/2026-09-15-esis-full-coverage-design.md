@@ -188,8 +188,7 @@ contract. `ESIS_API_READINESS.md` §1.1 lists three empty shapes; this is a
 rule must be widened to cover it.
 
 ★ **Both are fixed, and the probe now reports `PARSE: 0`** across all 52
-readers — 33 parsed, 19 empty. Implemented as
-`docs/superpowers/plans/2026-09-15-esis-passthrough-and-register-numbers.md`;
+readers — 33 parsed, 19 empty. Shipped in #106;
 `ESIS_API_READINESS.md` §1.1.5 records the measurements.
 
 Three things the work turned up that this section did not anticipate:

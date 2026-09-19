@@ -11,9 +11,8 @@ import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
  *
  * Both suites below only read. Booting a second `createTestApp()` for the
  * second one would double this file's share of a Redis and a socket pool that
- * every other test file is using at the same time — the pressure
- * `IMPLEMENTATION_STATUS.md` (Phase 5) records as intermittent, cross-file
- * login failures. Nothing here needs an isolated app to be honest.
+ * every other test file is using at the same time — the pressure CLAUDE.md
+ * §4.4 records as intermittent, cross-file login failures. Nothing here needs an isolated app to be honest.
  */
 let app: INestApplication;
 
