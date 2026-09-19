@@ -302,6 +302,39 @@ export class PlatformService {
     const kindergarten = await this.repo.findById(kindergartenId);
     if (!kindergarten) throw new NotFoundException();
 
+    /*
+     * ★ On a mapped kindergarten the person must come from **its own ESIS
+     * staff list** — client, 2026-09-19. Not a browser-side filter: the check
+     * is here, against the ministry's live answer, because a hand-made request
+     * must not be able to install an administrator the institution has never
+     * employed.
+     *
+     * ★★ Re-read rather than trusted from the body, exactly as `create` does
+     * with `adminEsisPersonId`. The screen has already shown the operator this
+     * same list; that is a convenience, not evidence.
+     *
+     * ★★★ An **unmapped** kindergarten skips all of it and takes the body's
+     * names. There is no institution to read a list from, and refusing here
+     * would make a manually-registered tenant whose director cannot sign in
+     * unrescuable — which is the exact hole this method was added to close.
+     */
+    let chosen: EsisInstitutionStaff | undefined;
+    if (kindergarten.esisInstitutionId) {
+      if (!dto.esisPersonId) {
+        throw new BadRequestException("Удирдлагыг ESIS-ийн ажилтны жагсаалтаас сонгоно уу.");
+      }
+
+      const institution = await this.lookup.lookup(actor, kindergarten.esisInstitutionId);
+      chosen = institution.staff.find((person) => person.personId === dto.esisPersonId);
+      if (!chosen) {
+        throw new ConflictException("Сонгосон ажилтан ESIS-ийн жагсаалтад алга байна.");
+      }
+    } else if (dto.esisPersonId) {
+      throw new BadRequestException(
+        "Энэ цэцэрлэг ESIS-д холбогдоогүй тул ажилтныг жагсаалтаас сонгох боломжгүй.",
+      );
+    }
+
     await this.assertIdentifiersFree({ ...dto, phone: null });
 
     // Hashing outside the transaction — argon2 takes hundreds of milliseconds
@@ -315,8 +348,10 @@ export class PlatformService {
         kindergartenId,
         username: dto.username,
         email: dto.email ?? null,
-        lastName: dto.lastName,
-        firstName: dto.firstName,
+        // The ministry's spelling wins when a roster row was chosen — see the
+        // DTO's third note.
+        lastName: chosen?.lastName ?? dto.lastName,
+        firstName: chosen?.firstName ?? dto.firstName,
         passwordHash,
         invitationTokenHash: hash,
         invitationExpiresAt: new Date(Date.now() + INVITATION_TTL_MS),
@@ -336,7 +371,12 @@ export class PlatformService {
       actorUserId: actor.userId,
       objectType: "User",
       objectId: user.id,
-      metadata: { username: user.username, role: "ADMIN", by: "platform-operator" },
+      metadata: {
+        username: user.username,
+        role: "ADMIN",
+        by: "platform-operator",
+        esisPersonId: chosen?.personId ?? null,
+      },
     });
 
     // The token is returned so the operator can hand it over. Never logged.

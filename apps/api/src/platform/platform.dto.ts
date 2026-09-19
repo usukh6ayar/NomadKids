@@ -70,10 +70,27 @@ export type DeleteKindergartenDto = z.infer<typeof deleteKindergartenSchema>;
 /**
  * `POST /platform/kindergartens/:id/admins`.
  *
- * ★ The same fields as the first director on `createKindergartenSchema`, and
- * deliberately the same shape: one way to describe an administrator, whether
- * they arrive with the kindergarten or a month later. `role` is absent for
- * the reason `firstAdminSchema` states — this route only ever makes an ADMIN.
+ * ★ The same fields as the first director on `createKindergartenSchema` —
+ * one way to describe an administrator, whether they arrive with the
+ * kindergarten or a month later. `role` is absent for the reason
+ * `firstAdminSchema` states: this route only ever makes an ADMIN.
+ *
+ * ★★ Plus `esisPersonId`, and on a mapped kindergarten the **service
+ * requires it** (client, 2026-09-19: "удирдлага нэмэх нь зөвхөн тэр тухайн
+ * байгууллага дахь ажилчдаас сонгоно"). Optional in the schema rather than
+ * required, because a kindergarten registered by hand has no institution to
+ * read a staff list from and must still be rescuable — `PlatformService.
+ * addAdmin` is where the two cases are told apart, since only it knows
+ * whether this tenant is mapped.
+ *
+ * ★★★ `lastName` and `firstName` stay required even when a person is chosen.
+ * The browser fills them from the selected row so the operator can see what
+ * will be saved, and the service then **overwrites them from the ministry's
+ * own answer** — the same rule `create` follows, and for the same reason: the
+ * ministry's spelling is what staff self-registration matches on later, and
+ * two spellings of one person is how that match silently stops working.
  */
-export const createKindergartenAdminSchema = firstAdminSchema;
+export const createKindergartenAdminSchema = firstAdminSchema.extend({
+  esisPersonId: z.string().trim().min(1).max(64).optional(),
+});
 export type CreateKindergartenAdminDto = z.infer<typeof createKindergartenAdminSchema>;

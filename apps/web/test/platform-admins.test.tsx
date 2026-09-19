@@ -38,6 +38,28 @@ const neverSignedIn = {
   lastLoginAt: null,
 };
 
+const INSTITUTION = {
+  institutionId: "42778",
+  name: "Дэгдээхий үрс цэцэрлэг",
+  longName: "Улаанбаатар.Баянзүрх.Дэгдээхий үрс цэцэрлэг",
+  address: null,
+  classification: "Цэцэрлэг",
+  propertyType: "Хувийн",
+  isKindergarten: true,
+  alreadyUsed: true,
+  staff: [
+    {
+      personId: "1000048746697",
+      registerNumber: "УБ12345678",
+      lastName: "Батсайхан",
+      firstName: "Оюунаа",
+      positionName: "эрхлэгч",
+      jobCode: "1341-11",
+      suggestedRole: null,
+    },
+  ],
+};
+
 const detail = (admins: unknown[]) => ({
   id: KG_ID,
   name: "Дэгдээхий үрс цэцэрлэг",
@@ -88,72 +110,46 @@ describe("a kindergarten's administrators", () => {
     expect(within(section).getByText("Удирдлагагүй байна")).toBeInTheDocument();
   });
 
-  it("creates one through the platform route, with no password anywhere", async () => {
+  it("picks the person from the institution's own ESIS staff, never a typed name", async () => {
+    /*
+     * ★ The client's rule, 2026-09-19: "удирдлага нэмэх нь зөвхөн тэр тухайн
+     * байгууллага дахь ажилчдаас сонгоно". The operator types one thing — the
+     * login name, which ESIS does not have — and chooses the rest. The server
+     * re-reads the list and refuses a `personId` that is not on it; this
+     * asserts the browser sends the choice rather than a name somebody typed.
+     */
     setParams({ id: KG_ID });
     const { calls } = stubApi([
       { path: "/auth/me", body: operator() },
-      /*
-       * ★ The POST stub is listed **before** the detail one, and the detail
-       * one names its verb.
-       *
-       * `stubApi` matches with `startsWith` and treats a stub with no `method`
-       * as matching every verb — so `/platform/kindergartens/:id` swallows
-       * `/platform/kindergartens/:id/admins`, the mutation gets a
-       * kindergarten back where it expected an invitation, and the schema
-       * parse fails a long way from the cause.
-       */
       {
         path: `/platform/kindergartens/${KG_ID}/admins`,
         method: "POST",
         body: { user: neverSignedIn, invitationToken: "tok-1" },
       },
       { path: `/platform/kindergartens/${KG_ID}`, method: "GET", body: detail([signedIn]) },
+      { path: "/platform/esis/institutions/42778", body: INSTITUTION },
     ]);
     renderWithProviders(<PlatformKindergartenPage />, { selectedChild: false });
 
     await userEvent.click(await screen.findByRole("button", { name: "Удирдлага нэмэх" }));
-
     const dialog = within(await screen.findByRole("dialog", { name: "Удирдлага нэмэх" }));
-    await userEvent.type(dialog.getByLabelText(/^Овог/), "Дорж");
-    await userEvent.type(dialog.getByLabelText(/^Нэр \*/), "Сүрэн");
+
+    // No password field, and no name to type — only the login handle.
+    expect(dialog.queryByLabelText(/Нууц үг/)).not.toBeInTheDocument();
+    expect(dialog.queryByLabelText(/^Овог/)).not.toBeInTheDocument();
+
+    await userEvent.click(await dialog.findByRole("radio", { name: /Батсайхан Оюунаа/ }));
     await userEvent.type(dialog.getByLabelText(/^Нэвтрэх нэр/), "shineerhlegch");
     await userEvent.click(dialog.getByRole("button", { name: "Урилга үүсгэх" }));
 
     await waitFor(() => {
       const post = calls.find((call) => call.method === "POST");
       expect(post).toBeDefined();
-      // The platform prefix, not `/kindergartens/:id/users` — that route is
-      // `@Roles("ADMIN")` and answers an operator 404.
-      expect(post!.url).toContain(`/platform/kindergartens/${KG_ID}/admins`);
       const body = post!.body as Record<string, unknown>;
+      expect(body.esisPersonId).toBe("1000048746697");
       expect(body.username).toBe("shineerhlegch");
-      // An operator who typed a password for somebody else would know it.
       expect(body).not.toHaveProperty("password");
     });
-  });
-
-  it("hands the invitation over once, and never asks for a password", async () => {
-    setParams({ id: KG_ID });
-    stubApi([
-      { path: "/auth/me", body: operator() },
-      {
-        path: `/platform/kindergartens/${KG_ID}/admins`,
-        method: "POST",
-        body: { user: neverSignedIn, invitationToken: "tok-1" },
-      },
-      { path: `/platform/kindergartens/${KG_ID}`, method: "GET", body: detail([signedIn]) },
-    ]);
-    renderWithProviders(<PlatformKindergartenPage />, { selectedChild: false });
-
-    await userEvent.click(await screen.findByRole("button", { name: "Удирдлага нэмэх" }));
-    const dialog = within(await screen.findByRole("dialog", { name: "Удирдлага нэмэх" }));
-
-    expect(dialog.queryByLabelText(/Нууц үг/)).not.toBeInTheDocument();
-
-    await userEvent.type(dialog.getByLabelText(/^Овог/), "Дорж");
-    await userEvent.type(dialog.getByLabelText(/^Нэр \*/), "Сүрэн");
-    await userEvent.type(dialog.getByLabelText(/^Нэвтрэх нэр/), "shineerhlegch");
-    await userEvent.click(dialog.getByRole("button", { name: "Урилга үүсгэх" }));
 
     expect(await screen.findByRole("dialog", { name: /Урилга бэлэн/ })).toBeInTheDocument();
   });

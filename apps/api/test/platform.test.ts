@@ -568,6 +568,14 @@ describe("POST /platform/kindergartens/:id/admins", () => {
     ...overrides,
   });
 
+  /** Maps `b` to institution 42778, whose staff the mocked ESIS returns. */
+  async function mapB() {
+    await db.kindergarten.update({
+      where: { id: b.kindergarten.id },
+      data: { esisInstitutionId: INSTITUTION_ID, esisMappedAt: new Date() },
+    });
+  }
+
   it("adds a second director to a kindergarten that already exists", async () => {
     const body = adminBody();
 
@@ -659,6 +667,45 @@ describe("POST /platform/kindergartens/:id/admins", () => {
     expect(res.body.admins.every((row: { lastLoginAt: unknown }) => "lastLoginAt" in row)).toBe(
       true,
     );
+  });
+
+  /*
+   * ★ The rule the client set on 2026-09-19: "удирдлага нэмэх нь зөвхөн тэр
+   * тухайн байгууллага дахь ажилчдаас сонгоно". The three cases below are the
+   * whole of it — required when there is a list, verified against that list,
+   * and skipped entirely when there is none.
+   */
+  it("refuses a free-typed name on a kindergarten that is mapped to ESIS", async () => {
+    await mapB();
+    const body = adminBody();
+
+    const res = await authed(
+      request(app.getHttpServer()).post(`/v1/platform/kindergartens/${b.kindergarten.id}/admins`),
+      superadmin,
+    ).send(body);
+
+    expect(res.status).toBe(400);
+    expect(await db.user.findUnique({ where: { username: body.username } })).toBeNull();
+  });
+
+  it("takes the name from the ministry, not from the body", async () => {
+    await mapB();
+
+    const res = await authed(
+      request(app.getHttpServer()).post(`/v1/platform/kindergartens/${b.kindergarten.id}/admins`),
+      superadmin,
+    ).send(
+      adminBody({ esisPersonId: directorRow.personId, lastName: "Буруу", firstName: "Бичсэн" }),
+    );
+
+    expect(res.status).toBe(201);
+    /*
+     * The ministry's spelling is what staff self-registration matches a
+     * register number against later; two spellings of one person is how that
+     * match silently stops working.
+     */
+    expect(res.body.user.lastName).toBe(directorRow.lastName);
+    expect(res.body.user.firstName).toBe(directorRow.firstName);
   });
 });
 
