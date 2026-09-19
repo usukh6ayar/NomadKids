@@ -65,9 +65,22 @@ export class ProblemExceptionFilter implements ExceptionFilter {
          * names one as a string. Nothing else about the document changes, so
          * every error body that existed before this stays byte-identical —
          * `code` appears exactly on the throws that ask for it.
+         *
+         * ★★ And only when it *looks* like one of ours. `HttpException`
+         * accepts an arbitrary object and `createBody` keeps it verbatim, so
+         * `new BadRequestException(caughtPrismaError)` — a shape nobody has
+         * written yet and everybody is one hurried catch block away from —
+         * would put `code: "P2002"` in a browser, which is a database detail
+         * this filter exists to keep out. `CODE_SHAPE` rejects it, and rejects
+         * it specifically **because Prisma's codes carry digits**: that is the
+         * whole discriminator, so the pattern must stay digit-free to work.
+         * A future code that genuinely needs a digit is a deliberate widening
+         * of this line, not an accident — every code thrown today
+         * (`SCOPE_DENIED`, `TIMEOUT`, `NETWORK`) passes unchanged.
          */
-        if ("code" in body && typeof (body as { code: unknown }).code === "string") {
-          problem.code = (body as { code: string }).code;
+        const code = "code" in body ? (body as { code: unknown }).code : undefined;
+        if (typeof code === "string" && CODE_SHAPE.test(code)) {
+          problem.code = code;
         }
         if ("errors" in body) {
           const errors = (body as { errors: unknown }).errors;
@@ -87,6 +100,12 @@ export class ProblemExceptionFilter implements ExceptionFilter {
     response.status(status).type("application/problem+json").json(problem);
   }
 }
+
+/**
+ * What a `code` this API wrote looks like: SCREAMING_SNAKE, nothing else.
+ * Digit-free on purpose — see the note at the forwarding site.
+ */
+const CODE_SHAPE = /^[A-Z_]{3,40}$/;
 
 /**
  * User-facing, so Mongolian. Note that 404 says only "not found" — it must read
@@ -131,6 +150,21 @@ function titleFor(status: number): string {
       ★★ Deliberately not the same sentence as the thrown `detail` («ESIS
       хариу өгсөнгүй.»): a message equal to the title is dropped by the branch
       above, and the operator would lose the more specific half.
+
+      ★★★ **This is not only the institution lookup's status.** A `case` here
+      is retroactive: every 502 this API has ever answered gets the new title,
+      and there are eleven existing throws —
+      `attendance.service.ts` (lines 78, 834, 956, 959, 961, 1022, 1025, 1027)
+      and `esis-admin.service.ts` (1398, 1401, 1403). `ApiError.message` on the
+      web side is `problem.title` (`apps/web/lib/api/client.ts`), so their
+      message changes with it, from "Алдаа гарлаа" to this.
+
+      That is the intent — all eleven are "ESIS did not answer", which is
+      exactly what the new title says, and all eleven supply a `detail` that
+      the web layer prefers anyway. But it is a wider change than the one case
+      that prompted it, and the next reader should not have to grep to discover
+      that. Verified against `test/attendance-register.test.ts` and
+      `test/esis-admin.test.ts` on 2026-09-19: nothing asserts the old title.
     */
     case HttpStatus.BAD_GATEWAY:
       return "Гадаад системээс хариу ирсэнгүй";

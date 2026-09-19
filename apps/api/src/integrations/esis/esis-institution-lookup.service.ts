@@ -6,6 +6,8 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import type { EsisInstitutionLookup } from "@kinder/contracts";
+import type { Actor } from "../../authz/actor";
+import { PlatformAccessService } from "../../authz/platform-access.service";
 import { EsisError } from "./esis.client";
 import { EsisRepository } from "./esis.repository";
 import { EsisService } from "./esis.service";
@@ -23,15 +25,34 @@ import { normalizeRegisterNumber, roleForJobCode } from "./esis.roster";
  * `microsoftEmailPass` and `googleEmailPass` — real passwords — and naming the
  * seven fields that may leave cannot be got wrong the way removing the two
  * that may not can.
+ *
+ * ★★★ **`lookup` asserts for itself, even though `@SuperAdmin()` sits on
+ * `PlatformEsisInstitutionController`.** That decorator is a coarse filter in
+ * front of the decision, never the decision — its own docblock says so, and
+ * every sibling here does both (`EsisAdminService.overview`,
+ * `.updateMapping`). It is not redundant and must not be deleted as such:
+ * there is already a **second** caller with no controller of its own,
+ * `PlatformService.create`, which reaches this service to check an institution
+ * while registering a kindergarten. A guard on one route protects nothing the
+ * other route goes around. CLAUDE.md §1.1, docs/SECURITY.md §4.
  */
 @Injectable()
 export class EsisInstitutionLookupService {
   constructor(
     private readonly esis: EsisService,
     private readonly repo: EsisRepository,
+    private readonly platform: PlatformAccessService,
   ) {}
 
-  async lookup(institutionId: string): Promise<EsisInstitutionLookup> {
+  /**
+   * ★ `assertSuperAdmin` is the **first** statement, ahead of the
+   * `isConfigured` 503. A caller who may not ask must not learn whether this
+   * deployment has an ESIS token — the state of the deployment is an answer,
+   * and 404 has to come first for it to stay unreadable. CLAUDE.md §1.7.
+   */
+  async lookup(actor: Actor, institutionId: string): Promise<EsisInstitutionLookup> {
+    this.platform.assertSuperAdmin(actor);
+
     if (!this.esis.isConfigured) {
       throw new ServiceUnavailableException("ESIS холболт тохируулагдаагүй байна.");
     }

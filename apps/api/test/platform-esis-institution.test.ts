@@ -1,8 +1,11 @@
-import type { INestApplication } from "@nestjs/common";
+import { NotFoundException, type INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Actor } from "../src/authz/actor";
+import { AuthzRepository } from "../src/authz/authz.repository";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
 import { EsisError } from "../src/integrations/esis/esis.client";
+import { EsisInstitutionLookupService } from "../src/integrations/esis/esis-institution-lookup.service";
 import type { EsisService } from "../src/integrations/esis/esis.service";
 import { createTestApp } from "./support/app";
 import { resetData, uniq } from "./support/db";
@@ -169,6 +172,37 @@ describe("GET /platform/esis/institutions/:institutionId", () => {
     const body = JSON.stringify(res.body);
     expect(body).not.toContain("hunter2");
     expect(body).not.toContain("EmailPass");
+  });
+
+  /*
+   * ★ **The service refuses on its own, with the guard out of the picture.**
+   *
+   * Every case above goes through HTTP, which is §4.1's rule and is what proves
+   * the controller carries `@SuperAdmin()`. This one deliberately does the
+   * opposite: it takes the wired service out of the running application and
+   * calls it directly, the way a caller with no controller of its own does —
+   * `PlatformService.create` already is one. A decorator is a filter in front
+   * of the decision, never the decision (CLAUDE.md §1.1), and until the service
+   * asserted for itself this route's second caller would have walked straight
+   * past it.
+   *
+   * `read` un-called is the ordering half: it distinguishes an assert that runs
+   * first from one that runs after the ministry has already been asked.
+   */
+  it("refuses a non-operator when called as a service, past the guard", async () => {
+    const service = app.get(EsisInstitutionLookupService);
+    // The kindergarten admin's real memberships, as `resolveActor` would build
+    // them — only `isSuperAdmin` is what this route turns on.
+    const actor: Actor = {
+      userId: a.adminUser.id,
+      sessionId: "test-session",
+      isSuperAdmin: false,
+      memberships: await app.get(AuthzRepository).loadMemberships(a.adminUser.id),
+    };
+
+    expect(actor.memberships.length).toBeGreaterThan(0);
+    await expect(service.lookup(actor, institutionId)).rejects.toBeInstanceOf(NotFoundException);
+    expect(read).not.toHaveBeenCalled();
   });
 });
 

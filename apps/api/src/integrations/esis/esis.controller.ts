@@ -321,6 +321,11 @@ export class PlatformEsisController {
  * there is no `:id`. `@SuperAdmin()` throws `NotFoundException`, so everyone
  * else gets 404 and this route cannot become a way of asking which
  * institutions the platform's token can reach.
+ *
+ * ★★ The actor is passed through even so, because the service asserts for
+ * itself. `@SuperAdmin()` is a filter in front of the decision, not the
+ * decision — and this service already has a caller that never passes this
+ * controller (`PlatformService.create`).
  */
 @Controller("platform/esis/institutions")
 @SuperAdmin()
@@ -328,7 +333,10 @@ export class PlatformEsisInstitutionController {
   constructor(private readonly service: EsisInstitutionLookupService) {}
 
   @Get(":institutionId")
-  lookup(@Param(new ZodValidationPipe(esisInstitutionParamSchema)) params: EsisInstitutionParams) {
-    return this.service.lookup(params.institutionId);
+  lookup(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(esisInstitutionParamSchema)) params: EsisInstitutionParams,
+  ) {
+    return this.service.lookup(actor, params.institutionId);
   }
 }
