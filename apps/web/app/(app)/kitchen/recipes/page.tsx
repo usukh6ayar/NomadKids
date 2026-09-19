@@ -206,7 +206,6 @@ function Recipes() {
         title="Бэлэн бүтээгдэхүүн"
         description="ESIS-ийн хоол, бүтээгдэхүүний лавлах — мөр дээр дарж дэлгэрэнгүйг харна"
         autoRead
-        showResponseDetails
         detail={{
           resources: ["foodKit", "foodKitProducts"],
           param: { name: "productId", from: "productId" },
