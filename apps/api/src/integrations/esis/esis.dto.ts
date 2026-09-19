@@ -205,7 +205,6 @@ export const updateEsisMappingSchema = z.discriminatedUnion("mapped", [
   z.object({
     mapped: z.literal(true),
     institutionId: z.string().trim().min(1).max(64),
-    environment: z.enum(["TEST", "PRODUCTION"]),
   }),
 ]);
 export type UpdateEsisMappingDto = z.infer<typeof updateEsisMappingSchema>;

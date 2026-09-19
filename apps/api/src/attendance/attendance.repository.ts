@@ -666,7 +666,7 @@ export class AttendanceRepository {
   findEsisConnection(kindergartenId: string) {
     return this.prisma.kindergarten.findFirst({
       where: { id: kindergartenId, deletedAt: null },
-      select: { esisInstitutionId: true, esisEnvironment: true },
+      select: { esisInstitutionId: true },
     });
   }
 

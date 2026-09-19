@@ -152,7 +152,7 @@ beforeEach(async () => {
 function mapInstitution(kindergartenId: string) {
   return db.kindergarten.update({
     where: { id: kindergartenId },
-    data: { esisInstitutionId: institutionId, esisEnvironment: "TEST", esisMappedAt: new Date() },
+    data: { esisInstitutionId: institutionId, esisMappedAt: new Date() },
   });
 }
 

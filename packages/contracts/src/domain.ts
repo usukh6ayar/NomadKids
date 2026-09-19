@@ -3504,7 +3504,6 @@ export type PlatformKindergarten = z.infer<typeof platformKindergartenSchema>;
 export const platformKindergartenDetailSchema = platformKindergartenSchema.extend({
   description: z.string().nullish(),
   esisInstitutionId: z.string().nullish(),
-  esisEnvironment: z.enum(["TEST", "PRODUCTION"]).nullish(),
   esisMappedAt: z.string().nullish(),
   counts: z.object({
     children: z.number(),
@@ -3771,7 +3770,6 @@ export const esisOverviewSchema = z.object({
   connection: z.object({
     mapped: z.boolean(),
     institutionId: z.string().nullable(),
-    environment: z.enum(["TEST", "PRODUCTION"]).nullable(),
     mappedAt: z.string().nullable(),
     mappingMatchesDeployment: z.boolean(),
   }),

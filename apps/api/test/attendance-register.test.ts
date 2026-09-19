@@ -132,7 +132,6 @@ beforeEach(async () => {
      */
     data: {
       esisInstitutionId: String(40000 + Math.floor(Math.random() * 50000)),
-      esisEnvironment: "PRODUCTION",
     },
   });
 

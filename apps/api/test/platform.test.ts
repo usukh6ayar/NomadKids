@@ -241,7 +241,6 @@ describe("POST /platform/kindergartens — with an ESIS institution", () => {
       where: { id: res.body.kindergarten.id },
     });
     expect(kindergarten?.esisInstitutionId).toBe(INSTITUTION_ID);
-    expect(kindergarten?.esisEnvironment).toBe("PRODUCTION");
     expect(kindergarten?.esisMappedAt).toBeInstanceOf(Date);
 
     const roster = await db.esisStaffRoster.findMany({
@@ -298,7 +297,6 @@ describe("POST /platform/kindergartens — with an ESIS institution", () => {
       where: { id: b.kindergarten.id },
       data: {
         esisInstitutionId: INSTITUTION_ID,
-        esisEnvironment: "PRODUCTION",
         esisMappedAt: new Date(),
       },
     });
@@ -328,7 +326,6 @@ describe("POST /platform/kindergartens — with an ESIS institution", () => {
       where: { id: b.kindergarten.id },
       data: {
         esisInstitutionId: INSTITUTION_ID,
-        esisEnvironment: "PRODUCTION",
         esisMappedAt: new Date(),
         deletedAt: new Date(),
       },
@@ -416,7 +413,6 @@ describe("POST /platform/kindergartens — with an ESIS institution", () => {
       where: { id: res.body.kindergarten.id },
     });
     expect(kindergarten?.esisInstitutionId).toBeNull();
-    expect(kindergarten?.esisEnvironment).toBeNull();
     expect(kindergarten?.esisMappedAt).toBeNull();
     expect(
       await db.esisStaffRoster.count({ where: { kindergartenId: res.body.kindergarten.id } }),

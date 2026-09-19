@@ -168,7 +168,6 @@ export class EsisAdminService {
       connection: {
         mapped,
         institutionId: kindergarten.esisInstitutionId,
-        environment: kindergarten.esisEnvironment,
         mappedAt: kindergarten.esisMappedAt,
         mappingMatchesDeployment,
       },
@@ -181,8 +180,20 @@ export class EsisAdminService {
           status: deployment.configured && mapped ? ("READY" as const) : ("WAITING" as const),
         },
         {
+          /*
+           * ★ Renamed 2026-09-19, from "Test орчны шалгалт".
+           *
+           * The old name described a step that does not exist: the client
+           * confirmed the ministry runs no ESIS test environment, which is why
+           * the TEST/PRODUCTION column was dropped the same day. The stage
+           * itself is real and reachable — `hasSuccessfulPreview` is "a sync
+           * run has succeeded against the live hub", which is what an operator
+           * needs to know and has nothing to do with a test environment. It
+           * read WAITING on production only because no run had been made yet,
+           * not because it was waiting for something unobtainable.
+           */
           code: "C4",
-          label: "Test орчны шалгалт",
+          label: "Амьд татаж шалгасан",
           status: hasSuccessfulPreview ? ("READY" as const) : ("WAITING" as const),
         },
         {
@@ -521,10 +532,9 @@ export class EsisAdminService {
         dto.mapped
           ? {
               esisInstitutionId: dto.institutionId,
-              esisEnvironment: dto.environment,
               esisMappedAt: new Date(),
             }
-          : { esisInstitutionId: null, esisEnvironment: null, esisMappedAt: null },
+          : { esisInstitutionId: null, esisMappedAt: null },
       );
 
       await this.audit.append({
@@ -535,8 +545,7 @@ export class EsisAdminService {
         objectId: kindergartenId,
         metadata: {
           mapped: dto.mapped,
-          environment: dto.mapped ? dto.environment : null,
-          fields: ["esisInstitutionId", "esisEnvironment"],
+          fields: ["esisInstitutionId"],
         },
       });
       return updated;

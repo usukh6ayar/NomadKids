@@ -70,11 +70,6 @@ enum AuthTokenPurpose {
   INVITATION
 }
 
-enum EsisEnvironment {
-  TEST
-  PRODUCTION
-}
-
 enum EsisSyncStatus {
   RUNNING
   SUCCEEDED
@@ -593,7 +588,6 @@ model Kindergarten {
   /// institution id, preventing one tenant from reading another tenant's
   /// roster through a shared integration token.
   esisInstitutionId String?          @unique
-  esisEnvironment   EsisEnvironment?
   esisMappedAt      DateTime?
 
   /// The code a director gives their staff so they can register themselves.

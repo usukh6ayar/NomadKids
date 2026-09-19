@@ -250,7 +250,6 @@ async function main(): Promise<void> {
           .filter(Boolean)
           .join(" · ") || null,
       esisInstitutionId: institutionId,
-      esisEnvironment: "PRODUCTION",
       esisMappedAt: new Date(),
     },
   });

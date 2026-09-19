@@ -200,7 +200,7 @@ export class PlatformService {
         metadata: {
           mapped: true,
           environment: "PRODUCTION",
-          fields: ["esisInstitutionId", "esisEnvironment"],
+          fields: ["esisInstitutionId"],
           rosterCount: institution.staff.length,
           adminFromRoster: Boolean(chosen),
         },

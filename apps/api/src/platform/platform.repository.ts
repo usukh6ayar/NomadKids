@@ -41,13 +41,13 @@ export class PlatformRepository {
            * institution id with no `esisMappedAt` is a mapping nobody can date,
            * and the ESIS screens read the three as one fact.
            *
-           * ★★ `esisEnvironment` is a literal, not a choice. The client
-           * confirmed there is no ESIS test environment — everything runs
-           * against the real one — and the TEST/PRODUCTION column is on its way
-           * out. Nothing here derives it, offers it or accepts it from a body.
+           * ★★ There is no environment to record. The client confirmed on
+           * 2026-09-19 that the ministry runs no ESIS test environment —
+           * everything goes to the production hub — so the TEST/PRODUCTION
+           * column was dropped in `20260919150000_drop_esis_environment`
+           * rather than written with a constant.
            */
           esisInstitutionId: input.esis?.institutionId ?? null,
-          esisEnvironment: input.esis ? "PRODUCTION" : null,
           esisMappedAt: input.esis ? new Date() : null,
         },
       });

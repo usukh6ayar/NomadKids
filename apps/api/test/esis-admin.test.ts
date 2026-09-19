@@ -66,7 +66,7 @@ const mapInstitution = (kindergartenId: string, session: AuthSession) =>
   authed(
     request(server()).put(`/v1/platform/kindergartens/${kindergartenId}/esis/mapping`),
     session,
-  ).send({ mapped: true, institutionId, environment: "TEST" });
+  ).send({ mapped: true, institutionId });
 
 let app: INestApplication;
 let a: Scenario;
@@ -198,7 +198,7 @@ describe("ESIS administration authorization", () => {
   });
 
   it("allows only the platform operator to map an institution", async () => {
-    const body = { mapped: true, institutionId, environment: "TEST" };
+    const body = { mapped: true, institutionId };
     const denied = await authed(
       request(server()).put(`/v1/platform/kindergartens/${a.kindergarten.id}/esis/mapping`),
       adminA,
@@ -252,7 +252,7 @@ describe("read-only preview", () => {
     await authed(
       request(server()).put(`/v1/platform/kindergartens/${a.kindergarten.id}/esis/mapping`),
       superAdmin,
-    ).send({ mapped: true, institutionId, environment: "TEST" });
+    ).send({ mapped: true, institutionId });
 
     const beforeChildren = await db.child.count({ where: { kindergartenId: a.kindergarten.id } });
     const res = await authed(
@@ -1276,7 +1276,7 @@ describe("POST /kindergartens/:id/esis/write", () => {
      */
     await testDb().kindergarten.update({
       where: { id: a.kindergarten.id },
-      data: { esisInstitutionId: "42778", esisEnvironment: "PRODUCTION", esisMappedAt: new Date() },
+      data: { esisInstitutionId: "42778", esisMappedAt: new Date() },
     });
 
     const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
