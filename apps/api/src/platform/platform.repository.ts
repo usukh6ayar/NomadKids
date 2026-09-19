@@ -36,8 +36,60 @@ export class PlatformRepository {
           phone: input.kindergarten.phone ?? null,
           email: input.kindergarten.email ?? null,
           description: input.kindergarten.description ?? null,
+          /*
+           * ★ All three together or none of them. A kindergarten holding an
+           * institution id with no `esisMappedAt` is a mapping nobody can date,
+           * and the ESIS screens read the three as one fact.
+           *
+           * ★★ `esisEnvironment` is a literal, not a choice. The client
+           * confirmed there is no ESIS test environment — everything runs
+           * against the real one — and the TEST/PRODUCTION column is on its way
+           * out. Nothing here derives it, offers it or accepts it from a body.
+           */
+          esisInstitutionId: input.esis?.institutionId ?? null,
+          esisEnvironment: input.esis ? "PRODUCTION" : null,
+          esisMappedAt: input.esis ? new Date() : null,
         },
       });
+
+      /*
+       * The roster the ministry already answered with, kept so that
+       * self-registration has something to match a register number against on
+       * day one rather than after the first refresh.
+       */
+      if (input.esis && input.esis.staff.length > 0) {
+        await tx.esisStaffRoster.createMany({
+          data: input.esis.staff.map((person) => ({
+            kindergartenId: kindergarten.id,
+            esisPersonId: person.personId,
+            registerNumber: person.registerNumber,
+            lastName: person.lastName,
+            firstName: person.firstName,
+            jobCode: person.jobCode,
+            positionName: person.positionName,
+            /*
+             * ★ `isInstructor` is left at its default `false` on purpose.
+             *
+             * It records whether `teacher/list` **also** returned this person,
+             * and the institution lookup does not read `teacher/list` at all —
+             * so the fact is unknown here, not false. The next roster refresh
+             * reads both lists and fills it in.
+             *
+             * It is deliberately NOT derived from `suggestedRole`: "their job
+             * code looks like a teacher's" is a different fact wearing the same
+             * name, and writing it here would make the two lists' disagreement
+             * — the only reason this column exists — unmeasurable.
+             */
+          })),
+          /*
+           * ★ ESIS's staff lists are known to repeat a person, and the table
+           * carries two unique indexes. A duplicate row must not roll the whole
+           * kindergarten back: the operator would see "this username is taken"
+           * for a request whose username was fine.
+           */
+          skipDuplicates: true,
+        });
+      }
 
       const admin = await tx.user.create({
         data: {
@@ -163,6 +215,21 @@ export interface CreateWithAdminInput {
     invitationTokenHash: string;
     invitationExpiresAt: Date;
   };
+  /**
+   * The institution this kindergarten is created mapped to, and the staff the
+   * ministry listed for it. Absent for a deployment with no ESIS presence.
+   */
+  esis?: {
+    institutionId: string;
+    staff: {
+      personId: string;
+      registerNumber: string;
+      lastName: string;
+      firstName: string;
+      jobCode: string | null;
+      positionName: string | null;
+    }[];
+  } | null;
 }
 
 export interface KindergartenFilters {

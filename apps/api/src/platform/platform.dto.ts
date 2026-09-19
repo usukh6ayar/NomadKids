@@ -12,14 +12,34 @@ import { searchTermSchema } from "../common/repository/search";
  */
 const firstAdminSchema = createUserSchema.omit({ role: true });
 
-export const createKindergartenSchema = z.object({
-  name: z.string().min(1, "Цэцэрлэгийн нэрийг оруулна уу").max(200),
-  address: z.string().max(500).nullable().optional(),
-  phone: z.string().max(20).nullable().optional(),
-  email: z.string().email().max(254).nullable().optional(),
-  description: z.string().max(2000).nullable().optional(),
-  admin: firstAdminSchema,
-});
+export const createKindergartenSchema = z
+  .object({
+    name: z.string().min(1, "Цэцэрлэгийн нэрийг оруулна уу").max(200),
+    address: z.string().max(500).nullable().optional(),
+    phone: z.string().max(20).nullable().optional(),
+    email: z.string().email().max(254).nullable().optional(),
+    description: z.string().max(2000).nullable().optional(),
+    admin: firstAdminSchema,
+    /**
+     * ★ Optional, deliberately. A deployment with no ESIS presence must still be
+     * able to create a kindergarten, and leaving this blank is exactly today's
+     * behaviour.
+     */
+    esisInstitutionId: z.string().trim().min(1).max(64).optional(),
+    /** Which staff row becomes the Захирал/Эрхлэгч. Requires the id above. */
+    adminEsisPersonId: z.string().trim().min(1).max(64).optional(),
+  })
+  /*
+   * ★ A person without the institution they belong to is not a request this
+   * service can answer — the staff list only exists once an institution has
+   * been named. Rejected here rather than in the service, so it is a 400 about
+   * a malformed body and not a 409 about the state of the world, and so ESIS is
+   * never asked on its behalf.
+   */
+  .refine((body) => !body.adminEsisPersonId || Boolean(body.esisInstitutionId), {
+    message: "Ажилтныг сонгохын өмнө ESIS байгууллагын кодыг оруулна уу",
+    path: ["adminEsisPersonId"],
+  });
 export type CreateKindergartenDto = z.infer<typeof createKindergartenSchema>;
 
 export const listPlatformKindergartensQuerySchema = paginationQuerySchema.extend({
