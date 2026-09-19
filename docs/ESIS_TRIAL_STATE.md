@@ -56,7 +56,6 @@ ESIS_INSTITUTION_ID=42778 pnpm exec tsx scripts/esis-probe.ts
 ### Spec №1 — дамжуулах схем ба регистрийн дугаар
 
 `docs/superpowers/specs/2026-09-15-esis-full-coverage-design.md` §3, §4
-`docs/superpowers/plans/2026-09-15-esis-passthrough-and-register-numbers.md`
 
 - **Гараар бичсэн схем одоо онцгой тохиолдол.** TypeScript код талбарын нэрийг
   нь уншдаг **долоон** уншигчид л үлдсэн; бусад нь `esisDiscoveredSchema`-аар
@@ -71,8 +70,6 @@ ESIS_INSTITUTION_ID=42778 pnpm exec tsx scripts/esis-probe.ts
 
 ### Spec №2 — ажилтны өөрөө бүртгүүлэх
 
-`docs/superpowers/plans/2026-09-16-esis-staff-self-registration.md`
-
 Багш **цэцэрлэгийн код + РД**-гээр өөрөө бүртгүүлнэ. Захирал батлахгүй, хянана.
 
 - Маршрут нь **нэвтрээгүй хүнд нээлттэй** тул ЭСИС рүү **хэзээ ч хандахгүй** —
@@ -84,8 +81,6 @@ ESIS_INSTITUTION_ID=42778 pnpm exec tsx scripts/esis-probe.ts
   `5153` (жижүүр) ба `1341` (эрхлэгч) **зориудаар** үүрэг өгөхгүй.
 
 ### Spec №3а — sync давхаргууд (унших тал)
-
-`docs/superpowers/plans/2026-09-16-esis-sync-tiers.md`
 
 | Давхарга | Юу                                 | Хэзээ                                                      |
 | -------- | ---------------------------------- | ---------------------------------------------------------- |
@@ -107,7 +102,6 @@ ESIS_INSTITUTION_ID=42778 pnpm exec tsx scripts/esis-probe.ts
 ### Spec №3б — бүлгийн бичих гурав, амьдаар батлагдсан
 
 `docs/superpowers/specs/2026-09-18-esis-group-writes-design.md`
-`docs/superpowers/plans/2026-09-18-esis-group-writes.md`
 Амьд хэмжилтүүд: `ESIS_API_READINESS.md` §1.1.9
 
 **Долоо биш гурав.** 129/131 нь орлогын тайлан бүрдүүлдэг зүйл байхгүйгээс,

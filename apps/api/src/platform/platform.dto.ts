@@ -54,3 +54,15 @@ export const listPlatformKindergartensQuerySchema = paginationQuerySchema.extend
   isActive: z.stringbool().optional(),
 });
 export type ListPlatformKindergartensQuery = z.infer<typeof listPlatformKindergartensQuerySchema>;
+
+/**
+ * `DELETE /platform/kindergartens/:id`.
+ *
+ * ★ A body on a DELETE, which is unusual, and the reason is the point: the
+ * operator types the kindergarten's name back. See `PlatformService.remove`
+ * for why a confirmation dialog was not judged enough.
+ */
+export const deleteKindergartenSchema = z.object({
+  confirmName: z.string().trim().min(1, "Цэцэрлэгийн нэрийг бичнэ үү").max(200),
+});
+export type DeleteKindergartenDto = z.infer<typeof deleteKindergartenSchema>;

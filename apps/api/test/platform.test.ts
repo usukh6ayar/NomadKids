@@ -87,6 +87,8 @@ let a: Scenario;
 let b: Scenario;
 let superadmin: AuthSession;
 let adminA: AuthSession;
+/** Kindergarten b's own director — the person a deletion must lock out. */
+let adminB: AuthSession;
 let teacherA: AuthSession;
 let parentA: AuthSession;
 
@@ -133,6 +135,7 @@ beforeEach(async () => {
   const operator = await createUser({ username: uniq("super"), isSuperAdmin: true });
   superadmin = await login(app, operator.username);
   adminA = await login(app, a.adminUser.username);
+  adminB = await login(app, b.adminUser.username);
   teacherA = await login(app, a.teacherUser.username);
   parentA = await login(app, a.parentUser.username);
 });
@@ -552,6 +555,125 @@ describe("PATCH /platform/kindergartens/:id", () => {
 
     const row = await db.kindergarten.findUnique({ where: { id: a.kindergarten.id } });
     expect(row?.name).toBe(a.kindergarten.name);
+  });
+});
+
+describe("DELETE /platform/kindergartens/:id", () => {
+  it("retires the kindergarten and closes every membership in it", async () => {
+    const before = await db.membership.count({
+      where: { kindergartenId: b.kindergarten.id, deletedAt: null },
+    });
+    expect(before).toBeGreaterThan(0);
+
+    const res = await authed(
+      request(app.getHttpServer()).delete(`/v1/platform/kindergartens/${b.kindergarten.id}`),
+      superadmin,
+    ).send({ confirmName: b.kindergarten.name });
+
+    expect(res.status).toBe(200);
+    expect(res.body.closedMemberships).toBe(before);
+
+    const row = await db.kindergarten.findUnique({ where: { id: b.kindergarten.id } });
+    // Soft, not hard — §3.2. The row is still there and its children with it.
+    expect(row).not.toBeNull();
+    expect(row?.deletedAt).not.toBeNull();
+    expect(row?.isActive).toBe(false);
+    // The mapping is released so the institution can be registered again.
+    expect(row?.esisInstitutionId).toBeNull();
+
+    const live = await db.membership.count({
+      where: { kindergartenId: b.kindergarten.id, deletedAt: null },
+    });
+    expect(live).toBe(0);
+  });
+
+  it("leaves the children in place", async () => {
+    const before = await db.child.count({
+      where: { kindergartenId: b.kindergarten.id, deletedAt: null },
+    });
+
+    await authed(
+      request(app.getHttpServer()).delete(`/v1/platform/kindergartens/${b.kindergarten.id}`),
+      superadmin,
+    ).send({ confirmName: b.kindergarten.name });
+
+    const after = await db.child.count({
+      where: { kindergartenId: b.kindergarten.id, deletedAt: null },
+    });
+    expect(after).toBe(before);
+  });
+
+  it("drops it from the operator's list", async () => {
+    await authed(
+      request(app.getHttpServer()).delete(`/v1/platform/kindergartens/${b.kindergarten.id}`),
+      superadmin,
+    ).send({ confirmName: b.kindergarten.name });
+
+    const res = await authed(
+      request(app.getHttpServer()).get("/v1/platform/kindergartens?page=1&pageSize=50"),
+      superadmin,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.items.map((item: { id: string }) => item.id)).not.toContain(b.kindergarten.id);
+  });
+
+  it("refuses a name that does not match, and changes nothing", async () => {
+    const res = await authed(
+      request(app.getHttpServer()).delete(`/v1/platform/kindergartens/${b.kindergarten.id}`),
+      superadmin,
+    ).send({ confirmName: "өөр нэр" });
+
+    expect(res.status).toBe(400);
+
+    const row = await db.kindergarten.findUnique({ where: { id: b.kindergarten.id } });
+    expect(row?.deletedAt).toBeNull();
+  });
+
+  it("locks the director out afterwards", async () => {
+    await authed(
+      request(app.getHttpServer()).delete(`/v1/platform/kindergartens/${b.kindergarten.id}`),
+      superadmin,
+    ).send({ confirmName: b.kindergarten.name });
+
+    /*
+     * ★ The point of closing the memberships rather than only the tenant row.
+     * Roles are re-read from `Membership` on every request (§1.3), so a
+     * director whose membership is closed reaches nothing in the tenant —
+     * with their existing cookie, without having to sign in again.
+     */
+    const res = await authed(
+      request(app.getHttpServer()).get(`/v1/kindergartens/${b.kindergarten.id}/children`),
+      adminB,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses a kindergarten admin with 404", async () => {
+    const res = await authed(
+      request(app.getHttpServer()).delete(`/v1/platform/kindergartens/${a.kindergarten.id}`),
+      adminA,
+    ).send({ confirmName: a.kindergarten.name });
+
+    expect(res.status).toBe(404);
+
+    const row = await db.kindergarten.findUnique({ where: { id: a.kindergarten.id } });
+    expect(row?.deletedAt).toBeNull();
+  });
+
+  it("writes one DELETE audit row carrying the prior state", async () => {
+    await authed(
+      request(app.getHttpServer()).delete(`/v1/platform/kindergartens/${b.kindergarten.id}`),
+      superadmin,
+    ).send({ confirmName: b.kindergarten.name });
+
+    const rows = await db.auditLog.findMany({
+      where: { objectType: "Kindergarten", objectId: b.kindergarten.id, action: "DELETE" },
+    });
+
+    expect(rows).toHaveLength(1);
+    const metadata = rows[0]!.metadata as { before?: { name?: string } };
+    expect(metadata.before?.name).toBe(b.kindergarten.name);
   });
 });
 

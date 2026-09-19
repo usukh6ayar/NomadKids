@@ -25,6 +25,7 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
 import { Art } from "@/components/ui/art";
+import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
 const listSchema = paginated(adminUserSchema);
 
@@ -276,11 +277,14 @@ function InviteUserDialog({
 
   const errors = fieldErrors(invite.error);
 
+  const backdrop = useBackdropDismiss(onClose);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Хэрэглэгч нэмэх"
+      {...backdrop}
       className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
     >
       <div className="w-full max-w-[480px] rounded-card border border-border bg-surface p-5">

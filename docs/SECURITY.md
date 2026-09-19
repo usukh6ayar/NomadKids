@@ -1,10 +1,16 @@
 # SECURITY.md — security design
 
-**Stack:** Next.js (Vercel) ↔ NestJS (Railway/Fly) ↔ PostgreSQL ↔ Cloudflare R2
-**Production:** `https://nomadkids.mn` (web) · `https://api.nomadkids.mn` (API)
+**Stack:** Next.js ↔ NestJS ↔ PostgreSQL ↔ MinIO, all on one Datacom VPS
+**Production:** `https://nomadkids.mn` (web) · `https://api.nomadkids.mn` (API) ·
+`https://media.nomadkids.mn` (objects) — `docs/VPS_DEPLOYMENT.md`
+
+★ This line named Vercel, Railway and Cloudflare R2 until 2026-09-19. The
+cutover happened on 2026-09-10 and it matters here rather than only in the
+deployment docs: §14.1's D13 (data may sit in foreign cloud infrastructure) no
+longer applies — every object is now on a disk in Mongolia.
 **Status:** built. Authentication (`apps/api/src/auth/`), the authorization
 module (`apps/api/src/authz/`), the media path and the audit trail all ship —
-phases 3 and 12 in `IMPLEMENTATION_STATUS.md`. This file remains the design
+evidence in `PHASE_1_ACCEPTANCE.md`. This file remains the design
 those were built to: where a section and the code disagree, one of the two is a
 bug, and neither is allowed to stay wrong.
 
@@ -17,8 +23,15 @@ has now corrected three times, for the same reason.
 
 **Where this file is still design rather than record, it says so in place.** In
 particular §6's 108 acceptance cases are the integration suite's specification,
-not a claim that 108 of them pass; `IMPLEMENTATION_STATUS.md` is the record of
-what was actually run, and it is the one to trust on coverage.
+not a claim that 108 of them pass. **No document tracks the matrix case by
+case.** `PHASE_1_ACCEPTANCE.md` records what was actually run — 690 tests plus
+151 live probes, each item carrying its evidence — and `PHASE_3_BUILD.md`
+continues it through Phases II–III; neither maps its results back onto these 108. Treat §6 as the specification it is, and the suite itself as the answer to
+"does this case pass".
+
+★ They replaced a pointer to `IMPLEMENTATION_STATUS.md`, deleted 2026-09-19: it
+was an August progress tracker that `PHASE_3_BUILD.md` had already caught
+contradicting itself, and a stale record is worse here than none.
 
 The reference Django system passes RFP §21 today. Its 108 named authorization
 tests are reproduced here as an acceptance matrix (§6) — they are the
@@ -119,10 +132,11 @@ response and takes the same time as a known one.
 
 **Confirmed production origins (D1 + D13, 2026-08-19):**
 
-| Role | Origin                     | Hosted on   |
-| ---- | -------------------------- | ----------- |
-| Web  | `https://nomadkids.mn`     | Vercel      |
-| API  | `https://api.nomadkids.mn` | Railway/Fly |
+| Role  | Origin                       | Hosted on                 |
+| ----- | ---------------------------- | ------------------------- |
+| Web   | `https://nomadkids.mn`       | Datacom VPS, behind Caddy |
+| API   | `https://api.nomadkids.mn`   | Datacom VPS, behind Caddy |
+| Media | `https://media.nomadkids.mn` | Datacom VPS, MinIO        |
 
 Two different **origins**, but one registrable domain — `nomadkids.mn` — and
 therefore **same-site**. That single fact is what keeps the browser's own CSRF
@@ -224,8 +238,7 @@ Two layers:
    host-only on `api.nomadkids.mn` (§3.1) and cookies scope by **domain**, not
    by site, so a page on `nomadkids.mn` cannot read it even though the browser
    attaches it to every request going to the API. Reading it from the cookie is
-   what the client used to do, and it 403'd every write; corrected 2026-08-20,
-   see `IMPLEMENTATION_STATUS.md`.
+   what the client used to do, and it 403'd every write; corrected 2026-08-20.
 
    The browser still supplies the cookie half by itself, which is what makes it
    a double submit: an attacker's page can cause the cookie to be sent but
@@ -810,11 +823,18 @@ authentication failures of §2.
 This system holds identifiable data about **children**: names, national ids,
 dates of birth, health notes, photographs, and developmental assessments.
 
-### 14.1 Data residency — D13, ✅ APPROVED 2026-08-19
+### 14.1 Data residency — D13, ✅ APPROVED 2026-08-19, then **moot from 2026-09-10**
 
-**The client has approved storing this application's data in cloud
-infrastructure outside Mongolia.** Vercel, Railway/Fly and Cloudflare R2 are
-therefore confirmed, and the production domain is `nomadkids.mn`.
+★★ **The approval was never exercised.** The client approved storing this
+application's data in cloud infrastructure outside Mongolia on 2026-08-19 —
+Vercel, Railway/Fly and Cloudflare R2. The 2026-08-31 platform decision and the
+2026-09-10 cutover put every service on one Datacom VPS in Mongolia instead, so
+**no child's data has ever left the country**. The section is kept rather than
+deleted because the approval is a contractual fact and the reasoning below
+outlived the platform; read it as history plus a standing obligation, not as a
+description of where the data is.
+
+What the approval said at the time:
 
 The question was put to them explicitly rather than settled by an infrastructure
 default, because "where does children's personal data live" is a contractual
@@ -887,7 +907,7 @@ Settled 2026-08-19.
 | D10     | Uploads through the API, not presigned PUT       | **Approved** (§7.3)                                                                                                               |
 | D11     | Postgres RLS                                     | **Phase 2.** Phase 1 relies on the repository layer, centralised authz, tenant filtering, HTTP tests and the ESLint boundary (§8) |
 | D12     | Row-level history (`django-simple-history`)      | **Not migrated.** `AuditLog` is sufficient for Phase 1                                                                            |
-| **D13** | **Data residency outside Mongolia**              | ✅ **APPROVED by the client**, 2026-08-19. Production domain `nomadkids.mn` (§14.1)                                               |
+| **D13** | **Data residency outside Mongolia**              | ✅ **APPROVED** 2026-08-19 — and **not used**: since the 2026-09-10 cutover everything runs on a VPS in Mongolia (§14.1)          |
 
 Schema decisions D3–D7 and D9 are recorded in
 [DATABASE.md](DATABASE.md) §14.

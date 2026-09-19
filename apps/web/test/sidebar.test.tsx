@@ -142,11 +142,22 @@ describe("the brand header", () => {
     expect(within(nav).getByText(BRAND_LATIN)).toBeInTheDocument();
   });
 
-  it("links the brand home", async () => {
+  it("links the brand at this workspace's own home, not the root", async () => {
+    /*
+     * ★ It pointed at `/` until 2026-09-19, and `/` renders the public landing
+     * page while `/auth/me` is in flight — so a signed-in teacher pressing
+     * their own logo saw a flash of the login card before the redirect moved
+     * them on. Reported as "glitch хийгээд байна".
+     *
+     * `app/page.tsx` is right to render the landing page there (a spinner at
+     * the root is what kept it out of Google's index), so the fix is here: a
+     * signed-in person means "take me home", and home is the first entry of
+     * their own menu — a route they can definitely open.
+     */
     renderShell(["TEACHER"]);
     const nav = await sidebar();
 
-    expect(within(nav).getByAltText(BRAND).closest("a")).toHaveAttribute("href", "/");
+    expect(within(nav).getByAltText(BRAND).closest("a")).toHaveAttribute("href", "/dashboard");
   });
 });
 

@@ -17,7 +17,9 @@ import {
 import {
   createContext,
   isValidElement,
+  useContext,
   useId,
+  useMemo,
   useState,
   type FormEvent,
   type MouseEvent,
@@ -46,6 +48,12 @@ import { useMyGroup } from "@/components/dashboard/use-my-group";
 import { ChildAvatar } from "@/components/media/media-image";
 import { ChatWidget } from "@/components/chat/chat-widget";
 import { BackButton } from "@/components/ui/back-button";
+import {
+  SidebarEdge,
+  SidebarPrefsProvider,
+  sidebarVars,
+  useSidebarPrefs,
+} from "@/components/shell/sidebar-prefs";
 
 /** The bell panel reads five rows; the feed reads fifteen and paginates. */
 const bellListSchema = paginated(notificationSchema);
@@ -135,6 +143,110 @@ export interface ChildSwitcher {
 
 const WorkspaceThemeContext = createContext<WorkspaceTheme | null>(null);
 
+/**
+ * Every destination this workspace's menu names.
+ *
+ * ★ It exists so `PageHeader` can draw Буцах without every screen having to
+ * pass `backHref`. **26 of the 103 pages did**, counted 2026-09-19; the other
+ * seventy-seven left the reader on a screen whose only exit was the menu —
+ * which on a phone is behind a tab. The 26 keep their explicit value, which
+ * still wins: an ancestor in the menu is a good guess and a screen that knows
+ * its real parent is better than a guess.
+ *
+ * ★★ The set is what makes the fallback safe. `BackButton` prefers real
+ * history and only follows its `href` on a page opened cold (a pasted link, a
+ * new tab, a refresh), so that href has to be a route that exists. Stripping
+ * one segment off the path does not give one: `/children/:id/general`'s parent
+ * is `/children/:id`, and there is no page there. Walking up to the nearest
+ * href the menu itself names always does, because the menu is built from real
+ * routes.
+ */
+const NavHrefsContext = createContext<readonly string[]>([]);
+
+/**
+ * Where Буцах goes on this screen, or `null` for a screen it does not belong on.
+ *
+ * Top-level destinations — anything the menu links to directly — get no button:
+ * "back" from the dashboard is not a thing a person means.
+ */
+function useAutoBackHref(explicit?: string): string | null {
+  const hrefs = useContext(NavHrefsContext);
+  const pathname = usePathname();
+
+  if (explicit) return explicit;
+  if (!pathname || hrefs.length === 0) return null;
+  if (hrefs.includes(pathname)) return null;
+
+  const segments = pathname.split("/").filter(Boolean);
+  for (let depth = segments.length - 1; depth > 0; depth -= 1) {
+    const candidate = `/${segments.slice(0, depth).join("/")}`;
+    if (hrefs.includes(candidate)) return candidate;
+  }
+
+  /*
+   * ★ A genuine last resort, and rarely reached — the walk above finds
+   * something for every route measured so far, including a guardian's
+   * four-level-deep portfolio pages, whose menu names `/children`. What lands
+   * here is a workspace whose menu happens to name nothing above the current
+   * page at all.
+   *
+   * The workspace's first destination — `/home` for a parent, `/dashboard`
+   * for staff — is then the one route every member of that role can certainly
+   * open. `BackButton`'s docblock names "a parent ending up on the home
+   * screen" as the failure it was written to fix, and this is not that: that
+   * was a button *labelled with a destination* which always navigated there.
+   * This one prefers real history — `useGoBack` follows the href only when
+   * the page was opened cold, with nothing behind it — and is labelled Буцах
+   * rather than naming where it lands. On a pasted link there is no honest
+   * answer better than home, and no button at all would leave the reader on a
+   * screen with no way out.
+   */
+  return hrefs[0] ?? null;
+}
+
+/**
+ * Where the masthead goes — this workspace's own first screen, never `/`.
+ *
+ * ★ The logo linked to `/` from both the rail and the phone header, and `/`
+ * renders `PublicLanding` while `/auth/me` is in flight. A signed-in director
+ * clicking their own logo therefore got a flash of the marketing page with a
+ * login card in it before the redirect moved them on — reported 2026-09-19 as
+ * "glitch хийгээд байна", and it is not a glitch but the root doing exactly
+ * what `app/page.tsx` documents: showing the landing page to everybody,
+ * because rendering a spinner instead is what kept the root out of Google's
+ * index.
+ *
+ * The fix belongs here rather than there. A signed-in person pressing the logo
+ * means "take me home", and home is a known route for them — the first entry
+ * of their own menu — so there is no reason to go via a page that has to work
+ * out who they are all over again.
+ */
+function useHomeHref(): string {
+  const hrefs = useContext(NavHrefsContext);
+  return hrefs[0] ?? "/";
+}
+
+/**
+ * The element the shell's two layout variables live on.
+ *
+ * Split out of `AppShell` because they are read from `SidebarPrefsProvider`,
+ * and a component cannot consume the context it renders.
+ */
+function ShellSurface({ theme, children }: { theme: WorkspaceTheme | null; children: ReactNode }) {
+  const { width, collapsed } = useSidebarPrefs();
+
+  return (
+    <div
+      className="min-h-dvh bg-canvas"
+      data-app-theme={theme ?? undefined}
+      data-sidebar={collapsed ? "collapsed" : "expanded"}
+      style={sidebarVars({ width, collapsed })}
+    >
+      {children}
+    </div>
+  );
+}
+
 function navIconTone(label: string) {
   const normalized = label.toLocaleLowerCase("mn-MN");
   if (normalized.includes("ирц") || normalized.includes("хүүхд")) {
@@ -188,8 +300,17 @@ export function PageHeader({
   backHref,
 }: {
   title: string;
-  /** Keeps the back control on the title row; it is never a row of its own. */
-  backHref?: string;
+  /**
+   * Where Буцах goes when this page was opened cold.
+   *
+   * ★ Optional, and most screens should now leave it out — `useAutoBackHref`
+   * derives it from the menu. Pass it only where the derived answer is wrong:
+   * a screen whose real parent is not its URL's parent.
+   *
+   * Pass `null` to say this screen takes no back control at all, which is
+   * different from saying nothing.
+   */
+  backHref?: string | null;
   /** Trailing controls — a count, a filter, a primary action. */
   actions?: ReactNode;
   /** Shows the header search field. Screens with something to search set it. */
@@ -222,6 +343,13 @@ export function PageHeader({
    */
   meta?: ReactNode;
 }) {
+  /*
+   * `backHref === null` is an explicit "no back control here"; `undefined` is
+   * "work it out". The hook is called either way — it may not be skipped.
+   */
+  const derived = useAutoBackHref(backHref ?? undefined);
+  const resolvedBackHref = backHref === null ? null : derived;
+
   return (
     <div
       data-ui="page-header"
@@ -230,7 +358,7 @@ export function PageHeader({
       {/* `icon` remains a compatibility prop, but the compact header does not
           spend a second visual slot on decorative artwork. */}
       <div className="flex min-w-0 flex-1 items-start gap-3">
-        {backHref ? <BackButton href={backHref} /> : null}
+        {resolvedBackHref ? <BackButton href={resolvedBackHref} /> : null}
         <div className="min-w-0">
           <h1
             className={cn(
@@ -720,24 +848,54 @@ export function AppShell({
       : item,
   );
 
+  /*
+   * ★ The rail's default width, and only its default — `SidebarPrefsProvider`
+   * lets the reader override it, and remembers.
+   *
+   * The three numbers are the ones this shell has always used, kept because
+   * each was chosen for the longest label its menu carries. What changed on
+   * 2026-09-19 is that they stopped being the last word.
+   */
+  const defaultSidebarWidth =
+    isTeacherWorkspace || isAdmin ? 264 : variant === "parent" ? 244 : 220;
+
+  /*
+   * Flattened once per nav change, not per header render — `useAutoBackHref`
+   * walks it on every screen. An array rather than a `Set` so the context's
+   * value is comparable in tests and in the React devtools.
+   */
+  const navHrefs = useMemo(() => {
+    const hrefs: string[] = [];
+    for (const item of nav) if (item.href) hrefs.push(item.href);
+    for (const section of sections ?? []) {
+      for (const entry of section.entries) if (entry.href) hrefs.push(entry.href);
+    }
+    return Array.from(new Set(hrefs));
+  }, [nav, sections]);
+
   return (
-    <WorkspaceThemeContext.Provider value={resolvedTheme}>
-      <div className="min-h-dvh bg-canvas" data-app-theme={resolvedTheme ?? undefined}>
-        {desktopSidebar ? (
-          <Sidebar
-            nav={nav}
-            sections={sections}
-            subtitle={subtitle}
-            variant={variant}
-            isAdmin={isAdmin}
-            childSwitcher={childSwitcher}
-            teacherTheme={isTeacherWorkspace}
-          />
-        ) : null}
+    <SidebarPrefsProvider defaultWidth={defaultSidebarWidth}>
+      <WorkspaceThemeContext.Provider value={resolvedTheme}>
+        <NavHrefsContext.Provider value={navHrefs}>
+          <ShellSurface theme={resolvedTheme}>
+            {desktopSidebar ? (
+              <>
+                <Sidebar
+                  nav={nav}
+                  sections={sections}
+                  subtitle={subtitle}
+                  variant={variant}
+                  isAdmin={isAdmin}
+                  childSwitcher={childSwitcher}
+                  teacherTheme={isTeacherWorkspace}
+                />
+                <SidebarEdge defaultWidth={defaultSidebarWidth} />
+              </>
+            ) : null}
 
-        <MobileHeader subtitle={subtitle} showNotifications={!isSupportWorkspace} />
+            <MobileHeader subtitle={subtitle} showNotifications={!isSupportWorkspace} />
 
-        {/*
+            {/*
         ★ Padding on the frame, a capped column inside it — not a margin.
 
         This was one element carrying `mx-auto max-w-[1200px]` *and*
@@ -749,23 +907,21 @@ export function AppShell({
         replaced its left margin. Cards stretched to fill it, which is the one
         thing the brief is explicit about not doing above 1440px.
 
-        The frame now owns the sidebar offset (`lg:pl-[232px]`: the 220px rail
-        plus a 12px gutter), padding rather than margin, so it cannot collide
-        with auto-centring. The column inside it owns the cap. `mx-auto` then
-        centres the content in the space the sidebar leaves over, at every
-        width.
+        The frame owns the sidebar offset, padding rather than margin, so it
+        cannot collide with auto-centring. The column inside it owns the cap.
+        `mx-auto` then centres the content in the space the sidebar leaves over,
+        at every width.
+
+        ★★ That offset was three literals — `lg:pl-[276px]`, `[256px]`,
+        `[232px]`, each the variant's rail plus a 12px gutter — and is now
+        `var(--shell-pad)`, which `ShellSurface` computes from the same three
+        defaults. It had to become a variable the moment the rail could be
+        dragged or hidden: a resize that moved the menu and not the content
+        would leave the first column of every register underneath it.
+        `sidebar-prefs.tsx` defines both halves.
       */}
-        <div
-          className={cn(
-            desktopSidebar &&
-              (isTeacherWorkspace || isAdmin
-                ? "lg:pl-[276px]"
-                : variant === "parent"
-                  ? "lg:pl-[256px]"
-                  : "lg:pl-[232px]"),
-          )}
-        >
-          {/*
+            <div className={cn(desktopSidebar && "lg:pl-[var(--shell-pad)]")}>
+              {/*
           `pb-24` on mobile clears the fixed bottom bar. Without it the last row
           of every list sits underneath the navigation and cannot be tapped —
           which only shows up when a list is long enough to scroll to the end.
@@ -785,40 +941,42 @@ export function AppShell({
           is the distance the eye loses a row over. 1920px covers every laptop
           and nearly every desktop panel in use; only wider ones centre.
         */}
-          <main
-            data-layout={isChatPage ? "full-page" : "content"}
-            className={cn(
-              "w-full",
-              isChatPage
-                ? "h-[calc(100dvh-4.25rem)] overflow-hidden pb-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom))] lg:h-dvh lg:max-w-none lg:pb-0"
-                : "mx-auto max-w-[1920px] px-4 pb-24 pt-4 sm:px-6 lg:px-7 lg:pb-16 lg:pt-6 2xl:px-8",
-            )}
-          >
-            {children}
-          </main>
-        </div>
+              <main
+                data-layout={isChatPage ? "full-page" : "content"}
+                className={cn(
+                  "w-full",
+                  isChatPage
+                    ? "h-[calc(100dvh-4.25rem)] overflow-hidden pb-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom))] lg:h-dvh lg:max-w-none lg:pb-0"
+                    : "mx-auto max-w-[1920px] px-4 pb-24 pt-4 sm:px-6 lg:px-7 lg:pb-16 lg:pt-6 2xl:px-8",
+                )}
+              >
+                {children}
+              </main>
+            </div>
 
-        <BottomBar nav={bottomNav} hideOnDesktop={desktopSidebar} />
+            <BottomBar nav={bottomNav} hideOnDesktop={desktopSidebar} />
 
-        {/*
+            {/*
           Teachers and administrators already have Chat in navigation. Parents
           reach it from the floating trigger. Kitchen and finance workspaces
           intentionally have no communications surface.
         */}
-        {!hasDedicatedChatNavigation && !isSupportWorkspace ? <ChatWidget /> : null}
+            {!hasDedicatedChatNavigation && !isSupportWorkspace ? <ChatWidget /> : null}
 
-        <MobileMenuDrawer
-          open={menuOpen}
-          onOpenChange={setMenuOpen}
-          nav={nav}
-          sections={sections}
-          subtitle={subtitle}
-          variant={variant}
-          isAdmin={isAdmin}
-          childSwitcher={childSwitcher}
-        />
-      </div>
-    </WorkspaceThemeContext.Provider>
+            <MobileMenuDrawer
+              open={menuOpen}
+              onOpenChange={setMenuOpen}
+              nav={nav}
+              sections={sections}
+              subtitle={subtitle}
+              variant={variant}
+              isAdmin={isAdmin}
+              childSwitcher={childSwitcher}
+            />
+          </ShellSurface>
+        </NavHrefsContext.Provider>
+      </WorkspaceThemeContext.Provider>
+    </SidebarPrefsProvider>
   );
 }
 
@@ -834,8 +992,10 @@ export function AppShell({
  * `.brand__name` / `.brand__sub`.
  */
 function Brand({ subtitle }: { subtitle: string }) {
+  const homeHref = useHomeHref();
+
   return (
-    <Link href="/" className="flex min-h-[44px] items-center gap-[11px]">
+    <Link href={homeHref} className="flex min-h-[44px] items-center gap-[11px]">
       {/*
         ★ `bg-primary-soft`, not the `#f1efff` this carried until 2026-08-28.
         That literal was left over from the violet palette two repaints ago —
@@ -1451,6 +1611,19 @@ function Sidebar({
   childSwitcher?: ChildSwitcher;
   teacherTheme?: boolean;
 }) {
+  const { collapsed } = useSidebarPrefs();
+
+  /*
+   * ★ Removed from the tree, not hidden with a class.
+   *
+   * A `width: 0` rail still holds every one of its links in the tab order, so
+   * Tab from the page header would walk an invisible menu — and a screen
+   * reader would read a navigation landmark the reader has just put away.
+   * `MobileMenuDrawer` is untouched: below `lg` there is no rail to collapse
+   * and the phone's menu is a sheet of its own.
+   */
+  if (collapsed) return null;
+
   return (
     <nav
       aria-label="Үндсэн цэс"
@@ -1465,13 +1638,20 @@ function Sidebar({
        * route scrolled off the screen. The brand and the identity are fixed now, and
        * the nav between them takes the overflow.
        */
+      /*
+       * ★ The width is `--sidebar-w`, set by `ShellSurface` — the same variable
+       * the content frame pads by, so the two can never disagree. What is left
+       * in the class list is the per-variant gutter, which is a matter of how
+       * dense the menu's own rows are rather than of how wide the rail is.
+       */
+      style={{ width: "var(--sidebar-w)" }}
       className={cn(
         "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r border-border-soft bg-surface/92 py-[18px] shadow-[8px_0_28px_-22px_rgb(29_78_216_/_0.28)] backdrop-blur lg:flex",
         teacherTheme || isAdmin
-          ? "w-[264px] gap-5 px-3.5"
+          ? "gap-5 px-3.5"
           : variant === "parent"
-            ? "w-[244px] gap-4 px-4"
-            : "w-[220px] gap-5 px-3.5",
+            ? "gap-4 px-4"
+            : "gap-5 px-3.5",
       )}
     >
       <SidebarContent
@@ -1617,13 +1797,15 @@ function MobileHeader({
   subtitle: string;
   showNotifications: boolean;
 }) {
+  const homeHref = useHomeHref();
+
   return (
     <header
       className={cn(
         "sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-surface px-4 py-3 lg:hidden",
       )}
     >
-      <Link href="/" className="flex min-h-[44px] items-center gap-3">
+      <Link href={homeHref} className="flex min-h-[44px] items-center gap-3">
         <span data-brand-mark className="grid size-[46px] shrink-0 place-items-center">
           <Image
             src="/brand-logo.png"

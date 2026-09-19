@@ -3497,6 +3497,24 @@ export const platformKindergartenSchema = z.object({
 export type PlatformKindergarten = z.infer<typeof platformKindergartenSchema>;
 
 /**
+ * `DELETE /platform/kindergartens/:id` — what the deletion actually closed.
+ *
+ * ★ Counts, not a boolean. Retiring a tenant closes every membership in it,
+ * and the operator should be told how many people just lost their way in
+ * rather than "Амжилттай".
+ */
+export const deletedKindergartenSchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  closedMemberships: z.number(),
+  children: z.number(),
+  groups: z.number(),
+  staff: z.number(),
+  guardians: z.number(),
+});
+export type DeletedKindergarten = z.infer<typeof deletedKindergartenSchema>;
+
+/**
  * `GET /platform/kindergartens/:id` — the list row plus the same
  * counts/coverage/activity shape `adminDashboardSchema` gives a kindergarten's
  * own admin, scoped by the API to just this one kindergarten.

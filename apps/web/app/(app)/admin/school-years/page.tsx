@@ -16,6 +16,7 @@ import { useToast } from "@/components/ui/toast";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
+import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
 const listSchema = z.array(schoolYearSchema);
 
@@ -141,11 +142,14 @@ function CreateYearDialog({
 
   const errors = fieldErrors(create.error);
 
+  const backdrop = useBackdropDismiss(onClose);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Хичээлийн жил нэмэх"
+      {...backdrop}
       className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4"
     >
       <div className="w-full max-w-[420px] rounded-card border border-border bg-surface p-5">

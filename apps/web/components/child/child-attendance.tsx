@@ -13,7 +13,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { z } from "zod";
 import { attendanceRecordSchema, attendanceRequestSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
@@ -37,6 +37,7 @@ import {
   attendanceEventSentence,
 } from "@/lib/attendance-meta";
 import { cn } from "@/lib/utils";
+import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
 const recordsSchema = z.array(attendanceRecordSchema);
 const requestsSchema = z.array(attendanceRequestSchema);
@@ -1167,24 +1168,14 @@ function ReportAttendanceModal({
     },
   });
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = previous;
-    };
-  }, [onClose]);
+  const backdrop = useBackdropDismiss(onClose);
 
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label={copy.title}
+      {...backdrop}
       className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
     >
       <div className="w-full max-w-[480px] rounded-card border border-border bg-surface p-5">
@@ -1342,24 +1333,14 @@ function RequestDialog({ childId, onClose }: { childId: string; onClose: () => v
     },
   });
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = previous;
-    };
-  }, [onClose]);
+  const backdrop = useBackdropDismiss(onClose);
 
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Чөлөөний хүсэлт"
+      {...backdrop}
       className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
     >
       <div className="w-full max-w-[540px] rounded-card border border-border bg-surface p-5 shadow-lg">

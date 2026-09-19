@@ -33,7 +33,6 @@ import { EsisRowValues, esisSampleColumns } from "@/components/esis/esis-rows";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireSuperAdmin } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
-import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader, SunkenPanel } from "@/components/ui/card";
 import { IconChip } from "@/components/ui/icon-chip";
@@ -161,6 +160,21 @@ function EsisIntegration() {
 
   const header = (
     <PageHeader
+      /*
+       * ★ Explicit, because the derived answer is one level too far.
+       *
+       * `useAutoBackHref` walks up to the nearest destination the menu names,
+       * and the operator's menu names `/platform` — not `/platform/:id`, which
+       * has no row of its own. Back from a kindergarten's ESIS panel means its
+       * own page, so this screen genuinely knows better than the walk.
+       *
+       * ★★ It also replaced three `<BackButton className="ml-0" />` renders —
+       * one per branch — that sat on their own row **above** this header. That
+       * was the only place left in the product where Буцах was not on the
+       * title's line, and once the header began deriving one it was two arrows
+       * stacked on top of each other.
+       */
+      backHref={`/platform/${kindergartenId}`}
       title="ESIS мэдээллийн төв"
       lede="Платформын ESIS хандалт — token, зөвшөөрөгдсөн сервис, шалгалт"
       icon={<IconChip icon={<Database />} tone="primary" size="lg" />}
@@ -181,7 +195,6 @@ function EsisIntegration() {
   if (overview.isPending) {
     return (
       <div className="page-band">
-        <BackButton href={`/platform/${kindergartenId}`} className="ml-0" />
         {header}
         <LoadingState rows={4} shape="cards" />
       </div>
@@ -191,7 +204,6 @@ function EsisIntegration() {
   if (overview.isError) {
     return (
       <div className="page-band">
-        <BackButton href={`/platform/${kindergartenId}`} className="ml-0" />
         {header}
         <ErrorState
           title={isNotFound(overview.error) ? "Олдсонгүй" : "Алдаа гарлаа"}
@@ -212,7 +224,6 @@ function EsisIntegration() {
 
   return (
     <div className="page-band">
-      <BackButton href={`/platform/${kindergartenId}`} className="ml-0" />
       {header}
 
       <section

@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Database } from "lucide-react";
 import {
   platformKindergartenDetailSchema,
@@ -21,6 +21,7 @@ import {
   StatGrid,
 } from "@/components/admin/dashboard-sections";
 import { ToggleActiveButton } from "@/components/admin/toggle-kindergarten-active";
+import { DeleteKindergartenButton } from "@/components/admin/delete-kindergarten-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
@@ -49,6 +50,7 @@ export default function PlatformKindergartenPage() {
 
 function KindergartenDetail() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const id = params.id;
 
   const { data, isLoading, isError, error } = useQuery({
@@ -93,6 +95,15 @@ function KindergartenDetail() {
               {kg.isActive ? "Идэвхтэй" : "Идэвхгүй"}
             </Badge>
             <ToggleActiveButton kindergarten={kg} />
+            {/*
+              Back to the list on success: this screen reads a kindergarten
+              that no longer exists, and staying on it would answer 404 the
+              moment anything refetched.
+            */}
+            <DeleteKindergartenButton
+              kindergarten={kg}
+              onDeleted={() => router.replace("/platform")}
+            />
           </span>
         }
       />

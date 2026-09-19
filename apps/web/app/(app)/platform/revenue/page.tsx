@@ -23,6 +23,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { formatDate } from "@/lib/format";
+import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
 const partnersSchema = z.array(revenuePartnerSchema);
 
@@ -476,11 +477,14 @@ function AddPartnerDialog({
     if (!create.isPending) create.mutate();
   }
 
+  const backdrop = useBackdropDismiss(onClose);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Хувь тохирсон хүн нэмэх"
+      {...backdrop}
       className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
     >
       <div className="w-full max-w-[460px] rounded-card border border-border bg-surface p-5">

@@ -41,6 +41,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Switch } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { cn } from "@/lib/utils";
+import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
 const groupsSchema = paginated(groupListItemSchema);
 const termsSchema = z.array(termSchema);
@@ -423,11 +424,14 @@ export function CreateSurveyWizard({
     setPreviewing(false);
   };
 
+  const backdrop = useBackdropDismiss(onClose);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label={heading}
+      {...backdrop}
       className="fixed inset-0 z-50 grid items-end overflow-y-auto bg-ink/50 p-0 sm:place-items-center sm:p-4"
     >
       <div className="max-h-[calc(100dvh-0.5rem)] w-full max-w-[680px] overflow-y-auto rounded-t-card border border-border bg-surface p-4 shadow-lg sm:max-h-[calc(100vh-2rem)] sm:rounded-card sm:p-5">
