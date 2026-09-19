@@ -31,6 +31,7 @@ import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
 import { RequireRole } from "@/components/shell/require-role";
+import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
 const groupsSchema = paginated(groupListItemSchema);
 const usersSchema = paginated(adminUserSchema);
@@ -378,11 +379,14 @@ function ManageTeachersDialog({
       : [];
   });
 
+  const backdrop = useBackdropDismiss(onClose);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label={`${groupName} — багш`}
+      {...backdrop}
       className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
     >
       <div className="w-full max-w-[460px] rounded-card border border-border bg-surface p-5">
@@ -558,11 +562,14 @@ function CreateGroupDialog({
 
   const errors = fieldErrors(create.error);
 
+  const backdrop = useBackdropDismiss(onClose);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Бүлэг нэмэх"
+      {...backdrop}
       className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4"
     >
       <div className="w-full max-w-[420px] rounded-card border border-border bg-surface p-5">

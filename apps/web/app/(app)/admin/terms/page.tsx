@@ -19,6 +19,7 @@ import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { formatDate } from "@/lib/format";
+import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
 const TERM_COLUMNS = [
   { key: "startsOn", label: "Эхлэх", className: "md:w-[112px]" },
@@ -240,11 +241,14 @@ function CreateTermDialog({
 
   const errors = fieldErrors(create.error);
 
+  const backdrop = useBackdropDismiss(onClose);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Улирал нэмэх"
+      {...backdrop}
       className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4"
     >
       <div className="w-full max-w-[420px] rounded-card border border-border bg-surface p-5">
@@ -399,11 +403,14 @@ function EditTermDialog({
 
   const errors = fieldErrors(save.error);
 
+  const backdrop = useBackdropDismiss(onClose);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Улирал засах"
+      {...backdrop}
       className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4"
     >
       <div className="w-full max-w-[420px] rounded-card border border-border bg-surface p-5">

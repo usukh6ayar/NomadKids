@@ -17,6 +17,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/field";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
+import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
 /** `"126900.00"` → `"126 900₮"`. */
 function money(value: string): string {
@@ -45,6 +46,7 @@ function FoodOrderDetail() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [receiving, setReceiving] = useState(false);
+  const backdrop = useBackdropDismiss(() => setReceiving(false));
   const [overrides, setOverrides] = useState<Record<string, string>>({});
 
   const order = useQuery({
@@ -167,6 +169,7 @@ function FoodOrderDetail() {
           role="dialog"
           aria-modal="true"
           aria-label="Захиалга хүлээн авах"
+          {...backdrop}
           className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
         >
           <div className="w-full max-w-[480px] rounded-card border border-border bg-surface p-5">

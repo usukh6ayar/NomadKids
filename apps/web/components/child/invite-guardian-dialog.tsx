@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { QrCode } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { z } from "zod";
 import { mutate } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
+import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
 const resultSchema = z.object({
   invitationToken: z.string(),
@@ -82,24 +83,14 @@ function InviteDialog({
     },
   });
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = previous;
-    };
-  }, [onClose]);
+  const backdrop = useBackdropDismiss(onClose);
 
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label={`${childName} — эцэг эх урих`}
+      {...backdrop}
       className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
     >
       <div className="w-full max-w-[480px] rounded-card border border-border bg-surface p-5">
