@@ -312,7 +312,13 @@ function Overview({ data }: { data: EsisOverview }) {
         />
         <Card pad="roomy">
           <dl className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
-            <Definition label="Орчин" value={data.connection.environment ?? "LIVE"} />
+            {/*
+              ★ Was `connection.environment ?? "LIVE"` until 2026-09-19. The
+              fallback was doing all the work: the ministry runs no ESIS test
+              environment, so the field only ever held 'PRODUCTION' or null and
+              the column is gone. "LIVE" is now simply the truth, stated once.
+            */}
+            <Definition label="Орчин" value="LIVE" />
             {/*
               ★ "Холбогдоогүй", not a fallback id — 2026-09-14. This read
               `?? "40305"`, the demo institution, so an unmapped kindergarten
