@@ -6,9 +6,11 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import {
   createdKindergartenSchema,
+  esisInstitutionLookupSchema,
   paginated,
   platformKindergartenSchema,
   platformStatsSchema,
+  type EsisInstitutionLookup,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
@@ -191,6 +193,63 @@ function CreateKindergartenDialog({ onClose }: { onClose: () => void }) {
   const [adminFirstName, setAdminFirstName] = useState("");
   const [adminEmail, setAdminEmail] = useState("");
 
+  /*
+   * ★ The ESIS half of this form is optional from end to end.
+   *
+   * A deployment with no ministry presence still registers kindergartens
+   * exactly as it did before — leave the id blank and nothing below this line
+   * runs. What it buys when it is used is that the tenant is born already
+   * mapped: setting the institution afterwards on a separate screen left a
+   * window in which a kindergarten existed unmapped, or mapped to the wrong
+   * institution, and nothing detected either.
+   */
+  const [institutionId, setInstitutionId] = useState("");
+  const [institution, setInstitution] = useState<EsisInstitutionLookup | null>(null);
+  const [adminPersonId, setAdminPersonId] = useState<string | null>(null);
+
+  const lookup = useMutation({
+    mutationFn: () =>
+      get(
+        `/platform/esis/institutions/${encodeURIComponent(institutionId.trim())}`,
+        esisInstitutionLookupSchema,
+      ),
+    onSuccess: (found) => {
+      setInstitution(found);
+      setName(found.name);
+      setAddress(found.address ?? "");
+      setAdminPersonId(null);
+    },
+    onError: () => {
+      // The previous answer must not survive a failed re-lookup: a stale name
+      // beside a new id is the one state this screen must never show.
+      setInstitution(null);
+      setAdminPersonId(null);
+    },
+  });
+
+  /*
+   * The one blocking state, and only this one.
+   *
+   * ★ A failed lookup does **not** block. A refusal from the ministry or an
+   * outage at it leaves `institution` null, which posts no ESIS fields at all
+   * — so the operator registers the kindergarten now and maps it later,
+   * exactly as they did before this screen existed. Blocking there would let
+   * someone else's outage stop the work entirely.
+   *
+   * `alreadyUsed` is different: the id is taken, the insert would fail on a
+   * unique index, and there is nothing useful to submit.
+   */
+  const institutionBlocked = institution?.alreadyUsed === true;
+
+  const chooseStaff = (person: EsisInstitutionLookup["staff"][number]) => {
+    setAdminPersonId(person.personId);
+    // The API overwrites these from the roster anyway — the ministry's
+    // spelling is what self-registration matches on later — so the form must
+    // not sit there disagreeing with what will actually be saved.
+    setAdminLastName(person.lastName);
+    setAdminFirstName(person.firstName);
+  };
+
   const create = useMutation({
     mutationFn: () =>
       mutate("/platform/kindergartens", createdKindergartenSchema, {
@@ -200,6 +259,11 @@ function CreateKindergartenDialog({ onClose }: { onClose: () => void }) {
           address: address.trim() === "" ? null : address.trim(),
           phone: phone.trim() === "" ? null : phone.trim(),
           email: email.trim() === "" ? null : email.trim(),
+          // Omitted entirely rather than sent as null: the API refuses
+          // `adminEsisPersonId` without `esisInstitutionId`, and a form that
+          // never touched ESIS must post exactly what it posted before.
+          ...(institution ? { esisInstitutionId: institution.institutionId } : {}),
+          ...(institution && adminPersonId ? { adminEsisPersonId: adminPersonId } : {}),
           admin: {
             username: adminUsername,
             lastName: adminLastName,
@@ -251,6 +315,105 @@ function CreateKindergartenDialog({ onClose }: { onClose: () => void }) {
             </div>
 
             <FormError message={create.isError ? errorMessage(create.error) : null} />
+
+            <div className="rounded-card border border-border bg-canvas p-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="min-w-0 flex-1">
+                  <Field
+                    label="ESIS institution ID"
+                    hint="Заавал биш. Бөглөвөл нэр, хаяг, ажилтны жагсаалт яамнаас ирнэ."
+                  >
+                    {({ id, describedBy }) => (
+                      <Input
+                        id={id}
+                        aria-describedby={describedBy}
+                        value={institutionId}
+                        onChange={(e) => setInstitutionId(e.target.value)}
+                        placeholder="Жишээ: 42778"
+                        inputMode="numeric"
+                      />
+                    )}
+                  </Field>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={institutionId.trim() === "" || lookup.isPending}
+                  onClick={() => lookup.mutate()}
+                >
+                  {lookup.isPending ? "Татаж байна…" : "ESIS-ээс татах"}
+                </Button>
+              </div>
+
+              {lookup.isError ? (
+                <p className="mt-2 text-caption text-danger">{errorMessage(lookup.error)}</p>
+              ) : null}
+
+              {institution ? (
+                <div className="mt-2 flex flex-col gap-1">
+                  <p className="text-caption text-muted">
+                    {[institution.name, institution.classification, institution.propertyType]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                  {institution.alreadyUsed ? (
+                    <p className="text-caption text-danger">
+                      Энэ институц аль хэдийн бүртгэлтэй: {institution.name}
+                    </p>
+                  ) : null}
+                  {/*
+                    A warning, not a block. The ministry's classification is
+                    free text we do not control, and refusing outright would
+                    make a mislabelled kindergarten unregisterable.
+                  */}
+                  {!institution.isKindergarten ? (
+                    <p className="text-caption text-warning">
+                      Энэ байгууллага цэцэрлэг биш ({institution.classification ?? "тодорхойгүй"}).
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
+            {institution && !institution.alreadyUsed ? (
+              <fieldset className="rounded-card border border-border p-3">
+                <legend className="px-1 text-caption text-muted">Захирал/Эрхлэгч сонгох</legend>
+                {institution.staff.length === 0 ? (
+                  <p className="text-caption text-muted">
+                    Энэ байгууллагад бүртгэлтэй ажилтан ESIS-ээс ирсэнгүй. Удирдлагын нэрийг доор
+                    гараар бөглөнө үү.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    {institution.staff.map((person) => (
+                      <label
+                        key={person.personId}
+                        className="flex cursor-pointer items-start gap-2 rounded-card px-2 py-1.5 hover:bg-canvas"
+                      >
+                        <input
+                          type="radio"
+                          name="esis-admin"
+                          className="mt-1"
+                          value={person.personId}
+                          checked={adminPersonId === person.personId}
+                          onChange={() => chooseStaff(person)}
+                        />
+                        <span className="min-w-0">
+                          <span className="block text-body text-ink">
+                            {person.lastName} {person.firstName}
+                          </span>
+                          {person.positionName ? (
+                            <span className="block text-caption text-muted">
+                              {person.positionName}
+                            </span>
+                          ) : null}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </fieldset>
+            ) : null}
 
             <Field label="Цэцэрлэгийн нэр" error={errors.name} required>
               {({ id, describedBy, invalid }) => (
@@ -372,7 +535,7 @@ function CreateKindergartenDialog({ onClose }: { onClose: () => void }) {
             </div>
 
             <div className="flex flex-wrap gap-2 border-t border-border pt-4">
-              <Button type="submit" disabled={create.isPending}>
+              <Button type="submit" disabled={create.isPending || institutionBlocked}>
                 <Plus size={18} />
                 {create.isPending ? "Бүртгэж байна…" : "Бүртгэх"}
               </Button>

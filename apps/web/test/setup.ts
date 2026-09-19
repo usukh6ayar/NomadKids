@@ -134,3 +134,37 @@ if (!Element.prototype.releasePointerCapture) {
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
+
+/*
+ * jsdom's `getContext` returns `null` without the optional `canvas` package,
+ * and `qrcode` does not check — `InvitationHandover` draws the invitation's
+ * QR code and the library reaches straight for `createImageData`.
+ *
+ * ★ It surfaces as an **unhandled rejection**, not a failing test: the render
+ * happens inside a `useEffect`, so every assertion passes and the suite still
+ * exits non-zero with "1 error". Found 2026-09-19, the first time a test drove
+ * a kindergarten registration all the way to the handover screen.
+ *
+ * The stub returns the smallest object the renderer touches rather than
+ * pulling in a canvas implementation: nothing asserts on the pixels, and a
+ * real one would make every suite slower to install for one component's
+ * decoration.
+ */
+/*
+ * ★★ Assigned unconditionally, unlike the guards above. jsdom **does** define
+ * `getContext` — it is present, logs "Not implemented" and returns `null` — so
+ * an `if (!…)` guard reads as satisfied and installs nothing, which is the
+ * first way this fix was written and it changed nothing at all.
+ */
+{
+  HTMLCanvasElement.prototype.getContext = (() => ({
+    createImageData: (w: number, h: number) => ({
+      data: new Uint8ClampedArray(w * h * 4),
+      width: w,
+      height: h,
+    }),
+    putImageData: () => {},
+    fillRect: () => {},
+    clearRect: () => {},
+  })) as unknown as HTMLCanvasElement["getContext"];
+}
