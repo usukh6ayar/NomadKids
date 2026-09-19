@@ -173,6 +173,88 @@ export class PlatformRepository {
   }
 
   /**
+   * What a deletion would take with it — shown to the operator before they
+   * confirm, and recorded in the audit row afterwards.
+   *
+   * ★ Counted rather than described. "This kindergarten has records" is the
+   * kind of warning people click through; "83 хүүхэд, 14 ажилтан" is not.
+   */
+  async footprint(kindergartenId: string) {
+    const [children, groups, staff, guardians] = await Promise.all([
+      this.prisma.child.count({ where: { kindergartenId, deletedAt: null } }),
+      this.prisma.group.count({ where: { kindergartenId, deletedAt: null } }),
+      this.prisma.membership.count({
+        where: { kindergartenId, deletedAt: null, role: { not: "PARENT" } },
+      }),
+      this.prisma.membership.count({ where: { kindergartenId, deletedAt: null, role: "PARENT" } }),
+    ]);
+
+    return { children, groups, staff, guardians };
+  }
+
+  /**
+   * Retires a tenant: `deletedAt` on the kindergarten, and every membership
+   * that reaches it closed in the same transaction.
+   *
+   * ★★ **A soft delete, and the memberships are the point.** CLAUDE.md §3.2
+   * forbids removing the rows, and nothing here removes any: the children,
+   * their portfolios, the invoices and the audit trail all stay exactly where
+   * they are, which is what makes this recoverable and what an auditor asking
+   * "what happened to that kindergarten" needs. But a `deletedAt` on the
+   * tenant alone changes nothing a person can see — `Membership` is what
+   * decides who may reach a tenant on every request (§1.3), so leaving them
+   * open would delete the kindergarten from the operator's list while its
+   * director carried on signing in and recording attendance.
+   *
+   * ★★★ The ESIS mapping is **released**, not kept. `esisInstitutionId` is
+   * `@unique` at the database level and the constraint does not know about
+   * `deletedAt` — so a retired tenant holding institution 42778 would make
+   * that institution impossible to register ever again, with an error naming a
+   * kindergarten the operator can no longer see. A deleted tenant has no claim
+   * on a ministry institution.
+   *
+   * That does **not** make `PlatformService.create`'s `esisInstitutionId`
+   * conflict branch dead code: it covers rows soft-deleted before this method
+   * existed, which still hold theirs, and the database constraint is the only
+   * thing either of us is really talking to.
+   *
+   * ★ `EsisStaffRoster` rows are deleted outright, the one hard delete here:
+   * they are a cache of what the ministry said, keyed by register number, and
+   * `staff-registration` matches against them on an unauthenticated route.
+   * Leaving them behind a soft-deleted tenant means strangers can still probe
+   * "does this register number work here" against a kindergarten that no
+   * longer exists. The ministry is the record; this table never was.
+   */
+  async softDelete(id: string) {
+    const now = new Date();
+
+    return this.prisma.$transaction(async (tx) => {
+      const memberships = await tx.membership.updateMany({
+        where: { kindergartenId: id, deletedAt: null },
+        data: { deletedAt: now, isActive: false },
+      });
+
+      await tx.esisStaffRoster.deleteMany({ where: { kindergartenId: id } });
+
+      const kindergarten = await tx.kindergarten.update({
+        where: { id },
+        data: {
+          deletedAt: now,
+          isActive: false,
+          esisInstitutionId: null,
+          esisMappedAt: null,
+          // A code issued to staff who no longer have a tenant to register
+          // against is a secret with nothing behind it. Clear it.
+          staffRegistrationCodeHash: null,
+          staffRegistrationCodeSetAt: null,
+        },
+      });
+
+      return { kindergarten, closedMemberships: memberships.count };
+    });
+  }
+
+  /**
    * System-wide totals — RFP §12.2's "Администраторын хяналтын самбар": нийт
    * цэцэрлэг/бүлэг/хүүхэд/багш/идэвхтэй эцэг эх.
    *

@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { randomBytes } from "node:crypto";
 import type { EsisInstitutionStaff } from "@kinder/contracts";
 import { AuditRepository } from "../audit/audit.repository";
@@ -12,7 +17,11 @@ import { EsisInstitutionLookupService } from "../integrations/esis/esis-institut
 import { UsersRepository } from "../users/users.repository";
 import type { UpdateKindergartenDto } from "../tenants/tenants.dto";
 import { PlatformRepository } from "./platform.repository";
-import type { CreateKindergartenDto, ListPlatformKindergartensQuery } from "./platform.dto";
+import type {
+  CreateKindergartenDto,
+  DeleteKindergartenDto,
+  ListPlatformKindergartensQuery,
+} from "./platform.dto";
 
 /** Matches UsersService — an invitation is an invitation wherever it is issued. */
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -271,6 +280,71 @@ export class PlatformService {
       metadata: { fields: Object.keys(dto) },
     });
     return updated;
+  }
+
+  /**
+   * Retires a kindergarten — the operator's "Устгах".
+   *
+   * ★ It is a **soft** delete (§3.2) and the audit row is written after the
+   * commit (§3.5). `PlatformRepository.softDelete` documents what moves and
+   * what deliberately does not.
+   *
+   * ★★ The caller must type the kindergarten's name back.
+   *
+   * Deactivating is reversible in one click and this is not — it closes every
+   * membership in the tenant, so a director and thirteen staff lose their way
+   * in at once. A `window.confirm` is dismissed by reflex; retyping a name is
+   * the cheapest control that cannot be. The comparison is trimmed and
+   * case-insensitive: the point is to make the operator read which
+   * kindergarten they are on, not to test their typing.
+   *
+   * ★★★ The count of what was closed goes in the response as well as the
+   * audit row, so the screen can say what actually happened rather than
+   * "Амжилттай".
+   */
+  async remove(actor: Actor, id: string, dto: DeleteKindergartenDto) {
+    this.platform.assertSuperAdmin(actor);
+
+    const existing = await this.repo.findById(id);
+    if (!existing) throw new NotFoundException();
+
+    const typed = dto.confirmName.trim().toLocaleLowerCase("mn-MN");
+    const actual = existing.name.trim().toLocaleLowerCase("mn-MN");
+    if (typed !== actual) {
+      throw new BadRequestException("Цэцэрлэгийн нэрийг яг таг бичнэ үү");
+    }
+
+    const footprint = await this.repo.footprint(id);
+    const { closedMemberships } = await this.repo.softDelete(id);
+
+    await this.audit.append({
+      action: "DELETE",
+      kindergartenId: id,
+      actorUserId: actor.userId,
+      objectType: "Kindergarten",
+      objectId: id,
+      /*
+       * `before` nested in `metadata`, matching `invoices.service.ts` — the
+       * `AuditEntry` shape has no column of its own for it.
+       *
+       * The whole prior state, because there is no live row left to read it
+       * off: §14's "Өмнөх утга → Шинэ утга" for the one record whose new value
+       * is "gone". The ESIS institution id especially — the mapping is
+       * released here, so this row becomes the only trace that this tenant
+       * ever held it.
+       */
+      metadata: {
+        before: {
+          name: existing.name,
+          isActive: existing.isActive,
+          esisInstitutionId: existing.esisInstitutionId,
+        },
+        footprint,
+        closedMemberships,
+      },
+    });
+
+    return { id, name: existing.name, closedMemberships, ...footprint };
   }
 
   /**

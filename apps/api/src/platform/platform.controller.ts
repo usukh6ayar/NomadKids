@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
 import { idParamSchema } from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
@@ -8,8 +8,10 @@ import { updateKindergartenSchema, type UpdateKindergartenDto } from "../tenants
 import { PlatformService } from "./platform.service";
 import {
   createKindergartenSchema,
+  deleteKindergartenSchema,
   listPlatformKindergartensQuerySchema,
   type CreateKindergartenDto,
+  type DeleteKindergartenDto,
   type ListPlatformKindergartensQuery,
 } from "./platform.dto";
 
@@ -21,7 +23,11 @@ import {
  * parent request passes through — stays free of "…unless the actor is a
  * superadmin" branches. CLAUDE.md §1.1.
  *
- * No DELETE: deactivation is `PATCH { isActive: false }`. §3.2.
+ * ★ `DELETE` retires a tenant and is a **soft** delete — §3.2 holds, nothing
+ * is removed. It sits beside `PATCH { isActive }` rather than replacing it:
+ * deactivating is a suspension a director can be told about and reversed in one
+ * click, and retiring is neither. `PlatformService.remove` is where the
+ * difference is argued.
  */
 @Controller("platform")
 @SuperAdmin()
@@ -65,5 +71,14 @@ export class PlatformController {
     @Body(new ZodValidationPipe(updateKindergartenSchema)) body: UpdateKindergartenDto,
   ) {
     return this.service.update(actor, params.id, body);
+  }
+
+  @Delete("kindergartens/:id")
+  async remove(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(deleteKindergartenSchema)) body: DeleteKindergartenDto,
+  ) {
+    return this.service.remove(actor, params.id, body);
   }
 }
