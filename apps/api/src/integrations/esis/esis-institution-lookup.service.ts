@@ -1,5 +1,12 @@
-import { Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
+import {
+  BadGatewayException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import type { EsisInstitutionLookup } from "@kinder/contracts";
+import { EsisError } from "./esis.client";
 import { EsisRepository } from "./esis.repository";
 import { EsisService } from "./esis.service";
 import { normalizeRegisterNumber, roleForJobCode } from "./esis.roster";
@@ -36,10 +43,7 @@ export class EsisInstitutionLookupService {
      * object literal reaches the generic `read` and never the wrappers, which
      * are separate functions on the real class.
      */
-    const [organizationResponse, staffResponse] = await Promise.all([
-      this.esis.read("organization", {}, institutionId),
-      this.esis.read("staff", {}, institutionId),
-    ]);
+    const [organizationResponse, staffResponse] = await this.readBoth(institutionId);
 
     const row = (organizationResponse.data as unknown as Record<string, unknown>[])[0];
     // An institution the ministry does not have answers 200 with no rows.
@@ -59,6 +63,71 @@ export class EsisInstitutionLookupService {
       alreadyUsed: existing !== null,
       staff: this.projectStaff(staffResponse.data as unknown as Record<string, unknown>[]),
     };
+  }
+
+  /**
+   * The two reads, and nothing else, inside the translation.
+   *
+   * ★ Deliberately narrower than the whole method. The `NotFoundException` for
+   * an empty `RESULT` is thrown *after* these resolve; a method-wide catch
+   * would see it too, and one `instanceof` slip would turn a working 404 into
+   * a 502.
+   */
+  private async readBoth(institutionId: string) {
+    try {
+      return await Promise.all([
+        this.esis.read("organization", {}, institutionId),
+        this.esis.read("staff", {}, institutionId),
+      ]);
+    } catch (error) {
+      throw this.translate(error);
+    }
+  }
+
+  /**
+   * What the operator is told when the ministry does not answer.
+   *
+   * ★ **A ministry refusal becomes 409, not the 403 ESIS sent.**
+   *
+   * An institution this company account has not been granted answers HTTP 403
+   * «Таны компанид энэ institutionId дээр эрх байхгүй байна.» (measured
+   * 2026-09-14 against ids 40284 and 42779). That is a fact about the
+   * *ministry's grant*, not about this actor's authorization — the caller is a
+   * superadmin and has already passed `@SuperAdmin()`. Forwarding the 403
+   * would give the one status this product reserves a second meaning:
+   * CLAUDE.md §1.7 makes 404 the answer for "you may not reach this", and 403
+   * is kept out of the vocabulary precisely so that it can never be read as
+   * one. 409 says what is true — the request is well formed and the state of
+   * the world refuses it — and the message says who can change that state.
+   *
+   * ★★ A timeout or a dead connection is 502: the operator's own request was
+   * fine and the thing it needs did not answer, which is a different next move
+   * from "ask the ministry for the grant". `code` keeps the two apart for a
+   * log while `detail` reads as one sentence either way.
+   *
+   * ★★★ Every other kind falls through unchanged, to the filter's 500. A 401
+   * on the deployment's own token or an unreadable body is not a case anybody
+   * designed a sentence for, and inventing a status would claim an
+   * understanding this product does not have.
+   */
+  private translate(error: unknown): unknown {
+    if (!(error instanceof EsisError)) return error;
+
+    if (error.kind === "http" && error.detail.status === 403) {
+      return new ConflictException({
+        message: "Яам энэ институцид эрх олгоогүй байна. Гэрээний дараа яамнаас нэмүүлнэ үү.",
+        code: "SCOPE_DENIED",
+      });
+    }
+
+    if (error.kind === "timeout" || error.kind === "network") {
+      return new BadGatewayException({
+        message: "ESIS хариу өгсөнгүй.",
+        code: error.kind.toUpperCase(),
+      });
+    }
+
+    return error;
   }
 
   /**

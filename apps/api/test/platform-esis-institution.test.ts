@@ -2,6 +2,7 @@ import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
+import { EsisError } from "../src/integrations/esis/esis.client";
 import type { EsisService } from "../src/integrations/esis/esis.service";
 import { createTestApp } from "./support/app";
 import { resetData, uniq } from "./support/db";
@@ -168,5 +169,110 @@ describe("GET /platform/esis/institutions/:institutionId", () => {
     const body = JSON.stringify(res.body);
     expect(body).not.toContain("hunter2");
     expect(body).not.toContain("EmailPass");
+  });
+});
+
+/**
+ * What the operator sees when the ministry does not answer with an institution.
+ *
+ * ★ Three outcomes, three statuses, and the split is the point: "the ministry
+ * has not granted us this institution", "no such institution" and "ESIS did not
+ * answer" are three different next actions for the person at the screen, and a
+ * single 500 would make all three read as a bug in this product.
+ *
+ * ★★ Every one of these is thrown from the **live** failure the service sees,
+ * so the mock rejects from `read` rather than from a seam invented for the
+ * test — the translate method is only worth anything if it sits on the path a
+ * real call takes.
+ */
+describe("the three ways an institution lookup does not answer", () => {
+  /*
+   * ★ `mockImplementation` keyed on the resource, not `mockRejectedValueOnce`.
+   * The service fires `organization` and `staff` inside one `Promise.all`, so
+   * `Once` binds to whichever happens to be called first — array order today,
+   * and silently the wrong call the day somebody reorders them.
+   */
+  const failWith = (error: Error) =>
+    read.mockImplementation(async (key: string) => {
+      if (key === "organization") throw error;
+      return { data: [staffRow], status: 200, durationMs: 9 };
+    });
+
+  /*
+   * ★ **409, not the ministry's own 403.** Measured on 2026-09-14 against ids
+   * 40284 and 42779: an institution this company account has not been granted
+   * answers 403 «Таны компанид энэ institutionId дээр эрх байхгүй байна.»
+   *
+   * That refusal is a fact about the *ministry's grant*, not about this
+   * caller — they are a superadmin and already passed the guard. Passing the
+   * 403 through would give the one status this product reserves (§1.7: 404,
+   * never 403) a second meaning.
+   */
+  it("turns a ministry refusal into 409 SCOPE_DENIED", async () => {
+    failWith(
+      new EsisError("http", "ESIS responded 403", { status: 403, path: "/organization/list" }),
+    );
+
+    const res = await authed(request(server()).get(url("40284")), superAdmin);
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("SCOPE_DENIED");
+    expect(res.body.detail).toBe(
+      "Яам энэ институцид эрх олгоогүй байна. Гэрээний дараа яамнаас нэмүүлнэ үү.",
+    );
+  });
+
+  /*
+   * ★ An institution that does not exist answers **200 with an empty
+   * `RESULT`** — not a 404, which is why the service has to read the row count
+   * rather than the status. This is the case already built; it is tested here
+   * because nothing had ever asked for it over HTTP.
+   */
+  it("answers 404 for an institution ESIS returns no row for", async () => {
+    read.mockImplementation(async () => ({ data: [], status: 200, durationMs: 9 }));
+
+    const res = await authed(request(server()).get(url("99999")), superAdmin);
+
+    expect(res.status).toBe(404);
+  });
+
+  /*
+   * ★ 502, because the failure is upstream and the operator's own request was
+   * fine. `kind` reaches the body as the code so that "it timed out" and "we
+   * could not reach it at all" stay distinguishable in a log, while the
+   * message the operator reads is one sentence either way.
+   */
+  it.each([
+    ["timeout", "TIMEOUT"],
+    ["network", "NETWORK"],
+  ])("turns an ESIS %s into 502 %s", async (kind, code) => {
+    failWith(new EsisError(kind as "timeout" | "network", `ESIS ${kind}`, { path: "/o/list" }));
+
+    const res = await authed(request(server()).get(url(institutionId)), superAdmin);
+
+    expect(res.status).toBe(502);
+    expect(res.body.code).toBe(code);
+    expect(res.body.detail).toBe("ESIS хариу өгсөнгүй.");
+    /*
+     * ★ And not "Алдаа гарлаа", which is the 500's title. A 502 says the
+     * request was fine and the other system did not answer; reading
+     * identically to "something broke here" would send the operator looking
+     * for a bug in this product.
+     */
+    expect(res.body.title).toBe("Гадаад системээс хариу ирсэнгүй");
+  });
+
+  /*
+   * ★★ A kind nobody designed for stays a 500. `invalid_response`, a 401 on
+   * the deployment's own token — these are not the operator's problem and
+   * there is no sentence that would help them; inventing a status for them
+   * would say this product understands a case it does not.
+   */
+  it("leaves an undesigned ESIS failure as a 500", async () => {
+    failWith(new EsisError("invalid_response", "unreadable body", { status: 200 }));
+
+    const res = await authed(request(server()).get(url(institutionId)), superAdmin);
+
+    expect(res.status).toBe(500);
   });
 });

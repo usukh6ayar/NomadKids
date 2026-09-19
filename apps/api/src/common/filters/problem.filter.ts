@@ -60,6 +60,15 @@ export class ProblemExceptionFilter implements ExceptionFilter {
         } else if (typeof message === "string" && message !== problem.title) {
           problem.detail = message;
         }
+        /*
+         * ★ A machine-readable reason, forwarded only when the thrown body
+         * names one as a string. Nothing else about the document changes, so
+         * every error body that existed before this stays byte-identical —
+         * `code` appears exactly on the throws that ask for it.
+         */
+        if ("code" in body && typeof (body as { code: unknown }).code === "string") {
+          problem.code = (body as { code: string }).code;
+        }
         if ("errors" in body) {
           const errors = (body as { errors: unknown }).errors;
           if (errors && typeof errors === "object") {
@@ -111,6 +120,20 @@ function titleFor(status: number): string {
     */
     case HttpStatus.SERVICE_UNAVAILABLE:
       return "Түр ашиглах боломжгүй байна";
+    /*
+      ★ Added 2026-09-19 with the ESIS institution lookup's 502, and for the
+      same argument as the 503 above. Without a case here an upstream
+      non-answer reads "Алдаа гарлаа" — identical to a 500, which says
+      something broke here and nobody knows what. A 502 says the request was
+      fine and the other system did not answer, so retrying is the correct
+      next move.
+
+      ★★ Deliberately not the same sentence as the thrown `detail` («ESIS
+      хариу өгсөнгүй.»): a message equal to the title is dropped by the branch
+      above, and the operator would lose the more specific half.
+    */
+    case HttpStatus.BAD_GATEWAY:
+      return "Гадаад системээс хариу ирсэнгүй";
     default:
       return "Алдаа гарлаа";
   }
