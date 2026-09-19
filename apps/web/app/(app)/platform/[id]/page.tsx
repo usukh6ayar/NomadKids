@@ -118,7 +118,11 @@ function KindergartenDetail() {
         outranks "which institution does it read", and it is the question an
         operator opening this page during onboarding actually has.
       */}
-      <KindergartenAdmins kindergartenId={kg.id} admins={kg.admins} />
+      <KindergartenAdmins
+        kindergartenId={kg.id}
+        esisInstitutionId={kg.esisInstitutionId ?? null}
+        admins={kg.admins}
+      />
 
       <EsisMappingCard kindergarten={kg} />
 

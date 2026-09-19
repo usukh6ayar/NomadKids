@@ -1,10 +1,16 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { UserPlus } from "lucide-react";
 import { useState } from "react";
-import { platformAdminInvitedSchema, type PlatformAdmin } from "@kinder/contracts";
-import { mutate } from "@/lib/api/browser";
+import {
+  esisInstitutionLookupSchema,
+  platformAdminInvitedSchema,
+  ROLE_LABEL,
+  type EsisInstitutionLookup,
+  type PlatformAdmin,
+} from "@kinder/contracts";
+import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { formatRelative } from "@/lib/format";
@@ -13,7 +19,8 @@ import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
-import { EmptyState, FormError } from "@/components/ui/states";
+import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { cn } from "@/lib/utils";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
 
 /**
@@ -42,9 +49,12 @@ import { InvitationHandover } from "@/components/admin/invitation-handover";
  */
 export function KindergartenAdmins({
   kindergartenId,
+  esisInstitutionId,
   admins,
 }: {
   kindergartenId: string;
+  /** Null for a kindergarten registered by hand — see `AddAdminDialog`. */
+  esisInstitutionId: string | null;
   admins: PlatformAdmin[];
 }) {
   const [adding, setAdding] = useState(false);
@@ -107,17 +117,41 @@ export function KindergartenAdmins({
       </Card>
 
       {adding ? (
-        <AddAdminDialog kindergartenId={kindergartenId} onClose={() => setAdding(false)} />
+        <AddAdminDialog
+          kindergartenId={kindergartenId}
+          esisInstitutionId={esisInstitutionId}
+          onClose={() => setAdding(false)}
+        />
       ) : null}
     </section>
   );
 }
 
+/**
+ * ★ On a mapped kindergarten the person is **chosen from its own ESIS staff
+ * list**, never typed — client, 2026-09-19: "удирдлага нэмэх нь зөвхөн тэр
+ * тухайн байгууллага дахь ажилчдаас сонгоно".
+ *
+ * Two things follow from that, and both matter. The operator cannot install
+ * somebody the institution has never employed; and the name is saved with the
+ * **ministry's own spelling**, which is what staff self-registration matches a
+ * register number against later. `PlatformService.addAdmin` re-reads the list
+ * server-side and refuses a `personId` that is not on it — this picker is a
+ * convenience, not the check.
+ *
+ * ★★ A kindergarten with **no institution** keeps the typed fields. There is
+ * no list to read, and refusing here would make a manually-registered tenant
+ * whose only director cannot sign in unrescuable — the exact hole this dialog
+ * was added to close. The copy says which case the operator is in rather than
+ * leaving them to infer it from which fields appeared.
+ */
 function AddAdminDialog({
   kindergartenId,
+  esisInstitutionId,
   onClose,
 }: {
   kindergartenId: string;
+  esisInstitutionId: string | null;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -125,6 +159,25 @@ function AddAdminDialog({
   const [lastName, setLastName] = useState("");
   const [firstName, setFirstName] = useState("");
   const [email, setEmail] = useState("");
+  const [personId, setPersonId] = useState<string | null>(null);
+
+  const staff = useQuery({
+    queryKey: ["platform", "esis-institution", esisInstitutionId],
+    queryFn: () =>
+      get(
+        `/platform/esis/institutions/${encodeURIComponent(esisInstitutionId!)}`,
+        esisInstitutionLookupSchema,
+      ),
+    enabled: Boolean(esisInstitutionId),
+  });
+
+  const choose = (person: EsisInstitutionLookup["staff"][number]) => {
+    setPersonId(person.personId);
+    // Shown so the operator sees what will be saved. The API overwrites both
+    // from the ministry's answer anyway.
+    setLastName(person.lastName);
+    setFirstName(person.firstName);
+  };
 
   const create = useMutation({
     mutationFn: () =>
@@ -136,6 +189,9 @@ function AddAdminDialog({
           firstName,
           email: email.trim() === "" ? null : email.trim(),
           phone: null,
+          // Omitted entirely on an unmapped kindergarten: the API refuses a
+          // `esisPersonId` it has no institution to verify against.
+          ...(esisInstitutionId && personId ? { esisPersonId: personId } : {}),
         },
       }),
     onSuccess: () => {
@@ -176,7 +232,11 @@ function AddAdminDialog({
       description="Нууц үг энд тавигдахгүй — тэр хүн урилгын холбоосоор орж өөрөө сонгоно."
       footer={
         <>
-          <Button type="submit" form="add-admin-form" disabled={create.isPending}>
+          <Button
+            type="submit"
+            form="add-admin-form"
+            disabled={create.isPending || (Boolean(esisInstitutionId) && !personId)}
+          >
             <UserPlus size={18} aria-hidden />
             {create.isPending ? "Үүсгэж байна…" : "Урилга үүсгэх"}
           </Button>
@@ -197,31 +257,90 @@ function AddAdminDialog({
       >
         <FormError message={create.isError ? errorMessage(create.error) : null} />
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Овог" error={errors.lastName} required>
-            {({ id, describedBy, invalid }) => (
-              <Input
-                id={id}
-                aria-describedby={describedBy}
-                invalid={invalid}
-                value={lastName}
-                onChange={(event) => setLastName(event.target.value)}
-                autoFocus
-              />
-            )}
-          </Field>
-          <Field label="Нэр" error={errors.firstName} required>
-            {({ id, describedBy, invalid }) => (
-              <Input
-                id={id}
-                aria-describedby={describedBy}
-                invalid={invalid}
-                value={firstName}
-                onChange={(event) => setFirstName(event.target.value)}
-              />
-            )}
-          </Field>
-        </div>
+        {esisInstitutionId ? (
+          <fieldset className="rounded-card border border-border-soft p-2">
+            <legend className="px-1 text-caption text-muted">
+              ESIS-ийн ажилтны жагсаалт — институц {esisInstitutionId}
+            </legend>
+
+            {staff.isLoading ? <LoadingState rows={3} /> : null}
+            {staff.isError ? <ErrorState description={errorMessage(staff.error)} /> : null}
+
+            {staff.data && staff.data.staff.length === 0 ? (
+              <p className="px-2 py-3 text-caption leading-relaxed text-muted">
+                Энэ байгууллагад бүртгэлтэй ажилтан ESIS-ээс ирсэнгүй. Яамны бүртгэлээ шалгана уу.
+              </p>
+            ) : null}
+
+            {staff.data && staff.data.staff.length > 0 ? (
+              <div className="flex max-h-[260px] flex-col gap-0.5 overflow-y-auto">
+                {staff.data.staff.map((person) => (
+                  <label
+                    key={person.personId}
+                    className={cn(
+                      "flex cursor-pointer items-start gap-2 rounded-control px-2 py-2 transition-colors",
+                      personId === person.personId ? "bg-primary-soft" : "hover:bg-canvas",
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="esis-admin"
+                      className="mt-1"
+                      value={person.personId}
+                      checked={personId === person.personId}
+                      onChange={() => choose(person)}
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-body text-ink">
+                        {person.lastName} {person.firstName}
+                      </span>
+                      <span className="block text-caption text-muted">
+                        {[
+                          person.positionName,
+                          person.suggestedRole && ROLE_LABEL[person.suggestedRole],
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || "Албан тушаал тодорхойгүй"}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            ) : null}
+          </fieldset>
+        ) : (
+          <>
+            <p className="rounded-control bg-sun px-3 py-2 text-caption leading-relaxed text-sun-ink">
+              Энэ цэцэрлэг ESIS-д холбогдоогүй тул ажилтны жагсаалт алга. Нэрийг гараар бөглөнө үү.
+            </p>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Овог" error={errors.lastName} required>
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    value={lastName}
+                    onChange={(event) => setLastName(event.target.value)}
+                    autoFocus
+                  />
+                )}
+              </Field>
+              <Field label="Нэр" error={errors.firstName} required>
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    value={firstName}
+                    onChange={(event) => setFirstName(event.target.value)}
+                  />
+                )}
+              </Field>
+            </div>
+          </>
+        )}
 
         <Field label="Нэвтрэх нэр" error={errors.username} hint="Латин үсэг, тоо, . _ -" required>
           {({ id, describedBy, invalid }) => (
