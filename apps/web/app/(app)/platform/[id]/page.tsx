@@ -22,6 +22,7 @@ import {
 } from "@/components/admin/dashboard-sections";
 import { ToggleActiveButton } from "@/components/admin/toggle-kindergarten-active";
 import { DeleteKindergartenButton } from "@/components/admin/delete-kindergarten-button";
+import { KindergartenAdmins } from "@/components/platform/kindergarten-admins";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
@@ -112,6 +113,13 @@ function KindergartenDetail() {
 
       <StatGrid counts={kg.counts} />
 
+      {/*
+        Above the ESIS card on purpose: "can anybody sign in to this tenant"
+        outranks "which institution does it read", and it is the question an
+        operator opening this page during onboarding actually has.
+      */}
+      <KindergartenAdmins kindergartenId={kg.id} admins={kg.admins} />
+
       <EsisMappingCard kindergarten={kg} />
 
       <AssessmentCoverageSection
@@ -163,8 +171,27 @@ function EsisMappingCard({ kindergarten }: { kindergarten: PlatformKindergartenD
         }
       />
       <Card pad="roomy">
-        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px_auto] md:items-end">
-          <Field label="ESIS institution ID">
+        {/*
+          ★ Two columns, and the buttons share one row — 2026-09-19.
+
+          The grid asked for **three** columns,
+          `[minmax(0,1fr)_220px_auto]`, and only two children were left to fill
+          them: the "Орчин" picker that used to sit in the middle was dropped
+          the same day (the ministry runs no ESIS test environment, so the
+          field offered a second option that could only ever be wrong, and
+          `20260919150000_drop_esis_environment` removed the column behind it).
+          The button pair therefore landed in the 220px slot and wrapped —
+          Хадгалах above Салгах, which is what made this card look broken.
+        */}
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+          <Field
+            label="ESIS institution ID"
+            hint={
+              kindergarten.esisInstitutionId
+                ? `Одоо холбогдсон: ${kindergarten.esisInstitutionId}`
+                : "Холбогдоогүй байна."
+            }
+          >
             {({ id, describedBy, invalid }) => (
               <Input
                 id={id}
@@ -177,22 +204,28 @@ function EsisMappingCard({ kindergarten }: { kindergarten: PlatformKindergartenD
               />
             )}
           </Field>
+
           {/*
-            The "Орчин" picker stood here until 2026-09-19. The ministry runs
-            no ESIS test environment — the one credential points at the
-            production hub — so the field offered a second option that could
-            only ever be wrong, and the column behind it was dropped in
-            `20260919150000_drop_esis_environment`.
+            `flex-nowrap` with `shrink-0` on the pair rather than `flex-wrap`:
+            at every width from 375px up the two labels fit side by side, and
+            the auto column is sized to them.
           */}
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-nowrap items-center gap-2">
             <Button
+              className="shrink-0"
               disabled={!institutionId.trim() || save.isPending}
               onClick={() => save.mutate(true)}
             >
-              <Database aria-hidden /> Хадгалах
+              <Database aria-hidden />
+              {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
             </Button>
             {kindergarten.esisInstitutionId ? (
-              <Button variant="ghost" disabled={save.isPending} onClick={() => save.mutate(false)}>
+              <Button
+                variant="ghost"
+                className="shrink-0 text-danger hover:bg-danger-soft"
+                disabled={save.isPending}
+                onClick={() => save.mutate(false)}
+              >
                 Салгах
               </Button>
             ) : null}

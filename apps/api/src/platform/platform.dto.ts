@@ -66,3 +66,14 @@ export const deleteKindergartenSchema = z.object({
   confirmName: z.string().trim().min(1, "Цэцэрлэгийн нэрийг бичнэ үү").max(200),
 });
 export type DeleteKindergartenDto = z.infer<typeof deleteKindergartenSchema>;
+
+/**
+ * `POST /platform/kindergartens/:id/admins`.
+ *
+ * ★ The same fields as the first director on `createKindergartenSchema`, and
+ * deliberately the same shape: one way to describe an administrator, whether
+ * they arrive with the kindergarten or a month later. `role` is absent for
+ * the reason `firstAdminSchema` states — this route only ever makes an ADMIN.
+ */
+export const createKindergartenAdminSchema = firstAdminSchema;
+export type CreateKindergartenAdminDto = z.infer<typeof createKindergartenAdminSchema>;

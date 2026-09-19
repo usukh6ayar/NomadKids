@@ -63,8 +63,24 @@ const buttonVariants = cva(
         md: "h-[48px] px-5 text-lead",
         sm: "h-[44px] px-4 text-body",
         lg: "h-[52px] px-6 text-lead",
-        // Square icon button. Still 44px.
-        icon: "h-[44px] w-[44px] p-0",
+        /*
+         * Icon-only, 44px, and **round** — 2026-09-19, at the client's
+         * request that the ✕ read as a circle under the cursor.
+         *
+         * ★ It applies to every icon-only button rather than to close alone,
+         * which is the point: a rounded-square hover beside a circular one is
+         * worse than either, and the most prominent icon button in the product
+         * — `BackButton` — has drawn its own `rounded-pill` since it was
+         * written. This makes the rule the default instead of the exception.
+         *
+         * ★★ It is the *hover* shape that matters. A ghost icon button is
+         * invisible until the pointer reaches it, so the tinted area that
+         * appears is the whole of what a reader sees as "the button".
+         *
+         * Eight call sites already set their own `rounded-*`; tailwind-merge
+         * keeps theirs, so nothing that had a considered shape loses it.
+         */
+        icon: "h-[44px] w-[44px] rounded-pill p-0",
       },
       block: { true: "w-full", false: "" },
     },

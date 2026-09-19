@@ -407,8 +407,27 @@ function QuickAction({
         <span className="block text-lead font-semibold leading-heading text-ink">{title}</span>
         <span className="mt-0.5 block text-caption leading-snug text-muted">{description}</span>
       </span>
-      <span className="absolute right-3 top-3 grid size-8 shrink-0 place-items-center rounded-pill bg-surface text-primary shadow-sm transition group-hover:bg-primary group-hover:text-white sm:static sm:size-9">
-        <ArrowRight size={17} aria-hidden="true" />
+      {/*
+        ★ The arrow — reworked 2026-09-19, the client: "арай аятайхан".
+
+        It was a white disc with its own shadow, floating on top of the card at
+        rest and flipping to solid blue the instant the pointer arrived. Two
+        problems in one: a second raised surface competing with the card it
+        sits on, and a colour change with no movement, which reads as a state
+        rather than as an invitation.
+
+        Now it rests as a soft tint that belongs to the card, fills on hover,
+        and the arrow itself steps to the right — the motion is what says
+        "this goes somewhere", and the tint is what keeps it quiet until then.
+        `motion-reduce` drops the step and keeps the colour, so the hover is
+        still legible without the movement.
+      */}
+      <span className="absolute right-3 top-3 grid size-8 shrink-0 place-items-center rounded-pill bg-primary-soft text-primary transition-colors duration-150 group-hover:bg-primary group-hover:text-primary-ink sm:static sm:size-9">
+        <ArrowRight
+          size={17}
+          aria-hidden="true"
+          className="transition-transform duration-150 group-hover:translate-x-px motion-reduce:transform-none"
+        />
       </span>
     </Link>
   );

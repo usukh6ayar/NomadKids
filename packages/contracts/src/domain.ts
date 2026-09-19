@@ -3519,10 +3519,43 @@ export type DeletedKindergarten = z.infer<typeof deletedKindergartenSchema>;
  * counts/coverage/activity shape `adminDashboardSchema` gives a kindergarten's
  * own admin, scoped by the API to just this one kindergarten.
  */
+/**
+ * One Захирал/Эрхлэгч of a kindergarten, as the platform operator sees them.
+ *
+ * ★ `lastLoginAt` is the field that earns this list its place. The operator's
+ * real question is not "who administers this kindergarten" but "**can anybody
+ * get in**" — a director who was invited and never accepted looks identical to
+ * a working one in every other column, and that is precisely the tenant that
+ * needs a second invitation.
+ *
+ * ★★ No `email` beyond what is needed to recognise the person, and never a
+ * password field of any kind. This is an operator reading across tenants.
+ */
+export const platformAdminSchema = z.object({
+  id: uuidSchema,
+  username: z.string(),
+  lastName: z.string(),
+  firstName: z.string(),
+  email: z.string().nullish(),
+  isActive: z.boolean(),
+  /** Null when they have never signed in — see the note above. */
+  lastLoginAt: z.string().nullable(),
+});
+export type PlatformAdmin = z.infer<typeof platformAdminSchema>;
+
+/** `POST /platform/kindergartens/:id/admins`. */
+export const platformAdminInvitedSchema = z.object({
+  user: platformAdminSchema,
+  invitationToken: z.string(),
+});
+export type PlatformAdminInvited = z.infer<typeof platformAdminInvitedSchema>;
+
 export const platformKindergartenDetailSchema = platformKindergartenSchema.extend({
   description: z.string().nullish(),
   esisInstitutionId: z.string().nullish(),
   esisMappedAt: z.string().nullish(),
+  /** Every live ADMIN membership in this tenant. See `platformAdminSchema`. */
+  admins: z.array(platformAdminSchema),
   counts: z.object({
     children: z.number(),
     groups: z.number(),

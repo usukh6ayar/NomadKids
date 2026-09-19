@@ -173,6 +173,87 @@ export class PlatformRepository {
   }
 
   /**
+   * The kindergarten's Захирал/Эрхлэгч accounts.
+   *
+   * ★ `lastLoginAt` comes along because the operator's question is "can
+   * anybody get in", not "who is listed" — a director who never accepted
+   * their invitation reads identically to a working one without it.
+   */
+  async listAdmins(kindergartenId: string) {
+    const memberships = await this.prisma.membership.findMany({
+      where: { kindergartenId, role: "ADMIN", deletedAt: null },
+      select: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            lastName: true,
+            firstName: true,
+            email: true,
+            isActive: true,
+            lastLoginAt: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    return memberships.map((membership) => membership.user);
+  }
+
+  /**
+   * A second (or replacement) director for a kindergarten that already exists.
+   *
+   * ★ The same three writes as `createWithAdmin`'s admin half — user,
+   * membership, invitation — in one transaction, for the same reason: an
+   * account with no membership reaches nothing, and one with no invitation can
+   * never set a password, so a partial success is worse than a failure.
+   *
+   * ★★ It does **not** reuse `createWithAdmin`. That method's whole shape is
+   * "a kindergarten and its first director, atomically", including the ESIS
+   * mapping and the staff roster; threading a "the tenant already exists"
+   * branch through it would make the one transaction this system most needs to
+   * be obviously correct harder to read for the sake of thirty shared lines.
+   */
+  async createAdminForExisting(input: CreateAdminForExistingInput) {
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          username: input.username,
+          email: input.email ?? null,
+          lastName: input.lastName,
+          firstName: input.firstName,
+          passwordHash: input.passwordHash,
+          isActive: true,
+          authTokens: {
+            create: {
+              purpose: "INVITATION",
+              tokenHash: input.invitationTokenHash,
+              expiresAt: input.invitationExpiresAt,
+              requestedIp: null,
+            },
+          },
+        },
+        select: {
+          id: true,
+          username: true,
+          lastName: true,
+          firstName: true,
+          email: true,
+          isActive: true,
+          lastLoginAt: true,
+        },
+      });
+
+      await tx.membership.create({
+        data: { userId: user.id, kindergartenId: input.kindergartenId, role: "ADMIN" },
+      });
+
+      return user;
+    });
+  }
+
+  /**
    * What a deletion would take with it — shown to the operator before they
    * confirm, and recorded in the audit row afterwards.
    *
@@ -277,6 +358,18 @@ export class PlatformRepository {
 
     return { kindergartens, groups, children, staff, guardians };
   }
+}
+
+/** `PlatformRepository.createAdminForExisting`. */
+export interface CreateAdminForExistingInput {
+  kindergartenId: string;
+  username: string;
+  email: string | null;
+  lastName: string;
+  firstName: string;
+  passwordHash: string;
+  invitationTokenHash: string;
+  invitationExpiresAt: Date;
 }
 
 export interface CreateWithAdminInput {
