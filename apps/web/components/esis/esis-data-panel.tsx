@@ -14,7 +14,7 @@ import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { EsisNoAnswer } from "@/components/esis/esis-no-answer";
 import { EsisRowValues, esisSampleColumns } from "@/components/esis/esis-rows";
-import { ESIS_PARAM_LABEL, esisApiIdLabel, isPersonalParam } from "@/components/esis/esis-params";
+import { ESIS_PARAM_LABEL, isPersonalParam } from "@/components/esis/esis-params";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -53,6 +53,30 @@ import { cn } from "@/lib/utils";
  * So the label is recorded here instead of on screen. `/platform/[id]/esis`
  * keeps its badges: that screen exists to say which services are live and which
  * are not, and is where anybody asking "is this real?" is sent.
+ *
+ * ★★★★★ **The technical half is gone — 2026-09-19**, at the client's
+ * instruction: the panels "нэг тиим сонин демо юм шиг харагдуулаад байна …
+ * энгийн болгоороой", prod and local alike.
+ *
+ * What went, and why none of it had an audience here:
+ *
+ * - `slug · api-128 · GET /v2/cook/levelHood/students` under every heading. A
+ *   director does not have an api id; the only person who does is the platform
+ *   operator, and that screen prints it itself.
+ * - The `ESIS LIVE` badge, which said the same thing the rows already say.
+ * - `showResponseDetails` and everything behind it — Method, Response mode,
+ *   HTTP status, Sync status, Request URL and a dark `<pre>` of the raw
+ *   envelope. It was set on exactly two product screens, `/children`'s
+ *   РД-ээр хайх and `/kitchen/recipes`' Бэлэн бүтээгдэхүүн, so a teacher
+ *   searching for a child and a cook reading the food catalogue were both
+ *   shown a debugger. **`/platform/[id]/esis` does not render this component
+ *   at all** — it has its own UI — so the block had no legitimate reader
+ *   anywhere.
+ * - The footer's field policy, replaced by a plain "Сүүлд шинэчилсэн".
+ *
+ * What stayed is what a person reading their kindergarten's data needs: the
+ * name of the thing, a sentence about it, how many records came back, a button
+ * to refresh, and the rows.
  */
 export function EsisDataPanel({
   resource,
@@ -66,7 +90,6 @@ export function EsisDataPanel({
   headingId,
   askForParams = true,
   autoRead = false,
-  showResponseDetails = false,
   actionLabel,
   detail,
   compact = false,
@@ -126,8 +149,6 @@ export function EsisDataPanel({
   headingId?: string;
   /** Calls the role-authorised ESIS reader as soon as its catalog is ready. */
   autoRead?: boolean;
-  /** Shows request metadata and the complete ESIS response envelope inline. */
-  showResponseDetails?: boolean;
   /** Overrides the generic pull command for a task-specific action. */
   actionLabel?: string;
   /**
@@ -327,10 +348,6 @@ export function EsisDataPanel({
     );
   }
   const heading = headingId ?? `esis-panel-${resource}`;
-  const receivedAt = read.dataUpdatedAt
-    ? new Date(read.dataUpdatedAt).toLocaleString("mn-MN")
-    : null;
-
   async function pull() {
     setPulled(true);
     if (catalog.data?.canRead) {
@@ -368,12 +385,8 @@ export function EsisDataPanel({
               {title ?? endpoint.name}
             </h2>
             <p className="mt-0.5 text-body text-muted">{description ?? endpoint.usage}</p>
-            <p className="mt-1 break-all font-mono text-caption text-faint">
-              {endpoint.slug} · {esisApiIdLabel(endpoint.apiId)} · {endpoint.method} {endpoint.path}
-            </p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {showResponseDetails ? <Badge tone="mint">{"ESIS LIVE"}</Badge> : null}
             <Badge tone="sky">{rows.length} бичлэг</Badge>
             <Button
               size="sm"
@@ -422,89 +435,6 @@ export function EsisDataPanel({
                 ? "Регистрийн дугаарыг ESIS рүү илгээх ба хадгалахгүй."
                 : "ESIS-ийн өөрийн дугаарыг ашиглана."}
             </p>
-          </div>
-        ) : null}
-
-        {showResponseDetails ? (
-          <div className="flex flex-col gap-4" aria-label="ESIS хүсэлт ба хариу">
-            <dl className="grid overflow-hidden rounded-control border border-border-soft sm:grid-cols-2 xl:grid-cols-4">
-              <ResponseFact label="Method" value={endpoint.method} />
-              <ResponseFact label="Response mode" value={read.data?.source ?? "LIVE"} />
-              <ResponseFact
-                label="HTTP status"
-                value={read.data ? String(read.data.response.SUCCESS_CODE) : "Хүлээж байна"}
-              />
-              <ResponseFact label="Sync status" value={read.data?.status ?? "PENDING"} />
-              <ResponseFact
-                label="Request parameter"
-                value={
-                  required.length > 0
-                    ? required
-                        .map((name) => {
-                          const currentValue = value(name);
-                          return `${name}=${
-                            isPersonalParam(name) && currentValue ? "••••••••" : currentValue || "—"
-                          }`;
-                        })
-                        .join(", ")
-                    : "Параметргүй"
-                }
-              />
-              <ResponseFact
-                label="Response message"
-                value={read.data?.response.RESPONSE_MESSAGE ?? "Хүлээж байна"}
-              />
-              <ResponseFact
-                label="Response count"
-                value={read.data ? String(read.data.count) : "—"}
-              />
-              <ResponseFact
-                label="Duration"
-                value={
-                  read.data?.durationMs === null || read.data?.durationMs === undefined
-                    ? "—"
-                    : `${read.data.durationMs} ms`
-                }
-              />
-            </dl>
-
-            <div>
-              <p className="text-caption font-semibold uppercase text-muted">Request URL</p>
-              <p className="mt-1 break-all rounded-control bg-canvas px-3 py-2 font-mono text-caption text-ink">
-                {endpoint.method} {endpoint.path}
-              </p>
-            </div>
-
-            <div>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                {/*
-                  ★ "Бүтэн JSON" until 2026-09-14, and it stopped being true
-                  that day: `RESULT` now carries the envelope's first few
-                  records rather than all of them, because the read cap rose to
-                  five hundred and this block was rendering every one of them a
-                  second time. A heading that promises the whole response over
-                  a sample of it is the kind of small lie an operator builds a
-                  wrong conclusion on.
-                */}
-                <h3 className="font-semibold text-ink">Response output · Бүтцийн жишээ</h3>
-                <span className="text-caption text-muted">
-                  {read.data
-                    ? `${read.data.response.RESULT.length} / ${read.data.count} бичлэг`
-                    : receivedAt
-                      ? `Хүлээн авсан: ${receivedAt}`
-                      : "ESIS response хүлээж байна"}
-                </span>
-              </div>
-              {read.isFetching && !read.data ? (
-                <LoadingState rows={2} />
-              ) : read.data ? (
-                <pre className="mt-3 max-h-[520px] overflow-auto rounded-control bg-[#142033] p-4 font-mono text-caption leading-5 text-[#e8f2ff]">
-                  {JSON.stringify(read.data.response, null, 2)}
-                </pre>
-              ) : (
-                <p className="mt-3 text-body text-muted">Response хараахан ирээгүй байна.</p>
-              )}
-            </div>
           </div>
         ) : null}
 
@@ -559,24 +489,12 @@ export function EsisDataPanel({
           />
         )}
 
-        <p className="border-t border-border-soft pt-4 text-caption text-muted">
-          {storeSyncedAt
-            ? `Синк хийсэн: ${storeSyncedAt} · `
-            : pulledAt
-              ? `Шинэчилсэн: ${pulledAt} · `
-              : null}
-          Татахгүй талбар: регистр, иргэний бүртгэлийн дугаар, нэвтрэх мэдээлэл.
-        </p>
+        {storeSyncedAt || pulledAt ? (
+          <p className="border-t border-border-soft pt-4 text-caption text-muted">
+            Сүүлд шинэчилсэн: {storeSyncedAt ?? pulledAt}
+          </p>
+        ) : null}
       </Card>
     </section>
-  );
-}
-
-function ResponseFact({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0 border-b border-border-soft px-4 py-3 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0 xl:border-r xl:last:border-r-0">
-      <dt className="text-caption text-muted">{label}</dt>
-      <dd className="mt-1 break-words font-mono text-caption font-semibold text-ink">{value}</dd>
-    </div>
   );
 }

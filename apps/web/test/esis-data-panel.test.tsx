@@ -279,7 +279,13 @@ describe("ESIS мэдээллийн панел", () => {
     const input = await screen.findByLabelText("РД (регистрийн дугаар)");
     expect(input).toHaveValue("");
     expect(screen.getByText(/хадгалахгүй/)).toBeInTheDocument();
-    expect(screen.getByText(/ID 45/)).toBeInTheDocument();
+    /*
+     * ★ The `slug · api-45 · GET /path` line was asserted here until
+     * 2026-09-19 and is gone with it: a director has no api id, and the panel
+     * now reads as part of the product rather than as a request inspector.
+     * `/platform/[id]/esis` is where those identifiers live.
+     */
+    expect(screen.queryByText(/api-45/)).not.toBeInTheDocument();
   });
 
   /*
@@ -494,7 +500,8 @@ describe("ESIS мэдээллийн панел", () => {
      * detail service, per opened row.
      */
     expect(screen.getAllByRole("button", { name: /ESIS-ээс мэдээллээ татах/ })).toHaveLength(1);
-    expect(screen.getAllByText(/Татахгүй талбар/)).toHaveLength(1);
+    // One pull button is the measure now that the footer disclaimer is gone —
+    // the assertion was always "the nested panel is not a second full panel".
   });
 
   /*
@@ -730,7 +737,7 @@ describe("ESIS мэдээллийн панел", () => {
 
     expect(await screen.findByText("Жинхэнэ цэцэрлэг")).toBeInTheDocument();
     // The sweep's own date, not the moment this browser happened to press the button.
-    expect(screen.getByText(/Синк хийсэн:/)).toBeInTheDocument();
+    expect(screen.getByText(/Сүүлд шинэчилсэн:/)).toBeInTheDocument();
   });
 
   /*

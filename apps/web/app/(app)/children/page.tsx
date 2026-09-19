@@ -344,7 +344,6 @@ function StaffChildren() {
         title="РД-ээр хайх"
         description="Суралцагчийн мэдээллийг регистрийн дугаараар ESIS-ээс хайх"
         actionLabel="РД-ээр хайх"
-        showResponseDetails
       />
       {/*
         ★ Суралцагчийн хөдөлгөөн — the last service in the catalog that had
