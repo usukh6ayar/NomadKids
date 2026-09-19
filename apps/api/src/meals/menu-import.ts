@@ -38,13 +38,16 @@ const KIND_ALIASES: Record<string, string> = {
   dinner: "EXTRA",
 };
 
-/** Header spellings accepted for each column. Lower-cased before matching. */
+/** Common headings in both exported and independently prepared menus. */
 const COLUMNS = [
-  { field: "date", aliases: ["огноо", "date"] },
-  { field: "kind", aliases: ["хоолны цаг", "хоол", "цаг", "meal"] },
-  { field: "name", aliases: ["хоолны нэр", "нэр", "name", "dish"] },
-  { field: "portions", aliases: ["порц", "portions"] },
-  { field: "calories", aliases: ["ккал", "илчлэг", "calories", "kcal"] },
+  { field: "date", aliases: ["огноо", "он сар өдөр", "хоолны огноо", "date"] },
+  { field: "year", aliases: ["он", "жил", "year"] },
+  { field: "month", aliases: ["сар", "month"] },
+  { field: "day", aliases: ["өдөр", "өдрийн тоо", "day"] },
+  { field: "kind", aliases: ["хоолны цаг", "хоолны төрөл", "төрөл", "хооллох цаг", "meal", "meal type"] },
+  { field: "name", aliases: ["хоолны нэр", "хоолны нэршил", "хоол", "нэр", "name", "dish", "menu"] },
+  { field: "portions", aliases: ["порц", "порцын хэмжээ", "portions"] },
+  { field: "calories", aliases: ["ккал", "илчлэг", "илчлэг ккал", "калори", "calories", "kcal"] },
   { field: "allergenTags", aliases: ["харшлын шошго", "харшил", "allergens"] },
   { field: "note", aliases: ["тэмдэглэл", "note"] },
 ] as const;
@@ -93,55 +96,60 @@ export async function parseMenuWorkbook(input: Buffer): Promise<MenuParseResult>
     reading sheet zero blindly would work today and read the warnings sheet the
     day somebody reorders the tabs in Excel.
   */
-  const sheet = book.getWorksheet("Хоолны цэс") ?? book.worksheets[0];
-  if (!sheet) return { days: [], problems: [{ rowNumber: 0, message: "Хуудас олдсонгүй" }] };
-
-  const index = new Map<Field, number>();
-  sheet.getRow(1).eachCell((cell, column) => {
-    const heading = text(cell).toLowerCase();
-    for (const spec of COLUMNS) {
-      if (!index.has(spec.field) && (spec.aliases as readonly string[]).includes(heading)) {
-        index.set(spec.field, column);
+  const candidates = book.worksheets.flatMap((worksheet) => {
+    const found: { rowNumber: number; index: Map<Field, number> }[] = [];
+    for (let rowNumber = 1; rowNumber <= Math.min(worksheet.rowCount, 20); rowNumber++) {
+      const index = new Map<Field, number>();
+      worksheet.getRow(rowNumber).eachCell((cell, column) => {
+        const heading = normalize(text(cell));
+        for (const spec of COLUMNS) {
+          if (!index.has(spec.field) && spec.aliases.some((alias) => normalize(alias) === heading)) {
+            index.set(spec.field, column);
+          }
+        }
+      });
+      if (index.has("name") && (index.has("date") || (index.has("year") && index.has("month") && index.has("day")))) {
+        found.push({ rowNumber, index });
       }
     }
+    return found.map((found) => ({ sheet: worksheet, ...found }));
   });
-
-  for (const required of ["date", "name"] as const) {
-    if (!index.has(required)) {
-      return {
-        days: [],
-        problems: [
-          {
-            rowNumber: 1,
-            message: `"${required === "date" ? "Огноо" : "Хоолны нэр"}" багана олдсонгүй`,
-          },
-        ],
-      };
-    }
+  candidates.sort((a, b) => b.index.size - a.index.size || a.rowNumber - b.rowNumber);
+  const selected = candidates[0];
+  if (!selected) {
+    const matrix = book.worksheets.map(parseMenuMatrix).find((result) => result.days.length > 0);
+    return matrix ?? {
+      days: [],
+      problems: [{ rowNumber: 0, message: "Огноо, хоолны нэртэй хүснэгт олдсонгүй. Багануудыг шалгана уу." }],
+    };
   }
+  const { sheet, index, rowNumber: headerRow } = selected;
 
   const problems: MenuParseResult["problems"] = [];
   const byDate = new Map<string, ParsedMenuDish[]>();
 
+  let previousDate: string | null = null;
   sheet.eachRow((row, rowNumber) => {
-    if (rowNumber === 1) return;
+    if (rowNumber <= headerRow) return;
 
     const cell = (field: Field) => {
       const column = index.get(field);
       return column ? text(row.getCell(column)) : "";
     };
 
-    const rawDate = cell("date");
+    const dateParts = [cell("year"), cell("month"), cell("day")];
+    const rawDate = index.has("date") ? cell("date") : dateParts.some(Boolean) ? dateParts.join("-") : "";
     const name = cell("name");
 
     // A wholly blank row is how Excel pads a sheet somebody deleted rows from.
-    if (!rawDate && !name) return;
+    if (!name && !rawDate) return;
 
-    const date = isoDate(rawDate);
+    const date = isoDate(rawDate) ?? (!rawDate && name ? previousDate : null);
     if (!date) {
       problems.push({ rowNumber, message: `Огноо танигдсангүй: "${rawDate}"` });
       return;
     }
+    previousDate = date;
 
     /*
       ★ A day named with no dish still registers, as an empty day.
@@ -150,16 +158,20 @@ export async function parseMenuWorkbook(input: Buffer): Promise<MenuParseResult>
       those days are emptied. Without this the import could only ever add, and
       "I removed Wednesday's lunch" would silently do nothing.
     */
-    if (!byDate.has(date)) byDate.set(date, []);
-    if (!name || name.toLowerCase() === EMPTY_DAY_MARKER) return;
+    // Only an explicit empty day from our export may clear an existing day.
+    if (!name || normalize(name) === EMPTY_DAY_MARKER) {
+      if (index.has("date") && rawDate && !byDate.has(date)) byDate.set(date, []);
+      return;
+    }
 
     const rawKind = cell("kind");
-    const kind = rawKind ? (KIND_ALIASES[rawKind.toLowerCase()] ?? null) : null;
+    const kind = rawKind ? (KIND_ALIASES[normalize(rawKind)] ?? null) : null;
     if (rawKind && !kind) {
       problems.push({ rowNumber, message: `Хоолны цаг танигдсангүй: "${rawKind}"` });
       return;
     }
 
+    if (!byDate.has(date)) byDate.set(date, []);
     byDate.get(date)!.push({
       name,
       kind,
@@ -178,6 +190,66 @@ export async function parseMenuWorkbook(input: Buffer): Promise<MenuParseResult>
     .sort((x, y) => x.date.localeCompare(y.date));
 
   return { days, problems };
+}
+
+/**
+ * Many kindergartens receive a weekly plan with days as columns and meal
+ * sittings as rows. The supplied 2026-09-19 example has no "Огноо" heading:
+ * row four contains dates B:F and column A contains "Өглөөний хоол", etc.
+ */
+function parseMenuMatrix(sheet: ExcelJS.Worksheet): MenuParseResult {
+  const byDate = new Map<string, ParsedMenuDish[]>();
+  const problems: MenuParseResult["problems"] = [];
+
+  for (let headerRow = 1; headerRow <= sheet.rowCount; headerRow++) {
+    const dates = new Map<number, string>();
+    for (let column = 2; column <= sheet.columnCount; column++) {
+      const date = isoDate(text(sheet.getRow(headerRow).getCell(column)));
+      if (date) dates.set(column, date);
+    }
+    // One date can occur in an ordinary table. Two or more dates in the same
+    // row identifies the horizontal weekly-plan layout without guessing.
+    if (dates.size < 2) continue;
+
+    let previousKind: string | null = null;
+    for (let rowNumber = headerRow + 1; rowNumber <= sheet.rowCount; rowNumber++) {
+      const row = sheet.getRow(rowNumber);
+      // A following week starts another matrix, rather than being a food row.
+      const rowDates = [...dates.keys()].filter((column) => isoDate(text(row.getCell(column))));
+      if (rowDates.length >= 2) break;
+
+      const label = text(row.getCell(1));
+      const recognizedKind = label ? (KIND_ALIASES[normalize(label)] ?? null) : null;
+      if (recognizedKind) previousKind = recognizedKind;
+      if (label && !recognizedKind) {
+        // A title, note, or an unfamiliar row is not a dish row. Do not turn
+        // it into an accidental menu item or erase an existing day.
+        continue;
+      }
+      if (!previousKind) continue;
+
+      for (const [column, date] of dates) {
+        const name = text(row.getCell(column));
+        if (!name) continue;
+        if (!byDate.has(date)) byDate.set(date, []);
+        byDate.get(date)!.push({
+          name,
+          kind: previousKind,
+          portions: null,
+          calories: null,
+          allergenTags: [],
+          note: null,
+        });
+      }
+    }
+  }
+
+  return {
+    days: [...byDate.entries()]
+      .map(([date, dishes]) => ({ date, dishes }))
+      .sort((a, b) => a.date.localeCompare(b.date)),
+    problems,
+  };
 }
 
 function text(cell: ExcelJS.Cell | undefined): string {
@@ -206,7 +278,7 @@ function text(cell: ExcelJS.Cell | undefined): string {
  * and a kitchen typing a menu will produce all three.
  */
 function isoDate(raw: string): string | null {
-  const value = raw.trim();
+  const value = raw.trim().replace(/\s*(?:оны|он)\s*/g, "-").replace(/\s*(?:сарын|сар)\s*/g, "-").replace(/\s*(?:өдөр)\s*/g, "").replace(/\s+/g, "");
   if (!value) return null;
 
   const iso = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(value);
@@ -221,14 +293,19 @@ function isoDate(raw: string): string | null {
 function pad(year: string, month: string, day: string): string | null {
   const m = Number(month);
   const d = Number(day);
-  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+  const y = Number(year);
+  if (y < 1900 || y > 2100 || m < 1 || m > 12 || d < 1 || d > new Date(Date.UTC(y, m, 0)).getUTCDate()) return null;
   return `${year}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
 function number(raw: string): number | null {
   if (!raw) return null;
-  const value = Number(raw.replace(",", "."));
+  const value = Number(raw.replace(/\s*(?:ккал|kcal|калори|cal)\s*$/i, "").replace(",", ".").trim());
   return Number.isFinite(value) ? value : null;
+}
+
+function normalize(raw: string): string {
+  return raw.toLowerCase().replace(/[().,:/_\-]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function integer(raw: string): number | null {
