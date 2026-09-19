@@ -1,6 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { EsisConfig } from "./esis.config";
-import { esisDemoFixture } from "./esis.fixtures";
 import type { EsisErrorKind, EsisRequest, EsisResponse } from "./esis.types";
 
 /**
@@ -88,38 +87,37 @@ export class EsisClient {
       );
     }
 
+    /*
+     * ★ One transport — 2026-09-14. There was a second: `ESIS_DEMO_MODE=true`
+     * synthesised a response from a committed fixture and never opened a
+     * socket. It existed so the screens could be demonstrated before the token
+     * had scope, and it was removed the day institution 42778 started
+     * answering, at the client's instruction ("ene esis ni real zuil shuu").
+     *
+     * A read now reaches the ministry or fails, and a failure is reported as
+     * one — which is the behaviour the fixture branch was quietly preventing.
+     */
     let response: Response;
-    if (this.config.isDemoMode) {
-      if (!options.demoFixture) {
-        throw new EsisError("invalid_response", "ESIS demo request has no deterministic fixture", {
-          path: options.path,
-        });
-      }
-      response = new Response(JSON.stringify(esisDemoFixture(options.demoFixture, options)), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
-    } else
-      try {
-        const url = this.buildUrl(options.path, options.query);
-        response = await this.fetchWithRetry(url, method, options);
-      } catch (cause) {
-        const durationMs = Date.now() - startedAt;
-        // `AbortSignal.timeout` rejects with a TimeoutError; everything else here
-        // is a connection-level fault. They are separated because only one of
-        // them is worth retrying.
-        const timedOut = cause instanceof Error && cause.name === "TimeoutError";
+    try {
+      const url = this.buildUrl(options.path, options.query);
+      response = await this.fetchWithRetry(url, method, options);
+    } catch (cause) {
+      const durationMs = Date.now() - startedAt;
+      // `AbortSignal.timeout` rejects with a TimeoutError; everything else here
+      // is a connection-level fault. They are separated because only one of
+      // them is worth retrying.
+      const timedOut = cause instanceof Error && cause.name === "TimeoutError";
 
-        this.logFailure(method, options.path, timedOut ? "timeout" : "network", durationMs);
+      this.logFailure(method, options.path, timedOut ? "timeout" : "network", durationMs);
 
-        throw new EsisError(
-          timedOut ? "timeout" : "network",
-          timedOut
-            ? `ESIS request timed out after ${options.timeoutMs ?? this.config.timeoutMs}ms`
-            : `ESIS request failed: ${this.redact(cause instanceof Error ? cause.message : "unknown")}`,
-          { path: options.path, durationMs },
-        );
-      }
+      throw new EsisError(
+        timedOut ? "timeout" : "network",
+        timedOut
+          ? `ESIS request timed out after ${options.timeoutMs ?? this.config.timeoutMs}ms`
+          : `ESIS request failed: ${this.redact(cause instanceof Error ? cause.message : "unknown")}`,
+        { path: options.path, durationMs },
+      );
+    }
 
     const durationMs = Date.now() - startedAt;
     const rawBody = await response.text().catch(() => "");
@@ -136,16 +134,44 @@ export class EsisClient {
     }
 
     let data: unknown;
-    try {
-      // An empty 204 is a success with nothing to parse.
-      data = rawBody === "" ? null : JSON.parse(rawBody);
-    } catch {
-      throw new EsisError("invalid_response", "ESIS returned a body that is not JSON", {
-        status: response.status,
-        path: options.path,
-        durationMs,
-        bodyExcerpt: this.excerpt(rawBody),
-      });
+    if (rawBody === "") {
+      /*
+       * ★ 2026-09-15 — an empty body is a statement only when the status says
+       * so. 204 means "no content" by definition, and `teacher/movements`
+       * showed the ministry also uses 205 that way. Every other 2xx keeps its
+       * body, so an empty one there is a truncated response — proxy
+       * truncation, a ministry-side hiccup — not an answer, and collapsing it
+       * to `null` would let that pass as "nothing came back" instead of the
+       * broken contract it is. 203 is deliberately not in this list: ESIS
+       * uses it for "no rows" but the 2026-09-15 probe confirmed it always
+       * carries a full envelope — see `esisListParser`'s doc comment for the
+       * three shapes `RESULT` arrives in on a 203.
+       */
+      if (response.status === 204 || response.status === 205) {
+        data = null;
+      } else {
+        throw new EsisError(
+          "invalid_response",
+          `ESIS returned an empty body on ${response.status}`,
+          {
+            status: response.status,
+            path: options.path,
+            durationMs,
+            bodyExcerpt: this.excerpt(rawBody),
+          },
+        );
+      }
+    } else {
+      try {
+        data = JSON.parse(rawBody);
+      } catch {
+        throw new EsisError("invalid_response", "ESIS returned a body that is not JSON", {
+          status: response.status,
+          path: options.path,
+          durationMs,
+          bodyExcerpt: this.excerpt(rawBody),
+        });
+      }
     }
 
     if (options.parse) {
@@ -167,7 +193,7 @@ export class EsisClient {
       }
     }
 
-    const source = this.config.isDemoMode ? "MOCK" : "LIVE";
+    const source = "LIVE" as const;
     this.logger.log(
       `ESIS ${source} ${method} ${options.path} → ${response.status} (${durationMs}ms)`,
     );

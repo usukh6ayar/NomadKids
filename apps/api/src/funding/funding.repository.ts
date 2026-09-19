@@ -9,6 +9,30 @@ import type { AgeBand, FundingSource } from "../domain/enums";
 export class FundingRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * The enrolled children, with what the ESIS match needs — `нэмэлт.md` §3.
+   *
+   * ★ Separate from `monthInputs`, which loads the same enrolments for the
+   * calculation and deliberately selects only `id`, `lastName` and
+   * `firstName`. The subsidy match also needs `dateOfBirth`: a name alone is
+   * not enough to identify a child against a ministry roster, and widening
+   * `monthInputs` would make every monthly calculation carry a field it has no
+   * use for.
+   */
+  async childrenForEsisMatch(kindergartenId: string) {
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: { kindergartenId, status: "ACTIVE", deletedAt: null },
+      select: {
+        child: {
+          select: { id: true, lastName: true, firstName: true, dateOfBirth: true },
+        },
+      },
+      orderBy: [{ child: { lastName: "asc" } }, { child: { firstName: "asc" } }],
+    });
+
+    return enrollments.map((enrollment) => enrollment.child);
+  }
+
   // ── Rules ──────────────────────────────────────────────────────────────────
 
   async listRules(kindergartenId: string) {
@@ -364,6 +388,14 @@ export class FundingRepository {
     ]);
 
     return { enrollments, attendance, meals, approvedRequests, calculations };
+  }
+
+  /** The tenant's confirmed ESIS institution, or null when unmapped. */
+  async findKindergartenEsisMapping(id: string) {
+    return this.prisma.kindergarten.findFirst({
+      where: { id, deletedAt: null },
+      select: { esisInstitutionId: true },
+    });
   }
 
   /** The kindergarten's name, for the spreadsheet's title row. */

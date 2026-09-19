@@ -148,7 +148,7 @@ export default function SettingsPage() {
  * ★ No "ESIS мэдээлэл" heading and no `Demo ESIS` badge — 2026-09-08, at the
  * client's instruction, the same one that took them off the director's screens:
  * the record is to read as this screen's own, not as a labelled import. Where
- * the values come from is recorded here and on `/admin/integrations/esis`,
+ * the values come from is recorded here and on `/platform/[id]/esis`,
  * which keeps its badges because it exists to answer exactly that question.
  *
  * ★★ It has always been built from the signed-in account — see
@@ -223,11 +223,7 @@ function EsisProfileSection() {
 
   return (
     <section aria-labelledby="esis-profile-heading">
-      <SectionHeader
-        id="esis-profile-heading"
-        title="ESIS мэдээлэл"
-        action={<Badge tone="sun">Demo / Test data · MOCK</Badge>}
-      />
+      <SectionHeader id="esis-profile-heading" title="ESIS мэдээлэл" />
 
       <Card pad="roomy" className="flex flex-col gap-5">
         <div className="flex flex-wrap items-start gap-3 border-b border-border-soft pb-5">

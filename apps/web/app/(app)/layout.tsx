@@ -7,6 +7,7 @@ import {
   Boxes,
   Carrot,
   ClipboardList,
+  CloudDownload,
   FileText,
   Home,
   Images,
@@ -14,7 +15,6 @@ import {
   Menu,
   CalendarDays,
   CalendarRange,
-  Database,
   ScrollText,
   Settings,
   ShieldAlert,
@@ -27,6 +27,7 @@ import {
   FileCheck2,
   Headphones,
   HelpCircle,
+  KeyRound,
   LifeBuoy,
   LockKeyhole,
   // `X` was the picker modal's close button and went with it. The type stays:
@@ -336,12 +337,25 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
 
   /* Administration screens without supplied feature artwork. */
   "/admin/users": UserCog,
+  "/admin/staff-code": KeyRound,
   "/admin/school-years": CalendarRange,
   "/admin/terms": CalendarDays,
   "/admin/assessment-config": SlidersHorizontal,
   "/admin/audit": ScrollText,
-  "/admin/integrations/esis": Database,
   "/admin/curriculum": BookOpen,
+  /*
+   * ★ `/admin/integrations/esis` had a `Database` row here until 2026-09-14.
+   * The screen is `/platform/[id]/esis` now and this map is keyed by literal
+   * href — a dynamic segment would never match one — so the entry is removed
+   * rather than rewritten into something that silently never fires.
+   *
+   * ★★ `/admin/esis-sync` is new on 2026-09-17 — not a return of that row.
+   * It carries only the manual "Татах" buttons and their run history, which
+   * moved back to the director's shell because a sync spends *this*
+   * kindergarten's token; the token state, granted scope and institution
+   * mapping stay on `/platform/[id]/esis`, superadmin-only, unchanged.
+   */
+  "/admin/esis-sync": CloudDownload,
 };
 
 /** The section-level icon for a route, or nothing if it has no destination. */
@@ -858,16 +872,50 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          */
         ...adminEntry("Цэцэрлэгийн мэдээлэл", "/admin/kindergarten"),
         ...adminEntry("Хэрэглэгч ба эрх", "/admin/users", "adminUsersPermissions"),
+        /*
+         * ★ Added with staff self-registration — the director's code, the
+         * roster refresh and who has registered themselves. Sits beside
+         * "Хэрэглэгч ба эрх" because it is how an account gets onto that list
+         * in the first place, not a directory of its own.
+         */
+        ...adminEntry("Ажилтны бүртгэлийн код", "/admin/staff-code"),
         ...adminEntry("Хичээлийн жил", "/admin/school-years", "adminSchoolYear"),
         ...adminEntry("Улирал", "/admin/terms", "adminTerm"),
         /*
          * ★ Added 2026-09-10 with the four ESIS curriculum services. It sits
          * after Улирал because it answers the same kind of question — what
-         * shape does the year take — and before the ESIS hub, which is the
-         * operator's whole-catalog view rather than a working screen.
+         * shape does the year take.
          */
         ...adminEntry("Сургалтын хөтөлбөр", "/admin/curriculum", "adminCurriculum"),
-        ...adminEntry("ESIS мэдээллийн төв", "/admin/integrations/esis", "adminEsisHub"),
+        /*
+         * ★ **"ESIS мэдээллийн төв" was the next row and is gone** — 2026-09-14,
+         * at the client's request ("superadmin дээр байх нь зөв"). The screen
+         * moved to `/platform/[id]/esis`, reached from a kindergarten's page on
+         * the operator's own surface, because everything on it is a property of
+         * the deployment: the token, the base URL, the granted ESIS scope and
+         * the institution mapping, which was superadmin-only to begin with.
+         *
+         * ★★ A director did not lose an ESIS capability. The screens that
+         * actually call ESIS — the roster, a child's record, the day sheet,
+         * Сургалтын хөтөлбөр just above — draw their own services through
+         * `…/esis/catalog` and are untouched.
+         *
+         * ★★★ **2026-09-17 — one row returns, but not this one.** The manual
+         * "Татах" buttons for the two sync tiers briefly landed on
+         * `/platform/[id]/esis` (`929fd0b`) and called
+         * `POST /kindergartens/:id/esis/sync` — tenant `ADMIN`-scoped
+         * (`KindergartenEsisController`, `TenantAccessService.assertAdmin`),
+         * not the platform flag that screen is gated on, so a real platform
+         * operator with no kindergarten membership could not press either
+         * button. The 2026-09-14 rule already drew the line that settles
+         * this: "системийн зүйл" (token, base URL, granted scope, institution
+         * mapping) is the superadmin's; "ажлын гадаргуу" is the director's. A
+         * sync spends *this* kindergarten's token against *its* roster and
+         * feeds *its* screens — a working-surface action, not a systemic one
+         * — so it moves to `/admin/esis-sync` below, its own row, rather than
+         * back into the removed one above. The API did not change.
+         */
+        ...adminEntry("ESIS синк", "/admin/esis-sync"),
         /*
          * ★ "Үнэлгээний тохиргоо" and "Аудит" lost their rows on 2026-09-06,
          * at the client's request — and, as with the two review queues above,

@@ -54,12 +54,21 @@ function setup(overrides: { configured?: boolean; mappedId?: string | null } = {
   // reach *this* service, and an admin's own list is still every one of them.
   const tenants = { assertAdmin: vi.fn(), assertMember: vi.fn() };
   const platform = { assertSuperAdmin: vi.fn() };
+  /*
+   * ★ Added 2026-09-15 with the per-child ESIS gate. This stub permits, so the
+   * unit tests below keep asking what they were written to ask; the gate's own
+   * behaviour — a teacher of another group refused, an unproven `esisPersonId`
+   * refused — is proven over HTTP in `test/esis-admin.test.ts`, which is where
+   * CLAUDE.md §4.1 requires it to be proven.
+   */
+  const children = { assertCanAccess: vi.fn(async () => undefined) };
   const audit = { append: vi.fn(async () => undefined) };
   const service = new EsisAdminService(
     esis as never,
     repo as never,
     tenants as never,
     platform as never,
+    children as never,
     audit as never,
   );
   return { service, esis, repo, tenants, audit };

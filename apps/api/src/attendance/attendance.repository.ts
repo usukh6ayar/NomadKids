@@ -670,6 +670,41 @@ export class AttendanceRepository {
     });
   }
 
+  /**
+   * Records which ESIS person each child turned out to be.
+   *
+   * ★ An authorization fact, not a sync artefact. `Child.esisPersonId` is what
+   * lets a per-child ESIS read resolve a `personId` back to a child so
+   * `canAccessChild` can run; without it a teacher is refused. See the column's
+   * own note.
+   *
+   * ★★ `updateMany` scoped by `kindergartenId`, so a mapping can never be
+   * written onto another tenant's child even if a caller supplied the wrong
+   * pair. The tenant filter is the repository's job (CLAUDE.md §2.2), and this
+   * is the one write in this file that takes an id from an external system.
+   *
+   * ★★★ Idempotent and non-destructive: re-resolving the same child writes the
+   * same value, and a child already mapped is simply written again rather than
+   * compared. The unique index on `(kindergartenId, esisPersonId)` is what
+   * stops two children claiming one ESIS person — it throws, loudly, which is
+   * the right outcome for a roster that has genuinely gone wrong.
+   */
+  async rememberEsisPersonIds(
+    kindergartenId: string,
+    matches: { childId: string; esisPersonId: string }[],
+  ): Promise<void> {
+    if (matches.length === 0) return;
+
+    await Promise.all(
+      matches.map((match) =>
+        this.prisma.child.updateMany({
+          where: { id: match.childId, kindergartenId, deletedAt: null },
+          data: { esisPersonId: match.esisPersonId },
+        }),
+      ),
+    );
+  }
+
   /** The child's active enrollment — attendance is pinned to it. */
   async activeEnrollment(childId: string) {
     return this.prisma.enrollment.findFirst({

@@ -8,6 +8,7 @@ import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
+import { EsisNoAnswer } from "@/components/esis/esis-no-answer";
 import { EsisRowValues, esisSampleColumns } from "@/components/esis/esis-rows";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -180,10 +181,11 @@ export function EsisCurriculumChain() {
             <p className="text-body text-ink">{errorMessage(courses.error)}</p>
           </Card>
         ) : courses.data?.status === "FAILED" ? (
-          <Card pad="compact" tone="peach">
-            <p className="text-body font-semibold text-ink">ЭСИС хариу өгсөнгүй</p>
-            <p className="mt-1 text-caption text-muted">{courses.data.errorCode}</p>
-          </Card>
+          <EsisNoAnswer
+            endpoint={courses.data.endpoint}
+            errorCode={courses.data.errorCode}
+            variant="FAILED"
+          />
         ) : !courses.data || courses.data.rows.length === 0 ? (
           <EmptyState title="Хичээл алга" description={COURSES.empty} />
         ) : (
@@ -230,10 +232,11 @@ function SelectLevel({
           <p className="text-body text-ink">{errorMessage(query.error)}</p>
         </Card>
       ) : query.data?.status === "FAILED" ? (
-        <Card pad="compact" tone="peach">
-          <p className="text-body font-semibold text-ink">ЭСИС хариу өгсөнгүй</p>
-          <p className="mt-1 text-caption text-muted">{query.data.errorCode}</p>
-        </Card>
+        <EsisNoAnswer
+          endpoint={query.data.endpoint}
+          errorCode={query.data.errorCode}
+          variant="FAILED"
+        />
       ) : !query.data || query.data.rows.length === 0 ? (
         <Card pad="compact">
           <p className="text-body text-muted">{level.empty}</p>

@@ -5,8 +5,21 @@ import { useRouter } from "next/navigation";
 import { Fragment, useState, type ReactNode } from "react";
 import type { EsisField } from "@kinder/contracts";
 import { Card } from "@/components/ui/card";
+import { Pagination, ResultCount } from "@/components/ui/pagination";
+import { SearchField } from "@/components/ui/search-field";
+import { EmptyState } from "@/components/ui/states";
 import { TableShell, Td, Th } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+
+/**
+ * How many rows a page of the table holds, and the threshold the search box
+ * and paging appear at.
+ *
+ * ★ Twenty-five is the number the server used to truncate at, so a roster that
+ * fitted before still shows exactly what it showed — the controls appear for
+ * the lists that were being silently cut, and for no others.
+ */
+const ROWS_PER_PAGE = 25;
 
 /**
  * The columns a service's records are shown under.
@@ -48,9 +61,38 @@ export function esisSampleColumns(fields: EsisField[]): EsisField[] {
  */
 const TABLE_COLUMNS = 5;
 
-/** The columns the table draws. The opened row draws all of them. */
+/**
+ * The columns the table draws. The opened row draws all of them.
+ *
+ * ★★★★★ **Declared, not sliced — 2026-09-14.**
+ *
+ * This returned `fields.slice(0, TABLE_COLUMNS)`, and the note above explains
+ * why five: a row opens into the full record, so five is a summary rather than
+ * a truncation. That reasoning still holds. What was wrong was *which* five.
+ *
+ * The field list arrives in the ESIS developer portal's catalogue order, which
+ * documents identifiers first, so the student roster opened with "Байгууллагын
+ * код" — one value repeated down all eighty-three rows — then a thirteen-digit
+ * `personId`, and only then the child's name. Seventeen of the twenty-nine
+ * services began that way. The summary was correct in size and useless in
+ * content.
+ *
+ * `summary` carries each service's reading order from `esis.fields.ts`, where
+ * `ESIS_SUMMARY_FIELDS` declares it once beside the catalogue it names. Sorting
+ * by it is what lets Бүлэг sit beside Нэр even though the catalogue puts them
+ * fifteen fields apart.
+ *
+ * ★ A service with no declared order falls back to the old slice rather than
+ * rendering nothing. Three write services carry inputs only and never appear
+ * in that table, and a service somebody forgets should look exactly as it does
+ * today — an empty table is the one outcome worse than a badly chosen one.
+ */
 export function esisVisibleColumns(fields: EsisField[]): EsisField[] {
-  return fields.slice(0, TABLE_COLUMNS);
+  const declared = fields
+    .filter((field) => field.summary !== undefined)
+    .sort((a, b) => a.summary! - b.summary!);
+
+  return declared.length > 0 ? declared : fields.slice(0, TABLE_COLUMNS);
 }
 
 /**
@@ -113,10 +155,57 @@ export function EsisRowValues({
 }) {
   const router = useRouter();
   const [openRow, setOpenRow] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
 
   if (rows.length === 1) return <EsisRecordFields columns={columns} row={rows[0]!} />;
 
   const shown = esisVisibleColumns(columns);
+
+  /*
+   * ★ Row, destination and original position travel together — 2026-09-14.
+   *
+   * `hrefs` is index-aligned with `rows`, which was safe while the table drew
+   * every row in order. Filtering and paging break that alignment, and the
+   * failure would be silent and awful: each name would link to a different
+   * child's page. So the pairing happens once, before anything reorders, and
+   * nothing downstream indexes into `hrefs` again.
+   *
+   * `index` is kept because it is the opened row's identity. Keying expansion
+   * on a position within the filtered page would move the open row when the
+   * reader typed.
+   */
+  const entries = rows.map((row, index) => ({ row, index, href: hrefs?.[index] ?? null }));
+
+  /*
+   * ★★ The drawn columns only, which is what the label promises.
+   *
+   * Searching every field would match `institutionId` on all eighty-three rows
+   * — the same constant this table was just changed to stop showing — and a
+   * reader cannot see why a row matched when the hit is in a column that is
+   * not on screen. Every match here is visible in the row it returns.
+   */
+  const needle = query.trim().toLowerCase();
+  const matched = needle
+    ? entries.filter(({ row }) =>
+        shown.some((field) => (row[field.name] ?? "").toLowerCase().includes(needle)),
+      )
+    : entries;
+
+  const totalPages = Math.max(1, Math.ceil(matched.length / ROWS_PER_PAGE));
+  const current = Math.min(page, totalPages);
+  const visible = matched.slice((current - 1) * ROWS_PER_PAGE, current * ROWS_PER_PAGE);
+
+  /*
+   * ★★★ Controls appear only when they would do something.
+   *
+   * A search box over four groups is a control that can only ever narrow four
+   * rows to fewer, and `Pagination` already refuses to draw itself for a
+   * single page — this is the same promise-nothing rule, applied one level up
+   * so the box does not appear either.
+   */
+  const searchable = rows.length > ROWS_PER_PAGE;
+
   const anchorColumn = shown.find((field) => field.name === linkField) ?? shown[0];
 
   /*
@@ -131,7 +220,7 @@ export function EsisRowValues({
    */
   const expandable = !hrefs;
 
-  return (
+  const table = (
     /*
       `min-w-0` rather than a pixel floor: with five columns the table fits its
       container at every width this product supports, so the wrapper's
@@ -170,8 +259,7 @@ export function EsisRowValues({
         </tr>
       </thead>
       <tbody>
-        {rows.map((row, index) => {
-          const href = hrefs?.[index] ?? null;
+        {visible.map(({ row, index, href }) => {
           const isOpen = openRow === index;
 
           return (
@@ -234,6 +322,39 @@ export function EsisRowValues({
         })}
       </tbody>
     </TableShell>
+  );
+
+  if (!searchable) return table;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <SearchField
+          label={`Хайх: ${shown.map((field) => field.label).join(", ")}`}
+          placeholder="Хайх"
+          value={query}
+          onChange={(value) => {
+            setQuery(value);
+            // Page 1, or a search from page 4 lands on an empty page and reads
+            // as "олдсонгүй" for a term that matched.
+            setPage(1);
+            setOpenRow(null);
+          }}
+        />
+        <ResultCount total={matched.length} noun="бичлэг" />
+      </div>
+
+      {matched.length === 0 ? (
+        <EmptyState
+          title="Хайлтад тохирох бичлэг алга"
+          description="Өөр үг оруулах эсвэл хайлтаа цэвэрлэнэ үү."
+        />
+      ) : (
+        table
+      )}
+
+      <Pagination page={current} totalPages={totalPages} onPage={setPage} />
+    </div>
   );
 }
 

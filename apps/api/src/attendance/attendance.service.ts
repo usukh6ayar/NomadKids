@@ -38,8 +38,6 @@ import type {
 import { EsisService } from "../integrations/esis/esis.service";
 import { EsisError } from "../integrations/esis/esis.client";
 
-const DEMO_ESIS_INSTITUTION_ID = 40305;
-
 /**
  * The widest span `groupRangeSheet` will answer — §3.4's "no endpoint returns
  * an unbounded set", expressed in the unit this endpoint is asked in. A week
@@ -47,29 +45,6 @@ const DEMO_ESIS_INSTITUTION_ID = 40305;
  * for; a term is a report, and that is `attendanceRegister`.
  */
 const MAX_REGISTER_DAYS = 31;
-const DEMO_ESIS_GROUPS: Record<string, number> = {
-  "Наран бүлэг": 10001,
-  "Дэлбээ бүлэг": 10002,
-};
-const DEMO_ESIS_PEOPLE: Record<string, number> = {
-  "Ганболд Батбаяр": 90000000000001,
-  "Дорж Намуун": 90000000000002,
-  "Энхбат Тэмүүлэн": 90000000000003,
-  "Мөнхбаяр Сарнай": 90000000000004,
-  "Батжаргал Ану": 90000000000005,
-  "Сүхбаатар Чингис": 90000000000006,
-  "Пүрэвдорж Оюунаа": 90000000000007,
-  "Алтанзул Мандах": 90000000000008,
-  "Нэргүй Хулан": 90000000000009,
-  "Цэрэндорж Билгүүн": 90000000000010,
-};
-
-function stableDemoNumber(value: string, base: number, spread: number) {
-  let hash = 0;
-  for (const char of value) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return base + (hash % spread);
-}
-
 function esisReasonCode(status: string): "PRESENT" | "EXCUSED" | "SICK" | "UNEXCUSED" | null {
   if (status === "PRESENT" || status === "HALF_DAY") return "PRESENT";
   if (status === "EXCUSED") return "EXCUSED";
@@ -459,8 +434,8 @@ export class AttendanceService {
       metadata: {
         count: saved.length,
         dates: [...new Set(dto.entries.map((e) => e.date))],
-        esisMode: preview.demo ? "MOCK" : "LIVE",
-        esisStatus: preview.demo ? "DEMO_SUCCESS" : "SUCCEEDED",
+        esisMode: "LIVE" as const,
+        esisStatus: "SUCCEEDED" as const,
         apiId: 171,
       },
     });
@@ -842,35 +817,19 @@ export class AttendanceService {
   }
 
   private async resolveAttendanceDrafts(kindergartenId: string, drafts: AttendanceDraft[]) {
-    if (this.esis.isDemoMode) {
-      return {
-        demo: true,
-        apiId: 171,
-        endpoint: "/svc/api/hub/v2/group/school/attendance/save/v3",
-        requests: drafts.map((draft) => ({
-          groupId: draft.groupId,
-          groupName: draft.groupName,
-          payload: {
-            institutionId: DEMO_ESIS_INSTITUTION_ID,
-            studentGroupId:
-              DEMO_ESIS_GROUPS[draft.groupName] ?? stableDemoNumber(draft.groupId, 10100, 800),
-            dayDate: draft.dayDate,
-            attendanceList: draft.children.map((child) => {
-              const childName = `${child.lastName} ${child.firstName}`;
-              return {
-                personId:
-                  DEMO_ESIS_PEOPLE[childName] ??
-                  stableDemoNumber(child.childId, 90000000100000, 8_000_000),
-                attendReasonCode: child.attendReasonCode,
-                tardyMinutes: 0,
-                attendReasonList: [],
-              };
-            }),
-          },
-        })),
-      };
-    }
-
+    /*
+     * ★ The demo preview is gone — 2026-09-14.
+     *
+     * A `this.esis.isDemoMode` branch stood here and built a whole ESIS
+     * attendance payload out of invented numbers: a fixed institution id, a
+     * group id looked up in a hard-coded table or derived from a hash of the
+     * local uuid, and a `personId` hashed the same way. A teacher previewing
+     * the upload saw a complete, plausible request that named children by
+     * numbers nobody at the ministry would recognise.
+     *
+     * The preview now resolves against the live roster or fails and says why,
+     * which is the only version of it that tells a teacher anything true.
+     */
     if (!this.esis.isConfigured) {
       throw new BadGatewayException(
         "ESIS live горим идэвхтэй боловч Bearer token тохируулаагүй байна.",
@@ -890,6 +849,8 @@ export class AttendanceService {
         Awaited<ReturnType<EsisService["groupStudents"]>>["data"]
       >();
       const requests = [];
+      /** Matches proven during this resolve, written once at the end. */
+      const resolved: { childId: string; esisPersonId: string }[] = [];
 
       for (const draft of drafts) {
         const matchingGroups = groups.filter(
@@ -935,8 +896,28 @@ export class AttendanceService {
             );
           }
 
+          const personId = positiveEsisNumber(matches[0]!.personId, "personId");
+
+          /*
+           * ★ Remember the match — 2026-09-15.
+           *
+           * This is the one place in the product that establishes which ESIS
+           * person a local child is, and until now it threw the answer away
+           * after building one attendance payload. `Child.esisPersonId` is an
+           * **authorization** input: the per-child ESIS reads resolve a
+           * `personId` back to a child so `canAccessChild` can run, and a
+           * child without one is refused. Learning it here is what makes those
+           * reads usable for a teacher.
+           *
+           * ★★ The match is the strict one above — exactly one roster entry
+           * agreeing on name *and* date of birth, in a group the teacher is
+           * already submitting for. An ambiguous match has thrown by this
+           * point, so nothing uncertain is written.
+           */
+          resolved.push({ childId: child.childId, esisPersonId: String(personId) });
+
           return {
-            personId: positiveEsisNumber(matches[0]!.personId, "personId"),
+            personId,
             attendReasonCode: child.attendReasonCode,
             tardyMinutes: 0,
             attendReasonList: [],
@@ -955,8 +936,16 @@ export class AttendanceService {
         });
       }
 
+      /*
+       * ★ After the loop, not inside it, and never inside a transaction that
+       * the send could roll back. Remembering which ESIS person a child is has
+       * nothing to do with whether the attendance upload succeeds — if the
+       * ministry rejects the payload the mapping is still correct, and losing
+       * it would mean re-deriving it on every future read.
+       */
+      await this.repo.rememberEsisPersonIds(kindergartenId, resolved);
+
       return {
-        demo: false,
         apiId: 171,
         endpoint: "/svc/api/hub/v2/group/school/attendance/save/v3",
         requests,
@@ -1000,8 +989,8 @@ export class AttendanceService {
       objectType: "AttendanceSubmission",
       objectId: groupId,
       metadata: {
-        esisMode: preview.demo ? "MOCK" : "LIVE",
-        esisStatus: preview.demo ? "DEMO_SUCCESS" : "SUCCEEDED",
+        esisMode: "LIVE" as const,
+        esisStatus: "SUCCEEDED" as const,
         apiId: 171,
         date: dateIso,
         childCount: enrollments.length,

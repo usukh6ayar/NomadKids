@@ -3560,6 +3560,18 @@ export const esisResourceKeySchema = z.enum([
   "foodKit",
   "foodKitProducts",
   /*
+   * ★ `foodDiscountStudents` — added to `ESIS_ENDPOINTS` on 2026-09-14 and
+   * missing here until 2026-09-15.
+   *
+   * It is the ACCOUNTANT's service, so no teacher's or admin's scoped catalog
+   * carried it and the schema test — which uses a teacher — kept passing. An
+   * accountant opening the ESIS panel would have had the whole payload
+   * rejected by this enum and seen nothing, with no error naming the cause.
+   * That is the shape of bug this list exists to prevent, and it hid for a day
+   * behind the one role the test does not use.
+   */
+  "foodDiscountStudents",
+  /*
    * Added 2026-09-10 — суралцагчийн нэмэлт мэдээлэл, багш, хөтөлбөр, орчин.
    * The three `…Save` keys are writes; every other one is a read.
    */
@@ -3580,6 +3592,39 @@ export const esisResourceKeySchema = z.enum([
   "rooms",
   "academicOrg",
   "subjectAreas",
+  /*
+   * Added 2026-09-15 — эрүүл мэнд, вакцин, хэмжилт, эрт илрүүлэг, багшийн
+   * бүртгэл, ирцийн нэгдсэн дүн. Twenty-seven services the ministry's own
+   * granted-service export listed as approved and the catalogue was not
+   * calling. The ten `…Save` keys are writes; every other one is a read.
+   */
+  "studentAllergy",
+  "studentAllergySave",
+  "studentProhibitedFood",
+  "studentProhibitedFoodSave",
+  "studentDisability",
+  "studentDisabilitySave",
+  "studentAssessments",
+  "studentAssessmentsSave",
+  "studentMeasurements",
+  "studentMeasurementSave",
+  "studentSurgery",
+  "studentSurgerySave",
+  "studentIncident",
+  "studentIncidentSave",
+  "studentAttachmentSave",
+  "vaccineCatalog",
+  "vaccineHistory",
+  "vaccinePlan",
+  "groupMeasurements",
+  "groupMeasurementsSave",
+  "screeningQuestions",
+  "studentScreening",
+  "studentScreeningSave",
+  "schoolAttendance",
+  "workerInfo",
+  "teacherProfile",
+  "teacherCheck",
 ]);
 export type EsisResourceKey = z.infer<typeof esisResourceKeySchema>;
 
@@ -3596,9 +3641,22 @@ export const esisPreviewResourceKeySchema = z.enum([
   "foodMaterials",
   "foodProducts",
   "foodProductMaterials",
-  // Added 2026-09-10 — the institution-level reads a dry run can call without
-  // asking the operator for a group id, a date or a register number.
-  "studentContacts",
+  /*
+   * Added 2026-09-10 — the institution-level reads a dry run can call without
+   * asking the operator for a group id, a date or a register number.
+   *
+   * ★ `studentContacts` was one of them and left on 2026-09-14. It is a
+   * per-child lookup that takes `{ personId }` in its POST body — without one
+   * it answers `400 personId шаардлагатай`, so the dry run this list drives
+   * had a guaranteed failure in it. It was listed here because the catalogue
+   * described it as the whole roster's guardians, which it never was.
+   *
+   * ★★ None of the twenty-seven services added on 2026-09-15 is here either.
+   * Every one needs a `personId`, a group, a date or a register number; the
+   * two that need none (`vaccineCatalog`, `screeningQuestions`) are reference
+   * lookups, and adding those to the connection test spends the deployment's
+   * rate limit proving nothing new.
+   */
   "groupsNextYear",
   "programs",
   "rooms",
@@ -3607,7 +3665,14 @@ export const esisPreviewResourceKeySchema = z.enum([
 ]);
 export type EsisPreviewResourceKey = z.infer<typeof esisPreviewResourceKeySchema>;
 
-const esisSyncStatusSchema = z.enum(["RUNNING", "SUCCEEDED", "PARTIAL", "FAILED"]);
+/**
+ * ★ Exported since 2026-09-17, plan `2026-09-16-esis-sync-tiers.md` Task 10.
+ * It was local to this file while only `esisOverviewSchema.recentRuns` read
+ * it; `esisSyncRunSchema` below needs the same four values for `GET
+ * …/kindergartens/:id/esis/sync-runs`, and a second, hand-copied enum is
+ * exactly the drift CLAUDE.md §2.3 exists to prevent.
+ */
+export const esisSyncStatusSchema = z.enum(["RUNNING", "SUCCEEDED", "PARTIAL", "FAILED"]);
 
 /**
  * One input or output field of an ESIS service, and whether NomadKids keeps it.
@@ -3629,11 +3694,43 @@ export const esisFieldSchema = z.object({
    * shows it only while no live read has succeeded — see `esis.fields.ts`.
    */
   sample: z.string().optional(),
+  /**
+   * This field's place among the columns a table actually draws — 1 is the
+   * leftmost. Absent on the fields a table does not draw.
+   *
+   * ★ Why a position and not a flag. The table used to show the service's
+   * first five fields in catalog order, and catalog order is the ESIS
+   * developer portal's documentation order, which leads with identifiers. The
+   * student roster's first two columns were "Байгууллагын код" — the same
+   * value on all 83 rows — and "ESIS хүний дугаар", with the child's name
+   * pushed to the third. Seventeen of the twenty-nine services opened that
+   * way.
+   *
+   * A boolean could not fix it: `studentGroupName` sits fifteenth in the
+   * catalog, so a filter that preserved catalog order still could not put
+   * Бүлэг beside Нэр. The number is the reading order, declared once in
+   * `ESIS_SUMMARY_FIELDS` and carried here so the web does not keep a second
+   * copy of the field names that could drift from the catalog.
+   */
+  summary: z.number().int().positive().optional(),
 });
 export type EsisField = z.infer<typeof esisFieldSchema>;
 
-/** `PORTAL` — read from the ESIS developer catalog. `ADAPTER` — our schema. */
-export const esisFieldSourceSchema = z.enum(["PORTAL", "ADAPTER"]);
+/**
+ * Where a service's field names came from.
+ *
+ * `PORTAL` — read from the ESIS developer catalog: the ministry documented them.
+ * `LIVE` — read from a real response: the ministry **sent** them. Stronger than
+ * `PORTAL`, because a catalogue page can be out of date and a payload cannot.
+ * `ADAPTER` — our own schema's, unchecked against either.
+ *
+ * ★ `LIVE` was added 2026-09-14, when nine services marked `ADAPTER` were
+ * compared with real responses from institution 42778 and every one of them
+ * turned out to be wrong. `ADAPTER` had been read as "not confirmed yet" while
+ * it actually meant "invented", and nothing on the screen distinguished a field
+ * list somebody had verified from one nobody had.
+ */
+export const esisFieldSourceSchema = z.enum(["PORTAL", "LIVE", "ADAPTER"]);
 
 /** One preview row: every ingested field name → its value, `null` when absent. */
 export const esisRowSchema = z.record(z.string(), z.string().nullable());
@@ -3642,8 +3739,13 @@ export type EsisRow = z.infer<typeof esisRowSchema>;
 export const esisOverviewSchema = z.object({
   deployment: z.object({
     configured: z.boolean(),
-    demoMode: z.boolean(),
-    mode: z.enum(["MOCK", "LIVE"]),
+    /*
+     * ★ `demoMode` was here until 2026-09-14, beside a `mode` that could read
+     * `"MOCK"`. Both described a second transport that served committed
+     * fixtures instead of calling the ministry; it is gone, so `mode` has one
+     * member and the flag has nothing left to say.
+     */
+    mode: z.literal("LIVE"),
     baseUrl: z.string(),
     hasToken: z.boolean(),
   }),
@@ -3670,7 +3772,20 @@ export const esisOverviewSchema = z.object({
       method: z.enum(["GET", "POST"]),
       path: z.string(),
       name: z.string(),
-      domain: z.enum(["ORGANIZATION", "ROSTER", "ATTENDANCE", "FOOD"]),
+      /*
+       * ★ `HEALTH` added 2026-09-15 with the twenty health, vaccine,
+       * measurement and screening services. It is a fifth value rather than a
+       * reuse of `ROSTER`, where a child's name and group live: a screen that
+       * files a вакцины бүртгэл beside a бүлгийн жагсаалт tells an operator the
+       * two are the same kind of fact, and one of them is a medical record.
+       *
+       * ★★ Missing it from this enum is what `esis-admin.test.ts > "matches the
+       * schema the browser parses it with"` caught — the api was emitting
+       * `domain: "HEALTH"` and this schema rejected the whole payload, so every
+       * ESIS panel would have rendered nothing. Keep in step with `EsisDomain`
+       * in `esis.catalog.ts`.
+       */
+      domain: z.enum(["ORGANIZATION", "ROSTER", "ATTENDANCE", "FOOD", "HEALTH"]),
       usage: z.string(),
       note: z.string().optional(),
       previewable: z.boolean(),
@@ -3679,17 +3794,31 @@ export const esisOverviewSchema = z.object({
       fields: z.array(esisFieldSchema),
       fieldSource: esisFieldSourceSchema,
       ingestedFieldCount: z.number(),
-      /** One illustrative row — shown only until a live read succeeds. */
-      sampleRow: esisRowSchema,
       /**
-       * Every illustrative record of the service, `sampleRow` first.
+       * Where this service stands in the deployment's ESIS request register.
        *
-       * ★ A list service demonstrates a list. One row answers "what fields come
-       * back?"; it does not answer "what does a synced kindergarten look like?",
-       * which is the question asked before a token exists. Same rule as
-       * `sampleRow`: the whole set disappears the moment ESIS returns anything.
+       * ★ `NOT_REQUESTED` is a real answer, not a missing one: a service the
+       * client asked for before the scope request was filed has a path and a
+       * field list here and no grant, and the operator screen should say so
+       * rather than imply approval. `esis.requests.ts` is the register.
        */
-      sampleRows: z.array(esisRowSchema),
+      grant: z.enum(["APPROVED", "PENDING", "CANCELLED", "NOT_REQUESTED"]),
+      /** The register's own name for `apiId`, for checking a row against it. */
+      portalName: z.string().nullable(),
+      /*
+       * ★ `sampleRow` and `sampleRows` were here until 2026-09-14.
+       *
+       * They carried invented records that the screens fell back to whenever a
+       * read had not happened or had failed, so a panel could look populated
+       * while the integration was broken. Removed at the client's instruction
+       * once institution 42778 began answering: a surface with no live data
+       * now renders `EsisNoAnswer` — the endpoint that did not answer, and
+       * why — instead of something that resembles a result.
+       *
+       * `fields` below stays. The contract is a published fact about the
+       * service and is not invented; it is the honest answer to "what will
+       * come back?" that needs nothing to have come back yet.
+       */
       direction: z.enum(["ESIS_TO_NOMADKIDS", "NOMADKIDS_TO_ESIS"]),
       targetModel: z.string(),
       mappings: z.array(
@@ -3708,7 +3837,7 @@ export const esisOverviewSchema = z.object({
           note: z.string(),
         }),
       ),
-      accessStatus: z.enum(["MOCK", "UNKNOWN", "ENABLED", "NOT_ENABLED"]),
+      accessStatus: z.enum(["UNKNOWN", "ENABLED", "NOT_ENABLED"]),
       responseMode: z.enum(["DEMO", "LIVE"]),
       httpStatus: z.number().int().nullable(),
       syncStatus: z.enum(["DEMO_SUCCESS", "SUCCESS", "FAILED", "PENDING"]),
@@ -3725,14 +3854,195 @@ export const esisOverviewSchema = z.object({
       errorCode: z.string().nullable(),
       startedAt: z.string(),
       finishedAt: z.string().nullable(),
-      initiatedBy: z.string(),
-      mode: z.enum(["MOCK", "LIVE"]),
+      /**
+       * `null` when the schedule ran it rather than a person.
+       *
+       * ★ Was `z.string()` until 2026-09-17, which is a Zod schema silently
+       * *dropping* the field for a run with no initiator rather than
+       * rejecting it (this repo's memory has the general form of that bug).
+       * `EsisSyncRun.initiatedById` became nullable when tiers 1 and 2 turned
+       * into repeatable jobs (`esis-sync.service.ts`), and `EsisAdminService.
+       * overview()` already renders `null` for that case — the schema just
+       * had not caught up. Nothing produces a NULL run yet (every caller so
+       * far passes an actor), so this was unreachable until the scheduler
+       * ships; fixing it now means the first scheduled run does not surface
+       * as a silently blanked column.
+       */
+      initiatedBy: z.string().nullable(),
+      mode: z.literal("LIVE"),
     }),
   ),
   canPreview: z.boolean(),
   blockers: z.array(z.string()),
+  /**
+   * The deployment's ESIS request register, joined against what the code calls.
+   *
+   * ★ A **platform** fact, which is why it is only on this payload: one ESIS
+   * developer account and one `ESIS_TOKEN` serve every kindergarten, so the
+   * granted scope is the deployment's and `GET /platform/kindergartens/:id/esis`
+   * is the only route that carries it.
+   *
+   * ★★ `reviewedAt` is load-bearing. No ESIS service reports a token's own
+   * granted scope, so this is a snapshot read off the portal by hand; the date
+   * is what stops it being read as the state of things right now.
+   */
+  requests: z.object({
+    reviewedAt: z.string(),
+    counts: z.object({
+      total: z.number(),
+      approved: z.number(),
+      pending: z.number(),
+      cancelled: z.number(),
+      /** Approved services a screen in this product actually calls. */
+      wired: z.number(),
+      /** Approved and unused — granted scope the product does not draw on. */
+      approvedUnwired: z.number(),
+    }),
+    items: z.array(
+      z.object({
+        apiId: z.number(),
+        name: z.string(),
+        group: z.enum(["EBS", "OPEN", "ZEREG", "OTHER"]),
+        status: z.enum(["APPROVED", "PENDING", "CANCELLED"]),
+        requestedAt: z.string(),
+        /** The catalog key that calls it, or `null` when nothing does. */
+        serviceKey: z.string().nullable(),
+      }),
+    ),
+  }),
 });
 export type EsisOverview = z.infer<typeof esisOverviewSchema>;
+
+/**
+ * `{ tier: "REFERENCE" | "ROSTER" }` — the body of `POST
+ * …/kindergartens/:id/esis/sync` (plan `2026-09-16-esis-sync-tiers.md` Task
+ * 5). Shared rather than re-typed on the web side so the two tier buttons on
+ * the operator's panel cannot name a tier the API does not recognise.
+ */
+export const esisSyncTierSchema = z.enum(["REFERENCE", "ROSTER"]);
+export type EsisSyncTier = z.infer<typeof esisSyncTierSchema>;
+
+/**
+ * One resource's outcome within a reference sweep — `EsisSyncService.
+ * runReferenceSync`'s `ReferenceSyncResourceResult`, unchanged across the
+ * wire.
+ */
+export const esisReferenceSyncResultSchema = z.object({
+  resource: z.string(),
+  status: z.enum(["SUCCEEDED", "FAILED"]),
+  stored: z.number().int().min(0),
+  skipped: z.number().int().min(0),
+  errorCode: z.string().nullable(),
+});
+
+/**
+ * `POST …/esis/sync` with `{ tier: "REFERENCE" }` answers this shape —
+ * `EsisSyncService.runReferenceSync`'s `ReferenceSyncOutcome`. Thirteen
+ * entries in `results`, one per `REFERENCE_RESOURCES` row, whether or not
+ * that resource's read succeeded (`esis-sync.service.ts`'s `Promise.
+ * allSettled` — one resource failing does not shrink this array).
+ */
+export const esisReferenceSyncOutcomeSchema = z.object({
+  runId: uuidSchema,
+  status: z.enum(["SUCCEEDED", "PARTIAL", "FAILED"]),
+  results: z.array(esisReferenceSyncResultSchema),
+});
+export type EsisReferenceSyncOutcome = z.infer<typeof esisReferenceSyncOutcomeSchema>;
+
+/**
+ * `POST …/esis/sync` with `{ tier: "ROSTER" }` answers this shape —
+ * `EsisSyncService.runRosterSync`'s `RosterSyncOutcome`.
+ *
+ * ★ `movements.count` is nullable rather than the whole `movements` object,
+ * matching the service: the roster half can succeed while `studentMovements`
+ * fails, and the run still reports `PARTIAL` with a `beginDate` and an
+ * `errorCode` rather than losing the roster counts along with it.
+ */
+export const esisRosterSyncOutcomeSchema = z.object({
+  runId: uuidSchema,
+  status: z.enum(["SUCCEEDED", "PARTIAL"]),
+  roster: z.object({ stored: z.number().int().min(0), skipped: z.number().int().min(0) }),
+  movements: z.object({
+    beginDate: z.string(),
+    count: z.number().int().min(0).nullable(),
+    errorCode: z.string().nullable(),
+  }),
+});
+export type EsisRosterSyncOutcome = z.infer<typeof esisRosterSyncOutcomeSchema>;
+
+/**
+ * One row of `GET …/kindergartens/:id/esis/sync-runs` — plan Task 5's paginated
+ * history, alongside `esisOverviewSchema.recentRuns`'s fixed-ten list rather
+ * than folded into it: the operator's overview is a platform-only route
+ * (`PlatformEsisController`) and this one is tenant-`ADMIN`-scoped
+ * (`KindergartenEsisController`), so the two payloads come from different
+ * controllers even though `EsisSyncRun` is the one table behind both.
+ *
+ * ★ `summary` stays `z.unknown()`, exactly as it does on `recentRuns` above —
+ * it carries a different shape per run kind (a reference sweep's per-resource
+ * array, a roster run's `{ roster, movements }`, a dry-run preview's
+ * `{ mode, resources }`) and no screen needs to validate it structurally, only
+ * to read `summary.kind` defensively to tell a tier sync from a preview run.
+ * See `apps/web/app/(app)/platform/[id]/esis/page.tsx`'s `runTier`.
+ */
+export const esisSyncRunSchema = z.object({
+  id: uuidSchema,
+  status: esisSyncStatusSchema,
+  resources: z.array(z.string()),
+  summary: z.unknown().nullable(),
+  errorCode: z.string().nullable(),
+  startedAt: z.string(),
+  finishedAt: z.string().nullable(),
+  /** `null` for a scheduled run — see `esisOverviewSchema.recentRuns.initiatedBy`. */
+  initiatedBy: z.string().nullable(),
+});
+export type EsisSyncRun = z.infer<typeof esisSyncRunSchema>;
+
+export const esisSyncRunsPageSchema = paginated(esisSyncRunSchema);
+export type EsisSyncRunsPage = z.infer<typeof esisSyncRunsPageSchema>;
+
+/**
+ * One ESIS group write — spec №3б's prepare → approve → send.
+ *
+ * ★ `payload` is `z.record(z.string(), z.unknown())` rather than a typed shape,
+ * and that is the contract rather than laziness: what the screen must show is
+ * **the bytes that will be sent**, under ESIS's own field names. Typing it here
+ * would mean this file deciding which of the ministry's fields are worth
+ * showing, which is the opposite of the client's instruction on output —
+ * "garaltiin utguudiig bugdiig ni haruulna nuuj haaj bolohgui".
+ */
+export const esisWriteStateSchema = z.enum(["PREPARED", "APPROVED", "SENT", "FAILED", "CANCELLED"]);
+export type EsisWriteState = z.infer<typeof esisWriteStateSchema>;
+
+export const esisWriteServiceSchema = z.enum([
+  "groupCreate",
+  "groupUpdate",
+  "groupDelete",
+  "groupInstructor",
+]);
+export type EsisWriteServiceKey = z.infer<typeof esisWriteServiceSchema>;
+
+const esisWritePersonSchema = z.object({ lastName: z.string(), firstName: z.string() });
+
+export const esisWriteRequestSchema = z.object({
+  id: uuidSchema,
+  service: esisWriteServiceSchema,
+  apiId: z.number().int(),
+  state: esisWriteStateSchema,
+  payload: z.record(z.string(), z.unknown()),
+  response: z.record(z.string(), z.unknown()).nullish(),
+  errorCode: z.string().nullish(),
+  sentAt: z.string().nullish(),
+  createdAt: z.string(),
+  groupId: uuidSchema,
+  group: z.object({ id: uuidSchema, name: z.string() }).nullish(),
+  preparedBy: esisWritePersonSchema.nullish(),
+  approvedBy: esisWritePersonSchema.nullish(),
+});
+export type EsisWriteRequest = z.infer<typeof esisWriteRequestSchema>;
+
+export const esisWriteRequestsPageSchema = paginated(esisWriteRequestSchema);
+export type EsisWriteRequestsPage = z.infer<typeof esisWriteRequestsPageSchema>;
 
 /**
  * `GET /kindergartens/:id/esis/catalog` — the services this role uses.
@@ -3765,6 +4075,25 @@ export const esisScopedCatalogSchema = z.object({
       syncStatus: true,
       syncErrorCode: true,
       lastSyncAt: true,
+      /*
+       * ★ `grant` and `portalName` are omitted for the same reason as the six
+       * above — added to the overview on 2026-09-14 and omitted here the same
+       * day. They read as catalog metadata, but they are the *deployment's*
+       * ESIS account state: which scopes the ministry granted it, under which
+       * name. One account serves every kindergarten, nobody on a working
+       * screen can change a grant, and a service a role cannot reach is
+       * already absent from this list.
+       *
+       * ★★ Leaving them in broke thirteen tests before it broke anything
+       * else, and the way it broke is the one this comment block has warned
+       * about twice: `get()` parses every response, a payload short of a
+       * required field throws, and the panel renders blank rather than
+       * erroring. That is a feature — the contract is enforced on both sides —
+       * and it is why the service `.map()`s them off rather than trusting Zod
+       * to strip them.
+       */
+      grant: true,
+      portalName: true,
     }),
   ),
 });
@@ -3773,7 +4102,7 @@ export type EsisScopedCatalog = z.infer<typeof esisScopedCatalogSchema>;
 export const esisPreviewResultSchema = z.object({
   runId: uuidSchema,
   dryRun: z.literal(true),
-  mode: z.enum(["MOCK", "LIVE"]),
+  mode: z.literal("LIVE"),
   status: z.enum(["SUCCEEDED", "PARTIAL", "FAILED"]),
   results: z.array(
     z.object({
@@ -3783,7 +4112,7 @@ export const esisPreviewResultSchema = z.object({
       preview: z.array(esisRowSchema),
       status: z.enum(["SUCCEEDED", "FAILED"]),
       errorCode: z.string().nullable(),
-      source: z.enum(["MOCK", "LIVE"]),
+      source: z.literal("LIVE"),
     }),
   ),
 });
@@ -3797,13 +4126,45 @@ export type EsisPreviewResult = z.infer<typeof esisPreviewResultSchema>;
  */
 export const esisResourceReadSchema = z.object({
   resource: esisResourceKeySchema,
-  source: z.enum(["MOCK", "LIVE"]),
+  /**
+   * The ESIS service this read actually called.
+   *
+   * ★ Here rather than looked up from the catalog, because the screens that
+   * most need it do not hold one. `esis-curriculum.tsx` chains four services
+   * off each other's ids and never fetches `…/esis/catalog`, so when a level
+   * failed it could print the error code and nothing else — "HTTP", with no
+   * way to tell which of the four produced it. The read result is the one
+   * thing every caller already has.
+   *
+   * ★★ Optional so that an older payload — or a test fixture written before
+   * this field existed — still parses. Every live response carries it; a
+   * consumer that finds it missing omits the line rather than guessing.
+   */
+  endpoint: z.object({ method: z.string(), path: z.string() }).optional(),
+  /**
+   * `"LIVE"` when this read called the ministry directly. `"STORE"` — added
+   * 2026-09-17, plan `2026-09-16-esis-sync-tiers.md` Task 7 — when it was
+   * served from `EsisReference` instead, the copy tier 1's monthly sweep
+   * keeps. Every resource on `REFERENCE_RESOURCES` (`esis.reference.ts`)
+   * answers `"STORE"`; nothing else can, so a caller can tell whether a value
+   * on screen came from the ministry just now or from last month's sweep.
+   */
+  source: z.enum(["LIVE", "STORE"]),
   status: z.enum(["SUCCEEDED", "FAILED"]),
   errorCode: z.string().nullable(),
   count: z.number(),
   durationMs: z.number().nullable(),
   fields: z.array(esisFieldSchema),
   rows: z.array(esisRowSchema),
+  /**
+   * When the stored copy behind this read was last swept — present only when
+   * `source` is `"STORE"`, `null`/absent for a live read.
+   *
+   * ★ An operator reading a catalogue needs to know whether they are looking
+   * at this morning's roster or last month's, and nothing else on this
+   * payload says that: `count` and `rows` look identical either way.
+   */
+  syncedAt: z.string().nullable().optional(),
   response: z.object({
     SUCCESS_CODE: z.number(),
     RESPONSE_MESSAGE: z.string(),
@@ -3822,7 +4183,7 @@ export type EsisResourceRead = z.infer<typeof esisResourceReadSchema>;
  */
 export const esisWriteResultSchema = z.object({
   resource: esisResourceKeySchema,
-  source: z.enum(["MOCK", "LIVE"]),
+  source: z.literal("LIVE"),
   status: z.enum(["SUCCEEDED", "FAILED"]),
   errorCode: z.string().nullable(),
   durationMs: z.number().nullable(),
@@ -5056,6 +5417,65 @@ export type ApplicationApproval = z.infer<typeof applicationApprovalSchema>;
  * The client asked for all three ("1 сараар, улиралаар, бүтэн жилээр") and a
  * report that changed shape per period is three screens to keep in step.
  */
+// ── Staff self-registration ─────────────────────────────────────────────────
+
+/**
+ * `POST /staff-registration` — the teacher's public form.
+ *
+ * ★ The only field is the token: on success the screen redirects to
+ * `/invitation/[token]`, which already collects the password. On refusal the
+ * API answers 401 with a `Problem.detail` — the same uniform sentence for a
+ * wrong code, an unmatched register number or anything else — which the form
+ * renders verbatim rather than deriving its own message.
+ */
+export const staffSelfRegistrationResultSchema = z.object({
+  invitationToken: z.string(),
+});
+export type StaffSelfRegistrationResult = z.infer<typeof staffSelfRegistrationResultSchema>;
+
+/**
+ * `POST /kindergartens/:id/staff-registration-code` — the plaintext code,
+ * returned exactly once.
+ *
+ * ★ Nothing later re-reads it. `staffRegistrationCodeSetAt` on the
+ * kindergarten record is the only trace this response leaves once the
+ * director's screen has shown it.
+ */
+export const staffRegistrationCodeIssuedSchema = z.object({
+  code: z.string(),
+  setAt: z.string(),
+});
+export type StaffRegistrationCodeIssued = z.infer<typeof staffRegistrationCodeIssuedSchema>;
+
+/** `POST /kindergartens/:id/esis/staff-roster/refresh`. */
+export const staffRosterRefreshSchema = z.object({
+  count: z.number(),
+  skipped: z.number(),
+  syncedAt: z.string(),
+});
+export type StaffRosterRefresh = z.infer<typeof staffRosterRefreshSchema>;
+
+/**
+ * One row of `GET /kindergartens/:id/staff-registrations` — the director's
+ * review list, "хэн хэн бүртгүүлсэн байгаа эсэх мэдээлэл".
+ *
+ * ★ No register number and no `esisPersonId`. The API keeps both out of this
+ * list on purpose (`StaffRegistrationService.listSelfRegistered`), so this
+ * schema does not model them either — a field added here by mirroring the
+ * database would be the one place a typed register number could leak onto a
+ * screen.
+ */
+export const selfRegisteredStaffSchema = z.object({
+  membershipId: uuidSchema,
+  lastName: z.string(),
+  firstName: z.string(),
+  role: roleSchema,
+  registeredAt: z.string(),
+  source: z.literal("SELF_REGISTERED"),
+});
+export type SelfRegisteredStaff = z.infer<typeof selfRegisteredStaffSchema>;
+export const selfRegisteredStaffListSchema = paginated(selfRegisteredStaffSchema);
+
 export const groupReportSchema = z.object({
   range: z.object({ from: z.string(), to: z.string() }),
   group: namedRefSchema,

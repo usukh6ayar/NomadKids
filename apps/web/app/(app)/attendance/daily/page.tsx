@@ -528,7 +528,7 @@ function EsisPayloadPreview({
         }`}
         action={
           <Badge tone={error || incomplete.length ? "sun" : loading ? "sky" : "mint"}>
-            {loading ? "Бэлтгэж байна" : preview?.demo ? "MOCK · холболтгүй" : "ESIS холбогдсон"}
+            {loading ? "Бэлтгэж байна" : "ESIS холбогдсон"}
           </Badge>
         }
       />

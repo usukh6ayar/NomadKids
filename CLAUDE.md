@@ -395,8 +395,18 @@ section keeps repeating: a rule the codebase contradicts stops being read.
   **done**: `FundingRule`, `FundingCalculation`, `settle()`, the monthly
   register and its Excel export, `/admin/funding` and `/finance`. The rule
   table ships **empty**, by §4's own instruction that no tariff is hard-coded
-- §3 meal cost — **partial**: `dependsOnMeals` weights a funding rule, but
-  there is no per-child meal cost split by source
+- §3 meal cost — **partial**, and the half that was missing now has a source.
+  `dependsOnMeals` weights a funding rule; what nothing could answer was _which
+  children the state pays for_, so a split by source had no input. ESIS api 128
+  (`cook/levelHood/students`) is the ministry's own answer and is wired as
+  `GET …/funding/food-discounts` — `funding/food-discount.ts`, read live and
+  **stored nowhere**, because eligibility changes without telling us and a
+  stored copy would be quietly wrong.
+  ★ Its answer has **three** states, not two: 65 rows came back against a
+  roster of 83, so eighteen children are `UNASSESSED` — not assessed rather
+  than not eligible. Pricing those as "no discount" would bill a family for
+  something the state may be about to pay. The per-child cost split itself is
+  still to build
 - §7 invoices — **done**: `Invoice`, `InvoiceLineItem`, `Payment`, a
   hand-written invoice, the carried balance, and `POST
 …/invoices/generate-month` which bills a whole month from the `PARENT`

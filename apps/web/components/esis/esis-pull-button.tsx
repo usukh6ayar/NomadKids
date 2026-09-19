@@ -1,19 +1,20 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CircleAlert, CloudDownload } from "lucide-react";
+import { CloudDownload } from "lucide-react";
 import { useState } from "react";
 import {
-  esisOverviewSchema,
+  esisScopedCatalogSchema,
   esisResourceReadSchema,
   type EsisField,
-  type EsisOverview,
   type EsisResourceKey,
   type EsisResourceRead,
+  type EsisScopedCatalog,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
+import { EsisNoAnswer } from "@/components/esis/esis-no-answer";
 import { EsisRowValues, esisSampleColumns } from "@/components/esis/esis-rows";
-import { ESIS_DEMO_PARAM, ESIS_PARAM_LABEL, esisApiIdLabel } from "@/components/esis/esis-params";
+import { ESIS_PARAM_LABEL, esisApiIdLabel } from "@/components/esis/esis-params";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
@@ -25,18 +26,6 @@ import { FormDialog } from "@/components/ui/form-dialog";
 import { LoadingState } from "@/components/ui/states";
 import { TableShell, Td, Th } from "@/components/ui/table";
 
-/** The Mongolian sentence behind each upstream failure code. */
-const ERROR_LABEL: Record<string, string> = {
-  UNAUTHORIZED: "Token хүчингүй эсвэл хугацаа нь дууссан байна.",
-  SCOPE_DENIED: "Энэ API-д манай token-д эрх олгоогүй байна.",
-  TIMEOUT: "ESIS хугацаанд хариу өгсөнгүй.",
-  NETWORK: "ESIS сервертэй холбогдож чадсангүй.",
-  INVALID_RESPONSE: "ESIS-ийн хариу гэрээнд тохирохгүй байна.",
-  NOT_CONFIGURED: "Server дээр ESIS тохиргоо алга байна.",
-  HTTP: "ESIS алдаатай хариу буцаалаа.",
-  UNKNOWN: "Тодорхойгүй алдаа гарлаа.",
-};
-
 /**
  * "ESIS-ээс татах" — one button, on every screen ESIS data lands on.
  *
@@ -47,8 +36,9 @@ const ERROR_LABEL: Record<string, string> = {
  * exactly appears here?* So it shows the field contract first and the live
  * values second, and it shows the contract whether or not the call can run.
  *
- * ★★ Demo mode is explicit and calls the backend mock transport. It is never
- * presented as a live ESIS connection.
+ * ★★ Every read is live — the mock transport was removed on 2026-09-14. A
+ * service that cannot answer says so through `EsisNoAnswer`, naming the
+ * endpoint, rather than showing a fixture.
  */
 export function EsisPullButton({
   resource,
@@ -104,21 +94,51 @@ function EsisPullDialog({
   params?: Record<string, string | undefined>;
   onClose: () => void;
 }) {
-  const overview = useQuery({
-    queryKey: qk.esis(kindergartenId),
-    queryFn: () => get(`/kindergartens/${kindergartenId}/esis`, esisOverviewSchema),
+  /*
+   * ★ The **role-scoped catalog**, not the operator's overview — changed
+   * 2026-09-14 with the move of `GET /kindergartens/:id/esis` to the platform
+   * operator (`PlatformEsisController`). This dialog opens for a director on
+   * the roster and the day sheet, and reading the operator payload to draw it
+   * would have made every one of those buttons 404 the moment the overview
+   * became superadmin-only.
+   *
+   * It is also the honest source: this dialog needs the service's name, its
+   * parameters and its field contract, and `…/esis/catalog` is exactly that
+   * list scoped to what the caller's own role may reach. `EsisDataPanel` has
+   * read it this way all along.
+   */
+  const catalog = useQuery({
+    queryKey: qk.esisCatalog(kindergartenId),
+    queryFn: () => get(`/kindergartens/${kindergartenId}/esis/catalog`, esisScopedCatalogSchema),
   });
 
-  const endpoint = overview.data?.endpoints.find((item) => item.key === resource);
+  const endpoint = catalog.data?.endpoints.find((item) => item.key === resource);
   const required = endpoint?.params ?? [];
-  const demoMode = Boolean(overview.data?.deployment.demoMode);
-
-  /* Live calls use ESIS identifiers; mock mode supplies deterministic fixture ids. */
+  /*
+   * ★ Nothing is pre-filled — 2026-09-14. Demo mode used to supply a fixture
+   * id per parameter, so the dialog opened with a group number already in the
+   * box and the reader could press through without choosing anything. With one
+   * transport there is no fixture to key against, and a guessed id would send
+   * a real request about somebody else's group.
+   */
   const [entered, setEntered] = useState<Record<string, string>>({});
-  const value = (name: string) =>
-    entered[name] ?? params?.[name] ?? (demoMode ? ESIS_DEMO_PARAM[name] : "") ?? "";
+  const value = (name: string) => entered[name] ?? params?.[name] ?? "";
   const missing = required.filter((name) => !value(name));
-  const ready = Boolean(overview.data?.canPreview) && missing.length === 0;
+  /*
+   * ★ `canRead`, not the overview's `canPreview` — and the two are not quite
+   * the same test. `canPreview` also required the kindergarten's institution
+   * mapping to be confirmed; `canRead` asks only whether the deployment is
+   * configured or in demo mode. So on a deployment that has a token but an
+   * unmapped tenant the button is now pressable and the read comes back 409
+   * into the alert below, where it used to stay inert.
+   *
+   * That is deliberate, and it is what `EsisDataPanel` has always done: the
+   * mapping is fixed by the platform operator, and "press it and read why"
+   * tells a director more than a disabled control with no explanation. The
+   * mapping check still happens server-side — `assertOperable` — so nothing
+   * reaches ESIS without it.
+   */
+  const ready = Boolean(catalog.data?.canRead) && missing.length === 0;
 
   const query = new URLSearchParams({ resource });
   for (const name of required) {
@@ -164,11 +184,11 @@ function EsisPullDialog({
         </Button>
       }
     >
-      {overview.isPending ? <LoadingState rows={3} /> : null}
+      {catalog.isPending ? <LoadingState rows={3} /> : null}
 
-      {overview.isError ? (
+      {catalog.isError ? (
         <p role="alert" className="rounded-control bg-danger-soft px-4 py-3 text-body text-danger">
-          {errorMessage(overview.error)}
+          {errorMessage(catalog.error)}
         </p>
       ) : null}
 
@@ -195,20 +215,7 @@ function EsisPullDialog({
                   </Field>
                 ))}
               </div>
-              <p className="mt-2 text-caption text-muted">
-                {demoMode
-                  ? "Mock fixture-ийн test утгаар автоматаар бөглөгдсөн."
-                  : "ESIS-ийн өөрийн дугаарыг ашиглана."}
-              </p>
-            </Card>
-          ) : null}
-
-          {demoMode ? (
-            <Card pad="compact" tone="sun">
-              <p className="flex items-center gap-2 text-body font-medium text-ink">
-                <CircleAlert size={18} className="text-sun-ink" aria-hidden />
-                Demo / Test data · жинхэнэ ESIS холболт хийгдээгүй
-              </p>
+              <p className="mt-2 text-caption text-muted">ESIS-ийн өөрийн дугаарыг ашиглана.</p>
             </Card>
           ) : null}
 
@@ -228,9 +235,9 @@ function EsisPullDialog({
             real and be read as the same kind of thing.
           */}
           {read.data ? (
-            <ReadResult result={read.data} />
+            <ReadResult result={read.data} endpoint={endpoint} />
           ) : (
-            <SampleResult endpoint={endpoint} demoMode={demoMode} />
+            <PendingResult endpoint={endpoint} />
           )}
 
           {/*
@@ -252,7 +259,7 @@ function EsisPullDialog({
   );
 }
 
-function EndpointSummary({ endpoint }: { endpoint: EsisOverview["endpoints"][number] }) {
+function EndpointSummary({ endpoint }: { endpoint: EsisScopedCatalog["endpoints"][number] }) {
   const outputs = endpoint.fields.filter((field) => field.io === "OUTPUT");
   const inputs = endpoint.fields.filter((field) => field.io === "INPUT");
   const keptOutputs = outputs.filter((field) => field.ingested).length;
@@ -284,55 +291,46 @@ function EndpointSummary({ endpoint }: { endpoint: EsisOverview["endpoints"][num
 }
 
 /**
- * The sandbox records shown until a live response replaces them.
+ * What the service will return, before anything has been asked of it.
  *
- * ★ Rendered through `EsisRowValues`, the same component a live result uses, so
- * the demonstration has the same shape as a live result, while the `Mock data`
- * badge prevents it from being presented as production evidence.
+ * ★ **The invented records are gone — 2026-09-14.** This used to render a demo
+ * roster through `EsisRowValues`, the same table a live result uses, behind a
+ * `Mock data` badge. The badge was doing all the work of telling the reader
+ * that a table of children was fictional, and the client ended the arrangement:
+ * "ene esis ni real zuil shuu".
  *
- * ★★ The whole demo set, not its first row. A roster service that renders one
- * child answers "what fields come back?" and not "what will this screen look
- * like once we are connected?", which is the question somebody opens this
- * dialog without a token to ask.
+ * What is left is the honest half of the same answer — the field contract, and
+ * a sentence saying nothing has been read yet. The reader presses the button to
+ * find out what ESIS actually holds.
  */
-function SampleResult({
-  endpoint,
-  demoMode,
-}: {
-  endpoint: EsisOverview["endpoints"][number];
-  demoMode: boolean;
-}) {
-  const columns = esisSampleColumns(endpoint.fields);
+function PendingResult({ endpoint }: { endpoint: EsisScopedCatalog["endpoints"][number] }) {
+  const outputs = endpoint.fields.filter((field) => field.io === "OUTPUT" && field.ingested);
 
   return (
     <section aria-labelledby="esis-pull-sample">
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <h3 id="esis-pull-sample" className="text-body font-semibold text-ink">
-          Синк хийсэн мэдээлэл
+          Хараахан татаагүй байна
         </h3>
-        <Badge tone="sun">{demoMode ? "Mock data · синк биш" : "Live хариу хүлээгдэж байна"}</Badge>
-        <Badge tone="sky">{endpoint.sampleRows.length} бичлэг</Badge>
+        <Badge tone="sun">Live хариу хүлээгдэж байна</Badge>
       </div>
-      <p className="mb-3 text-caption text-muted">
-        {demoMode
-          ? "ESIS response schema-тай ижил бүтэцтэй зохиомол test өгөгдөл."
-          : "Талбарын нэр нь ESIS developer portal-оос баталгаажсан."}
+      <p className="text-caption text-muted">
+        Дээрх товчийг дарж ESIS-ээс татна. Энэ сервис амжилттай хариулбал {outputs.length} талбар
+        ирнэ; талбарын нэр нь ESIS developer portal-оос баталгаажсан.
       </p>
-      <EsisRowValues columns={columns} rows={endpoint.sampleRows} />
     </section>
   );
 }
 
-function ReadResult({ result }: { result: EsisResourceRead }) {
+function ReadResult({
+  result,
+  endpoint,
+}: {
+  result: EsisResourceRead;
+  endpoint: EsisScopedCatalog["endpoints"][number];
+}) {
   if (result.status === "FAILED") {
-    return (
-      <Card pad="compact" tone="peach">
-        <p className="text-body font-semibold text-ink">ESIS хариу өгсөнгүй</p>
-        <p className="mt-1 text-caption text-muted">
-          {ERROR_LABEL[result.errorCode ?? "UNKNOWN"] ?? result.errorCode}
-        </p>
-      </Card>
-    );
+    return <EsisNoAnswer endpoint={endpoint} errorCode={result.errorCode} variant="FAILED" />;
   }
 
   const columns = esisSampleColumns(result.fields);
@@ -343,22 +341,30 @@ function ReadResult({ result }: { result: EsisResourceRead }) {
         <h3 id="esis-pull-rows" className="text-body font-semibold text-ink">
           Ирсэн мэдээлэл
         </h3>
-        <Badge tone={result.source === "MOCK" ? "sun" : "mint"}>
-          {result.source === "MOCK" ? "DEMO_SUCCESS · MOCK" : "LIVE"}
-        </Badge>
+        <Badge tone="mint">LIVE</Badge>
         <Badge tone="sky">{result.count} бичлэг</Badge>
         {result.durationMs === null ? null : <Badge tone="sky">{result.durationMs} мс</Badge>}
       </div>
 
-      <p className="mb-2 text-body font-semibold text-ink">Response JSON</p>
+      {/*
+        ★ The envelope, and it says so — 2026-09-14.
+        `RESULT` carries the first few records rather than every one: this
+        block answers "what shape does ESIS reply in?", and the table below
+        answers "what did it send?". Naming the counts is what keeps a short
+        `RESULT` from reading as a short response.
+      */}
+      <p className="mb-2 text-body font-semibold text-ink">
+        Response JSON{" "}
+        <span className="font-normal text-caption text-muted">
+          — бүтцийн жишээ: {result.response.RESULT.length} / {result.count} бичлэг
+        </span>
+      </p>
       <pre className="mb-4 max-h-[420px] overflow-auto rounded-control border border-border bg-ink p-4 font-mono text-caption leading-6 text-white">
         <code>{JSON.stringify(result.response, null, 2)}</code>
       </pre>
 
       {result.rows.length === 0 ? (
-        <Card pad="compact">
-          <p className="text-body text-muted">ESIS энэ сервисээр бичлэг буцаасангүй.</p>
-        </Card>
+        <EsisNoAnswer endpoint={endpoint} errorCode={null} variant="EMPTY" />
       ) : (
         <EsisRowValues columns={columns} rows={result.rows} />
       )}

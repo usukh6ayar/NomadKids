@@ -49,7 +49,6 @@ describe("loadEnv", () => {
       const env = loadEnv(valid);
       expect(env.ESIS_BASE_URL).toBe("");
       expect(env.ESIS_TOKEN).toBe("");
-      expect(env.ESIS_INSTITUTION_ID).toBe("");
       expect(env.ESIS_TIMEOUT_MS).toBe(15_000);
     });
 
@@ -58,7 +57,6 @@ describe("loadEnv", () => {
         ...valid,
         ESIS_BASE_URL: "https://esis.example.test",
         ESIS_TOKEN: "t".repeat(20),
-        ESIS_INSTITUTION_ID: "INST-1",
       } as NodeJS.ProcessEnv);
 
       expect(env.ESIS_BASE_URL).toBe("https://esis.example.test");
@@ -101,7 +99,6 @@ describe("loadEnv", () => {
           ...prod,
           ESIS_BASE_URL: "http://esis.example.test",
           ESIS_TOKEN: "t".repeat(20),
-          ESIS_INSTITUTION_ID: "INST-1",
         } as NodeJS.ProcessEnv),
       ).toThrow(/ESIS_BASE_URL/);
     });
@@ -112,7 +109,6 @@ describe("loadEnv", () => {
           ...prod,
           ESIS_BASE_URL: "https://esis.example.test",
           ESIS_TOKEN: "t".repeat(20),
-          ESIS_INSTITUTION_ID: "INST-1",
         } as NodeJS.ProcessEnv),
       ).not.toThrow();
     });

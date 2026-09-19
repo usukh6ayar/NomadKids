@@ -1,7 +1,7 @@
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createTestApp } from "./support/app";
+import { createTestApp, type TestAppOptions } from "./support/app";
 import { resetData, testDb, uniq } from "./support/db";
 import {
   authed,
@@ -31,6 +31,16 @@ import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
 let app: INestApplication;
 const db = testDb();
 
+/**
+ * What the stubbed ESIS says this kindergarten's roster is.
+ *
+ * ★ Filled by `beforeEach` from the scenario it just created, so the names and
+ * birth dates match exactly what `resolveAttendanceDrafts` looks for — it
+ * matches a local child to an ESIS student by name *and* date of birth, and a
+ * mismatch is a 409 rather than a submission.
+ */
+const esisRoster: { groups: unknown[]; students: unknown[] } = { groups: [], students: [] };
+
 let a: Scenario;
 let b: Scenario;
 let admin: AuthSession;
@@ -42,7 +52,38 @@ let adminB: AuthSession;
 const server = () => app.getHttpServer();
 
 beforeAll(async () => {
-  app = await createTestApp();
+  /*
+   * ★ ESIS is stubbed here, and was not before 2026-09-14.
+   *
+   * Submitting a day pushes it to `group/school/attendance/save/v3`, and the
+   * suite has no token — `test/setup.ts` deletes it so `pnpm test` cannot
+   * reach a government system. That used to be covered by demo mode, which
+   * answered every read from a committed fixture; with the mock transport
+   * removed, an unstubbed submit is a 502.
+   *
+   * Only the transport is replaced. `submitDays` still resolves each child
+   * against the roster these methods return, still writes the submission rows,
+   * still audits — which is what these tests are about. The stub returns one
+   * group and one student because the scenario has one of each; a child the
+   * roster does not name makes `resolveAttendanceDrafts` throw, which is its
+   * job and is tested where that behaviour belongs.
+   */
+  const ok = <T>(data: T) => ({ data, status: 200, durationMs: 1, source: "LIVE" as const });
+
+  app = await createTestApp({
+    esis: {
+      isConfigured: true,
+      /*
+       * ★ The roster is read off `esisRoster`, which `beforeEach` fills once
+       * the scenario exists. The app is built once in `beforeAll`, before
+       * there is a group or a child to name, so the stub has to close over a
+       * mutable handle rather than capture values.
+       */
+      groups: async () => ok(esisRoster.groups),
+      groupStudents: async () => ok(esisRoster.students),
+      saveAttendance: async () => ok({ SUCCESS_CODE: 200 }),
+    } as unknown as TestAppOptions["esis"],
+  });
 }, 60_000);
 
 afterAll(async () => {
@@ -58,6 +99,42 @@ beforeEach(async () => {
 
   a = await createScenario("a");
   b = await createScenario("b");
+
+  /*
+   * ★ The ESIS mapping, for the submit tests — 2026-09-14.
+   *
+   * `submitDays` pushes the day to the ministry and `assertOperable` refuses
+   * with 409 until the tenant carries an institution id. Demo mode used to
+   * paper over that with a fallback constant; it is gone, so the fixture has
+   * to state the mapping the same way a real kindergarten does.
+   */
+  esisRoster.groups = [{ studentGroupId: "10001", studentGroupName: a.group.name }];
+  esisRoster.students = [
+    {
+      personId: "90000000000001",
+      lastName: a.child.lastName,
+      firstName: a.child.firstName,
+      familyName: null,
+      lastNameMgl: null,
+      firstNameMgl: null,
+      dateOfBirth: a.child.dateOfBirth.toISOString(),
+    },
+  ];
+
+  await db.kindergarten.update({
+    where: { id: a.kindergarten.id },
+    /*
+     * ★ Digits only. `esisInstitutionId` is a text column, but the attendance
+     * payload runs it through `positiveEsisNumber` — ESIS types it as a
+     * number — so a `uniq()` suffix answers 502 "institutionId буруу
+     * форматтай". It still has to be unique across kindergartens, hence the
+     * random digits rather than a shared constant.
+     */
+    data: {
+      esisInstitutionId: String(40000 + Math.floor(Math.random() * 50000)),
+      esisEnvironment: "PRODUCTION",
+    },
+  });
 
   const accUser = await createUser({ username: uniq("acct") });
   await createMembership(accUser.id, a.kindergarten.id, "ACCOUNTANT");

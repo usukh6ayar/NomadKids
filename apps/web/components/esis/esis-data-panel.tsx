@@ -12,31 +12,15 @@ import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
+import { EsisNoAnswer } from "@/components/esis/esis-no-answer";
 import { EsisRowValues, esisSampleColumns } from "@/components/esis/esis-rows";
-import {
-  ESIS_DEMO_PARAM,
-  ESIS_PARAM_LABEL,
-  esisApiIdLabel,
-  isPersonalParam,
-} from "@/components/esis/esis-params";
+import { ESIS_PARAM_LABEL, esisApiIdLabel, isPersonalParam } from "@/components/esis/esis-params";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
 import { LoadingState } from "@/components/ui/states";
 import { cn } from "@/lib/utils";
-
-/** The Mongolian sentence behind each upstream failure code. */
-const ERROR_LABEL: Record<string, string> = {
-  UNAUTHORIZED: "Token хүчингүй эсвэл хугацаа нь дууссан байна.",
-  SCOPE_DENIED: "Энэ API-д манай token-д эрх олгоогүй байна.",
-  TIMEOUT: "ESIS хугацаанд хариу өгсөнгүй.",
-  NETWORK: "ESIS сервертэй холбогдож чадсангүй.",
-  INVALID_RESPONSE: "ESIS-ийн хариу гэрээнд тохирохгүй байна.",
-  NOT_CONFIGURED: "Server дээр ESIS тохиргоо алга байна.",
-  HTTP: "ESIS алдаатай хариу буцаалаа.",
-  UNKNOWN: "Тодорхойгүй алдаа гарлаа.",
-};
 
 /**
  * One ESIS service, **on the screen that uses it** — not behind a dialog.
@@ -66,7 +50,7 @@ const ERROR_LABEL: Record<string, string> = {
  * on a director's screen as if it were their own record — and they chose it
  * anyway, with the demo values kept as they are.
  *
- * So the label is recorded here instead of on screen. `/admin/integrations/esis`
+ * So the label is recorded here instead of on screen. `/platform/[id]/esis`
  * keeps its badges: that screen exists to say which services are live and which
  * are not, and is where anybody asking "is this real?" is sent.
  */
@@ -75,6 +59,7 @@ export function EsisDataPanel({
   params,
   rows: given,
   hrefs,
+  liveHref,
   linkField,
   title,
   description,
@@ -104,6 +89,22 @@ export function EsisDataPanel({
   rows?: Record<string, string | null>[];
   /** Where each of `rows` leads, index-aligned. */
   hrefs?: (string | null)[];
+  /**
+   * Where one **live** ESIS row leads, worked out from the row itself.
+   *
+   * ★ Added 2026-09-14. `hrefs` is index-aligned with the caller's own `rows`
+   * and is therefore meaningless once ESIS answers — the ministry's roster is
+   * not in the caller's order and need not even be the same set. That is why
+   * `hrefs` is dropped for a live read, and why this is a function: the only
+   * honest way to link a returned row is to look at what is in it.
+   *
+   * `/children` uses it to match the ministry's roster against this
+   * kindergarten's own children by name and date of birth — the same pairing
+   * `attendance.service.ts` and `funding/food-discount.ts` use, because a name
+   * alone is not enough to open somebody's record. A row that matches nothing,
+   * or matches twice, leads nowhere rather than to a guess.
+   */
+  liveHref?: (row: Record<string, string | null>) => string | null;
   /** Which column carries the link — the name, on a roster. */
   linkField?: string;
   /**
@@ -180,7 +181,8 @@ export function EsisDataPanel({
   const { primaryKindergartenId } = useSession();
   const [entered, setEntered] = useState<Record<string, string>>({});
   const [pulled, setPulled] = useState(false);
-  const [syncedAt, setSyncedAt] = useState<string | null>(null);
+  /** When the reader last pressed "татах" for a **live** service — see `pull()`. */
+  const [pulledAt, setPulledAt] = useState<string | null>(null);
 
   /*
    * ★ The role-scoped catalog, not the operator's overview — 2026-09-09.
@@ -205,7 +207,6 @@ export function EsisDataPanel({
   });
 
   const endpoint = catalog.data?.endpoints.find((item) => item.key === resource);
-  const demoMode = catalog.data?.mode === "DEMO";
   const required = endpoint?.params ?? [];
 
   /*
@@ -213,8 +214,7 @@ export function EsisDataPanel({
    * complete on first paint. It never pre-fills a personal identifier — see
    * `esis-params.ts`.
    */
-  const value = (name: string) =>
-    entered[name] ?? params?.[name] ?? (demoMode ? (ESIS_DEMO_PARAM[name] ?? "") : "") ?? "";
+  const value = (name: string) => entered[name] ?? params?.[name] ?? "";
   const missing = required.filter((name) => !value(name));
 
   /*
@@ -261,9 +261,19 @@ export function EsisDataPanel({
   if (!endpoint) return null;
 
   const live = read.data?.status === "SUCCEEDED" ? read.data : null;
-  // A live response replaces everything, `rows` included — the caller's records
-  // are a stand-in for the catalog's, not something to merge with a real one.
-  const rows = live ? live.rows : (given ?? endpoint.sampleRows);
+  /*
+   * ★ Live rows, or the caller's own — never invented ones.
+   *
+   * This ended `?? endpoint.sampleRows` until 2026-09-14, so a panel that had
+   * not read yet, or had read and failed, drew a fabricated record under the
+   * ministry's service name. With that gone the empty case falls through to
+   * `EsisNoAnswer` below, which names the endpoint instead of filling the
+   * space.
+   *
+   * `given` stays: those are rows the caller already holds from a real read,
+   * passed in to save a second call.
+   */
+  const rows = live ? live.rows : (given ?? []);
   const columns = esisSampleColumns(live ? live.fields : endpoint.fields);
 
   /*
@@ -285,7 +295,31 @@ export function EsisDataPanel({
         {read.isFetching && !read.data ? (
           <LoadingState rows={1} />
         ) : rows.length === 0 ? (
-          <p className="text-body text-muted">ESIS энэ сервисээр бичлэг буцаасангүй.</p>
+          /*
+           * ★ Told apart, but not through `EsisNoAnswer` — 2026-09-14.
+           *
+           * This branch said "бичлэг буцаасангүй" whether the service had
+           * answered with an empty list or not answered at all, which are
+           * different facts and lead to different actions. It says which now,
+           * and names the service when the read failed.
+           *
+           * The full card is deliberately not used here: this panel renders
+           * inside a table cell, and a bordered, toned, icon-bearing card in a
+           * cell is the thing `compact` exists to avoid. Two lines of text
+           * carry the same two facts at the weight this slot allows.
+           */
+          read.data?.status === "FAILED" ? (
+            <div className="flex flex-col gap-0.5">
+              <p className="text-body text-muted">ESIS-ээс хариу ирсэнгүй.</p>
+              {read.data.endpoint ? (
+                <p className="break-all font-mono text-caption text-faint">
+                  {read.data.endpoint.method} {read.data.endpoint.path}
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-body text-muted">ESIS энэ сервисээр бичлэг буцаасангүй.</p>
+          )
         ) : (
           <EsisRowValues columns={columns} rows={rows} />
         )}
@@ -305,8 +339,22 @@ export function EsisDataPanel({
       // No token: re-read our own catalog, which is what is actually shown.
       await catalog.refetch();
     }
-    setSyncedAt(new Date().toLocaleString("mn-MN"));
+    setPulledAt(new Date().toLocaleString("mn-MN"));
   }
+
+  /*
+   * ★ **The stored copy's own date, not the moment somebody pressed "татах"**
+   * — 2026-09-17, plan Task 7. `pulledAt` says when this browser last asked;
+   * for a reference resource that is not the fact worth showing, because the
+   * answer came from `EsisReference` and can be weeks old regardless of when
+   * it was read just now. `read.data.syncedAt` is when the sweep itself ran,
+   * which is the date an operator comparing this table against the ministry's
+   * own catalogue actually needs.
+   */
+  const storeSyncedAt =
+    read.data?.source === "STORE" && read.data.syncedAt
+      ? new Date(read.data.syncedAt).toLocaleString("mn-MN")
+      : null;
 
   return (
     <section aria-label={title ?? endpoint.name} className={cn("w-full", className)}>
@@ -325,11 +373,7 @@ export function EsisDataPanel({
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {showResponseDetails ? (
-              <Badge tone={demoMode ? "sun" : "mint"}>
-                {demoMode ? "ESIS DEMO DATA" : "ESIS LIVE"}
-              </Badge>
-            ) : null}
+            {showResponseDetails ? <Badge tone="mint">{"ESIS LIVE"}</Badge> : null}
             <Badge tone="sky">{rows.length} бичлэг</Badge>
             <Button
               size="sm"
@@ -383,25 +427,12 @@ export function EsisDataPanel({
 
         {showResponseDetails ? (
           <div className="flex flex-col gap-4" aria-label="ESIS хүсэлт ба хариу">
-            {demoMode ? (
-              <p className="rounded-control border border-sun-ink/20 bg-sun px-4 py-3 text-body font-semibold text-sun-ink">
-                ESIS DEMO DATA — LIVE CONNECTION NOT ACTIVE
-              </p>
-            ) : null}
-
             <dl className="grid overflow-hidden rounded-control border border-border-soft sm:grid-cols-2 xl:grid-cols-4">
               <ResponseFact label="Method" value={endpoint.method} />
-              <ResponseFact
-                label="Response mode"
-                value={read.data?.source ?? (demoMode ? "MOCK" : "LIVE")}
-              />
+              <ResponseFact label="Response mode" value={read.data?.source ?? "LIVE"} />
               <ResponseFact
                 label="HTTP status"
-                value={
-                  read.data
-                    ? `${read.data.response.SUCCESS_CODE}${read.data.source === "MOCK" ? " MOCK" : ""}`
-                    : "Хүлээж байна"
-                }
+                value={read.data ? String(read.data.response.SUCCESS_CODE) : "Хүлээж байна"}
               />
               <ResponseFact label="Sync status" value={read.data?.status ?? "PENDING"} />
               <ResponseFact
@@ -446,9 +477,22 @@ export function EsisDataPanel({
 
             <div>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="font-semibold text-ink">Response output · Бүтэн JSON</h3>
+                {/*
+                  ★ "Бүтэн JSON" until 2026-09-14, and it stopped being true
+                  that day: `RESULT` now carries the envelope's first few
+                  records rather than all of them, because the read cap rose to
+                  five hundred and this block was rendering every one of them a
+                  second time. A heading that promises the whole response over
+                  a sample of it is the kind of small lie an operator builds a
+                  wrong conclusion on.
+                */}
+                <h3 className="font-semibold text-ink">Response output · Бүтцийн жишээ</h3>
                 <span className="text-caption text-muted">
-                  {receivedAt ? `Хүлээн авсан: ${receivedAt}` : "ESIS response хүлээж байна"}
+                  {read.data
+                    ? `${read.data.response.RESULT.length} / ${read.data.count} бичлэг`
+                    : receivedAt
+                      ? `Хүлээн авсан: ${receivedAt}`
+                      : "ESIS response хүлээж байна"}
                 </span>
               </div>
               {read.isFetching && !read.data ? (
@@ -473,23 +517,23 @@ export function EsisDataPanel({
           </p>
         ) : null}
         {read.data?.status === "FAILED" ? (
-          <Card pad="compact" tone="peach">
-            <p className="text-body font-semibold text-ink">ESIS хариу өгсөнгүй</p>
-            <p className="mt-1 text-caption text-muted">
-              {ERROR_LABEL[read.data.errorCode ?? "UNKNOWN"] ?? read.data.errorCode}
-            </p>
-          </Card>
+          <EsisNoAnswer endpoint={endpoint} errorCode={read.data.errorCode} variant="FAILED" />
         ) : null}
 
         {rows.length === 0 ? (
-          <Card pad="compact">
-            <p className="text-body text-muted">ESIS энэ сервисээр бичлэг буцаасангүй.</p>
-          </Card>
+          /*
+           * ★ Only once. A failed read has no rows either, so without this the
+           * screen stacked "хариу өгсөнгүй" on top of "бичлэг буцаасангүй" and
+           * invited the reader to work out whether those were two problems.
+           */
+          read.data?.status === "FAILED" ? null : (
+            <EsisNoAnswer endpoint={endpoint} errorCode={null} variant="EMPTY" />
+          )
         ) : (
           <EsisRowValues
             columns={columns}
             rows={rows}
-            hrefs={live ? undefined : hrefs}
+            hrefs={live ? (liveHref ? rows.map(liveHref) : undefined) : hrefs}
             linkField={linkField}
             renderDetail={
               detail
@@ -516,7 +560,11 @@ export function EsisDataPanel({
         )}
 
         <p className="border-t border-border-soft pt-4 text-caption text-muted">
-          {syncedAt ? `Шинэчилсэн: ${syncedAt} · ` : null}
+          {storeSyncedAt
+            ? `Синк хийсэн: ${storeSyncedAt} · `
+            : pulledAt
+              ? `Шинэчилсэн: ${pulledAt} · `
+              : null}
           Татахгүй талбар: регистр, иргэний бүртгэлийн дугаар, нэвтрэх мэдээлэл.
         </p>
       </Card>

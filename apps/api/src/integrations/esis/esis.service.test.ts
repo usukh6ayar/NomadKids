@@ -3,7 +3,8 @@ import type { Env } from "../../config/env";
 import type { EsisClient } from "./esis.client";
 import { EsisConfig } from "./esis.config";
 import { ESIS_ENDPOINTS, esisPath } from "./esis.endpoints";
-import { EsisService } from "./esis.service";
+import { ESIS_READABLE_KEYS, ESIS_READERS, EsisService } from "./esis.service";
+import { esisDiscoveredSchema } from "./esis.schemas";
 import type { EsisRequest } from "./esis.types";
 
 function serviceFor(body: unknown) {
@@ -15,7 +16,6 @@ function serviceFor(body: unknown) {
   const config = new EsisConfig({
     ESIS_BASE_URL: "https://hubv2.esis.edu.mn",
     ESIS_TOKEN: "test-token-not-a-secret",
-    ESIS_INSTITUTION_ID: "40305",
     ESIS_TIMEOUT_MS: 15_000,
   } as Env);
   return { service: new EsisService({ request } as unknown as EsisClient, config), request };
@@ -26,28 +26,71 @@ describe("ESIS v2 endpoint registry", () => {
     const endpoints = Object.values(ESIS_ENDPOINTS);
     const withId = endpoints.filter((item) => item.apiId !== null);
 
-    expect(endpoints).toHaveLength(39);
+    /*
+     * ★ 70 since 2026-09-17, was 67 since 2026-09-14 (which was 40). Plan
+     * `2026-09-16-esis-sync-tiers.md` Task 9 closed three more:
+     * `studentAwards` (85), `studentSearch` (…784) and
+     * `buildingByRegisterNumber` (186). Two of the six the task named stay
+     * unwired on purpose — `esis.requests.ts`'s `ESIS_DISPOSITIONS` carries
+     * 167 and 170 — and 119 was live-probed and refused (403 under the
+     * standard root), also recorded there rather than guessed into a path
+     * here.
+     *
+     * The export has **84** approved services. Fourteen still unwired are the
+     * ones with an open question — a civil id we do not hold, an input that
+     * duplicates a wired save, a subsystem on a domain `ESIS_BASE_URL` does
+     * not answer, one row whose URL cell is empty, and the three dispositioned
+     * above.
+     *
+     * ★★★ **73 since 2026-09-18** — spec №3б wired the three group writes the
+     * client asked for: 150 (үүсгэх), 152 (засах, устгах) and 162 (багш
+     * тохируулах). Eleven of the fourteen remain, and four of those now have a
+     * reason rather than a silence: 72 and 73 have no entry in the ministry's
+     * export to give them a path, and 129/131 file a school's income return,
+     * which nothing in this product produces. See the spec's §1.
+     */
+    expect(endpoints).toHaveLength(73);
     expect(new Set(withId.map((item) => item.apiId)).size).toBe(withId.length);
-    expect(endpoints.every((item) => item.path.startsWith("/svc/api/hub/v2/"))).toBe(true);
+
+    /*
+     * ★★ **One service is not under `/hub/v2/`, and it is the one to watch.**
+     *
+     * This was `every(...startsWith("/svc/api/hub/v2/"))` until `workerInfo`
+     * (api 49) arrived at `/svc/api/public/worker/info/:primaryNidNumber`. The
+     * prefix is not cosmetic: `/hub/v2/` services take an `institutionId` and
+     * are refused for an institution this token does not hold — proven live,
+     * `403 Таны компанид энэ institutionId дээр эрх байхгүй`. The `public`
+     * service takes no institution at all and answers for any worker in the
+     * national database.
+     *
+     * So this assertion is pinned as a **list** rather than relaxed to a
+     * predicate: a second unscoped path should have to be added here
+     * deliberately, by someone who has read this note.
+     */
+    const outsideHub = endpoints.filter((item) => !item.path.startsWith("/svc/api/hub/v2/"));
+    expect(outsideHub.map((item) => item.path)).toEqual([
+      "/svc/api/public/worker/info/:primaryNidNumber",
+    ]);
   });
 
   /*
    * A null id is a service whose numeric portal id has not been read.
    *
-   * ★ **This assertion was `toEqual([])` until 2026-09-10**, when seventeen
-   * services were added and every one of them arrived without a numeric id.
-   * That is not catalog work left undone, which is what the empty expectation
-   * was written to catch — it is two different facts about the portal:
+   * ★ **This is `toEqual([])` again**, and the round trip is the point.
    *
-   *   - the public catalog page prints a numeric id only for the `API-0000nn`
-   *     services, not for the `api-nn` ones, so `api-34`, `api-12`, `api-42`
-   *     and their neighbours have a slug and no number;
-   *   - the суралцагч section is not publicly rendered at all, so the seven
-   *     services taken from the client's own URLs have neither.
+   * It was empty until 2026-09-10, when seventeen services arrived without a
+   * numeric id and the expectation was widened to name them: the public
+   * catalog page prints a number only for the `API-0000nn` services, and the
+   * суралцагч section is not publicly rendered at all, so nine slugs and seven
+   * client-supplied URLs had no id to carry. The list was written to say which
+   * services were waiting on what, and every one of them "resolves when
+   * somebody reads it from a signed-in portal session".
    *
-   * Pinning the exact set keeps the original intent — a *new* null still fails
-   * this test — while saying out loud which services are waiting on what. Each
-   * one resolves when somebody reads it from a signed-in portal session.
+   * ★★ That happened on 2026-09-14: the deployment's own request register
+   * (`esis.requests.ts`) lists an id beside the portal's own name for all
+   * seventeen. So the expectation returns to its original, stricter form — a
+   * *new* null fails this test — and `esis.requests.test.ts` carries the half
+   * this one cannot see, that each id is one the ministry actually approved.
    */
   it("names every service still missing its portal id", () => {
     const missing = Object.entries(ESIS_ENDPOINTS)
@@ -55,29 +98,7 @@ describe("ESIS v2 endpoint registry", () => {
       .map(([key]) => key)
       .sort();
 
-    expect(missing).toEqual(
-      [
-        // Not on the public catalog page — paths from the client, 2026-09-10.
-        "studentCheck",
-        "studentContacts",
-        "studentContactsSave",
-        "studentStatistics",
-        "studentStatisticsSave",
-        "studentCondition",
-        "studentConditionSave",
-        // Listed on the page under an `api-nn` slug, which carries no number.
-        "teacherAcademicOrg",
-        "teacherMovements",
-        "groupsNextYear",
-        "programs",
-        "programStages",
-        "programPlans",
-        "programCourses",
-        "rooms",
-        "academicOrg",
-        "subjectAreas",
-      ].sort(),
-    );
+    expect(missing).toEqual([]);
   });
 
   it("pins the official API ids and encodes path parameters", () => {
@@ -133,7 +154,14 @@ describe("ESIS v2 domain methods", () => {
     expect(JSON.stringify(response.data)).not.toContain("secretField");
   });
 
-  it("drops register numbers and provider passwords from student rows", async () => {
+  /*
+   * ★ Renamed 2026-09-15. Register numbers used to be dropped alongside
+   * provider passwords; the client's decision that day ("РД-г тийм, нууц үгийг
+   * үгүй") split the two, and `esisStudentSchema` now names `personRegNumber`
+   * — see the note above it in `esis.schemas.ts`. What this test still proves
+   * is the half that did not move.
+   */
+  it("drops provider passwords from student rows, but keeps the register number", async () => {
     const { service } = serviceFor({
       SUCCESS_CODE: 200,
       RESPONSE_MESSAGE: "Амжилттай",
@@ -161,6 +189,7 @@ describe("ESIS v2 domain methods", () => {
       firstName: "Ану",
       dateOfBirth: "2021-03-04",
       genderCode: "F",
+      personRegNumber: "АА00000000",
     });
   });
 
@@ -217,15 +246,13 @@ describe("ESIS v2 domain methods", () => {
       ],
     });
 
-    // ★ `demoFixture` names which built-in response answers this call when the
-    // deployment is in MOCK mode — added 2026-09-09. It is routing metadata for
-    // our own client, never sent upstream, so the path, the method and the body
-    // below are still the whole of what ESIS receives, which is what the test's
-    // name is about.
+    // ★ `demoFixture` was in this payload until 2026-09-14 — routing metadata
+    // that told the client which built-in response to serve in MOCK mode. The
+    // mock transport is gone, so the object below is now exactly what goes on
+    // the wire, which is what this test's name always claimed.
     expect(request).toHaveBeenCalledWith({
       path: "/svc/api/hub/v2/group/school/attendance/save/v3",
       method: "POST",
-      demoFixture: "saveAttendanceV3",
       body: {
         institutionId: 40305,
         studentGroupId: 10001,
@@ -240,5 +267,75 @@ describe("ESIS v2 domain methods", () => {
         ],
       },
     });
+  });
+});
+
+/*
+ * ★ The boundary, asserted rather than described.
+ *
+ * A hand-written schema is a promise about field names, and every promise of
+ * that kind made without a live response has been wrong at least once
+ * (`ESIS_API_READINESS.md` §1.1 — nine of thirty-six). So the list of readers
+ * allowed to make one is closed, and it is exactly the readers whose named
+ * properties some TypeScript file reads.
+ *
+ * Adding a reader here without a consumer re-opens the defect. Adding a
+ * consumer without adding the reader here breaks the build, which is the
+ * intended direction for that mistake to fail in.
+ *
+ * ★★ **`groupAttendance` was on this list until 2026-09-15 and is not any
+ * more.** It was kept declared on the assumption that attendance
+ * reconciliation read its named fields; no such consumer exists —
+ * `attendance.service.ts` reads `groups` and `groupStudents` and writes
+ * through `saveAttendance`, never this reader. It was also the least
+ * hardened of the eight: `esisAttendanceSchema` required `dayDate` and
+ * `attendanceReasonCode` as non-nullable, unlike siblings in this file that
+ * were hardened after a live `null` in a required field threw away a whole
+ * list. It is now `esisDiscoveredSchema`, like every other reader with no
+ * consumer, and `esisAttendanceSchema` was deleted.
+ */
+describe("the declared-schema boundary", () => {
+  const DECLARED = [
+    "organization",
+    "groups",
+    "students",
+    "groupStudents",
+    "foodDiscountStudents",
+    "staff",
+    "teachers",
+  ] as const;
+
+  it("hand-writes a schema for exactly the readers a domain consumer reads", () => {
+    const handWritten = ESIS_READABLE_KEYS.filter(
+      (key) => ESIS_READERS[key].schema !== esisDiscoveredSchema,
+    ).sort();
+
+    expect(handWritten).toEqual([...DECLARED].sort());
+  });
+
+  it("passes every other reader through unchanged", () => {
+    for (const key of ESIS_READABLE_KEYS) {
+      if ((DECLARED as readonly string[]).includes(key)) continue;
+      expect({ key, passthrough: ESIS_READERS[key].schema === esisDiscoveredSchema }).toEqual({
+        key,
+        passthrough: true,
+      });
+    }
+  });
+
+  /*
+   * ★★ The live regression this replaces. `student/info` types `dateOfBirth` as
+   * a string in the portal's documentation and sends a number; the declared
+   * schema failed the whole service with `invalid_union` for every child on
+   * institution 42778.
+   */
+  it("keeps a numeric dateOfBirth that a declared schema rejected", () => {
+    const parsed = ESIS_READERS.studentInfo.schema.parse({
+      personId: 9425579614258,
+      dateOfBirth: 1_419_000_000_000,
+      firstName: "Болд",
+    }) as Record<string, unknown>;
+
+    expect(parsed).toMatchObject({ dateOfBirth: 1_419_000_000_000, firstName: "Болд" });
   });
 });

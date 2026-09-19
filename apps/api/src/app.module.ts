@@ -38,6 +38,7 @@ import { StorageModule } from "./storage/storage.module";
 import { SurveysModule } from "./surveys/surveys.module";
 import { RateLimitModule } from "./common/rate-limit/rate-limit.module";
 import { PrismaModule } from "./prisma/prisma.module";
+import { StaffRegistrationModule } from "./staff-registration/staff-registration.module";
 import { TenantsModule } from "./tenants/tenants.module";
 import { UsersModule } from "./users/users.module";
 
@@ -83,6 +84,7 @@ import { UsersModule } from "./users/users.module";
     AccessModule,
     InvoicesModule,
     EsisModule,
+    StaffRegistrationModule,
     QpayModule,
     KitchenModule,
     MealsModule,
