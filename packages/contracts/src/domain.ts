@@ -3625,6 +3625,25 @@ export const esisResourceKeySchema = z.enum([
   "workerInfo",
   "teacherProfile",
   "teacherCheck",
+  /*
+   * ★ Added 2026-09-19, and they are the second instance of exactly the bug the
+   * `foodDiscountStudents` note above describes — so the note is no longer the
+   * only defence. `esis-catalog-contract.test.ts` now diffs `ESIS_ENDPOINTS`
+   * against this enum in both directions.
+   *
+   * The three group writes and three reads shipped in the catalogue and never
+   * reached this list. The consequence is worse than a missing row: `key` is
+   * read by `esisOverviewSchema.endpoints`, so one unknown value rejects the
+   * **whole** payload and the ESIS panel renders "Алдаа гарлаа" with nothing
+   * naming the cause. It reached production and was found from a HAR file
+   * showing the request answering 200.
+   */
+  "groupCreate",
+  "groupUpdate",
+  "groupInstructor",
+  "studentAwards",
+  "studentSearch",
+  "buildingByRegisterNumber",
 ]);
 export type EsisResourceKey = z.infer<typeof esisResourceKeySchema>;
 
