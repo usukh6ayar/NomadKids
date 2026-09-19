@@ -71,9 +71,7 @@ function StaffRegisterForm() {
   return (
     <form className="flex flex-col gap-4" noValidate onSubmit={onSubmit}>
       <div>
-        <h2 className="text-heading font-semibold tracking-[-.01em] text-ink">
-          Ажилтны бүртгэл
-        </h2>
+        <h2 className="text-heading font-semibold tracking-[-.01em] text-ink">Ажилтны бүртгэл</h2>
         <p className="mt-1.5 text-body leading-relaxed text-muted">
           Цэцэрлэгээсээ авсан код болон өөрийн регистрийн дугаараа оруулна уу.
         </p>

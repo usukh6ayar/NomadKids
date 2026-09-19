@@ -485,8 +485,7 @@ export class ChildrenService {
   ) {
     if (!this.esis.isAvailable) return null;
 
-    const institutionId =
-      active.kindergarten.esisInstitutionId;
+    const institutionId = active.kindergarten.esisInstitutionId;
     if (!institutionId) return null;
 
     try {

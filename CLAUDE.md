@@ -396,8 +396,8 @@ section keeps repeating: a rule the codebase contradicts stops being read.
   register and its Excel export, `/admin/funding` and `/finance`. The rule
   table ships **empty**, by §4's own instruction that no tariff is hard-coded
 - §3 meal cost — **partial**, and the half that was missing now has a source.
-  `dependsOnMeals` weights a funding rule; what nothing could answer was *which
-  children the state pays for*, so a split by source had no input. ESIS api 128
+  `dependsOnMeals` weights a funding rule; what nothing could answer was _which
+  children the state pays for_, so a split by source had no input. ESIS api 128
   (`cook/levelHood/students`) is the ministry's own answer and is wired as
   `GET …/funding/food-discounts` — `funding/food-discount.ts`, read live and
   **stored nowhere**, because eligibility changes without telling us and a

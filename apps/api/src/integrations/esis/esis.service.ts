@@ -782,11 +782,7 @@ export class EsisService {
     return this.read("screeningQuestions", {});
   }
 
-  schoolAttendance(
-    institutionId: string | number,
-    academicYear: string | number,
-    dayDate: string,
-  ) {
+  schoolAttendance(institutionId: string | number, academicYear: string | number, dayDate: string) {
     return this.read("schoolAttendance", { academicYear, dayDate }, institutionId);
   }
 
@@ -891,7 +887,10 @@ export class EsisService {
    */
 
   async saveStudentAllergy(input: EsisStudentAllergyUpload) {
-    return this.send(ESIS_ENDPOINTS.studentAllergySave, esisStudentAllergyUploadSchema.parse(input));
+    return this.send(
+      ESIS_ENDPOINTS.studentAllergySave,
+      esisStudentAllergyUploadSchema.parse(input),
+    );
   }
 
   async saveStudentProhibitedFood(input: EsisStudentProhibitedFoodUpload) {
@@ -923,7 +922,10 @@ export class EsisService {
   }
 
   async saveStudentSurgery(input: EsisStudentSurgeryUpload) {
-    return this.send(ESIS_ENDPOINTS.studentSurgerySave, esisStudentSurgeryUploadSchema.parse(input));
+    return this.send(
+      ESIS_ENDPOINTS.studentSurgerySave,
+      esisStudentSurgeryUploadSchema.parse(input),
+    );
   }
 
   async saveStudentIncident(input: EsisStudentIncidentUpload) {

@@ -68,7 +68,7 @@ beforeAll(async () => {
    * roster does not name makes `resolveAttendanceDrafts` throw, which is its
    * job and is tested where that behaviour belongs.
    */
-  const ok = <T,>(data: T) => ({ data, status: 200, durationMs: 1, source: "LIVE" as const });
+  const ok = <T>(data: T) => ({ data, status: 200, durationMs: 1, source: "LIVE" as const });
 
   app = await createTestApp({
     esis: {

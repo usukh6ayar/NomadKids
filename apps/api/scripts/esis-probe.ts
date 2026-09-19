@@ -32,7 +32,9 @@ interface Row {
 }
 
 const mask = (value: string): string =>
-  value.length > 4 ? `${value.slice(0, 2)}${"*".repeat(value.length - 4)}${value.slice(-2)}` : "***";
+  value.length > 4
+    ? `${value.slice(0, 2)}${"*".repeat(value.length - 4)}${value.slice(-2)}`
+    : "***";
 
 async function main(): Promise<void> {
   const config = new EsisConfig(loadEnv());
@@ -132,8 +134,7 @@ async function main(): Promise<void> {
 
   console.log("resolved parameters");
   for (const [name, value] of Object.entries(params)) {
-    const secret =
-      name === "personRegNumber" || name === "primaryNidNumber" || name === "civilId";
+    const secret = name === "personRegNumber" || name === "primaryNidNumber" || name === "civilId";
     console.log(`  ${name.padEnd(18)} ${value ? (secret ? mask(value) : value) : "(unresolved)"}`);
   }
   console.log("");
@@ -174,7 +175,8 @@ async function main(): Promise<void> {
     }
   }
 
-  for (const row of rows) console.log(`${row.outcome.padEnd(6)} ${row.key.padEnd(24)} ${row.detail}`);
+  for (const row of rows)
+    console.log(`${row.outcome.padEnd(6)} ${row.key.padEnd(24)} ${row.detail}`);
 
   const tally = rows.reduce<Record<string, number>>((acc, row) => {
     acc[row.outcome] = (acc[row.outcome] ?? 0) + 1;

@@ -498,10 +498,7 @@ const ESIS_FIELD_CATALOG: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
    * exist: the service answers with a bare `"true"` and a sentence. See
    * `esisStudentCheckSchema`.
    */
-  studentCheck: [
-    keep("isRegistered", "ЭСИС-д бүртгэлтэй эсэх"),
-    keep("message", "ЭСИС-ийн хариу"),
-  ],
+  studentCheck: [keep("isRegistered", "ЭСИС-д бүртгэлтэй эсэх"), keep("message", "ЭСИС-ийн хариу")],
 
   /*
    * ★ Corrected from live reads, 2026-09-14, and every field below is one that
@@ -972,10 +969,7 @@ const ESIS_FIELD_CATALOG: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
   ],
 
   /* ── Вакцин ─────────────────────────────────────────────────────────── */
-  vaccineCatalog: [
-    keep("VACCINE_NAME", "Вакцины нэр"),
-    keep("VACCINE_DOSE", "Тун"),
-  ],
+  vaccineCatalog: [keep("VACCINE_NAME", "Вакцины нэр"), keep("VACCINE_DOSE", "Тун")],
   vaccineHistory: [
     keep("PERSON_ID", "Хүүхдийн ESIS дугаар"),
     keep("VACCINE_NAME", "Вакцины нэр"),
@@ -1039,10 +1033,7 @@ const ESIS_FIELD_CATALOG: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
   ],
 
   /* ── Эрт илрүүлэг ───────────────────────────────────────────────────── */
-  screeningQuestions: [
-    keep("surveyNameId", "Асуултын код"),
-    keep("surveyName", "Асуулт"),
-  ],
+  screeningQuestions: [keep("surveyNameId", "Асуултын код"), keep("surveyName", "Асуулт")],
 
   /* ── Ирцийн өдрийн нэгдсэн дүн ──────────────────────────────────────── */
   schoolAttendance: [

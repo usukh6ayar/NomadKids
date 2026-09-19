@@ -218,7 +218,9 @@ async function main(): Promise<void> {
     where: { esisInstitutionId: institutionId, deletedAt: null },
   });
   if (existing) {
-    console.log(`Kindergarten ${existing.id} is already mapped to ${institutionId}. Nothing to do.`);
+    console.log(
+      `Kindergarten ${existing.id} is already mapped to ${institutionId}. Nothing to do.`,
+    );
     return;
   }
 

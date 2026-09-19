@@ -315,8 +315,8 @@ function PendingResult({ endpoint }: { endpoint: EsisScopedCatalog["endpoints"][
         <Badge tone="sun">Live хариу хүлээгдэж байна</Badge>
       </div>
       <p className="text-caption text-muted">
-        Дээрх товчийг дарж ESIS-ээс татна. Энэ сервис амжилттай хариулбал{" "}
-        {outputs.length} талбар ирнэ; талбарын нэр нь ESIS developer portal-оос баталгаажсан.
+        Дээрх товчийг дарж ESIS-ээс татна. Энэ сервис амжилттай хариулбал {outputs.length} талбар
+        ирнэ; талбарын нэр нь ESIS developer portal-оос баталгаажсан.
       </p>
     </section>
   );

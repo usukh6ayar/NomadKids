@@ -223,10 +223,7 @@ function EsisProfileSection() {
 
   return (
     <section aria-labelledby="esis-profile-heading">
-      <SectionHeader
-        id="esis-profile-heading"
-        title="ESIS мэдээлэл"
-      />
+      <SectionHeader id="esis-profile-heading" title="ESIS мэдээлэл" />
 
       <Card pad="roomy" className="flex flex-col gap-5">
         <div className="flex flex-wrap items-start gap-3 border-b border-border-soft pb-5">

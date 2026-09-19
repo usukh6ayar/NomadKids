@@ -38,10 +38,10 @@ column and it read as "this institution has no data".
 
 **Two live failures found on 2026-09-15** (spec §2.5), both of this class:
 
-| Reader            | Failure                                                        |
-| ----------------- | -------------------------------------------------------------- |
-| `studentInfo`     | schema types `dateOfBirth` as a string, ESIS sends a number    |
-| `teacherMovements`| ESIS answers `HTTP 205` with an **empty body**                 |
+| Reader             | Failure                                                     |
+| ------------------ | ----------------------------------------------------------- |
+| `studentInfo`      | schema types `dateOfBirth` as a string, ESIS sends a number |
+| `teacherMovements` | ESIS answers `HTTP 205` with an **empty body**              |
 
 **Rules that bind this work** (from `CLAUDE.md`):
 
@@ -69,14 +69,14 @@ hook timeouts that look exactly like a cross-kindergarten data leak.
 
 ## File Structure
 
-| File | Responsibility after this plan |
-| --- | --- |
-| `apps/api/src/integrations/esis/esis.schemas.ts` | Envelope parsing, the two refusal lists, `esisDiscoveredSchema`, `esisVisibleRows` |
-| `apps/api/src/integrations/esis/esis.service.ts` | `ESIS_READERS`; seven declared schemas, the rest pass-through |
-| `apps/api/src/integrations/esis/esis.fields.ts` | `esisFieldsFor` returns declared columns **plus** anything undeclared that arrived |
-| `apps/api/src/integrations/esis/esis-admin.service.ts` | One `visibleRows()` gate; every method returning ESIS rows passes through it |
-| `apps/api/scripts/esis-probe.ts` | Already written. One live call per reader, masked output |
-| `apps/api/test/esis-admin.test.ts` | HTTP authorization tests, including the new identifier cases |
+| File                                                   | Responsibility after this plan                                                     |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `apps/api/src/integrations/esis/esis.schemas.ts`       | Envelope parsing, the two refusal lists, `esisDiscoveredSchema`, `esisVisibleRows` |
+| `apps/api/src/integrations/esis/esis.service.ts`       | `ESIS_READERS`; seven declared schemas, the rest pass-through                      |
+| `apps/api/src/integrations/esis/esis.fields.ts`        | `esisFieldsFor` returns declared columns **plus** anything undeclared that arrived |
+| `apps/api/src/integrations/esis/esis-admin.service.ts` | One `visibleRows()` gate; every method returning ESIS rows passes through it       |
+| `apps/api/scripts/esis-probe.ts`                       | Already written. One live call per reader, masked output                           |
+| `apps/api/test/esis-admin.test.ts`                     | HTTP authorization tests, including the new identifier cases                       |
 
 No new files. No new tables. No migration.
 
@@ -94,6 +94,7 @@ No new files. No new tables. No migration.
 `RESULT` as no rows. An absent **body** is the same statement one level up.
 
 **Files:**
+
 - Modify: `apps/api/src/integrations/esis/esis.schemas.ts:105-117`
 - Test: `apps/api/src/integrations/esis/esis.schemas.test.ts`
 
@@ -103,29 +104,29 @@ Add to the existing `describe("esisListParser", …)` block in
 `apps/api/src/integrations/esis/esis.schemas.test.ts`:
 
 ```ts
-  /*
-   * ★ ESIS answered `205` with a zero-length body for `teacher/movements` on
-   * 2026-09-15. `EsisClient` turns an empty body into `null`, so the parser
-   * receives `null` where it expects an envelope.
-   *
-   * Read as a contract break this reports "the ministry changed their API" for
-   * what is in fact "nobody moved this month" — the same mistake the three
-   * empty `RESULT` shapes above already avoid, one level further out.
-   */
-  it("reads an absent body as no rows", () => {
-    expect(parse(null)).toEqual([]);
-    expect(parse(undefined)).toEqual([]);
-  });
+/*
+ * ★ ESIS answered `205` with a zero-length body for `teacher/movements` on
+ * 2026-09-15. `EsisClient` turns an empty body into `null`, so the parser
+ * receives `null` where it expects an envelope.
+ *
+ * Read as a contract break this reports "the ministry changed their API" for
+ * what is in fact "nobody moved this month" — the same mistake the three
+ * empty `RESULT` shapes above already avoid, one level further out.
+ */
+it("reads an absent body as no rows", () => {
+  expect(parse(null)).toEqual([]);
+  expect(parse(undefined)).toEqual([]);
+});
 
-  /*
-   * …and the guarantee that makes the line above safe: an empty body is not a
-   * licence for any malformed payload to pass as empty.
-   */
-  it("still rejects a payload that is neither an envelope nor absent", () => {
-    expect(() => parse("unexpected")).toThrow();
-    expect(() => parse(42)).toThrow();
-    expect(() => parse({ SUCCESS_CODE: 200 })).toThrow();
-  });
+/*
+ * …and the guarantee that makes the line above safe: an empty body is not a
+ * licence for any malformed payload to pass as empty.
+ */
+it("still rejects a payload that is neither an envelope nor absent", () => {
+  expect(() => parse("unexpected")).toThrow();
+  expect(() => parse(42)).toThrow();
+  expect(() => parse({ SUCCESS_CODE: 200 })).toThrow();
+});
 ```
 
 - [ ] **Step 2: Run the test and confirm it fails**
@@ -142,7 +143,7 @@ In `apps/api/src/integrations/esis/esis.schemas.ts`, replace the `return`
 statement of `esisListParser` (currently line 116):
 
 ```ts
-  return (body) => (body === null || body === undefined ? [] : envelope.parse(body).RESULT);
+return (body) => (body === null || body === undefined ? [] : envelope.parse(body).RESULT);
 ```
 
 And extend that function's doc comment, after the `★★` paragraph:
@@ -182,9 +183,10 @@ never be drawn.
 
 The existing rule stays: **declared columns are always shown even when the data
 is absent**, or "ESIS stopped sending this" and "this child has no value" become
-the same picture. Discovered columns are added *after* the declared ones.
+the same picture. Discovered columns are added _after_ the declared ones.
 
 **Files:**
+
 - Modify: `apps/api/src/integrations/esis/esis.fields.ts:1442-1471`
 - Test: `apps/api/src/integrations/esis/esis.fields.test.ts`
 
@@ -193,38 +195,38 @@ the same picture. Discovered columns are added *after* the declared ones.
 Add to `apps/api/src/integrations/esis/esis.fields.test.ts`:
 
 ```ts
-  /*
-   * ★ A declared service that sends something we never declared.
-   *
-   * Before 2026-09-15 this was unobservable: the hand-written schema dropped
-   * the key long before a field list was built. Now the row survives, so the
-   * column has to appear — otherwise the payload carries a value the screen
-   * refuses to admit exists, which is the defect this whole change removes.
-   */
-  it("shows an undeclared field that a declared service actually sent", () => {
-    const fields = esisFieldsFor("organization", [
-      { institutionId: 42778, institutionName: "Дэгдээхий үрс", unexpectedFromEsis: "x" },
-    ]);
+/*
+ * ★ A declared service that sends something we never declared.
+ *
+ * Before 2026-09-15 this was unobservable: the hand-written schema dropped
+ * the key long before a field list was built. Now the row survives, so the
+ * column has to appear — otherwise the payload carries a value the screen
+ * refuses to admit exists, which is the defect this whole change removes.
+ */
+it("shows an undeclared field that a declared service actually sent", () => {
+  const fields = esisFieldsFor("organization", [
+    { institutionId: 42778, institutionName: "Дэгдээхий үрс", unexpectedFromEsis: "x" },
+  ]);
 
-    const names = fields.map((field) => field.name);
-    expect(names).toContain("unexpectedFromEsis");
-    // Declared columns keep their order and come first.
-    expect(names.slice(0, ingestedFieldNames("organization").length)).toEqual(
-      ESIS_FIELDS.organization.map((field) => field.name),
-    );
-  });
+  const names = fields.map((field) => field.name);
+  expect(names).toContain("unexpectedFromEsis");
+  // Declared columns keep their order and come first.
+  expect(names.slice(0, ingestedFieldNames("organization").length)).toEqual(
+    ESIS_FIELDS.organization.map((field) => field.name),
+  );
+});
 
-  /*
-   * ★★ …and a declared column survives a response that omitted it. This is the
-   * half that must not regress: columns cannot depend on the data, or an
-   * outage and an empty value look identical.
-   */
-  it("keeps a declared column that the response did not carry", () => {
-    const fields = esisFieldsFor("organization", [{ institutionId: 42778 }]);
-    expect(fields.map((field) => field.name)).toEqual(
-      expect.arrayContaining(ESIS_FIELDS.organization.map((field) => field.name)),
-    );
-  });
+/*
+ * ★★ …and a declared column survives a response that omitted it. This is the
+ * half that must not regress: columns cannot depend on the data, or an
+ * outage and an empty value look identical.
+ */
+it("keeps a declared column that the response did not carry", () => {
+  const fields = esisFieldsFor("organization", [{ institutionId: 42778 }]);
+  expect(fields.map((field) => field.name)).toEqual(
+    expect.arrayContaining(ESIS_FIELDS.organization.map((field) => field.name)),
+  );
+});
 ```
 
 - [ ] **Step 2: Run the test and confirm it fails**
@@ -309,15 +311,15 @@ through.
 Seven readers qualify, verified by grepping every consumer outside the ESIS
 module:
 
-| Reader | Read by |
-| --- | --- |
-| `organization` | `children.service.ts:494` |
-| `groups` | `attendance.service.ts:764`, `children.service.ts:495` |
-| `students` | `children.service.ts:496`, `funding.service.ts:77` |
-| `groupStudents` | `attendance.service.ts:790` |
-| `foodDiscountStudents` | `funding.service.ts:78` |
-| `staff` | `esis-admin.service.ts` `myProfile` |
-| `teachers` | `esis-admin.service.ts` `myProfile` |
+| Reader                 | Read by                                                |
+| ---------------------- | ------------------------------------------------------ |
+| `organization`         | `children.service.ts:494`                              |
+| `groups`               | `attendance.service.ts:764`, `children.service.ts:495` |
+| `students`             | `children.service.ts:496`, `funding.service.ts:77`     |
+| `groupStudents`        | `attendance.service.ts:790`                            |
+| `foodDiscountStudents` | `funding.service.ts:78`                                |
+| `staff`                | `esis-admin.service.ts` `myProfile`                    |
+| `teachers`             | `esis-admin.service.ts` `myProfile`                    |
 
 `groupAttendance` is the eighth — the attendance reconciliation reads its named
 fields.
@@ -348,6 +350,7 @@ That is what fixes `studentInfo`'s `dateOfBirth`: no declared type means no
 wrong declared type.
 
 **Files:**
+
 - Modify: `apps/api/src/integrations/esis/esis.service.ts:95-421`
 - Test: `apps/api/src/integrations/esis/esis.service.test.ts`
 
@@ -499,7 +502,7 @@ Expected: PASS. `esis.fields.test.ts` has a test asserting that every reader's
 pass-through reader instead. Change that line to:
 
 ```ts
-      if (ESIS_READERS[key as EsisReadableKey]?.schema === esisDiscoveredSchema) continue;
+if (ESIS_READERS[key as EsisReadableKey]?.schema === esisDiscoveredSchema) continue;
 ```
 
 adding the import it needs at the top of `esis.fields.test.ts`:
@@ -545,6 +548,7 @@ at the boundary and no later code can put it back.
 Identifiers survive parsing and are removed per-caller in Task 5.
 
 **Files:**
+
 - Modify: `apps/api/src/integrations/esis/esis.schemas.ts:119-177`
 - Test: `apps/api/src/integrations/esis/esis.fields.test.ts:67-84`
 
@@ -554,55 +558,55 @@ Replace the test at `esis.fields.test.ts:67` ("strips every refused identifier
 from a discovered-shape row") with:
 
 ```ts
-  /*
-   * The passthrough's own guarantee, in the two halves it now has.
-   *
-   * ★ A credential is destroyed at the parse boundary. There is no caller and
-   * no role that recovers it, which is the point: a password we hold is a
-   * password we can leak, and this product has no use for a Google account's.
-   */
-  it("destroys every refused credential in a discovered-shape row", () => {
-    const row = {
-      personId: 9129027526058,
-      allergenName: "Сүү",
-      ...Object.fromEntries(ESIS_REFUSED_CREDENTIALS.map((name) => [name, "leaked"])),
-    };
+/*
+ * The passthrough's own guarantee, in the two halves it now has.
+ *
+ * ★ A credential is destroyed at the parse boundary. There is no caller and
+ * no role that recovers it, which is the point: a password we hold is a
+ * password we can leak, and this product has no use for a Google account's.
+ */
+it("destroys every refused credential in a discovered-shape row", () => {
+  const row = {
+    personId: 9129027526058,
+    allergenName: "Сүү",
+    ...Object.fromEntries(ESIS_REFUSED_CREDENTIALS.map((name) => [name, "leaked"])),
+  };
 
-    const parsed = esisDiscoveredSchema.parse(row) as Record<string, unknown>;
+  const parsed = esisDiscoveredSchema.parse(row) as Record<string, unknown>;
 
-    for (const name of ESIS_REFUSED_CREDENTIALS) {
-      expect({ name, present: name in parsed }).toEqual({ name, present: false });
-    }
-    expect(parsed).toMatchObject({ allergenName: "Сүү" });
-  });
+  for (const name of ESIS_REFUSED_CREDENTIALS) {
+    expect({ name, present: name in parsed }).toEqual({ name, present: false });
+  }
+  expect(parsed).toMatchObject({ allergenName: "Сүү" });
+});
 
-  /*
-   * ★★ An identifier survives the parse — the client asked for register
-   * numbers on 2026-09-15, and a deterministic child match needs one. Who may
-   * *see* it is a separate question, answered per caller in
-   * `EsisAdminService.visibleRows`, not here.
-   */
-  it("keeps a register number at the parse boundary", () => {
-    const parsed = esisDiscoveredSchema.parse({
-      personId: 9129027526058,
-      personRegNumber: "УЛ24270406",
-      civilId: "4812345619",
-    }) as Record<string, unknown>;
+/*
+ * ★★ An identifier survives the parse — the client asked for register
+ * numbers on 2026-09-15, and a deterministic child match needs one. Who may
+ * *see* it is a separate question, answered per caller in
+ * `EsisAdminService.visibleRows`, not here.
+ */
+it("keeps a register number at the parse boundary", () => {
+  const parsed = esisDiscoveredSchema.parse({
+    personId: 9129027526058,
+    personRegNumber: "УЛ24270406",
+    civilId: "4812345619",
+  }) as Record<string, unknown>;
 
-    expect(parsed).toMatchObject({ personRegNumber: "УЛ24270406", civilId: "4812345619" });
-  });
+  expect(parsed).toMatchObject({ personRegNumber: "УЛ24270406", civilId: "4812345619" });
+});
 
-  /*
-   * ★★★ The two lists cannot overlap. A name in both would be refused by the
-   * schema and then "gated" by a check that never sees it — an access rule
-   * that looks enforced and is dead.
-   */
-  it("keeps credentials and identifiers disjoint", () => {
-    const overlap = ESIS_REFUSED_CREDENTIALS.filter((name) =>
-      (ESIS_IDENTIFIER_FIELDS as readonly string[]).includes(name),
-    );
-    expect(overlap).toEqual([]);
-  });
+/*
+ * ★★★ The two lists cannot overlap. A name in both would be refused by the
+ * schema and then "gated" by a check that never sees it — an access rule
+ * that looks enforced and is dead.
+ */
+it("keeps credentials and identifiers disjoint", () => {
+  const overlap = ESIS_REFUSED_CREDENTIALS.filter((name) =>
+    (ESIS_IDENTIFIER_FIELDS as readonly string[]).includes(name),
+  );
+  expect(overlap).toEqual([]);
+});
 ```
 
 Update that file's import at line 7:
@@ -763,14 +767,15 @@ and proves it over HTTP.
 
 Spec §4.3:
 
-| Surface | Register number |
-| --- | --- |
-| `GET …/esis/resource` (ADMIN) | Yes, with an `AuditLog` `VIEW` row |
-| `GET …/esis/my-profile` (any staff) | No |
-| Per-child ESIS reads (teacher) | No |
-| Any guardian payload | Never |
+| Surface                             | Register number                    |
+| ----------------------------------- | ---------------------------------- |
+| `GET …/esis/resource` (ADMIN)       | Yes, with an `AuditLog` `VIEW` row |
+| `GET …/esis/my-profile` (any staff) | No                                 |
+| Per-child ESIS reads (teacher)      | No                                 |
+| Any guardian payload                | Never                              |
 
 **Files:**
+
 - Modify: `apps/api/src/integrations/esis/esis-admin.service.ts`
 - Test: `apps/api/test/esis-admin.test.ts`
 
@@ -812,7 +817,10 @@ describe("register numbers by role", () => {
     await mapInstitution(a.kindergarten.id, superAdmin);
     read.mockResolvedValueOnce({ data: [rosterRow] });
 
-    const res = await authed(request(server()).get(url(a.kindergarten.id, "resource=students")), adminA);
+    const res = await authed(
+      request(server()).get(url(a.kindergarten.id, "resource=students")),
+      adminA,
+    );
 
     expect(res.status).toBe(200);
     expect(JSON.stringify(res.body)).toContain(REG);
@@ -822,7 +830,10 @@ describe("register numbers by role", () => {
     await mapInstitution(a.kindergarten.id, superAdmin);
     read.mockResolvedValueOnce({ data: [rosterRow] });
 
-    const res = await authed(request(server()).get(url(a.kindergarten.id, "resource=students")), teacherA);
+    const res = await authed(
+      request(server()).get(url(a.kindergarten.id, "resource=students")),
+      teacherA,
+    );
 
     expect(res.status).toBe(200);
     const body = JSON.stringify(res.body);
@@ -866,7 +877,10 @@ describe("register numbers by role", () => {
     await mapInstitution(a.kindergarten.id, superAdmin);
     read.mockResolvedValueOnce({ data: [rosterRow] });
 
-    const res = await authed(request(server()).get(url(a.kindergarten.id, "resource=staff")), adminA);
+    const res = await authed(
+      request(server()).get(url(a.kindergarten.id, "resource=staff")),
+      adminA,
+    );
 
     const body = JSON.stringify(res.body);
     for (const name of ["googleEmailPass", "microsoftEmailPass", "username"]) {
@@ -937,7 +951,7 @@ At minimum `read`, `myProfile` and the per-child reader. Each becomes, for
 example:
 
 ```ts
-    const rows = this.visibleRows(actor, kindergartenId, response.data);
+const rows = this.visibleRows(actor, kindergartenId, response.data);
 ```
 
 with everything downstream reading `rows` instead of `response.data`.
@@ -977,6 +991,7 @@ defects this plan fixes. Running it again is how you prove they are fixed
 against the live service rather than against a stub.
 
 **Files:**
+
 - Modify: `docs/ESIS_API_READINESS.md`
 - Uses: `apps/api/scripts/esis-probe.ts`
 
@@ -996,7 +1011,7 @@ Expected, compared with the 2026-09-15 baseline of `OK 32 · EMPTY 16 · PARSE 2
 
 If any reader still reports `PARSE`, that is a real finding — read the message
 before changing anything, and check the probe is passing a sensible parameter.
-Three "failures" in the first run were a *student's* `personId` handed to
+Three "failures" in the first run were a _student's_ `personId` handed to
 `teacherAcademicOrg`, `teacherCheck` and `teacherProfile`.
 
 Register numbers are masked by the script. Keep it that way; do not paste raw
@@ -1013,10 +1028,10 @@ file:
 52 уншигчийг бодит үйлчилгээний кодоор 42778 дээр нэг удаа дуудав
 (`scripts/esis-probe.ts`). Эхний хэмжилт: **32 задарсан · 16 хоосон · 2 алдаа**.
 
-| Сервис | Алдаа | Шийдэл |
-| --- | --- | --- |
-| `studentInfo` (48) | `dateOfBirth`-ийг схем `string` гэж бичсэн, ЭСИС тоо илгээдэг | Дамжуулах схем |
-| `teacherMovements` (…782) | `HTTP 205`, хоосон бие — `203` шиг уншигддаггүй | `esisListParser` |
+| Сервис                    | Алдаа                                                         | Шийдэл           |
+| ------------------------- | ------------------------------------------------------------- | ---------------- |
+| `studentInfo` (48)        | `dateOfBirth`-ийг схем `string` гэж бичсэн, ЭСИС тоо илгээдэг | Дамжуулах схем   |
+| `teacherMovements` (…782) | `HTTP 205`, хоосон бие — `203` шиг уншигддаггүй               | `esisListParser` |
 
 Дараах хэмжилт: **PARSE 0**.
 

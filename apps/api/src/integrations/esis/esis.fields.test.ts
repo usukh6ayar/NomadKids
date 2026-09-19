@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { ESIS_RESOURCE_CATALOG } from "./esis.catalog";
 import { ESIS_ENDPOINTS } from "./esis.endpoints";
-import { ESIS_DISCOVERED_SHAPE, ESIS_FIELDS, esisFieldsFor, ingestedFieldNames } from "./esis.fields";
+import {
+  ESIS_DISCOVERED_SHAPE,
+  ESIS_FIELDS,
+  esisFieldsFor,
+  ingestedFieldNames,
+} from "./esis.fields";
 import { ESIS_READ_PARAMS, ESIS_WRITE_RESOURCES } from "./esis.dto";
 import {
   ESIS_APPROVAL_WRITES,
@@ -387,9 +392,7 @@ describe("ESIS field catalog", () => {
 
     // Every registry key posts to one of them, including the delete that shares 152.
     for (const service of ESIS_WRITE_SERVICES) {
-      expect(ESIS_APPROVAL_WRITES as readonly string[]).toContain(
-        ESIS_WRITE_ENDPOINT[service],
-      );
+      expect(ESIS_APPROVAL_WRITES as readonly string[]).toContain(ESIS_WRITE_ENDPOINT[service]);
     }
   });
 
@@ -527,12 +530,6 @@ describe("ESIS field catalog", () => {
       [...keysBySource("PORTAL"), ...keysBySource("LIVE"), ...keysBySource("ADAPTER")].sort(),
     ).toEqual(Object.keys(ESIS_ENDPOINTS).sort());
   });
-
-
-
-
-
-
 
   /*
    * ★ The DTO must accept every path value a reader asks for.
@@ -690,8 +687,14 @@ describe("no fabricated ESIS data", () => {
   it("publishes no demo row on any catalog entry", () => {
     for (const entry of ESIS_RESOURCE_CATALOG) {
       const keys = Object.keys(entry);
-      expect(keys.filter((key) => /^sample/i.test(key)), entry.key).toEqual([]);
-      expect(keys.filter((key) => /^(demo|mock|fixture)/i.test(key)), entry.key).toEqual([]);
+      expect(
+        keys.filter((key) => /^sample/i.test(key)),
+        entry.key,
+      ).toEqual([]);
+      expect(
+        keys.filter((key) => /^(demo|mock|fixture)/i.test(key)),
+        entry.key,
+      ).toEqual([]);
     }
   });
 
