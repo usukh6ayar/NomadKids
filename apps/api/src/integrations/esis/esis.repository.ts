@@ -22,9 +22,28 @@ export class EsisRepository {
         id: true,
         name: true,
         esisInstitutionId: true,
-        esisEnvironment: true,
         esisMappedAt: true,
       },
+    });
+  }
+
+  /**
+   * The kindergarten holding this institution id, if any.
+   *
+   * `Kindergarten.esisInstitutionId` is `@unique`, so this is the check that
+   * turns a would-be 500 from the unique index into a sentence an operator can
+   * act on.
+   *
+   * ★ `deletedAt: null` is the base filter §2.2 requires and is deliberately
+   * narrower than the index, which does not honour it. A soft-deleted
+   * kindergarten still holds its id in the database, so this answers "free"
+   * where the insert would still collide — the create path has to survive that
+   * collision on its own rather than trust this as a guarantee.
+   */
+  findKindergartenByInstitutionId(institutionId: string) {
+    return this.prisma.kindergarten.findFirst({
+      where: { deletedAt: null, esisInstitutionId: institutionId },
+      select: { id: true, name: true },
     });
   }
 
@@ -177,12 +196,8 @@ export class EsisRepository {
   updateMapping(
     id: string,
     mapping:
-      | { esisInstitutionId: null; esisEnvironment: null; esisMappedAt: null }
-      | {
-          esisInstitutionId: string;
-          esisEnvironment: "TEST" | "PRODUCTION";
-          esisMappedAt: Date;
-        },
+      | { esisInstitutionId: null; esisMappedAt: null }
+      | { esisInstitutionId: string; esisMappedAt: Date },
   ) {
     return this.prisma.kindergarten.update({
       where: { id },
@@ -190,7 +205,6 @@ export class EsisRepository {
       select: {
         id: true,
         esisInstitutionId: true,
-        esisEnvironment: true,
         esisMappedAt: true,
       },
     });

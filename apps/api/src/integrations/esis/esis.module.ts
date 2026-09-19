@@ -13,7 +13,12 @@ import { EsisWriteRepository } from "./esis-write.repository";
 import { EsisWriteRequestService } from "./esis-write.service";
 import { EsisWriteSender } from "./esis-write.sender";
 import { EsisWriteQueue, EsisWriteWorker } from "./esis-write.worker";
-import { KindergartenEsisController, PlatformEsisController } from "./esis.controller";
+import { EsisInstitutionLookupService } from "./esis-institution-lookup.service";
+import {
+  KindergartenEsisController,
+  PlatformEsisController,
+  PlatformEsisInstitutionController,
+} from "./esis.controller";
 
 /**
  * The ESIS integration boundary.
@@ -35,7 +40,11 @@ import { KindergartenEsisController, PlatformEsisController } from "./esis.contr
    * consumes an integration.
    */
   imports: [AuthzModule],
-  controllers: [KindergartenEsisController, PlatformEsisController],
+  controllers: [
+    KindergartenEsisController,
+    PlatformEsisController,
+    PlatformEsisInstitutionController,
+  ],
   providers: [
     /*
      * A factory, because `EsisConfig` takes the parsed `Env` and that is a
@@ -81,6 +90,14 @@ import { KindergartenEsisController, PlatformEsisController } from "./esis.contr
     EsisWriteSender,
     EsisWriteQueue,
     EsisWriteWorker,
+    /*
+     * ★ The institution lookup behind `POST /platform/kindergartens` — it is
+     * asked *before* a kindergarten row exists, so unlike every other service
+     * here it takes an ESIS institution id rather than a tenant. Exported
+     * because the onboarding service that creates the kindergarten lives in
+     * another module and injects it.
+     */
+    EsisInstitutionLookupService,
   ],
   /*
    * ★ `EsisRepository` exported 2026-09-16 for `StaffRegistrationModule` —
@@ -88,6 +105,6 @@ import { KindergartenEsisController, PlatformEsisController } from "./esis.contr
    * ESIS-derived table a public route may touch (see the repository method's
    * doc comment). Nothing else outside this module needs it yet.
    */
-  exports: [EsisService, EsisConfig, EsisRepository],
+  exports: [EsisService, EsisConfig, EsisRepository, EsisInstitutionLookupService],
 })
 export class EsisModule {}

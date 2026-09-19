@@ -205,7 +205,6 @@ export const updateEsisMappingSchema = z.discriminatedUnion("mapped", [
   z.object({
     mapped: z.literal(true),
     institutionId: z.string().trim().min(1).max(64),
-    environment: z.enum(["TEST", "PRODUCTION"]),
   }),
 ]);
 export type UpdateEsisMappingDto = z.infer<typeof updateEsisMappingSchema>;
@@ -228,6 +227,20 @@ export const prepareEsisGroupWriteSchema = z.object({
   confirmGroupName: z.string().min(1).optional(),
 });
 export type PrepareEsisGroupWriteDto = z.infer<typeof prepareEsisGroupWriteSchema>;
+
+/**
+ * `GET platform/esis/institutions/:institutionId` — the ministry's own id.
+ *
+ * ★ Not `idParamSchema`, which is a uuid. This value is the ministry's, not
+ * ours: 42778 on the granted institution. The bounds mirror
+ * `updateEsisMappingSchema.institutionId`, the other place a caller supplies
+ * one, rather than pinning a digits-only shape this product has no authority
+ * over.
+ */
+export const esisInstitutionParamSchema = z.object({
+  institutionId: z.string().trim().min(1).max(64),
+});
+export type EsisInstitutionParams = z.infer<typeof esisInstitutionParamSchema>;
 
 /** `:id` is the kindergarten, `:writeId` the request being approved or cancelled. */
 export const esisWriteParamSchema = z.object({

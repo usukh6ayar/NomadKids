@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
+import type { EsisInstitutionStaff } from "@kinder/contracts";
 import { AuditRepository } from "../audit/audit.repository";
 import { PasswordService } from "../auth/password.service";
 import { TokenService } from "../auth/token.service";
@@ -7,6 +8,7 @@ import { PlatformAccessService } from "../authz/platform-access.service";
 import type { Actor } from "../authz/actor";
 import { paginate, type PageParams } from "../common/pagination";
 import { DashboardRepository } from "../dashboard/dashboard.repository";
+import { EsisInstitutionLookupService } from "../integrations/esis/esis-institution-lookup.service";
 import { UsersRepository } from "../users/users.repository";
 import type { UpdateKindergartenDto } from "../tenants/tenants.dto";
 import { PlatformRepository } from "./platform.repository";
@@ -32,12 +34,61 @@ export class PlatformService {
     private readonly tokens: TokenService,
     private readonly audit: AuditRepository,
     private readonly dashboard: DashboardRepository,
+    private readonly lookup: EsisInstitutionLookupService,
   ) {}
 
   async create(actor: Actor, dto: CreateKindergartenDto) {
     this.platform.assertSuperAdmin(actor);
 
     await this.assertIdentifiersFree(dto.admin);
+
+    /*
+     * ★ The lookup runs again here, server-side, even though the screen that
+     * sent this body has already shown the operator the very same answer.
+     *
+     * The name and the address in the body are just text: nobody's
+     * authorization depends on them, and an operator who mistypes one corrects
+     * it on the next screen. The institution id is a different kind of value —
+     * it decides a **mapping**, and every ESIS read and write this tenant ever
+     * makes is scoped by it. So it is verified where it is stored rather than
+     * where it was typed: a hand-made request must not be able to save an id
+     * the ministry never granted this deployment.
+     *
+     * ★★ After `assertIdentifiersFree`, so a body that is going to collide on
+     * its username does not spend a round trip to the ministry first.
+     *
+     * ★★★ `actor` is handed over because `lookup` asserts superadmin for
+     * itself — this is the caller its docblock names as the reason it does.
+     * The `@SuperAdmin()` on this controller is a filter in front of the
+     * decision, not the decision. CLAUDE.md §1.1.
+     */
+    const institution = dto.esisInstitutionId
+      ? await this.lookup.lookup(actor, dto.esisInstitutionId)
+      : null;
+
+    if (institution?.alreadyUsed) {
+      throw new ConflictException(`Энэ институц аль хэдийн бүртгэлтэй: ${institution.name}`);
+    }
+
+    /*
+     * The staff row that becomes the first director. `undefined` when the
+     * operator named nobody, which is allowed — the admin is then described
+     * entirely by the body.
+     *
+     * ★ The find and the throw are one block on purpose. `createKindergartenSchema`
+     * already refuses an `adminEsisPersonId` with no `esisInstitutionId`, so
+     * `institution` cannot be null here — but written as two statements this
+     * would be correct only for as long as the two files agree, and a loosened
+     * refine would turn a missing institution into «this person is not on the
+     * staff list», a sentence about a list nobody asked for.
+     */
+    let chosen: EsisInstitutionStaff | undefined;
+    if (dto.adminEsisPersonId) {
+      chosen = institution?.staff.find((person) => person.personId === dto.adminEsisPersonId);
+      if (!chosen) {
+        throw new ConflictException("Сонгосон ажилтан ESIS-ийн жагсаалтад алга байна.");
+      }
+    }
 
     // Hashing is deliberately outside the transaction: argon2 takes hundreds of
     // milliseconds and a transaction held open for it is a transaction holding
@@ -53,18 +104,60 @@ export class PlatformService {
           username: dto.admin.username,
           email: dto.admin.email ?? null,
           phone: dto.admin.phone ?? null,
-          lastName: dto.admin.lastName,
-          firstName: dto.admin.firstName,
+          /*
+           * ★ When a roster row was chosen, the **roster's** spelling of the
+           * name wins over the body's. It is the ministry's own, and it is what
+           * a member of staff is matched against at self-registration; two
+           * spellings of one person is how that match silently stops working.
+           *
+           * ★★ `username` still comes from the body, always. A login name is
+           * not a name — it is something a person has to be able to type and
+           * remember, and a Mongolian name has no single obvious latin form.
+           */
+          lastName: chosen?.lastName ?? dto.admin.lastName,
+          firstName: chosen?.firstName ?? dto.admin.firstName,
           passwordHash,
           invitationTokenHash: hash,
           invitationExpiresAt: new Date(Date.now() + INVITATION_TTL_MS),
         },
+        esis: institution
+          ? {
+              institutionId: institution.institutionId,
+              // `suggestedRole` is advice for the screen and has no column;
+              // everything else the roster stores comes straight across.
+              staff: institution.staff.map((person) => ({
+                personId: person.personId,
+                registerNumber: person.registerNumber,
+                lastName: person.lastName,
+                firstName: person.firstName,
+                jobCode: person.jobCode,
+                positionName: person.positionName,
+              })),
+            }
+          : null,
       });
     } catch (error) {
       // The pre-check above closes the common case; this closes the race
       // between it and the insert. Without it a concurrent duplicate surfaces
       // as a 500.
       if (isUniqueViolation(error)) {
+        /*
+         * ★ Two different facts arrive here under one Prisma code, and the
+         * institution one is not a race.
+         *
+         * `alreadyUsed` above is genuinely narrower than the unique index it
+         * stands for: `findKindergartenByInstitutionId` filters
+         * `deletedAt: null`, and a **soft-deleted** kindergarten still holds
+         * its institution id. So the insert can fail on `esisInstitutionId`
+         * after the pre-check truthfully said no live kindergarten has it —
+         * and reporting that as a duplicate username would send the operator
+         * to change a field that was never the problem.
+         */
+        if (uniqueViolationMentions(error, "esisInstitutionId")) {
+          throw new ConflictException(
+            "Энэ ESIS байгууллагын код өөр цэцэрлэгтэй холбогдсон байна.",
+          );
+        }
         throw new ConflictException("Энэ нэвтрэх нэр, и-мэйл эсвэл утас аль хэдийн бүртгэлтэй");
       }
       throw error;
@@ -87,6 +180,32 @@ export class PlatformService {
       objectId: created.admin.id,
       metadata: { role: "ADMIN" },
     });
+    if (institution) {
+      /*
+       * ★ The same shape `EsisAdminService.updateMapping` writes, so the two
+       * ways a kindergarten comes to be mapped read alike in one log.
+       *
+       * ★★ No register number and no name in the metadata, ever. A roster
+       * refresh records `{ count, skipped }` and not who, and a mapping made at
+       * creation time must not be the exception — `rosterCount` says how much
+       * arrived and `adminFromRoster` says whether the director was picked from
+       * it, without saying who anybody is.
+       */
+      await this.audit.append({
+        action: "CREATE",
+        kindergartenId: created.kindergarten.id,
+        actorUserId: actor.userId,
+        objectType: "EsisMapping",
+        objectId: created.kindergarten.id,
+        metadata: {
+          mapped: true,
+          environment: "PRODUCTION",
+          fields: ["esisInstitutionId"],
+          rosterCount: institution.staff.length,
+          adminFromRoster: Boolean(chosen),
+        },
+      });
+    }
 
     // The token is returned so the operator can hand it over, exactly as the
     // teacher-invites-a-family flow does. Never logged.
@@ -179,4 +298,28 @@ function isUniqueViolation(error: unknown): boolean {
     "code" in error &&
     (error as { code?: unknown }).code === "P2002"
   );
+}
+
+/**
+ * Whether a unique violation was about a particular column.
+ *
+ * ★ **Prisma 7 does not populate `meta.target`.** With a driver adapter the
+ * column arrives nested and quoted instead —
+ * `meta.driverAdapterError.cause.constraint.fields: ["\"esisInstitutionId\""]`
+ * — with the index name in `originalMessage` beside it. Measured 2026-09-19
+ * against Postgres: reading `meta.target` returned `undefined` every time, so
+ * the first version of this branch reported every collision as a duplicate
+ * username.
+ *
+ * So the whole `meta` is serialised and searched rather than one path being
+ * read. That is blunt on purpose. A column name is specific enough that a
+ * false positive would need a *second* column whose name contains it, while a
+ * path that moves between Prisma releases fails **silently** — and a silent
+ * failure here is an operator being told to change the one field that was
+ * fine. The `meta`-less shape a test double throws is simply not a match,
+ * which is the right answer for it.
+ */
+function uniqueViolationMentions(error: unknown, column: string): boolean {
+  const meta = (error as { meta?: unknown } | null)?.meta;
+  return meta !== undefined && meta !== null && JSON.stringify(meta).includes(column);
 }

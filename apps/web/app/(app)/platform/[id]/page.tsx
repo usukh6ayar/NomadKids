@@ -24,7 +24,7 @@ import { ToggleActiveButton } from "@/components/admin/toggle-kindergarten-activ
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
-import { Field, Input, Select } from "@/components/ui/field";
+import { Field, Input } from "@/components/ui/field";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 
@@ -116,7 +116,6 @@ function KindergartenDetail() {
 const esisMappingResultSchema = z.object({
   id: z.string().uuid(),
   esisInstitutionId: z.string().nullable(),
-  esisEnvironment: z.enum(["TEST", "PRODUCTION"]).nullable(),
   esisMappedAt: z.string().nullable(),
 });
 
@@ -124,17 +123,11 @@ function EsisMappingCard({ kindergarten }: { kindergarten: PlatformKindergartenD
   const queryClient = useQueryClient();
   const toast = useToast();
   const [institutionId, setInstitutionId] = useState(kindergarten.esisInstitutionId ?? "");
-  const [environment, setEnvironment] = useState<"TEST" | "PRODUCTION">(
-    kindergarten.esisEnvironment ?? "TEST",
-  );
-
   const save = useMutation({
     mutationFn: (mapped: boolean) =>
       mutate(`/platform/kindergartens/${kindergarten.id}/esis/mapping`, esisMappingResultSchema, {
         method: "PUT",
-        body: mapped
-          ? { mapped: true, institutionId: institutionId.trim(), environment }
-          : { mapped: false },
+        body: mapped ? { mapped: true, institutionId: institutionId.trim() } : { mapped: false },
       }),
     onSuccess: (result) => {
       setInstitutionId(result.esisInstitutionId ?? "");
@@ -173,20 +166,13 @@ function EsisMappingCard({ kindergarten }: { kindergarten: PlatformKindergartenD
               />
             )}
           </Field>
-          <Field label="Орчин">
-            {({ id, describedBy, invalid }) => (
-              <Select
-                id={id}
-                aria-describedby={describedBy}
-                invalid={invalid}
-                value={environment}
-                onChange={(event) => setEnvironment(event.target.value as "TEST" | "PRODUCTION")}
-              >
-                <option value="TEST">TEST</option>
-                <option value="PRODUCTION">PRODUCTION</option>
-              </Select>
-            )}
-          </Field>
+          {/*
+            The "Орчин" picker stood here until 2026-09-19. The ministry runs
+            no ESIS test environment — the one credential points at the
+            production hub — so the field offered a second option that could
+            only ever be wrong, and the column behind it was dropped in
+            `20260919150000_drop_esis_environment`.
+          */}
           <div className="flex flex-wrap gap-2">
             <Button
               disabled={!institutionId.trim() || save.isPending}

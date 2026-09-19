@@ -7,6 +7,7 @@ import { SuperAdmin } from "../../auth/decorators/super-admin.decorator";
 import type { Actor } from "../../authz/actor";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { EsisAdminService } from "./esis-admin.service";
+import { EsisInstitutionLookupService } from "./esis-institution-lookup.service";
 import { EsisSyncService } from "./esis-sync.service";
 import { EsisCoverageService } from "./esis-coverage.service";
 import { EsisWriteRequestService } from "./esis-write.service";
@@ -14,11 +15,13 @@ import {
   esisPreviewSchema,
   esisReadSchema,
   esisSyncTierSchema,
+  esisInstitutionParamSchema,
   esisWriteParamSchema,
   esisWriteSchema,
   prepareEsisGroupWriteSchema,
   updateEsisMappingSchema,
   type EsisPreviewDto,
+  type EsisInstitutionParams,
   type EsisReadDto,
   type EsisSyncTierDto,
   type EsisWriteDto,
@@ -308,5 +311,32 @@ export class PlatformEsisController {
     @Body(new ZodValidationPipe(updateEsisMappingSchema)) body: UpdateEsisMappingDto,
   ) {
     return this.service.updateMapping(actor, params.id, body);
+  }
+}
+
+/**
+ * An institution, before a kindergarten exists to scope the question to.
+ *
+ * ★ Not under `platform/kindergartens/:id/esis`: at the moment this is asked
+ * there is no `:id`. `@SuperAdmin()` throws `NotFoundException`, so everyone
+ * else gets 404 and this route cannot become a way of asking which
+ * institutions the platform's token can reach.
+ *
+ * ★★ The actor is passed through even so, because the service asserts for
+ * itself. `@SuperAdmin()` is a filter in front of the decision, not the
+ * decision — and this service already has a caller that never passes this
+ * controller (`PlatformService.create`).
+ */
+@Controller("platform/esis/institutions")
+@SuperAdmin()
+export class PlatformEsisInstitutionController {
+  constructor(private readonly service: EsisInstitutionLookupService) {}
+
+  @Get(":institutionId")
+  lookup(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(esisInstitutionParamSchema)) params: EsisInstitutionParams,
+  ) {
+    return this.service.lookup(actor, params.institutionId);
   }
 }
