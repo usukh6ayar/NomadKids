@@ -3550,6 +3550,27 @@ export const platformAdminInvitedSchema = z.object({
 });
 export type PlatformAdminInvited = z.infer<typeof platformAdminInvitedSchema>;
 
+/**
+ * `POST /groups/:id/guardian-invitations` — one token per child.
+ *
+ * ★ A list, not a single code. Each entry names the child it belongs to
+ * because the sheet the teacher prints has to be cut up and handed out, and a
+ * QR with no name on it is a QR nobody can deliver.
+ */
+export const groupGuardianInvitationsSchema = z.object({
+  items: z.array(
+    z.object({
+      childId: uuidSchema,
+      lastName: z.string(),
+      firstName: z.string(),
+      invitationToken: z.string(),
+    }),
+  ),
+  /** Children in the group this press passed over — already invited or linked. */
+  skipped: z.number(),
+});
+export type GroupGuardianInvitations = z.infer<typeof groupGuardianInvitationsSchema>;
+
 export const platformKindergartenDetailSchema = platformKindergartenSchema.extend({
   description: z.string().nullish(),
   esisInstitutionId: z.string().nullish(),

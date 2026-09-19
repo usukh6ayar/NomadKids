@@ -24,6 +24,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { formatAge, fullName } from "@/lib/format";
 import { Art } from "@/components/ui/art";
+import { GroupGuardianInvitations } from "@/components/child/group-guardian-invitations";
 
 const childrenSchema = paginated(childSummarySchema);
 
@@ -95,6 +96,13 @@ function GroupDetail() {
       <PageHeader
         backHref="/admin/groups"
         title={data.name}
+        /*
+          ★ In the header rather than beside the roster below. It acts on the
+          whole group, and a control that acts on a list belongs above it —
+          `GroupGuardianInvitations` explains why it is one press and thirty
+          tokens rather than one code.
+        */
+        actions={<GroupGuardianInvitations groupId={groupId} groupName={data.name} />}
         meta={
           <>
             {isArchived ? <Badge tone="neutral">Архивласан</Badge> : null}

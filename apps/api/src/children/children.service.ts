@@ -32,6 +32,18 @@ type EnrollmentArchiveRecord = NonNullable<
 >;
 type EnrollmentArchivePlacement = EnrollmentArchiveRecord["enrollments"][number];
 
+/**
+ * The ceiling on one bulk invitation.
+ *
+ * ★ A group is a bounded thing, so §3.4's "no unbounded set" is satisfied by
+ * the shape of the data — but only as long as the data is shaped the way
+ * everyone assumes. 60 is twice the largest group in the RFP's own sizing and
+ * an order of magnitude below anything that would hurt; a request over it is a
+ * group that has gone wrong, and the refusal names it rather than spending a
+ * minute hashing.
+ */
+const MAX_BULK_INVITATIONS = 60;
+
 @Injectable()
 export class ChildrenService {
   constructor(
@@ -373,6 +385,79 @@ export class ChildrenService {
     // The token is returned so the caller can deliver it — as a QR code on
     // screen, or read out. Never logged.
     return { user: created.user, guardianship, invitationToken: created.invitationToken };
+  }
+
+  /**
+   * One invitation for every child in a group who has no guardian yet.
+   *
+   * ★ Why this exists. A teacher with a group of thirty pressed «Урих» thirty
+   * times, read thirty QR codes off the screen and handed them over one at a
+   * time — the client, 2026-09-19: "олон хүүхэдтэй бүлэг бол эцэг эхийг
+   * бүртгэхэд хэцүү". One press now produces the same thirty invitations, and
+   * the screen prints them as a sheet of labelled cards.
+   *
+   * ★★ **It is the same invitation, thirty times — not a group invitation.**
+   *
+   * That distinction is the entire security argument. A single code for a
+   * whole group would be a shared secret granting guardianship of *any* child
+   * in it, and a picker to choose between them would disclose every child's
+   * name to whoever held it. Here each token is created **after** the
+   * guardianship it belongs to, so it opens exactly one child's portfolio —
+   * unchanged from `inviteGuardian`, which this calls per child.
+   *
+   * ★★★ Idempotent by construction: `listGroupChildrenWithoutGuardian`
+   * excludes children who already have one, and the guardianship exists from
+   * the moment the invitation is issued. Pressing twice invites the children
+   * added since, and nobody else.
+   *
+   * ★★★★ Sequential, not `Promise.all`. Each child costs an argon2 hash for
+   * its placeholder account; thirty at once would saturate the event loop and
+   * hold thirty connections. A group is small and this is a button somebody
+   * presses once.
+   */
+  async inviteGroupGuardians(actor: Actor, groupId: string) {
+    const visible = await this.authz.visibleChildrenWhere(actor);
+
+    /*
+     * ★ The group's whole reachable roster first, then the subset to invite.
+     *
+     * Two counts rather than one, because "you may not open this group" and
+     * "everybody here already has a guardian" are different answers and only
+     * one of them is the caller's to learn. An empty roster is a 404; an empty
+     * *subset* of a non-empty roster is an honest zero.
+     */
+    const roster = await this.repo.countGroupChildren(visible, groupId);
+    if (roster === 0) throw new NotFoundException();
+
+    const children = await this.repo.listGroupChildrenWithoutGuardian(visible, groupId);
+
+    if (children.length > MAX_BULK_INVITATIONS) {
+      throw new BadRequestException(
+        `Нэг удаад ${MAX_BULK_INVITATIONS} хүртэл урилга үүсгэнэ. Бүлгээ шалгана уу.`,
+      );
+    }
+
+    const items: {
+      childId: string;
+      lastName: string;
+      firstName: string;
+      invitationToken: string;
+    }[] = [];
+
+    for (const child of children) {
+      const created = await this.inviteGuardian(actor, child.id, { isPrimary: false });
+      items.push({
+        childId: child.id,
+        lastName: child.lastName,
+        firstName: child.firstName,
+        invitationToken: created.invitationToken,
+      });
+    }
+
+    // `skipped` is the children this press deliberately passed over — already
+    // invited, or already connected. The screen says so rather than leaving the
+    // teacher to count.
+    return { items, skipped: roster - items.length };
   }
 
   /**
