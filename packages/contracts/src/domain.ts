@@ -3933,6 +3933,46 @@ export const esisOverviewSchema = z.object({
 export type EsisOverview = z.infer<typeof esisOverviewSchema>;
 
 /**
+ * What `GET /platform/esis/institutions/:institutionId` answers.
+ *
+ * ★ `personId` is a **string** here and arrives from ESIS as a `number`
+ * (13 digits; `civilId` is 12 and `assignmentId` 15). `Child.esisPersonId` and
+ * the staff roster both store text, and the last time a numeric ESIS id was
+ * declared to be a string the roster died on it — so the conversion happens in
+ * the parser, once, rather than at each call site.
+ *
+ * ★★ The staff row is a **whitelist**, never a passthrough. The live
+ * `school/staff` payload carries `microsoftEmailPass` and `googleEmailPass` —
+ * real credentials — and naming the seven fields that may leave is a stronger
+ * guarantee than removing the two that may not.
+ */
+export const esisInstitutionStaffSchema = z.object({
+  personId: z.string(),
+  registerNumber: z.string(),
+  lastName: z.string(),
+  firstName: z.string(),
+  positionName: z.string().nullable(),
+  jobCode: z.string().nullable(),
+  /** `roleForJobCode(jobCode)` — advice for the operator, not a filter. */
+  suggestedRole: roleSchema.nullable(),
+});
+
+export const esisInstitutionLookupSchema = z.object({
+  institutionId: z.string(),
+  name: z.string(),
+  longName: z.string(),
+  address: z.string().nullable(),
+  classification: z.string().nullable(),
+  propertyType: z.string().nullable(),
+  isKindergarten: z.boolean(),
+  /** A kindergarten already holds this id — `esisInstitutionId` is `@unique`. */
+  alreadyUsed: z.boolean(),
+  staff: z.array(esisInstitutionStaffSchema),
+});
+export type EsisInstitutionLookup = z.infer<typeof esisInstitutionLookupSchema>;
+export type EsisInstitutionStaff = z.infer<typeof esisInstitutionStaffSchema>;
+
+/**
  * `{ tier: "REFERENCE" | "ROSTER" }` — the body of `POST
  * …/kindergartens/:id/esis/sync` (plan `2026-09-16-esis-sync-tiers.md` Task
  * 5). Shared rather than re-typed on the web side so the two tier buttons on
