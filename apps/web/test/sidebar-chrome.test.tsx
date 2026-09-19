@@ -189,7 +189,9 @@ describe("the derived back control", () => {
     const backs = await screen.findAllByRole("link", { name: "Буцах" });
     expect(backs).toHaveLength(1);
 
-    const header = backs[0]!.closest('[data-ui="page-header"]');
+    // `closest<HTMLElement>`, because the bare call is typed `Element | null`
+    // and `within()` wants an `HTMLElement`.
+    const header = backs[0]!.closest<HTMLElement>('[data-ui="page-header"]');
     expect(header).not.toBeNull();
     expect(within(header!).getByRole("heading", { level: 1 })).toHaveTextContent(
       "Батмөнх Тэмүүлэн",
