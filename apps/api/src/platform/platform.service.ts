@@ -18,6 +18,7 @@ import { UsersRepository } from "../users/users.repository";
 import type { UpdateKindergartenDto } from "../tenants/tenants.dto";
 import { PlatformRepository } from "./platform.repository";
 import type {
+  CreateKindergartenAdminDto,
   CreateKindergartenDto,
   DeleteKindergartenDto,
   ListPlatformKindergartensQuery,
@@ -249,10 +250,11 @@ export class PlatformService {
     if (!kindergarten) throw new NotFoundException();
 
     const term = await this.dashboard.currentTerm([id], new Date());
-    const [counts, assessmentCoverage, recentActivity] = await Promise.all([
+    const [counts, assessmentCoverage, recentActivity, admins] = await Promise.all([
       this.dashboard.kindergartenCounts([id]),
       term ? this.dashboard.assessmentCoverage([id], term.id) : Promise.resolve([]),
       this.dashboard.recentAuditEntries([id]),
+      this.repo.listAdmins(id),
     ]);
 
     return {
@@ -261,7 +263,84 @@ export class PlatformService {
       currentTerm: term ? { id: term.id, number: term.number, name: term.name } : null,
       assessmentCoverage,
       recentActivity,
+      admins,
     };
+  }
+
+  /**
+   * A second Захирал/Эрхлэгч for a kindergarten that already exists.
+   *
+   * ★ Why the operator needs this at all. `POST /kindergartens/:id/users` —
+   * the route `/admin/users` calls — is `@Roles("ADMIN")`, and a superadmin
+   * holds no membership, so it answers them 404. That is right (§1.1) and it
+   * left one situation with no way out inside the product: a kindergarten
+   * whose only director cannot sign in, because the invitation was closed
+   * without being handed over, or expired, or the person left. The answer was
+   * a shell on the server, which is not an answer for a platform operator
+   * onboarding kindergartens.
+   *
+   * ★★ **This grants no capability the operator did not already have.**
+   * Registering a kindergarten creates its first ADMIN and hands the operator
+   * that invitation — so "the operator can mint an administrator of a tenant
+   * and hold the token" has been true since `createWithAdmin` was written.
+   * This is the same act at a later moment, and refusing it here while
+   * allowing it at registration would be a rule that only inconveniences the
+   * honest case.
+   *
+   * What it does add is a **record**: an audit row naming the operator, the
+   * kindergarten and the account. The registration path writes one too, and
+   * this is the other half of that pair.
+   *
+   * ★★★ No password is set, generated or accepted — the same construction as
+   * every other invitation in this system. The operator hands over a link;
+   * the person chooses their own password. An operator who typed one would
+   * know it.
+   */
+  async addAdmin(actor: Actor, kindergartenId: string, dto: CreateKindergartenAdminDto) {
+    this.platform.assertSuperAdmin(actor);
+
+    const kindergarten = await this.repo.findById(kindergartenId);
+    if (!kindergarten) throw new NotFoundException();
+
+    await this.assertIdentifiersFree({ ...dto, phone: null });
+
+    // Hashing outside the transaction — argon2 takes hundreds of milliseconds
+    // and a transaction held open for it is a transaction holding locks for it.
+    const passwordHash = await this.passwords.hash(randomBytes(32).toString("hex"));
+    const { token, hash } = this.tokens.createOneTimeToken();
+
+    let user;
+    try {
+      user = await this.repo.createAdminForExisting({
+        kindergartenId,
+        username: dto.username,
+        email: dto.email ?? null,
+        lastName: dto.lastName,
+        firstName: dto.firstName,
+        passwordHash,
+        invitationTokenHash: hash,
+        invitationExpiresAt: new Date(Date.now() + INVITATION_TTL_MS),
+      });
+    } catch (error) {
+      // Closes the race between the pre-check and the insert, exactly as
+      // `create` does. Without it a concurrent duplicate is a 500.
+      if (isUniqueViolation(error)) {
+        throw new ConflictException("Энэ нэвтрэх нэр эсвэл и-мэйл аль хэдийн бүртгэлтэй байна");
+      }
+      throw error;
+    }
+
+    await this.audit.append({
+      action: "CREATE",
+      kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "User",
+      objectId: user.id,
+      metadata: { username: user.username, role: "ADMIN", by: "platform-operator" },
+    });
+
+    // The token is returned so the operator can hand it over. Never logged.
+    return { user, invitationToken: token };
   }
 
   async update(actor: Actor, id: string, dto: UpdateKindergartenDto) {

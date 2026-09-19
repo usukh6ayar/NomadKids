@@ -558,6 +558,110 @@ describe("PATCH /platform/kindergartens/:id", () => {
   });
 });
 
+describe("POST /platform/kindergartens/:id/admins", () => {
+  const adminBody = (overrides: Record<string, unknown> = {}) => ({
+    username: uniq("director2"),
+    email: null,
+    phone: null,
+    lastName: "Дорж",
+    firstName: "Сүрэн",
+    ...overrides,
+  });
+
+  it("adds a second director to a kindergarten that already exists", async () => {
+    const body = adminBody();
+
+    const res = await authed(
+      request(app.getHttpServer()).post(`/v1/platform/kindergartens/${b.kindergarten.id}/admins`),
+      superadmin,
+    ).send(body);
+
+    expect(res.status).toBe(201);
+    expect(res.body.user.username).toBe(body.username);
+    expect(res.body.invitationToken).toEqual(expect.any(String));
+    // Never in the payload, and never set: the invitee chooses their own.
+    expect(res.body.user).not.toHaveProperty("passwordHash");
+
+    const membership = await db.membership.findFirst({
+      where: { userId: res.body.user.id, kindergartenId: b.kindergarten.id, deletedAt: null },
+    });
+    expect(membership?.role).toBe("ADMIN");
+
+    const invitation = await db.authToken.findFirst({
+      where: { userId: res.body.user.id, purpose: "INVITATION", usedAt: null },
+    });
+    expect(invitation).not.toBeNull();
+  });
+
+  it("rolls the account back when the membership cannot be written", async () => {
+    // A kindergarten that does not exist is refused before anything is
+    // written; the account must not survive the refusal.
+    const body = adminBody();
+    const res = await authed(
+      request(app.getHttpServer()).post(
+        "/v1/platform/kindergartens/00000000-0000-4000-8000-000000000000/admins",
+      ),
+      superadmin,
+    ).send(body);
+
+    expect(res.status).toBe(404);
+    expect(await db.user.findUnique({ where: { username: body.username } })).toBeNull();
+  });
+
+  it("answers a duplicate username with 409", async () => {
+    const res = await authed(
+      request(app.getHttpServer()).post(`/v1/platform/kindergartens/${b.kindergarten.id}/admins`),
+      superadmin,
+    ).send(adminBody({ username: b.adminUser.username }));
+
+    expect(res.status).toBe(409);
+  });
+
+  it("refuses a kindergarten admin with 404 — including for their own kindergarten", async () => {
+    const body = adminBody();
+    const res = await authed(
+      request(app.getHttpServer()).post(`/v1/platform/kindergartens/${a.kindergarten.id}/admins`),
+      adminA,
+    ).send(body);
+
+    expect(res.status).toBe(404);
+    expect(await db.user.findUnique({ where: { username: body.username } })).toBeNull();
+  });
+
+  it("records who did it", async () => {
+    const res = await authed(
+      request(app.getHttpServer()).post(`/v1/platform/kindergartens/${b.kindergarten.id}/admins`),
+      superadmin,
+    ).send(adminBody());
+
+    const rows = await db.auditLog.findMany({
+      where: { objectType: "User", objectId: res.body.user.id, action: "CREATE" },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.kindergartenId).toBe(b.kindergarten.id);
+    expect((rows[0]!.metadata as { by?: string }).by).toBe("platform-operator");
+  });
+
+  it("shows up on the kindergarten's own detail payload", async () => {
+    await authed(
+      request(app.getHttpServer()).post(`/v1/platform/kindergartens/${b.kindergarten.id}/admins`),
+      superadmin,
+    ).send(adminBody({ username: uniq("shown") }));
+
+    const res = await authed(
+      request(app.getHttpServer()).get(`/v1/platform/kindergartens/${b.kindergarten.id}`),
+      superadmin,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.admins).toHaveLength(2);
+    // The figure the operator is really after: has anybody ever signed in.
+    expect(res.body.admins.every((row: { lastLoginAt: unknown }) => "lastLoginAt" in row)).toBe(
+      true,
+    );
+  });
+});
+
 describe("DELETE /platform/kindergartens/:id", () => {
   it("retires the kindergarten and closes every membership in it", async () => {
     const before = await db.membership.count({

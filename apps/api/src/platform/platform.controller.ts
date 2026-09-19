@@ -7,9 +7,11 @@ import type { Actor } from "../authz/actor";
 import { updateKindergartenSchema, type UpdateKindergartenDto } from "../tenants/tenants.dto";
 import { PlatformService } from "./platform.service";
 import {
+  createKindergartenAdminSchema,
   createKindergartenSchema,
   deleteKindergartenSchema,
   listPlatformKindergartensQuerySchema,
+  type CreateKindergartenAdminDto,
   type CreateKindergartenDto,
   type DeleteKindergartenDto,
   type ListPlatformKindergartensQuery,
@@ -71,6 +73,24 @@ export class PlatformController {
     @Body(new ZodValidationPipe(updateKindergartenSchema)) body: UpdateKindergartenDto,
   ) {
     return this.service.update(actor, params.id, body);
+  }
+
+  /**
+   * ★ A tenant-scoped action on the platform prefix, and that is the point.
+   *
+   * `POST /kindergartens/:id/users` does the same thing for a director, gated
+   * on `@Roles("ADMIN")` — which a superadmin, holding no membership, can
+   * never satisfy. Rather than adding "…unless they are a superadmin" to that
+   * guard, which is exactly the branch CLAUDE.md §1.1 keeps out of the tenant
+   * path, the operator gets their own route under their own prefix.
+   */
+  @Post("kindergartens/:id/admins")
+  async addAdmin(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(createKindergartenAdminSchema)) body: CreateKindergartenAdminDto,
+  ) {
+    return this.service.addAdmin(actor, params.id, body);
   }
 
   @Delete("kindergartens/:id")
