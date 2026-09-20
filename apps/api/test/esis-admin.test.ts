@@ -1191,38 +1191,40 @@ describe("staff roster refresh", () => {
 });
 
 /*
- * ★ The code is a **throttle, not authentication** — a secret shared among
- * thirteen people. The roster match is the real gate. It is hashed anyway: a
- * plaintext column is one database read away from registering as anybody.
+ * ★ The issued registration code is gone — 2026-09-20, replaced by the
+ * kindergarten's ESIS institution number. `POST …/staff-registration-code` no
+ * longer exists and the three cases that drove it went with it; what they
+ * protected is covered by `staff-registration.test.ts`, which matches the
+ * institution number and the roster together.
+ *
+ * ★★ The one rule that needed a home here rather than there: the number is an
+ * ADMIN field. A teacher reading their own kindergarten must not see it.
  */
-describe("the kindergarten's registration code", () => {
-  const url = (kindergartenId: string) =>
-    `/v1/kindergartens/${kindergartenId}/staff-registration-code`;
+describe("the kindergarten's ESIS institution number", () => {
+  const url = (kindergartenId: string) => `/v1/kindergartens/${kindergartenId}`;
 
-  it("issues a code to an admin, and stores only its hash", async () => {
-    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+  it("shows the institution number to an admin", async () => {
+    await db.kindergarten.update({
+      where: { id: a.kindergarten.id },
+      data: { esisInstitutionId: "42778" },
+    });
 
-    expect(res.status).toBe(201);
-    expect(typeof res.body.code).toBe("string");
-    expect(res.body.code.length).toBeGreaterThanOrEqual(8);
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
 
-    const row = await db.kindergarten.findUniqueOrThrow({ where: { id: a.kindergarten.id } });
-    expect(row.staffRegistrationCodeHash).not.toBeNull();
-    expect(row.staffRegistrationCodeHash).not.toContain(res.body.code);
-    expect(row.staffRegistrationCodeSetAt).not.toBeNull();
+    expect(res.status).toBe(200);
+    expect(res.body.esisInstitutionId).toBe("42778");
   });
 
-  /* Rotating invalidates the old one — that is the whole point of rotating. */
-  it("replaces the previous code", async () => {
-    const first = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
-    const second = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+  it("withholds it from a teacher of the same kindergarten", async () => {
+    await db.kindergarten.update({
+      where: { id: a.kindergarten.id },
+      data: { esisInstitutionId: "42778" },
+    });
 
-    expect(second.body.code).not.toBe(first.body.code);
-  });
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), teacherA);
 
-  it("returns 404 to a teacher", async () => {
-    const res = await authed(request(server()).post(url(a.kindergarten.id)), teacherA).send({});
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(200);
+    expect(res.body.esisInstitutionId).toBeUndefined();
   });
 });
 

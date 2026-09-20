@@ -11,17 +11,16 @@ import {
   createMembership,
   createUser,
   login,
-  type AuthSession,
 } from "./support/fixtures";
 
 const db = testDb();
 
 /**
- * Staff self-registration reaches no ESIS mock and needs none: `issueCode`
- * drives Task 4's real route, and `seedRoster` writes `EsisStaffRoster` rows
- * directly, exactly as `EsisAdminService.refreshStaffRoster` would have left
- * them. `createTestApp()` therefore takes no `esis` override — this whole
- * file is the proof that the public route never has to.
+ * Staff self-registration reaches no ESIS mock and needs none: the institution
+ * number is a column, and `seedRoster` writes `EsisStaffRoster` rows directly,
+ * exactly as `EsisAdminService.refreshStaffRoster` would have left them.
+ * `createTestApp()` therefore takes no `esis` override — this whole file is
+ * the proof that the public route never has to.
  */
 let app: INestApplication;
 const server = () => app.getHttpServer();
@@ -37,6 +36,17 @@ const server = () => app.getHttpServer();
  */
 async function createTenant(label: string) {
   const kindergarten = await createKindergarten(`Цэцэрлэг ${label}-${uniq()}`);
+  /*
+   * ★ The ESIS institution number is what the public form's first field
+   * carries since 2026-09-20. Written straight onto the row because only the
+   * platform operator's route sets it in production — a director cannot, and
+   * a test that went through that route would be testing the platform module.
+   */
+  const institutionId = `4${uniq()}`.slice(0, 12);
+  await db.kindergarten.update({
+    where: { id: kindergarten.id },
+    data: { esisInstitutionId: institutionId },
+  });
   const adminUser = await createUser({
     username: uniq(`admin-${label}`),
     lastName: "Захирал",
@@ -44,29 +54,11 @@ async function createTenant(label: string) {
   });
   await createMembership(adminUser.id, kindergarten.id, "ADMIN");
   const adminSession = await login(app, adminUser.username);
-  return { kindergarten, adminUser, adminSession };
+  return { kindergarten, adminUser, adminSession, institutionId };
 }
 
 let a: Awaited<ReturnType<typeof createTenant>>;
 let b: Awaited<ReturnType<typeof createTenant>>;
-
-/**
- * Calls Task 4's route to issue a code for the given kindergarten, signed in
- * as that kindergarten's own admin — `a`'s for `a.kindergarten.id`, `b`'s for
- * `b.kindergarten.id`. An admin of the wrong tenant would get a 404 from that
- * route (CLAUDE.md §1.7) and this helper would return `undefined`, which is
- * exactly the bug the cross-tenant test below exists to catch if this ever
- * gets that wrong.
- */
-async function issueCode(kindergartenId: string): Promise<string> {
-  const session: AuthSession =
-    kindergartenId === a.kindergarten.id ? a.adminSession : b.adminSession;
-  const res = await authed(
-    request(server()).post(`/v1/kindergartens/${kindergartenId}/staff-registration-code`),
-    session,
-  ).send({});
-  return res.body.code as string;
-}
 
 beforeAll(async () => {
   app = await createTestApp();
@@ -88,7 +80,7 @@ beforeEach(async () => {
  * The register number both `describe` blocks below match against, and the
  * roster row that carries it — the teacher self-registration matches, and the
  * one "who registered" reads back once a registration has gone through it.
- * Lifted to file scope rather than repeated per block, the way `issueCode` is.
+ * Lifted to file scope rather than repeated per block.
  */
 const REG = "УЛ24270406";
 
@@ -115,11 +107,11 @@ const seedRoster = (kindergartenId: string, overrides = {}) =>
 describe("staff self-registration", () => {
   const url = "/v1/staff-registration";
 
-  it("registers a teacher who is on the roster and knows the code", async () => {
-    const code = await issueCode(a.kindergarten.id);
+  it("registers a teacher on the roster who names their institution", async () => {
+    const institutionId = a.institutionId;
     await seedRoster(a.kindergarten.id);
 
-    const res = await request(server()).post(url).send({ code, registerNumber: REG });
+    const res = await request(server()).post(url).send({ institutionId, registerNumber: REG });
 
     expect(res.status).toBe(201);
     expect(typeof res.body.invitationToken).toBe("string");
@@ -137,9 +129,9 @@ describe("staff self-registration", () => {
    * not the director, not the developer — ever knows their password.
    */
   it("creates an account that cannot be logged into yet", async () => {
-    const code = await issueCode(a.kindergarten.id);
+    const institutionId = a.institutionId;
     await seedRoster(a.kindergarten.id);
-    const res = await request(server()).post(url).send({ code, registerNumber: REG });
+    const res = await request(server()).post(url).send({ institutionId, registerNumber: REG });
 
     const user = await db.user.findFirstOrThrow({ where: { lastName: "Овог" } });
     const login_ = await request(server())
@@ -153,19 +145,24 @@ describe("staff self-registration", () => {
   /*
    * ★★★ Every refusal returns the same status and the same message.
    *
-   * If "wrong code" and "not on this roster" differed, the route would answer
-   * "does this person work at this kindergarten?" for anybody holding a list of
-   * register numbers — which is a list that exists on paper in several offices.
+   * If "unknown institution number" and "not on this roster" differed, the
+   * route would answer "does this person work at this kindergarten?" for
+   * anybody holding a list of register numbers — which is a list that exists
+   * on paper in several offices. The institution number itself is public, so
+   * this uniformity is the whole defence at that layer.
    */
   it.each([
-    ["a wrong code", async () => ({ code: "wrongcode", registerNumber: REG })],
+    [
+      "an unknown institution number",
+      async () => ({ institutionId: "9999999", registerNumber: REG }),
+    ],
     [
       "a register number not on the roster",
-      async () => ({ code: await issueCode(a.kindergarten.id), registerNumber: "УБ99998888" }),
+      async () => ({ institutionId: a.institutionId, registerNumber: "УБ99998888" }),
     ],
     [
       "a malformed register number",
-      async () => ({ code: await issueCode(a.kindergarten.id), registerNumber: "nonsense" }),
+      async () => ({ institutionId: a.institutionId, registerNumber: "nonsense" }),
     ],
   ])("refuses %s with the same answer as every other refusal", async (_label, build) => {
     await seedRoster(a.kindergarten.id);
@@ -183,40 +180,43 @@ describe("staff self-registration", () => {
   it.each([
     ["5153-12"], // Жижүүр
     ["1341-02"], // Эрхлэгч — ADMIN is invitation-only
-  ])("refuses jobCode %s even with a valid code and a roster row", async (jobCode) => {
-    const code = await issueCode(a.kindergarten.id);
-    await seedRoster(a.kindergarten.id, { jobCode });
+  ])(
+    "refuses jobCode %s even with a valid institution number and a roster row",
+    async (jobCode) => {
+      const institutionId = a.institutionId;
+      await seedRoster(a.kindergarten.id, { jobCode });
 
-    const res = await request(server()).post(url).send({ code, registerNumber: REG });
+      const res = await request(server()).post(url).send({ institutionId, registerNumber: REG });
 
-    expect(res.status).toBe(401);
-    expect(
-      await db.membership.count({ where: { kindergartenId: a.kindergarten.id, role: "ADMIN" } }),
-    ).toBe(1);
-  });
+      expect(res.status).toBe(401);
+      expect(
+        await db.membership.count({ where: { kindergartenId: a.kindergarten.id, role: "ADMIN" } }),
+      ).toBe(1);
+    },
+  );
 
   /* Registering twice must not mint a second account for the same person. */
   it("refuses a second registration for a person who already has an account", async () => {
-    const code = await issueCode(a.kindergarten.id);
+    const institutionId = a.institutionId;
     await seedRoster(a.kindergarten.id);
 
-    await request(server()).post(url).send({ code, registerNumber: REG });
-    const second = await request(server()).post(url).send({ code, registerNumber: REG });
+    await request(server()).post(url).send({ institutionId, registerNumber: REG });
+    const second = await request(server()).post(url).send({ institutionId, registerNumber: REG });
 
     expect(second.status).toBe(401);
     expect(await db.user.count({ where: { lastName: "Овог" } })).toBe(1);
   });
 
   /*
-   * ★ A kindergarten with no code set must refuse everything, rather than
-   * treating "no code" as "any code".
+   * ★ An institution number no kindergarten here carries must refuse
+   * everything, rather than being treated as "any kindergarten".
    */
-  it("refuses when the kindergarten has never issued a code", async () => {
-    // `a` is a fresh tenant from this test's own `beforeEach`; nothing in this
-    // test calls `issueCode`, so `staffRegistrationCodeHash` stays null.
+  it("refuses an institution number no kindergarten carries", async () => {
     await seedRoster(a.kindergarten.id);
 
-    const res = await request(server()).post(url).send({ code: "anything", registerNumber: REG });
+    const res = await request(server())
+      .post(url)
+      .send({ institutionId: "anything", registerNumber: REG });
 
     expect(res.status).toBe(401);
   });
@@ -235,46 +235,49 @@ describe("staff self-registration", () => {
    * never reaches the ministry.
    */
   it("refuses when the roster has never been filled", async () => {
-    const code = await issueCode(a.kindergarten.id);
+    const institutionId = a.institutionId;
 
-    const res = await request(server()).post(url).send({ code, registerNumber: REG });
+    const res = await request(server()).post(url).send({ institutionId, registerNumber: REG });
 
     expect(res.status).toBe(401);
     expect(await db.user.count({ where: { lastName: "Овог" } })).toBe(0);
   });
 
   it("refuses when the roster is older than the staleness threshold", async () => {
-    const code = await issueCode(a.kindergarten.id);
+    const institutionId = a.institutionId;
     await seedRoster(a.kindergarten.id, {
       syncedAt: new Date(Date.now() - STALE_AFTER_MS - 60_000),
     });
 
-    const res = await request(server()).post(url).send({ code, registerNumber: REG });
+    const res = await request(server()).post(url).send({ institutionId, registerNumber: REG });
 
     expect(res.status).toBe(401);
     expect(await db.user.count({ where: { lastName: "Овог" } })).toBe(0);
   });
 
   it("accepts a roster that is inside the threshold", async () => {
-    const code = await issueCode(a.kindergarten.id);
+    const institutionId = a.institutionId;
     await seedRoster(a.kindergarten.id, {
       syncedAt: new Date(Date.now() - STALE_AFTER_MS + 60_000),
     });
 
-    const res = await request(server()).post(url).send({ code, registerNumber: REG });
+    const res = await request(server()).post(url).send({ institutionId, registerNumber: REG });
 
     expect(res.status).toBe(201);
   });
 
   /*
-   * ★★ Another kindergarten's code must not reach this roster. The code is
-   * looked up to find the kindergarten, so this is the tenant boundary itself.
+   * ★★ Another kindergarten's institution number must not reach this roster.
+   * That number is what resolves the kindergarten, so this is the tenant
+   * boundary itself.
    */
-  it("does not let one kindergarten's code match another's roster", async () => {
-    const codeB = await issueCode(b.kindergarten.id);
+  it("does not let one kindergarten's number match another's roster", async () => {
+    const institutionIdB = b.institutionId;
     await seedRoster(a.kindergarten.id);
 
-    const res = await request(server()).post(url).send({ code: codeB, registerNumber: REG });
+    const res = await request(server())
+      .post(url)
+      .send({ institutionId: institutionIdB, registerNumber: REG });
 
     expect(res.status).toBe(401);
     expect(await db.user.count({ where: { lastName: "Овог" } })).toBe(0);
@@ -282,7 +285,8 @@ describe("staff self-registration", () => {
 
   /*
    * ★ All six of `register()`'s distinct throw sites, compared byte for byte
-   * rather than field by field: a wrong code, a register number absent from
+   * rather than field by field: an unknown institution number, a register
+   * number absent from
    * the roster, one that does not parse, a jobCode this product refuses to
    * turn into a role, a roster row too stale to trust, and a person who
    * already has an account. The `it.each` above already checks
@@ -293,7 +297,7 @@ describe("staff self-registration", () => {
    * `REFUSAL`'s own doc comment says the branches must not do.
    */
   it("returns byte-identical response bodies across all six refusal branches", async () => {
-    const code = await issueCode(a.kindergarten.id);
+    const institutionId = a.institutionId;
     const REG_UNMAPPED = "УБ11112222";
     const REG_STALE = "УБ33334444";
 
@@ -311,16 +315,18 @@ describe("staff self-registration", () => {
 
     // Consumed for real, so the sixth payload below hits "already registered"
     // rather than a fresh match.
-    const registered = await request(server()).post(url).send({ code, registerNumber: REG });
+    const registered = await request(server())
+      .post(url)
+      .send({ institutionId, registerNumber: REG });
     expect(registered.status).toBe(201);
 
     const payloads = [
-      { code: "wrongcode", registerNumber: REG }, // 1. wrong code
-      { code, registerNumber: "УБ99998888" }, // 2. not on the roster
-      { code, registerNumber: "nonsense" }, // 3. malformed
-      { code, registerNumber: REG_UNMAPPED }, // 4. jobCode maps to no role
-      { code, registerNumber: REG_STALE }, // 5. roster row too stale
-      { code, registerNumber: REG }, // 6. already has an account
+      { institutionId: "9999999", registerNumber: REG }, // 1. unknown institution number
+      { institutionId, registerNumber: "УБ99998888" }, // 2. not on the roster
+      { institutionId, registerNumber: "nonsense" }, // 3. malformed
+      { institutionId, registerNumber: REG_UNMAPPED }, // 4. jobCode maps to no role
+      { institutionId, registerNumber: REG_STALE }, // 5. roster row too stale
+      { institutionId, registerNumber: REG }, // 6. already has an account
     ];
 
     const bodies = await Promise.all(
@@ -346,7 +352,9 @@ describe("staff self-registration", () => {
 
     const attempts = [];
     for (let i = 0; i < 12; i += 1) {
-      attempts.push(await request(server()).post(url).send({ code: "wrong", registerNumber: REG }));
+      attempts.push(
+        await request(server()).post(url).send({ institutionId: "9999999", registerNumber: REG }),
+      );
     }
 
     expect(attempts.some((res) => res.status === 429)).toBe(true);
@@ -363,9 +371,11 @@ describe("who registered themselves", () => {
   const url = (kindergartenId: string) => `/v1/kindergartens/${kindergartenId}/staff-registrations`;
 
   it("lists self-registered staff with when and as what", async () => {
-    const code = await issueCode(a.kindergarten.id);
+    const institutionId = a.institutionId;
     await seedRoster(a.kindergarten.id);
-    await request(server()).post("/v1/staff-registration").send({ code, registerNumber: REG });
+    await request(server())
+      .post("/v1/staff-registration")
+      .send({ institutionId, registerNumber: REG });
 
     const res = await authed(request(server()).get(url(a.kindergarten.id)), a.adminSession);
 
@@ -386,9 +396,11 @@ describe("who registered themselves", () => {
    * very row the query selects from, and a widened `select` would ship it.
    */
   it("does not return a register number or an esisPersonId", async () => {
-    const code = await issueCode(a.kindergarten.id);
+    const institutionId = a.institutionId;
     await seedRoster(a.kindergarten.id);
-    await request(server()).post("/v1/staff-registration").send({ code, registerNumber: REG });
+    await request(server())
+      .post("/v1/staff-registration")
+      .send({ institutionId, registerNumber: REG });
 
     const res = await authed(request(server()).get(url(a.kindergarten.id)), a.adminSession);
     const text = JSON.stringify(res.body);
@@ -430,9 +442,11 @@ describe("who registered themselves", () => {
    * reason this list exists: to hand the director something to revoke with.
    */
   it("drops a membership the director has already revoked", async () => {
-    const code = await issueCode(a.kindergarten.id);
+    const institutionId = a.institutionId;
     await seedRoster(a.kindergarten.id);
-    await request(server()).post("/v1/staff-registration").send({ code, registerNumber: REG });
+    await request(server())
+      .post("/v1/staff-registration")
+      .send({ institutionId, registerNumber: REG });
 
     const before = await authed(request(server()).get(url(a.kindergarten.id)), a.adminSession);
     const membershipId = before.body.items[0].membershipId as string;

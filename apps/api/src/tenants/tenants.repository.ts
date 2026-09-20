@@ -70,6 +70,34 @@ export class TenantsRepository {
     logoMediaFileId: true,
   } as const;
 
+  /**
+   * One field more than a member sees: the ESIS institution number.
+   *
+   * ★ **Added 2026-09-20, when that number became the thing a director hands
+   * their staff.** The public staff-registration form's first field used to be
+   * an issued code; it is now this number, so a director has to be able to
+   * read it somewhere, and `/admin/staff-code` is the screen that used to
+   * print the code.
+   *
+   * ★★ ADMIN rather than member, even though the number is not a secret — it
+   * is on the ministry's own public register, and every member of staff will
+   * end up typing it. The reason to keep it off `MEMBER_FIELDS` is the one the
+   * comment above gives for the allowlist existing at all: `getKindergarten`
+   * is gated on *membership*, so widening it publishes to parents as well, and
+   * "not exploitable today" is the argument that ages worst. A director needs
+   * it; a parent has no use for it.
+   */
+  private static readonly ADMIN_FIELDS = {
+    id: true,
+    name: true,
+    address: true,
+    phone: true,
+    email: true,
+    description: true,
+    logoMediaFileId: true,
+    esisInstitutionId: true,
+  } as const;
+
   async listKindergartens(scope: TenantScope) {
     return this.prisma.kindergarten.findMany({
       where: { deletedAt: null, id: { in: [...scope.kindergartenIds] } },
@@ -78,10 +106,10 @@ export class TenantsRepository {
     });
   }
 
-  async findKindergarten(scope: TenantScope, id: string) {
+  async findKindergarten(scope: TenantScope, id: string, asAdmin = false) {
     return this.prisma.kindergarten.findFirst({
       where: { deletedAt: null, id, AND: [{ id: { in: [...scope.kindergartenIds] } }] },
-      select: TenantsRepository.MEMBER_FIELDS,
+      select: asAdmin ? TenantsRepository.ADMIN_FIELDS : TenantsRepository.MEMBER_FIELDS,
     });
   }
 

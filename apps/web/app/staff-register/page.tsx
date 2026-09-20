@@ -131,7 +131,7 @@ function Explainer() {
         Ажилтны бүртгэл
       </h1>
       <p className="mt-3 max-w-[44ch] text-body leading-7 text-[#42627c] sm:text-lead">
-        Цэцэрлэгээсээ авсан код болон өөрийн регистрийн дугаараар эрхээ үүсгээд багтаа нэгдээрэй.
+        Цэцэрлэгийнхээ ESIS дугаар болон өөрийн регистрийн дугаараар эрхээ үүсгээд багтаа нэгдээрэй.
       </p>
 
       <div className="mt-7 rounded-card border border-white/90 bg-white/70 p-5 shadow-[0_14px_36px_rgba(25,72,111,.06)] sm:p-6">
@@ -143,8 +143,8 @@ function Explainer() {
             n={1}
             tone="bg-[#e2f1ff] text-[#176ac2]"
             icon={<Building2 size={20} aria-hidden />}
-            title="Цэцэрлэгийн код"
-            description="Цэцэрлэгээсээ авсан кодоо оруулна."
+            title="Цэцэрлэгийн ESIS дугаар"
+            description="Танай цэцэрлэгийн ESIS дээрх байгууллагын дугаарыг оруулна."
           />
           <Step
             n={2}
@@ -202,14 +202,14 @@ function Step({
 
 function StaffRegisterForm() {
   const router = useRouter();
-  const [code, setCode] = useState("");
+  const [institutionId, setInstitutionId] = useState("");
   const [registerNumber, setRegisterNumber] = useState("");
 
   const register = useMutation({
     mutationFn: () =>
       mutate("/staff-registration", staffSelfRegistrationResultSchema, {
         method: "POST",
-        body: { code, registerNumber },
+        body: { institutionId, registerNumber },
       }),
     onSuccess: (result) => {
       router.replace(`/invitation/${result.invitationToken}`);
@@ -231,22 +231,27 @@ function StaffRegisterForm() {
           Мэдээллээ оруулна уу
         </h2>
         <p className="mt-2 text-body leading-6 text-slate-600">
-          Цэцэрлэгээсээ авсан код, өөрийн регистрийн дугаараа оруулна уу.
+          Цэцэрлэгийнхээ ESIS дугаар, өөрийн регистрийн дугаараа оруулна уу.
         </p>
       </div>
 
       <FormError message={register.isError ? errorMessage(register.error) : null} />
 
-      <Field label="Цэцэрлэгийн код" hint="Танай цэцэрлэгээс өгсөн бүртгэлийн код." required>
+      <Field
+        label="Цэцэрлэгийн ESIS дугаар"
+        hint="Танай цэцэрлэгийн ESIS дээрх байгууллагын дугаар. Захирлаасаа асууна уу."
+        required
+      >
         {({ id, describedBy, invalid }) => (
           <IconInput icon={<Building2 size={18} aria-hidden />}>
             <Input
               id={id}
               aria-describedby={describedBy}
               invalid={invalid}
-              value={code}
-              onChange={(event) => setCode(event.target.value)}
-              placeholder="Жишээ: NK001"
+              value={institutionId}
+              onChange={(event) => setInstitutionId(event.target.value)}
+              placeholder="Жишээ: 42778"
+              inputMode="numeric"
               autoCapitalize="none"
               className="h-13 rounded-control border-[#dbe7f2] bg-[#f8fbff] pl-12 focus:bg-white"
             />

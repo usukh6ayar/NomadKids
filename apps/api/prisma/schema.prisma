@@ -590,15 +590,22 @@ model Kindergarten {
   esisInstitutionId String?          @unique
   esisMappedAt      DateTime?
 
-  /// The code a director gives their staff so they can register themselves.
+  /// ★ `staffRegistrationCodeHash` and `staffRegistrationCodeSetAt` were here
+  /// until 2026-09-20 and are dropped in
+  /// `20260920120000_drop_staff_registration_code`.
   ///
-  /// ★ Hashed, like a password, though it is not one. It is a secret shared
-  /// among thirteen people and it is a **throttle, not authentication** — the
-  /// roster match is the real gate. Hashed anyway: a plaintext column is one
-  /// database read away from letting anybody register as any member of staff at
-  /// any kindergarten, and the cost of hashing it is nothing.
-  staffRegistrationCodeHash  String?
-  staffRegistrationCodeSetAt DateTime?
+  /// They held the code a director gave their staff so they could register
+  /// themselves. The client replaced it with the ESIS institution number above
+  /// — "institutionID нь байя. Цэцэрлэгийн код нь" — and the column's own
+  /// comment had already conceded the point it turned on: the code was **a
+  /// throttle, not authentication**, there to name which roster to match
+  /// against, and `esisInstitutionId` names it just as exactly while being
+  /// something a director cannot mislay.
+  ///
+  /// Dropped rather than left standing, per CLAUDE.md §3.2's account of
+  /// `deletedById`: a column nothing reads is a column the next person has to
+  /// work out the meaning of. Every value in it was a hash of a credential
+  /// that no code path can verify any more.
 
   /// ★ RFP §3.2 (лого) and §10.3, which requires the logo on every generated
   /// PDF.

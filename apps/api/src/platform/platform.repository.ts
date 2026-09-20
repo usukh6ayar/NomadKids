@@ -299,6 +299,14 @@ export class PlatformRepository {
    * existed, which still hold theirs, and the database constraint is the only
    * thing either of us is really talking to.
    *
+   * ★★★★ **Releasing it now also closes staff self-registration**, which it
+   * did not have to do before 2026-09-20. The public form's first field was an
+   * issued code, cleared here by two lines that this method no longer needs;
+   * it is the institution number itself, so the null above is what stops a
+   * retired tenant's roster from being reachable. `deletedAt: null` in
+   * `StaffRegistrationRepository.findKindergartenIdByEsisInstitutionId` is the
+   * second of the two locks, and the roster deletion below is the third.
+   *
    * ★ `EsisStaffRoster` rows are deleted outright, the one hard delete here:
    * they are a cache of what the ministry said, keyed by register number, and
    * `staff-registration` matches against them on an unauthenticated route.
@@ -324,10 +332,6 @@ export class PlatformRepository {
           isActive: false,
           esisInstitutionId: null,
           esisMappedAt: null,
-          // A code issued to staff who no longer have a tenant to register
-          // against is a secret with nothing behind it. Clear it.
-          staffRegistrationCodeHash: null,
-          staffRegistrationCodeSetAt: null,
         },
       });
 

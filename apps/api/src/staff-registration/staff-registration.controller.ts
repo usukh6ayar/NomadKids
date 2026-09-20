@@ -18,27 +18,16 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 
 /**
- * The director's side of staff self-registration: issuing the kindergarten's
- * registration code.
+ * The director's side of staff self-registration: seeing who has registered.
  *
- * ★ Not on `KindergartenEsisController` (`kindergartens/:id/esis/…`), though
- * the plan first suggested it. This route calls no ESIS service and needs no
- * institution mapping — an unmapped kindergarten may still issue a code — so
- * nesting it under `/esis/` would describe it as something it is not. See
- * `StaffRegistrationService.issueCode`'s doc comment for what the code is.
+ * ★ It used to also issue a registration code. That route is gone — 2026-09-20,
+ * at the client's instruction the first field of the public form is now the
+ * kindergarten's ESIS institution number, which a director already has and
+ * cannot mislay. There is nothing left to issue, so there is no endpoint.
  */
 @Controller("kindergartens/:id")
 export class StaffRegistrationController {
   constructor(private readonly service: StaffRegistrationService) {}
-
-  @Post("staff-registration-code")
-  @Roles("ADMIN")
-  issueCode(
-    @CurrentActor() actor: Actor,
-    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
-  ) {
-    return this.service.issueCode(actor, params.id);
-  }
 
   /**
    * The director's review list — "хэн хэн бүртгүүлсэн байгаа эсэх мэдээлэл",
@@ -62,10 +51,10 @@ export class StaffRegistrationController {
  *
  * ★ **A separate controller and a separate route root**, not a method on
  * `StaffRegistrationController` above. That class is scoped under
- * `kindergartens/:id/…`, which this route is not — the whole point of
- * matching a code is that the caller does not yet know, or get to claim,
- * which kindergarten they mean (`StaffRegistrationService.register`'s doc
- * comment on `matchCode`). Nest has no way to give one method in a
+ * `kindergartens/:id/…` and this route is not: the caller names their
+ * kindergarten by its **ESIS institution number**, which is not its id, and
+ * putting it in the path would make an unauthenticated route look like a
+ * tenant-scoped one. Nest has no way to give one method in a
  * `@Controller("kindergartens/:id")` class a path outside that prefix.
  *
  * ★★ Its own `@RateLimit`, not `auth/`'s budget — a teacher who mistypes

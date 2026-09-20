@@ -873,12 +873,17 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         ...adminEntry("Цэцэрлэгийн мэдээлэл", "/admin/kindergarten"),
         ...adminEntry("Хэрэглэгч ба эрх", "/admin/users", "adminUsersPermissions"),
         /*
-         * ★ Added with staff self-registration — the director's code, the
-         * roster refresh and who has registered themselves. Sits beside
-         * "Хэрэглэгч ба эрх" because it is how an account gets onto that list
-         * in the first place, not a directory of its own.
+         * ★ Added with staff self-registration — the kindergarten's ESIS
+         * number, the roster refresh and who has registered themselves. Sits
+         * beside "Хэрэглэгч ба эрх" because it is how an account gets onto
+         * that list in the first place, not a directory of its own.
+         *
+         * ★★ The href keeps saying `staff-code` after the code it named was
+         * replaced by the ESIS institution number on 2026-09-20. Renaming the
+         * route would break every link a director has bookmarked to buy a
+         * tidier path; the label is what they read.
          */
-        ...adminEntry("Ажилтны бүртгэлийн код", "/admin/staff-code"),
+        ...adminEntry("Ажилтны бүртгэл", "/admin/staff-code"),
         ...adminEntry("Хичээлийн жил", "/admin/school-years", "adminSchoolYear"),
         ...adminEntry("Улирал", "/admin/terms", "adminTerm"),
         /*
