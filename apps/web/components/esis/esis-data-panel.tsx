@@ -1,8 +1,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CloudDownload, Database } from "lucide-react";
-import { useState } from "react";
+import { CloudDownload, Clock3, Database, Search } from "lucide-react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import {
   esisScopedCatalogSchema,
   esisResourceReadSchema,
@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
-import { LoadingState } from "@/components/ui/states";
+import { EmptyState, LoadingState } from "@/components/ui/states";
 import { cn } from "@/lib/utils";
 
 /**
@@ -85,11 +85,12 @@ export function EsisDataPanel({
   hrefs,
   liveHref,
   linkField,
+  rowActions,
   title,
   description,
   headingId,
   askForParams = true,
-  autoRead = false,
+  autoRead = true,
   actionLabel,
   detail,
   compact = false,
@@ -130,6 +131,8 @@ export function EsisDataPanel({
   liveHref?: (row: Record<string, string | null>) => string | null;
   /** Which column carries the link — the name, on a roster. */
   linkField?: string;
+  /** A control at the end of each row. See `EsisRowValues`. */
+  rowActions?: (row: Record<string, string | null>) => ReactNode;
   /**
    * Whether the panel may ask the reader for a path value it lacks.
    *
@@ -147,7 +150,23 @@ export function EsisDataPanel({
   title?: string;
   description?: string;
   headingId?: string;
-  /** Calls the role-authorised ESIS reader as soon as its catalog is ready. */
+  /**
+   * Calls the role-authorised ESIS reader as soon as its catalog is ready.
+   *
+   * ★ **Default `true` since 2026-09-20**, at the client's instruction:
+   * "хэрэглэгч нэвтрээд өөрсдийн гараар бүх ESIS-ээс ирж байгаа хүснэгтүүдийг
+   * өөрөө гараар дарж татмааргүй байна, автоматаар татсан байдаг байгаасай."
+   *
+   * It defaulted to `false`, so a director opening a screen with four panels
+   * on it pressed four buttons before seeing anything — and the panel's own
+   * docblock already argued that values present on first paint are what make
+   * the screen read as connected. The default had simply never caught up with
+   * the argument.
+   *
+   * A panel that still needs a parameter does not fire: the read is gated on
+   * `missing.length === 0`, so "РД-ээр хайх" waits for a register number
+   * rather than calling the ministry with an empty one.
+   */
   autoRead?: boolean;
   /** Overrides the generic pull command for a task-specific action. */
   actionLabel?: string;
@@ -174,7 +193,7 @@ export function EsisDataPanel({
    * and none of the page furniture.
    *
    * ★ Without this the drill-down renders a *second complete panel* inside a
-   * table cell — database icon, `<h2>`, the slug/ID/path line, the record-count
+   * record card — database icon, `<h2>`, the slug/ID/path line, the record-count
    * badge, a "татах" button and the footer disclaimer — twice over, for the two
    * detail services. A page inside a page, on the screen whose instruction was
    * "зүгээр энгийн харагдуул".
@@ -191,7 +210,7 @@ export function EsisDataPanel({
    * ★ Added 2026-09-10 so a page whose body sits in a narrow reading column
    * can still give the panel the full width. `/settings` and
    * `/admin/kindergarten` cap their content at 760px — the right width for a
-   * form, and far too narrow for a table of ESIS records, which is what the
+   * form, and far too narrow for a list of ESIS records, which is what the
    * client was looking at when they asked for "дэлгэц дүүрэн".
    *
    * It is a class rather than a `wide` flag because the two callers want the
@@ -201,6 +220,7 @@ export function EsisDataPanel({
 }) {
   const { primaryKindergartenId } = useSession();
   const [entered, setEntered] = useState<Record<string, string>>({});
+  const [searchedRegister, setSearchedRegister] = useState("");
   const [pulled, setPulled] = useState(false);
   /** When the reader last pressed "татах" for a **live** service — see `pull()`. */
   const [pulledAt, setPulledAt] = useState<string | null>(null);
@@ -235,7 +255,12 @@ export function EsisDataPanel({
    * complete on first paint. It never pre-fills a personal identifier — see
    * `esis-params.ts`.
    */
-  const value = (name: string) => entered[name] ?? params?.[name] ?? "";
+  const registerSearch =
+    resource === "studentByRegister" && askForParams && !params?.personRegNumber;
+  const value = (name: string) =>
+    registerSearch && name === "personRegNumber"
+      ? searchedRegister
+      : (entered[name] ?? params?.[name] ?? "");
   const missing = required.filter((name) => !value(name));
 
   /*
@@ -272,6 +297,9 @@ export function EsisDataPanel({
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     staleTime: Infinity,
+    // A staff-entered register number should leave the query cache when the
+    // search changes or this panel closes.
+    gcTime: registerSearch ? 0 : undefined,
     retry: false,
   });
 
@@ -301,7 +329,7 @@ export function EsisDataPanel({
    * ★ The nested form: a heading, the records, and nothing else. Everything
    * the full panel adds — the icon, the slug/ID/path line, the badges, the
    * pull button, the response envelope, the footer — is page furniture, and a
-   * table cell is not a page. See the `compact` prop for the whole argument.
+   * record card is not a page. See the `compact` prop for the whole argument.
    *
    * It sits below `rows`/`columns` rather than beside the earlier guards so it
    * reads the *same* two values the full panel draws — a compact panel that
@@ -325,8 +353,8 @@ export function EsisDataPanel({
            * and names the service when the read failed.
            *
            * The full card is deliberately not used here: this panel renders
-           * inside a table cell, and a bordered, toned, icon-bearing card in a
-           * cell is the thing `compact` exists to avoid. Two lines of text
+           * inside an opened record, and a bordered, toned, icon-bearing card
+           * there is the thing `compact` exists to avoid. Two lines of text
            * carry the same two facts at the weight this slot allows.
            */
           read.data?.status === "FAILED" ? (
@@ -359,54 +387,149 @@ export function EsisDataPanel({
     setPulledAt(new Date().toLocaleString("mn-MN"));
   }
 
+  function submitRegisterSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const number = (entered.personRegNumber ?? "").trim().toUpperCase();
+    if (!number || read.isFetching) return;
+    if (number === searchedRegister) {
+      void pull();
+    } else {
+      // The request key changes only on submit, never on each keystroke.
+      setSearchedRegister(number);
+      if (!catalog.data?.canRead) void catalog.refetch();
+    }
+  }
+
   /*
-   * ★ **The stored copy's own date, not the moment somebody pressed "татах"**
-   * — 2026-09-17, plan Task 7. `pulledAt` says when this browser last asked;
-   * for a reference resource that is not the fact worth showing, because the
-   * answer came from `EsisReference` and can be weeks old regardless of when
-   * it was read just now. `read.data.syncedAt` is when the sweep itself ran,
-   * which is the date an operator comparing this table against the ministry's
-   * own catalogue actually needs.
+   * When these rows were fetched, in one value.
+   *
+   * ★ **The stored copy's own date first** — 2026-09-17, plan Task 7. For a
+   * reference resource the answer came from `EsisReference` and can be weeks
+   * old regardless of when this browser read it, so `syncedAt` — when the
+   * sweep itself ran — is the date that actually describes the rows.
+   *
+   * ★★ Then `dataUpdatedAt`, and `pulledAt` last. Since the panels read
+   * automatically (2026-09-20) most reads happen without a press, so a date
+   * derived only from pressing would be blank exactly when the reader most
+   * needs to know how fresh this is.
    */
-  const storeSyncedAt =
-    read.data?.source === "STORE" && read.data.syncedAt
-      ? new Date(read.data.syncedAt).toLocaleString("mn-MN")
-      : null;
+  const lastFetchedAt =
+    read.data?.status !== "SUCCEEDED"
+      ? null
+      : read.data.source === "STORE" && read.data.syncedAt
+        ? new Date(read.data.syncedAt).toLocaleString("mn-MN")
+        : read.dataUpdatedAt
+          ? new Date(read.dataUpdatedAt).toLocaleString("mn-MN")
+          : (pulledAt ?? null);
 
   return (
     <section aria-label={title ?? endpoint.name} className={cn("w-full", className)}>
       <Card pad="roomy" className="flex flex-col gap-5">
-        <div className="flex flex-wrap items-start gap-3 border-b border-border-soft pb-5">
-          <span className="flex size-11 shrink-0 items-center justify-center rounded-control bg-sky text-sky-ink">
+        <div
+          className={cn(
+            "flex flex-wrap items-start gap-3",
+            !registerSearch && "border-b border-border-soft pb-5",
+          )}
+        >
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary">
             <Database size={21} aria-hidden />
           </span>
           <div className="min-w-0 flex-1">
-            <h2 id={heading} className="font-semibold text-ink">
+            <h2 id={heading} className="text-lead font-semibold tracking-tight text-ink">
               {title ?? endpoint.name}
             </h2>
-            <p className="mt-0.5 text-body text-muted">{description ?? endpoint.usage}</p>
+            <p className="mt-0.5 text-caption leading-relaxed text-muted">
+              {description ?? endpoint.usage}
+            </p>
+            {lastFetchedAt ? (
+              <p className="mt-2 flex items-center gap-1.5 text-caption text-muted">
+                <Clock3 size={14} aria-hidden />
+                Сүүлд татсан: {lastFetchedAt}
+              </p>
+            ) : null}
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <Badge tone="sky">{rows.length} бичлэг</Badge>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={read.isFetching || missing.length > 0}
-              onClick={() => void pull()}
-            >
-              <CloudDownload aria-hidden />
-              {read.isFetching
-                ? resource === "studentByRegister"
-                  ? "Хайж байна…"
-                  : "Татаж байна…"
-                : autoRead && read.data
-                  ? "Дахин татах"
-                  : (actionLabel ?? "ESIS-ээс мэдээллээ татах")}
-            </Button>
+            {read.data?.status === "SUCCEEDED" ? (
+              <Badge tone={read.data.source === "STORE" ? "sky" : "mint"}>
+                {read.data.source === "STORE" ? "Синк хийсэн" : "Шууд ирсэн"}
+              </Badge>
+            ) : null}
+            {(rows.length > 0 || read.data?.status === "SUCCEEDED") && (
+              <Badge tone="sky">{rows.length} бичлэг</Badge>
+            )}
+            {!registerSearch ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={read.isFetching || missing.length > 0}
+                onClick={() => void pull()}
+              >
+                <CloudDownload aria-hidden />
+                {/*
+                ★ "Шинэчлэх", not "ESIS-ээс мэдээллээ татах" — the panels fetch
+                on their own now, so a button promising to fetch would be
+                describing something that already happened. What is left for it
+                to do is ask again.
+
+                A panel still waiting on a parameter keeps its own verb: there
+                the press really is what starts the call.
+              */}
+                {read.isFetching
+                  ? resource === "studentByRegister"
+                    ? "Хайж байна…"
+                    : "Татаж байна…"
+                  : missing.length > 0 || asks.length > 0
+                    ? (actionLabel ?? "Хайх")
+                    : "Шинэчлэх"}
+              </Button>
+            ) : null}
           </div>
         </div>
 
-        {asks.length > 0 ? (
+        {registerSearch ? (
+          <div className="border-b border-border-soft pb-5">
+            <form
+              onSubmit={submitRegisterSearch}
+              role="search"
+              className="flex flex-col gap-2 sm:flex-row sm:items-end"
+            >
+              <Field label="РД (регистрийн дугаар)" labelHidden className="min-w-0 flex-1">
+                {({ id }) => (
+                  <div className="relative">
+                    <Search
+                      size={19}
+                      aria-hidden
+                      className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted"
+                    />
+                    <Input
+                      id={id}
+                      type="search"
+                      placeholder="РД-ээр сурагч хайх"
+                      autoComplete="off"
+                      autoCapitalize="characters"
+                      maxLength={32}
+                      value={entered.personRegNumber ?? ""}
+                      onChange={(event) =>
+                        setEntered((current) => ({
+                          ...current,
+                          personRegNumber: event.target.value.toUpperCase(),
+                        }))
+                      }
+                      className="pl-12"
+                    />
+                  </div>
+                )}
+              </Field>
+              <Button type="submit" disabled={!entered.personRegNumber?.trim() || read.isFetching}>
+                <Search aria-hidden />
+                {read.isFetching ? "Хайж байна…" : "Хайх"}
+              </Button>
+            </form>
+            <p className="mt-2 text-caption text-muted">
+              Регистрийн дугаарыг ESIS рүү илгээх ба хадгалахгүй.
+            </p>
+          </div>
+        ) : asks.length > 0 ? (
           <div>
             <div className="grid gap-3 sm:grid-cols-2">
               {asks.map((name) => (
@@ -450,19 +573,33 @@ export function EsisDataPanel({
           <EsisNoAnswer endpoint={endpoint} errorCode={read.data.errorCode} variant="FAILED" />
         ) : null}
 
-        {rows.length === 0 ? (
+        {registerSearch && !searchedRegister ? (
+          <p className="rounded-row bg-canvas px-4 py-5 text-body text-muted">
+            Сурагчийн регистрийн дугаарыг оруулаад хайлтаа эхлүүлнэ үү.
+          </p>
+        ) : read.isFetching && !read.data && rows.length === 0 ? (
+          <LoadingState rows={2} />
+        ) : registerSearch && searchedRegister && !catalog.data?.canRead ? (
+          <EsisNoAnswer endpoint={endpoint} errorCode="NOT_CONFIGURED" variant="FAILED" />
+        ) : rows.length === 0 ? (
           /*
            * ★ Only once. A failed read has no rows either, so without this the
            * screen stacked "хариу өгсөнгүй" on top of "бичлэг буцаасангүй" and
            * invited the reader to work out whether those were two problems.
            */
-          read.data?.status === "FAILED" ? null : (
+          read.data?.status === "FAILED" || read.isError ? null : registerSearch ? (
+            <EmptyState
+              title="Сурагч олдсонгүй"
+              description="Регистрийн дугаараа шалгаад дахин хайна уу."
+            />
+          ) : (
             <EsisNoAnswer endpoint={endpoint} errorCode={null} variant="EMPTY" />
           )
         ) : (
           <EsisRowValues
             columns={columns}
             rows={rows}
+            rowActions={rowActions}
             hrefs={live ? (liveHref ? rows.map(liveHref) : undefined) : hrefs}
             linkField={linkField}
             renderDetail={
@@ -488,12 +625,6 @@ export function EsisDataPanel({
             }
           />
         )}
-
-        {storeSyncedAt || pulledAt ? (
-          <p className="border-t border-border-soft pt-4 text-caption text-muted">
-            Сүүлд шинэчилсэн: {storeSyncedAt ?? pulledAt}
-          </p>
-        ) : null}
       </Card>
     </section>
   );

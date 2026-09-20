@@ -21,7 +21,6 @@ import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { canManageSurvey, staffSurveySchema } from "@/lib/survey-access";
 import { PageHeader } from "@/components/shell/app-shell";
-import { BackButton } from "@/components/ui/back-button";
 import { RequireRole } from "@/components/shell/require-role";
 import {
   ArrowDown,
@@ -203,13 +202,23 @@ function SurveyDetail() {
         `SURVEY_KIND_LABEL` — and this screen was the one place that called it
         a судалгаа. Genitive, so it cannot be `SURVEY_KIND_LABEL` plus a word.
       */}
-      <div className="flex items-center gap-2">
-        <BackButton href={data.kind === "POLL" ? "/surveys/polls" : "/surveys/forms"} />
-        <h1 className="min-w-0 flex-1 truncate text-center text-title font-semibold text-ink">
-          {RESULTS_TITLE[data.kind]}
-        </h1>
-        <span className="size-11 shrink-0" aria-hidden="true" />
-      </div>
+      {/*
+        ★★★ `PageHeader` since 2026-09-20, replacing a centred title between a
+        back arrow and a spacer.
+
+        That shape is a phone sheet's, and this is a page — it read as a
+        different product from every other screen, which is what the client
+        asked to stop. The note above still holds in full: the **card** below is
+        the thing a teacher looks at, and nothing about it changes. Only the
+        page's own title row is now the product's.
+
+        `backHref` stays explicit: the walk would land on `/surveys`, and this
+        screen knows the better answer — the board the survey was opened from.
+      */}
+      <PageHeader
+        backHref={data.kind === "POLL" ? "/surveys/polls" : "/surveys/forms"}
+        title={RESULTS_TITLE[data.kind]}
+      />
 
       {/*
         ★ The card as the client drew it — 2026-09-12, second pass.

@@ -53,6 +53,7 @@ import { CreateSurveyWizard } from "@/components/survey/create-survey-wizard";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/shell/app-shell";
 import { Card } from "@/components/ui/card";
 import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
 import { Field, Input } from "@/components/ui/field";
@@ -67,7 +68,6 @@ import { useToast } from "@/components/ui/toast";
 import { TERM_NUMBERS, termLabel, termNumberForDay } from "@/lib/terms";
 import { isSurveyOwner, staffSurveysSchema } from "@/lib/survey-access";
 import { cn } from "@/lib/utils";
-import { BackButton } from "@/components/ui/back-button";
 import { SearchField } from "@/components/ui/search-field";
 
 const groupsSchema = paginated(groupListItemSchema);
@@ -167,15 +167,16 @@ function GroupSurveysList({ groupId }: { groupId: string }) {
 
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
-      <header className="flex items-start gap-3">
-        <BackButton href="/surveys" />
-        <div className="min-w-0 pt-1">
-          <h1 className="truncate text-title font-semibold leading-heading text-ink">
-            {group?.name ?? "Бүлгийн судалгаа"}
-          </h1>
-          <p className="mt-0.5 text-body text-muted">Тус бүлэгт зориулсан судалгаа, асуулга</p>
-        </div>
-      </header>
+      {/*
+        ★ `PageHeader` since 2026-09-20 — the survey area drew five hand-rolled
+        headers and the client asked for one shape. The back control is derived
+        now (`useAutoBackHref` walks up to `/surveys`), so the explicit
+        `BackButton` was a second copy of a rule that lives in one place.
+      */}
+      <PageHeader
+        title={group?.name ?? "Бүлгийн судалгаа"}
+        lede="Тус бүлэгт зориулсан судалгаа, асуулга"
+      />
 
       <section aria-label="Бүлгийн судалгааны шүүлтүүр" className="flex flex-col gap-3">
         <SearchField
@@ -372,20 +373,16 @@ function SurveysList({ kind }: { kind: SurveyKind }) {
         that was made. `/surveys` is the href for the same reason the group
         board above uses it — it is where the card that opened this screen is.
       */}
-      <header className="flex items-start gap-3">
-        <BackButton href="/surveys" />
-        <div className="min-w-0 flex-1 pt-1">
-          <h1 className="text-title font-semibold leading-heading text-ink">
-            {SURVEY_KIND_LABEL[kind]}
-          </h1>
-          <p className="mt-0.5 text-caption text-muted">{SURVEY_KIND_HINT[kind]}</p>
-        </div>
-
-        <Button className="shrink-0" onClick={() => setCreating(kind)}>
-          <Plus size={18} aria-hidden="true" />
-          Шинэ
-        </Button>
-      </header>
+      <PageHeader
+        title={SURVEY_KIND_LABEL[kind]}
+        lede={SURVEY_KIND_HINT[kind]}
+        actions={
+          <Button onClick={() => setCreating(kind)}>
+            <Plus size={18} aria-hidden="true" />
+            Шинэ
+          </Button>
+        }
+      />
 
       <section
         aria-label="Судалгааны удирдлага"

@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Database } from "lucide-react";
+import { Building2, Database } from "lucide-react";
 import {
   platformKindergartenDetailSchema,
   type PlatformKindergartenDetail,
@@ -13,8 +13,8 @@ import { z } from "zod";
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
-import { PageHeader } from "@/components/shell/app-shell";
 import { RequireSuperAdmin } from "@/components/shell/require-role";
+import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
 import {
   AssessmentCoverageSection,
   RecentActivitySection,
@@ -37,9 +37,9 @@ import { useToast } from "@/components/ui/toast";
  * (`/admin`), because the API computes both from the same queries scoped to
  * this one tenant rather than to the caller's memberships.
  *
- * Read-only beyond the active/inactive toggle — the operator's job stops at
- * registering and suspending a kindergarten; everything else belongs to that
- * kindergarten's own admin. See `platform/page.tsx`'s doc comment.
+ * The operator can manage the tenant's availability, director access and ESIS
+ * mapping here. Classroom and child records remain with that kindergarten's
+ * own administrator.
  */
 export default function PlatformKindergartenPage() {
   return (
@@ -86,10 +86,12 @@ function KindergartenDetail() {
   const kg = data!;
 
   return (
-    <div className="flex flex-col gap-6 lg:gap-8">
-      <PageHeader
+    <div className="flex flex-col gap-6 pb-8 lg:gap-8">
+      <PlatformPageHeading
         backHref="/platform"
         title={kg.name}
+        lede={kg.description || "Байгууллагын мэдээлэл, удирдлага болон ESIS холболт."}
+        mark={<Building2 />}
         actions={
           <span className="flex items-center gap-2">
             <Badge tone={kg.isActive ? "mint" : "neutral"}>
@@ -109,9 +111,10 @@ function KindergartenDetail() {
         }
       />
 
-      {kg.description ? <p className="text-body text-muted">{kg.description}</p> : null}
-
-      <StatGrid counts={kg.counts} />
+      <div className="flex flex-col gap-3">
+        <h2 className="text-title font-bold text-ink">Байгууллагын тойм</h2>
+        <StatGrid counts={kg.counts} />
+      </div>
 
       {/*
         Above the ESIS card on purpose: "can anybody sign in to this tenant"
@@ -174,7 +177,7 @@ function EsisMappingCard({ kindergarten }: { kindergarten: PlatformKindergartenD
           </Button>
         }
       />
-      <Card pad="roomy">
+      <Card pad="roomy" className="shadow-sm">
         {/*
           ★ Two columns, and the buttons share one row — 2026-09-19.
 

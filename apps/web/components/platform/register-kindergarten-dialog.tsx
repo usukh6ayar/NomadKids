@@ -177,9 +177,12 @@ export function RegisterKindergartenDialog({ onClose }: { onClose: () => void })
         first decision, so on a phone it has to come first in the flow as well
         as in the source — which a grid with a fixed left column cannot do.
       */}
-      <div className="flex max-h-dvh w-full max-w-[920px] flex-col overflow-hidden border-border bg-surface sm:max-h-[calc(100dvh-2rem)] sm:rounded-card sm:border md:flex-row">
-        <aside className="shrink-0 border-b border-border-soft bg-primary-soft/60 p-5 md:w-[292px] md:border-b-0 md:border-r">
-          <h2 className="text-title font-semibold text-ink">Цэцэрлэг бүртгэх</h2>
+      <div className="flex max-h-dvh w-full max-w-[980px] flex-col overflow-hidden border-border bg-surface shadow-lg sm:max-h-[calc(100dvh-2rem)] sm:rounded-card sm:border md:flex-row">
+        <aside className="shrink-0 border-b border-border-soft bg-[linear-gradient(160deg,#e6f3fc_0%,#f6fbfe_68%,#ecf8f4_100%)] p-5 md:w-[310px] md:border-b-0 md:border-r md:p-6">
+          <p className="mb-2 text-caption font-bold uppercase tracking-[0.12em] text-primary-strong">
+            Платформын удирдлага
+          </p>
+          <h2 className="text-title font-extrabold text-ink">Цэцэрлэг бүртгэх</h2>
           <p className="mt-1 text-body text-muted">Цэцэрлэгийг системд бүртгэх аргаа сонгоно уу.</p>
 
           <div className="mt-4 flex flex-col gap-2" role="radiogroup" aria-label="Бүртгэх арга">
@@ -224,7 +227,7 @@ export function RegisterKindergartenDialog({ onClose }: { onClose: () => void })
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-          <div className="flex-1 p-5">
+          <div className="flex-1 p-5 md:p-7">
             <FormError message={create.isError ? errorMessage(create.error) : null} />
 
             {usingEsis ? (
@@ -333,10 +336,10 @@ function MethodCard({
       aria-checked={selected}
       onClick={onSelect}
       className={cn(
-        "flex w-full items-start gap-3 rounded-card border p-3 text-left transition-colors",
+        "flex w-full items-start gap-3 rounded-card border p-3.5 text-left transition-all",
         selected
-          ? "border-primary bg-surface shadow-sm"
-          : "border-border-soft bg-surface/70 hover:border-border",
+          ? "border-primary bg-white shadow-md"
+          : "border-border-soft bg-white/70 hover:border-primary/40 hover:bg-white",
       )}
     >
       <span
@@ -378,11 +381,11 @@ function MethodCard({
 
 function StepHeader({ step, title, lede }: { step: number; title: string; lede: string }) {
   return (
-    <div className="mb-4">
-      <p className="text-caption font-semibold uppercase tracking-wide text-primary">
+    <div className="mb-5 border-b border-border-soft pb-4">
+      <p className="text-caption font-bold uppercase tracking-wide text-primary">
         Алхам {step} / 3
       </p>
-      <h3 className="mt-0.5 text-lead font-semibold text-ink">{title}</h3>
+      <h3 className="mt-1 text-title font-extrabold text-ink">{title}</h3>
       <p className="mt-1 text-body leading-relaxed text-muted">{lede}</p>
     </div>
   );

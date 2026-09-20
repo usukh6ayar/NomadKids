@@ -180,7 +180,11 @@ describe("Бичих самбар", () => {
     expect(await screen.findByText("Илгээгдсэн")).toBeInTheDocument();
     expect(screen.getByText("Дэлбээ")).toBeInTheDocument();
     expect(screen.getByText(/Оюун/)).toBeInTheDocument();
-    expect(screen.getByText(/100006351517832/)).toBeInTheDocument();
+    expect(screen.getByText("100006351517832")).toBeInTheDocument();
+    expect(screen.getByText("studentGroupId")).toBeInTheDocument();
+    expect(screen.getByText("Техникийн хариу харах").closest("details")).not.toHaveAttribute(
+      "open",
+    );
   });
 
   it("says what to do next when nothing has been written yet", async () => {

@@ -1,4 +1,4 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Inbox } from "lucide-react";
 import { Card } from "@/components/ui/card";
 
 /**
@@ -37,82 +37,124 @@ export const ESIS_ERROR_LABEL: Record<string, string> = {
 };
 
 /**
- * "ESIS-ээс мэдээлэл ирсэнгүй" — and **which** service did not answer.
+ * What a reader sees where a table would have been.
  *
- * ★ **The endpoint is named here — 2026-09-14, at the client's instruction:**
- * "esis-ээс мэдээлэл ирээгүйнүүд дээр endpoint-ийг бичээд хариу ирсэнгүй гэсэн
- * алдааны message өгөөрэй."
+ * ★★★★ **The endpoint is no longer drawn on a product screen — 2026-09-20**,
+ * and this reverses an instruction from six days earlier, so both belong on
+ * the record.
  *
- * What stood here was "ESIS хариу өгсөнгүй" and a one-line reason, on a screen
- * that can show a dozen services at once. Which of them failed was not in the
- * message, so the sentence was true and unusable: the reader could see that
- * something did not answer and not what. With twenty-nine services in the
- * catalogue, the path is the only thing that identifies one unambiguously —
- * the Mongolian name is friendlier and two services can share a shape, while
- * `GET /svc/api/hub/v2/students/list` is what a person quotes when they open a
- * ticket with БМТТ.
+ * On 2026-09-14 the client asked for it: "esis-ээс мэдээлэл ирээгүйнүүд дээр
+ * endpoint-ийг бичээд хариу ирсэнгүй гэсэн алдааны message өгөөрэй." The
+ * reasoning was sound — with twenty-nine services in the catalogue, the path
+ * is the only thing that identifies one unambiguously, and it is what a person
+ * quotes when they open a ticket with БМТТ.
  *
- * ★★ Two kinds of silence, one component. A call that *failed* and a call that
- * *succeeded and returned nothing* are different facts and the heading says
- * which — but both leave the reader looking at an empty space wondering which
- * service produced it, and that is the question the path answers in both
- * cases.
+ * On 2026-09-20 they saw the result on a director's screen — a heading, then
+ * `GET /svc/api/hub/v2/group/next/academicYear`, then a sentence about a
+ * service returning an empty list — and said: "хэрэглэгчдэд ийм зүйлс
+ * харагдах хэрэггүй."
  *
- * ★★★ Not an error boundary and not a toast. It sits where the table would
- * have been, because the absence of the table is the thing being explained.
+ * Both are right, about different readers. The path is diagnostic and belongs
+ * where somebody is diagnosing; a director looking at their own kindergarten
+ * is not. So it is behind `technical`, off by default, and the sentences
+ * beside it now describe the kindergarten rather than the transport: "одоогоор
+ * бүртгэгдсэн мэдээлэл алга" rather than "энэ сервис хоосон жагсаалт буцаалаа".
+ *
+ * ★ Two kinds of silence, one component. A call that *failed* and a call that
+ * *succeeded and returned nothing* are different facts and the heading still
+ * says which — an empty roster is ordinary, an unreachable ministry is not.
+ *
+ * ★★ Not an error boundary and not a toast. It sits where the table would have
+ * been, because the absence of the table is the thing being explained.
  */
+/**
+ * Reasons a product reader can act on, and therefore sees.
+ *
+ * ★ A blanket hide was wrong. Most of `ESIS_ERROR_LABEL` describes a transport
+ * — "token хүчингүй", "гэрээнд тохирохгүй" — and means nothing to a director.
+ * Two of them do not: an unsynced reference table and a deployment with no
+ * ESIS configured both tell the reader **who to ask**, which is the one thing
+ * a person staring at an empty panel actually wants. `NOT_SYNCED`'s sentence
+ * was written for exactly that (plan `2026-09-16-esis-sync-tiers.md` Task 7)
+ * and hiding it would have thrown the guidance away with the noise.
+ */
+const ACTIONABLE = new Set(["NOT_SYNCED", "NOT_CONFIGURED"]);
+
 export function EsisNoAnswer({
   endpoint,
   errorCode,
   variant,
+  technical = false,
 }: {
   /**
    * ★ `name` is deliberately **not** rendered. Every surface that draws this
    * card already has the service's Mongolian name as its own heading directly
-   * above, and repeating it made the name ambiguous rather than clearer — a
-   * reader seeing "Байгууллагын мэдээлэл" twice has to check whether they are
-   * two things. The path is the part that is not already on the screen.
+   * above, and repeating it made the name ambiguous rather than clearer.
+   *
+   * The path is drawn only when `technical` is set — see the docblock.
    */
   endpoint: { method: string; path: string } | undefined;
   /** `null` when the call succeeded and simply carried no rows. */
   errorCode: string | null;
   variant: "FAILED" | "EMPTY";
+  /**
+   * Show the method and path, and the transport-level reason.
+   *
+   * For a screen whose reader is diagnosing the integration. Off everywhere a
+   * director, teacher, cook or guardian can reach.
+   */
+  technical?: boolean;
 }) {
   const failed = variant === "FAILED";
 
   return (
-    <Card pad="compact" tone={failed ? "peach" : undefined}>
+    <Card
+      pad="roomy"
+      tone={failed ? "peach" : undefined}
+      className={failed ? "" : "bg-canvas shadow-none"}
+    >
       <div className="flex items-start gap-3">
-        {failed ? (
-          <AlertTriangle size={18} className="mt-0.5 shrink-0 text-danger" aria-hidden />
-        ) : null}
+        <span
+          className={
+            failed
+              ? "flex size-10 shrink-0 items-center justify-center rounded-control bg-danger-soft text-danger"
+              : "flex size-10 shrink-0 items-center justify-center rounded-control bg-sky text-sky-ink"
+          }
+        >
+          {failed ? <AlertTriangle size={19} aria-hidden /> : <Inbox size={19} aria-hidden />}
+        </span>
         <div className="min-w-0">
-          <p className="text-body font-semibold text-ink">
-            {failed ? "ESIS-ээс хариу ирсэнгүй" : "ESIS бичлэг буцаасангүй"}
+          <p className="text-lead font-semibold text-ink">
+            {failed ? "Мэдээллийг татаж чадсангүй" : "Мэдээлэл алга байна"}
+          </p>
+
+          <p className="mt-1 text-caption leading-relaxed text-muted">
+            {!failed
+              ? "Энэ хэсэгт одоогоор бүртгэгдсэн мэдээлэл алга байна."
+              : errorCode && ACTIONABLE.has(errorCode)
+                ? ESIS_ERROR_LABEL[errorCode]
+                : "Түр хүлээгээд дахин оролдоно уу. Давтагдвал цэцэрлэгийн удирдлагадаа хэлнэ үү."}
           </p>
 
           {/*
             ★ `break-all`, because a path is one unbroken token and a phone is
-            360 pixels wide. Without it the line pushes the card's own width out
-            and hands the horizontal scroll back to the page — the exact thing
-            `TableShell` was changed to stop doing.
+            360 pixels wide. Without it the line pushes the card's own width
+            out and hands the horizontal scroll back to the page.
           */}
-          {/*
-            ★ Omitted rather than guessed when the payload did not carry it.
-            An invented path is worse than none: it is the value somebody will
-            quote to БМТТ.
-          */}
-          {endpoint ? (
-            <p className="mt-1 break-all font-mono text-caption text-muted">
-              {endpoint.method} {endpoint.path}
-            </p>
+          {technical ? (
+            <>
+              {endpoint ? (
+                <p className="mt-2 break-all font-mono text-caption text-faint">
+                  {endpoint.method} {endpoint.path}
+                </p>
+              ) : null}
+              {failed && !(errorCode && ACTIONABLE.has(errorCode)) ? (
+                <p className="mt-1 text-caption text-muted">
+                  {ESIS_ERROR_LABEL[errorCode ?? "UNKNOWN"] ?? errorCode}
+                </p>
+              ) : null}
+            </>
           ) : null}
-
-          <p className="mt-2 text-caption text-muted">
-            {failed
-              ? (ESIS_ERROR_LABEL[errorCode ?? "UNKNOWN"] ?? errorCode)
-              : "Хүсэлт амжилттай боловч энэ сервис хоосон жагсаалт буцаалаа."}
-          </p>
         </div>
       </div>
     </Card>

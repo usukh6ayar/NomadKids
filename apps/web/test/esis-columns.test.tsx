@@ -88,35 +88,42 @@ describe("ESIS хариу ирээгүй мессеж", () => {
   const endpoint = { method: "GET", path: "/svc/api/hub/v2/students/list" };
 
   /*
-   * ★ The path, because with twenty-nine services in the catalogue it is the
-   * only thing that names one unambiguously — and it is what a person quotes
-   * when they raise the failure with БМТТ.
+   * ★ The default reader is the product's — a director, a teacher, a guardian
+   * — and they get a sentence about their kindergarten, never about a
+   * transport. The path was drawn here until 2026-09-20; the component's
+   * docblock records both instructions and why the later one wins.
    */
-  it("names the endpoint that did not answer", () => {
+  it("says nothing about services, paths or codes by default", () => {
     render(<EsisNoAnswer endpoint={endpoint} errorCode="SCOPE_DENIED" variant="FAILED" />);
 
-    expect(screen.getByText(/ESIS-ээс хариу ирсэнгүй/)).toBeInTheDocument();
-    expect(screen.getByText(/GET \/svc\/api\/hub\/v2\/students\/list/)).toBeInTheDocument();
-    expect(screen.getByText(/эрх олгоогүй/)).toBeInTheDocument();
+    expect(screen.getByText(/Мэдээллийг татаж чадсангүй/)).toBeInTheDocument();
+    expect(screen.queryByText(/svc\/api\/hub/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/эрх олгоогүй/)).not.toBeInTheDocument();
   });
 
   /*
-   * ★ A successful call carrying nothing is a different fact from a failed
-   * one, and says so — but it still names the service, because "nothing here"
-   * raises the same question either way.
+   * ★ A successful call carrying nothing is a different fact from a failed one
+   * and still says so — an empty roster is ordinary, an unreachable ministry is
+   * not, and a reader who cannot tell them apart chases the wrong one.
    */
-  it("separates an empty answer from a failed one, and names it too", () => {
+  it("separates an empty answer from a failed one", () => {
     render(<EsisNoAnswer endpoint={endpoint} errorCode={null} variant="EMPTY" />);
 
-    expect(screen.getByText(/бичлэг буцаасангүй/)).toBeInTheDocument();
-    expect(screen.getByText(/GET \/svc\/api\/hub\/v2\/students\/list/)).toBeInTheDocument();
-    expect(screen.queryByText(/хариу ирсэнгүй/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Мэдээлэл алга байна/)).toBeInTheDocument();
+    expect(screen.queryByText(/татаж чадсангүй/)).not.toBeInTheDocument();
   });
 
-  /* An unlabelled code reads badly, but it reads — better than swallowing it. */
-  it("shows an unmapped code as itself", () => {
-    render(<EsisNoAnswer endpoint={endpoint} errorCode="SCOPE_EXPIRED" variant="FAILED" />);
+  /*
+   * ★ `technical` is the operator's half — the path is what somebody quotes to
+   * БМТТ, and an unlabelled code reads badly but reads, which beats
+   * swallowing it. Under test so the prop cannot quietly become dead code.
+   */
+  it("names the endpoint and the raw code when asked technically", () => {
+    render(
+      <EsisNoAnswer endpoint={endpoint} errorCode="SCOPE_EXPIRED" variant="FAILED" technical />,
+    );
 
+    expect(screen.getByText(/GET \/svc\/api\/hub\/v2\/students\/list/)).toBeInTheDocument();
     expect(screen.getByText("SCOPE_EXPIRED")).toBeInTheDocument();
   });
 });
@@ -183,7 +190,7 @@ describe("ESIS хүснэгтийн хайлт", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Дараах" }));
 
-    const row = screen.getByText("Овог25").closest("tr")!;
+    const row = screen.getByText("Овог25").closest("article")!;
     expect(within(row).getByRole("link")).toHaveAttribute("href", "/children/child-25");
   });
 
@@ -192,5 +199,6 @@ describe("ESIS хүснэгтийн хайлт", () => {
 
     expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Хуудаслалт" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Дэлгэрэнгүй харах" })).not.toBeInTheDocument();
   });
 });

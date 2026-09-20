@@ -81,9 +81,22 @@ function assertLocalOnly(): void {
   }
 }
 
-/** Latin handles, because a Mongolian name has no single obvious latin form. */
+/**
+ * Latin handles, because a Mongolian name has no single obvious latin form.
+ *
+ * ★★★ Prefixed `esis-` since 2026-09-20, and the bug that earned the prefix is
+ * worth keeping written down. The handles were `bagsh`, `bagsh2`, `etseg3`…
+ * — exactly what `seed-demo.ts` had already created for the **demo**
+ * kindergarten. `ensureUser` then found those accounts, took the "already
+ * exists" branch, and bolted a second membership onto them.
+ *
+ * The visible result was a login that landed in the demo kindergarten, which
+ * has no `esisInstitutionId`, so every ESIS panel answered "Цэцэрлэгийн ESIS
+ * байгууллагын код баталгаажаагүй байна" — on a database where the real
+ * kindergarten was mapped and working the whole time.
+ */
 function handle(prefix: string, index: number): string {
-  return index === 0 ? prefix : `${prefix}${index + 1}`;
+  return index === 0 ? `esis-${prefix}` : `esis-${prefix}${index + 1}`;
 }
 
 async function ensureUser(input: {
@@ -98,6 +111,30 @@ async function ensureUser(input: {
     select: { id: true },
   });
   if (existing) {
+    /*
+     * ★ Refuse an account that already belongs somewhere else.
+     *
+     * The old code added a membership unconditionally, which is how six demo
+     * accounts ended up in two kindergartens at once. On a laptop that is a
+     * confusing login; the same routine anywhere else would be handing one
+     * tenant's staff an account in another's, which is the single worst thing
+     * a seed can do quietly.
+     */
+    const elsewhere = await prisma.membership.findFirst({
+      where: {
+        userId: existing.id,
+        deletedAt: null,
+        NOT: { kindergartenId: input.kindergartenId },
+      },
+      select: { kindergartenId: true },
+    });
+    if (elsewhere) {
+      throw new Error(
+        `${input.username} нь өөр цэцэрлэгт бүртгэлтэй байна. ` +
+          "Өөр нэвтрэх нэр сонгоно уу — seed нь хэн нэгний бүртгэлийг хуваалцахгүй.",
+      );
+    }
+
     // The membership may still be missing if a previous run stopped between
     // the two writes.
     await prisma.membership.upsert({
@@ -229,12 +266,14 @@ async function main(): Promise<void> {
 
   const support: { username: string; lastName: string; firstName: string; role: Role }[] = [
     {
-      username: "togooch",
+      // Prefixed like the rest — `togooch` and `nyagtlan` are `seed-demo.ts`'s
+      // and belong to the demo kindergarten.
+      username: handle("togooch", 0),
       lastName: cook?.lastName ?? "Тогооч",
       firstName: cook?.firstName ?? "Демо",
       role: "COOK",
     },
-    { username: "nyagtlan", lastName: "Нягтлан", firstName: "Демо", role: "ACCOUNTANT" },
+    { username: handle("nyagtlan", 0), lastName: "Нягтлан", firstName: "Демо", role: "ACCOUNTANT" },
   ];
 
   for (const person of support) {

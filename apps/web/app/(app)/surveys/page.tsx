@@ -16,6 +16,7 @@ import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
+import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -24,7 +25,6 @@ import { SearchField } from "@/components/ui/search-field";
 import { formatDate } from "@/lib/format";
 import { canManageSurvey, staffSurveysSchema } from "@/lib/survey-access";
 import { cn } from "@/lib/utils";
-import { BackButton } from "@/components/ui/back-button";
 
 const groupsSchema = paginated(groupListItemSchema);
 
@@ -155,15 +155,19 @@ function SurveysHub() {
 
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
-      <header className="flex items-center gap-3">
-        <BackButton href="/dashboard" />
-        <div className="min-w-0">
-          <h1 className="text-title font-semibold leading-heading text-ink">Судалгаа, асуулга</h1>
-          <p className="mt-0.5 text-body text-muted">
-            Эцэг эхийн санал, оролцоог хялбархан аваарай.
-          </p>
-        </div>
-      </header>
+      {/*
+        ★ `PageHeader`, like every other screen — 2026-09-20, at the client's
+        request that this section's header stop looking like its own thing.
+
+        The survey area had drawn five hand-rolled headers: `text-title` where
+        the product uses `text-display`, each with its own `BackButton`, and
+        the results screen centring its title like a phone sheet. Five
+        variations of one component is how a section starts reading as a
+        different product, and the back control is now derived by the header
+        anyway (`useAutoBackHref`), so the hand-rolled version was carrying a
+        second copy of that rule too.
+      */}
+      <PageHeader title="Судалгаа, асуулга" lede="Эцэг эхийн санал, оролцоог хялбархан аваарай." />
 
       {/*
         ★ Side by side on a phone too — 2026-09-10, at the client's request.

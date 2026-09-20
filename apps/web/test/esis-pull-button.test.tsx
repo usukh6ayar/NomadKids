@@ -152,6 +152,10 @@ describe("ESIS-ээс татах", () => {
     const dialog = await openDialog("organization", /Байгууллагын мэдээлэл/);
 
     expect(await within(dialog).findByText("Жинхэнэ цэцэрлэг")).toBeInTheDocument();
+    expect(within(dialog).getByText("Жинхэнэ цэцэрлэг")).toBeVisible();
+    expect(
+      within(dialog).getByText("Техникийн хариу харах").closest("details"),
+    ).not.toHaveAttribute("open");
     expect(within(dialog).queryByText(/ESIS DEMO DATA/)).not.toBeInTheDocument();
     // The invented tenant name is not on screen beside the real one.
     expect(within(dialog).queryByText("Бяцхан нүүдэлчид (жишээ)")).not.toBeInTheDocument();
@@ -217,7 +221,13 @@ describe("ESIS-ээс татах", () => {
 
     const dialog = await openDialog("organization", /Байгууллагын мэдээлэл/);
 
-    expect(await within(dialog).findByText(/эрх олгоогүй/)).toBeInTheDocument();
+    /*
+     * ★ The plain sentence, not "эрх олгоогүй" — 2026-09-20. A refused scope
+     * is the platform operator's to fix; the reader here can try again and
+     * tell somebody, which is what this says. The code and the path stay
+     * available behind `EsisNoAnswer`'s `technical`.
+     */
+    expect(await within(dialog).findByText(/Мэдээллийг татаж чадсангүй/)).toBeInTheDocument();
   });
 
   it("hides the pull control from a teacher", async () => {
