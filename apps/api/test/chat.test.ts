@@ -39,6 +39,9 @@ const server = () => app.getHttpServer();
 
 const groupRoom = (s: Scenario) => `group:${s.group.id}`;
 const staffRoom = (s: Scenario) => `staff:${s.kindergarten.id}`;
+const parentsRoom = (s: Scenario) => `parents:${s.group.id}`;
+/** Sorted, like `DIRECT_ROOM` — the key is a property of the pair. */
+const directRoom = (x: string, y: string) => `direct:${[x, y].sort().join(":")}`;
 
 beforeAll(async () => {
   app = await createTestApp();
@@ -72,12 +75,23 @@ beforeEach(async () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("the room list", () => {
-  it("gives a teacher their group and the staff room, and nothing else", async () => {
+  /*
+   * ★ A teacher gets their group, the staff room, and one private room per
+   * guardian of a child they teach — and **not** the parents' room.
+   *
+   * That last exclusion is the 2026-09-20 feature stated as a rule: "багшгүй
+   * дан эцэг эхийн чат" is a room whose whole definition is the teacher's
+   * absence, so this asserts it by name rather than by counting.
+   */
+  it("gives a teacher their group, the staff room and their pupils' guardians", async () => {
     const res = await authed(request(server()).get("/v1/chat/rooms"), teacherA);
 
     expect(res.status).toBe(200);
     const keys = res.body.map((r: { key: string }) => r.key).sort();
-    expect(keys).toEqual([groupRoom(a), staffRoom(a)].sort());
+    expect(keys).toEqual(
+      [groupRoom(a), staffRoom(a), directRoom(a.teacherUser.id, a.parentUser.id)].sort(),
+    );
+    expect(keys).not.toContain(parentsRoom(a));
   });
 
   /**
@@ -87,11 +101,14 @@ describe("the room list", () => {
    * where teachers talk about the children *to* the families, and a parent
    * reading it is the disclosure this feature could most easily have shipped.
    */
-  it("gives a guardian their child's group room and no staff room", async () => {
+  it("gives a guardian their child's rooms and no staff room", async () => {
     const res = await authed(request(server()).get("/v1/chat/rooms"), parentA);
 
     expect(res.status).toBe(200);
-    expect(res.body.map((r: { key: string }) => r.key)).toEqual([groupRoom(a)]);
+    const keys = res.body.map((r: { key: string }) => r.key).sort();
+    expect(keys).toEqual(
+      [groupRoom(a), parentsRoom(a), directRoom(a.parentUser.id, a.teacherUser.id)].sort(),
+    );
     expect(res.body.every((r: { kind: string }) => r.kind !== "STAFF")).toBe(true);
   });
 
@@ -109,6 +126,8 @@ describe("the room list", () => {
     const keys = res.body.map((r: { key: string }) => r.key);
     expect(keys).not.toContain(groupRoom(b));
     expect(keys).not.toContain(staffRoom(b));
+    expect(keys).not.toContain(parentsRoom(b));
+    expect(keys).not.toContain(directRoom(b.teacherUser.id, b.parentUser.id));
   });
 
   it("counts the people who can see a room", async () => {
@@ -117,6 +136,34 @@ describe("the room list", () => {
     const group = res.body.find((r: { key: string }) => r.key === groupRoom(a));
     // One assigned teacher plus the enrolled child's one guardian.
     expect(group.memberCount).toBe(2);
+  });
+
+  /*
+   * ★ The parents' room counts one where the group room counts two. If this
+   * ever reads 2, the teacher is in a room named for their absence — the
+   * defect this feature is most likely to ship with, and the cheapest place
+   * to catch it.
+   */
+  it("counts the parents' room without its teachers", async () => {
+    const res = await authed(request(server()).get("/v1/chat/rooms"), parentA);
+
+    const parents = res.body.find((r: { key: string }) => r.key === parentsRoom(a));
+    expect(parents.memberCount).toBe(1);
+    expect(parents.kind).toBe("PARENTS");
+  });
+
+  /* A private room is two people, and says so without asking the database. */
+  it("counts a private room as two, and names it after the other person", async () => {
+    const res = await authed(request(server()).get("/v1/chat/rooms"), parentA);
+
+    const direct = res.body.find(
+      (r: { key: string }) => r.key === directRoom(a.parentUser.id, a.teacherUser.id),
+    );
+    expect(direct.memberCount).toBe(2);
+    expect(direct.kind).toBe("DIRECT");
+    expect(direct.groupId).toBeNull();
+    // The teacher's name, not the parent's own.
+    expect(direct.name).toContain(a.teacherUser.firstName);
   });
 });
 
@@ -168,6 +215,78 @@ describe("a room the actor is not in", () => {
       const req = authed(request(server())[route.method](route.path), parentA);
       const res = route.body ? await req.send(route.body) : await req;
       expect(res.status, `${route.method} ${route.path}`).toBe(404);
+    }
+  });
+
+  /*
+   * ★★ **The teacher is refused the parents' room of a group they teach.**
+   *
+   * The sharpest case the 2026-09-20 feature adds, and the one a membership
+   * check would wave through: `teacherA` is assigned to this very group, is in
+   * its group room, and may write to every family in it. The parents' room is
+   * still not theirs — its definition is their absence. If this ever passes,
+   * the feature has silently become "the group room with a different name".
+   */
+  it("a teacher of this very group gets 404 on its parents' room", async () => {
+    for (const route of routes(parentsRoom(a))) {
+      const req = authed(request(server())[route.method](route.path), teacherA);
+      const res = route.body ? await req.send(route.body) : await req;
+      expect(res.status, `${route.method} ${route.path}`).toBe(404);
+    }
+  });
+
+  /* And an admin, who is in no group room at all. */
+  it("an admin gets 404 on a parents' room", async () => {
+    for (const route of routes(parentsRoom(a))) {
+      const req = authed(request(server())[route.method](route.path), adminA);
+      const res = route.body ? await req.send(route.body) : await req;
+      expect(res.status, `${route.method} ${route.path}`).toBe(404);
+    }
+  });
+
+  it("a guardian of another kindergarten gets 404 on a parents' room", async () => {
+    for (const route of routes(parentsRoom(a))) {
+      const req = authed(request(server())[route.method](route.path), parentB);
+      const res = route.body ? await req.send(route.body) : await req;
+      expect(res.status, `${route.method} ${route.path}`).toBe(404);
+    }
+  });
+
+  /*
+   * ★★★ **A private room is refused to everybody but its two people** — and
+   * the third party tested here is not a stranger. `adminA` runs this
+   * kindergarten, may read every child's record in it, and still may not read
+   * a conversation between one parent and one teacher.
+   *
+   * A room key is public-shaped — two uuids a determined person could pair —
+   * so this is the test that makes the key inert on its own.
+   */
+  it("a third person gets 404 on somebody else's private room", async () => {
+    const room = directRoom(a.parentUser.id, a.teacherUser.id);
+
+    for (const session of [adminA, parentB, teacherB]) {
+      for (const route of routes(room)) {
+        const req = authed(request(server())[route.method](route.path), session);
+        const res = route.body ? await req.send(route.body) : await req;
+        expect(res.status, `${route.method} ${route.path}`).toBe(404);
+      }
+    }
+  });
+
+  /*
+   * ★ A pairing that does not exist is refused even though both people do, and
+   * both belong to this kindergarten. `adminA` teaches nobody, so no guardian
+   * is their peer — the room is not "empty", it never existed.
+   */
+  it("a private room between two people with no pairing gets 404", async () => {
+    const room = directRoom(a.parentUser.id, a.adminUser.id);
+
+    for (const session of [parentA, adminA]) {
+      for (const route of routes(room)) {
+        const req = authed(request(server())[route.method](route.path), session);
+        const res = route.body ? await req.send(route.body) : await req;
+        expect(res.status, `${route.method} ${route.path}`).toBe(404);
+      }
     }
   });
 

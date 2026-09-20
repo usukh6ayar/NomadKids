@@ -4293,6 +4293,18 @@ enum ChatRoomKind {
   GROUP
   /// Every teacher and admin of one kindergarten. No guardians.
   STAFF
+  /// One group's families, without its teachers — 2026-09-20, the client:
+  /// "багшгүй дан эцэг эхийн чат". Same membership as GROUP minus the staff
+  /// side, which is why it is a second room rather than a filter: a parent
+  /// asking the others about a birthday present must be able to see who can
+  /// read it, and "the teachers are in here but will not answer" is not a
+  /// thing a room can communicate.
+  PARENTS
+  /// One guardian and one member of staff, privately — "эцэг эх багш руу
+  /// хувиараа бичих". The only room whose membership is two people rather
+  /// than a group's worth, so its `roomKey` carries both user ids
+  /// (`direct:<uuid>:<uuid>`, sorted) and `groupId` is NULL.
+  DIRECT
 }
 
 model ChatMessage {

@@ -55,6 +55,14 @@ export const chatRoomsSchema = roomsSchema;
  * A qualifier is only needed when two rooms would otherwise have the same
  * label (two groups or two kindergarten memberships).
  */
+/** What kind of room this is, for the header line under its name. */
+const ROOM_KIND_LABEL: Record<ChatRoomData["kind"], string> = {
+  GROUP: "Бүлгийн чат",
+  STAFF: "Ажилтны чат",
+  PARENTS: "Эцэг эхчүүдийн чат",
+  DIRECT: "Хувийн чат",
+};
+
 export function chatRoomDisplayName(
   room: ChatRoomData,
   roles: ReadonlySet<Role>,
@@ -64,6 +72,24 @@ export function chatRoomDisplayName(
     const hasSeveralStaffRooms = rooms.filter((candidate) => candidate.kind === "STAFF").length > 1;
     const kindergartenName = room.name.split("·").slice(1).join("·").trim();
     return hasSeveralStaffRooms && kindergartenName ? `Багш нар · ${kindergartenName}` : "Багш нар";
+  }
+
+  /*
+   * ★ A private room is named after the other person, by the API, and the
+   * label must not be rewritten here — "Манай анги" for a conversation with
+   * one named teacher would be actively misleading about who can read it.
+   */
+  if (room.kind === "DIRECT") return room.name;
+
+  /*
+   * ★★ The parents' room, 2026-09-20. The API's name already carries the
+   * group ("Бамбарууш · эцэг эхчүүд"); this shortens it when there is only one
+   * such room to disambiguate, the same way the group room above does.
+   */
+  if (room.kind === "PARENTS") {
+    const hasSeveralParentRooms =
+      rooms.filter((candidate) => candidate.kind === "PARENTS").length > 1;
+    return hasSeveralParentRooms ? room.name : "Эцэг эхчүүд";
   }
 
   const hasSeveralGroupRooms = rooms.filter((candidate) => candidate.kind === "GROUP").length > 1;
@@ -650,9 +676,7 @@ export function ChatRoom({
 
         {detailsOpen ? (
           <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-border-soft bg-canvas px-4 py-2.5 text-caption text-muted">
-            <span className="font-medium text-ink">
-              {room.kind === "GROUP" ? "Бүлгийн чат" : "Ажилтны чат"}
-            </span>
+            <span className="font-medium text-ink">{ROOM_KIND_LABEL[room.kind]}</span>
             <span>{room.memberCount} гишүүн</span>
             <span>{room.unreadCount > 0 ? `${room.unreadCount} уншаагүй` : "Шинэ мессежгүй"}</span>
           </div>

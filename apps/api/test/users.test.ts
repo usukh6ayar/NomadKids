@@ -65,6 +65,31 @@ describe("GET /users", () => {
     expect(ids).toContain(a.parentUser.id);
   });
 
+  /*
+   * ★ `esisPersonId` is what lets `/admin/users` put a row of the ESIS staff
+   * table beside the account it belongs to — 2026-09-20, so a director can
+   * open «Хувийн хэрэг» and record a мэргэшлийн зэрэг against the right
+   * person. It is the only key the two sides share.
+   *
+   * Asserted as "the field is present and carries what was stored", because
+   * the list is the only place it is read and a `select` that quietly drops it
+   * turns the button off with nothing failing.
+   */
+  it("carries esisPersonId, the join to an ESIS staff row", async () => {
+    await db.user.update({
+      where: { id: a.teacherUser.id },
+      data: { esisPersonId: "90000000000042" },
+    });
+
+    const res = await request(server()).get("/v1/users").set("Cookie", adminA.cookies);
+    const teacher = res.body.items.find((u: { id: string }) => u.id === a.teacherUser.id);
+    const parent = res.body.items.find((u: { id: string }) => u.id === a.parentUser.id);
+
+    expect(teacher.esisPersonId).toBe("90000000000042");
+    // Null for an invited account — `createInvitedAccount` never sets one.
+    expect(parent.esisPersonId).toBeNull();
+  });
+
   it("does NOT include users from another kindergarten", async () => {
     const res = await request(server()).get("/v1/users").set("Cookie", adminA.cookies);
     const ids = res.body.items.map((u: { id: string }) => u.id);

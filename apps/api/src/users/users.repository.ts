@@ -60,6 +60,8 @@ export class UsersRepository {
           phone: true,
           lastName: true,
           firstName: true,
+          // The join key to an ESIS staff row — see `adminUserSchema`.
+          esisPersonId: true,
           isActive: true,
           lastLoginAt: true,
           memberships: {
