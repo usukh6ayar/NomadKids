@@ -223,6 +223,44 @@ describe("ESIS мэдээллийн панел", () => {
   });
 
   /*
+   * ★ The rule the client asked for on 2026-09-20: "хэрэглэгч … өөрөө гараар
+   * дарж татмааргүй байна, автоматаар татсан байдаг байгаасай."
+   *
+   * The panel below passes **no** `autoRead` — it takes the default, which is
+   * the thing under test. A director opening a screen with four panels on it
+   * used to press four buttons before seeing anything.
+   */
+  it("reads on its own, with no autoRead and nothing pressed", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: `${ESIS_PATH}/resource`,
+        body: {
+          resource: "organization",
+          source: "LIVE",
+          status: "SUCCEEDED",
+          errorCode: null,
+          count: 1,
+          durationMs: 42,
+          fields: organizationFields,
+          rows: [{ institutionId: "77777", institutionName: "Жинхэнэ цэцэрлэг" }],
+          response: {
+            SUCCESS_CODE: 200,
+            RESPONSE_MESSAGE: "OK",
+            RESULT: [{ institutionId: "77777", institutionName: "Жинхэнэ цэцэрлэг" }],
+          },
+        },
+      },
+      { path: CATALOG_PATH, body: catalog(true) },
+    ]);
+    renderWithProviders(<EsisDataPanel resource="organization" />);
+
+    expect(await screen.findByText("Жинхэнэ цэцэрлэг")).toBeInTheDocument();
+    // And it dates itself, which is the other half of data appearing unasked.
+    expect(await screen.findByText(/Сүүлд татсан:/)).toBeInTheDocument();
+  });
+
+  /*
    * ★ The rule every ESIS surface keeps: the invented tenant is gone the moment
    * a real one arrives, rather than sitting beside it under a quieter label.
    */
@@ -284,6 +322,55 @@ describe("ESIS мэдээллийн панел", () => {
      * `/platform/[id]/esis` is where those identifiers live.
      */
     expect(screen.queryByText(/api-45/)).not.toBeInTheDocument();
+  });
+
+  it("searches ESIS by register only after Enter, then shows the returned record", async () => {
+    const calls = stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: `${ESIS_PATH}/resource`,
+        body: {
+          resource: "studentByRegister",
+          source: "LIVE",
+          status: "SUCCEEDED",
+          errorCode: null,
+          count: 1,
+          durationMs: 12,
+          fields: studentFields,
+          rows: [{ firstName: "Батбаяр", personRegNumber: null }],
+          response: { SUCCESS_CODE: 200, RESPONSE_MESSAGE: "OK", RESULT: [] },
+        },
+      },
+      { path: CATALOG_PATH, body: catalog(true) },
+    ]);
+    renderWithProviders(<EsisDataPanel resource="studentByRegister" />);
+
+    const input = await screen.findByRole("searchbox", { name: "РД (регистрийн дугаар)" });
+    expect(input).toHaveAttribute("placeholder", "РД-ээр сурагч хайх");
+    await userEvent.type(input, "уб11223344");
+    expect(calls.calls.filter((call) => call.url.startsWith(`${ESIS_PATH}/resource`))).toHaveLength(
+      0,
+    );
+
+    await userEvent.keyboard("{Enter}");
+    expect(await screen.findByText("Батбаяр")).toBeInTheDocument();
+    const reads = calls.calls.filter((call) => call.url.startsWith(`${ESIS_PATH}/resource`));
+    expect(reads).toHaveLength(1);
+    expect(reads[0]!.url).toContain("personRegNumber=%D0%A3%D0%91");
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  it("does not claim there is no student when ESIS reading is unavailable", async () => {
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: CATALOG_PATH, body: catalog(false) },
+    ]);
+    renderWithProviders(<EsisDataPanel resource="studentByRegister" />);
+
+    await userEvent.type(await screen.findByRole("searchbox"), "УБ11223344{Enter}");
+    expect(await screen.findByText("Мэдээллийг татаж чадсангүй")).toBeInTheDocument();
+    expect(screen.queryByText("Мэдээлэл алга байна")).not.toBeInTheDocument();
+    expect(calls.filter((call) => call.url.startsWith(`${ESIS_PATH}/resource`))).toHaveLength(0);
   });
 
   /*
@@ -391,7 +478,7 @@ describe("ESIS мэдээллийн панел", () => {
    * cases are the replacement contract: the table shows five columns, the rest
    * of the record is one press away, and no floor is emitted.
    */
-  it("shows at most five columns, however many the service carries", async () => {
+  it("shows a readable summary on each card, with other fields behind its detail", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
       { path: CATALOG_PATH, body: catalog(false) },
@@ -400,14 +487,17 @@ describe("ESIS мэдээллийн панел", () => {
 
     await screen.findByText("Гурилтай шөл");
 
-    const headers = screen.getAllByRole("columnheader").map((cell) => cell.textContent);
-    expect(headers).toEqual(["Код", "Нэр", "Хэмжих нэгж", "Төрөл", "Илчлэг"]);
-    // The sixth and eighth fields exist on the record and not in the table.
-    expect(headers).not.toContain("Уураг");
-    expect(headers).not.toContain("Дараалал");
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getAllByText("Код")).toHaveLength(2);
+    expect(screen.getAllByText("Хэмжих нэгж")).toHaveLength(2);
+    expect(screen.getAllByText("Төрөл")).toHaveLength(2);
+    expect(screen.getAllByText("Илчлэг")).toHaveLength(2);
+    expect(screen.queryByText("Уураг")).not.toBeInTheDocument();
+    expect(screen.queryByText("Дараалал")).not.toBeInTheDocument();
   });
 
-  it("puts no minimum width on the table, so nothing scrolls sideways", async () => {
+  it("keeps cards within the panel without a sideways table", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
       { path: CATALOG_PATH, body: catalog(false) },
@@ -418,25 +508,11 @@ describe("ESIS мэдээллийн панел", () => {
 
     await screen.findByText("Гурилтай шөл");
 
-    const table = container.querySelector("table");
-    // `min-w-0`, never a pixel floor — the assertion is on the *class*, since
-    // jsdom computes no layout to measure.
-    expect(table?.className).not.toMatch(/min-w-\[/);
-    expect(table?.className).toContain("min-w-0");
-
-    /*
-     * ★★ And on the `<table>`, not the Card around it.
-     *
-     * `TableShell`'s `className` lands on the wrapping Card, so `table-fixed`
-     * passed there does nothing — the table falls back to auto layout, the
-     * `truncate` on each cell stops ellipsing and starts *widening*, and the
-     * sideways scroll this whole change removed comes straight back through
-     * `overflow-x-auto`. That was the shipped state until it was looked for;
-     * asserting on the element rather than the component is what makes the
-     * difference visible. `tableClassName` is the prop that lands here.
-     */
-    expect(table?.className).toContain("table-fixed");
-    expect(container.querySelector("[data-ui-table]")?.className).not.toContain("table-fixed");
+    expect(container.querySelector("table")).toBeNull();
+    const cards = container.querySelectorAll("article");
+    expect(cards).toHaveLength(2);
+    expect(cards[0]?.className).toContain("min-w-0");
+    expect(cards[0]?.className).not.toMatch(/min-w-\[/);
   });
 
   it("reveals every field of the row that was pressed", async () => {
@@ -500,6 +576,23 @@ describe("ESIS мэдээллийн панел", () => {
     expect(screen.getAllByRole("button", { name: /Шинэчлэх/ })).toHaveLength(1);
     // One pull button is the measure now that the footer disclaimer is gone —
     // the assertion was always "the nested panel is not a second full panel".
+  });
+
+  it("keeps the detail service reachable when a list has only one record", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: CATALOG_PATH, body: catalog(false) },
+    ]);
+    renderWithProviders(
+      <EsisDataPanel
+        resource="foodProducts"
+        rows={wideRows.slice(0, 1)}
+        detail={{ resources: ["foodKit"], param: { name: "productId", from: "productId" } }}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "Гурилтай шөл" }));
+    expect(await screen.findByText("Иж бүрдэл")).toBeInTheDocument();
   });
 
   /*
