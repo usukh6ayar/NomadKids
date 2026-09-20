@@ -109,6 +109,23 @@ describe("readiness: the ESIS boundary", () => {
    * every PDF blank while reporting success — answered 404. It was unreachable
    * at exactly the moment it exists for. Found on the Datacom VPS, 2026-09-01.
    */
+  /*
+   * ★★ **15 seconds, not vitest's default five.**
+   *
+   * This is the only test in the file that creates a user and logs in, and
+   * both halves hash a password with argon2 — which is expensive on purpose.
+   * Measured alone on 2026-09-20 it takes **4773 ms** against a 5000 ms
+   * budget, so it passes by 227 ms when nothing else is happening and fails
+   * the moment anything is: it was one of the failures in a full run that
+   * afternoon, and it is a plausible member of the family CLAUDE.md §4.4
+   * has been chasing as flake.
+   *
+   * The number is a budget for what the test does, not a workaround. Every
+   * other login in this suite happens in a `beforeEach` with its own hook
+   * timeout; this one is inline because the account it needs — a superadmin
+   * belonging to no kindergarten — is the specific condition under test and
+   * must not be shared with the block around it.
+   */
   it("admits a platform operator who belongs to no kindergarten", async () => {
     const operator = await createUser({ username: uniq("op"), isSuperAdmin: true });
     const session = await login(app, operator.username);
@@ -116,7 +133,7 @@ describe("readiness: the ESIS boundary", () => {
     const res = await authed(request(app.getHttpServer()).get("/v1/health/readiness"), session);
 
     expect(res.status).toBe(200);
-  });
+  }, 15_000);
 
   /**
    * ★ The same rule the ESIS block above is held to, applied to the payment
