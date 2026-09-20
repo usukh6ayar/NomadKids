@@ -217,7 +217,13 @@ describe("ESIS-ээс татах", () => {
 
     const dialog = await openDialog("organization", /Байгууллагын мэдээлэл/);
 
-    expect(await within(dialog).findByText(/эрх олгоогүй/)).toBeInTheDocument();
+    /*
+     * ★ The plain sentence, not "эрх олгоогүй" — 2026-09-20. A refused scope
+     * is the platform operator's to fix; the reader here can try again and
+     * tell somebody, which is what this says. The code and the path stay
+     * available behind `EsisNoAnswer`'s `technical`.
+     */
+    expect(await within(dialog).findByText(/Мэдээллийг татаж чадсангүй/)).toBeInTheDocument();
   });
 
   it("hides the pull control from a teacher", async () => {

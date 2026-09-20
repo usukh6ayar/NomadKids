@@ -217,9 +217,7 @@ describe("ESIS мэдээллийн панел", () => {
     ]);
     renderWithProviders(<EsisDataPanel resource="organization" />);
 
-    expect(
-      await screen.findByRole("button", { name: /ESIS-ээс мэдээллээ татах/ }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Шинэчлэх/ })).toBeInTheDocument();
     expect(screen.queryByText("Бяцхан нүүдэлчид (жишээ)")).toBeNull();
     expect(screen.queryByText("40305")).toBeNull();
   });
@@ -258,7 +256,7 @@ describe("ESIS мэдээллийн панел", () => {
     ]);
     renderWithProviders(<EsisDataPanel resource="organization" />);
 
-    await userEvent.click(await screen.findByRole("button", { name: /ESIS-ээс мэдээллээ татах/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Шинэчлэх/ }));
 
     expect(await screen.findByText("Жинхэнэ цэцэрлэг")).toBeInTheDocument();
     expect(screen.queryByText("Бяцхан нүүдэлчид (жишээ)")).not.toBeInTheDocument();
@@ -499,7 +497,7 @@ describe("ESIS мэдээллийн панел", () => {
      * disclaimer is a page inside a table cell — and there would be one per
      * detail service, per opened row.
      */
-    expect(screen.getAllByRole("button", { name: /ESIS-ээс мэдээллээ татах/ })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /Шинэчлэх/ })).toHaveLength(1);
     // One pull button is the measure now that the footer disclaimer is gone —
     // the assertion was always "the nested panel is not a second full panel".
   });
@@ -620,9 +618,7 @@ describe("ESIS мэдээллийн панел", () => {
     ]);
     renderWithProviders(<EsisDataPanel resource="foodMaterials" />);
 
-    await waitFor(() =>
-      expect(screen.queryByRole("button", { name: /ESIS-ээс мэдээллээ татах/ })).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Шинэчлэх/ })).toBeNull());
     expect(screen.queryByText("Бяцхан нүүдэлчид (жишээ)")).toBeNull();
   });
 
@@ -634,9 +630,7 @@ describe("ESIS мэдээллийн панел", () => {
     ]);
     renderWithProviders(<EsisDataPanel resource="organization" />);
 
-    await waitFor(() =>
-      expect(screen.queryByRole("button", { name: /ESIS-ээс мэдээллээ татах/ })).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Шинэчлэх/ })).toBeNull());
   });
 
   it("explains an upstream refusal instead of showing an empty panel", async () => {
@@ -675,10 +669,18 @@ describe("ESIS мэдээллийн панел", () => {
     ]);
     renderWithProviders(<EsisDataPanel resource="organization" />);
 
-    await userEvent.click(await screen.findByRole("button", { name: /ESIS-ээс мэдээллээ татах/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Шинэчлэх/ }));
 
-    const failure = await screen.findByText(/эрх олгоогүй/);
+    /*
+     * ★ The plain sentence, not "эрх олгоогүй" — 2026-09-20. A refused scope
+     * is something the platform operator fixes; a director reading their own
+     * kindergarten can only try again and tell somebody, which is what this
+     * now says. The code and the path are still available to whoever is
+     * diagnosing, behind `EsisNoAnswer`'s `technical`.
+     */
+    const failure = await screen.findByText(/Мэдээллийг татаж чадсангүй/);
     expect(failure).toBeInTheDocument();
+    expect(screen.queryByText(/эрх олгоогүй/)).toBeNull();
 
     /*
      * ★ **Inverted on 2026-09-14.** The line here read "the demo record stays:
@@ -690,13 +692,8 @@ describe("ESIS мэдээллийн панел", () => {
      * The endpoint is named instead, which is the thing they can act on.
      */
     expect(screen.queryByText("Бяцхан нүүдэлчид (жишээ)")).toBeNull();
-    /*
-     * `getAllByText`: the panel names the endpoint in two places on a failed
-     * read — the `EsisNoAnswer` card where the table would have been, and the
-     * request/response block below it. Both are the point; pinning one would
-     * break on the next layout change without protecting anything.
-     */
-    expect(screen.getAllByText(/\/svc\/api\/hub\/v2\/organization/).length).toBeGreaterThan(0);
+    // And the path is nowhere on a product screen — see the note above.
+    expect(screen.queryByText(/\/svc\/api\/hub\/v2\/organization/)).toBeNull();
   });
 
   /*
@@ -733,11 +730,11 @@ describe("ESIS мэдээллийн панел", () => {
     ]);
     renderWithProviders(<EsisDataPanel resource="organization" />);
 
-    await userEvent.click(await screen.findByRole("button", { name: /ESIS-ээс мэдээллээ татах/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Шинэчлэх/ }));
 
     expect(await screen.findByText("Жинхэнэ цэцэрлэг")).toBeInTheDocument();
     // The sweep's own date, not the moment this browser happened to press the button.
-    expect(screen.getByText(/Сүүлд шинэчилсэн:/)).toBeInTheDocument();
+    expect(screen.getByText(/Сүүлд татсан:/)).toBeInTheDocument();
   });
 
   /*
@@ -769,7 +766,7 @@ describe("ESIS мэдээллийн панел", () => {
     ]);
     renderWithProviders(<EsisDataPanel resource="organization" />);
 
-    await userEvent.click(await screen.findByRole("button", { name: /ESIS-ээс мэдээллээ татах/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Шинэчлэх/ }));
 
     expect(await screen.findByText(/синк хийгдээгүй байна/)).toBeInTheDocument();
     expect(screen.queryByRole("table")).toBeNull();

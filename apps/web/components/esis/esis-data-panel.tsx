@@ -1,8 +1,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CloudDownload, Database } from "lucide-react";
-import { useState } from "react";
+import { CloudDownload, Database, Search } from "lucide-react";
+import { useState, type FormEvent } from "react";
 import {
   esisScopedCatalogSchema,
   esisResourceReadSchema,
@@ -89,7 +89,7 @@ export function EsisDataPanel({
   description,
   headingId,
   askForParams = true,
-  autoRead = false,
+  autoRead = true,
   actionLabel,
   detail,
   compact = false,
@@ -147,7 +147,23 @@ export function EsisDataPanel({
   title?: string;
   description?: string;
   headingId?: string;
-  /** Calls the role-authorised ESIS reader as soon as its catalog is ready. */
+  /**
+   * Calls the role-authorised ESIS reader as soon as its catalog is ready.
+   *
+   * ★ **Default `true` since 2026-09-20**, at the client's instruction:
+   * "хэрэглэгч нэвтрээд өөрсдийн гараар бүх ESIS-ээс ирж байгаа хүснэгтүүдийг
+   * өөрөө гараар дарж татмааргүй байна, автоматаар татсан байдаг байгаасай."
+   *
+   * It defaulted to `false`, so a director opening a screen with four panels
+   * on it pressed four buttons before seeing anything — and the panel's own
+   * docblock already argued that values present on first paint are what make
+   * the screen read as connected. The default had simply never caught up with
+   * the argument.
+   *
+   * A panel that still needs a parameter does not fire: the read is gated on
+   * `missing.length === 0`, so "РД-ээр хайх" waits for a register number
+   * rather than calling the ministry with an empty one.
+   */
   autoRead?: boolean;
   /** Overrides the generic pull command for a task-specific action. */
   actionLabel?: string;
@@ -201,6 +217,7 @@ export function EsisDataPanel({
 }) {
   const { primaryKindergartenId } = useSession();
   const [entered, setEntered] = useState<Record<string, string>>({});
+  const [searchedRegister, setSearchedRegister] = useState("");
   const [pulled, setPulled] = useState(false);
   /** When the reader last pressed "татах" for a **live** service — see `pull()`. */
   const [pulledAt, setPulledAt] = useState<string | null>(null);
@@ -235,7 +252,12 @@ export function EsisDataPanel({
    * complete on first paint. It never pre-fills a personal identifier — see
    * `esis-params.ts`.
    */
-  const value = (name: string) => entered[name] ?? params?.[name] ?? "";
+  const registerSearch =
+    resource === "studentByRegister" && askForParams && !params?.personRegNumber;
+  const value = (name: string) =>
+    registerSearch && name === "personRegNumber"
+      ? searchedRegister
+      : (entered[name] ?? params?.[name] ?? "");
   const missing = required.filter((name) => !value(name));
 
   /*
@@ -359,19 +381,38 @@ export function EsisDataPanel({
     setPulledAt(new Date().toLocaleString("mn-MN"));
   }
 
+  function submitRegisterSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const number = (entered.personRegNumber ?? "").trim().toUpperCase();
+    if (!number || read.isFetching) return;
+    if (number === searchedRegister) {
+      void pull();
+    } else {
+      // The request key changes only on submit, never on each keystroke.
+      setSearchedRegister(number);
+      if (!catalog.data?.canRead) void catalog.refetch();
+    }
+  }
+
   /*
-   * ★ **The stored copy's own date, not the moment somebody pressed "татах"**
-   * — 2026-09-17, plan Task 7. `pulledAt` says when this browser last asked;
-   * for a reference resource that is not the fact worth showing, because the
-   * answer came from `EsisReference` and can be weeks old regardless of when
-   * it was read just now. `read.data.syncedAt` is when the sweep itself ran,
-   * which is the date an operator comparing this table against the ministry's
-   * own catalogue actually needs.
+   * When these rows were fetched, in one value.
+   *
+   * ★ **The stored copy's own date first** — 2026-09-17, plan Task 7. For a
+   * reference resource the answer came from `EsisReference` and can be weeks
+   * old regardless of when this browser read it, so `syncedAt` — when the
+   * sweep itself ran — is the date that actually describes the rows.
+   *
+   * ★★ Then `dataUpdatedAt`, and `pulledAt` last. Since the panels read
+   * automatically (2026-09-20) most reads happen without a press, so a date
+   * derived only from pressing would be blank exactly when the reader most
+   * needs to know how fresh this is.
    */
-  const storeSyncedAt =
+  const lastFetchedAt =
     read.data?.source === "STORE" && read.data.syncedAt
       ? new Date(read.data.syncedAt).toLocaleString("mn-MN")
-      : null;
+      : read.dataUpdatedAt
+        ? new Date(read.dataUpdatedAt).toLocaleString("mn-MN")
+        : (pulledAt ?? null);
 
   return (
     <section aria-label={title ?? endpoint.name} className={cn("w-full", className)}>
@@ -387,26 +428,68 @@ export function EsisDataPanel({
             <p className="mt-0.5 text-body text-muted">{description ?? endpoint.usage}</p>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <Badge tone="sky">{rows.length} бичлэг</Badge>
-            <Button
+            {(!registerSearch || searchedRegister) && <Badge tone="sky">{rows.length} бичлэг</Badge>}
+            {!registerSearch ? <Button
               size="sm"
               variant="secondary"
               disabled={read.isFetching || missing.length > 0}
               onClick={() => void pull()}
             >
               <CloudDownload aria-hidden />
+              {/*
+                ★ "Шинэчлэх", not "ESIS-ээс мэдээллээ татах" — the panels fetch
+                on their own now, so a button promising to fetch would be
+                describing something that already happened. What is left for it
+                to do is ask again.
+
+                A panel still waiting on a parameter keeps its own verb: there
+                the press really is what starts the call.
+              */}
               {read.isFetching
                 ? resource === "studentByRegister"
                   ? "Хайж байна…"
                   : "Татаж байна…"
-                : autoRead && read.data
-                  ? "Дахин татах"
-                  : (actionLabel ?? "ESIS-ээс мэдээллээ татах")}
-            </Button>
+                : missing.length > 0 || asks.length > 0
+                  ? (actionLabel ?? "Хайх")
+                  : "Шинэчлэх"}
+            </Button> : null}
           </div>
         </div>
 
-        {asks.length > 0 ? (
+        {registerSearch ? (
+          <div>
+            <form onSubmit={submitRegisterSearch} role="search" className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <Field label="РД (регистрийн дугаар)" labelHidden className="min-w-0 flex-1">
+                {({ id }) => (
+                  <div className="relative">
+                    <Search size={19} aria-hidden className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
+                    <Input
+                      id={id}
+                      type="search"
+                      placeholder="РД-ээр сурагч хайх"
+                      autoComplete="off"
+                      autoCapitalize="characters"
+                      maxLength={32}
+                      value={entered.personRegNumber ?? ""}
+                      onChange={(event) =>
+                        setEntered((current) => ({
+                          ...current,
+                          personRegNumber: event.target.value.toUpperCase(),
+                        }))
+                      }
+                      className="pl-12"
+                    />
+                  </div>
+                )}
+              </Field>
+              <Button type="submit" disabled={!entered.personRegNumber?.trim() || read.isFetching}>
+                <Search aria-hidden />
+                {read.isFetching ? "Хайж байна…" : "Хайх"}
+              </Button>
+            </form>
+            <p className="mt-2 text-caption text-muted">Регистрийн дугаарыг ESIS рүү илгээх ба хадгалахгүй.</p>
+          </div>
+        ) : asks.length > 0 ? (
           <div>
             <div className="grid gap-3 sm:grid-cols-2">
               {asks.map((name) => (
@@ -450,7 +533,13 @@ export function EsisDataPanel({
           <EsisNoAnswer endpoint={endpoint} errorCode={read.data.errorCode} variant="FAILED" />
         ) : null}
 
-        {rows.length === 0 ? (
+        {registerSearch && !searchedRegister ? (
+          <p className="rounded-row bg-canvas px-4 py-5 text-body text-muted">
+            Сурагчийн регистрийн дугаарыг оруулаад хайлтаа эхлүүлнэ үү.
+          </p>
+        ) : read.isFetching && !read.data && rows.length === 0 ? (
+          <LoadingState rows={2} />
+        ) : rows.length === 0 ? (
           /*
            * ★ Only once. A failed read has no rows either, so without this the
            * screen stacked "хариу өгсөнгүй" on top of "бичлэг буцаасангүй" and
@@ -489,9 +578,17 @@ export function EsisDataPanel({
           />
         )}
 
-        {storeSyncedAt || pulledAt ? (
+        {/*
+          ★ Always shown once anything has been read — 2026-09-20, the other
+          half of "автоматаар татсан байдаг байгаасай": data that appears
+          without being asked for needs a date, or the reader cannot tell this
+          morning's roster from last month's. `storeSyncedAt` wins when the
+          rows came from the stored copy, because the sweep's date is the one
+          that describes them; `pulledAt` is when this browser last asked.
+        */}
+        {lastFetchedAt ? (
           <p className="border-t border-border-soft pt-4 text-caption text-muted">
-            Сүүлд шинэчилсэн: {storeSyncedAt ?? pulledAt}
+            Сүүлд татсан: {lastFetchedAt}
           </p>
         ) : null}
       </Card>
