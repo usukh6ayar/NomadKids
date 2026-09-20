@@ -1420,3 +1420,276 @@ describe("GET /kindergartens/:id/esis/coverage", () => {
     expect((res.body as Buffer).subarray(0, 2).toString()).toBe("PK");
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The roster import — ESIS's groups and children, into our own records
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 2026-09-20, the client: "esis ees shuud buleg bolon buleg dotorh huuhduud ni
+ * irehgui ymuu? tged irwel shuud hadgalchmaar baina."
+ *
+ * ★ The import writes `Group`, `Child` and `Enrollment` — the only ESIS read
+ * in the product that creates child records. So the §4.1 three are not a
+ * formality here: a route that can mint children in the wrong tenant is the
+ * worst defect this codebase could ship.
+ *
+ * ★★ **Idempotence is the safety property**, because the client asked for no
+ * preview step. If a second run duplicates anything, the feature is unsafe to
+ * press twice and there is nothing else standing between it and a doubled
+ * roster.
+ */
+describe("POST /kindergartens/:id/esis/roster-import", () => {
+  const url = (kindergartenId: string) => `/v1/kindergartens/${kindergartenId}/esis/roster-import`;
+
+  const GROUP_ROW = {
+    studentGroupId: 100006351517832,
+    studentGroupName: "ахлах бүлэг",
+    academicLevel: "17",
+  };
+  const CHILD_ROW = {
+    personId: 9425579614258,
+    lastName: "Батаа",
+    firstName: "Номин",
+    dateOfBirth: "2021-03-04",
+    genderCode: "F",
+    studentGroupId: 100006351517832,
+    actionDate: "2026-05-14",
+  };
+
+  /** The shape `EsisService.read` is mocked with for this block. */
+  const rosterReads = (groups: unknown[], students: unknown[]) =>
+    read.mockImplementation(async (key: string) => ({
+      data: key === "groups" ? groups : key === "students" ? students : [organizationRow],
+      status: 200,
+      durationMs: 9,
+    }));
+
+  async function withCurrentYear(kindergartenId: string) {
+    await db.schoolYear.updateMany({ where: { kindergartenId }, data: { isCurrent: false } });
+    return db.schoolYear.create({
+      data: {
+        kindergartenId,
+        name: `2026-2027-${uniq()}`,
+        startsOn: new Date("2026-09-01"),
+        endsOn: new Date("2027-06-01"),
+        isCurrent: true,
+      },
+    });
+  }
+
+  it("creates the group, the child and the enrolment that joins them", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.groups.created).toBe(1);
+    expect(res.body.children.created).toBe(1);
+    expect(res.body.enrollments.created).toBe(1);
+
+    const group = await db.group.findFirst({
+      where: { kindergartenId: a.kindergarten.id, esisGroupId: String(GROUP_ROW.studentGroupId) },
+    });
+    expect(group?.name).toBe("ахлах бүлэг");
+    // ESIS level 17 "Ахлах" is this product's MIDDLE — the two scales are off
+    // by one and the mapping is by code, never by name.
+    expect(group?.ageBand).toBe("MIDDLE");
+
+    const child = await db.child.findFirst({
+      where: { kindergartenId: a.kindergarten.id, esisPersonId: String(CHILD_ROW.personId) },
+    });
+    expect(child?.firstName).toBe("Номин");
+
+    const enrollment = await db.enrollment.findFirst({ where: { childId: child!.id } });
+    expect(enrollment?.groupId).toBe(group!.id);
+    // ESIS's own actionDate, not the school year's September start.
+    expect(enrollment?.startedOn.toISOString().slice(0, 10)).toBe("2026-05-14");
+  });
+
+  /*
+   * ★★★ The rule the whole feature rests on. Pressed twice, nothing doubles.
+   */
+  it("is idempotent — a second run creates nothing", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+
+    await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+    const second = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(second.status).toBe(200);
+    expect(second.body.groups.created).toBe(0);
+    expect(second.body.children.created).toBe(0);
+    expect(second.body.enrollments.created).toBe(0);
+
+    /*
+     * ★ Counted by the ESIS key, not by tenant. `createScenario` brings its own
+     * group and its own child, so a tenant-wide count would be asserting the
+     * fixture as much as the import — and would pass for the wrong reason the
+     * day the fixture changes.
+     */
+    expect(
+      await db.group.count({
+        where: {
+          kindergartenId: a.kindergarten.id,
+          esisGroupId: String(GROUP_ROW.studentGroupId),
+        },
+      }),
+    ).toBe(1);
+    expect(
+      await db.child.count({
+        where: { kindergartenId: a.kindergarten.id, esisPersonId: String(CHILD_ROW.personId) },
+      }),
+    ).toBe(1);
+  });
+
+  /*
+   * ★ A group the director typed by hand is adopted, not duplicated —
+   * `@@unique([schoolYearId, name])` would refuse a second one anyway, so the
+   * alternative to adopting is failing the whole import on a constraint.
+   */
+  it("adopts a group of the same name rather than colliding with it", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    const year = await withCurrentYear(a.kindergarten.id);
+    const byHand = await db.group.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        schoolYearId: year.id,
+        name: "ахлах бүлэг",
+        ageBand: "JUNIOR",
+      },
+    });
+    rosterReads([GROUP_ROW], []);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.groups.created).toBe(0);
+    expect(res.body.groups.updated).toBe(1);
+
+    const adopted = await db.group.findUniqueOrThrow({ where: { id: byHand.id } });
+    expect(adopted.esisGroupId).toBe(String(GROUP_ROW.studentGroupId));
+    expect(await db.group.count({ where: { schoolYearId: year.id } })).toBe(1);
+  });
+
+  /*
+   * ★★ A level this product has no band for is skipped **and named**. Guessing
+   * one would file somebody else's children under an invented age.
+   */
+  it("skips a group whose ESIS level maps to no age band, and names it", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+    rosterReads(
+      [{ ...GROUP_ROW, academicLevel: "99", studentGroupName: "шинэ бүлэг" }],
+      [CHILD_ROW],
+    );
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.groups.created).toBe(0);
+    expect(res.body.groups.skipped).toEqual(["шинэ бүлэг"]);
+    // The child still arrives — they can be found and placed by hand — but
+    // nothing pretends to know their group.
+    expect(res.body.children.created).toBe(1);
+    expect(res.body.enrollments.created).toBe(0);
+    expect(res.body.enrollments.unplaced).toEqual(["Батаа Номин"]);
+  });
+
+  /*
+   * ★★★ Never removes. A child ESIS has stopped listing stays exactly as they
+   * are — leaving is a decision for a director on the child's own screen.
+   */
+  it("leaves a child ESIS no longer lists untouched", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+    await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    rosterReads([GROUP_ROW], []);
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(200);
+    const child = await db.child.findFirst({
+      where: { kindergartenId: a.kindergarten.id, esisPersonId: String(CHILD_ROW.personId) },
+    });
+    expect(child?.deletedAt).toBeNull();
+    expect(await db.enrollment.count({ where: { childId: child!.id, status: "ACTIVE" } })).toBe(1);
+  });
+
+  /*
+   * ★ Refused before a single ESIS read when there is no year to file anything
+   * under, and the message names the screen that fixes it.
+   */
+  it("refuses with 409 when no school year is current", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await db.schoolYear.updateMany({
+      where: { kindergartenId: a.kindergarten.id },
+      data: { isCurrent: false },
+    });
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.detail).toMatch(/Хичээлийн жил/);
+    expect(await db.group.count({ where: { esisGroupId: String(GROUP_ROW.studentGroupId) } })).toBe(
+      0,
+    );
+  });
+
+  // ── §4.1, on the one ESIS route that creates child records ──────────────
+
+  it("returns 404 to an admin of another kindergarten, and writes nothing", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminB).send({});
+
+    expect(res.status).toBe(404);
+    // Nothing the import would have written exists — the scenario's own child
+    // is not part of this claim.
+    expect(
+      await db.child.count({
+        where: { kindergartenId: a.kindergarten.id, esisPersonId: String(CHILD_ROW.personId) },
+      }),
+    ).toBe(0);
+  });
+
+  it("returns 404 to a teacher of this very kindergarten", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), teacherA).send({});
+
+    expect(res.status).toBe(404);
+    expect(
+      await db.child.count({
+        where: { kindergartenId: a.kindergarten.id, esisPersonId: String(CHILD_ROW.personId) },
+      }),
+    ).toBe(0);
+  });
+
+  it("returns 404 to a guardian", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), parentA).send({});
+
+    expect(res.status).toBe(404);
+  });
+
+  /* An unmapped kindergarten has no institution to read, and says 404. */
+  it("returns 404 when the kindergarten is not mapped to ESIS", async () => {
+    await withCurrentYear(a.kindergarten.id);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(404);
+  });
+});
