@@ -2892,6 +2892,19 @@ export const adminUserSchema = z.object({
   phone: z.string().nullish(),
   lastName: z.string(),
   firstName: z.string(),
+  /**
+   * The ministry's id for this person, when we hold one.
+   *
+   * ★ Added 2026-09-20 so `/admin/users` can put a row of the ESIS staff table
+   * next to the account it belongs to — `esisPersonId` is the only key the two
+   * share, and `StaffRecord` hangs off `User.id`, which an ESIS row has no way
+   * to reach on its own.
+   *
+   * ★★ Null for anybody invited rather than self-registered
+   * (`createInvitedAccount` never sets it), which is why the screen treats its
+   * absence as "no file to open" instead of an error.
+   */
+  esisPersonId: z.string().nullish(),
   isActive: z.boolean().nullish(),
   lastLoginAt: z.string().nullish(),
   memberships: z
@@ -4460,7 +4473,17 @@ export type RosterSummary = z.infer<typeof rosterSummarySchema>;
  * the types live: there is no assistant, no generated reply, no model call.
  * These are messages people typed, in rooms they already belong to.
  */
-export const chatRoomKindSchema = z.enum(["GROUP", "STAFF"]);
+/**
+ * ★ Four kinds since 2026-09-20, at the client's request. `PARENTS` is a
+ * group's families **without** its teachers, and `DIRECT` is one guardian and
+ * one member of staff privately.
+ *
+ * The screen needs the kind rather than inferring from the key: a `DIRECT`
+ * room is named after the other person and shows no member count, and a
+ * `PARENTS` room has to be distinguishable from the `GROUP` room of the same
+ * group, which it sits next to in the list.
+ */
+export const chatRoomKindSchema = z.enum(["GROUP", "STAFF", "PARENTS", "DIRECT"]);
 export type ChatRoomKind = z.infer<typeof chatRoomKindSchema>;
 
 /**
