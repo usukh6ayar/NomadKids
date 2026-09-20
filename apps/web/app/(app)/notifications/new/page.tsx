@@ -28,6 +28,7 @@ import { ImagePlus, X } from "lucide-react";
 import { ACCEPTED_TYPES, MAX_UPLOAD_BYTES } from "@/components/media/photo-upload";
 import { RequireRole } from "@/components/shell/require-role";
 import { cn } from "@/lib/utils";
+import { shrinkIfTooLarge } from "@/lib/image-shrink";
 
 /** The ceiling, in the unit the copy states it in. */
 const MAX_UPLOAD_MB = MAX_UPLOAD_BYTES / 1024 / 1024;
@@ -177,11 +178,21 @@ function ComposeNotice() {
   const errors = fieldErrors(publishAll.error);
   const busy = publishAll.isPending;
 
-  function addFiles(picked: FileList | null) {
+  async function addFiles(picked: FileList | null) {
     if (!picked?.length) return;
     setFileError(null);
     const accepted: { file: File; url: string }[] = [];
-    for (const file of Array.from(picked)) {
+
+    /*
+     * ★ Shrunk before it is measured — 2026-09-20. A phone shoots 8–12 MB
+     * frames, so refusing past the ceiling meant refusing ordinary
+     * photographs. Anything already under it is passed through untouched.
+     */
+    const chosen = await Promise.all(
+      Array.from(picked).map((file) => shrinkIfTooLarge(file, MAX_UPLOAD_BYTES)),
+    );
+
+    for (const file of chosen) {
       if (file.size > MAX_UPLOAD_BYTES) {
         setFileError(`"${file.name}" хэт том байна. Дээд хэмжээ ${MAX_UPLOAD_MB} MB.`);
         continue;
@@ -297,7 +308,7 @@ function ComposeNotice() {
               accept={ACCEPTED_TYPES}
               multiple
               className="sr-only"
-              onChange={(e) => addFiles(e.target.files)}
+              onChange={(e) => void addFiles(e.target.files)}
             />
 
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">

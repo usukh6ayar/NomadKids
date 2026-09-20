@@ -9,6 +9,7 @@ import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { ACCEPTED_TYPES, MAX_UPLOAD_BYTES } from "@/components/media/photo-upload";
 import { useToast } from "@/components/ui/toast";
+import { shrinkIfTooLarge } from "@/lib/image-shrink";
 
 const MAX_MB = MAX_UPLOAD_BYTES / 1024 / 1024;
 
@@ -87,10 +88,17 @@ export function ChildPhotoButton({ childId, childName }: { childId: string; chil
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  function onPick(files: FileList | null) {
-    const file = files?.[0];
+  async function onPick(files: FileList | null) {
+    const picked = files?.[0];
     if (inputRef.current) inputRef.current.value = "";
-    if (!file) return;
+    if (!picked) return;
+
+    /*
+     * ★ Shrunk before it is measured — 2026-09-20. A phone shoots 8–12 MB
+     * frames, so refusing past the ceiling meant refusing ordinary
+     * photographs. Anything already under it is passed through untouched.
+     */
+    const file = await shrinkIfTooLarge(picked, MAX_UPLOAD_BYTES);
 
     if (file.size > MAX_UPLOAD_BYTES) {
       toast.error(`Зураг хэт том байна. Дээд хэмжээ ${MAX_MB} MB.`);
@@ -108,7 +116,7 @@ export function ChildPhotoButton({ childId, childName }: { childId: string; chil
         accept={ACCEPTED_TYPES}
         className="sr-only"
         disabled={change.isPending}
-        onChange={(e) => onPick(e.target.files)}
+        onChange={(e) => void onPick(e.target.files)}
       />
       {/*
         `-bottom-1 -right-1` so the badge overlaps the avatar's edge rather than
