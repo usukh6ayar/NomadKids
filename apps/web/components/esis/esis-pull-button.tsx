@@ -13,6 +13,7 @@ import {
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { EsisNoAnswer } from "@/components/esis/esis-no-answer";
+import { EsisRawResponse } from "@/components/esis/esis-response";
 import { EsisRowValues, esisSampleColumns } from "@/components/esis/esis-rows";
 import { ESIS_PARAM_LABEL, esisApiIdLabel } from "@/components/esis/esis-params";
 import { errorMessage } from "@/lib/api/errors";
@@ -194,8 +195,6 @@ function EsisPullDialog({
 
       {endpoint ? (
         <div className="flex flex-col gap-5">
-          <EndpointSummary endpoint={endpoint} />
-
           {required.length > 0 ? (
             <Card pad="compact" tone="sky">
               <p className="text-body font-medium text-ink">ESIS хүсэлтийн параметр</p>
@@ -219,25 +218,23 @@ function EsisPullDialog({
             </Card>
           ) : null}
 
-          {read.isPending && ready ? <LoadingState rows={3} /> : null}
-          {read.isError ? (
+          {read.isPending && ready ? (
+            <LoadingState rows={3} />
+          ) : read.isError ? (
             <p
               role="alert"
               className="rounded-control bg-danger-soft px-4 py-3 text-body text-danger"
             >
               {errorMessage(read.error)}
             </p>
-          ) : null}
-          {/*
-            ★ Live rows or the sample, never both. The sample exists so the
-            screen can be *shown* before a token is issued; the moment ESIS
-            answers it is gone, so nothing invented can sit beside something
-            real and be read as the same kind of thing.
-          */}
-          {read.data ? (
+          ) : read.data ? (
             <ReadResult result={read.data} endpoint={endpoint} />
           ) : (
-            <PendingResult endpoint={endpoint} />
+            <PendingResult
+              endpoint={endpoint}
+              canRead={Boolean(catalog.data?.canRead)}
+              missing={missing.length}
+            />
           )}
 
           {/*
@@ -248,11 +245,19 @@ function EsisPullDialog({
             vanish when there is something real to show. A rule with an
             exception on the one screen that matters is not a rule.
           */}
-          <FieldCatalog
-            fields={endpoint.fields}
-            note={endpoint.note}
-            showSamples={read.data?.status !== "SUCCEEDED"}
-          />
+          <details className="rounded-row border border-border-soft bg-canvas">
+            <summary className="flex min-h-11 cursor-pointer items-center px-4 py-2 text-caption font-semibold text-muted hover:text-ink">
+              Сервисийн дэлгэрэнгүй
+            </summary>
+            <div className="flex flex-col gap-5 border-t border-border-soft p-4">
+              <EndpointSummary endpoint={endpoint} />
+              <FieldCatalog
+                fields={endpoint.fields}
+                note={endpoint.note}
+                showSamples={read.data?.status !== "SUCCEEDED"}
+              />
+            </div>
+          </details>
         </div>
       ) : null}
     </FormDialog>
@@ -303,7 +308,15 @@ function EndpointSummary({ endpoint }: { endpoint: EsisScopedCatalog["endpoints"
  * a sentence saying nothing has been read yet. The reader presses the button to
  * find out what ESIS actually holds.
  */
-function PendingResult({ endpoint }: { endpoint: EsisScopedCatalog["endpoints"][number] }) {
+function PendingResult({
+  endpoint,
+  canRead,
+  missing,
+}: {
+  endpoint: EsisScopedCatalog["endpoints"][number];
+  canRead: boolean;
+  missing: number;
+}) {
   const outputs = endpoint.fields.filter((field) => field.io === "OUTPUT" && field.ingested);
 
   return (
@@ -312,11 +325,16 @@ function PendingResult({ endpoint }: { endpoint: EsisScopedCatalog["endpoints"][
         <h3 id="esis-pull-sample" className="text-body font-semibold text-ink">
           Хараахан татаагүй байна
         </h3>
-        <Badge tone="sun">Live хариу хүлээгдэж байна</Badge>
       </div>
       <p className="text-caption text-muted">
-        Дээрх товчийг дарж ESIS-ээс татна. Энэ сервис амжилттай хариулбал {outputs.length} талбар
-        ирнэ; талбарын нэр нь ESIS developer portal-оос баталгаажсан.
+        {!canRead
+          ? "ESIS холболт одоогоор бэлэн биш байна. Цэцэрлэгийн удирдлагадаа мэдэгдэнэ үү."
+          : missing > 0
+            ? "Дээрх шаардлагатай талбаруудыг бөглөхөд ESIS-ээс мэдээлэл татна."
+            : "ESIS-ээс мэдээлэл ирэхийг хүлээж байна."}
+      </p>
+      <p className="mt-2 text-caption text-faint">
+        Энэ сервисийн {outputs.length} талбарын мэдээллийг сервисийн дэлгэрэнгүй хэсгээс харж болно.
       </p>
     </section>
   );
@@ -341,27 +359,11 @@ function ReadResult({
         <h3 id="esis-pull-rows" className="text-body font-semibold text-ink">
           Ирсэн мэдээлэл
         </h3>
-        <Badge tone="mint">LIVE</Badge>
+        <Badge tone={result.source === "STORE" ? "sky" : "mint"}>
+          {result.source === "STORE" ? "Синк хийсэн мэдээлэл" : "Шууд ирсэн"}
+        </Badge>
         <Badge tone="sky">{result.count} бичлэг</Badge>
-        {result.durationMs === null ? null : <Badge tone="sky">{result.durationMs} мс</Badge>}
       </div>
-
-      {/*
-        ★ The envelope, and it says so — 2026-09-14.
-        `RESULT` carries the first few records rather than every one: this
-        block answers "what shape does ESIS reply in?", and the table below
-        answers "what did it send?". Naming the counts is what keeps a short
-        `RESULT` from reading as a short response.
-      */}
-      <p className="mb-2 text-body font-semibold text-ink">
-        Response JSON{" "}
-        <span className="font-normal text-caption text-muted">
-          — бүтцийн жишээ: {result.response.RESULT.length} / {result.count} бичлэг
-        </span>
-      </p>
-      <pre className="mb-4 max-h-[420px] overflow-auto rounded-control border border-border bg-ink p-4 font-mono text-caption leading-6 text-white">
-        <code>{JSON.stringify(result.response, null, 2)}</code>
-      </pre>
 
       {result.rows.length === 0 ? (
         <EsisNoAnswer endpoint={endpoint} errorCode={null} variant="EMPTY" />
@@ -373,6 +375,12 @@ function ReadResult({
           Эхний {result.rows.length} мөрийг харуулав. Бүрэн импорт нь тусдаа алхам.
         </p>
       ) : null}
+      <div className="mt-4">
+        <EsisRawResponse
+          response={result.response}
+          note={`Бүтцийн жишээ: ${result.response.RESULT.length} / ${result.count} бичлэг`}
+        />
+      </div>
     </section>
   );
 }

@@ -30,12 +30,11 @@ import { formatRelative } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { esisApiIdLabel } from "@/components/esis/esis-params";
 import { EsisRowValues, esisSampleColumns } from "@/components/esis/esis-rows";
-import { PageHeader } from "@/components/shell/app-shell";
 import { RequireSuperAdmin } from "@/components/shell/require-role";
+import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader, SunkenPanel } from "@/components/ui/card";
-import { IconChip } from "@/components/ui/icon-chip";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { TableShell, Td, Th } from "@/components/ui/table";
 
@@ -159,7 +158,7 @@ function EsisIntegration() {
   });
 
   const header = (
-    <PageHeader
+    <PlatformPageHeading
       /*
        * ★ Explicit, because the derived answer is one level too far.
        *
@@ -177,7 +176,7 @@ function EsisIntegration() {
       backHref={`/platform/${kindergartenId}`}
       title="ESIS мэдээллийн төв"
       lede="Платформын ESIS хандалт — token, зөвшөөрөгдсөн сервис, шалгалт"
-      icon={<IconChip icon={<Database />} tone="primary" size="lg" />}
+      mark={<Database />}
       actions={
         <Button
           size="sm"
@@ -226,37 +225,42 @@ function EsisIntegration() {
     <div className="page-band">
       {header}
 
-      <section
-        aria-label="ESIS бэлэн байдлын үе шат"
-        className="grid grid-cols-2 gap-3 xl:grid-cols-5"
-      >
-        {data.stages.map((stage) => {
-          const ready = stage.status === "READY";
-          return (
-            <Card key={stage.code} pad="compact" tone={ready ? "mint" : "sun"}>
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-caption font-semibold text-muted">{stage.code}</p>
-                  <p className="mt-1 text-body font-semibold text-ink">{stage.label}</p>
+      <section aria-label="ESIS бэлэн байдлын үе шат">
+        <h2 className="mb-3 text-title font-bold text-ink">Бэлэн байдлын үе шат</h2>
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+          {data.stages.map((stage) => {
+            const ready = stage.status === "READY";
+            return (
+              <Card
+                key={stage.code}
+                pad="compact"
+                tone={ready ? "mint" : "sun"}
+                className="bg-[linear-gradient(135deg,#ffffff_0%,#f4f9fc_100%)] shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-caption font-bold text-primary">{stage.code}</p>
+                    <p className="mt-1 text-body font-semibold text-ink">{stage.label}</p>
+                  </div>
+                  {ready ? (
+                    <CheckCircle2 className="shrink-0 text-mint-ink" aria-hidden />
+                  ) : (
+                    <CircleAlert className="shrink-0 text-sun-ink" aria-hidden />
+                  )}
                 </div>
-                {ready ? (
-                  <CheckCircle2 className="shrink-0 text-mint-ink" aria-hidden />
-                ) : (
-                  <CircleAlert className="shrink-0 text-sun-ink" aria-hidden />
-                )}
-              </div>
-              <Badge className="mt-3" tone={ready ? "mint" : "sun"}>
-                {ready ? "Бэлэн" : "Хүлээгдэж байна"}
-              </Badge>
-            </Card>
-          );
-        })}
+                <Badge className="mt-3" tone={ready ? "mint" : "sun"}>
+                  {ready ? "Бэлэн" : "Хүлээгдэж байна"}
+                </Badge>
+              </Card>
+            );
+          })}
+        </div>
       </section>
 
       <div
         role="tablist"
         aria-label="ESIS удирдлагын харагдац"
-        className="mt-6 flex max-w-full gap-1 overflow-x-auto rounded-control border border-border bg-surface p-1"
+        className="mt-1 flex max-w-full gap-1 overflow-x-auto rounded-card border border-border bg-surface p-1.5 shadow-sm"
       >
         {TABS.map((item) => {
           const Icon = item.icon;
@@ -1008,7 +1012,7 @@ function PreviewPanel({
                     </Badge>
                   </div>
                   {item.preview.length > 0 && endpoint ? (
-                    <SunkenPanel className="mt-4 overflow-x-auto">
+                    <SunkenPanel className="mt-4 min-w-0">
                       {/*
                        * Every ingested field of every returned row, not a
                        * summary line and not just the first record. "Ирлээ" and

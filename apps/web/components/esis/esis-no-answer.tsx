@@ -1,4 +1,4 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Inbox } from "lucide-react";
 import { Card } from "@/components/ui/card";
 
 /**
@@ -108,13 +108,23 @@ export function EsisNoAnswer({
   const failed = variant === "FAILED";
 
   return (
-    <Card pad="compact" tone={failed ? "peach" : undefined}>
+    <Card
+      pad="roomy"
+      tone={failed ? "peach" : undefined}
+      className={failed ? "" : "bg-canvas shadow-none"}
+    >
       <div className="flex items-start gap-3">
-        {failed ? (
-          <AlertTriangle size={18} className="mt-0.5 shrink-0 text-danger" aria-hidden />
-        ) : null}
+        <span
+          className={
+            failed
+              ? "flex size-10 shrink-0 items-center justify-center rounded-control bg-danger-soft text-danger"
+              : "flex size-10 shrink-0 items-center justify-center rounded-control bg-sky text-sky-ink"
+          }
+        >
+          {failed ? <AlertTriangle size={19} aria-hidden /> : <Inbox size={19} aria-hidden />}
+        </span>
         <div className="min-w-0">
-          <p className="text-body font-semibold text-ink">
+          <p className="text-lead font-semibold text-ink">
             {failed ? "Мэдээллийг татаж чадсангүй" : "Мэдээлэл алга байна"}
           </p>
 
@@ -123,7 +133,7 @@ export function EsisNoAnswer({
               ? "Энэ хэсэгт одоогоор бүртгэгдсэн мэдээлэл алга байна."
               : errorCode && ACTIONABLE.has(errorCode)
                 ? ESIS_ERROR_LABEL[errorCode]
-                : "Түр хүлээгээд «Шинэчлэх» дарж дахин оролдоно уу. Давтагдвал цэцэрлэгийн удирдлагадаа хэлнэ үү."}
+                : "Түр хүлээгээд дахин оролдоно уу. Давтагдвал цэцэрлэгийн удирдлагадаа хэлнэ үү."}
           </p>
 
           {/*

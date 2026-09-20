@@ -14,6 +14,7 @@ import {
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
+import { ChildPhotoButton } from "@/components/child/child-photo-button";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
@@ -212,20 +213,6 @@ function StaffChildren() {
           */
           <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
             {/*
-              ★ **The header search is gone — 2026-09-14.**
-
-              It filtered `/children`, the local roster query, and the local
-              roster stopped being on this screen when the table below became
-              ESIS's own answer. So it was a search box that changed nothing a
-              reader could see: they typed a name, the table did not move, and
-              the only honest conclusion available to them was that the child
-              was not enrolled.
-
-              The table searches itself — `esis-rows.tsx`, over the columns it
-              draws — which is the search this screen now has. One box that
-              filters what is under it beats two where only one does anything.
-            */}
-            {/*
               No role check: guardians never reach this component — the page
               routes them to `MyChildren`, which has nothing to register.
             */}
@@ -262,6 +249,12 @@ function StaffChildren() {
             </Button>
           </div>
         }
+      />
+
+      <EsisDataPanel
+        resource="studentByRegister"
+        title="РД-ээр сурагч хайх"
+        description="Сурагчийн мэдээллийг ESIS-ээс регистрийн дугаараар хайна"
       />
 
       <RosterSummary />
@@ -310,6 +303,25 @@ function StaffChildren() {
         liveHref={childHref}
         linkField="firstName"
         /*
+          ★ A camera on every record we can actually put a photograph on —
+          2026-09-20, the client: "жагсаалтаас шууд зураг нэмэх".
+
+          `childHref` is reused as the test rather than repeating the match: if
+          the record leads to a child's page then that child is ours, and if it
+          leads nowhere offering an upload would promise somewhere to put it.
+        */
+        rowActions={(row) => {
+          const href = childHref(row);
+          if (!href) return null;
+          return (
+            <ChildPhotoButton
+              childId={href.split("/")[2]!}
+              childName={`${row.lastName ?? ""} ${row.firstName ?? ""}`.trim()}
+              variant="inline"
+            />
+          );
+        }}
+        /*
          * ★ Reads on open — 2026-09-14, at the client's instruction: "esis ees
          * tatsan medeelluud yr ni haragdahgui baihiin."
          *
@@ -338,12 +350,6 @@ function StaffChildren() {
         resource="groupStudents"
         title="Бүлгийн суралцагчийн жагсаалт"
         description="ESIS-д нэг бүлэгт бүртгэлтэй хүүхдүүд"
-      />
-      <EsisDataPanel
-        resource="studentByRegister"
-        title="РД-ээр хайх"
-        description="Суралцагчийн мэдээллийг регистрийн дугаараар ESIS-ээс хайх"
-        actionLabel="РД-ээр хайх"
       />
       {/*
         ★ Суралцагчийн хөдөлгөөн — the last service in the catalog that had

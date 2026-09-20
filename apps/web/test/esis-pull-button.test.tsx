@@ -152,6 +152,10 @@ describe("ESIS-ээс татах", () => {
     const dialog = await openDialog("organization", /Байгууллагын мэдээлэл/);
 
     expect(await within(dialog).findByText("Жинхэнэ цэцэрлэг")).toBeInTheDocument();
+    expect(within(dialog).getByText("Жинхэнэ цэцэрлэг")).toBeVisible();
+    expect(
+      within(dialog).getByText("Техникийн хариу харах").closest("details"),
+    ).not.toHaveAttribute("open");
     expect(within(dialog).queryByText(/ESIS DEMO DATA/)).not.toBeInTheDocument();
     // The invented tenant name is not on screen beside the real one.
     expect(within(dialog).queryByText("Бяцхан нүүдэлчид (жишээ)")).not.toBeInTheDocument();

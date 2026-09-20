@@ -177,14 +177,20 @@ describe("/children — ESIS roster", () => {
 
     await screen.findByText("Батбаяр");
     await waitFor(() =>
-      expect(screen.getByRole("link", { name: "Батбаяр" })).toHaveAttribute(
+      /*
+       * ★ `/Ганболд Батбаяр/`, not `"Батбаяр"` — the roster draws records as
+       * cards now and a card titles itself with the surname in front, which is
+       * how a reader tells two Батбаярs apart. The link is the same link; only
+       * its accessible name grew.
+       */
+      expect(screen.getByRole("link", { name: /Ганболд Батбаяр/ })).toHaveAttribute(
         "href",
         "/children/55555555-5555-4555-8555-555555555555/general",
       ),
     );
 
     // Namuun and Temuulen are in ESIS and not in this kindergarten's records.
-    expect(screen.queryByRole("link", { name: "Намуун" })).toBeNull();
+    expect(screen.queryByRole("link", { name: /Намуун/ })).toBeNull();
     expect(screen.getByText("Намуун")).toBeInTheDocument();
   });
 });

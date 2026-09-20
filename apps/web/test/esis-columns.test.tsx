@@ -190,7 +190,7 @@ describe("ESIS хүснэгтийн хайлт", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Дараах" }));
 
-    const row = screen.getByText("Овог25").closest("tr")!;
+    const row = screen.getByText("Овог25").closest("article")!;
     expect(within(row).getByRole("link")).toHaveAttribute("href", "/children/child-25");
   });
 
@@ -199,5 +199,6 @@ describe("ESIS хүснэгтийн хайлт", () => {
 
     expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Хуудаслалт" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Дэлгэрэнгүй харах" })).not.toBeInTheDocument();
   });
 });

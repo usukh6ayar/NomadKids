@@ -73,7 +73,7 @@ export function KindergartenAdmins({
         }
       />
 
-      <Card pad="roomy">
+      <Card pad="roomy" className="shadow-sm">
         {admins.length === 0 ? (
           /*
            * Reachable, and the worst state there is: a tenant nobody can
@@ -85,14 +85,20 @@ export function KindergartenAdmins({
             description="Энэ цэцэрлэгт нэвтрэх эрхтэй хүн алга. Дээрх товчоор удирдлага нэмнэ үү."
           />
         ) : (
-          <ul className="flex flex-col gap-2">
+          <ul className="flex flex-col gap-2.5">
             {admins.map((admin) => (
               <li
                 key={admin.id}
-                className="flex min-h-[56px] flex-wrap items-center gap-x-3 gap-y-1 rounded-row border border-border-soft px-3 py-2"
+                className="flex min-h-[68px] flex-wrap items-center gap-x-3 gap-y-2 rounded-row border border-border-soft bg-sunken/50 px-3 py-2.5 sm:px-4"
               >
+                <span
+                  aria-hidden="true"
+                  className="grid size-10 shrink-0 place-items-center rounded-control bg-primary-soft text-body font-bold text-primary"
+                >
+                  {admin.firstName.slice(0, 1)}
+                </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-body font-semibold text-ink">
+                  <span className="block truncate text-body font-bold text-ink">
                     {admin.lastName} {admin.firstName}
                   </span>
                   <span className="block truncate text-caption text-muted">

@@ -4,7 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Building2, Check, ShieldCheck, UserRound } from "lucide-react";
+import { ArrowLeft, ArrowRight, Building2, Check, Info, UserRound } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { staffSelfRegistrationResultSchema } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
@@ -51,48 +51,58 @@ import { BRAND } from "@/lib/vocabulary";
  */
 export default function StaffRegisterPage() {
   return (
-    <div className="relative min-h-dvh overflow-hidden bg-[linear-gradient(165deg,#f5f8ff,#eaf0fe_55%,#e2eafc)]">
-      {/*
-        Two soft shapes, the background's whole decoration. `aria-hidden` and
-        pointer-transparent: they say nothing and must never intercept a tap.
-      */}
+    <div className="relative min-h-dvh overflow-hidden bg-[#f1f9ff] text-[#173e70]">
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute -left-24 top-32 size-[420px] rounded-pill bg-white/45 blur-2xl"
+        className="pointer-events-none absolute -left-40 top-24 size-[480px] rounded-pill bg-[#dceeff]/70 blur-3xl"
       />
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute -right-32 -top-24 size-[380px] rounded-pill bg-white/40 blur-2xl"
+        className="pointer-events-none absolute -right-32 top-40 size-[420px] rounded-pill bg-[#e2f5ec]/70 blur-3xl"
       />
 
-      <header className="relative flex flex-wrap items-center justify-between gap-3 px-5 py-5 sm:px-8">
-        <Link href="/" className="flex min-h-[44px] items-center gap-3">
-          <Image
-            src="/brand-logo.png"
-            alt={BRAND}
-            width={56}
-            height={56}
-            className="w-[56px]"
-            style={{ height: "auto" }}
-            priority
-          />
-        </Link>
-
-        <Button asChild variant="secondary" size="sm">
-          <Link href="/login">
-            <ArrowLeft size={17} aria-hidden />
-            Нэвтрэх
+      <header className="relative border-b border-white/80 bg-white/55 px-5 backdrop-blur-md sm:px-8">
+        <div className="mx-auto flex max-w-[1160px] items-center justify-between gap-3 py-3">
+          <Link href="/" className="flex min-h-[48px] items-center gap-2.5">
+            <Image
+              src="/brand-logo.png"
+              alt=""
+              width={48}
+              height={48}
+              className="size-12 object-contain"
+              priority
+            />
+            <span className="min-w-0">
+              <span className="block text-body font-extrabold leading-tight text-[#173e70]">
+                {BRAND}
+              </span>
+              <span className="block text-caption text-muted">Цэцэрлэгийн цахим орчин</span>
+            </span>
           </Link>
-        </Button>
+          <Button
+            asChild
+            variant="secondary"
+            size="sm"
+            className="rounded-control border-[#d5e5f3] text-[#176ac2]"
+          >
+            <Link href="/login">
+              <ArrowLeft size={17} aria-hidden />
+              Нэвтрэх
+            </Link>
+          </Button>
+        </div>
       </header>
 
-      <div className="relative mx-auto grid w-full max-w-[1180px] gap-8 px-5 pb-12 sm:px-8 lg:grid-cols-[minmax(0,1fr)_460px] lg:items-start lg:gap-12">
+      <main className="relative mx-auto grid w-full max-w-[1160px] gap-7 px-5 pb-12 pt-8 sm:px-8 sm:pt-12 lg:grid-cols-[minmax(0,1fr)_minmax(420px,460px)] lg:items-start lg:gap-16 lg:pt-16">
         <Explainer />
 
-        <main className="w-full rounded-card border border-white/70 bg-surface p-6 shadow-lg [overflow-wrap:anywhere] sm:p-7">
+        <section
+          aria-label="Ажилтны бүртгэлийн маягт"
+          className="w-full rounded-card border border-white/90 bg-white/95 p-5 shadow-[0_24px_70px_rgba(25,72,111,.13)] backdrop-blur-xl [overflow-wrap:anywhere] sm:p-8"
+        >
           <StaffRegisterForm />
-        </main>
-      </div>
+        </section>
+      </main>
     </div>
   );
 }
@@ -112,48 +122,51 @@ export default function StaffRegisterPage() {
  */
 function Explainer() {
   return (
-    <section className="max-w-[560px]">
-      <p className="text-caption font-semibold uppercase tracking-[0.18em] text-primary">{BRAND}</p>
-      <h1 className="mt-2 text-display font-bold leading-heading tracking-[-0.02em] text-ink">
+    <section className="max-w-[580px] lg:pt-7">
+      <span className="inline-flex items-center gap-2 rounded-pill bg-white/85 px-3.5 py-2 text-caption font-bold tracking-wide text-[#145ca8] shadow-sm">
+        <span className="size-2 rounded-pill bg-[#2588ed]" aria-hidden="true" />
+        БАГШ, АЖИЛТАНД
+      </span>
+      <h1 className="mt-5 text-heading font-extrabold leading-heading tracking-tight text-[#173e70] sm:text-display">
         Ажилтны бүртгэл
       </h1>
-      <p className="mt-3 max-w-[38ch] text-lead leading-relaxed text-muted">
-        Цэцэрлэгээсээ авсан мэдээллээр ажилтны эрхээ үүсгэнэ үү.
+      <p className="mt-3 max-w-[44ch] text-body leading-7 text-[#42627c] sm:text-lead">
+        Цэцэрлэгээсээ авсан код болон өөрийн регистрийн дугаараар эрхээ үүсгээд багтаа нэгдээрэй.
       </p>
 
-      <ol className="mt-7 flex flex-col gap-4">
-        <Step
-          n={1}
-          tone="bg-primary-soft text-primary"
-          icon={<Building2 size={20} aria-hidden />}
-          title="Цэцэрлэгийн код"
-          description="Цэцэрлэгээсээ авсан кодоо оруулна."
-        />
-        <Step
-          n={2}
-          tone="bg-mint text-mint-ink"
-          icon={<UserRound size={20} aria-hidden />}
-          title="Регистрийн дугаар"
-          description="Өөрийн регистрийн дугаараа оруулна."
-        />
-        <Step
-          n={3}
-          tone="bg-sun text-sun-ink"
-          icon={<Check size={20} strokeWidth={3} aria-hidden />}
-          title="Бүртгүүлэх"
-          description="Ажилтны эрхээ үүсгээд системдээ нэвтэрч ашиглана."
-        />
-      </ol>
+      <div className="mt-7 rounded-card border border-white/90 bg-white/70 p-5 shadow-[0_14px_36px_rgba(25,72,111,.06)] sm:p-6">
+        <p className="mb-4 text-caption font-bold uppercase tracking-[0.12em] text-[#176ac2]">
+          3 алхмаар эхлүүлнэ
+        </p>
+        <ol className="flex flex-col gap-4">
+          <Step
+            n={1}
+            tone="bg-[#e2f1ff] text-[#176ac2]"
+            icon={<Building2 size={20} aria-hidden />}
+            title="Цэцэрлэгийн код"
+            description="Цэцэрлэгээсээ авсан кодоо оруулна."
+          />
+          <Step
+            n={2}
+            tone="bg-[#e4f5ed] text-[#1f6b4d]"
+            icon={<UserRound size={20} aria-hidden />}
+            title="Регистрийн дугаар"
+            description="Өөрийн регистрийн дугаараа оруулна."
+          />
+          <Step
+            n={3}
+            tone="bg-[#fff1d3] text-[#825a11]"
+            icon={<Check size={20} strokeWidth={3} aria-hidden />}
+            title="Бүртгүүлэх"
+            description="Дараагийн хуудсанд нууц үгээ тохируулж бүртгэлээ дуусгана."
+          />
+        </ol>
+      </div>
 
-      {/*
-        The illustration is the last thing in the column and the first thing
-        dropped on a short screen — `hidden` below `lg`, where the form has to
-        be reachable without scrolling past a picture.
-      */}
-      <div aria-hidden="true" className="mt-8 hidden items-end gap-4 lg:flex">
-        <Art name="reportChildrenStar" size={190} className="w-[190px]" />
-        <p className="mb-3 max-w-[16ch] text-lead italic leading-snug text-primary/70">
-          Хүүхэд бүрд илүү сайн ирээдүй
+      <div aria-hidden="true" className="mt-6 hidden items-center gap-4 lg:flex">
+        <Art name="reportChildrenStar" size={130} className="w-[130px]" />
+        <p className="max-w-[18ch] text-body font-semibold leading-relaxed text-[#42627c]">
+          Хүүхэд бүрийн өсөлтөд хамтдаа анхааръя.
         </p>
       </div>
     </section>
@@ -174,15 +187,14 @@ function Step({
   description: string;
 }) {
   return (
-    <li className="flex items-start gap-3.5">
-      <span className={`grid size-11 shrink-0 place-items-center rounded-pill ${tone}`}>
+    <li className="flex items-start gap-3.5 border-b border-[#e6eff6] pb-4 last:border-0 last:pb-0">
+      <span className={`grid size-11 shrink-0 place-items-center rounded-control ${tone}`}>
         {icon}
       </span>
-      <span className="min-w-0">
-        <span className="block text-body font-semibold text-ink">
-          {n}. {title}
-        </span>
-        <span className="mt-0.5 block text-body leading-relaxed text-muted">{description}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-caption font-bold text-[#176ac2]">АЛХАМ {n}</span>
+        <span className="mt-0.5 block text-body font-bold text-[#173e70]">{title}</span>
+        <span className="mt-0.5 block text-caption leading-5 text-muted">{description}</span>
       </span>
     </li>
   );
@@ -210,27 +222,22 @@ function StaffRegisterForm() {
   }
 
   return (
-    <form className="flex flex-col gap-4" noValidate onSubmit={onSubmit}>
+    <form className="flex flex-col gap-5" noValidate onSubmit={onSubmit}>
       <div>
-        <p className="text-body text-muted">Сайн байна уу? 👋</p>
-        <h2 className="mt-1 text-heading font-semibold tracking-[-.01em] text-ink">
-          Ажилтны бүртгэл
+        <span className="inline-flex items-center gap-2 rounded-pill bg-[#eaf5ff] px-3 py-1.5 text-caption font-bold text-[#145ca8]">
+          Эрхээ үүсгэх
+        </span>
+        <h2 className="mt-4 text-heading font-extrabold tracking-tight text-[#173e70]">
+          Мэдээллээ оруулна уу
         </h2>
-        <p className="mt-1 text-body leading-relaxed text-muted">Доорх мэдээллүүдийг оруулна уу.</p>
+        <p className="mt-2 text-body leading-6 text-slate-600">
+          Цэцэрлэгээсээ авсан код, өөрийн регистрийн дугаараа оруулна уу.
+        </p>
       </div>
-
-      {/*
-        ★ Rendered unconditionally, not shown only when an error appears.
-        Text that only shows up on failure is a second signal — see the
-        docblock at the head of this file.
-      */}
-      <p className="rounded-control bg-canvas px-3.5 py-2.5 text-caption leading-relaxed text-muted">
-        Жагсаалтаас олдохгүй бол цэцэрлэгийнхээ захиралтай холбогдоно уу.
-      </p>
 
       <FormError message={register.isError ? errorMessage(register.error) : null} />
 
-      <Field label="Цэцэрлэгийн код" required>
+      <Field label="Цэцэрлэгийн код" hint="Танай цэцэрлэгээс өгсөн бүртгэлийн код." required>
         {({ id, describedBy, invalid }) => (
           <IconInput icon={<Building2 size={18} aria-hidden />}>
             <Input
@@ -241,14 +248,13 @@ function StaffRegisterForm() {
               onChange={(event) => setCode(event.target.value)}
               placeholder="Жишээ: NK001"
               autoCapitalize="none"
-              autoFocus
-              className="pl-[52px]"
+              className="h-13 rounded-control border-[#dbe7f2] bg-[#f8fbff] pl-12 focus:bg-white"
             />
           </IconInput>
         )}
       </Field>
 
-      <Field label="Регистрийн дугаар" required>
+      <Field label="Регистрийн дугаар" hint="Өөрийн регистрийн дугаарыг бичнэ үү." required>
         {({ id, describedBy, invalid }) => (
           <IconInput icon={<UserRound size={18} aria-hidden />}>
             <Input
@@ -259,29 +265,33 @@ function StaffRegisterForm() {
               onChange={(event) => setRegisterNumber(event.target.value)}
               placeholder="Жишээ: УБ12345678"
               autoCapitalize="none"
-              className="pl-[52px]"
+              className="h-13 rounded-control border-[#dbe7f2] bg-[#f8fbff] pl-12 focus:bg-white"
             />
           </IconInput>
         )}
       </Field>
 
-      <Button type="submit" size="lg" disabled={register.isPending} className="mt-1 w-full">
+      {/* This help remains visible before and after every server response. */}
+      <p className="flex items-start gap-2.5 rounded-control border border-[#dcebf7] bg-[#f2f8fe] px-4 py-3 text-caption leading-5 text-[#42627c]">
+        <Info size={18} className="mt-0.5 shrink-0 text-[#176ac2]" aria-hidden />
+        <span>Жагсаалтаас олдохгүй бол цэцэрлэгийнхээ захиралтай холбогдоно уу.</span>
+      </p>
+
+      <Button
+        type="submit"
+        size="lg"
+        disabled={register.isPending}
+        className="w-full rounded-control bg-[#176ac2] font-bold shadow-[0_10px_24px_rgba(23,106,194,.22)] hover:bg-[#115aa8]"
+      >
         {register.isPending ? "Илгээж байна…" : "Бүртгүүлэх"}
         {register.isPending ? null : <ArrowRight size={18} aria-hidden />}
       </Button>
 
-      <p className="border-t border-border pt-4 text-center text-body text-muted">
+      <p className="border-t border-[#e8f0f7] pt-5 text-center text-body text-muted">
         Бүртгэлтэй юу?{" "}
-        <Link href="/login" className="font-semibold text-primary hover:underline">
+        <Link href="/login" className="font-bold text-[#176ac2] hover:underline">
           Нэвтрэх
         </Link>
-      </p>
-
-      <p className="flex items-start gap-2 text-caption leading-relaxed text-muted">
-        <ShieldCheck size={16} className="mt-0.5 shrink-0 text-primary" aria-hidden />
-        <span>
-          Таны мэдээлэл бүрэн хамгаалагдсан. {BRAND} нь хүүхдийн аюулгүй, найдвартай орчны төлөө.
-        </span>
       </p>
     </form>
   );
@@ -300,7 +310,7 @@ function IconInput({ icon, children }: { icon: ReactNode; children: ReactNode })
     <span className="relative block">
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute left-0 top-0 grid h-[48px] w-[46px] place-items-center border-r border-border text-muted"
+        className="pointer-events-none absolute left-4 top-1/2 grid size-5 -translate-y-1/2 place-items-center text-[#62819d]"
       >
         {icon}
       </span>

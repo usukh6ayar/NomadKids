@@ -172,24 +172,24 @@ function Brand({ compact = false }: { compact?: boolean }) {
 
 function HeroBrand() {
   return (
-    <div className="flex flex-col items-center text-center">
+    <div className="flex max-w-[560px] flex-col items-center text-center lg:items-start lg:text-left">
       <Image
         src="/brand-logo.png"
         alt="Бяцхан нүүдэлчид"
         width={1400}
         height={1400}
         priority
-        sizes="(max-width: 1023px) 132px, 168px"
-        className="size-[132px] object-contain lg:size-[168px]"
+        sizes="(max-width: 1023px) 116px, 148px"
+        className="size-[116px] object-contain lg:size-[148px]"
       />
-      <p className="-mt-2 text-compact font-extrabold text-[#54a9fb] sm:text-body lg:mt-2 lg:text-lead">
-        Цэцэрлэгийн ухаалаг цахим систем
+      <p className="mt-2 rounded-pill bg-white/80 px-4 py-2 text-caption font-bold tracking-wide text-[#145ca8] shadow-sm lg:mt-5">
+        ЦЭЦЭРЛЭГИЙН УХААЛАГ ЦАХИМ СИСТЕМ
       </p>
-      <p className="my-1.5 scale-125 bg-gradient-to-r from-[#0758c8] via-[#596fe5] to-[#ba55df] bg-clip-text text-figure font-black leading-none tracking-[-0.055em] text-transparent lg:my-3 lg:scale-150">
-        NomadKids
-      </p>
-      <p className="mt-1 text-compact font-black uppercase tracking-[-0.02em] text-[#5779e4] sm:text-body lg:text-lead">
-        Цахимжуулах цогц шийдэл
+      <h1 className="mt-4 max-w-[550px] text-heading font-black leading-[1.12] tracking-tight text-[#123f72] lg:text-display">
+        Хүүхдийн хөгжил, <span className="text-[#1979d0]">жаргалтай мөч бүр</span>
+      </h1>
+      <p className="mt-3 max-w-[430px] text-body leading-7 text-[#37556f] lg:text-lead">
+        Багш, эцэг эх, цэцэрлэгийн багийг нэг орчинд холбосон NomadKids.
       </p>
     </div>
   );
@@ -280,14 +280,20 @@ function LoginCard() {
   return (
     <div
       id="login-card"
-      className="w-full max-w-[420px] rounded-card border border-[#e2edf7] bg-white p-5 text-left shadow-[0_16px_45px_rgba(32,88,132,.12)] sm:p-6"
+      className="w-full max-w-[440px] scroll-mt-24 overflow-hidden rounded-card border border-white/80 bg-white/95 p-6 text-left shadow-[0_24px_70px_rgba(25,72,111,.16)] backdrop-blur-xl sm:p-8"
     >
-      <h2 className="text-title font-extrabold text-[#173e70]">Системд нэвтрэх</h2>
-      <p className="mt-1 text-caption leading-5 text-slate-500">
-        Өөрийн эрхээр нэвтэрч, ажлаа үргэлжлүүлнэ үү.
+      <span className="inline-flex items-center gap-2 rounded-pill bg-[#eaf5ff] px-3 py-1.5 text-caption font-bold text-[#145ca8]">
+        <span className="size-2 rounded-pill bg-[#2588ed]" aria-hidden="true" />
+        Тавтай морил
+      </span>
+      <h2 className="mt-4 text-heading font-extrabold leading-tight tracking-tight text-[#173e70]">
+        Системд нэвтрэх
+      </h2>
+      <p className="mt-2 text-body leading-6 text-slate-600">
+        Хүүхдийн өсөлт, өдөр тутмын ажлаа нэг дороос үргэлжлүүлээрэй.
       </p>
 
-      <form onSubmit={onSubmit} className="mt-4 flex flex-col gap-3" noValidate>
+      <form onSubmit={onSubmit} className="mt-7 flex flex-col gap-4" noValidate>
         <FormError
           message={
             login.isError && Object.keys(errors).length === 0 ? errorMessage(login.error) : null
@@ -298,7 +304,6 @@ function LoginCard() {
           label="Нэвтрэх нэр, утас эсвэл и-мэйл"
           error={errors.identifier}
           required
-          className="[&>label]:sr-only"
         >
           {({ id, describedBy, invalid }) => (
             <div className="relative">
@@ -316,13 +321,13 @@ function LoginCard() {
                 placeholder="Нэвтрэх нэр"
                 value={identifier}
                 onChange={(event) => setIdentifier(event.target.value)}
-                className="h-12 rounded-control border-[#dbe7f2] bg-[#f8fbff] pl-11 text-body"
+                className="h-13 rounded-control border-[#dbe7f2] bg-[#f8fbff] pl-11 text-body transition-colors focus:bg-white"
               />
             </div>
           )}
         </Field>
 
-        <Field label="Нууц үг" error={errors.password} required className="[&>label]:sr-only">
+        <Field label="Нууц үг" error={errors.password} required>
           {({ id, describedBy, invalid }) => (
             <div className="relative">
               <LockKeyhole
@@ -338,7 +343,7 @@ function LoginCard() {
                 placeholder="Нууц үг"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                className="h-12 rounded-control border-[#dbe7f2] bg-[#f8fbff] pl-11 text-body"
+                className="h-13 rounded-control border-[#dbe7f2] bg-[#f8fbff] pl-11 text-body transition-colors focus:bg-white"
               />
             </div>
           )}
@@ -348,22 +353,20 @@ function LoginCard() {
           type="submit"
           block
           disabled={login.isPending}
-          className="mt-1 h-12 rounded-control bg-[#2588ed] text-body font-bold text-white shadow-[0_8px_20px_rgba(37,136,237,.22)] hover:bg-[#1477da]"
+          className="mt-2 h-13 rounded-control bg-[#176ac2] text-body font-bold text-white shadow-[0_10px_24px_rgba(23,106,194,.24)] transition-all hover:-translate-y-0.5 hover:bg-[#115aa8] hover:shadow-[0_14px_26px_rgba(23,106,194,.28)]"
         >
           {login.isPending ? "Нэвтэрч байна…" : "Нэвтрэх"}
+          {!login.isPending ? <ArrowRight size={18} aria-hidden="true" /> : null}
         </Button>
       </form>
 
-      <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center">
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-[#e8f0f7] pt-4 text-center">
         <Link
           href="/forgot-password"
           className="inline-flex min-h-11 items-center text-caption font-semibold text-[#2588ed] hover:underline"
         >
           Нууц үгээ мартсан?
         </Link>
-        <span aria-hidden="true" className="text-caption text-slate-300">
-          ·
-        </span>
         {/*
           ★ "Байгууллагын бүртгэл" above is a director applying to onboard a
           whole kindergarten (`/register`, `docs/CONTRACT_ONBOARDING.md`). This
@@ -380,7 +383,7 @@ function LoginCard() {
         </Link>
       </div>
 
-      <p className="mt-3 hidden border-t border-[#edf2f7] pt-3 text-center text-caption leading-5 text-slate-500 lg:block">
+      <p className="mt-4 text-center text-caption leading-5 text-slate-500">
         Нэвтрэхдээ{" "}
         <Link href="/terms" className="font-semibold text-[#2588ed] hover:underline">
           Үйлчилгээний нөхцөл
@@ -564,22 +567,20 @@ export function PublicLanding() {
       <section
         id="home"
         data-testid="login-hero"
-        className="relative isolate min-h-dvh bg-[#f1f9ff] bg-[url('/background/login-mobile.png')] bg-cover bg-top bg-no-repeat px-5 pb-[42vw] pt-[7vw] sm:px-8 lg:min-h-[calc(100dvh-70px)] lg:bg-[url('/background/login-desktop.png')] lg:px-[7vw] lg:pb-8 lg:pt-8"
+        className="relative isolate min-h-dvh bg-[#f1f9ff] bg-[url('/background/login-mobile.png')] bg-cover bg-top bg-no-repeat px-5 pb-[45vw] pt-8 sm:px-8 lg:min-h-[calc(100dvh-70px)] lg:bg-[url('/background/login-desktop.png')] lg:px-[7vw] lg:pb-8 lg:pt-10"
       >
-        <div className="relative mx-auto grid w-full max-w-[1680px] items-start gap-y-7 lg:grid-cols-[440px_minmax(0,1fr)] lg:gap-x-[7vw] xl:grid-cols-[480px_minmax(0,1fr)]">
-          <div className="order-1 flex justify-center lg:order-2 lg:pt-0 xl:pt-2">
+        <div className="relative mx-auto grid w-full max-w-[1320px] items-start gap-y-7 lg:grid-cols-[minmax(420px,470px)_minmax(0,1fr)] lg:gap-x-[7vw]">
+          <div className="order-1 flex justify-center lg:order-2 lg:justify-start lg:pt-14">
             <HeroBrand />
           </div>
 
-          <div className="order-2 mx-auto w-full max-w-[420px] lg:order-1 lg:mx-0 lg:pt-[7vh]">
-            <Link
-              href="/register"
-              className="mb-3 flex min-h-11 items-center justify-center text-body font-extrabold text-[#1686f5] hover:underline lg:justify-end lg:pr-1 lg:text-lead"
-            >
-              Байгууллагын бүртгэл
-            </Link>
-            <div className="rounded-card bg-[#eaf7ff]/80 p-2.5 shadow-[0_18px_55px_rgba(48,107,153,.08)] backdrop-blur-[2px]">
-              <LoginCard />
+          <div className="order-2 mx-auto w-full max-w-[440px] lg:order-1 lg:mx-0 lg:pt-9">
+            <LoginCard />
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-2 text-body text-[#173e70] lg:justify-start">
+              <span>Танай байгууллага бүртгэлгүй юу?</span>
+              <Link href="/register" className="inline-flex min-h-11 items-center gap-1 font-bold text-[#176ac2] hover:underline">
+                Байгууллагын бүртгэл <ArrowRight size={16} aria-hidden="true" />
+              </Link>
             </div>
           </div>
         </div>

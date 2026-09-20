@@ -48,7 +48,25 @@ const uploadResultSchema = z.object({
  * ring and an accessible name for free, and what lets a phone offer "take a
  * photo" beside "choose from library".
  */
-export function ChildPhotoButton({ childId, childName }: { childId: string; childName: string }) {
+export function ChildPhotoButton({
+  childId,
+  childName,
+  variant = "badge",
+}: {
+  childId: string;
+  childName: string;
+  /**
+   * `badge` is the disc that sits on the corner of a portrait — the original,
+   * and why this component is absolutely positioned.
+   *
+   * ★ `inline` added 2026-09-20 so the ESIS roster can offer the same action
+   * from a table row, at the client's request ("жагсаалтаас шууд зураг
+   * нэмэх"). A second component would have been a second copy of the two-step
+   * upload below, and the copy that stops matching is always the one nobody is
+   * looking at.
+   */
+  variant?: "badge" | "inline";
+}) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -127,12 +145,24 @@ export function ChildPhotoButton({ childId, childName }: { childId: string; chil
       <label
         htmlFor={inputId}
         aria-label={`${childName} — профайл зураг солих`}
-        className="absolute -bottom-1 -right-1 grid size-8 cursor-pointer place-items-center rounded-pill bg-primary text-primary-ink ring-2 ring-surface transition-colors hover:bg-primary-hover"
+        title={variant === "inline" ? "Профайл зураг нэмэх" : undefined}
+        className={
+          variant === "inline"
+            ? // A row's own control: 44px so it is reachable with a thumb, and
+              // quiet until hovered so eighty-three of them do not compete with
+              // the names beside them.
+              "grid size-11 cursor-pointer place-items-center rounded-pill text-muted transition-colors hover:bg-primary-soft hover:text-primary"
+            : "absolute -bottom-1 -right-1 grid size-8 cursor-pointer place-items-center rounded-pill bg-primary text-primary-ink ring-2 ring-surface transition-colors hover:bg-primary-hover"
+        }
       >
         {change.isPending ? (
-          <Loader2 size={15} aria-hidden="true" className="animate-spin" />
+          <Loader2
+            size={variant === "inline" ? 18 : 15}
+            aria-hidden="true"
+            className="animate-spin"
+          />
         ) : (
-          <Camera size={15} aria-hidden="true" />
+          <Camera size={variant === "inline" ? 18 : 15} aria-hidden="true" />
         )}
       </label>
 

@@ -14,8 +14,8 @@ import {
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
-import { PageHeader } from "@/components/shell/app-shell";
 import { RequireSuperAdmin } from "@/components/shell/require-role";
+import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -64,19 +64,28 @@ function Applications() {
   const items = list.data?.items ?? [];
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-6">
-      <PageHeader title="Байгууллагын хүсэлт" />
+    <div className="flex flex-col gap-6 pb-8">
+      <PlatformPageHeading
+        title="Байгууллагын хүсэлт"
+        lede="Ирсэн хүсэлт, гэрээний төлөв болон шийдвэрийг нэг дарааллаар хянаарай."
+        mark={<FileText />}
+      />
 
-      <div className="flex flex-wrap gap-2">
+      <div
+        role="group"
+        aria-label="Хүсэлтийн төлөв"
+        className="flex flex-wrap gap-1.5 rounded-card border border-border bg-white p-1.5 shadow-sm"
+      >
         {TABS.map((tab) => (
           <button
             key={tab.value}
             type="button"
+            aria-pressed={status === tab.value}
             onClick={() => setStatus(tab.value)}
-            className={`min-h-[44px] rounded-pill border px-3.5 text-body font-medium transition-colors ${
+            className={`min-h-[44px] flex-1 rounded-control px-3.5 text-body font-semibold transition-colors sm:flex-none ${
               status === tab.value
-                ? "border-primary bg-primary-soft text-primary"
-                : "border-border bg-surface text-muted hover:bg-canvas"
+                ? "bg-primary text-primary-ink shadow-sm"
+                : "text-muted hover:bg-canvas hover:text-ink"
             }`}
           >
             {tab.label}
@@ -94,7 +103,7 @@ function Applications() {
         />
       ) : null}
 
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3">
         {items.map((application) => (
           <ApplicationCard
             key={application.id}
@@ -119,19 +128,27 @@ function ApplicationCard({
   onReview: () => void;
 }) {
   return (
-    <Card pad="roomy" className="flex flex-col gap-3">
+    <Card pad="roomy" className="flex flex-col gap-4 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="flex flex-wrap items-center gap-2">
-            <span className="text-lead font-semibold text-ink">{application.kindergartenName}</span>
-            <Badge tone={application.status === "PENDING" ? "sun" : "neutral"}>
-              {KINDERGARTEN_APPLICATION_STATUS_LABEL[application.status]}
-            </Badge>
-          </p>
-          <p className="text-caption text-muted">
-            РД {application.registrationNumber} · {application.childCount} хүүхэд ·{" "}
-            {formatDate(application.createdAt)}
-          </p>
+        <div className="flex min-w-0 items-start gap-3">
+          <span
+            className="grid size-11 shrink-0 place-items-center rounded-control bg-primary-soft text-primary"
+            aria-hidden="true"
+          >
+            <FileText size={20} />
+          </span>
+          <div className="min-w-0">
+            <p className="flex flex-wrap items-center gap-2">
+              <span className="text-lead font-bold text-ink">{application.kindergartenName}</span>
+              <Badge tone={application.status === "PENDING" ? "sun" : "neutral"}>
+                {KINDERGARTEN_APPLICATION_STATUS_LABEL[application.status]}
+              </Badge>
+            </p>
+            <p className="mt-1 text-caption text-muted">
+              РД {application.registrationNumber} · {application.childCount} хүүхэд ·{" "}
+              {formatDate(application.createdAt)}
+            </p>
+          </div>
         </div>
 
         {application.status === "PENDING" ? (
@@ -141,7 +158,7 @@ function ApplicationCard({
         ) : null}
       </div>
 
-      <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-body sm:grid-cols-2">
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-2 rounded-row bg-sunken p-3 text-body sm:grid-cols-2 sm:p-4">
         <Detail label="Эрхлэгч" value={application.directorName} />
         <Detail label="Утас" value={application.phone} />
         <Detail label="И-мэйл" value={application.email} />

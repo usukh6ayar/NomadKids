@@ -12,6 +12,7 @@ import {
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
+import { EsisRowValues, esisSampleColumns } from "@/components/esis/esis-rows";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
@@ -187,33 +188,24 @@ function EsisProfileSection() {
   if (!esis && !live) return null;
 
   if (live) {
-    const fields = live.fields
-      .filter((field) => field.ingested)
-      .map((field) => ({ label: field.label, value: live.row[field.name] ?? "—" }));
     return (
       <section aria-label="Ажлын мэдээлэл">
         <Card pad="roomy" className="flex flex-col gap-5">
           <div className="flex flex-wrap items-start gap-3 border-b border-border-soft pb-5">
-            <span className="flex size-11 shrink-0 items-center justify-center rounded-control bg-sky text-sky-ink">
-              <Database size={21} aria-hidden="true" />
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary">
+              <BriefcaseBusiness size={21} aria-hidden="true" />
             </span>
             <div className="min-w-0 flex-1">
-              <h2 className="font-semibold text-ink">
+              <h2 className="text-lead font-semibold text-ink">
                 {live.resource === "teachers" ? "Багшийн бүртгэл" : "Ажилтны бүртгэл"}
               </h2>
-              <p className="mt-0.5 break-all font-mono text-caption text-faint">
-                {live.slug} · {live.endpoint}
+              <p className="mt-0.5 text-caption text-muted">ESIS-ээс ирсэн ажлын мэдээлэл</p>
+              <p className="mt-2 text-caption text-muted">
+                Сүүлд татсан: {new Date(live.syncedAt).toLocaleString("mn-MN")}
               </p>
             </div>
-            <p className="shrink-0 text-caption text-muted">
-              Шинэчилсэн: {new Date(live.syncedAt).toLocaleString("mn-MN")}
-            </p>
           </div>
-          <EsisFieldGroup
-            icon={BriefcaseBusiness}
-            title={`${fields.length} талбар`}
-            fields={fields}
-          />
+          <EsisRowValues columns={esisSampleColumns(live.fields)} rows={[live.row]} />
         </Card>
       </section>
     );
