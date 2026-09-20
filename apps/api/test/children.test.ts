@@ -1081,6 +1081,42 @@ describe("POST /children/:id/guardian-invitations", () => {
     expect(after.status).toBe(200);
   });
 
+  it("a taken e-mail is refused without burning the invitation", async () => {
+    /*
+     * ★★★ From a production 500 on 2026-09-19. `email` is unique on `User`, and
+     * this endpoint wrote the accepted profile with no check — so somebody
+     * typing an address another account already held got «серверт алдаа
+     * гарлаа».
+     *
+     * The status was the smaller half. The token had already been consumed and
+     * the password already set by the time the write threw, so the invitation
+     * was spent, the account was usable, and the reader was told the server had
+     * failed. This asserts the recoverable case stays recoverable: a readable
+     * refusal, and **the same link still works** afterwards.
+     */
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/guardian-invitations`),
+      teacherA,
+    ).send(invitation());
+    const token = res.body.invitationToken as string;
+
+    // Somebody already holds this address. `createUser` leaves e-mail null by
+    // default, so the collision has to be set up rather than assumed.
+    const taken = `taken-${uniq()}@example.mn`;
+    await createUser({ username: uniq("holder"), email: taken });
+
+    const clash = await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send(acceptance(token, { email: taken }));
+    expect(clash.status).toBe(409);
+
+    const retry = await request(server())
+      .post("/v1/auth/invitation/accept")
+      // Omitted, not null: the schema takes an address or nothing.
+      .send(acceptance(token));
+    expect(retry.status).toBe(204);
+  });
+
   /**
    * ★ The half of the flow that moved: the guardian describes themselves.
    *
