@@ -116,6 +116,40 @@ describe("GET /kindergartens/:id", () => {
     expect(res.status).toBe(404);
   });
 
+  /*
+   * ★ **A bare `NotFoundException()` must not send English — 2026-09-20.**
+   *
+   * Nest fills an argument-less `NotFoundException` with `message: "Not
+   * Found"`, `problem.filter.ts` forwarded any message unequal to the title
+   * into `detail`, and `apps/web/lib/api/errors.ts` prefers `detail` over its
+   * own Mongolian status map. So a director opening a deleted record read
+   * **"Not Found"**. The `message !== title` guard could not catch it: it
+   * compares against «Олдсонгүй», which "Not Found" differs from exactly as a
+   * real thrown message would.
+   *
+   * The filter now drops the phrase Nest itself would have generated for that
+   * status, leaving `title` to answer. Asserted on `detail` being absent
+   * rather than on any sentence, because the fix is "do not invent a detail",
+   * not "invent a better one".
+   */
+  it("sends no English detail for a 404 nobody wrote a message for", async () => {
+    const res = await request(server())
+      .get("/v1/kindergartens/00000000-0000-4000-8000-000000000000")
+      .set("Cookie", adminA.cookies);
+
+    expect(res.status).toBe(404);
+    expect(res.body.title).toBe("Олдсонгүй");
+    expect(res.body.detail).toBeUndefined();
+  });
+
+  /* The same for an unauthenticated request, whose detail was "Unauthorized". */
+  it("sends no English detail for a bare 401 either", async () => {
+    const res = await request(server()).get(`/v1/kindergartens/${a.kindergarten.id}`);
+
+    expect(res.status).toBe(401);
+    expect(res.body.detail).toBeUndefined();
+  });
+
   it("returns 400 for a malformed id", async () => {
     const res = await request(server())
       .get("/v1/kindergartens/not-a-uuid")
@@ -347,6 +381,67 @@ describe("school years", () => {
 
     expect(res.status).toBe(409);
     expect(res.body.detail).toMatch(/аль хэдийн/);
+  });
+
+  /*
+   * ★ The ceiling was **20** until 2026-09-20 and the client asked for it to
+   * go — twenty fits "2025-2026" and nothing a director would add to it. The
+   * name below is 41 characters and is the shape the request came in about.
+   *
+   * `SchoolYear.name` is an unbounded `text` column, so 100 is the only limit
+   * there is and raising it needed no migration.
+   */
+  it("accepts a school year name well past the old twenty-character ceiling", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/school-years`),
+      adminA,
+    ).send({
+      name: "2027-2028 оны хичээлийн жил — ахлах бүлэг",
+      startsOn: "2027-09-01",
+      endsOn: "2028-06-01",
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.name).toBe("2027-2028 оны хичээлийн жил — ахлах бүлэг");
+  });
+
+  /*
+   * ★★ **Every validation message a user reads is Mongolian** — CLAUDE.md §5.
+   *
+   * Zod 4 ships 53 locales and no `mn`, so `packages/contracts/src/mn-locale.ts`
+   * is one, installed by `z.config()` at the contracts entry point. Without it
+   * `ZodValidationPipe` put `issue.message` — "Too small: expected string to
+   * have >=1 characters" — straight under the input, for the 436 constraints
+   * that carry no message of their own.
+   *
+   * Asserted as "contains no Latin letters" rather than against the exact
+   * sentence: the wording is allowed to improve, the language is not.
+   */
+  it("refuses a nameless year in Mongolian, not English", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/school-years`),
+      adminA,
+    ).send({ name: "", startsOn: "2027-09-01", endsOn: "2028-06-01" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errors.name[0]).toMatch(/[А-Яа-яӨөҮү]/);
+    expect(res.body.errors.name[0]).not.toMatch(/[A-Za-z]/);
+  });
+
+  /*
+   * ★★★ A field with **no** message of its own, to prove the locale is what
+   * answers rather than a hand-written string. `startsOn` is a bare
+   * `z.coerce.date()`; before the locale it produced "Invalid input: expected
+   * date, received Date".
+   */
+  it("refuses an unparseable date in Mongolian too", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/school-years`),
+      adminA,
+    ).send({ name: "2027-2028", startsOn: "огноо биш", endsOn: "2028-06-01" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errors.startsOn[0]).not.toMatch(/[A-Za-z]/);
   });
 });
 
