@@ -232,11 +232,23 @@ function AdminUsers() {
         children they belong to.
       */}
       <section aria-label="Товч мэдээлэл" className="grid grid-cols-2 gap-3">
+        {/*
+         * ★ The count is a way in — 2026-09-20, the client: "Багшийг бүртгэх 3
+         * гэж гарч байна гэхдээ хэн хэн бүртгэлтэй байгааг харах хэрэгтэй юм
+         * байна."
+         *
+         * The list of who has registered themselves already existed, on
+         * `/admin/staff-code` («Ажилтны бүртгэл»), with a name, a role and a
+         * date for each. Nothing pointed at it from the number that raised the
+         * question, so the number was a dead end: it said three and offered no
+         * way to ask which three.
+         */}
         <StatCard
           label="Нийт ажилтан"
           value={users.data?.total ?? "—"}
           unit="бүртгэл"
           tone="sky"
+          href="/admin/staff-code"
           art={<UsersRound size={22} aria-hidden />}
         />
         <StatCard
