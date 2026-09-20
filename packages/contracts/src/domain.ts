@@ -5553,28 +5553,18 @@ export type ApplicationApproval = z.infer<typeof applicationApprovalSchema>;
  *
  * ★ The only field is the token: on success the screen redirects to
  * `/invitation/[token]`, which already collects the password. On refusal the
- * API answers 401 with a `Problem.detail` — the same uniform sentence for a
- * wrong code, an unmatched register number or anything else — which the form
- * renders verbatim rather than deriving its own message.
+ * API answers 401 with a `Problem.detail` — the same uniform sentence for an
+ * unknown institution number, an unmatched register number or anything else —
+ * which the form renders verbatim rather than deriving its own message.
+ *
+ * ★★ There is no `staffRegistrationCodeIssuedSchema` beside this any more.
+ * The form's first field is the kindergarten's ESIS institution number as of
+ * 2026-09-20, so nothing is issued and there is no response to model.
  */
 export const staffSelfRegistrationResultSchema = z.object({
   invitationToken: z.string(),
 });
 export type StaffSelfRegistrationResult = z.infer<typeof staffSelfRegistrationResultSchema>;
-
-/**
- * `POST /kindergartens/:id/staff-registration-code` — the plaintext code,
- * returned exactly once.
- *
- * ★ Nothing later re-reads it. `staffRegistrationCodeSetAt` on the
- * kindergarten record is the only trace this response leaves once the
- * director's screen has shown it.
- */
-export const staffRegistrationCodeIssuedSchema = z.object({
-  code: z.string(),
-  setAt: z.string(),
-});
-export type StaffRegistrationCodeIssued = z.infer<typeof staffRegistrationCodeIssuedSchema>;
 
 /** `POST /kindergartens/:id/esis/staff-roster/refresh`. */
 export const staffRosterRefreshSchema = z.object({

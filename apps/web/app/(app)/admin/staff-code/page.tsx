@@ -2,19 +2,18 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Check, Copy, KeyRound, RefreshCw } from "lucide-react";
+import { Check, Copy, RefreshCw } from "lucide-react";
 import { z } from "zod";
 import {
   ROLE_LABEL,
   selfRegisteredStaffListSchema,
-  staffRegistrationCodeIssuedSchema,
   staffRosterRefreshSchema,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
-import { formatDate, formatRelative } from "@/lib/format";
+import { formatRelative } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -25,6 +24,17 @@ import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 
+/**
+ * Only what this screen shows. `GET /kindergartens/:id` returns
+ * `esisInstitutionId` to an ADMIN of that kindergarten and to nobody else
+ * (`TenantsRepository.ADMIN_FIELDS`), so it is `nullish()` here for the
+ * kindergarten that has never been mapped to ESIS rather than because the
+ * field is sometimes withheld from a reader who should see it.
+ */
+const kindergartenInstitutionSchema = z.object({
+  esisInstitutionId: z.string().nullish(),
+});
+
 const COLUMNS = [
   { key: "role", label: "Эрх", className: "md:w-[140px]" },
   { key: "registeredAt", label: "Бүртгүүлсэн", className: "md:w-[160px]" },
@@ -33,25 +43,25 @@ const COLUMNS = [
 /**
  * The director's side of staff self-registration.
  *
- * ★ Three separate jobs, three cards: issuing the code
- * (`POST /kindergartens/:id/staff-registration-code`), refreshing the stored
- * ESIS roster the public route matches against
- * (`POST /kindergartens/:id/esis/staff-roster/refresh`), and reviewing who has
- * used the code so far (`GET /kindergartens/:id/staff-registrations`). The
+ * ★ Three separate jobs, three cards: showing the kindergarten's ESIS
+ * institution number, which is what a member of staff types into the public
+ * form; refreshing the stored ESIS roster that form is matched against
+ * (`POST /kindergartens/:id/esis/staff-roster/refresh`); and reviewing who has
+ * registered so far (`GET /kindergartens/:id/staff-registrations`). The
  * client asked for review, not approval — "захирал заавал батлах хэрэг
  * байхгүй зүгээр хянахад л болно" — so there is no accept/reject step here,
  * only a name, a role, a date and a way to revoke.
  *
- * ★★ **When the code was last set is not readable from any GET the API
- * exposes.** `Kindergarten.staffRegistrationCodeSetAt` is written by
- * `StaffRegistrationService.issueCode` but no read endpoint returns it —
- * `GET /kindergartens/:id` (`TenantsController.getKindergarten`) is not
- * modelled to carry it, and adding that is a backend change outside this
- * screen's scope. So "Гаргасан:" below reflects only what this browser tab has
- * seen since it was opened — the response to the last `POST` it sent — rather
- * than the kindergarten's true history. A director who reloads the page after
- * issuing a code will see the empty state again, correctly: this screen would
- * otherwise have to guess.
+ * ★★ **The first card used to issue a code, and issues nothing now.**
+ * 2026-09-20, the client: "institutionID нь байя. Цэцэрлэгийн код нь." The
+ * number it shows is read from `GET /kindergartens/:id`, which returns it to
+ * an ADMIN of that kindergarten only, so the card can be reloaded — where the
+ * issued code could be shown exactly once and this screen had to admit, in a
+ * comment twice this length, that a reload lost it.
+ *
+ * ★★★ It is **displayed, never edited.** `esisInstitutionId` is set when the
+ * platform operator maps the kindergarten to ESIS, and a director retyping it
+ * here would silently point their whole staff roster at another institution.
  */
 export default function AdminStaffCodePage() {
   return (
@@ -66,23 +76,16 @@ function AdminStaffCode() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [revealed, setRevealed] = useState<{ code: string; setAt: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
   const registrationsKey = qk.adminStaffRegistrations(primaryKindergartenId ?? "", page);
 
-  const issue = useMutation({
-    mutationFn: () =>
-      mutate(
-        `/kindergartens/${primaryKindergartenId}/staff-registration-code`,
-        staffRegistrationCodeIssuedSchema,
-        { method: "POST" },
-      ),
-    onSuccess: (result) => {
-      setRevealed(result);
-      setCopied(false);
-    },
+  const kindergarten = useQuery({
+    queryKey: qk.adminKindergarten(primaryKindergartenId ?? ""),
+    queryFn: () => get(`/kindergartens/${primaryKindergartenId}`, kindergartenInstitutionSchema),
+    enabled: Boolean(primaryKindergartenId),
   });
+  const institutionId = kindergarten.data?.esisInstitutionId ?? null;
 
   const refresh = useMutation({
     mutationFn: () =>
@@ -121,26 +124,30 @@ function AdminStaffCode() {
 
   return (
     <div className="flex w-full flex-col gap-6 lg:gap-8">
-      <PageHeader title="Ажилтны бүртгэлийн код" />
+      <PageHeader title="Ажилтны бүртгэл" />
 
       <Card pad="roomy" className="max-w-[680px]">
         <SectionHeader
-          title="Бүртгэлийн код"
-          lede="Ажилтан энэ кодыг өөрийн регистрийн дугаараа ашиглан бүртгүүлэхдээ шаардана."
+          title="Цэцэрлэгийн ESIS дугаар"
+          lede="Ажилтан энэ дугаарыг өөрийн регистрийн дугаартай хамт бүртгүүлэхдээ оруулна."
         />
 
-        {revealed ? (
+        {kindergarten.isLoading ? (
+          <LoadingState rows={1} />
+        ) : kindergarten.isError ? (
+          <FormError message={errorMessage(kindergarten.error)} />
+        ) : institutionId ? (
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
               <code className="min-w-0 flex-1 truncate rounded-control bg-canvas px-3 py-2.5 text-lead font-semibold tracking-wide text-ink">
-                {revealed.code}
+                {institutionId}
               </code>
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
                 onClick={() => {
-                  void navigator.clipboard.writeText(revealed.code).then(() => {
+                  void navigator.clipboard.writeText(institutionId).then(() => {
                     setCopied(true);
                     setTimeout(() => setCopied(false), 2000);
                   });
@@ -150,28 +157,24 @@ function AdminStaffCode() {
                 {copied ? "Хуулагдлаа" : "Хуулах"}
               </Button>
             </div>
-            <p className="rounded-control bg-sun px-3 py-2 text-caption leading-relaxed text-sun-ink">
-              Энэ кодыг дахин харуулах боломжгүй. Хаасны дараа шаардлагатай бол шинийг гаргана уу.
+            <p className="text-caption leading-relaxed text-muted">
+              Ажилтнууддаа{" "}
+              <span className="font-semibold text-ink">nomadkids.mn/staff-register</span> хаяг болон
+              энэ дугаарыг дамжуулна уу. Доорх жагсаалт шинэчлэгдсэн байх шаардлагатай.
             </p>
-            <p className="text-caption text-muted">Гаргасан: {formatDate(revealed.setAt)}</p>
           </div>
         ) : (
-          <p className="text-body text-muted">
-            Энэ удаагийн session-д код гаргаагүй байна. Доорх товчоор шинээр гаргана уу.
-          </p>
+          /*
+           * ★ Reachable, and the only state on this screen that stops staff
+           * registration outright: the kindergarten was never mapped to ESIS,
+           * so there is no number to hand out and no roster to match against.
+           * Only the platform operator can fix it, which is what this says.
+           */
+          <EmptyState
+            title="ESIS-тэй холбогдоогүй байна"
+            description="Энэ цэцэрлэг ESIS-ийн байгууллагатай холбогдоогүй тул ажилтан өөрөө бүртгүүлэх боломжгүй. Системийн операторт хандана уу."
+          />
         )}
-
-        <FormError message={issue.isError ? errorMessage(issue.error) : null} />
-
-        <Button
-          type="button"
-          onClick={() => issue.mutate()}
-          disabled={issue.isPending || !primaryKindergartenId}
-          className="mt-4"
-        >
-          <KeyRound size={18} aria-hidden />
-          {issue.isPending ? "Гаргаж байна…" : revealed ? "Шинэ код гаргах" : "Код гаргах"}
-        </Button>
       </Card>
 
       <Card pad="roomy" className="max-w-[680px]">

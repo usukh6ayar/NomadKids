@@ -10,7 +10,17 @@ import { paginationQuerySchema } from "@kinder/contracts";
  * uniform-refusal property this route exists to keep.
  */
 export const staffSelfRegistrationSchema = z.object({
-  code: z.string().min(1).max(64),
+  /**
+   * The kindergarten's ESIS institution number — `Kindergarten.esisInstitutionId`.
+   *
+   * ★ Still only a shape check, and deliberately not `z.coerce.number()`:
+   * the column is a `String?`, and parsing here would make "0042778" and
+   * "42778" two different submissions for one kindergarten while telling a
+   * caller, through a 400, that their value was at least numerically
+   * plausible. `register()` trims it and looks it up; anything that does not
+   * match ends in the same `REFUSAL` as everything else.
+   */
+  institutionId: z.string().min(1).max(64),
   registerNumber: z.string().min(1).max(32),
 });
 

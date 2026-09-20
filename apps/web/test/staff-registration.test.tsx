@@ -26,7 +26,7 @@ describe("бүртгүүлэх маягт", () => {
 
     renderWithProviders(<StaffRegisterPage />);
 
-    expect(screen.getByLabelText(/Цэцэрлэгийн код/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Цэцэрлэгийн ESIS дугаар/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Регистрийн дугаар/)).toBeInTheDocument();
   });
 
@@ -56,7 +56,7 @@ describe("бүртгүүлэх маягт", () => {
 
     renderWithProviders(<StaffRegisterPage />);
 
-    await user.type(screen.getByLabelText(/Цэцэрлэгийн код/), "wrongcode");
+    await user.type(screen.getByLabelText(/Цэцэрлэгийн ESIS дугаар/), "9999999");
     await user.type(screen.getByLabelText(/Регистрийн дугаар/), "УЛ24270406");
     await user.click(screen.getByRole("button", { name: "Бүртгүүлэх" }));
 
@@ -91,13 +91,13 @@ describe("бүртгүүлэх маягт", () => {
 
     renderWithProviders(<StaffRegisterPage />);
 
-    await user.type(screen.getByLabelText(/Цэцэрлэгийн код/), "goodcode");
+    await user.type(screen.getByLabelText(/Цэцэрлэгийн ESIS дугаар/), "42778");
     await user.type(screen.getByLabelText(/Регистрийн дугаар/), "УЛ24270406");
     await user.click(screen.getByRole("button", { name: "Бүртгүүлэх" }));
 
     await waitFor(() => expect(ROUTER.replace).toHaveBeenCalledWith("/invitation/abc123token"));
 
     const post = calls.find((c) => c.method === "POST" && c.url.startsWith("/staff-registration"));
-    expect(post?.body).toEqual({ code: "goodcode", registerNumber: "УЛ24270406" });
+    expect(post?.body).toEqual({ institutionId: "42778", registerNumber: "УЛ24270406" });
   });
 });

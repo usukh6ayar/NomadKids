@@ -128,24 +128,27 @@ describe("GET /kindergartens/:id", () => {
    *
    * `findKindergarten` had no `select`, so every column reached every member
    * of the kindergarten. That was harmless while the table held a name and an
-   * address; it stopped being harmless the moment
-   * `staffRegistrationCodeHash` was added, because a hash is a credential
-   * shaped value and a teacher, a cook and a parent all pass this route's
+   * address; it stopped being harmless the moment a credential-shaped column
+   * was added, because a teacher, a cook and a parent all pass this route's
    * membership check.
    *
-   * It is a hash, not the code, so nothing was directly usable — but there is
-   * no reading of this product under which a client needs it, and "not
-   * exploitable today" is the argument that ages worst. The route now returns
-   * a named set of fields, which is also CLAUDE.md §3.4's rule about
-   * deliberate `select`s applied where it happens to matter most.
+   * ★★ **Two field sets since 2026-09-20**, not one. A director additionally
+   * reads `esisInstitutionId` — it is what their staff type into the public
+   * registration form, so somebody has to be able to see it — and nobody else
+   * does. The number is on the ministry's public register rather than secret;
+   * the reason to keep it off the member set is the reason the allowlist
+   * exists at all, that widening this route publishes to parents too.
+   *
+   * Both halves are asserted, because the interesting failure is not "the
+   * admin set is wrong" but "the member set quietly grew to match it".
    */
-  it("never sends a kindergarten's own columns beyond what a client reads", async () => {
+  it("sends a member exactly the seven fields a client reads", async () => {
     await db.kindergarten.update({
       where: { id: a.kindergarten.id },
-      data: { staffRegistrationCodeHash: "argon2-hash-of-a-real-code" },
+      data: { esisInstitutionId: "42778" },
     });
 
-    for (const session of [adminA, teacherA, parentA]) {
+    for (const session of [teacherA, parentA]) {
       const res = await request(server())
         .get(`/v1/kindergartens/${a.kindergarten.id}`)
         .set("Cookie", session.cookies);
@@ -163,16 +166,42 @@ describe("GET /kindergartens/:id", () => {
     }
   });
 
-  /*
-   * ★★ The write answers with the same shape as the read. `updateKindergarten`
-   * returns a fresh `prisma.update`, which is a second place the whole row
-   * used to escape — narrower, because only an ADMIN reaches it, and worth
-   * closing anyway for the reason above.
-   */
-  it("does not send them back on a write either", async () => {
+  it("sends an admin those seven and the ESIS institution number", async () => {
     await db.kindergarten.update({
       where: { id: a.kindergarten.id },
-      data: { staffRegistrationCodeHash: "argon2-hash-of-a-real-code" },
+      data: { esisInstitutionId: "42778" },
+    });
+
+    const res = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}`),
+      adminA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body as object).sort()).toEqual([
+      "address",
+      "description",
+      "email",
+      "esisInstitutionId",
+      "id",
+      "logoMediaFileId",
+      "name",
+      "phone",
+    ]);
+  });
+
+  /*
+   * ★★★ The write answers with the **member** shape, which is narrower than
+   * what the same admin just read. That is deliberate rather than an
+   * oversight: `PATCH` cannot change `esisInstitutionId` — only the platform
+   * operator sets it — so echoing it back would suggest it had been part of
+   * the write. `updateKindergarten` returns a fresh `prisma.update`, which is
+   * the second place the whole row used to escape.
+   */
+  it("does not widen the row on a write either", async () => {
+    await db.kindergarten.update({
+      where: { id: a.kindergarten.id },
+      data: { esisInstitutionId: "42778" },
     });
 
     const res = await authed(
@@ -181,7 +210,15 @@ describe("GET /kindergartens/:id", () => {
     ).send({ phone: "99112233" });
 
     expect(res.status).toBe(200);
-    expect(JSON.stringify(res.body)).not.toContain("argon2-hash-of-a-real-code");
+    expect(Object.keys(res.body as object).sort()).toEqual([
+      "address",
+      "description",
+      "email",
+      "id",
+      "logoMediaFileId",
+      "name",
+      "phone",
+    ]);
   });
 });
 

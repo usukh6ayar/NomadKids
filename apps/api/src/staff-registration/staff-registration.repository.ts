@@ -2,16 +2,13 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 
 /**
- * The kindergarten-side half of staff self-registration: the director's
- * registration code.
+ * The kindergarten-side half of staff self-registration.
  *
  * ★ Separate from `EsisRepository` on purpose. `EsisStaffRoster` is filled
  * from a live ESIS read and belongs with the integration that produces it;
- * this code never touches ESIS — it is a column on `Kindergarten` that gates
- * who may attempt a match against that roster. Task 5 (`POST
- * /v1/staff-registration`, the public route that verifies a submitted code)
- * reads the hash this repository writes, which is why the verification
- * lookup belongs beside the write rather than in a third place.
+ * nothing here touches ESIS — `esisInstitutionId` is a column on
+ * `Kindergarten`, and this repository only reads it to decide **whose**
+ * roster a public attempt is allowed to be matched against.
  */
 @Injectable()
 export class StaffRegistrationRepository {
@@ -22,33 +19,21 @@ export class StaffRegistrationRepository {
   }
 
   /**
-   * Rotates the kindergarten's registration code hash.
+   * Which kindergarten a submitted ESIS institution number names.
    *
-   * ★ Unconditional overwrite. There is no "current code" to compare against —
-   * issuing a new one always replaces whatever was there, which is what makes
-   * rotation meaningful: a code shown once and then compromised is invalidated
-   * simply by asking for another.
-   */
-  setRegistrationCodeHash(kindergartenId: string, hash: string, setAt: Date) {
-    return this.prisma.kindergarten.update({
-      where: { id: kindergartenId },
-      data: { staffRegistrationCodeHash: hash, staffRegistrationCodeSetAt: setAt },
-    });
-  }
-
-  /**
-   * Every kindergarten that has ever issued a registration code.
+   * ★ One indexed lookup, where this used to be a loop over every stored code
+   * hash. `Kindergarten.esisInstitutionId` is `@unique`, so this is exact and
+   * cannot return two.
    *
-   * ★ There is no index on a hash — hashes are designed to make exactly this
-   * kind of lookup impossible, which is the point of hashing the code at all.
-   * `StaffRegistrationService.register` verifies a submitted code against
-   * each of these in turn. See that method's doc comment for why the loop is
-   * acceptable rather than a defect.
+   * ★★ It returns only the id. A caller that could see the name would learn
+   * that the number exists, and `StaffRegistrationService.REFUSAL` spends a
+   * great deal of care making sure no branch of the public route tells a
+   * caller anything they did not already submit.
    */
-  findKindergartensWithRegistrationCode() {
-    return this.prisma.kindergarten.findMany({
-      where: { deletedAt: null, staffRegistrationCodeHash: { not: null } },
-      select: { id: true, staffRegistrationCodeHash: true },
+  findKindergartenIdByEsisInstitutionId(esisInstitutionId: string) {
+    return this.prisma.kindergarten.findFirst({
+      where: { esisInstitutionId, deletedAt: null },
+      select: { id: true },
     });
   }
 

@@ -6,8 +6,6 @@ import {
 } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
 import type { PaginationQuery } from "@kinder/contracts";
-import { PasswordService } from "../auth/password.service";
-import { AuditRepository } from "../audit/audit.repository";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import type { Actor } from "../authz/actor";
 import { paginate, toSkipTake, type PageParams } from "../common/pagination";
@@ -21,20 +19,28 @@ import type { StaffSelfRegistrationDto } from "./staff-registration.dto";
 /**
  * The one message every refusal in `register()` returns.
  *
- * ★★★ **Every branch below — a wrong code, a code that matches no
- * kindergarten, a register number not on that kindergarten's roster, a
- * malformed register number, a roster row too stale to trust, a jobCode this
- * product refuses to turn into a role, a person who already has an account —
- * throws this exact `UnauthorizedException` and nothing else.**
+ * ★★★ **Every branch below — an institution number no kindergarten here
+ * carries, a register number not on that kindergarten's roster, a malformed
+ * register number, a roster row too stale to trust, a jobCode this product
+ * refuses to turn into a role, a person who already has an account — throws
+ * this exact `UnauthorizedException` and nothing else.**
  *
  * If any two of those read differently, the response would answer "does this
  * register number belong to a member of staff at this kindergarten?" for
- * anybody who holds a code and a list of register numbers — and such lists
- * exist on paper in more than one office, per the plan this module implements
- * (design §5). The branches must never diverge, including for a future
- * "helpful" error message that names which check failed.
+ * anybody holding a list of register numbers — and such lists exist on paper
+ * in more than one office, per the plan this module implements (design §5).
+ * The branches must never diverge, including for a future "helpful" error
+ * message that names which check failed.
+ *
+ * ★ **This matters more since the institution number replaced the issued
+ * code** (2026-09-20). The first field is now public — anybody can look up a
+ * kindergarten's ESIS number — so the uniform refusal is the only thing
+ * standing between this route and an oracle for "is this РД on that
+ * institution's staff roster". It was already mandatory; it is now the whole
+ * defence at that layer, alongside the 10-per-hour rate limit on the
+ * controller.
  */
-export const REFUSAL = "Код эсвэл регистрийн дугаар буруу байна.";
+export const REFUSAL = "Байгууллагын дугаар эсвэл регистрийн дугаар буруу байна.";
 
 /**
  * How old a stored roster row may be before a match against it is refused.
@@ -54,73 +60,15 @@ export class StaffRegistrationService {
   constructor(
     private readonly tenants: TenantAccessService,
     private readonly repo: StaffRegistrationRepository,
-    private readonly passwords: PasswordService,
-    private readonly audit: AuditRepository,
     private readonly esisRepo: EsisRepository,
     private readonly users: UsersService,
     private readonly usersRepo: UsersRepository,
   ) {}
 
   /**
-   * Issues (or rotates) the code a director hands their staff so they can
-   * register themselves against the stored ESIS roster.
-   *
-   * ★ **A throttle, not authentication.** The real gate is the roster match in
-   * `POST /v1/staff-registration` (Task 5) — a submitted register number has to
-   * appear in `EsisStaffRoster` for this kindergarten, and that check runs
-   * regardless of the code. The code's only job is to keep that public,
-   * rate-limited endpoint from being a free-for-all against every kindergarten
-   * in the deployment at once: without it, anybody who found or guessed a
-   * register number could try it against any tenant's roster.
-   *
-   * ★★ **Hashed anyway.** It is a secret shared among roughly a dozen people,
-   * which is a weaker thing than a password — but a plaintext column is one
-   * database read away from letting anybody register as any member of staff at
-   * any kindergarten, and hashing it costs nothing. Reused rather than
-   * reimplemented: `PasswordService` is already the one hashing primitive in
-   * this codebase (CLAUDE.md §2.2's argument applies just as well to a second
-   * hash function as to a second Prisma import), so this calls `hash()` and
-   * later `verify()` exactly as a login does.
-   *
-   * ★★★ **Shown once.** The return value is the only time the plaintext ever
-   * exists outside the director's clipboard — the same reason a password-reset
-   * link is single-use: the system can always issue a new one, and never reads
-   * the old one back. The audit row below records that a code was issued, not
-   * what it was.
-   */
-  async issueCode(actor: Actor, kindergartenId: string) {
-    this.tenants.assertAdmin(actor, kindergartenId);
-
-    const kindergarten = await this.repo.findKindergarten(kindergartenId);
-    if (!kindergarten) throw new NotFoundException();
-
-    const code = randomBytes(6).toString("base64url");
-    const hash = await this.passwords.hash(code);
-    const setAt = new Date();
-
-    await this.repo.setRegistrationCodeHash(kindergartenId, hash, setAt);
-
-    /*
-     * ★ No code, and no hash, in the audit row. `metadata` says a rotation
-     * happened and when; it must not become a second place the plaintext (or
-     * something derived from it) could leak from.
-     */
-    await this.audit.append({
-      action: "UPDATE",
-      kindergartenId,
-      actorUserId: actor.userId,
-      objectType: "KindergartenStaffRegistrationCode",
-      objectId: kindergartenId,
-      metadata: { setAt: setAt.toISOString() },
-    });
-
-    return { code, setAt };
-  }
-
-  /**
-   * The public route: a teacher claims a kindergarten's code and their own
-   * register number, and — on a match against the stored ESIS roster — gets
-   * an invitation to set their own password.
+   * The public route: a teacher submits their kindergarten's ESIS institution
+   * number and their own register number, and — on a match against the stored
+   * ESIS roster — gets an invitation to set their own password.
    *
    * ★ **Never calls ESIS.** This is a public route; the caller has no account
    * yet. Public traffic in the ministry's logs is exactly what storing the
@@ -128,22 +76,40 @@ export class StaffRegistrationService {
    * which is ADMIN-only) exists to prevent — design §1.1, plan §0. Every check
    * below reads this database and nothing else.
    *
-   * ★★ The checks are ordered cheapest and least secret first: whether the
-   * register number even has the right shape, before anything that touches
-   * the database; the code, which decides which single kindergarten's roster
-   * to consult, before the roster read itself. Nothing after the code match
-   * costs more than one query.
+   * ★★ The checks are ordered cheapest first: whether the register number even
+   * has the right shape, before anything that touches the database; the
+   * institution number, which decides which single kindergarten's roster to
+   * consult, before the roster read itself.
    *
-   * ★★★ Every refusal — including the six named in `REFUSAL`'s doc comment —
-   * throws that exact exception and stops. There is no branch below that
-   * returns a different status or a different message for any reason.
+   * ★★★ **The first field stopped being a secret on 2026-09-20**, at the
+   * client's instruction — "institutionID нь байя. Цэцэрлэгийн код нь", and
+   * then "ажилтан бүртгүүлэх үед institutionID болон регистрийн дугаараар
+   * хайлт хийж байвал бүртгэнэ". What it replaced was an issued, hashed code
+   * whose own doc comment called it *"a throttle, not authentication"* — its
+   * stated job was to name which roster to read, and an institution number
+   * does that job exactly as well while being something a director already
+   * knows and can never lose.
+   *
+   * What genuinely changed: an attacker no longer has to hold a secret to aim
+   * at a particular kindergarten. What did **not** change is the gate — the
+   * register number still has to appear on that institution's stored roster,
+   * that roster still has to be fresher than `STALE_AFTER_MS`, the jobCode
+   * still has to map to a role, and the person still must not already have an
+   * account. Guessing a register number against those is bounded by the
+   * controller's 10-per-hour limit.
+   *
+   * ★★★★ Every refusal throws `REFUSAL` and stops. There is no branch below
+   * that returns a different status or a different message for any reason.
    */
   async register(dto: StaffSelfRegistrationDto) {
     const registerNumber = normalizeRegisterNumber(dto.registerNumber);
     if (!registerNumber) throw new UnauthorizedException(REFUSAL);
 
-    const kindergartenId = await this.matchCode(dto.code);
-    if (!kindergartenId) throw new UnauthorizedException(REFUSAL);
+    const kindergarten = await this.repo.findKindergartenIdByEsisInstitutionId(
+      dto.institutionId.trim(),
+    );
+    if (!kindergarten) throw new UnauthorizedException(REFUSAL);
+    const kindergartenId = kindergarten.id;
 
     const entry = await this.esisRepo.findRosterEntryByRegisterNumber(
       kindergartenId,
@@ -245,32 +211,5 @@ export class StaffRegistrationService {
     }));
 
     return paginate(items, total, page);
-  }
-
-  /**
-   * Which kindergarten issued this code, found by trying it against every
-   * stored hash.
-   *
-   * ★ A loop over tenants rather than an indexed lookup — there is no index
-   * on a hash, because a hash exists precisely so that this kind of reverse
-   * lookup cannot be done cheaply. Acceptable here because it is bounded by
-   * the number of kindergartens the whole deployment has issued a code to (a
-   * handful today), it runs on no route but this one, and the alternative —
-   * asking the caller which kindergarten they mean, e.g. by slug — would let
-   * anybody probe whether a given kindergarten has issued a code at all,
-   * which is exactly the kind of oracle `REFUSAL` exists to close everywhere
-   * else. If this deployment ever has enough tenants for the loop to cost
-   * something real, the fix is a code that carries a short tenant prefix
-   * (`"a1b2-xxxxxxxx"`), not a plaintext column — the prefix names the
-   * kindergarten the same way it would for a support ticket.
-   */
-  private async matchCode(code: string): Promise<string | null> {
-    const candidates = await this.repo.findKindergartensWithRegistrationCode();
-    for (const candidate of candidates) {
-      if (await this.passwords.verify(candidate.staffRegistrationCodeHash!, code)) {
-        return candidate.id;
-      }
-    }
-    return null;
   }
 }
