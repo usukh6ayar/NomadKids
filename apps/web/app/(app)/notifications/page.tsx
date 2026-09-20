@@ -273,16 +273,23 @@ export default function NotificationsPage() {
     <div className="flex flex-col gap-5 pb-8 lg:gap-6">
       {/* The active heading follows the guardian's news/survey tab. */}
       <div className="flex max-w-[920px] items-start gap-3 border-b border-[#dbe8f2] pb-5 sm:items-center sm:gap-4">
-        <span className="grid size-12 shrink-0 place-items-center rounded-control bg-[#dceeff] text-[#176ac2] shadow-[0_8px_18px_rgba(29,78,216,.08)] sm:size-14" aria-hidden="true">
+        <span
+          className="grid size-12 shrink-0 place-items-center rounded-control bg-[#dceeff] text-[#176ac2] shadow-[0_8px_18px_rgba(29,78,216,.08)] sm:size-14"
+          aria-hidden="true"
+        >
           <Megaphone size={26} strokeWidth={1.8} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-caption font-bold uppercase tracking-[0.12em] text-[#176ac2]">Харилцаа холбоо</p>
+          <p className="text-caption font-bold uppercase tracking-[0.12em] text-[#176ac2]">
+            Харилцаа холбоо
+          </p>
           <h1 className="mt-0.5 text-heading font-extrabold leading-tight tracking-tight text-[#173e70]">
             {tab === "news" ? "Мэдээ" : "Судалгаа"}
           </h1>
           <p className="mt-1 text-caption leading-5 text-muted sm:text-body">
-            {tab === "news" ? "Цэцэрлэгийн зарлал, мэдээллийг нэг дороос." : "Хүүхэдтэй холбоотой идэвхтэй судалгаанууд."}
+            {tab === "news"
+              ? "Цэцэрлэгийн зарлал, мэдээллийг нэг дороос."
+              : "Хүүхэдтэй холбоотой идэвхтэй судалгаанууд."}
           </p>
         </div>
         {tab === "news" && data ? (

@@ -284,7 +284,9 @@ export function ChatList({
       <header className="border-b border-[#e5edf5] bg-white px-4 pb-4 pt-5">
         <div className="flex min-h-11 items-center justify-between gap-2">
           <div className="min-w-0">
-            <Title className="text-title font-extrabold tracking-tight text-[#173e70]">Чатууд</Title>
+            <Title className="text-title font-extrabold tracking-tight text-[#173e70]">
+              Чатууд
+            </Title>
             <p className="mt-0.5 text-caption text-muted">Яриагаа сонгож үргэлжлүүлээрэй</p>
           </div>
           {action}
@@ -356,8 +358,7 @@ export function ChatList({
                 aria-current={room.key === activeKey ? "true" : undefined}
                 className={cn(
                   "relative flex min-h-[82px] w-full items-center gap-3 rounded-control px-3 py-3 text-left transition-colors hover:bg-[#f4f9fd]",
-                  room.key === activeKey &&
-                    "bg-[#eaf4ff] ring-1 ring-[#d1e6fa] hover:bg-[#eaf4ff]",
+                  room.key === activeKey && "bg-[#eaf4ff] ring-1 ring-[#d1e6fa] hover:bg-[#eaf4ff]",
                 )}
               >
                 {/* Initials, not an avatar: a room is a group of people and
@@ -566,7 +567,9 @@ export function ChatRoom({
           </span>
 
           <div className="min-w-0 flex-1">
-            <Title className="truncate text-lead font-extrabold text-[#173e70]">{displayName}</Title>
+            <Title className="truncate text-lead font-extrabold text-[#173e70]">
+              {displayName}
+            </Title>
             <p className="mt-0.5 truncate text-caption text-muted">{room.memberCount} гишүүн</p>
           </div>
 

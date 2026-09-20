@@ -300,11 +300,7 @@ function LoginCard() {
           }
         />
 
-        <Field
-          label="Нэвтрэх нэр, утас эсвэл и-мэйл"
-          error={errors.identifier}
-          required
-        >
+        <Field label="Нэвтрэх нэр, утас эсвэл и-мэйл" error={errors.identifier} required>
           {({ id, describedBy, invalid }) => (
             <div className="relative">
               <UserRound
@@ -578,7 +574,10 @@ export function PublicLanding() {
             <LoginCard />
             <div className="mt-4 flex flex-wrap items-center justify-center gap-x-2 text-body text-[#173e70] lg:justify-start">
               <span>Танай байгууллага бүртгэлгүй юу?</span>
-              <Link href="/register" className="inline-flex min-h-11 items-center gap-1 font-bold text-[#176ac2] hover:underline">
+              <Link
+                href="/register"
+                className="inline-flex min-h-11 items-center gap-1 font-bold text-[#176ac2] hover:underline"
+              >
                 Байгууллагын бүртгэл <ArrowRight size={16} aria-hidden="true" />
               </Link>
             </div>

@@ -87,7 +87,9 @@ export default function ChatPage() {
 
       <div className="hidden shrink-0 items-center justify-between px-2 pb-3 lg:flex">
         <div>
-          <p className="text-caption font-bold uppercase tracking-[0.12em] text-[#176ac2]">Харилцаа холбоо</p>
+          <p className="text-caption font-bold uppercase tracking-[0.12em] text-[#176ac2]">
+            Харилцаа холбоо
+          </p>
           <p className="text-title font-extrabold tracking-tight text-[#173e70]">Чат</p>
         </div>
         <span className="rounded-pill bg-white px-3 py-1.5 text-caption font-medium text-muted">
