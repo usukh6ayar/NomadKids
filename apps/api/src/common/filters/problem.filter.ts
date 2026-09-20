@@ -57,7 +57,11 @@ export class ProblemExceptionFilter implements ExceptionFilter {
         if (Array.isArray(message)) {
           problem.errors = { _: message.map(String) };
           problem.detail = message.map(String).join(". ");
-        } else if (typeof message === "string" && message !== problem.title) {
+        } else if (
+          typeof message === "string" &&
+          message !== problem.title &&
+          !isNestDefaultMessage(message, status)
+        ) {
           problem.detail = message;
         }
         /*
@@ -112,6 +116,49 @@ const CODE_SHAPE = /^[A-Z_]{3,40}$/;
  * identically whether the record is absent or the actor may not see it.
  * CLAUDE.md §1.7.
  */
+/**
+ * Nest's own English reason phrase for a status, which is **not** a message
+ * anybody wrote.
+ *
+ * ★ `new NotFoundException()` with no argument produces
+ * `{ statusCode: 404, message: "Not Found" }`. The branch above forwards that
+ * into `detail`, `apps/web/lib/api/errors.ts` prefers `detail` over its own
+ * Mongolian status map, and a director looking for a deleted school year read
+ * **"Not Found"** — in a product whose every other sentence is Mongolian.
+ * Found on 2026-09-20 by asking the running API: `detail":"Unauthorized"`.
+ *
+ * The `message !== problem.title` guard above did not catch it, and could not:
+ * it compares against the Mongolian title, and "Not Found" differs from
+ * «Олдсонгүй» exactly as a real thrown message would.
+ *
+ * ★★ Matched against this list rather than translated. A translation here
+ * would be a second status→sentence map competing with `titleFor` below and
+ * with the web's `STATUS_MESSAGES`; dropping the detail instead lets the one
+ * that already exists answer, which is what both were written to do.
+ *
+ * ★★★ Status-scoped on purpose. A service that deliberately throws
+ * `new ConflictException("Not Found")` — absurd, but expressible — keeps its
+ * message, because only the phrase Nest itself would have generated for
+ * *this* status is discarded.
+ */
+const NEST_DEFAULT_MESSAGE: Record<number, string> = {
+  [HttpStatus.BAD_REQUEST]: "Bad Request",
+  [HttpStatus.UNAUTHORIZED]: "Unauthorized",
+  [HttpStatus.PAYMENT_REQUIRED]: "Payment Required",
+  [HttpStatus.FORBIDDEN]: "Forbidden",
+  [HttpStatus.NOT_FOUND]: "Not Found",
+  [HttpStatus.CONFLICT]: "Conflict",
+  [HttpStatus.PAYLOAD_TOO_LARGE]: "Payload Too Large",
+  [HttpStatus.UNPROCESSABLE_ENTITY]: "Unprocessable Entity",
+  [HttpStatus.TOO_MANY_REQUESTS]: "Too Many Requests",
+  [HttpStatus.INTERNAL_SERVER_ERROR]: "Internal Server Error",
+  [HttpStatus.SERVICE_UNAVAILABLE]: "Service Unavailable",
+};
+
+function isNestDefaultMessage(message: string, status: number): boolean {
+  return NEST_DEFAULT_MESSAGE[status] === message;
+}
+
 function titleFor(status: number): string {
   switch (status) {
     case HttpStatus.BAD_REQUEST:
