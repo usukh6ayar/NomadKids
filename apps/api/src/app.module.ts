@@ -26,6 +26,7 @@ import { MaintenanceModule } from "./maintenance/maintenance.module";
 import { MailModule } from "./mail/mail.module";
 import { MealsModule } from "./meals/meals.module";
 import { MediaModule } from "./media/media.module";
+import { GroupReportsModule } from "./group-reports/group-reports.module";
 import { ObservationsModule } from "./observations/observations.module";
 import { ChatModule } from "./chat/chat.module";
 import { NotificationsModule } from "./notifications/notifications.module";
@@ -37,6 +38,7 @@ import { StorageModule } from "./storage/storage.module";
 import { SurveysModule } from "./surveys/surveys.module";
 import { RateLimitModule } from "./common/rate-limit/rate-limit.module";
 import { PrismaModule } from "./prisma/prisma.module";
+import { StaffRegistrationModule } from "./staff-registration/staff-registration.module";
 import { TenantsModule } from "./tenants/tenants.module";
 import { UsersModule } from "./users/users.module";
 
@@ -64,6 +66,7 @@ import { UsersModule } from "./users/users.module";
     UsersModule,
     ChildrenModule,
     PortfolioModule,
+    GroupReportsModule,
     ObservationsModule,
     StorageModule,
     MediaModule,
@@ -81,6 +84,7 @@ import { UsersModule } from "./users/users.module";
     AccessModule,
     InvoicesModule,
     EsisModule,
+    StaffRegistrationModule,
     QpayModule,
     KitchenModule,
     MealsModule,

@@ -236,24 +236,43 @@ describe("recording", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("arrival claims", () => {
-  it("★ a guardian's PRESENT request carries no Attendance row until approved", async () => {
+  /*
+    ★ The invariant this file opens with, kept where it still holds — 2026-09-12.
+
+    It used to be asserted of a PRESENT claim, which was the strongest case for
+    it: a guardian could not write themselves into the register. An arrival is
+    no longer a claim the teacher rules on ("багшаар баталгаажиж
+    зөвшөөрөгдөхгүй"), so that assertion moved to the leave request, which is
+    the one thing a parent sends that is still genuinely a request. A day off
+    that has not been granted must not appear in the register as if it had.
+  */
+  it("★ a guardian's leave request carries no Attendance row until approved", async () => {
     const res = await authed(
       request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),
       parentA,
     ).send({
       dateFrom: "2026-02-11",
       dateTo: "2026-02-11",
-      requestedStatus: "PRESENT",
-      arrivedWith: "MOTHER",
-      arrivedAt: "2026-02-11T09:05:00.000Z",
+      requestedStatus: "EXCUSED",
+      reason: "Хөдөө явна",
     });
 
     expect(res.status).toBe(201);
+    expect(res.body.reviewStatus).toBe("PENDING");
     expect(await db.attendance.count({ where: { childId: a.child.id } })).toBe(0);
   });
 
-  it("approving copies the companion and time onto the Attendance row", async () => {
-    const created = await authed(
+  /*
+    ★ Written as it is reported, not on approval — 2026-09-12.
+
+    Approving used to be what copied the companion and the time onto the
+    `Attendance` row. An arrival needs no approval now ("багшаар баталгаажиж
+    зөвшөөрөгдөхгүй"), so the same write happens at the moment the parent sends
+    it — otherwise the fact would be recorded nowhere and the register would sit
+    empty for a child standing in the room.
+  */
+  it("reporting an arrival copies the companion and time onto the Attendance row", async () => {
+    await authed(
       request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),
       parentA,
     ).send({
@@ -264,20 +283,17 @@ describe("arrival claims", () => {
       arrivedAt: "2026-02-11T08:45:00.000Z",
     });
 
-    await authed(
-      request(server()).post(`/v1/attendance-requests/${created.body.id}/review`),
-      teacherA,
-    ).send({ decision: "APPROVED" });
-
     const row = await db.attendance.findFirstOrThrow({ where: { childId: a.child.id } });
     expect(row.status).toBe("PRESENT");
     expect(row.arrivedWith).toBe("FATHER");
     expect(row.arrivedAt?.toISOString()).toBe("2026-02-11T08:45:00.000Z");
-    expect(row.recordedById).toBe(a.teacherUser.id);
+    // Recorded by whoever reported it; the register stays the teacher's to
+    // overwrite, which the case at the foot of this file holds down.
+    expect(row.recordedById).toBe(a.parentUser.id);
   });
 
-  it("★ a guardian's OTHER claim carries the name through to approval", async () => {
-    const created = await authed(
+  it("★ a guardian's OTHER claim carries the name onto the row", async () => {
+    await authed(
       request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),
       parentA,
     ).send({
@@ -288,17 +304,19 @@ describe("arrival claims", () => {
       arrivedWithName: "Ахын найз",
     });
 
-    await authed(
-      request(server()).post(`/v1/attendance-requests/${created.body.id}/review`),
-      teacherA,
-    ).send({ decision: "APPROVED" });
-
     const row = await db.attendance.findFirstOrThrow({ where: { childId: a.child.id } });
     expect(row.arrivedWith).toBe("OTHER");
     expect(row.arrivedWithName).toBe("Ахын найз");
   });
 
-  it("rejecting an arrival claim writes no Attendance row", async () => {
+  /*
+    An arrival is a fact the family reports, not a permission they ask for, so
+    there is nothing for the teacher to reject: the request is already decided
+    when it is created and `reviewRequest` refuses to decide it twice. The
+    register stays correctable — by the teacher, through the day sheet, which
+    the case at the foot of this file holds down.
+  */
+  it("an arrival cannot be rejected — it was never the teacher's to decide", async () => {
     const created = await authed(
       request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),
       parentA,
@@ -309,12 +327,13 @@ describe("arrival claims", () => {
       arrivedWith: "MOTHER",
     });
 
-    await authed(
+    const review = await authed(
       request(server()).post(`/v1/attendance-requests/${created.body.id}/review`),
       teacherA,
     ).send({ decision: "REJECTED" });
 
-    expect(await db.attendance.count({ where: { childId: a.child.id } })).toBe(0);
+    expect(review.status).toBe(400);
+    expect(await db.attendance.count({ where: { childId: a.child.id } })).toBe(1);
   });
 
   it("no arrivedAt sent means the request captures the moment it was made", async () => {
@@ -349,9 +368,9 @@ describe("arrival claims", () => {
     expect(row.arrivedWith).toBeNull();
   });
 
-  it("★ a second, pickup-only request approves onto the same day without erasing the morning's arrival", async () => {
-    // First request of the day: drop-off.
-    const arrival = await authed(
+  it("★ an afternoon pickup lands on the same day without erasing the morning's arrival", async () => {
+    // First report of the day: drop-off.
+    await authed(
       request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),
       parentA,
     ).send({
@@ -361,12 +380,8 @@ describe("arrival claims", () => {
       arrivedWith: "MOTHER",
       arrivedAt: "2026-02-11T09:00:00.000Z",
     });
-    await authed(
-      request(server()).post(`/v1/attendance-requests/${arrival.body.id}/review`),
-      teacherA,
-    ).send({ decision: "APPROVED" });
 
-    // Second, later request the same day: pickup — no arrivedWith at all.
+    // Second, later report the same day: pickup — no arrivedWith at all.
     const pickup = await authed(
       request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),
       parentA,
@@ -380,15 +395,10 @@ describe("arrival claims", () => {
 
     expect(pickup.status).toBe(201);
 
-    await authed(
-      request(server()).post(`/v1/attendance-requests/${pickup.body.id}/review`),
-      teacherA,
-    ).send({ decision: "APPROVED" });
-
     const row = await db.attendance.findFirstOrThrow({
       where: { childId: a.child.id, date: new Date("2026-02-11T00:00:00.000Z") },
     });
-    // The point of the test: the morning's claim survives the afternoon's approval.
+    // The point of the test: the morning's report survives the afternoon's.
     expect(row.arrivedWith).toBe("MOTHER");
     expect(row.arrivedAt?.toISOString()).toBe("2026-02-11T09:00:00.000Z");
     expect(row.pickedUpWith).toBe("FATHER");
@@ -435,6 +445,24 @@ describe("reading", () => {
     expect(res.body.PRESENT).toBe(1);
     expect(res.body.HALF_DAY).toBe(1);
     expect(res.body.EXCUSED).toBe(0);
+
+    /*
+      ★ Every status, present at zero — asserted as a set rather than key by key.
+
+      `attendanceSummarySchema` is `z.record(attendanceStatusSchema, …)`, and an
+      enum-keyed record is exhaustive in Zod: one absent key rejects the whole
+      object, so a family opening "Ирцийн нэгтгэл" got "Алдаа гарлаа" and no
+      figures at all. `OTHER` was the missing one until 2026-09-12, and the three
+      assertions above passed throughout — which is why this now names the shape.
+    */
+    expect(Object.keys(res.body).sort()).toEqual([
+      "ABSENT",
+      "EXCUSED",
+      "HALF_DAY",
+      "OTHER",
+      "PRESENT",
+      "SICK",
+    ]);
   });
 });
 
@@ -890,6 +918,24 @@ describe("group range sheet", () => {
     const text = JSON.stringify(book.worksheets.map((sheet) => sheet.getSheetValues()));
     expect(text).toContain("Ирсэн");
     expect(text).toContain("Өвчтэй");
+
+    /*
+     * ★ 2026-09-12: "татаж авахаар нийт бодолтууд ерөөсөө орохгүй байна."
+     *
+     * The teacher's file is built by the same function as the director's, so
+     * it gains the same two things: the totals the screen shows under and
+     * beside the grid, and a sheet for the class's own figures.
+     */
+    expect(book.worksheets.map((sheet) => sheet.name)).toContain("Ангийн дүн");
+
+    const grid = book.getWorksheet("Өдөр тутмын ирц")!;
+    const headers = grid.getRow(3).values as unknown[];
+    expect(headers.map(String)).toContain("Нийт");
+
+    const classTotals = book.getWorksheet("Ангийн дүн")!;
+    expect(String(classTotals.getRow(2).getCell(1).value)).toBe(a.group.name);
+    // One child, one present day and one sick day — two marks recorded.
+    expect(classTotals.getRow(2).getCell(9).value).toBe(2);
   });
 
   it("a teacher cannot export another group's register", async () => {
@@ -1109,5 +1155,96 @@ describe("group batch recording", () => {
     });
     expect(rows).toHaveLength(1);
     expect(rows[0]!.metadata).toMatchObject({ date: DATE, count: 2 });
+  });
+});
+
+/**
+ * What a teacher is asked to decide, and what they are merely told.
+ *
+ * ★ 2026-09-12, at the client's instruction: "хүүхдийн ирлээ, явлаа … багшаар
+ * баталгаажиж зөвшөөрөгдөхгүй; зөвхөн чөлөөний хүсэлт л багшаар
+ * баталгаажуулна."
+ *
+ * A parent saying "I dropped him off at 08:40" is reporting a fact about a
+ * morning the teacher was present for. A leave request asks for a day that has
+ * not happened yet.
+ */
+describe("which parent reports need a decision", () => {
+  it("an arrival needs none, and stays out of the review queue", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),
+      parentA,
+    ).send({
+      dateFrom: "2026-02-10",
+      dateTo: "2026-02-10",
+      requestedStatus: "PRESENT",
+      arrivedWith: "MOTHER",
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.reviewStatus).toBe("APPROVED");
+
+    const queue = await authed(
+      request(server()).get("/v1/attendance-requests/review-queue"),
+      teacherA,
+    );
+    expect(queue.body.items).toHaveLength(0);
+  });
+
+  it("a pickup needs none either", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),
+      parentA,
+    ).send({
+      dateFrom: "2026-02-10",
+      dateTo: "2026-02-10",
+      requestedStatus: "PRESENT",
+      pickedUpWith: "FATHER",
+    });
+
+    expect(res.body.reviewStatus).toBe("APPROVED");
+  });
+
+  /** The one that is genuinely a request: a day off that has not happened. */
+  it("★ a leave request still waits for the teacher", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),
+      parentA,
+    ).send({
+      dateFrom: "2026-02-12",
+      dateTo: "2026-02-13",
+      requestedStatus: "EXCUSED",
+      reason: "Эмчид үзүүлнэ",
+    });
+
+    expect(res.body.reviewStatus).toBe("PENDING");
+
+    const queue = await authed(
+      request(server()).get("/v1/attendance-requests/review-queue"),
+      teacherA,
+    );
+    expect(queue.body.items).toHaveLength(1);
+    expect(queue.body.items[0].requestedStatus).toBe("EXCUSED");
+  });
+
+  /* The register stays the teacher's: their mark overwrites what was reported. */
+  it("a teacher still corrects what a parent reported", async () => {
+    await authed(
+      request(server()).post(`/v1/children/${a.child.id}/attendance-requests`),
+      parentA,
+    ).send({
+      dateFrom: "2026-02-10",
+      dateTo: "2026-02-10",
+      requestedStatus: "PRESENT",
+      arrivedWith: "MOTHER",
+    });
+
+    const marked = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/attendance/2026-02-10`),
+      teacherA,
+    ).send({ status: "SICK" });
+
+    expect(marked.status).toBe(200);
+    expect(marked.body.status).toBe("SICK");
   });
 });

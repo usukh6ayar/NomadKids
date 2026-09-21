@@ -361,7 +361,7 @@ export function ChildGallery({
             withCaption={uploadWithCaption}
             hint={
               uploadHint ??
-              "Бүтээл, зурсан зураг, тоглож буй мөч. JPEG, PNG эсвэл WebP, 10 MB хүртэл."
+              "Бүтээл, зурсан зураг, тоглож буй мөч. JPEG, PNG эсвэл WebP — том зургийг өөрөө жижигрүүлнэ."
             }
           />
         ) : null}

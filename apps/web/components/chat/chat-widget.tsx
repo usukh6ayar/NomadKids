@@ -18,7 +18,13 @@ import {
 } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { z } from "zod";
-import { chatMessageSchema, chatRoomSchema, unreadCountSchema } from "@kinder/contracts";
+import {
+  chatMessageSchema,
+  chatRoomSchema,
+  unreadCountSchema,
+  type ChatRoom as ChatRoomData,
+  type Role,
+} from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { mediaUrl } from "@/lib/api/client";
 import { MAX_CHAT_IMAGES } from "@/lib/chat-media";
@@ -39,6 +45,60 @@ const historySchema = z.object({
 });
 
 export const chatRoomsSchema = roomsSchema;
+
+/**
+ * The short room name a person sees; API names remain stable room metadata.
+ *
+ * A group room currently contains its teachers and enrolled children's
+ * guardians, while a staff room contains employees. The role-specific label
+ * describes that same real audience without changing keys or access rules.
+ * A qualifier is only needed when two rooms would otherwise have the same
+ * label (two groups or two kindergarten memberships).
+ */
+/** What kind of room this is, for the header line under its name. */
+const ROOM_KIND_LABEL: Record<ChatRoomData["kind"], string> = {
+  GROUP: "Бүлгийн чат",
+  STAFF: "Ажилтны чат",
+  PARENTS: "Эцэг эхчүүдийн чат",
+  DIRECT: "Хувийн чат",
+};
+
+export function chatRoomDisplayName(
+  room: ChatRoomData,
+  roles: ReadonlySet<Role>,
+  rooms: readonly ChatRoomData[] = [room],
+): string {
+  if (room.kind === "STAFF") {
+    const hasSeveralStaffRooms = rooms.filter((candidate) => candidate.kind === "STAFF").length > 1;
+    const kindergartenName = room.name.split("·").slice(1).join("·").trim();
+    return hasSeveralStaffRooms && kindergartenName ? `Багш нар · ${kindergartenName}` : "Багш нар";
+  }
+
+  /*
+   * ★ A private room is named after the other person, by the API, and the
+   * label must not be rewritten here — "Манай анги" for a conversation with
+   * one named teacher would be actively misleading about who can read it.
+   */
+  if (room.kind === "DIRECT") return room.name;
+
+  /*
+   * ★★ The parents' room, 2026-09-20. The API's name already carries the
+   * group ("Бамбарууш · эцэг эхчүүд"); this shortens it when there is only one
+   * such room to disambiguate, the same way the group room above does.
+   */
+  if (room.kind === "PARENTS") {
+    const hasSeveralParentRooms =
+      rooms.filter((candidate) => candidate.kind === "PARENTS").length > 1;
+    return hasSeveralParentRooms ? room.name : "Эцэг эхчүүд";
+  }
+
+  const hasSeveralGroupRooms = rooms.filter((candidate) => candidate.kind === "GROUP").length > 1;
+  const qualifier = hasSeveralGroupRooms ? ` · ${room.name}` : "";
+
+  if (roles.has("TEACHER")) return `Манай анги${qualifier}`;
+  if (roles.has("PARENT")) return `Багш, эцэг эхчүүд${qualifier}`;
+  return room.name;
+}
 
 /**
  * How the surrounding frame renders a pane's title and its dismiss control.
@@ -87,7 +147,7 @@ const dialogChrome: ChatChrome = { Title: Dialog.Title, Close: Dialog.Close };
  * that opens an empty panel is worse than no button.
  */
 export function ChatWidget() {
-  const { session } = useSession();
+  const { session, roles } = useSession();
   const [open, setOpen] = useState(false);
   const [roomKey, setRoomKey] = useState<string | null>(null);
 
@@ -171,7 +231,11 @@ export function ChatWidget() {
           )}
         >
           {active ? (
-            <ChatRoom room={active} onBack={() => setRoomKey(null)} />
+            <ChatRoom
+              room={active}
+              displayName={chatRoomDisplayName(active, roles, rooms.data)}
+              onBack={() => setRoomKey(null)}
+            />
           ) : (
             <ChatList
               rooms={rooms.data}
@@ -218,13 +282,19 @@ export function ChatList({
   chrome?: ChatChrome;
 }) {
   const { Title, Close } = chrome;
+  const { roles } = useSession();
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLocaleLowerCase("mn");
+  const roomNames = useMemo(
+    () => new Map(rooms?.map((room) => [room.key, chatRoomDisplayName(room, roles, rooms)])),
+    [roles, rooms],
+  );
   const visibleRooms = useMemo(
     () =>
       rooms?.filter((room) => {
         if (!normalizedQuery) return true;
         return [
+          roomNames.get(room.key),
           room.name,
           room.lastMessage?.body,
           room.lastMessage?.author ? fullName(room.lastMessage.author) : undefined,
@@ -232,14 +302,20 @@ export function ChatList({
           .filter(Boolean)
           .some((value) => value!.toLocaleLowerCase("mn").includes(normalizedQuery));
       }),
-    [normalizedQuery, rooms],
+    [normalizedQuery, roomNames, rooms],
   );
 
   return (
     <>
-      <header className="border-b border-border bg-surface px-4 pb-3 pt-4">
+      <header className="border-b border-[#e5edf5] bg-white px-4 pb-4 pt-5">
         <div className="flex min-h-11 items-center justify-between gap-2">
-          {action ?? <Title className="text-title font-bold text-ink">Чатууд</Title>}
+          <div className="min-w-0">
+            <Title className="text-title font-extrabold tracking-tight text-[#173e70]">
+              Чатууд
+            </Title>
+            <p className="mt-0.5 text-caption text-muted">Яриагаа сонгож үргэлжлүүлээрэй</p>
+          </div>
+          {action}
           {Close ? (
             <Close
               aria-label="Хаах"
@@ -249,7 +325,7 @@ export function ChatList({
             </Close>
           ) : null}
         </div>
-        <label className="relative mt-2 block">
+        <label className="relative mt-4 block">
           <span className="sr-only">Чатын нэр эсвэл мессежээр хайх</span>
           <Search
             size={18}
@@ -261,7 +337,7 @@ export function ChatList({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={searchPlaceholder}
-            className="h-[44px] bg-canvas pl-11"
+            className="h-[46px] rounded-control border-[#dbe8f2] bg-[#f4f9fd] pl-11 focus:bg-white"
           />
         </label>
       </header>
@@ -299,7 +375,7 @@ export function ChatList({
           </div>
         </div>
       ) : (
-        <ul className="min-h-0 flex-1 overflow-y-auto bg-surface py-1">
+        <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto bg-white p-2">
           {visibleRooms?.map((room) => (
             <li key={room.key}>
               <button
@@ -307,9 +383,8 @@ export function ChatList({
                 onClick={() => onOpen(room.key)}
                 aria-current={room.key === activeKey ? "true" : undefined}
                 className={cn(
-                  "relative flex min-h-[84px] w-full items-center gap-3 border-b border-border-soft px-4 py-3 text-left transition-colors hover:bg-canvas",
-                  room.key === activeKey &&
-                    "bg-primary-soft before:absolute before:inset-y-2 before:left-0 before:w-1 before:rounded-r-pill before:bg-primary hover:bg-primary-soft",
+                  "relative flex min-h-[82px] w-full items-center gap-3 rounded-control px-3 py-3 text-left transition-colors hover:bg-[#f4f9fd]",
+                  room.key === activeKey && "bg-[#eaf4ff] ring-1 ring-[#d1e6fa] hover:bg-[#eaf4ff]",
                 )}
               >
                 {/* Initials, not an avatar: a room is a group of people and
@@ -317,18 +392,20 @@ export function ChatList({
                 <span
                   aria-hidden="true"
                   className={cn(
-                    "grid size-12 shrink-0 place-items-center rounded-pill text-lead font-bold",
+                    "grid size-12 shrink-0 place-items-center rounded-control text-lead font-bold",
                     room.kind === "GROUP"
                       ? "bg-mint text-mint-ink"
                       : "bg-primary-soft text-primary",
                   )}
                 >
-                  {room.name.slice(0, 1)}
+                  {(roomNames.get(room.key) ?? room.name).slice(0, 1)}
                 </span>
 
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline justify-between gap-2">
-                    <span className="truncate text-body font-bold text-ink">{room.name}</span>
+                    <span className="truncate text-body font-bold text-ink">
+                      {roomNames.get(room.key) ?? room.name}
+                    </span>
                     {room.lastMessage ? (
                       <span className="shrink-0 text-caption tabular-nums text-muted">
                         {roomListTime(room.lastMessage.createdAt)}
@@ -359,11 +436,14 @@ export function ChatList({
 /** One room: a header that goes back, the messages, and the composer. */
 export function ChatRoom({
   room,
+  displayName = room.name,
   onBack,
   hideBackAtLg = false,
   chrome = dialogChrome,
 }: {
   room: z.infer<typeof chatRoomSchema>;
+  /** Role-specific label already resolved by the frame that owns the room list. */
+  displayName?: string;
   /**
    * Omitted by `/chat` at desktop width, where the list is already beside this
    * pane — a "back" arrow pointing at something visible is a control that
@@ -486,8 +566,8 @@ export function ChatRoom({
 
   return (
     <>
-      <div className="border-b border-border bg-surface">
-        <header className="flex min-h-[76px] items-center gap-2 px-3 py-2.5 sm:px-4">
+      <div className="border-b border-[#e5edf5] bg-white">
+        <header className="flex min-h-[76px] items-center gap-2 px-3 py-2.5 sm:px-5">
           {onBack ? (
             <button
               type="button"
@@ -505,15 +585,17 @@ export function ChatRoom({
           <span
             aria-hidden="true"
             className={cn(
-              "hidden size-11 shrink-0 place-items-center rounded-pill text-body font-bold sm:grid",
+              "hidden size-11 shrink-0 place-items-center rounded-control text-body font-bold sm:grid",
               room.kind === "GROUP" ? "bg-mint text-mint-ink" : "bg-primary-soft text-primary",
             )}
           >
-            {room.name.slice(0, 1)}
+            {displayName.slice(0, 1)}
           </span>
 
           <div className="min-w-0 flex-1">
-            <Title className="truncate text-lead font-bold text-ink">{room.name}</Title>
+            <Title className="truncate text-lead font-extrabold text-[#173e70]">
+              {displayName}
+            </Title>
             <p className="mt-0.5 truncate text-caption text-muted">{room.memberCount} гишүүн</p>
           </div>
 
@@ -594,16 +676,14 @@ export function ChatRoom({
 
         {detailsOpen ? (
           <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-border-soft bg-canvas px-4 py-2.5 text-caption text-muted">
-            <span className="font-medium text-ink">
-              {room.kind === "GROUP" ? "Бүлгийн чат" : "Ажилтны чат"}
-            </span>
+            <span className="font-medium text-ink">{ROOM_KIND_LABEL[room.kind]}</span>
             <span>{room.memberCount} гишүүн</span>
             <span>{room.unreadCount > 0 ? `${room.unreadCount} уншаагүй` : "Шинэ мессежгүй"}</span>
           </div>
         ) : null}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-surface px-3 py-4 sm:px-5">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-[#f6fafe] px-3 py-5 sm:px-6">
         {history.isLoading ? (
           <div className="mx-auto flex w-full max-w-[860px] flex-col gap-3">
             <Skeleton className="h-12 w-2/3" />
@@ -635,7 +715,7 @@ export function ChatRoom({
             </div>
           </div>
         ) : (
-          <ul className="mx-auto flex w-full max-w-[860px] flex-col gap-3">
+          <ul className="mx-auto flex w-full max-w-[860px] flex-col gap-4">
             {visibleMessages.map((message) => (
               <MessageBubble key={message.id} message={message} />
             ))}
@@ -644,7 +724,7 @@ export function ChatRoom({
         <div ref={bottom} />
       </div>
 
-      <div className="relative border-t border-border bg-surface p-3 sm:p-4">
+      <div className="relative border-t border-[#e5edf5] bg-white p-3 sm:p-4">
         {emojiOpen ? (
           <div className="absolute bottom-[76px] right-14 z-10 flex gap-1 rounded-card border border-border bg-surface p-2 shadow-lg sm:right-20">
             {["😊", "👍", "❤️", "🎉", "🙏"].map((emoji) => (
@@ -719,7 +799,7 @@ export function ChatRoom({
                 ? `Нэг мессежид ${MAX_CHAT_IMAGES} зураг хүртэл`
                 : "Зураг хавсаргах"
             }
-            className="grid size-12 shrink-0 place-items-center rounded-control border border-border text-muted transition-colors hover:bg-canvas hover:text-ink disabled:text-faint"
+            className="grid size-12 shrink-0 place-items-center rounded-control border border-[#dbe8f2] text-muted transition-colors hover:bg-[#f4f9fd] hover:text-ink disabled:text-faint"
           >
             <Paperclip size={20} aria-hidden="true" />
           </button>
@@ -732,11 +812,11 @@ export function ChatRoom({
               id={draftId}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
-              placeholder="Бичих..."
+              placeholder="Мессеж бичих..."
               autoComplete="off"
               maxLength={2000}
               disabled={send.isPending}
-              className="bg-canvas pr-12"
+              className="rounded-control border-[#dbe8f2] bg-[#f4f9fd] pr-12 focus:bg-white"
             />
             <button
               type="button"
@@ -824,10 +904,10 @@ function MessageBubble({ message }: { message: z.infer<typeof chatMessageSchema>
         ) : null}
         <div
           className={cn(
-            "min-w-0 rounded-card px-3.5 py-2.5",
+            "min-w-0 rounded-row px-4 py-3 shadow-[0_2px_8px_rgba(28,65,103,.05)]",
             message.mine
-              ? "bg-primary text-primary-ink"
-              : "border border-border bg-surface text-ink",
+              ? "rounded-br-md bg-primary text-primary-ink"
+              : "rounded-bl-md border border-[#dbe8f2] bg-white text-ink",
           )}
         >
           {message.media.length > 0 ? (

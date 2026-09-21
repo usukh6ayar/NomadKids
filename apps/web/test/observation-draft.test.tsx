@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   renderWithProviders,
+  mockSearchParams,
   ROUTER,
   selectOption,
   sessionFor,
@@ -49,7 +50,13 @@ const CHILD_DETAIL = {
   guardianships: [],
 };
 
-const TYPES = [{ id: TYPE, name: "Өдөр тутмын ажиглалт", code: "daily" }];
+const ARTWORK_TYPE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const CREATIVE_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+const TYPES = [
+  { id: TYPE, name: "Өдөр тутмын ажиглалт", code: "daily" },
+  { id: ARTWORK_TYPE, name: "Бүтээл", code: "artwork" },
+];
 
 function routes() {
   return [
@@ -71,8 +78,20 @@ function routes() {
       path: `/kindergartens/${KINDERGARTEN_ID}/assessment-config`,
       body: {
         domains: [
-          { id: DOMAIN_ID, name: "Хэл яриа, харилцаа", color: "#3b82f6", order: 3 },
-          { id: "99999999-9999-4999-8999-999999999999", name: "Танин мэдэхүй", order: 4 },
+          {
+            id: DOMAIN_ID,
+            name: "Хэл яриа, харилцаа",
+            code: "language",
+            color: "#3b82f6",
+            order: 3,
+          },
+          {
+            id: "99999999-9999-4999-8999-999999999999",
+            name: "Танин мэдэхүй",
+            code: "cognitive",
+            order: 4,
+          },
+          { id: CREATIVE_ID, name: "Зураг, урлал", code: "creative", order: 6 },
         ],
         levels: [],
       },
@@ -956,6 +975,64 @@ describe("Шинэ ажиглалт — зураг", () => {
     expect((form.getAll("file") as File[]).map((f) => f.name)).toEqual(["a.png", "b.png"]);
   });
 
+  it("tags a Бүтээл photo so it appears in the progress timeline", async () => {
+    const user = userEvent.setup();
+    setSearchParams(`typeId=${ARTWORK_TYPE}`);
+    const { calls } = stubApi(savingRoutes());
+
+    renderWithProviders(<NewObservationPage />);
+    const type = await screen.findByRole("combobox", { name: /^Төрөл/ });
+    await user.click(type);
+    await user.click(await screen.findByRole("option", { name: "Наамал" }));
+    await user.upload(screen.getByLabelText("Нэмэх"), [photo("naamal.png")]);
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+
+    const upload = await waitFor(() => {
+      const found = calls.find((c) => c.url.endsWith("/media") && c.method === "POST");
+      expect(found).toBeTruthy();
+      return found!;
+    });
+    expect((upload.body as FormData).get("category")).toBe("ARTWORK");
+  });
+
+  it("opens the next artwork with its type preselected and returns to the progress sequence", async () => {
+    const user = userEvent.setup();
+    const query = new URLSearchParams({
+      type: "artwork",
+      activityName: "Наамал",
+      returnTo: "progress",
+    });
+    setSearchParams(query.toString());
+    expect(mockSearchParams.get("activityName")).toBe("Наамал");
+    const { calls } = stubApi(savingRoutes());
+
+    renderWithProviders(<NewObservationPage />);
+
+    /*
+      ★ `toHaveTextContent`, not `toHaveValue`. `Select` is Radix, so the
+      element carrying `role="combobox"` is the trigger button, which has no
+      `value` at all — the assertion read empty however well the screen worked.
+      The trigger shows the chosen item's own label, so an unfilled type still
+      fails this: the placeholder says "Сонгоно уу". `survey-wizard.test.tsx`
+      asserts the same thing the same way.
+    */
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: /^Төрөл/ })).toHaveTextContent("Наамал"),
+    );
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+
+    await waitFor(() => {
+      const request = calls.find(
+        (call) => call.url === `/children/${CHILD}/observations` && call.method === "POST",
+      );
+      expect(request).toBeTruthy();
+      expect(request?.body).toMatchObject({ typeId: ARTWORK_TYPE, activityName: "Наамал" });
+    });
+    expect(ROUTER.replace).toHaveBeenCalledWith(
+      `/children/${CHILD}/observations?type=artwork&panel=progress`,
+    );
+  });
+
   /** The note, then the photograph — never the other way round. */
   it("does not upload before the observation exists", async () => {
     const user = userEvent.setup();
@@ -1030,5 +1107,93 @@ describe("Шинэ ажиглалт — зураг", () => {
     expect(await screen.findByText("Хамгийн олондоо 5 зураг хавсаргана.")).toBeInTheDocument();
     // Full, so there is nothing left to press.
     expect(screen.queryByLabelText("Нэмэх")).not.toBeInTheDocument();
+  });
+});
+
+/*
+  ★ Бүтээл arrives already filed under Зураг, урлал — 2026-09-12, at the
+  client's request: "бүтээлд дүн шинжилгээ хийх хэсгийг сонгон шинээр бичихэд
+  сургалтын чиглэл автоматаар зураг урлал сонгогдоно, учир нь бүтээлд дан зураг
+  бүтээлүүд ордог."
+
+  An artwork note is about a drawing or a craft by definition, so the strand was
+  a required answer the form already had — and it is the answer a teacher skips,
+  which is what left "Сургалтын чиглэлийн хамралт" counting almost nothing.
+*/
+describe("Бүтээл — сургалтын чиглэл автоматаар", () => {
+  it("uses Төрөл and the fixed artwork vocabulary only for Бүтээл", async () => {
+    const user = userEvent.setup();
+    setSearchParams(`typeId=${ARTWORK_TYPE}`);
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    const type = await screen.findByRole("combobox", { name: /^Төрөл/ });
+    expect(screen.queryByLabelText("Үйл ажиллагааны төрөл")).not.toBeInTheDocument();
+    await user.click(type);
+    expect(await screen.findByRole("option", { name: "Наамал" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Холимог техникээр бүтээх" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Өглөөний дасгал" })).not.toBeInTheDocument();
+  });
+
+  /*
+    `waitFor`, not `findBy`: the trigger exists on the first paint and reads
+    "Сонгоно уу" until `assessment-config` answers — a `findBy` would resolve
+    on that first render and assert against the placeholder.
+  */
+  it("★ preselects Зураг, урлал for an artwork note", async () => {
+    setSearchParams(`typeId=${ARTWORK_TYPE}`);
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    const strand = await screen.findByLabelText("Сургалтын чиглэл");
+    await waitFor(() => expect(strand).toHaveTextContent("Зураг, урлал"));
+  });
+
+  /* Only Бүтээл. Every other kind is still the teacher's own answer. */
+  it("★ leaves the strand unanswered for any other kind", async () => {
+    const user = userEvent.setup();
+    setSearchParams(`typeId=${TYPE}`);
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    const strand = await screen.findByLabelText("Сургалтын чиглэл");
+
+    /*
+      Opening it proves the strands have arrived — otherwise this case would
+      pass against an empty select that had not loaded yet, which is the same
+      "Сонгоно уу" for a different reason.
+    */
+    await user.click(strand);
+    expect(await screen.findByRole("option", { name: "Зураг, урлал" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    expect(strand).toHaveTextContent("Сонгоно уу");
+  });
+
+  /*
+    Offered, not enforced — a restored draft is the teacher's own work and
+    outranks the suggestion. This is the guard that keeps the effect from
+    overwriting a choice already made.
+  */
+  it("★ does not overrule a draft that already names a strand", async () => {
+    /*
+      `use-form-draft`'s own envelope — `{ savedAt, values }`. Written by hand
+      rather than by typing into the form, because what is being tested is the
+      restore path: the draft has to exist *before* the first render for the
+      suggestion to have something to not overrule.
+    */
+    window.localStorage.setItem(
+      `nomadkids:observation-draft:staff:${CHILD}`,
+      JSON.stringify({
+        savedAt: Date.now(),
+        values: { typeId: ARTWORK_TYPE, domainId: DOMAIN_ID, situation: "Зурсан зураг" },
+      }),
+    );
+    setSearchParams(`typeId=${ARTWORK_TYPE}`);
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    const strand = await screen.findByLabelText("Сургалтын чиглэл");
+    await waitFor(() => expect(strand).toHaveTextContent("Хэл яриа, харилцаа"));
   });
 });

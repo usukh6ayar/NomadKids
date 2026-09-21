@@ -7,6 +7,7 @@ import {
   Boxes,
   Carrot,
   ClipboardList,
+  CloudDownload,
   FileText,
   Home,
   Images,
@@ -14,7 +15,6 @@ import {
   Menu,
   CalendarDays,
   CalendarRange,
-  Database,
   ScrollText,
   Settings,
   ShieldAlert,
@@ -27,6 +27,7 @@ import {
   FileCheck2,
   Headphones,
   HelpCircle,
+  KeyRound,
   LifeBuoy,
   LockKeyhole,
   // `X` was the picker modal's close button and went with it. The type stays:
@@ -238,7 +239,11 @@ function AuthenticatedShell({
     <AppShell
       nav={nav}
       sections={
-        isStaff ? staffSections(isAdmin, groupId) : parentSections(myChildren, selectedChildId)
+        isStaff
+          ? isAdmin
+            ? staffSections(true, groupId)
+            : teacherSections(groupId)
+          : parentSections(myChildren, selectedChildId)
       }
       variant={isStaff ? "teacher" : "parent"}
       teacherTheme={isStaff && !isAdmin}
@@ -332,12 +337,25 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
 
   /* Administration screens without supplied feature artwork. */
   "/admin/users": UserCog,
+  "/admin/staff-code": KeyRound,
   "/admin/school-years": CalendarRange,
   "/admin/terms": CalendarDays,
   "/admin/assessment-config": SlidersHorizontal,
   "/admin/audit": ScrollText,
-  "/admin/integrations/esis": Database,
   "/admin/curriculum": BookOpen,
+  /*
+   * ★ `/admin/integrations/esis` had a `Database` row here until 2026-09-14.
+   * The screen is `/platform/[id]/esis` now and this map is keyed by literal
+   * href — a dynamic segment would never match one — so the entry is removed
+   * rather than rewritten into something that silently never fires.
+   *
+   * ★★ `/admin/esis-sync` is new on 2026-09-17 — not a return of that row.
+   * It carries only the manual "Татах" buttons and their run history, which
+   * moved back to the director's shell because a sync spends *this*
+   * kindergarten's token; the token state, granted scope and institution
+   * mapping stay on `/platform/[id]/esis`, superadmin-only, unchanged.
+   */
+  "/admin/esis-sync": CloudDownload,
 };
 
 /** The section-level icon for a route, or nothing if it has no destination. */
@@ -373,22 +391,24 @@ function routeIcon(href: string | undefined) {
  * `GroupsSection` and `TeacherHero`), and `useMyGroup()` resolves the group in
  * the layout, so the tab can point straight at it without asking anything.
  *
- * The fallbacks are the honest part. A teacher with one group gets that
- * group's assessment sheet. An admin sees every group in the kindergarten, so
- * there is no single sheet to open and the tab goes to `/admin/groups`, whose
- * rows carry a Үнэлгээ link each. A teacher with no group assigned goes to
- * `/children`, where assessment can still be reached per child. No branch is a
- * dead link, and none of them opens a screen whose first act is "which group?".
+ * An administrator gets the kindergarten-wide overview, where every group's
+ * coverage and every development domain are visible together. A teacher with
+ * one group gets that group's assessment sheet; one with no group assigned
+ * goes to `/children`, where assessment can still be reached per child.
  */
 function staffNav(isAdmin: boolean, groupId: string | null): NavItem[] {
-  const assessmentHref = groupId
-    ? `/groups/${groupId}/assessment`
-    : isAdmin
-      ? "/admin/groups"
+  const assessmentHref = isAdmin
+    ? "/admin/assessment"
+    : groupId
+      ? `/groups/${groupId}/assessment`
       : "/children";
 
   return [
-    { href: "/dashboard", label: "Самбар", icon: artIcon("dashboard", 20) },
+    {
+      href: isAdmin ? "/admin" : "/dashboard",
+      label: "Самбар",
+      icon: artIcon("dashboard", 20),
+    },
     { href: "/notifications", label: "Мэдээ", icon: artIcon("notice", 20), badge: "unread" },
     { href: assessmentHref, label: "Явцын үнэлгээ", icon: artIcon("progress", 20) },
     { href: "/surveys", label: "Судалгаа", icon: artIcon("survey", 20) },
@@ -484,6 +504,58 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
    */
   const scoped = (feature: string) => (groupId ? `/groups/${groupId}/${feature}` : `/${feature}`);
 
+  if (isAdmin) {
+    return [
+      {
+        title: "",
+        entries: [
+          entry("Суралцагч", "/children"),
+          entry("Анги бүлэг", "/admin/groups"),
+          entry("Багш, ажилтан", "/admin/users", "adminUsersPermissions"),
+          entry("Байгууллага", "/admin/kindergarten"),
+        ],
+      },
+      {
+        title: "Сургалт, үйл ажиллагаа",
+        entries: [
+          entry("Ирц", "/attendance/daily", "attendance"),
+          entry("Явцын үнэлгээ", "/admin/assessment", "progress"),
+          entry("Судалгаа", "/surveys", "survey"),
+          entry("Мэдээ", "/notifications", "notice"),
+          entry("Чат", "/chat", "chat"),
+        ],
+      },
+      {
+        title: "Хоол, санхүү",
+        entries: [
+          entry("Хоолны цэс", "/menu", "food"),
+          entry("Санхүү", "/finance", "finance"),
+          entry("Ирц ба тооцоолол", "/admin/funding", "finance"),
+          entry("Ирцийн дэлгэрэнгүй", "/attendance/journal", "attendance"),
+        ],
+      },
+      {
+        title: "Тайлан, баримт",
+        entries: [
+          entry("Тайлан", "/reports", "adminReport"),
+          entry("Баримт бичгийн сан", "/documents", "adminDocuments"),
+        ],
+      },
+      {
+        title: "Сургалтын төлөвлөгөө",
+        entries: [
+          entry("Хичээлийн жил", "/admin/school-years", "adminSchoolYear"),
+          entry("Улирал", "/admin/terms", "adminTerm"),
+          entry("Сургалтын хөтөлбөр", "/admin/curriculum", "adminCurriculum"),
+        ],
+      },
+      {
+        title: "Интеграц",
+        entries: [entry("ESIS мэдээллийн төв", "/admin/integrations/esis", "adminEsisHub")],
+      },
+    ];
+  }
+
   return [
     /*
      * ★ Three sections, named after the client's own 2026-08-29 drawing.
@@ -574,7 +646,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
     {
       title: "Хүүхдийн хөгжил ба үнэлгээ",
       entries: [
-        entry("Хүүхдүүд", "/children"),
+        entry("Суралцагч", "/children"),
         /*
          * ★ Directly under Хүүхдүүд, moved there 2026-09-04 at the client's
          * request — and it is the right place for it.
@@ -589,7 +661,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         ...adminEntry("Бүлгүүд", "/admin/groups"),
         {
           label: "Явцын үнэлгээ",
-          href: scoped("assessment"),
+          href: isAdmin ? "/admin/assessment" : scoped("assessment"),
           icon: artIcon("progress", 18),
         },
         /*
@@ -607,7 +679,11 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          * is per child, so there was no existing destination — and a row that
          * 404s is exactly what rule 1 above forbids.
          */
-        entry("Тайлан", "/reports"),
+        {
+          label: "Тайлан",
+          href: "/reports",
+          icon: artIcon(isAdmin ? "adminReport" : "report", 18),
+        },
         /*
          * ★ Neither review queue is a menu row — settled 2026-09-04, and this
          * time by the client rather than by the argument.
@@ -677,29 +753,13 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
           icon: artIcon("attendance", 18),
         },
         /*
-          ★ The menu first, the register second — 2026-09-11, at the client's
-          request: "хоолны хуучин бүртгэл гэсэн хэсгийг арилгаад эцэг эх дээр
-          хийгдсэн байгаа хоолны цэс хэсгийг яг тэр загвараар … оруул."
-
-          This row opened `/groups/:id/meals` — "Хоолны бүртгэл", which is who
-          ate what, not what is being served. The client asked for the menu
-          here, so the menu is here.
-
-          ★★ The register keeps a row of its own rather than being dropped.
-          It is the daily "did this child eat", and `нэмэлт.md` §3 multiplies
-          its "хооллосон өдөр" into the food-cost calculation — a screen with no
-          door is a funding figure that quietly stops being entered. If it is
-          meant to go entirely, that is a decision with a number attached and
-          the client should make it knowingly.
+          The shared weekly menu stays in daily work. The separate per-child
+          meal register is intentionally absent from both teacher and director
+          navigation; its route and API remain available for existing links.
         */
         {
           label: "Хоолны цэс",
           href: "/menu",
-          icon: artIcon("food", 18),
-        },
-        {
-          label: "Хоолны бүртгэл",
-          href: scoped("meals"),
           icon: artIcon("food", 18),
         },
         entry("Аюулгүй байдал", "/incidents"),
@@ -759,7 +819,11 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          * зүй, дотоод журам. Staff only, so it never appears in
          * `parentSections`.
          */
-        entry("Баримт бичгийн сан", "/documents"),
+        {
+          label: "Баримт бичгийн сан",
+          href: "/documents",
+          icon: artIcon(isAdmin ? "adminDocuments" : "documents", 18),
+        },
       ],
     },
     {
@@ -808,16 +872,55 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          */
         ...adminEntry("Цэцэрлэгийн мэдээлэл", "/admin/kindergarten"),
         ...adminEntry("Хэрэглэгч ба эрх", "/admin/users", "adminUsersPermissions"),
+        /*
+         * ★ Added with staff self-registration — the kindergarten's ESIS
+         * number, the roster refresh and who has registered themselves. Sits
+         * beside "Хэрэглэгч ба эрх" because it is how an account gets onto
+         * that list in the first place, not a directory of its own.
+         *
+         * ★★ The href keeps saying `staff-code` after the code it named was
+         * replaced by the ESIS institution number on 2026-09-20. Renaming the
+         * route would break every link a director has bookmarked to buy a
+         * tidier path; the label is what they read.
+         */
+        ...adminEntry("Ажилтны бүртгэл", "/admin/staff-code"),
         ...adminEntry("Хичээлийн жил", "/admin/school-years", "adminSchoolYear"),
         ...adminEntry("Улирал", "/admin/terms", "adminTerm"),
         /*
          * ★ Added 2026-09-10 with the four ESIS curriculum services. It sits
          * after Улирал because it answers the same kind of question — what
-         * shape does the year take — and before the ESIS hub, which is the
-         * operator's whole-catalog view rather than a working screen.
+         * shape does the year take.
          */
         ...adminEntry("Сургалтын хөтөлбөр", "/admin/curriculum", "adminCurriculum"),
-        ...adminEntry("ESIS мэдээллийн төв", "/admin/integrations/esis", "adminEsisHub"),
+        /*
+         * ★ **"ESIS мэдээллийн төв" was the next row and is gone** — 2026-09-14,
+         * at the client's request ("superadmin дээр байх нь зөв"). The screen
+         * moved to `/platform/[id]/esis`, reached from a kindergarten's page on
+         * the operator's own surface, because everything on it is a property of
+         * the deployment: the token, the base URL, the granted ESIS scope and
+         * the institution mapping, which was superadmin-only to begin with.
+         *
+         * ★★ A director did not lose an ESIS capability. The screens that
+         * actually call ESIS — the roster, a child's record, the day sheet,
+         * Сургалтын хөтөлбөр just above — draw their own services through
+         * `…/esis/catalog` and are untouched.
+         *
+         * ★★★ **2026-09-17 — one row returns, but not this one.** The manual
+         * "Татах" buttons for the two sync tiers briefly landed on
+         * `/platform/[id]/esis` (`929fd0b`) and called
+         * `POST /kindergartens/:id/esis/sync` — tenant `ADMIN`-scoped
+         * (`KindergartenEsisController`, `TenantAccessService.assertAdmin`),
+         * not the platform flag that screen is gated on, so a real platform
+         * operator with no kindergarten membership could not press either
+         * button. The 2026-09-14 rule already drew the line that settles
+         * this: "системийн зүйл" (token, base URL, granted scope, institution
+         * mapping) is the superadmin's; "ажлын гадаргуу" is the director's. A
+         * sync spends *this* kindergarten's token against *its* roster and
+         * feeds *its* screens — a working-surface action, not a systemic one
+         * — so it moves to `/admin/esis-sync` below, its own row, rather than
+         * back into the removed one above. The API did not change.
+         */
+        ...adminEntry("ESIS синк", "/admin/esis-sync"),
         /*
          * ★ "Үнэлгээний тохиргоо" and "Аудит" lost their rows on 2026-09-06,
          * at the client's request — and, as with the two review queues above,
@@ -833,6 +936,40 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          * for each was two of the eight rows in this section spent on
          * occasional work.
          */
+      ],
+    },
+  ];
+}
+
+/** The teacher rail, in the client's daily-work order. */
+function teacherSections(groupId: string | null): NavSection[] {
+  const scoped = (feature: string) => (groupId ? `/groups/${groupId}/${feature}` : `/${feature}`);
+
+  return [
+    {
+      title: "",
+      entries: [
+        navEntry("Суралцагч", "/children"),
+        {
+          label: "Ирц",
+          href: scoped("attendance"),
+          icon: artIcon("attendance", 18),
+        },
+        {
+          label: "Хоолны цэс",
+          href: "/menu",
+          icon: artIcon("food", 18),
+        },
+        {
+          label: "Явцын үнэлгээ",
+          href: scoped("assessment"),
+          icon: artIcon("progress", 18),
+        },
+        navEntry("Судалгаа", "/surveys", "survey"),
+        navEntry("Тайлан", "/reports", "report"),
+        navEntry("Мэдээ", "/notifications", "notice"),
+        navEntry("Чат", "/chat", "chat"),
+        navEntry("Баримт бичгийн сан", "/documents", "documents"),
       ],
     },
   ];
@@ -854,9 +991,9 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
  * "Цэс" and its icon to `Menu` is enough to make it read as the same hamburger
  * button every other role's last tab already is. The drawer is where
  * everything this bar has no room for still lives — Түүхий эд, Хүнсний
- * захиалга, Нөөц, Ирц, Тайлан, Мэдээ (COOK only, 2026-09-08), Чат — unchanged
- * from `supportSections`. ("Нийлүүлэгч" is off `supportSections` itself right
- * now, so it is not in the drawer either — see that array's own comment.)
+ * захиалга, Нөөц, Ирц, Тайлан. Мэдээ and Чат are intentionally absent from
+ * both support roles. ("Нийлүүлэгч" is off `supportSections` itself right now,
+ * so it is not in the drawer either — see that array's own comment.)
  *
  * This does put `/menu` and `/kitchen/recipes` on two surfaces at once, both
  * already reachable from the sidebar. The 2026-09-04 note this replaced
@@ -938,6 +1075,18 @@ function supportSections(isCook: boolean): NavSection[] {
       title: isCook ? "Гал тогоо" : "Санхүү",
       entries: isCook
         ? [
+            /*
+              ★ The client's own order — 2026-09-17: Самбар · Ирц · Хоолны цэс ·
+              Түүхий эд · Технологийн карт · Хүнсний захиалга · Нөөц · Тайлан.
+
+              Ирц comes first because it is the first thing the kitchen does
+              with the day: how many children are here decides how much is
+              cooked, and it sat at the foot of the list under the reference
+              screens. Самбар is not a row here — `supportNav`'s first entry is
+              the board and the rail draws it above the sections, so a row for
+              it would print the name twice.
+            */
+            navEntry("Ирц", "/kitchen/attendance"),
             navEntry("Хоолны цэс", "/menu"),
             navEntry("Түүхий эд", "/kitchen/ingredients"),
             navEntry("Технологийн карт", "/kitchen/recipes"),
@@ -949,7 +1098,6 @@ function supportSections(isCook: boolean): NavSection[] {
             // bring it back.
             navEntry("Хүнсний захиалга", "/kitchen/orders"),
             navEntry("Нөөц", "/kitchen/stock"),
-            navEntry("Ирц", "/kitchen/attendance"),
             navEntry("Тайлан", "/kitchen/reports"),
           ]
         : [
@@ -992,29 +1140,6 @@ function supportSections(isCook: boolean): NavSection[] {
             navEntry("Ирцийн дэлгэрэнгүй", "/attendance/journal", "accountingAttendanceDetails"),
             navEntry("Санхүүгийн аудит", "/finance/audit-log", "accountingAudit"),
           ],
-    },
-    {
-      /*
-       * ★ Чат, not "Ангийн самбар / Мэдээ" — 2026-09-05.
-       *
-       * The row pointed at `/notifications`, which is a class's board: posts
-       * scoped to a group a cook or an accountant does not belong to. Neither
-       * role had a full-page door onto chat before this — only the floating
-       * widget (`chat-widget.tsx`) — while `staffSections` has carried one
-       * beside its own notifications row since 2026-08-31. This gives them
-       * that same page, in the one slot this section has.
-       *
-       * ★★ "Мэдээ" returns for COOK only, 2026-09-08 — client decision. The
-       * board is no longer a class-scoped thing this role can't reach:
-       * `NotificationsService.audienceFilter` now reads a cook's own
-       * kindergarten-wide, published notices (closures, holidays) the same
-       * way staff do, while `create()` still refuses them — read, not post.
-       * Accountant is untouched; that role's audience filter was not widened.
-       */
-      title: "Харилцаа холбоо",
-      entries: isCook
-        ? [navEntry("Мэдээ", "/notifications"), navEntry("Чат", "/chat")]
-        : [navEntry("Чат", "/chat")],
     },
     {
       title: "Миний мэдээлэл",

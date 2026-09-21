@@ -8,6 +8,7 @@ import { mutate } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { ACCEPTED_TYPES, MAX_UPLOAD_BYTES } from "@/components/media/photo-upload";
 import { useToast } from "@/components/ui/toast";
+import { shrinkIfTooLarge } from "@/lib/image-shrink";
 
 const MAX_MB = MAX_UPLOAD_BYTES / 1024 / 1024;
 
@@ -73,15 +74,22 @@ export function PhotoBadgeButton({
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  function onPick(files: FileList | null) {
-    const file = files?.[0];
+  async function onPick(files: FileList | null) {
+    const picked = files?.[0];
     // Cleared before anything else, so choosing the same file twice in a row
     // still fires a change event.
     if (inputRef.current) inputRef.current.value = "";
-    if (!file) return;
+    if (!picked) return;
 
-    // Checked here as well as on the server: a 6 MB photograph from a phone
-    // should be refused before it is uploaded, not after.
+    /*
+     * ★ Shrunk before it is measured — 2026-09-20. A phone shoots 8–12 MB
+     * frames, so refusing past the ceiling meant refusing ordinary
+     * photographs. Anything already under it is passed through untouched.
+     */
+    const file = await shrinkIfTooLarge(picked, MAX_UPLOAD_BYTES);
+
+    // Checked here as well as on the server: a photograph the browser could
+    // not shrink should be refused before it is uploaded, not after.
     if (file.size > MAX_UPLOAD_BYTES) {
       toast.error(`Зураг хэт том байна. Дээд хэмжээ ${MAX_MB} MB.`);
       return;
@@ -98,7 +106,7 @@ export function PhotoBadgeButton({
         accept={ACCEPTED_TYPES}
         className="sr-only"
         disabled={upload.isPending}
-        onChange={(e) => onPick(e.target.files)}
+        onChange={(e) => void onPick(e.target.files)}
       />
       {/*
         `-bottom-1 -right-1` so the badge overlaps the picture's edge rather

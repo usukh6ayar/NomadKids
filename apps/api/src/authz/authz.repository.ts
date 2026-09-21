@@ -301,10 +301,118 @@ export class AuthzRepository {
       }),
     ]);
 
+    const teachingGroups = teaching.map((row) => row.group);
+    const guardianGroups = guarded.flatMap((row) => row.child.enrollments.map((e) => e.group));
+
     return {
-      teachingGroups: teaching.map((row) => row.group),
-      guardianGroups: guarded.flatMap((row) => row.child.enrollments.map((e) => e.group)),
+      teachingGroups,
+      guardianGroups,
+      directPeers: await this.loadDirectPeers(actor, teachingGroups, guardianGroups),
     };
+  }
+
+  /**
+   * Who this actor may hold a private conversation with — 2026-09-20's «эцэг эх
+   * багш руу хувиараа бичих».
+   *
+   * ★ **Both directions from the same two queries**, and the symmetry is not a
+   * coincidence to be maintained: a guardian's peers are the teachers of the
+   * groups their children are in, a teacher's peers are the guardians of the
+   * children in the groups they teach, and both are read off the groups
+   * computed just above. If A appears for B then B appears for A, which is
+   * what lets one sorted `roomKey` serve both sides.
+   *
+   * ★★ The actor is excluded from their own list. A teacher who is also a
+   * parent in a group they teach would otherwise find themselves in it, and
+   * `DIRECT_ROOM(x, x)` is a room with one member.
+   *
+   * ★★★ Scoped to the group, not to the kindergarten. A parent may write to
+   * their own child's teachers and to nobody else's — the client's answer when
+   * asked, and the narrower of the two readings. Widening it later is a change
+   * to this method and to nothing else.
+   */
+  private async loadDirectPeers(
+    actor: Actor,
+    teachingGroups: readonly { id: string; kindergartenId: string }[],
+    guardianGroups: readonly { id: string; kindergartenId: string }[],
+  ): Promise<{ userId: string; name: string; kindergartenId: string }[]> {
+    const kindergartenOf = new Map<string, string>();
+    for (const group of [...teachingGroups, ...guardianGroups]) {
+      kindergartenOf.set(group.id, group.kindergartenId);
+    }
+
+    const guardianGroupIds = guardianGroups.map((group) => group.id);
+    const teachingGroupIds = teachingGroups.map((group) => group.id);
+
+    const [teachersOfMyChildren, guardiansOfMyPupils] = await Promise.all([
+      guardianGroupIds.length === 0
+        ? Promise.resolve([])
+        : this.prisma.groupTeacher.findMany({
+            where: {
+              groupId: { in: guardianGroupIds },
+              endedOn: null,
+              deletedAt: null,
+              membership: { deletedAt: null, isActive: true },
+            },
+            select: {
+              groupId: true,
+              membership: {
+                select: {
+                  user: { select: { id: true, lastName: true, firstName: true } },
+                },
+              },
+            },
+          }),
+      teachingGroupIds.length === 0
+        ? Promise.resolve([])
+        : this.prisma.guardianship.findMany({
+            where: {
+              canView: true,
+              deletedAt: null,
+              child: {
+                deletedAt: null,
+                enrollments: {
+                  some: { groupId: { in: teachingGroupIds }, status: "ACTIVE", deletedAt: null },
+                },
+              },
+            },
+            select: {
+              guardian: { select: { id: true, lastName: true, firstName: true } },
+              child: {
+                select: {
+                  enrollments: {
+                    where: { groupId: { in: teachingGroupIds }, status: "ACTIVE", deletedAt: null },
+                    select: { groupId: true },
+                  },
+                },
+              },
+            },
+          }),
+    ]);
+
+    const peers = new Map<string, { userId: string; name: string; kindergartenId: string }>();
+
+    const add = (
+      user: { id: string; lastName: string; firstName: string },
+      groupId: string | undefined,
+    ) => {
+      const kindergartenId = groupId ? kindergartenOf.get(groupId) : undefined;
+      if (!kindergartenId || user.id === actor.userId || peers.has(user.id)) return;
+      peers.set(user.id, {
+        userId: user.id,
+        name: `${user.lastName} ${user.firstName}`.trim(),
+        kindergartenId,
+      });
+    };
+
+    for (const row of teachersOfMyChildren) {
+      add(row.membership.user, row.groupId);
+    }
+    for (const row of guardiansOfMyPupils) {
+      add(row.guardian, row.child.enrollments[0]?.groupId);
+    }
+
+    return [...peers.values()];
   }
 
   /**

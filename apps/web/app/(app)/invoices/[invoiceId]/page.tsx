@@ -18,7 +18,6 @@ import { formatDate, formatRelative } from "@/lib/format";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
-import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -110,9 +109,8 @@ function InvoiceDetail() {
 
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
-      <BackButton href="/invoices" />
-
       <PageHeader
+        backHref="/invoices"
         title={`${data.child.lastName ? `${data.child.lastName} ` : ""}${data.child.firstName}`}
         // `month` comes back as an ISO date (`DateTime @db.Date` — see the
         // model's own comment) — sliced to `YYYY-MM` for `formatMonthLabel`.

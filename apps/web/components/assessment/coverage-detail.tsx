@@ -99,7 +99,7 @@ export function CoverageDetail({
         client, 2026-09-08: "хаанаас ч байсан нэг л ухрана"). `back` stays, as
         the fallback for a page opened from a pasted URL.
       */}
-      <BackButton href={back} className="ml-0" />
+      <BackButton href={back} />
       <div className="min-w-0 flex-1 pt-1.5">
         <h1 className="text-title font-semibold leading-heading text-ink">{meta.title}</h1>
         <p className="mt-0.5 text-caption leading-snug text-muted">{meta.lede}</p>

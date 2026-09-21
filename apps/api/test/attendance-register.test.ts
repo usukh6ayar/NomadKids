@@ -1,7 +1,7 @@
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createTestApp } from "./support/app";
+import { createTestApp, type TestAppOptions } from "./support/app";
 import { resetData, testDb, uniq } from "./support/db";
 import {
   authed,
@@ -31,6 +31,16 @@ import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
 let app: INestApplication;
 const db = testDb();
 
+/**
+ * What the stubbed ESIS says this kindergarten's roster is.
+ *
+ * ★ Filled by `beforeEach` from the scenario it just created, so the names and
+ * birth dates match exactly what `resolveAttendanceDrafts` looks for — it
+ * matches a local child to an ESIS student by name *and* date of birth, and a
+ * mismatch is a 409 rather than a submission.
+ */
+const esisRoster: { groups: unknown[]; students: unknown[] } = { groups: [], students: [] };
+
 let a: Scenario;
 let b: Scenario;
 let admin: AuthSession;
@@ -42,7 +52,38 @@ let adminB: AuthSession;
 const server = () => app.getHttpServer();
 
 beforeAll(async () => {
-  app = await createTestApp();
+  /*
+   * ★ ESIS is stubbed here, and was not before 2026-09-14.
+   *
+   * Submitting a day pushes it to `group/school/attendance/save/v3`, and the
+   * suite has no token — `test/setup.ts` deletes it so `pnpm test` cannot
+   * reach a government system. That used to be covered by demo mode, which
+   * answered every read from a committed fixture; with the mock transport
+   * removed, an unstubbed submit is a 502.
+   *
+   * Only the transport is replaced. `submitDays` still resolves each child
+   * against the roster these methods return, still writes the submission rows,
+   * still audits — which is what these tests are about. The stub returns one
+   * group and one student because the scenario has one of each; a child the
+   * roster does not name makes `resolveAttendanceDrafts` throw, which is its
+   * job and is tested where that behaviour belongs.
+   */
+  const ok = <T>(data: T) => ({ data, status: 200, durationMs: 1, source: "LIVE" as const });
+
+  app = await createTestApp({
+    esis: {
+      isConfigured: true,
+      /*
+       * ★ The roster is read off `esisRoster`, which `beforeEach` fills once
+       * the scenario exists. The app is built once in `beforeAll`, before
+       * there is a group or a child to name, so the stub has to close over a
+       * mutable handle rather than capture values.
+       */
+      groups: async () => ok(esisRoster.groups),
+      groupStudents: async () => ok(esisRoster.students),
+      saveAttendance: async () => ok({ SUCCESS_CODE: 200 }),
+    } as unknown as TestAppOptions["esis"],
+  });
 }, 60_000);
 
 afterAll(async () => {
@@ -58,6 +99,41 @@ beforeEach(async () => {
 
   a = await createScenario("a");
   b = await createScenario("b");
+
+  /*
+   * ★ The ESIS mapping, for the submit tests — 2026-09-14.
+   *
+   * `submitDays` pushes the day to the ministry and `assertOperable` refuses
+   * with 409 until the tenant carries an institution id. Demo mode used to
+   * paper over that with a fallback constant; it is gone, so the fixture has
+   * to state the mapping the same way a real kindergarten does.
+   */
+  esisRoster.groups = [{ studentGroupId: "10001", studentGroupName: a.group.name }];
+  esisRoster.students = [
+    {
+      personId: "90000000000001",
+      lastName: a.child.lastName,
+      firstName: a.child.firstName,
+      familyName: null,
+      lastNameMgl: null,
+      firstNameMgl: null,
+      dateOfBirth: a.child.dateOfBirth.toISOString(),
+    },
+  ];
+
+  await db.kindergarten.update({
+    where: { id: a.kindergarten.id },
+    /*
+     * ★ Digits only. `esisInstitutionId` is a text column, but the attendance
+     * payload runs it through `positiveEsisNumber` — ESIS types it as a
+     * number — so a `uniq()` suffix answers 502 "institutionId буруу
+     * форматтай". It still has to be unique across kindergartens, hence the
+     * random digits rather than a shared constant.
+     */
+    data: {
+      esisInstitutionId: String(40000 + Math.floor(Math.random() * 50000)),
+    },
+  });
 
   const accUser = await createUser({ username: uniq("acct") });
   await createMembership(accUser.id, a.kindergarten.id, "ACCOUNTANT");
@@ -125,6 +201,143 @@ describe("who may read the register", () => {
   });
 });
 
+/**
+ * Which days a register is expected to cover — the client's correction of
+ * 2026-09-17: "БҮХ НИЙТИЙН АМРАЛТ болон БҮТЭН/ХАГАС САЙН өдрүүдэд ирц бүртгэх
+ * шаардлагагүй ... бодолтоос хасах. улс нийтээр нөхөж ажиллах онцгой
+ * тохиолдолд л бүртгэх."
+ *
+ * ★ What it was before: every calendar date in the span. A two-group
+ * kindergarten asked for a fortnight was told it had 34 group-days to fill in,
+ * ten of them Saturdays and Sundays — so "Ирц бүртгээгүй" counted the weekend,
+ * the completeness bar divided by it, and a director chasing an unfinished
+ * register was chasing days nobody works.
+ */
+describe("the working week", () => {
+  const calendar = (query: string) =>
+    authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/attendance/calendar?${query}`),
+      admin,
+    );
+
+  const addDay = (body: Record<string, unknown>) =>
+    authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/attendance/calendar`),
+      admin,
+    ).send(body);
+
+  it("leaves Saturday and Sunday out of the register", async () => {
+    // 2026-03-07 is a Saturday, 2026-03-08 a Sunday.
+    const res = await register(admin, a.kindergarten.id, "from=2026-03-06&to=2026-03-09");
+
+    expect(res.status).toBe(200);
+    expect(res.body.days).toEqual(["2026-03-06", "2026-03-09"]);
+  });
+
+  it("leaves a holiday out, once the kindergarten has named one", async () => {
+    expect((await addDay({ date: "2026-03-04", name: "Цагаан сар" })).status).toBe(201);
+
+    const res = await register(admin, a.kindergarten.id, "from=2026-03-02&to=2026-03-06");
+
+    expect(res.body.days).toEqual(["2026-03-02", "2026-03-03", "2026-03-05", "2026-03-06"]);
+  });
+
+  it("puts a make-up Saturday back in", async () => {
+    expect(
+      (await addDay({ date: "2026-03-07", name: "Нөхөж ажиллах", isWorkingDay: true })).status,
+    ).toBe(201);
+
+    const res = await register(admin, a.kindergarten.id, "from=2026-03-06&to=2026-03-09");
+
+    expect(res.body.days).toEqual(["2026-03-06", "2026-03-07", "2026-03-09"]);
+  });
+
+  /**
+   * ★ The forgiving direction: a day somebody actually recorded is shown
+   * whatever the calendar says. Dropping it would hide real marks — they would
+   * exist in the database and on no screen.
+   */
+  it("keeps a weekend that was actually worked", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-07", "PRESENT");
+
+    const res = await register(admin, a.kindergarten.id, "from=2026-03-06&to=2026-03-09");
+
+    expect(res.body.days).toContain("2026-03-07");
+  });
+
+  it("stops counting the weekend as unrecorded", async () => {
+    const res = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/attendance/daily?from=2026-03-06&to=2026-03-09`,
+      ),
+      admin,
+    );
+
+    expect(res.status).toBe(200);
+    // Two working days × one group, not four calendar days.
+    expect(res.body.totals.days).toBe(2);
+  });
+
+  it("removes a day again, and the register gets it back", async () => {
+    await addDay({ date: "2026-03-04", name: "Цагаан сар" });
+
+    const removed = await authed(
+      request(server()).delete(
+        `/v1/kindergartens/${a.kindergarten.id}/attendance/calendar/2026-03-04`,
+      ),
+      admin,
+    );
+    expect(removed.status).toBe(200);
+
+    const res = await register(admin, a.kindergarten.id, "from=2026-03-02&to=2026-03-06");
+    expect(res.body.days).toContain("2026-03-04");
+  });
+
+  /** A soft-deleted row still holds the unique key; adding the date again must work. */
+  it("can re-add a day that was removed", async () => {
+    await addDay({ date: "2026-03-04", name: "Цагаан сар" });
+    await authed(
+      request(server()).delete(
+        `/v1/kindergartens/${a.kindergarten.id}/attendance/calendar/2026-03-04`,
+      ),
+      admin,
+    );
+
+    expect((await addDay({ date: "2026-03-04", name: "Цагаан сар" })).status).toBe(201);
+    expect((await calendar("from=2026-03-01&to=2026-03-31")).body).toHaveLength(1);
+  });
+
+  // ── Authorization — CLAUDE.md §4.1 ────────────────────────────────────────
+
+  it("refuses a teacher reading the calendar", async () => {
+    const res = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/attendance/calendar?from=2026-03-01&to=2026-03-31`,
+      ),
+      teacher,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses an accountant writing one — it is a setting, not a register entry", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/attendance/calendar`),
+      accountant,
+    ).send({ date: "2026-03-04", name: "Цагаан сар" });
+
+    expect([403, 404]).toContain(res.status);
+  });
+
+  it("refuses an administrator of another kindergarten", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/attendance/calendar`),
+      adminB,
+    ).send({ date: "2026-03-04", name: "Цагаан сар" });
+
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("the grid", () => {
   it("returns one column per day in the range, both ends included", async () => {
     const res = await register(admin, a.kindergarten.id, "from=2026-03-02&to=2026-03-06");
@@ -165,6 +378,31 @@ describe("the grid", () => {
 
     const res = await register(admin, a.kindergarten.id);
     expect(res.body.totals.PRESENT).toBe(2);
+  });
+
+  /*
+   * ★ 2026-09-12, at the client's request: "доор ангийн нийт ирсэн, нийт гэсэн
+   * тоон үзүүлэлтүүдийг хойно нь бодож гарга."
+   *
+   * Counted here rather than on the screen for the same reason `totals` is: the
+   * response pages over children, and a class total assembled from one page
+   * would change when the reader turned to the next.
+   */
+  it("★ totals each class over every matching child, not the page", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-02", "PRESENT");
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "SICK");
+
+    const res = await register(
+      admin,
+      a.kindergarten.id,
+      "from=2026-03-02&to=2026-03-06&pageSize=1",
+    );
+
+    const group = res.body.groups.find((row: { group: string }) => row.group === a.group.name);
+    expect(group).toBeDefined();
+    expect(group.children).toBe(1);
+    expect(group.counts).toEqual({ PRESENT: 1, SICK: 1 });
+    expect(group.recorded).toBe(2);
   });
 
   it("ignores another kindergarten's children", async () => {
@@ -322,6 +560,46 @@ describe("the spreadsheet", () => {
     expect(row.getCell(5).value ?? "").toBe("");
   });
 
+  /*
+   * ★ 2026-09-12: "татаж авахаар нийт бодолтууд ерөөсөө орохгүй байна."
+   *
+   * The grid sheet was the grid and only the grid — every figure the screen
+   * computes under and beside it was missing from the one sheet that looks
+   * like what the reader was just looking at.
+   */
+  it("★ carries the screen's own totals onto the grid sheet", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-04", "SICK");
+
+    const res = await download(admin);
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(res.body as Buffer);
+    const sheet = book.getWorksheet("Өдөр тутмын ирц")!;
+
+    // Two title rows, the header, then the children. Columns: child, group,
+    // five days, then Ирсэн · Өвчтэй · Чөлөөтэй · Тасалсан · Нийт.
+    const header = sheet.getRow(3);
+    expect(String(header.getCell(8).value)).toBe("Ирсэн");
+    expect(String(header.getCell(12).value)).toBe("Нийт");
+
+    // The child's own row carries their counts across the range.
+    const child = sheet.getRow(4);
+    expect(child.getCell(8).value).toBe(1);
+    expect(child.getCell(9).value).toBe(1);
+    expect(child.getCell(12).value).toBe(2);
+
+    // Then a blank line and the per-day tally, ending in the range total.
+    const tally = sheet.getRow(6);
+    expect(String(tally.getCell(1).value)).toBe("Ирсэн");
+    // 2026-03-03 is the second day column, which is column 4.
+    expect(tally.getCell(4).value).toBe(1);
+    expect(tally.getCell(8).value).toBe(1);
+
+    const total = sheet.getRow(10);
+    expect(String(total.getCell(1).value)).toBe("Нийт");
+    expect(total.getCell(12).value).toBe(2);
+  });
+
   it("writes the summary counts as numbers an accountant can sum", async () => {
     // A right-aligned string that looks like a number does not add up.
     await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
@@ -335,6 +613,31 @@ describe("the spreadsheet", () => {
     const value = sheet.getRow(2).getCell(3).value;
     expect(typeof value).toBe("number");
     expect(value).toBe(2);
+  });
+
+  /*
+   * ★ "Татахад энэ мэдээлэл бүхлээрээ татагддаг байна, бодолтууд бүгд орно" —
+   * the class totals on screen come down with the file, on a sheet of their
+   * own, counted by the same function rather than summed again here.
+   */
+  it("★ carries the class totals into the file, on their own sheet", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-04", "SICK");
+
+    const res = await download(admin);
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(res.body as Buffer);
+    const sheet = book.getWorksheet("Ангийн дүн")!;
+
+    expect(sheet).toBeDefined();
+    expect(String(sheet.getRow(1).getCell(1).value)).toBe("Анги");
+    expect(String(sheet.getRow(2).getCell(1).value)).toBe(a.group.name);
+    // Анги, Хүүхэд, then the six statuses in order — PRESENT is the third.
+    expect(sheet.getRow(2).getCell(2).value).toBe(1);
+    expect(sheet.getRow(2).getCell(3).value).toBe(1);
+    // The last column is every recorded day: one present, one sick.
+    expect(sheet.getRow(2).getCell(9).value).toBe(2);
+    expect(String(sheet.getRow(3).getCell(1).value)).toBe("Нийт");
   });
 
   it("exports every row, not the page the screen stopped at", async () => {

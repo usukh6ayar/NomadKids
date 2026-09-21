@@ -48,7 +48,7 @@ export function RecentObservations({
         action={
           isEmpty ? undefined : (
             <Button asChild variant="secondary" size="sm">
-              <Link href="/children">Хүүхдүүд</Link>
+              <Link href="/children">Суралцагч</Link>
             </Button>
           )
         }
@@ -68,7 +68,7 @@ export function RecentObservations({
           description="Хүүхэд сонгоод эхний ажиглалтаа бичихэд энд харагдана."
           action={
             <Button asChild>
-              <Link href="/children">Хүүхдүүд</Link>
+              <Link href="/children">Суралцагч</Link>
             </Button>
           }
         />

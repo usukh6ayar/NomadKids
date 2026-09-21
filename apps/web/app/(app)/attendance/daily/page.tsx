@@ -1,10 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Braces, CheckCircle2, Download, Pencil, Send } from "lucide-react";
+import {
+  AlertTriangle,
+  Braces,
+  CheckCircle2,
+  Clock,
+  Download,
+  FileText,
+  Pencil,
+  Send,
+  SlidersHorizontal,
+} from "lucide-react";
 import { z } from "zod";
 import {
   attendanceSubmissionSchema,
@@ -25,16 +35,18 @@ import { EsisPullButton } from "@/components/esis/esis-pull-button";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { AttendanceViewSwitch } from "@/components/attendance/view-switch";
+import { CalendarDays } from "@/components/attendance/calendar-days";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
-import { StatBar, StatCard } from "@/components/ui/stat-card";
 import { TableShell, Td, Th } from "@/components/ui/table";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { SelectBox, SelectionBar, useSelection } from "@/components/ui/selection";
 import { useToast } from "@/components/ui/toast";
+import { SearchField } from "@/components/ui/search-field";
 import { formatDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 const groupsSchema = paginated(groupListItemSchema);
 
@@ -134,6 +146,19 @@ function DailyAttendance() {
    * which `groupId date` is, and it prunes to what is on screen — so changing
    * the date range clears ticks rather than submitting days nobody can see.
    */
+  /*
+    ★ Open by default — 2026-09-17, the client: "амралт баярын өдрүүд гэсний
+    дээр байсан хэсэг яагаад алга болчив, буцаагаад нэм."
+
+    Folding the range and the group behind Шүүлтүүр took them off the screen
+    entirely, and they are what the whole page is a view *of* — a director
+    lands here to read a month, and a month they cannot see the bounds of is a
+    table with no caption. The button stays, as a way to put three rows away
+    once the period is set.
+  */
+  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [search, setSearch] = useState("");
+
   const rowKey = (row: DailyAttendanceRow) => `${row.groupId} ${row.date}`;
   const selection = useSelection((data?.items ?? []).map(rowKey));
   const appliedDeepLinkSelection = useRef(false);
@@ -152,6 +177,16 @@ function DailyAttendance() {
       if (row.complete) selection.toggle(rowKey(row));
     }
   }, [data, searchParams, selection.toggle]);
+  /*
+    Display only: the search narrows what the table draws and never what is
+    selected or submitted. A tick that disappeared because somebody typed a
+    group's name would submit a different set than the one on screen.
+  */
+  const term = search.trim().toLocaleLowerCase("mn-MN");
+  const visibleRows = (data?.items ?? []).filter(
+    (row) => !term || row.group.toLocaleLowerCase("mn-MN").includes(term),
+  );
+
   const selectedRows = (data?.items ?? []).filter((row) => selection.has(rowKey(row)));
   const selectedEntries = selectedRows.map((row) => ({ groupId: row.groupId, date: row.date }));
   const canPreviewEsis =
@@ -267,34 +302,6 @@ function DailyAttendance() {
         }
       />
 
-      {/* One row of filters now that the export has moved up. */}
-      <Card pad="compact">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Эхлэх">
-            {({ id }) => (
-              <Input id={id} type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-            )}
-          </Field>
-          <Field label="Дуусах">
-            {({ id }) => (
-              <Input id={id} type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-            )}
-          </Field>
-          <Field label="Бүлэг">
-            {({ id }) => (
-              <Select id={id} value={groupId} onChange={(e) => setGroupId(e.target.value)}>
-                <option value="">Бүх бүлэг</option>
-                {(groups.data?.items ?? []).map((group) => (
-                  <option key={group.id} value={group.id}>
-                    {group.name}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
-        </div>
-      </Card>
-
       {daily.isError ? (
         <ErrorState description={errorMessage(daily.error)} />
       ) : daily.isPending ? (
@@ -330,23 +337,132 @@ function DailyAttendance() {
             each box now carries the picture of its own number and the screen
             gains no rows at all.
           */}
-          <SectionHeader
-            title="Хугацааны дүн"
-            lede={`${formatDate(data.from)} — ${formatDate(data.to)} · ${data.items.length} бүлэг-өдөр`}
-          />
-          <Totals totals={data.totals} />
+          {/*
+            ★ The calendar sits above the figures it changes — 2026-09-17.
 
+            A director reading "Ирц бүртгээгүй: 46" over Наадам wants the
+            holiday recorded, not an explanation of why the number is wrong.
+            Folded, so it costs one row until it is needed.
+          */}
+          {primaryKindergartenId ? (
+            <CalendarDays
+              kindergartenId={primaryKindergartenId}
+              from={from}
+              to={to}
+              canEdit={hasRole("ADMIN")}
+            />
+          ) : null}
+
+          <SubmissionOverview
+            rows={data.items}
+            sending={submit.isPending}
+            onSendReady={() => {
+              selection.clear();
+              for (const row of data.items) {
+                if (row.complete && !row.sentAt) selection.toggle(rowKey(row));
+              }
+            }}
+          />
+
+          {/*
+            ★ The register's own header carries its two controls — 2026-09-17,
+            the client's drawing: a Шүүлтүүр button and a "Бүлэг хайх" box on
+            the title's row.
+
+            The date range and the group select were a card of their own above
+            the figures, which is three permanent rows for something a director
+            sets once and then reads under. Folded behind the button, they cost
+            one; the search is the control they reach for on a roster of twenty
+            groups and it stays out.
+          */}
           <SectionHeader
             title="Өдөр тутмын бүртгэл"
-            lede="Бүлэг тус бүрийн өдрийн дүн. Бүрэн бүртгэгдсэн мөрийг сонгож илгээнэ."
+            action={
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={filtersOpen ? "primary" : "secondary"}
+                  aria-expanded={filtersOpen}
+                  aria-controls="daily-filters"
+                  onClick={() => setFiltersOpen(!filtersOpen)}
+                >
+                  <SlidersHorizontal size={16} aria-hidden="true" />
+                  Шүүлтүүр
+                </Button>
+
+                <SearchField
+                  label="Бүлэг хайх"
+                  placeholder="Бүлэг хайх…"
+                  value={search}
+                  onChange={setSearch}
+                  className="w-full sm:w-56"
+                />
+              </div>
+            }
           />
-          <DailyTable
-            rows={data.items}
-            kindergartenName={data.kindergartenName}
-            selection={selection}
-            rowKey={rowKey}
-            canEdit={hasRole("ADMIN")}
-          />
+
+          {/*
+            ★ It opens **under its own button** — 2026-09-17, the client:
+            "Өдөр тутмын бүртгэл гэсний шүүлтүүрээр гар байгааг доор нь
+            харагддаг болго."
+
+            The panel lived at the top of the page while the control that
+            toggles it sits down here beside the table, so pressing Шүүлтүүр
+            changed something a screen above and read as a button that does
+            nothing. A disclosure belongs directly beneath the row that opens
+            it.
+
+            `grid` only while open: `display:grid` beats the user agent's
+            `[hidden] { display: none }`, so the panel would never close — the
+            same trap the notice board records.
+          */}
+          <Card pad="compact" id="daily-filters" hidden={!filtersOpen}>
+            <div className={cn("gap-3 sm:grid-cols-2 lg:grid-cols-3", filtersOpen && "grid")}>
+              <Field label="Эхлэх">
+                {({ id }) => (
+                  <Input
+                    id={id}
+                    type="date"
+                    value={from}
+                    onChange={(e) => setFrom(e.target.value)}
+                  />
+                )}
+              </Field>
+              <Field label="Дуусах">
+                {({ id }) => (
+                  <Input id={id} type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+                )}
+              </Field>
+              <Field label="Бүлэг">
+                {({ id }) => (
+                  <Select id={id} value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+                    <option value="">Бүх бүлэг</option>
+                    {(groups.data?.items ?? []).map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            </div>
+          </Card>
+
+          {visibleRows.length === 0 ? (
+            <EmptyState
+              title="Тохирох бүлэг олдсонгүй"
+              description="Хайлтын үгээ өөрчилж эсвэл шүүлтүүрээ цэвэрлэж үзнэ үү."
+            />
+          ) : (
+            <DailyTable
+              rows={visibleRows}
+              kindergartenName={data.kindergartenName}
+              selection={selection}
+              rowKey={rowKey}
+              canEdit={hasRole("ADMIN")}
+            />
+          )}
 
           {selection.count > 0 ? (
             <EsisPayloadPreview
@@ -412,7 +528,7 @@ function EsisPayloadPreview({
         }`}
         action={
           <Badge tone={error || incomplete.length ? "sun" : loading ? "sky" : "mint"}>
-            {loading ? "Бэлтгэж байна" : preview?.demo ? "MOCK · холболтгүй" : "ESIS холбогдсон"}
+            {loading ? "Бэлтгэж байна" : "ESIS холбогдсон"}
           </Badge>
         }
       />
@@ -519,133 +635,170 @@ function reasonTone(
 }
 
 /**
- * The period's figures, above the register they are the sum of.
+ * Where each group-day stands with ESIS — the client's drawing, 2026-09-17.
  *
- * ★ Every tile carries its own graphic, in `StatCard`'s `footer` slot.
+ * ★ White, not tinted — their correction the same day: "энэ зураг шиг гэхдээ
+ * өнгөтэй биш цагаан болго."
  *
- * The first attempt at "хугацааны дүнг dashboard-той болгох" drew one big
- * chart above these four boxes. The client's correction was that the picture
- * belongs *in* the boxes — "энэ дотор box-нд нь dashboard-ийг нь нэмэх" — and
- * they are right about the shape as well as the height: a bar under a figure
- * is that figure explained, where a chart beside four figures is a fifth thing
- * to read and to reconcile with the other four.
+ * The drawing has four filled pastel boxes; what carries the meaning in it is
+ * the glyph and the figure, not the wash behind them. So each tile is the
+ * product's ordinary white card with the colour kept to a 32px chip — the
+ * state is still readable at a glance and the row stops being a band of paint
+ * across the top of the register.
  *
- * Each footer answers the question its own number raises:
+ * ★★ Three states, not four.
  *
- *   · Ирц бүртгээгүй — how much of the period is filled in at all.
- *   · Нийт хүүхэд-өдөр — what those child-days were spent as, in four colours.
- *   · Ирсэн — the attendance rate, which is the one figure a director quotes.
- *   · Илгээсэн — how much of the register has been declared final.
+ * The drawing has "Алдаатай" and this does not draw it, because nothing in the
+ * system can answer it yet: a submission either writes an `AttendanceSubmission`
+ * row or the request fails where it is made and stores nothing (`submitDays`).
+ * There is no record of a failed send to count, and a tile reading 0 for ever
+ * says "none failed" when the truth is "nobody is keeping score". When the
+ * ministry transport lands (`docs/ESIS_API_READINESS.md` §1) a failure gets a
+ * row of its own and this gains the fourth tile that reads it.
  *
- * ★★ "Ирц бүртгээгүй" is still the only one that changes tone.
- *
- * The other numbers are context; this one is a to-do list. A director opening
- * this screen at nine in the morning is asking which groups have not filled in
- * today, and a figure in the same grey as the rest makes them read four cards
- * to find the one that needs them.
+ * ★★★ The panel beside them names rows rather than counting them: "4 бүртгэл
+ * дутуу" is not actionable and "Наран бүлэг — 2026.09.17" is. Five at most —
+ * a prompt to act, not a second register.
  */
-function Totals({ totals: t }: { totals: DailyAttendance["totals"] }) {
-  /*
-    Everything below divides by the marks that **exist**, never by `expected`.
+function SubmissionOverview({
+  rows,
+  sending,
+  onSendReady,
+}: {
+  rows: DailyAttendanceRow[];
+  sending: boolean;
+  onSendReady: () => void;
+}) {
+  const sent = rows.filter((row) => row.sentAt);
+  const ready = rows.filter((row) => row.complete && !row.sentAt);
+  const incomplete = rows.filter((row) => !row.complete);
+  const total = rows.length;
+  const share = (count: number) => (total > 0 ? Math.round((count / total) * 100) : 0);
 
-    A term whose last week has not been filled in yet would otherwise read as a
-    collapse in attendance rather than as a register somebody has to finish —
-    and "how much is unfilled" already has a tile of its own, one column to the
-    left.
-  */
-  const marked = t.present + t.excused + t.sick + t.absent;
-  const rate = marked > 0 ? Math.round((t.present / marked) * 100) : 0;
-  const filled = t.days > 0 ? (t.complete / t.days) * 100 : 0;
-  const sent = t.days > 0 ? (t.sent / t.days) * 100 : 0;
+  /* Newest first: the day a director is asked about is today's, not March's. */
+  const attention = [...incomplete].sort((x, y) => y.date.localeCompare(x.date)).slice(0, 5);
 
   return (
-    <section aria-label="Хугацааны дүн" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <StatCard
-        label="Ирц бүртгээгүй"
-        value={t.unrecorded}
-        unit={`${t.complete} / ${t.days} өдөр бүрэн`}
-        tone={t.unrecorded > 0 ? "sun" : "mint"}
-        footer={<StatBar percent={filled} label="Бүрэн бүртгэсэн хувь" />}
-      />
-      <StatCard
-        label="Нийт хүүхэд-өдөр"
-        value={t.expected}
-        unit={`${marked} нь бүртгэгдсэн`}
-        tone="sky"
-        footer={<StatusBar totals={t} marked={marked} />}
-      />
-      <StatCard
-        label="Ирсэн"
-        value={t.present}
-        unit={`Ирцийн хувь ${rate}%`}
-        tone="mint"
-        footer={<StatBar percent={rate} label="Ирцийн хувь" />}
-      />
-      <StatCard
-        label="Илгээсэн"
-        value={t.sent}
-        unit={`${t.days} өдрөөс`}
-        tone={t.sent === t.days && t.days > 0 ? "mint" : "sky"}
-        footer={<StatBar percent={sent} label="Илгээсэн хувь" />}
-      />
+    <section aria-label="ESIS-ийн төлөв" className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_1fr]">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <StatusTile
+          label="ESIS-д илгээсэн"
+          value={sent.length}
+          percent={share(sent.length)}
+          tone="mint"
+          icon={<CheckCircle2 size={22} aria-hidden="true" />}
+        />
+        <StatusTile
+          label="Илгээхэд бэлэн"
+          value={ready.length}
+          percent={share(ready.length)}
+          tone="sun"
+          icon={<Clock size={22} aria-hidden="true" />}
+        />
+        <StatusTile
+          label="Бүртгэл дутуу"
+          value={incomplete.length}
+          percent={share(incomplete.length)}
+          tone="sky"
+          icon={<FileText size={22} aria-hidden="true" />}
+        />
+      </div>
+
+      <Card pad="compact" className="flex flex-col gap-2">
+        {attention.length === 0 && ready.length === 0 ? (
+          <p className="text-body text-muted">Бүх бүртгэл илгээгдсэн байна.</p>
+        ) : null}
+
+        <ul className="flex flex-col gap-1">
+          {attention.map((row) => (
+            <li
+              key={`${row.groupId} ${row.date}`}
+              className="flex items-center gap-1.5 text-caption text-ink"
+            >
+              <AlertTriangle size={14} aria-hidden="true" className="shrink-0 text-sun-ink" />
+              <span className="min-w-0 truncate">
+                {row.group} — {formatDate(row.date)}
+                <span className="text-muted"> ({row.unrecorded} хүүхэд дутуу)</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+
+        {ready.length > 0 ? (
+          <>
+            <p className="text-caption text-ink">
+              {ready.length} бүртгэл ESIS руу илгээхэд бэлэн байна.
+            </p>
+            <Button size="sm" variant="secondary" disabled={sending} onClick={onSendReady}>
+              <Send size={15} aria-hidden="true" />
+              Бэлэн {ready.length} бүртгэлийг сонгох
+            </Button>
+          </>
+        ) : null}
+      </Card>
     </section>
   );
 }
 
 /**
- * What the period's child-days were spent as — one four-colour bar.
+ * One state of the register: a colour chip, its name, the count and the share.
  *
- * ★ Inside the "Нийт хүүхэд-өдөр" tile, because that is the number it divides.
- *
- * `StatBar` can only draw one proportion, and this is four. It is deliberately
- * the same height and radius so the row of tiles still reads as one row: what
- * differs is that this bar is a composition rather than a fraction.
- *
- * ★★ No legend. Four labels under a 2.5px bar in a quarter-width tile is
- * unreadable at 375px, and the same four counts are already named in the
- * register's own columns directly below. The colours are the ones the day
- * sheet, the child's calendar and the journal all use, so they are learnt once;
- * `aria-label` carries the whole sentence for anyone who cannot see them, and
- * each segment's `title` names itself on hover.
+ * ★ The card stays white and the tone lives in the 32px chip — the client,
+ * 2026-09-17: "энэ зураг шиг гэхдээ өнгөтэй биш цагаан болго". The figure is
+ * `text-ink` on `--color-surface` at every state, which is the contrast the
+ * pastel fills were quietly costing.
  */
-function StatusBar({ totals: t, marked }: { totals: DailyAttendance["totals"]; marked: number }) {
-  /*
-    The four statuses in the product's own stat tints — `globals.css`'s
-    mint/sky/sun/peach, which every badge and register on this screen already
-    uses. Not `--color-danger`: a red segment would make an ordinary absence
-    read as an incident, and the tone scale here means "category", not
-    "severity".
-  */
-  const segments = [
-    { key: "present", label: "Ирсэн", value: t.present, className: "bg-mint" },
-    { key: "excused", label: "Чөлөөтэй", value: t.excused, className: "bg-sky" },
-    { key: "sick", label: "Өвчтэй", value: t.sick, className: "bg-sun" },
-    { key: "absent", label: "Тасалсан", value: t.absent, className: "bg-peach" },
-  ].filter((segment) => segment.value > 0);
-
-  // An empty bar reads as a rendering fault; the track alone says "nothing
-  // recorded yet", which is what the tile beside it also says.
-  if (marked === 0 || segments.length === 0) {
-    return <div className="h-2 w-full rounded-pill bg-track" />;
-  }
+function StatusTile({
+  label,
+  value,
+  percent,
+  tone,
+  icon,
+}: {
+  label: string;
+  value: number;
+  percent: number;
+  tone: "mint" | "sun" | "sky";
+  icon: ReactNode;
+}) {
+  const chips = {
+    mint: "bg-mint text-mint-ink",
+    sun: "bg-sun text-sun-ink",
+    sky: "bg-sky text-sky-ink",
+  } as const;
 
   return (
-    <div
-      role="img"
-      aria-label={segments.map((segment) => `${segment.label} ${segment.value}`).join(", ")}
-      className="flex h-2 w-full overflow-hidden rounded-pill bg-track"
+    /*
+      ★ Larger, and drawn as a card rather than a row — 2026-09-17: "бага зэрэг
+      томруул, загвар орчин үеийн болго."
+
+      The label sits above a figure at `--text-figure` with the share beside it
+      in the same baseline, the chip grows to 44px so the glyph reads at a
+      glance, and the whole tile lifts a step on hover. Nothing here is a
+      control, so the lift is the only affordance it gets: it says the card
+      belongs to the register below rather than being a static header.
+    */
+    <Card
+      pad="roomy"
+      className="flex items-start gap-3.5 transition-shadow hover:shadow-md sm:gap-4"
     >
-      {/* Inline widths: a share is data, and no utility class can express an
-          arbitrary percentage. */}
-      {segments.map((segment) => (
-        <span
-          key={segment.key}
-          title={`${segment.label}: ${segment.value}`}
-          className={segment.className}
-          style={{ width: `${(segment.value / marked) * 100}%` }}
-        />
-      ))}
-    </div>
+      <span
+        aria-hidden="true"
+        className={cn("grid size-11 shrink-0 place-items-center rounded-card", chips[tone])}
+      >
+        {icon}
+      </span>
+
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-body font-medium text-muted">{label}</span>
+        <span className="mt-1.5 flex items-baseline gap-2">
+          <span className="text-figure font-bold tabular-nums leading-none tracking-tight text-ink">
+            {value}
+          </span>
+          <span className="text-body tabular-nums text-muted">{percent}%</span>
+        </span>
+      </span>
+    </Card>
   );
 }
 

@@ -46,7 +46,7 @@ function AttendanceLanding() {
   if (groups.isError) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title="Ирц" />
+        <PageHeader title="Ирц" backHref="/dashboard" />
         <ErrorState description={errorMessage(groups.error)} />
       </div>
     );
@@ -55,7 +55,7 @@ function AttendanceLanding() {
   if (groups.data && groups.data.items.length === 0) {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title="Ирц" />
+        <PageHeader title="Ирц" backHref="/dashboard" />
         <EmptyState
           title="Бүлэг байхгүй байна"
           description="Ирц бүртгэхийн өмнө бүлэг үүсгэх шаардлагатай."

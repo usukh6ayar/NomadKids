@@ -248,11 +248,33 @@ export class ChatRepository {
         continue;
       }
 
+      /*
+       * ★ A DIRECT room is always two people, and neither query below would
+       * find them — it has no `groupId` at all. Counting it as 2 without
+       * asking the database is not a shortcut: the pair *is* the room, and
+       * `ChatAccessService` has already established that this actor is one
+       * half of it before any of this runs.
+       */
+      if (room.kind === "DIRECT") {
+        counts.set(room.key, 2);
+        continue;
+      }
+
       const [teachers, guardians] = await Promise.all([
-        this.prisma.groupTeacher.findMany({
-          where: { groupId: room.groupId!, endedOn: null, deletedAt: null },
-          select: { membership: { select: { userId: true } } },
-        }),
+        /*
+         * ★ The parents' room has no teachers in it — that is what it is for
+         * (2026-09-20, "багшгүй дан эцэг эхийн чат"). Skipping the query
+         * rather than filtering its result keeps the count honest for the one
+         * case that would otherwise be wrong in a way nobody notices: a
+         * teacher who is also a parent in this group is in the room, as a
+         * parent, and the guardian query below already returns them.
+         */
+        room.kind === "PARENTS"
+          ? Promise.resolve([])
+          : this.prisma.groupTeacher.findMany({
+              where: { groupId: room.groupId!, endedOn: null, deletedAt: null },
+              select: { membership: { select: { userId: true } } },
+            }),
         this.prisma.guardianship.findMany({
           where: {
             canView: true,

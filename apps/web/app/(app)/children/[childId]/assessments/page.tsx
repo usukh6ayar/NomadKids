@@ -6,7 +6,7 @@ import { childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
-import { BackButton } from "@/components/ui/back-button";
+import { PageHeader } from "@/components/shell/app-shell";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAssessments } from "@/components/child/child-assessments";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
@@ -46,7 +46,7 @@ export default function ChildAssessmentsPage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <BackButton href={`/children/${childId}/general`} />
+      <PageHeader backHref={`/children/${childId}/general`} title="Үнэлгээ" />
 
       {/*
         ★ Staff only, 2026-09-09 — a guardian already knows whose record this

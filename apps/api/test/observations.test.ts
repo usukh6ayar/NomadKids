@@ -954,3 +954,152 @@ describe("filing a note against a curriculum indicator", () => {
     expect((await file({ indicatorId: foreign.id })).status).toBe(400);
   });
 });
+
+/**
+ * "Тайлан" — `GET /groups/:id/report`.
+ *
+ * ★ One request per period, and the period is the caller's: a month, a term and
+ * a school year differ only in where `from` and `to` land. The client asked for
+ * all three ("1 сараар, улиралаар, бүтэн жилээр").
+ *
+ * ★★ The authorization cases are the same three `observation-stats` carries,
+ * for the same reason: this route authorises per *group*, and all three answer
+ * 404 because a 403 would confirm the group exists (§1.7).
+ */
+describe("the group report", () => {
+  const RANGE = "from=2026-01-01&to=2026-12-31";
+
+  it("counts the notes, by kind and by how many children got one", async () => {
+    await teacherObservation();
+    await teacherObservation({ observedOn: "2026-03-11" });
+
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/report?${RANGE}`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.observations.total).toBe(2);
+    // Two notes about one child is one child written about.
+    expect(res.body.observations.children).toBe(1);
+    expect(
+      res.body.observations.byType.find((row: { id: string }) => row.id === typeId).count,
+    ).toBe(2);
+    // Every configured kind appears, including the ones with none.
+    expect(res.body.observations.byType.some((row: { count: number }) => row.count === 0)).toBe(
+      true,
+    );
+  });
+
+  it("names the roster as the denominator", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/report?${RANGE}`),
+      teacherA,
+    );
+
+    expect(res.body.children).toBe(1);
+    expect(res.body.group.id).toBe(a.group.id);
+    expect(res.body.range).toEqual({ from: "2026-01-01", to: "2026-12-31" });
+  });
+
+  /*
+    ★ "No data" is not "0%".
+
+    A month nobody marked attendance in has no percentage, and printing 0%
+    would report a group that never turned up.
+  */
+  it("gives no attendance percentage when nothing was recorded", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/report?${RANGE}`),
+      teacherA,
+    );
+
+    expect(res.body.attendance.recorded).toBe(0);
+    expect(res.body.attendance.percent).toBeNull();
+    // Every status still listed, so a zero reads as a zero rather than a gap.
+    expect(res.body.attendance.byStatus).toHaveLength(6);
+  });
+
+  it("counts a half day as attended", async () => {
+    await db.attendance.createMany({
+      data: [
+        {
+          kindergartenId: a.kindergarten.id,
+          enrollmentId: a.enrollment.id,
+          childId: a.child.id,
+          date: new Date("2026-02-10"),
+          status: "PRESENT",
+        },
+        {
+          kindergartenId: a.kindergarten.id,
+          enrollmentId: a.enrollment.id,
+          childId: a.child.id,
+          date: new Date("2026-02-11"),
+          status: "HALF_DAY",
+        },
+        {
+          kindergartenId: a.kindergarten.id,
+          enrollmentId: a.enrollment.id,
+          childId: a.child.id,
+          date: new Date("2026-02-12"),
+          status: "ABSENT",
+        },
+      ],
+    });
+
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/report?${RANGE}`),
+      teacherA,
+    );
+
+    expect(res.body.attendance.recorded).toBe(3);
+    expect(res.body.attendance.attended).toBe(2);
+    expect(res.body.attendance.percent).toBe(67);
+    expect(res.body.attendance.byDay).toHaveLength(3);
+  });
+
+  it("★ a teacher of another group gets 404", async () => {
+    const otherGroup = await createGroup(a.kindergarten.id, a.schoolYear.id, "Бусад бүлэг");
+
+    const res = await authed(
+      request(server()).get(`/v1/groups/${otherGroup.id}/report?${RANGE}`),
+      teacherA,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("★ a teacher from another kindergarten gets 404", async () => {
+    const teacherB = await login(app, b.teacherUser.username);
+
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/report?${RANGE}`),
+      teacherB,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("★ a guardian cannot read it at all", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/report?${RANGE}`),
+      parentA,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  /* The window is the §3.4 bound: aggregates over an open range are a scan. */
+  it("refuses a range longer than a year", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/report?from=2020-01-01&to=2026-12-31`),
+      teacherA,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("refuses a backwards range", async () => {
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/report?from=2026-12-31&to=2026-01-01`),
+      teacherA,
+    );
+    expect(res.status).toBe(400);
+  });
+});

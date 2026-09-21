@@ -57,8 +57,34 @@ export class ProblemExceptionFilter implements ExceptionFilter {
         if (Array.isArray(message)) {
           problem.errors = { _: message.map(String) };
           problem.detail = message.map(String).join(". ");
-        } else if (typeof message === "string" && message !== problem.title) {
+        } else if (
+          typeof message === "string" &&
+          message !== problem.title &&
+          !isNestDefaultMessage(message, status)
+        ) {
           problem.detail = message;
+        }
+        /*
+         * ★ A machine-readable reason, forwarded only when the thrown body
+         * names one as a string. Nothing else about the document changes, so
+         * every error body that existed before this stays byte-identical —
+         * `code` appears exactly on the throws that ask for it.
+         *
+         * ★★ And only when it *looks* like one of ours. `HttpException`
+         * accepts an arbitrary object and `createBody` keeps it verbatim, so
+         * `new BadRequestException(caughtPrismaError)` — a shape nobody has
+         * written yet and everybody is one hurried catch block away from —
+         * would put `code: "P2002"` in a browser, which is a database detail
+         * this filter exists to keep out. `CODE_SHAPE` rejects it, and rejects
+         * it specifically **because Prisma's codes carry digits**: that is the
+         * whole discriminator, so the pattern must stay digit-free to work.
+         * A future code that genuinely needs a digit is a deliberate widening
+         * of this line, not an accident — every code thrown today
+         * (`SCOPE_DENIED`, `TIMEOUT`, `NETWORK`) passes unchanged.
+         */
+        const code = "code" in body ? (body as { code: unknown }).code : undefined;
+        if (typeof code === "string" && CODE_SHAPE.test(code)) {
+          problem.code = code;
         }
         if ("errors" in body) {
           const errors = (body as { errors: unknown }).errors;
@@ -80,10 +106,59 @@ export class ProblemExceptionFilter implements ExceptionFilter {
 }
 
 /**
+ * What a `code` this API wrote looks like: SCREAMING_SNAKE, nothing else.
+ * Digit-free on purpose — see the note at the forwarding site.
+ */
+const CODE_SHAPE = /^[A-Z_]{3,40}$/;
+
+/**
  * User-facing, so Mongolian. Note that 404 says only "not found" — it must read
  * identically whether the record is absent or the actor may not see it.
  * CLAUDE.md §1.7.
  */
+/**
+ * Nest's own English reason phrase for a status, which is **not** a message
+ * anybody wrote.
+ *
+ * ★ `new NotFoundException()` with no argument produces
+ * `{ statusCode: 404, message: "Not Found" }`. The branch above forwards that
+ * into `detail`, `apps/web/lib/api/errors.ts` prefers `detail` over its own
+ * Mongolian status map, and a director looking for a deleted school year read
+ * **"Not Found"** — in a product whose every other sentence is Mongolian.
+ * Found on 2026-09-20 by asking the running API: `detail":"Unauthorized"`.
+ *
+ * The `message !== problem.title` guard above did not catch it, and could not:
+ * it compares against the Mongolian title, and "Not Found" differs from
+ * «Олдсонгүй» exactly as a real thrown message would.
+ *
+ * ★★ Matched against this list rather than translated. A translation here
+ * would be a second status→sentence map competing with `titleFor` below and
+ * with the web's `STATUS_MESSAGES`; dropping the detail instead lets the one
+ * that already exists answer, which is what both were written to do.
+ *
+ * ★★★ Status-scoped on purpose. A service that deliberately throws
+ * `new ConflictException("Not Found")` — absurd, but expressible — keeps its
+ * message, because only the phrase Nest itself would have generated for
+ * *this* status is discarded.
+ */
+const NEST_DEFAULT_MESSAGE: Record<number, string> = {
+  [HttpStatus.BAD_REQUEST]: "Bad Request",
+  [HttpStatus.UNAUTHORIZED]: "Unauthorized",
+  [HttpStatus.PAYMENT_REQUIRED]: "Payment Required",
+  [HttpStatus.FORBIDDEN]: "Forbidden",
+  [HttpStatus.NOT_FOUND]: "Not Found",
+  [HttpStatus.CONFLICT]: "Conflict",
+  [HttpStatus.PAYLOAD_TOO_LARGE]: "Payload Too Large",
+  [HttpStatus.UNPROCESSABLE_ENTITY]: "Unprocessable Entity",
+  [HttpStatus.TOO_MANY_REQUESTS]: "Too Many Requests",
+  [HttpStatus.INTERNAL_SERVER_ERROR]: "Internal Server Error",
+  [HttpStatus.SERVICE_UNAVAILABLE]: "Service Unavailable",
+};
+
+function isNestDefaultMessage(message: string, status: number): boolean {
+  return NEST_DEFAULT_MESSAGE[status] === message;
+}
+
 function titleFor(status: number): string {
   switch (status) {
     case HttpStatus.BAD_REQUEST:
@@ -111,6 +186,35 @@ function titleFor(status: number): string {
     */
     case HttpStatus.SERVICE_UNAVAILABLE:
       return "Түр ашиглах боломжгүй байна";
+    /*
+      ★ Added 2026-09-19 with the ESIS institution lookup's 502, and for the
+      same argument as the 503 above. Without a case here an upstream
+      non-answer reads "Алдаа гарлаа" — identical to a 500, which says
+      something broke here and nobody knows what. A 502 says the request was
+      fine and the other system did not answer, so retrying is the correct
+      next move.
+
+      ★★ Deliberately not the same sentence as the thrown `detail` («ESIS
+      хариу өгсөнгүй.»): a message equal to the title is dropped by the branch
+      above, and the operator would lose the more specific half.
+
+      ★★★ **This is not only the institution lookup's status.** A `case` here
+      is retroactive: every 502 this API has ever answered gets the new title,
+      and there are eleven existing throws —
+      `attendance.service.ts` (lines 78, 834, 956, 959, 961, 1022, 1025, 1027)
+      and `esis-admin.service.ts` (1398, 1401, 1403). `ApiError.message` on the
+      web side is `problem.title` (`apps/web/lib/api/client.ts`), so their
+      message changes with it, from "Алдаа гарлаа" to this.
+
+      That is the intent — all eleven are "ESIS did not answer", which is
+      exactly what the new title says, and all eleven supply a `detail` that
+      the web layer prefers anyway. But it is a wider change than the one case
+      that prompted it, and the next reader should not have to grep to discover
+      that. Verified against `test/attendance-register.test.ts` and
+      `test/esis-admin.test.ts` on 2026-09-19: nothing asserts the old title.
+    */
+    case HttpStatus.BAD_GATEWAY:
+      return "Гадаад системээс хариу ирсэнгүй";
     default:
       return "Алдаа гарлаа";
   }

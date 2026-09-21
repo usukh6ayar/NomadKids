@@ -11,6 +11,7 @@ import {
   cloneSurveySchema,
   compareSurveyQuerySchema,
   createSurveySchema,
+  questionAnswersParamsSchema,
   saveQuestionsSchema,
   submitResponseSchema,
   surveyResultsQuerySchema,
@@ -215,6 +216,22 @@ export class SurveysController {
     return this.service.close(actor, params.id);
   }
 
+  /**
+   * Takes the lock off — the same roles that put it on.
+   *
+   * ★ Its own route rather than a toggle on `close`: a "flip it" request would
+   * close a survey somebody else had just re-opened, and the audit row would
+   * then say the opposite of what happened.
+   */
+  @Post(":id/reopen")
+  @Roles("TEACHER", "ADMIN")
+  async reopen(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.reopen(actor, params.id);
+  }
+
   /** Who answered and who has not — the card's "Оролцоо". */
   @Get(":id/participation")
   @Roles("TEACHER", "ADMIN")
@@ -223,6 +240,17 @@ export class SurveysController {
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
   ) {
     return this.service.participation(actor, params.id);
+  }
+
+  /** Who said what to one question — the "Хариултууд" list. */
+  @Get(":id/questions/:questionId/answers")
+  @Roles("TEACHER", "ADMIN")
+  async questionAnswers(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(questionAnswersParamsSchema))
+    params: { id: string; questionId: string },
+  ) {
+    return this.service.questionAnswers(actor, params.id, params.questionId);
   }
 
   @Get(":id/results")

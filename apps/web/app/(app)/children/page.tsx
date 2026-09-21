@@ -7,15 +7,14 @@ import { useSearchParams } from "next/navigation";
 import { Download, Mars, Plus, Upload, Venus } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
-  CHILD_STATUS_LABEL,
-  SEX_LABEL,
   childSummarySchema,
+  esisResourceReadSchema,
   esisScopedCatalogSchema,
   paginated,
-  rosterSummarySchema,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
+import { ChildPhotoButton } from "@/components/child/child-photo-button";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
@@ -27,7 +26,6 @@ import { Art } from "@/components/ui/art";
 import { Donut } from "@/components/ui/chart/donut";
 import { Ring } from "@/components/ui/chart/ring";
 import { Button } from "@/components/ui/button";
-import { SearchField } from "@/components/ui/search-field";
 import { Card } from "@/components/ui/card";
 import { formatAge, fullName } from "@/lib/format";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
@@ -148,57 +146,58 @@ function StaffChildren() {
   });
 
   /*
-   * ★ The scoped catalog, so a teacher gets these rows too — 2026-09-09.
+   * ★ An ESIS row → this kindergarten's own child, by name and date of birth.
    *
-   * This read the operator's `/esis`, which is `@Roles("ADMIN")`, so the roster
-   * table below rendered for administrators alone. `students` is one of the
-   * teacher's six services, and this screen is theirs as much as anybody's.
+   * Added 2026-09-14 so a name in the roster below still opens the record it
+   * names. `EsisDataPanel` drops the caller's `hrefs` the moment ESIS answers,
+   * and rightly: the ministry's roster is not in our order and need not be the
+   * same set of children. So the link has to be derived from the row.
+   *
+   * ★★ Name **and** birth date, the pairing `attendance.service.ts` and
+   * `funding/food-discount.ts` both use. Two children called Б.Сараа in one
+   * kindergarten is ordinary; both born the same day is not. A row that
+   * matches nothing — a child ESIS holds and we have not registered — or
+   * matches twice leads nowhere, rather than opening somebody else's record.
    */
-  const esis = useQuery({
-    queryKey: qk.esisCatalog(primaryKindergartenId ?? "none"),
-    queryFn: () =>
-      get(`/kindergartens/${primaryKindergartenId}/esis/catalog`, esisScopedCatalogSchema),
-    enabled: Boolean(primaryKindergartenId),
-    retry: false,
-  });
+  const childHref = (row: Record<string, string | null>) => {
+    const name = `${row.lastName ?? ""} ${row.firstName ?? ""}`.trim().toLocaleLowerCase("mn-MN");
+    const birthday = (row.dateOfBirth ?? "").slice(0, 10);
+    if (!name || !birthday) return null;
+
+    const matches = (data?.items ?? []).filter(
+      (child) =>
+        `${child.lastName} ${child.firstName}`.trim().toLocaleLowerCase("mn-MN") === name &&
+        child.dateOfBirth.slice(0, 10) === birthday,
+    );
+
+    return matches.length === 1 ? `/children/${matches[0]!.id}/general` : null;
+  };
 
   /*
-   * ★ The roster, in the shape the суралцагч service returns it.
+   * ★ **The hand-built roster rows are gone — 2026-09-14.**
    *
-   * The catalog's own demo roster is ten invented people, and a link on one of
-   * them leads nowhere — which is why removing the local list took the way into
-   * a child's record with it. These rows are this kindergarten's children, laid
-   * out under ESIS's field names, so the table reads as the service's answer
-   * *and* every row opens the record it names.
+   * This screen used to dress its own children in ESIS's field names: local
+   * values for the person fields, the catalog's first *sample* row underneath
+   * for everything ESIS carries and we do not, and a `personId` counted up from
+   * 90000000000001 per row. It then rendered that under the heading
+   * "Суралцагчийн жагсаалт", which is the name of a ministry service.
    *
-   * ★★ Built over the catalog's first sample row, so the fields ESIS carries
-   * and we do not — the programme codes, the official e-mails — keep their
-   * illustrative values instead of leaving twenty columns of "—". The person
-   * fields are the child's own. `personId` varies per row because one number
-   * repeated down a roster is the detail that makes a demonstration look like a
-   * mock-up; it is invented exactly as the catalog's ten are.
+   * Nothing on the screen said which columns were real. A director reading a
+   * programme code or an official e-mail off that table was reading a value
+   * this application invented, presented as ESIS's answer — the sharpest case
+   * of what the client stopped on 2026-09-14 ("ene esis ni real zuil shuu").
+   *
+   * `EsisDataPanel` below reads `students/list` itself and shows what comes
+   * back, or `EsisNoAnswer` naming the endpoint that did not. The local roster
+   * is still on this screen in its own table above, which is where a local
+   * roster belongs.
    */
-  const students = esis.data?.endpoints.find((endpoint) => endpoint.key === "students");
-  const rosterRows = data?.items.map((child, index) => ({
-    ...(students?.sampleRows[0] ?? {}),
-    personId: String(90000000000000 + index + 1),
-    lastName: child.lastName,
-    firstName: child.firstName,
-    lastNameMgl: child.lastName,
-    firstNameMgl: child.firstName,
-    dateOfBirth: child.dateOfBirth.slice(0, 10),
-    genderCode: child.sex === "FEMALE" ? "F" : "M",
-    genderName: (child.sex && SEX_LABEL[child.sex]) || "—",
-    studentGroupName: child.enrollments[0]?.group?.name ?? "—",
-    academicLevelName: child.enrollments[0]?.group?.ageBand ?? "—",
-    programStatusName: CHILD_STATUS_LABEL[child.status ?? "ACTIVE"] ?? "—",
-  }));
-  const rosterHrefs = data?.items.map((child) => `/children/${child.id}/general`);
 
   return (
     <div className="page-band">
       <PageHeader
-        title="Хүүхдүүд"
+        title="Суралцагч"
+        backHref="/dashboard"
         actions={
           /*
             ★ `flex-wrap`, and `gap-2` until there is room for `gap-3`.
@@ -213,40 +212,6 @@ function StaffChildren() {
             where all four still share a line — nothing moves.
           */
           <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
-            {/*
-              ★ The search sits in the header row — 2026-09-09, at the client's
-              request, and the same move the four kitchen screens made.
-
-              It was a full-width row of its own beneath `RosterSummary`, which
-              put the one control a teacher reaches for first *below* four
-              summary tiles. First in the cluster rather than last: it is what
-              this screen is for, and reading order should say so.
-
-              ★★ `SearchField` rather than the hand-written box that stood
-              here. That box predated the shared control — its own comment
-              explained why a visible label was redundant beside a magnifier,
-              which is exactly the reasoning `SearchField` now carries once for
-              every list in the product (Order А/261, шалгуур 21). The
-              `aria-label` is preserved verbatim: it names the fields actually
-              searched, which is the one thing that must not be lost.
-
-              ★★★ A width, because `SearchField` is `flex-1` by design and
-              would otherwise fight the header's `shrink-0` cluster. Full on a
-              phone, where this row wraps anyway; 260px from `sm` up.
-            */}
-            <div className="w-full sm:w-[260px]">
-              <SearchField
-                label="Хүүхдийн нэрээр хайх"
-                placeholder="Нэр эсвэл овгоор хайх"
-                value={typed}
-                onChange={setTyped}
-              />
-            </div>
-            {data ? (
-              <p className="text-body text-muted" aria-live="polite">
-                Нийт {data.total}
-              </p>
-            ) : null}
             {/*
               No role check: guardians never reach this component — the page
               routes them to `MyChildren`, which has nothing to register.
@@ -286,7 +251,13 @@ function StaffChildren() {
         }
       />
 
-      <RosterSummary search={search} facets={facets} esisCount={rosterRows?.length} />
+      <EsisDataPanel
+        resource="studentByRegister"
+        title="РД-ээр сурагч хайх"
+        description="Сурагчийн мэдээллийг ESIS-ээс регистрийн дугаараар хайна"
+      />
+
+      <RosterSummary />
 
       {/*
         ★ The roster, from ESIS — 2026-09-08, at the client's instruction,
@@ -329,9 +300,45 @@ function StaffChildren() {
         */
         title="Суралцагчийн жагсаалт"
         description="Бүртгэл, бүлэг, элсэлтийн төлөв"
-        rows={rosterRows}
-        hrefs={rosterHrefs}
+        liveHref={childHref}
         linkField="firstName"
+        /*
+          ★ A camera on every record we can actually put a photograph on —
+          2026-09-20, the client: "жагсаалтаас шууд зураг нэмэх".
+
+          `childHref` is reused as the test rather than repeating the match: if
+          the record leads to a child's page then that child is ours, and if it
+          leads nowhere offering an upload would promise somewhere to put it.
+        */
+        rowActions={(row) => {
+          const href = childHref(row);
+          if (!href) return null;
+          return (
+            <ChildPhotoButton
+              childId={href.split("/")[2]!}
+              childName={`${row.lastName ?? ""} ${row.firstName ?? ""}`.trim()}
+              variant="inline"
+            />
+          );
+        }}
+        /*
+         * ★ Reads on open — 2026-09-14, at the client's instruction: "esis ees
+         * tatsan medeelluud yr ni haragdahgui baihiin."
+         *
+         * It did not need to before: the panel fell back to the catalog's
+         * sample rows, so the table looked populated whether or not anything
+         * had been read. With the samples gone, a panel that waits for a press
+         * is a panel that shows nothing — and this is the screen about
+         * children, where the roster is the content rather than a reference.
+         *
+         * ★★ Safe to do here because `students/list` takes no parameter
+         * beyond the institution: one call on open, `staleTime: Infinity`, no
+         * refetch on focus. The three panels below keep their buttons because
+         * each needs an id or a date the reader has to supply first — reading
+         * those automatically would mean guessing a group, a register number
+         * or a date, and calling the ministry about it.
+         */
+        autoRead
       />
       {/*
         ★ The group roster, beside the whole one — 2026-09-09, at the client's
@@ -343,13 +350,6 @@ function StaffChildren() {
         resource="groupStudents"
         title="Бүлгийн суралцагчийн жагсаалт"
         description="ESIS-д нэг бүлэгт бүртгэлтэй хүүхдүүд"
-      />
-      <EsisDataPanel
-        resource="studentByRegister"
-        title="РД-ээр хайх"
-        description="Суралцагчийн мэдээллийг регистрийн дугаараар ESIS-ээс хайх"
-        actionLabel="РД-ээр хайх"
-        showResponseDetails
       />
       {/*
         ★ Суралцагчийн хөдөлгөөн — the last service in the catalog that had
@@ -441,46 +441,67 @@ function rosterParams(
   return params;
 }
 
-function RosterSummary({
-  search,
-  facets,
-  esisCount,
-}: {
-  search: string;
-  facets: RosterFacets;
-  /**
-   * How many children the ESIS roster below this screen is showing.
-   *
-   * ★ 2026-09-09, at the client's request: "тэр нийт хүүхэд гэсэн тоог тэр
-   * ESIS-ээс татсан датагийн хүүхдийн тооноос авдаг болго."
-   *
-   * Both numbers come from the same query with the same filters, so they agree
-   * — and being the *same* number is the point: a director who counts the rows
-   * in the table and reads the card above it must not find two answers. The
-   * sex split still comes from `/children/summary`, which counts server-side
-   * rather than folding whatever rows loaded.
-   */
-  esisCount?: number;
-}) {
-  const filters = { q: search || undefined, ...facets };
+/**
+ * The three figures above the roster, **counted from ESIS's own answer**.
+ *
+ * ★ Rewritten 2026-09-14, at the client's instruction: "local data gej
+ * baihgui bugd l esis ees tatagdana shuu."
+ *
+ * It read `/children/summary`, which counts this kindergarten's own rows
+ * server-side. That put two sources on one screen — a local total above a
+ * ministry roster below — and the two disagree the moment ESIS enrols a child
+ * we have not imported, or we hold one ESIS has moved on. A director reading
+ * "Нийт 83" over a table of 84 has no way to tell which number is wrong.
+ *
+ * ★★ Same query key as the panel beneath it, so this is **not a second call**:
+ * React Query serves both from one response. One request, one answer, two
+ * renderings of it — which is also why the numbers cannot drift apart.
+ *
+ * ★★★ The sex split is counted from `genderCode`, ESIS's own field. A row
+ * without one falls into neither figure and the card says so, exactly as it
+ * did when the count was local — a child whose sex is unrecorded is in the
+ * roster and in neither half.
+ */
+function RosterSummary() {
+  const { primaryKindergartenId } = useSession();
 
-  const { data } = useQuery({
-    queryKey: qk.rosterSummary(filters),
-    queryFn: () => {
-      // ★ The same builder the list uses. Sorting is dropped by `rosterParams`
-      // for this call — it changes an order and means nothing to a total — but
-      // every filter is shared, so the header cannot narrow differently from
-      // the rows beneath it.
-      const params = rosterParams(search, facets, { includeSort: false });
-      const query = params.toString();
-      return get(`/children/summary${query ? `?${query}` : ""}`, rosterSummarySchema);
-    },
-    // The roster is the point of this screen; its totals are context. A failure
-    // here removes the cards rather than the list.
+  const catalog = useQuery({
+    queryKey: qk.esisCatalog(primaryKindergartenId ?? "none"),
+    queryFn: () =>
+      get(`/kindergartens/${primaryKindergartenId}/esis/catalog`, esisScopedCatalogSchema),
+    enabled: Boolean(primaryKindergartenId),
     retry: false,
   });
 
-  if (!data) return null;
+  const read = useQuery({
+    queryKey: qk.esisResource(primaryKindergartenId ?? "none", "students", "resource=students"),
+    queryFn: () =>
+      get(
+        `/kindergartens/${primaryKindergartenId}/esis/resource?resource=students`,
+        esisResourceReadSchema,
+      ),
+    enabled: Boolean(primaryKindergartenId) && Boolean(catalog.data?.canRead),
+    /*
+     * The panel below sets exactly these: every read is an outbound call to
+     * the ministry and an `AuditLog` VIEW row, so alt-tabbing must not repeat
+     * it. Matching them is what makes the two components share one response
+     * rather than race for two.
+     */
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    staleTime: Infinity,
+    retry: false,
+  });
+
+  const rows = read.data?.status === "SUCCEEDED" ? read.data.rows : null;
+  // No figures over a failed read: a zero would read as "no children".
+  if (!rows) return null;
+
+  const data = {
+    total: rows.length,
+    girls: rows.filter((row) => row.genderCode === "F").length,
+    boys: rows.filter((row) => row.genderCode === "M").length,
+  };
 
   /*
     Not `data.total`: a child whose sex has not been recorded is in the roster
@@ -491,14 +512,19 @@ function RosterSummary({
   const counted = data.boys + data.girls;
 
   /*
-   * ★ The ESIS table's row count when there is one, the endpoint's total
-   * otherwise — the fallback covers the first paint, before that query lands.
+   * ★ The ministry's own count — the number of rows `students/list` returned.
    *
-   * They differ only past `ROSTER_SIZE`, where the table is capped and the
-   * total is not. A kindergarten of more than a hundred children needs a pager
-   * on that table before this figure means anything, and the panel says so.
+   * The client asked on 2026-09-09 that this figure come from the ESIS data,
+   * and until 2026-09-14 it did not: it read the ESIS table's row count, but
+   * those rows were this screen's own children relabelled, so the number was
+   * never the ministry's. It was the local total by a longer route, and past
+   * `ROSTER_SIZE` it disagreed with itself — the table was capped and the
+   * count was not.
+   *
+   * Now the table and this card read one response, so there is no second
+   * number to drift.
    */
-  const total = esisCount ?? data.total;
+  const total = data.total;
 
   return (
     <section aria-label="Товч тоо" className="flex flex-col gap-2 md:gap-3">
@@ -621,7 +647,12 @@ function MyChildren() {
 
   return (
     <div className="page-band">
-      <PageHeader title={MY_CHILDREN} />
+      {/*
+        ★ The same Буцах the staff header above carries — 2026-09-16. A family
+        arrives here from the dashboard's own Суралцагч tile, and this was the
+        one branch of the route that opened without a way back to it.
+      */}
+      <PageHeader title={MY_CHILDREN} backHref="/dashboard" />
 
       {isLoading ? <LoadingState rows={2} /> : null}
 

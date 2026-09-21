@@ -11,8 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { ChildAvatar } from "@/components/media/media-image";
 import { ErrorState, LoadingState } from "@/components/ui/states";
-import { formatAge, fullName } from "@/lib/format";
+import { formatAge, fullName, shortName } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
 const childrenPageSchema = paginated(childSummarySchema);
 
@@ -99,12 +100,26 @@ export function ChildPickerDialog({
     ? rosterItems.filter((child) => (coverage.counts[child.id] ?? 0) >= coverage.target).length
     : 0;
 
+  const backdrop = useBackdropDismiss(onClose);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label={title}
-      className="fixed inset-0 z-50 grid items-end bg-ink/50 p-0 sm:place-items-center sm:p-4"
+      {...backdrop}
+      /*
+        ★ `justify-items-center` — 2026-09-16, at the client's request that
+        this stop hugging the left edge on a phone.
+
+        The sheet is `w-full max-w-[480px]`, and a grid item with a max-width
+        resolves a `stretch` justification to *start*: at any width between
+        480px and the `sm` breakpoint the sheet was 480px of dialog pinned to
+        the left with a band of dimmed page beside it. Below 480 it filled the
+        screen, which is why it read as correct on the narrowest phones and
+        wrong on the large ones.
+      */
+      className="fixed inset-0 z-50 grid items-end justify-items-center bg-ink/50 p-0 sm:place-items-center sm:p-4"
     >
       <div className="flex max-h-[calc(100dvh-1rem)] w-full max-w-[480px] flex-col gap-3 rounded-t-card border border-border bg-surface p-4 shadow-lg sm:max-h-[calc(100vh-2rem)] sm:rounded-card sm:p-5">
         <div className="flex items-center gap-2">
@@ -185,9 +200,20 @@ export function ChildPickerDialog({
           <ul
             role="radiogroup"
             aria-label={title}
+            /*
+              ★ Three across on a phone, four from `sm` — 2026-09-16, at the
+              client's request: "50 хүүхэдтэй анги байгаа".
+
+              Two columns of 132px tiles is 25 rows of scrolling for a class
+              that size, and the picker is a place a teacher passes through
+              rather than reads. The tile lost the height it was spending on
+              air, the avatar dropped to 36px and the name is `shortName`
+              (`Б.Батзориг`) — a column about 110px wide on a 390px phone
+              fits a given name and cannot fit a patronymic before it.
+            */
             className={cn(
               "min-h-0 flex-1 overflow-y-auto",
-              coverage && "grid grid-cols-2 content-start gap-2",
+              coverage && "grid grid-cols-3 content-start gap-1.5 sm:grid-cols-4",
             )}
           >
             {items.map((child) => {
@@ -202,19 +228,38 @@ export function ChildPickerDialog({
                     type="button"
                     role="radio"
                     aria-checked={chosen}
+                    /*
+                      ★ The full name is still the accessible name, and the
+                      `title` still spells it out on a pointer. A narrower tile
+                      is a drawing decision; it must not take a child's name
+                      away from a screen reader.
+                    */
+                    aria-label={
+                      coverage
+                        ? `${fullName(child)} — ${
+                            complete ? "зорилт биелсэн" : `${count}/${coverage.target} тэмдэглэл`
+                          }`
+                        : fullName(child)
+                    }
+                    title={fullName(child)}
                     onClick={() => setPending(child.id)}
                     className={cn(
                       "flex w-full rounded-card text-left transition-colors",
                       coverage
-                        ? "min-h-[132px] flex-col items-center justify-center gap-1.5 border border-border-soft px-2 py-3 text-center"
+                        ? "min-h-[100px] flex-col items-center justify-center gap-1 border border-border-soft px-1 py-2 text-center"
                         : "items-center gap-3 px-2.5 py-2.5",
                       chosen ? "border-primary bg-primary-soft" : "bg-surface hover:bg-canvas",
                     )}
                   >
-                    <ChildAvatar child={child} size={44} />
+                    <ChildAvatar child={child} size={coverage ? 36 : 44} />
                     <span className={cn("min-w-0", coverage ? "w-full" : "flex-1")}>
-                      <span className="block truncate text-body font-medium leading-snug text-ink">
-                        {fullName(child)}
+                      <span
+                        className={cn(
+                          "block truncate font-medium leading-snug text-ink",
+                          coverage ? "text-caption" : "text-body",
+                        )}
+                      >
+                        {coverage ? shortName(child) : fullName(child)}
                       </span>
                       {coverage ? (
                         <span
@@ -223,11 +268,7 @@ export function ChildPickerDialog({
                             complete ? "text-mint-ink" : count > 0 ? "text-sun-ink" : "text-muted",
                           )}
                         >
-                          {complete
-                            ? "Зорилт биелсэн"
-                            : count > 0
-                              ? `${count}/${coverage.target} тэмдэглэл`
-                              : "Тэмдэглэлгүй"}
+                          {complete ? "Биелсэн" : `${count}/${coverage.target}`}
                         </span>
                       ) : (
                         <span className="block truncate text-caption text-muted">
@@ -240,7 +281,7 @@ export function ChildPickerDialog({
                       aria-hidden="true"
                       className={cn(
                         "grid size-6 shrink-0 place-items-center rounded-pill border-2",
-                        coverage && "absolute right-2 top-2",
+                        coverage && "absolute right-1 top-1 size-5",
                         chosen ? "border-primary bg-primary text-white" : "border-border",
                       )}
                     >

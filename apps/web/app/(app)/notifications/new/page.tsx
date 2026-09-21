@@ -20,12 +20,15 @@ import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Disclosure } from "@/components/ui/disclosure";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
 import { ImagePlus, X } from "lucide-react";
 import { ACCEPTED_TYPES, MAX_UPLOAD_BYTES } from "@/components/media/photo-upload";
 import { RequireRole } from "@/components/shell/require-role";
+import { cn } from "@/lib/utils";
+import { shrinkIfTooLarge } from "@/lib/image-shrink";
 
 /** The ceiling, in the unit the copy states it in. */
 const MAX_UPLOAD_MB = MAX_UPLOAD_BYTES / 1024 / 1024;
@@ -175,11 +178,21 @@ function ComposeNotice() {
   const errors = fieldErrors(publishAll.error);
   const busy = publishAll.isPending;
 
-  function addFiles(picked: FileList | null) {
+  async function addFiles(picked: FileList | null) {
     if (!picked?.length) return;
     setFileError(null);
     const accepted: { file: File; url: string }[] = [];
-    for (const file of Array.from(picked)) {
+
+    /*
+     * ★ Shrunk before it is measured — 2026-09-20. A phone shoots 8–12 MB
+     * frames, so refusing past the ceiling meant refusing ordinary
+     * photographs. Anything already under it is passed through untouched.
+     */
+    const chosen = await Promise.all(
+      Array.from(picked).map((file) => shrinkIfTooLarge(file, MAX_UPLOAD_BYTES)),
+    );
+
+    for (const file of chosen) {
       if (file.size > MAX_UPLOAD_BYTES) {
         setFileError(`"${file.name}" хэт том байна. Дээд хэмжээ ${MAX_UPLOAD_MB} MB.`);
         continue;
@@ -200,6 +213,14 @@ function ComposeNotice() {
     if (!busy) publishAll.mutate();
   }
 
+  /** What the folded audience row says on its right — see the edit screen. */
+  const audienceHint =
+    audience === null
+      ? "Бүх хүүхэд"
+      : audience.groupIds.length + audience.childIds.length === 0
+        ? "Сонгоогүй"
+        : `${audience.groupIds.length} бүлэг · ${audience.childIds.length} хүүхэд`;
+
   if (!primaryKindergartenId) {
     return (
       <div>
@@ -219,40 +240,49 @@ function ComposeNotice() {
         <form onSubmit={onSubmit} className="flex flex-col gap-3 p-3 sm:p-4" noValidate>
           <FormError message={publishAll.isError ? errorMessage(publishAll.error) : null} />
 
-          <div className="grid grid-cols-2 gap-2.5" data-testid="notice-compact-fields">
-            <Field label="Төрөл">
-              {({ id }) => (
-                <Select
-                  id={id}
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value as NotificationCategory)}
-                  disabled={busy}
-                >
-                  {NOTIFICATION_CATEGORIES.map((value) => (
-                    <option key={value} value={value}>
-                      {NOTIFICATION_CATEGORY_LABEL[value]}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
+          {/*
+            ★★ The edit screen's form, exactly — 2026-09-16, the client: "шинэ
+            мэдээ оруулахыг яг саяны засах хэсгийнх шиг болго".
 
-            <Field label="Гарчиг" error={errors.title}>
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  disabled={busy}
-                  autoFocus
-                />
-              )}
-            </Field>
-          </div>
+            Төрөл · Гарчиг · the note · the pictures · Хэнд харагдах beside
+            Чухал. The two screens differ in what they do — this one creates,
+            uploads and publishes in one press — and there is no reason for
+            them to differ in what they look like. Writing a notice and
+            correcting one an hour later should not be two layouts to learn.
+          */}
+          <Field label="Төрөл">
+            {({ id }) => (
+              <Select
+                id={id}
+                value={category}
+                onChange={(e) => setCategory(e.target.value as NotificationCategory)}
+                disabled={busy}
+              >
+                {NOTIFICATION_CATEGORIES.map((value) => (
+                  <option key={value} value={value}>
+                    {NOTIFICATION_CATEGORY_LABEL[value]}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
 
-          <Field label="Дэлгэрэнгүй" error={errors.body} required>
+          <Field label="Гарчиг" error={errors.title}>
+            {({ id, describedBy, invalid }) => (
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                disabled={busy}
+                autoFocus
+              />
+            )}
+          </Field>
+
+          {/* The label is `sr-only` here too: printed, it named the obvious. */}
+          <Field label="Дэлгэрэнгүй" labelHidden error={errors.body} required>
             {({ id, describedBy, invalid }) => (
               <Textarea
                 id={id}
@@ -262,51 +292,14 @@ function ComposeNotice() {
                 onChange={(e) => setBody(e.target.value)}
                 disabled={busy}
                 placeholder="Бичих"
-                className="min-h-[80px]"
+                className="min-h-[56px] py-2"
               />
             )}
           </Field>
 
-          <div className="rounded-row bg-sunken p-2.5 sm:p-3">
-            <AudiencePicker
-              value={audience}
-              onChange={setAudience}
-              disabled={busy}
-              showSummary={false}
-            />
-          </div>
-
           {/* Photographs, chosen here and sent when the post is. */}
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1.5">
             <FormError message={fileError} />
-
-            {files.length > 0 ? (
-              <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                {files.map(({ file, url }) => (
-                  <li key={url} className="relative">
-                    {/*
-                      A plain `<img>`, not `next/image`: the source is a
-                      `blob:` URL for a file that has not left the browser, so
-                      there is nothing for the optimiser to fetch or resize.
-                    */}
-                    <img
-                      src={url}
-                      alt={file.name}
-                      className="aspect-square w-full rounded-control border border-border object-cover"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeFile(url)}
-                      aria-label={`"${file.name}" зургийг хасах`}
-                      disabled={busy}
-                      className="absolute right-1 top-1 grid size-7 place-items-center rounded-pill bg-ink/70 text-white transition-colors hover:bg-ink"
-                    >
-                      <X size={14} aria-hidden="true" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
 
             <input
               ref={fileInputRef}
@@ -315,23 +308,70 @@ function ComposeNotice() {
               accept={ACCEPTED_TYPES}
               multiple
               className="sr-only"
-              onChange={(e) => addFiles(e.target.files)}
+              onChange={(e) => void addFiles(e.target.files)}
             />
-            <div className="grid grid-cols-2 gap-2.5" data-testid="notice-compact-actions">
-              <Button asChild variant="secondary" disabled={busy} className="w-full">
-                <label htmlFor={fileInputId} className="cursor-pointer justify-center">
-                  <ImagePlus size={18} />
-                  Зураг нэмэх
-                </label>
-              </Button>
-              <Checkbox
-                label="Чухал"
-                checked={isImportant}
-                onChange={(e) => setIsImportant(e.target.checked)}
-                disabled={busy}
-                className="min-h-[48px] items-center rounded-control border border-border bg-surface px-3 py-0"
-              />
+
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              {files.map(({ file, url }) => (
+                <div key={url} className="relative">
+                  {/*
+                    A plain `<img>`, not `next/image`: the source is a `blob:`
+                    URL for a file that has not left the browser, so there is
+                    nothing for the optimiser to fetch or resize.
+                  */}
+                  <img
+                    src={url}
+                    alt={file.name}
+                    className="aspect-square w-full rounded-control border border-border object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeFile(url)}
+                    aria-label={`"${file.name}" зургийг хасах`}
+                    disabled={busy}
+                    className="absolute right-1 top-1 grid size-7 place-items-center rounded-pill bg-ink/70 text-white transition-colors hover:bg-ink"
+                  >
+                    <X size={14} aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+
+              {/* The add control is a tile in the same grid, named for a
+                  screen reader and drawn as one icon — the edit screen's. */}
+              <label
+                htmlFor={fileInputId}
+                aria-label="Зураг нэмэх"
+                className={cn(
+                  "grid aspect-square cursor-pointer place-items-center rounded-control",
+                  "border border-dashed border-border bg-canvas text-muted",
+                  "transition-colors hover:border-primary hover:bg-primary-soft/40 hover:text-primary",
+                  busy && "pointer-events-none opacity-60",
+                )}
+              >
+                <ImagePlus size={24} aria-hidden="true" />
+              </label>
             </div>
+          </div>
+
+          <div className="flex flex-wrap items-start gap-2">
+            <Disclosure title="Хэнд харагдах" hint={audienceHint} className="min-w-[220px] flex-1">
+              <AudiencePicker
+                value={audience}
+                onChange={setAudience}
+                disabled={busy}
+                showSummary={false}
+                legendHidden
+                allowChildren={false}
+              />
+            </Disclosure>
+
+            <Checkbox
+              label="Чухал"
+              checked={isImportant}
+              onChange={(e) => setIsImportant(e.target.checked)}
+              disabled={busy}
+              className="min-h-[60px] shrink-0 items-center rounded-card border border-border bg-surface px-3.5 py-0"
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-2.5 border-t border-border pt-3">

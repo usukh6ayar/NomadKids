@@ -13,6 +13,8 @@ import {
   type Scenario,
 } from "./support/fixtures";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
+import { EsisError } from "../src/integrations/esis/esis.client";
+import type { EsisService } from "../src/integrations/esis/esis.service";
 import { PlatformRepository } from "../src/platform/platform.repository";
 
 /**
@@ -26,12 +28,67 @@ import { PlatformRepository } from "../src/platform/platform.repository";
 let app: INestApplication;
 const db = testDb();
 
+/** Institution 42778, the one the ministry granted — measured 2026-09-14. */
+const INSTITUTION_ID = "42778";
+
+const organizationRow = {
+  institutionId: INSTITUTION_ID,
+  institutionName: "Дэгдээхий үрс цэцэрлэг",
+  longName: "Баянзүрх дүүргийн Дэгдээхий үрс цэцэрлэг",
+  institutionAddress: "Улаанбаатар, Баянзүрх дүүрэг",
+  institutionClassificationName: "Цэцэрлэг",
+  propertyTypeName: "Төрийн өмчит",
+};
+
+/*
+ * ★ Two staff rows, and the register numbers are **lower case on purpose** —
+ * `school/staff` sends them that way (measured 2026-09-16) and
+ * `normalizeRegisterNumber` upper-cases them. A row without one is dropped by
+ * the lookup's projection, so every fixture row carries one or the roster
+ * assertions below would pass against an empty list.
+ */
+const directorRow = {
+  personId: "90000000000001",
+  personRegNumber: "ул24270406",
+  lastName: "Эрдэнэ",
+  firstName: "Оюун",
+  jobCode: "1345-11",
+  positionName: "Эрхлэгч",
+};
+const teacherRow = {
+  personId: "90000000000002",
+  personRegNumber: "уб99112233",
+  lastName: "Батаа",
+  firstName: "Сараа",
+  jobCode: "2342-13",
+  positionName: "Багш, цэцэрлэгийн /мэргэжлийн/ /СӨБ/",
+};
+
+/**
+ * The ESIS transport, stubbed file-wide.
+ *
+ * ★ Only the remote transport is replaced — `createTestApp`'s own boundary.
+ * `EsisInstitutionLookupService`, its projection, the authorization in front of
+ * it and every row it causes to be written are the real ones.
+ *
+ * ★★ `isConfigured: true`, or the lookup answers 503 before it reads anything
+ * and none of the cases below mean what they say.
+ */
+const read = vi.fn(async (key: string) => ({
+  data: key === "staff" ? [directorRow, teacherRow] : [organizationRow],
+  status: 200,
+  durationMs: 9,
+}));
+const esis = { isConfigured: true, read } as unknown as Partial<EsisService>;
+
 let a: Scenario;
 // A second, independent kindergarten. Task 6 asserts on it; declared now so the
 // fixture setup below is final.
 let b: Scenario;
 let superadmin: AuthSession;
 let adminA: AuthSession;
+/** Kindergarten b's own director — the person a deletion must lock out. */
+let adminB: AuthSession;
 let teacherA: AuthSession;
 let parentA: AuthSession;
 
@@ -55,7 +112,7 @@ function createBody(overrides: Record<string, unknown> = {}) {
 }
 
 beforeAll(async () => {
-  app = await createTestApp();
+  app = await createTestApp({ esis });
 });
 
 afterAll(async () => {
@@ -65,6 +122,12 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetData();
   await app.get(RateLimitService).resetAll();
+  read.mockClear();
+  read.mockImplementation(async (key: string) => ({
+    data: key === "staff" ? [directorRow, teacherRow] : [organizationRow],
+    status: 200,
+    durationMs: 9,
+  }));
 
   a = await createScenario("a");
   b = await createScenario("b");
@@ -72,6 +135,7 @@ beforeEach(async () => {
   const operator = await createUser({ username: uniq("super"), isSuperAdmin: true });
   superadmin = await login(app, operator.username);
   adminA = await login(app, a.adminUser.username);
+  adminB = await login(app, b.adminUser.username);
   teacherA = await login(app, a.teacherUser.username);
   parentA = await login(app, a.parentUser.username);
 });
@@ -151,6 +215,211 @@ describe("POST /platform/kindergartens", () => {
       .send(createBody());
 
     expect(res.status).toBe(401);
+  });
+});
+
+/**
+ * Registering a kindergarten **already mapped** to its ESIS institution.
+ *
+ * ★ The window this closes is the reason it exists. Mapping used to be a
+ * second screen, so between the two there was a tenant that existed and was
+ * either unmapped or mapped to the wrong institution — and nothing about the
+ * first screen made the second one happen.
+ *
+ * ★★ Every case goes through HTTP against the real route. The lookup runs
+ * server-side on the way in, so these are also the proof that a body naming an
+ * institution the ministry refuses cannot leave a kindergarten behind.
+ */
+describe("POST /platform/kindergartens — with an ESIS institution", () => {
+  const post = () =>
+    authed(request(app.getHttpServer()).post("/v1/platform/kindergartens"), superadmin);
+
+  it("creates the kindergarten already mapped, with its staff roster", async () => {
+    const body = createBody({ esisInstitutionId: INSTITUTION_ID });
+
+    const res = await post().send(body);
+
+    expect(res.status).toBe(201);
+    const kindergarten = await db.kindergarten.findUnique({
+      where: { id: res.body.kindergarten.id },
+    });
+    expect(kindergarten?.esisInstitutionId).toBe(INSTITUTION_ID);
+    expect(kindergarten?.esisMappedAt).toBeInstanceOf(Date);
+
+    const roster = await db.esisStaffRoster.findMany({
+      where: { kindergartenId: res.body.kindergarten.id },
+      orderBy: { esisPersonId: "asc" },
+    });
+    expect(roster).toHaveLength(2);
+    expect(roster[0]).toMatchObject({
+      esisPersonId: "90000000000001",
+      // Stored normalised, which is what self-registration matches against.
+      registerNumber: "УЛ24270406",
+      positionName: "Эрхлэгч",
+      // ★ `isInstructor` means "`teacher/list` also returned this person", and
+      // the lookup never reads `teacher/list`. It must stay at its default
+      // rather than being inferred from a job code.
+      isInstructor: false,
+    });
+    expect(roster[1]).toMatchObject({ esisPersonId: "90000000000002", isInstructor: false });
+  });
+
+  /*
+   * ★ The roster's spelling of a name wins over the body's, and the body's
+   * `username` wins over everything. The names are the ministry's and are what
+   * a member of staff is matched against at self-registration; the login name
+   * is not a name at all, it is something a person has to be able to type.
+   */
+  it("takes the admin's name from the roster row and the username from the body", async () => {
+    const body = createBody({
+      esisInstitutionId: INSTITUTION_ID,
+      adminEsisPersonId: "90000000000001",
+      admin: {
+        username: uniq("director"),
+        email: null,
+        phone: null,
+        lastName: "ОГТ",
+        firstName: "ӨӨР",
+      },
+    });
+
+    const res = await post().send(body);
+
+    expect(res.status).toBe(201);
+    expect(res.body.admin.lastName).toBe("Эрдэнэ");
+    expect(res.body.admin.firstName).toBe("Оюун");
+    expect(res.body.admin.username).toBe(body.admin.username);
+
+    const stored = await db.user.findUnique({ where: { id: res.body.admin.id } });
+    expect(stored?.lastName).toBe("Эрдэнэ");
+    expect(stored?.firstName).toBe("Оюун");
+  });
+
+  it("refuses an institution another kindergarten already holds, and creates nothing", async () => {
+    await db.kindergarten.update({
+      where: { id: b.kindergarten.id },
+      data: {
+        esisInstitutionId: INSTITUTION_ID,
+        esisMappedAt: new Date(),
+      },
+    });
+    const before = await db.kindergarten.count();
+    const body = createBody({ esisInstitutionId: INSTITUTION_ID });
+
+    const res = await post().send(body);
+
+    expect(res.status).toBe(409);
+    expect(res.body.detail).toContain("аль хэдийн бүртгэлтэй");
+    expect(await db.kindergarten.count()).toBe(before);
+    expect(await db.user.findFirst({ where: { username: body.admin.username } })).toBeNull();
+  });
+
+  /*
+   * ★ The one case `alreadyUsed` cannot see.
+   *
+   * `esisInstitutionId` is `@unique` across the whole table, but the lookup's
+   * `findKindergartenByInstitutionId` carries `deletedAt: null` — so a
+   * soft-deleted kindergarten still holds its id and the pre-check truthfully
+   * answers "no live kindergarten has this". The insert then fails on the
+   * index, and the operator must be told which field is actually the problem
+   * rather than being sent to change a username that was fine.
+   */
+  it("names the institution, not the username, when a soft-deleted kindergarten holds the id", async () => {
+    await db.kindergarten.update({
+      where: { id: b.kindergarten.id },
+      data: {
+        esisInstitutionId: INSTITUTION_ID,
+        esisMappedAt: new Date(),
+        deletedAt: new Date(),
+      },
+    });
+    const body = createBody({ esisInstitutionId: INSTITUTION_ID });
+
+    const res = await post().send(body);
+
+    expect(res.status).toBe(409);
+    expect(res.body.detail).toBe("Энэ ESIS байгууллагын код өөр цэцэрлэгтэй холбогдсон байна.");
+    expect(await db.kindergarten.findFirst({ where: { name: body.name } })).toBeNull();
+  });
+
+  /*
+   * ★ ESIS answers 403 for an institution this company account has not been
+   * granted. The lookup turns that into 409 rather than forwarding it — 403 is
+   * kept out of this product's vocabulary (§1.7) — and what matters here is
+   * that the refusal happens *before* anything is written.
+   *
+   * ★★ `mockImplementation` keyed on the resource, never `mockRejectedValueOnce`:
+   * the lookup fires `organization` and `staff` inside one `Promise.all`, so
+   * `Once` binds to whichever lands first.
+   */
+  it("refuses when the ministry has not granted the institution, and creates nothing", async () => {
+    read.mockImplementation(async (key: string) => {
+      if (key === "organization") {
+        throw new EsisError("http", "ESIS responded 403", {
+          status: 403,
+          path: "/organization/list",
+        });
+      }
+      return { data: [directorRow], status: 200, durationMs: 9 };
+    });
+    const before = await db.kindergarten.count();
+    const body = createBody({ esisInstitutionId: "40284" });
+
+    const res = await post().send(body);
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe("SCOPE_DENIED");
+    expect(await db.kindergarten.count()).toBe(before);
+    expect(await db.user.findFirst({ where: { username: body.admin.username } })).toBeNull();
+  });
+
+  it("refuses an admin who is not on the ministry's staff list", async () => {
+    const before = await db.kindergarten.count();
+    const body = createBody({
+      esisInstitutionId: INSTITUTION_ID,
+      adminEsisPersonId: "90000000000999",
+    });
+
+    const res = await post().send(body);
+
+    expect(res.status).toBe(409);
+    expect(res.body.detail).toBe("Сонгосон ажилтан ESIS-ийн жагсаалтад алга байна.");
+    expect(await db.kindergarten.count()).toBe(before);
+  });
+
+  /*
+   * ★ 400 and not 409: naming a person without naming the institution they
+   * belong to is a malformed request, and the schema says so before any service
+   * runs — which is also why ESIS is never asked.
+   */
+  it("rejects an adminEsisPersonId with no institution id", async () => {
+    const res = await post().send(createBody({ adminEsisPersonId: "90000000000001" }));
+
+    expect(res.status).toBe(400);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  /*
+   * ★ The whole point of the field being optional. A deployment with no ESIS
+   * presence still registers kindergartens, and it does it without the ministry
+   * being asked anything at all.
+   */
+  it("still creates an unmapped kindergarten when no institution is named", async () => {
+    const body = createBody();
+
+    const res = await post().send(body);
+
+    expect(res.status).toBe(201);
+    expect(read).not.toHaveBeenCalled();
+
+    const kindergarten = await db.kindergarten.findUnique({
+      where: { id: res.body.kindergarten.id },
+    });
+    expect(kindergarten?.esisInstitutionId).toBeNull();
+    expect(kindergarten?.esisMappedAt).toBeNull();
+    expect(
+      await db.esisStaffRoster.count({ where: { kindergartenId: res.body.kindergarten.id } }),
+    ).toBe(0);
   });
 });
 
@@ -286,6 +555,276 @@ describe("PATCH /platform/kindergartens/:id", () => {
 
     const row = await db.kindergarten.findUnique({ where: { id: a.kindergarten.id } });
     expect(row?.name).toBe(a.kindergarten.name);
+  });
+});
+
+describe("POST /platform/kindergartens/:id/admins", () => {
+  const adminBody = (overrides: Record<string, unknown> = {}) => ({
+    username: uniq("director2"),
+    email: null,
+    phone: null,
+    lastName: "Дорж",
+    firstName: "Сүрэн",
+    ...overrides,
+  });
+
+  /** Maps `b` to institution 42778, whose staff the mocked ESIS returns. */
+  async function mapB() {
+    await db.kindergarten.update({
+      where: { id: b.kindergarten.id },
+      data: { esisInstitutionId: INSTITUTION_ID, esisMappedAt: new Date() },
+    });
+  }
+
+  it("adds a second director to a kindergarten that already exists", async () => {
+    const body = adminBody();
+
+    const res = await authed(
+      request(app.getHttpServer()).post(`/v1/platform/kindergartens/${b.kindergarten.id}/admins`),
+      superadmin,
+    ).send(body);
+
+    expect(res.status).toBe(201);
+    expect(res.body.user.username).toBe(body.username);
+    expect(res.body.invitationToken).toEqual(expect.any(String));
+    // Never in the payload, and never set: the invitee chooses their own.
+    expect(res.body.user).not.toHaveProperty("passwordHash");
+
+    const membership = await db.membership.findFirst({
+      where: { userId: res.body.user.id, kindergartenId: b.kindergarten.id, deletedAt: null },
+    });
+    expect(membership?.role).toBe("ADMIN");
+
+    const invitation = await db.authToken.findFirst({
+      where: { userId: res.body.user.id, purpose: "INVITATION", usedAt: null },
+    });
+    expect(invitation).not.toBeNull();
+  });
+
+  it("rolls the account back when the membership cannot be written", async () => {
+    // A kindergarten that does not exist is refused before anything is
+    // written; the account must not survive the refusal.
+    const body = adminBody();
+    const res = await authed(
+      request(app.getHttpServer()).post(
+        "/v1/platform/kindergartens/00000000-0000-4000-8000-000000000000/admins",
+      ),
+      superadmin,
+    ).send(body);
+
+    expect(res.status).toBe(404);
+    expect(await db.user.findUnique({ where: { username: body.username } })).toBeNull();
+  });
+
+  it("answers a duplicate username with 409", async () => {
+    const res = await authed(
+      request(app.getHttpServer()).post(`/v1/platform/kindergartens/${b.kindergarten.id}/admins`),
+      superadmin,
+    ).send(adminBody({ username: b.adminUser.username }));
+
+    expect(res.status).toBe(409);
+  });
+
+  it("refuses a kindergarten admin with 404 — including for their own kindergarten", async () => {
+    const body = adminBody();
+    const res = await authed(
+      request(app.getHttpServer()).post(`/v1/platform/kindergartens/${a.kindergarten.id}/admins`),
+      adminA,
+    ).send(body);
+
+    expect(res.status).toBe(404);
+    expect(await db.user.findUnique({ where: { username: body.username } })).toBeNull();
+  });
+
+  it("records who did it", async () => {
+    const res = await authed(
+      request(app.getHttpServer()).post(`/v1/platform/kindergartens/${b.kindergarten.id}/admins`),
+      superadmin,
+    ).send(adminBody());
+
+    const rows = await db.auditLog.findMany({
+      where: { objectType: "User", objectId: res.body.user.id, action: "CREATE" },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.kindergartenId).toBe(b.kindergarten.id);
+    expect((rows[0]!.metadata as { by?: string }).by).toBe("platform-operator");
+  });
+
+  it("shows up on the kindergarten's own detail payload", async () => {
+    await authed(
+      request(app.getHttpServer()).post(`/v1/platform/kindergartens/${b.kindergarten.id}/admins`),
+      superadmin,
+    ).send(adminBody({ username: uniq("shown") }));
+
+    const res = await authed(
+      request(app.getHttpServer()).get(`/v1/platform/kindergartens/${b.kindergarten.id}`),
+      superadmin,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.admins).toHaveLength(2);
+    // The figure the operator is really after: has anybody ever signed in.
+    expect(res.body.admins.every((row: { lastLoginAt: unknown }) => "lastLoginAt" in row)).toBe(
+      true,
+    );
+  });
+
+  /*
+   * ★ The rule the client set on 2026-09-19: "удирдлага нэмэх нь зөвхөн тэр
+   * тухайн байгууллага дахь ажилчдаас сонгоно". The three cases below are the
+   * whole of it — required when there is a list, verified against that list,
+   * and skipped entirely when there is none.
+   */
+  it("refuses a free-typed name on a kindergarten that is mapped to ESIS", async () => {
+    await mapB();
+    const body = adminBody();
+
+    const res = await authed(
+      request(app.getHttpServer()).post(`/v1/platform/kindergartens/${b.kindergarten.id}/admins`),
+      superadmin,
+    ).send(body);
+
+    expect(res.status).toBe(400);
+    expect(await db.user.findUnique({ where: { username: body.username } })).toBeNull();
+  });
+
+  it("takes the name from the ministry, not from the body", async () => {
+    await mapB();
+
+    const res = await authed(
+      request(app.getHttpServer()).post(`/v1/platform/kindergartens/${b.kindergarten.id}/admins`),
+      superadmin,
+    ).send(
+      adminBody({ esisPersonId: directorRow.personId, lastName: "Буруу", firstName: "Бичсэн" }),
+    );
+
+    expect(res.status).toBe(201);
+    /*
+     * The ministry's spelling is what staff self-registration matches a
+     * register number against later; two spellings of one person is how that
+     * match silently stops working.
+     */
+    expect(res.body.user.lastName).toBe(directorRow.lastName);
+    expect(res.body.user.firstName).toBe(directorRow.firstName);
+  });
+});
+
+describe("DELETE /platform/kindergartens/:id", () => {
+  it("retires the kindergarten and closes every membership in it", async () => {
+    const before = await db.membership.count({
+      where: { kindergartenId: b.kindergarten.id, deletedAt: null },
+    });
+    expect(before).toBeGreaterThan(0);
+
+    const res = await authed(
+      request(app.getHttpServer()).delete(`/v1/platform/kindergartens/${b.kindergarten.id}`),
+      superadmin,
+    ).send({ confirmName: b.kindergarten.name });
+
+    expect(res.status).toBe(200);
+    expect(res.body.closedMemberships).toBe(before);
+
+    const row = await db.kindergarten.findUnique({ where: { id: b.kindergarten.id } });
+    // Soft, not hard — §3.2. The row is still there and its children with it.
+    expect(row).not.toBeNull();
+    expect(row?.deletedAt).not.toBeNull();
+    expect(row?.isActive).toBe(false);
+    // The mapping is released so the institution can be registered again.
+    expect(row?.esisInstitutionId).toBeNull();
+
+    const live = await db.membership.count({
+      where: { kindergartenId: b.kindergarten.id, deletedAt: null },
+    });
+    expect(live).toBe(0);
+  });
+
+  it("leaves the children in place", async () => {
+    const before = await db.child.count({
+      where: { kindergartenId: b.kindergarten.id, deletedAt: null },
+    });
+
+    await authed(
+      request(app.getHttpServer()).delete(`/v1/platform/kindergartens/${b.kindergarten.id}`),
+      superadmin,
+    ).send({ confirmName: b.kindergarten.name });
+
+    const after = await db.child.count({
+      where: { kindergartenId: b.kindergarten.id, deletedAt: null },
+    });
+    expect(after).toBe(before);
+  });
+
+  it("drops it from the operator's list", async () => {
+    await authed(
+      request(app.getHttpServer()).delete(`/v1/platform/kindergartens/${b.kindergarten.id}`),
+      superadmin,
+    ).send({ confirmName: b.kindergarten.name });
+
+    const res = await authed(
+      request(app.getHttpServer()).get("/v1/platform/kindergartens?page=1&pageSize=50"),
+      superadmin,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.items.map((item: { id: string }) => item.id)).not.toContain(b.kindergarten.id);
+  });
+
+  it("refuses a name that does not match, and changes nothing", async () => {
+    const res = await authed(
+      request(app.getHttpServer()).delete(`/v1/platform/kindergartens/${b.kindergarten.id}`),
+      superadmin,
+    ).send({ confirmName: "өөр нэр" });
+
+    expect(res.status).toBe(400);
+
+    const row = await db.kindergarten.findUnique({ where: { id: b.kindergarten.id } });
+    expect(row?.deletedAt).toBeNull();
+  });
+
+  it("locks the director out afterwards", async () => {
+    await authed(
+      request(app.getHttpServer()).delete(`/v1/platform/kindergartens/${b.kindergarten.id}`),
+      superadmin,
+    ).send({ confirmName: b.kindergarten.name });
+
+    /*
+     * ★ The point of closing the memberships rather than only the tenant row.
+     * Roles are re-read from `Membership` on every request (§1.3), so a
+     * director whose membership is closed reaches nothing in the tenant —
+     * with their existing cookie, without having to sign in again.
+     */
+    const res = await authed(
+      request(app.getHttpServer()).get(`/v1/kindergartens/${b.kindergarten.id}/children`),
+      adminB,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses a kindergarten admin with 404", async () => {
+    const res = await authed(
+      request(app.getHttpServer()).delete(`/v1/platform/kindergartens/${a.kindergarten.id}`),
+      adminA,
+    ).send({ confirmName: a.kindergarten.name });
+
+    expect(res.status).toBe(404);
+
+    const row = await db.kindergarten.findUnique({ where: { id: a.kindergarten.id } });
+    expect(row?.deletedAt).toBeNull();
+  });
+
+  it("writes one DELETE audit row carrying the prior state", async () => {
+    await authed(
+      request(app.getHttpServer()).delete(`/v1/platform/kindergartens/${b.kindergarten.id}`),
+      superadmin,
+    ).send({ confirmName: b.kindergarten.name });
+
+    const rows = await db.auditLog.findMany({
+      where: { objectType: "Kindergarten", objectId: b.kindergarten.id, action: "DELETE" },
+    });
+
+    expect(rows).toHaveLength(1);
+    const metadata = rows[0]!.metadata as { before?: { name?: string } };
+    expect(metadata.before?.name).toBe(b.kindergarten.name);
   });
 });
 

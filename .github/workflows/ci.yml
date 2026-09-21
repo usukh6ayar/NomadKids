@@ -135,17 +135,31 @@ jobs:
         run: |
           set -euo pipefail
 
+          # ★ MinIO's images moved off Docker Hub — 2026-09-13.
+          #
+          # `docker pull minio/minio` now answers "pull access denied for minio/minio,
+          # repository does not exist or may require 'docker login'" to an anonymous
+          # puller, which broke `verify` on every branch (it last passed 2026-09-11) and
+          # would break a fresh `docker compose up` too. Ours kept working only because
+          # the images were already in the local cache.
+          #
+          # quay.io is MinIO's own registry and serves both images anonymously.
+          #
+          # Pinned to a release rather than `:latest`, which is the second half of the
+          # lesson: `:latest` is what let an upstream change stop this repository's CI
+          # without a single commit being made. A pin also means the storage the tests
+          # run against is the storage they ran against yesterday.
           docker run -d --name minio -p 9000:9000 \
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD=minioadmin \
-            minio/minio:latest server /data
+            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
 
           # Polled from the runner: the image has no shell tool to health-check
           # with. Failing here with a clear message beats a media test failing
           # on a socket error thirty seconds later.
           for _ in $(seq 1 30); do
             if curl -sf http://localhost:9000/minio/health/live > /dev/null; then
-              docker run --rm --network host --entrypoint sh minio/mc:latest -c \
+              docker run --rm --network host --entrypoint sh quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z -c \
                 "mc alias set ci http://localhost:9000 minioadmin minioadmin \
                  && mc mb --ignore-existing ci/kinder-media"
               echo "storage ready, bucket created"

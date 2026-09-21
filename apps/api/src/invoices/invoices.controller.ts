@@ -1,4 +1,17 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
+import type { Response } from "express";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Res,
+  UseGuards,
+} from "@nestjs/common";
+import { RateLimit, RateLimitGuard } from "../common/rate-limit/rate-limit.guard";
 import { idParamSchema } from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
@@ -8,6 +21,7 @@ import { InvoicesService } from "./invoices.service";
 import {
   generateInvoiceSchema,
   generateMonthSchema,
+  invoiceSummaryQuerySchema,
   listInvoicesQuerySchema,
   markRefundedSchema,
   recordPaymentSchema,
@@ -53,6 +67,7 @@ export class ChildInvoicesController {
 
 @Controller("kindergartens/:id/invoices")
 @Roles("ADMIN", "ACCOUNTANT")
+@UseGuards(RateLimitGuard)
 export class KindergartenInvoicesController {
   constructor(private readonly service: InvoicesService) {}
 
@@ -63,6 +78,43 @@ export class KindergartenInvoicesController {
     @Query(new ZodValidationPipe(listInvoicesQuerySchema)) query: ListInvoicesQuery,
   ) {
     return this.service.list(actor, params.id, query);
+  }
+
+  /**
+   * The month's four figures — counts and money by status.
+   *
+   * ★ A route of its own rather than a field on the list.
+   *
+   * The list is paged; this is not, and folding a whole-month aggregate into
+   * a page response would make every page re-run it. Same roles as the list:
+   * it is the same data, summed.
+   */
+  @Get("summary")
+  async summary(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(invoiceSummaryQuerySchema)) query: { month?: string },
+  ) {
+    return this.service.summary(actor, params.id, query.month);
+  }
+
+  /** The register as a spreadsheet — the same filters the list takes. */
+  @Get("export")
+  @RateLimit({ limit: 30, windowMs: 60 * 60 * 1000, byUser: true })
+  async exportRegister(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(listInvoicesQuerySchema)) query: ListInvoicesQuery,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.service.exportRegister(actor, params.id, query);
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(buffer);
   }
 
   @Post()

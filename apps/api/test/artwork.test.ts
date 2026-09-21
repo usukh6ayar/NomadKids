@@ -139,6 +139,35 @@ describe("the timeline", () => {
     const res = await authed(request(server()).get(`/v1/children/${a.child.id}/artwork`), teacherA);
     expect(res.body.artwork).toHaveLength(1);
   });
+
+  it("includes photos attached to a Бүтээл note and returns its type", async () => {
+    const type = await db.observationType.create({
+      data: { kindergartenId: a.kindergarten.id, code: "artwork", name: "Бүтээл" },
+    });
+    const note = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/observations`),
+      teacherA,
+    ).send({
+      typeId: type.id,
+      observedOn: "2025-09-10",
+      activityName: "Наамал",
+      situation: "Өнгийн цаасаар наамал хийв.",
+    });
+    expect(note.status).toBe(201);
+
+    const upload = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/media`),
+      teacherA,
+    )
+      .field("purpose", "OBSERVATION")
+      .field("observationId", note.body.id)
+      .attach("file", await artworkBytes(), "наамал.jpg");
+    expect(upload.status).toBe(201);
+
+    const res = await authed(request(server()).get(`/v1/children/${a.child.id}/artwork`), teacherA);
+    expect(res.body.artwork).toHaveLength(1);
+    expect(res.body.artwork[0].observation.activityName).toBe("Наамал");
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

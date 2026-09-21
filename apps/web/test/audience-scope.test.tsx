@@ -7,7 +7,8 @@ import {
   setSearchParams,
   stubApi,
 } from "./support/render";
-import { AudiencePicker } from "@/components/notifications/audience-picker";
+import { useState } from "react";
+import { AudiencePicker, type Audience } from "@/components/notifications/audience-picker";
 
 /**
  * Who the compose screens let you write to — client, 2026-09-10: "багш зөвхөн
@@ -52,12 +53,34 @@ function stubPicker(roles: Parameters<typeof sessionFor>[0]) {
   ]);
 }
 
+/**
+ * ★ The harness holds the value, because the picker's own behaviour depends on
+ * it being held.
+ *
+ * A teacher's `null` is corrected to the named shape by an effect inside the
+ * component, and the group and child lists render only once that correction
+ * has come back in as a prop. A fixed `value={null}` froze the control one
+ * step before the thing under test — invisible while a sentence stood in that
+ * branch, and the reason these tests could assert only the sentence.
+ */
+function Harness({ onValue }: { onValue: (next: Audience) => void }) {
+  const [value, setValue] = useState<Audience>(null);
+  return (
+    <AudiencePicker
+      value={value}
+      onChange={(next) => {
+        setValue(next);
+        onValue(next);
+      }}
+      disabled={false}
+    />
+  );
+}
+
 function Picker({ roles }: { roles: Parameters<typeof sessionFor>[0] }) {
   stubPicker(roles);
-  let latest: unknown = null;
-  const view = renderWithProviders(
-    <AudiencePicker value={null} onChange={(next) => (latest = next)} disabled={false} />,
-  );
+  let latest: Audience = null;
+  const view = renderWithProviders(<Harness onValue={(next) => (latest = next)} />);
   return { view, read: () => latest };
 }
 
@@ -74,33 +97,32 @@ describe("who a notice may be addressed to", () => {
     // The control itself, not its options: `Select` is a Radix listbox and
     // only mounts `role="option"` while the popup is open.
     expect(await screen.findByLabelText("Хэнд харагдах")).toBeInTheDocument();
-    expect(screen.queryByText(/Та өөрийн бүлгийн эцэг эхэд илгээнэ/)).not.toBeInTheDocument();
-  });
-
-  it("does not offer a teacher the whole kindergarten", async () => {
-    Picker({ roles: ["TEACHER"] });
-
-    await screen.findByText(/Та өөрийн бүлгийн эцэг эхэд илгээнэ/);
-    expect(screen.queryByLabelText("Хэнд харагдах")).not.toBeInTheDocument();
   });
 
   /**
-   * ★ It says why the choice is missing.
-   *
-   * A control that silently disappears reads as a bug to the person who used
-   * it last week; a sentence naming who does send kindergarten-wide notices
-   * answers the question before it is asked (§5 — empty states say what next).
+   * ★ The sentence that used to stand in for the select is gone — the client,
+   * 2026-09-16, asked for the explanatory lines to be removed. What the
+   * teacher gets instead is what they were always going to use: the group
+   * list and the child list, open.
    */
-  it("tells the teacher who does send kindergarten-wide notices", async () => {
+  it("does not offer a teacher the whole kindergarten", async () => {
     Picker({ roles: ["TEACHER"] });
 
-    expect(await screen.findByText(/удирдлага/i)).toBeInTheDocument();
+    expect(await screen.findByLabelText("Дэлбээ бүлэг")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Хэнд харагдах")).not.toBeInTheDocument();
+  });
+
+  it("gives the teacher the group and child lists to choose from", async () => {
+    Picker({ roles: ["TEACHER"] });
+
+    expect(await screen.findByLabelText("Дэлбээ бүлэг")).toBeInTheDocument();
+    expect(screen.getByText(/Тодорхой хүүхэд сонгох/)).toBeInTheDocument();
   });
 
   it("moves a teacher off the everyone default without being asked", async () => {
     const { read } = Picker({ roles: ["TEACHER"] });
 
-    await screen.findByText(/Та өөрийн бүлгийн эцэг эхэд илгээнэ/);
+    await screen.findByLabelText("Дэлбээ бүлэг");
     // `null` is "everyone"; the picker corrects itself to the named shape.
     expect(read()).toEqual({ groupIds: [], childIds: [] });
   });

@@ -3,6 +3,7 @@
 import { CalendarDays, Mars, MoreHorizontal, User, Venus, VenusAndMars } from "lucide-react";
 import { SEX_LABEL, type ChildDetail } from "@kinder/contracts";
 import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/ui/back-button";
 import { IconChip } from "@/components/ui/icon-chip";
 import type { Tone } from "@/components/ui/tone";
 import { formatDate } from "@/lib/format";
@@ -47,16 +48,19 @@ export function AboutMeSummaryCard({
   child,
   onEdit,
   editing,
+  backHref,
 }: {
   child: ChildDetail;
   onEdit: () => void;
   editing: boolean;
+  backHref: string;
 }) {
   const SexIcon = child.sex === "FEMALE" ? Venus : child.sex === "MALE" ? Mars : VenusAndMars;
 
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-start gap-3">
+        <BackButton href={backHref} />
         <IconChip icon={<User size={20} aria-hidden="true" />} tone="sky" />
 
         <div className="min-w-0 flex-1">

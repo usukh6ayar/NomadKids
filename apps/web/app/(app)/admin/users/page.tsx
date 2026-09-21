@@ -24,7 +24,9 @@ import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
+import { StaffRecordsButton } from "@/components/admin/staff-records-dialog";
 import { Art } from "@/components/ui/art";
+import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
 const listSchema = paginated(adminUserSchema);
 
@@ -141,6 +143,59 @@ function AdminUsers() {
     staleTime: 60_000,
   });
 
+  /*
+   * ★ Every staff account, for one purpose: turning an ESIS row into the
+   * account it belongs to — 2026-09-20, the client asking for мэргэшлийн зэрэг
+   * to be enterable. `StaffRecord` hangs off `User.id`, and an ESIS row knows
+   * only `personId`, so something has to hold the join.
+   *
+   * ★★ A second query rather than widening the one above, which deliberately
+   * asks for `pageSize: 1` because it wants `total` and nothing else. Merging
+   * them would make the count tile depend on a list it does not read.
+   *
+   * ★★★ `pageSize: 200` and no pager. This is a staff list — the largest
+   * kindergarten in the RFP has a few dozen — and the rows are never rendered,
+   * only indexed. A kindergarten past 200 loses the button on the overflow,
+   * which is a missing shortcut rather than a wrong screen, and the panel says
+   * so by simply not drawing it.
+   */
+  const staffAccounts = useQuery({
+    queryKey: qk.adminUsers({ q: "", role: "staff-index", page: "1" }),
+    queryFn: () => {
+      const params = new URLSearchParams({ page: "1", pageSize: "200" });
+      params.set("roles", STAFF_ROLES);
+      if (primaryKindergartenId) params.set("kindergartenId", primaryKindergartenId);
+      return get(`/users?${params}`, listSchema);
+    },
+    enabled: Boolean(primaryKindergartenId),
+  });
+
+  /** ESIS `personId` → the account it belongs to. Built once per fetch. */
+  const accountByPersonId = new Map(
+    (staffAccounts.data?.items ?? [])
+      .filter((user) => user.esisPersonId)
+      .map((user) => [String(user.esisPersonId), user]),
+  );
+
+  /*
+   * ★ The row action the two staff panels below share.
+   *
+   * Returns null for an ESIS row with no account here — a person the ministry
+   * lists who has not registered. Offering "Хувийн хэрэг" there would promise
+   * a file with nowhere to put it, the same reasoning as the camera on the
+   * children's roster.
+   */
+  const staffRecordsAction = (row: Record<string, string | null>) => {
+    const account = row.personId ? accountByPersonId.get(String(row.personId)) : undefined;
+    if (!account || !primaryKindergartenId) return null;
+    return (
+      <StaffRecordsButton
+        user={{ id: account.id, lastName: account.lastName, firstName: account.firstName }}
+        kindergartenId={primaryKindergartenId}
+      />
+    );
+  };
+
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
@@ -177,11 +232,23 @@ function AdminUsers() {
         children they belong to.
       */}
       <section aria-label="Товч мэдээлэл" className="grid grid-cols-2 gap-3">
+        {/*
+         * ★ The count is a way in — 2026-09-20, the client: "Багшийг бүртгэх 3
+         * гэж гарч байна гэхдээ хэн хэн бүртгэлтэй байгааг харах хэрэгтэй юм
+         * байна."
+         *
+         * The list of who has registered themselves already existed, on
+         * `/admin/staff-code` («Ажилтны бүртгэл»), with a name, a role and a
+         * date for each. Nothing pointed at it from the number that raised the
+         * question, so the number was a dead end: it said three and offered no
+         * way to ask which three.
+         */}
         <StatCard
           label="Нийт ажилтан"
           value={users.data?.total ?? "—"}
           unit="бүртгэл"
           tone="sky"
+          href="/admin/staff-code"
           art={<UsersRound size={22} aria-hidden />}
         />
         <StatCard
@@ -213,11 +280,17 @@ function AdminUsers() {
         into one table would put a багш's empty `Ажилласан жил` beside a
         тогооч's filled one and imply the field failed rather than not applying.
       */}
-      <EsisDataPanel resource="teachers" title="Багш нар" description="Томилгоо ба заах эрх" />
+      <EsisDataPanel
+        resource="teachers"
+        title="Багш нар"
+        description="Томилгоо ба заах эрх"
+        rowActions={staffRecordsAction}
+      />
       <EsisDataPanel
         resource="staff"
         title="Ажилтнууд"
         description="Эрхлэгч, эмч, тогооч, нягтлан — албан тушаал ба ажил эрхлэлт"
+        rowActions={staffRecordsAction}
       />
 
       {/*
@@ -276,11 +349,14 @@ function InviteUserDialog({
 
   const errors = fieldErrors(invite.error);
 
+  const backdrop = useBackdropDismiss(onClose);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Хэрэглэгч нэмэх"
+      {...backdrop}
       className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
     >
       <div className="w-full max-w-[480px] rounded-card border border-border bg-surface p-5">

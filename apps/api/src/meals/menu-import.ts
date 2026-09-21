@@ -18,14 +18,32 @@ import ExcelJS from "exceljs";
  * cannot open at all is reported the same way rather than as a 500.
  */
 
-/** The sitting names the export writes, and what a person is likely to type. */
+/**
+ * The sitting names the export writes, and what a person is likely to type.
+ *
+ * ★ The names the client chose on 2026-09-16 are here, and so are the ones
+ * they replaced. A kindergarten's own spreadsheets are the reason: a cook who
+ * downloaded a week last month and uploads it edited is sending a file full of
+ * "Өдрийн хоол", and dropping that spelling would reject their work with
+ * "Хоолны цаг танигдсангүй" for a word this product itself wrote. An alias
+ * costs a line; a rejected import costs a morning.
+ *
+ * "бага үдийн цай" and "үдийн цай" are deliberately distinct: the first is
+ * the mid-morning sitting, the second the afternoon one, and the match is
+ * exact so neither can swallow the other.
+ */
 const KIND_ALIASES: Record<string, string> = {
+  "өглөөний хоол": "BREAKFAST",
   "өглөөний цай": "BREAKFAST",
   өглөө: "BREAKFAST",
   breakfast: "BREAKFAST",
+  "бага үдийн цай": "MID_MORNING_SNACK",
   жүүс: "MID_MORNING_SNACK",
   "өглөөний зууш": "MID_MORNING_SNACK",
   "үдээс өмнөх зууш": "MID_MORNING_SNACK",
+  шөл: "SNACK",
+  зууш: "SNACK",
+  "үндсэн хоол": "LUNCH",
   "өдрийн хоол": "LUNCH",
   үдийн: "LUNCH",
   "үдийн хоол": "LUNCH",
@@ -33,6 +51,8 @@ const KIND_ALIASES: Record<string, string> = {
   "их үдийн цай": "AFTERNOON_SNACK",
   "үдийн цай": "AFTERNOON_SNACK",
   "үдээс хойших зууш": "AFTERNOON_SNACK",
+  "уух зүйл": "EXTRA",
+  ундаа: "EXTRA",
   "оройн хоол": "EXTRA",
   орой: "EXTRA",
   dinner: "EXTRA",

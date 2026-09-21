@@ -41,7 +41,21 @@ services:
       retries: 10
 
   storage:
-    image: minio/minio:latest
+    # ★ MinIO's images moved off Docker Hub — 2026-09-13.
+    #
+    # `docker pull minio/minio` now answers "pull access denied for minio/minio,
+    # repository does not exist or may require 'docker login'" to an anonymous
+    # puller, which broke `verify` on every branch (it last passed 2026-09-11) and
+    # would break a fresh `docker compose up` too. Ours kept working only because
+    # the images were already in the local cache.
+    #
+    # quay.io is MinIO's own registry and serves both images anonymously.
+    #
+    # Pinned to a release rather than `:latest`, which is the second half of the
+    # lesson: `:latest` is what let an upstream change stop this repository's CI
+    # without a single commit being made. A pin also means the storage the tests
+    # run against is the storage they ran against yesterday.
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin

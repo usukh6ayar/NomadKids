@@ -356,7 +356,14 @@ function GroupAttendance() {
         had to go back to the top to save it. All three controls are under the
         grid now, in the order the work happens — засах, бүртгэх, илгээх.
       */}
-      <PageHeader title="Ирц" />
+      {/*
+        ★ Буцах on the title row, and it points at the dashboard — 2026-09-16,
+        at the client's request. Every other screen a teacher reaches from the
+        sidebar opens the same way (`/assessment`, `/children`, `/documents`),
+        and this one opened with a bare title, so the register was the one
+        top-level screen whose only exit was the sidebar.
+      */}
+      <PageHeader title="Ирц" backHref="/dashboard" />
 
       <GroupSwitcher
         groups={switchable.data?.items ?? []}
@@ -588,6 +595,7 @@ function GroupAttendance() {
         <AttendanceMonthPanel
           groupId={groupId}
           month={date.slice(0, 7)}
+          date={date}
           progress={{ recorded, total: rows.length, breakdown }}
         />
       </Card>

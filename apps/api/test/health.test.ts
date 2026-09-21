@@ -11,9 +11,8 @@ import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
  *
  * Both suites below only read. Booting a second `createTestApp()` for the
  * second one would double this file's share of a Redis and a socket pool that
- * every other test file is using at the same time — the pressure
- * `IMPLEMENTATION_STATUS.md` (Phase 5) records as intermittent, cross-file
- * login failures. Nothing here needs an isolated app to be honest.
+ * every other test file is using at the same time — the pressure CLAUDE.md
+ * §4.4 records as intermittent, cross-file login failures. Nothing here needs an isolated app to be honest.
  */
 let app: INestApplication;
 
@@ -171,18 +170,18 @@ describe("readiness: the ESIS boundary", () => {
     // serves institutions that this readiness payload cannot name, so reporting
     // a single id here would have been reporting the wrong one.
     //
-    // ★★ `demoMode` and `mode` were added 2026-09-09, and this is that
-    // decision being made rather than the list being widened to make a test
-    // pass. Both describe *which* ESIS an operator is talking to — the
-    // built-in fixtures or the real upstream — which an admin reading this
-    // screen has to know before they trust a row on it. Neither is derived
-    // from the token: `demoMode` is a boolean and `mode` is one of two
-    // literals. The two assertions below still walk the whole payload, so the
-    // token cannot ride in behind them.
+    // ★★ `demoMode` and `mode` were added 2026-09-09 to say *which* ESIS an
+    // operator was talking to — the built-in fixtures or the real upstream.
+    // `demoMode` left again on 2026-09-14 with the mock transport: there is
+    // one upstream now, so the question it answered no longer exists. `mode`
+    // stays as the literal `"LIVE"`, because the operator screen and the
+    // stored sync runs both render it.
+    //
+    // Neither was ever derived from the token, and the assertions below still
+    // walk the whole payload, so nothing can ride in behind them.
     expect(Object.keys(res.body.esis).sort()).toEqual([
       "baseUrl",
       "configured",
-      "demoMode",
       "hasToken",
       "mode",
     ]);

@@ -15,6 +15,7 @@ import { Card } from "@/components/ui/card";
 import { Checkbox, Field, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { PollAnswer } from "@/components/survey/poll-answer";
+import { FamilyAnswers } from "@/components/survey/family-answers";
 import { cn } from "@/lib/utils";
 
 const activeSurveysSchema = z.array(surveySchema);
@@ -80,19 +81,57 @@ export default function SurveyResponsePage() {
       */
       toast.success(survey?.closingNote?.trim() || "Саналыг хүлээж авлаа. Баярлалаа.");
       void queryClient.invalidateQueries({ queryKey: qk.childSurveys(childId) });
-      router.replace(`/children/${childId}/general`);
+      /*
+        ★ Back to the family's own surveys, not the child's record — 2026-09-12,
+        at the client's request: "хүүхдийн дэлгэрэнгүй рүү үсэрч байна, ингэж
+        болохгүй, миний судалгаанууд руу ор."
+
+        A parent answering one survey is working through a list of them. Landing
+        on the child's profile ends that errand and makes finding the next one a
+        navigation problem; the list they came from has the next one on it, now
+        marked answered.
+      */
+      router.replace(`/children/${childId}/surveys`);
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  if (active.isLoading) return <LoadingState rows={3} />;
-  if (active.isError) return <ErrorState description={errorMessage(active.error)} />;
+  /*
+    ★ A way out, on every branch — 2026-09-12, at the client's request: "эцэг эх
+    асуулгад хариулсны дараа гарч болохгүй байна."
+
+    A poll is one tap; the screen it leaves behind showed the class's answer and
+    no exit at all, so a parent's only way back was the browser's own button —
+    which this product does not rely on anywhere else. The two other branches
+    were no better: a survey that could not be found was a dead end too.
+
+    `BackButton` goes one step back through history, with the family's own
+    survey list as the fallback for a page opened from a notification link.
+  */
+  if (active.isLoading) {
+    return (
+      <div className="flex flex-col gap-4 py-2">
+        <PageHeader backHref={`/children/${childId}/surveys`} title="Судалгаа, асуулга" />
+        <LoadingState rows={3} />
+      </div>
+    );
+  }
+
+  if (active.isError) {
+    return (
+      <div className="flex flex-col gap-4 py-2">
+        <PageHeader backHref={`/children/${childId}/surveys`} title="Судалгаа, асуулга" />
+        <ErrorState description={errorMessage(active.error)} />
+      </div>
+    );
+  }
 
   const survey = active.data!.find((s) => s.id === surveyId);
 
   if (!survey) {
     return (
-      <div className="py-6">
+      <div className="flex flex-col gap-4 py-2">
+        <PageHeader backHref={`/children/${childId}/surveys`} title="Судалгаа, асуулга" />
         <ErrorState title="Олдсонгүй" description="Энэ судалгаа олдсонгүй эсвэл хаагдсан байна." />
       </div>
     );
@@ -107,10 +146,38 @@ export default function SurveyResponsePage() {
     Routed here rather than inside the form so the form below keeps exactly one
     interaction model.
   */
+  /*
+    ★ An answered questionnaire reads back rather than asking again —
+    2026-09-17.
+
+    The family's list stopped unfolding an answered survey inside the row and
+    now navigates here instead (the client: "дарсан даруйд дэлгэрэнгүй эсвэл
+    хариулсан үр дүнгийн хуудас руу шилжинэ"). This screen drew the blank form
+    whatever the state was, so following that link would have offered the
+    questions a second time and `POST /surveys/:id/responses` would have
+    refused the answers — the destination has to be the read-back the row used
+    to hold.
+
+    A poll skips this: `PollAnswer` below already draws the class's shares once
+    the family has voted, which is more than their own answer and is what a
+    poll is for.
+  */
+  if (survey.kind !== "POLL" && survey.respondedByMe) {
+    return (
+      <div className="flex flex-col gap-4 py-2">
+        <PageHeader backHref={`/children/${childId}/surveys`} title={survey.title} />
+        <Card className="flex flex-col gap-3 px-4 py-4">
+          <p className="text-caption font-semibold text-mint-ink">Хариулсан</p>
+          <FamilyAnswers survey={survey} />
+        </Card>
+      </div>
+    );
+  }
+
   if (survey.kind === "POLL") {
     return (
       <div className="flex flex-col gap-6 py-2">
-        <PageHeader title={survey.title} />
+        <PageHeader backHref={`/children/${childId}/surveys`} title={survey.title} />
         <PollAnswer survey={survey} childId={childId} />
       </div>
     );
@@ -134,7 +201,7 @@ export default function SurveyResponsePage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <PageHeader title={survey.title} />
+      <PageHeader backHref={`/children/${childId}/surveys`} title={survey.title} />
 
       <form
         onSubmit={(e) => {

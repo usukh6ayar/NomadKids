@@ -12,9 +12,18 @@ import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { cn } from "@/lib/utils";
+import { shrinkIfTooLarge } from "@/lib/image-shrink";
 
-/** The API's own ceiling. Checked here too, so a 12 MB photo fails instantly. */
-export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+/**
+ * The API's own ceiling, mirrored so a file that cannot fit is refused without
+ * a round trip.
+ *
+ * ★ 20 MB since 2026-09-20 — 10 was below what the phones in use produce, so
+ * the check was refusing ordinary photographs. Anything larger is now shrunk
+ * by `shrinkIfTooLarge` before this is consulted, which turns "хэт том" from
+ * the usual answer into the rare one.
+ */
+export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 const MAX_MB = MAX_UPLOAD_BYTES / 1024 / 1024;
 
 /**
@@ -46,11 +55,13 @@ export async function uploadChildPhotos({
   files,
   observationId,
   purpose,
+  category,
 }: {
   childId: string;
   files: File[];
   observationId?: string;
   purpose?: "CHILD_PHOTO" | "OBSERVATION" | "MILESTONE";
+  category?: string;
 }): Promise<PhotoUploadResult> {
   const combined: PhotoUploadResult = { items: [], failed: [] };
 
@@ -61,6 +72,7 @@ export async function uploadChildPhotos({
     }
     if (observationId) form.append("observationId", observationId);
     if (purpose) form.append("purpose", purpose);
+    if (category) form.append("category", category);
 
     const result = await mutate(`/children/${childId}/media`, uploadResultSchema, {
       method: "POST",
@@ -209,7 +221,19 @@ export function PhotoUpload({
     setLocalError(null);
     setRefused([]);
 
-    const chosen = Array.from(list);
+    /*
+     * ★ Shrink first, refuse second — 2026-09-20.
+     *
+     * A phone shoots 8–12 MB frames and this control used to answer anything
+     * over the ceiling with "хэт том" and nothing else, which is the product
+     * refusing the thing it was opened to do. `shrinkIfTooLarge` re-encodes
+     * past the limit and leaves everything under it byte for byte, so the
+     * message below now only reaches a file the browser could not decode at
+     * all — a HEIC, normally, which the server would refuse anyway.
+     */
+    const chosen = await Promise.all(
+      Array.from(list).map((file) => shrinkIfTooLarge(file, MAX_UPLOAD_BYTES)),
+    );
     const tooBig = chosen.filter((file) => file.size > MAX_UPLOAD_BYTES);
     const sendable = chosen.filter((file) => file.size <= MAX_UPLOAD_BYTES);
 

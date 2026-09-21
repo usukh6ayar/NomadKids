@@ -428,18 +428,26 @@ export class ReportsRepository {
   ) {
     const [child, termReport, assessments] = await Promise.all([
       this.loadChild(childId),
-      this.prisma.termReport.findFirst({
-        where: {
-          childId,
-          termId,
-          deletedAt: null,
-          ...(viewer.isGuardian ? { status: "FINAL" as const } : {}),
-        },
-        include: {
-          term: { select: { id: true, name: true, number: true, startsOn: true, endsOn: true } },
-          author: { select: { lastName: true, firstName: true } },
-        },
-      }),
+      /*
+        ★ Staff only — the client, 2026-09-14: "удирдлага бичсэнг харна, эцэг
+        эх харахгүй." A guardian's job finds nothing to render and the
+        generator refuses it, the same as a report nobody has written.
+      */
+      viewer.isGuardian
+        ? null
+        : this.prisma.termReport.findFirst({
+            where: {
+              childId,
+              termId,
+              deletedAt: null,
+            },
+            include: {
+              term: {
+                select: { id: true, name: true, number: true, startsOn: true, endsOn: true },
+              },
+              author: { select: { lastName: true, firstName: true } },
+            },
+          }),
       this.prisma.assessment.findMany({
         where: {
           childId,
@@ -503,21 +511,26 @@ export class ReportsRepository {
           level: { select: { value: true, label: true, color: true } },
         },
       }),
-      // The teacher's written closing text, per term. A guardian sees only
-      // FINAL ones, exactly as on the term report itself.
-      this.prisma.termReport.findMany({
-        where: {
-          childId,
-          deletedAt: null,
-          term: { schoolYearId, deletedAt: null },
-          ...(viewer.isGuardian ? { status: "FINAL" as const } : {}),
-        },
-        orderBy: { term: { number: "asc" } },
-        include: {
-          term: { select: { id: true, number: true, name: true } },
-          author: { select: { lastName: true, firstName: true } },
-        },
-      }),
+      /*
+        The teacher's written closing text, per term — staff only, exactly as
+        on the term report itself (the client, 2026-09-14). A family's annual
+        report keeps its assessments and loses these blocks rather than the
+        whole document, so what is theirs to read still prints.
+      */
+      viewer.isGuardian
+        ? []
+        : this.prisma.termReport.findMany({
+            where: {
+              childId,
+              deletedAt: null,
+              term: { schoolYearId, deletedAt: null },
+            },
+            orderBy: { term: { number: "asc" } },
+            include: {
+              term: { select: { id: true, number: true, name: true } },
+              author: { select: { lastName: true, firstName: true } },
+            },
+          }),
     ]);
 
     return { child, schoolYear, terms, assessments, termReports };

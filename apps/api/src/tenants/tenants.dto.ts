@@ -29,12 +29,31 @@ export const updateKindergartenSchema = z.object({
 export type UpdateKindergartenDto = z.infer<typeof updateKindergartenSchema>;
 
 /**
+ * How long a school year's name may be.
+ *
+ * ★ **100, not 20 — 2026-09-20, at the client's instruction.** Twenty fits
+ * "2025-2026" and nothing a director might actually want to write: a name
+ * carrying a branch, a shift or a cohort ("2025-2026 оны хичээлийн жил —
+ * ахлах бүлэг") runs past it, and the refusal arrived in English because the
+ * constraint had no message. Both halves of that are fixed here.
+ *
+ * ★★ `SchoolYear.name` is an unbounded `String` in the schema — Postgres
+ * `text` — so this is the only ceiling there has ever been and raising it
+ * needs no migration. 100 matches the group name beside it rather than being
+ * a second arbitrary number.
+ */
+const schoolYearName = z
+  .string()
+  .min(1, "Хичээлийн жилийн нэрийг оруулна уу")
+  .max(100, "Хичээлийн жилийн нэр хэтэрхий урт байна");
+
+/**
  * A school year, validated as a whole so `endsOn` can be compared to
  * `startsOn`. A field-level rule cannot see its sibling.
  */
 export const createSchoolYearSchema = z
   .object({
-    name: z.string().min(1).max(20),
+    name: schoolYearName,
     startsOn: z.coerce.date(),
     endsOn: z.coerce.date(),
     isCurrent: z.boolean().default(false),
@@ -47,7 +66,7 @@ export type CreateSchoolYearDto = z.infer<typeof createSchoolYearSchema>;
 
 export const updateSchoolYearSchema = z
   .object({
-    name: z.string().min(1).max(20).optional(),
+    name: schoolYearName.optional(),
     startsOn: z.coerce.date().optional(),
     endsOn: z.coerce.date().optional(),
     isCurrent: z.boolean().optional(),

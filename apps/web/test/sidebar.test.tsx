@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setPathname, stubApi } from "./support/render";
 import AppLayout from "@/app/(app)/layout";
-import { BRAND } from "@/lib/vocabulary";
+import { BRAND, BRAND_LATIN } from "@/lib/vocabulary";
 
 /**
  * The sidebar: brand, icons, active state, role and the profile entry point.
@@ -96,10 +96,8 @@ async function sidebar(): Promise<HTMLElement> {
 /**
  * The collapsible sections, without the "Түргэн холбоос" box above them.
  *
- * ★ Two rows are deliberately in the sidebar twice as of 2026-09-05 —
- * "Хүүхдүүд" and "Ирц" are shortcuts *and* section entries, which is what a
- * shortcut is. An assertion about the section menu has to say which of the two
- * it means, or it fails on the duplication rather than on anything real.
+ * The section container excludes the brand, primary dashboard link and profile
+ * footer, so order assertions describe only the role's working menu.
  */
 async function sections(): Promise<HTMLElement> {
   const nav = await sidebar();
@@ -125,14 +123,41 @@ describe("the brand header", () => {
     // The filename is asserted rather than merely "some image", because the
     // sidebar renders it through next/image and a missing public asset is a 404
     // the component itself never notices.
-    expect(mark.getAttribute("src")).toContain("brand-mark.png");
+    //
+    // ★ `brand-logo.png`, not `brand-mark.png` — the mark is the same drawing
+    // with "БЯЦХАН НҮҮДЭЛЧИД" cropped off, and the client asked for the whole
+    // logo on every screen (2026-09-16).
+    expect(mark.getAttribute("src")).toContain("brand-logo.png");
   });
 
-  it("links the brand home", async () => {
+  /**
+   * ★ The drawn mark carries no lettering, so the wordmark beside it is the
+   * half of the lockup that says the name — the client, 2026-09-16, asked for
+   * it on every screen but the login one.
+   */
+  it("prints the name beside the mark", async () => {
     renderShell(["TEACHER"]);
     const nav = await sidebar();
 
-    expect(within(nav).getByAltText(BRAND).closest("a")).toHaveAttribute("href", "/");
+    expect(within(nav).getByText(BRAND_LATIN)).toBeInTheDocument();
+  });
+
+  it("links the brand at this workspace's own home, not the root", async () => {
+    /*
+     * ★ It pointed at `/` until 2026-09-19, and `/` renders the public landing
+     * page while `/auth/me` is in flight — so a signed-in teacher pressing
+     * their own logo saw a flash of the login card before the redirect moved
+     * them on. Reported as "glitch хийгээд байна".
+     *
+     * `app/page.tsx` is right to render the landing page there (a spinner at
+     * the root is what kept it out of Google's index), so the fix is here: a
+     * signed-in person means "take me home", and home is the first entry of
+     * their own menu — a route they can definitely open.
+     */
+    renderShell(["TEACHER"]);
+    const nav = await sidebar();
+
+    expect(within(nav).getByAltText(BRAND).closest("a")).toHaveAttribute("href", "/dashboard");
   });
 });
 
@@ -141,33 +166,30 @@ describe("the brand header", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("navigation icons", () => {
-  it("gives every staff section entry an icon", async () => {
-    renderShell(["TEACHER", "ADMIN"]);
+  it("gives every management section entry an icon", async () => {
+    renderShell(["ADMIN"]);
     const nav = await sections();
 
-    /*
-      The client's 2026-08-30 labels. "Үнэлгээ" is "Явцын үнэлгээ" and "Мэдээ"
-      is "Ангийн самбар / Мэдээ" — both are the names on their drawing, and
-      both now point at a landing page rather than at a group-scoped href.
-    */
     const entries = [
-      "Хүүхдүүд",
+      "Суралцагч",
+      "Анги бүлэг",
+      "Багш, ажилтан",
+      "Байгууллага",
       "Явцын үнэлгээ",
       "Ирц",
       "Хоолны цэс",
-      "Хоолны бүртгэл",
-      "Ангийн самбар / Мэдээ",
       "Судалгаа",
-      // The screens that used to sit behind the "Удирдлага" hub, which no
-      // longer has a row of its own — see "does not repeat the administration
-      // hub". "Бүлгүүд" joined them on 2026-09-04, when the hub page stopped
-      // carrying tiles and it became the one destination with no other way in.
-      "Цэцэрлэгийн мэдээлэл",
-      "Хэрэглэгч ба эрх",
+      "Мэдээ",
+      "Чат",
+      "Санхүү",
+      "Ирц ба тооцоолол",
+      "Ирцийн дэлгэрэнгүй",
+      "Тайлан",
+      "Баримт бичгийн сан",
       "Хичээлийн жил",
       "Улирал",
-      "Бүлгүүд",
-      "Баримт бичгийн сан",
+      "Сургалтын хөтөлбөр",
+      "ESIS мэдээллийн төв",
     ];
 
     for (const label of entries) {
@@ -183,6 +205,21 @@ describe("navigation icons", () => {
 
     const icon = within(nav).getByRole("link", { name: "Судалгаа" }).querySelector("img")!;
     expect(icon.getAttribute("width")).toBe("18");
+  });
+
+  it("uses the supplied document and report drawings for management", async () => {
+    renderShell(["ADMIN"]);
+    const nav = await sections();
+
+    expect(
+      within(nav)
+        .getByRole("link", { name: "Баримт бичгийн сан" })
+        .querySelector("img")
+        ?.getAttribute("src"),
+    ).toContain("icon-admin-documents-3d.png");
+    expect(
+      within(nav).getByRole("link", { name: "Тайлан" }).querySelector("img")?.getAttribute("src"),
+    ).toContain("icon-admin-report-3d.png");
   });
 
   /*
@@ -227,7 +264,9 @@ describe("the active route", () => {
     renderShell(["TEACHER"], "/surveys");
     const nav = await sections();
 
-    expect(within(nav).getByRole("link", { name: "Хүүхдүүд" })).not.toHaveAttribute("aria-current");
+    expect(within(nav).getByRole("link", { name: "Суралцагч" })).not.toHaveAttribute(
+      "aria-current",
+    );
   });
 
   it("treats a child route as inside its section entry", async () => {
@@ -246,12 +285,26 @@ describe("the active route", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("role-based navigation", () => {
-  it("shows a teacher their sections and no admin entry", async () => {
+  it("shows the teacher menu in the requested order without safety", async () => {
     renderShell(["TEACHER"]);
     const nav = await sections();
 
-    expect(within(nav).getByRole("link", { name: "Хүүхдүүд" })).toBeInTheDocument();
-    expect(within(nav).getByRole("link", { name: "Ирц" })).toBeInTheDocument();
+    expect(
+      within(nav)
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+    ).toEqual([
+      "Суралцагч",
+      "Ирц",
+      "Хоолны цэс",
+      "Явцын үнэлгээ",
+      "Судалгаа",
+      "Тайлан",
+      "Мэдээ",
+      "Чат",
+      "Баримт бичгийн сан",
+    ]);
+    expect(within(nav).queryByRole("link", { name: "Аюулгүй байдал" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Удирдлага" })).not.toBeInTheDocument();
   });
 
@@ -285,24 +338,17 @@ describe("role-based navigation", () => {
     expect(within(nav).getByRole("link", { name: "Чат" })).toHaveAttribute("href", "/chat");
   });
 
-  /**
-   * ★ Бүлгүүд moved under Хүүхдүүд on 2026-09-04, at the client's request.
-   *
-   * It had been filed with the setup screens in "Багш ба байгууллага", among
-   * the things configured once a year. A group is a list of children with two
-   * teachers on it, and the question that sends somebody here is the one the
-   * row above answers for the whole kindergarten.
-   */
-  it("puts Бүлгүүд directly under Хүүхдүүд", async () => {
+  it("puts the four management directories directly under Самбар", async () => {
     renderShell(["ADMIN"]);
     const nav = await sections();
 
     const links = within(nav).getAllByRole("link");
-    const children = links.findIndex((link) => link.textContent?.includes("Хүүхдүүд"));
-    const groups = links.findIndex((link) => link.textContent?.includes("Бүлгүүд"));
-
-    expect(children).toBeGreaterThanOrEqual(0);
-    expect(groups).toBe(children + 1);
+    expect(links.slice(0, 4).map((link) => link.textContent)).toEqual([
+      "Суралцагч",
+      "Анги бүлэг",
+      "Багш, ажилтан",
+      "Байгууллага",
+    ]);
   });
 
   /**
@@ -319,11 +365,11 @@ describe("role-based navigation", () => {
 
     for (const label of [
       "Ирц ба тооцоолол",
-      "Цэцэрлэгийн мэдээлэл",
-      "Хэрэглэгч ба эрх",
+      "Байгууллага",
+      "Багш, ажилтан",
       "Хичээлийн жил",
       "Улирал",
-      "Бүлгүүд",
+      "Анги бүлэг",
     ]) {
       expect(
         within(nav).queryByRole("link", { name: label }),
@@ -353,7 +399,10 @@ describe("role-based navigation", () => {
     const nav = await sidebar();
 
     // Хүүхдийн хөгжил ба үнэлгээ
-    expect(within(nav).getByRole("link", { name: "Явцын үнэлгээ" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Явцын үнэлгээ" })).toHaveAttribute(
+      "href",
+      "/admin/assessment",
+    );
     // Өдөр тутмын бүртгэл
     expect(within(nav).getByRole("link", { name: "Ирц" })).toBeInTheDocument();
     /*
@@ -366,7 +415,6 @@ describe("role-based navigation", () => {
       funding figure that quietly stops being entered.
     */
     expect(within(nav).getByRole("link", { name: "Хоолны цэс" })).toHaveAttribute("href", "/menu");
-    expect(within(nav).getByRole("link", { name: "Хоолны бүртгэл" })).toBeInTheDocument();
     // Харилцаа холбоо
     expect(within(nav).getByRole("link", { name: "Судалгаа" })).toBeInTheDocument();
     // Багш ба байгууллага: the foot's own row is the single route to /settings.
@@ -377,20 +425,36 @@ describe("role-based navigation", () => {
    * ★ The reason the seven rows were added: a hub row does not name what is
    * behind it, and "Улирал" was a word this menu never said.
    */
-  it("names each administration screen rather than hiding it behind the hub", async () => {
+  it("uses the requested management names, routes and section headings", async () => {
     renderShell(["ADMIN"]);
     const nav = await sidebar();
 
     for (const [label, href] of [
-      ["Цэцэрлэгийн мэдээлэл", "/admin/kindergarten"],
-      ["Хэрэглэгч ба эрх", "/admin/users"],
+      ["Самбар", "/admin"],
+      ["Суралцагч", "/children"],
+      ["Анги бүлэг", "/admin/groups"],
+      ["Багш, ажилтан", "/admin/users"],
+      ["Байгууллага", "/admin/kindergarten"],
       ["Хичээлийн жил", "/admin/school-years"],
       ["Улирал", "/admin/terms"],
-      ["Бүлгүүд", "/admin/groups"],
+      ["Сургалтын хөтөлбөр", "/admin/curriculum"],
       ["Ирц ба тооцоолол", "/admin/funding"],
+      ["ESIS мэдээллийн төв", "/admin/integrations/esis"],
     ] as const) {
       expect(within(nav).getByRole("link", { name: label })).toHaveAttribute("href", href);
     }
+
+    for (const heading of [
+      "Сургалт, үйл ажиллагаа",
+      "Хоол, санхүү",
+      "Тайлан, баримт",
+      "Сургалтын төлөвлөгөө",
+      "Интеграц",
+    ]) {
+      expect(within(nav).getByText(heading)).toBeInTheDocument();
+    }
+
+    expect(within(nav).queryByRole("link", { name: "Аюулгүй байдал" })).not.toBeInTheDocument();
   });
 
   /**
@@ -411,10 +475,10 @@ describe("role-based navigation", () => {
     // The screens it used to hide are still reachable, which is the point.
     // ★ This assertion named "Аудит" until 2026-09-06, when that row and
     // "Үнэлгээний тохиргоо" were removed at the client's request. It is
-    // re-pointed at "Хэрэглэгч ба эрх" rather than deleted: the property under
+    // re-pointed at "Багш, ажилтан" rather than deleted: the property under
     // test is that losing the hub row did not orphan the screens behind it,
     // and any surviving row proves it.
-    expect(within(nav).getByRole("link", { name: "Хэрэглэгч ба эрх" })).toHaveAttribute(
+    expect(within(nav).getByRole("link", { name: "Багш, ажилтан" })).toHaveAttribute(
       "href",
       "/admin/users",
     );
@@ -486,12 +550,27 @@ describe("role-based navigation", () => {
     );
   });
 
+  it.each([
+    { label: "cook", role: "COOK" as const, path: "/kitchen/dashboard" },
+    { label: "accountant", role: "ACCOUNTANT" as const, path: "/finance/dashboard" },
+  ])("hides notices and chat everywhere in the $label workspace", async ({ role, path }) => {
+    renderShell([role], path);
+    const nav = await sidebar();
+
+    expect(
+      within(nav).queryByRole("link", { name: /Мэдээ|Ангийн самбар/ }),
+    ).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Чат" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Чат/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Мэдэгдэл/ })).not.toBeInTheDocument();
+  });
+
   it("gives a parent their own sections, not the staff ones", async () => {
     renderShell(["PARENT"], "/home");
     const nav = await sidebar();
 
     expect(within(nav).getByText("Хүүхдийн мэдээлэл")).toBeInTheDocument();
-    expect(within(nav).queryByRole("link", { name: "Хүүхдүүд" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Суралцагч" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Баримт бичгийн сан" })).not.toBeInTheDocument();
   });
 
@@ -662,7 +741,7 @@ describe("the sidebar footer", () => {
     renderShell(["TEACHER", "ADMIN"]);
     const nav = await sidebar();
 
-    expect(within(nav).getByText("Админ")).toBeInTheDocument();
+    expect(within(nav).getByText("Захирал/Эрхлэгч")).toBeInTheDocument();
     // `GET /groups` returns every group to an admin; naming the first would
     // say they run one when they run all of them.
     expect(within(nav).queryByText("Дэлбээ бүлэг")).not.toBeInTheDocument();
@@ -788,5 +867,22 @@ describe("mobile navigation", () => {
       // caption pattern every other tab bar in the shell already uses.
       expect(within(link).getByText(label)).not.toHaveClass("sr-only");
     }
+  });
+
+  it("keeps the meal register off a teacher's menu", async () => {
+    renderShell(["TEACHER"]);
+    const teacherNav = await sidebar();
+
+    expect(within(teacherNav).getByRole("link", { name: "Хоолны цэс" })).toBeInTheDocument();
+    expect(
+      within(teacherNav).queryByRole("link", { name: "Хоолны бүртгэл" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the meal register off a director's menu", async () => {
+    renderShell(["ADMIN"]);
+    const nav = await sidebar();
+
+    expect(within(nav).queryByRole("link", { name: "Хоолны бүртгэл" })).not.toBeInTheDocument();
   });
 });

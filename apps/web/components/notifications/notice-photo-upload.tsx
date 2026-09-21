@@ -8,7 +8,9 @@ import { mutate } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { FormError } from "@/components/ui/states";
+import { cn } from "@/lib/utils";
 import { ACCEPTED_TYPES, MAX_UPLOAD_BYTES } from "@/components/media/photo-upload";
+import { shrinkIfTooLarge } from "@/lib/image-shrink";
 
 const MAX_MB = MAX_UPLOAD_BYTES / 1024 / 1024;
 
@@ -34,9 +36,22 @@ const MAX_MB = MAX_UPLOAD_BYTES / 1024 / 1024;
 export function NoticePhotoUpload({
   notificationId,
   onUploaded,
+  tile = false,
 }: {
   notificationId: string;
   onUploaded: (media: { id: string; caption?: string | null }) => void;
+  /**
+   * Draws the control as a square, icon-only tile that sits in the photo grid
+   * rather than as a labelled button under it — 2026-09-16, at the client's
+   * request: "зураг нэмэх зурагтай нэг эгнээнд оруулаад зөвхөн айкон болго".
+   *
+   * ★ The word is not deleted, it moves to `aria-label`. The control is a
+   * `<label>` for a file input, and a label with only a glyph inside is
+   * announced as "button" — CLAUDE.md §5 asks for a name on every control
+   * exactly so that the one way of adding a photograph is not the one thing a
+   * reader cannot identify.
+   */
+  tile?: boolean;
 }) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -64,7 +79,16 @@ export function NoticePhotoUpload({
     if (!files?.length) return;
     setLocalError(null);
 
-    for (const file of Array.from(files)) {
+    /*
+     * ★ Shrunk before it is measured — 2026-09-20. A phone shoots 8–12 MB
+     * frames, so refusing past the ceiling meant refusing ordinary
+     * photographs. Anything already under it is passed through untouched.
+     */
+    const chosen = await Promise.all(
+      Array.from(files).map((file) => shrinkIfTooLarge(file, MAX_UPLOAD_BYTES)),
+    );
+
+    for (const file of chosen) {
       if (file.size > MAX_UPLOAD_BYTES) {
         setLocalError(`"${file.name}" хэт том байна. Дээд хэмжээ ${MAX_MB} MB.`);
         continue;
@@ -76,10 +100,19 @@ export function NoticePhotoUpload({
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <FormError message={localError ?? (upload.isError ? errorMessage(upload.error) : null)} />
+    /*
+      ★ `contents` in tile mode: the wrapper stops being a box so the tile
+      lands in the caller's own grid, beside the photographs, instead of in a
+      row of its own under them. The error still renders — it takes a whole
+      grid row (`col-span-full`) rather than squeezing into one cell.
+    */
+    <div className={cn("flex flex-col gap-2", tile && "contents")}>
+      <FormError
+        className={tile ? "col-span-full" : undefined}
+        message={localError ?? (upload.isError ? errorMessage(upload.error) : null)}
+      />
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className={cn("flex flex-wrap items-center gap-2", tile && "contents")}>
         <input
           ref={inputRef}
           id={inputId}
@@ -89,24 +122,49 @@ export function NoticePhotoUpload({
           className="sr-only"
           onChange={(e) => void handleFiles(e.target.files)}
         />
-        <Button asChild variant="secondary" disabled={upload.isPending}>
-          <label htmlFor={inputId} className="cursor-pointer">
-            <ImagePlus size={18} />
-            {upload.isPending ? "Илгээж байна…" : "Зураг нэмэх"}
+        {tile ? (
+          <label
+            htmlFor={inputId}
+            aria-label={upload.isPending ? "Илгээж байна" : "Зураг нэмэх"}
+            className={cn(
+              "grid aspect-square cursor-pointer place-items-center rounded-control",
+              "border border-dashed border-border bg-canvas text-muted",
+              "transition-colors hover:border-primary hover:bg-primary-soft/40 hover:text-primary",
+              upload.isPending && "pointer-events-none opacity-60",
+            )}
+          >
+            <ImagePlus size={24} aria-hidden="true" />
           </label>
-        </Button>
+        ) : (
+          <Button asChild variant="secondary" disabled={upload.isPending}>
+            <label htmlFor={inputId} className="cursor-pointer">
+              <ImagePlus size={18} />
+              {upload.isPending ? "Илгээж байна…" : "Зураг нэмэх"}
+            </label>
+          </Button>
+        )}
 
         {failed && !upload.isPending ? (
-          <Button variant="secondary" onClick={() => upload.mutate(failed)}>
+          <Button
+            variant="secondary"
+            size={tile ? "icon" : undefined}
+            aria-label={tile ? "Дахин илгээх" : undefined}
+            onClick={() => upload.mutate(failed)}
+          >
             <RotateCw size={18} />
-            Дахин илгээх
+            {tile ? null : "Дахин илгээх"}
           </Button>
         ) : null}
       </div>
 
-      <p className="text-caption text-muted">
-        JPEG, PNG эсвэл WebP. Нэг зураг дээд тал нь {MAX_MB} MB.
-      </p>
+      {/*
+        ★ The format-and-size line is gone — 2026-09-16, at the client's
+        request. The file picker already offers only what `ACCEPTED_TYPES`
+        names, and a file that is too large still says so where it matters:
+        `handleFiles` rejects it by name into `FormError` above, which is the
+        moment a teacher can act on it rather than a sentence they read past
+        every time.
+      */}
 
       {upload.isPending ? (
         <p role="status" className="sr-only">

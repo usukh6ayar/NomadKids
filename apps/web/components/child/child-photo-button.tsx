@@ -9,6 +9,7 @@ import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { ACCEPTED_TYPES, MAX_UPLOAD_BYTES } from "@/components/media/photo-upload";
 import { useToast } from "@/components/ui/toast";
+import { shrinkIfTooLarge } from "@/lib/image-shrink";
 
 const MAX_MB = MAX_UPLOAD_BYTES / 1024 / 1024;
 
@@ -47,7 +48,25 @@ const uploadResultSchema = z.object({
  * ring and an accessible name for free, and what lets a phone offer "take a
  * photo" beside "choose from library".
  */
-export function ChildPhotoButton({ childId, childName }: { childId: string; childName: string }) {
+export function ChildPhotoButton({
+  childId,
+  childName,
+  variant = "badge",
+}: {
+  childId: string;
+  childName: string;
+  /**
+   * `badge` is the disc that sits on the corner of a portrait — the original,
+   * and why this component is absolutely positioned.
+   *
+   * ★ `inline` added 2026-09-20 so the ESIS roster can offer the same action
+   * from a table row, at the client's request ("жагсаалтаас шууд зураг
+   * нэмэх"). A second component would have been a second copy of the two-step
+   * upload below, and the copy that stops matching is always the one nobody is
+   * looking at.
+   */
+  variant?: "badge" | "inline";
+}) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -87,10 +106,17 @@ export function ChildPhotoButton({ childId, childName }: { childId: string; chil
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  function onPick(files: FileList | null) {
-    const file = files?.[0];
+  async function onPick(files: FileList | null) {
+    const picked = files?.[0];
     if (inputRef.current) inputRef.current.value = "";
-    if (!file) return;
+    if (!picked) return;
+
+    /*
+     * ★ Shrunk before it is measured — 2026-09-20. A phone shoots 8–12 MB
+     * frames, so refusing past the ceiling meant refusing ordinary
+     * photographs. Anything already under it is passed through untouched.
+     */
+    const file = await shrinkIfTooLarge(picked, MAX_UPLOAD_BYTES);
 
     if (file.size > MAX_UPLOAD_BYTES) {
       toast.error(`Зураг хэт том байна. Дээд хэмжээ ${MAX_MB} MB.`);
@@ -108,7 +134,7 @@ export function ChildPhotoButton({ childId, childName }: { childId: string; chil
         accept={ACCEPTED_TYPES}
         className="sr-only"
         disabled={change.isPending}
-        onChange={(e) => onPick(e.target.files)}
+        onChange={(e) => void onPick(e.target.files)}
       />
       {/*
         `-bottom-1 -right-1` so the badge overlaps the avatar's edge rather than
@@ -119,12 +145,24 @@ export function ChildPhotoButton({ childId, childName }: { childId: string; chil
       <label
         htmlFor={inputId}
         aria-label={`${childName} — профайл зураг солих`}
-        className="absolute -bottom-1 -right-1 grid size-8 cursor-pointer place-items-center rounded-pill bg-primary text-primary-ink ring-2 ring-surface transition-colors hover:bg-primary-hover"
+        title={variant === "inline" ? "Профайл зураг нэмэх" : undefined}
+        className={
+          variant === "inline"
+            ? // A row's own control: 44px so it is reachable with a thumb, and
+              // quiet until hovered so eighty-three of them do not compete with
+              // the names beside them.
+              "grid size-11 cursor-pointer place-items-center rounded-pill text-muted transition-colors hover:bg-primary-soft hover:text-primary"
+            : "absolute -bottom-1 -right-1 grid size-8 cursor-pointer place-items-center rounded-pill bg-primary text-primary-ink ring-2 ring-surface transition-colors hover:bg-primary-hover"
+        }
       >
         {change.isPending ? (
-          <Loader2 size={15} aria-hidden="true" className="animate-spin" />
+          <Loader2
+            size={variant === "inline" ? 18 : 15}
+            aria-hidden="true"
+            className="animate-spin"
+          />
         ) : (
-          <Camera size={15} aria-hidden="true" />
+          <Camera size={variant === "inline" ? 18 : 15} aria-hidden="true" />
         )}
       </label>
 

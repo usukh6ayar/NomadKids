@@ -13,7 +13,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { z } from "zod";
-import { esisOverviewSchema } from "@kinder/contracts";
+import { esisScopedCatalogSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { downloadUrl } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
@@ -292,35 +292,47 @@ function SourceTab({
   );
 }
 
+/**
+ * The ESIS half of the import screen.
+ *
+ * ★ Reads the **role-scoped catalog**, not the operator's overview — changed
+ * 2026-09-14 with the move of `GET /kindergartens/:id/esis` to
+ * `PlatformEsisController`. A director stands on this screen, and after the
+ * move that route answers them 404, so this panel would have shown an error
+ * where it used to show a state.
+ *
+ * ★★ The one thing lost with it is the **blocker sentence**: `blockers` is the
+ * operator's list — an unset `ESIS_TOKEN`, an unconfirmed institution mapping —
+ * and both are fixed by the platform operator, not by the person reading this.
+ * So the panel says the connection is not ready yet and who readies it, rather
+ * than naming a setting a director cannot reach.
+ */
 function EsisImportEntry({ kindergartenId }: { kindergartenId: string }) {
-  const overview = useQuery({
-    queryKey: qk.esis(kindergartenId),
-    queryFn: () => get(`/kindergartens/${kindergartenId}/esis`, esisOverviewSchema),
+  const catalog = useQuery({
+    queryKey: qk.esisCatalog(kindergartenId),
+    queryFn: () => get(`/kindergartens/${kindergartenId}/esis/catalog`, esisScopedCatalogSchema),
   });
 
-  if (overview.isPending) return <LoadingState rows={2} shape="cards" />;
-  if (overview.isError) {
-    return <FormError message={errorMessage(overview.error)} />;
+  if (catalog.isPending) return <LoadingState rows={2} shape="cards" />;
+  if (catalog.isError) {
+    return <FormError message={errorMessage(catalog.error)} />;
   }
 
-  const data = overview.data;
+  const canRead = catalog.data.canRead;
   return (
     <div className="flex flex-col gap-4">
-      <Card pad="roomy" tone={data.canPreview ? "mint" : "sun"}>
+      <Card pad="roomy" tone={canRead ? "mint" : "sun"}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
-            <ShieldCheck
-              className={data.canPreview ? "text-mint-ink" : "text-sun-ink"}
-              aria-hidden
-            />
+            <ShieldCheck className={canRead ? "text-mint-ink" : "text-sun-ink"} aria-hidden />
             <div>
               <p className="text-title font-semibold text-ink">
-                {data.canPreview ? "ESIS dry-run бэлэн" : "ESIS тохиргоо хүлээгдэж байна"}
+                {canRead ? "ESIS таталт бэлэн" : "ESIS тохиргоо хүлээгдэж байна"}
               </p>
               <p className="mt-1 text-body text-muted">
-                {data.canPreview
+                {canRead
                   ? "Хүүхэд болон бүлгийн мэдээллийг эхлээд read-only байдлаар шалгана."
-                  : data.blockers[0]}
+                  : "ESIS token болон байгууллагын кодыг платформын оператор тохируулсны дараа таталт ажиллана."}
               </p>
             </div>
           </div>
@@ -331,11 +343,13 @@ function EsisImportEntry({ kindergartenId }: { kindergartenId: string }) {
              * to a settings page to find out whether they could have.
              */}
             <EsisPullButton resource="students" label="Суралцагч татах" />
-            <Button asChild>
-              <Link href="/admin/integrations/esis">
-                <Database aria-hidden /> ESIS удирдлага
-              </Link>
-            </Button>
+            {/*
+             * ★ The "ESIS удирдлага" link beside it is gone — 2026-09-14. It
+             * pointed at `/admin/integrations/esis`, which moved to the
+             * platform operator's surface (`/platform/[id]/esis`) and now
+             * answers 404 for a director. The pull button above is the half of
+             * that screen this one ever needed, and it stayed.
+             */}
           </div>
         </div>
       </Card>

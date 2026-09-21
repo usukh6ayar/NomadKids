@@ -8,6 +8,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import {
   assessmentConfigSchema,
+  ARTWORK_TYPES,
   curriculumCodeAtLevel,
   curriculumIndicatorSchema,
   childDetailSchema,
@@ -214,6 +215,7 @@ function NewObservationForm() {
    * type buttons is an explicit choice made *now*, and a stale draft should not
    * quietly override the button just pressed.
    */
+  const requestedTypeCode = searchParams.get("type");
   const [typeId, setTypeId] = useState(searchParams.get("typeId") ?? draft?.typeId ?? "");
 
   /*
@@ -231,16 +233,30 @@ function NewObservationForm() {
     renamed or reordered its types still gets a real one rather than none.
   */
   useEffect(() => {
-    if (typeId) return;
     const rows = types.data ?? [];
-    const fallback = rows.find((row) => row.code === "daily") ?? rows[0];
+    const requested = rows.find((row) => row.code === requestedTypeCode);
+    if (requested && requested.id !== typeId) {
+      setTypeId(requested.id);
+      return;
+    }
+    if (typeId) return;
+    const fallback = requested ?? rows.find((row) => row.code === "daily") ?? rows[0];
     if (fallback) setTypeId(fallback.id);
-  }, [typeId, types.data]);
+  }, [requestedTypeCode, typeId, types.data]);
   // The date is not restored. A draft opened the next morning should be filed
   // under the day it is being written, not the day it was abandoned.
   const [observedOn, setObservedOn] = useState(todayLocal());
   const [observedTime, setObservedTime] = useState(draft?.observedTime ?? "");
-  const [activityName, setActivityName] = useState(draft?.activityName ?? "");
+  const requestedActivityName = searchParams.get("activityName");
+  const [activityName, setActivityName] = useState(
+    requestedActivityName ?? draft?.activityName ?? "",
+  );
+  const typeCode = (types.data ?? []).find((row) => row.id === typeId)?.code;
+
+  useEffect(() => {
+    if (!requestedActivityName) return;
+    setActivityName(requestedActivityName);
+  }, [requestedActivityName]);
   /**
    * Which development strand this note is about.
    *
@@ -249,6 +265,53 @@ function NewObservationForm() {
    * array because the review screen tags several after the fact.
    */
   const [domainId, setDomainId] = useState(draft?.domainId ?? "");
+
+  /*
+    ★ Бүтээл files itself under Зураг, урлал — 2026-09-12, at the client's
+    request: "бүтээлд дүн шинжилгээ хийх хэсгийг сонгон шинээр бичихэд
+    сургалтын чиглэл автоматаар зураг урлал сонгогдоно, учир нь бүтээлд дан
+    зураг бүтээлүүд ордог."
+
+    An artwork note is about a drawing or a craft by definition, so the strand
+    was a required answer this screen already had — and it is exactly the answer
+    a teacher skips, which is what left "Сургалтын чиглэлийн хамралт" counting
+    almost nothing (the note on the field below tells that story).
+
+    Only while the field is empty, so a restored draft and a teacher's own
+    choice both stand: `creative` is offered, not enforced. The type cannot
+    change under it either — the type select was removed on 2026-09-11 and
+    `?typeId=` is fixed for the life of the form — so "empty" is the whole of
+    the guard this needs.
+
+    Matched on `code`, not on the name: a strand is a row an administrator may
+    rename (§2.3), and the code is the part that does not move. A kindergarten
+    with no `creative` strand simply gets the field it had, unfilled.
+  */
+  useEffect(() => {
+    if (domainId) return;
+    const code = (types.data ?? []).find((row) => row.id === typeId)?.code;
+    if (code !== "artwork") return;
+    const creative = (config.data?.domains ?? []).find((domain) => domain.code === "creative");
+    if (creative) setDomainId(creative.id);
+  }, [domainId, typeId, types.data, config.data]);
+
+  /*
+    ★ And it is the only strand Бүтээл offers — the client, 2026-09-14:
+    "бүтээл дээр зөвхөн зураг урлал чиглэл байх."
+
+    Stricter than the preselection above, which the note beside it called
+    "offered, not enforced": a list that preselects one answer and offers six
+    invites the other five, and an artwork note filed under Математик is a note
+    the Бүтээл screen will not show its author again. A kindergarten with no
+    `creative` strand keeps the whole list rather than an empty one.
+  */
+  const strandOptions = useMemo(() => {
+    const domains = config.data?.domains ?? [];
+    const code = (types.data ?? []).find((row) => row.id === typeId)?.code;
+    if (code !== "artwork") return domains;
+    const creative = domains.filter((domain) => domain.code === "creative");
+    return creative.length > 0 ? creative : domains;
+  }, [config.data, types.data, typeId]);
   /** Which СҮД indicator this note evidences, and the level judged. */
   const [indicatorId, setIndicatorId] = useState(draft?.indicatorId ?? "");
   const [indicatorLevel, setIndicatorLevel] = useState(draft?.indicatorLevel ?? "");
@@ -377,6 +440,7 @@ function NewObservationForm() {
             files: photos,
             observationId: observation.id,
             purpose: "OBSERVATION",
+            ...(typeCode === "artwork" ? { category: "ARTWORK" } : {}),
           });
           if (result.failed.length > 0) {
             toast.error(`${result.failed.length} зураг хавсрагдсангүй.`);
@@ -500,10 +564,12 @@ function NewObservationForm() {
     The type code rather than the id, because that is what the list route reads
     to pick which hub it draws.
   */
-  const typeCode = (types.data ?? []).find((type) => type.id === typeId)?.code;
-  const listHref = `/children/${childId}/observations${
-    typeCode ? `?type=${encodeURIComponent(typeCode)}` : ""
-  }`;
+  const listQuery = new URLSearchParams();
+  if (typeCode) listQuery.set("type", typeCode);
+  if (typeCode === "artwork" && searchParams.get("returnTo") === "progress") {
+    listQuery.set("panel", "progress");
+  }
+  const listHref = `/children/${childId}/observations${listQuery.size ? `?${listQuery}` : ""}`;
 
   if (child.isLoading) return <LoadingState rows={5} shape="text" />;
 
@@ -535,7 +601,7 @@ function NewObservationForm() {
       database form. Below that breakpoint nothing changes.
     */
     <div className="page-band mx-auto w-full max-w-3xl py-2">
-      <header>
+      <header className="flex items-center gap-3">
         {/*
           ★ A bare Буцах, not "Ганболдын Батбаяр луу буцах" — 2026-09-11, at the
           client's instruction.
@@ -545,13 +611,15 @@ function NewObservationForm() {
           never have come from. `BackButton` goes one step back through history
           with the child's page as the fallback for a form opened cold.
         */}
-        <BackButton href={listHref} className="-ml-3" />
-        <h1 className="mt-0.5 text-title font-semibold tracking-[-.01em] text-ink md:text-heading">
-          {isStaff ? "Ажиглалт шинээр бичих" : "Гэрийн мөч хуваалцах"}
-        </h1>
-        {!isStaff ? (
-          <p className="mt-1.5 text-body text-muted">Таны бичсэнийг багш хянаад хавтаст нэмнэ.</p>
-        ) : null}
+        <BackButton href={listHref} />
+        <div className="min-w-0">
+          <h1 className="text-title font-semibold tracking-[-.01em] text-ink md:text-heading">
+            {isStaff ? "Ажиглалт шинээр бичих" : "Гэрийн мөч хуваалцах"}
+          </h1>
+          {!isStaff ? (
+            <p className="mt-1.5 text-body text-muted">Таны бичсэнийг багш хянаад хавтаст нэмнэ.</p>
+          ) : null}
+        </div>
       </header>
 
       {/*
@@ -685,7 +753,11 @@ function NewObservationForm() {
                 breakdown and the form cannot disagree about what an activity
                 is called.
               */}
-              <Field label="Үйл ажиллагааны төрөл" error={errors.activityName}>
+              <Field
+                label={typeCode === "artwork" ? "Төрөл" : "Үйл ажиллагааны төрөл"}
+                error={errors.activityName}
+                required={typeCode === "artwork"}
+              >
                 {({ id, describedBy, invalid }) => (
                   <Select
                     id={id}
@@ -695,7 +767,7 @@ function NewObservationForm() {
                     onChange={(e) => setActivityName(e.target.value)}
                   >
                     <option value="">Сонгоно уу</option>
-                    {DAILY_ACTIVITIES.map((name) => (
+                    {(typeCode === "artwork" ? ARTWORK_TYPES : DAILY_ACTIVITIES).map((name) => (
                       <option key={name} value={name}>
                         {name}
                       </option>
@@ -729,7 +801,7 @@ function NewObservationForm() {
                     }}
                   >
                     <option value="">Сонгоно уу</option>
-                    {(config.data?.domains ?? []).map((domain) => (
+                    {strandOptions.map((domain) => (
                       <option key={domain.id} value={domain.id}>
                         {domain.name}
                       </option>

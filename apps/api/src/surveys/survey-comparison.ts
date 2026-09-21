@@ -218,3 +218,68 @@ export function compareWavesByChild(
 function forChild(answers: WaveAnswer[], childId: string): WaveAnswer[] {
   return answers.filter((answer) => answer.childId === childId);
 }
+
+/** One question's answer distribution in each wave — the comparison table. */
+export interface QuestionComparison {
+  questionId: string;
+  prompt: string;
+  type: string;
+  baselineCounts: Record<string, number>;
+  endlineCounts: Record<string, number>;
+}
+
+/**
+ * The same question in both waves, counted answer by answer.
+ *
+ * ★ Distributions, not means — the client's own table: "Маш сайн 8 (40%) →
+ * 12 (60%)". `compareWaves` above answers "did the average move", which is the
+ * RFP's indicator question; this answers "what did the shape of the answers
+ * do", which is what a teacher reads to a parents' meeting. Both come off the
+ * same two waves, so they cannot disagree about a count.
+ *
+ * ★★ Paired by `indicatorKey` first and by the exact prompt second.
+ *
+ * An endline is usually a clone, so the question *ids* differ and cannot be the
+ * key. The indicator is an explicit statement that two questions measure one
+ * thing; an identical prompt is the next best evidence, and anything less —
+ * pairing by position, say — is how a chart comes to compare the food question
+ * against the playground one.
+ */
+export function compareQuestions(baseline: Wave, endline: Wave): QuestionComparison[] {
+  const countByQuestion = (wave: Wave, questionId: string): Record<string, number> => {
+    const counts: Record<string, number> = {};
+    for (const answer of wave.answers) {
+      if (answer.questionId !== questionId) continue;
+      const value = answer.value;
+      // Only scalar answers have a distribution. A checkbox's array and a
+      // matrix's record are several answers at once, and folding them into one
+      // tally would count a family more than once.
+      if (typeof value === "number" || typeof value === "string" || typeof value === "boolean") {
+        const key = String(value);
+        counts[key] = (counts[key] ?? 0) + 1;
+      }
+    }
+    return counts;
+  };
+
+  const out: QuestionComparison[] = [];
+
+  for (const question of endline.questions) {
+    const match = baseline.questions.find((candidate) =>
+      question.indicatorKey && candidate.indicatorKey
+        ? candidate.indicatorKey === question.indicatorKey
+        : candidate.prompt === question.prompt,
+    );
+    if (!match) continue;
+
+    out.push({
+      questionId: question.id,
+      prompt: question.prompt,
+      type: question.type,
+      baselineCounts: countByQuestion(baseline, match.id),
+      endlineCounts: countByQuestion(endline, question.id),
+    });
+  }
+
+  return out;
+}

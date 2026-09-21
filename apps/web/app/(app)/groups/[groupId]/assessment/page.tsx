@@ -24,7 +24,7 @@ import { RowMenu } from "@/components/ui/menu";
 import { ChildPickerDialog } from "@/components/child/child-picker-dialog";
 import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
-import { Eye, Images, MessageCircle, Printer, Users } from "lucide-react";
+import { Printer, Users } from "lucide-react";
 import {
   MAX_PAGE_SIZE,
   childSummarySchema,
@@ -48,6 +48,7 @@ import { FormDialog } from "@/components/ui/form-dialog";
 import { SearchField } from "@/components/ui/search-field";
 import { DevelopmentRadar } from "@/components/assessment/development-radar";
 import { ChildAvatar } from "@/components/media/media-image";
+import { Art, type ArtName } from "@/components/ui/art";
 import { formatDate, fullName } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -362,6 +363,7 @@ function GroupAssessment() {
       */}
       <PageHeader
         title="Явцын үнэлгээ"
+        backHref="/dashboard"
         actions={
           <RowMenu
             ariaLabel="Явцын үнэлгээний үйлдэл"
@@ -993,13 +995,13 @@ function dateRange(startsOn?: string | null, endsOn?: string | null): string | n
 }
 
 /** The configured kinds in the compact quick-entry strip. */
-const KIND_STYLE: Record<string, { tone: Tone; Icon: typeof Eye }> = {
-  daily: { tone: "mint", Icon: Eye },
-  conversation: { tone: "sky", Icon: MessageCircle },
-  artwork: { tone: "sun", Icon: Images },
+const KIND_STYLE: Record<string, { tone: Tone; art: ArtName }> = {
+  daily: { tone: "mint", art: "observation" },
+  conversation: { tone: "sky", art: "conversation" },
+  artwork: { tone: "sun", art: "artwork" },
 };
 
-const KIND_FALLBACK = { tone: "cornflower" as Tone, Icon: Eye };
+const KIND_FALLBACK = { tone: "cornflower" as Tone, art: "observation" as ArtName };
 
 function NewRecordStrip({
   groupId,
@@ -1114,11 +1116,11 @@ function NewRecordStrip({
               type="button"
               onClick={() => setSelectedType({ code: type.code ?? "daily", name: type.name })}
               className={cn(
-                "flex min-h-[48px] min-w-0 items-center justify-center gap-1.5 rounded-control border border-transparent px-2 text-caption font-semibold transition-transform hover:-translate-y-0.5 sm:text-body",
+                "flex min-h-[56px] min-w-0 items-center justify-center gap-2 rounded-control border border-transparent px-2 text-caption font-semibold transition-transform hover:-translate-y-0.5 sm:text-body",
                 TONE_SURFACE[style.tone],
               )}
             >
-              <style.Icon size={18} aria-hidden="true" className="shrink-0" />
+              <Art name={style.art} size={36} className="size-9 shrink-0 object-contain" />
               <span className="truncate">{type.name}</span>
             </button>
           );

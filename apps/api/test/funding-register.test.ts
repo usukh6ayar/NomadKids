@@ -152,6 +152,81 @@ function getRegister(session: AuthSession, query = "", kindergartenId = a.kinder
 // Authorization — CLAUDE.md §4.1
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * `GET …/funding/food-discounts` — `нэмэлт.md` §3.
+ *
+ * ★ The route reads ESIS live and the suite has no token (`test/setup.ts`
+ * deletes it), so every case here exercises the **unavailable** path. That is
+ * the behaviour worth pinning: the answer must be an explicit "we could not
+ * ask", never a default that prices a family.
+ *
+ * The successful join is covered by `src/funding/food-discount.test.ts`, which
+ * tests the matching directly — no HTTP, no stub, no token.
+ */
+describe("who may read the ESIS meal-subsidy list", () => {
+  const getDiscounts = (session: AuthSession, kindergartenId = a.kindergarten.id) =>
+    authed(
+      request(app.getHttpServer()).get(
+        `/v1/kindergartens/${kindergartenId}/funding/food-discounts`,
+      ),
+      session,
+    );
+
+  it("an administrator of the kindergarten may", async () => {
+    const res = await getDiscounts(adminA);
+    expect(res.status).toBe(200);
+  });
+
+  /* §13 names "Улсын санхүүжилт" among what the accountant reaches. */
+  it("an accountant of the kindergarten may", async () => {
+    const res = await getDiscounts(accountantA);
+    expect(res.status).toBe(200);
+  });
+
+  /*
+   * ★ A teacher is refused for their own kindergarten, with a 404.
+   *
+   * §13: "Багш санхүүгийн бүрэн мэдээллийг харах эрхгүй байна". This list
+   * names children against a fact about their family's circumstances, which
+   * is the part of the financial picture teachers are kept out of.
+   */
+  it("a teacher of the same kindergarten may not", async () => {
+    const res = await getDiscounts(teacherA);
+    expect(res.status).toBe(404);
+  });
+
+  it("a guardian may not", async () => {
+    const res = await getDiscounts(parentA);
+    expect(res.status).toBe(404);
+  });
+
+  it("an administrator of a different kindergarten may not", async () => {
+    const res = await getDiscounts(adminB);
+    expect(res.status).toBe(404);
+  });
+
+  /*
+   * ★★ The assertion this endpoint exists to make.
+   *
+   * With no token the answer is `UNAVAILABLE` and every child is
+   * `unassessed` — never `notEligible`. "The ministry has not said" and "the
+   * ministry said no" are different facts, and only one of them may reach an
+   * invoice.
+   */
+  it("reports that it could not ask, rather than defaulting to no discount", async () => {
+    const res = await getDiscounts(adminA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("UNAVAILABLE");
+    expect(res.body.reason).toBe("ESIS_NOT_CONFIGURED");
+    expect(res.body.rows).toEqual([]);
+    expect(res.body.counts.eligible).toBe(0);
+    expect(res.body.counts.notEligible).toBe(0);
+    // It still names the service it would have called.
+    expect(res.body.endpoint.path).toBe("/svc/api/hub/v2/cook/levelHood/students");
+  });
+});
+
 describe("who may read the register", () => {
   it("an administrator of the kindergarten may", async () => {
     const res = await getRegister(adminA);

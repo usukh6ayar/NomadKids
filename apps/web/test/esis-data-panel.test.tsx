@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
@@ -131,14 +131,6 @@ const endpoint = (
   fields,
   fieldSource: "PORTAL",
   ingestedFieldCount: fields.filter((field) => field.ingested).length,
-  sampleRow: Object.fromEntries(
-    fields.filter((field) => field.ingested).map((field) => [field.name, field.sample]),
-  ),
-  sampleRows: [
-    Object.fromEntries(
-      fields.filter((field) => field.ingested).map((field) => [field.name, field.sample]),
-    ),
-  ],
   accessStatus: "UNKNOWN",
   /*
     ★ The sync-state half of the catalog row, required by
@@ -149,8 +141,8 @@ const endpoint = (
   direction: "ESIS_TO_NOMADKIDS",
   targetModel: "Child",
   mappings: [],
-  responseMode: "DEMO",
-  syncStatus: "DEMO_SUCCESS",
+  responseMode: "LIVE",
+  syncStatus: "PENDING",
   syncErrorCode: null,
   httpStatus: null,
   lastSyncAt: null,
@@ -160,14 +152,19 @@ const endpoint = (
 /**
  * `GET /kindergartens/:id/esis/catalog` — what the panel actually reads.
  *
- * ★ It read the operator's `/esis` until 2026-09-09, which is `@Roles("ADMIN")`
- * and carries the deployment's token state, blockers and run history. The panel
- * needed the service list and one flag; the teacher's screens needed to render
- * at all. This payload is that, and nothing else.
+ * ★ It read the operator's `/esis` until 2026-09-09 — the payload with the
+ * deployment's token state, blockers and run history. The panel needed the
+ * service list and one flag; the teacher's screens needed to render at all.
+ * This payload is that, and nothing else.
+ *
+ * ★★ The split earned its keep on 2026-09-14, when that operator route moved to
+ * `GET /platform/kindergartens/:id/esis` and `@SuperAdmin()`. Every panel here
+ * kept working without an edit, because none of them had read it for three
+ * years' worth of reasons written above.
  */
 function catalog(live: boolean) {
   return {
-    mode: live ? ("LIVE" as const) : ("DEMO" as const),
+    mode: "LIVE" as const,
     canRead: live,
     endpoints: [
       endpoint("organization", "Байгууллагын мэдээлэл", organizationFields),
@@ -203,23 +200,64 @@ beforeEach(() => {
 });
 
 describe("ESIS мэдээллийн панел", () => {
-  it("shows the ESIS record on the screen without anything being pressed", async () => {
+  /*
+   * ★ **Inverted on 2026-09-14.** This asserted that the panel painted
+   * "Бяцхан нүүдэлчид (жишээ)" and institution 40305 before anything was
+   * pressed — a fabricated tenant, on a director's screen, deliberately
+   * unlabelled since 2026-09-08. The client ended it: "ene esis ni real zuil
+   * shuu".
+   *
+   * What the panel owes on first paint is now the opposite — no values, the
+   * service named, and the control that fetches real ones.
+   */
+  it("paints no invented record before anything is pressed", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
       { path: CATALOG_PATH, body: catalog(false) },
     ]);
     renderWithProviders(<EsisDataPanel resource="organization" />);
 
-    expect(await screen.findByText("Бяцхан нүүдэлчид (жишээ)")).toBeInTheDocument();
-    expect(screen.getByText("40305")).toBeInTheDocument();
-    /*
-     * ★ No `Demo ESIS` badge — removed 2026-09-08 at the client's explicit
-     * instruction, given twice. The panel reads as a connected source; where
-     * the values actually come from is recorded in `esis-data-panel.tsx` and
-     * shown on `/admin/integrations/esis`, which keeps its badges.
-     */
-    expect(screen.queryByText(/Demo ESIS/)).toBeNull();
-    expect(screen.getByRole("button", { name: /ESIS-ээс мэдээллээ татах/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Шинэчлэх/ })).toBeInTheDocument();
+    expect(screen.queryByText("Бяцхан нүүдэлчид (жишээ)")).toBeNull();
+    expect(screen.queryByText("40305")).toBeNull();
+  });
+
+  /*
+   * ★ The rule the client asked for on 2026-09-20: "хэрэглэгч … өөрөө гараар
+   * дарж татмааргүй байна, автоматаар татсан байдаг байгаасай."
+   *
+   * The panel below passes **no** `autoRead` — it takes the default, which is
+   * the thing under test. A director opening a screen with four panels on it
+   * used to press four buttons before seeing anything.
+   */
+  it("reads on its own, with no autoRead and nothing pressed", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: `${ESIS_PATH}/resource`,
+        body: {
+          resource: "organization",
+          source: "LIVE",
+          status: "SUCCEEDED",
+          errorCode: null,
+          count: 1,
+          durationMs: 42,
+          fields: organizationFields,
+          rows: [{ institutionId: "77777", institutionName: "Жинхэнэ цэцэрлэг" }],
+          response: {
+            SUCCESS_CODE: 200,
+            RESPONSE_MESSAGE: "OK",
+            RESULT: [{ institutionId: "77777", institutionName: "Жинхэнэ цэцэрлэг" }],
+          },
+        },
+      },
+      { path: CATALOG_PATH, body: catalog(true) },
+    ]);
+    renderWithProviders(<EsisDataPanel resource="organization" />);
+
+    expect(await screen.findByText("Жинхэнэ цэцэрлэг")).toBeInTheDocument();
+    // And it dates itself, which is the other half of data appearing unasked.
+    expect(await screen.findByText(/Сүүлд татсан:/)).toBeInTheDocument();
   });
 
   /*
@@ -256,7 +294,7 @@ describe("ESIS мэдээллийн панел", () => {
     ]);
     renderWithProviders(<EsisDataPanel resource="organization" />);
 
-    await userEvent.click(await screen.findByRole("button", { name: /ESIS-ээс мэдээллээ татах/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Шинэчлэх/ }));
 
     expect(await screen.findByText("Жинхэнэ цэцэрлэг")).toBeInTheDocument();
     expect(screen.queryByText("Бяцхан нүүдэлчид (жишээ)")).not.toBeInTheDocument();
@@ -277,7 +315,62 @@ describe("ESIS мэдээллийн панел", () => {
     const input = await screen.findByLabelText("РД (регистрийн дугаар)");
     expect(input).toHaveValue("");
     expect(screen.getByText(/хадгалахгүй/)).toBeInTheDocument();
-    expect(screen.getByText(/ID 45/)).toBeInTheDocument();
+    /*
+     * ★ The `slug · api-45 · GET /path` line was asserted here until
+     * 2026-09-19 and is gone with it: a director has no api id, and the panel
+     * now reads as part of the product rather than as a request inspector.
+     * `/platform/[id]/esis` is where those identifiers live.
+     */
+    expect(screen.queryByText(/api-45/)).not.toBeInTheDocument();
+  });
+
+  it("searches ESIS by register only after Enter, then shows the returned record", async () => {
+    const calls = stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: `${ESIS_PATH}/resource`,
+        body: {
+          resource: "studentByRegister",
+          source: "LIVE",
+          status: "SUCCEEDED",
+          errorCode: null,
+          count: 1,
+          durationMs: 12,
+          fields: studentFields,
+          rows: [{ firstName: "Батбаяр", personRegNumber: null }],
+          response: { SUCCESS_CODE: 200, RESPONSE_MESSAGE: "OK", RESULT: [] },
+        },
+      },
+      { path: CATALOG_PATH, body: catalog(true) },
+    ]);
+    renderWithProviders(<EsisDataPanel resource="studentByRegister" />);
+
+    const input = await screen.findByRole("searchbox", { name: "РД (регистрийн дугаар)" });
+    expect(input).toHaveAttribute("placeholder", "РД-ээр сурагч хайх");
+    await userEvent.type(input, "уб11223344");
+    expect(calls.calls.filter((call) => call.url.startsWith(`${ESIS_PATH}/resource`))).toHaveLength(
+      0,
+    );
+
+    await userEvent.keyboard("{Enter}");
+    expect(await screen.findByText("Батбаяр")).toBeInTheDocument();
+    const reads = calls.calls.filter((call) => call.url.startsWith(`${ESIS_PATH}/resource`));
+    expect(reads).toHaveLength(1);
+    expect(reads[0]!.url).toContain("personRegNumber=%D0%A3%D0%91");
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  it("does not claim there is no student when ESIS reading is unavailable", async () => {
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: CATALOG_PATH, body: catalog(false) },
+    ]);
+    renderWithProviders(<EsisDataPanel resource="studentByRegister" />);
+
+    await userEvent.type(await screen.findByRole("searchbox"), "УБ11223344{Enter}");
+    expect(await screen.findByText("Мэдээллийг татаж чадсангүй")).toBeInTheDocument();
+    expect(screen.queryByText("Мэдээлэл алга байна")).not.toBeInTheDocument();
+    expect(calls.filter((call) => call.url.startsWith(`${ESIS_PATH}/resource`))).toHaveLength(0);
   });
 
   /*
@@ -322,6 +415,61 @@ describe("ESIS мэдээллийн панел", () => {
   });
 
   /*
+   * ★ A live row still opens the child it names — 2026-09-14.
+   *
+   * `hrefs` is index-aligned with the caller's rows and is therefore dropped
+   * the moment ESIS answers: the ministry's roster is not in our order and
+   * need not be the same set of children. `liveHref` is the replacement — the
+   * caller looks at the returned row and decides where it leads.
+   *
+   * ★★ The case that must lead nowhere is asserted too. A row matching no
+   * local child, or matching two, gets no link rather than a guess: opening
+   * somebody else's record is worse than opening nothing.
+   */
+  it("links a live row to the child it names, and only when that is unambiguous", async () => {
+    const rows = [
+      { institutionId: "1", institutionName: "Ганболд Батбаяр" },
+      { institutionId: "2", institutionName: "Тодорхойгүй Хүүхэд" },
+    ];
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: `${ESIS_PATH}/resource`,
+        body: {
+          resource: "organization",
+          source: "LIVE",
+          status: "SUCCEEDED",
+          errorCode: null,
+          count: rows.length,
+          durationMs: 12,
+          fields: organizationFields,
+          rows,
+          response: { SUCCESS_CODE: 200, RESPONSE_MESSAGE: "OK", RESULT: rows },
+        },
+      },
+      { path: CATALOG_PATH, body: catalog(true) },
+    ]);
+
+    renderWithProviders(
+      <EsisDataPanel
+        resource="organization"
+        autoRead
+        linkField="institutionName"
+        liveHref={(row) =>
+          row.institutionName === "Ганболд Батбаяр" ? "/children/aaa/general" : null
+        }
+      />,
+    );
+
+    expect(await screen.findByRole("link", { name: "Ганболд Батбаяр" })).toHaveAttribute(
+      "href",
+      "/children/aaa/general",
+    );
+    expect(screen.queryByRole("link", { name: "Тодорхойгүй Хүүхэд" })).toBeNull();
+    expect(screen.getByText("Тодорхойгүй Хүүхэд")).toBeInTheDocument();
+  });
+
+  /*
    * ★ "хүснэгтүүдийг зүгээр энгийн харагдуул. хажуу тийшээ scroll ntr
    * хийхгүй" — the client, 2026-09-09.
    *
@@ -330,7 +478,7 @@ describe("ESIS мэдээллийн панел", () => {
    * cases are the replacement contract: the table shows five columns, the rest
    * of the record is one press away, and no floor is emitted.
    */
-  it("shows at most five columns, however many the service carries", async () => {
+  it("shows a readable summary on each card, with other fields behind its detail", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
       { path: CATALOG_PATH, body: catalog(false) },
@@ -339,14 +487,17 @@ describe("ESIS мэдээллийн панел", () => {
 
     await screen.findByText("Гурилтай шөл");
 
-    const headers = screen.getAllByRole("columnheader").map((cell) => cell.textContent);
-    expect(headers).toEqual(["Код", "Нэр", "Хэмжих нэгж", "Төрөл", "Илчлэг"]);
-    // The sixth and eighth fields exist on the record and not in the table.
-    expect(headers).not.toContain("Уураг");
-    expect(headers).not.toContain("Дараалал");
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getAllByText("Код")).toHaveLength(2);
+    expect(screen.getAllByText("Хэмжих нэгж")).toHaveLength(2);
+    expect(screen.getAllByText("Төрөл")).toHaveLength(2);
+    expect(screen.getAllByText("Илчлэг")).toHaveLength(2);
+    expect(screen.queryByText("Уураг")).not.toBeInTheDocument();
+    expect(screen.queryByText("Дараалал")).not.toBeInTheDocument();
   });
 
-  it("puts no minimum width on the table, so nothing scrolls sideways", async () => {
+  it("keeps cards within the panel without a sideways table", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
       { path: CATALOG_PATH, body: catalog(false) },
@@ -357,25 +508,11 @@ describe("ESIS мэдээллийн панел", () => {
 
     await screen.findByText("Гурилтай шөл");
 
-    const table = container.querySelector("table");
-    // `min-w-0`, never a pixel floor — the assertion is on the *class*, since
-    // jsdom computes no layout to measure.
-    expect(table?.className).not.toMatch(/min-w-\[/);
-    expect(table?.className).toContain("min-w-0");
-
-    /*
-     * ★★ And on the `<table>`, not the Card around it.
-     *
-     * `TableShell`'s `className` lands on the wrapping Card, so `table-fixed`
-     * passed there does nothing — the table falls back to auto layout, the
-     * `truncate` on each cell stops ellipsing and starts *widening*, and the
-     * sideways scroll this whole change removed comes straight back through
-     * `overflow-x-auto`. That was the shipped state until it was looked for;
-     * asserting on the element rather than the component is what makes the
-     * difference visible. `tableClassName` is the prop that lands here.
-     */
-    expect(table?.className).toContain("table-fixed");
-    expect(container.querySelector("[data-ui-table]")?.className).not.toContain("table-fixed");
+    expect(container.querySelector("table")).toBeNull();
+    const cards = container.querySelectorAll("article");
+    expect(cards).toHaveLength(2);
+    expect(cards[0]?.className).toContain("min-w-0");
+    expect(cards[0]?.className).not.toMatch(/min-w-\[/);
   });
 
   it("reveals every field of the row that was pressed", async () => {
@@ -436,8 +573,26 @@ describe("ESIS мэдээллийн панел", () => {
      * disclaimer is a page inside a table cell — and there would be one per
      * detail service, per opened row.
      */
-    expect(screen.getAllByRole("button", { name: /ESIS-ээс мэдээллээ татах/ })).toHaveLength(1);
-    expect(screen.getAllByText(/Татахгүй талбар/)).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /Шинэчлэх/ })).toHaveLength(1);
+    // One pull button is the measure now that the footer disclaimer is gone —
+    // the assertion was always "the nested panel is not a second full panel".
+  });
+
+  it("keeps the detail service reachable when a list has only one record", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: CATALOG_PATH, body: catalog(false) },
+    ]);
+    renderWithProviders(
+      <EsisDataPanel
+        resource="foodProducts"
+        rows={wideRows.slice(0, 1)}
+        detail={{ resources: ["foodKit"], param: { name: "productId", from: "productId" } }}
+      />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "Гурилтай шөл" }));
+    expect(await screen.findByText("Иж бүрдэл")).toBeInTheDocument();
   });
 
   /*
@@ -525,9 +680,15 @@ describe("ESIS мэдээллийн панел", () => {
     renderWithProviders(<EsisDataPanel resource="studentByRegister" askForParams={false} />);
 
     expect(await screen.findByText("Суралцагчийг РД-ээр хайх")).toBeInTheDocument();
+    /*
+     * The assertion this test is named for: `askForParams={false}` means no
+     * register-number box on a screen that already identifies its child.
+     *
+     * ★ It used to add "and the record is still drawn", proved by finding
+     * "Батбаяр" — a sample. With the samples gone the panel draws nothing
+     * until a live read lands, so what remains is the absence of the input.
+     */
     expect(screen.queryByLabelText("Регистрийн дугаар")).toBeNull();
-    // The record is still drawn, which is the point of not asking.
-    expect(screen.getByText("Батбаяр")).toBeInTheDocument();
   });
 
   it("asks for nothing the caller already supplied", async () => {
@@ -550,9 +711,7 @@ describe("ESIS мэдээллийн панел", () => {
     ]);
     renderWithProviders(<EsisDataPanel resource="foodMaterials" />);
 
-    await waitFor(() =>
-      expect(screen.queryByRole("button", { name: /ESIS-ээс мэдээллээ татах/ })).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Шинэчлэх/ })).toBeNull());
     expect(screen.queryByText("Бяцхан нүүдэлчид (жишээ)")).toBeNull();
   });
 
@@ -564,9 +723,7 @@ describe("ESIS мэдээллийн панел", () => {
     ]);
     renderWithProviders(<EsisDataPanel resource="organization" />);
 
-    await waitFor(() =>
-      expect(screen.queryByRole("button", { name: /ESIS-ээс мэдээллээ татах/ })).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Шинэчлэх/ })).toBeNull());
   });
 
   it("explains an upstream refusal instead of showing an empty panel", async () => {
@@ -580,7 +737,13 @@ describe("ESIS мэдээллийн панел", () => {
             ★ `source` and `response` joined `esisResourceReadSchema` on
             2026-09-09: which transport answered, and the upstream envelope
             verbatim. `rows` is the parsed view of the same records.
+
+            ★★ `endpoint` joined it on 2026-09-14 so a failed read can name the
+            service that did not answer. It is optional in the schema — older
+            payloads still parse — so a fixture that omits it simply renders no
+            path, which is why it is spelled out here.
           */
+          endpoint: { method: "GET", path: "/svc/api/hub/v2/organization" },
           source: "LIVE",
           status: "FAILED",
           errorCode: "SCOPE_DENIED",
@@ -599,11 +762,106 @@ describe("ESIS мэдээллийн панел", () => {
     ]);
     renderWithProviders(<EsisDataPanel resource="organization" />);
 
-    await userEvent.click(await screen.findByRole("button", { name: /ESIS-ээс мэдээллээ татах/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Шинэчлэх/ }));
 
-    const failure = await screen.findByText(/эрх олгоогүй/);
+    /*
+     * ★ The plain sentence, not "эрх олгоогүй" — 2026-09-20. A refused scope
+     * is something the platform operator fixes; a director reading their own
+     * kindergarten can only try again and tell somebody, which is what this
+     * now says. The code and the path are still available to whoever is
+     * diagnosing, behind `EsisNoAnswer`'s `technical`.
+     */
+    const failure = await screen.findByText(/Мэдээллийг татаж чадсангүй/);
     expect(failure).toBeInTheDocument();
-    // The demo record stays: a refused scope is not a reason to blank the screen.
-    expect(within(document.body).getByText("Бяцхан нүүдэлчид (жишээ)")).toBeInTheDocument();
+    expect(screen.queryByText(/эрх олгоогүй/)).toBeNull();
+
+    /*
+     * ★ **Inverted on 2026-09-14.** The line here read "the demo record stays:
+     * a refused scope is not a reason to blank the screen", and it was exactly
+     * backwards — a refused scope is the one moment the screen must not look
+     * populated. A director who could not tell a fabricated tenant from their
+     * own was being shown a working integration over a failed call.
+     *
+     * The endpoint is named instead, which is the thing they can act on.
+     */
+    expect(screen.queryByText("Бяцхан нүүдэлчид (жишээ)")).toBeNull();
+    // And the path is nowhere on a product screen — see the note above.
+    expect(screen.queryByText(/\/svc\/api\/hub\/v2\/organization/)).toBeNull();
+  });
+
+  /*
+   * ★ Plan `2026-09-16-esis-sync-tiers.md` Task 7 — "the screens read the
+   * copy". A reference resource (buildings, rooms, the cook/* catalogues, …)
+   * now answers `source: "STORE"` with a `syncedAt`, and this panel is where
+   * a director or a cook actually looks at one. The screen has to say the
+   * value came from a monthly copy rather than reading as though it just
+   * asked the ministry.
+   */
+  it("renders the stored copy and says when it was synced", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: `${ESIS_PATH}/resource`,
+        body: {
+          resource: "organization",
+          source: "STORE",
+          status: "SUCCEEDED",
+          errorCode: null,
+          count: 1,
+          durationMs: null,
+          fields: organizationFields,
+          rows: [{ institutionId: "77777", institutionName: "Жинхэнэ цэцэрлэг" }],
+          syncedAt: "2026-09-01T03:10:00.000Z",
+          response: {
+            SUCCESS_CODE: 200,
+            RESPONSE_MESSAGE: "SUCCESS",
+            RESULT: [{ institutionId: "77777", institutionName: "Жинхэнэ цэцэрлэг" }],
+          },
+        },
+      },
+      { path: CATALOG_PATH, body: catalog(true) },
+    ]);
+    renderWithProviders(<EsisDataPanel resource="organization" />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Шинэчлэх/ }));
+
+    expect(await screen.findByText("Жинхэнэ цэцэрлэг")).toBeInTheDocument();
+    // The sweep's own date, not the moment this browser happened to press the button.
+    expect(screen.getByText(/Сүүлд татсан:/)).toBeInTheDocument();
+  });
+
+  /*
+   * ★ **No live fallback when the store is empty — a decision, not an
+   * oversight** (plan §0(a), Task 7). The screen must say what to do next
+   * (CLAUDE.md §5) rather than rendering an empty table that looks like ESIS
+   * simply had nothing.
+   */
+  it("tells the reader to sync rather than rendering an empty table", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: `${ESIS_PATH}/resource`,
+        body: {
+          resource: "organization",
+          endpoint: { method: "GET", path: "/svc/api/hub/v2/cook/product" },
+          source: "STORE",
+          status: "FAILED",
+          errorCode: "NOT_SYNCED",
+          count: 0,
+          durationMs: null,
+          fields: organizationFields,
+          rows: [],
+          syncedAt: null,
+          response: { SUCCESS_CODE: 0, RESPONSE_MESSAGE: "NOT_SYNCED", RESULT: [] },
+        },
+      },
+      { path: CATALOG_PATH, body: catalog(true) },
+    ]);
+    renderWithProviders(<EsisDataPanel resource="organization" />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Шинэчлэх/ }));
+
+    expect(await screen.findByText(/синк хийгдээгүй байна/)).toBeInTheDocument();
+    expect(screen.queryByRole("table")).toBeNull();
   });
 });

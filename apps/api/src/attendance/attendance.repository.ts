@@ -48,12 +48,28 @@ export class AttendanceRepository {
       _count: { _all: true },
     });
 
+    /*
+      ★ Every status, seeded at zero — all six.
+
+      `OTHER` was missing here until 2026-09-12, and the failure was total
+      rather than partial: `attendanceSummarySchema` is
+      `z.record(attendanceStatusSchema, …)`, and an enum-keyed record is
+      exhaustive in Zod — one absent key rejects the whole object. A family
+      opening "Ирцийн нэгтгэл" got "Алдаа гарлаа" and no figures at all, for a
+      status their child had never been marked with.
+
+      CLAUDE.md §7 records the same omission twice before, in
+      `attendanceStatusSchema` and `recordAttendanceSchema`: "A status list
+      written out by hand in four places is how that happens." This is the
+      fourth place.
+    */
     const counts: Record<string, number> = {
       PRESENT: 0,
       HALF_DAY: 0,
       EXCUSED: 0,
       SICK: 0,
       ABSENT: 0,
+      OTHER: 0,
     };
     for (const row of rows) counts[row.status] = row._count._all;
     return counts as Record<AttendanceStatus, number>;
@@ -402,6 +418,61 @@ export class AttendanceRepository {
    * be the N+1 this repository refuses. The service maps the result onto its
    * own rows.
    */
+  /**
+   * The dated exceptions to the working week, for one span.
+   *
+   * ★ One query for the whole register, like `findSubmissions` beside it: the
+   * grid asks "is this a working day" once per column, and a query per day
+   * would be the N+1 this repository exists to refuse (§3.4).
+   */
+  async findCalendarDays(kindergartenId: string, from: Date, to: Date) {
+    return this.prisma.calendarDay.findMany({
+      where: { kindergartenId, deletedAt: null, date: { gte: from, lte: to } },
+      select: { date: true, name: true, isWorkingDay: true },
+      orderBy: { date: "asc" },
+    });
+  }
+
+  /**
+   * Writes one exception, or revives the one that date already had.
+   *
+   * ★ An upsert rather than a create, because `(kindergartenId, date)` is
+   * unique and the delete beside it is a **soft** delete (§3.2). Without this,
+   * a holiday removed in January could never be added again: the row is still
+   * there, the constraint still sees it, and the administrator meets a
+   * uniqueness error about a day their screen says is empty.
+   */
+  async upsertCalendarDay(input: {
+    kindergartenId: string;
+    date: Date;
+    name: string;
+    isWorkingDay: boolean;
+    createdById: string;
+  }) {
+    return this.prisma.calendarDay.upsert({
+      where: {
+        kindergartenId_date: { kindergartenId: input.kindergartenId, date: input.date },
+      },
+      create: input,
+      update: {
+        name: input.name,
+        isWorkingDay: input.isWorkingDay,
+        createdById: input.createdById,
+        deletedAt: null,
+      },
+      select: { id: true, date: true, name: true, isWorkingDay: true },
+    });
+  }
+
+  /** Soft delete, and only within the kindergarten that owns it. */
+  async softDeleteCalendarDay(kindergartenId: string, date: Date) {
+    const result = await this.prisma.calendarDay.updateMany({
+      where: { kindergartenId, date, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+    return result.count;
+  }
+
   async findSubmissions(kindergartenId: string, from: Date, to: Date, groupIds?: string[]) {
     return this.prisma.attendanceSubmission.findMany({
       where: {
@@ -595,8 +666,43 @@ export class AttendanceRepository {
   findEsisConnection(kindergartenId: string) {
     return this.prisma.kindergarten.findFirst({
       where: { id: kindergartenId, deletedAt: null },
-      select: { esisInstitutionId: true, esisEnvironment: true },
+      select: { esisInstitutionId: true },
     });
+  }
+
+  /**
+   * Records which ESIS person each child turned out to be.
+   *
+   * ★ An authorization fact, not a sync artefact. `Child.esisPersonId` is what
+   * lets a per-child ESIS read resolve a `personId` back to a child so
+   * `canAccessChild` can run; without it a teacher is refused. See the column's
+   * own note.
+   *
+   * ★★ `updateMany` scoped by `kindergartenId`, so a mapping can never be
+   * written onto another tenant's child even if a caller supplied the wrong
+   * pair. The tenant filter is the repository's job (CLAUDE.md §2.2), and this
+   * is the one write in this file that takes an id from an external system.
+   *
+   * ★★★ Idempotent and non-destructive: re-resolving the same child writes the
+   * same value, and a child already mapped is simply written again rather than
+   * compared. The unique index on `(kindergartenId, esisPersonId)` is what
+   * stops two children claiming one ESIS person — it throws, loudly, which is
+   * the right outcome for a roster that has genuinely gone wrong.
+   */
+  async rememberEsisPersonIds(
+    kindergartenId: string,
+    matches: { childId: string; esisPersonId: string }[],
+  ): Promise<void> {
+    if (matches.length === 0) return;
+
+    await Promise.all(
+      matches.map((match) =>
+        this.prisma.child.updateMany({
+          where: { id: match.childId, kindergartenId, deletedAt: null },
+          data: { esisPersonId: match.esisPersonId },
+        }),
+      ),
+    );
   }
 
   /** The child's active enrollment — attendance is pinned to it. */
@@ -633,6 +739,13 @@ export interface CreateAttendanceRequestData {
   dateFrom: Date;
   dateTo: Date;
   requestedStatus: AttendanceStatus;
+  /**
+   * Whether a teacher has to decide on this.
+   *
+   * ★ Defaults to PENDING in the schema; an arrival or pickup report passes
+   * APPROVED — see `requestAttendance` for why those are told, not asked.
+   */
+  reviewStatus?: AttendanceRequestStatus;
   reason: string | null;
   arrivedWith?: AttendanceCompanion | null;
   arrivedWithName?: string | null;

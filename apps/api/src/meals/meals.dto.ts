@@ -23,7 +23,14 @@ export type ListMenuQuery = z.infer<typeof listMenuQuerySchema>;
 const menuDishInputSchema = z.object({
   name: z.string().min(1).max(200),
   allergenTags: z.array(z.string().min(1).max(60)).max(20).default([]),
-  kind: z.enum(["BREAKFAST", "MID_MORNING_SNACK", "LUNCH", "AFTERNOON_SNACK", "EXTRA"]).optional(),
+  kind: z
+    .enum(["BREAKFAST", "SNACK", "MID_MORNING_SNACK", "LUNCH", "AFTERNOON_SNACK", "EXTRA"])
+    .optional(),
+  time: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+    .nullable()
+    .optional(),
   ingredients: z.string().max(1000).nullable().optional(),
   note: z.string().max(1000).nullable().optional(),
   // A generous but real ceiling, same reasoning as `totalCalories` below —
@@ -63,6 +70,7 @@ export type SaveMenuDayDto = z.infer<typeof saveMenuDaySchema>;
 
 export const mealKindSchema = z.enum([
   "BREAKFAST",
+  "SNACK",
   "MID_MORNING_SNACK",
   "LUNCH",
   "AFTERNOON_SNACK",

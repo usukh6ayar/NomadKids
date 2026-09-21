@@ -179,8 +179,15 @@ export function PollAnswer({ survey, childId }: { survey: Survey; childId: strin
  * `totalResponses` is the denominator, so the shares sum to 100 among those
  * who voted — which is what "62%" means on a poll everywhere else, and it
  * avoids implying that everyone who has not answered chose nothing.
+ *
+ * ★★★ Exported since 2026-09-13, for the family's survey list.
+ *
+ * The list's expanded row shows the same bars for an answered poll — "бусад
+ * хүмүүсийн хариулсан хувь болон өөрийн хариулт" — and a second set drawn from
+ * the same payload is how one surface comes to say 62% while the other says
+ * 63%. Nothing about this component changed with the export.
  */
-function PollResult({ question }: { question: PollTally["questions"][number] }) {
+export function PollResult({ question }: { question: PollTally["questions"][number] }) {
   const total = question.totalResponses;
   const mine = question.myAnswer;
   const isMine = (label: string) => (Array.isArray(mine) ? mine.includes(label) : mine === label);

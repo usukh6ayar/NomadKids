@@ -227,13 +227,23 @@ export function ErrorState({
  * request are not attached to any one input, and attaching them to the first
  * field is how a user ends up retyping something that was never wrong.
  */
-export function FormError({ message }: { message?: string | null }) {
+export function FormError({
+  message,
+  className,
+}: {
+  message?: string | null;
+  /** For a caller that places this inside a grid rather than a column. */
+  className?: string;
+}) {
   if (!message) return null;
 
   return (
     <p
       role="alert"
-      className="rounded-control border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-body font-medium text-danger"
+      className={cn(
+        "rounded-control border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-body font-medium text-danger",
+        className,
+      )}
     >
       {message}
     </p>

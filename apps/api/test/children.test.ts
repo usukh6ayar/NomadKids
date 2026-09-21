@@ -871,6 +871,126 @@ describe("teacher B sees only B's children", () => {
 // Inviting a guardian — a teacher creates the family's account
 // ═══════════════════════════════════════════════════════════════════════════
 
+describe("POST /groups/:id/guardian-invitations", () => {
+  /**
+   * Two more children in `a.group` with no guardian. `a.child` already has
+   * one from `createScenario`, so it is the skip case for free.
+   */
+  async function twoUninvited() {
+    const first = await createChild(a.kindergarten.id, { lastName: "Аюуш", firstName: "Номин" });
+    const second = await createChild(a.kindergarten.id, {
+      lastName: "Баяр",
+      firstName: "Тэмүүлэн",
+    });
+    await enrollChild(a.kindergarten.id, first.id, a.group.id, a.schoolYear.id);
+    await enrollChild(a.kindergarten.id, second.id, a.group.id, a.schoolYear.id);
+    return [first, second];
+  }
+
+  it("invites everyone without a guardian and passes over everyone with one", async () => {
+    const [first, second] = await twoUninvited();
+
+    const res = await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/guardian-invitations`),
+      teacherA,
+    ).send();
+
+    expect(res.status).toBe(201);
+    expect(res.body.items).toHaveLength(2);
+    // `a.child` already has a guardian — the press must not give them a second.
+    expect(res.body.skipped).toBe(1);
+
+    const invited = res.body.items.map((row: { childId: string }) => row.childId).sort();
+    expect(invited).toEqual([first!.id, second!.id].sort());
+  });
+
+  it("names each child, because the sheet has to be cut up and handed out", async () => {
+    await twoUninvited();
+
+    const res = await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/guardian-invitations`),
+      teacherA,
+    ).send();
+
+    for (const row of res.body.items) {
+      expect(row.lastName).toEqual(expect.any(String));
+      expect(row.firstName).toEqual(expect.any(String));
+      expect(row.invitationToken).toEqual(expect.any(String));
+    }
+  });
+
+  it("gives each token one child, not the group", async () => {
+    /*
+     * ★★★ The security property the whole design rests on. A single code for
+     * a group would grant access to any child in it; here the guardianship is
+     * created before its token exists, so each token opens exactly one
+     * portfolio.
+     */
+    const res = await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/guardian-invitations`),
+      teacherA,
+    ).send();
+    void (await twoUninvited());
+
+    const second = await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/guardian-invitations`),
+      teacherA,
+    ).send();
+
+    for (const row of [...res.body.items, ...second.body.items]) {
+      const links = await db.guardianship.findMany({
+        where: { childId: row.childId, deletedAt: null },
+      });
+      expect(links).toHaveLength(1);
+      expect(links[0]!.childId).toBe(row.childId);
+    }
+  });
+
+  it("is idempotent — a second press invites nobody new", async () => {
+    await twoUninvited();
+
+    const first = await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/guardian-invitations`),
+      teacherA,
+    ).send();
+    expect(first.body.items).toHaveLength(2);
+
+    const again = await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/guardian-invitations`),
+      teacherA,
+    ).send();
+
+    // The guardianship exists from the moment the invitation is issued, so the
+    // same children are now excluded — pressing twice is safe.
+    expect(again.body.items).toHaveLength(0);
+    expect(again.body.skipped).toBe(3);
+  });
+
+  it("a teacher from another kindergarten gets 404", async () => {
+    await twoUninvited();
+
+    const res = await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/guardian-invitations`),
+      teacherB,
+    ).send();
+
+    expect(res.status).toBe(404);
+    const created = await db.guardianship.count({ where: { kindergartenId: a.kindergarten.id } });
+    expect(created).toBe(1);
+  });
+
+  it("returns 404 for a group that does not exist", async () => {
+    const res = await authed(
+      request(server()).post(
+        "/v1/groups/00000000-0000-4000-8000-000000000000/guardian-invitations",
+      ),
+      teacherA,
+    ).send();
+
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("POST /children/:id/guardian-invitations", () => {
   /**
    * ★ The teacher supplies nothing but who is primary — 2026-08-29.
@@ -959,6 +1079,42 @@ describe("POST /children/:id/guardian-invitations", () => {
       .post("/v1/auth/login")
       .send({ identifier: username, password: "Shine-Nuuts99" });
     expect(after.status).toBe(200);
+  });
+
+  it("a taken e-mail is refused without burning the invitation", async () => {
+    /*
+     * ★★★ From a production 500 on 2026-09-19. `email` is unique on `User`, and
+     * this endpoint wrote the accepted profile with no check — so somebody
+     * typing an address another account already held got «серверт алдаа
+     * гарлаа».
+     *
+     * The status was the smaller half. The token had already been consumed and
+     * the password already set by the time the write threw, so the invitation
+     * was spent, the account was usable, and the reader was told the server had
+     * failed. This asserts the recoverable case stays recoverable: a readable
+     * refusal, and **the same link still works** afterwards.
+     */
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/guardian-invitations`),
+      teacherA,
+    ).send(invitation());
+    const token = res.body.invitationToken as string;
+
+    // Somebody already holds this address. `createUser` leaves e-mail null by
+    // default, so the collision has to be set up rather than assumed.
+    const taken = `taken-${uniq()}@example.mn`;
+    await createUser({ username: uniq("holder"), email: taken });
+
+    const clash = await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send(acceptance(token, { email: taken }));
+    expect(clash.status).toBe(409);
+
+    const retry = await request(server())
+      .post("/v1/auth/invitation/accept")
+      // Omitted, not null: the schema takes an address or nothing.
+      .send(acceptance(token));
+    expect(retry.status).toBe(204);
   });
 
   /**

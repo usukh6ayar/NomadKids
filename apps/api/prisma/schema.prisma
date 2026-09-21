@@ -70,11 +70,6 @@ enum AuthTokenPurpose {
   INVITATION
 }
 
-enum EsisEnvironment {
-  TEST
-  PRODUCTION
-}
-
 enum EsisSyncStatus {
   RUNNING
   SUCCEEDED
@@ -372,6 +367,20 @@ model User {
   phone        String? @unique
   passwordHash String
 
+  /// The ESIS person this account belongs to, when it was created by
+  /// self-registration.
+  ///
+  /// ★ Globally unique, not per kindergarten, because one person in the
+  /// ministry's database is one person: the same `personId` registering twice
+  /// must be refused rather than given a second account. `Child.esisPersonId`
+  /// is scoped per kindergarten for the opposite reason — a child's record
+  /// belongs to the kindergarten holding it.
+  ///
+  /// ★★ NULL for every account made by invitation, which is most of them. It
+  /// is the marker for "this person registered themselves", and the
+  /// director's review list reads it.
+  esisPersonId String? @unique
+
   lastName  String
   firstName String
 
@@ -425,6 +434,7 @@ model User {
   attendanceRequested   AttendanceRequest[]       @relation("AttendanceRequestedBy")
   attendanceReviewed    AttendanceRequest[]       @relation("AttendanceReviewedBy")
   attendanceSubmitted   AttendanceSubmission[]    @relation("AttendanceSubmittedBy")
+  calendarDaysCreated   CalendarDay[]             @relation("CalendarDayCreatedBy")
   menuDaysCreated       MenuDay[]                 @relation("MenuDayCreatedBy")
   menuDaysApproved      MenuDay[]                 @relation("MenuDayApprovedBy")
   ingredientsCreated    Ingredient[]              @relation("IngredientCreatedBy")
@@ -455,6 +465,8 @@ model User {
   chatMessages          ChatMessage[]             @relation("ChatAuthor")
   chatReads             ChatRead[]                @relation("ChatReader")
   esisSyncRuns          EsisSyncRun[]             @relation("EsisSyncInitiator")
+  esisWritesPrepared    EsisWriteRequest[]        @relation("EsisWritePreparer")
+  esisWritesApproved    EsisWriteRequest[]        @relation("EsisWriteApprover")
 
   @@index([deletedAt])
   @@map("users")
@@ -576,8 +588,24 @@ model Kindergarten {
   /// institution id, preventing one tenant from reading another tenant's
   /// roster through a shared integration token.
   esisInstitutionId String?          @unique
-  esisEnvironment   EsisEnvironment?
   esisMappedAt      DateTime?
+
+  /// ★ `staffRegistrationCodeHash` and `staffRegistrationCodeSetAt` were here
+  /// until 2026-09-20 and are dropped in
+  /// `20260920120000_drop_staff_registration_code`.
+  ///
+  /// They held the code a director gave their staff so they could register
+  /// themselves. The client replaced it with the ESIS institution number above
+  /// — "institutionID нь байя. Цэцэрлэгийн код нь" — and the column's own
+  /// comment had already conceded the point it turned on: the code was **a
+  /// throttle, not authentication**, there to name which roster to match
+  /// against, and `esisInstitutionId` names it just as exactly while being
+  /// something a director cannot mislay.
+  ///
+  /// Dropped rather than left standing, per CLAUDE.md §3.2's account of
+  /// `deletedById`: a column nothing reads is a column the next person has to
+  /// work out the meaning of. Every value in it was a hash of a credential
+  /// that no code path can verify any more.
 
   /// ★ RFP §3.2 (лого) and §10.3, which requires the logo on every generated
   /// PDF.
@@ -623,6 +651,7 @@ model Kindergarten {
   attendanceRecords      Attendance[]
   attendanceSubmissions  AttendanceSubmission[]
   attendanceRequests     AttendanceRequest[]
+  calendarDays           CalendarDay[]
   menuDays               MenuDay[]
   surveys                Survey[]
   surveyQuestions        SurveyQuestion[]
@@ -659,6 +688,9 @@ model Kindergarten {
   chatMessages           ChatMessage[]
   chatReads              ChatRead[]
   esisSyncRuns           EsisSyncRun[]
+  esisWriteRequests      EsisWriteRequest[]
+  esisStaffRoster        EsisStaffRoster[]
+  esisReference          EsisReference[]
 
   @@index([deletedAt])
   @@map("kindergartens")
@@ -671,23 +703,202 @@ model Kindergarten {
 /// but are not persisted here; importing them requires a separate approval
 /// workflow and external-id mapping.
 model EsisSyncRun {
-  id             String         @id @default(uuid()) @db.Uuid
-  kindergartenId String         @db.Uuid
-  initiatedById  String         @db.Uuid
-  status         EsisSyncStatus @default(RUNNING)
-  resources      Json
-  summary        Json?
-  errorCode      String?
-  startedAt      DateTime       @default(now())
-  finishedAt     DateTime?
-  createdAt      DateTime       @default(now())
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+
+  /// NULL when the schedule ran it rather than a person.
+  ///
+  /// ★ Nullable since 2026-09-16, when tiers 1 and 2 became repeatable jobs.
+  /// The alternative was a fabricated "system" user row, which is worse in the
+  /// exact way it looks better: it can be granted a membership, it shows up in
+  /// a user list, and an audit trail that names it cannot distinguish the
+  /// scheduler from somebody who logged in as it. `AuditLog.actorUserId` is
+  /// nullable for the same reason and has been all along.
+  initiatedById String? @db.Uuid
+
+  status     EsisSyncStatus @default(RUNNING)
+  resources  Json
+  summary    Json?
+  errorCode  String?
+  startedAt  DateTime       @default(now())
+  finishedAt DateTime?
+  createdAt  DateTime       @default(now())
 
   kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  initiatedBy  User         @relation("EsisSyncInitiator", fields: [initiatedById], references: [id], onDelete: Restrict)
+  initiatedBy  User?        @relation("EsisSyncInitiator", fields: [initiatedById], references: [id], onDelete: Restrict)
 
   @@index([kindergartenId, startedAt])
   @@index([status, startedAt])
   @@map("esis_sync_runs")
+}
+
+/// One row of ESIS reference data, copied so a screen does not have to ask the
+/// ministry for it.
+///
+/// ★ **Why a copy at all.** `cook/product` returns a thousand rows and the
+/// menu form fetches every one of them each time a teacher opens it. Ten
+/// teachers in a morning is ten thousand rows pulled from the ministry for a
+/// catalogue that changes monthly. A monthly copy is fewer calls in their log,
+/// not more — and it is the difference between a screen that works when ESIS
+/// is down and one that does not.
+///
+/// ★★ **`kindergartenId` is nullable, and that is a deliberate exception to
+/// CLAUDE.md §3.1.** The seven `cook/*` services and `screeningQuestions` take
+/// no `institutionId`: they are the ministry's **national** catalogues, the
+/// same rows for every kindergarten in the country. Storing a copy per tenant
+/// would duplicate a thousand food products per kindergarten to express a fact
+/// that is not about any of them.
+///
+/// The rule §3.1 protects — one filter enforcing isolation — is kept by the
+/// repository instead: `findNationalReference` and `findInstitutionReference`
+/// are separate methods, so a caller cannot reach another tenant's buildings by
+/// forgetting an argument. NULL means national; a value means that
+/// kindergarten's, and the unique index below covers both shapes.
+///
+/// ★★★ Not soft-deleted. A superseded copy of somebody else's catalogue is not
+/// a record anyone needs to read back (§3.2's rule is for records that are),
+/// and a replace that left the old rows behind would serve a discontinued
+/// product as though the ministry still listed it. `EsisSyncRun` records that
+/// the refresh happened.
+model EsisReference {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// NULL for a national catalogue. See the note above.
+  kindergartenId String? @db.Uuid
+
+  /// The `ESIS_READERS` key this row came from — `foodProducts`, `rooms`, …
+  resource   String
+  /// The ministry's own identifier within that resource.
+  externalId String
+  /// The row as ESIS sent it, after `esisVisibleRows` has taken the refusals
+  /// out. Stored whole because nothing maps these into domain models: the
+  /// screens render the ministry's own field names.
+  payload    Json
+
+  syncedAt DateTime @default(now())
+
+  kindergarten Kindergarten? @relation(fields: [kindergartenId], references: [id], onDelete: Cascade)
+
+  @@unique([kindergartenId, resource, externalId])
+  @@index([resource, syncedAt])
+  @@map("esis_reference")
+}
+
+/// One row of the ministry's staff list for one kindergarten, stored so an
+/// unauthenticated registration attempt never has to reach ESIS.
+///
+/// ★ **Not a cache.** A cache may be missed and refilled on demand; this table
+/// is the only thing `POST /v1/staff-registration` is allowed to read, because
+/// that route is public and a public route must not put traffic into the
+/// ministry's logs (design §1.1). If the table is empty or stale, registration
+/// refuses — see `StaffRegistrationService`.
+///
+/// ★★ Replaced wholesale on each refresh rather than merged. The ministry's
+/// list is the truth about who works here; a merge would keep somebody who has
+/// left, and "left the kindergarten" is exactly the case this must get right.
+/// Rows are hard-deleted on replace — the CLAUDE.md §3.2 soft-delete rule
+/// protects records somebody may need to read back, and a superseded copy of an
+/// upstream list is not one. `AuditLog` records that a refresh happened.
+model EsisStaffRoster {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+
+  /// ESIS's own identifier for the person. The join key for everything else.
+  esisPersonId   String
+  /// Регистрийн дугаар — what the teacher types. Stored normalised (upper-case,
+  /// no spaces) so a match is an equality test rather than a scan.
+  registerNumber String
+  lastName       String
+  firstName      String
+
+  /// ISCO-08 occupation code, e.g. `2342-13`. The role is derived from this and
+  /// never from `positionName`, which is free text — the live data disagrees
+  /// with itself on capitalisation.
+  jobCode      String?
+  positionName String?
+  /// Whether `teacher/list` (API …812) also returned this person, not only
+  /// `school/staff` (55). Recorded because the two lists disagree: on 42778
+  /// `teacher/list` reports two арга зүйч and `school/staff` reports one.
+  isInstructor Boolean @default(false)
+
+  syncedAt DateTime @default(now())
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Cascade)
+
+  /// The registration lookup, and the guarantee that one register number
+  /// resolves to one person within a kindergarten.
+  @@unique([kindergartenId, registerNumber])
+  @@unique([kindergartenId, esisPersonId])
+  @@map("esis_staff_roster")
+}
+
+/// One ESIS write, from the payload a director was shown to the answer the
+/// ministry gave. Spec №3б.
+///
+/// ★ The payload is stored **before** approval and never rebuilt after it. The
+/// human approved those bytes; rebuilding at send time would mean they had
+/// approved a description of a write rather than the write.
+///
+/// ★★ There is no test environment. Every row here that reaches `SENT` changed
+/// the ministry's production register, which is why this table exists at all
+/// rather than a service method that posts and returns.
+model EsisWriteRequest {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+
+  /// The registry key — `groupCreate`, `groupUpdate`, `groupDelete`,
+  /// `groupInstructor`. Not the apiId: 152 is two services here, and a rename
+  /// must not read as a removal in the queue or in the audit row.
+  service String
+  apiId   Int
+
+  /// The group this is about, on our side. Required, including for a create:
+  /// «Илгээх» pushes a group that already exists here.
+  groupId String @db.Uuid
+
+  payload Json
+
+  state EsisWriteState @default(PREPARED)
+
+  /// Enforced by us. ESIS honours no idempotency header, and a retried 150
+  /// would create a second group nothing here could remove.
+  idempotencyKey String @unique
+
+  preparedById String    @db.Uuid
+  approvedById String?   @db.Uuid
+  approvedAt   DateTime?
+
+  /// ESIS's answer, whole.
+  ///
+  /// ★ For `groupCreate` this is an **input** as well as a record: an update or
+  /// a delete needs the ministry's own group id, and this is the only place it
+  /// is ever sent to us.
+  response  Json?
+  sentAt    DateTime?
+  failedAt  DateTime?
+  errorCode String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  group        Group        @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  preparedBy   User         @relation("EsisWritePreparer", fields: [preparedById], references: [id], onDelete: Restrict)
+  approvedBy   User?        @relation("EsisWriteApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+
+  @@index([kindergartenId, createdAt])
+  @@index([state, createdAt])
+  @@index([kindergartenId, groupId, service])
+  @@map("esis_write_requests")
+}
+
+enum EsisWriteState {
+  PREPARED
+  APPROVED
+  SENT
+  FAILED
+  CANCELLED
 }
 
 model SchoolYear {
@@ -744,6 +955,15 @@ model Group {
   ageBand                  AgeBand
   status                   GroupStatus @default(ACTIVE)
 
+  /// ESIS's own id for this group, filled from `groupCreate`'s response.
+  ///
+  /// ★ NULL means "the ministry has not seen this group", which is what lets an
+  /// update be refused **before** it is prepared rather than after it is sent.
+  /// A body naming no group is a well-formed request about nothing, and what
+  /// ESIS does with one is not a thing to find out on their production
+  /// register. Spec №3б.
+  esisGroupId              String?     @db.VarChar(64)
+
   /// Order А/261, Annex 2 §1 items 5, 6, 13, 14 and 16. Both default to the
   /// ordinary case, so every group that existed before this migration is a
   /// main-programme, standard-hours group — which is what they were.
@@ -774,6 +994,7 @@ model Group {
   surveys               Survey[]               @relation("SurveyGroup")
   documents             Document[]             @relation("DocumentGroup")
   mealServings          MealServing[]
+  esisWriteRequests     EsisWriteRequest[]
 
   @@unique([schoolYearId, name])
   @@index([kindergartenId, status])
@@ -831,6 +1052,31 @@ model Child {
   sex         Sex
   dateOfBirth DateTime    @db.Date
   status      ChildStatus @default(ACTIVE)
+
+  /// The child's ESIS `personId`, once something has proven the match.
+  ///
+  /// ★ **An authorization input, which is what makes it worth a column.**
+  /// Added 2026-09-15. Every per-child ESIS service — харшил, хөгжлийн
+  /// бэрхшээл, хэмжилт, үзлэг, өрхийн байдал — is addressed by `personId`, and
+  /// until this existed there was no way to ask whether the caller may see
+  /// *that* child: `assertReadable` could check the tenant and the service but
+  /// not the subject. A teacher of one group could read another group's child
+  /// by supplying their id, which the roster service hands out freely. That is
+  /// CLAUDE.md §4.1's first case, and this column is how the gate resolves
+  /// `personId` → `Child` before `canAccessChild` runs.
+  ///
+  /// ★★ Nullable, and unset means *unproven*, never *absent*. It is written
+  /// only where the product has already established the match against the live
+  /// roster by name and date of birth — `resolveAttendanceDrafts`. A child
+  /// without it is refused the per-child ESIS reads for a teacher rather than
+  /// waved through, because "we do not know whose record this is" is not a
+  /// reason to show it.
+  ///
+  /// ★★★ Unique per kindergarten rather than globally. ESIS ids are global, but
+  /// the same child can be enrolled by two kindergartens over time and each
+  /// holds its own `Child` row; a global unique would make the second
+  /// enrolment fail to save.
+  esisPersonId String?
 
   /// Гадаад иргэн — a child who is not a Mongolian citizen.
   ///
@@ -891,6 +1137,8 @@ model Child {
   invoices            Invoice[]
 
   @@unique([kindergartenId, nationalId])
+  /// The lookup the ESIS authorization gate does on every per-child read.
+  @@unique([kindergartenId, esisPersonId])
   @@index([kindergartenId, status])
   @@index([kindergartenId, lastName, firstName])
   @@index([kindergartenId, dateOfBirth])
@@ -1775,6 +2023,7 @@ model ConsentRecord {
 /// Which sitting — `нэмэлт.md` §2.
 enum MealKind {
   BREAKFAST // Өглөөний цай
+  SNACK // Зууш
   /// Added 2026-08-28, on the client's instruction — нэмэлт.md §2 names four
   /// sittings; a fifth, between breakfast and lunch, is this one.
   MID_MORNING_SNACK // Жүүс
@@ -4044,6 +4293,18 @@ enum ChatRoomKind {
   GROUP
   /// Every teacher and admin of one kindergarten. No guardians.
   STAFF
+  /// One group's families, without its teachers — 2026-09-20, the client:
+  /// "багшгүй дан эцэг эхийн чат". Same membership as GROUP minus the staff
+  /// side, which is why it is a second room rather than a filter: a parent
+  /// asking the others about a birthday present must be able to see who can
+  /// read it, and "the teachers are in here but will not answer" is not a
+  /// thing a room can communicate.
+  PARENTS
+  /// One guardian and one member of staff, privately — "эцэг эх багш руу
+  /// хувиараа бичих". The only room whose membership is two people rather
+  /// than a group's worth, so its `roomKey` carries both user ids
+  /// (`direct:<uuid>:<uuid>`, sorted) and `groupId` is NULL.
+  DIRECT
 }
 
 model ChatMessage {
@@ -4306,6 +4567,52 @@ model Contract {
 /// ★★★ `@@unique` is partial on `deletedAt`, matching `Attendance` itself: a
 /// day whose submission was withdrawn and made again must not collide with the
 /// soft-deleted row only the database still remembers.
+/// One dated exception to the working week — RFP's attendance register, and
+/// the client's correction of 2026-09-17: "БҮХ НИЙТИЙН АМРАЛТ болон БҮТЭН/ХАГАС
+/// САЙН өдрүүдэд ирц бүртгэх шаардлагагүй ... бодолтоос хасах. улс нийтээр
+/// нөхөж ажиллах онцгой тохиолдолд л бүртгэх."
+///
+/// ★ A table, not a hard-coded list of dates — CLAUDE.md §2.3. Mongolia's
+/// public holidays include Цагаан сар, which moves with the lunar calendar,
+/// and the make-up working Saturdays are announced by government resolution a
+/// few weeks ahead. Neither is a rule any code can derive, and both are things
+/// an administrator knows before the register does.
+///
+/// ★★ Two directions, one table. `isWorkingDay = false` closes a day that the
+/// week would otherwise call a working one; `true` opens a Saturday the
+/// country has been told to work. Without the second, a kindergarten that
+/// works a make-up Saturday could record the day and still be told the
+/// register was incomplete for every other Saturday of the month.
+///
+/// ★★★ Scoped to one kindergarten. The national holidays are the same
+/// everywhere, but a kindergarten's own closures — a repair week, a local
+/// quarantine — are not, and one shared table would make the first
+/// administrator to add a closure close every kindergarten on the platform.
+model CalendarDay {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  date           DateTime @db.Date
+
+  /// What it is called on the screen — "Цагаан сар", "Их засварын өдөр".
+  name String
+
+  /// False closes the day; true opens one the week would have closed.
+  isWorkingDay Boolean @default(false)
+
+  createdById String? @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("CalendarDayCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([kindergartenId, date])
+  @@index([kindergartenId, date])
+  @@map("calendar_days")
+}
+
 model AttendanceSubmission {
   id             String   @id @default(uuid()) @db.Uuid
   kindergartenId String   @db.Uuid

@@ -37,6 +37,21 @@ beforeEach(() => {
 });
 
 describe("parent home portfolio artwork", () => {
+  it("uses the static cloud artwork instead of a background video", async () => {
+    stubParentHome("MALE");
+
+    renderWithProviders(<ParentHomePage />);
+
+    await screen.findByRole("link", { name: "Цахим хувийн хавтас" });
+    const backdrop = screen.getByTestId("parent-home-backdrop");
+    const source = backdrop.querySelector("source");
+    const image = backdrop.querySelector("img");
+
+    expect(backdrop.querySelector("video")).toBeNull();
+    expect(source).toHaveAttribute("srcset", "/background/parent-home-clouds-wide.png");
+    expect(image).toHaveAttribute("src", "/background/parent-home-clouds-mobile.png");
+  });
+
   it.each([
     ["MALE", "icon-portfolio-boy-3d"],
     ["FEMALE", "icon-portfolio-girl-3d"],

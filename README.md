@@ -1,23 +1,26 @@
 # NomadKids — v2
 
 Kindergarten child-development digital portfolio system.
-Next.js · NestJS · Prisma · PostgreSQL · Cloudflare R2.
+Next.js · NestJS · Prisma · PostgreSQL · MinIO (S3-compatible).
 
-> **Status: Phase 1 MVP implementation and production-readiness verification
-> complete. External provisioning and device QA remain.**
+> **Status: deployed. Phase I–III and the finance module are live on the
+> Datacom VPS; the ESIS integration is in trial against the ministry's
+> production register.**
 >
-> 690 automated tests pass, along with 121 live security probes run against the
-> production Docker image. The image builds and boots, and a Mongolian-Cyrillic
-> PDF has been generated and text-extracted from **inside** it. Password reset
-> works end to end against a real SMTP server, and a backup/restore rehearsal
-> has been completed.
+> ★ This banner used to say "nothing is deployed". The cutover happened on
+> **2026-09-10** — all three domains resolve to the VPS, nightly backups run
+> from cron, and a restore drill has succeeded. See "Production" below.
 >
-> **Not done, and not claimed:** nothing is deployed. There is no production
-> database, Redis, R2 bucket, DNS or TLS certificate, and real-device QA has not
-> been run. See [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for
-> what is verified and what is outstanding, and
-> [docs/PHASE_1_ACCEPTANCE.md](docs/PHASE_1_ACCEPTANCE.md) for the acceptance
-> evidence.
+> Earlier verification still stands and is worth reading before changing
+> anything: 121 live security probes against the production image, a
+> Mongolian-Cyrillic PDF generated and text-extracted from **inside** it, and
+> password reset exercised end to end against a real SMTP server —
+> [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) and
+> [docs/PHASE_1_ACCEPTANCE.md](docs/PHASE_1_ACCEPTANCE.md).
+>
+> **Still outstanding:** real-device QA
+> ([docs/FINAL_DEVICE_QA.md](docs/FINAL_DEVICE_QA.md)), and `BACKUP_REMOTE` is
+> unset — the nightly backup lives on the same disk as the data.
 
 ## Quick start
 
@@ -51,24 +54,37 @@ pnpm dev                                          # web :3000 · api :3001
 > CI leaves the variable unset on purpose: its `DATABASE_URL` is already a
 > throwaway service container.
 
-> Host ports are offset by one (Postgres 5433, Redis 6380, MinIO 9002/9003) so
+> Host ports are offset by one (Postgres 5434, Redis 6380, MinIO 9002/9003) so
 > this project and the Django reference system can run at the same time.
 > Comparing the two side by side is exactly what the reference is kept for.
 
 ## Production
 
-| Role | Origin                     | Platform    |
-| ---- | -------------------------- | ----------- |
-| Web  | `https://nomadkids.mn`     | Vercel      |
-| API  | `https://api.nomadkids.mn` | Railway/Fly |
+**Live since 2026-09-10 on one Datacom VPS — `202.131.1.111`.**
 
-One registrable domain, so the two origins are **same-site** — which is what
-lets authentication use `SameSite=Lax` HttpOnly cookies and keep the browser's
-own CSRF protection. **No token is ever stored in `localStorage`.**
+| Role  | Origin                       | Served by                           |
+| ----- | ---------------------------- | ----------------------------------- |
+| Web   | `https://nomadkids.mn`       | Caddy → `web` container             |
+| API   | `https://api.nomadkids.mn`   | Caddy → `api` containers            |
+| Media | `https://media.nomadkids.mn` | MinIO                               |
+| DNS   | —                            | Cloudflare (DNS only, grey-clouded) |
 
-Data residency outside Mongolia was approved by the client on 2026-08-19.
+Postgres, Redis, MinIO and the report worker run in the same
+`docker-compose.prod.yml`. Data stays in Mongolia; the earlier approval for
+residency outside it (2026-08-19) no longer applies.
 
-Full topology, environment table and pre-launch checks:
+★ **Vercel and Railway still build from `main` and serve nothing** — kept
+briefly as the rollback. A green deploy on either says nothing about what
+`nomadkids.mn` is serving. Merging to `main` deploys nothing; see
+[docs/VPS_DEPLOYMENT.md](docs/VPS_DEPLOYMENT.md) §3.4 and
+[docs/OPERATOR_MANUAL.md](docs/OPERATOR_MANUAL.md) §7.
+
+One registrable domain, so the origins are **same-site** — which is what lets
+authentication use `SameSite=Lax` HttpOnly cookies and keep the browser's own
+CSRF protection. **No token is ever stored in `localStorage`.**
+
+The reasoning behind the topology that outlived the platform change — domains,
+cookies, the worker's memory floor, storage — is in
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ---
@@ -80,23 +96,27 @@ and developmental assessments about children; parents see their own child's
 portfolio, progress and photographs; administrators manage kindergartens,
 groups, staff and configuration. Reports are generated as A4 PDFs in Mongolian.
 
-The MVP is **Phase 1** only. Attendance, meals, finance, chat, realtime and
-analytics are later phases — see [`CLAUDE.md`](CLAUDE.md) §7.
+Scope now runs through **RFP Phase III** plus the client's finance module
+(`нэмэлт.md`) and chat: attendance, meals and the weekly menu, surveys, growth,
+health, the kitchen, state funding, invoices and the ESIS integration are all
+built. Native mobile, SMS, push, QR pick-up and AI stay out —
+[`CLAUDE.md`](CLAUDE.md) §7 is the authority and records when each line moved.
 
 ---
 
 ## Documents
 
-| Document                                         | What it answers                                                                    |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)     | Stack, topology, layering, repository layout, risks                                |
-| [docs/DATABASE.md](docs/DATABASE.md)             | 28 tables — purpose, relationships, indexes, authorization boundary                |
-| [docs/API.md](docs/API.md)                       | Every REST route with its role and ownership rule                                  |
-| [docs/SECURITY.md](docs/SECURITY.md)             | Auth, cookies, CSRF, RBAC, IDOR, media, audit — and the 108-case acceptance matrix |
-| [docs/UI_UX_MAP.md](docs/UI_UX_MAP.md)           | 24 Next.js routes, one screen = one job                                            |
-| [docs/MIGRATION_PLAN.md](docs/MIGRATION_PLAN.md) | What was kept, transformed and dropped from the Django system                      |
-| [docs/PDF_SPIKE.md](docs/PDF_SPIKE.md)           | **Executed.** Puppeteer benchmarked; the blank-report failure and its fix          |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)         | Domains, services, environment, backups, pre-launch checks                         |
+| Document                                           | What it answers                                                                              |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)       | Stack, topology, layering, repository layout, risks                                          |
+| [docs/DATABASE.md](docs/DATABASE.md)               | 28 tables — purpose, relationships, indexes, authorization boundary                          |
+| [docs/API.md](docs/API.md)                         | Every REST route with its role and ownership rule                                            |
+| [docs/SECURITY.md](docs/SECURITY.md)               | Auth, cookies, CSRF, RBAC, IDOR, media, audit — and the 108-case acceptance matrix           |
+| [docs/UI_UX_MAP.md](docs/UI_UX_MAP.md)             | 24 Next.js routes, one screen = one job                                                      |
+| [docs/MIGRATION_PLAN.md](docs/MIGRATION_PLAN.md)   | What was kept, transformed and dropped from the Django system                                |
+| [docs/PDF_SPIKE.md](docs/PDF_SPIKE.md)             | **Executed.** Puppeteer benchmarked; the blank-report failure and its fix                    |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)           | Domains, services, environment, backups, pre-launch checks                                   |
+| [docs/OPERATOR_MANUAL.md](docs/OPERATOR_MANUAL.md) | **Mongolian.** Running the platform: superadmins, registering a kindergarten, creating users |
 
 **Start with [ARCHITECTURE.md](docs/ARCHITECTURE.md), then
 [SECURITY.md](docs/SECURITY.md).**
@@ -133,11 +153,11 @@ first query is written.
 ## Layout
 
 ```
-apps/web/          Next.js          (not yet created)
-apps/api/          NestJS + Prisma  (not yet created)
-packages/contracts/ shared Zod schemas and types (not yet created)
-docs/              design documents — the current contents of this repository
-docs/spikes/pdf/   executed PDF spike: scripts, Dockerfile, generated output
+apps/web/           Next.js App Router — three shells: (teacher) (parent) (admin)
+apps/api/           NestJS + Prisma — controller → service → repository → authz
+packages/contracts/ shared Zod schemas and types, built before either app
+docs/               design documents, plans and the client's reference material
+docs/spikes/pdf/    executed PDF spike: scripts, Dockerfile, generated output
 ```
 
 ---

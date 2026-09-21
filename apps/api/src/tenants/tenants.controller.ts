@@ -94,8 +94,14 @@ export class TenantsController {
 
   // ── Groups ────────────────────────────────────────────────────────────────
 
+  /*
+   * ★ ACCOUNTANT since 2026-09-13 — the "Бүлэг" select on Ирцийн дэлгэрэнгүй
+   * was empty for them, and that screen is gated to ADMIN and ACCOUNTANT. The
+   * service scopes what they get; see `listGroups` on why it grants nothing
+   * they could not already read off the register.
+   */
   @Get("groups")
-  @Roles("ADMIN", "TEACHER")
+  @Roles("ADMIN", "TEACHER", "ACCOUNTANT")
   async listGroups(
     @CurrentActor() actor: Actor,
     @Query(new ZodValidationPipe(listGroupsQuerySchema)) query: ListGroupsQuery,
@@ -104,7 +110,7 @@ export class TenantsController {
   }
 
   @Get("groups/:id")
-  @Roles("ADMIN", "TEACHER")
+  @Roles("ADMIN", "TEACHER", "ACCOUNTANT")
   async getGroup(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },

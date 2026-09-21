@@ -231,6 +231,30 @@ export class ChildrenController {
   }
 
   /**
+   * One invitation for every child in a group who has none — the bulk half of
+   * the route above.
+   *
+   * ★ Addressed at the group because that is the roster the teacher is looking
+   * at when they do this, and because the group is what bounds the work. It is
+   * **not** a group invitation: the service issues one per-child token, each
+   * created after the guardianship it belongs to, so each opens exactly one
+   * portfolio. A single code for a whole group would be a shared secret
+   * granting access to any child in it.
+   *
+   * No body — there is nothing to choose. `isPrimary` is false for all of
+   * them: which contact is primary is a decision for afterwards, and a bulk
+   * press cannot know it.
+   */
+  @Post("groups/:id/guardian-invitations")
+  @Roles("TEACHER", "ADMIN")
+  async inviteGroupGuardians(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.inviteGroupGuardians(actor, params.id);
+  }
+
+  /**
    * An admin manages the whole relationship; a guardian may correct only their
    * own relationship label. The service enforces that distinction from the
    * resource itself, so this cannot be expressed by a route-level role list.

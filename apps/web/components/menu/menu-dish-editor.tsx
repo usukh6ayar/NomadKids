@@ -13,7 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
-import { MEAL_KIND_LABEL, type MealKind, type MenuDish } from "@kinder/contracts";
+import { MEAL_KIND_LABEL, mealKindSchema, type MealKind, type MenuDish } from "@kinder/contracts";
 import type { EsisFoodProduct } from "@/components/esis/use-esis-food-products";
 import { MediaThumb } from "@/components/media/media-image";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
@@ -56,13 +56,15 @@ import { cn } from "@/lib/utils";
  * on every dish, `saveMenuDaySchema` has always accepted it, and no screen
  * had ever rendered a field for it.
  */
-export const MEAL_KIND_ORDER: MealKind[] = [
-  "BREAKFAST",
-  "MID_MORNING_SNACK",
-  "LUNCH",
-  "AFTERNOON_SNACK",
-  "EXTRA",
-];
+/**
+ * ★ The day's order, and it now comes from one place — 2026-09-16.
+ *
+ * `mealKindSchema` declares the six sittings in the sequence they are served
+ * (Өглөөний хоол → Их үдийн цай) and `MEAL_KIND_LABEL` names them in it, so
+ * this is that order rather than a second hand-written copy of it that a
+ * rename can leave behind.
+ */
+export const MEAL_KIND_ORDER: MealKind[] = [...mealKindSchema.options];
 
 export interface DishDraft {
   /** Stable per-row identity for React's reconciliation — removing a middle
@@ -70,6 +72,7 @@ export interface DishDraft {
   key: string;
   name: string;
   kind: MealKind;
+  time: string;
   allergenTags: string;
   ingredients: string;
   calories: string;
@@ -117,6 +120,7 @@ export function toDraft(dishes: MenuDish[]): DishDraft[] {
     key: `${i}-${dish.recipeId ?? dish.name}`,
     name: dish.name,
     kind: dish.kind ?? "BREAKFAST",
+    time: dish.time ?? "",
     allergenTags: dish.allergenTags.join(", "),
     ingredients: dish.ingredients ?? "",
     calories: dish.calories === null || dish.calories === undefined ? "" : String(dish.calories),
@@ -151,6 +155,7 @@ export function fromDraft(drafts: DishDraft[]) {
     .map((d) => ({
       name: d.name.trim(),
       kind: d.kind,
+      ...(d.time ? { time: d.time } : {}),
       allergenTags: d.allergenTags
         .split(",")
         .map((t) => t.trim())
@@ -169,6 +174,7 @@ export function newDraft(kind: MealKind, useRecipe = false): DishDraft {
     key: crypto.randomUUID(),
     name: "",
     kind,
+    time: "",
     allergenTags: "",
     ingredients: "",
     calories: "",
@@ -189,6 +195,8 @@ export interface RecipeOption {
   yieldPortions: number;
   /** Groups the picker. `null` cards fall into "Бусад" rather than vanishing. */
   mealKind: MealKind | null;
+  /** Computed per serving; quick menu entry fills calories from it. */
+  calories?: number | null;
 }
 
 /**

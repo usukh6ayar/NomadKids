@@ -8,20 +8,102 @@ import {
 import { AuditRepository } from "../../audit/audit.repository";
 import { PlatformAccessService } from "../../authz/platform-access.service";
 import { TenantAccessService } from "../../authz/tenant-access.service";
-import type { Actor } from "../../authz/actor";
+import { ChildAccessService } from "../../authz/child-access.service";
+import { hasRoleIn, type Actor } from "../../authz/actor";
+import { Role } from "../../domain/enums";
 import { EsisError } from "./esis.client";
-import { ESIS_RESOURCE_CATALOG, esisServicesForActor, type EsisEndpointKey } from "./esis.catalog";
+import {
+  ESIS_REQUEST_REGISTER,
+  ESIS_RESOURCE_CATALOG,
+  esisServicesForActor,
+  type EsisEndpointKey,
+} from "./esis.catalog";
+import { ESIS_UNPROVEN_WRITES } from "./esis.dto";
 import type { EsisPreviewDto, EsisReadDto, EsisWriteDto, UpdateEsisMappingDto } from "./esis.dto";
-import { ESIS_FIELDS, ingestedFieldNames } from "./esis.fields";
+import { ESIS_ENDPOINTS } from "./esis.endpoints";
+import { ESIS_FIELDS, esisFieldsFor, ingestedFieldNames } from "./esis.fields";
+import { REFERENCE_RESOURCES, type EsisReferenceResource } from "./esis.reference";
 import { EsisRepository } from "./esis.repository";
-import { EsisService, esisReaderParams } from "./esis.service";
+import { normalizeRegisterNumber } from "./esis.roster";
+import { esisVisibleRows } from "./esis.schemas";
+import { EsisService, esisReaderParams, type EsisReadableKey } from "./esis.service";
 
 type PreviewResource = EsisPreviewDto["resources"][number];
 
 /** How many rows a screen shows. Both are display limits, not fetch limits. */
 const PREVIEW_ROWS = 5;
-const READ_ROWS = 25;
-const DEMO_ESIS_INSTITUTION_ID = "40305";
+
+/**
+ * The ceiling on rows a read hands back — **500 since 2026-09-14**, was 25.
+ *
+ * ★ Twenty-five was a *preview* number, and correct while the table was one:
+ * the panel existed to answer "what comes back when we connect?", and twenty-
+ * five rows answer that as well as eight hundred. It stopped being correct the
+ * moment the table got a search box. A reader who types a name and is told
+ * "олдсонгүй" has been given a wrong answer, not a truncated one — the child is
+ * in the response, twenty-sixth, and the screen searched a slice without
+ * saying so. A cap the reader cannot see must not sit under a filter.
+ *
+ * ★★ Raised rather than removed, because CLAUDE.md §3.4 forbids an endpoint
+ * returning an unbounded set and the reasoning survives the change of source:
+ * this list is bounded by whatever ESIS chooses to send, which is not a
+ * promise. Five hundred covers every kindergarten roster — this deployment's
+ * largest is eighty-three — and the "эхний N" note still appears above
+ * anything longer, so the truncation stays visible when it happens.
+ *
+ * ★★★ It costs no extra ESIS call. The upstream services have no paging of
+ * their own; `students/list` returns the whole roster in one response and
+ * always did. This number only decided how much of an answer already in
+ * memory was forwarded.
+ */
+const READ_ROWS = 500;
+
+/**
+ * How many rows the raw `response` envelope carries.
+ *
+ * ★ **Not `READ_ROWS` — 2026-09-14.** The two were the same number until the
+ * cap moved, and `response.RESULT` was simply `rows`, so raising the cap to
+ * five hundred shipped the whole roster **twice** in one payload and rendered
+ * the second copy into a `<pre>` on the teacher's import screen. Measured on
+ * this deployment's eighty-three children: 76 KB of rows, the same 76 KB
+ * again under `RESULT`, and 90 KB of pretty-printed JSON above the table.
+ *
+ * ★★ Five rows is not a truncation of that block, it is what the block is
+ * for. `response` exists to show the shape ESIS answers in — the envelope,
+ * its `SUCCESS_CODE`, its `RESPONSE_MESSAGE` and enough records to see how a
+ * record is nested. `rows` is the parsed view and carries all of them; the
+ * table reads that. A reader who wants the eighty-third child looks at the
+ * table, which can now search and page to it.
+ *
+ * ★★★ The surfaces that render it say how many of how many they are showing,
+ * so the short list can never be read as "ESIS returned five".
+ */
+const ENVELOPE_ROWS = 5;
+
+/**
+ * `REFERENCE_RESOURCES` keyed by resource, for a single lookup per read.
+ *
+ * ★ Plan `2026-09-16-esis-sync-tiers.md` Task 7 — this is what turns "is this
+ * a reference resource?" from a `.find()` over thirteen entries into a `Map`
+ * lookup on every call to `read()`, which every ESIS pull on every screen now
+ * goes through.
+ */
+const REFERENCE_RESOURCE_BY_KEY = new Map<string, EsisReferenceResource>(
+  REFERENCE_RESOURCES.map((entry) => [entry.resource, entry]),
+);
+
+/**
+ * The row cap for a stored `foodProducts` read — carried over from
+ * `READ_ROWS`'s own exception, not a new decision.
+ *
+ * ★ `foodProducts` is searched by a text box (the menu form's dish picker), so
+ * a cap here would silently hide a row behind a name that never surfaces. The
+ * live path already gave this one resource `response.data.length` instead of
+ * `READ_ROWS` for exactly that reason. The store holds the same count the
+ * ministry did — 1000, verified 2026-09-16 in `esis.reference.ts` — so it can
+ * afford to ask for all of them rather than a display slice.
+ */
+const REFERENCE_FOOD_PRODUCTS_ROWS = 1200;
 
 @Injectable()
 export class EsisAdminService {
@@ -30,11 +112,40 @@ export class EsisAdminService {
     private readonly repo: EsisRepository,
     private readonly tenants: TenantAccessService,
     private readonly platform: PlatformAccessService,
+    /*
+     * ★ The one module that decides who may reach a child (CLAUDE.md §1.1).
+     * Injected 2026-09-15 so a per-child ESIS read is gated by the same rule
+     * as every other child route, rather than by a second copy of it.
+     */
+    private readonly children: ChildAccessService,
     private readonly audit: AuditRepository,
   ) {}
 
+  /**
+   * The platform operator's view of one tenant's ESIS integration.
+   *
+   * ★ **Superadmin, not the kindergarten's director** — changed 2026-09-14 at
+   * the client's request ("захирал дээр ESIS системийн зүйл байх нь зөв уу?
+   * superadmin дээр байх нь зөв"). Everything this returns is a property of the
+   * *deployment*: `ESIS_TOKEN` and `ESIS_BASE_URL` are environment settings and
+   * one ESIS developer account serves every kindergarten, so the token's state,
+   * the granted scope and the remaining blockers are facts a director can read
+   * and cannot act on. The institution mapping beneath them was already
+   * `@SuperAdmin()` (`updateMapping`), so the screen showed a director a
+   * blocker only somebody else could clear.
+   *
+   * ★★ What stays with the kindergarten is the *working* surface:
+   * `catalogForActor`, `read`, `write`, `myProfile` and
+   * `studentRegistrationTemplate`. A director still pulls a roster and a
+   * teacher still sends the day's attendance — none of that needs the token's
+   * state, and none of it moved.
+   *
+   * ★★★ `assertSuperAdmin` answers **404**, not 403, so a director learns
+   * nothing about the route (CLAUDE.md §1.7). The kindergarten is loaded after
+   * the check, as everywhere else.
+   */
   async overview(actor: Actor, kindergartenId: string) {
-    this.tenants.assertAdmin(actor, kindergartenId);
+    this.platform.assertSuperAdmin(actor);
     const kindergarten = await this.repo.findKindergarten(kindergartenId);
     if (!kindergarten) throw new NotFoundException();
 
@@ -42,7 +153,7 @@ export class EsisAdminService {
     const deployment = this.esis.status();
     const mapped = Boolean(kindergarten.esisInstitutionId);
     const mappingMatchesDeployment = mapped;
-    const canPreview = deployment.demoMode || (deployment.configured && mappingMatchesDeployment);
+    const canPreview = deployment.configured && mappingMatchesDeployment;
     const hasSuccessfulPreview = recentRuns.some(
       (run) => run.status === "SUCCEEDED" && syncRunMode(run.summary) === "LIVE",
     );
@@ -57,7 +168,6 @@ export class EsisAdminService {
       connection: {
         mapped,
         institutionId: kindergarten.esisInstitutionId,
-        environment: kindergarten.esisEnvironment,
         mappedAt: kindergarten.esisMappedAt,
         mappingMatchesDeployment,
       },
@@ -70,8 +180,20 @@ export class EsisAdminService {
           status: deployment.configured && mapped ? ("READY" as const) : ("WAITING" as const),
         },
         {
+          /*
+           * ★ Renamed 2026-09-19, from "Test орчны шалгалт".
+           *
+           * The old name described a step that does not exist: the client
+           * confirmed the ministry runs no ESIS test environment, which is why
+           * the TEST/PRODUCTION column was dropped the same day. The stage
+           * itself is real and reachable — `hasSuccessfulPreview` is "a sync
+           * run has succeeded against the live hub", which is what an operator
+           * needs to know and has nothing to do with a test environment. It
+           * read WAITING on production only because no run had been made yet,
+           * not because it was waiting for something unobtainable.
+           */
           code: "C4",
-          label: "Test орчны шалгалт",
+          label: "Амьд татаж шалгасан",
           status: hasSuccessfulPreview ? ("READY" as const) : ("WAITING" as const),
         },
         {
@@ -81,7 +203,6 @@ export class EsisAdminService {
         },
       ],
       endpoints: ESIS_RESOURCE_CATALOG.map((endpoint) => {
-        const demoEnabled = endpoint.domain !== "FOOD";
         const lastRun = recentRuns.find((run) =>
           Array.isArray(run.resources) ? run.resources.includes(endpoint.key) : false,
         );
@@ -90,35 +211,40 @@ export class EsisAdminService {
           accessStatus:
             endpoint.domain === "FOOD"
               ? ("NOT_ENABLED" as const)
-              : deployment.demoMode
-                ? demoEnabled
-                  ? ("MOCK" as const)
-                  : ("NOT_ENABLED" as const)
-                : deployment.configured
-                  ? ("UNKNOWN" as const)
-                  : ("NOT_ENABLED" as const),
-          responseMode: deployment.demoMode ? ("DEMO" as const) : ("LIVE" as const),
-          httpStatus:
-            (deployment.demoMode && demoEnabled) || lastRun?.status === "SUCCEEDED" ? 200 : null,
+              : deployment.configured
+                ? ("UNKNOWN" as const)
+                : ("NOT_ENABLED" as const),
+          responseMode: "LIVE" as const,
+          httpStatus: lastRun?.status === "SUCCEEDED" ? 200 : null,
           syncStatus:
-            deployment.demoMode && demoEnabled
-              ? ("DEMO_SUCCESS" as const)
-              : lastRun?.status === "SUCCEEDED"
-                ? ("SUCCESS" as const)
-                : lastRun?.status === "FAILED" || lastRun?.status === "PARTIAL"
-                  ? ("FAILED" as const)
-                  : ("PENDING" as const),
+            lastRun?.status === "SUCCEEDED"
+              ? ("SUCCESS" as const)
+              : lastRun?.status === "FAILED" || lastRun?.status === "PARTIAL"
+                ? ("FAILED" as const)
+                : ("PENDING" as const),
           syncErrorCode: lastRun?.errorCode ?? null,
           lastSyncAt: lastRun?.finishedAt ?? lastRun?.startedAt ?? null,
         };
       }),
       recentRuns: recentRuns.map((run) => ({
         ...run,
-        initiatedBy: `${run.initiatedBy.lastName} ${run.initiatedBy.firstName}`.trim(),
+        initiatedBy: run.initiatedBy
+          ? `${run.initiatedBy.lastName} ${run.initiatedBy.firstName}`.trim()
+          : null,
         mode: syncRunMode(run.summary),
       })),
       canPreview,
       blockers,
+      /*
+       * The portal's request register, joined against what the code calls.
+       *
+       * ★ Static, and says so through `reviewedAt`. There is no ESIS service
+       * that reports a token's own granted scope, so "is this approved?" can
+       * only be answered from the register an operator reads off the portal.
+       * Showing the date it was read is the difference between a snapshot and
+       * a claim about right now.
+       */
+      requests: ESIS_REQUEST_REGISTER,
     };
   }
 
@@ -128,7 +254,24 @@ export class EsisAdminService {
     if (!kindergarten) throw new NotFoundException();
 
     const student = ESIS_RESOURCE_CATALOG.find((endpoint) => endpoint.key === "students")!;
-    if (this.esis.isAvailable && (this.esis.isDemoMode || kindergarten.esisInstitutionId)) {
+
+    /*
+     * ★ Unmapped is a refusal now, not a fallback — 2026-09-14.
+     *
+     * This used to fall through to an invented record when the tenant had no
+     * `esisInstitutionId`, so the registration form filled itself with a
+     * fictional child and looked as though ESIS had answered. A form that
+     * quietly invents its own contents is worse than one that says it has
+     * nothing: the staff member cannot tell which of the values in front of
+     * them came from the ministry.
+     */
+    if (!this.esis.isConfigured || !kindergarten.esisInstitutionId) {
+      throw new ServiceUnavailableException(
+        "ESIS холболт тохируулагдаагүй байна. Платформын оператор байгууллагын кодыг холбосны дараа ажиллана.",
+      );
+    }
+
+    {
       await this.audit.append({
         action: "VIEW",
         kindergartenId,
@@ -138,12 +281,13 @@ export class EsisAdminService {
         metadata: { purpose: "student-registration-template" },
       });
       const response = await this.esis
-        .students(kindergarten.esisInstitutionId ?? DEMO_ESIS_INSTITUTION_ID)
+        .students(kindergarten.esisInstitutionId)
         .catch((error: unknown) => {
           throw esisUserError(error, "суралцагчийн мэдээлэл");
         });
+      const visible = this.visibleRows(actor, kindergartenId, response.data);
       return {
-        mode: response.source === "MOCK" ? ("DEMO" as const) : ("LIVE" as const),
+        mode: "LIVE" as const,
         resource: "students" as const,
         apiId: student.apiId,
         slug: student.slug,
@@ -152,22 +296,10 @@ export class EsisAdminService {
         syncedAt: new Date().toISOString(),
         fields: student.fields,
         row:
-          rowValues("students", response.data, 1)[0] ??
+          rowValues("students", visible, 1)[0] ??
           Object.fromEntries(ingestedFieldNames("students").map((name) => [name, null])),
       };
     }
-
-    return {
-      mode: "DEMO" as const,
-      resource: "students" as const,
-      apiId: student.apiId,
-      slug: student.slug,
-      method: student.method,
-      endpoint: student.path,
-      syncedAt: "2026-09-08T01:15:00.000Z",
-      fields: student.fields,
-      row: student.sampleRow,
-    };
   }
 
   async myProfile(actor: Actor, kindergartenId: string) {
@@ -185,18 +317,19 @@ export class EsisAdminService {
       : ("staff" as const);
     const catalog = ESIS_RESOURCE_CATALOG.find((endpoint) => endpoint.key === resource)!;
 
-    if (!this.esis.isAvailable || (!this.esis.isDemoMode && !kindergarten.esisInstitutionId)) {
-      return {
-        mode: "DEMO" as const,
-        resource,
-        apiId: catalog.apiId,
-        slug: catalog.slug,
-        endpoint: catalog.path,
-        syncedAt: new Date().toISOString(),
-        institutionId: kindergarten.esisInstitutionId,
-        fields: ESIS_FIELDS[resource],
-        row: catalog.sampleRow,
-      };
+    /*
+     * ★ An unconfigured deployment says so — 2026-09-14.
+     *
+     * It used to answer with an invented person, labelled `DEMO`. A member of
+     * staff opening "миний ESIS мэдээлэл" and finding somebody else's name
+     * under their own heading is the clearest case there was for removing the
+     * samples: the label was in the payload, and a label is not a defence
+     * against a screen that looks like it worked.
+     */
+    if (!this.esis.isConfigured || !kindergarten.esisInstitutionId) {
+      throw new ServiceUnavailableException(
+        "ESIS холболт тохируулагдаагүй байна. Платформын оператор байгууллагын кодыг холбосны дараа ажиллана.",
+      );
     }
 
     await this.audit.append({
@@ -209,24 +342,11 @@ export class EsisAdminService {
     });
     const response = await (
       resource === "teachers"
-        ? this.esis.teachers(kindergarten.esisInstitutionId ?? DEMO_ESIS_INSTITUTION_ID)
-        : this.esis.staff(kindergarten.esisInstitutionId ?? DEMO_ESIS_INSTITUTION_ID)
+        ? this.esis.teachers(kindergarten.esisInstitutionId)
+        : this.esis.staff(kindergarten.esisInstitutionId)
     ).catch((error: unknown) => {
       throw esisUserError(error, "ажилтны мэдээлэл");
     });
-    if (response.source === "MOCK") {
-      return {
-        mode: "DEMO" as const,
-        resource,
-        apiId: catalog.apiId,
-        slug: catalog.slug,
-        endpoint: catalog.path,
-        syncedAt: new Date().toISOString(),
-        institutionId: kindergarten.esisInstitutionId,
-        fields: ESIS_FIELDS[resource],
-        row: rowValues(resource, response.data, 1)[0] ?? catalog.sampleRow,
-      };
-    }
 
     const localName = normalizeIdentity(`${user.lastName} ${user.firstName}`);
     const localEmail = user.email?.trim().toLowerCase() ?? "";
@@ -249,6 +369,7 @@ export class EsisAdminService {
       );
     }
 
+    const visible = this.visibleRows(actor, kindergartenId, matches);
     return {
       mode: "LIVE" as const,
       resource,
@@ -258,8 +379,146 @@ export class EsisAdminService {
       syncedAt: new Date().toISOString(),
       institutionId: kindergarten.esisInstitutionId,
       fields: ESIS_FIELDS[resource],
-      row: rowValues(resource, matches, 1)[0]!,
+      row: rowValues(resource, visible, 1)[0]!,
     };
+  }
+
+  /**
+   * Refills one kindergarten's stored staff roster from live ESIS.
+   *
+   * ★ This exists because `POST /v1/staff-registration` is public — a teacher
+   * has no account yet — and a public route must never call ESIS (design §1.1,
+   * plan §0). Somebody authenticated has to fill the table the registration
+   * route reads instead, and it is ADMIN-only because a refresh spends the
+   * deployment's one token against the ministry's rate limits.
+   *
+   * ★★ Built from `school/staff`, not `teacher/list`, for two independent
+   * reasons — both measured on institution 42778, 2026-09-16.
+   *
+   * `staff` is the **superset**: 13 rows to `teacher/list`'s 10, and no
+   * teacher id is missing from it. The three people only the larger list names
+   * are the two тогооч and the жижүүр, and the cooks have every right to an
+   * account — they map to `COOK` through jobCode `5120`.
+   *
+   * And `teacher/list` **repeats a person**: 10 rows carry 9 distinct
+   * `personId`s, the duplicate pair differing in nothing but `username` (a
+   * refused credential this product strips anyway). Building the roster from
+   * it would violate `@@unique([kindergartenId, esisPersonId])` and fail the
+   * whole transaction.
+   *
+   * `isInstructor` records whether `teacher/list` also names the person — 9 of
+   * the 13, not 10, for the duplication reason above. The two lists disagree
+   * about who counts as an instructor, which is the ministry's business and
+   * not ours to reconcile.
+   */
+  async refreshStaffRoster(actor: Actor, kindergartenId: string) {
+    this.tenants.assertAdmin(actor, kindergartenId);
+    return this.refreshStaffRosterCore(kindergartenId, actor.userId);
+  }
+
+  /**
+   * The staff-roster refresh itself, with no `Actor` and no authorization
+   * check — the work `refreshStaffRoster` above does once it has confirmed
+   * ADMIN.
+   *
+   * ★ Extracted 2026-09-16 for `EsisSyncService.runRosterSync` (plan Task 4,
+   * tier 2's daily roster refresh), which has no `Actor` to assert ADMIN
+   * against when the schedule runs it — the same reason
+   * `EsisSyncRun.initiatedById` became nullable. Rewriting this method's
+   * body a second time inside `esis-sync.service.ts` was the alternative,
+   * and it is the worse one: institution 42778's own history is the
+   * argument (see the doc comment two above this one) for why `staff` vs.
+   * `teachers`, upper-casing the register number and building from the
+   * superset are not details a second implementation could be trusted to
+   * copy correctly.
+   *
+   * ★★ Deliberately **not** routed through a controller. The ADMIN
+   * assertion lives only in `refreshStaffRoster`; a route calling this
+   * method directly would reintroduce the unauthenticated path this
+   * extraction was careful not to create. Only `EsisSyncService` calls it,
+   * and it is reachable there solely through Task 5's ADMIN-gated route and
+   * Task 8's scheduler — neither takes a request from outside the process.
+   */
+  async refreshStaffRosterCore(kindergartenId: string, actorUserId: string | null) {
+    const kindergarten = await this.repo.findKindergarten(kindergartenId);
+    if (!kindergarten || !kindergarten.esisInstitutionId) throw new NotFoundException();
+
+    if (!this.esis.isConfigured) {
+      throw new ServiceUnavailableException(
+        "ESIS холболт тохируулагдаагүй байна. Платформын оператор байгууллагын кодыг холбосны дараа ажиллана.",
+      );
+    }
+
+    /*
+     * ★ `this.esis.read("staff"/"teachers", …)` rather than the `staff()` /
+     * `teachers()` wrappers `myProfile` calls. They are the same call —
+     * `EsisService.staff(id)` is itself `read("staff", {}, id)` — and this is
+     * the form `test/esis-admin.test.ts` can drive: that file mocks
+     * `EsisService` as an object literal, so the wrappers are separate
+     * `vi.fn()`s the generic `read` mock never reaches.
+     */
+    const [staffResponse, teacherResponse] = await Promise.all([
+      this.esis.read("staff", {}, kindergarten.esisInstitutionId),
+      this.esis.read("teachers", {}, kindergarten.esisInstitutionId),
+    ]);
+
+    const instructorIds = new Set(
+      teacherResponse.data.map((row) => String((row as { personId: unknown }).personId)),
+    );
+
+    let skipped = 0;
+    const rows: {
+      esisPersonId: string;
+      registerNumber: string;
+      lastName: string;
+      firstName: string;
+      jobCode: string | null;
+      positionName: string | null;
+      isInstructor: boolean;
+    }[] = [];
+
+    for (const raw of staffResponse.data as Record<string, unknown>[]) {
+      const registerNumber = normalizeRegisterNumber(raw.personRegNumber as string | null);
+      if (!registerNumber) {
+        skipped += 1;
+        continue;
+      }
+      const esisPersonId = String(raw.personId);
+      rows.push({
+        esisPersonId,
+        registerNumber,
+        lastName: String(raw.lastName ?? ""),
+        firstName: String(raw.firstName ?? ""),
+        jobCode: (raw.jobCode as string | null | undefined) ?? null,
+        positionName: (raw.positionName as string | null | undefined) ?? null,
+        isInstructor: instructorIds.has(esisPersonId),
+      });
+    }
+
+    const count = await this.repo.replaceStaffRoster(kindergartenId, rows);
+    const syncedAt = new Date();
+
+    /*
+     * ★ No register number here, or anywhere else in this row's metadata.
+     * `REDACTED_READ_PARAMS` already keeps a typed register number out of
+     * every audit row this service writes, and a roster refresh must not be
+     * the exception — `count` and `skipped` say what happened without saying
+     * to whom.
+     *
+     * ★★ `actorUserId` may be `null` here — a scheduled refresh has nobody to
+     * name, and `AuditRepository.append` already accepts that the same way
+     * every other system-initiated row does.
+     */
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId,
+      actorUserId,
+      objectType: "EsisStaffRoster",
+      objectId: kindergartenId,
+      metadata: { count, skipped },
+    });
+
+    return { count, skipped, syncedAt };
   }
 
   async updateMapping(actor: Actor, kindergartenId: string, dto: UpdateEsisMappingDto) {
@@ -273,10 +532,9 @@ export class EsisAdminService {
         dto.mapped
           ? {
               esisInstitutionId: dto.institutionId,
-              esisEnvironment: dto.environment,
               esisMappedAt: new Date(),
             }
-          : { esisInstitutionId: null, esisEnvironment: null, esisMappedAt: null },
+          : { esisInstitutionId: null, esisMappedAt: null },
       );
 
       await this.audit.append({
@@ -287,8 +545,7 @@ export class EsisAdminService {
         objectId: kindergartenId,
         metadata: {
           mapped: dto.mapped,
-          environment: dto.mapped ? dto.environment : null,
-          fields: ["esisInstitutionId", "esisEnvironment"],
+          fields: ["esisInstitutionId"],
         },
       });
       return updated;
@@ -328,7 +585,7 @@ export class EsisAdminService {
 
     return {
       mode: deployment.configured ? ("LIVE" as const) : ("DEMO" as const),
-      canRead: deployment.demoMode || deployment.configured,
+      canRead: deployment.configured,
       /*
        * ★ The catalog entry as it stands, with no sync state bolted on.
        *
@@ -338,7 +595,19 @@ export class EsisAdminService {
        * `accessStatus: "UNKNOWN"` here — which an earlier version did — put a
        * field in the response whose only honest value was "we did not look".
        */
-      endpoints: ESIS_RESOURCE_CATALOG.filter((endpoint) => keys.has(endpoint.key)),
+      /*
+       * ★ `grant` and `portalName` are dropped here, not left to Zod.
+       *
+       * They are the deployment's ESIS account state — which scopes the
+       * ministry granted it — and this payload's whole rule is that it carries
+       * the catalog and none of the deployment. The browser's schema omits
+       * them, so a stray field would be stripped on arrival and never show;
+       * but "the client throws it away" is not the same as "the server does
+       * not send it", and the second is the one a role boundary needs.
+       */
+      endpoints: ESIS_RESOURCE_CATALOG.filter((endpoint) => keys.has(endpoint.key)).map(
+        ({ grant: _grant, portalName: _portalName, ...endpoint }) => endpoint,
+      ),
     };
   }
 
@@ -371,6 +640,26 @@ export class EsisAdminService {
   async write(actor: Actor, kindergartenId: string, dto: EsisWriteDto) {
     const { institutionId } = await this.assertReadable(actor, kindergartenId, dto.resource);
 
+    /*
+     * ★ Six writes are refused here, and it is the ministry's silence rather
+     * than ours — `ESIS_UNPROVEN_WRITES` in `esis.dto.ts` carries the evidence.
+     * Their field names have never been confirmed by a live row, by the portal
+     * or by a refusal, which is what 162's were until the client produced the
+     * ministry's own page on 2026-09-18 and three of its five fields turned out
+     * to be wrong. These describe a child's allergies, disability, surgery and
+     * safety incidents; a wrong field there is a wrong medical record.
+     *
+     * ★★ The refusal is placed **after** `assertReadable`, so a caller who may
+     * not reach this service still gets that answer first and learns nothing
+     * from this one.
+     */
+    if ((ESIS_UNPROVEN_WRITES as readonly string[]).includes(dto.resource)) {
+      throw new ConflictException(
+        "Энэ сервисийн талбаруудыг ЭСИС баримтжуулаагүй тул илгээх боломжгүй. " +
+          "Яамнаас гэрээг нь тодруулсны дараа нээгдэнэ.",
+      );
+    }
+
     const body = { ...dto.payload, institutionId: Number(institutionId) };
     const personId = typeof dto.payload.personId === "number" ? dto.payload.personId : null;
 
@@ -393,13 +682,13 @@ export class EsisAdminService {
         durationMs: response.durationMs,
         response: {
           SUCCESS_CODE: 200,
-          RESPONSE_MESSAGE: response.source === "MOCK" ? "DEMO_SUCCESS" : "SUCCESS",
+          RESPONSE_MESSAGE: "SUCCESS",
         },
       };
     } catch (error) {
       return {
         resource: dto.resource,
-        source: this.esis.isDemoMode ? ("MOCK" as const) : ("LIVE" as const),
+        source: "LIVE" as const,
         status: "FAILED" as const,
         errorCode: safeErrorCode(error),
         durationMs: null,
@@ -430,7 +719,99 @@ export class EsisAdminService {
         return this.esis.saveStudentCondition(
           body as Parameters<EsisService["saveStudentCondition"]>[0],
         );
+
+      /* ── Added 2026-09-15 with the health block ────────────────────────── */
+      case "studentAllergySave":
+        return this.esis.saveStudentAllergy(
+          body as Parameters<EsisService["saveStudentAllergy"]>[0],
+        );
+      case "studentProhibitedFoodSave":
+        return this.esis.saveStudentProhibitedFood(
+          body as Parameters<EsisService["saveStudentProhibitedFood"]>[0],
+        );
+      case "studentDisabilitySave":
+        return this.esis.saveStudentDisability(
+          body as Parameters<EsisService["saveStudentDisability"]>[0],
+        );
+      case "studentAssessmentsSave":
+        return this.esis.saveStudentAssessment(
+          body as Parameters<EsisService["saveStudentAssessment"]>[0],
+        );
+      case "studentMeasurementSave":
+        return this.esis.saveStudentMeasurement(
+          body as Parameters<EsisService["saveStudentMeasurement"]>[0],
+        );
+      case "studentSurgerySave":
+        return this.esis.saveStudentSurgery(
+          body as Parameters<EsisService["saveStudentSurgery"]>[0],
+        );
+      case "studentIncidentSave":
+        return this.esis.saveStudentIncident(
+          body as Parameters<EsisService["saveStudentIncident"]>[0],
+        );
+      case "groupMeasurementsSave":
+        return this.esis.saveGroupMeasurements(
+          body as Parameters<EsisService["saveGroupMeasurements"]>[0],
+        );
+      case "studentScreeningSave":
+        return this.esis.saveStudentScreening(
+          body as Parameters<EsisService["saveStudentScreening"]>[0],
+        );
     }
+  }
+
+  /**
+   * The rows this caller may see.
+   *
+   * ★ One gate, applied by every method that returns ESIS rows to a client.
+   *
+   * Register numbers reach this service because `esisDiscoveredSchema`
+   * deliberately keeps them (`ESIS_IDENTIFIER_FIELDS`). An administrator of
+   * this kindergarten is reconciling children against the ministry's roster
+   * and needs one; a teacher reading the same service does not, and a guardian
+   * must never.
+   *
+   * ★★ `hasRoleIn(…, kindergartenId)` rather than the actor's role alone: an
+   * ADMIN of *another* kindergarten is not an admin here. This runs after the
+   * route's own tenant check, never instead of it.
+   *
+   * ★★★ `myProfile` routes through this same rule, which means an ADMIN
+   * opening their *own* "миний ESIS мэдээлэл" screen sees their own register
+   * number — a narrower reading of the policy would say "no register number
+   * on `my-profile`, full stop." This is deliberate: it is one role-based
+   * rule applied uniformly rather than a route-by-route carve-out.
+   *
+   * ★★★★ **The "already visible via `resource=staff`" argument covers every
+   * field `myProfile` returns, not only the identifiers — checked, not
+   * assumed.** `esisServicesForActor` gives an ADMIN `ALL_KEYS`
+   * (`esis.catalog.ts`), so both branches `myProfile` can choose —
+   * `resource=teachers` and `resource=staff` — are ones that admin can already
+   * call directly. Both routes draw their displayed columns from the same
+   * source: `myProfile`'s `row` is `rowValues(resource, visible, 1)` with no
+   * `fields` argument, which falls back to the static `ingestedFieldNames
+   * (resource)`; `read()`'s `rows` for the same resource key uses
+   * `esisFieldsFor(resource, visible)`, which returns exactly that declared
+   * list plus anything *undeclared* the row carries — and `staff`/`teachers`
+   * parse through `esisStaffSchema`/`esisTeacherSchema`, plain `z.object()`
+   * schemas that drop unnamed keys at parse time, so no row reaching either
+   * method can carry an undeclared field to discover. Same field set, same
+   * values, for the same person's row. The one difference is row *count*:
+   * `myProfile` renders one row, `read()` up to `READ_ROWS` — so `myProfile`
+   * is a strict subset of what `resource=staff`/`resource=teachers` already
+   * shows that admin, never a superset. A non-admin caller — every teacher and
+   * cook this screen actually serves — still sees no register number either
+   * way.
+   *
+   * The one thing `myProfile` shows that a `read()` row does not is metadata
+   * about the *call*, not the ESIS record — `apiId`, `slug`, `institutionId`,
+   * `syncedAt`. None of it is drawn from `rowValues`, none of it is gated by
+   * this method, and none of it is new to an admin who already performed the
+   * institution mapping themselves.
+   */
+  private visibleRows<T>(actor: Actor, kindergartenId: string, rows: T[]): T[] {
+    return esisVisibleRows(rows, {
+      identifiers: hasRoleIn(actor, Role.ADMIN, kindergartenId),
+    });
   }
 
   private async assertReadable(actor: Actor, kindergartenId: string, resource?: EsisEndpointKey) {
@@ -452,20 +833,77 @@ export class EsisAdminService {
       this.tenants.assertAdmin(actor, kindergartenId);
     }
 
+    return this.assertOperable(kindergartenId);
+  }
+
+  /**
+   * May this actor read *this child's* ESIS record?
+   *
+   * ★ **The subject was never checked until 2026-09-15.** `assertReadable`
+   * asks whether the caller belongs to the tenant and whether their role
+   * reaches the service. Neither question is about the child, and every
+   * per-child ESIS service is addressed by a `personId` the caller supplies —
+   * which `students` hands out for the whole roster. So a teacher of one group
+   * could read another group's харшил, хөгжлийн бэрхшээл or хэмжилт by
+   * substituting an id. That is CLAUDE.md §4.1's first case, and §1.1's rule
+   * that authorization lives in one module: `canAccessChild` is that module,
+   * and this is what lets it run on an ESIS id.
+   *
+   * ★★ **An admin is exempt, and the exemption is not a shortcut.**
+   * `isAdminOver` passes for every child of a kindergarten they administer, so
+   * the check can only ever answer yes for them. Running it anyway would add a
+   * query and, worse, make an admin's read fail for a child whose ESIS id
+   * nobody has proven yet — refusing access the rule itself would grant.
+   *
+   * ★★★ **Unproven means refused**, for everyone else. `esisPersonId` is
+   * written only where the product has established the match against the live
+   * roster; a child without one cannot be attributed, and "we do not know
+   * whose record this is" is not a reason to show it. 404, never 403 (§1.7) —
+   * the caller learns nothing about whether the id exists.
+   */
+  private async assertCanReadEsisChild(
+    actor: Actor,
+    kindergartenId: string,
+    resource: EsisReadableKey,
+    params: Record<string, string>,
+  ) {
+    const personId = params.personId;
+    if (!personId) return;
+    if (!esisReaderParams(resource).includes("personId")) return;
+
+    const admin = actor.memberships.some(
+      (membership) => membership.kindergartenId === kindergartenId && membership.role === "ADMIN",
+    );
+    if (admin) return;
+
+    const child = await this.repo.findChildIdByEsisPersonId(kindergartenId, personId);
+    if (!child) throw new NotFoundException();
+    await this.children.assertCanAccess(actor, child.id);
+  }
+
+  /**
+   * Whether a call can be attempted for this tenant, and under which id.
+   *
+   * ★ Authorisation is **not** here, and must run before it. Split out of
+   * `assertReadable` on 2026-09-14 so the platform operator's dry run can
+   * reach it after `assertSuperAdmin` — a superadmin holds no `Membership`
+   * (CLAUDE.md §1.1), so every membership-derived check answers 404 for them
+   * and `assertReadable` cannot be the seam. Each caller states its own
+   * authorisation on the line above; this one answers only "is the deployment
+   * configured and this kindergarten mapped?".
+   */
+  private async assertOperable(kindergartenId: string) {
     const kindergarten = await this.repo.findKindergarten(kindergartenId);
     if (!kindergarten) throw new NotFoundException();
 
     const deployment = this.esis.status();
-    if (!deployment.demoMode && !deployment.configured) {
+    if (!deployment.configured) {
       throw new ServiceUnavailableException("ESIS холболт server дээр тохируулагдаагүй байна.");
     }
-    if (!deployment.demoMode && !kindergarten.esisInstitutionId) {
+    if (!kindergarten.esisInstitutionId) {
       throw new ConflictException("Цэцэрлэгийн ESIS байгууллагын код баталгаажаагүй байна.");
     }
-    return {
-      kindergarten,
-      institutionId: kindergarten.esisInstitutionId ?? DEMO_ESIS_INSTITUTION_ID,
-    };
+    return { kindergarten, institutionId: kindergarten.esisInstitutionId };
   }
 
   /**
@@ -494,6 +932,15 @@ export class EsisAdminService {
     }
 
     /*
+     * ★ The subject check, after the tenant and the service and before the
+     * audit row. It must not run before `assertReadable` — a caller outside
+     * the tenant should learn nothing, not even that the id resolved — and it
+     * must not run after the call, which would already have fetched the
+     * record. See `assertCanReadEsisChild`.
+     */
+    await this.assertCanReadEsisChild(actor, kindergartenId, dto.resource, params);
+
+    /*
      * ★ The audit row records the lookup, not the person looked up.
      *
      * `params` carried every path value straight into `AuditLog.metadata`,
@@ -505,9 +952,20 @@ export class EsisAdminService {
      *
      * The rest stay: a group id, a date and an academic month are what make the
      * entry answerable later, and none of them is a person.
+     *
+     * ★★ **`primaryNidNumber` joined it on 2026-09-14**, with `workerInfo`.
+     * This filter named one key, and the new service takes a *worker's*
+     * register number rather than a child's — so the same identifier this
+     * paragraph promises not to keep would have started landing in the
+     * append-only table under a different name. A register number is a
+     * register number whoever it belongs to.
+     *
+     * ★★★ The list is what needs widening when a reader takes a new personal
+     * identifier. It is written as a set rather than a chain of `!==` so that
+     * adding one is a single obvious edit.
      */
     const auditedParams = Object.fromEntries(
-      Object.entries(params).filter(([name]) => name !== "personRegNumber"),
+      Object.entries(params).filter(([name]) => !REDACTED_READ_PARAMS.has(name)),
     );
 
     await this.audit.append({
@@ -519,30 +977,79 @@ export class EsisAdminService {
       metadata: { resource: dto.resource, params: auditedParams },
     });
 
+    /*
+     * ★ Tier 1's payoff — plan `2026-09-16-esis-sync-tiers.md` Task 7,
+     * 2026-09-17. A resource on `REFERENCE_RESOURCES` is copied into
+     * `EsisReference` monthly for exactly one reason: so this call stops
+     * reaching the ministry. `cook/product` alone is a thousand rows, and this
+     * button fetched every one of them each time a teacher opened the menu
+     * form — ten teachers in a morning, ten thousand rows, for a catalogue
+     * that changes monthly. Storing the copy and then reading live anyway
+     * would keep the defect and add a table nobody consulted.
+     *
+     * Everything above this line stays identical for a reference resource —
+     * the tenant and role gate, the missing-params check, `assertCanReadEsisChild`,
+     * the audit row already written above. Only where the rows come from
+     * changes; `readReference` is what decides that.
+     */
+    const referenceEntry = REFERENCE_RESOURCE_BY_KEY.get(dto.resource);
+    if (referenceEntry) {
+      return this.readReference(actor, kindergartenId, dto.resource, referenceEntry);
+    }
+
     const fields = ESIS_FIELDS[dto.resource];
     try {
       const response = await this.esis.read(dto.resource, params, institutionId);
       const rowLimit = dto.resource === "foodProducts" ? response.data.length : READ_ROWS;
-      const rows = rowValues(dto.resource, response.data, rowLimit);
+      /*
+       * ★ `esisFieldsFor`, not `fields`, is what this screen shows — 2026-09-15.
+       *
+       * Every declared column still comes back whether or not this response
+       * carried it: that half is unconditional, and it is why `fields` above
+       * stays around for the `catch` block below, where there is no response
+       * to read a discovered key off of. Columns derived from data would make
+       * "ESIS stopped sending this field" and "this child has no value" the
+       * same picture on screen, and only one of those is worth investigating.
+       *
+       * What is no longer true of this call is that the discovered half was
+       * six services' business. A hand-written schema used to drop whatever it
+       * did not name, so nothing beyond those six could ever surprise this
+       * screen with an extra key. Readers now keep what they are not told to
+       * expect, so any resource can carry one — and an operator comparing this
+       * table against the ministry's real payload needs to see it, not have it
+       * silently dropped because this call site still trusted the old six.
+       */
+      /*
+       * ★ The gate runs on `response.data`, before either `esisFieldsFor` or
+       * `rowValues` reads it — 2026-09-15. Both derive their output from the
+       * rows they are given, so a register number stripped afterwards would
+       * already have been drawn into a column or a display value. See
+       * `visibleRows`.
+       */
+      const visible = this.visibleRows(actor, kindergartenId, response.data);
+      const liveFields = esisFieldsFor(dto.resource, visible);
+      const rows = rowValues(dto.resource, visible, rowLimit, liveFields);
       return {
         resource: dto.resource,
+        endpoint: calledEndpoint(dto.resource),
         source: response.source,
         status: "SUCCEEDED" as const,
         errorCode: null,
         count: response.data.length,
         durationMs: response.durationMs,
-        fields,
+        fields: liveFields,
         rows,
         response: {
           SUCCESS_CODE: 200,
-          RESPONSE_MESSAGE: response.source === "MOCK" ? "DEMO_SUCCESS" : "SUCCESS",
-          RESULT: rows,
+          RESPONSE_MESSAGE: "SUCCESS",
+          RESULT: rows.slice(0, ENVELOPE_ROWS),
         },
       };
     } catch (error) {
       return {
         resource: dto.resource,
-        source: this.esis.isDemoMode ? ("MOCK" as const) : ("LIVE" as const),
+        endpoint: calledEndpoint(dto.resource),
+        source: "LIVE" as const,
         status: "FAILED" as const,
         errorCode: safeErrorCode(error),
         count: 0,
@@ -558,8 +1065,113 @@ export class EsisAdminService {
     }
   }
 
+  /**
+   * Serves one reference resource from `EsisReference` instead of the
+   * ministry — the branch `read()` takes for anything on
+   * `REFERENCE_RESOURCES`.
+   *
+   * ★ **No live fallback when the store is empty, and that is a decision, not
+   * an oversight.** A fallback would make the store's staleness invisible and
+   * put the thousand-row fetch this tier exists to remove back in the
+   * ministry's log at exactly the moment the copy runs dry — the same defect
+   * plan §0(a) removed, moved one layer along. `NOT_SYNCED` is reported the
+   * same way every other read failure is (`status: "FAILED"`,
+   * `errorCode`) rather than thrown, for the same reason the doc comment on
+   * `read()` gives: the button's job is to report what is there, and an
+   * operator learns more from a named reason than a red toast.
+   *
+   * ★★ `visibleRows` and `esisFieldsFor` run on the stored `payload` exactly
+   * as they do on a live row, because both are written against `unknown[]`
+   * with no notion of where a row came from — verified by reading them, not
+   * assumed. `payload` is the row exactly as `EsisSyncService.
+   * runReferenceSync` stored it: already through `esisVisibleRows` at sweep
+   * time (`identifiers: false`, so a reference row never carried a register
+   * number to begin with), and stored as the plain object ESIS sent, keyed by
+   * the ministry's own field names. That is what lets `rowValues` read
+   * `productName`/`buildingId`/… off it the same way it reads them off a live
+   * row.
+   *
+   * ★★★ `count` is `referenceCount`, not `stored.length`. A page from the
+   * store cannot say how many rows it left behind the way a live call could
+   * report `response.data.length` for a response it already held in full —
+   * and `foodProductMaterials` is the case that would have gotten this wrong
+   * silently: 1000 rows stored, `READ_ROWS` = 500, so `count: stored.length`
+   * would have reported 500 next to 500 rows and erased the "showing the
+   * first N of M" signal the row cap depends on being visible.
+   */
+  private async readReference(
+    actor: Actor,
+    kindergartenId: string,
+    resource: EsisEndpointKey,
+    entry: EsisReferenceResource,
+  ) {
+    const scopeId = entry.scope === "NATIONAL" ? null : kindergartenId;
+    const take = resource === "foodProducts" ? REFERENCE_FOOD_PRODUCTS_ROWS : READ_ROWS;
+
+    const [stored, total, syncedAt] = await Promise.all([
+      entry.scope === "NATIONAL"
+        ? this.repo.findNationalReference(resource, { skip: 0, take })
+        : this.repo.findInstitutionReference(kindergartenId, resource, { skip: 0, take }),
+      this.repo.referenceCount(scopeId, resource),
+      this.repo.referenceSyncedAt(scopeId, resource),
+    ]);
+
+    if (stored.length === 0) {
+      return {
+        resource,
+        endpoint: calledEndpoint(resource),
+        source: "STORE" as const,
+        status: "FAILED" as const,
+        errorCode: "NOT_SYNCED",
+        count: 0,
+        durationMs: null,
+        fields: ESIS_FIELDS[resource],
+        rows: [],
+        syncedAt: null,
+        response: {
+          SUCCESS_CODE: 0,
+          RESPONSE_MESSAGE: "NOT_SYNCED",
+          RESULT: [],
+        },
+      };
+    }
+
+    const payloadRows: unknown[] = stored.map((row) => row.payload);
+    const visible = this.visibleRows(actor, kindergartenId, payloadRows);
+    const liveFields = esisFieldsFor(resource, visible);
+    const rows = rowValues(resource, visible, take, liveFields);
+
+    return {
+      resource,
+      endpoint: calledEndpoint(resource),
+      source: "STORE" as const,
+      status: "SUCCEEDED" as const,
+      errorCode: null,
+      count: total,
+      durationMs: null,
+      fields: liveFields,
+      rows,
+      syncedAt: syncedAt ? syncedAt.toISOString() : null,
+      response: {
+        SUCCESS_CODE: 200,
+        RESPONSE_MESSAGE: "SUCCESS",
+        RESULT: rows.slice(0, ENVELOPE_ROWS),
+      },
+    };
+  }
+
+  /**
+   * The dry run behind "Синк шалгалт".
+   *
+   * ★ **Superadmin, with `overview()`** — moved 2026-09-14. It is the same
+   * screen and the same question: it spends the deployment's token against the
+   * ministry's rate limits to prove the connection works, which is the
+   * operator's job and not a director's. The working "ESIS-ээс татах" buttons
+   * are `read()`, and they did not move.
+   */
   async preview(actor: Actor, kindergartenId: string, dto: EsisPreviewDto) {
-    const { institutionId } = await this.assertReadable(actor, kindergartenId);
+    this.platform.assertSuperAdmin(actor);
+    const { institutionId } = await this.assertOperable(kindergartenId);
     await this.repo.expireStaleRuns(kindergartenId, new Date(Date.now() - 15 * 60_000));
     if (await this.repo.findRunning(kindergartenId)) {
       throw new ConflictException("Энэ цэцэрлэгийн ESIS шалгалт аль хэдийн ажиллаж байна.");
@@ -578,11 +1190,20 @@ export class EsisAdminService {
     const settled = await Promise.allSettled(
       dto.resources.map(async (resource) => {
         const response = await this.fetchResource(resource, institutionId);
+        /*
+         * ★ Gated like every other reader — 2026-09-15. `assertSuperAdmin`
+         * above proves this caller operates the platform, not that they
+         * administer *this* kindergarten, and `visibleRows` asks exactly that
+         * question. A superadmin dry run exists to prove the connection
+         * works, which a row count and a set of field names already answer;
+         * it does not need a register number to do it.
+         */
+        const visible = this.visibleRows(actor, kindergartenId, response.data);
         return {
           resource,
           count: response.data.length,
           durationMs: response.durationMs,
-          preview: rowValues(resource, response.data, PREVIEW_ROWS),
+          preview: rowValues(resource, visible, PREVIEW_ROWS),
           source: response.source,
         };
       }),
@@ -599,14 +1220,14 @@ export class EsisAdminService {
             preview: [],
             status: "FAILED" as const,
             errorCode: safeErrorCode(item.reason),
-            source: this.esis.isDemoMode ? ("MOCK" as const) : ("LIVE" as const),
+            source: "LIVE" as const,
           };
     });
     const successCount = results.filter((result) => result.status === "SUCCEEDED").length;
     const status =
       successCount === results.length ? "SUCCEEDED" : successCount === 0 ? "FAILED" : "PARTIAL";
     const summary = {
-      mode: this.esis.isDemoMode ? ("MOCK" as const) : ("LIVE" as const),
+      mode: "LIVE" as const,
       resources: Object.fromEntries(
         results.map((result) => [
           result.resource,
@@ -635,7 +1256,7 @@ export class EsisAdminService {
   private fetchResource(resource: PreviewResource, institutionId: string) {
     const calls: Record<
       PreviewResource,
-      () => Promise<{ data: unknown[]; durationMs: number; source: "MOCK" | "LIVE" }>
+      () => Promise<{ data: unknown[]; durationMs: number; source: "LIVE" }>
     > = {
       organization: () => this.esis.organization(institutionId),
       buildings: () => this.esis.buildings(institutionId),
@@ -649,9 +1270,10 @@ export class EsisAdminService {
       foodMaterials: () => this.esis.foodMaterials(),
       foodProducts: () => this.esis.foodProducts(),
       foodProductMaterials: () => this.esis.foodProductMaterials(),
-      // Added 2026-09-10 with the six new institution-level reads that need no
+      // Added 2026-09-10 with the new institution-level reads that need no
       // operator input — which is exactly what `ESIS_PREVIEW_RESOURCES` means.
-      studentContacts: () => this.esis.studentContacts(institutionId),
+      // `studentContacts` left on 2026-09-14: it needs a `personId`, so it was
+      // never one of them. See the catalog's note.
       groupsNextYear: () => this.esis.groupsNextYear(institutionId),
       programs: () => this.esis.programs(institutionId),
       rooms: () => this.esis.rooms(institutionId),
@@ -663,6 +1285,36 @@ export class EsisAdminService {
 }
 
 /**
+ * Path values that must never reach `AuditLog.metadata`.
+ *
+ * `personRegNumber` and `primaryNidNumber` are register numbers an operator
+ * types — one a child's (`studentByRegister`, `studentInfo`), one a worker's
+ * (`workerInfo`). They are sent to ESIS and kept nowhere, and "nowhere"
+ * includes the row recording that somebody asked. `ESIS_REQUEST.md` §1.1 (b).
+ *
+ * ★ **`civilId` joined 2026-09-17, with `studentSearch`.** Same identifier,
+ * same treatment: `ESIS_REQUEST.md` §1.1 (b) names it beside the register
+ * numbers, and it is a civil registry id an operator typed in, not one this
+ * product keeps.
+ *
+ * ★★ **`registerNumber` joined the same day, with `buildingByRegisterNumber`,
+ * and it is not the same argument.** It is the kindergarten's own government
+ * register number — an organisation's, not a person's — so §1.1 (b) does not
+ * reach it on its own terms. It is redacted anyway, for a narrower reason:
+ * `foodDiscountStudents` already uses the field name `registerNumber` for a
+ * *child's* register number (`esis.schemas.ts`), so the same key in this
+ * file's audit metadata would read as a child's identifier to anyone checking
+ * the log without also reading which resource wrote it. One name, one
+ * redaction, regardless of whose number it is this time.
+ */
+const REDACTED_READ_PARAMS = new Set([
+  "personRegNumber",
+  "primaryNidNumber",
+  "civilId",
+  "registerNumber",
+]);
+
+/**
  * Turns parsed rows into one string per catalog field.
  *
  * ★ Keyed by `ingestedFieldNames`, not by `Object.keys(row)`. The screen must
@@ -672,12 +1324,45 @@ export class EsisAdminService {
  * `null`, and the column is still there.
  *
  * ★★ Nothing that is not an ingested field can appear here. The refused
- * fields — civil id, register number, provider passwords — are already gone,
- * stripped by the zod schema one layer up; this function could not surface one
- * even if a schema were widened by mistake.
+ * credentials — provider passwords and the username beside them — are
+ * already gone, stripped by the zod schema one layer up; this function could
+ * not surface one even if a schema were widened by mistake.
+ *
+ * ★★★ **Register numbers are a different case — 2026-09-15.** They are no
+ * longer refused at the parser (`ESIS_IDENTIFIER_FIELDS`), and this function
+ * has no notion of *who is asking*, so it draws a `civilId`/`personRegNumber`
+ * column for any caller reachable here. The gate is `EsisAdminService.
+ * visibleRows`, and every caller of `rowValues` in this file passes rows that
+ * have already been through it — `read`, `myProfile` and
+ * `studentRegistrationTemplate` each call `visibleRows` first, so a value this
+ * function draws into a column was one the caller was allowed to see. If a
+ * new call site adds `rowValues` without gating its rows first, this is the
+ * hole that reopens.
  */
-function rowValues(resource: EsisEndpointKey, rows: unknown[], limit: number) {
-  const names = ingestedFieldNames(resource);
+/**
+ * The service a read called, for the screen to name when nothing came back.
+ *
+ * ★ Method and path only — deliberately not `apiId` or `slug`. Those two
+ * identify the service in the ministry's *register*, which is the operator's
+ * vocabulary; the path is what a person reads as an address and what they
+ * quote when they raise the failure. The operator screen already shows all
+ * four together and is welcome to.
+ */
+function calledEndpoint(resource: EsisEndpointKey): { method: string; path: string } {
+  const endpoint = ESIS_ENDPOINTS[resource];
+  return { method: endpoint.method, path: endpoint.path };
+}
+
+function rowValues(
+  resource: EsisEndpointKey,
+  rows: unknown[],
+  limit: number,
+  /** The discovered list, when the service has no declared one. */
+  fields?: { name: string; io: string; ingested: boolean }[],
+) {
+  const names = fields
+    ? fields.filter((field) => field.io === "OUTPUT" && field.ingested).map((field) => field.name)
+    : ingestedFieldNames(resource);
   return rows.slice(0, limit).map((row) => {
     const value = row as Record<string, unknown>;
     return Object.fromEntries(names.map((name) => [name, displayValue(value[name])]));
@@ -704,15 +1389,16 @@ function safeErrorCode(error: unknown): string {
   return "UNKNOWN";
 }
 
-function syncRunMode(summary: unknown): "MOCK" | "LIVE" {
-  if (
-    typeof summary === "object" &&
-    summary !== null &&
-    "mode" in summary &&
-    summary.mode === "MOCK"
-  ) {
-    return "MOCK";
-  }
+/*
+ * ★ Always `"LIVE"` — 2026-09-14.
+ *
+ * This used to read `mode` off a stored sync-run summary and answer `"MOCK"`
+ * for runs made in demo mode. Demo mode is gone, so no new run can be one;
+ * historical rows that say `MOCK` keep their summary in the database and are
+ * now reported as what every run is from here on. Reading the old value back
+ * would put a `MOCK` badge on a screen with no way to produce another.
+ */
+function syncRunMode(_summary: unknown): "LIVE" {
   return "LIVE";
 }
 

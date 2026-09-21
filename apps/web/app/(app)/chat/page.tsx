@@ -5,12 +5,18 @@ import { MessageCircle, Plus, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import { chatRoomSchema } from "@kinder/contracts";
-import { ChatList, ChatRoom, type ChatChrome } from "@/components/chat/chat-widget";
+import {
+  ChatList,
+  ChatRoom,
+  chatRoomDisplayName,
+  type ChatChrome,
+} from "@/components/chat/chat-widget";
 import { Button } from "@/components/ui/button";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
+import { useSession } from "@/lib/auth/session";
 
 const roomsSchema = z.array(chatRoomSchema);
 
@@ -50,6 +56,7 @@ const pageChrome: ChatChrome = {
  * ten-second poll are written once and behave identically in both frames.
  */
 export default function ChatPage() {
+  const { roles } = useSession();
   const [roomKey, setRoomKey] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -75,20 +82,32 @@ export default function ChatPage() {
   }, [roomKey, rooms.data]);
 
   return (
-    <div className="h-full w-full">
+    <div className="flex h-full w-full min-h-0 flex-col bg-[#f4f9fd] lg:rounded-card lg:border lg:border-[#dbe8f2] lg:p-3 lg:shadow-[0_16px_40px_rgba(26,68,108,.06)]">
       <h1 className="sr-only">Чат</h1>
+
+      <div className="hidden shrink-0 items-center justify-between px-2 pb-3 lg:flex">
+        <div>
+          <p className="text-caption font-bold uppercase tracking-[0.12em] text-[#176ac2]">
+            Харилцаа холбоо
+          </p>
+          <p className="text-title font-extrabold tracking-tight text-[#173e70]">Чат</p>
+        </div>
+        <span className="rounded-pill bg-white px-3 py-1.5 text-caption font-medium text-muted">
+          Бүлэг болон ажилтнуудтайгаа холбогдоорой
+        </span>
+      </div>
 
       {/* The shell gives this route the remaining viewport height. Both panes
           scroll internally so a long conversation never pushes the composer
           below the fold. */}
-      <div className="flex h-full min-h-0 flex-col lg:flex-row lg:gap-4">
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row lg:gap-3">
         {/*
           Below `lg` exactly one pane is mounted, as in the widget. From `lg`
           both are, and the list becomes a fixed rail beside the room.
         */}
         <div
           className={cn(
-            "min-h-0 min-w-0 flex-col overflow-hidden rounded-card border border-border bg-surface shadow-sm lg:flex lg:w-[360px] lg:shrink-0 xl:w-[380px]",
+            "min-h-0 min-w-0 flex-col overflow-hidden bg-surface lg:flex lg:w-[340px] lg:shrink-0 lg:rounded-card lg:border lg:border-[#dbe8f2] lg:shadow-sm xl:w-[370px]",
             active ? "hidden" : "flex flex-1",
           )}
         >
@@ -104,7 +123,7 @@ export default function ChatPage() {
                 size="sm"
                 onClick={() => setPickerOpen(true)}
                 disabled={rooms.isLoading || !rooms.data?.length}
-                className="min-w-[184px]"
+                className="rounded-control shadow-sm"
               >
                 <Plus size={19} aria-hidden="true" />
                 Шинэ чат
@@ -117,7 +136,7 @@ export default function ChatPage() {
 
         <div
           className={cn(
-            "min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-card border border-border bg-surface shadow-sm",
+            "min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface lg:rounded-card lg:border lg:border-[#dbe8f2] lg:shadow-sm",
             active ? "flex" : "hidden lg:flex",
           )}
         >
@@ -131,6 +150,7 @@ export default function ChatPage() {
             <ChatRoom
               key={active.key}
               room={active}
+              displayName={chatRoomDisplayName(active, roles, rooms.data)}
               onBack={() => setRoomKey(null)}
               // From `lg` the list is beside this pane, so an arrow pointing
               // back at it would appear to do nothing.
@@ -174,10 +194,12 @@ export default function ChatPage() {
                 aria-hidden="true"
                 className="grid size-11 shrink-0 place-items-center rounded-pill bg-primary-soft font-bold text-primary"
               >
-                {room.name.slice(0, 1)}
+                {chatRoomDisplayName(room, roles, rooms.data).slice(0, 1)}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-body font-semibold text-ink">{room.name}</span>
+                <span className="block truncate text-body font-semibold text-ink">
+                  {chatRoomDisplayName(room, roles, rooms.data)}
+                </span>
                 <span className="mt-0.5 flex items-center gap-1.5 text-caption text-muted">
                   <Users size={14} aria-hidden="true" />
                   {room.memberCount} гишүүн

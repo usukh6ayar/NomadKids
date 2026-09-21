@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -346,9 +346,12 @@ describe("group assessment", () => {
 
     renderWithProviders(<GroupAssessmentPage />);
 
-    const goal = (await screen.findByText("Энэ сарын зорилт")).closest(
-      '[data-ui="card"]',
-    ) as HTMLElement;
+    /*
+      ★ A region, not a card — the goal block lost its panel on 2026-09-16 at
+      the client's request that it be transparent. The label it is found by is
+      the same one a reader sees at the top of it.
+    */
+    const goal = await screen.findByRole("region", { name: "Энэ сарын зорилт" });
     expect(screen.queryByRole("tab", { name: "Үнэлэх" })).not.toBeInTheDocument();
     expect(within(goal).queryByLabelText("Хүүхэд сонгох")).not.toBeInTheDocument();
     expect(await within(goal).findByRole("button", { name: "Ажиглалт" })).toBeInTheDocument();
@@ -670,6 +673,9 @@ describe("uploading photos", () => {
 // ── Term report ─────────────────────────────────────────────────────────────
 
 describe("the term report", () => {
+  const TALK_TYPE_ID = "99999999-9999-4999-8999-000000000003";
+  const NEXT_CHILD_ID = "99999999-9999-4999-8999-000000000004";
+
   const TERM = {
     id: TERM_ID,
     number: 1,
@@ -689,6 +695,16 @@ describe("the term report", () => {
     situation: "Блокоор цамхаг барив",
     type: { id: TYPE_ID, name: "Өдөр тутмын ажиглалт", code: "daily" },
     media: [],
+  };
+
+  /** A second kind, so a chip has something of its own to count. */
+  const NOTE_TALK = {
+    ...NOTE_IN_TERM,
+    id: "77777777-7777-4777-8777-000000000003",
+    observedOn: "2026-10-20",
+    activityName: null,
+    situation: "Ээжтэйгээ ярилцсан нь",
+    type: { id: TALK_TYPE_ID, name: "Ярилцлага", code: "conversation" },
   };
 
   /** Outside the term's dates, so the picker must not offer it. */
@@ -711,6 +727,13 @@ describe("the term report", () => {
       { path: "/auth/me", body: sessionFor([role]) },
       { path: `/children/${CHILD_ID}/term-report`, body: report },
       {
+        path: `/children/${CHILD_ID}/observations/types`,
+        body: [
+          { id: TYPE_ID, name: "Өдөр тутмын ажиглалт", code: "daily" },
+          { id: TALK_TYPE_ID, name: "Ярилцлага", code: "conversation" },
+        ],
+      },
+      {
         path: `/children/${CHILD_ID}/observations`,
         body: { items: notes, page: 1, pageSize: 25, total: notes.length, totalPages: 1 },
       },
@@ -727,84 +750,182 @@ describe("the term report", () => {
         },
       },
       { path: "/kindergartens/", body: [TERM] },
+      // Last: `/children` is a prefix of every route above it.
+      {
+        path: "/children",
+        body: {
+          items: [child, { ...child, id: NEXT_CHILD_ID, firstName: "Болд" }],
+          page: 1,
+          pageSize: 100,
+          total: 2,
+          totalPages: 1,
+        },
+      },
     ]);
   }
 
   /**
-   * ★ A draft is the teacher's working text.
+   * ★ **The conclusion is not a family's to read — the client, 2026-09-14.**
    *
-   * The API refuses a guardian anything but FINAL, so the screen must not imply
-   * one is coming — and must never render the form for them.
+   * "Удирдлага бичсэнг харна, эцэг эх харахгүй." The API answers a guardian
+   * with the shape an unwritten report has, whatever the status, so the screen
+   * cannot render one; what it must not do is leave them on a blank page
+   * guessing. Both statuses are asserted because `FINAL` used to be exactly
+   * the state that opened this to them.
    */
-  it("shows a parent nothing while the report is still a draft", async () => {
+  it("tells a parent the conclusion is staff's while it is a draft", async () => {
     setParams({ childId: CHILD_ID });
-    stubFor("PARENT", { exists: true, status: "DRAFT", strengths: "Ноорог" });
+    stubFor("PARENT", { exists: true, status: "DRAFT", strengths: "Хамт олонтойгоо сайн" });
 
     renderWithProviders(<TermReportPage />);
 
-    expect(await screen.findByText("Тайлан хараахан бэлэн болоогүй")).toBeInTheDocument();
+    /*
+      `waitFor`, not `findByText`: the session resolves after the page's first
+      paint and remounts the subtree, so a node captured by `findByText` is
+      detached by the time it is asserted on.
+    */
+    await waitFor(() =>
+      expect(screen.getByText("Улирлын дүгнэлт нээлттэй биш")).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("Хамт олонтойгоо сайн")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Давуу тал")).not.toBeInTheDocument();
-    expect(screen.queryByText("Ноорог")).not.toBeInTheDocument();
   });
 
-  it("shows a parent the finalised report, read-only", async () => {
+  /** `FINAL` used to be exactly the state that opened this to a family. */
+  it("tells a parent the same once it is finalised", async () => {
     setParams({ childId: CHILD_ID });
-    stubFor("PARENT", {
-      exists: true,
-      status: "FINAL",
-      strengths: "Хамт олонтойгоо сайн",
-      nextGoals: "Тоо таних",
-    });
+    stubFor("PARENT", { exists: true, status: "FINAL", strengths: "Хамт олонтойгоо сайн" });
 
     renderWithProviders(<TermReportPage />);
 
-    expect(await screen.findByText("Хамт олонтойгоо сайн")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Ноорог хадгалах/ })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByText("Улирлын дүгнэлт нээлттэй биш")).toBeInTheDocument(),
+    );
+    expect(screen.queryByText("Хамт олонтойгоо сайн")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Дүгнэлт" })).not.toBeInTheDocument();
   });
 
-  it("gives a teacher the form while it is a draft", async () => {
+  /**
+   * ★ One content box, not four — the client's 2026-09-14 design.
+   *
+   * The record still carries four paragraphs and the PDF still prints them;
+   * the other three are under Дэлгэрэнгүй, so the screen asks for a conclusion
+   * rather than for a form to be filled.
+   */
+  it("gives a teacher one content box, seeded from the draft", async () => {
     setParams({ childId: CHILD_ID });
-    stubFor("TEACHER", { exists: true, status: "DRAFT", strengths: "Ноорог" });
+    stubFor("TEACHER", { exists: true, status: "DRAFT", strengths: "Ноорог" }, [NOTE_IN_TERM]);
 
     renderWithProviders(<TermReportPage />);
 
-    expect(await screen.findByLabelText("Давуу тал")).toHaveValue("Ноорог");
+    expect(await screen.findByLabelText("Дүгнэлтийн агуулга")).toHaveValue("Ноорог");
     expect(screen.getByRole("button", { name: /Ноорог хадгалах/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Дүгнэлт хадгалах" })).toBeInTheDocument();
+    // The counter the design asks for, against the screen's own 1000 limit.
+    expect(screen.getByText("6/1000")).toBeInTheDocument();
   });
 
   /** Finalising is one-way, so the form is gone rather than merely disabled. */
   it("stops offering a teacher the form once it is final", async () => {
     setParams({ childId: CHILD_ID });
-    stubFor("TEACHER", { exists: true, status: "FINAL", strengths: "Хамт олонтойгоо сайн" });
+    stubFor("TEACHER", { exists: true, status: "FINAL", strengths: "Хамт олонтойгоо сайн" }, [
+      NOTE_IN_TERM,
+    ]);
 
     renderWithProviders(<TermReportPage />);
 
     expect(await screen.findByText(/баталгаажсан тул засах боломжгүй/)).toBeInTheDocument();
-    expect(screen.queryByLabelText("Давуу тал")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Дүгнэлтийн агуулга")).not.toBeInTheDocument();
   });
 
   /*
     ★ The notes are ticked, and the ticking is part of the form.
 
     Client, 2026-09-11: "өмнө нь бичсэн хэсгүүдээ чекэлж сонгож байгаад тэдгээр
-    дээрээ багцлан дүгнэлт гаргадаг." The citation saves with the paragraphs,
-    under the one Ноорог хадгалах press.
+    дээрээ багцлан дүгнэлт гаргадаг." The citation saves with the text, under
+    the one Ноорог хадгалах press.
   */
-  it("ticks a note and sends it with the report", async () => {
+  it("ticks a note and sends it with the conclusion", async () => {
     const user = userEvent.setup();
     setParams({ childId: CHILD_ID });
     const { calls } = stubFor("TEACHER", { exists: true, status: "DRAFT" }, [NOTE_IN_TERM]);
 
     renderWithProviders(<TermReportPage />);
 
-    // Scoped: the Ажиглалт tab at the foot lists the same notes.
-    const picker = await screen.findByRole("group", { name: "Дүгнэлтэд авах тэмдэглэлүүд" });
+    const picker = await screen.findByRole("group", { name: "Тэмдэглэлүүдээс сонгох" });
     await user.click(await within(picker).findByText("Блокоор цамхаг барив"));
     await user.click(screen.getByRole("button", { name: /Ноорог хадгалах/ }));
 
     await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
     const put = calls.find((c) => c.method === "PUT")?.body as Record<string, unknown>;
     expect(put.observationIds).toEqual([NOTE_IN_TERM.id]);
+  });
+
+  /**
+   * ★ The pickable notes wear the Ажиглалт screen's own card — the client,
+   * 2026-09-14: "ажиглалт дээрх тэмдэглэл шигээ загвараар харагд."
+   *
+   * One face, two wrappers: a button that opens the note there, a label that
+   * ticks it here. Asserted on the parts that only the shared face draws.
+   */
+  it("draws the pickable notes with the Ажиглалт screen's own card", async () => {
+    setParams({ childId: CHILD_ID });
+    stubFor("TEACHER", { exists: true, status: "DRAFT" }, [NOTE_IN_TERM]);
+
+    renderWithProviders(<TermReportPage />);
+
+    const picker = await screen.findByRole("group", { name: "Тэмдэглэлүүдээс сонгох" });
+    expect(within(picker).getByText("Багш")).toBeInTheDocument();
+    expect(within(picker).getByText("Өдөр тутмын ажиглалт")).toBeInTheDocument();
+    expect(within(picker).getByText("2026.10.14")).toBeInTheDocument();
+    expect(within(picker).getByText("Чөлөөт тоглоом")).toBeInTheDocument();
+    // Still a real checkbox under the card, for the keyboard and the reader.
+    expect(within(picker).getByRole("checkbox")).not.toBeChecked();
+  });
+
+  /**
+   * ★ A date range, not a school year and a term — the client, 2026-09-14:
+   * "2026-2027, 1. I улирал энэ хэрэггүй, оронд эхлэх дуусах хугацаа оруул."
+   *
+   * The range opens on the term today falls inside, so the default list is
+   * what it always was; the term is derived from where the range starts and
+   * named on the form, because the conclusion is still saved against one.
+   */
+  it("filters by a date range, on one row, and names the term it lands in", async () => {
+    setParams({ childId: CHILD_ID });
+    stubFor("TEACHER", { exists: true, status: "DRAFT" }, [NOTE_IN_TERM]);
+
+    renderWithProviders(<TermReportPage />);
+
+    const row = (await screen.findByLabelText("Эхлэх огноо")).closest("div.grid")!;
+    expect(row).toHaveClass("grid-cols-3");
+    expect(within(row as HTMLElement).getByLabelText("Дуусах огноо")).toBeInTheDocument();
+    expect(within(row as HTMLElement).getByLabelText("Сургалтын чиглэл")).toBeInTheDocument();
+
+    expect(screen.getByLabelText("Эхлэх огноо")).toHaveValue(TERM.startsOn);
+    expect(screen.getByLabelText("Дуусах огноо")).toHaveValue(TERM.endsOn);
+    // The form arrives with the notes; the filters paint before either.
+    expect(await screen.findByText("1. I улирал")).toBeInTheDocument();
+    // The year and the term selects are gone.
+    expect(screen.queryByLabelText("Улирал")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Хугацаа")).not.toBeInTheDocument();
+  });
+
+  /** The range narrows the list, which is what it replaced two selects to do. */
+  it("drops a note that falls outside the range", async () => {
+    setParams({ childId: CHILD_ID });
+    stubFor("TEACHER", { exists: true, status: "DRAFT" }, [NOTE_IN_TERM, NOTE_TALK]);
+
+    renderWithProviders(<TermReportPage />);
+
+    const picker = await screen.findByRole("group", { name: "Тэмдэглэлүүдээс сонгох" });
+    expect(within(picker).getByText("Блокоор цамхаг барив")).toBeInTheDocument();
+
+    // NOTE_IN_TERM is 2026-10-14; NOTE_TALK is 2026-10-20.
+    fireEvent.change(screen.getByLabelText("Дуусах огноо"), { target: { value: "2026-10-15" } });
+
+    expect(within(picker).queryByText("Ээжтэйгээ ярилцсан нь")).not.toBeInTheDocument();
+    expect(within(picker).getByText("Блокоор цамхаг барив")).toBeInTheDocument();
   });
 
   /** The term bounds the list, so last term's notes are not on offer. */
@@ -814,7 +935,7 @@ describe("the term report", () => {
 
     renderWithProviders(<TermReportPage />);
 
-    const picker = await screen.findByRole("group", { name: "Дүгнэлтэд авах тэмдэглэлүүд" });
+    const picker = await screen.findByRole("group", { name: "Тэмдэглэлүүдээс сонгох" });
     expect(await within(picker).findByText("Блокоор цамхаг барив")).toBeInTheDocument();
     expect(within(picker).queryByText("Өмнөх улирлын тэмдэглэл")).not.toBeInTheDocument();
   });
@@ -829,7 +950,7 @@ describe("the term report", () => {
     const { calls } = stubFor("TEACHER", { exists: true, status: "DRAFT" }, [NOTE_IN_TERM]);
 
     renderWithProviders(<TermReportPage />);
-    await screen.findByRole("group", { name: "Дүгнэлтэд авах тэмдэглэлүүд" });
+    await screen.findByRole("group", { name: "Тэмдэглэлүүдээс сонгох" });
 
     await selectOption(user, "Сургалтын чиглэл", "Хэл яриа, харилцаа");
 
@@ -853,49 +974,66 @@ describe("the term report", () => {
 
     renderWithProviders(<TermReportPage />);
 
-    const picker = await screen.findByRole("group", { name: "Дүгнэлтэд авах тэмдэглэлүүд" });
-    expect(await within(picker).findByText(/сонгосон 1/)).toBeInTheDocument();
+    const cited = await screen.findByRole("region", { name: "Сонгосон тэмдэглэл" });
+    expect(within(cited).getByText("Сонгосон тэмдэглэл (1)")).toBeInTheDocument();
+    expect(within(cited).getByText("Блокоор цамхаг барив")).toBeInTheDocument();
   });
 
-  /*
-    ★ Ажиглалт · Дүгнэлт — the client's two sections at the foot.
-
-    "Ажиглалт дээр дарахаар бичсэн ажиглалтууд. Харин дүгнэлтээр дарахаар
-    нэгдсэн тайлан бичсэн дүгнэлтүүд гарч ирнэ."
-  */
-  it("puts the notes and the conclusions behind two tabs at the foot", async () => {
+  /** Each kind counted on its own chip, over what the filters left standing. */
+  it("counts each kind on its chip and narrows the list to it", async () => {
     const user = userEvent.setup();
     setParams({ childId: CHILD_ID });
-    stubFor("TEACHER", { exists: true, status: "FINAL", strengths: "Хамт олонтойгоо сайн" }, [
-      NOTE_IN_TERM,
-    ]);
+    stubFor("TEACHER", { exists: true, status: "DRAFT" }, [NOTE_IN_TERM, NOTE_TALK]);
 
     renderWithProviders(<TermReportPage />);
 
-    const tabs = await screen.findByRole("tablist", { name: "Ажиглалт ба дүгнэлт" });
-    expect(within(tabs).getByRole("tab", { name: "Ажиглалт" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(await screen.findByRole("button", { name: "Бүгд (2)" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Ярилцлага (1)" }));
 
-    await user.click(within(tabs).getByRole("tab", { name: "Дүгнэлт" }));
-
-    const panel = await screen.findByRole("tabpanel", { name: "Дүгнэлт" });
-    expect(within(panel).getByText("1. I улирал")).toBeInTheDocument();
-    expect(within(panel).getByText("Баталгаажсан")).toBeInTheDocument();
+    const picker = screen.getByRole("group", { name: "Тэмдэглэлүүдээс сонгох" });
+    expect(within(picker).getByText("Ээжтэйгээ ярилцсан нь")).toBeInTheDocument();
+    expect(within(picker).queryByText("Блокоор цамхаг барив")).not.toBeInTheDocument();
   });
 
-  it("says so when no conclusion has been written yet", async () => {
+  /**
+   * ★ A ticked note stays cited when a chip hides it.
+   *
+   * The selection outlives the filter: a teacher writing about conversations
+   * after ticking an observation must not lose half their citation to a chip.
+   */
+  it("keeps a ticked note in the citation after the chip hides it", async () => {
     const user = userEvent.setup();
     setParams({ childId: CHILD_ID });
-    stubFor("TEACHER", { exists: false, status: null }, [NOTE_IN_TERM]);
+    stubFor("TEACHER", { exists: true, status: "DRAFT" }, [NOTE_IN_TERM, NOTE_TALK]);
 
     renderWithProviders(<TermReportPage />);
 
-    const tabs = await screen.findByRole("tablist", { name: "Ажиглалт ба дүгнэлт" });
-    await user.click(within(tabs).getByRole("tab", { name: "Дүгнэлт" }));
+    const picker = await screen.findByRole("group", { name: "Тэмдэглэлүүдээс сонгох" });
+    await user.click(within(picker).getByText("Блокоор цамхаг барив"));
+    await user.click(screen.getByRole("button", { name: "Ярилцлага (1)" }));
 
-    expect(await screen.findByText("Дүгнэлт бичигдээгүй байна")).toBeInTheDocument();
+    const cited = screen.getByRole("region", { name: "Сонгосон тэмдэглэл" });
+    expect(within(cited).getByText("Сонгосон тэмдэглэл (1)")).toBeInTheDocument();
+    expect(within(cited).getByText("Блокоор цамхаг барив")).toBeInTheDocument();
+
+    await user.click(within(cited).getByRole("button", { name: "Бүгдийг цэвэрлэх" }));
+    expect(within(cited).getByText("Сонгосон тэмдэглэл (0)")).toBeInTheDocument();
+  });
+
+  /**
+   * ★ The written conclusions live on the record hub now — the client,
+   * 2026-09-14: "энэ явцын үнэлгээний дүгнэлт доор орсон тул дээрээ байх
+   * хэрэггүй." A second copy at the foot of the screen where the next one is
+   * written is the duplication that instruction is about.
+   */
+  it("leaves the written conclusions to the record hub", async () => {
+    setParams({ childId: CHILD_ID });
+    stubFor("TEACHER", { exists: true, status: "DRAFT" }, [NOTE_IN_TERM]);
+
+    renderWithProviders(<TermReportPage />);
+
+    await screen.findByRole("group", { name: "Тэмдэглэлүүдээс сонгох" });
+    expect(screen.queryByRole("tablist", { name: "Ажиглалт ба дүгнэлт" })).not.toBeInTheDocument();
   });
 });
 
@@ -1677,10 +1815,10 @@ describe("teacher dashboard", () => {
       // what it actually shows. The assertion is that the card is on the
       // dashboard at all, which is unchanged.
       "Долоо хоногийн ирц",
-      "Төрсөн өдөр",
+      "Төрсөн өдөрийн булан",
       "Явцын үнэлгээ",
       "Сүүлийн нийтлэл",
-      "Сургуулийн чат",
+      "Чат",
     ]) {
       expect(
         await screen.findByRole("heading", { name: card }),
@@ -1837,7 +1975,7 @@ describe("teacher dashboard", () => {
 
     const feed = screen.getByRole("region", { name: "Сүүлийн ажиглалтууд" });
     expect(within(feed).getByText("Ажиглалт хараахан бичигдээгүй")).toBeInTheDocument();
-    expect(within(feed).getByRole("link", { name: "Хүүхдүүд" })).toBeInTheDocument();
+    expect(within(feed).getByRole("link", { name: "Суралцагч" })).toBeInTheDocument();
   });
 
   /**

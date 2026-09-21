@@ -183,6 +183,58 @@
   --color-pink-ink: #a82d50;
 
   /*
+   * ★ The saturated step of three accents — added 2026-09-14, at the client's
+   * instruction about the record screens: "зөөлөн ... болго, гүн огт биш", and
+   * then "арай хэт усан өнгөтэй байна, арай орчин үеийн болго."
+   *
+   * Both notes are about the same three buttons and they bracket a colour the
+   * palette did not have. The tint is too washed out to carry a primary
+   * action; the `-ink` step is a near-black of the hue, which is what "гүн" was
+   * rejecting; and `-chart` sits at about 3.2:1 against white — right for a
+   * bar in a graphic, wrong under button text.
+   *
+   * These are measured against white, the only thing that goes on top of them:
+   * green 4.62:1, blue 4.72:1, orange 4.59:1 — all clear of the 4.5:1 floor
+   * for the semibold body text the buttons carry.
+   *
+   * Used only where a kind of record has to be recognisable at a glance
+   * (Ажиглалт · Ярилцлага · Бүтээл). The primary blue is still what an
+   * ordinary button is.
+   */
+  --color-mint-solid: #17855c;
+  --color-sky-solid: #2f78b8;
+  --color-peach-solid: #c2522f;
+
+  /*
+   * ★ The bright step of the same three — 2026-09-16, and it exists because
+   * the `-solid` step above cannot be lightened.
+   *
+   * The client bracketed this twice more: the solid surfaces read "хэт бараан"
+   * and the tint under `-ink` read "хэт цайвар"; what they asked for is "арай
+   * тод, хар бараан биш, энгийн тод өнгүүд".
+   *
+   * The arithmetic is the whole story. White text needs 4.5:1, the solids sit
+   * at 4.59–4.72, so under white lettering there is no lighter colour to move
+   * to — a brighter surface is only possible if the label stops being white.
+   * These are measured against `--color-ink`: green 5.52:1, blue 5.14:1,
+   * orange 5.60:1 — comfortably clear for semibold body text, and each one a
+   * fully saturated mid-tone rather than the pastel tint.
+   *
+   * ★★ The hub draws **white** on them at the client's explicit instruction,
+   * which is 2.6–2.8:1 and under the floor. `observation-hub.tsx` carries the
+   * measurement and the reasoning; the pairing that clears AA is the ink one
+   * above, and it is what any new surface using these should start from.
+   *
+   * Used for the record-kind surfaces on a child's hub (`observation-hub.tsx`)
+   * and nowhere else. The tints stay what a chip is drawn on; `-solid` stays
+   * what a badge with white lettering is filled with; `-chart` stays the
+   * graphics palette.
+   */
+  --color-mint-bright: #22b573;
+  --color-sky-bright: #3fa0e6;
+  --color-peach-bright: #f5803c;
+
+  /*
    * ★ The chart palette — added 2026-09-09, at the client's request: "энд
    * байгаа бүх graphic dashboard-ийн өнгөний тохицлыг гэгээлэг өнгөтэй болго.
    * Одоо бол хэт dark төрлийн өнгүүд байна, бараан ногоон хүрэн гэх мэт".
@@ -465,6 +517,34 @@
    * caption wrapping underneath it.
    */
   --text-figure: 2.25rem;
+
+  /*
+   * ★ Three steps above `figure`, added 2026-09-13 — and the note above has
+   * to be amended rather than quietly contradicted.
+   *
+   * It said `figure` was "deliberately the last step: anything larger stops
+   * being typography and starts being an illustration". That is still the
+   * right instinct for a *tile* in a grid of six, which is what `figure` was
+   * written for. It is not right for the report screen's hero card, where one
+   * statistic is the whole content of a panel a director reads across a desk
+   * — and that card had already been built with `text-[4rem] sm:text-[5.5rem]`
+   * spelled at the call site, which is the shape this scale exists to prevent.
+   *
+   * So the rule moves to match the design rather than the reverse, for the
+   * reason `CLAUDE.md` gives about every rule it has moved: a constraint the
+   * codebase visibly contradicts stops being read. Two pairs, each a phone
+   * step and its `sm` step:
+   *
+   *   figure → figure-lg   a statistic in a panel  (2.25 → 3.25)
+   *   hero   → hero-lg     the one statistic on a hero card (4 → 5.5)
+   *
+   * These are the ceiling. Anything above `hero-lg` is the illustration the
+   * note above warns about, and `responsive.test.tsx` still holds every one of
+   * them to a Mongolian caption wrapping underneath it.
+   */
+  --text-figure-lg: 3.25rem;
+  --text-hero: 4rem;
+  --text-hero-lg: 5.5rem;
 
   /*
    * Heading line-height, deliberately looser than the 1.2 a Latin-only design

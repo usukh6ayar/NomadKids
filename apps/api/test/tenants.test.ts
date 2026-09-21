@@ -40,6 +40,7 @@ let adminA: AuthSession;
 let teacherA: AuthSession;
 let parentA: AuthSession;
 let adminB: AuthSession;
+let accountantA: AuthSession;
 
 beforeAll(async () => {
   app = await createTestApp();
@@ -60,6 +61,16 @@ beforeEach(async () => {
   teacherA = await login(app, a.teacherUser.username);
   parentA = await login(app, a.parentUser.username);
   adminB = await login(app, b.adminUser.username);
+
+  /*
+    ★ An accountant of kindergarten A, teaching nothing — which is the whole
+    point of the cases at the foot of "GET /groups". The role exists in
+    `нэмэлт.md` §13 and reads the register and the funding sheet; it does not
+    appear in `createScenario`, so it is made here.
+  */
+  const accUser = await createUser({ username: uniq("acct") });
+  await createMembership(accUser.id, a.kindergarten.id, "ACCOUNTANT");
+  accountantA = await login(app, accUser.username);
 });
 
 const server = () => app.getHttpServer();
@@ -105,11 +116,143 @@ describe("GET /kindergartens/:id", () => {
     expect(res.status).toBe(404);
   });
 
+  /*
+   * ★ **A bare `NotFoundException()` must not send English — 2026-09-20.**
+   *
+   * Nest fills an argument-less `NotFoundException` with `message: "Not
+   * Found"`, `problem.filter.ts` forwarded any message unequal to the title
+   * into `detail`, and `apps/web/lib/api/errors.ts` prefers `detail` over its
+   * own Mongolian status map. So a director opening a deleted record read
+   * **"Not Found"**. The `message !== title` guard could not catch it: it
+   * compares against «Олдсонгүй», which "Not Found" differs from exactly as a
+   * real thrown message would.
+   *
+   * The filter now drops the phrase Nest itself would have generated for that
+   * status, leaving `title` to answer. Asserted on `detail` being absent
+   * rather than on any sentence, because the fix is "do not invent a detail",
+   * not "invent a better one".
+   */
+  it("sends no English detail for a 404 nobody wrote a message for", async () => {
+    const res = await request(server())
+      .get("/v1/kindergartens/00000000-0000-4000-8000-000000000000")
+      .set("Cookie", adminA.cookies);
+
+    expect(res.status).toBe(404);
+    expect(res.body.title).toBe("Олдсонгүй");
+    expect(res.body.detail).toBeUndefined();
+  });
+
+  /* The same for an unauthenticated request, whose detail was "Unauthorized". */
+  it("sends no English detail for a bare 401 either", async () => {
+    const res = await request(server()).get(`/v1/kindergartens/${a.kindergarten.id}`);
+
+    expect(res.status).toBe(401);
+    expect(res.body.detail).toBeUndefined();
+  });
+
   it("returns 400 for a malformed id", async () => {
     const res = await request(server())
       .get("/v1/kindergartens/not-a-uuid")
       .set("Cookie", adminA.cookies);
     expect(res.status).toBe(400);
+  });
+
+  /*
+   * ★ The row is not the payload — 2026-09-16.
+   *
+   * `findKindergarten` had no `select`, so every column reached every member
+   * of the kindergarten. That was harmless while the table held a name and an
+   * address; it stopped being harmless the moment a credential-shaped column
+   * was added, because a teacher, a cook and a parent all pass this route's
+   * membership check.
+   *
+   * ★★ **Two field sets since 2026-09-20**, not one. A director additionally
+   * reads `esisInstitutionId` — it is what their staff type into the public
+   * registration form, so somebody has to be able to see it — and nobody else
+   * does. The number is on the ministry's public register rather than secret;
+   * the reason to keep it off the member set is the reason the allowlist
+   * exists at all, that widening this route publishes to parents too.
+   *
+   * Both halves are asserted, because the interesting failure is not "the
+   * admin set is wrong" but "the member set quietly grew to match it".
+   */
+  it("sends a member exactly the seven fields a client reads", async () => {
+    await db.kindergarten.update({
+      where: { id: a.kindergarten.id },
+      data: { esisInstitutionId: "42778" },
+    });
+
+    for (const session of [teacherA, parentA]) {
+      const res = await request(server())
+        .get(`/v1/kindergartens/${a.kindergarten.id}`)
+        .set("Cookie", session.cookies);
+
+      expect(res.status).toBe(200);
+      expect(Object.keys(res.body as object).sort()).toEqual([
+        "address",
+        "description",
+        "email",
+        "id",
+        "logoMediaFileId",
+        "name",
+        "phone",
+      ]);
+    }
+  });
+
+  it("sends an admin those seven and the ESIS institution number", async () => {
+    await db.kindergarten.update({
+      where: { id: a.kindergarten.id },
+      data: { esisInstitutionId: "42778" },
+    });
+
+    const res = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}`),
+      adminA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body as object).sort()).toEqual([
+      "address",
+      "description",
+      "email",
+      "esisInstitutionId",
+      "id",
+      "logoMediaFileId",
+      "name",
+      "phone",
+    ]);
+  });
+
+  /*
+   * ★★★ The write answers with the **member** shape, which is narrower than
+   * what the same admin just read. That is deliberate rather than an
+   * oversight: `PATCH` cannot change `esisInstitutionId` — only the platform
+   * operator sets it — so echoing it back would suggest it had been part of
+   * the write. `updateKindergarten` returns a fresh `prisma.update`, which is
+   * the second place the whole row used to escape.
+   */
+  it("does not widen the row on a write either", async () => {
+    await db.kindergarten.update({
+      where: { id: a.kindergarten.id },
+      data: { esisInstitutionId: "42778" },
+    });
+
+    const res = await authed(
+      request(server()).patch(`/v1/kindergartens/${a.kindergarten.id}`),
+      adminA,
+    ).send({ phone: "99112233" });
+
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body as object).sort()).toEqual([
+      "address",
+      "description",
+      "email",
+      "id",
+      "logoMediaFileId",
+      "name",
+      "phone",
+    ]);
   });
 });
 
@@ -238,6 +381,67 @@ describe("school years", () => {
 
     expect(res.status).toBe(409);
     expect(res.body.detail).toMatch(/аль хэдийн/);
+  });
+
+  /*
+   * ★ The ceiling was **20** until 2026-09-20 and the client asked for it to
+   * go — twenty fits "2025-2026" and nothing a director would add to it. The
+   * name below is 41 characters and is the shape the request came in about.
+   *
+   * `SchoolYear.name` is an unbounded `text` column, so 100 is the only limit
+   * there is and raising it needed no migration.
+   */
+  it("accepts a school year name well past the old twenty-character ceiling", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/school-years`),
+      adminA,
+    ).send({
+      name: "2027-2028 оны хичээлийн жил — ахлах бүлэг",
+      startsOn: "2027-09-01",
+      endsOn: "2028-06-01",
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.name).toBe("2027-2028 оны хичээлийн жил — ахлах бүлэг");
+  });
+
+  /*
+   * ★★ **Every validation message a user reads is Mongolian** — CLAUDE.md §5.
+   *
+   * Zod 4 ships 53 locales and no `mn`, so `packages/contracts/src/mn-locale.ts`
+   * is one, installed by `z.config()` at the contracts entry point. Without it
+   * `ZodValidationPipe` put `issue.message` — "Too small: expected string to
+   * have >=1 characters" — straight under the input, for the 436 constraints
+   * that carry no message of their own.
+   *
+   * Asserted as "contains no Latin letters" rather than against the exact
+   * sentence: the wording is allowed to improve, the language is not.
+   */
+  it("refuses a nameless year in Mongolian, not English", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/school-years`),
+      adminA,
+    ).send({ name: "", startsOn: "2027-09-01", endsOn: "2028-06-01" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errors.name[0]).toMatch(/[А-Яа-яӨөҮү]/);
+    expect(res.body.errors.name[0]).not.toMatch(/[A-Za-z]/);
+  });
+
+  /*
+   * ★★★ A field with **no** message of its own, to prove the locale is what
+   * answers rather than a hand-written string. `startsOn` is a bare
+   * `z.coerce.date()`; before the locale it produced "Invalid input: expected
+   * date, received Date".
+   */
+  it("refuses an unparseable date in Mongolian too", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/school-years`),
+      adminA,
+    ).send({ name: "2027-2028", startsOn: "огноо биш", endsOn: "2028-06-01" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errors.startsOn[0]).not.toMatch(/[A-Za-z]/);
   });
 });
 
@@ -460,6 +664,36 @@ describe("GET /groups", () => {
     expect(res.body.items).toHaveLength(0);
   });
 
+  /*
+    ★ 2026-09-13, and it was a real defect rather than a missing nicety.
+
+    The client: "нягтлан хэсэг дээр ирцийн дэлгэрэнгүй дээр ороод бүлэг гээд
+    бүлэг сонгох гэхээр харагдахгүй байна." `/attendance/register` is gated to
+    ADMIN and ACCOUNTANT and answers with every class's name and counts — but
+    this route refused the role outright, and even once allowed in, the service
+    narrowed any non-admin to the groups they *teach*. An accountant teaches
+    none, so the "Бүлэг" select on the one screen built for them was empty and
+    no group could ever be chosen.
+  */
+  it("★ an accountant sees every group in their kindergarten", async () => {
+    await createGroup(a.kindergarten.id, a.schoolYear.id, "Хоёрдугаар бүлэг");
+
+    const res = await request(server()).get("/v1/groups").set("Cookie", accountantA.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(2);
+  });
+
+  /* The grant is to their own kindergarten, and a query parameter is a filter. */
+  it("★ an accountant cannot list another kindergarten's groups", async () => {
+    const res = await request(server())
+      .get(`/v1/groups?kindergartenId=${b.kindergarten.id}`)
+      .set("Cookie", accountantA.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(0);
+  });
+
   it("refuses a parent — wrong role", async () => {
     expect((await request(server()).get("/v1/groups").set("Cookie", parentA.cookies)).status).toBe(
       404,
@@ -521,6 +755,28 @@ describe("GET /groups/:id", () => {
     const res = await request(server())
       .get(`/v1/groups/${a.group.id}`)
       .set("Cookie", teacherA.cookies);
+    expect(res.status).toBe(404);
+  });
+
+  /*
+    ★ An accountant opens any class in their own kindergarten — 2026-09-13,
+    with the list fix above. They are not a teacher, so the assignment check
+    that narrows one does not apply to them; they read every class on the
+    register and the funding sheet already.
+  */
+  it("★ allows an accountant into a group they do not teach", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Өөр бүлэг");
+
+    const res = await request(server())
+      .get(`/v1/groups/${other.id}`)
+      .set("Cookie", accountantA.cookies);
+    expect(res.status).toBe(200);
+  });
+
+  it("★ refuses an accountant another kindergarten's group", async () => {
+    const res = await request(server())
+      .get(`/v1/groups/${b.group.id}`)
+      .set("Cookie", accountantA.cookies);
     expect(res.status).toBe(404);
   });
 });

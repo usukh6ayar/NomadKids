@@ -1,51 +1,65 @@
 "use client";
 
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { ChevronLeft, ChevronRight, Users } from "lucide-react";
 import { z } from "zod";
-import { childDetailSchema, termReportSchema, termSchema } from "@kinder/contracts";
-import { get, mutate } from "@/lib/api/browser";
-import { errorMessage, fieldErrors } from "@/lib/api/errors";
+import {
+  MAX_PAGE_SIZE,
+  assessmentConfigSchema,
+  childDetailSchema,
+  childSummarySchema,
+  observationSchema,
+  observationTypeSchema,
+  paginated,
+  termReportSchema,
+  termSchema,
+} from "@kinder/contracts";
+import { get } from "@/lib/api/browser";
+import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, SectionHeader } from "@/components/ui/card";
-import { Field, Select, Textarea } from "@/components/ui/field";
-import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
-import { PageHeader } from "@/components/shell/app-shell";
-import { ChildObservations } from "@/components/child/child-observations";
-import { ReportNotePicker } from "@/components/assessment/report-note-picker";
-import { cn } from "@/lib/utils";
+import { Card } from "@/components/ui/card";
+import { BackButton } from "@/components/ui/back-button";
+import { Input, Select } from "@/components/ui/field";
+import { FilterChip } from "@/components/ui/filter-chip";
+import { SearchField } from "@/components/ui/search-field";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import { ChildAvatar } from "@/components/media/media-image";
+import { ChildPickerDialog } from "@/components/child/child-picker-dialog";
+import { ConclusionNotes } from "@/components/assessment/conclusion-notes";
+import { ConclusionForm } from "@/components/assessment/conclusion-form";
+import { formatAge, fullName } from "@/lib/format";
 
 /**
- * The term report — a teacher's narrative about one child, one term.
+ * Дүгнэлт бичих — the teacher's conclusion about one child, one term.
  *
- * ★ Phase 1's tenth acceptance item, with no screen until now.
+ * ★ Rebuilt to the client's drawing, 2026-09-14.
  *
- * `GET/PUT /children/:id/term-report` and `.../finalize` have been in the API
- * since Phase 8, and `qk.childTermReport` has been sitting in the query keys
- * with nothing calling it. The PDF generator can render one; nobody could write
- * one.
+ * The screen used to be a column: a term select, a list of notes to tick, then
+ * four textareas under it. Writing a conclusion means reading the term back
+ * while writing, and a column makes that a scroll — the evidence is off-screen
+ * exactly when it is being summarised. Two panes put the notes beside the text
+ * on a laptop, which is where this is written, and stack on a phone, which is
+ * where it is read.
  *
- * ★ The same route serves staff and families, because the API already
- * distinguishes them.
+ * ★★ **Staff only** — the client, same day: "удирдлага бичсэнг харна, эцэг эх
+ * харахгүй." The API answers a guardian with the shape an unwritten report
+ * has, so this screen tells them why rather than showing them a blank one.
  *
- * `findTermReport` filters a guardian to `status: FINAL` — a draft is the
- * teacher's working text and a family must not read it half-written. So a
- * parent opening this URL gets the finished report or an empty state, never a
- * form, and that is enforced server-side rather than by hiding a button.
+ * ★★★ The previously written conclusions are **not** here any more.
  *
- * ★ A finalised report is read-only, and the API enforces it.
- *
- * `PUT` answers 409 once the report is FINAL, so this screen not offering the
- * form is a courtesy rather than the guarantee — "final" that could change
- * underneath the family who read it would not be final. Finalising twice is a
- * no-op on the server, so a double-click cannot move the timestamp the family
- * were told about.
+ * They are a tab on the record hub — "энэ явцын үнэлгээний дүгнэлт доор орсон
+ * тул дээрээ байх хэрэггүй" — and a second copy at the foot of the screen
+ * where the next one is written is the duplication that instruction is about.
  */
 const termsSchema = z.array(termSchema);
+const observationsSchema = paginated(observationSchema);
+const observationTypesSchema = z.array(observationTypeSchema);
+const childrenPageSchema = paginated(childSummarySchema);
 
 export default function TermReportPage() {
   const params = useParams<{ childId: string }>();
@@ -53,9 +67,30 @@ export default function TermReportPage() {
 }
 
 function TermReport({ childId }: { childId: string }) {
+  const router = useRouter();
   const { hasRole, primaryKindergartenId } = useSession();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
-  const [termId, setTermId] = useState("");
+
+  /*
+    ★ A date range, not a school year and a term — the client, 2026-09-14:
+    "2026-2027, 1. I улирал энэ хэрэггүй, оронд эхлэх дуусах хугацаа оруул."
+
+    The two selects answered "which notes" twice over, and a teacher writing up
+    a fortnight had to pick the term that contained it and then read past
+    everything else in it. The range says the same thing directly.
+
+    The term itself does not disappear — a conclusion belongs to one, the API
+    saves it against `termId`, and a family's report is read per term. It is
+    *derived* from the start of the range and named on the form, so the screen
+    stops asking a question it can answer and nothing about the record changes.
+  */
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [domainId, setDomainId] = useState("");
+  const [typeCode, setTypeCode] = useState("all");
+  const [search, setSearch] = useState("");
+  const [picking, setPicking] = useState(false);
+  const [citedIds, setCitedIds] = useState<string[]>([]);
 
   const child = useQuery({
     queryKey: qk.child(childId),
@@ -68,484 +103,365 @@ function TermReport({ childId }: { childId: string }) {
     enabled: Boolean(primaryKindergartenId),
   });
 
-  const termItems = terms.data ?? [];
+  const config = useQuery({
+    queryKey: qk.assessmentConfig(primaryKindergartenId ?? ""),
+    queryFn: () =>
+      get(`/kindergartens/${primaryKindergartenId}/assessment-config`, assessmentConfigSchema),
+    enabled: Boolean(primaryKindergartenId) && isStaff,
+    staleTime: 5 * 60_000,
+  });
 
-  // Default to the term today falls inside, and to the last one otherwise —
-  // which in June is the term a teacher is actually writing up.
-  useEffect(() => {
-    if (termId || termItems.length === 0) return;
-    const today = new Date().toISOString().slice(0, 10);
-    const current = termItems.find(
-      (term) => (term.startsOn ?? "") <= today && today <= (term.endsOn ?? ""),
-    );
-    setTermId((current ?? termItems[termItems.length - 1]!).id);
-  }, [termItems, termId]);
+  const types = useQuery({
+    queryKey: qk.observationTypes(childId),
+    queryFn: () => get(`/children/${childId}/observations/types`, observationTypesSchema),
+    enabled: isStaff,
+    staleTime: 5 * 60_000,
+  });
 
-  if (child.isLoading || terms.isLoading) return <LoadingState rows={4} />;
-  if (child.isError) return <ErrorState description={errorMessage(child.error)} />;
+  /*
+    ★ The strand goes to the server; every other filter does not.
 
-  return (
-    <div className="page-band">
-      <PageHeader title="Улирлын тайлан" />
+    A note's list shape carries no domains, so `?domainId=` is the only way to
+    ask that question. The term, the kind and the keyword are all answerable
+    from rows this screen already has, and refetching for them would be a
+    request to answer something already on screen.
+  */
+  const notes = useQuery({
+    queryKey: qk.childObservations(childId, { pageSize: MAX_PAGE_SIZE, domainId }),
+    queryFn: () =>
+      get(
+        `/children/${childId}/observations?page=1&pageSize=${MAX_PAGE_SIZE}` +
+          (domainId ? `&domainId=${domainId}` : ""),
+        observationsSchema,
+      ),
+    enabled: isStaff,
+  });
 
-      {termItems.length === 0 ? (
-        <EmptyState
-          title="Улирал бүртгэгдээгүй байна"
-          description={
-            isStaff
-              ? "Улирлын тайлан улиралд харьяалагддаг. Захирал эхлээд улирал үүсгэнэ."
-              : "Улирал тохируулсны дараа тайлан харагдана."
-          }
-        />
-      ) : (
-        <>
-          <Field label="Улирал">
-            {({ id }) => (
-              <Select
-                id={id}
-                value={termId}
-                onChange={(e) => setTermId(e.target.value)}
-                className="max-w-[280px]"
-              >
-                {termItems.map((term) => (
-                  <option key={term.id} value={term.id}>
-                    {term.number}. {term.name}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
+  /** The roster, for the arrows beside the child's name. */
+  const roster = useQuery({
+    queryKey: qk.children({ page: 1, pageSize: MAX_PAGE_SIZE }),
+    queryFn: () => get(`/children?page=1&pageSize=${MAX_PAGE_SIZE}`, childrenPageSchema),
+    enabled: isStaff,
+    staleTime: 60_000,
+  });
 
-          {termId ? (
-            <ReportBody
-              childId={childId}
-              term={termItems.find((row) => row.id === termId)!}
-              isStaff={isStaff}
-            />
-          ) : null}
+  const termItems = useMemo(() => terms.data ?? [], [terms.data]);
 
-          {/*
-            ★ Ажиглалт / Дүгнэлт at the foot — the client's 2026-09-11 ask.
-
-            "Доод хэсэгт ажиглалт дүгнэлт гэсэн 2 хэсэг нэмээд. Ажиглалт дээр
-            дарахаар бичсэн ажиглалтууд. Харин дүгнэлтээр дарахаар нэгдсэн
-            тайлан бичсэн дүгнэлтүүд гарч ирнэ." One is the raw material, the
-            other is what was made from it, and having both under the form is
-            what lets a teacher check their summary against the term.
-          */}
-          <ReportArchive childId={childId} terms={termItems} isStaff={isStaff} />
-        </>
-      )}
-    </div>
+  const ordered = useMemo(
+    () => [...termItems].sort((a, b) => (a.startsOn ?? "").localeCompare(b.startsOn ?? "")),
+    [termItems],
   );
-}
 
-function ReportBody({
-  childId,
-  term,
-  isStaff,
-}: {
-  childId: string;
-  term: z.infer<typeof termSchema>;
-  isStaff: boolean;
-}) {
-  const termId = term.id;
-  const queryClient = useQueryClient();
+  /*
+    The term the range starts in — the one this conclusion is saved against.
+
+    Falling back to the last configured term rather than to none: a range that
+    lands in a school holiday still has to be written up somewhere, and the
+    form names whichever term it resolved to.
+  */
+  const term =
+    ordered.find(
+      (row) => (row.startsOn ?? "").slice(0, 10) <= from && from <= (row.endsOn ?? "").slice(0, 10),
+    ) ?? ordered[ordered.length - 1];
+  const termId = term?.id ?? "";
 
   const report = useQuery({
     queryKey: qk.termReport(childId, termId),
     queryFn: () => get(`/children/${childId}/term-report?termId=${termId}`, termReportSchema),
+    enabled: isStaff && Boolean(termId),
   });
 
-  const [form, setForm] = useState({
-    strengths: "",
-    needsSupport: "",
-    nextGoals: "",
-    adviceForParents: "",
-  });
-
-  /**
-   * The notes this report cites.
-   *
-   * ★ Held here rather than inside the picker, because it is part of the form:
-   * it is saved by the same button as the four paragraphs, and a selection that
-   * lived in the picker would be lost every time the strand filter remounted it.
-   */
-  const [citedIds, setCitedIds] = useState<string[]>([]);
-
-  // Seeded from the server, and re-seeded when the term changes — otherwise
-  // switching terms would show the previous term's text in the new one's form.
+  // Opens on the term today falls inside, and on the last one otherwise —
+  // which in June is the term a teacher is actually writing up.
   useEffect(() => {
-    setForm({
-      strengths: report.data?.strengths ?? "",
-      needsSupport: report.data?.needsSupport ?? "",
-      nextGoals: report.data?.nextGoals ?? "",
-      adviceForParents: report.data?.adviceForParents ?? "",
-    });
+    if (from || ordered.length === 0) return;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const current = ordered.find(
+      (row) => (row.startsOn ?? "") <= today && today <= (row.endsOn ?? ""),
+    );
+    const opening = current ?? ordered[ordered.length - 1]!;
+    setFrom((opening.startsOn ?? "").slice(0, 10));
+    setTo((opening.endsOn ?? "").slice(0, 10));
+  }, [ordered, from]);
+
+  // The citation is seeded from the saved report, and re-seeded per term.
+  useEffect(() => {
     setCitedIds((report.data?.observations ?? []).map((row) => row.id));
   }, [report.data, termId]);
 
-  const save = useMutation({
-    mutationFn: () =>
-      mutate(`/children/${childId}/term-report`, termReportSchema, {
-        method: "PUT",
-        body: {
-          termId,
-          strengths: form.strengths.trim() || null,
-          needsSupport: form.needsSupport.trim() || null,
-          nextGoals: form.nextGoals.trim() || null,
-          adviceForParents: form.adviceForParents.trim() || null,
-          // Always sent, so unticking the last note is expressible. The API
-          // treats an omitted field as "leave the citation alone".
-          observationIds: citedIds,
-        },
-      }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.termReport(childId, termId) }),
+  /*
+    The notes in range, before the kind chips — which are counted from this
+    set, so a chip's number and the list under it cannot disagree.
+  */
+  const keyword = search.trim().toLocaleLowerCase("mn-MN");
+  const inTerm = (notes.data?.items ?? []).filter((note) => {
+    const day = note.observedOn.slice(0, 10);
+    if (from && day < from) return false;
+    if (to && day > to) return false;
+
+    if (!keyword) return true;
+    return [note.situation, note.childDid, note.childSaid, note.teacherComment, note.activityName]
+      .filter(Boolean)
+      .join(" ")
+      .toLocaleLowerCase("mn-MN")
+      .includes(keyword);
   });
 
-  const finalize = useMutation({
-    mutationFn: () =>
-      mutate(`/children/${childId}/term-report/finalize`, z.unknown(), {
-        method: "POST",
-        body: { termId },
-      }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.termReport(childId, termId) }),
-  });
+  const shownNotes =
+    typeCode === "all" ? inTerm : inTerm.filter((note) => (note.type?.code ?? "") === typeCode);
 
-  if (report.isLoading) return <LoadingState rows={3} />;
-  if (report.isError) return <ErrorState description={errorMessage(report.error)} />;
+  /*
+    ★ A ticked note is shown in the citation even when the filter hides it.
 
-  const isFinal = report.data?.status === "FINAL";
-  const errors = fieldErrors(save.error);
+    The selection outlives the filter, so the right-hand list is resolved from
+    the whole term rather than from what is currently on the left — otherwise
+    changing a chip would appear to have unticked half the citation.
+  */
+  const citedNotes = useMemo(() => {
+    const byId = new Map((notes.data?.items ?? []).map((note) => [note.id, note]));
+    return citedIds
+      .map((id) => byId.get(id))
+      .filter((note): note is NonNullable<typeof note> => Boolean(note))
+      .sort((a, b) => a.observedOn.localeCompare(b.observedOn));
+  }, [citedIds, notes.data]);
 
-  // A guardian sees only a finalised report; the API already refuses them a
-  // draft, so an empty answer here means "not written yet, or not finished".
-  if (!isStaff) {
-    if (!isFinal) {
-      return (
+  const rosterItems = roster.data?.items ?? [];
+  const atIndex = rosterItems.findIndex((row) => row.id === childId);
+  const step = (delta: number) => {
+    const next = rosterItems[atIndex + delta];
+    if (next) router.push(`/children/${next.id}/term-report`);
+  };
+
+  if (child.isLoading) return <LoadingState rows={4} />;
+  if (child.isError) return <ErrorState description={errorMessage(child.error)} />;
+
+  const data = child.data!;
+  const group = data.enrollments?.find((row) => row.group)?.group?.name;
+
+  return (
+    <div className="flex flex-col gap-4 py-2">
+      <header className="flex items-center gap-2">
+        <BackButton href={`/children/${childId}/observations?type=daily`} />
+        <h1 className="min-w-0 flex-1 truncate text-title font-semibold leading-heading text-ink">
+          Дүгнэлт бичих
+        </h1>
+
+        {/*
+          The trail, on the widths that have room for it. A phone gets the back
+          arrow, which is the same journey in one control.
+        */}
+        <nav aria-label="Замнал" className="hidden shrink-0 text-caption text-muted lg:block">
+          <Link href="/children" className="hover:text-ink">
+            Суралцагч
+          </Link>
+          <span aria-hidden="true"> / </span>
+          <Link href={`/children/${childId}/general`} className="hover:text-ink">
+            {fullName(data)}
+          </Link>
+          <span aria-hidden="true"> / </span>
+          <Link href={`/children/${childId}/observations?type=daily`} className="hover:text-ink">
+            Ажиглалт
+          </Link>
+          <span aria-hidden="true"> / </span>
+          <span className="font-semibold text-ink">Дүгнэлт</span>
+        </nav>
+      </header>
+
+      {!isStaff ? (
+        /*
+          ★ A family is told, rather than shown an empty form — 2026-09-14.
+
+          The conclusion is the teacher's professional judgement, written for
+          the kindergarten's record; what a family reads is the portfolio, the
+          notes marked visible and the assessments released to them. Saying so
+          in one sentence is the difference between a rule and a screen that
+          looks broken.
+        */
         <EmptyState
-          title="Тайлан хараахан бэлэн болоогүй"
-          description="Багш улирлын тайланг бичиж дуусгасны дараа энд харагдана."
+          title="Улирлын дүгнэлт нээлттэй биш"
+          description="Багшийн бичсэн улирлын дүгнэлтийг цэцэрлэгийн багш, удирдлага үзнэ. Та хүүхдийнхээ тэмдэглэл, зураг, үнэлгээг цахим хувийн хавтаснаас харна уу."
         />
-      );
-    }
-    return <ReadOnlyReport report={report.data!} />;
-  }
-
-  if (isFinal) {
-    return (
-      <div className="flex flex-col gap-4">
-        <p role="status" className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink">
-          Энэ тайлан баталгаажсан тул засах боломжгүй. Эцэг эх үүнийг харж байна.
-        </p>
-        <ReadOnlyReport report={report.data!} />
-      </div>
-    );
-  }
-
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!save.isPending) save.mutate();
-      }}
-      className="flex flex-col gap-4"
-      noValidate
-    >
-      {/*
-        ★ The notes first, then the conclusion drawn from them.
-
-        The client's order and the working order both: a teacher reads the term
-        back, ticks what they are about to summarise, and writes. Putting the
-        paragraphs first would ask for the conclusion before the evidence.
-
-        `key` on the term — see the picker's own note about the strand filter.
-      */}
-      <ReportNotePicker
-        key={termId}
-        childId={childId}
-        term={term}
-        selected={citedIds}
-        onChange={setCitedIds}
-        disabled={save.isPending}
-      />
-
-      <Card pad="roomy" className="flex flex-col gap-4">
-        <FormError message={save.isError ? errorMessage(save.error) : null} />
-        <FormError message={finalize.isError ? errorMessage(finalize.error) : null} />
-
-        {save.isSuccess ? (
-          <p
-            role="status"
-            className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink"
-          >
-            Ноорог хадгалагдлаа.
-          </p>
-        ) : null}
-
-        <ReportField
-          label="Давуу тал"
-          hint="Энэ улиралд хүүхэд юунд онцгой сайн байсан бэ."
-          error={errors.strengths}
-          value={form.strengths}
-          onChange={(v) => setForm((f) => ({ ...f, strengths: v }))}
-        />
-        <ReportField
-          label="Дэмжлэг шаардлагатай"
-          hint="Юун дээр илүү дадлага хэрэгтэй байгаа вэ."
-          error={errors.needsSupport}
-          value={form.needsSupport}
-          onChange={(v) => setForm((f) => ({ ...f, needsSupport: v }))}
-        />
-        <ReportField
-          label="Дараагийн зорилт"
-          error={errors.nextGoals}
-          value={form.nextGoals}
-          onChange={(v) => setForm((f) => ({ ...f, nextGoals: v }))}
-        />
-        <ReportField
-          label="Эцэг эхэд өгөх зөвлөмж"
-          hint="Гэртээ юу хийвэл дэмжлэг болох вэ."
-          error={errors.adviceForParents}
-          value={form.adviceForParents}
-          onChange={(v) => setForm((f) => ({ ...f, adviceForParents: v }))}
-        />
-
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button type="submit" variant="secondary" disabled={save.isPending}>
-            {save.isPending ? "Хадгалж байна…" : "Ноорог хадгалах"}
-          </Button>
-          {/*
-            Confirmed, because it is one-way: finalising publishes the text to
-            the family and this screen stops offering the form afterwards.
-          */}
-          <Button
-            type="button"
-            disabled={finalize.isPending || !report.data?.exists}
-            onClick={() => {
-              if (window.confirm("Баталгаажуулсны дараа засах боломжгүй. Үргэлжлүүлэх үү?")) {
-                finalize.mutate();
-              }
-            }}
-          >
-            {finalize.isPending ? "Баталгаажуулж байна…" : "Баталгаажуулах"}
-          </Button>
-        </div>
-
-        {!report.data?.exists ? (
-          <p className="text-caption text-muted">
-            Баталгаажуулахын өмнө ноорогоо нэг удаа хадгална уу.
-          </p>
-        ) : null}
-      </Card>
-    </form>
-  );
-}
-
-function ReportField({
-  label,
-  hint,
-  error,
-  value,
-  onChange,
-}: {
-  label: string;
-  hint?: string;
-  error?: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <Field label={label} hint={hint} error={error}>
-      {({ id, describedBy, invalid }) => (
-        <Textarea
-          id={id}
-          aria-describedby={describedBy}
-          invalid={invalid}
-          rows={3}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      )}
-    </Field>
-  );
-}
-
-function ReadOnlyReport({ report }: { report: z.infer<typeof termReportSchema> }) {
-  const sections = [
-    { title: "Давуу тал", body: report.strengths },
-    { title: "Дэмжлэг шаардлагатай", body: report.needsSupport },
-    { title: "Дараагийн зорилт", body: report.nextGoals },
-    { title: "Эцэг эхэд өгөх зөвлөмж", body: report.adviceForParents },
-  ].filter((section) => section.body);
-
-  if (sections.length === 0) {
-    return <EmptyState title="Тайлан хоосон байна" />;
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      {report.author ? (
-        <Badge tone="sky">
-          {report.author.lastName} {report.author.firstName}
-        </Badge>
-      ) : null}
-
-      {sections.map((section) => (
-        <section key={section.title}>
-          <SectionHeader title={section.title} as="h3" />
-          <Card pad="compact">
-            {/* Preserves the line breaks a teacher typed. */}
-            <p className="whitespace-pre-wrap text-body text-ink">{section.body}</p>
-          </Card>
-        </section>
-      ))}
-    </div>
-  );
-}
-
-/**
- * Ажиглалт · Дүгнэлт — the term's raw material and what was made from it.
- *
- * ★ Two tabs at the foot of the report, 2026-09-11 at the client's request.
- *
- * "Ажиглалт дээр дарахаар бичсэн ажиглалтууд. Харин дүгнэлтээр дарахаар нэгдсэн
- * тайлан бичсэн дүгнэлтүүд гарч ирнэ." The form above is about one term; this
- * is the child's whole record on both sides of it, which is what a teacher
- * checks a summary against.
- *
- * ★★ The Дүгнэлт tab reads one report per term rather than a list endpoint.
- *
- * There is no `GET /children/:id/term-reports`, and a kindergarten's school year
- * has two to four terms — so this is a handful of parallel reads with a hard
- * ceiling, not an unbounded fan-out. `useQueries` shares the same cache entries
- * the form above already fills, so switching terms costs nothing twice.
- *
- * ★★★ A guardian sees the same two tabs, and the API decides what is in them:
- * `findTermReport` filters them to `FINAL`, and the notes list to those marked
- * visible. Neither is hidden here.
- */
-function ReportArchive({
-  childId,
-  terms,
-  isStaff,
-}: {
-  childId: string;
-  terms: z.infer<typeof termSchema>[];
-  isStaff: boolean;
-}) {
-  const [tab, setTab] = useState<"notes" | "reports">("notes");
-
-  return (
-    <section aria-label="Ажиглалт ба дүгнэлт" className="flex flex-col gap-3">
-      <div role="tablist" aria-label="Ажиглалт ба дүгнэлт" className="flex gap-2">
-        <ArchiveTab current={tab} value="notes" onSelect={setTab}>
-          Ажиглалт
-        </ArchiveTab>
-        <ArchiveTab current={tab} value="reports" onSelect={setTab}>
-          Дүгнэлт
-        </ArchiveTab>
-      </div>
-
-      {tab === "notes" ? (
-        <div id="archive-notes" role="tabpanel" aria-label="Ажиглалт">
-          <ChildObservations childId={childId} isStaff={isStaff} />
-        </div>
       ) : (
-        <div id="archive-reports" role="tabpanel" aria-label="Дүгнэлт">
-          <WrittenReports childId={childId} terms={terms} />
-        </div>
-      )}
-    </section>
-  );
-}
+        <>
+          {/*
+            ★ The child is named at the top, with both ways to change them.
 
-function ArchiveTab({
-  current,
-  value,
-  onSelect,
-  children,
-}: {
-  current: "notes" | "reports";
-  value: "notes" | "reports";
-  onSelect: (next: "notes" | "reports") => void;
-  children: string;
-}) {
-  const active = current === value;
+            A teacher writing conclusions works down a roster, and the commonest
+            next action after finishing one child is the same screen for the
+            next: the arrows are that in one press, Сурагч солих is for jumping.
+          */}
+          <Card pad="compact" className="flex items-center gap-3">
+            <ChildAvatar child={data} size={44} />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-lead font-semibold leading-snug text-ink">
+                {fullName(data)}
+              </p>
+              <p className="truncate text-caption text-muted">
+                {formatAge(data.dateOfBirth)}
+                {group ? ` · ${group}` : ""}
+              </p>
+            </div>
 
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      aria-controls={value === "notes" ? "archive-notes" : "archive-reports"}
-      onClick={() => onSelect(value)}
-      className={cn(
-        "min-h-[44px] rounded-pill px-4 text-body font-medium transition-colors",
-        active
-          ? "bg-primary text-primary-ink"
-          : "bg-surface text-muted hover:bg-canvas hover:text-ink",
-      )}
-    >
-      {children}
-    </button>
-  );
-}
+            <Button size="sm" variant="secondary" onClick={() => setPicking(true)}>
+              <Users size={15} aria-hidden="true" />
+              Сурагч солих
+            </Button>
 
-/** Every term's conclusion, in term order, with what each one cites. */
-function WrittenReports({
-  childId,
-  terms,
-}: {
-  childId: string;
-  terms: z.infer<typeof termSchema>[];
-}) {
-  const results = useQueries({
-    queries: terms.map((term) => ({
-      queryKey: qk.termReport(childId, term.id),
-      queryFn: () => get(`/children/${childId}/term-report?termId=${term.id}`, termReportSchema),
-    })),
-  });
+            <div className="hidden shrink-0 gap-1 sm:flex">
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Өмнөх сурагч"
+                disabled={atIndex <= 0}
+                onClick={() => step(-1)}
+              >
+                <ChevronLeft size={18} aria-hidden="true" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label="Дараагийн сурагч"
+                disabled={atIndex < 0 || atIndex >= rosterItems.length - 1}
+                onClick={() => step(1)}
+              >
+                <ChevronRight size={18} aria-hidden="true" />
+              </Button>
+            </div>
+          </Card>
 
-  if (results.some((row) => row.isLoading)) return <LoadingState rows={3} />;
+          {termItems.length === 0 ? (
+            <EmptyState
+              title="Улирал бүртгэгдээгүй байна"
+              description="Улирлын дүгнэлт улиралд харьяалагддаг. Захирал эхлээд улирал үүсгэнэ."
+            />
+          ) : (
+            <>
+              {/*
+                ★ Эхлэх · Дуусах · Сургалтын чиглэл on one line, labelled by
+                their own values — the client, 2026-09-14: "нэг цуваанд
+                харуулаад өг, доошоо болохоор зай их эзлээд байна", and then
+                "2026-2027, 1. I улирал энэ хэрэггүй, оронд эхлэх дуусах
+                хугацаа оруул".
 
-  const written = terms
-    .map((term, index) => ({ term, report: results[index]?.data }))
-    // `exists: false` is the API's "nothing here" shape for both a missing
-    // report and a draft a guardian may not read — see `getTermReport`.
-    .filter((row) => row.report && row.report.exists !== false);
+                Three stacked `Field`s cost three label lines and three rows
+                before a single note, on the screen whose whole point is the
+                notes. The name of each control is carried by `aria-label`
+                rather than a printed line — the same trade the record hub's
+                own period select makes, and what §5's "every field has a
+                label" is actually asking for: a control a screen reader can
+                name, not a word printed above every box.
 
-  if (written.length === 0) {
-    return (
-      <EmptyState
-        title="Дүгнэлт бичигдээгүй байна"
-        description="Улирал сонгоод дээрх маягтад дүгнэлтээ бичнэ үү."
-      />
-    );
-  }
+                The keyword box keeps the row under them: it answers a
+                different question and it is the one control whose value is
+                typed rather than chosen.
+              */}
+              <Card pad="compact" className="flex flex-col gap-2">
+                <div className="grid grid-cols-3 gap-2">
+                  <Input
+                    type="date"
+                    aria-label="Эхлэх огноо"
+                    value={from}
+                    max={to || undefined}
+                    onChange={(event) => setFrom(event.target.value)}
+                  />
+                  <Input
+                    type="date"
+                    aria-label="Дуусах огноо"
+                    value={to}
+                    min={from || undefined}
+                    onChange={(event) => setTo(event.target.value)}
+                  />
+                  <Select
+                    aria-label="Сургалтын чиглэл"
+                    value={domainId}
+                    onChange={(event) => setDomainId(event.target.value)}
+                  >
+                    <option value="">Бүх чиглэл</option>
+                    {(config.data?.domains ?? []).map((domain) => (
+                      <option key={domain.id} value={domain.id}>
+                        {domain.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
 
-  return (
-    <div className="flex flex-col gap-3">
-      {written.map(({ term, report }) => (
-        <Card key={term.id} pad="roomy" className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-body font-semibold text-ink">
-              {term.number}. {term.name}
-            </h3>
-            <Badge tone={report!.status === "FINAL" ? "mint" : "sun"}>
-              {report!.status === "FINAL" ? "Баталгаажсан" : "Ноорог"}
-            </Badge>
-          </div>
+                <SearchField
+                  label="Тэмдэглэл хайх"
+                  placeholder="Тэмдэглэл хайх…"
+                  value={search}
+                  onChange={setSearch}
+                />
+              </Card>
 
-          {report!.observations.length > 0 ? (
-            <p className="text-caption text-muted">
-              {report!.observations.length} тэмдэглэл дээр үндэслэсэн
-            </p>
+              {/* The kinds, counted over everything the filters left standing. */}
+              <div className="flex flex-wrap gap-2">
+                <FilterChip active={typeCode === "all"} onClick={() => setTypeCode("all")}>
+                  Бүгд ({inTerm.length})
+                </FilterChip>
+                {(types.data ?? []).map((type) => {
+                  const count = inTerm.filter(
+                    (note) => (note.type?.code ?? "") === (type.code ?? ""),
+                  ).length;
+                  return (
+                    <FilterChip
+                      key={type.id}
+                      active={typeCode === type.code}
+                      onClick={() => setTypeCode(type.code ?? "")}
+                    >
+                      {type.name} ({count})
+                    </FilterChip>
+                  );
+                })}
+              </div>
+
+              {notes.isError ? <ErrorState description={errorMessage(notes.error)} /> : null}
+              {report.isError ? <ErrorState description={errorMessage(report.error)} /> : null}
+
+              {notes.isLoading || report.isLoading || !term ? (
+                <LoadingState rows={4} />
+              ) : (
+                <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+                  <ConclusionNotes
+                    notes={shownNotes}
+                    selected={citedIds}
+                    onToggle={(id) =>
+                      setCitedIds((current) =>
+                        current.includes(id)
+                          ? current.filter((row) => row !== id)
+                          : [...current, id],
+                      )
+                    }
+                  />
+
+                  <ConclusionForm
+                    key={termId}
+                    childId={childId}
+                    term={term}
+                    report={report.data}
+                    citedNotes={citedNotes}
+                    citedIds={citedIds}
+                    onRemove={(id) => setCitedIds((current) => current.filter((row) => row !== id))}
+                    onClear={() => setCitedIds([])}
+                  />
+                </div>
+              )}
+            </>
+          )}
+
+          {picking ? (
+            <ChildPickerDialog
+              selectedId={childId}
+              title="Сурагч солих"
+              onSelect={(nextId) => {
+                setPicking(false);
+                router.push(`/children/${nextId}/term-report`);
+              }}
+              onClose={() => setPicking(false)}
+            />
           ) : null}
-
-          <ReadOnlyReport report={report!} />
-        </Card>
-      ))}
+        </>
+      )}
     </div>
   );
 }

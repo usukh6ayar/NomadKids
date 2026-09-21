@@ -14,7 +14,7 @@ import {
   UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor, FilesInterceptor } from "@nestjs/platform-express";
-import { idParamSchema } from "@kinder/contracts";
+import { idParamSchema, uuidSchema } from "@kinder/contracts";
 import { z } from "zod";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { RateLimit, RateLimitGuard } from "../common/rate-limit/rate-limit.guard";
@@ -39,9 +39,18 @@ import { MAX_UPLOAD_BYTES } from "./upload-validation";
  *
  * Six, not twelve. Multer buffers every file in memory before the handler
  * runs, so this number multiplied by MAX_UPLOAD_BYTES is the worst case a
- * single request can hold — 60 MB here, in a container that also runs
+ * single request can hold — 120 MB here, in a container that also runs
  * Chromium for the report worker. A full twelve-photo observation is two
  * requests instead of twelve, which is already the whole point.
+ *
+ * ★ It was 60 MB until 2026-09-20, when MAX_UPLOAD_BYTES doubled to 20 MB and
+ * this number did not. Worth knowing where the new figure sits: the api
+ * container is capped at 512 MB (`docker-compose.prod.yml`) on a 2 GB VPS, and
+ * `media.service.ts` validates the files **one at a time**, so the peak is the
+ * 120 MB of buffers plus one sharp decode — not six. That fits, with less room
+ * than before. Two people uploading a full six-photo batch to the same replica
+ * at the same moment is the case to watch; `docs/VPS_DEPLOYMENT.md` §6.2 is
+ * where the swap file that absorbs it is written down.
  */
 const MAX_FILES_PER_UPLOAD = 6;
 
@@ -185,6 +194,10 @@ export class ChildMediaController {
  * would mean one method with two authorization paths — the shape mistake
  * CLAUDE.md §1.1 exists to prevent.
  */
+/** Both ids in the path, validated together: `:id` is the notice and
+ *  `:mediaId` the photograph, and neither may be anything but a uuid. */
+const notificationMediaParamsSchema = z.object({ id: uuidSchema, mediaId: uuidSchema });
+
 @Controller("notifications/:id/media")
 @UseGuards(RateLimitGuard)
 export class NotificationMediaController {
@@ -208,6 +221,24 @@ export class NotificationMediaController {
     if (!file) throw new BadRequestException("Файл хавсаргаагүй байна");
 
     return this.service.uploadForNotification(actor, params.id, file, body.caption ?? null);
+  }
+
+  /**
+   * Removes one photograph from a notice — 2026-09-16.
+   *
+   * Until this existed the edit screen carried a line of copy explaining that
+   * a picture could be added and never taken back, which is a feature gap
+   * written out as an apology. The service decides who may: the post's author
+   * or an administrator, answering 404 to anyone else.
+   */
+  @Delete(":mediaId")
+  @Roles("TEACHER", "ADMIN")
+  async remove(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(notificationMediaParamsSchema))
+    params: { id: string; mediaId: string },
+  ) {
+    return this.service.removeFromNotification(actor, params.id, params.mediaId);
   }
 }
 

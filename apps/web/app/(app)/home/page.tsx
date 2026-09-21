@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { z } from "zod";
 import { parentDashboardSchema, surveySchema, unreadCountSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
@@ -203,56 +203,7 @@ export default function ParentHomePage() {
   );
 }
 
-/**
- * A muted, looping video backdrop behind the whole page.
- *
- * ★ `absolute`, not `fixed` — and that choice is load-bearing, not stylistic.
- * `AppShell`'s outer `<div className="min-h-dvh bg-canvas">` wraps this whole
- * page, and it is a plain, non-positioned box: per the CSS painting order, its
- * own opaque background is a normal in-flow paint step, which always comes
- * *after* — i.e. on top of — a `position: fixed` negative-z-index descendant
- * in the same stacking context, no matter how deep that descendant is nested
- * or what z-index it carries. A `fixed -z-10` video here is invisible 100% of
- * the time, painted over by that ancestor's own background; this was verified
- * by sampling the composited page and getting the canvas colour back exactly,
- * with zero contribution from the video.
- *
- * `position: relative` on both this wrapper and the content sibling opens a
- * *local* stacking context that no ancestor can reach into, and DOM order
- * inside it (video div first, content div second) is what keeps the video
- * behind the cards — no z-index needed.
- *
- * ★★ Sized to the content sibling's own height, not a fixed banner height.
- * A fixed height (an earlier `h-56`, then `h-96`) cuts off mid-page
- * regardless of how much the query returns — for a family with two children,
- * or several recent moments, the cutoff landed inside a section (behind a
- * heading, un-faded) instead of between two of them, which read as a layout
- * bug rather than a banner edge. Sizing to the sibling instead means the
- * backdrop always ends exactly where the page does, however long that is.
- *
- * ★★★ Bled past this wrapper's own box with negative insets, not `inset-0`.
- * `<main>` in `AppShell` (app-shell.tsx) pads its content — `px-4 sm:px-6
- * lg:pl-8 lg:pr-8`, `pt-[22px] lg:pt-10` — so a plain `inset-0` here left the
- * backdrop sitting inside that padding: a band of bare canvas on both sides
- * and above, with the video's own rounded corners visible inside it. The
- * negative offsets below are `main`'s padding values themselves, so the
- * backdrop's top/left/right edges land exactly on `main`'s own border box —
- * flush against the sidebar on a desktop, edge-to-edge on a phone — with
- * nothing left over to round a corner against. If `main`'s padding scale
- * changes, these must change with it.
- *
- * The fade is a percentage gradient for the same reason: fixed pixel stops
- * only fade correctly for one content length. The video stays visible behind
- * nearly the whole page — every section sits on its own opaque `Card`, so
- * there is no legibility cost to the backdrop behind them staying video
- * rather than clearing to canvas early. Only the last stretch, `to-canvas`
- * from 92% to 100%, fades it out — a hard cut at the very bottom would read
- * as the clip being cropped rather than the page ending.
- *
- * Paused under `prefers-reduced-motion`: autoplay is otherwise unconditional,
- * and a looping background video is exactly the motion that preference exists
- * to suppress.
- */
+/** Static cloud artwork behind the parent's home, with its own phone crop. */
 
 const activeSurveysSchema = z.array(surveySchema);
 
@@ -286,19 +237,6 @@ function SurveyTile({ childId }: { childId: string }) {
 }
 
 function HomeBackdrop({ children }: { children: ReactNode }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      video.pause();
-    } else {
-      void video.play();
-    }
-  }, []);
-
   /*
    * ★ This screen no longer scrolls — the tile grid replaced a taller page
    * (assessment badges, the day-grouped feed) that used to need it, and with
@@ -327,18 +265,16 @@ function HomeBackdrop({ children }: { children: ReactNode }) {
       <div
         className="pointer-events-none absolute -left-4 -right-4 -top-5.5 bottom-0 overflow-hidden sm:-left-6 sm:-right-6 lg:-left-8 lg:-right-8 lg:-top-10"
         aria-hidden="true"
+        data-testid="parent-home-backdrop"
       >
-        <video
-          ref={videoRef}
-          className="h-full w-full object-cover object-top filter-[saturate(1.7)_contrast(1.25)_brightness(0.97)]"
-          src="/video.mp4"
-          autoPlay
-          loop
-          muted
-          playsInline
-        />
-        <div className="absolute inset-0 bg-canvas/5" />
-        <div className="absolute inset-0 bg-linear-to-b from-transparent from-92% to-canvas to-100%" />
+        <picture className="block h-full w-full">
+          <source media="(min-width: 640px)" srcSet="/background/parent-home-clouds-wide.png" />
+          <img
+            src="/background/parent-home-clouds-mobile.png"
+            alt=""
+            className="h-full w-full object-cover object-top"
+          />
+        </picture>
       </div>
       <div className="relative flex flex-col gap-3 py-1 lg:gap-8 lg:py-2">{children}</div>
     </div>

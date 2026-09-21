@@ -68,6 +68,22 @@ export const qk = {
   consent: (childId: string) => ["child", childId, "consent"] as const,
   audit: (filters: Record<string, unknown> = {}) => ["admin", "audit", filters] as const,
   esis: (kindergartenId: string) => ["admin", "esis", kindergartenId] as const,
+  /**
+   * `GET …/esis/sync-runs`, paginated — the director's manual-pull history
+   * (`/admin/esis-sync`, CLAUDE.md's 2026-09-17 decision: a sync spends *that*
+   * kindergarten's token, so it is the tenant `ADMIN`'s screen, not the
+   * platform operator's).
+   */
+  esisSyncRuns: (kindergartenId: string, page: number) =>
+    ["admin", "esis", kindergartenId, "sync-runs", page] as const,
+  /**
+   * Prefix of every `esisSyncRuns(kindergartenId, page)` key, regardless of
+   * page — what a sync mutation invalidates after a manual pull, so the tier
+   * card (fixed at page 1) and whichever page of the table is open both
+   * refetch, without hand-listing every open page.
+   */
+  esisSyncRunsAll: (kindergartenId: string) =>
+    ["admin", "esis", kindergartenId, "sync-runs"] as const,
   /** The role-scoped service list every working screen's panel reads. */
   esisCatalog: (kindergartenId: string) => ["esis", kindergartenId, "catalog"] as const,
   esisStudentRegistration: (kindergartenId: string) =>
@@ -357,6 +373,8 @@ export const qk = {
   adminSchoolYears: (kindergartenId: string) => ["admin", "school-years", kindergartenId] as const,
   adminKindergarten: (kindergartenId: string) => ["admin", "kindergarten", kindergartenId] as const,
   adminTerms: (kindergartenId: string) => ["admin", "terms", kindergartenId] as const,
+  adminStaffRegistrations: (kindergartenId: string, page: number) =>
+    ["admin", "staff-registrations", kindergartenId, page] as const,
 
   profile: () => ["me", "profile"] as const,
 

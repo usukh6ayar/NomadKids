@@ -371,7 +371,7 @@ describe("exporting to Excel", () => {
     // F=calories, G=allergenTags, per `menu-workbook.ts`'s column order.
     const row = sheet.getRow(2);
     expect(row.getCell("A").text).toBe("2026-03-02");
-    expect(row.getCell("C").text).toBe("Өдрийн хоол");
+    expect(row.getCell("C").text).toBe("Үндсэн хоол");
     expect(row.getCell("D").text).toBe("Будаатай шөл");
     expect(row.getCell("E").text).toBe("4");
     expect(row.getCell("F").text).toBe("320");

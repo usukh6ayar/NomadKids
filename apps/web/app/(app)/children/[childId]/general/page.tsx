@@ -9,7 +9,7 @@ import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
-import { BackButton } from "@/components/ui/back-button";
+import { PageHeader } from "@/components/shell/app-shell";
 import { Button } from "@/components/ui/button";
 import { Menu, type MenuItem } from "@/components/ui/menu";
 import { ErrorState, LoadingState } from "@/components/ui/states";
@@ -101,7 +101,7 @@ export default function ChildGeneralPage() {
         which is why this points up to the roster rather than to a sibling
         page the way theirs point here.
       */}
-      <BackButton href="/children" />
+      <PageHeader backHref="/children" title="Суралцагч" />
 
       <ChildHeroProfile
         child={data}
@@ -188,12 +188,20 @@ function ChildActions({ childId, isStaff }: { childId: string; isStaff: boolean 
         </Button>
       ) : null}
 
-      <Button asChild variant="secondary" size="sm">
-        <Link href={`/children/${childId}/term-report`}>
-          <ClipboardList size={18} />
-          Улирлын тайлан
-        </Link>
-      </Button>
+      {/*
+        ★ Staff only — the client, 2026-09-14: "удирдлага бичсэнг харна, эцэг
+        эх харахгүй." The API answers a guardian with the same empty shape an
+        unwritten report has, so a family following this link would find a
+        screen that is blank for ever and no way to tell why.
+      */}
+      {isStaff ? (
+        <Button asChild variant="secondary" size="sm">
+          <Link href={`/children/${childId}/term-report`}>
+            <ClipboardList size={18} />
+            Улирлын тайлан
+          </Link>
+        </Button>
+      ) : null}
 
       {overflow.length > 0 ? (
         <Menu

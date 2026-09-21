@@ -26,6 +26,8 @@ import { buildJournalWorkbook } from "./journal-workbook";
 import { summariseDays } from "./daily-summary";
 import type { AttendanceRegisterQuery } from "./attendance.dto";
 import type {
+  CalendarDayDto,
+  CalendarRangeQuery,
   CreateAttendanceRequestDto,
   RecordAttendanceDto,
   RecordGroupAttendanceDto,
@@ -36,8 +38,6 @@ import type {
 import { EsisService } from "../integrations/esis/esis.service";
 import { EsisError } from "../integrations/esis/esis.client";
 
-const DEMO_ESIS_INSTITUTION_ID = 40305;
-
 /**
  * The widest span `groupRangeSheet` will answer — §3.4's "no endpoint returns
  * an unbounded set", expressed in the unit this endpoint is asked in. A week
@@ -45,29 +45,6 @@ const DEMO_ESIS_INSTITUTION_ID = 40305;
  * for; a term is a report, and that is `attendanceRegister`.
  */
 const MAX_REGISTER_DAYS = 31;
-const DEMO_ESIS_GROUPS: Record<string, number> = {
-  "Наран бүлэг": 10001,
-  "Дэлбээ бүлэг": 10002,
-};
-const DEMO_ESIS_PEOPLE: Record<string, number> = {
-  "Ганболд Батбаяр": 90000000000001,
-  "Дорж Намуун": 90000000000002,
-  "Энхбат Тэмүүлэн": 90000000000003,
-  "Мөнхбаяр Сарнай": 90000000000004,
-  "Батжаргал Ану": 90000000000005,
-  "Сүхбаатар Чингис": 90000000000006,
-  "Пүрэвдорж Оюунаа": 90000000000007,
-  "Алтанзул Мандах": 90000000000008,
-  "Нэргүй Хулан": 90000000000009,
-  "Цэрэндорж Билгүүн": 90000000000010,
-};
-
-function stableDemoNumber(value: string, base: number, spread: number) {
-  let hash = 0;
-  for (const char of value) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return base + (hash % spread);
-}
-
 function esisReasonCode(status: string): "PRESENT" | "EXCUSED" | "SICK" | "UNEXCUSED" | null {
   if (status === "PRESENT" || status === "HALF_DAY") return "PRESENT";
   if (status === "EXCUSED") return "EXCUSED";
@@ -157,6 +134,7 @@ export class AttendanceService {
       to: query.to,
       days: built.days,
       totals: built.totals,
+      groups: built.groups,
     };
   }
 
@@ -179,6 +157,69 @@ export class AttendanceService {
    * two queries answer both. `summariseDays` is shared with the Excel sheet for
    * the same reason.
    */
+  /**
+   * The kindergarten's own working-week exceptions.
+   *
+   * ★ Readable by the same people the register is, and writable by an
+   * administrator alone — a holiday moves every figure on the daily screen and
+   * every funding calculation that counts attendance days, so it is a setting
+   * rather than a register entry.
+   */
+  async listCalendarDays(actor: Actor, kindergartenId: string, range: CalendarRangeQuery) {
+    this.tenants.assertCanReadFinance(actor, kindergartenId);
+    const days = await this.repo.findCalendarDays(
+      kindergartenId,
+      toUtcDate(range.from),
+      toUtcDate(range.to),
+    );
+    return days.map((day) => ({
+      date: toDateOnly(day.date),
+      name: day.name,
+      isWorkingDay: day.isWorkingDay,
+    }));
+  }
+
+  async saveCalendarDay(actor: Actor, kindergartenId: string, dto: CalendarDayDto) {
+    this.tenants.assertAdmin(actor, kindergartenId);
+
+    const saved = await this.repo.upsertCalendarDay({
+      kindergartenId,
+      date: toUtcDate(dto.date),
+      name: dto.name,
+      isWorkingDay: dto.isWorkingDay,
+      createdById: actor.userId,
+    });
+
+    await this.audit.append({
+      action: "CREATE",
+      kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "CalendarDay",
+      objectId: saved.id,
+      metadata: { date: dto.date, name: dto.name, isWorkingDay: dto.isWorkingDay },
+    });
+
+    return { date: toDateOnly(saved.date), name: saved.name, isWorkingDay: saved.isWorkingDay };
+  }
+
+  async removeCalendarDay(actor: Actor, kindergartenId: string, date: string) {
+    this.tenants.assertAdmin(actor, kindergartenId);
+
+    const removed = await this.repo.softDeleteCalendarDay(kindergartenId, toUtcDate(date));
+    if (removed === 0) throw new NotFoundException();
+
+    await this.audit.append({
+      action: "DELETE",
+      kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "CalendarDay",
+      objectId: date,
+      metadata: { date },
+    });
+
+    return { date };
+  }
+
   async dailySummary(actor: Actor, kindergartenId: string, query: AttendanceRegisterQuery) {
     const built = await this.buildRegister(actor, kindergartenId, query);
     const [kindergarten, submissions] = await Promise.all([
@@ -393,8 +434,8 @@ export class AttendanceService {
       metadata: {
         count: saved.length,
         dates: [...new Set(dto.entries.map((e) => e.date))],
-        esisMode: preview.demo ? "MOCK" : "LIVE",
-        esisStatus: preview.demo ? "DEMO_SUCCESS" : "SUCCEEDED",
+        esisMode: "LIVE" as const,
+        esisStatus: "SUCCEEDED" as const,
         apiId: 171,
       },
     });
@@ -435,6 +476,7 @@ export class AttendanceService {
       days: built.days,
       rows: built.rows,
       totals: built.totals,
+      groups: built.groups,
     });
 
     return { buffer, filename: `irts-${query.from}-${query.to}.xlsx` };
@@ -490,7 +532,24 @@ export class AttendanceService {
       });
     }
 
-    const days = eachDay(from, to);
+    /*
+      ★ Working days, not calendar days — 2026-09-17. See `workingDays`: the
+      weekend and the kindergarten's own closures come out, its make-up
+      Saturdays go in, and any day somebody actually recorded stays whatever
+      the calendar says.
+
+      Read here rather than in each caller so every figure the register feeds —
+      the grid, the daily summary, the Excel sheet, the ESIS preview — divides
+      by the same set of days. Two definitions of "working day" is the way a
+      screen and a spreadsheet come to disagree about who is behind.
+    */
+    const calendar = await this.repo.findCalendarDays(kindergartenId, from, to);
+    const recordedDays = new Set<string>();
+    for (const marked of byEnrollment.values()) {
+      for (const day of marked.keys()) recordedDays.add(day);
+    }
+
+    const days = workingDays(eachDay(from, to), calendar, recordedDays);
 
     const rows = enrollments.map((enrollment) => {
       const marked = byEnrollment.get(enrollment.id) ?? new Map();
@@ -513,6 +572,34 @@ export class AttendanceService {
       };
     });
 
+    /*
+     * ★ The same totals split by class — 2026-09-12, at the client's request
+     * ("доор ангийн нийт ирсэн, нийт гэсэн тоон үзүүлэлтүүдийг бод").
+     *
+     * Counted here rather than on the screen, and that is the whole point:
+     * `register()` pages over children, so a class total assembled from the
+     * rows on screen would change when somebody turned to page two. `rows` is
+     * every matching child, which is the only set the figure can honestly be
+     * taken from — and the export reads the same function, so the file and the
+     * screen cannot disagree.
+     */
+    const byGroup = new Map<
+      string,
+      { group: string; children: number; counts: Record<string, number>; recorded: number }
+    >();
+    for (const row of rows) {
+      let entry = byGroup.get(row.group.id);
+      if (!entry) {
+        entry = { group: row.group.name, children: 0, counts: {}, recorded: 0 };
+        byGroup.set(row.group.id, entry);
+      }
+      entry.children += 1;
+      entry.recorded += row.recorded;
+      for (const [status, count] of Object.entries(row.counts)) {
+        entry.counts[status] = (entry.counts[status] ?? 0) + count;
+      }
+    }
+
     return {
       rows,
       days,
@@ -523,6 +610,9 @@ export class AttendanceService {
         }
         return acc;
       }, {}),
+      groups: [...byGroup.entries()]
+        .map(([groupId, entry]) => ({ groupId, ...entry }))
+        .sort((a, b) => a.group.localeCompare(b.group, "mn")),
     };
   }
 
@@ -657,6 +747,24 @@ export class AttendanceService {
       days: sheet.days,
       rows,
       totals,
+      /*
+       * ★ The class's own line, so the teacher's download carries the figures
+       * their screen shows under the grid — 2026-09-12, at the client's
+       * instruction ("татахад энэ мэдээлэл бүхлээрээ татагддаг байна,
+       * бодолтууд бүгд орно").
+       *
+       * One row, because this export is one group: the sheet's shape is the
+       * director's, and a teacher's file that shares it can be pasted under
+       * theirs without re-arranging a column.
+       */
+      groups: [
+        {
+          group: group.name,
+          children: rows.length,
+          counts: totals,
+          recorded: Object.values(totals).reduce((sum, count) => sum + count, 0),
+        },
+      ],
     });
 
     return { buffer, filename: `irts-${group.name}-${fromIso}-${toIso}.xlsx` };
@@ -709,35 +817,19 @@ export class AttendanceService {
   }
 
   private async resolveAttendanceDrafts(kindergartenId: string, drafts: AttendanceDraft[]) {
-    if (this.esis.isDemoMode) {
-      return {
-        demo: true,
-        apiId: 171,
-        endpoint: "/svc/api/hub/v2/group/school/attendance/save/v3",
-        requests: drafts.map((draft) => ({
-          groupId: draft.groupId,
-          groupName: draft.groupName,
-          payload: {
-            institutionId: DEMO_ESIS_INSTITUTION_ID,
-            studentGroupId:
-              DEMO_ESIS_GROUPS[draft.groupName] ?? stableDemoNumber(draft.groupId, 10100, 800),
-            dayDate: draft.dayDate,
-            attendanceList: draft.children.map((child) => {
-              const childName = `${child.lastName} ${child.firstName}`;
-              return {
-                personId:
-                  DEMO_ESIS_PEOPLE[childName] ??
-                  stableDemoNumber(child.childId, 90000000100000, 8_000_000),
-                attendReasonCode: child.attendReasonCode,
-                tardyMinutes: 0,
-                attendReasonList: [],
-              };
-            }),
-          },
-        })),
-      };
-    }
-
+    /*
+     * ★ The demo preview is gone — 2026-09-14.
+     *
+     * A `this.esis.isDemoMode` branch stood here and built a whole ESIS
+     * attendance payload out of invented numbers: a fixed institution id, a
+     * group id looked up in a hard-coded table or derived from a hash of the
+     * local uuid, and a `personId` hashed the same way. A teacher previewing
+     * the upload saw a complete, plausible request that named children by
+     * numbers nobody at the ministry would recognise.
+     *
+     * The preview now resolves against the live roster or fails and says why,
+     * which is the only version of it that tells a teacher anything true.
+     */
     if (!this.esis.isConfigured) {
       throw new BadGatewayException(
         "ESIS live горим идэвхтэй боловч Bearer token тохируулаагүй байна.",
@@ -757,6 +849,8 @@ export class AttendanceService {
         Awaited<ReturnType<EsisService["groupStudents"]>>["data"]
       >();
       const requests = [];
+      /** Matches proven during this resolve, written once at the end. */
+      const resolved: { childId: string; esisPersonId: string }[] = [];
 
       for (const draft of drafts) {
         const matchingGroups = groups.filter(
@@ -802,8 +896,28 @@ export class AttendanceService {
             );
           }
 
+          const personId = positiveEsisNumber(matches[0]!.personId, "personId");
+
+          /*
+           * ★ Remember the match — 2026-09-15.
+           *
+           * This is the one place in the product that establishes which ESIS
+           * person a local child is, and until now it threw the answer away
+           * after building one attendance payload. `Child.esisPersonId` is an
+           * **authorization** input: the per-child ESIS reads resolve a
+           * `personId` back to a child so `canAccessChild` can run, and a
+           * child without one is refused. Learning it here is what makes those
+           * reads usable for a teacher.
+           *
+           * ★★ The match is the strict one above — exactly one roster entry
+           * agreeing on name *and* date of birth, in a group the teacher is
+           * already submitting for. An ambiguous match has thrown by this
+           * point, so nothing uncertain is written.
+           */
+          resolved.push({ childId: child.childId, esisPersonId: String(personId) });
+
           return {
-            personId: positiveEsisNumber(matches[0]!.personId, "personId"),
+            personId,
             attendReasonCode: child.attendReasonCode,
             tardyMinutes: 0,
             attendReasonList: [],
@@ -822,8 +936,16 @@ export class AttendanceService {
         });
       }
 
+      /*
+       * ★ After the loop, not inside it, and never inside a transaction that
+       * the send could roll back. Remembering which ESIS person a child is has
+       * nothing to do with whether the attendance upload succeeds — if the
+       * ministry rejects the payload the mapping is still correct, and losing
+       * it would mean re-deriving it on every future read.
+       */
+      await this.repo.rememberEsisPersonIds(kindergartenId, resolved);
+
       return {
-        demo: false,
         apiId: 171,
         endpoint: "/svc/api/hub/v2/group/school/attendance/save/v3",
         requests,
@@ -867,8 +989,8 @@ export class AttendanceService {
       objectType: "AttendanceSubmission",
       objectId: groupId,
       metadata: {
-        esisMode: preview.demo ? "MOCK" : "LIVE",
-        esisStatus: preview.demo ? "DEMO_SUCCESS" : "SUCCEEDED",
+        esisMode: "LIVE" as const,
+        esisStatus: "SUCCEEDED" as const,
         apiId: 171,
         date: dateIso,
         childCount: enrollments.length,
@@ -1160,6 +1282,25 @@ export class AttendanceService {
       dateFrom,
       dateTo,
       requestedStatus: dto.requestedStatus,
+      /*
+        ★ An arrival or a pickup is *told*, not asked — 2026-09-12, at the
+        client's instruction: "хүүхдийн ирлээ, явлаа … багшаар баталгаажиж
+        зөвшөөрөгдөхгүй; зөвхөн чөлөөний хүсэлт л багшаар баталгаажуулна."
+
+        A parent saying "I dropped him off at 08:40 with his grandmother" is
+        reporting a fact about a morning the teacher was present for. There is
+        nothing to approve, and leaving it PENDING put every drop-off in the
+        review queue, where a teacher had to press Зөвшөөрөх on a thing that had
+        already happened.
+
+        A leave request is the opposite — it asks for a day off that has not
+        happened yet — and stays PENDING.
+
+        ★★ The teacher still corrects it: the register is theirs, and
+        `record()` overwrites whatever a parent claimed. What this removes is a
+        decision, not their authority.
+      */
+      reviewStatus: isPresentClaim ? "APPROVED" : "PENDING",
       reason: dto.reason ?? null,
       arrivedWith: isPresentClaim ? dto.arrivedWith : undefined,
       arrivedWithName:
@@ -1182,6 +1323,37 @@ export class AttendanceService {
         : undefined,
     });
 
+    /*
+      ★ An arrival or pickup is written to the register as it is reported.
+
+      Approving a request is what used to copy the companion and the time onto
+      the `Attendance` row (see `reviewRequest`), so marking these APPROVED and
+      stopping there would have recorded the fact nowhere: the parent would see
+      "sent", the teacher would see nothing, and the register would be empty for
+      a child who was standing in the room.
+
+      The same writer, on the same day, with the same `?? undefined` care — a
+      pickup reported in the afternoon must not blank the morning's arrival.
+      Staff remain the register's authority: `record()` overwrites any of this.
+    */
+    if (isPresentClaim) {
+      await this.repo.upsertForChild({
+        kindergartenId: enrollment.kindergartenId,
+        childId,
+        enrollmentId: enrollment.id,
+        date: dateFrom,
+        status: dto.requestedStatus,
+        note: null,
+        recordedById: actor.userId,
+        arrivedWith: dto.arrivedWith ?? undefined,
+        arrivedWithName: dto.arrivedWith === "OTHER" ? (dto.arrivedWithName ?? null) : undefined,
+        arrivedAt: arrivedAt ?? undefined,
+        pickedUpWith: dto.pickedUpWith ?? undefined,
+        pickedUpWithName: dto.pickedUpWith === "OTHER" ? (dto.pickedUpWithName ?? null) : undefined,
+        pickedUpAt: pickedUpAt ?? undefined,
+      });
+    }
+
     await this.audit.append({
       action: "CREATE",
       kindergartenId: enrollment.kindergartenId,
@@ -1192,6 +1364,8 @@ export class AttendanceService {
       metadata: {
         requestedStatus: dto.requestedStatus,
         hasAttachment: Boolean(storedAttachment),
+        // Told rather than asked — see `reviewStatus` above.
+        applied: isPresentClaim,
       },
     });
 
@@ -1416,4 +1590,54 @@ function eachDay(from: Date, to: Date): string[] {
     days.push(new Date(t).toISOString().slice(0, 10));
   }
   return days;
+}
+
+/** Saturday or Sunday, in UTC — every date in this product is a UTC date-only. */
+function isWeekend(day: string): boolean {
+  const weekday = new Date(`${day}T00:00:00.000Z`).getUTCDay();
+  return weekday === 0 || weekday === 6;
+}
+
+/**
+ * The days a register is actually expected to cover.
+ *
+ * ★ 2026-09-17, at the client's correction: "БҮХ НИЙТИЙН АМРАЛТ болон
+ * БҮТЭН/ХАГАС САЙН өдрүүдэд ирц бүртгэх шаардлагагүй ... бодолтоос хасах.
+ * улс нийтээр нөхөж ажиллах онцгой тохиолдолд л бүртгэх."
+ *
+ * Until this existed, `eachDay` handed the register every date in the span,
+ * so a two-group kindergarten over a fortnight was told it had 34 group-days
+ * to fill in — of which ten were Saturdays and Sundays nobody works. The
+ * "Ирц бүртгээгүй" tile counted them, the completeness bar divided by them,
+ * and a director chasing an unfinished register was chasing the weekend.
+ *
+ * Three rules, in order:
+ *
+ *   1. A day the kindergarten has marked as a working day is one, whatever
+ *      the week says — the make-up Saturdays announced by resolution.
+ *   2. A day it has marked as a holiday is not, whatever the week says.
+ *   3. Otherwise, Monday to Friday.
+ *
+ * ★★ And one exception on top: **a day somebody actually recorded counts**,
+ * whatever the calendar says. A register that dropped a column a teacher had
+ * filled in would hide real records — the marks would exist and no screen
+ * would show them. It also means a kindergarten that works a weekend without
+ * telling the calendar still sees that day, which is the forgiving direction
+ * for a rule nobody has configured yet.
+ */
+export function workingDays(
+  days: string[],
+  calendar: { date: Date; isWorkingDay: boolean }[],
+  recordedDays: ReadonlySet<string> = new Set(),
+): string[] {
+  const overrides = new Map(
+    calendar.map((entry) => [entry.date.toISOString().slice(0, 10), entry.isWorkingDay] as const),
+  );
+
+  return days.filter((day) => {
+    if (recordedDays.has(day)) return true;
+    const override = overrides.get(day);
+    if (override !== undefined) return override;
+    return !isWeekend(day);
+  });
 }

@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { z } from "zod";
 import { ClipboardList } from "lucide-react";
-import { surveySchema, surveyResultsSchema } from "@kinder/contracts";
+import { hasOptionList, surveySchema, surveyResultsSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
@@ -191,6 +191,13 @@ function optionColumns(
  * `null` for anything with no fixed scale — TEXT, and a MATRIX, whose `options`
  * is rows *and* columns rather than one axis. `Array.isArray` is what narrows
  * that union; without it a matrix renders `[object Object]`.
+ *
+ * ★ SINGLE_CHOICE shares CHECKBOX's buckets — 2026-09-12, the same fix as
+ * `slicesOf` in `survey/survey-results-view.tsx`, found beside it. A poll is
+ * one single-choice question by definition, so this branch decided whether the
+ * card drew anything at all for the commonest thing on the board, and it
+ * answered `null`. `hasOptionList` rather than a second literal, so the pair of
+ * types that carry an option list stays the contract's fact.
  */
 function bucketsFor(
   question: z.infer<typeof surveyResultsSchema>["questions"][number]["question"],
@@ -206,7 +213,7 @@ function bucketsFor(
     ];
   }
 
-  if (question.type === "CHECKBOX" && Array.isArray(question.options)) {
+  if (hasOptionList(question.type) && Array.isArray(question.options)) {
     return question.options.map((option) => ({ key: option, label: option }));
   }
 

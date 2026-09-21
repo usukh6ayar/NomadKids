@@ -35,22 +35,21 @@ body:has([data-app-theme="teacher"]) {
   --workspace-button-start: #2582eb;
   --workspace-button-end: #3d9cf5;
   --workspace-button-hover: #1d73d3;
-  /*
-   * ★★★★ Plain white — 2026-09-09, at the client's instruction: "яг нь цав
-   * цагаан өнгөтэй болго fff өнгө. сонин шаргал цагаан байгаад байна."
-   *
-   * Every shell opened on a tinted gradient. Read one at a time they were
-   * pleasant; read as a set they were six slightly different off-whites, and
-   * the warm ones — the kitchen's ended on `#fff9e8` — do go yellow next to a
-   * white card. White is the one background that cannot be *slightly* wrong.
-   *
-   * ★ A card is still legible on it. `[data-ui="card"]` carries `border` and
-   * `shadow-sm` as well as `bg-surface`, so it is separated by its edge rather
-   * than by a tint — flatter than before, and deliberate. Each role keeps its
-   * identity in `--color-primary` and `--workspace-accent`, which is where a
-   * workspace's colour was always doing the work.
-   */
-  --workspace-background: #ffffff;
+  /* The supplied portrait artwork is the mobile-first teacher background. */
+  --workspace-background: #ffffff url("/background/teacher-mobile.png") top center / 100% auto
+    no-repeat;
+}
+
+/*
+ * The supplied landscape artwork replaces the portrait crop from `sm` up.
+ * Both images fade into white, so long pages continue without a visible seam.
+ * No fixed attachment: it causes scroll jank on mobile Safari.
+ */
+@media (min-width: 640px) {
+  body:has([data-app-theme="teacher"]) {
+    --workspace-background: #ffffff url("/background/teacher-web.png") top center / 100% auto
+      no-repeat;
+  }
 }
 
 body:has([data-app-theme="admin"]) {
@@ -181,21 +180,42 @@ body:has([data-app-theme="finance"]) {
 }
 
 body:has([data-app-theme="platform"]) {
-  --color-canvas: #f5f7fa;
-  --color-sunken: #edf1f5;
-  --color-border: #d8e0e8;
-  --color-border-soft: #e8edf2;
-  --color-ink: #293b50;
-  --color-primary: #49647f;
-  --color-primary-strong: #33495f;
-  --color-primary-hover: #3c566f;
-  --color-primary-soft: #eaf0f5;
-  --workspace-accent: #49647f;
-  --workspace-accent-secondary: #2582eb;
-  --workspace-button-start: #49647f;
-  --workspace-button-end: #607f9c;
-  --workspace-button-hover: #33495f;
+  --color-canvas: #f3f8fc;
+  --color-sunken: #edf4f9;
+  --color-border: #d7e5ef;
+  --color-border-soft: #e8f0f6;
+  --color-ink: #183b57;
+  --color-primary: #175f99;
+  --color-primary-strong: #124b78;
+  --color-primary-hover: #124f83;
+  --color-primary-soft: #e7f3fb;
+  --workspace-accent: #175f99;
+  --workspace-accent-secondary: #2f9d8f;
+  --workspace-button-start: #175f99;
+  --workspace-button-end: #2781b7;
+  --workspace-button-hover: #124f83;
   --workspace-background: #ffffff;
+}
+
+/*
+ * The same supplied sky belongs to the three management workspaces too.
+ * Keep the portrait crop mobile-first and switch all three to the landscape
+ * crop at the same breakpoint as the teacher workspace.
+ */
+body:has([data-app-theme="admin"]),
+body:has([data-app-theme="kitchen"]),
+body:has([data-app-theme="finance"]) {
+  --workspace-background: #ffffff url("/background/teacher-mobile.png") top center / 100% auto
+    no-repeat;
+}
+
+@media (min-width: 640px) {
+  body:has([data-app-theme="admin"]),
+  body:has([data-app-theme="kitchen"]),
+  body:has([data-app-theme="finance"]) {
+    --workspace-background: #ffffff url("/background/teacher-web.png") top center / 100% auto
+      no-repeat;
+  }
 }
 
 [data-app-theme] {
@@ -247,8 +267,18 @@ body:has([data-app-theme="teacher"]) [data-brand-mark] {
   background: #ffffff;
 }
 
+/*
+ * ★ No `color` here any more — 2026-09-16.
+ *
+ * The first line of the brand block is the gradient wordmark now
+ * (`brand-wordmark.tsx`), which paints itself by clipping a background to the
+ * letterforms and setting the text transparent. This rule is far more specific
+ * than a utility class, so the navy it used to set would have repainted the
+ * name solid and thrown the gradient away silently. The weight stays: it is
+ * the teacher theme's own emphasis and the wordmark does not set one of the
+ * theme's own.
+ */
 body:has([data-app-theme="teacher"]) [data-brand-mark] + span > span:first-child {
-  color: #143d72;
   font-weight: 800;
 }
 
@@ -274,6 +304,10 @@ body:has([data-app-theme]) nav a[aria-current="page"] {
 [data-app-theme] main [data-ui="page-header"] {
   border: 0;
   padding: 0;
+}
+
+[data-app-theme="platform"] .platform-page-heading [data-ui="page-header"] {
+  margin-bottom: 0;
 }
 
 [data-app-theme="teacher"] main[data-layout="content"] [data-ui="page-header"] h1 {

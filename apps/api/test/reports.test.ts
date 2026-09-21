@@ -787,7 +787,7 @@ describe("term reports", () => {
     });
   }
 
-  it("refuses a guardian a term report that is still a draft", async () => {
+  it("refuses a guardian a term report, draft or not", async () => {
     const term = await createTerm(a);
     await db.termReport.create({
       data: {
@@ -807,6 +807,40 @@ describe("term reports", () => {
       termId: term.id,
     });
     expect(response.status).toBe(400);
+  });
+
+  /**
+   * ★ **A finalised report is still not a family's — the client, 2026-09-14.**
+   *
+   * "Удирдлага бичсэнг харна, эцэг эх харахгүй." `FINAL` used to be exactly
+   * the state that opened this to a guardian, so this is the case that would
+   * silently keep working if the rule were only applied to drafts.
+   */
+  it("refuses a guardian a finalised term report too", async () => {
+    const term = await createTerm(a);
+    await db.termReport.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        childId: a.child.id,
+        enrollmentId: a.enrollment.id,
+        termId: term.id,
+        strengths: "Багаараа ажиллах чадвар өндөр хөгжсөн",
+        status: "FINAL",
+        finalizedAt: new Date("2026-01-05"),
+        authorId: a.teacherUser.id,
+      },
+    });
+
+    const response = await authed(request(app.getHttpServer()).post("/v1/reports"), parentA).send({
+      childId: a.child.id,
+      type: "TERM_REPORT",
+      termId: term.id,
+    });
+    expect(response.status).toBe(400);
+    // No job row either: nothing to poll, nothing to confirm a report exists.
+    expect(await db.reportJob.count({ where: { childId: a.child.id, type: "TERM_REPORT" } })).toBe(
+      0,
+    );
   });
 
   it("generates a finalised term report with Cyrillic text", async () => {
@@ -829,7 +863,7 @@ describe("term reports", () => {
       },
     });
 
-    const created = await authed(request(app.getHttpServer()).post("/v1/reports"), parentA).send({
+    const created = await authed(request(app.getHttpServer()).post("/v1/reports"), teacherA).send({
       childId: a.child.id,
       type: "TERM_REPORT",
       termId: term.id,
