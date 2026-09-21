@@ -305,7 +305,7 @@ function number(raw: string): number | null {
 }
 
 function normalize(raw: string): string {
-  return raw.toLowerCase().replace(/[().,:/_\-]+/g, " ").replace(/\s+/g, " ").trim();
+  return raw.toLowerCase().replace(/[().,:/_-]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function integer(raw: string): number | null {
