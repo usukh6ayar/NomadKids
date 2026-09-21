@@ -6,6 +6,7 @@ import { Roles } from "../../auth/decorators/roles.decorator";
 import { SuperAdmin } from "../../auth/decorators/super-admin.decorator";
 import type { Actor } from "../../authz/actor";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
+import { EsisRosterImportService } from "./esis-roster-import.service";
 import { EsisAdminService } from "./esis-admin.service";
 import { EsisInstitutionLookupService } from "./esis-institution-lookup.service";
 import { EsisSyncService } from "./esis-sync.service";
@@ -44,6 +45,7 @@ export class KindergartenEsisController {
     private readonly sync: EsisSyncService,
     private readonly writes: EsisWriteRequestService,
     private readonly coverage: EsisCoverageService,
+    private readonly rosterImport: EsisRosterImportService,
   ) {}
 
   /**
@@ -116,6 +118,29 @@ export class KindergartenEsisController {
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
   ) {
     return this.service.refreshStaffRoster(actor, params.id);
+  }
+
+  /**
+   * Pulls ESIS's groups and children into this kindergarten's own records —
+   * 2026-09-20, the client: "esis ees shuud buleg bolon buleg dotorh huuhduud
+   * ni irehgui ymuu? tged irwel shuud hadgalchmaar baina."
+   *
+   * ★ ADMIN-only and a `POST`, for the reasons above — it spends the
+   * deployment's rate-limited token — and because it writes child records,
+   * which no `GET` should ever be able to do.
+   *
+   * ★★ `@HttpCode(200)`, not 201. A re-run of an import that created nothing
+   * is the expected case, not a failure, and answering 201 to it would claim a
+   * resource was made. The body says what actually happened.
+   */
+  @Post("roster-import")
+  @HttpCode(200)
+  @Roles("ADMIN")
+  importRoster(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.rosterImport.importRoster(actor, params.id);
   }
 
   /**

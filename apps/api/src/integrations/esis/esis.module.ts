@@ -5,6 +5,8 @@ import { EsisClient } from "./esis.client";
 import { EsisConfig } from "./esis.config";
 import { EsisService } from "./esis.service";
 import { EsisAdminService } from "./esis-admin.service";
+import { EsisRosterImportService } from "./esis-roster-import.service";
+import { EsisRosterImportRepository } from "./esis-roster-import.repository";
 import { EsisSyncService } from "./esis-sync.service";
 import { EsisSyncScheduler } from "./esis-sync.scheduler";
 import { EsisRepository } from "./esis.repository";
@@ -56,6 +58,15 @@ import {
     EsisClient,
     EsisService,
     EsisAdminService,
+    /*
+     * ★ The roster import — 2026-09-20. Two providers: the service and its own
+     * repository, which is separate from `EsisRepository` because it writes
+     * `Group` / `Child` / `Enrollment` rather than the staff-roster cache. See
+     * `EsisRosterImportRepository`'s doc comment for why keeping them apart
+     * matters more than it looks.
+     */
+    EsisRosterImportService,
+    EsisRosterImportRepository,
     /*
      * ★ `EsisSyncService` — added 2026-09-16 for tier 1's reference sweep
      * (plan Task 3). Registered here, not exported: Task 5's route and Task
