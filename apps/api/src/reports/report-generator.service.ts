@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { AGE_ALBUM_CATEGORY_LABEL, isAgeAlbumCategory } from "@kinder/contracts";
 import { StorageService } from "../storage/storage.service";
 import { ReportsRepository } from "./reports.repository";
 import { PdfRendererService } from "./pdf-renderer.service";
@@ -165,38 +166,17 @@ export class ReportGeneratorService {
 
     const budget = new ImageBudget();
     const childPhoto = await this.embed(budget, data.child.photo);
-    // RFP §10.3. Embedded before the observation photographs so a portfolio with
-    // a full album still has the identity mark: `ImageBudget` refuses images
-    // once the total is spent, and the first caller wins.
+    // The identity marks always win the image budget.
     const logo = await this.embed(budget, data.child.kindergarten.logo);
 
-    const observations: PortfolioData["observations"] = [];
-    for (const obs of data.observations) {
-      const photoDataUris: string[] = [];
-      for (const media of obs.media) {
-        const uri = await this.embed(budget, media);
-        if (uri) photoDataUris.push(uri);
-      }
-      observations.push({
-        observedOn: obs.observedOn,
-        typeName: obs.type.name,
-        situation: obs.situation,
-        childDid: obs.childDid,
-        childSaid: obs.childSaid,
-        teacherComment: obs.teacherComment,
-        nextSteps: obs.nextSteps,
-        photoDataUris,
-      });
-    }
-
-    const enrollment = data.child.enrollments[0];
+    const enrollment =
+      data.child.enrollments.find((item) => item.status === "ACTIVE") ??
+      data.child.enrollments[data.child.enrollments.length - 1];
 
     /*
      * RFP §5.3 — each comparison embeds two images, and both go through the
-     * same `ImageBudget` as everything else. Embedded after the observations so
-     * a portfolio that is already at its ceiling loses the comparison's
-     * *pictures* rather than an observation's: the conclusion still prints, and
-     * the template renders a pair with a missing image as a labelled gap.
+     * same `ImageBudget` as everything else. The conclusion still prints when
+     * a historical image is unavailable.
      */
     const comparisons: PortfolioData["artworkComparisons"] = [];
     for (const comparison of data.artworkComparisons) {
@@ -207,6 +187,26 @@ export class ReportGeneratorService {
         earlierTakenAt: comparison.earlierMedia?.takenAt ?? null,
         laterTakenAt: comparison.laterMedia?.takenAt ?? null,
       });
+    }
+
+    const photoAlbums: PortfolioData["photoAlbums"] = [];
+    for (const age of [2, 3, 4, 5]) {
+      const photos: PortfolioData["photoAlbums"][number]["photos"] = [];
+      for (const photo of data.albumPhotos.filter((item) => item.age === age).slice(0, 3)) {
+        const dataUri = await this.embed(budget, photo);
+        if (!dataUri) continue;
+        photos.push({
+          dataUri,
+          caption: photo.caption,
+          takenAt: photo.takenAt,
+          categoryLabel:
+            photo.albumCategory?.name ??
+            (isAgeAlbumCategory(photo.category)
+              ? AGE_ALBUM_CATEGORY_LABEL[photo.category]
+              : photo.category),
+        });
+      }
+      if (photos.length > 0) photoAlbums.push({ age, photos });
     }
 
     const payload: PortfolioData = {
@@ -220,6 +220,14 @@ export class ReportGeneratorService {
       kindergarten: { name: data.child.kindergarten.name, logoDataUri: logo },
       group: enrollment?.group ?? null,
       schoolYear: enrollment?.schoolYear ?? null,
+      enrollments: data.child.enrollments.map((item) => ({
+        kindergartenName: item.kindergarten.name,
+        groupName: item.group.name,
+        schoolYearName: item.schoolYear.name,
+        startedOn: item.startedOn,
+        endedOn: item.endedOn,
+        status: item.status,
+      })),
       aboutMe: data.aboutMe
         ? {
             introduction: data.aboutMe.introduction,
@@ -227,22 +235,22 @@ export class ReportGeneratorService {
             memorableSayings: data.aboutMe.memorableSayings,
             dream: data.aboutMe.dream,
             distinguishingTraits: data.aboutMe.distinguishingTraits,
+            clanName: data.aboutMe.clanName,
+            nickname: data.aboutMe.nickname,
+            birthplace: data.aboutMe.birthplace,
+            bloodType: data.aboutMe.bloodType,
+            eyeColor: data.aboutMe.eyeColor,
+            yearAnimalCode: data.aboutMe.yearAnimalCode,
+            zodiacCode: data.aboutMe.zodiacCode,
             heightCm: data.aboutMe.heightCm,
             weightKg: data.aboutMe.weightKg,
+            recordedOn: data.aboutMe.recordedOn,
           }
         : null,
       ageProfiles: data.ageProfiles,
       birthdayNotes: data.birthdayNotes,
-      milestones: data.milestones,
       artworkComparisons: comparisons,
-      observations,
-      assessments: data.assessments.map((a) => ({
-        termName: a.term.name,
-        domainName: a.domain.name,
-        levelLabel: a.level.label,
-        levelColor: a.level.color ?? "#6b7280",
-        comment: a.comment,
-      })),
+      photoAlbums,
       generatedAt: new Date(),
       omittedPhotoCount: budget.dropped,
     };
@@ -271,7 +279,9 @@ export class ReportGeneratorService {
     const budget = new ImageBudget();
     const childPhoto = await this.embed(budget, data.child.photo);
     const logo = await this.embed(budget, data.child.kindergarten.logo);
-    const enrollment = data.child.enrollments[0];
+    const enrollment =
+      data.child.enrollments.find((item) => item.status === "ACTIVE") ??
+      data.child.enrollments[data.child.enrollments.length - 1];
 
     const payload: TermReportData = {
       child: {
@@ -475,7 +485,9 @@ export class ReportGeneratorService {
       }));
 
     const fullName = `${data.child.lastName} ${data.child.firstName}`;
-    const enrollment = data.child.enrollments[0];
+    const enrollment =
+      data.child.enrollments.find((item) => item.status === "ACTIVE") ??
+      data.child.enrollments[data.child.enrollments.length - 1];
 
     const payload: AnnualReportData = {
       child: {

@@ -375,9 +375,11 @@ describe("portfolio generation", () => {
     // …including the two characters unique to Mongolian, which a Russian-only
     // fallback font would drop.
     expect(text).toMatch(/[өүӨҮ]/);
-    // …and the actual content, not just chrome.
+    // …and the actual identity content, not just chrome. Observation records
+    // are deliberately absent from the redesigned family portfolio.
     expect(text).toContain(a.child.lastName);
-    expect(text).toContain(SHARED_NOTE);
+    expect(text).toContain("Миний тухай");
+    expect(text).not.toContain(SHARED_NOTE);
   }, 120_000);
 
   /**
@@ -431,14 +433,13 @@ describe("portfolio generation", () => {
   }, 180_000);
 
   /**
-   * RFP §5.3's last bullet — "Харьцуулалтыг PDF тайланд оруулах" — and §4.5's
-   * milestones, which belong in the portfolio they are part of.
+   * RFP §5.3's last bullet — "Харьцуулалтыг PDF тайланд оруулах".
    *
    * ★ The conclusion is asserted on extracted text and the pair on the image
    * count, because the two fail differently: a comparison whose images were
    * dropped by the budget still prints its sentence, and that is deliberate.
    */
-  it("prints artwork comparisons and milestones", async () => {
+  it("prints artwork comparisons without the removed milestone section", async () => {
     if (!pdftotextAvailable()) throw new Error("pdftotext (poppler) is required");
 
     const before = countImages(await generatedPdf(await createJob(teacherA, a.child.id)));
@@ -463,21 +464,39 @@ describe("portfolio generation", () => {
       teacherA,
     ).send({ mediaIdA: uploads[0], mediaIdB: uploads[1], conclusion: CONCLUSION });
 
-    await authed(
-      request(app.getHttpServer()).post(`/v1/children/${a.child.id}/milestones`),
+    const pdf = await generatedPdf(await createJob(teacherA, a.child.id));
+    const text = extractText(pdf);
+
+    expect(text).toContain("Бүтээлийн өмнөх ба дараах ахиц");
+    expect(text).toContain(CONCLUSION);
+    expect(text).not.toContain("Онцгой үйл явдал");
+
+    // Both works of the pair are embedded, not just referenced.
+    expect(countImages(pdf)).toBe(before + 2);
+  }, 180_000);
+
+  it("prints representative photographs in the age-album comparison", async () => {
+    if (!pdftotextAvailable()) throw new Error("pdftotext (poppler) is required");
+
+    const before = countImages(await generatedPdf(await createJob(teacherA, a.child.id)));
+    const upload = await authed(
+      request(app.getHttpServer()).post(`/v1/children/${a.child.id}/media`),
       teacherA,
-    ).send({ kind: "FIRST_STEP", occurredOn: "2024-03-15", description: "Гурван алхам." });
+    )
+      .field("category", "BIRTHDAY")
+      .field("age", "3")
+      .field("caption", "Гурван насны төрсөн өдөр")
+      .field("takenAt", "2024-04-12")
+      .attach("file", await logoBytes(), "төрсөн-өдөр.png");
+    expect(upload.status).toBe(201);
 
     const pdf = await generatedPdf(await createJob(teacherA, a.child.id));
     const text = extractText(pdf);
 
-    expect(text).toContain("Бүтээлийн хөгжлийн харьцуулалт");
-    expect(text).toContain(CONCLUSION);
-    expect(text).toContain("Онцгой үйл явдал");
-    expect(text).toContain("Анхны алхам");
-
-    // Both works of the pair are embedded, not just referenced.
-    expect(countImages(pdf)).toBe(before + 2);
+    expect(text).toContain("Зургийн цомгийн харьцуулалт");
+    expect(text).toContain("Миний төрсөн өдөр");
+    expect(text).toContain("Гурван насны төрсөн өдөр");
+    expect(countImages(pdf)).toBe(before + 1);
   }, 180_000);
 
   /**
@@ -568,14 +587,8 @@ describe("portfolio generation", () => {
     expect(job.progressPercent).toBe(100);
   }, 120_000);
 
-  /**
-   * ★ The parent's copy is filtered at generation time.
-   *
-   * The same predicate the list endpoint uses (`readableWhere`) — asserted here
-   * on the rendered text, because that is the artefact the family actually
-   * receives and forwards.
-   */
-  it("omits private teaching notes from a guardian's copy", async () => {
+  /** The redesigned portfolio excludes the observation section for everyone. */
+  it("omits observation notes from both guardian and staff copies", async () => {
     if (!pdftotextAvailable()) throw new Error("pdftotext (poppler) is required");
 
     await seedObservations(a);
@@ -583,14 +596,14 @@ describe("portfolio generation", () => {
     const parentJobId = await createJob(parentA, a.child.id);
     const parentText = extractText(await generatedPdf(parentJobId));
 
-    expect(parentText).toContain(SHARED_NOTE);
+    expect(parentText).not.toContain(SHARED_NOTE);
     expect(parentText).not.toContain(PRIVATE_NOTE);
 
     const teacherJobId = await createJob(teacherA, a.child.id);
     const teacherText = extractText(await generatedPdf(teacherJobId));
 
-    expect(teacherText).toContain(SHARED_NOTE);
-    expect(teacherText).toContain(PRIVATE_NOTE);
+    expect(teacherText).not.toContain(SHARED_NOTE);
+    expect(teacherText).not.toContain(PRIVATE_NOTE);
   }, 180_000);
 
   it("is idempotent — a repeated run does not produce a second file", async () => {

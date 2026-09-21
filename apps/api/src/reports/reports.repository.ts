@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { AGE_ALBUM_CATEGORIES } from "@kinder/contracts";
 import { PrismaService } from "../prisma/prisma.service";
 import { ObservationsRepository } from "../observations/observations.repository";
 import { toSkipTake, type PageParams } from "../common/pagination";
@@ -332,6 +333,7 @@ export class ReportsRepository {
       assessments,
       artworkComparisons,
       milestones,
+      albumPhotos,
     ] = await Promise.all([
       this.loadChild(childId),
       this.prisma.childProfile.findFirst({ where: { childId, deletedAt: null } }),
@@ -396,6 +398,47 @@ export class ReportsRepository {
         orderBy: { occurredOn: "asc" },
         take: MAX_MILESTONES_PER_REPORT,
       }),
+      /*
+       * Representative photographs for the PDF's age-album comparison.
+       *
+       * Album images are CHILD_PHOTO rows not tied to observations, which is
+       * the same always-visible branch used by MediaRepository for guardians.
+       * Keeping the query to that subset means a private observation image can
+       * never enter a parent's downloaded portfolio.
+       */
+      this.prisma.mediaFile.findMany({
+        where: {
+          childId,
+          deletedAt: null,
+          status: "READY",
+          purpose: "CHILD_PHOTO",
+          observationId: null,
+          age: { in: [2, 3, 4, 5] },
+          OR: [
+            { category: { in: [...AGE_ALBUM_CATEGORIES] } },
+            { albumCategoryId: { not: null } },
+          ],
+        },
+        orderBy: [
+          { age: "asc" },
+          { albumCoverAge: { sort: "desc", nulls: "last" } },
+          { takenAt: { sort: "desc", nulls: "last" } },
+          { uploadedAt: "desc" },
+        ],
+        select: {
+          id: true,
+          storageKey: true,
+          age: true,
+          caption: true,
+          takenAt: true,
+          category: true,
+          albumCoverAge: true,
+          albumCategory: { select: { name: true } },
+        },
+        // The service keeps at most three per age. This cap also protects a
+        // child whose historical rows predate the current per-card limit.
+        take: 40,
+      }),
     ]);
 
     // Read newest-first so the ceiling keeps the most recent, then present
@@ -411,6 +454,7 @@ export class ReportsRepository {
       assessments,
       artworkComparisons,
       milestones,
+      albumPhotos,
     };
   }
 
@@ -557,12 +601,16 @@ export class ReportsRepository {
         },
         photo: { select: { storageKey: true, deletedAt: true } },
         enrollments: {
-          where: { status: "ACTIVE", deletedAt: null },
+          where: { deletedAt: null },
           select: {
+            startedOn: true,
+            endedOn: true,
+            status: true,
+            kindergarten: { select: { name: true } },
             group: { select: { name: true } },
             schoolYear: { select: { name: true } },
           },
-          take: 1,
+          orderBy: { startedOn: "asc" },
         },
       },
     });
