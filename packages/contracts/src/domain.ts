@@ -5589,6 +5589,31 @@ export const staffSelfRegistrationResultSchema = z.object({
 });
 export type StaffSelfRegistrationResult = z.infer<typeof staffSelfRegistrationResultSchema>;
 
+/**
+ * `POST /kindergartens/:id/esis/roster-import` — ESIS's groups and children,
+ * written into this kindergarten's own records.
+ *
+ * ★ Every number is a count of what **changed**, so a second run answering all
+ * zeroes is the import working, not failing. The two string lists are the half
+ * a director has to act on: `groups.skipped` names groups whose ESIS level this
+ * product has no age band for, and `enrollments.unplaced` names children who
+ * arrived but whose group was one of those.
+ */
+export const esisRosterImportSchema = z.object({
+  groups: z.object({
+    created: z.number(),
+    updated: z.number(),
+    skipped: z.array(z.string()),
+  }),
+  children: z.object({ created: z.number(), updated: z.number() }),
+  enrollments: z.object({
+    created: z.number(),
+    moved: z.number(),
+    unplaced: z.array(z.string()),
+  }),
+});
+export type EsisRosterImport = z.infer<typeof esisRosterImportSchema>;
+
 /** `POST /kindergartens/:id/esis/staff-roster/refresh`. */
 export const staffRosterRefreshSchema = z.object({
   count: z.number(),

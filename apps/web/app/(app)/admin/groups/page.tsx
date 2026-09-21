@@ -28,6 +28,7 @@ import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
+import { EsisRosterImportButton } from "@/components/esis/esis-roster-import";
 import { PageHeader } from "@/components/shell/app-shell";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
 import { RequireRole } from "@/components/shell/require-role";
@@ -125,10 +126,22 @@ function AdminGroups() {
       <PageHeader
         title="Бүлгүүд"
         actions={
-          <Button size="sm" onClick={() => setCreating(true)}>
-            <Plus size={18} />
-            Бүлэг нэмэх
-          </Button>
+          <>
+            {/*
+             * ★ Beside "Бүлэг нэмэх" rather than instead of it — 2026-09-20.
+             * The import is how a kindergarten that keeps its register in ESIS
+             * fills this screen in one press; creating a group by hand is
+             * still how a kindergarten that does not, or a group the ministry
+             * has not got round to, gets one.
+             */}
+            {primaryKindergartenId ? (
+              <EsisRosterImportButton kindergartenId={primaryKindergartenId} />
+            ) : null}
+            <Button size="sm" onClick={() => setCreating(true)}>
+              <Plus size={18} />
+              Бүлэг нэмэх
+            </Button>
+          </>
         }
       />
 
