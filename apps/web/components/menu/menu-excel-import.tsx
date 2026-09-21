@@ -84,7 +84,7 @@ export function MenuExcelImport({ kindergartenId }: { kindergartenId: string }) 
         <div className="min-w-0">
           <h2 className="text-body font-semibold text-ink">Excel-ээр оруулах</h2>
           <p className="text-caption text-muted">
-            Excel татах товчоор татсан хүснэгтээ засаад буцааж оруулна.
+            .xlsx хүснэгтийн огноо, хоолны нэр, төрөл, илчлэгийн баганыг таньж оруулна.
           </p>
         </div>
 
@@ -110,6 +110,43 @@ export function MenuExcelImport({ kindergartenId }: { kindergartenId: string }) 
             }}
           />
         </label>
+      </div>
+
+      <div className="overflow-x-auto rounded-row border border-border bg-canvas">
+        <p className="px-3.5 pt-3 text-caption font-medium text-ink">
+          Жишээ загвар — эхний хүснэгтийн гарчигт “Огноо” болон “Хоолны нэр” заавал байна.
+        </p>
+        <table className="mt-2 min-w-[640px] border-collapse text-left text-caption">
+          <thead className="bg-surface text-muted">
+            <tr>
+              <th className="px-3 py-2 font-medium">Огноо</th>
+              <th className="px-3 py-2 font-medium">Хоолны төрөл</th>
+              <th className="px-3 py-2 font-medium">Хоолны нэр</th>
+              <th className="px-3 py-2 font-medium">Порц</th>
+              <th className="px-3 py-2 font-medium">Илчлэг (ккал)</th>
+            </tr>
+          </thead>
+          <tbody className="text-ink">
+            <tr className="border-t border-border">
+              <td className="px-3 py-2 tabular-nums">2026-09-21</td>
+              <td className="px-3 py-2">Өглөөний цай</td>
+              <td className="px-3 py-2">Сүүтэй будаа</td>
+              <td className="px-3 py-2">1</td>
+              <td className="px-3 py-2">210</td>
+            </tr>
+            <tr className="border-t border-border">
+              <td className="px-3 py-2 tabular-nums">2026-09-21</td>
+              <td className="px-3 py-2">Өдрийн хоол</td>
+              <td className="px-3 py-2">Ногоотой шөл</td>
+              <td className="px-3 py-2">1</td>
+              <td className="px-3 py-2">320</td>
+            </tr>
+          </tbody>
+        </table>
+        <p className="px-3.5 py-3 text-caption text-muted">
+          Огноог 2026-09-21, 21.09.2026 эсвэл 2026 оны 9 сарын 21 гэж бичиж болно. Төрөл, порц,
+          илчлэг нь хоосон байж болно.
+        </p>
       </div>
 
       {file ? <p className="truncate text-caption text-muted">{file.name}</p> : null}
