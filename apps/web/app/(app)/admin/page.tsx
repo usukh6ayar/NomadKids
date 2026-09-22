@@ -2,6 +2,7 @@
 
 import { RequireRole } from "@/components/shell/require-role";
 import { AdminOverview } from "@/components/admin/admin-overview";
+import { AdminSetupGuide } from "@/components/admin/admin-setup-guide";
 
 /**
  * The administrator's landing screen.
@@ -39,11 +40,17 @@ import { AdminOverview } from "@/components/admin/admin-overview";
  * So this file is a guard and a band. That is not nothing — `RequireRole` is
  * what sends a teacher who typed the URL back to their own screen — but it is
  * all of it.
+ *
+ * ★★★★ **And a setup guide, 2026-09-22** — the client asking for a window on
+ * the way in that says how to add a school year, a group and a teacher. It
+ * shares `AdminOverview`'s query key, so the counts it ticks its steps from
+ * cost no second request; `AdminSetupGuide`'s own docblock has the rest.
  */
 export default function AdminPage() {
   return (
     <RequireRole roles={["ADMIN"]}>
       <div className="page-band py-2">
+        <AdminSetupGuide />
         <AdminOverview />
       </div>
     </RequireRole>

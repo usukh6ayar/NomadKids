@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { ArrowUpRight, ChevronDown } from "lucide-react";
-import { useId, useState, type ReactNode } from "react";
+import { Fragment, useId, useState, type ReactNode } from "react";
 import type { EsisField } from "@kinder/contracts";
 import { Pagination, ResultCount } from "@/components/ui/pagination";
 import { SearchField } from "@/components/ui/search-field";
 import { EmptyState } from "@/components/ui/states";
+import { TableShell, Td, Th } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
 const ROWS_PER_PAGE = 25;
@@ -110,119 +111,163 @@ export function EsisRowValues({
   const visible = matched.slice((current - 1) * ROWS_PER_PAGE, current * ROWS_PER_PAGE);
   const searchable = rows.length > ROWS_PER_PAGE;
 
+  /*
+    ★★ **A table again — 2026-09-22**, the client: "Esis Эндээс орж ирсэн
+    мэдээллүүд хэт том дөрвөлжин байж зай эзэлж байгаа тул хүснэгтэн хэлбэртэй
+    зай бага эзлэхээр болох."
+
+    Each record was an `<article>` two-to-a-row: a numbered pill, a `text-lead`
+    title and a four-field `<dl>` underneath. That is roughly 150px of height
+    per child, so the institution's 93 of them ran to some seven thousand
+    pixels of scrolling to read a list of names.
+
+    ★★★ **The 2026-09-09 constraint still holds, and it is the reason this is
+    `TableShell` rather than a `<table>`:** "хүснэгтүүдийг зүгээр энгийн
+    харагдуул. хажуу тийшээ scroll ntr хийхгүй". What produced that complaint
+    was a pixel floor set by column count — 720, 1400 or 2400 — which made a
+    wide service scroll sideways by construction.
+
+    Three things keep both promises at once:
+
+      · `minWidth="min-w-0"` — no floor. The columns fit or they wrap; nothing
+        forces the page wider than the phone.
+      · `stacked` — below `md` each row lays out as a card with its column name
+        beside each value, so a narrow screen never scrolls sideways at all.
+        That is what every `data-label` below is for.
+      · five columns, not every field. `esisVisibleColumns` already chose them
+        and the rest stay one press away, exactly as the card layout had it.
+
+    So the mechanism changed and the contract did not: a reader still gets a
+    readable summary, the full record on demand, and no horizontal scroll.
+  */
   const cards = (
-    <div role="list" aria-label="ESIS мэдээлэл" className="grid gap-3 lg:grid-cols-2">
-      {visible.map(({ row, index, href }) => {
-        const primary = primaryField(shown, row, linkField);
-        const hasSurname = primary?.name === "firstName" && Boolean(row.lastName);
-        const summary = shown.filter(
-          (field) => field.name !== primary?.name && !(hasSurname && field.name === "lastName"),
-        );
-        const additional = columns.filter(
-          (field) => !shown.some((item) => item.name === field.name),
-        );
-        const expandable = !hrefs && (additional.length > 0 || Boolean(renderDetail));
-        const isOpen = openRow === index;
-        const detailId = `${detailBaseId}-${index}`;
+    <TableShell caption="ESIS мэдээлэл" minWidth="min-w-0" stacked>
+      <thead>
+        <tr>
+          {/*
+            The row number survives the move because in a table it costs one
+            narrow column, where in a card it cost a 36px pill beside the name.
+          */}
+          <Th className="w-10">№</Th>
+          {shown.map((field) => (
+            <Th key={field.name}>{field.label}</Th>
+          ))}
+          {rowActions ? (
+            <Th className="w-12">
+              <span className="sr-only">Үйлдэл</span>
+            </Th>
+          ) : null}
+        </tr>
+      </thead>
+      <tbody>
+        {visible.map(({ row, index, href }) => {
+          const primary = primaryField(shown, row, linkField);
+          const hasSurname = primary?.name === "firstName" && Boolean(row.lastName);
+          const additional = columns.filter(
+            (field) => !shown.some((item) => item.name === field.name),
+          );
+          const expandable = !hrefs && (additional.length > 0 || Boolean(renderDetail));
+          const isOpen = openRow === index;
+          const detailId = `${detailBaseId}-${index}`;
+          const span = shown.length + 1 + (rowActions ? 1 : 0);
 
-        return (
-          <article
-            key={index}
-            role="listitem"
-            className={cn(
-              "flex min-w-0 flex-col overflow-hidden rounded-row border bg-surface transition-colors",
-              isOpen ? "border-primary/40" : "border-border hover:border-faint",
-            )}
-          >
-            <div className="flex min-w-0 items-start gap-3 px-4 pt-4 sm:px-5">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-pill bg-primary-soft text-caption font-semibold text-primary">
-                {String(index + 1).padStart(2, "0")}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-caption text-muted">{primary?.label ?? "Бүртгэл"}</p>
-                {href ? (
-                  <Link
-                    href={href}
-                    className="mt-0.5 inline-flex items-start gap-1 break-words text-lead font-semibold text-primary hover:underline"
-                  >
-                    <RecordTitle row={row} field={primary} fallback={`Бичлэг ${index + 1}`} />
-                    <ArrowUpRight size={17} aria-hidden className="mt-1 shrink-0" />
-                  </Link>
-                ) : expandable ? (
-                  <button
-                    type="button"
-                    aria-expanded={isOpen}
-                    aria-controls={detailId}
-                    onClick={() => setOpenRow(isOpen ? null : index)}
-                    className="mt-0.5 break-words text-left text-lead font-semibold text-ink hover:text-primary"
-                  >
-                    <RecordTitle row={row} field={primary} fallback={`Бичлэг ${index + 1}`} />
-                  </button>
-                ) : (
-                  <p className="mt-0.5 break-words text-lead font-semibold text-ink">
-                    <RecordTitle row={row} field={primary} fallback={`Бичлэг ${index + 1}`} />
-                  </p>
-                )}
-              </div>
+          return (
+            <Fragment key={index}>
+              <tr className={isOpen ? "bg-primary-soft/20" : undefined}>
+                <Td data-label="№" className="text-caption text-muted tabular-nums">
+                  {String(index + 1).padStart(2, "0")}
+                </Td>
+                {shown.map((field) => {
+                  const isPrimary = field.name === primary?.name;
+                  /*
+                    ★ The surname rides with the given name in the primary cell
+                    and its own column is dropped — `RecordTitle`'s job in the
+                    card layout, kept here so "Батбаяр" does not appear without
+                    the "Ганболд" that tells two of them apart.
+                  */
+                  if (hasSurname && field.name === "lastName") return null;
 
-              {/*
-                ★ Beside the name, not under the fields. The action belongs to
-                the record, and the header is where the record is identified —
-                putting it at the foot would read as an action on the summary
-                below it.
-              */}
-              {rowActions ? <div className="shrink-0">{rowActions(row)}</div> : null}
-            </div>
-            {summary.length > 0 ? (
-              <dl className="grid flex-1 gap-x-5 gap-y-3 px-4 py-4 sm:grid-cols-2 sm:px-5">
-                {summary.map((field) => (
-                  <div key={field.name} className="min-w-0">
-                    <dt className="text-caption text-muted">{field.label}</dt>
-                    <dd className="mt-0.5 break-words text-body font-medium text-ink">
-                      {row[field.name] || "Бөглөөгүй"}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            ) : (
-              <div className="flex-1 pb-4" />
-            )}
-            {expandable ? (
-              <button
-                type="button"
-                aria-expanded={isOpen}
-                aria-controls={detailId}
-                onClick={() => setOpenRow(isOpen ? null : index)}
-                className="flex min-h-11 w-full items-center justify-between border-t border-border-soft px-4 text-left text-caption font-semibold text-primary hover:bg-primary-soft/40 sm:px-5"
-              >
-                {isOpen ? "Дэлгэрэнгүйг хураах" : "Дэлгэрэнгүй харах"}
-                <ChevronDown
-                  size={17}
-                  aria-hidden
-                  className={cn("transition-transform", isOpen && "rotate-180")}
-                />
-              </button>
-            ) : null}
-            {expandable && isOpen ? (
-              <div
-                id={detailId}
-                className="flex flex-col gap-4 border-t border-border-soft bg-canvas p-4 sm:p-5"
-              >
-                {additional.length > 0 ? (
-                  <div>
-                    <p className="mb-3 text-caption font-semibold text-ink">
-                      Нэмэлт мэдээлэл · {additional.length} талбар
-                    </p>
-                    <RecordFacts columns={additional} row={row} />
-                  </div>
+                  if (!isPrimary) {
+                    return (
+                      <Td key={field.name} data-label={field.label}>
+                        {row[field.name] || <span className="text-faint">Бөглөөгүй</span>}
+                      </Td>
+                    );
+                  }
+
+                  const title = (
+                    <RecordTitle row={row} field={primary} fallback={`Бичлэг ${index + 1}`} />
+                  );
+                  return (
+                    <Td
+                      key={field.name}
+                      data-label={field.label}
+                      colSpan={hasSurname ? 2 : 1}
+                      className="font-medium text-ink"
+                    >
+                      {href ? (
+                        <Link
+                          href={href}
+                          className="inline-flex items-center gap-1 text-primary hover:underline"
+                        >
+                          {title}
+                          <ArrowUpRight size={15} aria-hidden className="shrink-0" />
+                        </Link>
+                      ) : expandable ? (
+                        <button
+                          type="button"
+                          aria-expanded={isOpen}
+                          aria-controls={detailId}
+                          onClick={() => setOpenRow(isOpen ? null : index)}
+                          className="inline-flex items-center gap-1 text-left hover:text-primary"
+                        >
+                          {title}
+                          <ChevronDown
+                            size={15}
+                            aria-hidden
+                            className={cn("shrink-0 transition-transform", isOpen && "rotate-180")}
+                          />
+                        </button>
+                      ) : (
+                        title
+                      )}
+                    </Td>
+                  );
+                })}
+                {rowActions ? (
+                  <Td data-label="Үйлдэл" className="text-right">
+                    {rowActions(row)}
+                  </Td>
                 ) : null}
-                {renderDetail?.(row)}
-              </div>
-            ) : null}
-          </article>
-        );
-      })}
-    </div>
+              </tr>
+              {expandable && isOpen ? (
+                <tr id={detailId}>
+                  {/*
+                    ★ The detail is a row of its own spanning every column, not
+                    a panel outside the table. Anything else would put the
+                    record's own fields somewhere the row it belongs to cannot
+                    be seen.
+                  */}
+                  <Td colSpan={span} className="bg-canvas">
+                    <div className="flex flex-col gap-4">
+                      {additional.length > 0 ? (
+                        <div>
+                          <p className="mb-3 text-caption font-semibold text-ink">
+                            Нэмэлт мэдээлэл · {additional.length} талбар
+                          </p>
+                          <RecordFacts columns={additional} row={row} />
+                        </div>
+                      ) : null}
+                      {renderDetail?.(row)}
+                    </div>
+                  </Td>
+                </tr>
+              ) : null}
+            </Fragment>
+          );
+        })}
+      </tbody>
+    </TableShell>
   );
 
   if (!searchable) return cards;

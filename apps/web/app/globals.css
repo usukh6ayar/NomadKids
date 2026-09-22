@@ -292,6 +292,23 @@
   --radius-row: 18px;
   --radius-pill: 999px;
   /*
+   * ★★★ A message bubble, 2026-09-22: "Багш, удирдлага, эцэг эх 3-д дугуй
+   * хэлбэртэй чатуудыг оруулах."
+   *
+   * A step past `--radius-row`, which bubbles borrowed until now. It is a token
+   * of its own rather than a fourth value on the scale above for the reason the
+   * button capsule is: the radius belongs to the *shape of the thing*, not to
+   * its place in a hierarchy of surfaces. A bubble is a spoken line — the one
+   * element in the product that should read as rounder than the card it sits
+   * on, which is the opposite of the ratio the scale above keeps.
+   *
+   * Raising `--radius-row` to get this would have rounded every list row, menu
+   * and sunken panel in the product, which nobody asked for. The 2026-09-08
+   * note above moved all three together *because* the complaint that day was
+   * about the whole page; this one names the chat.
+   */
+  --radius-bubble: 22px;
+  /*
    * ★★ Buttons are capsules — 2026-09-08, the same request, second half:
    * "товч ntr н дөрвөлжин юм шиг байгаад байна. гоё зөөлхөн дугуйдуу болгох нь
    * гоё байна."

@@ -478,7 +478,23 @@ describe("ESIS мэдээллийн панел", () => {
    * cases are the replacement contract: the table shows five columns, the rest
    * of the record is one press away, and no floor is emitted.
    */
-  it("shows a readable summary on each card, with other fields behind its detail", async () => {
+  /*
+   * ★★★★ **A table again — 2026-09-22**, the same client: "Esis Эндээс орж
+   * ирсэн мэдээллүүд хэт том дөрвөлжин байж зай эзэлж байгаа тул хүснэгтэн
+   * хэлбэртэй зай бага эзлэхээр болох."
+   *
+   * The card layout these three cases were written for satisfied the no-scroll
+   * rule by spending height instead: a numbered pill, a `text-lead` title and a
+   * four-field `<dl>` per record, two to a row. For the institution's 93
+   * children that is thousands of pixels to read a list of names.
+   *
+   * ★ **The 2026-09-09 rule did not go away, it moved.** These cases used to
+   * assert "no `<table>` element", which was a proxy for it. The rule itself is
+   * *no sideways scroll*, and what broke it was a pixel floor by column count.
+   * So the assertion is now the floor's absence — see the case below — and a
+   * table is allowed to be a table.
+   */
+  it("labels each column once, with the other fields behind a detail press", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
       { path: CATALOG_PATH, body: catalog(false) },
@@ -487,17 +503,34 @@ describe("ESIS мэдээллийн панел", () => {
 
     await screen.findByText("Гурилтай шөл");
 
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
-    expect(screen.getAllByRole("listitem")).toHaveLength(2);
-    expect(screen.getAllByText("Код")).toHaveLength(2);
-    expect(screen.getAllByText("Хэмжих нэгж")).toHaveLength(2);
-    expect(screen.getAllByText("Төрөл")).toHaveLength(2);
-    expect(screen.getAllByText("Илчлэг")).toHaveLength(2);
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(screen.getAllByRole("row")).toHaveLength(3); // a header and two records
+
+    /*
+     * ★ Once each, not once per record — this is the space the change bought,
+     * and it is measurable rather than a matter of taste. The card layout
+     * repeated all five field names inside every card.
+     */
+    expect(screen.getAllByText("Код")).toHaveLength(1);
+    expect(screen.getAllByText("Хэмжих нэгж")).toHaveLength(1);
+    expect(screen.getAllByText("Төрөл")).toHaveLength(1);
+    expect(screen.getAllByText("Илчлэг")).toHaveLength(1);
+
+    // Still five columns and no more: the rest of the record is one press away.
     expect(screen.queryByText("Уураг")).not.toBeInTheDocument();
     expect(screen.queryByText("Дараалал")).not.toBeInTheDocument();
   });
 
-  it("keeps cards within the panel without a sideways table", async () => {
+  /*
+   * ★ **The 2026-09-09 rule, asserted on directly.**
+   *
+   * "хажуу тийшээ scroll ntr хийхгүй". `esis-rows.tsx` used to set a floor by
+   * column count — 720, 1400 or 2400 — so a wide service scrolled sideways
+   * whatever the viewport. This is the case that would catch one coming back,
+   * including via `TableShell`'s own `min-w-[860px]` default, which the panel
+   * must override rather than inherit.
+   */
+  it("emits no pixel floor, so nothing scrolls sideways", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
       { path: CATALOG_PATH, body: catalog(false) },
@@ -508,11 +541,17 @@ describe("ESIS мэдээллийн панел", () => {
 
     await screen.findByText("Гурилтай шөл");
 
-    expect(container.querySelector("table")).toBeNull();
-    const cards = container.querySelectorAll("article");
-    expect(cards).toHaveLength(2);
-    expect(cards[0]?.className).toContain("min-w-0");
-    expect(cards[0]?.className).not.toMatch(/min-w-\[/);
+    const table = container.querySelector("table")!;
+    expect(table.className).toContain("min-w-0");
+    expect(table.className).not.toMatch(/min-w-\[/);
+
+    /*
+     * ★★ And a phone gets rows as cards rather than a grid to drag. The rule
+     * lives in `globals.css` under `[data-ui-table="stacked"]`, so the marker
+     * is what a test can see — `table.tsx`'s own note explains why it is one
+     * definition there instead of a string of utilities per table.
+     */
+    expect(container.querySelector('[data-ui-table="stacked"]')).not.toBeNull();
   });
 
   it("reveals every field of the row that was pressed", async () => {
