@@ -25,6 +25,7 @@ import { Field, PasswordInput } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { PhotoBadgeButton } from "@/components/media/photo-badge-button";
+import { MyStaffRecords } from "@/components/staff/my-staff-records";
 
 const profileSchema = userProfileSchema.extend({
   specialization: z.string().nullish(),
@@ -78,6 +79,18 @@ export default function SettingsPage() {
       <div className="flex w-full max-w-[760px] flex-col gap-6 lg:gap-8">
         <ProfileCard />
       </div>
+
+      {/*
+        ★ The reader's own мэргэшлийн зэрэг — 2026-09-22, the client asking for
+        it "Багш болон удирдлага хэсэгт". Management's half has existed since
+        #119; this is the teacher's, and it is read-only because
+        `assertCanManageStaffRecords` is administrator-only on purpose.
+        `MyStaffRecords`'s own docblock carries the reasoning.
+
+        Above the ESIS panels: it is this kindergarten's record of the reader,
+        which is nearer to their profile than the ministry's roll is.
+      */}
+      <MyStaffRecords />
 
       <EsisProfileSection />
 
