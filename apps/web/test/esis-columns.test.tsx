@@ -190,7 +190,8 @@ describe("ESIS хүснэгтийн хайлт", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Дараах" }));
 
-    const row = screen.getByText("Овог25").closest("article")!;
+    // `tr` since 2026-09-22 — the records are table rows rather than cards.
+    const row = screen.getByText("Овог25").closest("tr")!;
     expect(within(row).getByRole("link")).toHaveAttribute("href", "/children/child-25");
   });
 
