@@ -389,10 +389,17 @@ export function ChatList({
               >
                 {/* Initials, not an avatar: a room is a group of people and
                     there is no one face for it. */}
+                {/*
+                  ★ `rounded-pill` since 2026-09-22 — the round room list the
+                  client asked for. It also puts the room badge in the same
+                  shape as `PersonAvatar`, which has always been a circle: the
+                  list and the messages inside it now agree about what a
+                  participant looks like.
+                */}
                 <span
                   aria-hidden="true"
                   className={cn(
-                    "grid size-12 shrink-0 place-items-center rounded-control text-lead font-bold",
+                    "grid size-12 shrink-0 place-items-center rounded-pill text-lead font-bold",
                     room.kind === "GROUP"
                       ? "bg-mint text-mint-ink"
                       : "bg-primary-soft text-primary",
@@ -585,7 +592,8 @@ export function ChatRoom({
           <span
             aria-hidden="true"
             className={cn(
-              "hidden size-11 shrink-0 place-items-center rounded-control text-body font-bold sm:grid",
+              // Circular, to match the same badge in the list — see its note.
+              "hidden size-11 shrink-0 place-items-center rounded-pill text-body font-bold sm:grid",
               room.kind === "GROUP" ? "bg-mint text-mint-ink" : "bg-primary-soft text-primary",
             )}
           >
@@ -904,7 +912,17 @@ function MessageBubble({ message }: { message: z.infer<typeof chatMessageSchema>
         ) : null}
         <div
           className={cn(
-            "min-w-0 rounded-row px-4 py-3 shadow-[0_2px_8px_rgba(28,65,103,.05)]",
+            /*
+              ★ `rounded-bubble` since 2026-09-22 — the client asking for round
+              chats. See `globals.css` for why it is a token of its own rather
+              than a step on the surface scale.
+
+              ★★ The tail corner stays tight, and that is the whole grammar of
+              a bubble: three round corners and one square-ish one is what says
+              which side of the room a line came from. Rounding all four would
+              make the two speakers' bubbles differ only by colour.
+            */
+            "min-w-0 rounded-bubble px-4 py-3 shadow-[0_2px_8px_rgba(28,65,103,.05)]",
             message.mine
               ? "rounded-br-md bg-primary text-primary-ink"
               : "rounded-bl-md border border-[#dbe8f2] bg-white text-ink",
