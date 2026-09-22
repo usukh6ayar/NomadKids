@@ -26,7 +26,7 @@ import { DataList, DataRow } from "@/components/ui/data-list";
 import { Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
-import { formatAge, fullName } from "@/lib/format";
+import { formatAge, fullName, shortName } from "@/lib/format";
 import { Art } from "@/components/ui/art";
 import { GroupGuardianInvitations } from "@/components/child/group-guardian-invitations";
 
@@ -124,6 +124,15 @@ function GroupDetail() {
     return (roster.data?.items ?? []).filter((child) => {
       if (sex && child.sex !== sex) return false;
       if (!needle) return true;
+      /*
+        ★ `fullName`, deliberately, while the rows *render* `shortName`.
+
+        The names on screen read "Г.Батбаяр" since 2026-09-22, and matching the
+        search against that string would stop "Ганболд" finding him — a teacher
+        typing the surname off a document would get an empty list for a child
+        who is in the group. The search reads the whole name; the row shows the
+        short one.
+      */
       return fullName(child).toLocaleLowerCase("mn-MN").includes(needle);
     });
   }, [roster.data, query, sex]);
@@ -209,7 +218,13 @@ function GroupDetail() {
             {teachers.map((assignment) => (
               <li key={assignment.id} className="flex items-center gap-2">
                 <span className="text-body text-ink">
-                  {assignment.membership?.user ? fullName(assignment.membership.user) : "—"}
+                  {/*
+                    ★ "С.Бямбараш" — the client's own example, 2026-09-22. A
+                    group header carries the lead and the assistant side by
+                    side, and two full Mongolian names there wrap onto a second
+                    line on a phone.
+                  */}
+                  {assignment.membership?.user ? shortName(assignment.membership.user) : "—"}
                 </span>
                 {assignment.role ? (
                   <Badge tone={assignment.role === "LEAD" ? "sky" : "neutral"}>
@@ -298,7 +313,7 @@ function GroupDetail() {
                       className="flex min-w-0 items-center gap-3 text-primary hover:underline"
                     >
                       <ChildAvatar child={child} size={32} />
-                      <span className="min-w-0 truncate">{fullName(child)}</span>
+                      <span className="min-w-0 truncate">{shortName(child)}</span>
                     </Link>
                   }
                   cells={{
