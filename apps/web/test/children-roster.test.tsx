@@ -111,9 +111,9 @@ const localChildren = {
   totalPages: 1,
 };
 
-function stubRoster() {
+function stubRoster(roles: ("ADMIN" | "TEACHER")[] = ["ADMIN"]) {
   stubApi([
-    { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+    { path: "/auth/me", body: sessionFor(roles) },
     { path: `/kindergartens/${KG}/esis/resource`, body: read },
     { path: `/kindergartens/${KG}/esis/catalog`, body: catalog },
     { path: "/children", body: localChildren },
@@ -192,5 +192,67 @@ describe("/children — ESIS roster", () => {
     // Namuun and Temuulen are in ESIS and not in this kindergarten's records.
     expect(screen.queryByRole("link", { name: /Намуун/ })).toBeNull();
     expect(screen.getByText("Намуун")).toBeInTheDocument();
+  });
+
+  /*
+   * ★ **A teacher does not get the institution's roll — 2026-09-22.**
+   *
+   * The client: "Багш: Зөвхөн тухайн бүлгийн суралцагчдын нэр харагдана."
+   * `students/list` answers for the whole institution and takes no group
+   * parameter, so the panel is a director's. Намуун and Тэмүүлэн are in the
+   * ESIS response and in no group this teacher teaches; if the panel renders
+   * for a teacher they appear, which is the failure this pins.
+   *
+   * ★★ It asserts on the *names*, not on the panel's heading. A heading could
+   * be renamed and the children would still be on screen — the thing the
+   * client objected to is a child's name, so that is what the test reads.
+   */
+  it("a teacher is not shown the institution's ESIS roster", async () => {
+    stubRoster(["TEACHER"]);
+    renderWithProviders(<ChildrenPage />);
+
+    // Their own group's child, from `GET /children`, which the API has scoped.
+    expect(await screen.findByText("Г.Батбаяр")).toBeInTheDocument();
+
+    expect(screen.queryByText("Намуун")).toBeNull();
+    expect(screen.queryByText("Тэмүүлэн")).toBeNull();
+  });
+
+  /*
+   * ★ **The request, not just the rendering.**
+   *
+   * A screen that drew the right names by filtering an institution-wide
+   * response in the browser would pass the test above and still have sent
+   * every child's name and birth date to a teacher's machine. `RosterSummary`
+   * did exactly that — it read `?resource=students` to count three figures —
+   * so this asserts the call is not made at all.
+   *
+   * ★★ `resource=students` specifically, not `/esis/resource`. The teacher
+   * keeps two panels that legitimately use that route: `studentByRegister`
+   * (their own client-requested РД search) and `groupStudents`, which is
+   * group-scoped. Asserting on the route would ban those too and the test
+   * would be pinning the wrong rule.
+   */
+  it("never asks ESIS for the institution's roll on a teacher's screen", async () => {
+    stubRoster(["TEACHER"]);
+    renderWithProviders(<ChildrenPage />);
+
+    await screen.findByText("Г.Батбаяр");
+    const calls = vi.mocked(globalThis.fetch).mock.calls.map((call) => String(call[0]));
+    expect(calls.some((url) => url.includes("/children?"))).toBe(true);
+    expect(calls.some((url) => url.includes("resource=students"))).toBe(false);
+  });
+
+  /*
+   * ★ A director still has both, which is what keeps this from being a
+   * narrowing nobody asked for. The 2026-09-08 instruction that put the ESIS
+   * roll on this screen was about their screen.
+   */
+  it("an admin keeps the institution's roster beside their own", async () => {
+    stubRoster(["ADMIN"]);
+    renderWithProviders(<ChildrenPage />);
+
+    expect(await screen.findByText("Намуун")).toBeInTheDocument();
+    expect(screen.getByText("Г.Батбаяр")).toBeInTheDocument();
   });
 });
