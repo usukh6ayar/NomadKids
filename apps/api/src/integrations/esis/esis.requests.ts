@@ -787,12 +787,41 @@ export const ESIS_DISPOSITIONS: Readonly<Record<number, string>> = {
     "Яамны өөрийн олгосон жагсаалтад энэ мөрийн URL багана хоосон байна. " +
     "Зам нь мэдэгдэхгүй тул дуудах боломжгүй — яамнаас тодруулах зүйл.",
 
+  /*
+   * ★ **Re-probed 2026-09-22**, at the client's instruction to use the four
+   * degree services (119, 165, 167, 170) — `scripts/esis-degree-probe.ts`.
+   *
+   * 167 and 170 are **reachable**: both answer
+   * `203 {"SUCCESS_CODE":203,"RESPONSE_MESSAGE":"Хүсэлтэд тохирох утга
+   * олдсонгүй.","RESULT":""}` for a placeholder `requestId`. That is the shape
+   * of *access granted, id not found* — distinguished on purpose from 119's
+   * `403 Энэ API-д хандах эрх байхгүй` below, which is access refused. So the
+   * reason these two are uncalled is no longer "no grant" and is not "no
+   * access": it is that nothing can produce a `requestId`.
+   *
+   * ★★ **Why that still blocks them.** Both are keyed by `:requestId`. 119 is
+   * the service that turns a register number into one and is refused; 165 is
+   * the POST that files a request and would presumably return one, and it has
+   * not been called — `ESIS_TRIAL_STATE.md` §1 records that there is no test
+   * environment, so a probe of 165 files a real qualification application
+   * against a real teacher. That is a decision for the client, not a discovery
+   * step.
+   *
+   * ★★★ Note for whoever wires these: `RESULT` comes back as `""`, not `[]`.
+   * The empty-body guard each parser builds for itself has to admit an empty
+   * **string** here, or a reader will throw on the ordinary "no such request"
+   * answer.
+   */
   167:
-    "Багшийн мэргэшлийн зэргийн модуль энэ бүтээгдэхүүнд байхгүй — хүсэлтийн " +
-    "шийдвэрлэлтийг харуулах дэлгэц алга.",
+    "Амьдаар шалгахад эрх НЭЭЛТТЭЙ (203, «Хүсэлтэд тохирох утга олдсонгүй»). " +
+    "Дуудагдаагүй шалтгаан нь requestId үүсгэх зам байхгүй: 119 татгалзсан, " +
+    "165 (POST) нь бодит бичлэг рүү бичдэг тул захиалагчийн шийдвэргүйгээр " +
+    "дуудаагүй. 2026-09-22-нд дахин шалгав.",
   170:
-    "Багшийн мэргэшлийн зэргийн модуль энэ бүтээгдэхүүнд байхгүй — хүсэлтийн " +
-    "түүхийг харуулах дэлгэц алга.",
+    "Амьдаар шалгахад эрх НЭЭЛТТЭЙ (203, «Хүсэлтэд тохирох утга олдсонгүй»). " +
+    "167-той ижил шалтгаанаар дуудагдаагүй — requestId үүсгэх зам алга. " +
+    "Порталын URL нь institutionId-г зам болон query хоёуланд давхар агуулдаг; " +
+    "шалгалтыг нийтлэгдсэн хэлбэрээр нь явуулсан. 2026-09-22-нд дахин шалгав.",
   /*
    * ★ Live-probed 2026-09-17, plan Task 9 Step 2. The export's own stated root
    * (`/svc/api/zereg/get/request/:registerNum`) answers `404 Зам олдсонгүй` —
@@ -808,6 +837,15 @@ export const ESIS_DISPOSITIONS: Readonly<Record<number, string>> = {
    * client cannot express. Nothing was guessed into `esisPath` to work around
    * a 403; the standard grammar already reaches a real route and still fails
    * on access.
+   *
+   * ★★ **Re-probed 2026-09-22 and unchanged**, with one detail worth keeping
+   * because it nearly read as good news. Without `institutionId` the hub root
+   * answers `400 {"message":"institutionId дутуу байна"}`, which looks like a
+   * route that is open and merely mis-called. Supplying `institutionId` turns
+   * that into the same `403` as before: the parameter check runs **ahead of**
+   * the access check, so a 400 here says nothing about the grant. Anyone
+   * re-probing this should send `institutionId` or they will read the 400 as
+   * progress, as this pass briefly did.
    */
   119:
     "Стандарт /svc/api/hub/v2/zereg/get/request/:registerNum замаар " +
