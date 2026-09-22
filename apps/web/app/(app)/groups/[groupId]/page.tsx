@@ -22,19 +22,13 @@ import { EsisGroupWrite } from "@/components/esis/esis-group-write";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
-import { DataList, DataRow } from "@/components/ui/data-list";
+import { TableShell, Td, Th } from "@/components/ui/table";
 import { Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { formatAge, fullName, shortName } from "@/lib/format";
 import { Art } from "@/components/ui/art";
 import { GroupGuardianInvitations } from "@/components/child/group-guardian-invitations";
-
-/** The roster table's columns — the name is the row title, not a column. */
-const ROSTER_COLUMNS = [
-  { key: "sex", label: "Хүйс", className: "md:w-[110px]" },
-  { key: "age", label: "Нас", className: "md:w-[130px]" },
-];
 
 const childrenSchema = paginated(childSummarySchema);
 
@@ -303,34 +297,72 @@ function GroupDetail() {
               description="Хайлт, шүүлтээ өөрчилж үзнэ үү."
             />
           ) : (
-            <DataList columns={ROSTER_COLUMNS} leadWidth={null}>
-              {visible.map((child) => (
-                <DataRow
-                  key={child.id}
-                  title={
-                    <Link
-                      href={`/children/${child.id}/general`}
-                      className="flex min-w-0 items-center gap-3 text-primary hover:underline"
-                    >
-                      <ChildAvatar child={child} size={32} />
-                      <span className="min-w-0 truncate">{shortName(child)}</span>
-                    </Link>
-                  }
-                  cells={{
-                    sex: child.sex ? (
-                      <span className="text-body text-muted">
-                        {child.sex === "FEMALE" ? "Охин" : "Хүү"}
-                      </span>
-                    ) : null,
-                    age: child.dateOfBirth ? (
-                      <span className="text-body tabular-nums text-muted">
-                        {formatAge(child.dateOfBirth)}
-                      </span>
-                    ) : null,
-                  }}
-                />
-              ))}
-            </DataList>
+            /*
+              ★ **A table with the register number — 2026-09-22**, the client:
+              "доод хэсэгт хүүхдийн нэр регистр Бүхий суралцагчдын нэр тоо
+              байна. Хүснэгтээр харуулах."
+
+              `DataList` drew a name, a sex and an age as a stack of rows. The
+              регистр was the missing column, and it needed no API change:
+              `childSummarySchema` has carried `nationalId` since 2026-09-04
+              "for the roster table's Регистр column" — a table that had been
+              removed from `/children` by then, so the field had been arriving
+              with nowhere to go.
+
+              ★★ `min-w-0` and `stacked`, for the reason `esis-rows.tsx` now
+              carries at length: the client's 2026-09-09 rule is no sideways
+              scroll, and a pixel floor is what breaks it.
+            */
+            <TableShell caption="Бүлгийн суралцагчид" minWidth="min-w-0" stacked>
+              <thead>
+                <tr>
+                  <Th>Нэр</Th>
+                  <Th>Регистр</Th>
+                  <Th>Хүйс</Th>
+                  <Th>Нас</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((child) => (
+                  <tr key={child.id}>
+                    <Td data-label="Нэр">
+                      <Link
+                        href={`/children/${child.id}/general`}
+                        className="flex min-w-0 items-center gap-2.5 font-medium text-primary hover:underline"
+                      >
+                        <ChildAvatar child={child} size={28} />
+                        <span className="min-w-0 truncate">{shortName(child)}</span>
+                      </Link>
+                    </Td>
+                    {/*
+                      ★ A foreign child's identifier is labelled as one rather
+                      than rendering as a bare number, and an unrecorded регистр
+                      is "—". `childSummarySchema`'s own note makes the case: a
+                      dash for a гадаад иргэн reads identically to a dash for a
+                      child whose регистр nobody has typed yet, and only the
+                      second of those is somebody's to-do.
+                    */}
+                    <Td data-label="Регистр" className="tabular-nums text-muted">
+                      {child.isForeign ? (
+                        child.foreignId ? (
+                          `${child.foreignId} (гадаад)`
+                        ) : (
+                          <span className="text-faint">Гадаад иргэн</span>
+                        )
+                      ) : (
+                        child.nationalId || <span className="text-faint">—</span>
+                      )}
+                    </Td>
+                    <Td data-label="Хүйс" className="text-muted">
+                      {child.sex ? (child.sex === "FEMALE" ? "Охин" : "Хүү") : "—"}
+                    </Td>
+                    <Td data-label="Нас" className="tabular-nums text-muted">
+                      {child.dateOfBirth ? formatAge(child.dateOfBirth) : "—"}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </TableShell>
           )}
         </>
       ) : null}
