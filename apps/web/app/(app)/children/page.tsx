@@ -27,7 +27,8 @@ import { Donut } from "@/components/ui/chart/donut";
 import { Ring } from "@/components/ui/chart/ring";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { formatAge, fullName } from "@/lib/format";
+import { formatAge, fullName, shortName } from "@/lib/format";
+import { TableShell, Td, Th } from "@/components/ui/table";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { StatCard } from "@/components/ui/stat-card";
@@ -105,9 +106,28 @@ export default function ChildrenPage() {
 const ROSTER_SIZE = 100;
 
 function StaffChildren() {
-  const { primaryKindergartenId } = useSession();
+  const { primaryKindergartenId, hasRole } = useSession();
   const searchParams = useSearchParams();
   const urlQuery = searchParams.get("q") ?? "";
+
+  /*
+   * ★ Whether this reader is the institution's or one group's — 2026-09-22, the
+   * client: "Багш: Зөвхөн тухайн бүлгийн суралцагчдын нэр харагдана."
+   *
+   * It decides which roster the screen draws, and the distinction is the whole
+   * point of the change: `students/list` is the ministry's roll for the
+   * **institution** and takes no group parameter, so a teacher reading it saw
+   * all 93 children including every group but their own. `GET /children` is
+   * already scoped — `visibleChildrenWhere` admits a teacher only to children
+   * enrolled in a group they teach — so the fix is to draw the list the product
+   * already had rather than to filter the ministry's after the fact.
+   *
+   * ★★ A director keeps the ESIS panel. Their question *is* the institution's
+   * roll, which is why it was put here on 2026-09-08, and nothing about this
+   * request narrows it: "Эцэг эхээс бусад бүх хэсэгт" asked for the ESIS
+   * panels to be smaller, not for a director to stop seeing them.
+   */
+  const isAdmin = hasRole("ADMIN");
 
   /*
    * ★ A search box on the screen again — 2026-09-09, at the client's request
@@ -188,9 +208,15 @@ function StaffChildren() {
    * of what the client stopped on 2026-09-14 ("ene esis ni real zuil shuu").
    *
    * `EsisDataPanel` below reads `students/list` itself and shows what comes
-   * back, or `EsisNoAnswer` naming the endpoint that did not. The local roster
-   * is still on this screen in its own table above, which is where a local
-   * roster belongs.
+   * back, or `EsisNoAnswer` naming the endpoint that did not.
+   *
+   * ★★ **This note used to end "the local roster is still on this screen in its
+   * own table above", and it was not** — corrected 2026-09-22. Nothing rendered
+   * `data.items`; the query survived only to feed the header's count, the Excel
+   * link and `childHref`'s name match. So the sentence describing where a local
+   * roster belongs was the only place it existed, and for a teacher that left
+   * the ministry's institution-wide roll as the sole list of children on the
+   * screen. `LocalRoster` below is that table, and it is what the teacher gets.
    */
 
   return (
@@ -257,11 +283,43 @@ function StaffChildren() {
         description="Сурагчийн мэдээллийг ESIS-ээс регистрийн дугаараар хайна"
       />
 
-      <RosterSummary />
+      {/*
+        ★ Director only, since 2026-09-22 — and this one is the reason the
+        change is not cosmetic.
+
+        `RosterSummary` counts the rows `?resource=students` returned, so it
+        fetched the institution's whole roll into the reader's browser to
+        report three figures. For a teacher that is both the wrong number —
+        93 where their group has twenty — and every child's name and birth date
+        travelling to a machine that should not have asked. Gating the panel is
+        what stops the *request*, which is the part a heading cannot hide.
+
+        The teacher's count lives on `LocalRoster`'s own header instead, over
+        the rows they can actually see.
+      */}
+      {isAdmin ? <RosterSummary /> : null}
+
+      {/*
+        ★ The kindergarten's own roster, scoped by the API — 2026-09-22.
+
+        A teacher gets their groups' children and nothing else, because
+        `visibleChildrenWhere` resolves a teacher to the groups they are
+        assigned to. That is the property this table is here for: it is not a
+        filtered view of the institution's roll, it is a different question
+        asked of a different source.
+      */}
+      <LocalRoster rows={data?.items ?? []} total={data?.total ?? 0} search={search} />
 
       {/*
         ★ The roster, from ESIS — 2026-09-08, at the client's instruction,
         given twice with the consequence written out first.
+
+        ★★ **Director only, since 2026-09-22.** `students/list` is the
+        institution's roll and takes no group parameter, so there is no such
+        thing as a teacher-shaped read of it — the client asked that a teacher
+        see only their own group, and the honest way to give a service that
+        answers one question to somebody who may only know part of the answer
+        is not to give it to them. The teacher's list is `LocalRoster` above.
 
         The local roster is gone, and with it its search, its three filters,
         its pager, the row that opened a child's record, the selection and the
@@ -286,9 +344,10 @@ function StaffChildren() {
         both ADMIN and TEACHER, while every other role receives neither the
         catalog entry nor permission to call it.
       */}
-      <EsisDataPanel
-        resource="students"
-        /*
+      {isAdmin ? (
+        <EsisDataPanel
+          resource="students"
+          /*
           ★ "Жагсаалт", not "ерөнхий мэдээлэл" — 2026-09-09, the client's own
           correction: "ерөөсөө ерөнхий мэдээлэл биш байсан байна".
 
@@ -298,11 +357,11 @@ function StaffChildren() {
           every child. The catalog's own name for this service has been
           "Суралцагчийн жагсаалт" all along.
         */
-        title="Суралцагчийн жагсаалт"
-        description="Бүртгэл, бүлэг, элсэлтийн төлөв"
-        liveHref={childHref}
-        linkField="firstName"
-        /*
+          title="Суралцагчийн жагсаалт"
+          description="Бүртгэл, бүлэг, элсэлтийн төлөв"
+          liveHref={childHref}
+          linkField="firstName"
+          /*
           ★ A camera on every record we can actually put a photograph on —
           2026-09-20, the client: "жагсаалтаас шууд зураг нэмэх".
 
@@ -310,36 +369,37 @@ function StaffChildren() {
           the record leads to a child's page then that child is ours, and if it
           leads nowhere offering an upload would promise somewhere to put it.
         */
-        rowActions={(row) => {
-          const href = childHref(row);
-          if (!href) return null;
-          return (
-            <ChildPhotoButton
-              childId={href.split("/")[2]!}
-              childName={`${row.lastName ?? ""} ${row.firstName ?? ""}`.trim()}
-              variant="inline"
-            />
-          );
-        }}
-        /*
-         * ★ Reads on open — 2026-09-14, at the client's instruction: "esis ees
-         * tatsan medeelluud yr ni haragdahgui baihiin."
-         *
-         * It did not need to before: the panel fell back to the catalog's
-         * sample rows, so the table looked populated whether or not anything
-         * had been read. With the samples gone, a panel that waits for a press
-         * is a panel that shows nothing — and this is the screen about
-         * children, where the roster is the content rather than a reference.
-         *
-         * ★★ Safe to do here because `students/list` takes no parameter
-         * beyond the institution: one call on open, `staleTime: Infinity`, no
-         * refetch on focus. The three panels below keep their buttons because
-         * each needs an id or a date the reader has to supply first — reading
-         * those automatically would mean guessing a group, a register number
-         * or a date, and calling the ministry about it.
-         */
-        autoRead
-      />
+          rowActions={(row) => {
+            const href = childHref(row);
+            if (!href) return null;
+            return (
+              <ChildPhotoButton
+                childId={href.split("/")[2]!}
+                childName={`${row.lastName ?? ""} ${row.firstName ?? ""}`.trim()}
+                variant="inline"
+              />
+            );
+          }}
+          /*
+           * ★ Reads on open — 2026-09-14, at the client's instruction: "esis ees
+           * tatsan medeelluud yr ni haragdahgui baihiin."
+           *
+           * It did not need to before: the panel fell back to the catalog's
+           * sample rows, so the table looked populated whether or not anything
+           * had been read. With the samples gone, a panel that waits for a press
+           * is a panel that shows nothing — and this is the screen about
+           * children, where the roster is the content rather than a reference.
+           *
+           * ★★ Safe to do here because `students/list` takes no parameter
+           * beyond the institution: one call on open, `staleTime: Infinity`, no
+           * refetch on focus. The three panels below keep their buttons because
+           * each needs an id or a date the reader has to supply first — reading
+           * those automatically would mean guessing a group, a register number
+           * or a date, and calling the ministry about it.
+           */
+          autoRead
+        />
+      ) : null}
       {/*
         ★ The group roster, beside the whole one — 2026-09-09, at the client's
         request ("тэр хүүхдүүд дээр бүлгийн суралцагчийн жагсаалт api-13").
@@ -407,6 +467,126 @@ export interface RosterFacets {
 }
 
 const NO_FACETS: RosterFacets = { sort: "name", order: "asc" };
+
+/**
+ * The kindergarten's own children, as a table.
+ *
+ * ★ Back on the screen 2026-09-22, because a teacher had no list of their own
+ * group. What replaced it on 2026-09-08 was `students/list` — the ministry's
+ * roll for the whole institution — and the client's instruction that day was
+ * about a director's screen. A teacher reading the same panel saw every child
+ * in the building, which is what this restores the answer to.
+ *
+ * ★★ It renders whatever `GET /children` returned and filters nothing itself.
+ * That is deliberate and it is the security property: the scoping lives in
+ * `visibleChildrenWhere`, so a teacher's rows are their groups' children before
+ * this component ever sees them. A `groupId` filter added here would read as
+ * the thing doing the work and would be trivially removable — CLAUDE.md §4.1's
+ * argument for testing the route rather than the predicate.
+ *
+ * ★★★ Names as `shortName` — "С.Бямбараш", the client 2026-09-22. `fullName`
+ * spent most of a narrow row on the half a teacher does not read; the register
+ * column beside it is the one that disambiguates two children called Б.Сараа.
+ */
+function LocalRoster({
+  rows,
+  total,
+  search,
+}: {
+  rows: {
+    id: string;
+    lastName: string;
+    firstName: string;
+    nationalId?: string | null;
+    isForeign?: boolean | null;
+    foreignId?: string | null;
+    dateOfBirth: string;
+    photoMediaFileId?: string | null;
+    enrollments?: { group?: { name?: string | null } | null; status?: string | null }[];
+  }[];
+  total: number;
+  search: string;
+}) {
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        title={search ? "Хайлтад тохирох хүүхэд олдсонгүй" : "Бүртгэгдсэн хүүхэд байхгүй"}
+        description={
+          search
+            ? "Өөр нэр эсвэл регистрийн дугаараар хайж үзнэ үү."
+            : "ESIS-ээс татах эсвэл «Хүүхэд бүртгэх»-ээр нэг нэгээр нэмнэ."
+        }
+      />
+    );
+  }
+
+  return (
+    <section className="space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-body font-semibold text-ink">Суралцагчид</h2>
+        {/*
+          ★ The count is the *table's* count, not the kindergarten's.
+
+          `total` is what the API said matched the filter; `rows.length` is what
+          `ROSTER_SIZE` let through. Showing only `total` above a shorter table
+          is the disagreement `RosterSummary`'s own note warns about, so when
+          they differ the row count leads and the total is named as the total.
+        */}
+        <p className="text-caption text-muted">
+          {rows.length < total ? `${rows.length} / ${total}` : `${total}`} хүүхэд
+        </p>
+      </div>
+
+      <TableShell caption="Суралцагчдын жагсаалт" minWidth="min-w-0" stacked>
+        <thead>
+          <tr>
+            <Th>Нэр</Th>
+            <Th>Регистр</Th>
+            <Th>Бүлэг</Th>
+            <Th>Нас</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((child) => {
+            const enrollment =
+              child.enrollments?.find((row) => row.status === "ACTIVE") ?? child.enrollments?.[0];
+            /*
+              ★ A foreign child's identifier stands in for the регистр, and the
+              two are labelled apart rather than both rendering as a number in
+              the same column. `childSummarySchema`'s own note makes the case:
+              "—" for a foreign child reads identically to "—" for a child whose
+              регистр nobody has typed yet, and only the second is a to-do.
+            */
+            const register = child.isForeign
+              ? child.foreignId
+                ? `${child.foreignId} (гадаад)`
+                : "Гадаад иргэн"
+              : (child.nationalId ?? "—");
+
+            return (
+              <tr key={child.id}>
+                <Td data-label="Нэр">
+                  <Link
+                    href={`/children/${child.id}/general`}
+                    className="flex min-w-0 items-center gap-2 font-medium text-ink hover:underline"
+                  >
+                    <ChildAvatar child={child} size={28} />
+                    <span className="min-w-0 truncate">{shortName(child)}</span>
+                  </Link>
+                </Td>
+                <Td data-label="Регистр" className="tabular-nums">
+                  {register}
+                </Td>
+                <Td data-label="Бүлэг">{enrollment?.group?.name ?? "—"}</Td>
+                <Td data-label="Нас">{formatAge(child.dateOfBirth)}</Td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </TableShell>
+    </section>
+  );
+}
 
 /**
  * The query string for both roster requests.
