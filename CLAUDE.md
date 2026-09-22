@@ -320,6 +320,30 @@ CPU starvation. **Never run the two suites at the same time**, and before
 blaming this section, check what else was running. Run serially and both are
 clean — api 1885/0, web 559/0.
 
+★★★★★★ **2026-09-22 — a sixth instance, and the cleanest data point yet.**
+`invoices.test.tsx > "sends only the lines that were priced…"` **timed out at
+5000 ms** in `pnpm --filter web test`. Alone it passes in **774 ms** — six
+times inside the budget it missed. The suite then passed **twice
+consecutively**, 1107/1107 both times, with no change in between.
+
+What this adds to ★★★★★:
+
+- **A fifth distinct web file.** `admin-users`, `funding-register`, `flows`,
+  `password-policy` and now `invoices` — the "one bad test" theory is finished.
+- **It is a timeout again**, which is the shape ★★★★★ identified: work not
+  finishing, not an assertion going wrong. Four of the six instances now are.
+- **Nothing was running beside it.** ★'s concurrency cause is ruled out for
+  this one: no api suite, no `pnpm dev`, one vitest process.
+- **The margin is the evidence.** 774 ms against a 5000 ms budget means the
+  full-run environment cost this test _at least_ 6× — that is not a slow
+  machine, it is a stall.
+
+★ **What it cost to establish**, so nobody re-spends it: three full runs, about
+nine minutes, to turn one red line into "known flake". That is the price of
+this section staying undiagnosed, and it is worth paying — the alternative is
+shipping through a red suite, which is how the one failure that matters gets
+waved through.
+
 Still not a diagnosis. But the next person can skip "it is the money tables".
 
 ---

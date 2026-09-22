@@ -282,14 +282,14 @@ function LoginCard() {
       id="login-card"
       className="w-full max-w-[440px] scroll-mt-24 overflow-hidden rounded-card border border-white/80 bg-white/95 p-6 text-left shadow-[0_24px_70px_rgba(25,72,111,.16)] backdrop-blur-xl sm:p-8"
     >
-      <span className="inline-flex items-center gap-2 rounded-pill bg-[#eaf5ff] px-3 py-1.5 text-caption font-bold text-[#145ca8]">
-        <span className="size-2 rounded-pill bg-[#2588ed]" aria-hidden="true" />
+      <span className="inline-flex items-center gap-2 rounded-pill bg-primary-soft px-3 py-1.5 text-caption font-bold text-primary-strong">
+        <span className="size-2 rounded-pill bg-primary" aria-hidden="true" />
         Тавтай морил
       </span>
-      <h2 className="mt-4 text-heading font-extrabold leading-tight tracking-tight text-[#173e70]">
+      <h2 className="mt-4 text-heading font-extrabold leading-tight tracking-tight text-ink">
         Системд нэвтрэх
       </h2>
-      <p className="mt-2 text-body leading-6 text-slate-600">
+      <p className="mt-2 text-body leading-6 text-muted">
         Хүүхдийн өсөлт, өдөр тутмын ажлаа нэг дороос үргэлжлүүлээрэй.
       </p>
 
@@ -304,7 +304,7 @@ function LoginCard() {
           {({ id, describedBy, invalid }) => (
             <div className="relative">
               <UserRound
-                className="pointer-events-none absolute left-3.5 top-1/2 z-10 size-[17px] -translate-y-1/2 text-slate-400"
+                className="pointer-events-none absolute left-3.5 top-1/2 z-10 size-[17px] -translate-y-1/2 text-faint"
                 aria-hidden="true"
               />
               <Input
@@ -317,7 +317,7 @@ function LoginCard() {
                 placeholder="Нэвтрэх нэр"
                 value={identifier}
                 onChange={(event) => setIdentifier(event.target.value)}
-                className="h-13 rounded-control border-[#dbe7f2] bg-[#f8fbff] pl-11 text-body transition-colors focus:bg-white"
+                className="h-13 rounded-control border-border bg-canvas pl-11 text-body transition-colors focus:bg-white"
               />
             </div>
           )}
@@ -327,7 +327,7 @@ function LoginCard() {
           {({ id, describedBy, invalid }) => (
             <div className="relative">
               <LockKeyhole
-                className="pointer-events-none absolute left-3.5 top-1/2 z-10 size-[17px] -translate-y-1/2 text-slate-400"
+                className="pointer-events-none absolute left-3.5 top-1/2 z-10 size-[17px] -translate-y-1/2 text-faint"
                 aria-hidden="true"
               />
               <PasswordInput
@@ -339,27 +339,40 @@ function LoginCard() {
                 placeholder="Нууц үг"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                className="h-13 rounded-control border-[#dbe7f2] bg-[#f8fbff] pl-11 text-body transition-colors focus:bg-white"
+                className="h-13 rounded-control border-border bg-canvas pl-11 text-body transition-colors focus:bg-white"
               />
             </div>
           )}
         </Field>
 
+        {/*
+          ★ **The button's own colour, 2026-09-22.**
+
+          It was `bg-[#176ac2]` hovering to `#115aa8` — a blue the rest of the
+          product does not have. `--color-primary` is `#1d4ed8`, the E-Mongolia
+          blue the palette was repainted to on 2026-08-23 precisely so that one
+          file decides it, and this was the front door disagreeing with every
+          screen behind it. Dropping the override is the fix; `Button` already
+          paints primary, and its hover comes from `--color-primary-hover`.
+
+          The lift and the shadow stay — they are this card's elevation, not its
+          hue, and `globals.css` deliberately keeps no shadow token.
+        */}
         <Button
           type="submit"
           block
           disabled={login.isPending}
-          className="mt-2 h-13 rounded-control bg-[#176ac2] text-body font-bold text-white shadow-[0_10px_24px_rgba(23,106,194,.24)] transition-all hover:-translate-y-0.5 hover:bg-[#115aa8] hover:shadow-[0_14px_26px_rgba(23,106,194,.28)]"
+          className="mt-2 h-13 rounded-control text-body font-bold shadow-[0_10px_24px_rgba(29,78,216,.24)] transition-all hover:-translate-y-0.5 hover:shadow-[0_14px_26px_rgba(29,78,216,.28)]"
         >
           {login.isPending ? "Нэвтэрч байна…" : "Нэвтрэх"}
           {!login.isPending ? <ArrowRight size={18} aria-hidden="true" /> : null}
         </Button>
       </form>
 
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-[#e8f0f7] pt-4 text-center">
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-border pt-4 text-center">
         <Link
           href="/forgot-password"
-          className="inline-flex min-h-11 items-center text-caption font-semibold text-[#2588ed] hover:underline"
+          className="inline-flex min-h-11 items-center text-caption font-semibold text-primary hover:underline"
         >
           Нууц үгээ мартсан?
         </Link>
@@ -373,19 +386,19 @@ function LoginCard() {
         */}
         <Link
           href="/staff-register"
-          className="inline-flex min-h-11 items-center text-caption font-semibold text-[#2588ed] hover:underline"
+          className="inline-flex min-h-11 items-center text-caption font-semibold text-primary hover:underline"
         >
           Багш, ажилтан бүртгүүлэх
         </Link>
       </div>
 
-      <p className="mt-4 text-center text-caption leading-5 text-slate-500">
+      <p className="mt-4 text-center text-caption leading-5 text-muted">
         Нэвтрэхдээ{" "}
-        <Link href="/terms" className="font-semibold text-[#2588ed] hover:underline">
+        <Link href="/terms" className="font-semibold text-primary hover:underline">
           Үйлчилгээний нөхцөл
         </Link>{" "}
         болон{" "}
-        <Link href="/privacy" className="font-semibold text-[#2588ed] hover:underline">
+        <Link href="/privacy" className="font-semibold text-primary hover:underline">
           Нууцлалын бодлоготой
         </Link>{" "}
         танилцана уу.
