@@ -18,7 +18,7 @@ import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
-import { FormError } from "@/components/ui/states";
+import { EmptyState, FormError, LoadingState } from "@/components/ui/states";
 import { StatCard } from "@/components/ui/stat-card";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
@@ -26,6 +26,8 @@ import { RequireRole } from "@/components/shell/require-role";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
 import { StaffRecordsButton } from "@/components/admin/staff-records-dialog";
 import { Art } from "@/components/ui/art";
+import { TableShell, Td, Th } from "@/components/ui/table";
+import { shortName } from "@/lib/format";
 import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
 const listSchema = paginated(adminUserSchema);
@@ -262,6 +264,27 @@ function AdminUsers() {
       </section>
 
       {/*
+        ★ **The registered staff, first — 2026-09-22**, the client: "дээд
+        хэсэгт бүртгэгдсэн багш ажилчдыг харуулах".
+
+        The rows were already being fetched. `staffAccounts` above asks for two
+        hundred of them and its own note says they "are never rendered, only
+        indexed" — it existed solely to map an ESIS `personId` onto the account
+        it belongs to. So the question "who actually has an account here" was
+        answerable from data already on the screen and had no answer on it.
+
+        ★★ Above the ESIS panels rather than below, which is the whole of the
+        request: a director opening this screen is usually asking about their
+        own staff, and the ministry's two tables are the reference they check
+        against. The order now matches which of those is the question.
+      */}
+      <RegisteredStaff
+        rows={staffAccounts.data?.items ?? []}
+        isLoading={staffAccounts.isPending}
+        kindergartenId={primaryKindergartenId}
+      />
+
+      {/*
         ★ The staff, from ESIS — 2026-09-08, at the client's instruction, given
         twice with the consequence written out first.
 
@@ -313,6 +336,135 @@ function AdminUsers() {
         />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The kindergarten's own staff accounts — "Бүртгэгдсэн багш, ажилтан".
+ *
+ * ★ Our records, not the ministry's, and the distinction is the point of the
+ * section. ESIS lists everyone it has been told about; this lists everyone who
+ * can sign in. A person in the first and not the second has not registered yet,
+ * which is the gap a director opening this screen is usually chasing.
+ *
+ * ★★ No search and no pager, deliberately. `staffAccounts` asks for two
+ * hundred and the RFP's largest kindergarten has a few dozen staff, so the
+ * table is complete in practice — the same reasoning, and the same ceiling, as
+ * the query's own note. A kindergarten past two hundred loses rows off the end
+ * here exactly as it loses the ESIS row-to-account shortcut, and both want a
+ * pager together rather than one of them growing one alone.
+ */
+function RegisteredStaff({
+  rows,
+  isLoading,
+  kindergartenId,
+}: {
+  /**
+   * ★ Separate from an empty list, and it has to be.
+   *
+   * Without it the section drew "Бүртгэгдсэн ажилтан байхгүй" while the request
+   * was still in flight, so a director with a full staff list met "nobody has
+   * registered" for as long as the fetch took — and the empty state tells them
+   * to go and invite people. A test asserting that empty state also could not
+   * tell the two apart, which is how it was found.
+   */
+  isLoading: boolean;
+  rows: {
+    id: string;
+    lastName: string;
+    firstName: string;
+    username?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    isActive?: boolean | null;
+    esisPersonId?: string | null;
+    memberships?: { role: Role; isActive?: boolean | null }[];
+  }[];
+  kindergartenId: string | null;
+}) {
+  return (
+    <section className="flex flex-col gap-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-body font-semibold text-ink">Бүртгэгдсэн багш, ажилтан</h2>
+        <p className="text-caption text-muted">{rows.length} бүртгэл</p>
+      </div>
+
+      {isLoading ? (
+        <LoadingState rows={3} />
+      ) : rows.length === 0 ? (
+        <EmptyState
+          title="Бүртгэгдсэн ажилтан байхгүй"
+          description="«Хэрэглэгч нэмэх»-ээр урих эсвэл ажилтан өөрөө цэцэрлэгийн ESIS дугаараар бүртгүүлнэ."
+        />
+      ) : (
+        /*
+          ★ The caption is not the heading's words again. It is screen-reader
+          only and says what the rows *are*, where the `h2` above names the
+          section — repeating the heading would have a reader hear it twice, and
+          it makes `getByText` ambiguous for anything testing the section.
+        */
+        <TableShell caption="Цэцэрлэгт бүртгэлтэй ажилтны бүртгэл" minWidth="min-w-0" stacked>
+          <thead>
+            <tr>
+              <Th>Нэр</Th>
+              <Th>Албан тушаал</Th>
+              <Th>Холбоо барих</Th>
+              <Th className="w-12">
+                <span className="sr-only">Хувийн хэрэг</span>
+              </Th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((user) => {
+              /*
+                ★ Every role they hold here, not the first one. A person can be
+                a багш and the нягтлан of the same kindergarten, and showing one
+                of the two would make the other invisible on the only screen
+                that lists it.
+              */
+              const roles = (user.memberships ?? [])
+                .filter((m) => m.isActive !== false)
+                .map((m) => ROLE_LABEL[m.role])
+                .filter((label, index, all) => label && all.indexOf(label) === index);
+
+              return (
+                <tr key={user.id} className={user.isActive === false ? "opacity-60" : undefined}>
+                  <Td data-label="Нэр" className="font-medium text-ink">
+                    {shortName(user)}
+                    {user.isActive === false ? (
+                      <span className="ml-2 text-caption font-normal text-muted">(хаагдсан)</span>
+                    ) : null}
+                  </Td>
+                  <Td data-label="Албан тушаал">
+                    {roles.length > 0 ? roles.join(", ") : <span className="text-faint">—</span>}
+                  </Td>
+                  {/*
+                    ★ Whichever of the three they actually registered with. The
+                    account needs one of a username, a phone or an e-mail, never
+                    all three, so a column per field would be mostly dashes.
+                  */}
+                  <Td data-label="Холбоо барих" className="text-muted">
+                    {user.phone || user.email || user.username || "—"}
+                  </Td>
+                  <Td data-label="Хувийн хэрэг" className="text-right">
+                    {kindergartenId ? (
+                      <StaffRecordsButton
+                        user={{
+                          id: user.id,
+                          lastName: user.lastName,
+                          firstName: user.firstName,
+                        }}
+                        kindergartenId={kindergartenId}
+                      />
+                    ) : null}
+                  </Td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </TableShell>
+      )}
+    </section>
   );
 }
 
