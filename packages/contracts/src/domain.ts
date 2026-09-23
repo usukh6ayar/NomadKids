@@ -3631,6 +3631,13 @@ export const esisResourceKeySchema = z.enum([
   "studentMovements",
   "teachers",
   "staff",
+  /*
+   * ★ Мэргэшлийн зэргийн хүсэлт — the two reads, 2026-09-22. Beside `staff`
+   * because that is what they are about; `EsisDomain` puts them in `ROSTER` for
+   * the same reason.
+   */
+  "degreeDecisions",
+  "degreeHistory",
   "groupAttendance",
   "saveAttendanceV3",
   "foodProductTypes",

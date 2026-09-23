@@ -35,6 +35,7 @@
 import { loadEnv } from "../src/config/env";
 import { EsisClient, EsisError } from "../src/integrations/esis/esis.client";
 import { EsisConfig } from "../src/integrations/esis/esis.config";
+import { EsisService } from "../src/integrations/esis/esis.service";
 
 const mask = (value: string): string =>
   value.length > 4
@@ -195,6 +196,35 @@ async function main(): Promise<void> {
 
   console.log(`167  /degree/request/decisions/:requestId  → ${shape(decisions)}`);
   console.log(`170  /degree/history/v2/:inst/:requestId   → ${shape(history)}`);
+
+  /*
+    ── The wired readers, through the real service path ──────────────────────
+
+    ★ The two calls above go out through `EsisClient` directly, which proves the
+    *routes*. This proves the **wiring**: `EsisService.read` resolving the
+    catalog entry, filling `:institutionId` into 170's path from the tenant's own
+    value, and running the response through `esisListParser`.
+
+    It is the step the two calls above cannot cover, and the one most likely to
+    be wrong — `scripts/esis-probe.ts` reports `degreeHistory` as needing an
+    `institutionId` it has no way to supply, because it derives required params
+    from the path template. That derivation is the probe's own; `getList`
+    injects the value. If that injection were missing, this call throws
+    `Missing ESIS path parameter institutionId` rather than reaching ESIS.
+  */
+  const service = new EsisService(client, config);
+  for (const resource of ["degreeDecisions", "degreeHistory"] as const) {
+    try {
+      const response = await service.read(resource, { requestId: "0" }, institutionId);
+      console.log(`${resource.padEnd(16)} via service → ${response.data.length} rows`);
+    } catch (error) {
+      const detail =
+        error instanceof EsisError
+          ? `${error.detail.status ?? "—"} ${error.message}`
+          : String(error);
+      console.log(`${resource.padEnd(16)} via service → ${detail}`);
+    }
+  }
 
   const reachable = exportRoot.ok ? exportRoot : hubRoot.ok ? hubRoot : null;
   if (!reachable) {

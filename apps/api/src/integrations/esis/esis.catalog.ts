@@ -116,6 +116,29 @@ const META: Record<EsisEndpointKey, EsisEndpointMeta> = {
     usage: "Элсэлт, шилжилт, гаралтын өөрчлөлт",
     previewable: false,
   },
+  /*
+   * ★ `ROSTER` rather than a sixth domain. A degree request is about a member of
+   * staff, and the staff roll already lives here; adding `QUALIFICATION` would
+   * mean keeping `EsisDomain` in step with the copy in `packages/contracts`
+   * (its own note asks for that) and teaching the web filter a new group, for
+   * two services that read one id each.
+   *
+   * ★★ `previewable: false` on both — the operator's dry run calls every
+   * previewable service with no parameters, and these need a `requestId` the
+   * dry run cannot invent.
+   */
+  degreeDecisions: {
+    name: "Мэргэшлийн зэргийн хүсэлтийн шийдвэрлэлт",
+    domain: "ROSTER",
+    usage: "Хүсэлтийн дугаараар шийдвэрлэлтийн төлөв",
+    previewable: false,
+  },
+  degreeHistory: {
+    name: "Мэргэшлийн зэргийн хүсэлтийн түүх",
+    domain: "ROSTER",
+    usage: "Хүсэлтийн дугаараар өөрчлөлтийн түүх",
+    previewable: false,
+  },
   teachers: {
     name: "Багшийн жагсаалт",
     domain: "ROSTER",

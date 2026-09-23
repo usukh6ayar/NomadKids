@@ -233,6 +233,15 @@ describe("ESIS field catalog", () => {
       studentInfo: ["personRegNumber"],
       groupStudents: ["studentGroupId"],
       studentMovements: ["beginDate"],
+      /*
+       * ★ Added 2026-09-22. Both мэргэшлийн зэрэг reads take a `requestId` and
+       * nothing else — 170's URL also carries `institutionId` in its *path*, but
+       * that is filled by `getList` from the tenant's own mapping rather than
+       * declared here, so a screen cannot supply one institution in the path and
+       * another in the query.
+       */
+      degreeDecisions: ["requestId"],
+      degreeHistory: ["requestId"],
       groupAttendance: ["studentGroupId", "dayDate"],
       livelihoodForm1: ["academicYear", "academicMonth"],
       livelihoodForm2: ["academicYear", "academicMonth", "studentGroupId"],
@@ -474,6 +483,16 @@ describe("ESIS field catalog", () => {
          */
         "studentAwards",
         "buildingByRegisterNumber",
+        /*
+         * ── Added 2026-09-22 ────────────────────────────────────────────
+         * The two мэргэшлийн зэрэг reads, and the same position again: both
+         * answer `203 Хүсэлтэд тохирох утга олдсонгүй` for every `requestId`
+         * this product can supply, because nothing here can produce one yet
+         * (119 is refused, 165 uncalled). Nothing is declared and
+         * `esisFieldsFor` will read their columns off the first real record.
+         */
+        "degreeDecisions",
+        "degreeHistory",
       ].sort(),
     );
 

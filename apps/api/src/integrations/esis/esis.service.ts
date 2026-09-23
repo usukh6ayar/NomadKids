@@ -120,6 +120,21 @@ export const ESIS_READERS = {
   },
   teachers: { endpoint: ESIS_ENDPOINTS.teachers, schema: esisTeacherSchema },
   staff: { endpoint: ESIS_ENDPOINTS.staff, schema: esisStaffSchema },
+  /*
+   * Мэргэшлийн зэрэг — `esisDiscoveredSchema` on both, for the reason
+   * `esis.endpoints.ts` gives at length: neither has ever answered with a
+   * populated `RESULT`, so a hand-written field list would be invention.
+   */
+  degreeDecisions: {
+    endpoint: ESIS_ENDPOINTS.degreeDecisions,
+    schema: esisDiscoveredSchema,
+    params: ["requestId"],
+  },
+  degreeHistory: {
+    endpoint: ESIS_ENDPOINTS.degreeHistory,
+    schema: esisDiscoveredSchema,
+    params: ["requestId"],
+  },
   groupAttendance: {
     endpoint: ESIS_ENDPOINTS.groupAttendance,
     schema: esisDiscoveredSchema,
@@ -1029,8 +1044,26 @@ export class EsisService {
     if (institutionScoped && institutionId === undefined) {
       throw new Error("ESIS institutionId is required for this resource");
     }
+    /*
+     * ★ A path that names `:institutionId` gets it filled from the same value
+     * the query carries — added 2026-09-22 for api 170, whose published URL is
+     * `/degree/history/v2/:institutionId/:requestId?institutionId=…` and wants
+     * it in both places.
+     *
+     * Injected here rather than declared as a reader `param`, because the
+     * service already holds the value: making the caller pass it would let a
+     * screen supply a *different* institution in the path from the one in the
+     * query, which is a tenant-crossing shape that should not be expressible.
+     * `pathValues` still wins on the spread, so nothing silently overrides an
+     * explicit value.
+     */
+    const resolved =
+      endpoint.path.includes(":institutionId") && institutionId !== undefined
+        ? { institutionId, ...pathValues }
+        : pathValues;
+
     return this.client.request<T[]>({
-      path: esisPath(endpoint.path, pathValues),
+      path: esisPath(endpoint.path, resolved),
       method: endpoint.method,
       query: institutionScoped ? { institutionId } : undefined,
       body,

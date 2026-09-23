@@ -139,6 +139,43 @@ export const ESIS_ENDPOINTS = {
     method: "GET",
     path: "/svc/api/hub/v2/school/staff",
   }),
+  /*
+   * Мэргэшлийн зэргийн хүсэлт — the two reads, wired 2026-09-22 at the client's
+   * instruction to use these services.
+   *
+   * ★ **Both live-probed before being written** (`scripts/esis-degree-probe.ts`).
+   * Each answers `203 {"RESPONSE_MESSAGE":"Хүсэлтэд тохирох утга
+   * олдсонгүй.","RESULT":""}` for an unknown `requestId` — access granted, id
+   * not found. That is what separates them from 119, which answers `403` and is
+   * dropped: the client, 2026-09-22, "ene ni ajillahgui gsen ug orhi
+   * ashiglahgui".
+   *
+   * ★★ **No hand-written row schema, and that is deliberate.** Neither has ever
+   * been seen with a populated `RESULT`, because nothing in this product can
+   * produce a `requestId` yet. `esisDiscoveredSchema` passes through whatever
+   * the ministry sends, so the field names come off the wire the first time a
+   * real request is read rather than out of documentation this token cannot
+   * reach — the developer portal is behind a login. That is the
+   * eleven-of-thirty-six-readers-were-fiction failure, avoided by not writing
+   * the list at all.
+   *
+   * ★★★ 170 carries `institutionId` **in the path as well as the query**, which
+   * is how the ministry publishes it. `getList` fills the path copy; the query
+   * copy is the one every other service gets. Tidying one away would be a guess
+   * about which the gateway reads.
+   */
+  degreeDecisions: endpoint({
+    apiId: 167,
+    slug: "API-000265",
+    method: "GET",
+    path: "/svc/api/hub/v2/degree/request/decisions/:requestId",
+  }),
+  degreeHistory: endpoint({
+    apiId: 170,
+    slug: "API-000268",
+    method: "GET",
+    path: "/svc/api/hub/v2/degree/history/v2/:institutionId/:requestId",
+  }),
   groupAttendance: endpoint({
     apiId: 100004874669792,
     slug: "api-22",
