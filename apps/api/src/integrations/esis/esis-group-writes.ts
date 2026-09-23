@@ -202,11 +202,19 @@ export interface GroupForWrite {
  * ids this database does not hold. No test could have caught that, and the gate
  * meant no director could approve it.
  *
- * ★★★ **162 is not covered by this flag and is still refused**, one layer down,
- * by `ESIS_INSTRUCTOR_ROLE_UNKNOWN`. Its blocker is not a contract anyone could
- * probe: it asks for "Багшийн хариуцах үүрэг" and no vocabulary for that field
- * exists anywhere we can read. That is a question for the ministry, and it
- * belongs beside the write it blocks rather than holding 150 and 152 shut.
+ * ★★★ **162 is not covered by this flag, and is no longer refused.** This
+ * paragraph said it was held shut "one layer down, by
+ * `ESIS_INSTRUCTOR_ROLE_UNKNOWN`", and that symbol has not existed in the
+ * source since the probe above settled the field: `INSTRUCTOR_ROLE_LABEL`
+ * answers it with the same words the group screen already shows, and
+ * `buildGroupPayload` throws only `ESIS_INSTRUCTOR_ROLE_UNMAPPED` — for a
+ * `TeacherRole` this product does not have a label for, which is neither of
+ * the two it does. So `groupInstructor` goes through prepare → approve → send
+ * like the other two, and the group screen offers it.
+ *
+ * The line is corrected rather than deleted because a comment describing a
+ * gate that is open is worse than no comment: the next reader either believes
+ * it and stops, or checks and stops trusting the file.
  */
 export const ESIS_GROUP_WRITE_CONTRACT_PROVEN = true;
 

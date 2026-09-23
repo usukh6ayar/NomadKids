@@ -871,12 +871,19 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          * rather than merely tolerable.
          */
         ...adminEntry("Цэцэрлэгийн мэдээлэл", "/admin/kindergarten"),
-        ...adminEntry("Хэрэглэгч ба эрх", "/admin/users", "adminUsersPermissions"),
+        /*
+         * ★ "Багш, ажилтан", matching the screen and the `staffSections` row
+         * above it — 2026-09-23. One destination had two names in two menus,
+         * and the screen itself had a third ("Хэрэглэгчид"). A feature has one
+         * name wherever it is reached from, which is the rule this file states
+         * for the group registers a few hundred lines up.
+         */
+        ...adminEntry("Багш, ажилтан", "/admin/users", "adminUsersPermissions"),
         /*
          * ★ Added with staff self-registration — the kindergarten's ESIS
          * number, the roster refresh and who has registered themselves. Sits
-         * beside "Хэрэглэгч ба эрх" because it is how an account gets onto
-         * that list in the first place, not a directory of its own.
+         * beside "Багш, ажилтан" because it is how an account gets onto that
+         * list in the first place, not a directory of its own.
          *
          * ★★ The href keeps saying `staff-code` after the code it named was
          * replaced by the ESIS institution number on 2026-09-20. Renaming the
@@ -920,7 +927,13 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          * — so it moves to `/admin/esis-sync` below, its own row, rather than
          * back into the removed one above. The API did not change.
          */
-        ...adminEntry("ESIS синк", "/admin/esis-sync"),
+        /*
+         * ★ "ЭСИС холболт" since 2026-09-23, matching the screen. "ESIS синк"
+         * named the mechanism; what a director opens it for is the connection
+         * — whether it is live, which institution it is bound to, and how much
+         * has come across. The pulls and the write queue are still on it.
+         */
+        ...adminEntry("ЭСИС холболт", "/admin/esis-sync"),
         /*
          * ★ "Үнэлгээний тохиргоо" and "Аудит" lost their rows on 2026-09-06,
          * at the client's request — and, as with the two review queues above,

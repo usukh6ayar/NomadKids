@@ -191,6 +191,30 @@ export class TenantsRepository {
         include: {
           schoolYear: { select: { id: true, name: true } },
           _count: { select: { enrollments: { where: { status: "ACTIVE", deletedAt: null } } } },
+          /*
+           * ★ The same assignments `findGroup` includes, and deliberately the
+           * same `select` on the user.
+           *
+           * This list is read by TEACHER as well as ADMIN — `filters.groupIds`
+           * exists to narrow it to a teacher's own groups — so widening the
+           * user select would push `phone`, `email` and `esisPersonId` into a
+           * payload every staff role receives. A name and an id is what the
+           * screens draw.
+           *
+           * ★★ One `include` on a query that already runs, not a request per
+           * row: the cost is a join over at most `pageSize` groups, each with
+           * one or two teachers. Which group has no teacher is the question
+           * `/admin/groups` exists to answer, and it could not be answered
+           * without this.
+           */
+          teachers: {
+            where: { endedOn: null, deletedAt: null },
+            include: {
+              membership: {
+                include: { user: { select: { id: true, lastName: true, firstName: true } } },
+              },
+            },
+          },
         },
       }),
       this.prisma.group.count({ where }),

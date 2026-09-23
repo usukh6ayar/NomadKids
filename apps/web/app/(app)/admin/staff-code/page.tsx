@@ -81,7 +81,7 @@ function AdminStaffCode() {
   const registrationsKey = qk.adminStaffRegistrations(primaryKindergartenId ?? "", page);
 
   const kindergarten = useQuery({
-    queryKey: qk.adminKindergarten(primaryKindergartenId ?? ""),
+    queryKey: qk.adminKindergartenInstitution(primaryKindergartenId ?? ""),
     queryFn: () => get(`/kindergartens/${primaryKindergartenId}`, kindergartenInstitutionSchema),
     enabled: Boolean(primaryKindergartenId),
   });

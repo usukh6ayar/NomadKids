@@ -57,6 +57,28 @@ export const ROLE_LABEL: Record<Role, string> = {
  */
 export const ASSIGNABLE_ROLES = ["ADMIN", "TEACHER", "PARENT", "COOK", "ACCOUNTANT"] as const;
 
+/**
+ * The roles that mean "works here" — what `/admin/users?roles=` asks for.
+ *
+ * ★ **Not `ASSIGNABLE_ROLES`, and the difference is a bug this fixes.**
+ * `/admin/users` derived its staff filter from that list "rather than
+ * restating it", which reads as the careful choice and is the wrong one: the
+ * assignable list deliberately contains `PARENT` so an administrator can
+ * repair a guardian's account, and passing it as a *filter* asked the API for
+ * every family in the kindergarten. The client's instruction on that screen is
+ * the opposite and is explicit — "хэрэглэгч эрх дотор ерөөсөө эцэг эх
+ * байхгүй" (`users.dto.ts`, whose own example writes this list out).
+ *
+ * It went unnoticed because the two lists are the same length in every fixture
+ * that has a parent in it and none of them did.
+ *
+ * ★★ Named rather than computed as `ASSIGNABLE_ROLES` minus `PARENT`, for the
+ * reason `rolesSchema` gives about the query it feeds: naming what you want
+ * survives a sixth role being added, where "everything except PARENT" would
+ * silently start including it.
+ */
+export const STAFF_ROLES = ["ADMIN", "TEACHER", "COOK", "ACCOUNTANT"] as const;
+
 export const sexSchema = z.enum(["MALE", "FEMALE"]);
 /**
  * A child's standing — Order А/261, Annex 2 §1 item 7, mandatory.
@@ -2959,12 +2981,43 @@ export const invitedUserSchema = z.object({
 });
 
 /**
+ * One `GroupTeacher` row — who teaches a group, and in which role.
+ *
+ * ★ A named shape since 2026-09-23, because the list and the detail now return
+ * the same one. `membership.id` is here rather than only the user's: the
+ * assignment is to a person's role *in this kindergarten*, and it is the
+ * `membershipId` that `POST /groups/:id/teachers` takes.
+ */
+export const groupTeacherAssignmentSchema = z.object({
+  id: uuidSchema,
+  role: z.string().nullish(),
+  endedOn: z.string().nullish(),
+  membership: z
+    .object({
+      id: uuidSchema,
+      user: personRefSchema.nullish(),
+    })
+    .nullish(),
+});
+
+/**
  * A group as the *list* returns it.
  *
- * ★ No teachers here — `GET /groups` does not include them, only a count of
- * enrolments. Fetching the assignments for every row would be an N+1 the client
- * pays on a screen that mostly does not need them, so the list shows how many
- * children are in a group and the teacher list is fetched per group, on demand.
+ * ★ **It carries its teachers — changed 2026-09-23.** This said for a long time
+ * that it did not, on the grounds that fetching the assignments per row "would
+ * be an N+1 the client pays". That was true of the shape it described: the only
+ * way to learn who taught a group was `GET /groups/:id`, once per row.
+ *
+ * What replaced it is not an N+1. `listGroups` carries one more `include` on a
+ * query it already runs, bounded by the same `pageSize` cap (100) the screen
+ * already asks for, and each group has one or two teachers. The alternative was
+ * the browser making a request per group to answer "which of these has no
+ * teacher" — which is the question `/admin/groups` is *for*, and the reason the
+ * old shape could not answer it without becoming the thing it warned about.
+ *
+ * ★★ Only active assignments arrive (`endedOn: null`), and the user select is
+ * an id and a name. This list is read by TEACHER as well as ADMIN, so it must
+ * not become a way to read staff contact details.
  */
 export const groupListItemSchema = groupSchema.extend({
   status: z.string().nullish(),
@@ -2972,26 +3025,41 @@ export const groupListItemSchema = groupSchema.extend({
   _count: z.object({ enrollments: z.number() }).nullish(),
   /** RFP §3.2 — ангийн зураг, so the assignment dialog can preview it. */
   photoMediaFileId: uuidSchema.nullish(),
+  /**
+   * The ministry's `studentGroupId` for this class, where the roster import
+   * has matched one.
+   *
+   * ★ For **reconciliation**, and never for a route. `/groups/:id` is always
+   * the local UUID — every screen behind it resolves children through
+   * `Enrollment`, which hangs off our own id. This is what lets the group page
+   * ask ESIS "who does *your* register say is in this class" and compare the
+   * answer, which is the whole value of api-13 (`group/student/list`).
+   *
+   * ★★ Null until an import matches the group, and that is a real state: a
+   * class created by hand that the ministry has not been told about yet. The
+   * screen says "ЭСИС-д бүртгэгдээгүй" rather than showing an empty roster.
+   */
+  esisGroupId: z.string().nullish(),
+  /**
+   * ★ `.default([])` matters more than it looks: every fixture and every
+   * caller written before the field existed still parses, and a group with no
+   * teacher is an empty array rather than a missing key the screens must guard.
+   */
+  teachers: z.array(groupTeacherAssignmentSchema).default([]),
 });
 
-/** A single group, from `GET /groups/:id` — this one carries the assignments. */
-export const groupWithTeachersSchema = groupListItemSchema.extend({
-  teachers: z
-    .array(
-      z.object({
-        id: uuidSchema,
-        role: z.string().nullish(),
-        endedOn: z.string().nullish(),
-        membership: z
-          .object({
-            id: uuidSchema,
-            user: personRefSchema.nullish(),
-          })
-          .nullish(),
-      }),
-    )
-    .default([]),
-});
+/**
+ * A single group, from `GET /groups/:id`.
+ *
+ * ★ The same shape as a list row since 2026-09-23 — kept as its own name
+ * because thirty call sites read it and because the name says what the caller
+ * is relying on. Both endpoints include the assignments now; if they ever
+ * diverge again, this is where the difference gets written down.
+ */
+export const groupWithTeachersSchema = groupListItemSchema;
+
+/** The row every group screen draws. Inferred, so it cannot drift from the parse. */
+export type GroupListItem = z.infer<typeof groupListItemSchema>;
 
 export const userProfileSchema = z.object({
   id: uuidSchema,
