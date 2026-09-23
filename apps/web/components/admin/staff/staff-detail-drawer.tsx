@@ -48,12 +48,21 @@ export function StaffDetailDrawer({
   kindergartenId,
   onClose,
   onInvite,
+  onLink,
 }: {
   row: StaffDirectoryRow;
   kindergartenId: string | null;
   onClose: () => void;
   /** Opens the screen's existing invitation dialog, pre-filled from this row. */
   onInvite: (row: StaffDirectoryRow) => void;
+  /**
+   * Opens the link dialog for an ESIS person with no account here.
+   *
+   * ★ Absent when there is nothing to link to — every local account already
+   * carries an `esisPersonId`. The button is then not drawn at all, rather
+   * than drawn and answering "нэг ч бүртгэл алга" after a press.
+   */
+  onLink?: (row: StaffDirectoryRow) => void;
 }) {
   const backdrop = useBackdropDismiss(onClose);
   const position = positionLabel(row);
@@ -198,9 +207,24 @@ export function StaffDetailDrawer({
                   be a second place for the rule "an administrator never types
                   somebody else's password" to be got wrong.
                 */}
-                <Button size="sm" className="mt-1 self-start" onClick={() => onInvite(row)}>
-                  Бүртгэл урих
-                </Button>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  <Button size="sm" onClick={() => onInvite(row)}>
+                    Бүртгэл урих
+                  </Button>
+                  {/*
+                    ★ The second answer to the same row, and usually the right
+                    one. "ЭСИС-д байгаа, энд байхгүй" has two causes: the person
+                    genuinely has no account, or they have one that nobody tied
+                    to their ministry identity — which was 12 of 13 accounts on
+                    live data. Offering only "урих" would have a director invite
+                    somebody who is already registered.
+                  */}
+                  {onLink ? (
+                    <Button variant="secondary" size="sm" onClick={() => onLink(row)}>
+                      Одоо байгаа бүртгэлтэй холбох
+                    </Button>
+                  ) : null}
+                </div>
               </>
             )}
           </Section>

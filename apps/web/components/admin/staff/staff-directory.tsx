@@ -22,6 +22,7 @@ import {
   type StaffFilters,
 } from "./staff-model";
 import { StaffDetailDrawer } from "./staff-detail-drawer";
+import { StaffLinkDialog } from "./staff-link-dialog";
 import { StaffTable } from "./staff-table";
 import { StaffToolbar } from "./staff-toolbar";
 
@@ -57,6 +58,7 @@ export function StaffDirectory({ onInvite }: { onInvite: (prefill?: StaffDirecto
   const { primaryKindergartenId } = useSession();
   const [filters, setFilters] = useState<StaffFilters>(EMPTY_STAFF_FILTERS);
   const [opened, setOpened] = useState<string | null>(null);
+  const [linking, setLinking] = useState<string | null>(null);
 
   const accounts = useQuery({
     queryKey: qk.adminUsers({ q: "", role: "staff-directory", page: "1" }),
@@ -100,6 +102,18 @@ export function StaffDirectory({ onInvite }: { onInvite: (prefill?: StaffDirecto
   const visible = useMemo(() => filterStaff(rows, filters), [rows, filters]);
   const summary = staffSummary(rows);
   const openedRow = rows.find((row) => row.key === opened) ?? null;
+  const linkingRow = rows.find((row) => row.key === linking) ?? null;
+
+  /*
+   * ★ The accounts an ESIS person could be linked to: ours, with no ministry
+   * identity yet. Anyone already linked is left out rather than offered and
+   * refused with a 409 — and a `personId` may only ever belong to one account,
+   * which the server enforces independently.
+   */
+  const linkCandidates = useMemo(
+    () => rows.filter((row) => row.localUserId !== null && row.esisPersonId === null),
+    [rows],
+  );
 
   /*
    * ★ The skeleton is gated on our **own** records, not on ESIS.
@@ -202,6 +216,23 @@ export function StaffDirectory({ onInvite }: { onInvite: (prefill?: StaffDirecto
             setOpened(null);
             onInvite(row);
           }}
+          onLink={
+            linkCandidates.length > 0
+              ? (row) => {
+                  setOpened(null);
+                  setLinking(row.key);
+                }
+              : undefined
+          }
+        />
+      ) : null}
+
+      {linkingRow && primaryKindergartenId ? (
+        <StaffLinkDialog
+          row={linkingRow}
+          kindergartenId={primaryKindergartenId}
+          candidates={linkCandidates}
+          onClose={() => setLinking(null)}
         />
       ) : null}
     </div>

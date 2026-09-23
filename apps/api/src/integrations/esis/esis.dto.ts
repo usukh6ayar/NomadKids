@@ -276,3 +276,22 @@ export const esisCoverageQuerySchema = z.object({
   months: z.coerce.number().int().min(1).max(12).default(1),
 });
 export type EsisCoverageQuery = z.infer<typeof esisCoverageQuerySchema>;
+
+/**
+ * `POST …/esis/staff-link` — attach an ESIS person to an existing account.
+ *
+ * ★ `esisPersonId` is a digit string, not a number. Every ESIS identifier in
+ * this product is: `personId` values run to fifteen digits
+ * (`90000003401632`), which is past what a JSON number round-trips exactly,
+ * and the ministry sends them as strings. Parsing one into a number here is
+ * how a link silently attaches the wrong person.
+ */
+export const linkEsisStaffSchema = z.object({
+  userId: z.string().uuid(),
+  esisPersonId: z
+    .string()
+    .trim()
+    .min(1)
+    .regex(/^\d+$/, "ЭСИС-ийн хүний дугаар зөвхөн тооноос бүрдэнэ."),
+});
+export type LinkEsisStaffDto = z.infer<typeof linkEsisStaffSchema>;

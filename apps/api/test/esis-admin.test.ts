@@ -1703,3 +1703,195 @@ describe("POST /kindergartens/:id/esis/roster-import", () => {
     expect(res.status).toBe(404);
   });
 });
+
+/**
+ * Linking an existing account to its ESIS person — `POST …/esis/staff-link`.
+ *
+ * ★ **Why the feature exists.** `User.esisPersonId` was written by exactly one
+ * path, self-registration, so every invited account had none — 12 of 13 on
+ * live data. The staff directory joins on that column and could not tell the
+ * account it holds from the ministry row describing the same human, so it drew
+ * both. Matching by name is refused by design: this kindergarten has a Соня
+ * Золжаргал and an Ариунаа Золжаргал.
+ *
+ * ★★ **This route writes a globally unique identity column**, which is the
+ * most dangerous shape in this module — taking a `personId` also takes it away
+ * from whoever held it. Every refusal below is asserted through HTTP, because
+ * a unit test of the service passes while the controller forgets to call it
+ * (§4.1).
+ */
+describe("linking a staff account to an ESIS person", () => {
+  const url = (kindergartenId: string) => `/v1/kindergartens/${kindergartenId}/esis/staff-link`;
+
+  /** One roster row, as `refreshStaffRoster` would have stored it. */
+  async function rosterEntry(kindergartenId: string, esisPersonId: string) {
+    return db.esisStaffRoster.create({
+      data: {
+        kindergartenId,
+        esisPersonId,
+        registerNumber: uniq("УБ").toUpperCase(),
+        lastName: "Бямбарааш",
+        firstName: "Сосорбурам",
+        jobCode: "2342-13",
+        positionName: "Багш",
+        isInstructor: true,
+      },
+    });
+  }
+
+  it("attaches the ministry identity to the account", async () => {
+    await rosterEntry(a.kindergarten.id, "90000000512704");
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+      userId: a.teacherUser.id,
+      esisPersonId: "90000000512704",
+    });
+
+    expect(res.status).toBe(200);
+    const user = await db.user.findUnique({ where: { id: a.teacherUser.id } });
+    expect(user?.esisPersonId).toBe("90000000512704");
+  });
+
+  /*
+   * ★ **The link is not a registration.** «Ажилтны бүртгэл» answers "who
+   * signed themselves up"; a director attaching an identity to an account they
+   * invited is a different fact. Before `selfRegisteredAt` existed, that list
+   * selected on `esisPersonId IS NOT NULL` and every linked account would have
+   * appeared on it.
+   */
+  it("does not make the account look self-registered", async () => {
+    await rosterEntry(a.kindergarten.id, "90000000512704");
+
+    await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+      userId: a.teacherUser.id,
+      esisPersonId: "90000000512704",
+    });
+
+    const user = await db.user.findUnique({ where: { id: a.teacherUser.id } });
+    expect(user?.selfRegisteredAt).toBeNull();
+
+    const listed = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/staff-registrations`),
+      adminA,
+    );
+    expect(listed.body.items ?? []).toHaveLength(0);
+  });
+
+  /*
+   * ★★ **The roster is the allow-list.** Without this the control is a
+   * free-text field for claiming any `personId` in the country.
+   */
+  it("refuses a person this kindergarten's roster does not list", async () => {
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+      userId: a.teacherUser.id,
+      esisPersonId: "90000000999999",
+    });
+
+    expect(res.status).toBe(404);
+    const user = await db.user.findUnique({ where: { id: a.teacherUser.id } });
+    expect(user?.esisPersonId).toBeNull();
+  });
+
+  /*
+   * ★★★ **A roster row in kindergarten B does not authorise a link in A.**
+   * The lookup is by the compound key, so B's copy of the same person is not
+   * A's permission to claim them.
+   */
+  it("refuses a person only the other kindergarten's roster lists", async () => {
+    await rosterEntry(b.kindergarten.id, "90000000512704");
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+      userId: a.teacherUser.id,
+      esisPersonId: "90000000512704",
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  /*
+   * ★★★★ **The cross-tenant write, which is the one that must never pass.**
+   * `esisPersonId` is globally unique, so an admin of A writing onto B's staff
+   * account would both corrupt B's records and consume the identity. 404, not
+   * 403 — a 403 confirms the account exists.
+   */
+  it("REFUSES an administrator writing onto another kindergarten's account", async () => {
+    await rosterEntry(a.kindergarten.id, "90000000512704");
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+      userId: b.teacherUser.id,
+      esisPersonId: "90000000512704",
+    });
+
+    expect(res.status).toBe(404);
+    const victim = await db.user.findUnique({ where: { id: b.teacherUser.id } });
+    expect(victim?.esisPersonId).toBeNull();
+  });
+
+  /* Taking an identity from another account is a named conflict, not a 500. */
+  it("refuses an ESIS person already linked elsewhere", async () => {
+    await rosterEntry(a.kindergarten.id, "90000000512704");
+    await db.user.update({
+      where: { id: a.adminUser.id },
+      data: { esisPersonId: "90000000512704" },
+    });
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+      userId: a.teacherUser.id,
+      esisPersonId: "90000000512704",
+    });
+
+    expect(res.status).toBe(409);
+    const user = await db.user.findUnique({ where: { id: a.teacherUser.id } });
+    expect(user?.esisPersonId).toBeNull();
+  });
+
+  /* Re-pressing the same link is the expected case, not a conflict. */
+  it("is idempotent for the link that already holds", async () => {
+    await rosterEntry(a.kindergarten.id, "90000000512704");
+    const body = { userId: a.teacherUser.id, esisPersonId: "90000000512704" };
+
+    await authed(request(server()).post(url(a.kindergarten.id)), adminA).send(body);
+    const second = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send(body);
+
+    expect(second.status).toBe(200);
+  });
+
+  it("refuses a teacher — wrong role gets 404, not 403", async () => {
+    await rosterEntry(a.kindergarten.id, "90000000512704");
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), teacherA).send({
+      userId: a.teacherUser.id,
+      esisPersonId: "90000000512704",
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  /* The ministry's ids run to fifteen digits — a number would lose precision. */
+  it("refuses a person id that is not digits", async () => {
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+      userId: a.teacherUser.id,
+      esisPersonId: "9000000051270X",
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  /* The write is on the audit trail, with what it used to be. */
+  it("records the change, and the value it replaced", async () => {
+    await rosterEntry(a.kindergarten.id, "90000000512704");
+
+    await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+      userId: a.teacherUser.id,
+      esisPersonId: "90000000512704",
+    });
+
+    const entry = await db.auditLog.findFirst({
+      where: { objectType: "User", objectId: a.teacherUser.id, action: "UPDATE" },
+      orderBy: { createdAt: "desc" },
+    });
+    const metadata = entry?.metadata as { source?: string; after?: { esisPersonId?: string } };
+    expect(metadata.source).toBe("admin-link");
+    expect(metadata.after?.esisPersonId).toBe("90000000512704");
+  });
+});

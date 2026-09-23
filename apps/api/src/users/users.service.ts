@@ -203,6 +203,14 @@ export class UsersService {
       // until the invitation is accepted.
       passwordHash: await this.passwords.hash(randomBytes(32).toString("hex")),
       esisPersonId: options.esisPersonId ?? null,
+      /*
+       * ★ Set here and nowhere else — this is the only path a person can take
+       * to make their own account. `esisPersonId` used to carry this meaning
+       * as well, which was accurate only while self-registration was its sole
+       * writer; a director can now link an invited account to its ESIS person,
+       * so the two facts need two columns. See `schema.prisma`.
+       */
+      selfRegisteredAt: options.esisPersonId ? new Date() : null,
     });
 
     await this.repo.createMembership(user.id, kindergartenId, dto.role);

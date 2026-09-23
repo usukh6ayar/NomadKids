@@ -19,6 +19,7 @@ import {
   esisInstitutionParamSchema,
   esisWriteParamSchema,
   esisWriteSchema,
+  linkEsisStaffSchema,
   prepareEsisGroupWriteSchema,
   updateEsisMappingSchema,
   type EsisPreviewDto,
@@ -26,6 +27,7 @@ import {
   type EsisReadDto,
   type EsisSyncTierDto,
   type EsisWriteDto,
+  type LinkEsisStaffDto,
   type EsisWriteParams,
   type PrepareEsisGroupWriteDto,
   type UpdateEsisMappingDto,
@@ -133,6 +135,30 @@ export class KindergartenEsisController {
    * is the expected case, not a failure, and answering 201 to it would claim a
    * resource was made. The body says what actually happened.
    */
+  /**
+   * Links a staff account here to the ESIS person it belongs to.
+   *
+   * ★ ADMIN-only and a `POST`. It writes a **globally unique** column onto a
+   * `User`, which is as identity-shaped as this product gets — see
+   * `EsisAdminService.linkStaffToEsisPerson` for the three refusals that make
+   * it safe, and for why the judgement has to be a person's rather than a
+   * name match.
+   *
+   * ★★ It calls ESIS not at all. The allow-list it validates against is
+   * `EsisStaffRoster`, which `staff-roster/refresh` already filled — so this
+   * spends no token and can be pressed as often as a director needs.
+   */
+  @Post("staff-link")
+  @HttpCode(200)
+  @Roles("ADMIN")
+  linkStaff(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(linkEsisStaffSchema)) body: LinkEsisStaffDto,
+  ) {
+    return this.service.linkStaffToEsisPerson(actor, params.id, body.userId, body.esisPersonId);
+  }
+
   @Post("roster-import")
   @HttpCode(200)
   @Roles("ADMIN")

@@ -417,6 +417,100 @@ export class EsisAdminService {
   }
 
   /**
+   * Attaches an ESIS person to a staff account that already exists here.
+   *
+   * ★ **Why a person has to press this.** `User.esisPersonId` is written by
+   * exactly one other path — self-registration, where the teacher types their
+   * own РД and it is matched against `EsisStaffRoster`. Every account an
+   * administrator invites has none, which on live data was 12 of 13: the
+   * staff directory could not tell that the Бямбарааш Сосорбурам it holds an
+   * account for is the Бямбарааш Сосорбурам the ministry lists, so it drew
+   * both. Matching them automatically would mean joining people by name, and
+   * this kindergarten has a Соня Золжаргал and an Ариунаа Золжаргал — the
+   * exact case that makes name-matching wrong rather than merely imprecise.
+   *
+   * So the judgement stays with the director, and this records it.
+   *
+   * ★★ **Three refusals, and each closes a different hole.**
+   *
+   * The account must hold an active non-PARENT membership *in this
+   * kindergarten* — without that check an administrator could write onto
+   * another tenant's staff account, and `esisPersonId` is globally unique, so
+   * that would also silently take the identity away from them.
+   *
+   * The person must appear in *this kindergarten's* roster, which the ministry
+   * fills. Otherwise the control is a free-text field for claiming any
+   * `personId` in the country.
+   *
+   * And the person must not already belong to another account — the unique
+   * index would refuse it anyway, but as a 500 rather than a sentence naming
+   * who holds it.
+   *
+   * ★★★ It does **not** set `selfRegisteredAt`. The director linking an
+   * account is not the person signing themselves up, and «Ажилтны бүртгэл»
+   * asks the second question. That separation is the whole reason the column
+   * exists — see `schema.prisma`.
+   */
+  async linkStaffToEsisPerson(
+    actor: Actor,
+    kindergartenId: string,
+    userId: string,
+    esisPersonId: string,
+  ) {
+    this.tenants.assertAdmin(actor, kindergartenId);
+
+    /*
+     * 404 rather than 403 for an account outside this kindergarten — the same
+     * rule child data follows (§1.7). A 403 would confirm the id names a real
+     * account somewhere.
+     */
+    const user = await this.repo.findStaffUserInKindergarten(kindergartenId, userId);
+    if (!user) throw new NotFoundException();
+
+    const entry = await this.repo.findRosterEntryByPersonId(kindergartenId, esisPersonId);
+    if (!entry) {
+      throw new NotFoundException(
+        "Энэ хүн тухайн цэцэрлэгийн ЭСИС-ийн ажилтны жагсаалтад алга байна. «ЭСИС холболт» хэсгээс ажилтны бүртгэлийг шинэчилнэ үү.",
+      );
+    }
+
+    if (user.esisPersonId === esisPersonId) return user;
+
+    const taken = await this.repo.findUserByEsisPersonId(esisPersonId);
+    if (taken && taken.id !== userId) {
+      throw new ConflictException(
+        "Энэ ЭСИС-ийн ажилтан өөр бүртгэлтэй аль хэдийн холбогдсон байна.",
+      );
+    }
+
+    const linked = await this.repo.setUserEsisPersonId(userId, esisPersonId);
+
+    /*
+     * ★ `before` and `after`, not just the new value. §14's rule for the
+     * finance module — "Өмнөх утга → Шинэ утга" — is the right shape for any
+     * identity write, and re-linking a mistakenly linked account is exactly
+     * when somebody needs to read what it used to be. Both go inside
+     * `metadata`, which is where `voidPayment` puts its own pair: `AuditEntry`
+     * has no `before` field and an append-only row is the wrong place to grow
+     * one per caller.
+     */
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "User",
+      objectId: userId,
+      metadata: {
+        source: "admin-link",
+        before: { esisPersonId: user.esisPersonId },
+        after: { esisPersonId },
+      },
+    });
+
+    return linked;
+  }
+
+  /**
    * The staff-roster refresh itself, with no `Actor` and no authorization
    * check — the work `refreshStaffRoster` above does once it has confirmed
    * ADMIN.

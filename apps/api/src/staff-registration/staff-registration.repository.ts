@@ -41,11 +41,15 @@ export class StaffRegistrationRepository {
    * Staff whose account was created by `register()` rather than by
    * invitation — the director's review list, Task 6.
    *
-   * ★ `user.esisPersonId != null` is the marker `createInvitedAccount` never
-   * sets and `createSelfRegisteredAccount` always does (Task 1's schema
-   * note). No join back to `EsisStaffRoster` and no `esisPersonId` in the
-   * `select` below — the screen gets a name, a role, a date and a membership
-   * id, nothing the ministry would recognise as an identifier.
+   * ★ `user.selfRegisteredAt != null` is the marker. It was
+   * `esisPersonId != null` until 2026-09-23, which was accurate only while
+   * self-registration was the sole writer of that column — a director can now
+   * link an invited account to its ESIS person from the staff directory, and
+   * every one of those would have appeared here as though the person had
+   * signed themselves up. No join back to `EsisStaffRoster` and no
+   * `esisPersonId` in the `select` below — the screen gets a name, a role, a
+   * date and a membership id, nothing the ministry would recognise as an
+   * identifier.
    *
    * ★★ `isActive: true`. `DELETE /v1/memberships/:id`
    * (`UsersRepository.deactivateMembership`) sets this false without a hard
@@ -60,7 +64,17 @@ export class StaffRegistrationRepository {
       kindergartenId,
       isActive: true,
       deletedAt: null,
-      user: { esisPersonId: { not: null } },
+      /*
+       * ★ `selfRegisteredAt`, not `esisPersonId` — corrected 2026-09-23.
+       *
+       * This selected on the join key, which was right only while
+       * self-registration was the only thing that wrote it. A director can now
+       * link an invited account to its ESIS person from the staff directory,
+       * and every account they linked would have appeared here as though the
+       * person had signed themselves up. The list answers "who registered
+       * themselves", so it reads the column that records exactly that.
+       */
+      user: { selfRegisteredAt: { not: null } },
     };
     return Promise.all([
       this.prisma.membership.findMany({

@@ -457,6 +457,69 @@ describe("/admin/users — Багш, ажилтан", () => {
     expect(screen.queryByText(/алдаа гарлаа/)).toBeNull();
   });
 
+  /*
+   * ★ **The duplicate, and the way out of it.**
+   *
+   * On live data only 1 of 13 accounts carried an `esisPersonId`, so the same
+   * humans appeared twice — once as an account, once as the ministry's row.
+   * The directory refuses to join them by name (this kindergarten has a Соня
+   * Золжаргал and an Ариунаа Золжаргал), so a director says which is which.
+   */
+  it("offers to link an ESIS-only person to an existing account", async () => {
+    stubScreen();
+    renderWithProviders(<AdminUsersPage />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Д.Ганбат" }));
+    await userEvent.click(screen.getByRole("button", { name: "Одоо байгаа бүртгэлтэй холбох" }));
+
+    await screen.findByRole("dialog", { name: "Бүртгэлтэй холбох" });
+
+    /*
+      ★ The picker is a Radix listbox, not a native `<select>`: it mounts
+      `role="option"` only while the popup is open, so the trigger has to be
+      pressed before the choices exist to assert on.
+    */
+    await userEvent.click(screen.getByLabelText("Энэ системийн бүртгэл"));
+    const options = (await screen.findAllByRole("option")).map((o) => o.textContent);
+
+    // Only accounts with no ESIS person yet — Г.Баяр is already linked.
+    expect(options).toContain("Батболд Сосорбурам");
+    expect(options).not.toContain("Ганболд Баяр");
+  });
+
+  /*
+   * ★★ The identity goes to the server as a **string**. ESIS person ids run to
+   * fifteen digits, past what a JSON number round-trips exactly, so a link
+   * that arrived as a number could attach the wrong person.
+   */
+  it("sends the link as the user id and the ministry's person id", async () => {
+    const api = stubScreen();
+    renderWithProviders(<AdminUsersPage />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Д.Ганбат" }));
+    await userEvent.click(screen.getByRole("button", { name: "Одоо байгаа бүртгэлтэй холбох" }));
+    await selectOption(userEvent.setup(), "Энэ системийн бүртгэл", "Батболд Сосорбурам");
+    await userEvent.click(screen.getByRole("button", { name: "Холбох" }));
+
+    const call = api.calls.find((c) => c.url.includes("/esis/staff-link"));
+    expect(call?.method).toBe("POST");
+    expect(call?.body).toEqual({ userId: SOSOR, esisPersonId: "90000000000009" });
+  });
+
+  /*
+   * ★ No accounts left to link means no button — rather than a button that
+   * opens a dialog saying there is nothing in it.
+   */
+  it("hides the link action when every account is already linked", async () => {
+    stubScreen([{ ...bayar }]);
+    renderWithProviders(<AdminUsersPage />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Д.Ганбат" }));
+    expect(screen.queryByRole("button", { name: "Одоо байгаа бүртгэлтэй холбох" })).toBeNull();
+    // The other answer to the same row is still offered.
+    expect(screen.getByRole("button", { name: "Бүртгэл урих" })).toBeInTheDocument();
+  });
+
   it("says what to do when nobody has registered yet", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
