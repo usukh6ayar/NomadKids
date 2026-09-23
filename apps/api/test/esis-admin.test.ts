@@ -142,8 +142,14 @@ describe("ESIS administration authorization", () => {
      *
      * ★★ **73 since 2026-09-18** — spec №3б wired the three group writes the
      * client asked for: 150, 152 and 162.
+     *
+     * ★★★ **75 since 2026-09-22** — the two мэргэшлийн зэрэг reads, 167 and
+     * 170. The other two the client named are not here and each has its own
+     * reason in `ESIS_DISPOSITIONS`: 119 is refused by the live gateway and
+     * dropped at their instruction, 165 is a POST awaiting a body the
+     * login-gated developer portal has not yielded.
      */
-    expect(first.body.endpoints).toHaveLength(73);
+    expect(first.body.endpoints).toHaveLength(75);
     // Every kindergarten, because the token and the grants are one account's.
     expect(second.status).toBe(200);
   });
@@ -332,9 +338,13 @@ describe("role-scoped ESIS catalog", () => {
     const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
 
     expect(res.status).toBe(200);
-    // ADMIN takes every key, so this moves with the catalogue — 73 since
-    // 2026-09-18, when spec №3б added the three group writes.
-    expect(res.body.endpoints).toHaveLength(73);
+    /*
+      ADMIN takes every key, so this moves with the catalogue — 73 since
+      2026-09-18, when spec №3б added the three group writes, and **75 since
+      2026-09-22**, when the two мэргэшлийн зэрэг reads were wired
+      (`degreeDecisions` 167, `degreeHistory` 170).
+    */
+    expect(res.body.endpoints).toHaveLength(75);
   });
 
   /*
