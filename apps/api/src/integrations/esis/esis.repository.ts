@@ -307,6 +307,65 @@ export class EsisRepository {
   }
 
   /**
+   * The roster entry for one ESIS person in this kindergarten.
+   *
+   * ★ **This is the allow-list for linking an account by hand.** A director
+   * may only attach an `esisPersonId` their own kindergarten's roster already
+   * lists — otherwise the control would let them type any number and claim a
+   * stranger's ministry identity for one of their staff. The roster is filled
+   * by `refreshStaffRoster` from `school/staff`, so "in the roster" means "the
+   * ministry says this person works here".
+   */
+  findRosterEntryByPersonId(kindergartenId: string, esisPersonId: string) {
+    return this.prisma.esisStaffRoster.findUnique({
+      where: { kindergartenId_esisPersonId: { kindergartenId, esisPersonId } },
+    });
+  }
+
+  /**
+   * One staff account of this kindergarten, for the link control.
+   *
+   * ★ Scoped through `Membership`, not by `User.id` alone. A bare user lookup
+   * would let an administrator of one kindergarten write `esisPersonId` onto
+   * somebody else's staff account — a cross-tenant write on a globally unique
+   * column, which is the worst shape this change could take (§1.1, §3.1).
+   */
+  findStaffUserInKindergarten(kindergartenId: string, userId: string) {
+    return this.prisma.user.findFirst({
+      where: {
+        id: userId,
+        deletedAt: null,
+        memberships: {
+          some: { kindergartenId, isActive: true, deletedAt: null, role: { not: "PARENT" } },
+        },
+      },
+      select: { id: true, lastName: true, firstName: true, esisPersonId: true },
+    });
+  }
+
+  /**
+   * The account already holding this ESIS person, if any.
+   *
+   * ★ `esisPersonId` is globally unique, so this is a yes/no question rather
+   * than a search — and asking it before the write turns the unique index's
+   * 500 into a sentence naming what went wrong. Deliberately **not** scoped
+   * to a kindergarten: the person may already be linked at another one, and
+   * that is precisely the case the caller must refuse rather than overwrite.
+   */
+  findUserByEsisPersonId(esisPersonId: string) {
+    return this.prisma.user.findUnique({ where: { esisPersonId }, select: { id: true } });
+  }
+
+  /** Attaches the ministry identity to an existing account. */
+  setUserEsisPersonId(userId: string, esisPersonId: string) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { esisPersonId },
+      select: { id: true, lastName: true, firstName: true, esisPersonId: true },
+    });
+  }
+
+  /**
    * Swaps one resource's stored rows for the sweep that just came back.
    *
    * ★ Delete-then-insert in one transaction, not `upsert`. Prisma's generated

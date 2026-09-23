@@ -20,6 +20,7 @@ import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
+import { EsisConnectionSummary } from "@/components/esis/esis-connection-summary";
 import { EsisWriteQueue } from "@/components/esis/esis-write-queue";
 import { Pagination } from "@/components/ui/pagination";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
@@ -206,7 +207,16 @@ function EsisSyncPanel() {
 
   return (
     <div className="flex w-full flex-col gap-6 lg:gap-8">
-      <PageHeader title="ESIS синк" lede="ЭСИС-ээс энэ цэцэрлэгийн мэдээллийг гараар татах" />
+      <PageHeader title="ЭСИС холболт" lede="ЭСИС-ээс энэ цэцэрлэгийн мэдээллийг гараар татах" />
+
+      {/*
+        ★ Where the integration stands, at the head of the integration screen —
+        2026-09-23. It was readable in four places and stated in none: the
+        institution number on `/admin/kindergarten`, the group and child counts
+        on `/admin`, the staff count on `/admin/users`, and "are we connected"
+        only from whether some panel elsewhere happened to draw rows.
+      */}
+      {kindergartenId ? <EsisConnectionSummary kindergartenId={kindergartenId} /> : null}
 
       <section aria-labelledby="esis-writes-heading">
         <SectionHeader

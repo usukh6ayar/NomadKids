@@ -133,6 +133,13 @@ export class StaffRegistrationService {
      * One person in the ministry's database is one account — `User.esisPersonId`
      * is globally unique, and this is the readable refusal for the same rule
      * rather than a raw constraint violation surfacing as a 500.
+     *
+     * ★ Since 2026-09-23 this also catches the person whose *existing* account
+     * a director has linked to them by hand. That is the right answer and an
+     * improvement: before the link existed, somebody who had been invited and
+     * then registered themselves ended up with two accounts, because nothing
+     * connected the invited one to their ministry identity. They should sign
+     * in to the account they already have.
      */
     if (await this.usersRepo.findByEsisPersonId(entry.esisPersonId)) {
       throw new UnauthorizedException(REFUSAL);
@@ -183,9 +190,9 @@ export class StaffRegistrationService {
    * They are the same instant for the common case — `createSelfRegisteredAccount`
    * creates both rows in the one call — but can diverge: a person who
    * self-registered at one kindergarten and was later *invited* into a second
-   * (`addMembership`, which does not touch `esisPersonId`) would still show
-   * up here for the second kindergarten, because the marker is the user's
-   * `esisPersonId`, not anything membership-scoped. For that row, `User.
+   * (`addMembership`, which does not touch it) would still show up here for
+   * the second kindergarten, because the marker is the user's
+   * `selfRegisteredAt`, not anything membership-scoped. For that row, `User.
    * createdAt` would be the older, first kindergarten's registration date —
    * the wrong answer to "when did this person register *here*". Whichever
    * kindergarten's admin views this list wants the date of the membership in

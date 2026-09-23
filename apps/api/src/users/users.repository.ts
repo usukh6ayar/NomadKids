@@ -275,8 +275,17 @@ export interface CreateUserData {
   passwordHash: string;
   lastName: string;
   firstName: string;
-  /** Set only by self-registration — see `User.esisPersonId` in schema.prisma. */
+  /**
+   * The ministry identity, when the account is created by self-registration.
+   *
+   * ★ It is no longer "set only by self-registration" — a director may attach
+   * one to an invited account afterwards (`linkStaffToEsisPerson`). At
+   * *creation* time self-registration is still the only source, which is why
+   * it stays here and why `selfRegisteredAt` is set alongside it.
+   */
   esisPersonId?: string | null;
+  /** When the person made their own account. NULL for an invitation. */
+  selfRegisteredAt?: Date | null;
 }
 
 export interface UpdateUserData {

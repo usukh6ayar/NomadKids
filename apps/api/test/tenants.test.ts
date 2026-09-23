@@ -720,6 +720,59 @@ describe("GET /groups", () => {
       .set("Cookie", adminA.cookies);
     expect(res.status).toBe(400);
   });
+
+  /*
+    ★ 2026-09-23 — the list carries its assignments.
+
+    "Which group has nobody teaching it" is the question `/admin/groups` exists
+    to answer, and until now the only way to ask it was `GET /groups/:id` once
+    per row. The include is what replaced that; this is the case that says so,
+    and the one that fails if somebody removes it as redundant.
+  */
+  it("★ carries each group's active teachers", async () => {
+    const res = await request(server()).get("/v1/groups").set("Cookie", adminA.cookies);
+
+    const group = res.body.items.find((g: { id: string }) => g.id === a.group.id);
+    expect(group.teachers).toHaveLength(1);
+    expect(group.teachers[0].membership.user.id).toBe(a.teacherUser.id);
+    expect(group.teachers[0].membership.id).toBe(a.teacherMembership.id);
+  });
+
+  /*
+    ★ An ended assignment is not a teacher. `endedOn` is how the API retires
+    one, and a row that kept appearing here would tell a director a group is
+    covered by somebody who has stopped teaching it.
+  */
+  it("★ leaves out an assignment that has ended", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Дууссан бүлэг");
+    await assignTeacher(
+      a.kindergarten.id,
+      other.id,
+      a.teacherMembership.id,
+      new Date("2026-01-31"),
+    );
+
+    const res = await request(server()).get("/v1/groups").set("Cookie", adminA.cookies);
+
+    const group = res.body.items.find((g: { id: string }) => g.id === other.id);
+    expect(group.teachers).toEqual([]);
+  });
+
+  /*
+    ★★ **The include must not become a staff contact list.**
+
+    This route is read by TEACHER and ACCOUNTANT as well as ADMIN. Widening the
+    user `select` to the whole record — which is the obvious "while we are here"
+    change — would hand every staff role each teacher's phone, e-mail and ESIS
+    person id on a screen about classrooms. A name and an id is what the screens
+    draw, so a name and an id is what arrives.
+  */
+  it("★ sends a teacher's name and id, and none of their contact details", async () => {
+    const res = await request(server()).get("/v1/groups").set("Cookie", teacherA.cookies);
+
+    const teacher = res.body.items[0].teachers[0].membership.user;
+    expect(Object.keys(teacher).sort()).toEqual(["firstName", "id", "lastName"]);
+  });
 });
 
 describe("GET /groups/:id", () => {
@@ -1458,5 +1511,39 @@ describe("school year isolation", () => {
 
     expect(res.body.items).toHaveLength(1);
     expect(res.body.items[0].id).toBe(a.group.id);
+  });
+});
+
+/**
+ * The fields the group screens read off a group, end to end.
+ *
+ * ★ `esisGroupId` arrives because `findGroup` uses `include` rather than
+ * `select`, so every scalar column comes with it — but "it happens to work"
+ * is exactly the property that breaks the day somebody narrows the query for
+ * an unrelated reason. `/groups/:id`'s roster check is keyed by it, and with
+ * it absent the group page says "ЭСИС-д бүртгэгдээгүй" about a class that is.
+ */
+describe("group payload", () => {
+  it("★ carries the ministry's group id, which the roster check is keyed by", async () => {
+    await db.group.update({
+      where: { id: a.group.id },
+      data: { esisGroupId: "100006351517832" },
+    });
+
+    const res = await request(server())
+      .get(`/v1/groups/${a.group.id}`)
+      .set("Cookie", adminA.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body.esisGroupId).toBe("100006351517832");
+  });
+
+  /* Null for a group created by hand — a real state, not a missing field. */
+  it("★ sends null for a group ESIS has never been told about", async () => {
+    const res = await request(server())
+      .get(`/v1/groups/${a.group.id}`)
+      .set("Cookie", adminA.cookies);
+
+    expect(res.body.esisGroupId).toBeNull();
   });
 });

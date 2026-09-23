@@ -367,8 +367,7 @@ model User {
   phone        String? @unique
   passwordHash String
 
-  /// The ESIS person this account belongs to, when it was created by
-  /// self-registration.
+  /// The ESIS person this account belongs to.
   ///
   /// ★ Globally unique, not per kindergarten, because one person in the
   /// ministry's database is one person: the same `personId` registering twice
@@ -376,10 +375,28 @@ model User {
   /// is scoped per kindergarten for the opposite reason — a child's record
   /// belongs to the kindergarten holding it.
   ///
-  /// ★★ NULL for every account made by invitation, which is most of them. It
-  /// is the marker for "this person registered themselves", and the
-  /// director's review list reads it.
+  /// ★★ **It is a join key and nothing else — corrected 2026-09-23.** This
+  /// said it was "the marker for 'this person registered themselves', and the
+  /// director's review list reads it", and that was true: `listSelfRegistered`
+  /// selected on `esisPersonId IS NOT NULL`. One column meant two things, and
+  /// the second meaning was only accidentally correct — because the sole
+  /// writer happened to be self-registration.
+  ///
+  /// It stopped being accidental the moment a director could link an invited
+  /// account to its ESIS person by hand, which the staff directory needs: on
+  /// live data only 1 of 13 accounts carried this, so the same five people
+  /// appeared twice on one screen. `selfRegisteredAt` below now carries the
+  /// second meaning, and the review list reads that.
   esisPersonId String? @unique
+
+  /// When this person created their own account by typing their РД against
+  /// `EsisStaffRoster` — NULL for an account an administrator invited.
+  ///
+  /// ★ Separate from `esisPersonId` deliberately. A director's «Ажилтны
+  /// бүртгэл» list answers "who signed themselves up", which is a question
+  /// about *how the account came to exist* and cannot be re-derived once a
+  /// second way of setting `esisPersonId` exists.
+  selfRegisteredAt DateTime?
 
   lastName  String
   firstName String
@@ -587,7 +604,7 @@ model Kindergarten {
   /// start a preview only when this value matches the deployment credential's
   /// institution id, preventing one tenant from reading another tenant's
   /// roster through a shared integration token.
-  esisInstitutionId String?          @unique
+  esisInstitutionId String?   @unique
   esisMappedAt      DateTime?
 
   /// ★ `staffRegistrationCodeHash` and `staffRegistrationCodeSetAt` were here
@@ -962,7 +979,7 @@ model Group {
   /// A body naming no group is a well-formed request about nothing, and what
   /// ESIS does with one is not a thing to find out on their production
   /// register. Spec №3б.
-  esisGroupId              String?     @db.VarChar(64)
+  esisGroupId String? @db.VarChar(64)
 
   /// Order А/261, Annex 2 §1 items 5, 6, 13, 14 and 16. Both default to the
   /// ordinary case, so every group that existed before this migration is a
