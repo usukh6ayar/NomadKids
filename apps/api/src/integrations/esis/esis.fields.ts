@@ -312,6 +312,35 @@ const ESIS_FIELD_CATALOG: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
     keep("actionName", "Үйлдэл"),
     keep("actionDate", "Үйлдлийн огноо"),
   ],
+  /*
+   * Мэргэшлийн зэргийн хүсэлт — **the anchor and nothing else**, 2026-09-22.
+   *
+   * ★ Neither service has ever answered with a populated `RESULT`: nothing in
+   * this product can produce a `requestId` yet (119 is refused, 165 uncalled),
+   * and the developer portal that documents the fields is behind a login this
+   * token has no way past. So there is no list to copy and no response to read
+   * one off.
+   *
+   * ★★ One declared field, following the six per-child reads above — they
+   * answered `203` for every child and each declares only the id it is keyed
+   * by. Declaring *nothing* is not available: `esis.fields.test.ts` requires
+   * every catalog entry to carry at least one field, because an empty table is
+   * worse than a badly ordered one.
+   *
+   * ★★★ **The rest arrives by discovery, and that is the point.**
+   * `esisFieldsFor` walks the rows and appends every key not declared here, so
+   * the first real read shows **all** of the ministry's output values — the
+   * client's own rule for the trial ("garaltiin utguudiig bugdiig ni haruulna
+   * nuuj haaj bolohgui"). Inventing names from the service title would instead
+   * *hide* whatever the ministry really sends behind labels that match nothing,
+   * which is the eleven-of-thirty-six failure `ESIS_API_READINESS.md` records.
+   *
+   * ★★★★ They are absent from `ESIS_SUMMARY_FIELDS`, which is `Partial` for
+   * this reason: a reading order over field names nobody has seen would be the
+   * same invention one layer up.
+   */
+  degreeDecisions: [keep("requestId", "Хүсэлтийн дугаар")],
+  degreeHistory: [keep("requestId", "Хүсэлтийн дугаар")],
   teachers: [
     keep("institutionId", "Байгууллагын код"),
     keep("assignmentId", "Томилгооны код"),
@@ -1432,6 +1461,21 @@ export const ESIS_FIELD_SOURCE: Record<keyof typeof ESIS_ENDPOINTS, EsisFieldSou
   studentInfo: "ADAPTER",
   groupStudents: "PORTAL",
   studentMovements: "PORTAL",
+  /*
+   * ★ `ADAPTER`, following the six per-child reads added 2026-09-14 rather than
+   * inventing a fourth answer. Their note in `esis.fields.test.ts` settles this
+   * exact case: services that "answered 203 for every child on this
+   * institution, so nothing is declared and `esisFieldsFor` reads their columns
+   * off the first real record — `ADAPTER` is the honest badge for a list that
+   * does not exist yet."
+   *
+   * These two answer the same 203 for every `requestId` available, so they are
+   * the same situation and take the same badge. `LIVE` would claim a real
+   * response has been read; `PORTAL` would claim the ministry documented a list
+   * we have seen.
+   */
+  degreeDecisions: "ADAPTER",
+  degreeHistory: "ADAPTER",
   teachers: "PORTAL",
   staff: "PORTAL",
   groupAttendance: "PORTAL",

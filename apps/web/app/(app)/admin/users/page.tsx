@@ -329,6 +329,34 @@ function AdminUsers() {
         description="Томилгоо, шилжилт, чөлөөлөлт — сонгосон огнооноос хойш"
       />
 
+      {/*
+        ★ Мэргэшлийн зэргийн хүсэлт — 2026-09-22, the client naming the four
+        degree services. These are the two **reads**, keyed by a request number
+        the director types from the application in front of them.
+
+        ★★ They ask rather than reading on open, which is the rule the three
+        panels above follow: a service that needs an id the reader has to supply
+        cannot be called without guessing one, and guessing an id means asking
+        the ministry about a request that is not ours.
+
+        ★★★ Neither declares its output fields. Nothing here can produce a
+        request number yet — 119 is refused by the live gateway and dropped at
+        the client's instruction, and 165 files a real application so it waits
+        on their decision — so no populated response has ever been seen.
+        `esisFieldsFor` reads the columns off the first real record instead,
+        which is also what keeps the trial's "show every output value" rule.
+      */}
+      <EsisDataPanel
+        resource="degreeDecisions"
+        title="Мэргэшлийн зэргийн шийдвэрлэлт"
+        description="Хүсэлтийн дугаараар ЭСИС-ийн шийдвэрлэлтийн төлөв"
+      />
+      <EsisDataPanel
+        resource="degreeHistory"
+        title="Мэргэшлийн зэргийн хүсэлтийн түүх"
+        description="Хүсэлтийн дугаараар өөрчлөлтийн түүх"
+      />
+
       {inviting && primaryKindergartenId ? (
         <InviteUserDialog
           kindergartenId={primaryKindergartenId}

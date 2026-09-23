@@ -780,19 +780,32 @@ export const ESIS_DISPOSITIONS: Readonly<Record<number, string>> = {
     "нягтлан өөрийн дэвтэртэй тулгаж гаргадаг; энэ бүтээгдэхүүнд түүнийг " +
     "бүрдүүлдэг зүйл байхгүй. Унших тал нь (130) холбогдсон.",
   131: "Маягт 2 хадгалах — 129-тэй ижил шалтгаан. Унших тал нь (132) холбогдсон.",
+  /*
+   * ★ **Rewritten 2026-09-22.** This said "167, 170-тай ижил шалтгаан", and
+   * those two are wired now — a reason that points at a sibling is a reason that
+   * goes stale when the sibling moves. The real one is below and does not
+   * depend on anything else.
+   */
   165:
-    "Мэргэшлийн зэргийн хүсэлт хадгалах. Багшийн мэргэшлийн зэргийн модуль энэ " +
-    "бүтээгдэхүүнд байхгүй — 167, 170-тай ижил шалтгаан.",
+    "Мэргэшлийн зэргийн хүсэлт хадгалах — POST. ЭСИС-д туршилтын орчин байхгүй " +
+    "(ESIS_TRIAL_STATE.md §1) тул нэг дуудалт нь бодит багшийн нэр дээр яаманд " +
+    "жинхэнэ хүсэлт үүсгэнэ. Захиалагчийн шийдвэр, мөн хүсэлтийн биеийн " +
+    "талбаруудыг хүлээж байна: developer portal нэвтрэлт шаарддаг тул " +
+    "жагсаалтыг уншиж чадаагүй, таамаглаж бичихгүй. Унших хоёр тал (167, 170) " +
+    "холбогдсон.",
   100004874669776:
     "Яамны өөрийн олгосон жагсаалтад энэ мөрийн URL багана хоосон байна. " +
     "Зам нь мэдэгдэхгүй тул дуудах боломжгүй — яамнаас тодруулах зүйл.",
 
-  167:
-    "Багшийн мэргэшлийн зэргийн модуль энэ бүтээгдэхүүнд байхгүй — хүсэлтийн " +
-    "шийдвэрлэлтийг харуулах дэлгэц алга.",
-  170:
-    "Багшийн мэргэшлийн зэргийн модуль энэ бүтээгдэхүүнд байхгүй — хүсэлтийн " +
-    "түүхийг харуулах дэлгэц алга.",
+  /*
+   * ★ **167 and 170 left this map on 2026-09-22.** They are wired now, and a
+   * disposition is by definition the reason an *unwired* grant is uncalled —
+   * `esis.requests.test.ts` asserts exactly that, which is how the contradiction
+   * would have been caught had it been left. Both were live-probed first
+   * (`scripts/esis-degree-probe.ts`): each answers `203 «Хүсэлтэд тохирох утга
+   * олдсонгүй»` for an unknown `requestId`, which is access granted rather than
+   * 119's `403`. See `esis.endpoints.ts` for why neither declares a field list.
+   */
   /*
    * ★ Live-probed 2026-09-17, plan Task 9 Step 2. The export's own stated root
    * (`/svc/api/zereg/get/request/:registerNum`) answers `404 Зам олдсонгүй` —
@@ -808,9 +821,24 @@ export const ESIS_DISPOSITIONS: Readonly<Record<number, string>> = {
    * client cannot express. Nothing was guessed into `esisPath` to work around
    * a 403; the standard grammar already reaches a real route and still fails
    * on access.
+   *
+   * ★★ **Re-probed 2026-09-22 and unchanged**, with one detail worth keeping
+   * because it nearly read as good news. Without `institutionId` the hub root
+   * answers `400 {"message":"institutionId дутуу байна"}`, which looks like a
+   * route that is open and merely mis-called. Supplying `institutionId` turns
+   * that into the same `403` as before: the parameter check runs **ahead of**
+   * the access check, so a 400 here says nothing about the grant. Anyone
+   * re-probing this should send `institutionId` or they will read the 400 as
+   * progress, as this pass briefly did.
+   */
+  /*
+   * ★★★ **The client dropped it, 2026-09-22:** "ene ni ajillahgui gsen ug orhi
+   * ashiglahgui". So this row is no longer "blocked pending БМТТ" — it is a
+   * decision, and the reason records both halves: the gateway refuses it, and
+   * nobody is waiting for that to change.
    */
   119:
-    "Стандарт /svc/api/hub/v2/zereg/get/request/:registerNum замаар " +
+    "ЗАХИАЛАГЧ ХАССАН (2026-09-22). Стандарт /svc/api/hub/v2/zereg/get/request/:registerNum замаар " +
     "амьд шалгахад тухайн зам БОДИТ хэмээн танигдсан ч токен 403 « Энэ API-д " +
     "хандах эрх байхгүй» гэж буцаав — экспортод бичсэн /svc/api/zereg/ язгуур " +
     "нь 404 (Зам олдсонгүй) буцаадаг тул зам биш. Портал дээр 119 " +

@@ -48,8 +48,20 @@ describe("ESIS v2 endpoint registry", () => {
      * reason rather than a silence: 72 and 73 have no entry in the ministry's
      * export to give them a path, and 129/131 file a school's income return,
      * which nothing in this product produces. See the spec's §1.
+     *
+     * ★★★★ **75 since 2026-09-22** — the client named the four мэргэшлийн зэрэг
+     * services and the two **reads** are wired: 167 (шийдвэрлэлт) and 170
+     * (түүх), both live-probed to `203 Хүсэлтэд тохирох утга олдсонгүй`, which
+     * is access granted with an unknown id.
+     *
+     * Of the other two, 119 is **dropped at the client's instruction** — it
+     * answers `403` on the live gateway whatever the portal says — and 165 is a
+     * POST that would file a real application against a real teacher, so it
+     * waits on their decision and on a body the login-gated portal has not let
+     * us read. Both keep their row in `ESIS_DISPOSITIONS`; nine of the fourteen
+     * unwired remain.
      */
-    expect(endpoints).toHaveLength(73);
+    expect(endpoints).toHaveLength(75);
     expect(new Set(withId.map((item) => item.apiId)).size).toBe(withId.length);
 
     /*
