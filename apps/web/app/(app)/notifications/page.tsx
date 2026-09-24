@@ -272,18 +272,18 @@ export default function NotificationsPage() {
   return (
     <div className="flex flex-col gap-5 pb-8 lg:gap-6">
       {/* The active heading follows the guardian's news/survey tab. */}
-      <div className="flex max-w-[920px] items-start gap-3 border-b border-[#dbe8f2] pb-5 sm:items-center sm:gap-4">
+      <div className="flex max-w-[920px] items-start gap-3 border-b border-border pb-5 sm:items-center sm:gap-4">
         <span
-          className="grid size-12 shrink-0 place-items-center rounded-control bg-[#dceeff] text-[#176ac2] shadow-[0_8px_18px_rgba(29,78,216,.08)] sm:size-14"
+          className="grid size-12 shrink-0 place-items-center rounded-control bg-primary-soft text-primary shadow-[0_8px_18px_rgba(29,78,216,.08)] sm:size-14"
           aria-hidden="true"
         >
           <Megaphone size={26} strokeWidth={1.8} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-caption font-bold uppercase tracking-[0.12em] text-[#176ac2]">
+          <p className="text-caption font-bold uppercase tracking-[0.12em] text-primary">
             Харилцаа холбоо
           </p>
-          <h1 className="mt-0.5 text-heading font-extrabold leading-tight tracking-tight text-[#173e70]">
+          <h1 className="mt-0.5 text-heading font-extrabold leading-tight tracking-tight text-ink">
             {tab === "news" ? "Мэдээ" : "Судалгаа"}
           </h1>
           <p className="mt-1 text-caption leading-5 text-muted sm:text-body">
@@ -293,7 +293,7 @@ export default function NotificationsPage() {
           </p>
         </div>
         {tab === "news" && data ? (
-          <span className="hidden shrink-0 rounded-pill bg-white px-3 py-1.5 text-caption font-semibold text-[#315778] shadow-sm sm:inline-flex">
+          <span className="hidden shrink-0 rounded-pill bg-white px-3 py-1.5 text-caption font-semibold text-muted shadow-sm sm:inline-flex">
             {data.pages[0]?.total ?? 0} мэдээ
           </span>
         ) : null}
@@ -315,7 +315,7 @@ export default function NotificationsPage() {
         className="flex max-w-[920px] flex-col gap-4"
       >
         {isGuardian ? (
-          <div className="rounded-card border border-[#dbe8f2] bg-white p-1.5 shadow-[0_6px_20px_rgba(30,70,112,.04)]">
+          <div className="rounded-card border border-border bg-white p-1.5 shadow-[0_6px_20px_rgba(30,70,112,.04)]">
             <div
               role="tablist"
               aria-label="Мэдээ эсвэл судалгаа"
@@ -355,7 +355,7 @@ export default function NotificationsPage() {
                 onChange={(e) => setSearchInput(e.target.value)}
                 placeholder={tab === "news" ? "Мэдээнээс хайх" : "Судалгаанаас хайх"}
                 aria-label={tab === "news" ? "Мэдээнээс хайх" : "Судалгаанаас хайх"}
-                className="rounded-control border-[#d5e4f0] bg-white pl-11 shadow-sm focus:bg-white"
+                className="rounded-control border-border bg-white pl-11 shadow-sm focus:bg-white"
               />
             </div>
 
@@ -990,8 +990,8 @@ function NotificationRow({
       className={cn(
         "flex flex-col gap-3 rounded-card border p-4 transition-all duration-150 sm:p-5",
         isUnread
-          ? "border-[#cbdff2] bg-white shadow-[0_12px_32px_rgba(23,70,112,.08)] hover:border-primary/50 hover:shadow-[0_16px_38px_rgba(23,70,112,.12)]"
-          : "border-[#e3edf5] bg-white/70 hover:border-[#cbdff2] hover:bg-white",
+          ? "border-border bg-white shadow-[0_12px_32px_rgba(23,70,112,.08)] hover:border-primary/50 hover:shadow-[0_16px_38px_rgba(23,70,112,.12)]"
+          : "border-border-soft bg-white/70 hover:border-border hover:bg-white",
       )}
     >
       {/* Who posted it, and when. `ChildAvatar` takes any `{firstName,
@@ -1189,7 +1189,7 @@ function NotificationRow({
         */}
         <h3
           className={cn(
-            "text-lead leading-heading text-[#173e70] sm:text-title",
+            "text-lead leading-heading text-ink sm:text-title",
             isUnread ? "font-semibold" : "font-medium",
           )}
         >
