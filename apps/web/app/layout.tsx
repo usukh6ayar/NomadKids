@@ -1,10 +1,40 @@
 import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import type { ReactNode } from "react";
 import { headers } from "next/headers";
 import { Providers } from "./providers";
 import { BRAND, BRAND_LATIN } from "@/lib/vocabulary";
 import { siteOrigin } from "@/lib/site-origin";
 import "./globals.css";
+
+/**
+ * The product's typeface.
+ *
+ * ★ **Cyrillic is a requirement, not a preference.** Every word of UI in this
+ * product is Mongolian, so a face without `cyrillic` coverage renders Ө, Ү and
+ * Ё from a fallback — the page then mixes two typefaces mid-word and looks
+ * broken in a way that is hard to name. Inter covers the range; the subset is
+ * declared so the browser fetches it rather than discovering it is missing.
+ *
+ * ★★ `latin` stays because the product is not only Mongolian on screen:
+ * usernames, e-mail addresses, the ESIS identifiers on the integration panels
+ * and `BRAND_LATIN` are all Latin.
+ *
+ * ★★★ A CSS variable rather than a class on `<body>`, so `globals.css` owns
+ * the `font-family` and one `@theme` line decides it for every surface —
+ * including the ones Tailwind generates and the PDF templates that read the
+ * same stylesheet.
+ */
+const inter = Inter({
+  subsets: ["latin", "cyrillic"],
+  /*
+   * Not `--font-sans` itself: `globals.css` owns that name and composes it
+   * with the system stack, so a failed font fetch falls back instead of
+   * resolving to an empty variable and rendering in a serif.
+   */
+  variable: "--font-sans-loaded",
+  display: "swap",
+});
 
 /*
  * ★ Both names, deliberately — 2026-09-09.
@@ -152,7 +182,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   return (
-    <html lang="mn">
+    <html lang="mn" className={inter.variable}>
       <body>
         <script
           type="application/ld+json"

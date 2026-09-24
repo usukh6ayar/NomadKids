@@ -307,12 +307,10 @@ export function ChatList({
 
   return (
     <>
-      <header className="border-b border-[#e5edf5] bg-white px-4 pb-4 pt-5">
+      <header className="border-b border-track bg-white px-4 pb-4 pt-5">
         <div className="flex min-h-11 items-center justify-between gap-2">
           <div className="min-w-0">
-            <Title className="text-title font-extrabold tracking-tight text-[#173e70]">
-              Чатууд
-            </Title>
+            <Title className="text-title font-extrabold tracking-tight text-ink">Чатууд</Title>
             <p className="mt-0.5 text-caption text-muted">Яриагаа сонгож үргэлжлүүлээрэй</p>
           </div>
           {action}
@@ -337,7 +335,7 @@ export function ChatList({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={searchPlaceholder}
-            className="h-[46px] rounded-control border-[#dbe8f2] bg-[#f4f9fd] pl-11 focus:bg-white"
+            className="h-[46px] rounded-control border-border bg-canvas pl-11 focus:bg-white"
           />
         </label>
       </header>
@@ -383,8 +381,9 @@ export function ChatList({
                 onClick={() => onOpen(room.key)}
                 aria-current={room.key === activeKey ? "true" : undefined}
                 className={cn(
-                  "relative flex min-h-[82px] w-full items-center gap-3 rounded-control px-3 py-3 text-left transition-colors hover:bg-[#f4f9fd]",
-                  room.key === activeKey && "bg-[#eaf4ff] ring-1 ring-[#d1e6fa] hover:bg-[#eaf4ff]",
+                  "relative flex min-h-[82px] w-full items-center gap-3 rounded-control px-3 py-3 text-left transition-colors hover:bg-canvas",
+                  room.key === activeKey &&
+                    "bg-primary-soft ring-1 ring-primary-soft hover:bg-primary-soft",
                 )}
               >
                 {/* Initials, not an avatar: a room is a group of people and
@@ -573,7 +572,7 @@ export function ChatRoom({
 
   return (
     <>
-      <div className="border-b border-[#e5edf5] bg-white">
+      <div className="border-b border-track bg-white">
         <header className="flex min-h-[76px] items-center gap-2 px-3 py-2.5 sm:px-5">
           {onBack ? (
             <button
@@ -601,9 +600,7 @@ export function ChatRoom({
           </span>
 
           <div className="min-w-0 flex-1">
-            <Title className="truncate text-lead font-extrabold text-[#173e70]">
-              {displayName}
-            </Title>
+            <Title className="truncate text-lead font-extrabold text-ink">{displayName}</Title>
             <p className="mt-0.5 truncate text-caption text-muted">{room.memberCount} гишүүн</p>
           </div>
 
@@ -691,7 +688,7 @@ export function ChatRoom({
         ) : null}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-[#f6fafe] px-3 py-5 sm:px-6">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-canvas px-3 py-5 sm:px-6">
         {history.isLoading ? (
           <div className="mx-auto flex w-full max-w-[860px] flex-col gap-3">
             <Skeleton className="h-12 w-2/3" />
@@ -732,7 +729,7 @@ export function ChatRoom({
         <div ref={bottom} />
       </div>
 
-      <div className="relative border-t border-[#e5edf5] bg-white p-3 sm:p-4">
+      <div className="relative border-t border-track bg-white p-3 sm:p-4">
         {emojiOpen ? (
           <div className="absolute bottom-[76px] right-14 z-10 flex gap-1 rounded-card border border-border bg-surface p-2 shadow-lg sm:right-20">
             {["😊", "👍", "❤️", "🎉", "🙏"].map((emoji) => (
@@ -807,7 +804,7 @@ export function ChatRoom({
                 ? `Нэг мессежид ${MAX_CHAT_IMAGES} зураг хүртэл`
                 : "Зураг хавсаргах"
             }
-            className="grid size-12 shrink-0 place-items-center rounded-control border border-[#dbe8f2] text-muted transition-colors hover:bg-[#f4f9fd] hover:text-ink disabled:text-faint"
+            className="grid size-12 shrink-0 place-items-center rounded-control border border-border text-muted transition-colors hover:bg-canvas hover:text-ink disabled:text-faint"
           >
             <Paperclip size={20} aria-hidden="true" />
           </button>
@@ -824,7 +821,7 @@ export function ChatRoom({
               autoComplete="off"
               maxLength={2000}
               disabled={send.isPending}
-              className="rounded-control border-[#dbe8f2] bg-[#f4f9fd] pr-12 focus:bg-white"
+              className="rounded-control border-border bg-canvas pr-12 focus:bg-white"
             />
             <button
               type="button"
@@ -925,7 +922,7 @@ function MessageBubble({ message }: { message: z.infer<typeof chatMessageSchema>
             "min-w-0 rounded-bubble px-4 py-3 shadow-[0_2px_8px_rgba(28,65,103,.05)]",
             message.mine
               ? "rounded-br-md bg-primary text-primary-ink"
-              : "rounded-bl-md border border-[#dbe8f2] bg-white text-ink",
+              : "rounded-bl-md border border-border bg-white text-ink",
           )}
         >
           {message.media.length > 0 ? (

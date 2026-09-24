@@ -168,3 +168,23 @@ if (!Element.prototype.scrollIntoView) {
     clearRect: () => {},
   })) as unknown as HTMLCanvasElement["getContext"];
 }
+
+/**
+ * `next/font/google` — a build-time transform, not a runtime module.
+ *
+ * ★ Next rewrites `Inter({ … })` at compile time into a generated stylesheet
+ * and a class name. Vitest does not run that transform, so the import resolves
+ * to an object with no callable `Inter` and any file importing `app/layout.tsx`
+ * dies with "Inter is not a function" — which is how `seo-metadata.test.ts`
+ * broke the moment the product got a typeface, while every assertion in it was
+ * still correct.
+ *
+ * ★★ The stub returns the same **shape** the real transform does — a
+ * `className` and a `variable` — so a component spreading either still renders
+ * a string rather than `undefined`. It deliberately does not try to load the
+ * font: what a test can check is that the variable is applied, and the glyphs
+ * themselves are the browser's business.
+ */
+vi.mock("next/font/google", () => ({
+  Inter: () => ({ className: "font-inter", variable: "--font-sans-loaded", style: {} }),
+}));

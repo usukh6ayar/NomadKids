@@ -82,15 +82,15 @@ export default function ChatPage() {
   }, [roomKey, rooms.data]);
 
   return (
-    <div className="flex h-full w-full min-h-0 flex-col bg-[#f4f9fd] lg:rounded-card lg:border lg:border-[#dbe8f2] lg:p-3 lg:shadow-[0_16px_40px_rgba(26,68,108,.06)]">
+    <div className="flex h-full w-full min-h-0 flex-col bg-canvas lg:rounded-card lg:border lg:border-border lg:p-3 lg:shadow-[0_16px_40px_rgba(26,68,108,.06)]">
       <h1 className="sr-only">Чат</h1>
 
       <div className="hidden shrink-0 items-center justify-between px-2 pb-3 lg:flex">
         <div>
-          <p className="text-caption font-bold uppercase tracking-[0.12em] text-[#176ac2]">
+          <p className="text-caption font-bold uppercase tracking-[0.12em] text-primary">
             Харилцаа холбоо
           </p>
-          <p className="text-title font-extrabold tracking-tight text-[#173e70]">Чат</p>
+          <p className="text-title font-extrabold tracking-tight text-ink">Чат</p>
         </div>
         <span className="rounded-pill bg-white px-3 py-1.5 text-caption font-medium text-muted">
           Бүлэг болон ажилтнуудтайгаа холбогдоорой
@@ -107,7 +107,7 @@ export default function ChatPage() {
         */}
         <div
           className={cn(
-            "min-h-0 min-w-0 flex-col overflow-hidden bg-surface lg:flex lg:w-[340px] lg:shrink-0 lg:rounded-card lg:border lg:border-[#dbe8f2] lg:shadow-sm xl:w-[370px]",
+            "min-h-0 min-w-0 flex-col overflow-hidden bg-surface lg:flex lg:w-[340px] lg:shrink-0 lg:rounded-card lg:border lg:border-border lg:shadow-sm xl:w-[370px]",
             active ? "hidden" : "flex flex-1",
           )}
         >
@@ -136,7 +136,7 @@ export default function ChatPage() {
 
         <div
           className={cn(
-            "min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface lg:rounded-card lg:border lg:border-[#dbe8f2] lg:shadow-sm",
+            "min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface lg:rounded-card lg:border lg:border-border lg:shadow-sm",
             active ? "flex" : "hidden lg:flex",
           )}
         >
