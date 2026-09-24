@@ -30,6 +30,7 @@ import { SERIES_TONES } from "@/components/ui/chart/chart-tokens";
 import { TONE_VAR, type Tone } from "@/components/ui/tone";
 import { GraduationCap, PieChart } from "lucide-react";
 import { AssessmentCoverageSection, RecentActivitySection } from "./dashboard-sections";
+import { EsisVsRegistered } from "./esis-vs-registered";
 
 /**
  * The administrator's own dashboard — RFP §12.2, and the reference system's
@@ -141,6 +142,7 @@ export function AdminOverview() {
     currentTerm,
     childrenAMonthAgo,
     storage,
+    esis,
   } = data!;
 
   return (
@@ -316,6 +318,20 @@ export function AdminOverview() {
             </>
           ) : null}
         </section>
+
+        {/*
+          ★ ЭСИС-тэй тулгалт, directly under the tiles those numbers are in —
+          2026-09-24, at the client's request: "esis ees irsen niit heden bagsh
+          ajilchid suraltsagch baigaa tood haruulna … systemd burtgegdsen ni
+          hed baigaag bas harj boldog baih."
+
+          It sits here rather than inside a tile because a tile carries one
+          figure and this is a comparison: "ЭСИС-д 13, бүртгэлтэй 5" is a
+          sentence, and folding it into the strip above would turn five cards
+          into ten numbers. `.nullish()` in the contract, so an older API that
+          does not send the block simply does not draw the card.
+        */}
+        {esis ? <EsisVsRegistered esis={esis} groupsTotal={counts.groups} /> : null}
 
         {/*
         ★ These two are paired because they are the same shape, not because

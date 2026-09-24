@@ -531,6 +531,102 @@ export class DashboardRepository {
     return { children, groups, staff, guardians };
   }
 
+  /**
+   * How much of this kindergarten came from ESIS, and how much of it can sign in.
+   *
+   * ★ **Every figure here is a local query — no call reaches the ministry.** A
+   * dashboard is opened dozens of times a day and an outbound request per open
+   * would spend the deployment's rate-limited token on a number nobody asked
+   * to refresh. What makes that possible is `EsisStaffRoster`: tier 2 of the
+   * sync refills it nightly from `school/staff`, so "how many staff does the
+   * ministry list" is already on disk.
+   *
+   * ★★ **Children and groups have no equivalent, and this does not pretend
+   * otherwise.** There is no stored copy of the ministry's student roster —
+   * tier 3 reads a child at a time, on the screen that shows them — so what is
+   * counted is `esisPersonId IS NOT NULL`: children whose record *came from*
+   * an import. That is a provenance figure, not the ministry's total, and the
+   * screen labels it as one. Comparing against the ministry's own count needs
+   * a live read, which `GroupRosterCheck` does per group, deliberately.
+   *
+   * ★★★ `staffRegistered` counts **every** staff role. The `staff` figure in
+   * `kindergartenCounts` above counts `TEACHER` and `ADMIN` only, so a
+   * kindergarten with a тогооч and a нягтлан has always been told it has fewer
+   * "Багш, ажилтан" than it employs. That tile is not changed here — it is
+   * read by screens that assume its meaning — but the honest number is beside
+   * it now, and the gap is the point of the comparison.
+   */
+  async esisCounts(kindergartenIds: string[]) {
+    const empty = {
+      staffInRoster: 0,
+      staffRegistered: 0,
+      staffLinked: 0,
+      childrenLinked: 0,
+      childrenTotal: 0,
+      groupsLinked: 0,
+      rosterSyncedAt: null as Date | null,
+    };
+    if (kindergartenIds.length === 0) return empty;
+
+    const scope = { in: kindergartenIds };
+    const [
+      staffInRoster,
+      staffRegistered,
+      staffLinked,
+      childrenLinked,
+      childrenTotal,
+      groupsLinked,
+      latest,
+    ] = await Promise.all([
+      this.prisma.esisStaffRoster.count({ where: { kindergartenId: scope } }),
+      this.prisma.membership.count({
+        where: {
+          kindergartenId: scope,
+          deletedAt: null,
+          isActive: true,
+          role: { not: "PARENT" },
+          user: { deletedAt: null },
+        },
+      }),
+      this.prisma.membership.count({
+        where: {
+          kindergartenId: scope,
+          deletedAt: null,
+          isActive: true,
+          role: { not: "PARENT" },
+          user: { deletedAt: null, esisPersonId: { not: null } },
+        },
+      }),
+      this.prisma.child.count({
+        where: { kindergartenId: scope, deletedAt: null, esisPersonId: { not: null } },
+      }),
+      this.prisma.child.count({ where: { kindergartenId: scope, deletedAt: null } }),
+      this.prisma.group.count({
+        where: { kindergartenId: scope, deletedAt: null, esisGroupId: { not: null } },
+      }),
+      /*
+       * When the roster was last refilled. Without it "ЭСИС-д 13" is a
+       * number with no age, and a roster nobody has synced for a month is
+       * exactly when it is most misleading.
+       */
+      this.prisma.esisStaffRoster.findFirst({
+        where: { kindergartenId: scope },
+        orderBy: { syncedAt: "desc" },
+        select: { syncedAt: true },
+      }),
+    ]);
+
+    return {
+      staffInRoster,
+      staffRegistered,
+      staffLinked,
+      childrenLinked,
+      childrenTotal,
+      groupsLinked,
+      rosterSyncedAt: latest?.syncedAt ?? null,
+    };
+  }
+
   /** Assessment coverage for the current term, per group. */
   async assessmentCoverage(kindergartenIds: string[], termId: string) {
     if (kindergartenIds.length === 0) return [];

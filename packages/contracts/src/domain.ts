@@ -3222,9 +3222,46 @@ export const adminDashboardSchema = z.object({
   counts: z.object({
     children: z.number(),
     groups: z.number(),
+    /**
+     * ★ `TEACHER` and `ADMIN` only — narrower than the label above it.
+     *
+     * A тогооч and a нягтлан are staff and are not counted here, so a
+     * kindergarten employing both is told it has two fewer people than it
+     * does. The figure is left alone because several screens read it with
+     * that meaning; `esis.staffRegistered` below is the count of *everyone*,
+     * and the two sitting together is what makes the narrowing visible.
+     */
     staff: z.number(),
     guardians: z.number(),
   }),
+  /**
+   * What ESIS lists, against what this system holds.
+   *
+   * ★ **Every field is a local count — the dashboard calls the ministry
+   * nowhere.** `staffInRoster` is `EsisStaffRoster`, which tier 2 of the sync
+   * refills nightly, so the ministry's staff total is already on disk.
+   *
+   * ★★ Children and groups have **no** stored ministry total — tier 3 reads a
+   * child at a time — so `childrenLinked` and `groupsLinked` count records
+   * that *came from* an import (`esisPersonId` / `esisGroupId` set). That is
+   * provenance, not the ministry's own number, and the screen says so. The
+   * live comparison is `GroupRosterCheck`, per group, on demand.
+   */
+  esis: z
+    .object({
+      /** Staff the ministry lists for this kindergarten. */
+      staffInRoster: z.number(),
+      /** Accounts that can sign in — every staff role, not only TEACHER/ADMIN. */
+      staffRegistered: z.number(),
+      /** Of those, how many are tied to their ESIS person. */
+      staffLinked: z.number(),
+      childrenLinked: z.number(),
+      childrenTotal: z.number(),
+      groupsLinked: z.number(),
+      /** When the roster was last refilled — a count with no age misleads. */
+      rosterSyncedAt: z.string().nullish(),
+    })
+    .nullish(),
   /**
    * RFP §12.2 — "Хадгалалтын хэмжээ" and "Тайлангийн статистик".
    *
@@ -3560,8 +3597,28 @@ export const platformStatsSchema = z.object({
   kindergartens: z.number(),
   groups: z.number(),
   children: z.number(),
+  /** `TEACHER` and `ADMIN` only — see `esis.staffRegistered` for everyone. */
   staff: z.number(),
   guardians: z.number(),
+  /**
+   * The ESIS comparison, summed across every tenant.
+   *
+   * ★ Local counts — `EsisStaffRoster` is refilled nightly per kindergarten,
+   * so the operator's page costs one query rather than an outbound request per
+   * tenant. `connected` is how many kindergartens carry an
+   * `esisInstitutionId`, which is a fact this database holds; whether the
+   * ministry answers today is not, and the figure does not claim it.
+   */
+  esis: z
+    .object({
+      staffInRoster: z.number(),
+      staffRegistered: z.number(),
+      staffLinked: z.number(),
+      childrenLinked: z.number(),
+      groupsLinked: z.number(),
+      connected: z.number(),
+    })
+    .nullish(),
 });
 export type PlatformStats = z.infer<typeof platformStatsSchema>;
 
