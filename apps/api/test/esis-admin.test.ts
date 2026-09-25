@@ -1520,6 +1520,116 @@ describe("POST /kindergartens/:id/esis/roster-import", () => {
   });
 
   /*
+   * ★★★★ **A group typed by hand is adopted, not duplicated — even when the
+   * capital letter differs.**
+   *
+   * This is not hypothetical: on the live deployment a director had created
+   * «Бэлтгэл бүлэг» and the ministry sends «бэлтгэл бүлэг». The lookup matched
+   * `name` exactly, `@@unique([schoolYearId, name])` is case-sensitive under
+   * Postgres's default collation, so both rows fitted — and the kindergarten
+   * ended up with an empty hand-made group beside the imported one holding 22
+   * children. Two groups, one class, and the empty one is the one a teacher
+   * might be assigned to.
+   */
+  it("★ adopts a hand-made group whose name differs only by case", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    const year = await withCurrentYear(a.kindergarten.id);
+
+    // Typed by a director before the first import — capital Б, ESIS sends б.
+    const byHand = await db.group.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        schoolYearId: year.id,
+        name: "Ахлах бүлэг",
+        ageBand: "MIDDLE",
+      },
+    });
+
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(200);
+    // Adopted, so nothing was created and the existing row carries the id now.
+    expect(res.body.groups.created).toBe(0);
+    expect(res.body.groups.updated).toBe(1);
+
+    const groups = await db.group.findMany({
+      where: { schoolYearId: year.id, deletedAt: null },
+    });
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.id).toBe(byHand.id);
+    expect(groups[0]!.esisGroupId).toBe(String(GROUP_ROW.studentGroupId));
+
+    // And the child landed in it rather than in a second copy.
+    const child = await db.child.findFirst({
+      where: { kindergartenId: a.kindergarten.id, esisPersonId: String(CHILD_ROW.personId) },
+    });
+    const enrollment = await db.enrollment.findFirst({ where: { childId: child!.id } });
+    expect(enrollment?.groupId).toBe(byHand.id);
+  });
+
+  /* Surrounding space is the same mistake one keystroke along. */
+  it("★ adopts a hand-made group whose name differs only by spacing", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    const year = await withCurrentYear(a.kindergarten.id);
+
+    await db.group.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        schoolYearId: year.id,
+        name: "  ахлах бүлэг ",
+        ageBand: "MIDDLE",
+      },
+    });
+
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+    await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    const groups = await db.group.findMany({
+      where: { schoolYearId: year.id, deletedAt: null },
+    });
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.esisGroupId).toBe(String(GROUP_ROW.studentGroupId));
+  });
+
+  /*
+   * ★ Where the mess already exists — one linked group and one empty
+   * lookalike — the import must keep the children where they are. Adopting the
+   * empty one would move the ministry's id onto a group nobody is enrolled in.
+   */
+  it("★ prefers the already-linked group when two names normalise the same", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    const year = await withCurrentYear(a.kindergarten.id);
+
+    const linked = await db.group.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        schoolYearId: year.id,
+        name: "ахлах бүлэг",
+        ageBand: "MIDDLE",
+        esisGroupId: String(GROUP_ROW.studentGroupId),
+      },
+    });
+    await db.group.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        schoolYearId: year.id,
+        name: "Ахлах бүлэг",
+        ageBand: "MIDDLE",
+      },
+    });
+
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+    await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    const child = await db.child.findFirst({
+      where: { kindergartenId: a.kindergarten.id, esisPersonId: String(CHILD_ROW.personId) },
+    });
+    const enrollment = await db.enrollment.findFirst({ where: { childId: child!.id } });
+    expect(enrollment?.groupId).toBe(linked.id);
+  });
+
+  /*
    * ★★★ The rule the whole feature rests on. Pressed twice, nothing doubles.
    */
   it("is idempotent — a second run creates nothing", async () => {
