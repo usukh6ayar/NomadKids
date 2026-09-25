@@ -152,25 +152,37 @@ jobs:
           set -euo pipefail
 
           # s3mock serves HTTP on 9090; the app's STORAGE_ENDPOINT is 9000.
-          docker run -d --name s3mock -p 9000:9090 \
-            -e initialBuckets=kinder-media \
-            -e retainFilesOnExit=false \
-            adobe/s3mock:5.2.3
+          docker run -d --name s3mock -p 9000:9090 adobe/s3mock:5.2.3
 
           # Polled rather than slept: a fixed wait is either too short on a
-          # slow runner or wasted on a fast one. A bucket listing is the
-          # cheapest call that proves the API is actually answering.
+          # slow runner or wasted on a fast one.
           for _ in $(seq 1 30); do
-            if curl -sf http://localhost:9000/ > /dev/null; then
-              echo "storage ready, bucket kinder-media created"
-              exit 0
-            fi
+            curl -sf http://localhost:9000/ > /dev/null && break
             sleep 2
           done
 
-          echo "object storage did not come up" >&2
-          docker logs s3mock >&2 || true
-          exit 1
+          # ★ The bucket is created with a plain `PUT /{bucket}` — S3's own
+          # CreateBucket — rather than the `initialBuckets` environment
+          # variable the image documents.
+          #
+          # That variable was tried first and silently did nothing: the
+          # container came up, the health poll passed, and every upload then
+          # failed with "The specified bucket does not exist." A setting that
+          # fails quietly is worse than none, and s3mock ignores credentials,
+          # so an unsigned PUT is all CreateBucket needs here.
+          curl -sf -X PUT http://localhost:9000/kinder-media > /dev/null
+
+          # ★★ And the bucket is *verified*, not assumed. The previous attempt
+          # reported "storage ready" while the thing the suite needs did not
+          # exist — this step now fails where the mistake is, rather than
+          # thirty media tests later with a 503 that names nothing.
+          if ! curl -sf -I http://localhost:9000/kinder-media > /dev/null; then
+            echo "bucket kinder-media was not created" >&2
+            docker logs s3mock >&2 || true
+            exit 1
+          fi
+
+          echo "storage ready, bucket kinder-media created"
 
       - name: Install Chrome, the Cyrillic fonts and poppler
         # ★ The report tests render real PDFs and assert on extracted text.
