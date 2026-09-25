@@ -46,8 +46,10 @@ jobs:
           --health-retries 20
 
       # ★ Object storage is NOT a service container — see the step that starts
-      # it. `services:` cannot pass a command, and `minio/minio` needs
-      # `server /data` to do anything.
+      # it. That began as a MinIO limitation (`services:` cannot pass a
+      # command, and `minio/minio` needed `server /data`); it stays a step
+      # because the replacement wants a health poll and a readable failure,
+      # neither of which a service block gives.
 
     # ★ Not secrets, and deliberately inline.
     #
@@ -119,57 +121,55 @@ jobs:
         run: pnpm lint
 
       - name: Start object storage
-        # ★ Started here rather than under `services:`, because a service
-        # container cannot be given a command and `minio/minio` needs
-        # `server /data`.
+        # The suite needs something that speaks S3: `StorageService` calls
+        # `HeadBucket` on boot and the media tests put, get, presign and delete.
         #
-        # The first attempt used `bitnami/minio`, which starts the server itself
-        # and seeds a bucket from an env var — but that tag no longer exists
-        # ("manifest unknown"), and reaching for a vendor's convenience image to
-        # dodge a `services:` limitation was the wrong trade anyway. This runs
-        # the *same image docker-compose uses locally*, so CI and a developer
-        # machine exercise identical storage.
+        # ★ **`adobe/s3mock`, not MinIO — 2026-09-25, and not by preference.**
         #
-        # The bucket is created explicitly: nothing in the application creates
-        # it — `StorageService` only ever calls `HeadBucket`.
+        # MinIO closed anonymous pulls. `minio/minio` on Docker Hub answers 401
+        # to an anonymous puller, `quay.io/minio/minio` — which this step moved
+        # to on 2026-09-13 when Docker Hub first broke — now answers the same,
+        # and `ghcr.io` and `public.ecr.aws` serve nothing. Every branch's
+        # `verify` failed at this step, including `main` with code that had
+        # passed the day before: re-running an old green run reproduced it
+        # exactly, which is what proved the cause was upstream rather than any
+        # commit.
+        #
+        # ★★ The previous note argued for running "the *same image
+        # docker-compose uses locally*". That argument is weaker than it reads:
+        # a developer machine runs MinIO natively on 9010, not through compose,
+        # so CI and local already differed. What both must agree on is the
+        # **S3 API**, and that is what this exercises.
+        #
+        # ★★★ It also removes a second image. `initialBuckets` creates the
+        # bucket the way `mc mb` did, so the `minio/mc` pull and the alias
+        # dance are gone — one fewer registry to be locked out of.
+        #
+        # Pinned, for the reason the 2026-09-13 note gives and this incident
+        # proves twice over: `:latest` is what lets an upstream change stop
+        # this repository's CI without a commit being made.
         run: |
           set -euo pipefail
 
-          # ★ MinIO's images moved off Docker Hub — 2026-09-13.
-          #
-          # `docker pull minio/minio` now answers "pull access denied for minio/minio,
-          # repository does not exist or may require 'docker login'" to an anonymous
-          # puller, which broke `verify` on every branch (it last passed 2026-09-11) and
-          # would break a fresh `docker compose up` too. Ours kept working only because
-          # the images were already in the local cache.
-          #
-          # quay.io is MinIO's own registry and serves both images anonymously.
-          #
-          # Pinned to a release rather than `:latest`, which is the second half of the
-          # lesson: `:latest` is what let an upstream change stop this repository's CI
-          # without a single commit being made. A pin also means the storage the tests
-          # run against is the storage they ran against yesterday.
-          docker run -d --name minio -p 9000:9000 \
-            -e MINIO_ROOT_USER=minioadmin \
-            -e MINIO_ROOT_PASSWORD=minioadmin \
-            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+          # s3mock serves HTTP on 9090; the app's STORAGE_ENDPOINT is 9000.
+          docker run -d --name s3mock -p 9000:9090 \
+            -e initialBuckets=kinder-media \
+            -e retainFilesOnExit=false \
+            adobe/s3mock:5.2.3
 
-          # Polled from the runner: the image has no shell tool to health-check
-          # with. Failing here with a clear message beats a media test failing
-          # on a socket error thirty seconds later.
+          # Polled rather than slept: a fixed wait is either too short on a
+          # slow runner or wasted on a fast one. A bucket listing is the
+          # cheapest call that proves the API is actually answering.
           for _ in $(seq 1 30); do
-            if curl -sf http://localhost:9000/minio/health/live > /dev/null; then
-              docker run --rm --network host --entrypoint sh quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z -c \
-                "mc alias set ci http://localhost:9000 minioadmin minioadmin \
-                 && mc mb --ignore-existing ci/kinder-media"
-              echo "storage ready, bucket created"
+            if curl -sf http://localhost:9000/ > /dev/null; then
+              echo "storage ready, bucket kinder-media created"
               exit 0
             fi
             sleep 2
           done
 
-          echo "object storage did not become ready" >&2
-          docker logs minio >&2 || true
+          echo "object storage did not come up" >&2
+          docker logs s3mock >&2 || true
           exit 1
 
       - name: Install Chrome, the Cyrillic fonts and poppler
