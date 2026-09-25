@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setParams, stubApi } from "./support/render";
@@ -55,7 +55,27 @@ const group = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const child = (id: string, lastName: string, firstName: string, sex = "MALE") => ({
+/**
+ * One roster row, as `/children` returns it.
+ *
+ * ★ `enrollments` is not decoration: the assignment dialog decides who is in
+ * this class by looking for an ACTIVE enrolment pointing at this group, and
+ * the remove control needs that enrolment's id. A fixture without it renders
+ * an empty dialog that looks like a bug in the screen.
+ */
+const child = (
+  id: string,
+  lastName: string,
+  firstName: string,
+  sex = "MALE",
+  /*
+   * ★ A real UUID. `enrollmentSummarySchema` types this as `uuidSchema`, and
+   * `get()` parses every response — so "enr-1" does not merely look wrong, it
+   * makes Zod reject the whole payload and the roster renders empty. That
+   * failure looks exactly like a broken screen.
+   */
+  enrolmentId = "99999999-9999-4999-8999-999999999991",
+) => ({
   id,
   lastName,
   firstName,
@@ -64,12 +84,26 @@ const child = (id: string, lastName: string, firstName: string, sex = "MALE") =>
   nationalId: "УБ12345678",
   isForeign: false,
   photoMediaFileId: null,
+  enrollments: [
+    {
+      id: enrolmentId,
+      status: "ACTIVE",
+      group: { id: GROUP, name: "Бага бүлэг" },
+      schoolYear: { id: "55555555-5555-4555-8555-555555555555", name: "2026-2027" },
+    },
+  ],
 });
 
 const roster = {
   items: [
     child(CHILD, "Ганболд", "Батбаяр"),
-    child("88888888-8888-4888-8888-000000000001", "Дорж", "Сараа", "FEMALE"),
+    child(
+      "88888888-8888-4888-8888-000000000001",
+      "Дорж",
+      "Сараа",
+      "FEMALE",
+      "99999999-9999-4999-8999-999999999992",
+    ),
   ],
   page: 1,
   pageSize: 200,
@@ -297,6 +331,66 @@ describe("/groups/[groupId]", () => {
 
     expect(screen.queryByRole("button", { name: "Багш тохируулах" })).toBeNull();
     expect(screen.queryByRole("button", { name: "ЭСИС-д бүртгүүлэх" })).toBeNull();
+  });
+
+  /*
+   * ★ **Суралцагч хуваарилах** — 2026-09-25, at the client's request that
+   * adding a child to a group work like assigning a teacher.
+   *
+   * It writes `Enrollment`, which is what `canAccessChild` resolves a
+   * teacher's reach through — so this dialog changes who can open a child's
+   * record, and both endpoints behind it are `@Roles("ADMIN")`.
+   */
+  it("★ opens the child assignment dialog and lists who is in the group", async () => {
+    stubScreen();
+    renderWithProviders(<GroupDetailPage />);
+
+    await screen.findByRole("link", { name: /Г.Батбаяр/ });
+    await userEvent.click(screen.getByRole("button", { name: "Суралцагч хуваарилах" }));
+
+    const dialog = await screen.findByRole("dialog", { name: /суралцагч хуваарилалт/i });
+    expect(within(dialog).getByText("Бүлгийн суралцагчид")).toBeInTheDocument();
+    expect(within(dialog).getByText("Г.Батбаяр")).toBeInTheDocument();
+  });
+
+  /*
+   * ★★ Removing ends the enrolment rather than deleting it — an enrolment
+   * records that a child sat in this class between two dates, and that is
+   * history. `PATCH … { status: "ENDED" }`, never `DELETE`.
+   */
+  it("★ ends an enrolment rather than deleting it", async () => {
+    const api = stubScreen();
+    renderWithProviders(<GroupDetailPage />);
+
+    await screen.findByRole("link", { name: /Г.Батбаяр/ });
+    await userEvent.click(screen.getByRole("button", { name: "Суралцагч хуваарилах" }));
+
+    const dialog = await screen.findByRole("dialog", { name: /суралцагч хуваарилалт/i });
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: /Ганболд Батбаяр-г бүлгээс хасах/ }),
+    );
+    // Confirmed, never on the first press.
+    await userEvent.click(within(dialog).getByRole("button", { name: "Тийм" }));
+
+    const call = api.calls.find((c) => c.url.startsWith("/enrollments/"));
+    expect(call?.method).toBe("PATCH");
+    expect(call?.body).toEqual({ status: "ENDED" });
+  });
+
+  /*
+   * ★ A teacher never sees the control: both endpoints answer 403 to them, and
+   * a button that always fails is worse than no button.
+   */
+  it("★ keeps the child assignment control away from a teacher", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: `/groups/${GROUP}`, body: group() },
+      { path: "/children", body: roster },
+    ]);
+    renderWithProviders(<GroupDetailPage />);
+
+    await screen.findByRole("link", { name: /Г.Батбаяр/ });
+    expect(screen.queryByRole("button", { name: "Суралцагч хуваарилах" })).toBeNull();
   });
 
   /* The three registers stay reachable, and by the local group id. */

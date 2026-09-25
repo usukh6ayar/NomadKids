@@ -19,6 +19,7 @@ import { RequireRole } from "@/components/shell/require-role";
 import { useSession } from "@/lib/auth/session";
 import { EsisGroupWrite } from "@/components/esis/esis-group-write";
 import { GroupRosterCheck } from "@/components/admin/groups/group-roster-check";
+import { ManageChildrenDialog } from "@/components/admin/groups/manage-children-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
@@ -69,6 +70,7 @@ function GroupDetail() {
   const groupId = params.groupId;
   const { hasRole, primaryKindergartenId } = useSession();
   const [tab, setTab] = useState<"children" | "about">("children");
+  const [managingChildren, setManagingChildren] = useState(false);
 
   const group = useQuery({
     // The same key `ManageTeachersDialog` uses, so arriving from the list
@@ -241,9 +243,22 @@ function GroupDetail() {
                 <span className="rounded-pill bg-primary-soft px-3 py-1.5 text-caption font-semibold text-primary">
                   {visible.length} / {roster.data.total}
                 </span>
-                <Button asChild variant="secondary" size="sm" className="ms-auto">
-                  <Link href={`/children?groupId=${groupId}`}>Бүх жагсаалт</Link>
-                </Button>
+                <span className="ms-auto flex flex-wrap gap-2">
+                  {/*
+                    ★ The director's only — `POST /children/:id/enrollments`
+                    and `PATCH /enrollments/:id` are both `@Roles("ADMIN")`, and
+                    a teacher shown a button that always answers 403 is worse
+                    off than one who never sees it.
+                  */}
+                  {hasRole("ADMIN") ? (
+                    <Button variant="secondary" size="sm" onClick={() => setManagingChildren(true)}>
+                      Суралцагч хуваарилах
+                    </Button>
+                  ) : null}
+                  <Button asChild variant="secondary" size="sm">
+                    <Link href={`/children?groupId=${groupId}`}>Бүх жагсаалт</Link>
+                  </Button>
+                </span>
               </div>
 
               {/*
@@ -332,6 +347,14 @@ function GroupDetail() {
           kindergartenId={primaryKindergartenId}
         />
       )}
+
+      {managingChildren ? (
+        <ManageChildrenDialog
+          groupId={groupId}
+          groupName={data.name}
+          onClose={() => setManagingChildren(false)}
+        />
+      ) : null}
     </div>
   );
 }
