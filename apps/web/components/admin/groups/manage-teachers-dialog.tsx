@@ -18,6 +18,7 @@ import { FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
+import { useEsisRows } from "@/components/esis/use-esis-rows";
 
 const usersSchema = paginated(adminUserSchema);
 
@@ -66,6 +67,14 @@ export function ManageTeachersDialog({
     queryKey: ["admin", "groups", groupId],
     queryFn: () => get(`/groups/${groupId}`, groupWithTeachersSchema),
   });
+
+  /*
+   * ★ The ministry's own teacher list, read for this dialog.
+   *
+   * One call, cached by `useEsisRows` with `staleTime: Infinity` — opening the
+   * dialog on four groups in a row does not ask ESIS four times.
+   */
+  const esisTeachers = useEsisRows("teachers");
 
   const teachers = useQuery({
     queryKey: qk.adminUsers({ role: "TEACHER" }),
@@ -127,6 +136,52 @@ export function ManageTeachersDialog({
       ? [{ membershipId: membership.id, label: fullName(user) }]
       : [];
   });
+
+  /*
+   * ★ **The ministry's teachers who have no account here** — 2026-09-25, at
+   * the client's request: pick a teacher from what ESIS sends rather than only
+   * from who happens to be registered.
+   *
+   * They cannot be assigned directly, and that is not a gap to route around:
+   * `GroupTeacher` points at a `Membership`, which is what every
+   * `canAccessChild` check resolves through. A person with no account has no
+   * membership and therefore no way to be granted access to a child. So they
+   * are listed, named, and offered the one thing that makes them assignable —
+   * an invitation.
+   *
+   * ★★ Joined on `esisPersonId` and never on a name. This kindergarten
+   * employs a Соня Золжаргал and an Ариунаа Золжаргал; a surname is not an
+   * identity. An ESIS teacher whose `personId` matches an account here is
+   * already in `options` above and is filtered out of this list.
+   */
+  const registeredPersonIds = new Set(
+    (teachers.data?.items ?? [])
+      .map((user) => user.esisPersonId)
+      .filter((id): id is string => Boolean(id)),
+  );
+
+  const unregistered = esisTeachers.rows
+    .filter((row) => {
+      const personId = row.personId?.trim();
+      return Boolean(personId) && !registeredPersonIds.has(personId!);
+    })
+    /*
+     * `teacher/list` repeats a person — it is keyed by assignment, and one
+     * teacher may hold two. Rendering both would put the same name twice in a
+     * list whose whole purpose is telling people apart.
+     */
+    .filter(
+      (row, index, all) => all.findIndex((other) => other.personId === row.personId) === index,
+    )
+    .map((row) => ({
+      personId: row.personId!,
+      name: [row.lastName, row.firstName]
+        .map((part) => part?.trim())
+        .filter(Boolean)
+        .join(" "),
+      position: row.positionName?.trim() || null,
+    }))
+    .filter((row) => row.name.length > 0);
 
   const backdrop = useBackdropDismiss(onClose);
 
@@ -220,7 +275,7 @@ export function ManageTeachersDialog({
               Багш нэмэх
             </h3>
 
-            {options.length === 0 && teachers.data ? (
+            {options.length === 0 && teachers.data && unregistered.length === 0 ? (
               <p className="rounded-control bg-sun px-3 py-2 text-body text-sun-ink">
                 Нэмэх багш алга.{" "}
                 <Link href="/admin/users" className="underline">
@@ -263,6 +318,50 @@ export function ManageTeachersDialog({
               </>
             )}
           </form>
+
+          {/*
+            ★ **ЭСИС-д байгаа, энд бүртгэлгүй багш нар** — 2026-09-25, at the
+            client's request to pick a teacher from what the ministry sends
+            rather than only from who happens to be registered here.
+
+            They are shown and **not** offered as options, which is the honest
+            shape rather than a limitation: `GroupTeacher` points at a
+            `Membership`, and that row is what every `canAccessChild` check
+            resolves through. A person with no account has no membership, so
+            "assigning" them would grant nothing. The invitation is the step
+            that makes them assignable, so that is what the row offers.
+          */}
+          {unregistered.length > 0 ? (
+            <section className="flex flex-col gap-2 border-t border-border pt-4">
+              <h3 className="text-caption font-semibold uppercase tracking-wide text-muted">
+                ЭСИС-д байгаа, бүртгэлгүй
+              </h3>
+              <ul className="flex flex-col gap-1.5">
+                {unregistered.map((teacher) => (
+                  <li
+                    key={teacher.personId}
+                    className="flex flex-wrap items-center gap-2 rounded-row border border-border bg-canvas px-3 py-2"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-body text-ink">{teacher.name}</span>
+                      {teacher.position ? (
+                        <span className="block truncate text-caption text-muted">
+                          {teacher.position}
+                        </span>
+                      ) : null}
+                    </span>
+                    <Button asChild variant="secondary" size="sm">
+                      <Link href="/admin/users">Урих</Link>
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-caption leading-relaxed text-muted">
+                Эдгээр нь ЭСИС-ийн жагсаалтад байгаа ч энэ системд бүртгэлгүй тул бүлэгт хуваарилах
+                боломжгүй. Урьсны дараа сонгох жагсаалтад гарч ирнэ.
+              </p>
+            </section>
+          ) : null}
 
           {/*
             RFP §3.2 — ангийн зураг. It lives in this dialog rather than on the

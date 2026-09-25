@@ -56,11 +56,49 @@ export class EsisRosterImportRepository {
    * calls it "ахлах бүлэг"; creating a second one would split the roster
    * between two rows that look identical on screen.
    */
-  findGroupByName(schoolYearId: string, name: string) {
-    return this.prisma.group.findFirst({
-      where: { schoolYearId, name, deletedAt: null },
-      select: { id: true, esisGroupId: true },
+  /**
+   * A group of this year whose name is the ministry's, give or take how it was
+   * typed.
+   *
+   * ★ **Normalised, not exact — corrected 2026-09-25.** This matched `name`
+   * literally, and `@@unique([schoolYearId, name])` is case-sensitive under
+   * Postgres's default collation, so the two could both exist. On the live
+   * deployment they did: a director had typed «Бэлтгэл бүлэг» and the ministry
+   * sends «бэлтгэл бүлэг», one capital letter apart. The import could not see
+   * that they were the same class, created a second one, and left the
+   * hand-made group sitting empty beside the imported one holding 22 children.
+   *
+   * ★★ Compared in memory rather than in the query. Prisma's `mode:
+   * "insensitive"` would fix the capital and not the spaces, and a name typed
+   * with a trailing space is the same mistake one keystroke along. A school
+   * year holds a handful of groups, so reading them and comparing normalised
+   * strings costs nothing and handles both.
+   *
+   * ★★★ `toLocaleLowerCase("mn-MN")`, as every other comparison in this
+   * product does. Cyrillic Ө and Ү case-fold correctly only under the
+   * Mongolian locale — the letters this kindergarten's group names are full of.
+   */
+  async findGroupByName(schoolYearId: string, name: string) {
+    const wanted = normaliseGroupName(name);
+    if (!wanted) return null;
+
+    const groups = await this.prisma.group.findMany({
+      where: { schoolYearId, deletedAt: null },
+      select: { id: true, name: true, esisGroupId: true },
     });
+
+    /*
+     * ★ A group already carrying an `esisGroupId` is preferred when two names
+     * normalise the same — which is exactly the shape of the mess this fix
+     * prevents, and the shape already sitting in the live database. Adopting
+     * the linked one keeps the children where they are; adopting the empty
+     * one would move the ministry's id onto a group nobody is enrolled in.
+     */
+    const matches = groups.filter((group) => normaliseGroupName(group.name) === wanted);
+    const linked = matches.find((group) => group.esisGroupId !== null);
+    const chosen = linked ?? matches[0];
+
+    return chosen ? { id: chosen.id, esisGroupId: chosen.esisGroupId } : null;
   }
 
   createGroup(input: {
@@ -152,4 +190,16 @@ export class EsisRosterImportRepository {
       select: { id: true },
     });
   }
+}
+
+/**
+ * A group name reduced to what two people typing the same class agree on.
+ *
+ * Case and surrounding space are the two differences seen in practice; the
+ * inner spacing is left alone, because «бага бүлэг» and «багабүлэг» are not
+ * obviously the same name and guessing that they are would merge two real
+ * classes.
+ */
+function normaliseGroupName(name: string): string {
+  return name.trim().toLocaleLowerCase("mn-MN");
 }
