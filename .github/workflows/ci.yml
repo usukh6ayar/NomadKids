@@ -48,8 +48,8 @@ jobs:
       # ★ Object storage is NOT a service container — see the step that starts
       # it. That began as a MinIO limitation (`services:` cannot pass a
       # command, and `minio/minio` needed `server /data`); it stays a step
-      # because the replacement wants a health poll and a readable failure,
-      # neither of which a service block gives.
+      # because it wants a health poll, a bucket check and a readable failure,
+      # none of which a service block gives.
 
     # ★ Not secrets, and deliberately inline.
     #
@@ -124,65 +124,85 @@ jobs:
         # The suite needs something that speaks S3: `StorageService` calls
         # `HeadBucket` on boot and the media tests put, get, presign and delete.
         #
-        # ★ **`adobe/s3mock`, not MinIO — 2026-09-25, and not by preference.**
+        # ★ **`bitnamilegacy/minio` — 2026-09-26.**
         #
-        # MinIO closed anonymous pulls. `minio/minio` on Docker Hub answers 401
-        # to an anonymous puller, `quay.io/minio/minio` — which this step moved
-        # to on 2026-09-13 when Docker Hub first broke — now answers the same,
-        # and `ghcr.io` and `public.ecr.aws` serve nothing. Every branch's
-        # `verify` failed at this step, including `main` with code that had
-        # passed the day before: re-running an old green run reproduced it
-        # exactly, which is what proved the cause was upstream rather than any
-        # commit.
+        # MinIO closed anonymous pulls on 2026-09-25. `minio/minio` on Docker
+        # Hub answers 401, `quay.io/minio/minio` — this step's escape hatch
+        # from 2026-09-13 — answers the same, `ghcr.io` 403 and
+        # `public.ecr.aws` 404. Every branch's `verify` failed here, `main`
+        # included: re-running an old green run with unchanged code reproduced
+        # it exactly, which is what proved the cause upstream.
         #
-        # ★★ The previous note argued for running "the *same image
-        # docker-compose uses locally*". That argument is weaker than it reads:
-        # a developer machine runs MinIO natively on 9010, not through compose,
-        # so CI and local already differed. What both must agree on is the
-        # **S3 API**, and that is what this exercises.
+        # ★★ **Not `adobe/s3mock`, which was tried first.** s3mock ignores
+        # credentials, and `media.test.ts > "★ the object is NOT reachable
+        # without a signature"` asserts that an unsigned GET is refused — the
+        # private-bucket guarantee of CLAUDE.md §1.4. That test fails by
+        # construction against a mock that serves anyone. It is not weakened
+        # to fit: a green suite that no longer proves media is private is
+        # worse than a red one. Bitnami's image is real MinIO, so signatures
+        # are enforced, and it pulls anonymously from its legacy namespace.
         #
-        # ★★★ It also removes a second image. `initialBuckets` creates the
-        # bucket the way `mc mb` did, so the `minio/mc` pull and the alias
-        # dance are gone — one fewer registry to be locked out of.
+        # ★★★ `MINIO_DEFAULT_BUCKETS` creates the bucket, so the separate
+        # `minio/mc` image and its alias dance are gone — one fewer registry
+        # to be locked out of. No `:policy` suffix: the bucket stays private.
         #
-        # Pinned, for the reason the 2026-09-13 note gives and this incident
-        # proves twice over: `:latest` is what lets an upstream change stop
-        # this repository's CI without a commit being made.
+        # Pinned: `:latest` is what let an upstream change stop this
+        # repository's CI without a commit being made — twice.
         run: |
           set -euo pipefail
 
-          # s3mock serves HTTP on 9090; the app's STORAGE_ENDPOINT is 9000.
-          docker run -d --name s3mock -p 9000:9090 adobe/s3mock:5.2.3
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER="$STORAGE_ACCESS_KEY_ID" \
+            -e MINIO_ROOT_PASSWORD="$STORAGE_SECRET_ACCESS_KEY" \
+            -e MINIO_DEFAULT_BUCKETS="$STORAGE_BUCKET" \
+            bitnamilegacy/minio:2025.7.23-debian-12-r5
 
           # Polled rather than slept: a fixed wait is either too short on a
           # slow runner or wasted on a fast one.
-          for _ in $(seq 1 30); do
-            curl -sf http://localhost:9000/ > /dev/null && break
+          ready=""
+          for _ in $(seq 1 60); do
+            if curl -sf http://localhost:9000/minio/health/live > /dev/null; then
+              ready=1
+              break
+            fi
             sleep 2
           done
-
-          # ★ The bucket is created with a plain `PUT /{bucket}` — S3's own
-          # CreateBucket — rather than the `initialBuckets` environment
-          # variable the image documents.
-          #
-          # That variable was tried first and silently did nothing: the
-          # container came up, the health poll passed, and every upload then
-          # failed with "The specified bucket does not exist." A setting that
-          # fails quietly is worse than none, and s3mock ignores credentials,
-          # so an unsigned PUT is all CreateBucket needs here.
-          curl -sf -X PUT http://localhost:9000/kinder-media > /dev/null
-
-          # ★★ And the bucket is *verified*, not assumed. The previous attempt
-          # reported "storage ready" while the thing the suite needs did not
-          # exist — this step now fails where the mistake is, rather than
-          # thirty media tests later with a 503 that names nothing.
-          if ! curl -sf -I http://localhost:9000/kinder-media > /dev/null; then
-            echo "bucket kinder-media was not created" >&2
-            docker logs s3mock >&2 || true
+          if [ -z "$ready" ]; then
+            echo "minio never answered its health check" >&2
+            docker logs minio >&2 || true
             exit 1
           fi
 
-          echo "storage ready, bucket kinder-media created"
+          # ★ The bucket is *verified*, not assumed, with a **signed**
+          # ListBuckets. Bitnami creates default buckets after the server is
+          # live, so this is polled too. A setting that fails quietly is worse
+          # than none — the s3mock attempt reported "storage ready" while the
+          # bucket did not exist, and thirty media tests then failed with a
+          # 503 that named nothing.
+          sign=(--aws-sigv4 "aws:amz:$STORAGE_REGION:s3" --user "$STORAGE_ACCESS_KEY_ID:$STORAGE_SECRET_ACCESS_KEY")
+          buckets=""
+          for _ in $(seq 1 30); do
+            buckets=$(curl -s "${sign[@]}" http://localhost:9000/ || true)
+            printf '%s' "$buckets" | grep -q "<Name>$STORAGE_BUCKET</Name>" && break
+            sleep 2
+          done
+          if ! printf '%s' "$buckets" | grep -q "<Name>$STORAGE_BUCKET</Name>"; then
+            echo "bucket $STORAGE_BUCKET was not created; ListBuckets returned:" >&2
+            printf '%s\n' "$buckets" >&2
+            docker logs minio >&2 || true
+            exit 1
+          fi
+
+          # ★★ And the bucket is verified *private*: the guarantee the media
+          # tests depend on is checked where it is set, not thirty tests later.
+          unsigned=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:9000/$STORAGE_BUCKET/")
+          echo "unsigned ListObjects answered HTTP $unsigned"
+          if [ "$unsigned" != "403" ]; then
+            echo "bucket $STORAGE_BUCKET is readable without a signature" >&2
+            exit 1
+          fi
+
+          echo "storage ready, bucket $STORAGE_BUCKET created and private"
 
       - name: Install Chrome, the Cyrillic fonts and poppler
         # ★ The report tests render real PDFs and assert on extracted text.
