@@ -1853,6 +1853,13 @@ function DesktopTopBar({
   showNotifications: boolean;
 }) {
   const { collapsed, setCollapsed } = useSidebarPrefs();
+  const { session, primaryKindergartenId } = useSession();
+  /*
+   * ★ The kindergarten by name — 2026-09-26, as the ministry's SIS shows it
+   * beside its ☰. `/auth/me` names only the actor's own kindergartens; a
+   * guardian has none, and keeps the workspace name.
+   */
+  const kindergarten = session?.kindergartens?.find((k) => k.id === primaryKindergartenId);
 
   return (
     <header
@@ -1869,7 +1876,14 @@ function DesktopTopBar({
       >
         <Menu size={20} aria-hidden />
       </button>
-      <span className="min-w-0 truncate text-body font-semibold text-ink">{subtitle}</span>
+      <span className="flex min-w-0 items-baseline gap-2">
+        <span className="truncate text-body font-semibold text-ink">
+          {kindergarten?.name ?? subtitle}
+        </span>
+        {kindergarten ? (
+          <span className="hidden truncate text-caption text-muted xl:inline">{subtitle}</span>
+        ) : null}
+      </span>
       {showNotifications ? (
         <div className="ml-auto flex items-center">
           <NotificationBell />

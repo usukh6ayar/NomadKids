@@ -422,6 +422,24 @@ export class AuthzRepository {
    * memberships in two — see `roomsFor`. One query over ids the actor already
    * carries, so it discloses nothing their memberships do not.
    */
+  /**
+   * Every kindergarten the actor is a member of, by name — the desktop top
+   * bar's «БЗД 115-р цэцэрлэг» (2026-09-26).
+   *
+   * ★ Not `loadKindergartenNames`, which returns nothing below two memberships
+   * on purpose: it exists to disambiguate chat rooms, where one kindergarten
+   * needs no name. The top bar needs the name precisely when there is one.
+   */
+  async loadOwnKindergartens(actor: Actor): Promise<{ id: string; name: string }[]> {
+    const ids = [...new Set(actor.memberships.map((m) => m.kindergartenId))];
+    if (ids.length === 0) return [];
+    return this.prisma.kindergarten.findMany({
+      where: { id: { in: ids }, deletedAt: null },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+  }
+
   async loadKindergartenNames(actor: Actor): Promise<Record<string, string | undefined>> {
     const ids = [...new Set(actor.memberships.map((m) => m.kindergartenId))];
     if (ids.length < 2) return {};

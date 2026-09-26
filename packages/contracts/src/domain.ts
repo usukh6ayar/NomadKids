@@ -235,6 +235,8 @@ export const currentUserSchema = z.object({
 export const sessionSchema = z.object({
   user: currentUserSchema,
   memberships: z.array(membershipSchema),
+  /** The names of the kindergartens in `memberships` — the desktop top bar. */
+  kindergartens: z.array(namedRefSchema).default([]),
   csrfToken: z.string().nullish(),
 });
 export type Session = z.infer<typeof sessionSchema>;

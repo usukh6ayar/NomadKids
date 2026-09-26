@@ -97,6 +97,35 @@ describe("hiding and showing the rail", () => {
     expect(show.closest("header")).toBe(hide[0]!.closest("header"));
   });
 
+  /*
+   * ★ The kindergarten by name beside ☰ — 2026-09-26, as the ministry's SIS
+   * shows «БЗД 115-р цэцэрлэг» there. The workspace name was all the bar had
+   * until `/auth/me` carried the names.
+   */
+  it("names the kindergarten beside ☰", async () => {
+    setPathname("/dashboard");
+    stubApi([
+      {
+        path: "/auth/me",
+        body: {
+          ...sessionFor(["TEACHER"]),
+          kindergartens: [
+            { id: "33333333-3333-4333-8333-333333333333", name: "БЗД 115-р цэцэрлэг" },
+          ],
+        },
+      },
+      { path: "/groups", body: GROUPS },
+      { path: "/children/mine", body: [] },
+      { path: "/notifications/unread-count", body: { count: 0 } },
+    ]);
+    renderWithProviders(<AppLayout>{<p>содержимое</p>}</AppLayout>);
+
+    const bar = (await screen.findByRole("button", { name: "Хажуугийн цэсийг хаах" })).closest(
+      "header",
+    )!;
+    expect(within(bar).getByText("БЗД 115-р цэцэрлэг")).toBeInTheDocument();
+  });
+
   it("remembers the choice for the next visit", async () => {
     renderShell();
     await sidebar();
