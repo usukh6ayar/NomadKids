@@ -12,6 +12,7 @@ import {
   groupAttendanceRangeSchema,
   groupAttendanceRowSchema,
   type EsisAttendancePreview,
+  localDate,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
@@ -45,7 +46,7 @@ import { cn } from "@/lib/utils";
 const daySheetSchema = z.array(groupAttendanceRowSchema);
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localDate();
 }
 
 /**

@@ -1,3 +1,4 @@
+import { localDate } from "@kinder/contracts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { screen, waitFor, within } from "@testing-library/react";
@@ -40,7 +41,7 @@ const CHILD_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const RECORD_A = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const MEALS_PATH = `/groups/${GROUP}/meals`;
 
-const TODAY = new Date().toISOString().slice(0, 10);
+const TODAY = localDate();
 
 function row(over: Record<string, unknown> = {}) {
   return {

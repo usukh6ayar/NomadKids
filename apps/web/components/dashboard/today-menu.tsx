@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import { z } from "zod";
 import { AlertTriangle, CloudOff, UtensilsCrossed } from "lucide-react";
-import { menuDayWithWarningsSchema, ALLERGY_SEVERITY_LABEL } from "@kinder/contracts";
+import { menuDayWithWarningsSchema, ALLERGY_SEVERITY_LABEL, localDate } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
@@ -17,7 +17,7 @@ import { Art } from "@/components/ui/art";
 const menuSchema = z.array(menuDayWithWarningsSchema);
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localDate();
 }
 
 /**

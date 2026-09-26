@@ -12,6 +12,7 @@ import {
   MEAL_KIND_LABEL,
   type MealKind,
   type MealStatus,
+  localDate,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
@@ -110,7 +111,7 @@ const STATUS_LABEL = Object.fromEntries(STATUSES.map((s) => [s.value, s.label]))
 >;
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localDate();
 }
 
 /** What a row is carrying, once the teacher has touched it. */

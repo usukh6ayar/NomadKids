@@ -4,7 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileBadge, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
-import { STAFF_RECORD_KIND_LABEL, staffRecordSchema, type StaffRecord } from "@kinder/contracts";
+import {
+  STAFF_RECORD_KIND_LABEL,
+  staffRecordSchema,
+  type StaffRecord,
+  localDate,
+} from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
@@ -230,7 +235,7 @@ function StaffRecordForm({
   onDone: () => void;
 }) {
   const queryClient = useQueryClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
 
   const [kind, setKind] = useState("EXPERIENCE");
   const [title, setTitle] = useState("");

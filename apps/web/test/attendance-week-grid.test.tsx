@@ -1,3 +1,4 @@
+import { localDate } from "@kinder/contracts";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -49,7 +50,7 @@ const ENROL_A = "11111111-1111-4111-8111-111111111111";
 const ENROL_B = "22222222-2222-4222-8222-222222222222";
 const RECORD_A = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
-const TODAY = new Date().toISOString().slice(0, 10);
+const TODAY = localDate();
 const MONTH_START = `${TODAY.slice(0, 7)}-01`;
 /** The Monday of the week today falls in — the register's own default span. */
 const MONDAY = (() => {

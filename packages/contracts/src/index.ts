@@ -31,6 +31,7 @@ export * from "./birth-facts";
 export * from "./curriculum";
 export * from "./domain";
 export * from "./ids";
+export * from "./local-date";
 export * from "./mn-locale";
 export * from "./pagination";
 export * from "./password";
