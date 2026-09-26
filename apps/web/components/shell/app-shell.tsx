@@ -359,7 +359,13 @@ export function PageHeader({
     >
       {/* `icon` remains a compatibility prop, but the compact header does not
           spend a second visual slot on decorative artwork. */}
-      <div className="flex min-w-0 flex-1 items-start gap-3">
+      {/*
+        ★ A floor on the title's width — 2026-09-26. With `flex-1` and
+        `min-w-0` alone the title could shrink to nothing beside two actions,
+        and on a phone «Бүлгүүд» was set one letter per line. At 12rem the row
+        wraps instead and the actions drop under the title.
+      */}
+      <div className="flex min-w-[min(100%,12rem)] flex-1 items-start gap-3">
         {resolvedBackHref ? <BackButton href={resolvedBackHref} /> : null}
         <div className="min-w-0">
           <h1

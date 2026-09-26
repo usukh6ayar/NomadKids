@@ -1,5 +1,6 @@
 /**
  * The four attendance columns' colours — Ирсэн, Өвчтэй, Чөлөөтэй, Тасалсан.
+ * Put `data-tone` on the header cell, or the workspace theme repaints it.
  *
  * ★ 2026-09-26, after the ministry's SIS register, which tints each status
  * column so a row reads as colour before it reads as numbers (the client:

@@ -850,16 +850,16 @@ function DailyTable({
           <Th numeric>Ирц бүртгээгүй</Th>
           <Th>Ирц бүрэн</Th>
           <Th numeric>Сурагчийн тоо</Th>
-          <Th numeric className={STATUS_COLUMN.present.head}>
+          <Th numeric data-tone className={STATUS_COLUMN.present.head}>
             Ирсэн
           </Th>
-          <Th numeric className={STATUS_COLUMN.excused.head}>
+          <Th numeric data-tone className={STATUS_COLUMN.excused.head}>
             Чөлөөтэй
           </Th>
-          <Th numeric className={STATUS_COLUMN.sick.head}>
+          <Th numeric data-tone className={STATUS_COLUMN.sick.head}>
             Өвчтэй
           </Th>
-          <Th numeric className={STATUS_COLUMN.absent.head}>
+          <Th numeric data-tone className={STATUS_COLUMN.absent.head}>
             Тасалсан
           </Th>
           <Th numeric>Хүсэлт хүлээгдэж буй</Th>

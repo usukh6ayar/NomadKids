@@ -126,7 +126,10 @@ export function StatCard({
         tone's ink, never grey — see `TONE_INK`.
       */
       className={cn(
-        "relative flex items-start gap-3 overflow-hidden",
+        // ★ Stacked on a phone — 2026-09-26. Two cards to a row at 390px left
+        // the label ~70px beside its art, and «Нийт суралцагч» broke inside a
+        // word. Above `sm` the art leads the row again.
+        "relative flex flex-col items-start gap-2 overflow-hidden sm:flex-row sm:gap-3",
         TONE_WASH[tone],
         size === "wide" && "sm:col-span-2",
         // `h-full` only when linked: the `<Link>` wrapper becomes the grid
