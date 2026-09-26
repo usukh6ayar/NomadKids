@@ -803,7 +803,8 @@ function StatusTile({
 }
 
 /**
- * The register itself — the client's fourteen columns, in their order.
+ * The register itself — the client's fourteen columns, in their order, and
+ * the three request columns the ministry's SIS register reads beside them.
  *
  * ★ `Ирц бүрэн` is a badge rather than a tick.
  *
@@ -829,7 +830,7 @@ function DailyTable({
   canEdit: boolean;
 }) {
   return (
-    <TableShell caption="Өдөр тутмын ирцийн бүртгэл" minWidth="min-w-[1380px]">
+    <TableShell caption="Өдөр тутмын ирцийн бүртгэл" minWidth="min-w-[1620px]">
       <thead>
         <tr>
           <Th className="w-10">
@@ -851,6 +852,9 @@ function DailyTable({
           <Th numeric>Чөлөөтэй</Th>
           <Th numeric>Өвчтэй</Th>
           <Th numeric>Тасалсан</Th>
+          <Th numeric>Хүсэлт хүлээгдэж буй</Th>
+          <Th numeric>Хүсэлт зөвшөөрсөн</Th>
+          <Th numeric>Хүсэлт татгалзсан</Th>
           <Th>Илгээсэн</Th>
           <Th>Илгээсэн хэрэглэгч</Th>
           <Th>Үүссэн</Th>
@@ -916,6 +920,24 @@ function DailyTable({
             </Td>
             <Td numeric className="text-muted">
               {row.absent}
+            </Td>
+            {/*
+              ★ Guardians' requests on the day's own row — 2026-09-26, after
+              the ministry SIS register, which reads them beside the counts.
+              A pending one is the figure that asks for something, so it is the
+              one drawn in ink; the other two are history.
+            */}
+            <Td
+              numeric
+              className={row.requests.pending > 0 ? "font-semibold text-ink" : "text-muted"}
+            >
+              {row.requests.pending}
+            </Td>
+            <Td numeric className="text-muted">
+              {row.requests.approved}
+            </Td>
+            <Td numeric className="text-muted">
+              {row.requests.rejected}
             </Td>
             <Td className="whitespace-nowrap text-muted">
               {row.sentAt ? formatStamp(row.sentAt) : "—"}

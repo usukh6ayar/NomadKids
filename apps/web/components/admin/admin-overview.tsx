@@ -31,6 +31,7 @@ import { TONE_VAR, type Tone } from "@/components/ui/tone";
 import { GraduationCap, PieChart } from "lucide-react";
 import { AssessmentCoverageSection, RecentActivitySection } from "./dashboard-sections";
 import { EsisVsRegistered } from "./esis-vs-registered";
+import { TodayRegister } from "./today-register";
 
 /**
  * The administrator's own dashboard — RFP §12.2, and the reference system's
@@ -362,6 +363,13 @@ export function AdminOverview() {
 
         Neither was reachable while both were `BarRow`.
       */}
+        {/*
+          ★ Which group owes today's register, above the charts about the
+          whole — 2026-09-26, after the ministry SIS dashboard. The dial below
+          says how full the kindergarten is; this says who to ask.
+        */}
+        <TodayRegister />
+
         <div className="grid items-start gap-6 xl:grid-cols-2">
           <TodayDial today={attendanceToday} />
           <AttendanceMix groups={attendanceByGroup} />

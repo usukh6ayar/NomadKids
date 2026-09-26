@@ -7,7 +7,7 @@ import ExcelJS from "exceljs";
  * becomes "Хагас хоног" on one surface.
  */
 import { ATTENDANCE_STATUS_LABEL } from "@kinder/contracts";
-import { summariseDays, type SubmissionFact } from "./daily-summary";
+import { summariseDays, type RequestFact, type SubmissionFact } from "./daily-summary";
 
 export interface JournalCell {
   status: string;
@@ -29,6 +29,8 @@ export interface JournalRow {
   schoolYear?: { name: string } | null;
   days: (JournalCell | null)[];
   counts: Record<string, number>;
+  /** «Хамрагдвал зохих» — working days in range inside the enrolment. */
+  expectedDays?: number;
 }
 
 /** One class's figures over the whole range — the export's "Ангийн дүн" sheet. */
@@ -55,6 +57,8 @@ export interface JournalWorkbookInput {
   groups?: JournalGroupTotals[];
   /** What has already been submitted — the "Илгээсэн" column on the day sheet. */
   submissions?: SubmissionFact[];
+  /** Guardians' requests overlapping the range, for the day sheet's three request columns. */
+  requests?: RequestFact[];
 }
 
 /** The six the column can hold. Order is the one the screen uses. */
@@ -132,6 +136,7 @@ function gridSheet(book: ExcelJS.Workbook, input: JournalWorkbookInput): void {
      */
     ...TALLY.map((column) => ({ header: column.label, key: `t_${column.status}`, width: 10 })),
     { header: "Нийт", key: "t_total", width: 10 },
+    { header: "Зохих", key: "t_expected", width: 10 },
   ];
 
   sheet.spliceRows(1, 0, [`${input.kindergartenName} — ирцийн дэлгэрэнгүй`]);
@@ -168,6 +173,7 @@ function gridSheet(book: ExcelJS.Workbook, input: JournalWorkbookInput): void {
     // ★ Numbers, not strings — an accountant sums these columns.
     for (const column of TALLY) cells[`t_${column.status}`] = row.counts[column.status] ?? 0;
     cells.t_total = Object.values(row.counts).reduce((sum, count) => sum + count, 0);
+    if (row.expectedDays !== undefined) cells.t_expected = row.expectedDays;
 
     sheet.addRow(cells);
   }
@@ -314,13 +320,21 @@ function daySheet(book: ExcelJS.Workbook, input: JournalWorkbookInput): void {
     { header: "Чөлөөтэй", key: "excused", width: 11 },
     { header: "Өвчтэй", key: "sick", width: 10 },
     { header: "Тасалсан", key: "absent", width: 11 },
+    { header: "Хүсэлт: хүлээгдэж буй", key: "requestsPending", width: 14 },
+    { header: "Хүсэлт: зөвшөөрсөн", key: "requestsApproved", width: 14 },
+    { header: "Хүсэлт: татгалзсан", key: "requestsRejected", width: 14 },
     { header: "Илгээсэн", key: "sent", width: 11 },
     { header: "Үүссэн", key: "createdAt", width: 18 },
     { header: "Үүсгэсэн хэрэглэгч (Web)", key: "createdBy", width: 24 },
   ];
   sheet.getRow(1).font = { bold: true };
 
-  for (const row of summariseDays(input.rows, input.days, input.submissions ?? [])) {
+  for (const row of summariseDays(
+    input.rows,
+    input.days,
+    input.submissions ?? [],
+    input.requests ?? [],
+  )) {
     sheet.addRow({
       schoolYear: row.schoolYear,
       kindergarten: input.kindergartenName,
@@ -333,6 +347,9 @@ function daySheet(book: ExcelJS.Workbook, input: JournalWorkbookInput): void {
       excused: row.excused,
       sick: row.sick,
       absent: row.absent,
+      requestsPending: row.requests.pending,
+      requestsApproved: row.requests.approved,
+      requestsRejected: row.requests.rejected,
       sent: row.sentAt ? formatStamp(new Date(row.sentAt)) : EM_DASH,
       createdAt: row.createdAt ? formatStamp(new Date(row.createdAt)) : EM_DASH,
       createdBy: row.createdBy.length > 0 ? row.createdBy.join(", ") : EM_DASH,

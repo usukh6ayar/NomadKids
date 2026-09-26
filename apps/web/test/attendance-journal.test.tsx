@@ -43,6 +43,7 @@ function journal(overrides: Record<string, unknown> = {}) {
         days: [{ status: "PRESENT", note: null }, null, { status: "SICK", note: null }],
         counts: { PRESENT: 1, SICK: 1 },
         recorded: 2,
+        expectedDays: 3,
       },
     ],
     total: 1,
@@ -60,6 +61,7 @@ function journal(overrides: Record<string, unknown> = {}) {
         children: 1,
         counts: { PRESENT: 1, SICK: 1 },
         recorded: 2,
+        expectedDays: 3,
       },
     ],
     ...overrides,
@@ -124,8 +126,9 @@ describe("the grid", () => {
     const cells = within(row).getAllByRole("cell");
 
     // Ирсэн · Өвчтэй · Чөлөөтэй · Тасалсан · Нийт — багшийн хүснэгтийн
-    // төгсгөлийн таван баганатай ижил дараалал, ижил recorded дүн.
-    expect(cells.slice(-5).map((cell) => cell.textContent)).toEqual(["1", "1", "0", "0", "2"]);
+    // төгсгөлийн таван баганатай ижил дараалал, ижил recorded дүн — дараа нь
+    // Зохих: элсэлтэд хамаарах ажлын өдөр.
+    expect(cells.slice(-6).map((cell) => cell.textContent)).toEqual(["1", "1", "0", "0", "2", "3"]);
   });
 
   it("distinguishes a day nobody marked from a recorded absence", async () => {
@@ -171,9 +174,9 @@ describe("the grid", () => {
     expect(
       within(childRow)
         .getAllByRole("cell")
-        .slice(-5)
+        .slice(-6)
         .map((cell) => cell.textContent),
-    ).toEqual(["1", "1", "0", "0", "2"]);
+    ).toEqual(["1", "1", "0", "0", "2", "3"]);
 
     const classTable = screen.getByRole("table", { name: /Ангийн дүн/ });
     const classRow = within(classTable).getByRole("rowheader", { name: "Бэлтгэл" }).closest("tr")!;

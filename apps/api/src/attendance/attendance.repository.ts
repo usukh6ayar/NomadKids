@@ -275,6 +275,9 @@ export class AttendanceRepository {
         /* The export's first column — a register belongs to a school year, and
            a file with no year on it cannot be filed. */
         schoolYear: { select: { id: true, name: true } },
+        /* The span the child owes attendance for — «Хамрагдвал зохих». */
+        startedOn: true,
+        endedOn: true,
       },
       orderBy: [{ group: { name: "asc" } }, { child: { lastName: "asc" } }],
     });
@@ -487,6 +490,36 @@ export class AttendanceRepository {
         submittedAt: true,
         childCount: true,
         submittedBy: { select: { lastName: true, firstName: true } },
+      },
+    });
+  }
+
+  /**
+   * Guardians' requests that overlap the range, for the director's register.
+   *
+   * ★ Only what the count needs — the span, the review state and the group of
+   * the enrolment the request was made against. No child, no reason, no
+   * attachment: the daily register is counts, and a column of figures should
+   * not carry names it never draws.
+   *
+   * ★★ Unbounded by design, like `findSubmissions` beside it: the range is
+   * capped at a quarter by the query schema and one kindergarten's requests
+   * over a quarter are the size of that quarter's absences.
+   */
+  async findRequestsOverlapping(kindergartenId: string, from: Date, to: Date, groupIds?: string[]) {
+    return this.prisma.attendanceRequest.findMany({
+      where: {
+        kindergartenId,
+        deletedAt: null,
+        dateFrom: { lte: to },
+        dateTo: { gte: from },
+        ...(groupIds?.length ? { enrollment: { groupId: { in: groupIds } } } : {}),
+      },
+      select: {
+        dateFrom: true,
+        dateTo: true,
+        reviewStatus: true,
+        enrollment: { select: { groupId: true } },
       },
     });
   }

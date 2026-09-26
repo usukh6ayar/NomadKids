@@ -801,6 +801,19 @@ function Grid({
                 >
                   Нийт
                 </th>
+                {/*
+                  ★ «Хамрагдвал зохих» — 2026-09-26, after the ministry SIS
+                  register. Beside Нийт so the two read as "marked of owed":
+                  a child who joined mid-month owes fewer days than the grid
+                  has columns, and without this the gap looks like missing
+                  marks.
+                */}
+                <th
+                  scope="col"
+                  className="whitespace-nowrap px-1.5 py-1.5 text-right text-compact font-semibold text-muted"
+                >
+                  Зохих
+                </th>
               </tr>
             </thead>
 
@@ -890,6 +903,14 @@ function Grid({
                   <td className="px-1.5 py-1 text-right text-compact font-bold tabular-nums text-ink">
                     {row.recorded}
                   </td>
+                  <td
+                    className={cn(
+                      "px-1.5 py-1 text-right text-compact tabular-nums",
+                      row.recorded < row.expectedDays ? "font-semibold text-ink" : "text-muted",
+                    )}
+                  >
+                    {row.expectedDays}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -918,6 +939,8 @@ function Grid({
                 <td className="px-1.5 py-2 text-right text-compact font-bold tabular-nums text-ink">
                   {recorded}
                 </td>
+                {/* A sum of owed days across children answers no question anyone asks. */}
+                <td aria-hidden="true" className="bg-sunken" />
               </tr>
             </tfoot>
           </table>
