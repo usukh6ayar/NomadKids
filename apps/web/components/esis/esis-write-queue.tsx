@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { LoadingState } from "@/components/ui/states";
 import { EsisRawResponse, EsisResponseValues } from "./esis-response";
 import { ESIS_WRITE_SERVICE_LABEL } from "./esis-group-write";
+import { fullName, groupLabel } from "@/lib/format";
 
 const STATE_LABEL: Record<string, string> = {
   PREPARED: "Хүлээгдэж байна",
@@ -98,7 +99,7 @@ export function EsisWriteQueue(props: { kindergartenId: string }) {
                   {ESIS_WRITE_SERVICE_LABEL[item.service] ?? item.service}
                 </p>
                 {item.group ? (
-                  <p className="mt-0.5 text-body text-muted">{item.group.name}</p>
+                  <p className="mt-0.5 text-body text-muted">{groupLabel(item.group.name)}</p>
                 ) : null}
               </div>
             </div>
@@ -115,9 +116,7 @@ export function EsisWriteQueue(props: { kindergartenId: string }) {
             {item.approvedBy ? (
               <div>
                 <dt className="text-caption text-muted">Баталсан</dt>
-                <dd className="mt-0.5 text-body text-ink">
-                  {item.approvedBy.lastName} {item.approvedBy.firstName}
-                </dd>
+                <dd className="mt-0.5 text-body text-ink">{fullName(item.approvedBy)}</dd>
               </div>
             ) : null}
             {item.sentAt ? (

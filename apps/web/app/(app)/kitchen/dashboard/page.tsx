@@ -33,7 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { TableShell, Td, Th } from "@/components/ui/table";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { formatDate } from "@/lib/format";
+import { formatDate, capitalize, groupLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const weekSchema = z.array(menuDayWithWarningsSchema);
@@ -395,7 +395,7 @@ function TodayMenu({
               <ul className="flex flex-col gap-0.5">
                 {sitting.rows.map((dish, index) => (
                   <li key={`${dish.name}-${index}`} className="text-caption text-ink">
-                    · {dish.name}
+                    · {capitalize(dish.name)}
                   </li>
                 ))}
               </ul>
@@ -452,7 +452,7 @@ function StockPanel({
             <div key={level.ingredient.name} className="flex items-center gap-3 px-3.5 py-2.5">
               <Package size={16} aria-hidden="true" className="shrink-0 text-muted" />
               <span className="min-w-0 flex-1 truncate text-body text-ink">
-                {level.ingredient.name}
+                {capitalize(level.ingredient.name)}
               </span>
               <span className="shrink-0 text-body font-semibold tabular-nums text-ink">
                 {Number(level.onHand)} {level.ingredient.unit}
@@ -509,7 +509,7 @@ function GroupPortions({ groups }: { groups: CookDashboard["groups"] }) {
         <tbody>
           {groups.map((group) => (
             <tr key={group.groupId}>
-              <Td data-label="Бүлгийн нэр">{group.name}</Td>
+              <Td data-label="Бүлгийн нэр">{groupLabel(group.name)}</Td>
               <Td data-label="Нийт хүүхэд" numeric>
                 {group.enrolled}
               </Td>

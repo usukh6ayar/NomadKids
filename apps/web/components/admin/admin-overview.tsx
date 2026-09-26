@@ -11,7 +11,7 @@ import {
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
-import { formatFileSize, formatLongDate } from "@/lib/format";
+import { formatFileSize, formatLongDate, groupLabel, capitalize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/lib/auth/session";
 import { PageHeader } from "@/components/shell/app-shell";
@@ -658,14 +658,14 @@ function AttendanceByGroup({ groups }: { groups: AdminDashboard["attendanceByGro
               <div key={group.groupId} className="px-4 py-3">
                 <BarRow
                   inline
-                  label={group.name}
+                  label={groupLabel(group.name)}
                   percent={percent}
                   value={`${percent}%`}
                   /* Green once a group is essentially always here, amber below —
                      the tones' own meanings, and the same threshold the client's
                      drawing marks with its own colour change. */
                   tone={percent >= 90 ? "mint" : percent >= 75 ? "sky" : "sun"}
-                  accessibleLabel={`${group.name} — ирц ${percent}%`}
+                  accessibleLabel={`${groupLabel(group.name)} — ирц ${percent}%`}
                 />
               </div>
             );
@@ -807,7 +807,7 @@ function DomainAverages({
             {assessed.map((group) => (
               <div key={group.groupId}>
                 <p className="mb-2 flex flex-wrap items-baseline gap-x-2 text-lead font-semibold text-ink">
-                  {group.name}
+                  {groupLabel(group.name)}
                   <span className="text-caption font-normal text-muted">
                     {group.sampleSize} үнэлгээ
                   </span>
@@ -821,7 +821,7 @@ function DomainAverages({
                         key={domain.id}
                         inline
                         labelWidth="w-[136px] lg:w-[152px] xl:w-[200px]"
-                        label={domain.name}
+                        label={capitalize(domain.name)}
                         percent={average === undefined ? 0 : (average / 4) * 100}
                         value={average === undefined ? "—" : average.toFixed(1)}
                         /* The same accent this domain has in the columns above,

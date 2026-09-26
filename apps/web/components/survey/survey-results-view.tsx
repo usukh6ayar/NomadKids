@@ -18,7 +18,7 @@ import { Card } from "@/components/ui/card";
 import { Donut } from "@/components/ui/chart/donut";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { TONE_SURFACE, TONE_VAR, type Tone } from "@/components/ui/tone";
-import { shortName } from "@/lib/format";
+import { shortName, groupLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
@@ -654,7 +654,7 @@ function ResponseRoster({
                       </span>
                       {row.group ? (
                         <span className="block truncate text-caption text-muted">
-                          {row.group.name}
+                          {groupLabel(row.group.name)}
                         </span>
                       ) : null}
                     </span>
@@ -718,7 +718,9 @@ function ResponseRoster({
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-body text-ink">{shortName(row.child)}</span>
                 {row.group ? (
-                  <span className="block truncate text-caption text-muted">{row.group.name}</span>
+                  <span className="block truncate text-caption text-muted">
+                    {groupLabel(row.group.name)}
+                  </span>
                 ) : null}
               </span>
               <ChevronRight size={18} aria-hidden="true" className="shrink-0 text-muted" />

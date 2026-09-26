@@ -28,7 +28,7 @@ import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
 import { Pagination } from "@/components/ui/pagination";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { SelectBox, SelectionBar, useSelection } from "@/components/ui/selection";
-import { formatDate } from "@/lib/format";
+import { formatDate, fullName, groupLabel } from "@/lib/format";
 import { TEACHER_ATTENDANCE_STATUSES } from "@/lib/attendance-meta";
 import { cn } from "@/lib/utils";
 
@@ -284,7 +284,7 @@ function AttendanceJournal() {
                 <option value="">Бүх бүлэг</option>
                 {(groups.data?.items ?? []).map((group) => (
                   <option key={group.id} value={group.id}>
-                    {group.name}
+                    {groupLabel(group.name)}
                   </option>
                 ))}
               </Select>
@@ -829,11 +829,13 @@ function Grid({
                       <SelectBox
                         checked={selection.has(row.childId)}
                         onChange={() => selection.toggle(row.childId)}
-                        label={`${row.child.lastName ?? ""} ${row.child.firstName} — сонгох`}
+                        label={`${fullName(row.child)} — сонгох`}
                       />
                       <span className="min-w-0 truncate">
-                        {row.child.lastName} {row.child.firstName}
-                        <span className="block text-compact text-muted">{row.group.name}</span>
+                        {fullName(row.child)}
+                        <span className="block text-compact text-muted">
+                          {groupLabel(row.group.name)}
+                        </span>
                       </span>
                     </span>
                   </th>

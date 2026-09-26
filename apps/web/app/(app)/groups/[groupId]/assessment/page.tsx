@@ -49,7 +49,7 @@ import { SearchField } from "@/components/ui/search-field";
 import { DevelopmentRadar } from "@/components/assessment/development-radar";
 import { ChildAvatar } from "@/components/media/media-image";
 import { Art, type ArtName } from "@/components/ui/art";
-import { formatDate, fullName } from "@/lib/format";
+import { formatDate, fullName, capitalize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const termsSchema = z.array(termSchema);
@@ -442,7 +442,7 @@ function GroupAssessment() {
               >
                 {(switchable.data?.items ?? []).map((item) => (
                   <option key={item.id} value={item.id}>
-                    {item.name}
+                    {capitalize(item.name)}
                   </option>
                 ))}
               </Select>
@@ -526,7 +526,7 @@ function GroupAssessment() {
               >
                 {(config.data?.domains ?? []).map((domain) => (
                   <option key={domain.id} value={domain.id}>
-                    {domain.name}
+                    {capitalize(domain.name)}
                   </option>
                 ))}
               </Select>
@@ -600,7 +600,7 @@ function GroupAssessment() {
         <>
           {/* The headcount moved into the strip above — see the meal
               register's note on not printing one figure twice. */}
-          <SectionHeader title={column.data.domain.name} />
+          <SectionHeader title={capitalize(column.data.domain.name)} />
 
           {column.data.children.length === 0 ? (
             <EmptyState
@@ -1121,7 +1121,7 @@ function NewRecordStrip({
               )}
             >
               <Art name={style.art} size={36} className="size-9 shrink-0 object-contain" />
-              <span className="truncate">{type.name}</span>
+              <span className="truncate">{capitalize(type.name)}</span>
             </button>
           );
         })}

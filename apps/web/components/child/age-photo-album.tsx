@@ -52,6 +52,7 @@ import { PhotoUpload } from "@/components/media/photo-upload";
 import { PhotoLightbox } from "@/components/media/photo-lightbox";
 import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
 import { cn } from "@/lib/utils";
+import { fullName } from "@/lib/format";
 
 type Age = (typeof PORTFOLIO_AGES)[number];
 type AlbumCategory = (typeof AGE_ALBUM_CATEGORIES)[number];
@@ -304,7 +305,7 @@ export function AgePhotoAlbum({ childId, age }: { childId: string; age: Age }) {
         <AlbumLightbox title={AGE_ALBUM_CATEGORY_LABEL[selectedCategory]} onClose={closeAlbum}>
           <ChildGallery
             childId={childId}
-            childName={`${data.lastName} ${data.firstName}`}
+            childName={`${fullName(data)}`}
             canEdit={canEdit}
             sectionId="selected-album"
             title={AGE_ALBUM_CATEGORY_LABEL[selectedCategory]}

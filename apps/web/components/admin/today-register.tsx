@@ -12,6 +12,7 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { Art } from "@/components/ui/art";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { TableShell, Td, Th } from "@/components/ui/table";
+import { groupLabel } from "@/lib/format";
 
 /**
  * «Өнөөдрийн бүлгийн ирц» — every group, today, on the director's board.
@@ -93,7 +94,7 @@ export function TodayRegister() {
                     href={`/groups/${row.groupId}/attendance?date=${row.date}`}
                     className="text-ink underline-offset-2 hover:text-primary hover:underline"
                   >
-                    {row.group}
+                    {groupLabel(row.group)}
                   </Link>
                 </Td>
                 <Td numeric className="text-ink">

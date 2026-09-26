@@ -23,6 +23,7 @@ import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
+import { groupLabel, capitalize } from "@/lib/format";
 
 const domainsSchema = z.array(developmentDomainSchema);
 const GOOD_THRESHOLD = 95;
@@ -50,7 +51,7 @@ function CoverageBar({ group }: { group: Pick<Coverage, "name" | "children" | "a
   return (
     <span
       role="img"
-      aria-label={`${group.name} — үнэлгээний гүйцэтгэл ${percent}%`}
+      aria-label={`${groupLabel(group.name)} — үнэлгээний гүйцэтгэл ${percent}%`}
       className="block h-2 w-full overflow-hidden rounded-pill bg-track"
     >
       <span
@@ -74,7 +75,7 @@ function GroupCoverageCard({ group }: { group: Coverage }) {
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="truncate text-lead font-semibold text-ink">{group.name}</p>
+            <p className="truncate text-lead font-semibold text-ink">{groupLabel(group.name)}</p>
             <p className="mt-0.5 text-caption text-muted">
               {group.assessed} / {group.children} хүүхэд үнэлсэн
             </p>
@@ -111,7 +112,9 @@ function RankedGroupRow({ group, rank }: { group: Coverage; rank: number }) {
       <span className="grid size-8 shrink-0 place-items-center rounded-pill bg-sunken text-caption font-semibold tabular-nums text-muted">
         {rank}
       </span>
-      <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">{group.name}</span>
+      <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">
+        {groupLabel(group.name)}
+      </span>
       <span className="w-20 shrink-0 sm:w-28">
         <CoverageBar group={group} />
       </span>
@@ -321,7 +324,7 @@ export function AdminAssessmentOverview() {
                     <BarRow
                       key={domain.id}
                       inline
-                      label={domain.name}
+                      label={capitalize(domain.name)}
                       labelWidth="w-[144px] xl:w-[190px]"
                       percent={average === null ? 0 : (average / 4) * 100}
                       value={average === null ? "—" : average.toFixed(1)}
@@ -345,7 +348,7 @@ export function AdminAssessmentOverview() {
                       <div className="mb-4 flex items-start justify-between gap-3 border-b border-border-soft pb-4">
                         <div className="min-w-0">
                           <h3 className="truncate text-lead font-semibold text-ink">
-                            {group.name}
+                            {groupLabel(group.name)}
                           </h3>
                           <p className="mt-0.5 text-caption text-muted">
                             {domainGroup?.sampleSize ?? 0} үнэлгээ · {group.assessed}/
@@ -371,14 +374,14 @@ export function AdminAssessmentOverview() {
                             <BarRow
                               key={domain.id}
                               inline
-                              label={domain.name}
+                              label={capitalize(domain.name)}
                               labelWidth="w-[144px] xl:w-[190px]"
                               percent={average === undefined ? 0 : (average / 4) * 100}
                               value={average === undefined ? "—" : average.toFixed(1)}
                               accessibleLabel={
                                 average === undefined
-                                  ? `${group.name}, ${domain.name} — үнэлгээгүй`
-                                  : `${group.name}, ${domain.name} — ${average.toFixed(1)} оноо`
+                                  ? `${groupLabel(group.name)}, ${domain.name} — үнэлгээгүй`
+                                  : `${groupLabel(group.name)}, ${domain.name} — ${average.toFixed(1)} оноо`
                               }
                               tone={SERIES_TONES[index % SERIES_TONES.length]}
                             />

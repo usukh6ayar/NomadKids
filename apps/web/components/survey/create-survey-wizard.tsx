@@ -43,6 +43,7 @@ import { Field, Input, Select, Switch } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { cn } from "@/lib/utils";
 import { useBackdropDismiss } from "@/components/ui/modal-overlay";
+import { groupLabel } from "@/lib/format";
 
 const groupsSchema = paginated(groupListItemSchema);
 const termsSchema = z.array(termSchema);
@@ -701,7 +702,7 @@ function Audience({
                 <option value="">Бүх бүлэг</option>
                 {groups.map((group) => (
                   <option key={group.id} value={group.id}>
-                    {group.name}
+                    {groupLabel(group.name)}
                   </option>
                 ))}
               </Select>

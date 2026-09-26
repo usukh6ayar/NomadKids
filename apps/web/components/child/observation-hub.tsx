@@ -36,7 +36,7 @@ import {
 import { ChildPickerDialog } from "./child-picker-dialog";
 import { ArchiveTab, WrittenReports } from "@/components/assessment/report-archive";
 import { ChildArtwork } from "./child-artwork";
-import { formatAge, fullName } from "@/lib/format";
+import { formatAge, fullName, capitalize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const observationsSchema = paginated(observationSchema);
@@ -412,7 +412,7 @@ export function ObservationHub({
   };
 
   const data = child.data!;
-  const group = data.enrollments?.find((row) => row.group)?.group?.name;
+  const group = capitalize(data.enrollments?.find((row) => row.group)?.group?.name);
 
   return (
     <div className="flex flex-col gap-3">
@@ -696,7 +696,7 @@ export function ObservationHub({
                     ).length;
                     return (
                       <option key={term.id} value={term.id}>
-                        {term.name} ({count})
+                        {capitalize(term.name)} ({count})
                       </option>
                     );
                   })}
@@ -850,7 +850,7 @@ export function ObservationHub({
                 <option value="">Бүх чиглэл</option>
                 {domainOptions.map((domain) => (
                   <option key={domain.id} value={domain.id}>
-                    {domain.name}
+                    {capitalize(domain.name)}
                   </option>
                 ))}
               </Select>
@@ -886,7 +886,7 @@ export function ObservationHub({
                 >
                   {typeOptions.map((type) => (
                     <option key={type.code} value={type.code}>
-                      {type.name}
+                      {capitalize(type.name)}
                     </option>
                   ))}
                   <option value="all">Бүх төрөл</option>

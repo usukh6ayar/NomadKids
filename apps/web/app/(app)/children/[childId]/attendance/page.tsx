@@ -9,7 +9,7 @@ import { errorMessage } from "@/lib/api/errors";
 import { PageHeader } from "@/components/shell/app-shell";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAttendance } from "@/components/child/child-attendance";
-import { shortName } from "@/lib/format";
+import { shortName, capitalize } from "@/lib/format";
 import { useSession } from "@/lib/auth/session";
 
 /**
@@ -50,7 +50,10 @@ export default function ChildAttendancePage() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <PageHeader backHref={`/children/${childId}/general`} title={`${data.firstName}-ийн ирц`} />
+      <PageHeader
+        backHref={`/children/${childId}/general`}
+        title={`${capitalize(data.firstName)}-ийн ирц`}
+      />
 
       <ChildAttendance childId={childId} isStaff={isStaff} childName={shortName(data)} />
     </div>

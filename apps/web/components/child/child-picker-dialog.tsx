@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { ChildAvatar } from "@/components/media/media-image";
 import { ErrorState, LoadingState } from "@/components/ui/states";
-import { formatAge, fullName, shortName } from "@/lib/format";
+import { formatAge, fullName, shortName, capitalize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
@@ -218,7 +218,7 @@ export function ChildPickerDialog({
           >
             {items.map((child) => {
               const chosen = pending === child.id;
-              const group = child.enrollments?.find((row) => row.group)?.group?.name;
+              const group = capitalize(child.enrollments?.find((row) => row.group)?.group?.name);
               const count = coverage?.counts[child.id] ?? 0;
               const complete = coverage ? count >= coverage.target : false;
 

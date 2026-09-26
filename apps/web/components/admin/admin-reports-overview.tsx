@@ -28,7 +28,7 @@ import { MonthSelect } from "@/components/ui/month-select";
 import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
-import { formatDayMonth } from "@/lib/format";
+import { formatDayMonth, groupLabel, capitalize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const termsSchema = z.array(termSchema);
@@ -217,7 +217,7 @@ export function AdminReportsOverview() {
             >
               {termItems.map((term) => (
                 <option key={term.id} value={term.id}>
-                  {term.number}. {term.name}
+                  {term.number}. {capitalize(term.name)}
                 </option>
               ))}
             </select>
@@ -321,7 +321,7 @@ export function AdminReportsOverview() {
                     <BarRow
                       key={domain.name}
                       inline
-                      label={domain.name}
+                      label={capitalize(domain.name)}
                       labelWidth="w-[136px] xl:w-[180px]"
                       percent={percent(domain.count, domainDenominator)}
                       value={`${percent(domain.count, domainDenominator)}%`}
@@ -367,7 +367,9 @@ export function AdminReportsOverview() {
                     return (
                       <tr key={report.group.id} className="hover:bg-canvas">
                         <td className="px-4 py-3 tabular-nums text-muted">{index + 1}</td>
-                        <td className="px-3 py-3 font-medium text-ink">{report.group.name}</td>
+                        <td className="px-3 py-3 font-medium text-ink">
+                          {groupLabel(report.group.name)}
+                        </td>
                         <td className="px-3 py-3 text-right tabular-nums">{report.children}</td>
                         <td className="px-3 py-3 text-right tabular-nums">
                           {report.assessment.assessed}
@@ -396,7 +398,7 @@ export function AdminReportsOverview() {
                         <td className="px-3 py-3">
                           <Link
                             href={`/groups/${report.group.id}/assessment`}
-                            aria-label={`${report.group.name} дэлгэрэнгүй`}
+                            aria-label={`${groupLabel(report.group.name)} дэлгэрэнгүй`}
                             className="text-primary"
                           >
                             <ChevronRight size={18} aria-hidden />
@@ -420,7 +422,9 @@ export function AdminReportsOverview() {
                     <Card pad="compact">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <h3 className="font-semibold text-ink">{report.group.name}</h3>
+                          <h3 className="font-semibold text-ink">
+                            {groupLabel(report.group.name)}
+                          </h3>
                           <p className="text-caption text-muted">
                             {report.children} хүүхэд · {report.assessment.assessed} үнэлсэн
                           </p>

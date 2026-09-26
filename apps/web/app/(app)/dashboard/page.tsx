@@ -8,7 +8,7 @@ import { get } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
-import { formatLongDate, formatWeekday } from "@/lib/format";
+import { formatLongDate, formatWeekday, groupLabel } from "@/lib/format";
 import { useSession } from "@/lib/auth/session";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
@@ -200,7 +200,7 @@ function TeacherDashboard() {
               */
               <span className="inline-flex min-h-6 items-center gap-1 rounded-pill bg-surface px-2 text-compact font-medium text-muted shadow-sm">
                 <UsersRound size={12} aria-hidden="true" className="text-primary" />
-                {group.name}
+                {groupLabel(group.name)}
               </span>
             ) : null}
             <span className="inline-flex min-h-6 items-center gap-1 rounded-pill bg-surface px-2 text-compact font-medium text-muted shadow-sm">

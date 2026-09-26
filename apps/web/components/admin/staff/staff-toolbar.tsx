@@ -9,6 +9,7 @@ import {
   type StaffKind,
   type StaffStatus,
 } from "./staff-model";
+import { groupLabel } from "@/lib/format";
 
 /**
  * Search, three filters, and the screen's one primary action.
@@ -64,7 +65,7 @@ export function StaffToolbar({
         <option value="">Бүх бүлэг</option>
         {groups.map((group) => (
           <option key={group.id} value={group.id}>
-            {group.name}
+            {groupLabel(group.name)}
           </option>
         ))}
         {/* The one option that is not a group — the teachers assigned to none. */}

@@ -13,6 +13,7 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { IconChip } from "@/components/ui/icon-chip";
 import { Skeleton } from "@/components/ui/states";
 import { Art } from "@/components/ui/art";
+import { capitalize } from "@/lib/format";
 
 const menuSchema = z.array(menuDayWithWarningsSchema);
 
@@ -207,7 +208,9 @@ export function TodayMenu() {
                       ) : null}
                     </div>
 
-                    <p className="text-lead font-semibold leading-heading text-ink">{dish.name}</p>
+                    <p className="text-lead font-semibold leading-heading text-ink">
+                      {capitalize(dish.name)}
+                    </p>
 
                     {dish.allergenTags.length > 0 ? (
                       <p className="mt-auto flex flex-wrap gap-1">

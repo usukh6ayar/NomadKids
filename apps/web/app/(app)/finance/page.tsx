@@ -29,7 +29,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { FinanceDashboardPanel } from "@/components/finance/finance-dashboard";
 import { FinanceReports } from "@/components/finance/finance-reports";
-import { formatDate } from "@/lib/format";
+import { formatDate, capitalize } from "@/lib/format";
 
 const rulesSchema = z.array(fundingRuleSchema);
 
@@ -509,7 +509,7 @@ function MonthRows({ items }: { items: z.infer<typeof fundingMonthSchema>["items
   const sorted = [...items].sort(
     (a, b) =>
       `${a.child.lastName ?? ""}${a.child.firstName}`.localeCompare(
-        `${b.child.lastName ?? ""}${b.child.firstName}`,
+        `${b.child.lastName ?? ""}${capitalize(b.child.firstName)}`,
       ) || a.source.localeCompare(b.source),
   );
 
@@ -530,7 +530,7 @@ function MonthRows({ items }: { items: z.infer<typeof fundingMonthSchema>["items
             <p className="flex flex-wrap items-center gap-2">
               <span className="truncate text-body font-medium text-ink">
                 {item.child.lastName ? `${item.child.lastName} ` : ""}
-                {item.child.firstName}
+                {capitalize(item.child.firstName)}
               </span>
               <Badge tone="sky">{FUNDING_SOURCE_LABEL[item.source]}</Badge>
             </p>

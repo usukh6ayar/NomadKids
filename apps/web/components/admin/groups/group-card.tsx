@@ -5,7 +5,7 @@ import { ChevronRight, TriangleAlert, UserPlus } from "lucide-react";
 import { ATTENDANCE_FORM_LABEL, PROGRAM_KIND_LABEL, type GroupListItem } from "@kinder/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { shortName } from "@/lib/format";
+import { shortName, groupLabel } from "@/lib/format";
 
 /**
  * One group, as a card.
@@ -41,7 +41,7 @@ export function GroupCard({
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <h3 className="truncate text-lead font-semibold text-ink">{group.name}</h3>
+            <h3 className="truncate text-lead font-semibold text-ink">{groupLabel(group.name)}</h3>
             <p className="mt-0.5 text-body text-muted">
               <span className="tabular-nums text-ink">{children}</span> суралцагч
             </p>
@@ -109,7 +109,7 @@ export function GroupCard({
           size="sm"
           className="w-full"
           onClick={onManageTeachers}
-          aria-label={`${group.name} — багш хуваарилах`}
+          aria-label={`${groupLabel(group.name)} — багш хуваарилах`}
         >
           <UserPlus size={16} aria-hidden />
           {lead ? "Багш өөрчлөх" : "Багш хуваарилах"}

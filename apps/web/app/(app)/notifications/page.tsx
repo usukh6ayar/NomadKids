@@ -44,7 +44,7 @@ import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
-import { excerpt, formatRelative, shortName } from "@/lib/format";
+import { excerpt, formatRelative, shortName, groupLabel } from "@/lib/format";
 import { FamilySurveyCard } from "@/components/survey/family-survey-card";
 import { cn } from "@/lib/utils";
 
@@ -448,7 +448,7 @@ export default function NotificationsPage() {
                     {isAdmin ? <option value="">Бүх бүлэг</option> : null}
                     {(boardGroups.data?.items ?? []).map((group) => (
                       <option key={group.id} value={group.id}>
-                        {group.name}
+                        {groupLabel(group.name)}
                       </option>
                     ))}
                   </Select>

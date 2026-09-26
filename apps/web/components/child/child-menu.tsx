@@ -31,7 +31,7 @@ import {
   type DishDraft,
 } from "@/components/menu/menu-dish-editor";
 import { FamilyMenu } from "@/components/child/family-menu";
-import { formatDayMonth, formatLongDate } from "@/lib/format";
+import { formatDayMonth, formatLongDate, capitalize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const menuSchema = z.array(menuDaySchema);
@@ -612,7 +612,7 @@ function MealCard({
       <ul className="flex flex-col gap-1 pl-1 text-body text-ink">
         {dishes.map((dish, i) => (
           <li key={i} className="flex flex-wrap items-baseline gap-x-2">
-            <span>• {dish.name}</span>
+            <span>• {capitalize(dish.name)}</span>
             {dish.ingredients ? (
               <span className="text-caption text-muted">{dish.ingredients}</span>
             ) : null}

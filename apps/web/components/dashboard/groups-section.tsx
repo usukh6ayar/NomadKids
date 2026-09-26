@@ -8,6 +8,7 @@ import { qk } from "@/lib/api/keys";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Art } from "@/components/ui/art";
+import { groupLabel } from "@/lib/format";
 
 const groupsSchema = paginated(groupSchema);
 
@@ -86,7 +87,7 @@ export function GroupsSection() {
         />
         <Card pad="roomy" className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="truncate font-medium text-ink">{group.name}</p>
+            <p className="truncate font-medium text-ink">{groupLabel(group.name)}</p>
             <p className="text-body text-muted">Ирц, хоол бүртгэх, улирлын үнэлгээ хийх.</p>
           </div>
           {/* Wraps rather than pinning the card wide — three actions plus a
@@ -125,7 +126,7 @@ export function GroupsSection() {
             key={group.id}
             className="flex min-h-[56px] flex-wrap items-center justify-between gap-3 px-4 py-3"
           >
-            <span className="min-w-0 truncate font-medium text-ink">{group.name}</span>
+            <span className="min-w-0 truncate font-medium text-ink">{groupLabel(group.name)}</span>
             <div className="flex flex-wrap gap-3">
               <Link
                 href={`/groups/${group.id}/attendance`}

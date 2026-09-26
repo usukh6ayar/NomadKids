@@ -38,7 +38,7 @@ import { ObservationRow } from "@/components/observations/observation-row";
 import { ObservationPhotos } from "@/components/observations/observation-photos";
 import { DAILY_ACTIVITIES } from "@/components/assessment/group-coverage";
 import { PORTFOLIO } from "@/lib/vocabulary";
-import { excerpt, formatDate, formatLongDate } from "@/lib/format";
+import { excerpt, formatDate, formatLongDate, capitalize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const observationsSchema = paginated(observationSchema);
@@ -619,7 +619,7 @@ export function NoteCardFace({
               observationTypeTone(observation.type.code),
             )}
           >
-            {observation.type.name}
+            {capitalize(observation.type.name)}
           </span>
         ) : (
           <span />
@@ -668,7 +668,7 @@ export function NoteCardFace({
               aria-label={`Сургалтын чиглэл: ${entry.domain.name}`}
               className="rounded-pill bg-primary-soft px-2.5 py-1 text-caption font-semibold italic text-primary"
             >
-              {entry.domain.name}
+              {capitalize(entry.domain.name)}
             </span>
           ))}
           {observation.indicator?.code ? (
@@ -1071,7 +1071,7 @@ export function EditObservationDialog({
                     <option value="">Сонгоно уу</option>
                     {(types.data ?? []).map((type) => (
                       <option key={type.id} value={type.id}>
-                        {type.name}
+                        {capitalize(type.name)}
                       </option>
                     ))}
                   </Select>
@@ -1117,7 +1117,7 @@ export function EditObservationDialog({
                     <option value="">Сонгоно уу</option>
                     {(config.data?.domains ?? []).map((domain) => (
                       <option key={domain.id} value={domain.id}>
-                        {domain.name}
+                        {capitalize(domain.name)}
                       </option>
                     ))}
                   </Select>

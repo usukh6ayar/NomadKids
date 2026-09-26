@@ -21,7 +21,7 @@ import { ColumnChart } from "@/components/ui/chart/columns";
 import { Donut } from "@/components/ui/chart/donut";
 import { Art, type ArtName } from "@/components/ui/art";
 import { ATTENDANCE_STATUS_CHART_TONE, ATTENDANCE_STATUS_LABEL } from "@/lib/attendance-meta";
-import { formatDayMonth } from "@/lib/format";
+import { formatDayMonth, groupLabel, capitalize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { AdminReportsOverview } from "@/components/admin/admin-reports-overview";
 import { BackButton } from "@/components/ui/back-button";
@@ -258,7 +258,7 @@ function Reports() {
                 >
                   {termItems.map((term) => (
                     <option key={term.id} value={term.id}>
-                      {term.number}. {term.name}
+                      {term.number}. {capitalize(term.name)}
                     </option>
                   ))}
                 </Select>
@@ -322,7 +322,7 @@ function ReportBody({
             <p className="mt-2 text-hero font-bold leading-none tracking-tight text-primary tabular-nums">
               {children}
             </p>
-            <p className="mt-3 text-body font-medium text-ink">{report.group.name}</p>
+            <p className="mt-3 text-body font-medium text-ink">{groupLabel(report.group.name)}</p>
           </div>
           <div aria-hidden="true" className="absolute inset-y-0 right-0 w-[55%] overflow-hidden">
             <Art

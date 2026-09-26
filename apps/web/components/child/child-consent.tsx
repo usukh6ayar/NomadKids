@@ -7,7 +7,7 @@ import { childConsentSchema, CONSENT_KIND_LABEL } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
-import { formatDate } from "@/lib/format";
+import { formatDate, fullName } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
@@ -84,7 +84,7 @@ export function ChildConsent({ childId, isGuardian }: { childId: string; isGuard
                 <span className={row.granted ? "text-mint-ink" : "text-danger"}>
                   {row.granted ? "Зөвшөөрсөн" : "Татгалзсан"}
                 </span>
-                {row.decidedBy ? ` · ${row.decidedBy.lastName} ${row.decidedBy.firstName}` : ""}
+                {row.decidedBy ? ` · ${fullName(row.decidedBy)}` : ""}
               </li>
             ))}
           </ul>

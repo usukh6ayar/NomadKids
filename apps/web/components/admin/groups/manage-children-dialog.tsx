@@ -8,7 +8,7 @@ import { MAX_PAGE_SIZE, childSummarySchema, paginated } from "@kinder/contracts"
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
-import { fullName, shortName } from "@/lib/format";
+import { fullName, shortName, groupLabel } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { SearchField } from "@/components/ui/search-field";
 import { SelectBox } from "@/components/ui/selection";
@@ -320,7 +320,7 @@ export function ManageChildrenDialog({
                         </span>
                         {current?.group?.name ? (
                           <span className="shrink-0 text-caption text-muted">
-                            {current.group.name}
+                            {groupLabel(current.group.name)}
                           </span>
                         ) : null}
                       </li>

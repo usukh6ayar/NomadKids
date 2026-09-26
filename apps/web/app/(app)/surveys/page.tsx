@@ -22,7 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { SearchField } from "@/components/ui/search-field";
-import { formatDate } from "@/lib/format";
+import { formatDate, groupLabel } from "@/lib/format";
 import { canManageSurvey, staffSurveysSchema } from "@/lib/survey-access";
 import { cn } from "@/lib/utils";
 
@@ -279,7 +279,7 @@ function SurveysHub() {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-lead font-semibold text-ink transition-colors group-hover:text-primary">
-                        {group.name}
+                        {groupLabel(group.name)}
                       </span>
                       <span className="mt-0.5 block text-caption tabular-nums text-muted">
                         {children} хүүхэд

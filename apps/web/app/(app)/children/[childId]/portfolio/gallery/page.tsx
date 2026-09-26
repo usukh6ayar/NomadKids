@@ -14,6 +14,7 @@ import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
 import { DevelopmentHistoryLink } from "@/components/child/age-photo-album";
 import { PortfolioSpecialAlbums } from "@/components/child/portfolio-special-albums";
 import { useSession } from "@/lib/auth/session";
+import { fullName } from "@/lib/format";
 
 export default function PhotoAlbumLandingPage() {
   const { childId } = useParams<{ childId: string }>();
@@ -88,11 +89,7 @@ export default function PhotoAlbumLandingPage() {
         })}
       </ul>
 
-      <PortfolioSpecialAlbums
-        childId={childId}
-        childName={`${data.lastName} ${data.firstName}`}
-        canEdit={canEdit}
-      />
+      <PortfolioSpecialAlbums childId={childId} childName={`${fullName(data)}`} canEdit={canEdit} />
     </div>
   );
 }

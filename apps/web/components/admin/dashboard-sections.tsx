@@ -4,7 +4,7 @@ import { AUDIT_ACTION_LABEL, AUDIT_OBJECT_LABEL } from "@kinder/contracts";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/states";
-import { formatRelative } from "@/lib/format";
+import { formatRelative, groupLabel } from "@/lib/format";
 
 /**
  * The three read-only blocks a kindergarten's own admin dashboard and the
@@ -92,7 +92,7 @@ export function AssessmentCoverageSection({
                   length for in the first place.
                 */}
                 <span className="min-w-0 flex-1 truncate font-medium text-ink md:w-[220px] md:flex-none">
-                  {group.name}
+                  {groupLabel(group.name)}
                 </span>
 
                 {/*

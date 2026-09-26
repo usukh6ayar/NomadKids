@@ -9,7 +9,7 @@ import { ARTWORK_TYPES, artworkTimelineSchema, type ArtworkComparison } from "@k
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
-import { formatDate } from "@/lib/format";
+import { formatDate, fullName } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Disclosure } from "@/components/ui/disclosure";
@@ -348,9 +348,7 @@ function ComparisonCard({
 
         <div className="flex flex-wrap items-center gap-2">
           {comparison.author ? (
-            <span className="text-caption text-muted">
-              {comparison.author.lastName} {comparison.author.firstName}
-            </span>
+            <span className="text-caption text-muted">{fullName(comparison.author)}</span>
           ) : null}
 
           {isStaff ? (

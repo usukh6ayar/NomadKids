@@ -13,7 +13,7 @@ import { get, mutate } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
-import { formatRelative } from "@/lib/format";
+import { formatRelative, fullName } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -213,7 +213,7 @@ function AdminStaffCode() {
               {registrations.data!.items.map((row) => (
                 <DataRow
                   key={row.membershipId}
-                  title={`${row.lastName} ${row.firstName}`}
+                  title={`${fullName(row)}`}
                   cells={{
                     role: <span className="text-body text-muted">{ROLE_LABEL[row.role]}</span>,
                     registeredAt: (
@@ -225,7 +225,7 @@ function AdminStaffCode() {
                   actions={
                     <ConfirmDialog
                       title="Эрхийг хураах"
-                      description={`${row.lastName} ${row.firstName} гишүүнийг энэ цэцэрлэгээс хасах уу?`}
+                      description={`${fullName(row)} гишүүнийг энэ цэцэрлэгээс хасах уу?`}
                       confirmLabel="Эрхийг хураах"
                       pendingLabel="Хурааж байна…"
                       tone="danger"

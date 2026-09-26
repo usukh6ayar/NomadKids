@@ -19,6 +19,7 @@ import { TONE_SURFACE, TONE_VAR, type Tone } from "@/components/ui/tone";
 import { Skeleton } from "@/components/ui/states";
 import type { RegisterCount } from "@/components/register/register-progress";
 import { cn } from "@/lib/utils";
+import { fullName } from "@/lib/format";
 
 /**
  * The report at the foot of the teacher's register — "Өнөөдөр" and "Сар".
@@ -377,7 +378,7 @@ export function AttendanceMonthPanel({
 
   const absentees = children
     .map((row) => ({
-      name: `${row.child.lastName} ${row.child.firstName}`,
+      name: `${fullName(row.child)}`,
       away: row.counts.ABSENT + row.counts.SICK + row.counts.EXCUSED + row.counts.OTHER,
     }))
     .filter((row) => row.away > 0)

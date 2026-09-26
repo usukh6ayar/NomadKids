@@ -7,6 +7,7 @@ import { groupListItemSchema, paginated } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
+import { groupLabel } from "@/lib/format";
 
 const groupsSchema = paginated(groupListItemSchema);
 
@@ -102,7 +103,7 @@ export function GroupSwitcher({
                     : "border-border bg-surface text-muted hover:bg-canvas hover:text-ink",
                 )}
               >
-                <span className="whitespace-nowrap">{group.name}</span>
+                <span className="whitespace-nowrap">{groupLabel(group.name)}</span>
                 {/*
                   The headcount is the second thing a reader wants from a group
                   name and the reason the old picker page had rows rather than
