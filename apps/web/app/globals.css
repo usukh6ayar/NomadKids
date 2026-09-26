@@ -924,3 +924,29 @@ fieldset {
     content: "";
   }
 }
+
+/*
+ * ★ Two panels side by side are the same height — 2026-09-26, the client
+ * asking for the layout to be even («тэгш хэмтэй, адилхан хэмжээтэй»). A row
+ * marked `data-equal-row` stretches its sections, and each section's last
+ * card grows to fill, so a short panel beside a tall one no longer leaves a
+ * ragged bottom edge.
+ */
+[data-equal-row] > section {
+  display: flex;
+  flex-direction: column;
+}
+[data-equal-row] > section > [data-ui="card"]:last-child {
+  flex: 1 1 auto;
+}
+
+/*
+ * ★ A page header inside a band adds no margin of its own — 2026-09-26.
+ * `PageHeader` carries `mb-4 lg:mb-5` for screens that stack it by hand; in a
+ * `page-band` that margin stacked on the band's gap, and the title stood 52px
+ * above the first module when the modules themselves were 24–32px apart. The
+ * band's gap is the one rhythm, so the header takes that and nothing more.
+ */
+.page-band > [data-ui="page-header"] {
+  margin-bottom: 0;
+}

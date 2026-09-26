@@ -364,7 +364,7 @@ export function PageHeader({
         and on a phone «Бүлгүүд» was set one letter per line. At 12rem the row
         wraps instead and the actions drop under the title.
       */}
-      <div className="flex min-w-[min(100%,12rem)] flex-1 items-start gap-3">
+      <div className="flex min-w-[min(100%,12rem)] flex-1 items-center gap-3">
         {resolvedBackHref ? <BackButton href={resolvedBackHref} /> : null}
         <div className="min-w-0">
           <h1
@@ -956,7 +956,7 @@ export function AppShell({
                 className={cn(
                   "w-full",
                   isChatPage
-                    ? "h-[calc(100dvh-4.25rem)] overflow-hidden pb-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom))] lg:h-[calc(100dvh-3.5rem)] lg:max-w-none lg:pb-0"
+                    ? "h-[calc(100dvh-4.25rem)] overflow-hidden pb-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom))] lg:h-[calc(100dvh-4rem)] lg:max-w-none lg:pb-0"
                     : "mx-auto max-w-[1920px] px-4 pb-24 pt-4 sm:px-6 lg:px-7 lg:pb-16 lg:pt-6 2xl:px-8",
                 )}
               >
@@ -1025,12 +1025,12 @@ function Brand({ subtitle }: { subtitle: string }) {
         square and includes "БЯЦХАН НҮҮДЭЛЧИД" under the drawing, so it goes in
         whole, `object-contain` inside a square box so nothing is trimmed.
       */}
-      <span data-brand-mark className="grid size-[58px] shrink-0 place-items-center">
+      <span data-brand-mark className="grid size-12 shrink-0 place-items-center">
         <Image
           src="/brand-logo.png"
           alt={BRAND}
-          width={58}
-          height={58}
+          width={48}
+          height={48}
           className="size-full object-contain"
         />
       </span>
@@ -1231,7 +1231,21 @@ function SidebarContent({
 
   return (
     <>
-      <Brand subtitle={subtitle} />
+      {/*
+        ★ One 64px band with a rule under it — 2026-09-26, the client asking
+        for things to line up («тэгш хэмтэй»). The desktop top bar is 64px with
+        the same rule, so the line under the brand and the line under ☰ are one
+        line across the screen rather than two at different heights.
+      */}
+      <div
+        data-sidebar-brand
+        className={cn(
+          "flex h-16 shrink-0 items-center border-b border-border-soft",
+          variant === "parent" ? "-mx-4 px-4" : "-mx-3.5 px-3.5",
+        )}
+      >
+        <Brand subtitle={subtitle} />
+      </div>
 
       {variant === "parent" ? (
         <ParentSidebarContent
@@ -1660,7 +1674,7 @@ function Sidebar({
         // the client asking for the product to be «гоё өнгөлөг». Text on it is
         // `--color-ink`/`--color-muted` against at most `--color-primary-soft`,
         // which both clear 4.5:1.
-        "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r border-border-soft bg-linear-to-b from-primary-soft via-surface to-surface py-[18px] shadow-[8px_0_28px_-22px_rgb(29_78_216_/_0.28)] lg:flex",
+        "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r border-border-soft bg-linear-to-b from-primary-soft via-surface to-surface pb-[18px] shadow-[8px_0_28px_-22px_rgb(29_78_216_/_0.28)] lg:flex",
         teacherTheme || isAdmin
           ? "gap-5 px-3.5"
           : variant === "parent"
@@ -1832,7 +1846,7 @@ function DesktopTopBar({
   return (
     <header
       data-print-hide
-      className="sticky top-0 z-10 hidden h-14 items-center gap-3 border-b border-border-soft bg-surface/90 px-4 backdrop-blur lg:flex"
+      className="sticky top-0 z-10 hidden h-16 items-center gap-3 border-b border-border-soft bg-surface/90 px-4 backdrop-blur lg:flex lg:px-7 2xl:px-8"
     >
       <button
         type="button"

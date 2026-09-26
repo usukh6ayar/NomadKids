@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { z } from "zod";
@@ -87,7 +89,7 @@ import { TodayRegister } from "./today-register";
  * engine "will correctly calculate nothing" until they do. Drawing either panel
  * from data that does not exist is how a dashboard starts lying.
  */
-export function AdminOverview() {
+export function AdminOverview({ actions }: { actions?: ReactNode } = {}) {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: qk.dashboard.admin(),
     queryFn: () => get("/dashboard/admin", adminDashboardSchema),
@@ -106,7 +108,9 @@ export function AdminOverview() {
     administrator who has not created one needs to read that at the top rather
     than infer it from an empty section further down.
   */
-  const header = <PageHeader title="Удирдлагын самбар" />;
+  // `actions` — the setup guide's button, on the title's own row rather than a
+  // row of its own above it (2026-09-26, «тэгш хэмтэй»).
+  const header = <PageHeader title="Удирдлагын самбар" actions={actions} />;
 
   if (isLoading) {
     return (
@@ -370,12 +374,12 @@ export function AdminOverview() {
         */}
         <TodayRegister />
 
-        <div className="grid items-start gap-6 xl:grid-cols-2">
+        <div data-equal-row className="grid gap-6 xl:grid-cols-2">
           <TodayDial today={attendanceToday} />
           <AttendanceMix groups={attendanceByGroup} />
         </div>
 
-        <div className="grid items-start gap-6 xl:grid-cols-2">
+        <div data-equal-row className="grid gap-6 xl:grid-cols-2">
           <AttendanceByGroup groups={attendanceByGroup} />
 
           <AssessmentCoverageSection
@@ -406,7 +410,7 @@ export function AdminOverview() {
         `BoardCard` sized for the teacher board's two-column grid and stretching
         it across this page would leave a bar chart in a field of white.
       */}
-        <div className="grid items-start gap-6 xl:grid-cols-2">
+        <div data-equal-row className="grid gap-6 xl:grid-cols-2">
           <SurveySummary />
         </div>
 

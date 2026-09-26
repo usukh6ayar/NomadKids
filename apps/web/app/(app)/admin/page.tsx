@@ -49,9 +49,8 @@ import { AdminSetupGuide } from "@/components/admin/admin-setup-guide";
 export default function AdminPage() {
   return (
     <RequireRole roles={["ADMIN"]}>
-      <div className="page-band py-2">
-        <AdminSetupGuide />
-        <AdminOverview />
+      <div className="page-band">
+        <AdminOverview actions={<AdminSetupGuide />} />
       </div>
     </RequireRole>
   );
