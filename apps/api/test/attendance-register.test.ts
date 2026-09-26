@@ -862,6 +862,60 @@ describe("GET /kindergartens/:id/attendance/daily", () => {
     expect([...groupIds]).toEqual([other.id]);
   });
 
+  /*
+   * ★ Guardians' requests on the director's row — 2026-09-26, after the
+   * ministry's own SIS register, which puts Зөвшөөрсөн / Татгалзсан /
+   * Хүлээгдэж байгаа beside the counts. A request covering several days
+   * counts on each working day it covers, in the group the child is enrolled
+   * in, and another kindergarten's requests never reach this table.
+   */
+  it("counts guardians' requests on each day they cover, by review state", async () => {
+    const request = (
+      dateFrom: string,
+      dateTo: string,
+      reviewStatus: "PENDING" | "APPROVED" | "REJECTED",
+    ) =>
+      db.attendanceRequest.create({
+        data: {
+          kindergartenId: a.kindergarten.id,
+          childId: a.child.id,
+          enrollmentId: a.enrollment.id,
+          requestedById: a.parentUser.id,
+          dateFrom: new Date(dateFrom),
+          dateTo: new Date(dateTo),
+          requestedStatus: "EXCUSED",
+          reviewStatus,
+        },
+      });
+    // Wednesday–Thursday, approved; Thursday, one pending and one rejected.
+    await request("2026-03-04", "2026-03-05", "APPROVED");
+    await request("2026-03-05", "2026-03-05", "PENDING");
+    await request("2026-03-05", "2026-03-05", "REJECTED");
+    // Another kindergarten's request on the same day must not be counted here.
+    await db.attendanceRequest.create({
+      data: {
+        kindergartenId: b.kindergarten.id,
+        childId: b.child.id,
+        enrollmentId: b.enrollment.id,
+        requestedById: b.parentUser.id,
+        dateFrom: new Date("2026-03-05"),
+        dateTo: new Date("2026-03-05"),
+        requestedStatus: "SICK",
+      },
+    });
+
+    const res = await daily(admin, a.kindergarten.id);
+    const on = (date: string) =>
+      res.body.items.find(
+        (r: { groupId: string; date: string }) => r.groupId === a.group.id && r.date === date,
+      );
+
+    expect(on("2026-03-03").requests).toEqual({ pending: 0, approved: 0, rejected: 0 });
+    expect(on("2026-03-04").requests).toEqual({ pending: 0, approved: 1, rejected: 0 });
+    expect(on("2026-03-05").requests).toEqual({ pending: 1, approved: 1, rejected: 1 });
+    expect(res.body.totals.requests).toEqual({ pending: 1, approved: 2, rejected: 1 });
+  });
+
   it("totals the period across every row on screen", async () => {
     await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
     await mark(a, a.enrollment.id, a.child.id, "2026-03-04", "ABSENT");

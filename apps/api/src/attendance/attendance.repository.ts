@@ -492,6 +492,36 @@ export class AttendanceRepository {
   }
 
   /**
+   * Guardians' requests that overlap the range, for the director's register.
+   *
+   * ★ Only what the count needs — the span, the review state and the group of
+   * the enrolment the request was made against. No child, no reason, no
+   * attachment: the daily register is counts, and a column of figures should
+   * not carry names it never draws.
+   *
+   * ★★ Unbounded by design, like `findSubmissions` beside it: the range is
+   * capped at a quarter by the query schema and one kindergarten's requests
+   * over a quarter are the size of that quarter's absences.
+   */
+  async findRequestsOverlapping(kindergartenId: string, from: Date, to: Date, groupIds?: string[]) {
+    return this.prisma.attendanceRequest.findMany({
+      where: {
+        kindergartenId,
+        deletedAt: null,
+        dateFrom: { lte: to },
+        dateTo: { gte: from },
+        ...(groupIds?.length ? { enrollment: { groupId: { in: groupIds } } } : {}),
+      },
+      select: {
+        dateFrom: true,
+        dateTo: true,
+        reviewStatus: true,
+        enrollment: { select: { groupId: true } },
+      },
+    });
+  }
+
+  /**
    * Records a submission for each group-day, in one transaction.
    *
    * ★ Idempotent: re-submitting a day already sent updates the existing row

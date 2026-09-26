@@ -718,6 +718,12 @@ export type AttendanceJournal = z.infer<typeof attendanceJournalSchema>;
  * asked for the numbers as they already stand — so this response carries no
  * child ids and nothing writable.
  */
+export const attendanceRequestCountsSchema = z.object({
+  pending: z.number(),
+  approved: z.number(),
+  rejected: z.number(),
+});
+
 export const dailyAttendanceRowSchema = z.object({
   schoolYear: z.string(),
   groupId: z.string(),
@@ -760,6 +766,11 @@ export const dailyAttendanceRowSchema = z.object({
   createdAt: z.string().nullish(),
   /** More than one name when a correction came from a second person. */
   createdBy: z.array(z.string()).default([]),
+  /**
+   * Guardians' requests covering this group-day, by review state. A request
+   * spanning several days counts on each of them.
+   */
+  requests: attendanceRequestCountsSchema,
 });
 export type DailyAttendanceRow = z.infer<typeof dailyAttendanceRowSchema>;
 
@@ -780,6 +791,7 @@ export const dailyAttendanceSchema = z.object({
     /** How many are already submitted — what Илгээх has left to do. */
     sent: z.number(),
     days: z.number(),
+    requests: attendanceRequestCountsSchema,
   }),
 });
 export type DailyAttendance = z.infer<typeof dailyAttendanceSchema>;

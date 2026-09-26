@@ -222,7 +222,7 @@ export class AttendanceService {
 
   async dailySummary(actor: Actor, kindergartenId: string, query: AttendanceRegisterQuery) {
     const built = await this.buildRegister(actor, kindergartenId, query);
-    const [kindergarten, submissions] = await Promise.all([
+    const [kindergarten, submissions, requests] = await Promise.all([
       this.authz.loadKindergartenNames(actor),
       this.repo.findSubmissions(
         kindergartenId,
@@ -230,9 +230,15 @@ export class AttendanceService {
         toUtcDate(query.to),
         query.groupId,
       ),
+      this.repo.findRequestsOverlapping(
+        kindergartenId,
+        toUtcDate(query.from),
+        toUtcDate(query.to),
+        query.groupId,
+      ),
     ]);
 
-    const rows = summariseDays(built.rows, built.days, submissions);
+    const rows = summariseDays(built.rows, built.days, submissions, requests);
 
     return {
       kindergartenName: kindergarten[kindergartenId] ?? "",
@@ -255,6 +261,11 @@ export class AttendanceService {
         /** How many are already submitted — what the Илгээх button has left to do. */
         sent: rows.filter((row) => row.sentAt).length,
         days: rows.length,
+        requests: {
+          pending: rows.reduce((sum, row) => sum + row.requests.pending, 0),
+          approved: rows.reduce((sum, row) => sum + row.requests.approved, 0),
+          rejected: rows.reduce((sum, row) => sum + row.requests.rejected, 0),
+        },
       },
     };
   }
@@ -458,9 +469,15 @@ export class AttendanceService {
    */
   async exportRegister(actor: Actor, kindergartenId: string, query: AttendanceRegisterQuery) {
     const built = await this.buildRegister(actor, kindergartenId, query);
-    const [kindergarten, submissions] = await Promise.all([
+    const [kindergarten, submissions, requests] = await Promise.all([
       this.authz.loadKindergartenNames(actor),
       this.repo.findSubmissions(
+        kindergartenId,
+        toUtcDate(query.from),
+        toUtcDate(query.to),
+        query.groupId,
+      ),
+      this.repo.findRequestsOverlapping(
         kindergartenId,
         toUtcDate(query.from),
         toUtcDate(query.to),
@@ -470,6 +487,7 @@ export class AttendanceService {
 
     const buffer = await buildJournalWorkbook({
       submissions,
+      requests,
       kindergartenName: kindergarten[kindergartenId] ?? "",
       from: query.from,
       to: query.to,
