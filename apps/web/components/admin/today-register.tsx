@@ -81,16 +81,16 @@ export function TodayRegister() {
           <thead>
             <tr>
               <Th>Бүлэг</Th>
-              <Th numeric className={STATUS_COLUMN.present.head}>
+              <Th numeric data-tone className={STATUS_COLUMN.present.head}>
                 Ирсэн
               </Th>
-              <Th numeric className={STATUS_COLUMN.sick.head}>
+              <Th numeric data-tone className={STATUS_COLUMN.sick.head}>
                 Өвчтэй
               </Th>
-              <Th numeric className={STATUS_COLUMN.excused.head}>
+              <Th numeric data-tone className={STATUS_COLUMN.excused.head}>
                 Чөлөөтэй
               </Th>
-              <Th numeric className={STATUS_COLUMN.absent.head}>
+              <Th numeric data-tone className={STATUS_COLUMN.absent.head}>
                 Тасалсан
               </Th>
               <Th>Бүртгэл</Th>
