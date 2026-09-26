@@ -108,6 +108,25 @@ export class EsisRosterImportService {
     }
 
     const institutionId = kindergarten.esisInstitutionId;
+
+    /*
+     * ★ One `EsisResource` row per service read, before the read — the shape
+     * every other ESIS call in this product leaves, and the one the ministry's
+     * coverage matrix counts (2026-09-26). The import's own `EsisRosterImport`
+     * row below says what was *written*; without these the two reads it made
+     * were missing from the evidence of what was *called*.
+     */
+    for (const resource of ["groups", "students"] as const) {
+      await this.audit.append({
+        action: "VIEW",
+        kindergartenId,
+        actorUserId: actor.userId,
+        objectType: "EsisResource",
+        objectId: resource,
+        metadata: { purpose: "roster-import" },
+      });
+    }
+
     const [groupResponse, studentResponse] = await Promise.all([
       this.esis.read("groups", {}, institutionId),
       this.esis.read("students", {}, institutionId),
