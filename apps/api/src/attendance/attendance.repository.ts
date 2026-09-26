@@ -275,6 +275,9 @@ export class AttendanceRepository {
         /* The export's first column — a register belongs to a school year, and
            a file with no year on it cannot be filed. */
         schoolYear: { select: { id: true, name: true } },
+        /* The span the child owes attendance for — «Хамрагдвал зохих». */
+        startedOn: true,
+        endedOn: true,
       },
       orderBy: [{ group: { name: "asc" } }, { child: { lastName: "asc" } }],
     });

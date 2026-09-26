@@ -660,6 +660,8 @@ export const attendanceJournalRowSchema = z.object({
   /** Only the statuses that occur — a status with no days is simply absent. */
   counts: z.record(z.string(), z.number()),
   recorded: z.number(),
+  /** «Хамрагдвал зохих» — working days in range inside the child's enrolment. */
+  expectedDays: z.number(),
 });
 export type AttendanceJournalRow = z.infer<typeof attendanceJournalRowSchema>;
 

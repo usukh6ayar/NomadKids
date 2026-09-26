@@ -29,6 +29,8 @@ export interface JournalRow {
   schoolYear?: { name: string } | null;
   days: (JournalCell | null)[];
   counts: Record<string, number>;
+  /** «Хамрагдвал зохих» — working days in range inside the enrolment. */
+  expectedDays?: number;
 }
 
 /** One class's figures over the whole range — the export's "Ангийн дүн" sheet. */
@@ -134,6 +136,7 @@ function gridSheet(book: ExcelJS.Workbook, input: JournalWorkbookInput): void {
      */
     ...TALLY.map((column) => ({ header: column.label, key: `t_${column.status}`, width: 10 })),
     { header: "Нийт", key: "t_total", width: 10 },
+    { header: "Зохих", key: "t_expected", width: 10 },
   ];
 
   sheet.spliceRows(1, 0, [`${input.kindergartenName} — ирцийн дэлгэрэнгүй`]);
@@ -170,6 +173,7 @@ function gridSheet(book: ExcelJS.Workbook, input: JournalWorkbookInput): void {
     // ★ Numbers, not strings — an accountant sums these columns.
     for (const column of TALLY) cells[`t_${column.status}`] = row.counts[column.status] ?? 0;
     cells.t_total = Object.values(row.counts).reduce((sum, count) => sum + count, 0);
+    if (row.expectedDays !== undefined) cells.t_expected = row.expectedDays;
 
     sheet.addRow(cells);
   }

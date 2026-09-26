@@ -587,6 +587,17 @@ export class AttendanceService {
         days: days.map((day) => marked.get(day) ?? null),
         counts,
         recorded: marked.size,
+        /*
+         * ★ «Хамрагдвал зохих» — the working days in range that fall inside
+         * the enrolment. A child who joined mid-week owes the days since, and
+         * measuring them against the whole week would show marks missing that
+         * nobody could have made.
+         */
+        expectedDays: days.filter((day) => {
+          const started = enrollment.startedOn.toISOString().slice(0, 10);
+          const ended = enrollment.endedOn?.toISOString().slice(0, 10);
+          return day >= started && (!ended || day <= ended);
+        }).length,
       };
     });
 

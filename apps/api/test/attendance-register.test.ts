@@ -372,6 +372,30 @@ describe("the grid", () => {
     expect(row.counts).toEqual({ PRESENT: 1, SICK: 1 });
   });
 
+  /*
+   * ★ «Хамрагдвал зохих» — 2026-09-26, after the ministry SIS register, which
+   * puts it beside each child's totals. It is the working days the child was
+   * enrolled for, so a child who joined on Wednesday owes three days of a
+   * five-day week, not five — and "recorded 3 of 5" would read as two
+   * missing marks that nobody could ever have made.
+   */
+  it("counts the working days each child was enrolled for", async () => {
+    const joiner = await createChild(a.kindergarten.id, { firstName: "Шинэ" });
+    const enrollment = await enrollChild(a.kindergarten.id, joiner.id, a.group.id, a.schoolYear.id);
+    await db.enrollment.update({
+      where: { id: enrollment.id },
+      data: { startedOn: new Date("2026-03-04") },
+    });
+
+    const res = await register(admin, a.kindergarten.id, "from=2026-03-02&to=2026-03-08");
+    const row = (childId: string) =>
+      res.body.items.find((r: { childId: string }) => r.childId === childId);
+
+    // Mon–Fri; the weekend is not a working day.
+    expect(row(a.child.id).expectedDays).toBe(5);
+    expect(row(joiner.id).expectedDays).toBe(3);
+  });
+
   it("totals across every matching child, not just the page on screen", async () => {
     await mark(a, a.enrollment.id, a.child.id, "2026-03-02", "PRESENT");
     await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
