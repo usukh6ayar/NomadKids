@@ -1,6 +1,5 @@
 "use client";
 
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -52,13 +51,16 @@ export const SIDEBAR_MAX_WIDTH = 420;
 /** The gutter between the rail's right edge and the content column. */
 export const SIDEBAR_GUTTER = 12;
 /**
- * What the frame keeps clear when the rail is hidden.
+ * The width of the icon rail the menu folds into — 2026-09-26.
  *
- * Not zero: the handle that brings the rail back sits in this strip, and a
- * control overlapping the first column of a table is how someone loses a row
- * they were reading.
+ * ★ It used to fold into nothing, with a round button floating on the seam to
+ * bring it back; the client did not want that button («iim baimaargui»). A
+ * rail of icons keeps every destination one click away while giving the
+ * content almost all of the room, and the way back sits at its top.
  */
-export const SIDEBAR_COLLAPSED_PAD = 44;
+export const SIDEBAR_RAIL_WIDTH = 64;
+/** What the content frame keeps clear beside the folded rail. */
+export const SIDEBAR_COLLAPSED_PAD = SIDEBAR_RAIL_WIDTH + SIDEBAR_GUTTER;
 
 const WIDTH_KEY = "nk.sidebar.width";
 const COLLAPSED_KEY = "nk.sidebar.collapsed";
@@ -152,7 +154,7 @@ export function SidebarPrefsProvider({
  */
 export function sidebarVars({ width, collapsed }: { width: number; collapsed: boolean }) {
   return {
-    "--sidebar-w": `${collapsed ? 0 : width}px`,
+    "--sidebar-w": `${collapsed ? SIDEBAR_RAIL_WIDTH : width}px`,
     "--shell-pad": `${collapsed ? SIDEBAR_COLLAPSED_PAD : width + SIDEBAR_GUTTER}px`,
   } as CSSProperties;
 }
@@ -177,7 +179,8 @@ function writeLiveVars(width: number): void {
 }
 
 /**
- * The rail's right edge: drag it to resize, press the button to hide it.
+ * The rail's right edge: drag it to resize. Hiding it is the menu's own
+ * «Цэс хураах» row now — see `SidebarCollapseRow` in `app-shell.tsx`.
  *
  * ★ One control, not two, because they are one thing to the eye — the seam
  * between the menu and the work. Two separate affordances at the same
@@ -259,13 +262,16 @@ export function SidebarEdge({ defaultWidth }: { defaultWidth: number }) {
     }
   };
 
+  // Folded, there is nothing to size — the rail is fixed at its own width.
+  if (collapsed) return null;
+
   return (
     <div
       data-print-hide
       className="fixed inset-y-0 z-30 hidden w-3 lg:block"
       style={{ left: "var(--sidebar-w)" }}
     >
-      {!collapsed ? (
+      {
         <div
           role="separator"
           aria-orientation="vertical"
@@ -290,29 +296,7 @@ export function SidebarEdge({ defaultWidth }: { defaultWidth: number }) {
             dragging && "before:w-0.5 before:bg-primary",
           )}
         />
-      ) : null}
-
-      <button
-        type="button"
-        onClick={() => setCollapsed(!collapsed)}
-        aria-expanded={!collapsed}
-        aria-label={collapsed ? "Хажуугийн цэсийг нээх" : "Хажуугийн цэсийг хаах"}
-        title={collapsed ? "Хажуугийн цэсийг нээх" : "Хажуугийн цэсийг хаах"}
-        className={cn(
-          "absolute top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-pill",
-          "border border-border-soft bg-surface text-muted shadow-md transition-colors",
-          "hover:border-primary hover:text-primary focus-visible:outline-2 focus-visible:outline-primary",
-          // Centred on the seam when the rail is out, tucked against the
-          // viewport edge when it is away.
-          collapsed ? "left-1.5" : "-left-3.5",
-        )}
-      >
-        {collapsed ? (
-          <PanelLeftOpen size={16} aria-hidden />
-        ) : (
-          <PanelLeftClose size={16} aria-hidden />
-        )}
-      </button>
+      }
     </div>
   );
 }
