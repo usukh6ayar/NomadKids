@@ -678,3 +678,68 @@ describe("splitBilling", () => {
     expect(splitBilling(null, 45000, 20)).toEqual({ gross: 45000, deduction: 0, net: 45000 });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Хоолны зардал эх үүсвэрээр — нэмэлт.md §3
+// ═══════════════════════════════════════════════════════════════════════════
+
+/*
+ * ★ «Хүүхдийн тоо × хооллосон өдөр × тариф», shown per source — 2026-09-26.
+ *
+ * The month's calculations already carry every figure: one row per child per
+ * source, with the fed days and the rule that priced them. Meal cost is the
+ * rows whose rule `dependsOnMeals`; a monthly flat fee from the same source is
+ * not a meal cost and must not be counted as one.
+ */
+describe("GET /kindergartens/:id/funding/meal-cost", () => {
+  const url = (kindergartenId = a.kindergarten.id) =>
+    `/v1/kindergartens/${kindergartenId}/funding/meal-cost?month=${MONTH}`;
+
+  async function runMonth(source: string) {
+    return authed(
+      request(app.getHttpServer()).post(`/v1/kindergartens/${a.kindergarten.id}/funding/calculate`),
+      adminA,
+    ).send({ month: MONTH, source });
+  }
+
+  it("splits the month's meal cost by source, leaving a flat fee out", async () => {
+    await feed(2);
+    await feed(3);
+    await feed(4);
+    await createRule({ source: "STATE", dailyRate: "3200.00" });
+    await createRule({ source: "PARENT", dailyRate: "1500.00" });
+    // A monthly tuition from the kindergarten is not a meal cost.
+    await createRule({
+      source: "KINDERGARTEN",
+      dailyRate: null,
+      monthlyRate: "45000.00",
+      dependsOnMeals: false,
+    });
+    await runMonth("STATE");
+    await runMonth("PARENT");
+    await runMonth("KINDERGARTEN");
+
+    const res = await authed(request(app.getHttpServer()).get(url()), accountantA);
+
+    expect(res.status).toBe(200);
+    const by = Object.fromEntries(res.body.sources.map((s: { source: string }) => [s.source, s]));
+    expect(by.STATE).toMatchObject({ children: 1, daysFed: 3 });
+    expect(Number(by.STATE.amount)).toBe(9600);
+    expect(Number(by.PARENT.amount)).toBe(4500);
+    expect(Number(by.KINDERGARTEN.amount)).toBe(0);
+    expect(Number(by.OTHER.amount)).toBe(0);
+    expect(Number(res.body.total)).toBe(14100);
+  });
+
+  it("a teacher gets 404", async () => {
+    expect((await authed(request(app.getHttpServer()).get(url()), teacherA)).status).toBe(404);
+  });
+
+  it("a guardian gets 404", async () => {
+    expect((await authed(request(app.getHttpServer()).get(url()), parentA)).status).toBe(404);
+  });
+
+  it("an administrator of another kindergarten gets 404", async () => {
+    expect((await authed(request(app.getHttpServer()).get(url()), adminB)).status).toBe(404);
+  });
+});

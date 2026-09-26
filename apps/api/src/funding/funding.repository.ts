@@ -286,6 +286,27 @@ export class FundingRepository {
     });
   }
 
+  /**
+   * The month's calculation rows priced by a meal rule — `нэмэлт.md` §3.
+   *
+   * ★ Filtered on the **rule**, not the source. A source can carry both a
+   * per-meal tariff and a monthly flat fee; only the first is a meal cost, and
+   * the rule's `dependsOnMeals` is the one place that says which is which.
+   *
+   * Bounded by construction: one row per child per source per month.
+   */
+  mealCalculations(kindergartenId: string, month: Date) {
+    return this.prisma.fundingCalculation.findMany({
+      where: {
+        kindergartenId,
+        month,
+        deletedAt: null,
+        fundingRule: { dependsOnMeals: true },
+      },
+      select: { childId: true, source: true, daysFed: true, calculatedAmount: true },
+    });
+  }
+
   async findCalculation(id: string) {
     return this.prisma.fundingCalculation.findFirst({
       where: { id, deletedAt: null },

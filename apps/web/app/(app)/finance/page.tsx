@@ -30,6 +30,7 @@ import { useToast } from "@/components/ui/toast";
 import { FinanceDashboardPanel } from "@/components/finance/finance-dashboard";
 import { FinanceReports } from "@/components/finance/finance-reports";
 import { formatDate, capitalize } from "@/lib/format";
+import { MealCostBySource } from "@/components/finance/meal-cost";
 
 const rulesSchema = z.array(fundingRuleSchema);
 
@@ -264,6 +265,9 @@ function Finance() {
       {kindergartenId ? (
         <FinanceDashboardPanel kindergartenId={kindergartenId} month={month} />
       ) : null}
+
+      {/* `нэмэлт.md` §3 — the month's meal cost by source, from the same run. */}
+      {kindergartenId ? <MealCostBySource kindergartenId={kindergartenId} month={month} /> : null}
 
       {/*
         ★★★ Everything below opens closed.

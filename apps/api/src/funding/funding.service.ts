@@ -242,6 +242,42 @@ export class FundingService {
 
   // ── The monthly calculation — нэмэлт.md §6 ─────────────────────────────────
 
+  /**
+   * «Хоолны зардал эх үүсвэрээр» — `нэмэлт.md` §3, 2026-09-26.
+   *
+   * «Хүүхдийн тоо × хооллосон өдөр × тухайн үеийн тариф», split into the
+   * four sources the client named. Nothing is computed here that the month's
+   * calculation did not already compute: this sums its meal-priced rows, so
+   * the figure cannot disagree with the register it came from.
+   *
+   * ★ All four sources are always returned, a nought where nothing applies.
+   * A source missing from the answer reads as "not asked"; a nought reads as
+   * "asked, and nothing".
+   */
+  async mealCost(actor: Actor, kindergartenId: string, month: string) {
+    this.tenants.assertCanReadFinance(actor, kindergartenId);
+    const { first } = monthBounds(month);
+    const rows = await this.repo.mealCalculations(kindergartenId, first);
+
+    const sources = (["STATE", "PARENT", "KINDERGARTEN", "OTHER"] as const).map((source) => {
+      const mine = rows.filter((row) => row.source === source);
+      return {
+        source,
+        children: new Set(mine.map((row) => row.childId)).size,
+        daysFed: mine.reduce((sum, row) => sum + row.daysFed, 0),
+        amount: mine
+          .reduce((sum, row) => sum.plus(row.calculatedAmount.toString()), new Decimal(0))
+          .toFixed(2),
+      };
+    });
+
+    return {
+      month,
+      sources,
+      total: sources.reduce((sum, s) => sum.plus(s.amount), new Decimal(0)).toFixed(2),
+    };
+  }
+
   async listMonth(actor: Actor, kindergartenId: string, query: ListFundingQuery) {
     this.tenants.assertCanReadFinance(actor, kindergartenId);
 

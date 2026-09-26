@@ -5888,3 +5888,22 @@ export const esisCoverageMatrixSchema = z.object({
   ),
 });
 export type EsisCoverageMatrix = z.infer<typeof esisCoverageMatrixSchema>;
+
+/**
+ * `GET /kindergartens/:id/funding/meal-cost?month=` — `нэмэлт.md` §3, the
+ * month's meal cost split by source. All four sources, always; amounts are
+ * decimal strings like every other figure of money in this API.
+ */
+export const mealCostSchema = z.object({
+  month: z.string(),
+  sources: z.array(
+    z.object({
+      source: z.enum(["STATE", "PARENT", "KINDERGARTEN", "OTHER"]),
+      children: z.number(),
+      daysFed: z.number(),
+      amount: z.string(),
+    }),
+  ),
+  total: z.string(),
+});
+export type MealCost = z.infer<typeof mealCostSchema>;
