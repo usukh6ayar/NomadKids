@@ -151,11 +151,17 @@ export class EsisRepository {
    * ★★★ `groupBy` rather than reading the rows: this table grows without bound
    * and the question is two aggregates, not a list (§3.4).
    */
-  async countEsisCallsByService(kindergartenId: string) {
+  /**
+   * ★ Windowed by `since` — 2026-09-26. The matrix states its window in its
+   * header, and counting audit rows for all time while sync runs were counted
+   * for the window let a call from before the trial read as one inside it.
+   */
+  async countEsisCallsByService(kindergartenId: string, since: Date) {
     const rows = await this.prisma.auditLog.groupBy({
       by: ["objectId"],
       where: {
         kindergartenId,
+        createdAt: { gte: since },
         objectType: { in: ["EsisResource", "EsisWriteRequest", "EsisStaffRoster", "EsisSyncRun"] },
         objectId: { not: null },
       },

@@ -5842,3 +5842,47 @@ export const groupReportSchema = z.object({
   }),
 });
 export type GroupReport = z.infer<typeof groupReportSchema>;
+
+/**
+ * `GET /kindergartens/:id/esis/coverage` — the ministry's matrix, one row per
+ * granted service with how it was used or why it was not. Built on the API by
+ * `buildEsisCoverage`; this is only its shape.
+ */
+export const esisCoverageStateSchema = z.enum([
+  "IN_USE",
+  "WIRED_UNUSED",
+  "DISPOSITIONED",
+  "UNDECIDED",
+  "SUPERSEDED",
+]);
+export type EsisCoverageState = z.infer<typeof esisCoverageStateSchema>;
+
+export const esisCoverageMatrixSchema = z.object({
+  from: z.string(),
+  to: z.string(),
+  totals: z.object({
+    granted: z.number(),
+    wired: z.number(),
+    inUse: z.number(),
+    wiredUnused: z.number(),
+    dispositioned: z.number(),
+    superseded: z.number(),
+    undecided: z.number(),
+  }),
+  rows: z.array(
+    z.object({
+      apiId: z.number(),
+      name: z.string(),
+      serviceKey: z.string().nullable(),
+      method: z.string().nullable(),
+      path: z.string().nullable(),
+      purpose: z.string(),
+      trigger: z.string(),
+      lastCalledAt: z.string().nullable(),
+      calls: z.number(),
+      state: esisCoverageStateSchema,
+      reason: z.string().nullable(),
+    }),
+  ),
+});
+export type EsisCoverageMatrix = z.infer<typeof esisCoverageMatrixSchema>;
