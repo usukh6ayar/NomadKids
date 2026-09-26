@@ -1083,8 +1083,11 @@ model Child {
   /// `personId` → `Child` before `canAccessChild` runs.
   ///
   /// ★★ Nullable, and unset means *unproven*, never *absent*. It is written
-  /// only where the product has already established the match against the live
-  /// roster by name and date of birth — `resolveAttendanceDrafts`. A child
+  /// only where the match is established against the ministry's own roster for
+  /// this institution: `resolveAttendanceDrafts` by name and date of birth, and
+  /// the roster import (`EsisRosterImportService`) — which creates a child with
+  /// it, or adopts an unlinked child of this kindergarten when **exactly one**
+  /// fits name and date of birth. Two candidates link nobody. A child
   /// without it is refused the per-child ESIS reads for a teacher rather than
   /// waved through, because "we do not know whose record this is" is not a
   /// reason to show it.

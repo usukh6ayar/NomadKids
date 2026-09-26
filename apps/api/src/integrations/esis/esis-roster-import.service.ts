@@ -59,7 +59,8 @@ export interface RosterImportOutcome {
  *
  * ★★★ **Idempotent by two stable keys.** Groups match on `esisGroupId` and
  * fall back to name-within-the-year; children match on `esisPersonId`, which
- * `@@unique([kindergartenId, esisPersonId])` guarantees is one row. Running
+ * `@@unique([kindergartenId, esisPersonId])` guarantees is one row, and fall
+ * back to the one unlinked child with the same name and date of birth. Running
  * this twice changes nothing the first run did not — which matters because the
  * client asked for no preview step, so repeatability is the only safety
  * property the feature has.
@@ -222,6 +223,11 @@ export class EsisRosterImportService {
         outcome.children.adopted += 1;
         childId = candidates[0]!.id;
       } else {
+        /*
+         * ★ Also reached when `linkChild` lost a race to a concurrent import.
+         * The create then hits `@@unique([kindergartenId, esisPersonId])` and
+         * fails loudly, which is the right outcome — rare enough not to handle.
+         */
         const created = await this.repo.createChild({
           kindergartenId,
           esisPersonId,
