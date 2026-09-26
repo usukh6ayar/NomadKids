@@ -23,7 +23,7 @@ import { SavePostPhoto } from "@/components/notifications/save-post-photo";
 import { LikeButton } from "@/components/notifications/like-button";
 import { ChildAvatar, MediaThumb } from "@/components/media/media-image";
 import { useSession } from "@/lib/auth/session";
-import { useSelectedChild } from "@/lib/selected-child";
+import { useSelectedChildIfAny } from "@/lib/selected-child";
 import {
   CalendarRange,
   PenLine,
@@ -66,7 +66,8 @@ const activeSurveysSchema = z.array(surveySchema);
  */
 export default function NotificationsPage() {
   const { hasRole, session } = useSession();
-  const { selectedChildId } = useSelectedChild();
+  // `IfAny`: the cook's and the accountant's shells have no provider.
+  const selectedChildId = useSelectedChildIfAny()?.selectedChildId ?? null;
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
   /*
    * ★ Added 2026-09-08, when COOK started reading this board too

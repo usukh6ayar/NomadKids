@@ -197,7 +197,14 @@ function Finance() {
                 Аудит
               </Link>
             </Button>
-            <Field label="Сар">
+            {/*
+              ★ Labels for screen readers only — 2026-09-26. Shown, they sat
+              above the two fields and pushed both 29px below the title line
+              the rest of the header is centred on. Each value names itself
+              («2026 оны 9-р сар», «Бүх эх үүсвэр»), so nothing is lost to a
+              sighted reader.
+            */}
+            <Field label="Сар" labelHidden>
               {({ id }) => (
                 <MonthSelect id={id} value={month} onValueChange={setMonth} className="w-[170px]" />
               )}
@@ -208,7 +215,7 @@ function Finance() {
               the "Энэ сарын тооцоо" card, where it looked like a filter and
               behaved like an argument to one button.
             */}
-            <Field label="Эх үүсвэр">
+            <Field label="Эх үүсвэр" labelHidden>
               {({ id }) => (
                 <Select
                   id={id}
@@ -216,7 +223,7 @@ function Finance() {
                   onChange={(event) => setSource(event.target.value as SourceFilter)}
                   className="w-[170px]"
                 >
-                  <option value="ALL">Бүгд</option>
+                  <option value="ALL">Бүх эх үүсвэр</option>
                   {Object.entries(FUNDING_SOURCE_LABEL).map(([value, label]) => (
                     <option key={value} value={value}>
                       {label}

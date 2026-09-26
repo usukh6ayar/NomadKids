@@ -69,3 +69,16 @@ export function useSelectedChild(): SelectedChildContextValue {
   if (!ctx) throw new Error("useSelectedChild must be used within SelectedChildProvider");
   return ctx;
 }
+
+/**
+ * The selected child where there is one, `null` where the shell has none.
+ *
+ * ★ For a screen shared with the cook, the accountant or the platform
+ * operator — 2026-09-26. `(app)/layout.tsx` returns their shells before
+ * `SelectedChildProvider`, so `useSelectedChild()` throws there; the notice
+ * board called it and crashed for all three. A screen that is only ever a
+ * family's keeps the throwing hook, which catches a misplaced provider.
+ */
+export function useSelectedChildIfAny(): SelectedChildContextValue | null {
+  return useContext(SelectedChildContext);
+}

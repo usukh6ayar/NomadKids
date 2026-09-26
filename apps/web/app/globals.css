@@ -941,12 +941,14 @@ fieldset {
 }
 
 /*
- * ★ A page header inside a band adds no margin of its own — 2026-09-26.
+ * ★ A page header inside a band — or any column with its own gap — adds no
+ * margin of its own — 2026-09-26.
  * `PageHeader` carries `mb-4 lg:mb-5` for screens that stack it by hand; in a
  * `page-band` that margin stacked on the band's gap, and the title stood 52px
  * above the first module when the modules themselves were 24–32px apart. The
  * band's gap is the one rhythm, so the header takes that and nothing more.
  */
-.page-band > [data-ui="page-header"] {
+.page-band > [data-ui="page-header"],
+.flex-col > [data-ui="page-header"] {
   margin-bottom: 0;
 }

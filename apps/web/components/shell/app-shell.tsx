@@ -354,7 +354,7 @@ export function PageHeader({
   return (
     <div
       data-ui="page-header"
-      className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 lg:mb-5"
+      className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-3 lg:mb-5"
     >
       {/* `icon` remains a compatibility prop, but the compact header does not
           spend a second visual slot on decorative artwork. */}
@@ -364,35 +364,46 @@ export function PageHeader({
         and on a phone «Бүлгүүд» was set one letter per line. At 12rem the row
         wraps instead and the actions drop under the title.
       */}
-      <div className="flex min-w-[min(100%,12rem)] flex-1 items-center gap-3">
-        {resolvedBackHref ? <BackButton href={resolvedBackHref} /> : null}
-        <div className="min-w-0">
+      {/*
+        ★ One 48px title line, and everything else hangs off it — 2026-09-26,
+        the client asking that nothing sit above or below the line it belongs
+        on («x тэнхлэгийн дагуу … дээш доошоо орохгүй»).
+
+        Буцах and the h1 share that line, centred on it. The lede and the chips
+        sit under it, indented to where the title starts (48px button + 12px
+        gap), and the actions on the right are centred on the same 48px line —
+        so a lede or a row of chips under the title no longer drags the back
+        button and the actions down to the middle of a taller block, which is
+        what measured 13–30px off on /reports, /surveys and /finance.
+      */}
+      <div className="min-w-[min(100%,12rem)] flex-1">
+        <div className="flex min-h-12 items-center gap-3">
+          {resolvedBackHref ? <BackButton href={resolvedBackHref} /> : null}
           <h1
             className={cn(
-              "font-semibold leading-heading tracking-[-0.02em] text-ink",
+              "min-w-0 font-semibold leading-heading tracking-[-0.02em] text-ink",
               compact ? "text-title sm:text-display" : "text-display",
             )}
           >
             {title}
           </h1>
-
-          {lede ? (
-            <div
-              className={cn(
-                "text-muted",
-                compact ? "mt-0.5 text-caption sm:mt-1 sm:text-body" : "mt-1 text-body",
-              )}
-            >
-              {lede}
-            </div>
-          ) : null}
-
-          {/*
-          `flex-wrap`, because a row of chips at 375px is the width that
-          decides how many fit — not a number chosen here.
-        */}
-          {meta ? <div className="mt-2 flex flex-wrap items-center gap-1.5">{meta}</div> : null}
         </div>
+
+        {lede || meta ? (
+          <div className={cn(resolvedBackHref && "pl-15")}>
+            {lede ? (
+              <div
+                className={cn(
+                  "text-muted",
+                  compact ? "mt-0.5 text-caption sm:mt-1 sm:text-body" : "mt-1 text-body",
+                )}
+              >
+                {lede}
+              </div>
+            ) : null}
+            {meta ? <div className="mt-2 flex flex-wrap items-center gap-1.5">{meta}</div> : null}
+          </div>
+        ) : null}
       </div>
 
       {/*
@@ -428,7 +439,7 @@ export function PageHeader({
       {actions ? (
         <div
           className={cn(
-            "flex max-w-full shrink-0 flex-wrap items-center gap-2",
+            "flex min-h-12 max-w-full shrink-0 flex-wrap items-center gap-2",
             compact ? "basis-full justify-start sm:basis-auto sm:justify-end" : "justify-end",
           )}
         >

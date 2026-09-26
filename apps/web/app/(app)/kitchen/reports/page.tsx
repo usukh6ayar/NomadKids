@@ -68,8 +68,14 @@ function KitchenReports() {
       <PageHeader
         title="Гал тогооны тайлан"
         actions={
-          <div className="flex flex-wrap items-end gap-3">
-            <Field label="Эхлэх">
+          /*
+            ★ A range, «эхлэх — дуусах», on the title's line — 2026-09-26.
+            With visible labels above them the two dates sat 29px below the
+            title the rest of the header is centred on. The labels stay for
+            screen readers; the dash between the fields says what they are.
+          */
+          <div className="flex flex-wrap items-center gap-2">
+            <Field label="Эхлэх" labelHidden>
               {({ id }) => (
                 <Input
                   id={id}
@@ -80,7 +86,10 @@ function KitchenReports() {
                 />
               )}
             </Field>
-            <Field label="Дуустал">
+            <span aria-hidden="true" className="text-muted">
+              —
+            </span>
+            <Field label="Дуустал" labelHidden>
               {({ id }) => (
                 <Input
                   id={id}
