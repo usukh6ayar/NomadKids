@@ -5,6 +5,7 @@ import { createTestApp } from "./support/app";
 import { resetData, testDb, uniq } from "./support/db";
 import {
   authed,
+  createMembership,
   createScenario,
   createUser,
   login,
@@ -433,7 +434,82 @@ describe("GET /platform/stats", () => {
     // resetData() truncates everything, so this is exactly the two
     // createScenario() fixtures: one child, one group, one admin + one
     // teacher, one parent, each.
-    expect(res.body).toEqual({ kindergartens: 2, groups: 2, children: 2, staff: 4, guardians: 2 });
+    /*
+     * ★ The totals stay exact. `esis` is asserted separately below rather than
+     * folded in here: this case exists to pin that the operator's page counts
+     * *every* tenant, and burying six more numbers in it would make a failure
+     * say "stats changed" instead of "the totals are wrong".
+     */
+    expect(res.body).toMatchObject({
+      kindergartens: 2,
+      groups: 2,
+      children: 2,
+      staff: 4,
+      guardians: 2,
+    });
+  });
+
+  /*
+   * ЭСИС-тэй тулгалт, platform-wide — 2026-09-24, at the client's request.
+   *
+   * ★ **Sums across tenants, and no call to the ministry.** `EsisStaffRoster`
+   * is refilled nightly per kindergarten, so an operator with twenty tenants
+   * still costs one query; reading each live would be twenty outbound requests
+   * on a page open.
+   */
+  it("★ sums the ministry's staff roster across every kindergarten", async () => {
+    await db.esisStaffRoster.createMany({
+      data: [
+        { kindergartenId: a.kindergarten.id, esisPersonId: "900001", registerNumber: "УБ00000001" },
+        { kindergartenId: a.kindergarten.id, esisPersonId: "900002", registerNumber: "УБ00000002" },
+        { kindergartenId: b.kindergarten.id, esisPersonId: "900003", registerNumber: "УБ00000003" },
+      ].map((row) => ({ ...row, lastName: "Ганболд", firstName: "Багш", jobCode: "2342-13" })),
+    });
+
+    const res = await request(app.getHttpServer())
+      .get("/v1/platform/stats")
+      .set("Cookie", superadmin.cookies);
+
+    expect(res.body.esis.staffInRoster).toBe(3);
+  });
+
+  /*
+   * ★★ `connected` counts kindergartens carrying an `esisInstitutionId` — a
+   * fact this database holds. It deliberately does not claim the ministry is
+   * answering today, which no stored column can know.
+   */
+  it("★ counts how many kindergartens are mapped to an institution", async () => {
+    const before = await request(app.getHttpServer())
+      .get("/v1/platform/stats")
+      .set("Cookie", superadmin.cookies);
+    expect(before.body.esis.connected).toBe(0);
+
+    await db.kindergarten.update({
+      where: { id: a.kindergarten.id },
+      data: { esisInstitutionId: "42778" },
+    });
+
+    const after = await request(app.getHttpServer())
+      .get("/v1/platform/stats")
+      .set("Cookie", superadmin.cookies);
+    expect(after.body.esis.connected).toBe(1);
+    expect(after.body.kindergartens).toBe(2);
+  });
+
+  /*
+   * ★ `staffRegistered` counts every staff role; `staff` beside it counts
+   * `TEACHER` and `ADMIN` only. A cook is staff, and the pair is what makes
+   * the older tile's narrowing visible rather than silently wrong.
+   */
+  it("★ counts a cook as staff where the older total does not", async () => {
+    const cook = await createUser({ username: uniq("plat-cook") });
+    await createMembership(cook.id, a.kindergarten.id, "COOK");
+
+    const res = await request(app.getHttpServer())
+      .get("/v1/platform/stats")
+      .set("Cookie", superadmin.cookies);
+
+    expect(res.body.esis.staffRegistered).toBe(res.body.staff + 1);
   });
 
   it.each([

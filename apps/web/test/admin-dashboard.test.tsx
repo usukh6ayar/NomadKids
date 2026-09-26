@@ -37,6 +37,20 @@ const ADMIN_DASHBOARD: AdminDashboard = {
     documents: { count: 9, totalBytes: 1024 },
     reports: { total: 2, done: 2, failed: 0 },
   },
+  /*
+   * ЭСИС-тэй тулгалт. The ministry lists nine staff, seven can sign in, and
+   * five of those seven are tied to their ESIS person — so two accounts are
+   * the to-do this card exists to surface.
+   */
+  esis: {
+    staffInRoster: 9,
+    staffRegistered: 7,
+    staffLinked: 5,
+    childrenLinked: 20,
+    childrenTotal: 24,
+    groupsLinked: 3,
+    rosterSyncedAt: "2026-09-24T02:00:00.000Z",
+  },
 };
 
 /**
@@ -75,6 +89,75 @@ function cardLink(label: string): HTMLAnchorElement | null {
 beforeEach(() => {
   vi.clearAllMocks();
   setParams({});
+});
+
+describe("ЭСИС-тэй тулгалт", () => {
+  /*
+   * ★ The client's ask, 2026-09-24: "esis ees irsen niit heden bagsh ajilchid
+   * suraltsagch baigaa tood haruulna … systemd burtgegdsen ni hed baigaag bas
+   * harj boldog baih." Both numbers, side by side.
+   */
+  it("shows the ministry's staff count beside the registered one", async () => {
+    renderAdminDashboard();
+
+    const card = (await screen.findByText("ЭСИС-тэй тулгалт")).closest("[data-ui='card']")!;
+    expect(within(card as HTMLElement).getByText("9")).toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText("7")).toBeInTheDocument();
+  });
+
+  /*
+   * ★★ Accounts with no ESIS person are the reason a human appears twice on
+   * the staff screen, so the card names the number and links to the fix rather
+   * than leaving a director to notice the duplicates themselves.
+   */
+  it("names how many accounts are not linked yet", async () => {
+    renderAdminDashboard();
+
+    const card = (await screen.findByText("ЭСИС-тэй тулгалт")).closest("[data-ui='card']")!;
+    expect(within(card as HTMLElement).getByText(/2 бүртгэл/)).toBeInTheDocument();
+  });
+
+  it("says so when every account is linked", async () => {
+    renderAdminDashboard({
+      ...ADMIN_DASHBOARD,
+      esis: { ...ADMIN_DASHBOARD.esis!, staffRegistered: 5, staffLinked: 5 },
+    });
+
+    expect(await screen.findByText(/Бүх бүртгэл ЭСИС-ийн хүнтэй холбогдсон/)).toBeInTheDocument();
+  });
+
+  /*
+   * ★ Nothing synced is not "the ministry has no staff". A table of zeroes
+   * would claim the first; the sentence says which it is and where to press.
+   */
+  it("tells an unconnected kindergarten what to do instead of showing zeroes", async () => {
+    renderAdminDashboard({
+      ...ADMIN_DASHBOARD,
+      esis: {
+        staffInRoster: 0,
+        staffRegistered: 3,
+        staffLinked: 0,
+        childrenLinked: 0,
+        childrenTotal: 24,
+        groupsLinked: 0,
+        rosterSyncedAt: null,
+      },
+    });
+
+    expect(await screen.findByText(/ЭСИС-ээс мэдээлэл татаагүй байна/)).toBeInTheDocument();
+  });
+
+  /*
+   * ★★ An older API that does not send the block must not crash the screen —
+   * `esis` is `.nullish()` in the contract for exactly that.
+   */
+  it("draws nothing when the API sends no ESIS block", async () => {
+    renderAdminDashboard({ ...ADMIN_DASHBOARD, esis: null });
+
+    // Wait for the dashboard proper before asserting on what is absent.
+    await screen.findByText("Нийт суралцагч");
+    expect(screen.queryByText("ЭСИС-тэй тулгалт")).toBeNull();
+  });
 });
 
 describe("the administration dashboard", () => {

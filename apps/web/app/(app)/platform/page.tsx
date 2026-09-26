@@ -117,6 +117,53 @@ function Platform() {
         </section>
       ) : null}
 
+      {/*
+        ★ ЭСИС-тэй тулгалт, platform-wide — 2026-09-24, the same request that
+        put it on the director's dashboard: how much of this came from the
+        ministry, and how much of it can actually sign in.
+
+        ★★ Local sums, no outbound call. `EsisStaffRoster` holds every tenant's
+        staff list already; reading each kindergarten live would be one request
+        per tenant on a page open.
+
+        ★★★ The children and group figures count records carrying a ministry
+        id — provenance, not ESIS's own totals, which are not stored. Labelled
+        as such rather than presented as the ministry's number.
+      */}
+      {stats.data?.esis ? (
+        <section
+          aria-label="ЭСИС-тэй тулгалт"
+          className="rounded-card border border-border bg-white p-4 shadow-sm sm:p-5"
+        >
+          <h2 className="text-body font-semibold text-ink">ЭСИС-тэй тулгалт</h2>
+          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 xl:grid-cols-5">
+            <PlatformEsisFigure
+              label="Холбогдсон цэцэрлэг"
+              value={`${stats.data.esis.connected} / ${stats.data.kindergartens}`}
+            />
+            <PlatformEsisFigure
+              label="ЭСИС-д бүртгэлтэй ажилтан"
+              value={stats.data.esis.staffInRoster}
+            />
+            <PlatformEsisFigure
+              label="Системд бүртгэлтэй ажилтан"
+              value={stats.data.esis.staffRegistered}
+            />
+            <PlatformEsisFigure
+              label="ЭСИС-тэй холбогдсон бүртгэл"
+              value={`${stats.data.esis.staffLinked} / ${stats.data.esis.staffRegistered}`}
+              /* The one figure that is a backlog: an unlinked account is a
+                 person the staff directory cannot match to their ESIS row. */
+              warn={stats.data.esis.staffLinked < stats.data.esis.staffRegistered}
+            />
+            <PlatformEsisFigure
+              label="ЭСИС-ээс ирсэн суралцагч"
+              value={`${stats.data.esis.childrenLinked} / ${stats.data.children}`}
+            />
+          </dl>
+        </section>
+      ) : null}
+
       <section aria-label="Цэцэрлэгийн жагсаалт" className="flex flex-col gap-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -221,6 +268,30 @@ function Platform() {
       </section>
 
       {creating ? <RegisterKindergartenDialog onClose={() => setCreating(false)} /> : null}
+    </div>
+  );
+}
+
+/** One figure in the platform's ESIS strip. */
+function PlatformEsisFigure({
+  label,
+  value,
+  warn = false,
+}: {
+  label: string;
+  value: string | number;
+  warn?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-caption text-muted">{label}</dt>
+      <dd
+        className={`mt-0.5 truncate text-lead font-semibold tabular-nums ${
+          warn ? "text-sun-ink" : "text-ink"
+        }`}
+      >
+        {value}
+      </dd>
     </div>
   );
 }

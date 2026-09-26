@@ -362,6 +362,50 @@ export class PlatformRepository {
 
     return { kindergartens, groups, children, staff, guardians };
   }
+
+  /**
+   * The same ESIS comparison the director's dashboard makes, platform-wide.
+   *
+   * ★ **Sums, not an ESIS call per kindergarten.** `EsisStaffRoster` holds the
+   * ministry's staff list for every tenant, refilled nightly by tier 2, so an
+   * operator looking at twenty kindergartens still costs one query. Reading
+   * each one live would be twenty outbound requests on a page open, which is
+   * the shape §3.4 forbids pointed at somebody else's server.
+   *
+   * ★★ `connected` is deliberately "how many kindergartens have an
+   * `esisInstitutionId`", not "how many are working". A mapping is a fact this
+   * database holds; whether the ministry answers today is not, and a dashboard
+   * that claimed the second would be wrong on the day ESIS is down.
+   */
+  async platformEsisTotals() {
+    const [staffInRoster, staffRegistered, staffLinked, childrenLinked, groupsLinked, connected] =
+      await Promise.all([
+        this.prisma.esisStaffRoster.count(),
+        this.prisma.membership.count({
+          where: {
+            deletedAt: null,
+            isActive: true,
+            role: { not: "PARENT" },
+            user: { deletedAt: null },
+          },
+        }),
+        this.prisma.membership.count({
+          where: {
+            deletedAt: null,
+            isActive: true,
+            role: { not: "PARENT" },
+            user: { deletedAt: null, esisPersonId: { not: null } },
+          },
+        }),
+        this.prisma.child.count({ where: { deletedAt: null, esisPersonId: { not: null } } }),
+        this.prisma.group.count({ where: { deletedAt: null, esisGroupId: { not: null } } }),
+        this.prisma.kindergarten.count({
+          where: { deletedAt: null, esisInstitutionId: { not: null } },
+        }),
+      ]);
+
+    return { staffInRoster, staffRegistered, staffLinked, childrenLinked, groupsLinked, connected };
+  }
 }
 
 /** `PlatformRepository.createAdminForExisting`. */

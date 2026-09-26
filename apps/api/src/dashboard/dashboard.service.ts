@@ -210,6 +210,7 @@ export class DashboardService {
       childrenAMonthAgo,
       attendanceByGroup,
       domains,
+      esis,
     ] = await Promise.all([
       this.repo.kindergartenCounts(kindergartenIds),
       term ? this.repo.assessmentCoverage(kindergartenIds, term.id) : Promise.resolve([]),
@@ -220,6 +221,7 @@ export class DashboardService {
       this.repo.childrenEnrolledOn(kindergartenIds, monthAgo),
       this.repo.attendanceByGroup(kindergartenIds, monthAgo, today),
       term ? this.repo.domainAveragesByGroup(kindergartenIds, term.id) : Promise.resolve([]),
+      this.repo.esisCounts(kindergartenIds),
     ]);
 
     return {
@@ -240,6 +242,15 @@ export class DashboardService {
       attendanceByGroup,
       /** Empty without a current term — an assessment belongs to one. */
       domainAveragesByGroup: domains,
+      /**
+       * What the ministry lists against what this system holds.
+       *
+       * ★ Local queries only — see `esisCounts`. It joins the `Promise.all`
+       * above rather than being fetched by the screen separately, because it
+       * is the same question the counts beside it answer and a second request
+       * would let the two disagree for as long as one was in flight.
+       */
+      esis,
     };
   }
 

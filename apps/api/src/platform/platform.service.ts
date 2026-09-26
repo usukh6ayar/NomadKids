@@ -225,7 +225,17 @@ export class PlatformService {
   /** RFP §12.2 — system-wide totals for the platform operator's dashboard. */
   async stats(actor: Actor) {
     this.platform.assertSuperAdmin(actor);
-    return this.repo.platformTotals();
+    /*
+     * ★ One round trip for both halves. The ESIS figures answer the same
+     * question the totals do — "how much of this is real" — and fetching them
+     * separately would let an operator watch the two disagree while one was
+     * still in flight.
+     */
+    const [totals, esis] = await Promise.all([
+      this.repo.platformTotals(),
+      this.repo.platformEsisTotals(),
+    ]);
+    return { ...totals, esis };
   }
 
   async list(actor: Actor, query: ListPlatformKindergartensQuery) {
