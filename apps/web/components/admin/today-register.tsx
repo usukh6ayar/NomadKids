@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { dailyAttendanceSchema } from "@kinder/contracts";
+import { dailyAttendanceSchema, localDate } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
@@ -34,7 +34,7 @@ import { TableShell, Td, Th } from "@/components/ui/table";
  */
 export function TodayRegister() {
   const { primaryKindergartenId } = useSession();
-  const day = new Date().toISOString().slice(0, 10);
+  const day = localDate();
   const filters = { from: day, to: day };
 
   const daily = useQuery({

@@ -1,3 +1,4 @@
+import { localDate } from "@kinder/contracts";
 import { screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { DailyAttendance, DailyAttendanceRow } from "@kinder/contracts";
@@ -14,7 +15,7 @@ import { TodayRegister } from "@/components/admin/today-register";
  */
 
 const KINDERGARTEN = "33333333-3333-4333-8333-333333333333";
-const today = new Date().toISOString().slice(0, 10);
+const today = localDate();
 
 function row(overrides: Partial<DailyAttendanceRow>): DailyAttendanceRow {
   return {

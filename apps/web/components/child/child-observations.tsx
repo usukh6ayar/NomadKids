@@ -15,6 +15,7 @@ import {
   observationTypeSchema,
   paginated,
   termSchema,
+  localDate,
 } from "@kinder/contracts";
 import { z } from "zod";
 import { get, mutate } from "@/lib/api/browser";
@@ -248,7 +249,7 @@ export function groupByQuarter(
 
   if (dated.length === 0) return [];
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   const buckets = new Map<string, Observation[]>();
   const other: Observation[] = [];
 

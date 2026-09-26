@@ -20,6 +20,7 @@ import {
   menuDayWithWarningsSchema,
   stockLevelSchema,
   type CookDashboard,
+  localDate,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
@@ -39,7 +40,7 @@ const weekSchema = z.array(menuDayWithWarningsSchema);
 const levelsSchema = z.array(stockLevelSchema);
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localDate();
 }
 
 /**

@@ -16,6 +16,7 @@ import {
   paginated,
   termReportSchema,
   termSchema,
+  localDate,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
@@ -176,7 +177,7 @@ function TermReport({ childId }: { childId: string }) {
   useEffect(() => {
     if (from || ordered.length === 0) return;
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDate();
     const current = ordered.find(
       (row) => (row.startsOn ?? "") <= today && today <= (row.endsOn ?? ""),
     );

@@ -10,6 +10,7 @@ import {
   STOCK_DIRECTION_LABEL,
   stockLevelSchema,
   stockMovementSchema,
+  localDate,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
@@ -177,7 +178,7 @@ function AdjustmentDialog({
   const toast = useToast();
   const queryClient = useQueryClient();
   const [ingredientId, setIngredientId] = useState("");
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => localDate());
   const [quantity, setQuantity] = useState("");
   const [note, setNote] = useState("");
 

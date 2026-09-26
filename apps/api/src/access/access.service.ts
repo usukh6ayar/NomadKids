@@ -1,3 +1,4 @@
+import { localDate } from "@kinder/contracts";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { AuditRepository } from "../audit/audit.repository";
 import { ChildAccessService } from "../authz/child-access.service";
@@ -152,8 +153,10 @@ export class AccessService {
   }
 }
 
-/** Midnight UTC today, to compare against a DATE column. */
+/**
+ * Today's DATE-column key: UTC midnight of Ulaanbaatar's calendar day. The
+ * UTC date alone is yesterday until 08:00 local.
+ */
 function today(): Date {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  return new Date(`${localDate()}T00:00:00.000Z`);
 }

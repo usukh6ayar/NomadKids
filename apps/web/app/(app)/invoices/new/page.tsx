@@ -12,6 +12,7 @@ import {
   groupListItemSchema,
   paginated,
   type InvoiceLineType,
+  localDate,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
@@ -47,7 +48,7 @@ function emptyLine(type: InvoiceLineType = "TUITION"): DraftLine {
 }
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localDate();
 }
 
 function thisMonth(): string {
