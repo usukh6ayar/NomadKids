@@ -11,6 +11,7 @@ import {
   paginated,
   supplierSchema,
   type Ingredient,
+  localDate,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
@@ -178,7 +179,7 @@ function CreateOrderDialog({
   const toast = useToast();
   const queryClient = useQueryClient();
   const [supplierId, setSupplierId] = useState("");
-  const [orderDate, setOrderDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [orderDate, setOrderDate] = useState(() => localDate());
   const [note, setNote] = useState("");
   const [lines, setLines] = useState<OrderLineDraft[]>([]);
 

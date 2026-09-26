@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Pencil, Plus } from "lucide-react";
 import { z } from "zod";
-import { schoolYearSchema, termSchema } from "@kinder/contracts";
+import { schoolYearSchema, termSchema, localDate } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
@@ -38,7 +38,7 @@ function isRunning(
   endsOn: string | null | undefined,
 ): boolean {
   if (!startsOn || !endsOn) return false;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   return startsOn.slice(0, 10) <= today && today <= endsOn.slice(0, 10);
 }
 

@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
-import { teacherDashboardSchema } from "@kinder/contracts";
+import { teacherDashboardSchema, localDate } from "@kinder/contracts";
 import { ClassBoardNotice } from "@/components/dashboard/class-board-notice";
 import { GenderRatio } from "@/components/dashboard/gender-ratio";
 import { MonthBirthdays } from "@/components/dashboard/month-birthdays";
@@ -25,7 +25,7 @@ import { TermProgress } from "@/components/dashboard/term-progress";
  * rather than by anything on this screen.
  */
 
-const TODAY = new Date().toISOString().slice(0, 10);
+const TODAY = localDate();
 const GROUP = { id: "44444444-4444-4444-8444-444444444444", name: "Бага бүлэг", ageBand: "3-4" };
 
 /**

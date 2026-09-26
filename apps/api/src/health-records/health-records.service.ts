@@ -1,3 +1,4 @@
+import { localDate } from "@kinder/contracts";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { AuditRepository } from "../audit/audit.repository";
 import { ChildAccessService } from "../authz/child-access.service";
@@ -427,5 +428,6 @@ function dateOnly(value: Date): string {
 }
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  // Ulaanbaatar's today — the UTC date is yesterday until 08:00 local.
+  return localDate();
 }

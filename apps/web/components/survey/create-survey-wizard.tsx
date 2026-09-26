@@ -32,6 +32,7 @@ import {
   type SurveyKind,
   type SurveyPeriod,
   type SurveyQuestionType,
+  localDate,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -316,7 +317,7 @@ export function CreateSurveyWizard({
   /* The active term is metadata, not another decision for the teacher. */
   useEffect(() => {
     if (termId || !terms.data?.length) return;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDate();
     const active =
       terms.data.find(
         (term) =>

@@ -9,6 +9,7 @@ import {
   paginated,
   type AttendanceJournal,
   type AttendanceJournalRow,
+  localDate,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -993,10 +994,9 @@ function StatusLegend() {
 }
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localDate();
 }
 
 function firstOfMonth(): string {
-  const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10);
+  return `${localDate().slice(0, 7)}-01`;
 }
