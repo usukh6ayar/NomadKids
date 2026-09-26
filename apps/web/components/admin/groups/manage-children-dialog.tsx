@@ -4,14 +4,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { UserMinus, UserPlus } from "lucide-react";
 import { z } from "zod";
-import { childSummarySchema, paginated } from "@kinder/contracts";
+import { MAX_PAGE_SIZE, childSummarySchema, paginated } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { fullName, shortName } from "@/lib/format";
 import { Button } from "@/components/ui/button";
-import { Field, Select } from "@/components/ui/field";
 import { SearchField } from "@/components/ui/search-field";
+import { SelectBox } from "@/components/ui/selection";
+import { useDebounced } from "@/lib/use-debounced";
 import { FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { useBackdropDismiss } from "@/components/ui/modal-overlay";
@@ -55,17 +56,38 @@ export function ManageChildrenDialog({
   const toast = useToast();
   const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
-  const [childId, setChildId] = useState("");
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const search = useDebounced(query.trim());
 
   /*
-   * ★ Every child in the kindergarten, not just this group's — the picker has
-   * to offer the ones who are somewhere else. 200 is past any kindergarten
-   * this product describes, and the same ceiling the roster behind it uses.
+   * ★ Two reads, not one of the whole kindergarten — 2026-09-26.
+   *
+   * This read every child in the kindergarten with `pageSize=200` and split
+   * them in the browser. The API caps a page at `MAX_PAGE_SIZE` (100) and
+   * refused it outright — «100-аас ихгүй байх ёстой» — and even at 100 a
+   * kindergarten of 656 (the ministry's SIS trial had one) would silently
+   * lose everyone past the first page from both lists.
+   *
+   * So the class is read by `groupId`, which is small by construction, and
+   * the children who could be added are found by the server's own name
+   * search: the first hundred matches of what was typed, which is the set a
+   * person is choosing from anyway.
    */
-  const all = useQuery({
-    queryKey: qk.children({ page: 1, pageSize: 200, scope: "group-picker" }),
-    queryFn: () => get("/children?page=1&pageSize=200", childrenSchema),
+  const members = useQuery({
+    queryKey: qk.children({ groupId, page: 1, pageSize: MAX_PAGE_SIZE, scope: "group-picker" }),
+    queryFn: () =>
+      get(`/children?groupId=${groupId}&page=1&pageSize=${MAX_PAGE_SIZE}`, childrenSchema),
+  });
+
+  const found = useQuery({
+    queryKey: qk.children({ page: 1, pageSize: MAX_PAGE_SIZE, q: search, scope: "group-picker" }),
+    queryFn: () =>
+      get(
+        `/children?page=1&pageSize=${MAX_PAGE_SIZE}${search ? `&q=${encodeURIComponent(search)}` : ""}`,
+        childrenSchema,
+      ),
+    placeholderData: (previous) => previous,
   });
 
   const refresh = () => {
@@ -74,18 +96,35 @@ export function ManageChildrenDialog({
     void queryClient.invalidateQueries({ queryKey: ["groups"] });
   };
 
+  /*
+   * ★ Several children, one press — 2026-09-26, the client: "бүлэгтээ
+   * хүүхдүүдээ сонгож хуваарилах хэрэгтэй". One `POST` per child, in turn:
+   * the endpoint moves a child who is enrolled elsewhere, and doing them one
+   * at a time means a failure names the child it stopped at rather than
+   * leaving an unknown half of a batch written.
+   */
   const add = useMutation({
-    mutationFn: () =>
-      mutate(`/children/${childId}/enrollments`, z.unknown(), {
-        method: "POST",
-        body: { groupId },
-      }),
-    onSuccess: () => {
-      toast.success("Суралцагчийг бүлэгт нэмлээ.");
-      setChildId("");
+    mutationFn: async (childIds: string[]) => {
+      let added = 0;
+      for (const id of childIds) {
+        await mutate(`/children/${id}/enrollments`, z.unknown(), {
+          method: "POST",
+          body: { groupId },
+        });
+        added += 1;
+      }
+      return added;
+    },
+    onSuccess: (added) => {
+      toast.success(`${added} суралцагчийг бүлэгт нэмлээ.`);
+      setPicked(new Set());
       refresh();
     },
-    onError: (error) => toast.error(errorMessage(error)),
+    onError: (error) => {
+      toast.error(errorMessage(error));
+      setPicked(new Set());
+      refresh();
+    },
   });
 
   const remove = useMutation({
@@ -108,47 +147,38 @@ export function ManageChildrenDialog({
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  const items = all.data?.items ?? [];
+  const inGroup = members.data?.items ?? [];
 
   /** The active enrolment tying a child to *this* group, if there is one. */
-  const enrolmentHere = (child: (typeof items)[number]) =>
+  const enrolmentHere = (child: (typeof inGroup)[number]) =>
     (child.enrollments ?? []).find(
       (enrolment) => enrolment.group?.id === groupId && enrolment.status === "ACTIVE",
     );
 
-  const inGroup = items.filter((child) => enrolmentHere(child));
-
   /*
-   * ★ Offered: everyone not already in this class. A child sitting in another
-   * group is deliberately **included** — moving them is the common case, and
-   * the label says where they are now so it is never a surprise.
+   * ★ Offered: everyone the search found who is not already in this class. A
+   * child sitting in another group is deliberately **included** — moving them
+   * is the common case, and the row says where they are now so it is never a
+   * surprise.
    */
-  const candidates = useMemo(() => {
-    const needle = query.trim().toLocaleLowerCase("mn-MN");
-    /*
-     * The group test is inlined rather than reusing `enrolmentHere`, so every
-     * value this memo reads is named in its own dependency list. A helper
-     * closing over `groupId` would make the list look complete while hiding
-     * one of them.
-     */
-    const here = (child: (typeof items)[number]) =>
-      (child.enrollments ?? []).some(
-        (enrolment) => enrolment.group?.id === groupId && enrolment.status === "ACTIVE",
-      );
+  const candidates = useMemo(
+    () =>
+      (found.data?.items ?? []).filter(
+        (child) =>
+          !(child.enrollments ?? []).some(
+            (enrolment) => enrolment.group?.id === groupId && enrolment.status === "ACTIVE",
+          ),
+      ),
+    [found.data, groupId],
+  );
 
-    return (
-      items
-        .filter((child) => !here(child))
-        .filter((child) => !needle || fullName(child).toLocaleLowerCase("mn-MN").includes(needle))
-        /*
-         * ★ Fifty. The select is a list somebody reads, and a kindergarten of
-         * two hundred children would make it a wall — the search above is how
-         * you reach the rest, which is why it sits over the picker rather than
-         * beside it.
-         */
-        .slice(0, 50)
-    );
-  }, [items, query, groupId]);
+  const toggle = (id: string) =>
+    setPicked((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const backdrop = useBackdropDismiss(onClose);
 
@@ -185,9 +215,9 @@ export function ManageChildrenDialog({
               <span className="text-caption tabular-nums text-muted">{inGroup.length}</span>
             </div>
 
-            {all.isLoading ? <LoadingState rows={2} /> : null}
+            {members.isLoading ? <LoadingState rows={2} /> : null}
 
-            {!all.isLoading && inGroup.length === 0 ? (
+            {!members.isLoading && inGroup.length === 0 ? (
               <p className="text-body text-muted">Энэ бүлэгт суралцагч бүртгэгдээгүй байна.</p>
             ) : (
               <ul className="flex max-h-[220px] flex-col gap-1.5 overflow-y-auto">
@@ -237,7 +267,7 @@ export function ManageChildrenDialog({
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              if (childId && !add.isPending) add.mutate();
+              if (picked.size > 0 && !add.isPending) add.mutate([...picked]);
             }}
             className="flex flex-col gap-3 border-t border-border pt-4"
           >
@@ -252,42 +282,59 @@ export function ManageChildrenDialog({
               onChange={setQuery}
             />
 
-            {candidates.length === 0 && all.data ? (
+            {found.isLoading ? <LoadingState rows={2} /> : null}
+
+            {candidates.length === 0 && found.data ? (
               <p className="rounded-control bg-sun px-3 py-2 text-body text-sun-ink">
-                {query.trim()
+                {search
                   ? "Хайлтад тохирох суралцагч олдсонгүй."
                   : "Нэмэх суралцагч алга. «Суралцагч» хэсгээс бүртгэнэ үү."}
               </p>
-            ) : (
-              <>
-                <Field label="Суралцагч">
-                  {({ id }) => (
-                    <Select id={id} value={childId} onChange={(e) => setChildId(e.target.value)}>
-                      <option value="">Сонгоно уу</option>
-                      {candidates.map((child) => {
-                        /*
-                          ★ Where they are now, in the label. Adding a child who
-                          is in another class *moves* them, and a director
-                          should read that before pressing rather than discover
-                          it from the other group's roster afterwards.
-                        */
-                        const current = (child.enrollments ?? []).find(
-                          (enrolment) => enrolment.status === "ACTIVE",
-                        );
-                        return (
-                          <option key={child.id} value={child.id}>
-                            {fullName(child)}
-                            {current?.group?.name ? ` — ${current.group.name}` : ""}
-                          </option>
-                        );
-                      })}
-                    </Select>
-                  )}
-                </Field>
+            ) : null}
 
-                <Button type="submit" disabled={!childId || add.isPending}>
+            {candidates.length > 0 ? (
+              <>
+                <ul className="flex max-h-[260px] flex-col gap-1 overflow-y-auto">
+                  {candidates.map((child) => {
+                    /*
+                      ★ Where they are now, on the row. Adding a child who is
+                      in another class *moves* them, and a director should read
+                      that before pressing rather than discover it from the
+                      other group's roster afterwards.
+                    */
+                    const current = (child.enrollments ?? []).find(
+                      (enrolment) => enrolment.status === "ACTIVE",
+                    );
+                    return (
+                      <li
+                        key={child.id}
+                        className="flex min-h-[44px] items-center gap-3 rounded-row px-2 hover:bg-canvas"
+                      >
+                        <SelectBox
+                          checked={picked.has(child.id)}
+                          onChange={() => toggle(child.id)}
+                          label={`${fullName(child)} — сонгох`}
+                        />
+                        <span className="min-w-0 flex-1 truncate text-body text-ink">
+                          {fullName(child)}
+                        </span>
+                        {current?.group?.name ? (
+                          <span className="shrink-0 text-caption text-muted">
+                            {current.group.name}
+                          </span>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+
+                <Button type="submit" disabled={picked.size === 0 || add.isPending}>
                   <UserPlus size={16} />
-                  {add.isPending ? "Нэмж байна…" : "Нэмэх"}
+                  {add.isPending
+                    ? "Нэмж байна…"
+                    : picked.size > 0
+                      ? `Нэмэх (${picked.size})`
+                      : "Нэмэх"}
                 </Button>
 
                 <p className="text-caption leading-relaxed text-muted">
@@ -295,7 +342,7 @@ export function ManageChildrenDialog({
                   бүртгэл нь түүх болж үлдэнэ.
                 </p>
               </>
-            )}
+            ) : null}
           </form>
 
           <div className="border-t border-border pt-4">

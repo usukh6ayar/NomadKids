@@ -10,6 +10,7 @@ import {
   childSummarySchema,
   groupWithTeachersSchema,
   paginated,
+  MAX_PAGE_SIZE,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
@@ -82,13 +83,17 @@ function GroupDetail() {
   /*
    * ★ The whole group, not the first twenty — 2026-09-20, the client asking
    * for "хүүхдийн жагсаалт хайлт шүүлтүүр байлгая хүснэгтээр". A search box
-   * over twenty of thirty rows is not a search box. 200 is past any group this
-   * product describes, so the list is complete in practice and the filtering
-   * below is over the whole of it.
+   * over twenty of thirty rows is not a search box.
+   *
+   * ★★ `MAX_PAGE_SIZE`, not 200 — 2026-09-26. The API caps every list at 100
+   * and answered this page with «100-аас ихгүй байх ёстой», so opening any
+   * group showed an error. A class of more than a hundred is not a class this
+   * product serves; the ministry's largest in the SIS trial was 45.
    */
   const roster = useQuery({
-    queryKey: qk.children({ groupId, page: 1, pageSize: 200 }),
-    queryFn: () => get(`/children?groupId=${groupId}&page=1&pageSize=200`, childrenSchema),
+    queryKey: qk.children({ groupId, page: 1, pageSize: MAX_PAGE_SIZE }),
+    queryFn: () =>
+      get(`/children?groupId=${groupId}&page=1&pageSize=${MAX_PAGE_SIZE}`, childrenSchema),
   });
 
   const [query, setQuery] = useState("");
