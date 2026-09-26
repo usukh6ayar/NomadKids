@@ -1,6 +1,7 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MAX_PAGE_SIZE } from "@kinder/contracts";
 import { renderWithProviders, sessionFor, setParams, stubApi } from "./support/render";
 import GroupDetailPage from "@/app/(app)/groups/[groupId]/page";
 
@@ -375,6 +376,79 @@ describe("/groups/[groupId]", () => {
     const call = api.calls.find((c) => c.url.startsWith("/enrollments/"));
     expect(call?.method).toBe("PATCH");
     expect(call?.body).toEqual({ status: "ENDED" });
+  });
+
+  /*
+   * ★ **Never past the API's ceiling** — 2026-09-26. The screen and the
+   * dialog both asked `/children` for `pageSize=200`; the API caps it at
+   * `MAX_PAGE_SIZE` (100) and answered «100-аас ихгүй байх ёстой», so a
+   * director clicking a group got an error instead of the roster. Stubs never
+   * enforce the cap, which is how it shipped — so this asserts the requests.
+   */
+  it("★ never asks /children for more than the API's page ceiling", async () => {
+    const api = stubScreen();
+    renderWithProviders(<GroupDetailPage />);
+
+    await screen.findByRole("link", { name: /Г.Батбаяр/ });
+    await userEvent.click(screen.getByRole("button", { name: "Суралцагч хуваарилах" }));
+    await screen.findByRole("dialog", { name: /суралцагч хуваарилалт/i });
+
+    const sizes = api.calls
+      .filter((call) => call.url.startsWith("/children?"))
+      .map((call) => Number(new URLSearchParams(call.url.split("?")[1]).get("pageSize")));
+    expect(sizes.length).toBeGreaterThan(0);
+    expect(sizes.every((size) => size <= MAX_PAGE_SIZE)).toBe(true);
+  });
+
+  /*
+   * ★★ **Several at once** — 2026-09-26, the client: "бүлэгтээ хүүхдүүдээ
+   * сонгож хуваарилах хэрэгтэй". One child per press through a dropdown made
+   * filling a new class twenty round trips; now they are ticked and added
+   * together, one `POST /children/:id/enrollments` each.
+   */
+  it("★ adds every ticked child to the group in one press", async () => {
+    const elsewhere = (id: string, lastName: string, firstName: string) => ({
+      ...child(id, lastName, firstName, "FEMALE", `${id.slice(0, 30)}999999`),
+      enrollments: [],
+    });
+    // The class by `groupId`, the kindergarten-wide search without — the way
+    // the API answers them, so the group-less children reach only the picker.
+    const api = stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: `/groups/${GROUP}`, body: group() },
+      { path: `/children?groupId=${GROUP}`, body: roster },
+      {
+        path: "/children",
+        body: {
+          ...roster,
+          items: [
+            ...roster.items,
+            elsewhere("88888888-8888-4888-8888-000000000002", "Бат", "Номин"),
+            elsewhere("88888888-8888-4888-8888-000000000003", "Эрдэнэ", "Тэмүүлэн"),
+          ],
+          total: 4,
+        },
+      },
+      { path: "/children/", method: "POST", body: {} },
+    ]);
+    renderWithProviders(<GroupDetailPage />);
+
+    await screen.findByRole("link", { name: /Г.Батбаяр/ });
+    await userEvent.click(screen.getByRole("button", { name: "Суралцагч хуваарилах" }));
+    const dialog = await screen.findByRole("dialog", { name: /суралцагч хуваарилалт/i });
+
+    await userEvent.click(await within(dialog).findByRole("checkbox", { name: /Бат Номин/ }));
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: /Эрдэнэ Тэмүүлэн/ }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Нэмэх (2)" }));
+
+    await vi.waitFor(() => {
+      const posts = api.calls.filter((c) => c.method === "POST" && c.url.endsWith("/enrollments"));
+      expect(posts.map((c) => c.url).sort()).toEqual([
+        "/children/88888888-8888-4888-8888-000000000002/enrollments",
+        "/children/88888888-8888-4888-8888-000000000003/enrollments",
+      ]);
+      expect(posts.every((c) => (c.body as { groupId: string }).groupId === GROUP)).toBe(true);
+    });
   });
 
   /*
