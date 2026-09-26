@@ -13,8 +13,7 @@ import {
   Search,
   Settings as SettingsIcon,
   X,
-  PanelLeftClose,
-  PanelLeftOpen,
+  Menu,
 } from "lucide-react";
 import {
   createContext,
@@ -929,6 +928,9 @@ export function AppShell({
         `sidebar-prefs.tsx` defines both halves.
       */}
             <div className={cn(desktopSidebar && "lg:pl-[var(--shell-pad)]")}>
+              {desktopSidebar ? (
+                <DesktopTopBar subtitle={subtitle} showNotifications={!isSupportWorkspace} />
+              ) : null}
               {/*
           `pb-24` on mobile clears the fixed bottom bar. Without it the last row
           of every list sits underneath the navigation and cannot be tapped —
@@ -954,7 +956,7 @@ export function AppShell({
                 className={cn(
                   "w-full",
                   isChatPage
-                    ? "h-[calc(100dvh-4.25rem)] overflow-hidden pb-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom))] lg:h-dvh lg:max-w-none lg:pb-0"
+                    ? "h-[calc(100dvh-4.25rem)] overflow-hidden pb-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom))] lg:h-[calc(100dvh-3.5rem)] lg:max-w-none lg:pb-0"
                     : "mx-auto max-w-[1920px] px-4 pb-24 pt-4 sm:px-6 lg:px-7 lg:pb-16 lg:pt-6 2xl:px-8",
                 )}
               >
@@ -1619,7 +1621,7 @@ function Sidebar({
   childSwitcher?: ChildSwitcher;
   teacherTheme?: boolean;
 }) {
-  const { collapsed, setCollapsed } = useSidebarPrefs();
+  const { collapsed } = useSidebarPrefs();
 
   /*
    * ★ Removed from the tree, not hidden with a class.
@@ -1630,9 +1632,7 @@ function Sidebar({
    * `MobileMenuDrawer` is untouched: below `lg` there is no rail to collapse
    * and the phone's menu is a sheet of its own.
    */
-  if (collapsed) {
-    return <CompactRail nav={nav} sections={sections} onExpand={() => setCollapsed(false)} />;
-  }
+  if (collapsed) return null;
 
   return (
     <nav
@@ -1677,107 +1677,6 @@ function Sidebar({
         childSwitcher={childSwitcher}
         showTeacherArt={teacherTheme}
       />
-      <SidebarCollapseRow onCollapse={() => setCollapsed(true)} />
-    </nav>
-  );
-}
-
-/**
- * «Цэс хураах» — the menu's own way of folding itself, at its foot.
- *
- * ★ 2026-09-26. This was a round button floating on the seam between the menu
- * and the page, over the first column of whatever table was open; the client
- * did not want it («iim baimaargui»). A labelled row inside the menu says what
- * it does in words and sits where nothing else is.
- */
-function SidebarCollapseRow({ onCollapse }: { onCollapse: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onCollapse}
-      aria-expanded
-      aria-label="Хажуугийн цэсийг хаах"
-      className="flex min-h-[40px] shrink-0 items-center gap-[11px] rounded-control px-3 text-body text-muted transition-colors hover:bg-canvas hover:text-ink focus-visible:outline-2 focus-visible:outline-primary"
-    >
-      <span className="grid size-9 place-items-center">
-        <PanelLeftClose size={18} aria-hidden />
-      </span>
-      Цэс хураах
-    </button>
-  );
-}
-
-/**
- * The folded menu: the same destinations as icons, 64px wide.
- *
- * ★ A navigation of its own, named «Товч цэс», not the main one squeezed. The
- * full menu leaves the tree when folded (see `Sidebar`), so a screen reader
- * hears one menu at a time; each icon carries its screen's name as
- * `aria-label` and on hover, because an icon alone is not a name.
- */
-function CompactRail({
-  nav,
-  sections,
-  onExpand,
-}: {
-  nav: NavItem[];
-  sections?: NavSection[];
-  onExpand: () => void;
-}) {
-  const pathname = usePathname();
-  const entries: { href?: string; label: string; icon?: ReactNode }[] = [
-    ...(nav[0] ? [nav[0]] : []),
-    ...(sections
-      ? sections.flatMap((section) => section.entries).filter((entry) => entry.href !== "/settings")
-      : nav.slice(1)),
-  ].filter((entry) => Boolean(entry.href));
-  const activeHref = activeHrefIn(
-    pathname,
-    entries.map((entry) => entry.href),
-  );
-
-  return (
-    <nav
-      aria-label="Товч цэс"
-      data-print-hide
-      style={{ width: "var(--sidebar-w)" }}
-      className="fixed inset-y-0 left-0 z-20 hidden flex-col items-center gap-1 overflow-y-auto border-r border-border-soft bg-linear-to-b from-primary-soft via-surface to-surface py-4 lg:flex"
-    >
-      <button
-        type="button"
-        onClick={onExpand}
-        aria-expanded={false}
-        aria-label="Хажуугийн цэсийг нээх"
-        title="Цэс дэлгэх"
-        className="mb-3 grid size-10 shrink-0 place-items-center rounded-control text-muted transition-colors hover:bg-surface hover:text-primary focus-visible:outline-2 focus-visible:outline-primary"
-      >
-        <PanelLeftOpen size={20} aria-hidden />
-      </button>
-
-      {entries.map((entry, index) => {
-        const active = entry.href === activeHref;
-        return (
-          <Link
-            key={`${entry.href}-${index}`}
-            href={entry.href!}
-            aria-label={entry.label}
-            title={entry.label}
-            aria-current={active ? "page" : undefined}
-            className={cn(
-              "grid size-10 shrink-0 place-items-center rounded-control transition-colors [&_img]:size-6",
-              active
-                ? "bg-primary text-primary-ink shadow-sm"
-                : "text-muted hover:bg-surface hover:text-ink",
-            )}
-          >
-            {entry.icon ?? (
-              <span aria-hidden="true" className="text-body font-semibold">
-                {entry.label.charAt(0)}
-              </span>
-            )}
-          </Link>
-        );
-      })}
     </nav>
   );
 }
@@ -1905,6 +1804,56 @@ function MobileMenuDrawer({
  * the brand and identity. Showing them twice is what crowded
  * the page title in the reference, which solved it the same way.
  */
+/**
+ * The desktop top bar: ☰ on the left, the workspace beside it, the bell on
+ * the right — 2026-09-26.
+ *
+ * ★ The client's choice, from four offered: the ministry SIS's own layout,
+ * where the menu is shown and hidden by one ☰ that is always in the same
+ * place. It replaced a round button floating on the seam between the menu and
+ * the page, over the first column of whatever table was open.
+ *
+ * ★★ One control, both directions. Its accessible name says what a press will
+ * do — «хаах» while the menu is out, «нээх» while it is away — and
+ * `aria-expanded` says which state that is, so a screen reader hears both.
+ *
+ * Desktop only: below `lg` the phone has its own header and its menu is the
+ * bottom bar's sheet.
+ */
+function DesktopTopBar({
+  subtitle,
+  showNotifications,
+}: {
+  subtitle: string;
+  showNotifications: boolean;
+}) {
+  const { collapsed, setCollapsed } = useSidebarPrefs();
+
+  return (
+    <header
+      data-print-hide
+      className="sticky top-0 z-10 hidden h-14 items-center gap-3 border-b border-border-soft bg-surface/90 px-4 backdrop-blur lg:flex"
+    >
+      <button
+        type="button"
+        onClick={() => setCollapsed(!collapsed)}
+        aria-expanded={!collapsed}
+        aria-label={collapsed ? "Хажуугийн цэсийг нээх" : "Хажуугийн цэсийг хаах"}
+        title={collapsed ? "Цэс нээх" : "Цэс хаах"}
+        className="grid size-10 place-items-center rounded-control border border-border-soft bg-primary-soft text-primary transition-colors hover:bg-primary hover:text-primary-ink focus-visible:outline-2 focus-visible:outline-primary"
+      >
+        <Menu size={20} aria-hidden />
+      </button>
+      <span className="min-w-0 truncate text-body font-semibold text-ink">{subtitle}</span>
+      {showNotifications ? (
+        <div className="ml-auto flex items-center">
+          <NotificationBell />
+        </div>
+      ) : null}
+    </header>
+  );
+}
+
 function MobileHeader({
   subtitle,
   showNotifications,

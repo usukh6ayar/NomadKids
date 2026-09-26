@@ -75,33 +75,26 @@ describe("hiding and showing the rail", () => {
   });
 
   /*
-   * ★ Hidden is an icon rail, not nothing — 2026-09-26, the client:
-   * «hide show hiideg button ntr iim baimaargui». The rail used to vanish
-   * entirely behind a round button floating on the seam; now the page keeps a
-   * narrow column of the same destinations, each named for a screen reader
-   * and on hover, with the way back at its top.
+   * ★ ☰ in the top bar — 2026-09-26, the client's choice of four: the
+   * ministry SIS's layout. One control, always in the same place, that hides
+   * the menu entirely and brings it back; nothing floats on the seam and
+   * nothing lives inside the menu it is hiding.
    */
-  it("leaves a narrow rail of the same destinations when hidden", async () => {
-    renderShell();
-    await sidebar();
-
-    await userEvent.click(screen.getByRole("button", { name: "Хажуугийн цэсийг хаах" }));
-
-    const rail = await screen.findByRole("navigation", { name: "Товч цэс" });
-    expect(within(rail).getByRole("button", { name: "Хажуугийн цэсийг нээх" })).toBeInTheDocument();
-    const links = within(rail).getAllByRole("link");
-    expect(links.length).toBeGreaterThan(1);
-    // Every icon still says where it goes.
-    expect(links.every((link) => link.getAttribute("aria-label"))).toBe(true);
-  });
-
-  it("has one way to hide the menu, inside it — no button floating on the seam", async () => {
+  it("toggles from one ☰ in the top bar, never from a button on the seam", async () => {
     renderShell();
     const menu = await sidebar();
 
     const hide = screen.getAllByRole("button", { name: "Хажуугийн цэсийг хаах" });
     expect(hide).toHaveLength(1);
-    expect(menu).toContainElement(hide[0]!);
+    expect(menu).not.toContainElement(hide[0]!);
+    expect(hide[0]!.closest("header")).not.toBeNull();
+    expect(hide[0]).toHaveAttribute("aria-expanded", "true");
+
+    await userEvent.click(hide[0]!);
+    const show = await screen.findByRole("button", { name: "Хажуугийн цэсийг нээх" });
+    expect(show).toHaveAttribute("aria-expanded", "false");
+    // The same control in the same bar, not a second one somewhere else.
+    expect(show.closest("header")).toBe(hide[0]!.closest("header"));
   });
 
   it("remembers the choice for the next visit", async () => {

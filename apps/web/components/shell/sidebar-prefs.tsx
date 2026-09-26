@@ -51,16 +51,14 @@ export const SIDEBAR_MAX_WIDTH = 420;
 /** The gutter between the rail's right edge and the content column. */
 export const SIDEBAR_GUTTER = 12;
 /**
- * The width of the icon rail the menu folds into — 2026-09-26.
+ * What the content frame keeps clear when the menu is hidden: nothing.
  *
- * ★ It used to fold into nothing, with a round button floating on the seam to
- * bring it back; the client did not want that button («iim baimaargui»). A
- * rail of icons keeps every destination one click away while giving the
- * content almost all of the room, and the way back sits at its top.
+ * ★ 2026-09-26. The toggle lives in the desktop top bar (`DesktopTopBar`) now,
+ * not on the seam — the client chose the ministry SIS's ☰ over a floating
+ * handle and over an icon rail — so a hidden menu leaves the content the
+ * whole width, as that layout does.
  */
-export const SIDEBAR_RAIL_WIDTH = 64;
-/** What the content frame keeps clear beside the folded rail. */
-export const SIDEBAR_COLLAPSED_PAD = SIDEBAR_RAIL_WIDTH + SIDEBAR_GUTTER;
+export const SIDEBAR_COLLAPSED_PAD = 0;
 
 const WIDTH_KEY = "nk.sidebar.width";
 const COLLAPSED_KEY = "nk.sidebar.collapsed";
@@ -154,7 +152,7 @@ export function SidebarPrefsProvider({
  */
 export function sidebarVars({ width, collapsed }: { width: number; collapsed: boolean }) {
   return {
-    "--sidebar-w": `${collapsed ? SIDEBAR_RAIL_WIDTH : width}px`,
+    "--sidebar-w": `${collapsed ? 0 : width}px`,
     "--shell-pad": `${collapsed ? SIDEBAR_COLLAPSED_PAD : width + SIDEBAR_GUTTER}px`,
   } as CSSProperties;
 }
@@ -179,8 +177,8 @@ function writeLiveVars(width: number): void {
 }
 
 /**
- * The rail's right edge: drag it to resize. Hiding it is the menu's own
- * «Цэс хураах» row now — see `SidebarCollapseRow` in `app-shell.tsx`.
+ * The rail's right edge: drag it to resize. Hiding it is the ☰ in the
+ * desktop top bar — see `DesktopTopBar` in `app-shell.tsx`.
  *
  * ★ One control, not two, because they are one thing to the eye — the seam
  * between the menu and the work. Two separate affordances at the same
