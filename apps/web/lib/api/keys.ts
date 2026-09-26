@@ -76,6 +76,8 @@ export const qk = {
    */
   esisSyncRuns: (kindergartenId: string, page: number) =>
     ["admin", "esis", kindergartenId, "sync-runs", page] as const,
+  /** The ministry's 84/84 matrix — see `EsisCoverageSection`. */
+  esisCoverage: (kindergartenId: string) => ["admin", "esis", kindergartenId, "coverage"] as const,
   /**
    * Prefix of every `esisSyncRuns(kindergartenId, page)` key, regardless of
    * page — what a sync mutation invalidates after a manual pull, so the tier

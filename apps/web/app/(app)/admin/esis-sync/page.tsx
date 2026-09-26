@@ -26,6 +26,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { TableShell, Td, Th } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
+import { EsisCoverageSection } from "@/components/esis/esis-coverage";
 
 /**
  * Which tier a run belongs to, read off `EsisSyncRun.summary` — the only
@@ -256,6 +257,8 @@ function EsisSyncPanel() {
           />
         </div>
       </section>
+
+      <EsisCoverageSection kindergartenId={kindergartenId} />
 
       <section aria-labelledby="esis-sync-history-heading">
         <SectionHeader id="esis-sync-history-heading" title="Синкийн түүх" />

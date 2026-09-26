@@ -35,7 +35,7 @@ export class EsisCoverageService {
     from.setMonth(from.getMonth() - months);
 
     const [usage, syncRuns] = await Promise.all([
-      this.repo.countEsisCallsByService(kindergartenId),
+      this.repo.countEsisCallsByService(kindergartenId, from),
       this.repo.listSyncRunResources(kindergartenId, from),
     ]);
 
