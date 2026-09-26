@@ -68,6 +68,12 @@ export class InvoicesRepository {
         paidAmount: true,
         balance: true,
         status: true,
+        // The fields an edit or a removal changes, so the audit row can say
+        // what they were — нэмэлт.md §14, «Өмнөх утга → Шинэ утга».
+        month: true,
+        totalDue: true,
+        dueDate: true,
+        note: true,
       },
     });
   }

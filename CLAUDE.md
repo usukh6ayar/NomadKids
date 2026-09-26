@@ -480,7 +480,7 @@ longer carries `quantity × unitAmount`) are in `docs/FINANCE_MODULE.md` §1.
   "Ирц–санхүүжилтийн тулгалт" is the monthly register, which shipped with §6 and
   already exports. ★ A `FINANCE_REPORT` job carries **no `childId`**, which is
   what keeps every `canAccessChild`-gated report route from ever serving one
-- §14 the financial audit log — **partial**, and half of it is now done.
+- §14 the financial audit log — **done**.
   ★ **The reversal rule is built**, which this line said it was not until
   2026-09-11. `Payment.reversalOfId`, `InvoicesRepository.voidPayment()` — it
   sets `voidedAt` on the original and inserts a reversing row rather than
@@ -489,11 +489,13 @@ longer carries `quantity × unitAmount`) are in `docs/FINANCE_MODULE.md` §1.
   void, since the reversal is what cancels it, and `finance-reports` reads
   `reversalOfId`. That is §14's "Залруулга эсвэл reversal transaction
   ашиглана", and the ★ below §16 already treats it as the rule.
-  **What is still missing is `Өмнөх утга → Шинэ утга`**, and the measure is
-  exact: of the fourteen `audit.append()` calls across `invoices.service.ts`
-  and `funding.service.ts`, twelve carry `metadata` but only **two** carry a
-  `before` — `voidPayment` and `markRefunded`. Everything else records what the
-  value became and not what it was.
+  ★★ **`Өмнөх утга → Шинэ утга` is done too, 2026-09-26.** This line said
+  two of fourteen `audit.append()` calls carried a `before`; by then five of
+  fifteen did, and the four that still overwrote or removed something without
+  one — an invoice edit, an invoice removal, a funding rule removal and a
+  month's recalculation — now record what was there. A creation carries no
+  `before`, because nothing was. `/finance/audit-log` shows the pair as a
+  table in Mongolian rather than the JSON it printed.
 - §15 the external-ID history — **not started**
 
 ★ §14 asks that a confirmed financial transaction is **never deleted** —

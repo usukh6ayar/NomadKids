@@ -1,3 +1,4 @@
+import Decimal from "decimal.js";
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import type { AgeBand, FundingSource } from "../domain/enums";
@@ -101,7 +102,19 @@ export class FundingRepository {
       where: { id, deletedAt: null },
       // Widened past {id, kindergartenId} so a caller correcting a rule can
       // log what the field actually was, not just that it changed — §14.
-      select: { id: true, kindergartenId: true, name: true, note: true, effectiveTo: true },
+      select: {
+        id: true,
+        kindergartenId: true,
+        name: true,
+        note: true,
+        effectiveTo: true,
+        // What a removal takes away, for its audit row — §14.
+        source: true,
+        ageBand: true,
+        effectiveFrom: true,
+        dailyRate: true,
+        monthlyRate: true,
+      },
     });
   }
 
@@ -239,6 +252,22 @@ export class FundingRepository {
     rows: Record<string, unknown>[],
   ) {
     return this.prisma.$transaction(async (tx) => {
+      /*
+       * ★ What the run being superseded said, read inside the same
+       * transaction as the replacement so the two cannot straddle another
+       * run. Counts and a total, not the rows — the rows stay in the table,
+       * soft-deleted, and this is the audit row's «Өмнөх утга» (§14).
+       */
+      const previous = await tx.fundingCalculation.aggregate({
+        where: { kindergartenId, month, source, deletedAt: null },
+        _count: { _all: true },
+        _sum: { calculatedAmount: true },
+      });
+      const before = {
+        children: previous._count._all,
+        calculatedTotal: new Decimal(previous._sum.calculatedAmount?.toString() ?? "0").toString(),
+      };
+
       await tx.fundingCalculation.updateMany({
         where: { kindergartenId, month, source, deletedAt: null },
         data: { deletedAt: new Date() },
@@ -248,11 +277,12 @@ export class FundingRepository {
         await tx.fundingCalculation.create({ data: row as never });
       }
 
-      return tx.fundingCalculation.findMany({
+      const written = await tx.fundingCalculation.findMany({
         where: { kindergartenId, month, source, deletedAt: null },
         orderBy: { child: { lastName: "asc" } },
         include: { child: { select: { id: true, lastName: true, firstName: true } } },
       });
+      return { written, before };
     });
   }
 

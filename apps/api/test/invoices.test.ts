@@ -607,6 +607,103 @@ describe("the financial audit log — нэмэлт.md §13", () => {
     expect(updateEntry.metadata.after.name).toBe("Шинэчилсэн тариф");
   });
 
+  /*
+   * ★ §14's «Өмнөх утга → Шинэ утга» on every change that overwrites or
+   * removes something — 2026-09-26. Creates carry no `before`: nothing was
+   * there. These four did overwrite or remove, and recorded only the result.
+   */
+  async function financeLog() {
+    const log = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/financial-audit-log`),
+      accountant,
+    );
+    return log.body.items as {
+      action: string;
+      objectType: string;
+      objectId: string;
+      metadata: { before?: Record<string, unknown>; after?: Record<string, unknown> };
+    }[];
+  }
+
+  it("records what an invoice's due date and note were before an edit", async () => {
+    const invoice = await generate(accountant, a.kindergarten.id, generateBody(a.child.id));
+    const originalDue = invoice.body.dueDate.slice(0, 10);
+
+    await authed(request(server()).patch(`/v1/invoices/${invoice.body.id}`), accountant).send({
+      dueDate: "2027-01-15",
+      note: "Хугацаа сунгасан",
+    });
+
+    const entry = (await financeLog()).find(
+      (e) => e.action === "UPDATE" && e.objectType === "Invoice" && e.objectId === invoice.body.id,
+    )!;
+    expect(String(entry.metadata.before!.dueDate).slice(0, 10)).toBe(originalDue);
+    expect(entry.metadata.before!.note).toBeNull();
+    expect(entry.metadata.after!.note).toBe("Хугацаа сунгасан");
+  });
+
+  it("records what a removed invoice amounted to", async () => {
+    const invoice = await generate(accountant, a.kindergarten.id, generateBody(a.child.id));
+    await authed(request(server()).delete(`/v1/invoices/${invoice.body.id}`), accountant);
+
+    const entry = (await financeLog()).find(
+      (e) => e.action === "DELETE" && e.objectType === "Invoice" && e.objectId === invoice.body.id,
+    )!;
+    // 150 000 + 40 000 + 10 000 − 5 000.
+    expect(Number(entry.metadata.before!.totalDue)).toBe(195000);
+  });
+
+  it("records what a removed funding rule said", async () => {
+    const rule = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/funding/rules`),
+      accountant,
+    ).send({
+      name: "Хуучин тариф",
+      source: "STATE",
+      effectiveFrom: "2026-01-01",
+      dailyRate: "5000",
+      dependsOnAttendance: true,
+      dependsOnMeals: false,
+    });
+    await authed(request(server()).delete(`/v1/funding-rules/${rule.body.id}`), accountant);
+
+    const entry = (await financeLog()).find(
+      (e) => e.action === "DELETE" && e.objectType === "FundingRule",
+    )!;
+    expect(entry.metadata.before!.name).toBe("Хуучин тариф");
+    expect(Number(entry.metadata.before!.dailyRate)).toBe(5000);
+  });
+
+  it("records the superseded run when a month is calculated again", async () => {
+    await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/funding/rules`),
+      accountant,
+    ).send({
+      name: "Энгийн тариф",
+      source: "STATE",
+      effectiveFrom: "2026-01-01",
+      monthlyRate: "80000",
+      dependsOnAttendance: false,
+      dependsOnMeals: false,
+    });
+    const run = () =>
+      authed(
+        request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/funding/calculate`),
+        accountant,
+      ).send({ month: "2026-03", source: "STATE" });
+
+    await run();
+    await run();
+
+    const runs = (await financeLog()).filter(
+      (e) => e.action === "CREATE" && e.objectType === "FundingCalculation",
+    );
+    // Newest first: the second run knows what the first one said.
+    expect(runs[0]!.metadata.before).toEqual({ children: 1, calculatedTotal: "80000" });
+    expect(runs[0]!.metadata.after).toEqual({ children: 1, calculatedTotal: "80000" });
+    expect(runs[1]!.metadata.before).toEqual({ children: 0, calculatedTotal: "0" });
+  });
+
   it("also carries invoice and payment entries, not just funding ones", async () => {
     const invoice = await generate(accountant, a.kindergarten.id, generateBody(a.child.id));
     await authed(

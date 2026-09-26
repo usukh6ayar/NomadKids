@@ -1,3 +1,4 @@
+import Decimal from "decimal.js";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { AuditRepository } from "../audit/audit.repository";
 import { TenantAccessService } from "../authz/tenant-access.service";
@@ -220,6 +221,20 @@ export class FundingService {
       actorUserId: actor.userId,
       objectType: "FundingRule",
       objectId: id,
+      // What the rule said, so the log answers "which tariff was removed"
+      // without reading a soft-deleted row back — §14.
+      metadata: {
+        before: {
+          name: rule.name,
+          source: rule.source,
+          ageBand: rule.ageBand,
+          effectiveFrom: rule.effectiveFrom.toISOString().slice(0, 10),
+          effectiveTo: rule.effectiveTo?.toISOString().slice(0, 10) ?? null,
+          dailyRate: rule.dailyRate?.toString() ?? null,
+          monthlyRate: rule.monthlyRate?.toString() ?? null,
+          note: rule.note,
+        },
+      },
     });
 
     return { id };
@@ -298,7 +313,7 @@ export class FundingService {
     const attendedBy = new Map(attendance.map((row) => [row.childId, row._count._all]));
     const fedBy = new Map(meals.map((row) => [row.childId, row.daysFed]));
 
-    const saved: Awaited<ReturnType<FundingRepository["replaceMonth"]>> = [];
+    const saved: Awaited<ReturnType<FundingRepository["replaceMonth"]>>["written"] = [];
 
     for (const source of sources) {
       const rules = await this.repo.rulesInForce(kindergartenId, source, last);
@@ -346,7 +361,7 @@ export class FundingService {
         ];
       });
 
-      const written = await this.repo.replaceMonth(kindergartenId, first, source, rows);
+      const { written, before } = await this.repo.replaceMonth(kindergartenId, first, source, rows);
       saved.push(...written);
 
       // One row per source, not one per press: §14 asks what changed, and a
@@ -357,7 +372,25 @@ export class FundingService {
         actorUserId: actor.userId,
         objectType: "FundingCalculation",
         objectId: kindergartenId,
-        metadata: { month: dto.month, source, children: written.length },
+        /*
+         * ★ `before` is the run this one superseded — §14's «Өмнөх утга →
+         * Шинэ утга», added 2026-09-26. A recalculation after an attendance
+         * correction changes a claim, and "what did it say before" is the
+         * question a disputed figure starts from. Nought children means there
+         * was no previous run.
+         */
+        metadata: {
+          month: dto.month,
+          source,
+          children: written.length,
+          before,
+          after: {
+            children: written.length,
+            calculatedTotal: written
+              .reduce((sum, row) => sum.plus(row.calculatedAmount.toString()), new Decimal(0))
+              .toString(),
+          },
+        },
       });
     }
 
