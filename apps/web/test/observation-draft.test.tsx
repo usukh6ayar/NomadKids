@@ -1008,6 +1008,14 @@ describe("Шинэ ажиглалт — зураг", () => {
 
     renderWithProviders(<NewObservationPage />);
 
+    /*
+      ★ `toHaveTextContent`, not `toHaveValue`. `Select` is Radix, so the
+      element carrying `role="combobox"` is the trigger button, which has no
+      `value` at all — the assertion read empty however well the screen worked.
+      The trigger shows the chosen item's own label, so an unfilled type still
+      fails this: the placeholder says "Сонгоно уу". `survey-wizard.test.tsx`
+      asserts the same thing the same way.
+    */
     await waitFor(() =>
       expect(screen.getByRole("combobox", { name: /^Төрөл/ })).toHaveTextContent("Наамал"),
     );
