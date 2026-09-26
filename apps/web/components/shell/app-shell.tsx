@@ -2032,6 +2032,14 @@ function NavLink({
           !horizontal && "size-9 rounded-control",
           horizontal && active && "scale-105",
           horizontal && active && !backgroundlessIcon && "bg-primary-soft",
+          /*
+            ★ The current row's icon well goes solid — 2026-09-26, the client
+            asking for the product to be «гоё өнгөлөг». The SIS sidebar marks
+            the current page with a filled blue square behind a white glyph;
+            the tinted row and the left rule stay, so colour is still not the
+            only signal.
+          */
+          !horizontal && active && !backgroundlessIcon && "bg-primary text-primary-ink shadow-sm",
         )}
       >
         {item.icon}

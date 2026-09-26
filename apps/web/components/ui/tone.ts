@@ -115,3 +115,52 @@ export const TONE_VAR: Record<Tone, string> = {
   teal: "var(--color-teal-chart)",
   pink: "var(--color-pink-chart)",
 };
+
+/**
+ * The tone's own ink as a text colour — for secondary text sitting on a
+ * `TONE_CARD` wash.
+ *
+ * ★ Added 2026-09-26, when stat cards took their tone's tint (the client:
+ * «гоё өнгөлөг болгоё»). `--color-muted` measures 3.46–4.08:1 on these tints,
+ * under the 4.5:1 floor, so a label on a tinted card cannot stay grey. The
+ * inks clear 4.5:1 on the *full* tint and the wash is lighter still.
+ */
+export const TONE_INK: Record<Tone, string> = {
+  sky: "text-sky-ink",
+  mint: "text-mint-ink",
+  sun: "text-sun-ink",
+  peach: "text-peach-ink",
+  cornflower: "text-cornflower-ink",
+  teal: "text-teal-ink",
+  pink: "text-pink-ink",
+};
+
+/** The tone's full tint as a bare background — for decoration, never text. */
+export const TONE_FILL: Record<Tone, string> = {
+  sky: "bg-sky",
+  mint: "bg-mint",
+  sun: "bg-sun",
+  peach: "bg-peach",
+  cornflower: "bg-cornflower",
+  teal: "bg-teal",
+  pink: "bg-pink",
+};
+
+/**
+ * A stat tile's wash — the full tint fading to white across the card.
+ *
+ * ★ Stronger than `TONE_CARD` on purpose. At 40% the tiles still read as white
+ * cards with a coloured corner; the SIS tiles the client pointed at are
+ * visibly coloured. Text on it is `--color-ink` (the figure) and the tone's
+ * ink (the label), both of which clear 4.5:1 on the full tint — the darkest
+ * point of the gradient.
+ */
+export const TONE_WASH: Record<Tone, string> = {
+  sky: "bg-linear-to-br from-sky to-surface border-sky",
+  mint: "bg-linear-to-br from-mint to-surface border-mint",
+  sun: "bg-linear-to-br from-sun to-surface border-sun",
+  peach: "bg-linear-to-br from-peach to-surface border-peach",
+  cornflower: "bg-linear-to-br from-cornflower to-surface border-cornflower",
+  teal: "bg-linear-to-br from-teal to-surface border-teal",
+  pink: "bg-linear-to-br from-pink to-surface border-pink",
+};
