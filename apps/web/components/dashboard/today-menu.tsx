@@ -3,16 +3,15 @@
 import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import { z } from "zod";
-import { AlertTriangle, CloudOff, UtensilsCrossed } from "lucide-react";
+import { AlertTriangle, CloudOff, Utensils } from "lucide-react";
 import { menuDayWithWarningsSchema, ALLERGY_SEVERITY_LABEL } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/lib/auth/session";
 import { Card, SectionHeader } from "@/components/ui/card";
-import { IconChip } from "@/components/ui/icon-chip";
 import { Skeleton } from "@/components/ui/states";
-import { Art } from "@/components/ui/art";
+import { MediaThumb } from "@/components/media/media-image";
 
 const menuSchema = z.array(menuDayWithWarningsSchema);
 
@@ -57,33 +56,38 @@ export function TodayMenu() {
   });
 
   const day = data?.[0] ?? null;
+  /*
+    With dishes to show, the cards sit straight on the page — the drawing has
+    no panel around them. Loading, error and empty keep the panel, which is
+    what gives their one line of text a shape.
+  */
+  const hasDishes = !isLoading && !isError && Boolean(day && day.dishes.length > 0);
+
+  const body = renderBody();
 
   return (
     <section aria-labelledby="today-menu-heading" className="flex h-full flex-col">
-      {/*
-        ★ The section carries the drawing, not each dish.
+      <SectionHeader id="today-menu-heading" title="Хоолны цэс" />
 
-        The shared food artwork also appears on the parent's menu tile, so it identifies
-        the feature on both sides of the product. Repeating it on every dish
-        card was the first attempt and it was wrong twice over: three copies of
-        one picture says nothing about three different dishes, and §13's own
-        rule is not to force an asset that does not fit. Dishes take a glyph;
-        the section takes the drawing.
-      */}
-      <SectionHeader
-        id="today-menu-heading"
-        title="Хоолны цэс"
-        lede="Өнөөдрийн хоол, харшлын шалгалттай"
-        icon={<IconChip icon={<Art name="food" />} tone="sun" size="lg" surface={false} />}
-      />
+      {hasDishes ? (
+        <div className="flex flex-1 flex-col gap-3">{body}</div>
+      ) : (
+        <Card pad="roomy" className="flex flex-1 flex-col gap-3">
+          {body}
+        </Card>
+      )}
+    </section>
+  );
 
-      <Card pad="roomy" className="flex flex-1 flex-col gap-3">
+  function renderBody() {
+    return (
+      <>
         {isLoading ? (
           /* Mirrors the dish grid, so the card does not resize when it lands. */
-          <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-            <Skeleton className="h-[132px] w-full" />
-            <Skeleton className="h-[132px] w-full" />
-            <Skeleton className="h-[132px] w-full" />
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            <Skeleton className="aspect-square w-full" />
+            <Skeleton className="aspect-square w-full" />
+            <Skeleton className="aspect-square w-full" />
           </div>
         ) : isError ? (
           /*
@@ -146,88 +150,59 @@ export function TodayMenu() {
               the kitchen filed — `auto-fit` lets three sit side by side and two
               or four look deliberate rather than stretched or clipped.
             */}
-            <ul className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+            {/*
+              ★ Picture cards — the client's 2026-09-25 drawing: the dish's
+              photograph filling the top of a white card, its name centred
+              underneath. Three across at every width — the client, the same
+              day: "хэт том харагдаад байна утсан дээр 3х2", so six dishes are
+              two rows of small cards rather than three rows of big ones. A dish with no photograph
+              shows the menu's own fork-and-knife placeholder rather than a
+              stock picture of some other food.
+
+              A dish somebody reacts to keeps its danger border and its
+              "Харшил" word on the picture — colour is never the carrier — and
+              the warning list below still names who.
+            */}
+            <ul className="grid grid-cols-3 gap-2 sm:gap-3">
               {day.dishes.map((dish, i) => {
-                const dishWarnings = day.warnings.filter((w) => w.dishName === dish.name);
-                const risky = dishWarnings.length > 0;
+                const risky = day.warnings.some((w) => w.dishName === dish.name);
 
                 return (
                   <li
                     key={`${dish.name}-${i}`}
-                    /*
-                      ★ A dish that somebody reacts to is bordered, not just
-                      badged. The tag pill alone put the only signal at the
-                      bottom of the card, where a teacher scanning three dishes
-                      reads it last — after they have already decided the card
-                      is fine.
-
-                      ★★ A safe dish is a white card on the canvas now, not a
-                      canvas card on white. The section is the most prominent
-                      thing on the screen and its dishes were the flattest —
-                      three grey rectangles inside a white panel. Lifting them
-                      onto `bg-surface` with the product's own hairline makes
-                      them read as objects on a tray, and it puts the risky
-                      one's `danger-soft` wash a full step away rather than a
-                      shade away.
-                    */
                     className={cn(
-                      "flex flex-col gap-2.5 rounded-row border p-3.5 transition-colors md:p-4",
-                      risky
-                        ? "border-danger/40 bg-danger-soft"
-                        : "border-border bg-surface shadow-sm",
+                      "flex flex-col gap-1.5 rounded-card border bg-surface p-1.5 shadow-sm sm:gap-2 sm:p-2.5",
+                      risky ? "border-danger/50" : "border-border-soft",
                     )}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      {/*
-                        A glyph, not a picture of food. There is no per-dish
-                        illustration in the product and inventing one would mean
-                        showing a bowl of rice next to "Талх" — the "do not
-                        invent images" line, met exactly.
-
-                        `sun` for a dish that is fine — `tone.ts`'s warm accent,
-                        which is what a meal should feel like — and the danger
-                        pair for one that is not. Colour is never alone: the
-                        warning badge beside it says the word.
-                      */}
-                      <span
-                        aria-hidden="true"
-                        className={cn(
-                          "grid size-10 shrink-0 place-items-center rounded-control",
-                          risky ? "bg-danger/10 text-danger" : "bg-sun text-sun-ink",
-                        )}
-                      >
-                        <UtensilsCrossed size={20} />
-                      </span>
-
+                    <div className="relative aspect-[4/3] w-full overflow-hidden rounded-control">
+                      {dish.photoMediaFileId ? (
+                        <MediaThumb
+                          mediaId={dish.photoMediaFileId}
+                          caption={dish.name}
+                          flush
+                          className="aspect-auto size-full"
+                        />
+                      ) : (
+                        <span
+                          aria-hidden="true"
+                          className="grid size-full place-items-center text-border"
+                        >
+                          <span className="grid aspect-square h-[75%] place-items-center rounded-pill border-[3px] border-current sm:border-[5px]">
+                            <Utensils className="size-1/2" strokeWidth={2.5} />
+                          </span>
+                        </span>
+                      )}
                       {risky ? (
-                        <span className="inline-flex shrink-0 items-center gap-1 rounded-pill bg-danger px-2 py-0.5 text-caption font-medium text-white">
-                          <AlertTriangle size={12} aria-hidden="true" />
+                        <span className="absolute left-1 top-1 inline-flex items-center gap-0.5 rounded-pill bg-danger px-1.5 text-caption font-medium leading-5 text-white">
+                          <AlertTriangle size={10} aria-hidden="true" />
                           Харшил
                         </span>
                       ) : null}
                     </div>
-
-                    <p className="text-lead font-semibold leading-heading text-ink">{dish.name}</p>
-
-                    {dish.allergenTags.length > 0 ? (
-                      <p className="mt-auto flex flex-wrap gap-1">
-                        {dish.allergenTags.map((tag) => (
-                          <span
-                            key={tag}
-                            className={
-                              risky
-                                ? // White, not another wash: a `danger-soft` pill on a
-                                  // `danger-soft` card is the same colour twice and the
-                                  // allergen stops being legible as a separate thing.
-                                  "rounded-pill border border-danger/30 bg-surface px-2 py-0.5 text-caption font-medium text-danger"
-                                : "rounded-pill bg-track px-2 py-0.5 text-caption text-muted"
-                            }
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </p>
-                    ) : null}
+                    <p className="line-clamp-2 text-center text-caption leading-snug text-ink sm:text-body">
+                      {dish.name}
+                    </p>
                   </li>
                 );
               })}
@@ -236,9 +211,9 @@ export function TodayMenu() {
             {day.warnings.length > 0 ? <AllergyWarnings warnings={day.warnings} /> : null}
           </>
         )}
-      </Card>
-    </section>
-  );
+      </>
+    );
+  }
 }
 
 /**

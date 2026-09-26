@@ -4,14 +4,12 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useState } from "react";
 import { z } from "zod";
 import {
-  BookOpen,
   ChevronDown,
   Droplet,
   Heart,
   MapPin,
   MessageCircle,
   Sparkles,
-  Sun,
   Tag,
   Users,
 } from "lucide-react";
@@ -30,7 +28,7 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
-import { EmptyState, FormError, LoadingState } from "@/components/ui/states";
+import { FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import {
   EYE_COLOR_OPTIONS,
@@ -61,9 +59,14 @@ export type AboutMeResponse = z.infer<typeof aboutMeResponseSchema>;
  * of these is a sentence.
  */
 const ABOUT_FIELDS = [
-  { key: "introduction", label: "Танилцуулга", long: true, Icon: BookOpen, tone: "sky" },
+  /*
+    ★ No "Танилцуулга" and no "Миний мөрөөдөл" — client, 2026-09-24. Both are
+    read-only remnants here (neither was ever editable on this card), and
+    dropping them from this list hides them without touching what is stored:
+    a child who has either still has it in the database, and the age sections
+    keep their own per-age "Миний мөрөөдөл" (`child-growth-ages.tsx`).
+  */
   { key: "nameMeaning", label: "Нэрний утга", long: false, Icon: Heart, tone: "peach" },
-  { key: "dream", label: "Миний мөрөөдөл", long: false, Icon: Sun, tone: "sun" },
   { key: "distinguishingTraits", label: "Миний онцлог", long: true, Icon: Sparkles, tone: "mint" },
   {
     key: "memorableSayings",
@@ -290,13 +293,12 @@ export function ChildAboutMe({
               </article>
             ) : null}
           </div>
-        ) : (
-          <EmptyState
-            icon={<BookOpen size={28} aria-hidden="true" />}
-            title="Хараахан бөглөөгүй байна"
-            description="Танилцуулга, нэрний утга, мөрөөдөл — «Засах» дарж эхлүүлнэ үү."
-          />
-        )
+        ) : /*
+          ★ Nothing at all while it is empty — client, 2026-09-24: "энэ ингэж
+          харагдахгүй, хас". The card above already carries the "Засах"
+          button, so an empty state whose whole message was "press Засах" was
+          a paragraph telling the reader about a control they can see.
+        */ null
       ) : null}
 
       {editing ? (
@@ -315,7 +317,12 @@ export function ChildAboutMe({
             }
           />
 
-          <div className="grid gap-4 md:grid-cols-2">
+          {/*
+            ★ Two to a row at every width — client, 2026-09-24. Овог, Нэр,
+            Ургийн овог and the rest are a word each; one column on a phone
+            made the form twice as long as the answers in it.
+          */}
+          <div className="grid grid-cols-2 gap-x-3 gap-y-4">
             {EDIT_FIELDS.map((field) => (
               <Field key={field.key} label={field.label} error={errors[field.key]}>
                 {({ id, describedBy, invalid }) =>

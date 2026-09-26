@@ -68,6 +68,8 @@ function renderShell(
   groups: unknown = GROUPS,
   unreadCount = 0,
   isSuperAdmin = false,
+  /** `GET /me/profile` — the identity row's photograph, when a case needs one. */
+  profile: unknown = null,
 ) {
   setPathname(pathname);
   const session = sessionFor(roles);
@@ -79,6 +81,7 @@ function renderShell(
     { path: "/groups", body: groups },
     { path: "/children/mine", body: ownChildren },
     { path: "/notifications/unread-count", body: { count: unreadCount } },
+    ...(profile ? [{ path: "/me/profile", body: profile }] : []),
   ]);
 
   return renderWithProviders(
@@ -114,8 +117,9 @@ beforeEach(() => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("the brand header", () => {
+  // The kitchen's menu — teachers, directors and families open without it (2026-09-25).
   it("renders the full logo, named for a screen reader", async () => {
-    renderShell(["TEACHER"]);
+    renderShell(["COOK"], "/kitchen/dashboard");
     const nav = await sidebar();
 
     const mark = within(nav).getByAltText(BRAND);
@@ -136,17 +140,54 @@ describe("the brand header", () => {
    * it on every screen but the login one.
    */
   it("prints the name beside the mark", async () => {
-    renderShell(["TEACHER"]);
+    renderShell(["COOK"], "/kitchen/dashboard");
     const nav = await sidebar();
 
     expect(within(nav).getByText(BRAND_LATIN)).toBeInTheDocument();
   });
 
   it("links the brand home", async () => {
-    renderShell(["TEACHER"]);
+    renderShell(["COOK"], "/kitchen/dashboard");
     const nav = await sidebar();
 
     expect(within(nav).getByAltText(BRAND).closest("a")).toHaveAttribute("href", "/");
+  });
+
+  /*
+    ★ The teacher's menu opens on the person, not the brand — client,
+    2026-09-25: photograph, name and group at the head; Хувийн тохиргоо and
+    Системээс гарах alone at the foot.
+  */
+  // A family's menu opens straight on its rows, set small — client, 2026-09-25.
+  it("opens a family's menu with no logo, its rows set small", async () => {
+    renderShell(["PARENT"], "/home", [OWN_CHILD]);
+    const nav = await sidebar();
+
+    expect(within(nav).queryByAltText(BRAND)).toBeNull();
+    expect(within(nav).queryByText(BRAND_LATIN)).toBeNull();
+    expect(within(nav).getByRole("link", { name: "Хувийн тохиргоо" })).toBeInTheDocument();
+    const rows = within(nav).getByTestId("nav-sections").querySelectorAll("a");
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) expect(row).toHaveClass("text-compact");
+  });
+
+  it("opens the teacher's menu on the person, with the actions at the foot", async () => {
+    renderShell(["TEACHER"]);
+    const nav = await sidebar();
+
+    expect(within(nav).queryByAltText(BRAND)).toBeNull();
+    const name = within(nav).getByText("Т.Хэрэглэгч");
+    const settings = within(nav).getByRole("link", { name: "Хувийн тохиргоо" });
+    const logout = within(nav).getByRole("button", { name: "Системээс гарах" });
+    const home = within(nav).getByRole("link", { name: "Самбар" });
+
+    // Name above the first row; settings and sign-out below the last.
+    expect(name.compareDocumentPosition(home) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(home.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      settings.compareDocumentPosition(logout) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(within(nav).getAllByText("Т.Хэрэглэгч")).toHaveLength(1);
   });
 });
 
@@ -188,48 +229,92 @@ describe("navigation icons", () => {
     }
   });
 
-  it("sizes section icons one step below the top level", async () => {
-    renderShell(["TEACHER"]);
+  /*
+    ★ The administrator's menu is the teacher's design — client, 2026-09-25:
+    the person at the head, thin grey line glyphs with no square behind them,
+    labels at the settings row's size, and the rounded phone bar. The
+    headings stay: a director's fourteen rows still want them.
+  */
+  it("draws the administrator's menu as the teacher's", async () => {
+    renderShell(["ADMIN"], "/admin");
     const nav = await sidebar();
 
-    const icon = within(nav).getByRole("link", { name: "Судалгаа" }).querySelector("img")!;
-    expect(icon.getAttribute("width")).toBe("18");
-  });
+    expect(within(nav).queryByAltText(BRAND)).toBeNull();
+    expect(within(nav).getByText("Т.Хэрэглэгч")).toBeInTheDocument();
+    expect(within(nav).getByText("Сургалт, үйл ажиллагаа")).toBeInTheDocument();
 
-  it("uses the supplied document and report drawings for management", async () => {
-    renderShell(["ADMIN"]);
-    const nav = await sections();
+    for (const name of ["Самбар", "Суралцагч", "Ирц", "Тайлан", "Баримт бичгийн сан", "Чат"]) {
+      const link = within(nav).getByRole("link", { name });
+      expect(link).toHaveClass("text-compact");
+      expect(link.querySelector("img")).toBeNull();
+      expect(link.querySelector("svg")).toHaveAttribute("stroke-width", "1.35");
+      expect(link.querySelector("[data-nav-icon]")).toHaveAttribute("data-icon-surface", "none");
+    }
 
-    expect(
-      within(nav)
-        .getByRole("link", { name: "Баримт бичгийн сан" })
-        .querySelector("img")
-        ?.getAttribute("src"),
-    ).toContain("icon-admin-documents-3d.png");
-    expect(
-      within(nav).getByRole("link", { name: "Тайлан" }).querySelector("img")?.getAttribute("src"),
-    ).toContain("icon-admin-report-3d.png");
+    const bar = await screen.findByTestId("teacher-bottom-bar");
+    expect(bar.querySelector("img")).toBeNull();
   });
 
   /*
-   * ★ The property the route→icon map exists to guarantee.
-   *
-   * `/notifications` appears in the staff sections, the parent sections and
-   * both bottom bars; `/settings` in three places. Before the map each call
-   * site picked its own glyph and they had already drifted.
-   */
-  it("uses one icon per destination, wherever that destination appears", async () => {
+    The photograph from Хувийн тохиргоо, in the identity row — 2026-09-25: a
+    teacher who had uploaded one still saw their initial here.
+  */
+  it("shows the profile photograph beside the name, not the initial", async () => {
+    const session = sessionFor(["TEACHER"]);
+    renderShell(["TEACHER"], "/dashboard", [], GROUPS, 0, false, {
+      id: session.user.id,
+      lastName: session.user.lastName,
+      firstName: session.user.firstName,
+      photoMediaFileId: "99999999-9999-4999-8999-999999999999",
+    });
+    const nav = await sidebar();
+
+    const photo = await within(nav).findByRole("img", {
+      name: `${session.user.lastName} ${session.user.firstName}-ийн зураг`,
+    });
+    expect(photo.getAttribute("src")).toContain("99999999-9999-4999-8999-999999999999");
+  });
+
+  /*
+    The teacher's phone bar — client, 2026-09-25: a white rounded bar of plain
+    grey line glyphs, the current tab in a pale blue square.
+  */
+  it("gives the teacher the rounded bar of plain glyphs", async () => {
+    renderShell(["TEACHER"], "/dashboard");
+    const bar = await screen.findByTestId("teacher-bottom-bar");
+
+    const tabs = [...within(bar).getAllByRole("link"), ...within(bar).getAllByRole("button")];
+    expect(tabs).toHaveLength(5);
+    expect(bar.querySelector("img")).toBeNull();
+
+    const home = within(bar).getByRole("link", { name: "Самбар" });
+    expect(home).toHaveAttribute("aria-current", "page");
+    expect(home.firstElementChild).toHaveClass("bg-primary-soft", "text-primary");
+    expect(within(bar).getByRole("button", { name: "Цэс" })).toBeInTheDocument();
+  });
+
+  it("keeps the kitchen's bar as it was", async () => {
+    renderShell(["COOK"], "/kitchen/dashboard");
+    await sidebar();
+    expect(screen.queryByTestId("teacher-bottom-bar")).toBeNull();
+  });
+
+  /*
+    ★ The teacher's side menu — client, 2026-09-25: thin, soft grey line
+    glyphs with no square behind them ("маш нарийн зөөлөн саарал"), and labels
+    at the size of "Хувийн тохиргоо" beneath them.
+  */
+  it("draws the teacher's rail in thin line glyphs at the settings row's size", async () => {
     renderShell(["TEACHER"]);
     const nav = await sidebar();
 
-    const paths = within(nav)
-      .getAllByRole("link")
-      .filter((a) => a.getAttribute("href") === "/notifications");
-
-    expect(paths.length).toBeGreaterThan(0);
-    const names = new Set(paths.map((a) => a.querySelector("img")?.getAttribute("src") ?? "none"));
-    expect(names.size).toBe(1);
-    expect([...names][0]).toContain("icon-notice");
+    for (const name of ["Самбар", "Суралцагч", "Ирц", "Хоолны цэс", "Судалгаа", "Чат"]) {
+      const link = within(nav).getByRole("link", { name });
+      expect(link).toHaveClass("text-compact");
+      expect(link.querySelector("img")).toBeNull();
+      expect(link.querySelector("svg")).toHaveAttribute("stroke-width", "1.35");
+      expect(link.querySelector("[data-nav-icon]")).toHaveAttribute("data-icon-surface", "none");
+    }
   });
 });
 
@@ -539,6 +624,26 @@ describe("role-based navigation", () => {
     );
   });
 
+  /*
+    ★ The floating chat button is back for teachers and administrators —
+    client, 2026-09-25 ("олга болсон байна гаргаад ир"). Not on /chat, which
+    is the chat itself.
+  */
+  it.each([
+    { label: "teacher", role: "TEACHER" as const, path: "/dashboard" },
+    { label: "admin", role: "ADMIN" as const, path: "/admin" },
+  ])("gives the $label the floating chat button", async ({ role, path }) => {
+    renderShell([role], path);
+    await sidebar();
+    expect(await screen.findByRole("button", { name: /^Чат/ })).toBeInTheDocument();
+  });
+
+  it("leaves the floating chat button off the chat page", async () => {
+    renderShell(["TEACHER"], "/chat");
+    await sidebar();
+    expect(screen.queryByRole("button", { name: /^Чат/ })).not.toBeInTheDocument();
+  });
+
   it.each([
     { label: "cook", role: "COOK" as const, path: "/kitchen/dashboard" },
     { label: "accountant", role: "ACCOUNTANT" as const, path: "/finance/dashboard" },
@@ -713,7 +818,8 @@ describe("the sidebar footer", () => {
     const nav = await sidebar();
 
     await waitFor(() => expect(within(nav).getByText("Дэлбээ бүлэг")).toBeInTheDocument());
-    expect(within(nav).getByText("Тест Хэрэглэгч")).toBeInTheDocument();
+    // `С.Дэлгэрмаа` — surname initial, then the given name (client, 2026-09-25).
+    expect(within(nav).getByText("Т.Хэрэглэгч")).toBeInTheDocument();
   });
 
   it("gives a teacher no group picker", async () => {
@@ -763,8 +869,15 @@ describe("the sidebar footer", () => {
     renderShell([...roles], label === "parent" ? "/home" : "/dashboard", [OWN_CHILD]);
     const nav = await sidebar();
 
-    // Who — plain text now, not the label of a control.
-    expect(within(nav).getByText("Тест Хэрэглэгч")).toBeInTheDocument();
+    // Who — plain text, not the label of a control. The staff shell writes the
+    // surname as an initial (client, 2026-09-25); a family's menu names nobody
+    // since the same day ("у. Бат · Эцэг эх … хас").
+    if (label === "parent") {
+      expect(within(nav).queryByText("Тест Хэрэглэгч")).toBeNull();
+      expect(within(nav).queryByText("Эцэг эх")).toBeNull();
+    } else {
+      expect(within(nav).getByText("Т.Хэрэглэгч")).toBeInTheDocument();
+    }
 
     expect(within(nav).getByRole("link", { name: "Хувийн тохиргоо" })).toHaveAttribute(
       "href",
@@ -804,7 +917,7 @@ describe("the sidebar footer", () => {
     renderShell(["TEACHER"]);
     const nav = await sidebar();
 
-    expect(within(nav).getByText("Тест Хэрэглэгч").className).toContain("truncate");
+    expect(within(nav).getByText("Т.Хэрэглэгч").className).toContain("truncate");
   });
 });
 
@@ -838,24 +951,42 @@ describe("mobile navigation", () => {
     expect(hrefs).toContain("/notifications");
   });
 
-  it("gives the parent's four main tabs their own supplied drawing", async () => {
+  /**
+   * The guardian's floating bar — client, 2026-09-25, to their own drawing:
+   * "хар зурган болгоод бичиггүй", and the open tab rising out of the bar as
+   * a blue disc.
+   */
+  it("draws the parent bar as glyphs with no visible captions", async () => {
     renderShell(["PARENT"], "/home", [OWN_CHILD]);
 
     const bar = await waitFor(() => screen.getByRole("navigation", { name: "Доод цэс" }));
-    const expected = [
-      ["Нүүр", "icon-nav-home"],
-      ["Мэдээ", "icon-nav-news"],
-      ["Зураг", "icon-nav-gallery"],
-      ["Хоол", "icon-nav-food"],
-    ] as const;
 
-    for (const [label, asset] of expected) {
+    for (const label of ["Нүүр", "Мэдээ", "Зураг", "Хоол"]) {
       const link = within(bar).getByRole("link", { name: label });
-      expect(link.querySelector("img")?.getAttribute("src")).toContain(asset);
-      // The label itself stays on screen — this bar follows the same visible
-      // caption pattern every other tab bar in the shell already uses.
-      expect(within(link).getByText(label)).not.toHaveClass("sr-only");
+      // A glyph, not one of the menu's illustrations — and the name survives
+      // for a screen reader even though nothing is printed.
+      expect(link.querySelector("svg")).not.toBeNull();
+      expect(link.querySelector("img")).toBeNull();
+      expect(within(link).getByText(label)).toHaveClass("sr-only");
     }
+
+    // The menu beside it keeps the illustrated set, untouched.
+    const nav = screen.getByTestId("nav-sections");
+    expect(within(nav).getByText("Цэцэрлэгийн мэдээлэл")).toBeInTheDocument();
+  });
+
+  // A pale blue square inside the bar, not a raised disc — client, 2026-09-25.
+  it("marks the tab you are on in soft blue, and only that one", async () => {
+    renderShell(["PARENT"], "/home", [OWN_CHILD]);
+
+    const bar = await screen.findByTestId("parent-bottom-bar");
+    const home = within(bar).getByRole("link", { name: "Нүүр" });
+    const meals = within(bar).getByRole("link", { name: "Хоол" });
+
+    expect(home).toHaveAttribute("aria-current", "page");
+    expect(home.querySelector("span")).toHaveClass("bg-primary-soft", "text-primary");
+    expect(meals).not.toHaveAttribute("aria-current");
+    expect(meals.querySelector("span")).not.toHaveClass("bg-primary-soft");
   });
 
   it("keeps the meal register off a teacher's menu", async () => {
@@ -873,5 +1004,50 @@ describe("mobile navigation", () => {
     const nav = await sidebar();
 
     expect(within(nav).queryByRole("link", { name: "Хоолны бүртгэл" })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The guardian menu's own icon set — client, 2026-09-25, delivered as one
+ * sheet and cut into ten files. Asserted by asset name rather than by sight:
+ * a menu that silently falls back to a lucide glyph looks fine and is not
+ * what the client drew.
+ */
+describe("the parent menu's icons", () => {
+  it("draws the client's set on every row a guardian sees", async () => {
+    renderShell(["PARENT"], "/home");
+
+    const nav = await screen.findByTestId("nav-sections");
+    const sources = Array.from(document.querySelectorAll("img"))
+      .map((img) => img.getAttribute("src") ?? "")
+      .join(" ");
+
+    for (const asset of [
+      "icon-nav-home-v2",
+      "icon-nav-child-v2",
+      "icon-nav-portfolio-v2",
+      "icon-nav-kindergarten-v2",
+      "icon-nav-news-v2",
+      "icon-nav-chat-v2",
+      "icon-nav-access-v2",
+      "icon-nav-help-v2",
+      "icon-nav-settings-v2",
+      "icon-nav-signout-v2",
+    ]) {
+      expect(sources, asset).toContain(asset);
+    }
+    expect(within(nav).getByText("Цэцэрлэгийн мэдээлэл")).toBeInTheDocument();
+    // The two the client reported as unchanged: the bottom bar draws "Нүүр"
+    // and "Мэдээ" from the same list as the menu's first row, so both had to
+    // move to the new set (2026-09-25).
+    /*
+      ★ The `-v2` names matter — 2026-09-25. The first cut was saved over
+      `icon-nav-home.png` and `icon-nav-news.png`, which two older entries
+      already pointed at: the files changed under a URL every browser had
+      cached, so those two rows kept drawing the old picture while the eight
+      new filenames loaded fresh. New names, and the originals restored.
+    */
+    expect(sources).not.toContain("icon-nav-home.png");
+    expect(sources).not.toContain("icon-nav-news.png");
   });
 });

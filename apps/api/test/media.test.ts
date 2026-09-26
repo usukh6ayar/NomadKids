@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestApp } from "./support/app";
 import { resetData, testDb, uniq } from "./support/db";
 import {
+  assignTeacher,
   authed,
   createGroup,
   createMembership,
@@ -509,6 +510,15 @@ describe("lifecycle", () => {
       expect(res.status).toBe(201);
       expect(res.body.age).toBe(4);
       expect(res.body.purpose).toBe("CHILD_PHOTO");
+      // Into that age's "Багшийн илгээсэн зураг", not one of the twelve cards.
+      expect(res.body.attribution).toBe("TEACHER");
+      expect(res.body.category).toBeNull();
+
+      const folder = await authed(
+        request(server()).get(`/v1/children/${a.child.id}/media?attribution=TEACHER&age=4`),
+        parentA,
+      );
+      expect(folder.body.items.map((item: { id: string }) => item.id)).toContain(res.body.id);
 
       // A copy, not a second row on the same object.
       const source = await db.mediaFile.findUniqueOrThrow({ where: { id: mediaId } });
@@ -1092,12 +1102,31 @@ describe("a guardian contributing to the album", () => {
     expect((await authed(request(server()).delete(`/v1/media/${id}`), parentA)).status).toBe(200);
   });
 
-  it("still cannot set the child's profile photo", async () => {
+  /**
+   * ★ Amended 2026-09-24, at the client's request — see `docs/SECURITY.md`
+   * §6.6. A guardian may make one of their own child's photographs the
+   * profile picture; another family's guardian still cannot reach the route.
+   */
+  it("can set their own child's profile photo", async () => {
     const id = await upload(parentA, a.child.id);
     const res = await authed(
       request(server()).post(`/v1/children/${a.child.id}/media/profile-photo`),
       parentA,
     ).send({ mediaId: id });
+
+    expect(res.status).toBe(201);
+    const child = await db.child.findUniqueOrThrow({ where: { id: a.child.id } });
+    expect(child.photoMediaFileId).toBe(id);
+  });
+
+  it("cannot set the profile photo of a child who is not theirs", async () => {
+    const teacherB = await login(app, b.teacherUser.username);
+    const foreignId = await upload(teacherB, b.child.id);
+
+    const res = await authed(
+      request(server()).post(`/v1/children/${b.child.id}/media/profile-photo`),
+      parentA,
+    ).send({ mediaId: foreignId });
     expect(res.status).toBe(404);
   });
 });
@@ -1285,5 +1314,248 @@ describe("class photo", () => {
 
     const other = await authed(request(server()).get(`/v1/media/${uploaded.body.id}`), parentB);
     expect(other.status).toBe(404);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// At most three photographs per age-album card — client, 2026-09-18
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("an age-album card holds at most three photographs", () => {
+  const albumFields = { age: "4", category: "FAMILY" };
+
+  it("lets a parent add three and refuses the fourth", async () => {
+    for (let i = 0; i < 3; i++) await upload(parentA, a.child.id, albumFields);
+
+    const req = authed(request(server()).post(`/v1/children/${a.child.id}/media`), parentA)
+      .attach("file", await photoBytes(), "дөрөв.jpg")
+      .field("age", "4")
+      .field("category", "FAMILY");
+    const res = await req;
+
+    expect(res.status).toBe(400);
+    expect(res.text).toContain("дээд тал нь 3 зураг");
+    expect(
+      await db.mediaFile.count({ where: { childId: a.child.id, age: 4, category: "FAMILY" } }),
+    ).toBe(3);
+  });
+
+  it("keeps the first three of a batch of four and names the one refused", async () => {
+    const res = await authed(request(server()).post(`/v1/children/${a.child.id}/media`), parentA)
+      .attach("file", await photoBytes(), "нэг.jpg")
+      .attach("file", await photoBytes(), "хоёр.jpg")
+      .attach("file", await photoBytes(), "гурав.jpg")
+      .attach("file", await photoBytes(), "дөрөв.jpg")
+      .field("age", "4")
+      .field("category", "FAMILY");
+
+    expect(res.status).toBe(201);
+    expect(res.body.items).toHaveLength(3);
+    expect(res.body.failed).toHaveLength(1);
+    expect(res.body.failed[0].name).toContain("дөрөв");
+  });
+
+  it("counts the card, not the uploader, and not other ages, cards or archived photos", async () => {
+    await upload(teacherA, a.child.id, albumFields);
+    await upload(parentA, a.child.id, albumFields);
+    const archived = await upload(parentA, a.child.id, albumFields);
+    await db.mediaFile.update({ where: { id: archived }, data: { status: "ARCHIVED" } });
+
+    // Two live photographs: one more fits.
+    await upload(parentA, a.child.id, albumFields);
+    // The same card at another age, and another card, are separate.
+    await upload(parentA, a.child.id, { age: "5", category: "FAMILY" });
+    await upload(parentA, a.child.id, { age: "4", category: "TRAVEL" });
+
+    await expect(upload(teacherA, a.child.id, albumFields)).rejects.toThrow(/400/);
+  });
+
+  it("refuses moving a photograph into a full card, but not re-saving one already there", async () => {
+    const inside = [];
+    for (let i = 0; i < 3; i++) inside.push(await upload(parentA, a.child.id, albumFields));
+    const outside = await upload(parentA, a.child.id, { age: "4", category: "TRAVEL" });
+
+    const moved = await authed(request(server()).patch(`/v1/media/${outside}`), parentA).send({
+      category: "FAMILY",
+    });
+    expect(moved.status).toBe(400);
+
+    const resaved = await authed(request(server()).patch(`/v1/media/${inside[0]}`), parentA).send({
+      category: "FAMILY",
+      caption: "Гэр бүл",
+    });
+    expect(resaved.status).toBe(200);
+  });
+
+  it("leaves photographs outside the twelve cards unlimited", async () => {
+    for (let i = 0; i < 4; i++) await upload(parentA, a.child.id, { age: "4", category: "EVENT" });
+    for (let i = 0; i < 4; i++) await upload(parentA, a.child.id);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Added photo types — client, 2026-09-18
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("added photo types", () => {
+  const typesUrl = (childId = a.child.id) => `/v1/children/${childId}/media/album-categories`;
+  const summary = async (session = parentA, age = 4) =>
+    (
+      await authed(
+        request(server()).get(`/v1/children/${a.child.id}/media/album-summary?age=${age}`),
+        session,
+      )
+    ).body;
+
+  async function addType(session = parentA, name = "Бассейн", age = 4) {
+    const res = await authed(request(server()).post(typesUrl()), session).send({ age, name });
+    if (res.status !== 201) throw new Error(`add type failed: ${res.status} ${res.text}`);
+    return res.body.id as string;
+  }
+
+  it("a parent adds a type; it shows for that age only, after the twelve", async () => {
+    const id = await addType();
+
+    const four = await summary();
+    expect(four.categories).toHaveLength(12);
+    expect(four.customCategories).toEqual([
+      expect.objectContaining({ id, name: "Бассейн", count: 0, thumbnailMediaId: null }),
+    ]);
+    expect((await summary(parentA, 3)).customCategories).toEqual([]);
+  });
+
+  it("files a photograph into the type, at the type's own age, and holds three", async () => {
+    const id = await addType();
+    for (let i = 0; i < 3; i++) {
+      await upload(parentA, a.child.id, { albumCategoryId: id, age: "2", category: "FAMILY" });
+    }
+
+    const row = await db.mediaFile.findFirstOrThrow({ where: { albumCategoryId: id } });
+    expect(row.age).toBe(4);
+    expect(row.category).toBeNull();
+    expect((await summary()).customCategories[0].count).toBe(3);
+
+    await expect(upload(parentA, a.child.id, { albumCategoryId: id })).rejects.toThrow(/400/);
+
+    const listed = await authed(
+      request(server()).get(`/v1/children/${a.child.id}/media?albumCategoryId=${id}`),
+      parentA,
+    );
+    expect(listed.body.total).toBe(3);
+  });
+
+  it("renames and deletes an empty type; refuses to delete one with photographs", async () => {
+    const id = await addType();
+
+    const renamed = await authed(request(server()).patch(`${typesUrl()}/${id}`), parentA).send({
+      name: "Усан бассейн",
+    });
+    expect(renamed.status).toBe(200);
+    expect(renamed.body.name).toBe("Усан бассейн");
+
+    const photo = await upload(parentA, a.child.id, { albumCategoryId: id });
+    const refused = await authed(request(server()).delete(`${typesUrl()}/${id}`), parentA);
+    expect(refused.status).toBe(400);
+
+    await authed(request(server()).delete(`/v1/media/${photo}`), parentA);
+    const removed = await authed(request(server()).delete(`${typesUrl()}/${id}`), parentA);
+    expect(removed.status).toBe(200);
+    expect((await summary()).customCategories).toEqual([]);
+    // Soft (§3.2).
+    expect((await db.albumCategory.findUniqueOrThrow({ where: { id } })).deletedAt).not.toBeNull();
+  });
+
+  it("refuses a name a built-in type or another added type already has", async () => {
+    await addType(parentA, "Бассейн");
+    for (const name of ["Миний гэр бүл", " бассейн "]) {
+      const res = await authed(request(server()).post(typesUrl()), parentA).send({ age: 4, name });
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it("a teacher may change a parent's type; a parent may not change a teacher's", async () => {
+    const parents = await addType(parentA, "Бассейн");
+    const teachers = await addType(teacherA, "Спорт");
+
+    expect(
+      (
+        await authed(request(server()).patch(`${typesUrl()}/${parents}`), teacherA).send({
+          name: "Усанд сэлэлт",
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await authed(request(server()).patch(`${typesUrl()}/${teachers}`), parentA).send({
+          name: "Миний спорт",
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (await authed(request(server()).delete(`${typesUrl()}/${teachers}`), parentA)).status,
+    ).toBe(404);
+  });
+
+  describe("authorization", () => {
+    it("teacher from another group gets 404", async () => {
+      const id = await addType();
+      const otherGroup = await createGroup(a.kindergarten.id, a.schoolYear.id);
+      const user = await createUser({ username: uniq("teacher-other-group") });
+      const membership = await createMembership(user.id, a.kindergarten.id, "TEACHER");
+      await assignTeacher(a.kindergarten.id, otherGroup.id, membership.id);
+      const other = await login(app, user.username);
+
+      expect(
+        (await authed(request(server()).post(typesUrl()), other).send({ age: 4, name: "X" }))
+          .status,
+      ).toBe(404);
+      expect(
+        (await authed(request(server()).patch(`${typesUrl()}/${id}`), other).send({ name: "X" }))
+          .status,
+      ).toBe(404);
+      expect((await authed(request(server()).delete(`${typesUrl()}/${id}`), other)).status).toBe(
+        404,
+      );
+    });
+
+    it("guardian of another child gets 404", async () => {
+      const id = await addType();
+
+      expect(
+        (await authed(request(server()).post(typesUrl()), parentB).send({ age: 4, name: "X" }))
+          .status,
+      ).toBe(404);
+      expect(
+        (await authed(request(server()).patch(`${typesUrl()}/${id}`), parentB).send({ name: "X" }))
+          .status,
+      ).toBe(404);
+      expect((await authed(request(server()).delete(`${typesUrl()}/${id}`), parentB)).status).toBe(
+        404,
+      );
+      // And B's family cannot file a photo into A's type through their own child.
+      const res = await authed(request(server()).post(`/v1/children/${b.child.id}/media`), parentB)
+        .attach("file", await photoBytes(), "зураг.jpg")
+        .field("albumCategoryId", id);
+      expect(res.status).toBe(400);
+      expect(await db.mediaFile.count({ where: { albumCategoryId: id } })).toBe(0);
+    });
+
+    it("user from another kindergarten gets 404", async () => {
+      const id = await addType();
+      const teacherB = await login(app, b.teacherUser.username);
+
+      expect(
+        (await authed(request(server()).post(typesUrl()), teacherB).send({ age: 4, name: "X" }))
+          .status,
+      ).toBe(404);
+      expect(
+        (await authed(request(server()).patch(`${typesUrl()}/${id}`), teacherB).send({ name: "X" }))
+          .status,
+      ).toBe(404);
+      // Through B's own child's path, A's type is not found either.
+      expect(
+        (await authed(request(server()).delete(`${typesUrl(b.child.id)}/${id}`), teacherB)).status,
+      ).toBe(404);
+    });
   });
 });

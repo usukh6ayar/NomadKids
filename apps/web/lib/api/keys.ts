@@ -59,7 +59,6 @@ export const qk = {
    */
   specialNeedsCategories: (childId: string) =>
     ["child", childId, "special-needs-categories"] as const,
-  incidents: (childId: string) => ["child", childId, "incidents"] as const,
   /** Ажилтны хувийн хэрэг — А/261 шалгуур 51. Keyed by both ids because a
    * person may work at two kindergartens and each keeps its own file. */
   staffRecords: (kindergartenId: string, userId: string) =>
@@ -128,8 +127,6 @@ export const qk = {
     ["kindergarten", kindergartenId, "menu", "with-warnings", from, to] as const,
   attendanceReviewQueue: (filters: Record<string, unknown> = {}) =>
     ["attendance-requests", "review-queue", filters] as const,
-  kindergartenIncidents: (kindergartenId: string, filters: Record<string, unknown> = {}) =>
-    ["kindergarten", kindergartenId, "incidents", filters] as const,
 
   childSurveys: (childId: string) => ["child", childId, "surveys"] as const,
   /**
@@ -144,6 +141,16 @@ export const qk = {
   kindergartenSurveys: (kindergartenId: string) =>
     ["kindergarten", kindergartenId, "surveys"] as const,
   survey: (surveyId: string) => ["survey", surveyId] as const,
+  /**
+   * The administration's surveys, as a teacher reads them. One namespace, so
+   * opening one invalidates the list, the badge and the bell together.
+   */
+  administrationSurveys: (kindergartenId: string, page = 1) =>
+    ["survey-administration", kindergartenId, "list", page] as const,
+  administrationSurveyUnread: (kindergartenId: string) =>
+    ["survey-administration", kindergartenId, "unread-count"] as const,
+  administrationSurvey: (surveyId: string) =>
+    ["survey-administration", "detail", surveyId] as const,
   /** The group filter is part of the key: each cut is its own cached answer. */
   surveyResults: (surveyId: string, groupId = "") =>
     ["survey", surveyId, "results", groupId] as const,

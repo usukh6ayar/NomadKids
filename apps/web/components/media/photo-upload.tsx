@@ -109,6 +109,7 @@ export function PhotoUpload({
   observationId,
   milestoneId,
   category,
+  albumCategoryId,
   age,
   multiple = true,
   label = "Зураг нэмэх",
@@ -118,6 +119,7 @@ export function PhotoUpload({
   variant = "secondary",
   trigger = "button",
   withCaption = false,
+  maxFiles,
   children,
 }: {
   childId: string;
@@ -128,9 +130,17 @@ export function PhotoUpload({
   milestoneId?: string;
   /** Pre-tags every file in this upload with the album's "ангилал" facet — the overview page's fixed galleries. */
   category?: string;
+  /** Files every photo into an added photo type — `AlbumCategory`. */
+  albumCategoryId?: string;
   /** Pre-tags every file with the album's "нас" facet — the overview page's age-filtered gallery. */
   age?: number;
   multiple?: boolean;
+  /**
+   * How many more photographs this place accepts — an age-album card holds
+   * `MAX_PHOTOS_PER_AGE_ALBUM_CATEGORY`. A larger selection sends the first
+   * ones and says why the rest stayed behind; the API refuses beyond it anyway.
+   */
+  maxFiles?: number;
   label?: string;
   /** Replaces the default "JPEG, PNG or WebP…" line. Pass `null` for none. */
   hint?: ReactNode | null;
@@ -186,6 +196,7 @@ export function PhotoUpload({
       if (milestoneId) form.append("milestoneId", milestoneId);
       if (purpose) form.append("purpose", purpose);
       if (category) form.append("category", category);
+      if (albumCategoryId) form.append("albumCategoryId", albumCategoryId);
       if (age) form.append("age", String(age));
       if (caption.trim()) form.append("caption", caption.trim());
       // No Content-Type is set: the browser must add the multipart boundary.
@@ -212,13 +223,18 @@ export function PhotoUpload({
     setLocalError(null);
     setRefused([]);
 
-    const chosen = Array.from(list);
+    const picked = Array.from(list);
+    const chosen = maxFiles === undefined ? picked : picked.slice(0, Math.max(maxFiles, 0));
     const tooBig = chosen.filter((file) => file.size > MAX_UPLOAD_BYTES);
     const sendable = chosen.filter((file) => file.size <= MAX_UPLOAD_BYTES);
 
     if (tooBig.length) {
       setLocalError(
         `${tooBig.map((f) => `"${f.name}"`).join(", ")} хэт том байна. Дээд хэмжээ ${MAX_MB} MB.`,
+      );
+    } else if (picked.length > chosen.length) {
+      setLocalError(
+        `Энд дахиад ${Math.max(maxFiles ?? 0, 0)} зураг л нэмэх боломжтой. Эхний ${chosen.length}-ийг нэмлээ.`,
       );
     }
 

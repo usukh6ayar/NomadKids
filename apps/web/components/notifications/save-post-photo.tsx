@@ -3,12 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { BookmarkPlus } from "lucide-react";
-import {
-  AGE_ALBUM_CATEGORIES,
-  AGE_ALBUM_CATEGORY_LABEL,
-  mediaSchema,
-  type ChildSummary,
-} from "@kinder/contracts";
+import { mediaSchema, type ChildSummary } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
@@ -17,7 +12,21 @@ import { Field, Select } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { useToast } from "@/components/ui/toast";
 import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
-import { fullName } from "@/lib/format";
+import { ageInYears, fullName } from "@/lib/format";
+
+/**
+ * The album year a photograph taken today belongs in — the child's age now,
+ * held to the 2–5 the portfolio has. ★ Not the first option: defaulting to 2
+ * filed a five-year-old's photographs in an album the parent never opens, and
+ * the toast said "хадгалагдлаа" while the folder they were looking at stayed
+ * empty (client, 2026-09-18).
+ */
+function albumAgeFor(child: ChildSummary | undefined): string {
+  const years = ageInYears(child?.dateOfBirth) ?? PORTFOLIO_AGES[0];
+  const first = PORTFOLIO_AGES[0];
+  const last = PORTFOLIO_AGES[PORTFOLIO_AGES.length - 1]!;
+  return String(Math.min(Math.max(years, first), last));
+}
 
 /**
  * "Хадгалах" on a class-board photograph — RFP §2.3.
@@ -34,6 +43,10 @@ import { fullName } from "@/lib/format";
  * a photograph filed under the wrong one is a wrong memory rather than a wrong
  * setting. The age is asked for the same reason: the album is organised by
  * year (RFP §4.3) and "which year is this" is a fact only the parent has.
+ *
+ * ★★★ No "Зургийн төрөл" — client, 2026-09-18. A photograph kept from a post
+ * is the teacher's, so it lands in that age's "Багшийн илгээсэн зураг" rather
+ * than in one of the twelve cards the family fills themselves.
  */
 export function SavePostPhoto({
   mediaId,
@@ -46,18 +59,17 @@ export function SavePostPhoto({
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [childId, setChildId] = useState(myChildren[0]?.id ?? "");
-  const [age, setAge] = useState(String(PORTFOLIO_AGES[0]));
-  const [category, setCategory] = useState<string>(AGE_ALBUM_CATEGORIES[0]);
+  const [age, setAge] = useState(() => albumAgeFor(myChildren[0]));
 
   const save = useMutation({
     mutationFn: () =>
       mutate(`/children/${childId}/media/save-from-post`, mediaSchema, {
         method: "POST",
-        body: { mediaId, age: Number(age), category },
+        body: { mediaId, age: Number(age) },
       }),
     onSuccess: () => {
       setOpen(false);
-      toast.success("Зураг цомогт хадгалагдлаа.");
+      toast.success(`Зураг ${age} насны "Багшийн илгээсэн зураг"-т хадгалагдлаа.`);
       void queryClient.invalidateQueries({ queryKey: qk.childMedia(childId) });
       void queryClient.invalidateQueries({ queryKey: qk.childAgeAlbum(childId, Number(age)) });
     },
@@ -88,7 +100,7 @@ export function SavePostPhoto({
         onOpenChange={(next) => (next ? setOpen(true) : setOpen(false))}
         busy={save.isPending}
         title="Цомогт хадгалах"
-        description="Энэ зургийг хүүхдийнхээ насны цомогт хуулж хадгална."
+        description="Энэ зургийг хүүхдийнхээ сонгосон насны «Багшийн илгээсэн зураг» хавтсанд хуулж хадгална."
         footer={
           <>
             <Button
@@ -119,7 +131,14 @@ export function SavePostPhoto({
           {myChildren.length > 1 ? (
             <Field label="Хүүхэд">
               {({ id }) => (
-                <Select id={id} value={childId} onChange={(e) => setChildId(e.target.value)}>
+                <Select
+                  id={id}
+                  value={childId}
+                  onChange={(e) => {
+                    setChildId(e.target.value);
+                    setAge(albumAgeFor(myChildren.find((child) => child.id === e.target.value)));
+                  }}
+                >
                   {myChildren.map((child) => (
                     <option key={child.id} value={child.id}>
                       {fullName(child)}
@@ -136,18 +155,6 @@ export function SavePostPhoto({
                 {PORTFOLIO_AGES.map((value) => (
                   <option key={value} value={String(value)}>
                     {value} нас
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
-
-          <Field label="Зургийн төрөл">
-            {({ id }) => (
-              <Select id={id} value={category} onChange={(e) => setCategory(e.target.value)}>
-                {AGE_ALBUM_CATEGORIES.map((value) => (
-                  <option key={value} value={value}>
-                    {AGE_ALBUM_CATEGORY_LABEL[value]}
                   </option>
                 ))}
               </Select>

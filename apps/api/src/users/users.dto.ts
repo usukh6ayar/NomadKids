@@ -36,6 +36,15 @@ export const updateUserSchema = z.object({
   lastName: z.string().min(1).max(100).optional(),
   firstName: z.string().min(1).max(100).optional(),
   isActive: z.boolean().optional(),
+  /*
+    ★ The staff-profile lines, 2026-09-24. An administrator fills these in for
+    a teacher who has not — the same three fields `updateProfileSchema` lets
+    the teacher write about themselves, and the three the family's
+    "Цэцэрлэгийн мэдээлэл" card draws.
+  */
+  specialization: z.string().max(200).nullable().optional(),
+  qualification: z.string().max(200).nullable().optional(),
+  education: z.string().max(1000).nullable().optional(),
 });
 export type UpdateUserDto = z.infer<typeof updateUserSchema>;
 
@@ -45,6 +54,8 @@ export const updateProfileSchema = z.object({
   lastName: z.string().min(1).max(100).optional(),
   firstName: z.string().min(1).max(100).optional(),
   specialization: z.string().max(200).nullable().optional(),
+  /** Мэргэшлийн зэрэг — 2026-09-24. */
+  qualification: z.string().max(200).nullable().optional(),
   education: z.string().max(1000).nullable().optional(),
   bio: z.string().max(2000).nullable().optional(),
 });

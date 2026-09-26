@@ -551,7 +551,12 @@ Same kindergarten, wrong group, still 404.
 >   otherwise a family could illustrate a private teaching note, which is the
 >   leak the original case existed to prevent
 > - a guardian may edit metadata only on photographs they uploaded
-> - deletion and the profile picture stay staff-only, unchanged
+> - deletion stays staff-only, unchanged
+> - **the profile picture became the family's too on 2026-09-24**, at the
+>   client's request: a guardian may make one of their own child's existing
+>   photographs the profile picture (`POST /children/:id/media/profile-photo`,
+>   `canContributeMediaForChild`). It chooses among pictures they may already
+>   see and writes one id; editing the child's record stays staff-only
 >
 > This is the only one of the 108 cases whose meaning has changed. It is
 > recorded here rather than in a commit message so the acceptance count stays

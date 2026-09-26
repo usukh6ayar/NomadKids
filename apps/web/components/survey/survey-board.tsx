@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { z } from "zod";
 import {
-  ChevronRight,
   Copy,
   Download,
   MoreVertical,
@@ -53,11 +52,10 @@ import { CreateSurveyWizard } from "@/components/survey/create-survey-wizard";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
 import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { formatDate, fullName } from "@/lib/format";
+import { formatDate, shortName } from "@/lib/format";
 import { SURVEY_CATEGORY_META } from "@/lib/survey-meta";
 import { downloadUrl } from "@/lib/api/client";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -69,6 +67,7 @@ import { isSurveyOwner, staffSurveysSchema } from "@/lib/survey-access";
 import { cn } from "@/lib/utils";
 import { BackButton } from "@/components/ui/back-button";
 import { SearchField } from "@/components/ui/search-field";
+import { TableShell, Td, Th } from "@/components/ui/table";
 
 const groupsSchema = paginated(groupListItemSchema);
 
@@ -155,7 +154,11 @@ function GroupSurveysList({ groupId }: { groupId: string }) {
   });
 
   const group = groups.data?.items.find((item) => item.id === groupId);
-  const groupSurveys = (surveys.data ?? []).filter((survey) => survey.groupId === groupId);
+  // A teacher's own assessments are on `/surveys/teacher`; this board is what
+  // the group's families were asked.
+  const groupSurveys = (surveys.data ?? []).filter(
+    (survey) => survey.groupId === groupId && survey.respondent !== "TEACHER",
+  );
   const term = search.trim().toLowerCase();
   const visible = groupSurveys.filter(
     (survey) =>
@@ -167,14 +170,12 @@ function GroupSurveysList({ groupId }: { groupId: string }) {
 
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
-      <header className="flex items-start gap-3">
-        <BackButton href="/surveys" />
-        <div className="min-w-0 pt-1">
-          <h1 className="truncate text-title font-semibold leading-heading text-ink">
-            {group?.name ?? "Бүлгийн судалгаа"}
-          </h1>
-          <p className="mt-0.5 text-body text-muted">Тус бүлэгт зориулсан судалгаа, асуулга</p>
-        </div>
+      {/* The teacher's hub header — back and title on one line, no lede (2026-09-25). */}
+      <header className="flex items-center gap-2 sm:gap-3">
+        <BackButton href="/surveys/parents" />
+        <h1 className="min-w-0 flex-1 truncate text-lead font-semibold leading-heading text-ink sm:text-title">
+          {group?.name ?? "Бүлгийн судалгаа"}
+        </h1>
       </header>
 
       <section aria-label="Бүлгийн судалгааны шүүлтүүр" className="flex flex-col gap-3">
@@ -221,11 +222,7 @@ function GroupSurveysList({ groupId }: { groupId: string }) {
       ) : null}
 
       {visible.length > 0 ? (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 2xl:grid-cols-3">
-          {visible.map((survey) => (
-            <SurveyCard key={survey.id} survey={survey} />
-          ))}
-        </div>
+        <SurveyTable surveys={visible} caption="Бүлгийн судалгаа, асуулга" />
       ) : null}
     </div>
   );
@@ -290,7 +287,10 @@ function SurveysList({ kind }: { kind: SurveyKind }) {
     empty list is the failure that shape produces.
   */
   const all = (surveys.data ?? []).filter(
-    (survey) => survey.kind === kind && isSurveyOwner(survey, session?.user.id),
+    (survey) =>
+      survey.kind === kind &&
+      survey.respondent !== "TEACHER" &&
+      isSurveyOwner(survey, session?.user.id),
   );
   const term = search.trim().toLowerCase();
   /** How many narrowing choices are on — the number on the filter icon. */
@@ -373,7 +373,7 @@ function SurveysList({ kind }: { kind: SurveyKind }) {
         board above uses it — it is where the card that opened this screen is.
       */}
       <header className="flex items-start gap-3">
-        <BackButton href="/surveys" />
+        <BackButton href="/surveys/parents" />
         <div className="min-w-0 flex-1 pt-1">
           <h1 className="text-title font-semibold leading-heading text-ink">
             {SURVEY_KIND_LABEL[kind]}
@@ -583,11 +583,7 @@ function SurveysList({ kind }: { kind: SurveyKind }) {
                 {termLabel(number)}
                 <span className="text-caption font-normal text-muted">{surveys.length}</span>
               </h2>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 2xl:grid-cols-3">
-                {surveys.map((survey) => (
-                  <SurveyCard key={survey.id} survey={survey} />
-                ))}
-              </div>
+              <SurveyTable surveys={surveys} caption={termLabel(number)} />
             </section>
           ))}
         </div>
@@ -677,6 +673,38 @@ function TabPill({
  * `h-full` so a card in a grid row fills the height its tallest neighbour
  * sets, which is what keeps the footers of a row on one line.
  */
+/** Surveys as rows — the list the cards used to be, 2026-09-25. */
+function SurveyTable({
+  surveys,
+  caption,
+}: {
+  surveys: z.infer<typeof surveySchema>[];
+  caption: string;
+}) {
+  return (
+    <TableShell caption={caption} minWidth="min-w-[760px]">
+      <thead>
+        <tr>
+          <Th>Гарчиг</Th>
+          <Th>Ангилал</Th>
+          <Th>Төлөв</Th>
+          <Th numeric>Хариулт</Th>
+          <Th numeric>Хувь</Th>
+          <Th numeric>Огноо</Th>
+          <Th>
+            <span className="sr-only">Үйлдэл</span>
+          </Th>
+        </tr>
+      </thead>
+      <tbody>
+        {surveys.map((survey) => (
+          <SurveyCard key={survey.id} survey={survey} />
+        ))}
+      </tbody>
+    </TableShell>
+  );
+}
+
 function SurveyCard({ survey }: { survey: z.infer<typeof surveySchema> }) {
   const meta = SURVEY_CATEGORY_META[survey.category];
   /*
@@ -715,16 +743,39 @@ function SurveyCard({ survey }: { survey: z.infer<typeof surveySchema> }) {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  return (
-    <div className="group relative h-full">
-      {/*
-        ★ The menu sits outside the link, not inside it — 2026-09-10.
+  const percent = expected > 0 ? Math.round((answered / expected) * 100) : 0;
 
-        A `<button>` nested in an `<a>` is invalid HTML and, more to the point,
-        every menu press would also follow the card. It is absolutely
-        positioned over the card's corner instead, above the link in the stack.
-      */}
-      <div className="absolute right-2 top-2 z-10">
+  /*
+    ★ A row, not a card — client, 2026-09-25: "энийг цэвэрхэн хүснэгтээр
+    харуулаад үз". Title, kind of survey, state, answers, share and date in
+    columns; the ⋯ menu and its dialogs are unchanged.
+  */
+  return (
+    <tr className="group">
+      <Td>
+        <Link
+          href={`/surveys/${survey.id}`}
+          className="font-medium text-ink hover:text-primary hover:underline"
+        >
+          {survey.title}
+        </Link>
+      </Td>
+      <Td className="text-muted">{meta.label}</Td>
+      <Td>
+        <span className={cn("font-medium", STATUS_TEXT[survey.status])}>
+          {STATUS_LABEL[survey.status]}
+        </span>
+      </Td>
+      <Td numeric className="text-muted">
+        {answered} / {expected}
+      </Td>
+      <Td numeric className="font-medium text-ink">
+        {percent}%
+      </Td>
+      <Td numeric className="text-muted">
+        {formatDate(date)}
+      </Td>
+      <Td className="w-12 text-right">
         <RowMenu
           ariaLabel={`${survey.title} үйлдэл`}
           triggerIcon={<MoreVertical size={18} aria-hidden="true" />}
@@ -741,7 +792,7 @@ function SurveyCard({ survey }: { survey: z.infer<typeof surveySchema> }) {
               onSelect: () => setParticipation(true),
             },
             {
-              label: "Тайлан татах",
+              label: "Эксэл татах",
               icon: <Download size={16} />,
               onSelect: () => {
                 window.location.href = downloadUrl(`/surveys/${survey.id}/export`);
@@ -762,107 +813,26 @@ function SurveyCard({ survey }: { survey: z.infer<typeof surveySchema> }) {
             },
           ]}
         />
-      </div>
-
-      <ConfirmDialog
-        open={confirmDelete}
-        onOpenChange={(next) => (next ? undefined : setConfirmDelete(false))}
-        title="Энэ судалгааг устгах уу?"
-        description="Жагсаалтаас хасагдана. Өгсөн хариултууд хэвээр үлдэж, бүртгэлд тэмдэглэгдэнэ."
-        confirmLabel="Устгах"
-        cancelLabel="Болих"
-        tone="danger"
-        pending={remove.isPending}
-        onConfirm={() => remove.mutate()}
-      />
-
-      <SurveyParticipation
-        surveyId={survey.id}
-        title={survey.title}
-        open={participation}
-        onClose={() => setParticipation(false)}
-      />
-
-      <Link href={`/surveys/${survey.id}`} className="block h-full">
-        <Card
-          pad="compact"
-          className="flex h-full flex-col gap-3 transition-colors group-hover:border-primary"
-        >
-          {/*
-            ★ `pe-9` — the overflow menu is absolutely positioned over this same
-            corner, so without a reserved lane the state word would sit under
-            the three dots. The trigger is a 44px icon button inset by 8px.
-          */}
-          <div className="flex items-baseline gap-3 pe-9">
-            <span className="text-body tabular-nums text-muted">{formatDate(date)}</span>
-            <span className={cn("ms-auto text-body font-semibold", STATUS_TEXT[survey.status])}>
-              {STATUS_LABEL[survey.status]}
-            </span>
-          </div>
-
-          <h3 className="text-title font-bold leading-snug text-ink transition-colors group-hover:text-primary">
-            {survey.title}
-          </h3>
-
-          {/*
-            Right-aligned over the bar it describes, the way the drawing sets
-            them — the number and the fill end on the same edge, so the eye
-            reads one line rather than two.
-          */}
-          <p className="mt-auto text-end text-body tabular-nums text-muted">
-            {answered} / {expected} хариулсан
-          </p>
-
-          <SurveyProgress answered={answered} expected={expected} />
-
-          <div className="flex items-center gap-2 pt-1">
-            <span className="min-w-0 flex-1 truncate text-end text-body italic text-faint">
-              {meta.label}
-            </span>
-            <ChevronRight
-              size={18}
-              className="shrink-0 text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
-              aria-hidden="true"
-            />
-          </div>
-        </Card>
-      </Link>
-    </div>
-  );
-}
-
-/**
- * How far a survey has got, as a bar and a percentage.
- *
- * ★ The percentage is of the audience, not of the answers.
- *
- * `expectedCount` is who was asked — one group, or the kindergarten — so "66%"
- * means two thirds of the families have replied. That is the figure a teacher
- * chases; a share of the replies received would always be 100% and say
- * nothing.
- *
- * ★★ A survey with nobody to ask draws an empty rail rather than dividing by
- * zero. A group whose children have all left is not 0% and not 100%; it is a
- * survey with no audience, and an empty rail is the honest picture of that.
- *
- * ★★★ `aria-hidden` on the rail, with the sentence beside it.
- *
- * The row above already reads "23 / 35 харуулсан", so a `progressbar`
- * announcing "66" would be the same fact a second time in a less useful form.
- */
-function SurveyProgress({ answered, expected }: { answered: number; expected: number }) {
-  const percent = expected > 0 ? Math.round((answered / expected) * 100) : 0;
-
-  return (
-    <div className="flex items-center gap-2.5">
-      <span aria-hidden="true" className="h-1.5 flex-1 overflow-hidden rounded-pill bg-sunken">
-        <span
-          className="block h-full rounded-pill bg-primary transition-[width] duration-500"
-          style={{ width: `${percent}%` }}
+        <ConfirmDialog
+          open={confirmDelete}
+          onOpenChange={(next) => (next ? undefined : setConfirmDelete(false))}
+          title="Энэ судалгааг устгах уу?"
+          description="Жагсаалтаас хасагдана. Өгсөн хариултууд хэвээр үлдэж, бүртгэлд тэмдэглэгдэнэ."
+          confirmLabel="Устгах"
+          cancelLabel="Болих"
+          tone="danger"
+          pending={remove.isPending}
+          onConfirm={() => remove.mutate()}
         />
-      </span>
-      <span className="shrink-0 text-title font-bold tabular-nums text-ink">{percent}%</span>
-    </div>
+
+        <SurveyParticipation
+          surveyId={survey.id}
+          title={survey.title}
+          open={participation}
+          onClose={() => setParticipation(false)}
+        />
+      </Td>
+    </tr>
   );
 }
 
@@ -921,13 +891,13 @@ function SurveyParticipation({
           <ParticipationList
             heading="Бөглөөгүй"
             tone="peach"
-            names={data.data.pending.map((row) => fullName(row.child))}
+            names={data.data.pending.map((row) => shortName(row.child))}
             empty="Бүгд бөглөсөн."
           />
           <ParticipationList
             heading="Бөглөсөн"
             tone="mint"
-            names={data.data.answered.map((row) => fullName(row.child))}
+            names={data.data.answered.map((row) => shortName(row.child))}
             empty="Одоогоор хэн ч бөглөөгүй."
           />
         </div>

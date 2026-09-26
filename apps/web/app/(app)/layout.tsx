@@ -9,15 +9,15 @@ import {
   ClipboardList,
   FileText,
   Home,
-  Images,
+  Image as ImageIcon,
   LayoutGrid,
   Menu,
+  UtensilsCrossed,
   CalendarDays,
   CalendarRange,
   Database,
   ScrollText,
   Settings,
-  ShieldAlert,
   ShieldCheck,
   ShoppingCart,
   SlidersHorizontal,
@@ -27,8 +27,22 @@ import {
   FileCheck2,
   Headphones,
   HelpCircle,
-  LifeBuoy,
   LockKeyhole,
+  ChartNoAxesColumnIncreasing,
+  FileSearch,
+  UsersRound,
+  Building2,
+  Wallet,
+  Calculator,
+  CalendarCheck,
+  BookMarked,
+  Briefcase,
+  IdCardLanyard,
+  MessageCircle,
+  Newspaper,
+  SearchCheck,
+  Utensils,
+  House,
   // `X` was the picker modal's close button and went with it. The type stays:
   // `ICON_FOR` below is keyed by href and annotated with it.
   type LucideIcon,
@@ -39,6 +53,7 @@ import { childSummarySchema, type ChildSummary } from "@kinder/contracts";
 import { z } from "zod";
 import {
   AppShell,
+  RailGlyph,
   type ChildSwitcher,
   type NavItem,
   type NavSection,
@@ -240,7 +255,7 @@ function AuthenticatedShell({
       sections={
         isStaff
           ? isAdmin
-            ? staffSections(true, groupId)
+            ? withRailGlyphs(staffSections(true, groupId))
             : teacherSections(groupId)
           : parentSections(myChildren, selectedChildId)
       }
@@ -256,6 +271,12 @@ function AuthenticatedShell({
 }
 
 const iconProps = { size: 20, strokeWidth: 2, "aria-hidden": true } as const;
+
+/** The phone bar's own glyphs — a size the raised disc and the flat row share. */
+const barIconProps = { strokeWidth: 2.1, "aria-hidden": true } as const;
+
+/** The teacher's phone bar — plain line glyphs, 2026-09-25. */
+const pillIconProps = { size: 24, strokeWidth: 2, "aria-hidden": true } as const;
 
 /**
  * Section entries sit one level in, so their icons are one step down.
@@ -280,7 +301,6 @@ const ROUTE_ART: Partial<Record<string, ArtName>> = {
   "/documents": "documents",
   "/settings": "settings",
   "/reports": "report",
-  "/incidents": "safety",
   "/admin/groups": "group",
   "/menu": "food",
   "/kitchen/ingredients": "kitchenIngredients",
@@ -332,7 +352,6 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
   "/kitchen/reports": BarChart3,
   "/admin": ShieldCheck,
   "/reports": FileBarChart,
-  "/incidents": ShieldAlert,
 
   /* Administration screens without supplied feature artwork. */
   "/admin/users": UserCog,
@@ -393,18 +412,47 @@ function staffNav(isAdmin: boolean, groupId: string | null): NavItem[] {
     {
       href: isAdmin ? "/admin" : "/dashboard",
       label: "Самбар",
-      icon: artIcon("dashboard", 20),
+      // The teacher's side menu opens on a thin line glyph (2026-09-25).
+      icon: <RailGlyph icon={House} />,
+      barIcon: <House {...pillIconProps} />,
     },
-    { href: "/notifications", label: "Мэдээ", icon: artIcon("notice", 20), badge: "unread" },
-    { href: assessmentHref, label: "Явцын үнэлгээ", icon: artIcon("progress", 20) },
-    { href: "/surveys", label: "Судалгаа", icon: artIcon("survey", 20) },
+    /*
+      ★ The teacher's phone bar is plain grey line glyphs — client, 2026-09-25,
+      with a drawing. `barIcon`, so the side menu (which reads `icon`) and the
+      administrator's bar are untouched.
+    */
+    {
+      href: "/notifications",
+      label: "Мэдээ",
+      icon: artIcon("notice", 20),
+      barIcon: <FileText {...pillIconProps} />,
+      badge: "unread",
+    },
+    {
+      href: assessmentHref,
+      label: "Явцын үнэлгээ",
+      icon: artIcon("progress", 20),
+      barIcon: <ChartNoAxesColumnIncreasing {...pillIconProps} />,
+    },
+    {
+      href: "/surveys",
+      label: "Судалгаа",
+      icon: artIcon("survey", 20),
+      barIcon: <FileSearch {...pillIconProps} />,
+      badge: "surveys",
+    },
     /*
       ★ `/settings` is what `AppShell` matches on to open the drawer instead of
       navigating (see its `bottomNav` mapping), so the href is load-bearing even
       though this tab never uses it as a destination on a phone. The label is
       the client's; `parentNav` already calls the same tab "Цэс".
     */
-    { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
+    {
+      href: "/settings",
+      label: "Цэс",
+      icon: <Menu {...iconProps} />,
+      barIcon: <Menu {...pillIconProps} />,
+    },
   ];
 }
 
@@ -748,7 +796,6 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
           href: "/menu",
           icon: artIcon("food", 18),
         },
-        entry("Аюулгүй байдал", "/incidents"),
       ],
     },
     {
@@ -895,31 +942,75 @@ function teacherSections(groupId: string | null): NavSection[] {
   return [
     {
       title: "",
+      /*
+        ★ Thin grey line glyphs, not the illustrated set — client, 2026-09-25,
+        with a drawing: "маш нарийн зөөлөн саарал". The teacher's side menu
+        only; the phone bar and every other role keep their own.
+      */
       entries: [
-        navEntry("Суралцагч", "/children"),
-        {
-          label: "Ирц",
-          href: scoped("attendance"),
-          icon: artIcon("attendance", 18),
-        },
-        {
-          label: "Хоолны цэс",
-          href: "/menu",
-          icon: artIcon("food", 18),
-        },
+        { label: "Суралцагч", href: "/children", icon: <RailGlyph icon={BookOpen} /> },
+        { label: "Ирц", href: scoped("attendance"), icon: <RailGlyph icon={IdCardLanyard} /> },
+        { label: "Хоолны цэс", href: "/menu", icon: <RailGlyph icon={Utensils} /> },
         {
           label: "Явцын үнэлгээ",
           href: scoped("assessment"),
-          icon: artIcon("progress", 18),
+          icon: <RailGlyph icon={ChartNoAxesColumnIncreasing} />,
         },
-        navEntry("Судалгаа", "/surveys", "survey"),
-        navEntry("Тайлан", "/reports", "report"),
-        navEntry("Мэдээ", "/notifications", "notice"),
-        navEntry("Чат", "/chat", "chat"),
-        navEntry("Баримт бичгийн сан", "/documents", "documents"),
+        {
+          label: "Судалгаа",
+          href: "/surveys",
+          icon: <RailGlyph icon={FileSearch} />,
+          badge: "surveys" as const,
+        },
+        { label: "Тайлан", href: "/reports", icon: <RailGlyph icon={SearchCheck} /> },
+        { label: "Мэдээ", href: "/notifications", icon: <RailGlyph icon={Newspaper} /> },
+        { label: "Чат", href: "/chat", icon: <RailGlyph icon={MessageCircle} /> },
+        {
+          label: "Баримт бичгийн сан",
+          href: "/documents",
+          icon: <RailGlyph icon={Briefcase} />,
+        },
       ],
     },
   ];
+}
+
+/**
+ * The administrator's menu in the teacher's thin grey line glyphs — client,
+ * 2026-09-25: "удирдлага хэсгийн хажуугийн цэс … багшийнх шиг болго". The
+ * sections, their order and their headings are `staffSections`' own; only
+ * the drawing beside each row changes.
+ */
+const ADMIN_RAIL_ICON: Record<string, LucideIcon> = {
+  "/children": BookOpen,
+  "/admin/groups": UsersRound,
+  "/admin/users": UserCog,
+  "/admin/kindergarten": Building2,
+  "/attendance/daily": IdCardLanyard,
+  "/admin/assessment": ChartNoAxesColumnIncreasing,
+  "/surveys": FileSearch,
+  "/notifications": Newspaper,
+  "/chat": MessageCircle,
+  "/menu": Utensils,
+  "/finance": Wallet,
+  "/admin/funding": Calculator,
+  "/attendance/journal": CalendarCheck,
+  "/reports": SearchCheck,
+  "/documents": Briefcase,
+  "/admin/school-years": CalendarRange,
+  "/admin/terms": CalendarDays,
+  "/admin/curriculum": BookMarked,
+  "/admin/integrations/esis": Database,
+};
+
+function withRailGlyphs(sections: NavSection[]): NavSection[] {
+  return sections.map((section) => ({
+    ...section,
+    entries: section.entries.map((entry) => {
+      const glyph = entry.href ? ADMIN_RAIL_ICON[entry.href] : undefined;
+      return glyph ? { ...entry, icon: <RailGlyph icon={glyph} /> } : entry;
+    }),
+  }));
 }
 
 /**
@@ -1171,12 +1262,47 @@ function parentNav(
   const zuragHref = activeId ? `/children/${activeId}/portfolio/gallery` : "/children";
   const hoolHref = activeId ? `/children/${activeId}/menu` : "/children";
 
+  /*
+    ★ Two drawings per tab — client, 2026-09-25.
+
+    `icon` is what the menu draws: the illustrated set the client delivered.
+    `barIcon` is what the floating phone bar draws: a plain glyph, because the
+    bar is a row of five small circles and a two-tone illustration inside a
+    44px disc reads as a smudge. The bar asked for "хар зурган, бичиггүй" in
+    as many words.
+  */
   return [
-    { href: "/home", label: "Нүүр", icon: artIcon("navHome", 20) },
-    { href: "/notifications", label: "Мэдээ", icon: artIcon("navNews", 20), badge: "unread" },
-    { href: zuragHref, label: "Зураг", icon: artIcon("navGallery", 20) },
-    { href: hoolHref, label: "Хоол", icon: artIcon("navFood", 20) },
-    { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
+    {
+      href: "/home",
+      label: "Нүүр",
+      icon: artIcon("navParentHome", 20),
+      barIcon: <Home {...barIconProps} />,
+    },
+    {
+      href: "/notifications",
+      label: "Мэдээ",
+      icon: artIcon("navParentNews", 20),
+      barIcon: <FileText {...barIconProps} />,
+      badge: "unread",
+    },
+    {
+      href: zuragHref,
+      label: "Зураг",
+      icon: artIcon("navGallery", 20),
+      barIcon: <ImageIcon {...barIconProps} />,
+    },
+    {
+      href: hoolHref,
+      label: "Хоол",
+      icon: artIcon("navFood", 20),
+      barIcon: <UtensilsCrossed {...barIconProps} />,
+    },
+    {
+      href: "/settings",
+      label: "Цэс",
+      icon: <Menu {...iconProps} />,
+      barIcon: <Menu {...barIconProps} />,
+    },
   ];
 }
 
@@ -1200,33 +1326,33 @@ function parentSections(
         {
           label: "Хүүхдийн мэдээлэл",
           href: selected ? `${childBase}/general` : childBase,
-          icon: artIcon("child", 20),
+          icon: artIcon("navParentChild", 20),
         },
         {
           label: "Цахим хувийн хавтас",
           href: selected ? `${childBase}/portfolio` : childBase,
-          icon: <Images {...iconProps} />,
+          icon: artIcon("navParentPortfolio", 20),
         },
         {
           label: "Цэцэрлэгийн мэдээлэл",
           href: selected ? `${childBase}/enrollment-archive` : childBase,
-          icon: artIcon("kindergarten", 20),
+          icon: artIcon("navParentKindergarten", 20),
         },
         {
           label: "Мэдээ",
           href: "/notifications",
-          icon: artIcon("notice", 20),
+          icon: artIcon("navParentNews", 20),
           badge: "unread",
         },
         {
           label: "Багштай холбогдох",
           href: "/chat",
-          icon: artIcon("chat", 20),
+          icon: artIcon("navParentChat", 20),
         },
         {
           label: "Үйлчилгээний эрх",
           href: selected ? `${childBase}/finance` : childBase,
-          icon: <ShieldCheck {...iconProps} />,
+          icon: artIcon("navParentAccess", 20),
           tag: "Жилийн",
         },
       ],
@@ -1248,7 +1374,7 @@ function parentSections(
     {
       title: "Тусламж",
       collapsible: true,
-      icon: <LifeBuoy {...iconProps} />,
+      icon: artIcon("navParentHelp", 20),
       entries: [
         { label: "Миний гэрээ", icon: <FileText {...iconProps} /> },
         { label: "Гарын авлага", icon: <BookOpen {...iconProps} /> },

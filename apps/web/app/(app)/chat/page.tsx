@@ -148,7 +148,7 @@ export default function ChatPage() {
           ) : (
             <div className="hidden min-h-full place-items-center px-6 py-10 text-center lg:grid">
               <div>
-                <span className="mx-auto mb-5 grid size-16 place-items-center rounded-card bg-primary-soft text-primary">
+                <span className="mx-auto mb-5 grid size-16 place-items-center rounded-card text-primary">
                   <MessageCircle size={32} strokeWidth={1.8} aria-hidden="true" />
                 </span>
                 <p className="text-title font-bold text-ink">Чатаа сонгоно уу</p>

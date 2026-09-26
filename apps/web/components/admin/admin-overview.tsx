@@ -1,35 +1,23 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import Link from "next/link";
-import { z } from "zod";
-import {
-  adminDashboardSchema,
-  developmentDomainSchema,
-  type AdminDashboard,
-} from "@kinder/contracts";
+import { useState } from "react";
+import { adminDashboardSchema, type AdminDashboard } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
-import { formatFileSize, formatLongDate } from "@/lib/format";
+import { formatLongDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { useSession } from "@/lib/auth/session";
 import { PageHeader } from "@/components/shell/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/ui/states";
-import { StatCard, StatTrend } from "@/components/ui/stat-card";
-import { IconChip } from "@/components/ui/icon-chip";
+import { StatCard } from "@/components/ui/stat-card";
 import { Art } from "@/components/ui/art";
-import { SurveySummary } from "@/components/dashboard/survey-summary";
 import { BarRow } from "@/components/ui/chart/bar-row";
-import { ColumnChart } from "@/components/ui/chart/columns";
 import { Donut } from "@/components/ui/chart/donut";
 import { Ring } from "@/components/ui/chart/ring";
-import { SERIES_TONES } from "@/components/ui/chart/chart-tokens";
 import { TONE_VAR, type Tone } from "@/components/ui/tone";
-import { GraduationCap, PieChart } from "lucide-react";
-import { AssessmentCoverageSection, RecentActivitySection } from "./dashboard-sections";
 
 /**
  * The administrator's own dashboard — RFP §12.2, and the reference system's
@@ -131,17 +119,7 @@ export function AdminOverview() {
     );
   }
 
-  const {
-    counts,
-    attendanceToday,
-    attendanceByGroup,
-    domainAveragesByGroup,
-    assessmentCoverage,
-    recentActivity,
-    currentTerm,
-    childrenAMonthAgo,
-    storage,
-  } = data!;
+  const { counts, attendanceToday, attendanceByGroup, storage } = data!;
 
   return (
     <>
@@ -222,13 +200,6 @@ export function AdminOverview() {
             tone="cornflower"
             art={<Art name="child" size={36} />}
             artSurface={false}
-            trend={
-              <StatTrend
-                current={counts.children}
-                previous={childrenAMonthAgo}
-                since="сүүлийн 30 хоногт"
-              />
-            }
           />
           <StatCard
             label="Өнөөдрийн ирц"
@@ -237,11 +208,6 @@ export function AdminOverview() {
                 {attendanceToday.present}
                 <span className="text-muted"> / {attendanceToday.expected}</span>
               </>
-            }
-            unit={
-              attendanceToday.recorded >= attendanceToday.expected && attendanceToday.expected > 0
-                ? "бүртгэл бүрэн"
-                : `${Math.max(0, attendanceToday.expected - attendanceToday.recorded)} бүртгээгүй`
             }
             tone={
               attendanceToday.recorded >= attendanceToday.expected && attendanceToday.expected > 0
@@ -255,7 +221,6 @@ export function AdminOverview() {
           <StatCard
             label="Бүлэг"
             value={counts.groups}
-            unit="идэвхтэй"
             href="/admin/groups"
             tone="mint"
             art={<Art name="group" size={36} />}
@@ -264,7 +229,6 @@ export function AdminOverview() {
           <StatCard
             label="Багш, ажилтан"
             value={counts.staff}
-            unit={`${counts.guardians} эцэг эх`}
             href="/admin/users"
             tone="sky"
             art={<Art name="teacher" size={36} />}
@@ -290,11 +254,6 @@ export function AdminOverview() {
               <StatCard
                 label="Баримт бичгийн сан"
                 value={storage.documents.count}
-                unit={
-                  storage.documents.totalBytes > 0
-                    ? formatFileSize(storage.documents.totalBytes)
-                    : "хоосон"
-                }
                 href="/documents"
                 tone="teal"
                 art={<Art name="adminDocuments" size={36} />}
@@ -304,11 +263,6 @@ export function AdminOverview() {
                 label="Тайлан"
                 href="/reports"
                 value={storage.reports.done}
-                unit={
-                  storage.reports.failed > 0
-                    ? `${storage.reports.total} нийт · ${storage.reports.failed} амжилтгүй`
-                    : `${storage.reports.total} нийт`
-                }
                 tone="sun"
                 art={<Art name="adminReport" size={36} />}
                 artSurface={false}
@@ -346,53 +300,11 @@ export function AdminOverview() {
 
         Neither was reachable while both were `BarRow`.
       */}
-        <div className="grid items-start gap-6 xl:grid-cols-2">
-          <TodayDial today={attendanceToday} />
-          <AttendanceMix groups={attendanceByGroup} />
-        </div>
-
-        <div className="grid items-start gap-6 xl:grid-cols-2">
-          <AttendanceByGroup groups={attendanceByGroup} />
-
-          <AssessmentCoverageSection
-            coverage={assessmentCoverage}
-            hasCurrentTerm={Boolean(currentTerm)}
-            href={(groupId) => `/groups/${groupId}/assessment`}
-          />
-        </div>
-
-        {/* Full width: a column per domain plus a row of bars per group is the
-          tallest panel here, and halving its width truncates every Mongolian
-          domain name. */}
-        <DomainAverages groups={domainAveragesByGroup} hasCurrentTerm={Boolean(currentTerm)} />
-
-        {/*
-        ★ The teacher board's own survey panel, unchanged, on the director's
-        board too.
-
-        This screen had no survey anywhere while the teacher's dashboard
-        carried one, so the person who commissions a survey and reads its
-        result was the one person the product never showed how it was going.
-        The same component rather than a second version of it: it already
-        reads `/kindergartens/:id/surveys` and `/surveys/:id/results`, both of
-        which an administrator may call, and a copy adapted "for admins" is how
-        two panels answering one question start disagreeing about the number.
-
-        Half width, paired with nothing, because `SurveySummary` is a
-        `BoardCard` sized for the teacher board's two-column grid and stretching
-        it across this page would leave a bar chart in a field of white.
-      */}
-        <div className="grid items-start gap-6 xl:grid-cols-2">
-          <SurveySummary />
-        </div>
-
-        <RecentActivitySection entries={recentActivity} auditHref="/admin/audit" />
+        <AttendanceSection today={attendanceToday} groups={attendanceByGroup} />
       </div>
     </>
   );
 }
-
-const domainsSchema = z.array(developmentDomainSchema);
 
 /**
  * Statuses that count as the child having been at the kindergarten.
@@ -438,6 +350,72 @@ const STATUS_LABEL: Record<string, string> = {
   ABSENT: "Тасалсан",
 };
 
+type AttendanceView = "today" | "month" | "group";
+
+const ATTENDANCE_VIEWS: { value: AttendanceView; label: string }[] = [
+  { value: "today", label: "Өнөөдөр" },
+  { value: "month", label: "Сар" },
+  { value: "group", label: "Бүлэг" },
+];
+
+/**
+ * "Ирц" — the three attendance panels behind one title — client, 2026-09-25:
+ * "Ирц гэж гарчиглаад Өнөөдөр|Сар|Бүлэг гэж арагш цувуулан сонгож хардаг
+ * болго". One panel at a time, chosen from a row of three beside the title.
+ */
+function AttendanceSection({
+  today,
+  groups,
+}: {
+  today: AdminDashboard["attendanceToday"];
+  groups: AdminDashboard["attendanceByGroup"];
+}) {
+  const [view, setView] = useState<AttendanceView>("today");
+
+  return (
+    <section aria-labelledby="attendance-heading">
+      <SectionHeader
+        id="attendance-heading"
+        title="Ирц"
+        action={
+          <div
+            role="tablist"
+            aria-label="Ирцийн харагдац"
+            className="inline-flex gap-1 rounded-control bg-canvas p-1"
+          >
+            {ATTENDANCE_VIEWS.map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={view === value}
+                onClick={() => setView(value)}
+                className={cn(
+                  "min-h-9 rounded-control px-3.5 text-body font-medium transition-colors",
+                  view === value
+                    ? "bg-surface text-primary shadow-sm"
+                    : "text-muted hover:text-ink",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        }
+      />
+      <div role="tabpanel" aria-label={ATTENDANCE_VIEWS.find((v) => v.value === view)!.label}>
+        {view === "today" ? (
+          <TodayDial today={today} />
+        ) : view === "month" ? (
+          <AttendanceMix groups={groups} />
+        ) : (
+          <AttendanceByGroup groups={groups} />
+        )}
+      </div>
+    </section>
+  );
+}
+
 /**
  * Today's register as a dial — "how full is the kindergarten right now".
  *
@@ -461,13 +439,8 @@ function TodayDial({ today }: { today: AdminDashboard["attendanceToday"] }) {
   const percent = today.expected > 0 ? (today.present / today.expected) * 100 : 0;
 
   return (
-    <section aria-labelledby="today-dial">
-      <SectionHeader
-        id="today-dial"
-        title="Өнөөдрийн ирц"
-        lede={formatLongDate(new Date())}
-        icon={<Art name="attendance" size={40} />}
-      />
+    <div className="flex flex-col gap-2">
+      <p className="text-caption text-muted">{formatLongDate(new Date())}</p>
 
       <Card pad="roomy" className="flex flex-wrap items-center gap-6">
         <Ring
@@ -501,7 +474,7 @@ function TodayDial({ today }: { today: AdminDashboard["attendanceToday"] }) {
           </div>
         </dl>
       </Card>
-    </section>
+    </div>
   );
 }
 
@@ -538,13 +511,8 @@ function AttendanceMix({ groups }: { groups: AdminDashboard["attendanceByGroup"]
   const total = segments.reduce((sum, s) => sum + s.value, 0);
 
   return (
-    <section aria-labelledby="attendance-mix">
-      <SectionHeader
-        id="attendance-mix"
-        title="Ирцийн бүтэц"
-        lede="Сүүлийн 30 хоног, бүх бүлгээр."
-        icon={<IconChip icon={<PieChart size={20} aria-hidden />} tone="primary" />}
-      />
+    <div className="flex flex-col gap-2">
+      <p className="text-caption text-muted">Сүүлийн 30 хоног, бүх бүлгээр.</p>
 
       {total === 0 ? (
         <Card pad="roomy" className="text-body text-muted">
@@ -592,7 +560,7 @@ function AttendanceMix({ groups }: { groups: AdminDashboard["attendanceByGroup"]
           </dl>
         </Card>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -610,13 +578,8 @@ function AttendanceByGroup({ groups }: { groups: AdminDashboard["attendanceByGro
   const withRows = groups.filter((g) => Object.values(g.counts).some((n) => n > 0));
 
   return (
-    <section aria-labelledby="attendance-by-group">
-      <SectionHeader
-        id="attendance-by-group"
-        title="Бүлгүүдийн ирц"
-        lede="Сүүлийн 30 хоног."
-        icon={<Art name="group" size={40} />}
-      />
+    <div className="flex flex-col gap-2">
+      <p className="text-caption text-muted">Сүүлийн 30 хоног.</p>
 
       {withRows.length === 0 ? (
         <Card pad="roomy" className="text-body text-muted">
@@ -648,170 +611,6 @@ function AttendanceByGroup({ groups }: { groups: AdminDashboard["attendanceByGro
           })}
         </Card>
       )}
-    </section>
-  );
-}
-
-/**
- * "Хөгжлийн чиглэлийн дундаж" — RFP §12.3, at the two granularities it needs.
- *
- * ★ Columns for the kindergarten, bars for the groups — and the pairing is the
- * point.
- *
- * The panel answers two questions that look alike and are not. "Which
- * development area is this kindergarten weakest in?" is a comparison across
- * five categories with no natural order, which is what a column chart is for —
- * the eye reads height against a shared baseline. "And is any one group
- * dragging that down?" is a comparison *within* each category, which needs a
- * row per group.
- *
- * Answering both with the same chart is what the first version did, and it
- * produced ten identical bars in two stacks with nothing to say which of them
- * mattered.
- *
- * ★★ The columns are the mean of the group means, not of every assessment.
- *
- * A group of twenty and a group of four would otherwise let the larger one
- * decide the kindergarten's figure — and the question is about the
- * kindergarten's *provision*, where each group is one unit of it. The
- * per-group rows below carry the sample size so a small group is visibly
- * small.
- *
- * ★★★ A domain nobody assessed is absent from the map rather than zero.
- *
- * Zero is a real score on a 1–4 scale's floor. A chart that plots "not
- * assessed" as zero accuses a group of failing at something nobody has looked
- * at yet, which is the opposite of what this panel is for.
- */
-function DomainAverages({
-  groups,
-  hasCurrentTerm,
-}: {
-  groups: AdminDashboard["domainAveragesByGroup"];
-  hasCurrentTerm: boolean;
-}) {
-  /*
-    ★ The domain list, so a bar can be drawn for a domain with no score.
-
-    `averageByDomain` is keyed by domain id and omits the unassessed ones by
-    design, so it cannot name the rows on its own — a group with two of five
-    domains assessed would render two bars and silently drop the other three.
-    Same query key as `/admin/assessment-config`, so an administrator who has
-    opened that screen this session pays nothing for it here.
-  */
-  const { primaryKindergartenId } = useSession();
-  const { data: domains } = useQuery({
-    queryKey: qk.configDomains(primaryKindergartenId ?? ""),
-    queryFn: () =>
-      get(`/kindergartens/${primaryKindergartenId}/development-domains`, domainsSchema),
-    enabled: Boolean(primaryKindergartenId),
-    staleTime: 5 * 60_000,
-  });
-
-  const assessed = groups.filter((g) => g.sampleSize > 0);
-
-  /** The kindergarten-wide mean per domain — the mean of the group means. */
-  const overall = (domains ?? []).map((domain) => {
-    const scores = assessed
-      .map((g) => g.averageByDomain[domain.id])
-      .filter((v): v is number => v !== undefined);
-
-    return {
-      domain,
-      average: scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null,
-    };
-  });
-
-  return (
-    <section aria-labelledby="domain-averages">
-      <SectionHeader
-        id="domain-averages"
-        title="Хөгжлийн чиглэлийн дундаж"
-        lede="1–4 оноогоор. Багана нь цэцэрлэгийн дундаж, мөр нь бүлэг тус бүр."
-        icon={<IconChip icon={<GraduationCap size={20} aria-hidden />} tone="primary" />}
-      />
-
-      {!hasCurrentTerm ? (
-        <Card pad="roomy" className="text-body text-muted">
-          Идэвхтэй улирал тохируулаагүй байна.{" "}
-          <Link href="/admin/terms" className="text-primary hover:underline">
-            Улирал нэмэх
-          </Link>
-        </Card>
-      ) : assessed.length === 0 || !domains?.length ? (
-        <Card pad="roomy" className="text-body text-muted">
-          Энэ улиралд үнэлгээ хийгдээгүй байна.
-        </Card>
-      ) : (
-        <Card pad="roomy" className="flex flex-col gap-6">
-          {/*
-            The scale is 1–4, so a column is drawn against 4 rather than against
-            the largest value in the set — a kindergarten at 3.9 beside one at
-            4.0 must not look half as far along. `tilted` because the domain
-            names are sentences, not abbreviations.
-          */}
-          <ColumnChart
-            height={132}
-            /*
-              The rules are the four steps of the scale, and the axis prints
-              them as scores. A director reading "50%" against a domain scored
-              2.0 has to do the conversion every time; the scale is 1–4 and the
-              chart should say so.
-            */
-            gridlines={[0, 25, 50, 75, 100]}
-            axisLabel={(percent) => String((percent / 100) * 4)}
-            columns={overall.map(({ domain, average }, index) => ({
-              label: domain.name,
-              value: average === null ? null : (average / 4) * 100,
-              /*
-                A colour per domain, matching the order the per-group bars
-                below run in — so a reader who spots the weakest column can
-                find the same domain in each group's list without counting
-                positions. `seriesColor` hands them out in a fixed order, so a
-                domain keeps its colour between renders.
-              */
-              tone: SERIES_TONES[index % SERIES_TONES.length],
-              accessibleLabel:
-                average === null
-                  ? `${domain.name} — үнэлгээгүй`
-                  : `${domain.name} — ${average.toFixed(1)} оноо`,
-            }))}
-            emptyLabel="үнэлгээгүй"
-          />
-
-          <div className="grid gap-x-8 gap-y-6 border-t border-border-soft pt-5 lg:grid-cols-2">
-            {assessed.map((group) => (
-              <div key={group.groupId}>
-                <p className="mb-2 flex flex-wrap items-baseline gap-x-2 text-lead font-semibold text-ink">
-                  {group.name}
-                  <span className="text-caption font-normal text-muted">
-                    {group.sampleSize} үнэлгээ
-                  </span>
-                </p>
-
-                <div className="flex flex-col gap-1.5">
-                  {domains.map((domain, index) => {
-                    const average = group.averageByDomain[domain.id];
-                    return (
-                      <BarRow
-                        key={domain.id}
-                        inline
-                        labelWidth="w-[136px] lg:w-[152px] xl:w-[200px]"
-                        label={domain.name}
-                        percent={average === undefined ? 0 : (average / 4) * 100}
-                        value={average === undefined ? "—" : average.toFixed(1)}
-                        /* The same accent this domain has in the columns above,
-                           which is what makes the two halves one panel. */
-                        tone={SERIES_TONES[index % SERIES_TONES.length]}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-    </section>
+    </div>
   );
 }

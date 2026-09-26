@@ -535,7 +535,7 @@ function EsisPayloadPreview({
 
       <Card pad="roomy" className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-3 border-b border-border-soft pb-4">
-          <span className="grid size-10 shrink-0 place-items-center rounded-control bg-sky text-sky-ink">
+          <span className="grid size-10 shrink-0 place-items-center rounded-control text-sky-ink">
             <Braces size={20} aria-hidden="true" />
           </span>
           <div className="min-w-0 flex-1">

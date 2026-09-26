@@ -404,15 +404,91 @@ export class ChildrenRepository {
                 phone: true,
                 email: true,
                 description: true,
+                capacity: true,
                 esisInstitutionId: true,
               },
             },
-            group: { select: { id: true, name: true, schedule: true, rules: true } },
+            group: {
+              select: { id: true, name: true, schedule: true, rules: true, ageBand: true },
+            },
             schoolYear: { select: { id: true, name: true } },
           },
         },
       },
     });
+  }
+
+  /**
+   * How many live groups each of these kindergartens runs — the archive's
+   * "Нийт бүлэг". One `groupBy` for every kindergarten in the child's
+   * history, rather than a count per card (§3.4).
+   */
+  async countGroupsByKindergarten(kindergartenIds: string[]) {
+    const rows = await this.prisma.group.groupBy({
+      by: ["kindergartenId"],
+      where: { kindergartenId: { in: kindergartenIds }, status: "ACTIVE", deletedAt: null },
+      _count: { _all: true },
+    });
+    return new Map(rows.map((row) => [row.kindergartenId, row._count._all]));
+  }
+
+  /**
+   * How many children each of these groups holds.
+   *
+   * ★ Active enrollments for the group the child is in now; every enrolment
+   * ever recorded for a group they have left. A past group is one school
+   * year's cohort and is not filling up any more — counting only today's
+   * active rows would report a group that has since closed as empty, which is
+   * a wrong answer to "how many of us were there".
+   */
+  async countChildrenByGroup(currentGroupId: string | null, pastGroupIds: string[]) {
+    const [current, past] = await Promise.all([
+      currentGroupId
+        ? this.prisma.enrollment.count({
+            where: { groupId: currentGroupId, status: "ACTIVE", deletedAt: null },
+          })
+        : Promise.resolve(null),
+      pastGroupIds.length
+        ? this.prisma.enrollment.groupBy({
+            by: ["groupId"],
+            where: { groupId: { in: pastGroupIds }, deletedAt: null },
+            _count: { _all: true },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const counts = new Map(past.map((row) => [row.groupId as string, row._count._all] as const));
+    if (currentGroupId && current !== null) counts.set(currentGroupId, current);
+    return counts;
+  }
+
+  /**
+   * Everyone who has taught these groups, including assignments that have
+   * ended — the archive names a child's past teachers, and a teacher who has
+   * since moved on is exactly who taught them then.
+   */
+  async listTeachersForGroups(groupIds: string[]) {
+    const rows = await this.prisma.groupTeacher.findMany({
+      where: { groupId: { in: groupIds }, deletedAt: null },
+      orderBy: [{ role: "asc" }, { startedOn: "asc" }],
+      select: {
+        groupId: true,
+        role: true,
+        membership: {
+          select: {
+            user: {
+              select: { id: true, lastName: true, firstName: true, photoMediaFileId: true },
+            },
+          },
+        },
+      },
+    });
+
+    const byGroup = new Map<string, typeof rows>();
+    for (const row of rows) {
+      byGroup.set(row.groupId, [...(byGroup.get(row.groupId) ?? []), row]);
+    }
+    return byGroup;
   }
 
   /** The current homeroom teachers of a group — LEAD before ASSISTANT. */
@@ -423,7 +499,23 @@ export class ChildrenRepository {
       select: {
         role: true,
         membership: {
-          select: { user: { select: { id: true, lastName: true, firstName: true } } },
+          select: {
+            user: {
+              select: {
+                id: true,
+                lastName: true,
+                firstName: true,
+                // The staff-profile fields the family's card shows for the
+                // teachers of the group their child is in today — client,
+                // 2026-09-24. See `enrollmentArchiveTeacherSchema`.
+                specialization: true,
+                education: true,
+                phone: true,
+                email: true,
+                photoMediaFileId: true,
+              },
+            },
+          },
         },
       },
     });

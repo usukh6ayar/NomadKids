@@ -381,7 +381,7 @@ function EsisStudentOutput({
       />
       <Card pad="roomy">
         <div className="flex items-start gap-3 border-b border-border-soft pb-4">
-          <span className="grid size-10 shrink-0 place-items-center rounded-control bg-sky text-sky-ink">
+          <span className="grid size-10 shrink-0 place-items-center rounded-control text-sky-ink">
             <Database size={20} aria-hidden />
           </span>
           <div className="min-w-0">

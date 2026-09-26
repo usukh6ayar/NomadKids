@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { surveyCategorySchema, surveyKindSchema, uuidSchema } from "@kinder/contracts";
+import {
+  surveyCategorySchema,
+  surveyKindSchema,
+  surveyRespondentSchema,
+  uuidSchema,
+} from "@kinder/contracts";
 
 /** "2025-2026" — a school year spans two calendar years, so it is a string. */
 const schoolYearSchema = z
@@ -10,7 +15,20 @@ const schoolYearSchema = z
     return to === from + 1;
   }, "Хичээлийн жил дараалсан хоёр он байна");
 
+const createSurveyCategorySchema = z.enum(surveyCategorySchema.options, {
+  error: "Ангиллаа зөв сонгоно уу",
+});
+const createSurveyKindSchema = z.enum(surveyKindSchema.options, {
+  error: "Судалгаа, асуулгын төрлийг зөв сонгоно уу",
+});
+const createSurveyRespondentSchema = z.enum(surveyRespondentSchema.options, {
+  error: "Хариулагчийг зөв сонгоно уу",
+});
+
 export const surveyPeriodSchema = z.enum(["BASELINE", "MIDLINE", "ENDLINE"]);
+const createSurveyPeriodSchema = z.enum(surveyPeriodSchema.options, {
+  error: "Үнэлгээний төрлийг зөв сонгоно уу",
+});
 
 export const createSurveySchema = z
   .object({
@@ -18,15 +36,23 @@ export const createSurveySchema = z
     description: z.string().max(2000).nullable().optional(),
     // Older API clients keep creating the general parent-engagement category;
     // the current UI always sends the teacher's explicit selection.
-    category: surveyCategorySchema.default("PARENT_ENGAGEMENT"),
-    scope: z.enum(["CHILD", "KINDERGARTEN"]),
+    category: createSurveyCategorySchema.default("PARENT_ENGAGEMENT"),
+    scope: z.enum(["CHILD", "KINDERGARTEN"], {
+      error: "Хамрах хүрээг зөв сонгоно уу",
+    }),
     /*
       Defaulted rather than required so every existing caller — the clone
       endpoint, the seeds, `surveys.test.ts` — keeps compiling and keeps meaning
       what it meant. A survey created without saying is a form, which is what
       all of them were before the column existed.
     */
-    kind: surveyKindSchema.optional(),
+    kind: createSurveyKindSchema.optional(),
+    /*
+      Who fills it in — 2026-09-21. Omitted is a family, which is what every
+      survey was before the field; `SurveysService.create` narrows a TEACHER
+      one to a per-child, named questionnaire.
+    */
+    respondent: createSurveyRespondentSchema.optional(),
     /*
       The optional deadline. `coerce` because it arrives as an ISO string from
       the composer's `<input type="date">`, and nullable because "no closing
@@ -37,7 +63,7 @@ export const createSurveySchema = z
     // Optional: a one-off poll belongs to no wave, and forcing a period on it
     // would put it in a comparison it has no business in.
     schoolYear: schoolYearSchema.nullable().optional(),
-    period: surveyPeriodSchema.nullable().optional(),
+    period: createSurveyPeriodSchema.nullable().optional(),
     /*
       ★ Which group the survey is for — 2026-09-06, the client's "бүх бүлэг /
       бүлэг сонгох".
@@ -174,7 +200,9 @@ const questionInputSchema = z
 
 export const saveQuestionsSchema = z
   .object({
-    questions: z.array(questionInputSchema).min(1).max(30),
+    // 60, not 30 — client, 2026-09-21: the A/79 assessment's fourth level has
+    // 49 criteria, each its own question. Answer arrays below follow.
+    questions: z.array(questionInputSchema).min(1).max(60),
   })
   .strict()
   .refine(
@@ -210,10 +238,39 @@ export const submitResponseSchema = z
     answers: z
       .array(z.object({ questionId: uuidSchema, value: answerValueSchema }))
       .min(1)
-      .max(30),
+      .max(60),
   })
   .strict();
 export type SubmitResponseDto = z.infer<typeof submitResponseSchema>;
+
+/**
+ * A teacher survey's whole sheet, saved at once — client, 2026-09-21: one
+ * table with a row per child. Each row is that child's complete set of answers;
+ * a child not in the list is left as it was.
+ */
+export const saveTeacherSheetSchema = z
+  .object({
+    responses: z
+      .array(
+        z
+          .object({
+            childId: uuidSchema,
+            answers: z
+              .array(z.object({ questionId: uuidSchema, value: answerValueSchema }))
+              .min(1)
+              .max(60),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(200)
+      .refine(
+        (rows) => new Set(rows.map((row) => row.childId)).size === rows.length,
+        "Нэг хүүхэд хоёр удаа орсон байна",
+      ),
+  })
+  .strict();
+export type SaveTeacherSheetDto = z.infer<typeof saveTeacherSheetSchema>;
 
 /**
  * Cloning a survey into the next wave — RFP Module 1.2.

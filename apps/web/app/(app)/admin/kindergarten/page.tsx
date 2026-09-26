@@ -1,13 +1,17 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { z } from "zod";
 import { uuidSchema } from "@kinder/contracts";
-import { get } from "@/lib/api/browser";
-import { errorMessage } from "@/lib/api/errors";
+import { get, mutate } from "@/lib/api/browser";
+import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
+import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
+import { Field, Input } from "@/components/ui/field";
+import { useToast } from "@/components/ui/toast";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
@@ -38,6 +42,7 @@ const detailSchema = z.object({
   email: z.string().nullish(),
   description: z.string().nullish(),
   logoMediaFileId: uuidSchema.nullish(),
+  capacity: z.number().int().nullish(),
 });
 
 export default function AdminKindergartenPage() {
@@ -111,6 +116,11 @@ function AdminKindergarten() {
         and `SingleImageUpload` saves on selection — there was never a Хадгалах
         between the file picker and the change.
       */}
+      <CapacityCard
+        kindergartenId={primaryKindergartenId ?? ""}
+        capacity={data?.capacity ?? null}
+      />
+
       <Card pad="roomy" className="max-w-[760px]">
         <SectionHeader title="Лого" />
         <SingleImageUpload
@@ -172,5 +182,80 @@ function AdminKindergarten() {
         description="Барилга доторх өрөө, зориулалт, багтаамж, талбай"
       />
     </div>
+  );
+}
+
+/**
+ * "Хүчин чадал" — the one fact about the institution that ESIS does not
+ * answer. Client, 2026-09-24.
+ *
+ * ★ An edit form on a screen whose own note says the record is not edited
+ * here, and the exception is the point: `organization/info` carries the name,
+ * the type and the address, and no capacity. The ministry's `rooms` service
+ * gives a багтаамж per room, which is a different number and not the licensed
+ * capacity of the kindergarten. So this one is typed, and the family's
+ * "Цэцэрлэгийн мэдээлэл" card omits the row until it is.
+ */
+function CapacityCard({
+  kindergartenId,
+  capacity,
+}: {
+  kindergartenId: string;
+  capacity: number | null;
+}) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const [value, setValue] = useState<string | null>(null);
+  const current = value ?? (capacity === null ? "" : String(capacity));
+
+  const save = useMutation({
+    mutationFn: () =>
+      mutate(`/kindergartens/${kindergartenId}`, detailSchema, {
+        method: "PATCH",
+        body: { capacity: current.trim() === "" ? null : Number(current) },
+      }),
+    onSuccess: () => {
+      toast.success("Хүчин чадал хадгалагдлаа.");
+      setValue(null);
+      void queryClient.invalidateQueries({ queryKey: qk.adminKindergarten(kindergartenId) });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+  const errors = fieldErrors(save.error);
+
+  return (
+    <Card pad="roomy" className="flex max-w-[760px] flex-col gap-4">
+      <SectionHeader
+        title="Хүчин чадал"
+        lede="Хэдэн хүүхэд хүлээн авах багтаамжтай вэ. Эцэг эхчүүд цэцэрлэгийн мэдээлэл дээр харна."
+      />
+      <form
+        className="flex flex-wrap items-end gap-3"
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!save.isPending) save.mutate();
+        }}
+      >
+        <Field label="Хүүхдийн тоо" error={errors.capacity} className="w-[180px]">
+          {({ id, describedBy, invalid }) => (
+            <Input
+              id={id}
+              type="number"
+              min={1}
+              max={5000}
+              aria-describedby={describedBy}
+              invalid={invalid}
+              placeholder="120"
+              value={current}
+              onChange={(event) => setValue(event.target.value)}
+            />
+          )}
+        </Field>
+        <Button type="submit" disabled={save.isPending || value === null}>
+          {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+        </Button>
+      </form>
+    </Card>
   );
 }

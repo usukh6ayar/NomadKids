@@ -162,6 +162,8 @@ export class GroupReportsRepository {
       deletedAt: null,
       publishedAt: { gte: from, lte: to },
       OR: [{ groupId }, { groupId: null }],
+      // What families were asked — a teacher's own assessment is not one.
+      respondent: "GUARDIAN" as const,
     };
 
     const [byKind, ids] = await Promise.all([

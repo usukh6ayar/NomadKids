@@ -130,7 +130,7 @@ export function MonthBirthdays({
               */}
               <span
                 aria-hidden="true"
-                className="grid size-9 shrink-0 place-items-center rounded-pill bg-peach text-peach-ink"
+                className="grid size-9 shrink-0 place-items-center rounded-pill text-peach-ink"
               >
                 <Cake size={16} />
               </span>

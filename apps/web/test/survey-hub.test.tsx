@@ -2,13 +2,14 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  ROUTER,
   renderWithProviders,
   sessionFor,
   setParams,
   setSearchParams,
   stubApi,
 } from "./support/render";
-import SurveysHubPage from "@/app/(app)/surveys/page";
+import SurveysHubPage from "@/app/(app)/surveys/parents/page";
 import { GroupSurveyBoard } from "@/components/survey/survey-board";
 
 /**
@@ -86,22 +87,22 @@ describe("the survey hub", () => {
     stubHub();
     renderWithProviders(<SurveysHubPage />);
 
-    const form = await screen.findByRole("link", { name: /Судалгаа/ });
-    const poll = screen.getByRole("link", { name: /Асуулга/ });
+    // Anchored: the recent rows below name their kind too, since 2026-09-25.
+    const form = await screen.findByRole("link", { name: /^Судалгаа/ });
+    const poll = screen.getByRole("link", { name: /^Асуулга/ });
 
     expect(form).toHaveAttribute("href", "/surveys/forms");
     expect(poll).toHaveAttribute("href", "/surveys/polls");
   });
 
-  /** Each card carries the one line that says what the kind is for. */
-  it("says what distinguishes the two", async () => {
+  /** A drawing and a name — the client's 2026-09-25 drawing drops the hint. */
+  it("carries no hint line on the two cards", async () => {
     stubHub();
     renderWithProviders(<SurveysHubPage />);
 
-    // `SURVEY_KIND_HINT`, not a second wording invented for this screen — the
-    // create dialog prints the same line, and two copies would drift.
-    expect(await screen.findByText("Олон асуулт, дэлгэрэнгүй хариулт")).toBeInTheDocument();
-    expect(screen.getByText("Нэг асуулт, шууд дүн")).toBeInTheDocument();
+    await screen.findByRole("link", { name: /^Судалгаа/ });
+    expect(screen.queryByText("Олон асуулт, дэлгэрэнгүй хариулт")).toBeNull();
+    expect(screen.queryByText("Нэг асуулт, шууд дүн")).toBeNull();
   });
 
   /*
@@ -156,12 +157,42 @@ describe("the survey hub", () => {
     expect(screen.getByText(POLL.title)).toBeInTheDocument();
   });
 
-  it("names each recent survey's state", async () => {
+  it("shows the school-year picker beside the title and filters survey rows", async () => {
+    const user = userEvent.setup();
+    const older = {
+      ...FORM,
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      title: "Өмнөх жилийн судалгаа",
+      createdAt: "2025-10-01T00:00:00.000Z",
+    };
+    stubHub([FORM, older]);
+    renderWithProviders(<SurveysHubPage />);
+
+    const title = await screen.findByRole("heading", { name: "Эцэг эхээс авах судалгаа" });
+    const header = title.closest("header")!;
+    const year = within(header).getByRole("combobox", { name: "Хичээлийн жил" });
+    expect(year).toHaveTextContent("2026–2027 он");
+    expect(year).toHaveClass("text-compact", "sm:text-body");
+    expect(within(header).getByRole("link", { name: "Буцах" })).toBeInTheDocument();
+    expect(screen.queryByText("Эцэг эхийн санал, оролцоог хялбархан аваарай.")).toBeNull();
+    expect(await screen.findByText(FORM.title)).toBeInTheDocument();
+    expect(screen.queryByText(older.title)).toBeNull();
+
+    await user.click(year);
+    await user.click(await screen.findByRole("option", { name: "2025–2026 он" }));
+    expect(await screen.findByText(older.title)).toBeInTheDocument();
+    expect(screen.queryByText(FORM.title)).toBeNull();
+  });
+
+  /** The kind, in its own colour, under each recent row — 2026-09-25. */
+  it("names each recent survey's kind", async () => {
     stubHub();
     renderWithProviders(<SurveysHubPage />);
 
-    const draft = (await screen.findByText(POLL.title)).closest("a")!;
-    expect(within(draft).getByText("Ноорог")).toBeInTheDocument();
+    const poll = (await screen.findByText(POLL.title)).closest("a")!;
+    expect(within(poll).getByText("Асуулга")).toHaveClass("italic", "text-mint-ink");
+    const form = screen.getByText(FORM.title).closest("a")!;
+    expect(within(form).getByText("Судалгаа")).toHaveClass("italic", "text-primary");
   });
 
   /** §5 — an empty state says what to do next. */
@@ -183,6 +214,8 @@ describe("the survey hub", () => {
 
     const delbee = await screen.findByRole("link", { name: /Дэлбээ 24 хүүхэд/ });
     expect(delbee).toHaveAttribute("href", `/surveys/groups/${DELBEE_ID}`);
+    // Plain white rows since 2026-09-25 — no drawing in a tinted square.
+    expect(delbee.querySelector("img")).toBeNull();
     expect(screen.getByRole("link", { name: /Солонго 25 хүүхэд/ })).toHaveAttribute(
       "href",
       `/surveys/groups/${SOLONGO_ID}`,
@@ -232,5 +265,78 @@ describe("the survey hub", () => {
     expect(screen.getByText("Дэлбээний асуулга")).toBeInTheDocument();
     expect(screen.queryByText("Солонгын судалгаа")).toBeNull();
     expect(screen.queryByText("Бүх бүлгийн судалгаа")).toBeNull();
+  });
+});
+
+/**
+ * Гарааны · Явцын · Үр дүнгийн үнэлгээ — client, 2026-09-18: three buttons
+ * under the two "create" cards that sort surveys by wave.
+ */
+describe("the wave buttons", () => {
+  const BASELINE_FORM = { ...FORM, period: "BASELINE" };
+  const ENDLINE_POLL = { ...POLL, period: "ENDLINE" };
+
+  it("offers Бүгд and the three waves under the create cards", async () => {
+    stubHub([BASELINE_FORM, ENDLINE_POLL]);
+    renderWithProviders(<SurveysHubPage />);
+
+    const group = await screen.findByRole("group", { name: "Үнэлгээний төрлөөр ангилах" });
+    expect(
+      within(group)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Бүгд", "Гарааны үнэлгээ", "Явцын үнэлгээ", "Үр дүнгийн үнэлгээ"]);
+    expect(within(group).getByRole("button", { name: "Үр дүнгийн үнэлгээ" })).toHaveClass(
+      "text-compact",
+      "sm:text-body",
+    );
+  });
+
+  it("starts on Бүгд, and Бүгд takes the filter off", async () => {
+    const user = userEvent.setup();
+    stubHub([BASELINE_FORM, ENDLINE_POLL]);
+    renderWithProviders(<SurveysHubPage />);
+
+    expect(await screen.findByRole("button", { name: "Бүгд" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await user.click(screen.getByRole("button", { name: "Бүгд" }));
+    expect(ROUTER.replace).toHaveBeenCalledWith("/surveys/parents", { scroll: false });
+  });
+
+  it("puts the choice in the URL", async () => {
+    const user = userEvent.setup();
+    stubHub([BASELINE_FORM, ENDLINE_POLL]);
+    renderWithProviders(<SurveysHubPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Гарааны үнэлгээ" }));
+    expect(ROUTER.replace).toHaveBeenCalledWith("/surveys/parents?period=BASELINE", {
+      scroll: false,
+    });
+  });
+
+  it("lists only that wave's surveys, of both kinds, and presses its button", async () => {
+    setSearchParams("period=ENDLINE");
+    stubHub([BASELINE_FORM, ENDLINE_POLL]);
+    renderWithProviders(<SurveysHubPage />);
+
+    const section = (await screen.findByRole("heading", { name: "Үр дүнгийн үнэлгээ" })).closest(
+      "section",
+    )!;
+    expect(await within(section).findByText("Зугаалгын санал")).toBeInTheDocument();
+    expect(within(section).queryByText("Намрын эцэг эхийн уулзалт")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Үр дүнгийн үнэлгээ" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("says so when a wave has nothing yet", async () => {
+    setSearchParams("period=MIDLINE");
+    stubHub([BASELINE_FORM, ENDLINE_POLL]);
+    renderWithProviders(<SurveysHubPage />);
+
+    expect(await screen.findByText("Явцын үнэлгээ алга")).toBeInTheDocument();
   });
 });

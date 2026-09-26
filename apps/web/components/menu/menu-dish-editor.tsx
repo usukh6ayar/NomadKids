@@ -20,7 +20,7 @@ import { SingleImageUpload } from "@/components/media/single-image-upload";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { RowMenu } from "@/components/ui/menu";
-import { MEAL_KIND_STYLE, MEAL_KIND_TIME } from "@/components/child/family-menu";
+import { MEAL_KIND_STYLE } from "@/components/child/family-menu";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { cn } from "@/lib/utils";
@@ -494,7 +494,8 @@ export function MenuDishEditor({
               >
                 {/*
                   ★ The sitting names the card — the client's 2026-09-11
-                  drawing: its glyph, its label and its time, in its own tint.
+                  drawing: its glyph and its label, in its own tint. The time
+                  went on 2026-09-25, at the client's request.
 
                   The rows were five identical white boxes whose only difference
                   was a "Хоолны цаг" select three fields down. A cook scanning a
@@ -513,9 +514,6 @@ export function MenuDishEditor({
                   >
                     {MEAL_KIND_LABEL[dish.kind]}
                   </p>
-                  <span className="shrink-0 text-caption font-semibold tabular-nums text-muted">
-                    {MEAL_KIND_TIME[dish.kind]}
-                  </span>
                   <RowMenu
                     ariaLabel={`${dish.name || MEAL_KIND_LABEL[dish.kind]} — үйлдэл`}
                     items={[

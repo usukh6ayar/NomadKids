@@ -154,10 +154,16 @@ export function canRecordForChild(actor: Actor, facts: ChildAccessFacts): boolea
  * guardians (`portfolio-fields.ts`).
  *
  * ★★ This deliberately does NOT widen anything else. A guardian still may not
- * delete a photograph, set the profile picture, or edit metadata on a
- * photograph somebody else uploaded — `canRecordForChild` still governs all
- * three, and the reference cases `test_delete_refuses_the_childs_own_guardian`
- * and `test_a_guardian_cannot_edit_their_own_child` still hold.
+ * delete a photograph or edit metadata on a photograph somebody else
+ * uploaded — `canRecordForChild` still governs both, and the reference cases
+ * `test_delete_refuses_the_childs_own_guardian` and
+ * `test_a_guardian_cannot_edit_their_own_child` still hold.
+ *
+ * ★★★ The **profile picture** moved here on 2026-09-24, at the client's
+ * request. It is a choice *among photographs this family may already see*,
+ * made from their own child's card, and it writes one id on the child row —
+ * not an edit of the record's facts, which stays staff-only. See
+ * `MediaService.setAsChildPhoto` and `docs/SECURITY.md` §6.6.
  *
  * The reference system refused guardian uploads outright. That behaviour is
  * overridden here on purpose: the RFP is the final authority (CLAUDE.md

@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
 import AdminGroupsPage from "@/app/(app)/admin/groups/page";
@@ -60,5 +60,44 @@ describe("эрх", () => {
 
     await waitFor(() => expect(screen.queryByRole("button", { name: /— засах/ })).toBeNull());
     expect(screen.queryByRole("button", { name: /архивлах/i })).toBeNull();
+  });
+});
+
+/*
+  ★ A table — client, 2026-09-25: "бүлгүүд хүснэгт хэлбэрээр харагд".
+*/
+describe("the group list", () => {
+  it("lays the groups out as a table, a row each", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: "/groups",
+        body: {
+          items: [group({ name: "Наран бүлэг", _count: { enrollments: 18 } })],
+          page: 1,
+          pageSize: 100,
+          total: 1,
+          totalPages: 1,
+        },
+      },
+    ]);
+    renderWithProviders(<AdminGroupsPage />);
+
+    const table = await screen.findByRole("table", { name: "Бүлгүүдийн жагсаалт" });
+    const headers = within(table)
+      .getAllByRole("columnheader")
+      .map((th) => th.textContent);
+    expect(headers).toEqual(["Бүлэг", "Насны бүлэг", "Хичээлийн жил", "Хүүхэд", "Үйлдэл"]);
+
+    const row = within(table).getByRole("row", { name: /Наран бүлэг/ });
+    expect(within(row).getByRole("link", { name: "Наран бүлэг" })).toHaveAttribute(
+      "href",
+      `/groups/${GROUP}`,
+    );
+    expect(within(row).getByText("2026-2027")).toBeInTheDocument();
+    expect(within(row).getByText("18")).toBeInTheDocument();
+    expect(
+      within(row).getByRole("button", { name: "Наран бүлэг — багш хуваарилах" }),
+    ).toBeInTheDocument();
   });
 });

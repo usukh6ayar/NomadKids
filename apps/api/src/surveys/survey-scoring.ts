@@ -99,6 +99,16 @@ export function scoreOf(
       return options.columns.some((column) => column.value === cell) ? cell : null;
     }
 
+    case "SINGLE_CHOICE": {
+      // Scored only when every choice is a number — "0 / 1", "1 / 2 / 3" —
+      // which is how a teacher writes a scale by hand (client, 2026-09-21).
+      // Words have no order to average, so they stay out.
+      const scale = numericOptions(question);
+      if (!scale || typeof value !== "string") return null;
+      const score = Number(value);
+      return scale.includes(score) ? score : null;
+    }
+
     default:
       // TEXT, and anything a future migration adds before this file knows about
       // it. Returning null keeps an unknown type out of the averages instead of
@@ -126,6 +136,11 @@ export function maxScoreOf(question: ScorableQuestion): number | null {
     case "YES_NO":
       return 1;
 
+    case "SINGLE_CHOICE": {
+      const scale = numericOptions(question);
+      return scale ? Math.max(...scale) : null;
+    }
+
     case "CHECKBOX": {
       const options = question.options;
       return Array.isArray(options) && options.length > 0 ? options.length : null;
@@ -141,6 +156,19 @@ export function maxScoreOf(question: ScorableQuestion): number | null {
     default:
       return null;
   }
+}
+
+/**
+ * A SINGLE_CHOICE question's choices as numbers, or null unless every one of
+ * them is a plain number. Blank options and "2-3" disqualify the scale.
+ */
+function numericOptions(question: ScorableQuestion): number[] | null {
+  const options = optionStrings(question.options);
+  if (options.length === 0) return null;
+  const numbers = options.map((option) =>
+    /^-?\d+(\.\d+)?$/.test(option.trim()) ? Number(option) : NaN,
+  );
+  return numbers.every(Number.isFinite) ? numbers : null;
 }
 
 /**

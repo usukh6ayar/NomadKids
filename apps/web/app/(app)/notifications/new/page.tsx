@@ -21,7 +21,7 @@ import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Disclosure } from "@/components/ui/disclosure";
-import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field";
+import { Checkbox, Field, Select, Textarea } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
 import { ImagePlus, X } from "lucide-react";
@@ -63,7 +63,6 @@ function ComposeNotice() {
   const fileInputId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [title, setTitle] = useState("");
   /*
     ★ The category, and who the post is for — the client's 2026-08-30 request.
 
@@ -140,7 +139,7 @@ function ComposeNotice() {
             body: {
               // Empty stays empty: the DTO turns "" into null, which is what
               // "this post has no heading" is stored as.
-              title: title.trim() || null,
+              title: null,
               category,
               body,
               isImportant,
@@ -256,20 +255,11 @@ function ComposeNotice() {
             )}
           </Field>
 
-          <Field label="Гарчиг" error={errors.title}>
-            {({ id, describedBy, invalid }) => (
-              <Input
-                id={id}
-                aria-describedby={describedBy}
-                invalid={invalid}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                disabled={busy}
-                autoFocus
-              />
-            )}
-          </Field>
-
+          {/*
+            No Гарчиг field — client, 2026-09-25: "Шинэ мэдэгдэл бичихэд
+            гарчиг хас". A notice's title has been optional since 2026-08-30;
+            a new one is written as its body alone.
+          */}
           {/* The label is `sr-only` here too: printed, it named the obvious. */}
           <Field label="Дэлгэрэнгүй" labelHidden error={errors.body} required>
             {({ id, describedBy, invalid }) => (

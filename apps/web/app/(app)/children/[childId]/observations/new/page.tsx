@@ -216,6 +216,8 @@ function NewObservationForm() {
    * quietly override the button just pressed.
    */
   const requestedTypeCode = searchParams.get("type");
+  const fromProgress =
+    requestedTypeCode === "artwork" && searchParams.get("returnTo") === "progress";
   const [typeId, setTypeId] = useState(searchParams.get("typeId") ?? draft?.typeId ?? "");
 
   /*
@@ -331,6 +333,7 @@ function NewObservationForm() {
    * pictures, which is the honest half rather than a crash.
    */
   const [photos, setPhotos] = useState<File[]>([]);
+  const [photoError, setPhotoError] = useState("");
   /**
    * Set while the photographs are going up, after the note itself has saved.
    *
@@ -614,7 +617,11 @@ function NewObservationForm() {
         <BackButton href={listHref} />
         <div className="min-w-0">
           <h1 className="text-title font-semibold tracking-[-.01em] text-ink md:text-heading">
-            {isStaff ? "Ажиглалт шинээр бичих" : "Гэрийн мөч хуваалцах"}
+            {fromProgress
+              ? "Шинэ бүтээл нэмэх"
+              : isStaff
+                ? "Ажиглалт шинээр бичих"
+                : "Гэрийн мөч хуваалцах"}
           </h1>
           {!isStaff ? (
             <p className="mt-1.5 text-body text-muted">Таны бичсэнийг багш хянаад хавтаст нэмнэ.</p>
@@ -672,6 +679,10 @@ function NewObservationForm() {
         onSubmit={(event) => {
           event.preventDefault();
           if (save.isPending) return;
+          if (fromProgress && photos.length === 0) {
+            setPhotoError("Бүтээлийн зураг нэмнэ үү.");
+            return;
+          }
           save.mutate();
         }}
         className="flex flex-col gap-3"
@@ -699,7 +710,7 @@ function NewObservationForm() {
         ) : null}
 
         <Card pad="compact" className="flex flex-col gap-3">
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className={fromProgress ? "" : "grid grid-cols-2 gap-2.5"}>
             <Field label="Огноо" error={errors.observedOn} required>
               {({ id, describedBy, invalid }) => (
                 <Input
@@ -724,7 +735,7 @@ function NewObservationForm() {
               moment happened, and a teacher writing up yesterday's morning
               would have to notice and correct it.
             */}
-            {isStaff ? (
+            {isStaff && !fromProgress ? (
               <Field label="Цаг" error={errors.observedTime}>
                 {({ id, describedBy, invalid }) => (
                   <Input
@@ -741,7 +752,7 @@ function NewObservationForm() {
           </div>
 
           {isStaff ? (
-            <div className="grid grid-cols-2 gap-2.5">
+            <div className={fromProgress ? "" : "grid grid-cols-2 gap-2.5"}>
               {/*
                 ★ A list, not a free-text box — 2026-09-11, the client's design.
 
@@ -786,29 +797,31 @@ function NewObservationForm() {
                 than the array's ten: the client's design has one select, and a
                 note about one moment is about one thing.
               */}
-              <Field label="Сургалтын чиглэл" error={errors.domainIds}>
-                {({ id, describedBy, invalid }) => (
-                  <Select
-                    id={id}
-                    aria-describedby={describedBy}
-                    invalid={invalid}
-                    value={domainId}
-                    onChange={(e) => {
-                      setDomainId(e.target.value);
-                      // The codes belong to the strand, so changing it leaves
-                      // the old one naming an indicator from somewhere else.
-                      setIndicatorId("");
-                    }}
-                  >
-                    <option value="">Сонгоно уу</option>
-                    {strandOptions.map((domain) => (
-                      <option key={domain.id} value={domain.id}>
-                        {domain.name}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </Field>
+              {!fromProgress ? (
+                <Field label="Сургалтын чиглэл" error={errors.domainIds}>
+                  {({ id, describedBy, invalid }) => (
+                    <Select
+                      id={id}
+                      aria-describedby={describedBy}
+                      invalid={invalid}
+                      value={domainId}
+                      onChange={(e) => {
+                        setDomainId(e.target.value);
+                        // The codes belong to the strand, so changing it leaves
+                        // the old one naming an indicator from somewhere else.
+                        setIndicatorId("");
+                      }}
+                    >
+                      <option value="">Сонгоно уу</option>
+                      {strandOptions.map((domain) => (
+                        <option key={domain.id} value={domain.id}>
+                          {domain.name}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                </Field>
+              ) : null}
             </div>
           ) : null}
 
@@ -831,7 +844,7 @@ function NewObservationForm() {
             read out what it means at that level, and be dropped when it says
             nothing there at all.
           */}
-          {isStaff ? (
+          {isStaff && !fromProgress ? (
             <fieldset>
               <legend className="mb-1.5 text-body font-medium text-ink">Түвшин</legend>
 
@@ -882,7 +895,7 @@ function NewObservationForm() {
             be on the options themselves to be any use in choosing between them.
             Which text depends on the level, chosen just above.
           */}
-          {isStaff && domainId ? (
+          {isStaff && domainId && !fromProgress ? (
             <Field label="СҮД код" error={errors.indicatorId}>
               {({ id, describedBy, invalid }) => (
                 <Select
@@ -909,8 +922,15 @@ function NewObservationForm() {
           ) : null}
         </Card>
 
-        {!isStaff ? (
-          <ObservationPhotoPicker files={photos} onChange={setPhotos} disabled={save.isPending} />
+        {!isStaff || fromProgress ? (
+          <ObservationPhotoPicker
+            files={photos}
+            onChange={(next) => {
+              setPhotos(next);
+              if (next.length > 0) setPhotoError("");
+            }}
+            disabled={save.isPending}
+          />
         ) : null}
 
         {/*
@@ -929,7 +949,11 @@ function NewObservationForm() {
           form stops asking for them, it does not erase them.
         */}
         <Card pad="compact">
-          <Field label="Тэмдэглэл" error={errors.situation} hint={`${situation.length}/1000`}>
+          <Field
+            label={fromProgress ? "Тайлбар" : "Тэмдэглэл"}
+            error={errors.situation}
+            hint={`${situation.length}/1000`}
+          >
             {({ id, describedBy, invalid }) => (
               <Textarea
                 id={id}
@@ -952,11 +976,14 @@ function NewObservationForm() {
           the teacher is trying to get to the end of. The labels already say
           what each one does.
         */}
-        {isStaff ? (
+        {isStaff && !fromProgress ? (
           <Card className="grid grid-cols-3 gap-2 px-3 py-3">
             <ObservationPhotoPicker
               files={photos}
-              onChange={setPhotos}
+              onChange={(next) => {
+                setPhotos(next);
+                if (next.length > 0) setPhotoError("");
+              }}
               disabled={save.isPending}
               compact
             />
@@ -979,6 +1006,12 @@ function NewObservationForm() {
               onChange={(e) => setIncludeInReport(e.target.checked)}
             />
           </Card>
+        ) : null}
+
+        {photoError ? (
+          <p role="alert" className="text-caption text-danger">
+            {photoError}
+          </p>
         ) : null}
 
         <div className="flex flex-col gap-2">

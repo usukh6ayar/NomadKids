@@ -35,6 +35,7 @@ const GALLERY_SELECT = {
   takenAt: true,
   age: true,
   category: true,
+  albumCategoryId: true,
   albumCoverAge: true,
   attribution: true,
   uploadedBy: { select: { id: true, lastName: true, firstName: true } },
@@ -47,6 +48,8 @@ export interface MediaFilters {
   milestoneId?: string;
   incidentId?: string;
   category?: string;
+  /** One added photo type — `AlbumCategory`. */
+  albumCategoryId?: string;
   age?: number;
   attribution?: MediaAttribution;
 }
@@ -110,6 +113,7 @@ export class MediaRepository {
       ...(filters.milestoneId ? { milestoneId: filters.milestoneId } : {}),
       ...(filters.incidentId ? { incidentId: filters.incidentId } : {}),
       ...(filters.category ? { category: filters.category } : {}),
+      ...(filters.albumCategoryId ? { albumCategoryId: filters.albumCategoryId } : {}),
       ...(filters.age === undefined ? {} : { age: filters.age }),
       ...(filters.attribution ? { attribution: filters.attribution } : {}),
     };
@@ -220,33 +224,57 @@ export class MediaRepository {
     return { items, total };
   }
 
-  private async ageAlbumSummary(where: WhereFragment, age: number) {
+  private async ageAlbumSummary(where: WhereFragment & { childId: string }, age: number) {
     const albumWhere = {
       ...where,
       age,
       category: { in: [...AGE_ALBUM_CATEGORIES] },
     };
+    const customWhere = { ...where, age, albumCategoryId: { not: null } };
 
-    const [grouped, thumbnails, cover] = await Promise.all([
-      this.prisma.mediaFile.groupBy({
-        by: ["category"],
-        where: albumWhere,
-        _count: { _all: true },
-      }),
-      this.prisma.mediaFile.findMany({
-        where: albumWhere,
-        orderBy: [{ takenAt: { sort: "desc", nulls: "last" } }, { uploadedAt: "desc" }],
-        distinct: ["category"],
-        select: { id: true, category: true },
-      }),
-      this.prisma.mediaFile.findFirst({
-        where: { ...where, albumCoverAge: age },
-        select: { id: true },
-      }),
-    ]);
+    const [grouped, thumbnails, cover, custom, customGrouped, customThumbnails] = await Promise.all(
+      [
+        this.prisma.mediaFile.groupBy({
+          by: ["category"],
+          where: albumWhere,
+          _count: { _all: true },
+        }),
+        this.prisma.mediaFile.findMany({
+          where: albumWhere,
+          orderBy: [{ takenAt: { sort: "desc", nulls: "last" } }, { uploadedAt: "desc" }],
+          distinct: ["category"],
+          select: { id: true, category: true },
+        }),
+        this.prisma.mediaFile.findFirst({
+          where: { ...where, albumCoverAge: age },
+          select: { id: true },
+        }),
+        // The added photo types, oldest first so a new one lands at the end.
+        this.prisma.albumCategory.findMany({
+          where: { childId: where.childId, age, deletedAt: null },
+          orderBy: { createdAt: "asc" },
+          select: { id: true, name: true, createdById: true },
+        }),
+        this.prisma.mediaFile.groupBy({
+          by: ["albumCategoryId"],
+          where: customWhere,
+          _count: { _all: true },
+        }),
+        this.prisma.mediaFile.findMany({
+          where: customWhere,
+          orderBy: [{ takenAt: { sort: "desc", nulls: "last" } }, { uploadedAt: "desc" }],
+          distinct: ["albumCategoryId"],
+          select: { id: true, albumCategoryId: true },
+        }),
+      ],
+    );
 
     const counts = new Map(grouped.map((item) => [item.category, item._count._all]));
     const firstPhoto = new Map(thumbnails.map((item) => [item.category, item.id]));
+    const customCounts = new Map(
+      customGrouped.map((item) => [item.albumCategoryId, item._count._all]),
+    );
+    const customFirst = new Map(customThumbnails.map((item) => [item.albumCategoryId, item.id]));
 
     return {
       age,
@@ -256,6 +284,13 @@ export class MediaRepository {
         count: counts.get(category) ?? 0,
         thumbnailMediaId: firstPhoto.get(category) ?? null,
       })),
+      customCategories: custom.map((item) => ({
+        id: item.id,
+        name: item.name,
+        createdById: item.createdById,
+        count: customCounts.get(item.id) ?? 0,
+        thumbnailMediaId: customFirst.get(item.id) ?? null,
+      })),
     };
   }
 
@@ -264,7 +299,10 @@ export class MediaRepository {
   }
 
   async ageAlbumSummaryForGuardian(childId: string, guardianUserId: string, age: number) {
-    return this.ageAlbumSummary(this.guardianVisibleWhere(childId, guardianUserId), age);
+    return this.ageAlbumSummary(
+      { ...this.guardianVisibleWhere(childId, guardianUserId), childId },
+      age,
+    );
   }
 
   /**
@@ -343,6 +381,7 @@ export class MediaRepository {
         ...(data.takenAt === undefined ? {} : { takenAt: data.takenAt }),
         ...(data.age === undefined ? {} : { age: data.age }),
         ...(data.category === undefined ? {} : { category: data.category }),
+        ...(data.albumCategoryId === undefined ? {} : { albumCategoryId: data.albumCategoryId }),
         // A cover is valid only while its photo remains in that age's portrait
         // album. Any tag correction clears the marker; it can then be selected
         // again explicitly from the correct album.
@@ -490,6 +529,93 @@ export class MediaRepository {
     });
   }
 
+  /**
+   * Live photographs in one age-album card — the count
+   * `MAX_PHOTOS_PER_AGE_ALBUM_CATEGORY` is checked against. The same filter the
+   * staff summary counts with, so the card's "3 зураг" and the refusal agree.
+   * `excludeId` leaves out a photograph being moved within the same card.
+   */
+  async countInAgeAlbumCategory(
+    childId: string,
+    age: number,
+    category: string,
+    excludeId?: string,
+  ) {
+    return this.prisma.mediaFile.count({
+      where: {
+        childId,
+        age,
+        category,
+        deletedAt: null,
+        status: "READY",
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+    });
+  }
+
+  // ── Added photo types — `AlbumCategory` ────────────────────────────────
+
+  /** A live added type, with what authorization and the limit need. */
+  async findAlbumCategory(id: string) {
+    return this.prisma.albumCategory.findFirst({
+      where: { id, deletedAt: null },
+      select: {
+        id: true,
+        childId: true,
+        kindergartenId: true,
+        age: true,
+        name: true,
+        createdById: true,
+      },
+    });
+  }
+
+  /** The names already used for this child and age — to refuse a duplicate. */
+  async albumCategoryNames(childId: string, age: number) {
+    return this.prisma.albumCategory.findMany({
+      where: { childId, age, deletedAt: null },
+      select: { id: true, name: true },
+    });
+  }
+
+  async createAlbumCategory(data: {
+    kindergartenId: string;
+    childId: string;
+    age: number;
+    name: string;
+    createdById: string;
+  }) {
+    return this.prisma.albumCategory.create({
+      data,
+      select: { id: true, childId: true, age: true, name: true, createdById: true },
+    });
+  }
+
+  async renameAlbumCategory(id: string, name: string) {
+    return this.prisma.albumCategory.update({
+      where: { id },
+      data: { name },
+      select: { id: true, childId: true, age: true, name: true, createdById: true },
+    });
+  }
+
+  /** §3.2 — soft. The service has already refused a type with photographs. */
+  async softDeleteAlbumCategory(id: string) {
+    await this.prisma.albumCategory.update({ where: { id }, data: { deletedAt: new Date() } });
+  }
+
+  /** Live photographs in one added type — the three-photo limit and the delete guard. */
+  async countInAlbumCategory(albumCategoryId: string, excludeId?: string) {
+    return this.prisma.mediaFile.count({
+      where: {
+        albumCategoryId,
+        deletedAt: null,
+        status: "READY",
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+    });
+  }
+
   async countForMilestone(milestoneId: string) {
     return this.prisma.mediaFile.count({ where: { milestoneId, deletedAt: null } });
   }
@@ -608,6 +734,7 @@ export interface CreateMediaData {
   takenAt?: Date | null;
   age?: number | null;
   category?: string | null;
+  albumCategoryId?: string | null;
   attribution?: MediaAttribution | null;
 }
 
@@ -616,5 +743,6 @@ export interface MediaMetadataUpdate {
   takenAt?: Date | null;
   age?: number | null;
   category?: string | null;
+  albumCategoryId?: string | null;
   attribution?: MediaAttribution | null;
 }

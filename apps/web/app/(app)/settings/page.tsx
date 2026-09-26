@@ -1,11 +1,12 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { BriefcaseBusiness, Building2, Database, KeyRound, LogOut, Mail } from "lucide-react";
 import { z } from "zod";
 import {
   esisMyProfileSchema,
+  parentDashboardSchema,
   PASSWORD_RULES,
   userProfileSchema,
   validatePasswordStrength,
@@ -20,9 +21,12 @@ import { buildEsisDemoProfile, type EsisDemoField } from "@/lib/esis/demo-profil
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, SectionHeader } from "@/components/ui/card";
-import { Field, PasswordInput } from "@/components/ui/field";
+import { Field, Input, PasswordInput } from "@/components/ui/field";
+import { useToast } from "@/components/ui/toast";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
+import { ChildPhotoButton } from "@/components/child/child-photo-button";
+import { fullName } from "@/lib/format";
 import { PhotoBadgeButton } from "@/components/media/photo-badge-button";
 
 const profileSchema = userProfileSchema.extend({
@@ -76,6 +80,8 @@ export default function SettingsPage() {
       */}
       <div className="flex w-full max-w-[760px] flex-col gap-6 lg:gap-8">
         <ProfileCard />
+        <StaffProfileCard />
+        <ChildPhotosCard />
       </div>
 
       <EsisProfileSection />
@@ -156,6 +162,59 @@ export default function SettingsPage() {
  * person's own; only the ESIS identifiers are illustrative, and no civil id,
  * register number or credential is ever represented.
  */
+/**
+ * "Хүүхдийн зураг" — a guardian changes the face on their child's card.
+ *
+ * ★ Client, 2026-09-24: "цэс хэсэг дээр хувийн тохиргоо байгаа, энэ дээр
+ * хүүхдийн зургийг нь сольдог байя". The badge on the child's own avatar does
+ * the same thing and stays; this is the place people look when they cannot
+ * find it, and the only place a family with two children sees both at once.
+ *
+ * ★★ The picture only. The name, the birth date and the group are the
+ * kindergarten's record and stay staff-only — `canRecordForChild`, unchanged.
+ *
+ * Renders nothing for staff: `/dashboard/parent` is the guardian's own
+ * endpoint, and a teacher opening this page has no children of their own to
+ * list here.
+ */
+function ChildPhotosCard() {
+  const { hasRole } = useSession();
+  const isGuardian = hasRole("PARENT");
+
+  const { data } = useQuery({
+    queryKey: qk.dashboard.parent(),
+    queryFn: () => get("/dashboard/parent", parentDashboardSchema),
+    enabled: isGuardian,
+  });
+
+  if (!isGuardian || !data || data.children.length === 0) return null;
+
+  return (
+    <Card pad="roomy" className="flex flex-col gap-4">
+      <SectionHeader
+        title="Хүүхдийн зураг"
+        lede="Зураг дээрх камер дээр дарж солино. Нэр, бүлгийг цэцэрлэг өөрчилнө."
+      />
+      <ul className="flex flex-col gap-3">
+        {data.children.map((child) => (
+          <li key={child.id} className="flex items-center gap-3">
+            <div className="relative shrink-0">
+              <ChildAvatar child={child} size={56} />
+              <ChildPhotoButton childId={child.id} childName={fullName(child)} />
+            </div>
+            <div className="min-w-0">
+              <p className="truncate font-semibold text-ink">{fullName(child)}</p>
+              <p className="truncate text-caption text-muted">
+                {child.group?.name ?? "Бүлэг тодорхойгүй"}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
 function EsisProfileSection() {
   const { roles, primaryKindergartenId } = useSession();
   const { data, isLoading, isError } = useQuery({
@@ -171,16 +230,15 @@ function EsisProfileSection() {
   });
 
   if (isLoading || esisQuery.isLoading || isError || !data) return null;
-  if (esisQuery.isError) {
-    return (
-      <section aria-label="Ажлын мэдээлэл">
-        <Card pad="compact" tone="sun">
-          <p className="font-medium text-ink">Ажлын мэдээлэл түр татагдсангүй.</p>
-          <p className="mt-1 text-body text-muted">{errorMessage(esisQuery.error)}</p>
-        </Card>
-      </section>
-    );
-  }
+  /*
+    ★ Nothing at all when the ESIS read fails — client, 2026-09-24. The panel
+    used to show "Ажлын мэдээлэл түр татагдсангүй" with the raw reason under
+    it, and for a parent that reason is always "Not Found": they have no ESIS
+    record, so a request that was never meant for them reported a fault on
+    their own settings page. This section is a bonus panel; when it has
+    nothing to say it says nothing.
+  */
+  if (esisQuery.isError) return null;
 
   const esis = buildEsisDemoProfile(data, roles);
   const live = esisQuery.data?.mode === "LIVE" ? esisQuery.data : null;
@@ -324,6 +382,7 @@ function EsisFieldGroup({
  * read-only records. `SignOutCard` is the last thing on the page instead.
  */
 function ProfileCard() {
+  const { hasRole } = useSession();
   const { data, isLoading, isError, error } = useQuery({
     queryKey: qk.profile(),
     queryFn: () => get("/me/profile", profileSchema),
@@ -331,6 +390,21 @@ function ProfileCard() {
 
   if (isLoading) return <LoadingState rows={2} shape="text" />;
   if (isError) return <ErrorState description={errorMessage(error)} />;
+
+  /*
+    ★ A family's card is the password alone — 2026-09-25, the client: the
+    guardian's name, "И-мэйл оруулаагүй" and the photo control are not needed
+    here. Staff keep the whole card.
+  */
+  if (hasRole("PARENT") && !hasRole("TEACHER") && !hasRole("ADMIN")) {
+    return (
+      <section aria-label="Хувийн мэдээлэл">
+        <Card pad="roomy">
+          <PasswordSection identifier={data?.email || data?.username || ""} email={data?.email} />
+        </Card>
+      </section>
+    );
+  }
 
   return (
     <section aria-label="Хувийн мэдээлэл">
@@ -363,6 +437,167 @@ function ProfileCard() {
         <div className="border-t border-border-soft pt-5">
           <PasswordSection identifier={data?.email || data?.username || ""} email={data?.email} />
         </div>
+      </Card>
+    </section>
+  );
+}
+
+/**
+ * "Багшийн мэдээлэл" — Мэргэжил, Мэргэшлийн зэрэг, Төгссөн сургууль, Утас.
+ *
+ * ★ Client, 2026-09-24. The family's "Цэцэрлэгийн мэдээлэл" screen draws
+ * these four off the teachers of their child's group, and until today there
+ * was nowhere to type them: the API accepted `specialization` and `education`
+ * on this very endpoint, and no screen sent them.
+ *
+ * ★★ Staff only, and it is the reader's own record — a guardian has no
+ * teaching profile, and an administrator filling one in for somebody else
+ * does it from `/admin/users`.
+ *
+ * ★★★ ESIS does not answer these. `teacher/list` returns the appointment —
+ * position, teacher type, subject department, official e-mail — and no
+ * profession, qualification or school, so these stay typed by hand. The
+ * "ЭСИС-ээс татах" button fills what the ministry does return.
+ */
+function StaffProfileCard() {
+  const { hasRole, primaryKindergartenId } = useSession();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
+  const isAdmin = hasRole("ADMIN");
+
+  const { data } = useQuery({
+    queryKey: qk.profile(),
+    queryFn: () => get("/me/profile", profileSchema),
+    enabled: isStaff,
+  });
+
+  const [form, setForm] = useState<Record<string, string> | null>(null);
+  const fields = [
+    { key: "specialization", label: "Мэргэжил", placeholder: "СӨБ-ийн багш" },
+    { key: "qualification", label: "Мэргэшлийн зэрэг", placeholder: "Заах аргач" },
+    { key: "education", label: "Төгссөн сургууль", placeholder: "МУБИС" },
+    { key: "phone", label: "Утас", placeholder: "99001234" },
+  ] as const;
+
+  const current =
+    form ??
+    Object.fromEntries(fields.map((field) => [field.key, (data?.[field.key] as string) ?? ""]));
+
+  /*
+    ★ "ЭСИС-ээс татах" fills the form; it does not save — client, 2026-09-24.
+
+    What the ministry answers about a teacher is the *appointment*: албан
+    тушаал, заах аргын нэгдэл, албаны и-мэйл. None of it is the profession,
+    the grade or the school this card asks for, so the mapping is a
+    suggestion — `subjectDepartmentName` into Мэргэжил, `positionName` when
+    that is empty — and a suggestion belongs in the fields where a person can
+    read it and correct it before pressing Хадгалах. Writing it straight into
+    the record would put the ministry's words in a teacher's mouth.
+  */
+  const esis = useQuery({
+    queryKey: ["esis", "my-profile", primaryKindergartenId],
+    queryFn: () =>
+      get(`/kindergartens/${primaryKindergartenId}/esis/my-profile`, esisMyProfileSchema),
+    enabled: isStaff && Boolean(primaryKindergartenId),
+    retry: false,
+  });
+
+  const fillFromEsis = () => {
+    const row = esis.data?.row ?? {};
+    const pick = (...names: string[]) => {
+      for (const name of names) {
+        const value = row[name];
+        if (typeof value === "string" && value.trim()) return value.trim();
+      }
+      return "";
+    };
+    const suggestion = {
+      specialization: pick("subjectDepartmentName", "positionName"),
+      qualification: pick("instructorTypeName"),
+      education: "",
+      phone: "",
+    };
+    setForm({
+      ...current,
+      // Never blanks what is already written: the ministry's answer fills a
+      // gap, it does not overwrite a teacher's own words.
+      ...Object.fromEntries(
+        Object.entries(suggestion).filter(([key, value]) => value && !current[key]?.trim()),
+      ),
+    });
+  };
+
+  const save = useMutation({
+    mutationFn: () =>
+      mutate("/me/profile", profileSchema, {
+        method: "PATCH",
+        body: Object.fromEntries(
+          fields.map((field) => [field.key, current[field.key]?.trim() || null]),
+        ),
+      }),
+    onSuccess: () => {
+      toast.success("Мэдээлэл хадгалагдлаа.");
+      setForm(null);
+      void queryClient.invalidateQueries({ queryKey: qk.profile() });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+  const errors = fieldErrors(save.error);
+
+  if (!isStaff || !data) return null;
+
+  return (
+    <section aria-label={isAdmin ? "Мэдээлэл" : "Багшийн мэдээлэл"}>
+      <Card pad="roomy" className="flex flex-col gap-4">
+        <SectionHeader
+          /*
+            An administrator's copy reads "Мэдээлэл", with no line about a
+            group's families — client, 2026-09-25. A teacher's is unchanged.
+          */
+          title={isAdmin ? "Мэдээлэл" : "Багшийн мэдээлэл"}
+          lede={isAdmin ? undefined : "Эцэг эхчүүд таны бүлгийн хуудсан дээр эдгээрийг харна."}
+        />
+
+        <form
+          className="flex flex-col gap-4"
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!save.isPending) save.mutate();
+          }}
+        >
+          <FormError message={save.isError ? errorMessage(save.error) : null} />
+
+          <div className="grid grid-cols-2 gap-x-3 gap-y-4">
+            {fields.map((field) => (
+              <Field key={field.key} label={field.label} error={errors[field.key]}>
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    placeholder={field.placeholder}
+                    value={current[field.key] ?? ""}
+                    onChange={(event) => setForm({ ...current, [field.key]: event.target.value })}
+                  />
+                )}
+              </Field>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap justify-end gap-2">
+            {esis.data ? (
+              <Button type="button" variant="secondary" onClick={fillFromEsis}>
+                <Database size={17} aria-hidden="true" />
+                ЭСИС-ээс татах
+              </Button>
+            ) : null}
+            <Button type="submit" disabled={save.isPending || form === null}>
+              {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+            </Button>
+          </div>
+        </form>
       </Card>
     </section>
   );

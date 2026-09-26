@@ -265,6 +265,13 @@
   --color-cornflower-chart: #6b8ded;
   --color-teal-chart: #1ba39a;
   --color-pink-chart: #ec5183;
+  /*
+   * ★ The brand blue, for graphics — 2026-09-25, the client: "график
+   * үзүүлэлтүүдийн өнгө хэт бараан байна арай зөөлөн орчин үеийн болго".
+   * A ring or a column drawn without a tone took `--color-primary` (6.7:1),
+   * a text colour; this is the same hue at 3.18:1, on the floor above.
+   */
+  --color-primary-chart: #4f8ff7;
 
   --color-danger: #c0392b;
   --color-danger-soft: #fdeceb;

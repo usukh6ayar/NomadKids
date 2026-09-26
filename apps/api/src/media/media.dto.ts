@@ -31,6 +31,7 @@ export const listMediaQuerySchema = paginationQuerySchema.extend({
   purpose: mediaPurposeSchema.optional(),
   observationId: uuidSchema.optional(),
   category: mediaCategorySchema.optional(),
+  albumCategoryId: uuidSchema.optional(),
   age: z.coerce.number().int().min(2).max(5).optional(),
   attribution: mediaAttributionSchema.optional(),
 });
@@ -66,6 +67,8 @@ export const uploadMetadataSchema = z.object({
   takenAt: z.coerce.date().nullable().optional(),
   age: z.coerce.number().int().min(2).max(5).nullable().optional(),
   category: mediaCategorySchema.nullable().optional(),
+  /** An added photo type — its age wins over `age`, and `category` is ignored. */
+  albumCategoryId: z.uuid().optional(),
   attribution: mediaAttributionSchema.nullable().optional(),
 });
 export type UploadMetadataDto = z.infer<typeof uploadMetadataSchema>;
@@ -73,15 +76,30 @@ export type UploadMetadataDto = z.infer<typeof uploadMetadataSchema>;
 /**
  * `POST /children/:id/media/save-from-post` — keeping a class-board photograph.
  *
- * `age` and `category` are the album facets the parent is filing it under, and
- * both are optional: "save this" with no album chosen is a real request, and
- * the photograph then sits in the child's ungrouped gallery.
+ * `age` is the year the parent files it under. The photograph lands in that
+ * age's "Багшийн илгээсэн зураг" (client, 2026-09-18), so there is no card to
+ * choose — `category` is no longer accepted. Without an age it sits in the
+ * child's ungrouped gallery.
  */
 export const saveNotificationPhotoSchema = z
   .object({
     mediaId: z.string().uuid(),
     age: z.coerce.number().int().min(2).max(5).nullable().optional(),
-    category: mediaCategorySchema.nullable().optional(),
   })
   .strict();
 export type SaveNotificationPhotoDto = z.infer<typeof saveNotificationPhotoSchema>;
+
+/** An added photo type's name — what the family typed, trimmed. */
+const albumCategoryNameSchema = z
+  .string()
+  .trim()
+  .min(1, "Төрлийн нэрийг бичнэ үү")
+  .max(40, "Төрлийн нэр 40 тэмдэгтээс хэтрэхгүй");
+
+export const createAlbumCategorySchema = z
+  .object({ age: z.number().int().min(2).max(5), name: albumCategoryNameSchema })
+  .strict();
+export type CreateAlbumCategoryDto = z.infer<typeof createAlbumCategorySchema>;
+
+export const renameAlbumCategorySchema = z.object({ name: albumCategoryNameSchema }).strict();
+export type RenameAlbumCategoryDto = z.infer<typeof renameAlbumCategorySchema>;

@@ -3,6 +3,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
+import Link from "next/link";
+import { z } from "zod";
 import {
   type SurveyQuestion,
   surveyResultsSchema,
@@ -26,6 +28,7 @@ import { RequireRole } from "@/components/shell/require-role";
 import {
   ArrowDown,
   ArrowUp,
+  ChevronRight,
   ClipboardList,
   Copy,
   Download,
@@ -172,6 +175,8 @@ function SurveyDetail() {
   }
 
   const data = survey.data!;
+  const isTeacherSurvey = data.respondent === "TEACHER";
+  const previewLabel = isTeacherSurvey ? "Асуулгын харагдац" : "Эцэг эхэд харагдах байдал";
 
   if (!mayManage) {
     return (
@@ -204,7 +209,15 @@ function SurveyDetail() {
         a судалгаа. Genitive, so it cannot be `SURVEY_KIND_LABEL` plus a word.
       */}
       <div className="flex items-center gap-2">
-        <BackButton href={data.kind === "POLL" ? "/surveys/polls" : "/surveys/forms"} />
+        <BackButton
+          href={
+            data.respondent === "TEACHER"
+              ? "/surveys/teacher"
+              : data.kind === "POLL"
+                ? "/surveys/polls"
+                : "/surveys/forms"
+          }
+        />
         <h1 className="min-w-0 flex-1 truncate text-center text-title font-semibold text-ink">
           {RESULTS_TITLE[data.kind]}
         </h1>
@@ -225,7 +238,7 @@ function SurveyDetail() {
         <div className="flex items-start gap-3">
           <span
             aria-hidden="true"
-            className="grid size-12 shrink-0 place-items-center rounded-card bg-cornflower text-cornflower-ink"
+            className="grid size-12 shrink-0 place-items-center rounded-card text-cornflower-ink"
           >
             <ClipboardList size={22} />
           </span>
@@ -275,8 +288,8 @@ function SurveyDetail() {
                 variant={previewing ? "primary" : "secondary"}
                 className="shrink-0"
                 aria-pressed={previewing}
-                aria-label="Эцэг эхэд харагдах байдал"
-                title="Эцэг эхэд харагдах байдал"
+                aria-label={previewLabel}
+                title={previewLabel}
                 onClick={() => setPreviewing((current) => !current)}
               >
                 <Eye size={15} aria-hidden="true" />
@@ -291,7 +304,7 @@ function SurveyDetail() {
               </>
             ) : null}
             {data.status === "DRAFT" ? (
-              <PublishButton surveyId={surveyId} />
+              <PublishButton surveyId={surveyId} teacherSurvey={isTeacherSurvey} />
             ) : data.status === "PUBLISHED" ? (
               <CloseButton surveyId={surveyId} />
             ) : data.status === "CLOSED" ? (
@@ -317,9 +330,54 @@ function SurveyDetail() {
           onSaved={() => void queryClient.invalidateQueries({ queryKey: qk.survey(surveyId) })}
         />
       ) : (
-        <PublishedSurvey surveyId={surveyId} />
+        <>
+          {isTeacherSurvey ? (
+            <ChildrenToFill surveyId={surveyId} open={data.status === "PUBLISHED"} />
+          ) : null}
+          <PublishedSurvey surveyId={surveyId} teacherSurvey={isTeacherSurvey} />
+        </>
       )}
     </div>
+  );
+}
+
+const fillRosterSchema = z.object({
+  answeredCount: z.number().default(0),
+  roster: z.number().default(0),
+});
+
+/**
+ * "Хүүхэд бүрээр бөглөх" — a teacher survey's way in to its table, 2026-09-21.
+ *
+ * ★ A count and a button, not the roster itself: the filling happens on
+ * `/surveys/:id/fill`, as one table of the whole group (the client's drawing),
+ * and a second list of the same children here would be two places to do it.
+ * The count is `participation`'s, the same one the list card shows.
+ */
+function ChildrenToFill({ surveyId, open }: { surveyId: string; open: boolean }) {
+  const roster = useQuery({
+    queryKey: ["surveys", surveyId, "participation"],
+    queryFn: () => get(`/surveys/${surveyId}/participation`, fillRosterSchema),
+  });
+
+  return (
+    <Card pad="compact" className="flex flex-wrap items-center gap-3">
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold text-ink">Хүүхэд бүрээр бөглөх</p>
+        <p className="text-caption tabular-nums text-muted">
+          {roster.data
+            ? `${roster.data.answeredCount}/${roster.data.roster} хүүхэд бөглөгдсөн`
+            : "Бүлгийн хүүхдүүдийг нэг хүснэгтэд бөглөнө."}
+        </p>
+      </div>
+      <Link
+        href={`/surveys/${surveyId}/fill`}
+        className="inline-flex min-h-11 items-center gap-1.5 rounded-pill bg-primary px-4 text-body font-semibold text-white transition-colors hover:bg-primary-hover"
+      >
+        {open ? "Хүснэгтээр бөглөх" : "Хүснэгт харах"}
+        <ChevronRight size={16} aria-hidden="true" />
+      </Link>
+    </Card>
   );
 }
 
@@ -420,8 +478,22 @@ function SurveyFormPreview({ questions }: { questions: SurveyQuestion[] }) {
  * questions, and a count passed down beside them was a second source for the
  * same fact.
  */
-function PublishedSurvey({ surveyId }: { surveyId: string }) {
-  return <SurveyResultsView surveyId={surveyId} />;
+function PublishedSurvey({
+  surveyId,
+  teacherSurvey,
+}: {
+  surveyId: string;
+  teacherSurvey: boolean;
+}) {
+  // A teacher survey trades the per-child "Хариулт" tab for "Ахиц дэвшил":
+  // the teacher wrote those answers, and what they come back for is progress.
+  return (
+    <SurveyResultsView
+      surveyId={surveyId}
+      showAnswers={!teacherSurvey}
+      showProgress={teacherSurvey}
+    />
+  );
 }
 
 /**
@@ -529,7 +601,7 @@ function CloneButton({ surveyId, schoolYear }: { surveyId: string; schoolYear: s
   );
 }
 
-function PublishButton({ surveyId }: { surveyId: string }) {
+function PublishButton({ surveyId, teacherSurvey }: { surveyId: string; teacherSurvey: boolean }) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const publish = useMutation({
@@ -544,7 +616,11 @@ function PublishButton({ surveyId }: { surveyId: string }) {
       symptoms of one cause, and the toast is the other half of the fix.
     */
     onSuccess: () => {
-      toast.success("Судалгааг нийтэллээ. Эцэг эхчүүд бөглөж эхэлнэ.");
+      toast.success(
+        teacherSurvey
+          ? "Судалгааг нийтэллээ. Хүүхэд бүрээр хүснэгтэд бөглөнө үү."
+          : "Судалгааг нийтэллээ. Эцэг эхчүүд бөглөж эхэлнэ.",
+      );
       void queryClient.invalidateQueries({ queryKey: qk.survey(surveyId) });
       void queryClient.invalidateQueries({ queryKey: qk.kindergartenSurveys("") });
     },
@@ -907,29 +983,13 @@ function QuestionEditor({
             ) : null}
 
             {/*
-              ★ The field that makes Module 1.2 possible at all.
-
-              Editing a draft's questions deletes and recreates every row, so
-              the pairing between September and May cannot rest on a question
-              id. This key travels through an edit and through a clone, and is
-              what says "these two questions measure the same thing".
+              ★ No "Үзүүлэлтийн түлхүүр" field — removed 2026-09-21 at the
+              client's request ("ойлгохгүй байна"). The key still pairs a
+              question with its repeat, and it still round-trips through this
+              editor untouched (`indicatorKey` in the draft state), but a new
+              question is named by the server (`indicator-key.ts`) and
+              "Хувилах" copies the name. Nothing is left for a teacher to type.
             */}
-            {question.type !== "TEXT" ? (
-              <Field
-                label="Үзүүлэлтийн түлхүүр"
-                hint="Жил бүрийн харьцуулалтад хэрэглэнэ. Хоосон бол харьцуулагдахгүй."
-              >
-                {({ id, describedBy }) => (
-                  <Input
-                    id={id}
-                    aria-describedby={describedBy}
-                    value={question.indicatorKey}
-                    onChange={(e) => update(index, { indicatorKey: e.target.value })}
-                    placeholder="social_skills"
-                  />
-                )}
-              </Field>
-            ) : null}
 
             {/*
               ★ Order is the thing this editor could not change until now.

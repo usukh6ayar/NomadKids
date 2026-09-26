@@ -4,8 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Download, Mars, Plus, Upload, Venus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Download, Plus, Upload } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   CHILD_STATUS_LABEL,
   SEX_LABEL,
@@ -23,7 +23,6 @@ import { useSession } from "@/lib/auth/session";
 import { RequireRole } from "@/components/shell/require-role";
 import { downloadUrl } from "@/lib/api/client";
 import { useDebounced } from "@/lib/use-debounced";
-import { Art } from "@/components/ui/art";
 import { Donut } from "@/components/ui/chart/donut";
 import { Ring } from "@/components/ui/chart/ring";
 import { Button } from "@/components/ui/button";
@@ -32,7 +31,7 @@ import { Card } from "@/components/ui/card";
 import { formatAge, fullName } from "@/lib/format";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
-import { StatCard } from "@/components/ui/stat-card";
+import { cn } from "@/lib/utils";
 import { useSelectedChild } from "@/lib/selected-child";
 import { MY_CHILDREN } from "@/lib/vocabulary";
 import { z } from "zod";
@@ -542,18 +541,13 @@ function RosterSummary({
           it is meant to illustrate — the mistake `StatCard`'s own note records
           about the art that used to close these cards.
         */}
-        <StatCard
+        <RosterStat
           label="Нийт хүүхэд"
           value={total}
-          art={<Art name="child" size={36} />}
-          artSurface={false}
-          tone="cornflower"
-          className="teacher-stat-card teacher-stat-cornflower"
           chart={
             counted > 0 ? (
               <Donut
-                size={56}
-                className="hidden md:block"
+                size={36}
                 label={`${data.girls} охин, ${data.boys} хүү`}
                 segments={[
                   { label: "Охид", value: data.girls, tone: "pink" },
@@ -562,20 +556,10 @@ function RosterSummary({
               />
             ) : undefined
           }
-          footer={
-            counted > 0 && counted < total ? (
-              <p className="text-caption text-muted">
-                {total - counted} хүүхдийн хүйс бүртгэгдээгүй.
-              </p>
-            ) : undefined
-          }
         />
-        <StatCard
+        <RosterStat
           label="Охид"
           value={data.girls}
-          art={<Venus size={22} />}
-          tone="pink"
-          className="teacher-stat-card teacher-stat-pink"
           chart={
             counted > 0 ? (
               <Ring
@@ -583,17 +567,13 @@ function RosterSummary({
                 tone="pink"
                 percent={(data.girls / counted) * 100}
                 label={`Охид ${Math.round((data.girls / counted) * 100)}%`}
-                className="hidden md:grid"
               />
             ) : undefined
           }
         />
-        <StatCard
+        <RosterStat
           label="Хөвгүүд"
           value={data.boys}
-          art={<Mars size={22} />}
-          tone="sky"
-          className="teacher-stat-card teacher-stat-sky"
           chart={
             counted > 0 ? (
               <Ring
@@ -601,13 +581,57 @@ function RosterSummary({
                 tone="sky"
                 percent={(data.boys / counted) * 100}
                 label={`Хөвгүүд ${Math.round((data.boys / counted) * 100)}%`}
-                className="hidden md:grid"
               />
             ) : undefined
           }
         />
       </div>
+      {counted > 0 && counted < total ? (
+        <p className="text-caption text-muted">{total - counted} хүүхдийн хүйс бүртгэгдээгүй.</p>
+      ) : null}
     </section>
+  );
+}
+
+/**
+ * One figure of the roster's header — label, count and chart on a single line.
+ *
+ * ★ Not `StatCard` — 2026-09-25, at the client's request, with a drawing: a
+ * thin row with no icon, the label and the figure side by side and the chart
+ * at the end. `StatCard` stacks the label over the figure behind a leading
+ * icon, which is right on the dashboards that share it and twice the height
+ * this header wants.
+ *
+ * On a phone three of these share about 118px each, so the label stacks over
+ * the figure and the chart is hidden rather than squeezed; from `md` the row
+ * is the drawing's.
+ */
+function RosterStat({
+  label,
+  value,
+  chart,
+  className,
+}: {
+  label: string;
+  value: number;
+  chart?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <Card
+      className={cn(
+        // White and low — client, 2026-09-25: "өнгө цагаан болгоод зайг шахаж
+        // анзаарагдахааргүй болго". Context for the roster, not a headline.
+        "flex min-w-0 flex-col items-start gap-0 px-3 py-1.5 md:flex-row md:items-center md:gap-2.5 md:py-2",
+        className,
+      )}
+    >
+      <p className="min-w-0 truncate text-caption text-muted md:flex-1 md:text-body">{label}</p>
+      <p className="text-lead font-semibold tabular-nums leading-tight text-ink md:text-title">
+        {value}
+      </p>
+      {chart ? <span className="hidden shrink-0 md:block">{chart}</span> : null}
+    </Card>
   );
 }
 

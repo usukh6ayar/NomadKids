@@ -31,7 +31,8 @@ describe("new notification layout", () => {
     expect(await screen.findByRole("heading", { name: "Шинэ мэдэгдэл" })).toBeInTheDocument();
 
     expect(screen.getByText("Төрөл")).toBeInTheDocument();
-    expect(screen.getByText("Гарчиг")).toBeInTheDocument();
+    // No title field on a new notice since 2026-09-25 ("гарчиг хас").
+    expect(screen.queryByText("Гарчиг")).toBeNull();
     expect(screen.getByPlaceholderText("Бичих")).toHaveClass("min-h-[56px]");
 
     // The note keeps its label for a screen reader and does not draw it.

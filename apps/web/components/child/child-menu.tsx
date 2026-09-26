@@ -64,6 +64,12 @@ function mondayOf(date: Date): Date {
   return monday;
 }
 
+/** Midnight of the reader's own day, as the UTC instant the helpers here use. */
+function localMidnight(): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+}
+
 function toIso(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -149,7 +155,17 @@ export function ChildMenu({
   healthNotes: string | null | undefined;
   isStaff: boolean;
 }) {
-  const now = new Date();
+  /*
+    ★ The local calendar day, not the UTC instant — found 2026-09-25.
+
+    `toIso(new Date())` is the UTC date, and Ulaanbaatar is UTC+8: between
+    midnight and 08:00 a parent opening "Өнөөдөр" was shown **yesterday's**
+    menu, because the screen's today was still the previous UTC day. Every
+    comparison below is a calendar-day string, so the fix is to start from
+    local midnight; the rest of the week arithmetic already works in UTC parts
+    and is unchanged.
+  */
+  const now = localMidnight();
   const todayIso = toIso(now);
   const tomorrow = addDays(now, 1);
 

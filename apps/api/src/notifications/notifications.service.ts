@@ -442,13 +442,25 @@ function definedOnly(dto: Record<string, unknown>): Record<string, unknown> {
  */
 function toPublicShape<
   T extends {
+    kindergartenId: string;
+    author?: { memberships?: { kindergartenId: string }[] } | null;
     reads: unknown[];
     reactions?: unknown[];
     _count?: { reactions: number };
   },
 >(notification: T) {
+  const { memberships, ...author } = notification.author ?? {};
   return {
     ...notification,
+    author: notification.author ? author : null,
+    /*
+      ★ Who is speaking, as an office — client, 2026-09-17. A post by someone
+      who administers *this* kindergarten is the administration's; the card
+      read "Бүлгийн багш" for every author until then.
+    */
+    authorIsAdministration: (memberships ?? []).some(
+      (m) => m.kindergartenId === notification.kindergartenId,
+    ),
     isRead: notification.reads.length > 0,
     likedByMe: (notification.reactions?.length ?? 0) > 0,
     likeCount: notification._count?.reactions ?? 0,

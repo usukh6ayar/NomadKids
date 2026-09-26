@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ImagePlus } from "lucide-react";
+import { Camera, ImagePlus } from "lucide-react";
 import { useId, useRef, useState, type ReactNode } from "react";
 import { mediaSchema, type Media } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
@@ -65,7 +65,7 @@ export function SingleImageUpload({
    */
   hidePreview?: boolean;
   /**
-   * Draw the control as a single 28px icon button, with the label as its
+   * Draw the control as a single 32px camera button, with the label as its
    * accessible name only.
    *
    * ★ For a control that sits *on* the image rather than beside it — the menu
@@ -175,11 +175,11 @@ export function SingleImageUpload({
               htmlFor={inputId}
               aria-label={label}
               className={cn(
-                "grid size-8 cursor-pointer touch-manipulation place-items-center rounded-control bg-ink/70 text-white transition-colors hover:bg-primary",
+                "grid size-8 cursor-pointer touch-manipulation place-items-center rounded-control bg-surface/90 text-muted shadow-sm transition-colors hover:bg-primary hover:text-white",
                 upload.isPending && "pointer-events-none opacity-60",
               )}
             >
-              <ImagePlus size={15} aria-hidden="true" />
+              <Camera size={16} aria-hidden="true" />
             </label>
           ) : (
             <Button

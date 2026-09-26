@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { QuickTile, QuickTileGrid, TileIcon } from "@/components/ui/quick-tile";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
+import { ChildPhotoButton } from "@/components/child/child-photo-button";
 import { useSelectedChild } from "@/lib/selected-child";
 import { formatAge, fullName } from "@/lib/format";
 import { PORTFOLIO } from "@/lib/vocabulary";
@@ -102,11 +103,16 @@ export default function ParentHomePage() {
       */}
       <div className="mb-2 flex flex-col gap-6 px-1 sm:px-2 lg:mb-0 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 items-center gap-5">
-          <ChildAvatar
-            child={selected}
-            size={96}
-            className="shrink-0 border-2 border-white shadow-sm"
-          />
+          {/*
+            ★ The camera badge, 2026-09-24 — a parent asked where the face on
+            this card is changed. `relative` is what the badge hangs off, the
+            same wrapper `ChildHeroProfile` uses; the avatar itself is
+            unchanged and still drawn flat in the roster and the feeds.
+          */}
+          <div className="relative shrink-0">
+            <ChildAvatar child={selected} size={96} className="border-2 border-white shadow-sm" />
+            <ChildPhotoButton childId={selected.id} childName={fullName(selected)} />
+          </div>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-display font-bold text-gray-900">{fullName(selected)}</h1>
             <p className="mt-1 text-compact font-medium text-gray-500">
@@ -186,11 +192,12 @@ export default function ParentHomePage() {
             label="Цэцэрлэг"
             icon={<TileIcon name="kindergarten" />}
           />
-          <QuickTile
-            href={`/children/${selected.id}/assessments`}
-            label="Үнэлгээ"
-            icon={<TileIcon name="progress" />}
-          />
+          {/*
+            ★ No "Үнэлгээ" tile — removed 2026-09-24 at the client's request
+            ("одоогоор хэрэггүй"). The screen itself stays at
+            `/children/:id/assessments`; only the family's way in is gone, so
+            putting it back is this block again rather than a rebuild.
+          */}
           <SurveyTile childId={selected.id} />
           <QuickTile
             href={`/children/${selected.id}/finance`}

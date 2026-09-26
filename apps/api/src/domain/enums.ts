@@ -59,6 +59,7 @@ export {
   SurveyKind,
   SurveyPeriod,
   SurveyQuestionType,
+  SurveyRespondent,
   SurveyScope,
   SurveyStatus,
   TeacherRole,

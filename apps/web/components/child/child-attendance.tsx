@@ -1478,7 +1478,7 @@ function RequestDialog({ childId, onClose }: { childId: string; onClose: () => v
               htmlFor={attachmentId}
               className="flex min-h-20 cursor-pointer items-center gap-3 rounded-control border border-dashed border-faint bg-sunken px-4 py-3 text-body transition-colors hover:border-primary hover:bg-primary-soft"
             >
-              <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-sky text-primary">
+              <span className="grid size-10 shrink-0 place-items-center rounded-pill text-primary">
                 <Paperclip size={18} aria-hidden="true" />
               </span>
               <span className="min-w-0">

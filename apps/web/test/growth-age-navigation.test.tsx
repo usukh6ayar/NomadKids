@@ -304,3 +304,176 @@ describe("growth age navigation and editing", () => {
     expect(screen.getByText(/Оноо, зэрэглэл гаргахгүй/)).toBeInTheDocument();
   });
 });
+
+/** The two learning sections — client-supplied content and entry shape, 2026-09-24. */
+describe("the skills editors", () => {
+  it("adds any number of kindergarten skills under each of the three domains", async () => {
+    const user = userEvent.setup();
+    const api = stubAgeProfile();
+    renderWithProviders(<AgeProfilePage />);
+
+    await openEditor(user, "Миний цэцэрлэгтээ сурсан зүйлс");
+    const dialog = await screen.findByRole("dialog", {
+      name: "Миний цэцэрлэгтээ сурсан зүйлс",
+    });
+    const cognition = within(dialog).getByRole("group", { name: "Танин мэдэхүй" });
+    const social = within(dialog).getByRole("group", { name: "Нийгэмшихүй" });
+    expect(within(dialog).getByRole("group", { name: "Бие бялдар" })).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Өөр сурсан зүйл нэмэх")).not.toBeInTheDocument();
+
+    await user.click(within(cognition).getByRole("button", { name: "Нэмэх" }));
+    await user.type(
+      within(cognition).getByRole("textbox", { name: "Танин мэдэхүй 1" }),
+      "Тоолж сурсан",
+    );
+    await user.click(within(cognition).getByRole("button", { name: "Нэмэх" }));
+    await user.type(
+      within(cognition).getByRole("textbox", { name: "Танин мэдэхүй 2" }),
+      "Өнгө ялгасан",
+    );
+    await user.click(within(social).getByRole("button", { name: "Нэмэх" }));
+    await user.type(
+      within(social).getByRole("textbox", { name: "Нийгэмшихүй 1" }),
+      "Ээлжээ хүлээсэн",
+    );
+
+    await user.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
+
+    const patch = await waitFor(() => {
+      const call = api.calls.find((c) => c.method === "PATCH");
+      expect(call).toBeDefined();
+      return call!;
+    });
+    expect(patch.body).toEqual({
+      kindergartenSkills: [
+        "Танин мэдэхүй: Тоолж сурсан",
+        "Танин мэдэхүй: Өнгө ялгасан",
+        "Нийгэмшихүй: Ээлжээ хүлээсэн",
+      ],
+    });
+  });
+
+  it("shows the supplied family questions under the three domains", async () => {
+    const user = userEvent.setup();
+    const api = stubAgeProfile();
+    renderWithProviders(<AgeProfilePage />);
+
+    await openEditor(user, "Миний гэр бүлээсээ суралцсан зүйлс");
+    const dialog = await screen.findByRole("dialog", {
+      name: "Миний гэр бүлээсээ суралцсан зүйлс",
+    });
+    for (const domain of ["Танин мэдэхүй", "Нийгэмшихүй", "Бие бялдар"]) {
+      expect(within(dialog).getByRole("group", { name: domain })).toBeInTheDocument();
+    }
+    expect(within(dialog).getAllByRole("checkbox")).toHaveLength(9);
+    expect(
+      within(dialog).getByRole("checkbox", {
+        name: "Энгийн 2–3 алхамтай зааврыг ойлгож, дарааллын дагуу биелүүлэхийг оролддог уу?",
+      }),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Өөр сурсан зүйл нэмэх")).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
+    const patch = await waitFor(() => {
+      const call = api.calls.find((call) => call.method === "PATCH");
+      expect(call).toBeDefined();
+      return call!;
+    });
+    expect(Object.keys(patch.body as Record<string, unknown>).sort()).toEqual(
+      ["familyLearningOther", "familyLearningSkills"].sort(),
+    );
+  });
+});
+
+/** "Миний дуртай бүх зүйлс" — client, 2026-09-24: two answers to a row. */
+describe("the favourites editor", () => {
+  it("lays its fields out two to a row", async () => {
+    const user = userEvent.setup();
+    stubAgeProfile();
+    renderWithProviders(<AgeProfilePage />);
+
+    await openEditor(user, "Миний дуртай бүх зүйлс");
+    const dialog = await screen.findByRole("dialog", { name: "Миний дуртай бүх зүйлс" });
+    const toy = within(dialog).getByRole("textbox", { name: "Тоглоом" });
+
+    expect(toy.closest("div.grid")).toHaveClass("grid-cols-2");
+  });
+});
+
+/** "Миний зан араншин" — client, 2026-09-24: cute emoji, two columns. */
+describe("the character observations picker", () => {
+  it("gives each observation a face and lays them out two to a row", async () => {
+    const user = userEvent.setup();
+    stubAgeProfile({ profile: { age: 3, characterTraits: ["Тайван"] } });
+    renderWithProviders(<AgeProfilePage />);
+
+    await openEditor(user, "Миний зан араншин");
+    const dialog = await screen.findByRole("dialog", { name: "Миний зан араншин" });
+
+    // The emoji is decoration: the checkbox is still named by the word alone,
+    // which is what gets stored.
+    const happy = within(dialog).getByRole("checkbox", { name: "Хөгжилтэй" });
+    expect(happy).not.toBeChecked();
+    expect(within(dialog).getByRole("checkbox", { name: "Тайван" })).toBeChecked();
+    expect(within(dialog).getByText("😄")).toHaveAttribute("aria-hidden", "true");
+    // Client, 2026-09-24: the heading over them and the two notes are gone,
+    // while the group keeps its name for a screen reader.
+    expect(within(dialog).queryByText("Зан араншингийн ажиглалт")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/хэд хэдийг сонгож болно/)).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/тогтмол шошго болгон ашиглахгүй/)).not.toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("group", { name: "Зан араншингийн ажиглалт" }),
+    ).toBeInTheDocument();
+
+    expect(happy.closest("label")!.parentElement).toHaveClass("grid-cols-2");
+  });
+});
+
+/**
+ * "Миний гэр бүл" — client, 2026-09-24: the memory builder went, and the
+ * section is a household size and a box to write in.
+ */
+describe("the family section", () => {
+  it("asks for the household size and a description, and nothing else", async () => {
+    const user = userEvent.setup();
+    const api = stubAgeProfile({
+      profile: { age: 3, familySize: 4, familyDescription: "Аав, ээж, ах бид дөрвүүлээ." },
+    });
+    renderWithProviders(<AgeProfilePage />);
+
+    // Nothing of the memory builder is left on the page.
+    await screen.findByRole("heading", { name: "Миний 3 нас дурсамжууд" });
+    expect(screen.queryByText("Гэр бүлийн дурсамж")).not.toBeInTheDocument();
+
+    await openEditor(user, "Миний гэр бүл");
+
+    const dialog = await screen.findByRole("dialog", { name: "Миний гэр бүл" });
+    expect(within(dialog).getByLabelText(/Ам бүлийн тоо/)).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/Миний гэр бүл/)).toHaveValue(
+      "Аав, ээж, ах бид дөрвүүлээ.",
+    );
+    // Everything the memory builder used to put in this dialog is gone.
+    for (const gone of [
+      "Хэнтэй хамт байсан бэ?",
+      "Дурсамжийн нэр",
+      "Дурсамж нэмэх",
+      "Урьдчилан харах",
+      "Зураг нэмэх",
+    ]) {
+      expect(within(dialog).queryByText(gone)).not.toBeInTheDocument();
+    }
+
+    await user.clear(within(dialog).getByLabelText(/Миний гэр бүл/));
+    await user.type(within(dialog).getByLabelText(/Миний гэр бүл/), "Бид таван хүнтэй.");
+    await user.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
+
+    const patch = await waitFor(() => {
+      const call = api.calls.find((c) => c.method === "PATCH");
+      expect(call).toBeDefined();
+      return call!;
+    });
+    // `familyMemories` and `familyMemberTypes` are absent, so what a family
+    // stored before today survives the save.
+    expect(patch.body).toEqual({ familySize: 4, familyDescription: "Бид таван хүнтэй." });
+  });
+});

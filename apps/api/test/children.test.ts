@@ -788,6 +788,54 @@ describe("enrollment archive", () => {
     });
   });
 
+  /**
+   * The family's "Суралцалтын түүх" card — client, 2026-09-24. The facts it
+   * draws come from the archive: the kindergarten's capacity and live group
+   * count, the group's headcount and age band, and the teachers.
+   */
+  it("carries the kindergarten, group and teacher facts the card draws", async () => {
+    await db.kindergarten.update({ where: { id: a.kindergarten.id }, data: { capacity: 120 } });
+    await db.user.update({
+      where: { id: a.teacherUser.id },
+      data: {
+        specialization: "СӨБ-ийн багш",
+        education: "МУБИС",
+        phone: "99001234",
+        email: "suvdaa@nomadkids.mn",
+      },
+    });
+
+    const res = await request(server()).get(archive(a.child.id)).set("Cookie", parentA.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body.current.kindergarten).toMatchObject({ capacity: 120, groupCount: 1 });
+    expect(res.body.current.group).toMatchObject({ childCount: 1, ageBand: "MIDDLE" });
+    expect(res.body.current.teachers[0]).toMatchObject({
+      specialization: "СӨБ-ийн багш",
+      education: "МУБИС",
+      phone: "99001234",
+      email: "suvdaa@nomadkids.mn",
+    });
+  });
+
+  it("names a past group's teachers, without their contact details", async () => {
+    const newGroup = await createGroup(a.kindergarten.id, a.schoolYear.id, "Шинэ бүлэг");
+    await authed(request(server()).post(`/v1/children/${a.child.id}/enrollments`), adminA).send({
+      groupId: newGroup.id,
+    });
+
+    const res = await request(server()).get(archive(a.child.id)).set("Cookie", parentA.cookies);
+
+    const [previous] = res.body.history;
+    expect(previous.kindergarten).toMatchObject({ id: a.kindergarten.id, capacity: null });
+    expect(previous.group).toMatchObject({ id: a.group.id, childCount: 1 });
+    expect(previous.teachers).toEqual([
+      expect.objectContaining({ id: a.teacherUser.id, role: "LEAD" }),
+    ]);
+    expect(previous.teachers[0]).not.toHaveProperty("phone");
+    expect(previous.teachers[0]).not.toHaveProperty("email");
+  });
+
   it("a guardian of another child gets 404", async () => {
     const res = await request(server()).get(archive(a.child.id)).set("Cookie", parentB.cookies);
     expect(res.status).toBe(404);

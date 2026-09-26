@@ -434,8 +434,43 @@ export class ChildrenService {
     if (!child) throw new NotFoundException();
 
     const active = child.enrollments.find((e) => e.status === "ACTIVE") ?? null;
-    const teachers = active?.group ? await this.repo.listActiveGroupTeachers(active.group.id) : [];
-    const esisPlacement = active ? await this.getEsisEnrollmentPlacement(child, active) : null;
+    const past = child.enrollments.filter((e) => e.status !== "ACTIVE");
+
+    /*
+      ★ The card's numbers, in three bulk reads — client, 2026-09-24: the
+      family's screen now shows the kindergarten's capacity and group count,
+      the group's headcount, and who taught there. One query per card would be
+      the N+1 §3.4 forbids on a history that can hold four placements.
+    */
+    const kindergartenIds = [...new Set(child.enrollments.map((e) => e.kindergarten.id))];
+    const pastGroupIds = [
+      ...new Set(past.map((e) => e.group?.id).filter((id) => id !== undefined)),
+    ];
+    const groupIds = [...new Set([...pastGroupIds, ...(active?.group ? [active.group.id] : [])])];
+
+    const [teachers, esisPlacement, groupCounts, childCounts, teachersByGroup] = await Promise.all([
+      active?.group ? this.repo.listActiveGroupTeachers(active.group.id) : Promise.resolve([]),
+      active ? this.getEsisEnrollmentPlacement(child, active) : Promise.resolve(null),
+      this.repo.countGroupsByKindergarten(kindergartenIds),
+      this.repo.countChildrenByGroup(active?.group?.id ?? null, pastGroupIds),
+      // No early return for an empty list: `IN ()` is one cheap query, and a
+      // branch that has to name the map's value type is harder to read than
+      // the query it saves.
+      this.repo.listTeachersForGroups(groupIds),
+    ]);
+
+    const kindergartenFacts = (k: {
+      id: string;
+      name: string;
+      address: string | null;
+      capacity: number | null;
+    }) => ({
+      id: k.id,
+      name: k.name,
+      address: k.address,
+      capacity: k.capacity,
+      groupCount: groupCounts.get(k.id) ?? 0,
+    });
 
     return {
       child: {
@@ -449,28 +484,62 @@ export class ChildrenService {
             id: active.id,
             startedOn: active.startedOn,
             schoolYear: active.schoolYear,
-            kindergarten: active.kindergarten,
-            group: active.group,
+            kindergarten: {
+              ...kindergartenFacts(active.kindergarten),
+              phone: active.kindergarten.phone,
+              email: active.kindergarten.email,
+              description: active.kindergarten.description,
+            },
+            group: active.group
+              ? {
+                  ...active.group,
+                  childCount: childCounts.get(active.group.id) ?? 0,
+                }
+              : null,
             teachers: teachers.map((t) => ({
               id: t.membership.user.id,
               lastName: t.membership.user.lastName,
               firstName: t.membership.user.firstName,
               role: t.role,
+              /*
+                ★ Contact details, for this group only — client, 2026-09-24.
+                A family reaches the teacher their child has now; a past
+                teacher stays a name and a role (`history` below).
+              */
+              specialization: t.membership.user.specialization,
+              education: t.membership.user.education,
+              phone: t.membership.user.phone,
+              email: t.membership.user.email,
+              photoMediaFileId: t.membership.user.photoMediaFileId,
             })),
             esis: esisPlacement,
           }
         : null,
-      history: child.enrollments
-        .filter((e) => e.status !== "ACTIVE")
-        .map((e) => ({
-          id: e.id,
-          status: e.status,
-          startedOn: e.startedOn,
-          endedOn: e.endedOn,
-          kindergarten: { id: e.kindergarten.id, name: e.kindergarten.name },
-          group: e.group ? { id: e.group.id, name: e.group.name } : null,
-          schoolYear: e.schoolYear,
+      history: past.map((e) => ({
+        id: e.id,
+        status: e.status,
+        startedOn: e.startedOn,
+        endedOn: e.endedOn,
+        kindergarten: kindergartenFacts(e.kindergarten),
+        group: e.group
+          ? {
+              id: e.group.id,
+              name: e.group.name,
+              ageBand: e.group.ageBand,
+              childCount: childCounts.get(e.group.id) ?? 0,
+            }
+          : null,
+        schoolYear: e.schoolYear,
+        // A name and a role. The staff profile behind it belongs to the
+        // kindergarten the child is in now — see the schema's note.
+        teachers: (e.group ? (teachersByGroup.get(e.group.id) ?? []) : []).map((t) => ({
+          id: t.membership.user.id,
+          lastName: t.membership.user.lastName,
+          firstName: t.membership.user.firstName,
+          role: t.role,
+          photoMediaFileId: t.membership.user.photoMediaFileId,
         })),
+      })),
     };
   }
 

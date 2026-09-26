@@ -24,6 +24,12 @@ export const updateKindergartenSchema = z.object({
   phone: z.string().max(20).nullable().optional(),
   email: z.string().email().max(254).nullable().optional(),
   description: z.string().max(2000).nullable().optional(),
+  /*
+    Хүчин чадал — client, 2026-09-24. The number the family's "Цэцэрлэгийн
+    мэдээлэл" card prints; null is "not filled in" and the card omits the row.
+    ESIS answers a room's багтаамж, never the institution's, so it is typed.
+  */
+  capacity: z.number().int().min(1).max(5000).nullable().optional(),
   isActive: z.boolean().optional(),
 });
 export type UpdateKindergartenDto = z.infer<typeof updateKindergartenSchema>;

@@ -71,3 +71,19 @@ describe("parent home portfolio artwork", () => {
     expect(image).toHaveClass("object-bottom");
   });
 });
+
+/**
+ * The camera badge on the child's avatar — client, 2026-09-24: "энэ үсэгтэй
+ * зургийг би хаашаа орж солих вэ?".
+ */
+describe("changing the child's picture", () => {
+  it("offers the photo control on the home avatar", async () => {
+    stubParentHome("MALE");
+
+    renderWithProviders(<ParentHomePage />);
+
+    expect(
+      await screen.findByLabelText("Ганболд Батбаяр — профайл зураг солих"),
+    ).toBeInTheDocument();
+  });
+});

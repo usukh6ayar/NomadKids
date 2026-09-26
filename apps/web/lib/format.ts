@@ -232,6 +232,19 @@ export function shortName(
   return last ? `${last[0]!.toUpperCase()}.${first}` : first;
 }
 
+/**
+ * `Дэлбээ бүлэг` — a group's name as a teacher says it aloud.
+ *
+ * The client's 2026-09-25 note: a group reads as its name *and* the word
+ * "бүлэг". Names already typed with the suffix are left alone, so an admin who
+ * named a group "Цэцэрлэг бүлэг" does not get "Цэцэрлэг бүлэг бүлэг".
+ */
+export function groupLabel(name: string | null | undefined): string {
+  const trimmed = name?.trim();
+  if (!trimmed) return "—";
+  return /бүлэг$/i.test(trimmed) ? trimmed : `${trimmed} бүлэг`;
+}
+
 /** Initials for a photoless avatar. */
 export function initials(
   person: { lastName?: string | null; firstName?: string | null } | null | undefined,

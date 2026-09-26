@@ -28,6 +28,10 @@ import {
   updateMediaSchema,
   uploadMetadataSchema,
   saveNotificationPhotoSchema,
+  createAlbumCategorySchema,
+  renameAlbumCategorySchema,
+  type CreateAlbumCategoryDto,
+  type RenameAlbumCategoryDto,
   type ListMediaQuery,
   type UpdateMediaDto,
   type SaveNotificationPhotoDto,
@@ -44,6 +48,8 @@ import { MAX_UPLOAD_BYTES } from "./upload-validation";
  * requests instead of twelve, which is already the whole point.
  */
 const MAX_FILES_PER_UPLOAD = 6;
+
+const albumCategoryParamsSchema = idParamSchema.extend({ categoryId: uuidSchema });
 
 const uploadOptionsSchema = uploadMetadataSchema
   .extend({
@@ -125,6 +131,7 @@ export class ChildMediaController {
       takenAt: body.takenAt ?? null,
       age: body.age ?? null,
       category: body.category ?? null,
+      albumCategoryId: body.albumCategoryId ?? null,
       attribution: body.attribution ?? null,
     });
 
@@ -174,6 +181,37 @@ export class ChildMediaController {
     body: { mediaId: string; age: number },
   ) {
     return this.service.setAgeAlbumCover(actor, params.id, body.age, body.mediaId);
+  }
+
+  /** Adds a photo type to this child's album for one age. */
+  @Post("album-categories")
+  async createAlbumCategory(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(createAlbumCategorySchema)) body: CreateAlbumCategoryDto,
+  ) {
+    return this.service.createAlbumCategory(actor, params.id, body);
+  }
+
+  /** Renames an added type. The twelve built-in types have no id to send. */
+  @Patch("album-categories/:categoryId")
+  async renameAlbumCategory(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(albumCategoryParamsSchema))
+    params: { id: string; categoryId: string },
+    @Body(new ZodValidationPipe(renameAlbumCategorySchema)) body: RenameAlbumCategoryDto,
+  ) {
+    return this.service.renameAlbumCategory(actor, params.id, params.categoryId, body.name);
+  }
+
+  /** Deletes an empty added type — soft. */
+  @Delete("album-categories/:categoryId")
+  async removeAlbumCategory(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(albumCategoryParamsSchema))
+    params: { id: string; categoryId: string },
+  ) {
+    return this.service.removeAlbumCategory(actor, params.id, params.categoryId);
   }
 }
 

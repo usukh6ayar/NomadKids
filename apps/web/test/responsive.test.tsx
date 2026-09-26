@@ -401,6 +401,16 @@ describe("design tokens", () => {
     }
   });
 
+  /*
+    The brand blue for graphics — 2026-09-25, "хэт бараан". A ring or a column
+    with no tone used to take `--color-primary`, a text colour at 6.7:1.
+  */
+  it("draws an untoned chart in a lighter blue than the brand's text", () => {
+    expect(GLOBALS_CSS).toContain("--color-primary-chart: #4f8ff7");
+    expect(contrast("#4f8ff7", "#ffffff")).toBeGreaterThanOrEqual(3);
+    expect(contrast("#4f8ff7", "#ffffff")).toBeLessThan(contrast("#1d4ed8", "#ffffff"));
+  });
+
   it("defines the sizing floors as tokens", () => {
     expect(GLOBALS_CSS).toMatch(/--size-control:\s*48px/);
     expect(GLOBALS_CSS).toMatch(/--size-tap:\s*44px/);

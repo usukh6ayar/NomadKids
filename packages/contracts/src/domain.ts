@@ -266,14 +266,48 @@ export const TEACHER_ROLE_LABEL: Record<z.infer<typeof teacherRoleSchema>, strin
   ASSISTANT: "Туслах багш",
 };
 
+/** What the archive says about a kindergarten the child attends or attended. */
+export const enrollmentArchiveKindergartenSchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  address: z.string().nullish(),
+  /** Хүчин чадал — null until an administrator fills it in. */
+  capacity: z.number().int().nullish(),
+  /** Нийт бүлэг — live count of the kindergarten's active groups. */
+  groupCount: z.number().int().nullish(),
+});
+
+/** And about the group itself: which age it is for, and how many were in it. */
+export const enrollmentArchiveGroupSchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  /** `NURSERY` … `SENIOR`; the screens hold the Mongolian labels. */
+  ageBand: z.string().nullish(),
+  childCount: z.number().int().nullish(),
+});
+
 export const enrollmentArchiveEntrySchema = z.object({
   id: uuidSchema,
   status: enrollmentStatusSchema,
   startedOn: z.string(),
   endedOn: z.string().nullable(),
-  kindergarten: namedRefSchema,
-  group: namedRefSchema.nullable(),
+  kindergarten: enrollmentArchiveKindergartenSchema,
+  group: enrollmentArchiveGroupSchema.nullable(),
   schoolYear: namedRefSchema.nullable(),
+  /**
+   * Who taught the child there — a name and a role, never contact details.
+   * A family knows which teacher their child had; the staff profile behind
+   * that name belongs to the kindergarten the child is in now.
+   */
+  teachers: z.array(
+    z.object({
+      id: uuidSchema,
+      lastName: z.string(),
+      firstName: z.string(),
+      role: teacherRoleSchema,
+      photoMediaFileId: uuidSchema.nullish(),
+    }),
+  ).default([]),
 });
 
 export const enrollmentArchiveTeacherSchema = z.object({
@@ -281,7 +315,20 @@ export const enrollmentArchiveTeacherSchema = z.object({
   lastName: z.string(),
   firstName: z.string(),
   role: teacherRoleSchema,
+  /**
+   * ★ The staff-profile fields, 2026-09-24, and only for the group the child
+   * is in **today** — the client's own design puts the teacher's profession
+   * and how to reach them on the current card, and leaves past teachers as a
+   * name and a role. Every one of them is nullish: a teacher who has not
+   * filled in their profile is drawn without the line, not with a blank.
+   */
+  specialization: z.string().nullish(),
+  education: z.string().nullish(),
+  phone: z.string().nullish(),
+  email: z.string().nullish(),
+  photoMediaFileId: uuidSchema.nullish(),
 });
+
 
 const enrollmentArchiveEsisSchema = z.object({
   mode: z.enum(["DEMO", "LIVE"]),
@@ -325,18 +372,13 @@ export const enrollmentArchiveSchema = z.object({
       id: uuidSchema,
       startedOn: z.string(),
       schoolYear: namedRefSchema.nullable(),
-      kindergarten: z.object({
-        id: uuidSchema,
-        name: z.string(),
-        address: z.string().nullable(),
+      kindergarten: enrollmentArchiveKindergartenSchema.extend({
         phone: z.string().nullable(),
         email: z.string().nullable(),
         description: z.string().nullable(),
       }),
-      group: z
-        .object({
-          id: uuidSchema,
-          name: z.string(),
+      group: enrollmentArchiveGroupSchema
+        .extend({
           schedule: z.string().nullable(),
           rules: z.string().nullable(),
         })
@@ -1145,11 +1187,20 @@ export const SURVEY_CATEGORY_LABEL: Record<SurveyCategory, string> = {
 export const surveyPeriodSchema = z.enum(["BASELINE", "MIDLINE", "ENDLINE"]);
 export type SurveyPeriod = z.infer<typeof surveyPeriodSchema>;
 
+/**
+ * ★ Renamed 2026-09-18, at the client's request: "гарааны үнэлгээ, явцын
+ * үнэлгээ, үр дүнгийн үнэлгээ, бусад". The three waves are unchanged — only
+ * their names — and "Бусад" is a survey with no period (`null`), which is what
+ * it always meant. `survey-workbook.ts` prints the same three words.
+ */
 export const SURVEY_PERIOD_LABEL: Record<SurveyPeriod, string> = {
-  BASELINE: "Эхний үнэлгээ",
-  MIDLINE: "Завсрын үнэлгээ",
-  ENDLINE: "Жилийн эцсийн үнэлгээ",
+  BASELINE: "Гарааны үнэлгээ",
+  MIDLINE: "Явцын үнэлгээ",
+  ENDLINE: "Үр дүнгийн үнэлгээ",
 };
+
+/** The "Бусад" choice beside the three — a survey filed under no period. */
+export const SURVEY_PERIOD_OTHER_LABEL = "Бусад";
 
 export const surveyQuestionTypeSchema = z.enum([
   "RATING",
@@ -1210,6 +1261,26 @@ export const SURVEY_KIND_HINT: Record<SurveyKind, string> = {
   FORM: "Олон асуулт, дэлгэрэнгүй хариулт",
 };
 
+/**
+ * Who fills a survey in — client, 2026-09-21: "Багшийн судалгаа".
+ *
+ * GUARDIAN is a family answering about their own child — every survey written
+ * before the field. TEACHER is a teacher assessing each child of their own
+ * group; a family is never shown one.
+ */
+export const surveyRespondentSchema = z.enum(["GUARDIAN", "TEACHER"]);
+export type SurveyRespondent = z.infer<typeof surveyRespondentSchema>;
+
+export const SURVEY_RESPONDENT_LABEL: Record<SurveyRespondent, string> = {
+  GUARDIAN: "Эцэг эхээс авах судалгаа",
+  TEACHER: "Багшийн судалгаа",
+};
+
+export const SURVEY_RESPONDENT_HINT: Record<SurveyRespondent, string> = {
+  GUARDIAN: "Эцэг эх, асран хамгаалагчаас авах судалгаа, асуулга",
+  TEACHER: "Өөрийн бүлгийн хүүхдүүдийн судалгаа, үнэлгээ",
+};
+
 /** A MATRIX question's shape — RFP Module 1.1. */
 export const matrixOptionsSchema = z.object({
   rows: z.array(z.object({ key: z.string(), label: z.string() })),
@@ -1241,6 +1312,8 @@ export const surveySchema = z.object({
   scope: surveyScopeSchema,
   /** Defaulted for rows written before the column existed. */
   kind: surveyKindSchema.catch("FORM"),
+  /** Defaulted for rows written before the column existed. */
+  respondent: surveyRespondentSchema.catch("GUARDIAN"),
   status: surveyStatusSchema,
   publishedAt: z.string().nullish(),
   closedAt: z.string().nullish(),
@@ -1416,7 +1489,14 @@ export const surveyComparisonSchema = z.object({
   /** Defaulted for a response from an API that predates the table. */
   questions: z.array(questionComparisonSchema).default([]),
   children: z.array(
-    z.object({ childId: uuidSchema, indicators: z.array(indicatorComparisonSchema) }),
+    z.object({
+      childId: uuidSchema,
+      /** Null on an anonymous survey, and from an API that predates it. */
+      child: z
+        .object({ id: uuidSchema, firstName: z.string(), lastName: z.string().nullish() })
+        .nullish(),
+      indicators: z.array(indicatorComparisonSchema),
+    }),
   ),
   /** Why there is nothing to compare, when there is nothing to compare. */
   note: z.string().nullable(),
@@ -1753,6 +1833,8 @@ export const ageProfileSchema = z.object({
   characterObservation: z.string().nullish(),
   familyMemberTypes: z.array(z.string()).default([]),
   familyDescription: z.string().nullish(),
+  /** Ам бүлийн тоо — how many live in the household. Null until answered. */
+  familySize: z.number().int().nullish(),
   familyMemories: z.array(familyMemorySchema).default([]),
   parentNote: z.string().nullish(),
   teacherNote: z.string().nullish(),
@@ -2488,6 +2570,8 @@ export const notificationSchema = z.object({
   publishedAt: z.string().nullish(),
   createdAt: z.string().nullish(),
   author: personRefSchema.nullish(),
+  /** The author administers this kindergarten — the card names the office. */
+  authorIsAdministration: z.boolean().default(false),
   /** Only this user's receipt — "have I read it", not who else has. */
   reads: z.array(z.object({ readAt: z.string().nullish() })).default([]),
   /**
@@ -2591,6 +2675,23 @@ export const AGE_ALBUM_CATEGORY_LABEL: Record<(typeof AGE_ALBUM_CATEGORIES)[numb
 
 export const ageAlbumCategorySchema = z.enum(AGE_ALBUM_CATEGORIES);
 
+/**
+ * How many photographs one "Зургийн төрөл" holds for one age — client,
+ * 2026-09-18: "хамгийн ихдээ 1-3 ш хийж болно тэрнээс илүү хийхгүй".
+ *
+ * ★ A limit on the album card, not on a person. The card is one shared place
+ * for the child's year — the family and the teacher fill the same twelve — so
+ * "at most three" is counted over every live photograph filed there, whoever
+ * sent it. The API enforces it (`MediaService`); the screen only mirrors it.
+ */
+export const MAX_PHOTOS_PER_AGE_ALBUM_CATEGORY = 3;
+
+export function isAgeAlbumCategory(
+  value: string | null | undefined,
+): value is (typeof AGE_ALBUM_CATEGORIES)[number] {
+  return (AGE_ALBUM_CATEGORIES as readonly string[]).includes(value ?? "");
+}
+
 export const MEDIA_CATEGORIES = [
   "ARTWORK",
   "ACTIVITY",
@@ -2651,6 +2752,8 @@ export const mediaSchema = z.object({
   takenAt: z.string().nullish(),
   age: z.number().nullish(),
   category: z.string().nullish(),
+  /** An added photo type — `AlbumCategory`. */
+  albumCategoryId: uuidSchema.nullish(),
   albumCoverAge: z.number().nullish(),
   attribution: mediaAttributionSchema.nullish(),
   uploadedBy: personRefSchema.nullish(),
@@ -2670,6 +2773,21 @@ export const ageAlbumSummarySchema = z.object({
       thumbnailMediaId: uuidSchema.nullable(),
     }),
   ),
+  /**
+   * Photo types the family or a teacher added for this age — client,
+   * 2026-09-18. Renamable and deletable, unlike the twelve above.
+   */
+  customCategories: z
+    .array(
+      z.object({
+        id: uuidSchema,
+        name: z.string(),
+        createdById: uuidSchema.nullable(),
+        count: z.number().int().nonnegative(),
+        thumbnailMediaId: uuidSchema.nullable(),
+      }),
+    )
+    .default([]),
 });
 export type AgeAlbumSummary = z.infer<typeof ageAlbumSummarySchema>;
 
@@ -2987,6 +3105,14 @@ export const userProfileSchema = z.object({
   firstName: z.string(),
   email: z.string().nullish(),
   phone: z.string().nullish(),
+  /**
+   * The three lines a family reads on the teacher card — Мэргэжил,
+   * Мэргэшлийн зэрэг, Төгссөн сургууль. On the profile since 2026-09-24: the
+   * endpoint accepted them before the screen could show or edit them.
+   */
+  specialization: z.string().nullish(),
+  qualification: z.string().nullish(),
+  education: z.string().nullish(),
   bio: z.string().nullish(),
   photoMediaFileId: uuidSchema.nullish(),
 });

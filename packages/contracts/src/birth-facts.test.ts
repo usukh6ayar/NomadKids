@@ -37,7 +37,7 @@ describe("ageInMonths", () => {
 
 describe("westernZodiac", () => {
   test("names the sign in Mongolian", () => {
-    expect(westernZodiac("2021-07-04").name).toBe("Хавч");
+    expect(westernZodiac("2021-07-04").name).toBe("Мэлхий");
     expect(westernZodiac("2021-11-30").name).toBe("Нум");
   });
 

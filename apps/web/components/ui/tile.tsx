@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { TONE_SURFACE, type Tone } from "@/components/ui/tone";
+import { TONE_GLYPH, TONE_SURFACE, type Tone } from "@/components/ui/tone";
+import { isArtwork } from "@/components/ui/art";
 
 /**
  * The home screen's icon grid — the shape a phone user expects.
@@ -70,7 +71,9 @@ export function NavTile({
         aria-hidden="true"
         className={cn(
           "grid size-12 shrink-0 place-items-center rounded-control [&>img]:size-full [&>img]:rounded-control [&>img]:object-cover",
-          TONE_SURFACE[tone],
+          // The drawn icons keep their tinted well; a glyph lost it on
+          // 2026-09-24, at the client's request.
+          isArtwork(icon) ? TONE_SURFACE[tone] : TONE_GLYPH[tone],
         )}
       >
         {icon}

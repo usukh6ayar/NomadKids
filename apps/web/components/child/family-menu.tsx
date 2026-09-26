@@ -3,8 +3,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
   Apple,
-  CalendarDays,
-  CalendarRange,
   Copy,
   FileSpreadsheet,
   Flame,
@@ -14,6 +12,9 @@ import {
   Sun,
   Trash2,
   UtensilsCrossed,
+  Utensils,
+  ImageOff,
+  Plus,
 } from "lucide-react";
 import { MEAL_KIND_LABEL, type MealKind, type MenuDay, type MenuDish } from "@kinder/contracts";
 import { MEAL_KIND_ORDER } from "@/components/menu/menu-dish-editor";
@@ -29,37 +30,12 @@ import { formatDayMonth, formatLongDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
- * The sitting's time of day.
- *
- * ★ A constant, and §2.3 says configuration belongs in a table — so this is a
- * deliberate exception with a short life expectancy.
- *
- * The client's 2026-09-11 design prints a time beside every sitting, and there
- * is nowhere in the product a kindergarten can set one: `MealKind` is an enum of
- * five sittings and carries no clock. Inventing a settings table they did not
- * ask for is the larger guess. The moment one kindergarten wants 08:00 this
- * becomes a column on a meal-times table and this map goes away — which is why
- * it is one object in one file rather than five strings scattered through the
- * markup.
- */
-export const MEAL_KIND_TIME: Record<MealKind, string> = {
-  BREAKFAST: "08:30",
-  SNACK: "10:00",
-  MID_MORNING_SNACK: "10:30",
-  LUNCH: "12:30",
-  AFTERNOON_SNACK: "15:00",
-  EXTRA: "17:30",
-};
-
-/**
  * One colour and one glyph per sitting.
  *
- * ★ The tint washes the whole card, not just the icon — the client's design.
- *
- * Five white boxes with different headings is what this replaces: a parent
- * checking what their child eats at three o'clock finds the purple one without
- * reading anything. `dot` is the same meaning shrunk to a bullet for the week
- * table, where a full wash would make a grid unreadable.
+ * ★ The day view no longer wears it — 2026-09-25, the client's drawing puts
+ * every sitting on a plain white row. What still reads it is the dish
+ * editor's cards and the week table's `dot`, where a sitting's colour is the
+ * quickest way to find one row in a grid.
  */
 export const MEAL_KIND_STYLE: Record<
   MealKind,
@@ -184,16 +160,19 @@ export function FamilyMenu({
 
   return (
     <div className="flex flex-col gap-4">
-      <div role="tablist" aria-label="Цэсний харагдац" className="grid grid-cols-3 gap-2">
-        <ViewTab current={view} value="today" onSelect={setView} icon={<CalendarDays size={16} />}>
+      {/*
+        ★ One segmented bar, no icons — the client's 2026-09-25 drawing. The
+        open tab is the one blue shape on it; the other two are plain words.
+      */}
+      <div
+        role="tablist"
+        aria-label="Цэсний харагдац"
+        className="grid grid-cols-3 gap-1 rounded-card border border-border-soft bg-surface p-1 shadow-sm"
+      >
+        <ViewTab current={view} value="today" onSelect={setView}>
           Өнөөдөр
         </ViewTab>
-        <ViewTab
-          current={view}
-          value="tomorrow"
-          onSelect={setView}
-          icon={<CalendarRange size={16} />}
-        >
+        <ViewTab current={view} value="tomorrow" onSelect={setView}>
           Маргааш
         </ViewTab>
         <ViewTab current={view} value="week" onSelect={setView}>
@@ -277,8 +256,8 @@ function ViewTab({
       className={cn(
         "flex min-h-[48px] items-center justify-center gap-2 rounded-card px-2 text-body font-semibold transition-colors",
         active
-          ? "bg-primary text-primary-ink shadow-sm"
-          : "bg-canvas text-muted hover:bg-border-soft hover:text-ink",
+          ? "bg-gradient-to-r from-primary to-primary/75 text-primary-ink shadow-sm"
+          : "text-ink hover:bg-canvas",
       )}
     >
       {icon ? (
@@ -317,24 +296,19 @@ function DayView({
     */
     <div className="rounded-card border border-border bg-surface">
       <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-        <span className="grid size-10 shrink-0 place-items-center rounded-control bg-primary-soft text-primary">
-          <CalendarDays size={20} aria-hidden="true" />
-        </span>
         <div className="min-w-0">
-          <p className="truncate text-body font-semibold text-ink">{formatLongDate(date)}</p>
+          <p className="truncate text-lead font-bold text-ink">{formatLongDate(date)}</p>
           <p className="text-caption text-muted">{WEEKDAY_NAME[weekdayIndex(date)]} гараг</p>
         </div>
         {actions?.onAdd && allowAdd ? (
           <Button
-            className="ml-auto shrink-0"
+            className="ml-auto size-12 shrink-0 rounded-pill shadow-md"
             size="icon"
             aria-label="Хоол нэмэх"
             title="Хоол нэмэх"
             onClick={() => actions.onAdd?.(date)}
           >
-            <span className="text-lead leading-none" aria-hidden="true">
-              +
-            </span>
+            <Plus size={26} strokeWidth={2.5} aria-hidden="true" />
           </Button>
         ) : null}
       </div>
@@ -378,7 +352,6 @@ function MealRow({
   healthNotes: string | null | undefined;
   actions?: MenuRowActions;
 }) {
-  const style = MEAL_KIND_STYLE[kind];
   const photo = dishes.find((dish) => dish.photoMediaFileId)?.photoMediaFileId;
   const allergens = matchedAllergens(dishes, healthNotes);
 
@@ -415,40 +388,33 @@ function MealRow({
       phone that is the whole menu gone but its first line. The photograph
       rounds its own corners now, which is the only thing the clip was for.
     */
-    <Card pad="none" className={cn("flex items-stretch gap-3", style.card)}>
-      <div className="relative size-[88px] shrink-0 overflow-hidden rounded-l-card">
+    /*
+      ★ A white row, not a tinted card — the client's 2026-09-25 drawing:
+      picture, the sitting's name, its dishes, and ⋯ in the corner. The
+      sittings are told apart by name and order, as the drawing does.
+
+      Still no `overflow-hidden` here: the ⋯ menu's popup is taller than the
+      row and must escape it. The photograph clips its own box.
+    */
+    <Card pad="none" className="flex items-center gap-3 p-1.5 sm:gap-4">
+      <div className="relative size-16 shrink-0 overflow-hidden rounded-card border border-border-soft bg-surface shadow-sm sm:size-24">
         {photo ? (
-          <MediaThumb mediaId={photo} caption={dishes[0]?.name} flush className="size-[88px]" />
+          <MediaThumb mediaId={photo} caption={dishes[0]?.name} flush className="size-full" />
         ) : (
-          <span
-            aria-hidden="true"
-            className="grid size-[88px] place-items-center bg-surface/60 text-muted"
-          >
-            <UtensilsCrossed size={22} />
+          <span aria-hidden="true" className="grid size-full place-items-center text-border">
+            <span className="grid size-11 place-items-center rounded-pill border-2 border-border sm:size-16">
+              <Utensils className="size-5 sm:size-7" />
+            </span>
           </span>
         )}
 
         {/*
-          ★ Two small buttons on the picture — the client's 2026-09-11 report.
-
-          A teacher looking at today wants the photograph of today's breakfast
-          on it; making them open the day's form to attach one is three presses
-          for what is one. Устгах appears only when there is something to
-          remove.
-        */}
-        {/*
-          ★ 32px, not the 44px floor §5 asks for — a deliberate exception, and
-          the only one on this card.
-
-          Two 44px targets plus a gap is 92px across an 88px photograph: the
-          controls would cover the thing they act on, which is the failure the
-          floor exists to prevent, arrived at from the other side. 32px with
-          `touch-manipulation` is the largest pair that leaves the picture
-          readable, and the same two actions are also on the day's form at full
-          size — this is the shortcut, not the only route.
+          ★ One camera in the corner — the drawing's. Removing a photograph is
+          on the ⋯ menu beside Засах, so the picture carries a single control
+          and stays readable at 64px.
         */}
         {actions ? (
-          <div className="absolute inset-x-1 bottom-1 flex touch-manipulation items-center justify-center gap-1.5">
+          <div className="absolute bottom-0.5 right-0.5 touch-manipulation">
             <SingleImageUpload
               endpoint={actions.photoEndpoint}
               currentMediaId={photo ?? null}
@@ -458,79 +424,42 @@ function MealRow({
               compactIcon
               onUploaded={(media) => actions.onPhotoUploaded(kind, date, media.id)}
             />
-            {photo ? (
-              <button
-                type="button"
-                aria-label={`${MEAL_KIND_LABEL[kind]} — зургийг устгах`}
-                onClick={() => actions.onPhotoRemoved(kind, date)}
-                className="grid size-8 place-items-center rounded-control bg-ink/70 text-white transition-colors hover:bg-danger"
-              >
-                <Trash2 size={15} aria-hidden="true" />
-              </button>
-            ) : null}
           </div>
         ) : null}
       </div>
 
-      <div className="min-w-0 flex-1 py-2.5 pr-3">
-        <div className="flex items-start justify-between gap-2">
-          <p className={cn("flex min-w-0 items-center gap-1.5 font-semibold", style.title)}>
-            <span className="shrink-0">{style.icon}</span>
-            <span className="truncate">{MEAL_KIND_LABEL[kind]}</span>
-          </p>
-          <span className="flex shrink-0 flex-col items-end">
-            <span className="text-caption font-semibold tabular-nums text-muted">
-              {dishes.find((dish) => dish.time)?.time ?? MEAL_KIND_TIME[kind]}
-            </span>
-            {hasCalories ? (
-              <span className="inline-flex items-center gap-1 text-caption tabular-nums text-muted">
-                <Flame size={12} aria-hidden="true" className="text-primary" />
-                {calories} ккал
-              </span>
-            ) : null}
+      <div className="w-24 shrink-0 sm:w-40">
+        <p className="text-body font-semibold leading-snug text-muted sm:text-lead">
+          {MEAL_KIND_LABEL[kind]}
+        </p>
+        {/*
+          ★ The sitting's energy — 2026-09-11: "хоол дээр килокалори нь харагдах
+          ёстой." Summed across the sitting, and drawn only when the kitchen
+          entered one. No clock — 2026-09-25: "цагууд хэрэггүй".
+        */}
+        {hasCalories ? (
+          <span className="mt-0.5 inline-flex items-center gap-1 text-caption tabular-nums text-muted">
+            <Flame size={12} aria-hidden="true" className="text-primary" />
+            {calories} ккал
           </span>
+        ) : null}
+      </div>
 
-          {/* ★ Засах · Хуулах · Устгах, beside the time — the client's report. */}
-          {actions ? (
-            <RowMenu
-              ariaLabel={`${MEAL_KIND_LABEL[kind]} — үйлдэл`}
-              items={[
-                {
-                  label: "Засах",
-                  icon: <PencilLine size={16} aria-hidden="true" />,
-                  onSelect: () => setEditingNames(dishes.map((dish) => dish.name).join("\n")),
-                },
-                {
-                  label: "Хуулах",
-                  icon: <Copy size={16} aria-hidden="true" />,
-                  hint: "Хоолны цагийг хувилж, дараа нь цагийг нь солино",
-                  onSelect: () => actions.onDuplicate(kind, date),
-                },
-                {
-                  label: "Устгах",
-                  icon: <Trash2 size={16} aria-hidden="true" />,
-                  tone: "danger" as const,
-                  separated: true,
-                  onSelect: () => actions.onDelete(kind, date),
-                },
-              ]}
-            />
-          ) : null}
-        </div>
-
+      <div className="min-w-0 flex-1 py-1.5">
         {editingNames === null ? (
-          <ul className="mt-1 flex flex-col gap-0.5">
+          <ul className="flex flex-col gap-1">
             {dishes.map((dish, index) => (
-              <li key={index} className="flex gap-1.5 text-caption leading-snug text-ink">
-                <span aria-hidden="true" className="text-faint">
-                  •
-                </span>
+              <li
+                key={index}
+                className="flex gap-1.5 text-caption font-medium leading-snug text-ink"
+              >
+                <span aria-hidden="true">•</span>
                 <span className="min-w-0">{dish.name}</span>
               </li>
             ))}
           </ul>
         ) : (
-          <div className="mt-1.5 flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5">
             <Textarea
               aria-label={`${MEAL_KIND_LABEL[kind]} — хоолны нэрс`}
               rows={Math.max(2, editingNames.split("\n").length)}
@@ -569,6 +498,43 @@ function MealRow({
           </Badge>
         ) : null}
       </div>
+
+      {/* ★ Засах · Хуулах · Устгах in the corner — the client's report. */}
+      {actions ? (
+        <RowMenu
+          ariaLabel={`${MEAL_KIND_LABEL[kind]} — үйлдэл`}
+          className="self-start"
+          items={[
+            {
+              label: "Засах",
+              icon: <PencilLine size={16} aria-hidden="true" />,
+              onSelect: () => setEditingNames(dishes.map((dish) => dish.name).join("\n")),
+            },
+            {
+              label: "Хуулах",
+              icon: <Copy size={16} aria-hidden="true" />,
+              hint: "Хоолны цагийг хувилж, дараа нь цагийг нь солино",
+              onSelect: () => actions.onDuplicate(kind, date),
+            },
+            ...(photo
+              ? [
+                  {
+                    label: "Зургийг устгах",
+                    icon: <ImageOff size={16} aria-hidden="true" />,
+                    onSelect: () => actions.onPhotoRemoved(kind, date),
+                  },
+                ]
+              : []),
+            {
+              label: "Устгах",
+              icon: <Trash2 size={16} aria-hidden="true" />,
+              tone: "danger" as const,
+              separated: true,
+              onSelect: () => actions.onDelete(kind, date),
+            },
+          ]}
+        />
+      ) : null}
     </Card>
   );
 }
@@ -656,11 +622,6 @@ export function WeekTable({
                   />
                   <span className="min-w-0">
                     <span className="block">{MEAL_KIND_LABEL[kind]}</span>
-                    <span className="block tabular-nums text-muted">
-                      {weekDates
-                        .flatMap((date) => dishesOf(byDate.get(date)?.dishes ?? [], kind))
-                        .find((dish) => dish.time)?.time ?? MEAL_KIND_TIME[kind]}
-                    </span>
                   </span>
                 </span>
               </th>

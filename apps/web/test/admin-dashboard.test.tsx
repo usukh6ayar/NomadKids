@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AdminDashboard } from "@kinder/contracts";
 import { renderWithProviders, sessionFor, setParams, stubApi } from "./support/render";
@@ -140,6 +141,32 @@ describe("the administration dashboard", () => {
     }
   });
 
+  // Removed from the director's board — client, 2026-09-25: "эдгээр графикууд
+  // хэрэггүй устга". Attendance stays.
+  it("drops the assessment, domain and survey panels", async () => {
+    renderAdminDashboard();
+    await waitFor(() => expect(within(figures()).getByText("Бүлэг")).toBeInTheDocument());
+
+    for (const title of ["Улирлын үнэлгээний явц", "Хөгжлийн чиглэлийн дундаж", "Судалгаа"]) {
+      expect(screen.queryByRole("heading", { name: title })).toBeNull();
+    }
+  });
+
+  // No drawing before any section title under the tiles — client, 2026-09-25.
+  it("draws no icon before the sections under the tiles", async () => {
+    const { container } = renderAdminDashboard();
+    await waitFor(() =>
+      expect(container.querySelectorAll('[data-ui="section-header"]').length).toBeGreaterThan(0),
+    );
+
+    for (const header of container.querySelectorAll('[data-ui="section-header"]')) {
+      // The title row: an icon, when there was one, sat beside the text column.
+      const row = header.firstElementChild!;
+      expect(row.querySelector("img")).toBeNull();
+      expect(row.children).toHaveLength(1);
+    }
+  });
+
   it("keeps the figures the storage cards carry", async () => {
     renderAdminDashboard();
 
@@ -160,8 +187,12 @@ describe("the administration dashboard", () => {
      */
     expect(within(figures()).getByText("9")).toBeInTheDocument();
     expect(within(figures()).queryByText("5")).toBeNull();
-    expect(within(figures()).getByText("2 нийт")).toBeInTheDocument();
     expect(within(figures()).getByText("Тайлан")).toBeInTheDocument();
+    // No caption under the figures since 2026-09-25 — the client: "товчнуудын
+    // хамгийн доор байгаа мэдээллүүд хас", e.g. "8 нийт · 1 амжилтгүй".
+    expect(within(figures()).queryByText(/нийт/)).toBeNull();
+    expect(within(figures()).queryByText("идэвхтэй")).toBeNull();
+    expect(within(figures()).queryByText(/сүүлийн 30 хоногт/)).toBeNull();
   });
 
   it("uses the supplied drawings on the document and report cards", async () => {
@@ -191,12 +222,33 @@ describe("the administration dashboard", () => {
       ],
     });
 
-    const summary = await screen.findByRole("region", { name: "Ирцийн бүтэц" });
+    // The month's mix is the "Сар" tab of "Ирц" since 2026-09-25.
+    await userEvent.setup().click(await screen.findByRole("tab", { name: "Сар" }));
+    const summary = screen.getByRole("tabpanel", { name: "Сар" });
 
     expect(within(summary).queryByText("Хагас өдөр")).toBeNull();
     expect(within(summary).queryByText("Бусад")).toBeNull();
     for (const visible of ["Ирсэн", "Чөлөөтэй", "Өвчтэй", "Тасалсан"]) {
       expect(within(summary).getByText(visible)).toBeInTheDocument();
     }
+  });
+
+  /*
+    ★ One "Ирц" section, its three panels behind Өнөөдөр | Сар | Бүлэг —
+    client, 2026-09-25. Today opens first; one panel at a time.
+  */
+  it("shows attendance under one title, one panel per tab", async () => {
+    const user = userEvent.setup();
+    renderAdminDashboard();
+
+    expect(await screen.findByRole("heading", { name: "Ирц" })).toBeInTheDocument();
+    const tabs = screen.getAllByRole("tab").map((tab) => tab.textContent);
+    expect(tabs).toEqual(["Өнөөдөр", "Сар", "Бүлэг"]);
+    expect(screen.getByRole("tab", { name: "Өнөөдөр" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
+
+    await user.click(screen.getByRole("tab", { name: "Бүлэг" }));
+    expect(screen.getByRole("tab", { name: "Бүлэг" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel", { name: "Бүлэг" })).toBeInTheDocument();
   });
 });

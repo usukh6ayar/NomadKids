@@ -21,19 +21,25 @@ import {
   SURVEY_CATEGORY_LABEL,
   SURVEY_KIND_HINT,
   SURVEY_KIND_LABEL,
+  SURVEY_RESPONDENT_LABEL,
+  SURVEY_PERIOD_LABEL,
+  SURVEY_PERIOD_OTHER_LABEL,
   SURVEY_QUESTION_TYPE_LABEL,
   groupListItemSchema,
   hasOptionList,
   paginated,
   surveyCategorySchema,
+  surveyPeriodSchema,
   surveySchema,
   termSchema,
   type SurveyCategory,
   type SurveyKind,
+  type SurveyRespondent,
   type SurveyPeriod,
   type SurveyQuestionType,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
+import { A79_LEVELS, a79Questions } from "@/lib/a79-assessment";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
@@ -45,6 +51,11 @@ import { cn } from "@/lib/utils";
 const groupsSchema = paginated(groupListItemSchema);
 const termsSchema = z.array(termSchema);
 const SURVEY_CATEGORIES = surveyCategorySchema.options;
+const SURVEY_PERIODS = surveyPeriodSchema.options;
+const CREATE_SURVEY_FIELD_ERROR: Record<string, string> = {
+  category: "Ангиллаа зөв сонгоно уу",
+  period: "Үнэлгээний төрлийг зөв сонгоно уу",
+};
 
 /**
  * The question types the wizard offers.
@@ -79,6 +90,8 @@ type SurveyTemplate = {
   title: string;
   category: SurveyCategory;
   questions: DraftQuestion[];
+  /** The wave a template belongs to, when it has one. */
+  period?: SurveyPeriod;
 };
 
 const SURVEY_TEMPLATES: Record<string, SurveyTemplate> = {
@@ -123,6 +136,23 @@ const SURVEY_TEMPLATES: Record<string, SurveyTemplate> = {
   },
 };
 
+/**
+ * А/79 — the ministry's four-level development assessment, ready for a
+ * teacher to run as Гарааны үнэлгээ. Client, 2026-09-21. Every criterion is a
+ * 0/1 choice, which the teacher's sheet draws as the document's own table.
+ */
+const A79_TEMPLATES: Record<string, SurveyTemplate> = Object.fromEntries(
+  A79_LEVELS.map((level) => [
+    `a79-${level.key}`,
+    {
+      title: `А/79 Гарааны үнэлгээ — ${level.key} түвшин`,
+      category: "OTHER",
+      period: "BASELINE",
+      questions: a79Questions(level),
+    } satisfies SurveyTemplate,
+  ]),
+);
+
 const cloneQuestions = (questions: DraftQuestion[]) =>
   questions.map((question) => ({ ...question, options: [...question.options] }));
 
@@ -156,10 +186,17 @@ const emptyQuestion = (type: SurveyQuestionType): DraftQuestion => ({
 export function CreateSurveyWizard({
   kindergartenId,
   kind,
+  respondent = "GUARDIAN",
   onClose,
 }: {
   kindergartenId: string;
   kind: SurveyKind;
+  /**
+   * Who fills it in — 2026-09-21. TEACHER is "Багшийн судалгаа": filled in by
+   * the teacher for each child, so it is never anonymous and never answered
+   * twice, and the two switches that would say otherwise are not offered.
+   */
+  respondent?: SurveyRespondent;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -167,6 +204,7 @@ export function CreateSurveyWizard({
   const canAddressEveryone = hasRole("ADMIN");
 
   const isPoll = kind === "POLL";
+  const isTeacher = respondent === "TEACHER";
 
   const [created, setCreated] = useState<{ id: string; title: string } | null>(null);
   const [previewing, setPreviewing] = useState(false);
@@ -181,12 +219,17 @@ export function CreateSurveyWizard({
   // ── audience ────────────────────────────────────────────────────────────
   const [groupId, setGroupId] = useState("");
   const [category, setCategory] = useState<SurveyCategory>(
-    isPoll ? "CLASS_GROUP" : "PARENT_ENGAGEMENT",
+    isPoll ? "CLASS_GROUP" : isTeacher ? "OTHER" : "PARENT_ENGAGEMENT",
   );
   const [termId, setTermId] = useState("");
-  const [period, setPeriod] = useState<Extract<SurveyPeriod, "MIDLINE" | "ENDLINE"> | null>(
-    "MIDLINE",
-  );
+  /*
+    ★ All three waves and "Бусад" — 2026-09-18, at the client's request. The
+    select offered only Явцын and Үр дүнгийн; Гарааны (BASELINE) is the wave
+    Module 1.2's comparison starts from, so a kindergarten could not file the
+    September questionnaire it compares May against.
+  */
+  // The default stays Явцын, as before; only the choices widened.
+  const [period, setPeriod] = useState<SurveyPeriod | null>("MIDLINE");
   const [opensOn, setOpensOn] = useState("");
   const [closesOn, setClosesOn] = useState("");
 
@@ -200,7 +243,9 @@ export function CreateSurveyWizard({
   const [allowMultipleResponses, setAllowMultipleResponses] = useState(false);
   const [shuffleQuestions, setShuffleQuestions] = useState(false);
 
-  const draftStorageKey = `nomadkids:survey-draft:${kindergartenId}:${kind}`;
+  const draftStorageKey = `nomadkids:survey-draft:${kindergartenId}:${kind}${
+    isTeacher ? ":teacher" : ""
+  }`;
 
   /* A half-written form survives closing the sheet or refreshing the browser. */
   useEffect(() => {
@@ -218,8 +263,8 @@ export function CreateSurveyWizard({
       }
       if (typeof saved.opensOn === "string") setOpensOn(saved.opensOn);
       if (typeof saved.closesOn === "string") setClosesOn(saved.closesOn);
-      if (saved.period === "MIDLINE" || saved.period === "ENDLINE" || saved.period === null) {
-        setPeriod(saved.period);
+      if (saved.period === null || SURVEY_PERIODS.includes(saved.period as SurveyPeriod)) {
+        setPeriod(saved.period as SurveyPeriod | null);
       }
       if (typeof saved.isAnonymous === "boolean") setIsAnonymous(saved.isAnonymous);
       if (typeof saved.allowMultipleResponses === "boolean") {
@@ -348,6 +393,7 @@ export function CreateSurveyWizard({
           category,
           scope: "CHILD",
           kind,
+          respondent,
           groupId: groupId || null,
           termId: termId || null,
           period,
@@ -361,8 +407,8 @@ export function CreateSurveyWizard({
             day late.
           */
           closesAt: closesOn ? new Date(`${closesOn}T23:59:59`).toISOString() : null,
-          isAnonymous,
-          allowMultipleResponses,
+          isAnonymous: isTeacher ? false : isAnonymous,
+          allowMultipleResponses: isTeacher ? false : allowMultipleResponses,
           shuffleQuestions,
           closingNote: null,
         },
@@ -399,6 +445,9 @@ export function CreateSurveyWizard({
   });
 
   const errors = fieldErrors(create.error);
+  const localizedCreateError = Object.entries(errors)
+    .map(([field, message]) => CREATE_SURVEY_FIELD_ERROR[field] ?? message)
+    .join(". ");
 
   const questionsReady =
     questions.length > 0 &&
@@ -410,15 +459,30 @@ export function CreateSurveyWizard({
 
   const ready =
     title.trim().length > 0 && questionsReady && (canAddressEveryone || Boolean(groupId));
-  const heading = created
-    ? `${SURVEY_KIND_LABEL[kind]} үүслээ`
-    : `Шинэ ${SURVEY_KIND_LABEL[kind].toLowerCase()}`;
+  const noun = isTeacher ? SURVEY_RESPONDENT_LABEL.TEACHER : SURVEY_KIND_LABEL[kind];
+  const heading = created ? `${noun} үүслээ` : `Шинэ ${noun.toLowerCase()}`;
+
+  /*
+    The А/79 levels for a teacher survey; the families' three otherwise. A flat
+    list, because `Select` reads its `<option>` children directly.
+  */
+  const templateOptions = isTeacher
+    ? A79_LEVELS.map((level) => ({
+        value: `a79-${level.key}`,
+        label: `А/79 хөгжлийн үнэлгээ — ${level.key} түвшин (${level.criteria.length} шалгуур)`,
+      }))
+    : [
+        { value: "satisfaction", label: "Эцэг эхийн сэтгэл ханамж" },
+        { value: "development", label: "Хүүхдийн хөгжил" },
+        { value: "meals", label: "Хоолны чанар" },
+      ];
 
   const applyTemplate = (key: string) => {
-    const template = SURVEY_TEMPLATES[key];
+    const template = SURVEY_TEMPLATES[key] ?? A79_TEMPLATES[key];
     if (!template) return;
     setTitle(template.title);
     setCategory(template.category);
+    if (template.period) setPeriod(template.period);
     setQuestions(cloneQuestions(template.questions));
     setPreviewing(false);
   };
@@ -454,7 +518,9 @@ export function CreateSurveyWizard({
               if (ready && !create.isPending) create.mutate(true);
             }}
           >
-            <FormError message={create.isError ? errorMessage(create.error) : null} />
+            <FormError
+              message={create.isError ? localizedCreateError || errorMessage(create.error) : null}
+            />
 
             <div className="flex flex-col gap-3.5">
               {!isPoll ? (
@@ -474,9 +540,11 @@ export function CreateSurveyWizard({
                     }}
                   >
                     <option value="">Загвар сонгох…</option>
-                    <option value="satisfaction">Эцэг эхийн сэтгэл ханамж</option>
-                    <option value="development">Хүүхдийн хөгжил</option>
-                    <option value="meals">Хоолны чанар</option>
+                    {templateOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </Select>
                   <p className="mt-1.5 text-caption text-muted">
                     Загварыг сонгосны дараа бүх асуултыг чөлөөтэй засаж болно.
@@ -493,7 +561,6 @@ export function CreateSurveyWizard({
                       invalid={invalid}
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
-                      placeholder={`${SURVEY_KIND_LABEL[kind]}ын гарчиг оруулах`}
                       autoFocus
                     />
                   )}
@@ -565,14 +632,17 @@ export function CreateSurveyWizard({
                       setPeriod(
                         event.target.value === "OTHER"
                           ? null
-                          : (event.target.value as "MIDLINE" | "ENDLINE"),
+                          : (event.target.value as SurveyPeriod),
                       )
                     }
                     className="h-10"
                   >
-                    <option value="MIDLINE">Явцын үнэлгээ</option>
-                    <option value="ENDLINE">Үр дүнгийн үнэлгээ</option>
-                    <option value="OTHER">Бусад</option>
+                    {SURVEY_PERIODS.map((value) => (
+                      <option key={value} value={value}>
+                        {SURVEY_PERIOD_LABEL[value]}
+                      </option>
+                    ))}
+                    <option value="OTHER">{SURVEY_PERIOD_OTHER_LABEL}</option>
                   </Select>
                 </div>
               </div>
@@ -619,16 +689,20 @@ export function CreateSurveyWizard({
 
               {showSettings ? (
                 <div className="grid gap-x-4 rounded-card bg-canvas px-3 sm:grid-cols-2">
-                  <Switch
-                    label="Хариулт нуух"
-                    checked={isAnonymous}
-                    onChange={(e) => setIsAnonymous(e.target.checked)}
-                  />
-                  <Switch
-                    label="Олон удаа хариулах"
-                    checked={allowMultipleResponses}
-                    onChange={(e) => setAllowMultipleResponses(e.target.checked)}
-                  />
+                  {isTeacher ? null : (
+                    <>
+                      <Switch
+                        label="Хариулт нуух"
+                        checked={isAnonymous}
+                        onChange={(e) => setIsAnonymous(e.target.checked)}
+                      />
+                      <Switch
+                        label="Олон удаа хариулах"
+                        checked={allowMultipleResponses}
+                        onChange={(e) => setAllowMultipleResponses(e.target.checked)}
+                      />
+                    </>
+                  )}
                   {questions.length > 1 ? (
                     <Switch
                       label="Асуултын дарааллыг холих"
@@ -1030,7 +1104,7 @@ function Done({
     <div className="flex flex-col items-center gap-4 py-6 text-center">
       <span
         aria-hidden="true"
-        className="grid size-16 place-items-center rounded-pill bg-mint text-mint-ink"
+        className="grid size-16 place-items-center rounded-pill text-mint-ink"
       >
         <Check size={30} strokeWidth={3} />
       </span>

@@ -31,6 +31,7 @@ import {
   AGE_ALBUM_CATEGORIES,
   AGE_ALBUM_CATEGORY_LABEL,
   ageAlbumSummarySchema,
+  MAX_PHOTOS_PER_AGE_ALBUM_CATEGORY,
   childDetailSchema,
   mediaListSchema,
   type Media,
@@ -52,6 +53,7 @@ import { PhotoUpload } from "@/components/media/photo-upload";
 import { PhotoLightbox } from "@/components/media/photo-lightbox";
 import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
 import { cn } from "@/lib/utils";
+import { AddedAlbumTypeCards } from "@/components/child/added-album-types";
 
 type Age = (typeof PORTFOLIO_AGES)[number];
 type AlbumCategory = (typeof AGE_ALBUM_CATEGORIES)[number];
@@ -59,6 +61,10 @@ type MediaPage = z.infer<typeof mediaListSchema>;
 type UploadTarget = {
   title: string;
   category?: string;
+  /** An added photo type — `AlbumCategory`. */
+  albumCategoryId?: string;
+  /** How many more this card takes; absent where there is no limit. */
+  room?: number;
 };
 
 export const CATEGORY_ICON: Record<AlbumCategory, LucideIcon> = {
@@ -141,6 +147,9 @@ export function AgePhotoAlbum({ childId, age }: { childId: string; age: Age }) {
   }
 
   const data = child.data!;
+  const selectedType = summary.data!.customCategories.find(
+    (type) => type.id === searchParams.get("type"),
+  );
   const canEdit =
     hasRole("TEACHER") ||
     hasRole("ADMIN") ||
@@ -172,8 +181,12 @@ export function AgePhotoAlbum({ childId, age }: { childId: string; age: Age }) {
     toast.success("Зураг нэмэгдлээ.");
   };
 
-  const openUpload = (category: AlbumCategory) => {
-    setUploadTarget({ title: AGE_ALBUM_CATEGORY_LABEL[category], category });
+  const openUpload = (category: AlbumCategory, count: number) => {
+    setUploadTarget({
+      title: AGE_ALBUM_CATEGORY_LABEL[category],
+      category,
+      room: Math.max(MAX_PHOTOS_PER_AGE_ALBUM_CATEGORY - count, 0),
+    });
     setUploadOpen(true);
   };
 
@@ -239,6 +252,9 @@ export function AgePhotoAlbum({ childId, age }: { childId: string; age: Age }) {
         <ul className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {summary.data!.categories.map((item, index) => {
             const Icon = CATEGORY_ICON[item.category];
+            // ★ At most three per card — client, 2026-09-18. The API refuses
+            // the fourth; the card stops offering it.
+            const full = item.count >= MAX_PHOTOS_PER_AGE_ALBUM_CATEGORY;
             const href = `?category=${item.category}#selected-album`;
             return (
               <li key={item.category} className="flex">
@@ -271,7 +287,9 @@ export function AgePhotoAlbum({ childId, age }: { childId: string; age: Age }) {
                         {AGE_ALBUM_CATEGORY_LABEL[item.category]}
                       </span>
                       <span className="mt-2 flex items-center justify-between text-caption text-muted">
-                        {item.count} зураг
+                        <span className={cn("tabular-nums", full && "font-semibold text-ink")}>
+                          {item.count}/{MAX_PHOTOS_PER_AGE_ALBUM_CATEGORY} зураг
+                        </span>
                         <ChevronRight
                           size={17}
                           aria-hidden="true"
@@ -282,13 +300,17 @@ export function AgePhotoAlbum({ childId, age }: { childId: string; age: Age }) {
                     </span>
                   </Link>
 
-                  {canEdit ? (
+                  {canEdit && full ? (
+                    <span className="absolute right-2 top-2 z-10 rounded-pill bg-surface/95 px-2.5 py-1 text-caption font-semibold text-muted shadow-sm">
+                      Дүүрсэн
+                    </span>
+                  ) : canEdit ? (
                     <Button
                       variant="secondary"
                       size="icon"
                       className="absolute right-2 top-2 z-10 rounded-pill bg-surface/95"
                       aria-label={`${AGE_ALBUM_CATEGORY_LABEL[item.category]} ангилалд зураг нэмэх`}
-                      onClick={() => openUpload(item.category)}
+                      onClick={() => openUpload(item.category, item.count)}
                     >
                       <Plus aria-hidden="true" />
                     </Button>
@@ -297,6 +319,20 @@ export function AgePhotoAlbum({ childId, age }: { childId: string; age: Age }) {
               </li>
             );
           })}
+          <AddedAlbumTypeCards
+            childId={childId}
+            age={age}
+            types={summary.data!.customCategories}
+            canEdit={canEdit}
+            onUpload={(type) => {
+              setUploadTarget({
+                title: type.name,
+                albumCategoryId: type.id,
+                room: Math.max(MAX_PHOTOS_PER_AGE_ALBUM_CATEGORY - type.count, 0),
+              });
+              setUploadOpen(true);
+            }}
+          />
         </ul>
       </section>
 
@@ -311,6 +347,26 @@ export function AgePhotoAlbum({ childId, age }: { childId: string; age: Age }) {
             lede={`${age} нас · ${AGE_ALBUM_CATEGORY_LABEL[selectedCategory]}`}
             age={age}
             category={selectedCategory}
+            uploadLabel="Энэ ангилалд зураг нэмэх"
+            compactEmpty
+            uploadWithCaption
+            coverAge={age}
+            currentCoverMediaId={summary.data!.coverMediaFileId}
+          />
+        </AlbumLightbox>
+      ) : null}
+
+      {selectedType ? (
+        <AlbumLightbox title={selectedType.name} onClose={closeAlbum}>
+          <ChildGallery
+            childId={childId}
+            childName={`${data.lastName} ${data.firstName}`}
+            canEdit={canEdit}
+            sectionId="selected-album"
+            title={selectedType.name}
+            lede={`${age} нас · ${selectedType.name}`}
+            age={age}
+            albumCategoryId={selectedType.id}
             uploadLabel="Энэ ангилалд зураг нэмэх"
             compactEmpty
             uploadWithCaption
@@ -349,6 +405,13 @@ export function AgePhotoAlbum({ childId, age }: { childId: string; age: Age }) {
             purpose="CHILD_PHOTO"
             age={age}
             category={uploadTarget.category}
+            albumCategoryId={uploadTarget.albumCategoryId}
+            maxFiles={uploadTarget.room}
+            hint={
+              uploadTarget.room === undefined
+                ? undefined
+                : `Нэг төрөлд дээд тал нь ${MAX_PHOTOS_PER_AGE_ALBUM_CATEGORY} зураг. Одоо ${uploadTarget.room} зураг нэмэх боломжтой.`
+            }
             label="Зураг сонгох"
             variant="primary"
             withCaption

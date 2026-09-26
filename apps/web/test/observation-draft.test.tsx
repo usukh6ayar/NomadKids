@@ -1009,8 +1009,14 @@ describe("Шинэ ажиглалт — зураг", () => {
     renderWithProviders(<NewObservationPage />);
 
     await waitFor(() =>
-      expect(screen.getByRole("combobox", { name: /^Төрөл/ })).toHaveValue("Наамал"),
+      expect(screen.getByRole("combobox", { name: /^Төрөл/ })).toHaveTextContent("Наамал"),
     );
+    expect(screen.getByRole("heading", { name: "Шинэ бүтээл нэмэх" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Бүтээлийн зураг нэмнэ үү.");
+    expect(calls.some((call) => call.method === "POST")).toBe(false);
+
+    await user.upload(screen.getByLabelText("Нэмэх"), [photo("naamal.png")]);
     await user.click(screen.getByRole("button", { name: "Хадгалах" }));
 
     await waitFor(() => {

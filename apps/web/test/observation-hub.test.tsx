@@ -509,7 +509,12 @@ describe("the record hub", () => {
     expect(addUrl.searchParams.get("activityName")).toBe("Наамал");
     expect(addUrl.searchParams.get("returnTo")).toBe("progress");
 
+    expect(within(panel).getByText("Сүүлийн хоёр бүтээлийн ахиц")).toBeInTheDocument();
+
     expect(within(panel).queryByRole("button", { name: /харьцуулахад сонгох/ })).toBeNull();
+    await user.click(within(panel).getByRole("button", { name: "Эдгээрийг харьцуулах" }));
+    expect(within(panel).getByText("Наамал — ахицын цуваа")).toBeInTheDocument();
+    await user.click(within(panel).getByRole("button", { name: "Харьцуулахаа болих" }));
     await user.click(within(panel).getByRole("button", { name: "Харьцуулах" }));
     const choices = await within(panel).findAllByRole("button", {
       name: "Наамал бүтээлийг харьцуулахад сонгох",

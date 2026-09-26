@@ -20,10 +20,10 @@ import Image from "next/image";
  * Both maps are indexed by the codes in `YEAR_ANIMALS` and `ZODIAC_SIGNS`, so a
  * guardian's stored override (`ChildProfile.yearAnimalCode` / `zodiacCode`,
  * which are validated against those same lists) can never resolve to a name
- * with no picture. Cancer's source file is named "мэлхий орд" against the
- * contract's "Хавч", which is exactly why the name is not the key — and the
- * Mongolian names moved once already, on 2026-09-09, when the client renamed
- * Онгон to Охин, Нумч to Нум and Дэнс to Жинлүүр.
+ * with no picture. The Mongolian names have moved twice — on 2026-09-09 the
+ * client renamed Онгон to Охин, Нумч to Нум and Дэнс to Жинлүүр, and on
+ * 2026-09-24 Хавч became Мэлхий, which is what its drawing ("мэлхий орд") had
+ * been called since delivery. Each time, nothing broke: the key is the code.
  *
  * ★★★ One drawing is still missing, because one file is not what it claims.
  *

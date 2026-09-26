@@ -26,6 +26,63 @@ beforeEach(() => {
   setSearchParams("");
 });
 
+/** The whole about-me screen, stubbed — shared by the cases below. */
+function stubAboutMe() {
+  return stubApi([
+    { path: "/auth/me", body: sessionFor(["PARENT"]) },
+    {
+      path: `/children/${CHILD_ID}/about-me`,
+      method: "PATCH",
+      body: { exists: true, nameMeaning: "Нандин утгатай" },
+    },
+    {
+      path: `/children/${CHILD_ID}/about-me`,
+      body: {
+        exists: true,
+        clanName: "Боржигон",
+        nameMeaning: "Нандин утгатай",
+        nickname: "Батаа",
+        birthplace: "Улаанбаатар",
+        bloodType: "O+",
+        eyeColor: "Бор",
+        yearAnimalCode: "ox",
+        zodiacCode: "taurus",
+        introduction: "Энэ талбар зөвхөн харах горимд үлдэнэ",
+        dream: "Нисгэгч",
+        heightCm: "110",
+        weightKg: "18",
+        recordedOn: "2026-03-14",
+      },
+    },
+    {
+      path: `/children/${CHILD_ID}/birthday-notes`,
+      body: {
+        dateOfBirth: "2021-04-12",
+        ageYears: 5,
+        zodiac: { code: "aquarius", name: "Хумх" },
+        yearAnimal: { code: "rat", name: "Хулгана", beforeLunarNewYear: false },
+        notes: [],
+      },
+    },
+    {
+      path: `/children/${CHILD_ID}`,
+      body: {
+        id: CHILD_ID,
+        lastName: "Ганболд",
+        firstName: "Батбаяр",
+        sex: "MALE",
+        dateOfBirth: "2021-04-12",
+        status: "ACTIVE",
+        photoMediaFileId: null,
+        enrollments: [],
+        guardianships: [],
+        kindergarten: { id: "33333333-3333-4333-8333-333333333333", name: "Цэцэрлэг" },
+        healthNotes: null,
+      },
+    },
+  ]);
+}
+
 describe("RFP §4.1 completeness", () => {
   it("does not render the legacy measurement chips on the about-me landing", async () => {
     stubApi([
@@ -70,34 +127,11 @@ describe("RFP §4.1 completeness", () => {
     expect(screen.queryByText("2026.03.14")).not.toBeInTheDocument();
   });
 
-  it("opens a preview-free editor with exactly the requested fields in order", async () => {
-    const user = userEvent.setup();
-    const api = stubApi([
+  /** Client, 2026-09-24: nothing at all while the card is empty. */
+  it("draws no empty state when nothing has been filled in", async () => {
+    stubApi([
       { path: "/auth/me", body: sessionFor(["PARENT"]) },
-      {
-        path: `/children/${CHILD_ID}/about-me`,
-        method: "PATCH",
-        body: { exists: true, nameMeaning: "Нандин утгатай" },
-      },
-      {
-        path: `/children/${CHILD_ID}/about-me`,
-        body: {
-          exists: true,
-          clanName: "Боржигон",
-          nameMeaning: "Нандин утгатай",
-          nickname: "Батаа",
-          birthplace: "Улаанбаатар",
-          bloodType: "O+",
-          eyeColor: "Бор",
-          yearAnimalCode: "ox",
-          zodiacCode: "taurus",
-          introduction: "Энэ талбар зөвхөн харах горимд үлдэнэ",
-          dream: "Нисгэгч",
-          heightCm: "110",
-          weightKg: "18",
-          recordedOn: "2026-03-14",
-        },
-      },
+      { path: `/children/${CHILD_ID}/about-me`, body: { exists: false } },
       {
         path: `/children/${CHILD_ID}/birthday-notes`,
         body: {
@@ -125,11 +159,38 @@ describe("RFP §4.1 completeness", () => {
         },
       },
     ]);
+    renderWithProviders(<AboutMePage />);
+
+    await screen.findByRole("heading", { name: "Миний тухай" });
+    expect(screen.queryByText("Хараахан бөглөөгүй байна")).not.toBeInTheDocument();
+    expect(screen.queryByText(/«Засах» дарж эхлүүлнэ үү/)).not.toBeInTheDocument();
+  });
+
+  /** Client, 2026-09-24: "Танилцуулга" and "Миний мөрөөдөл" off this card. */
+  it("no longer shows Танилцуулга or Миний мөрөөдөл, and keeps the rest", async () => {
+    stubAboutMe();
+    renderWithProviders(<AboutMePage />);
+
+    await screen.findByRole("heading", { name: "Миний тухай" });
+    expect(await screen.findByText("Нандин утгатай")).toBeInTheDocument();
+    expect(screen.queryByText("Танилцуулга")).not.toBeInTheDocument();
+    expect(screen.queryByText("Миний мөрөөдөл")).not.toBeInTheDocument();
+    expect(screen.queryByText("Нисгэгч")).not.toBeInTheDocument();
+    expect(screen.queryByText("Энэ талбар зөвхөн харах горимд үлдэнэ")).not.toBeInTheDocument();
+  });
+
+  it("opens a preview-free editor with exactly the requested fields in order", async () => {
+    const user = userEvent.setup();
+    const api = stubAboutMe();
 
     renderWithProviders(<AboutMePage />);
     await user.click(await screen.findByRole("button", { name: "Мэдээлэл засах" }));
 
     const form = screen.getByRole("form", { name: "Миний тухай мэдээлэл засах" });
+    // Client, 2026-09-24: two fields to a row, at every width.
+    expect(
+      within(form).getByRole("textbox", { name: "Ургийн овог" }).closest("div.grid"),
+    ).toHaveClass("grid-cols-2");
     expect(screen.queryByText("Батбаяр")).not.toBeInTheDocument();
     expect(screen.queryByText("2021.04.12")).not.toBeInTheDocument();
 
@@ -205,10 +266,12 @@ describe("RFP §4.1 completeness", () => {
     expect(details).toHaveClass("grid-cols-2");
     expect(within(details).getByText("Боржигон")).toBeInTheDocument();
     expect(within(details).getByText("Нандин утгатай")).toBeInTheDocument();
-    expect(within(details).getByText("Нисгэгч")).toBeInTheDocument();
     expect(screen.queryByText("110 см")).not.toBeInTheDocument();
     expect(screen.queryByText("18 кг")).not.toBeInTheDocument();
     expect(screen.queryByText("2026.03.14")).not.toBeInTheDocument();
-    expect(screen.getByText("Энэ талбар зөвхөн харах горимд үлдэнэ")).toBeInTheDocument();
+    // "Миний мөрөөдөл" and "Танилцуулга" came off this card on 2026-09-24;
+    // both are still stored and still returned by the endpoint above.
+    expect(within(details).queryByText("Нисгэгч")).not.toBeInTheDocument();
+    expect(screen.queryByText("Энэ талбар зөвхөн харах горимд үлдэнэ")).not.toBeInTheDocument();
   });
 });

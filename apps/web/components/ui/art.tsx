@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { isValidElement, type ReactNode } from "react";
 
 /**
  * The illustrated icon set, by name.
@@ -88,6 +89,22 @@ const SOURCE = {
    * disk the whole time and `layout.tsx` never stopped asking for them, so
    * what shipped was a bottom bar naming icons this map could not resolve.
    */
+  /*
+    ★ The guardian menu's own set — the client's 2026-09-25 delivery, cut from
+    the sheet they sent and saved with the white knocked out. They are flat
+    two-tone drawings rather than the 3D icons above, which is the look the
+    client drew for this one menu; nothing else uses them.
+  */
+  navParentHome: "/icons/icon-nav-home-v2.png",
+  navParentChild: "/icons/icon-nav-child-v2.png",
+  navParentPortfolio: "/icons/icon-nav-portfolio-v2.png",
+  navParentKindergarten: "/icons/icon-nav-kindergarten-v2.png",
+  navParentNews: "/icons/icon-nav-news-v2.png",
+  navParentChat: "/icons/icon-nav-chat-v2.png",
+  navParentAccess: "/icons/icon-nav-access-v2.png",
+  navParentHelp: "/icons/icon-nav-help-v2.png",
+  navParentSettings: "/icons/icon-nav-settings-v2.png",
+  navParentSignOut: "/icons/icon-nav-signout-v2.png",
   navFood: "/icons/icon-nav-food.png",
   navGallery: "/icons/icon-nav-gallery.png",
   navHome: "/icons/icon-nav-home.png",
@@ -137,4 +154,19 @@ export function Art({
   className?: string;
 }) {
   return <Image src={SOURCE[name]} alt="" width={size} height={size} className={className} />;
+}
+
+/**
+ * Is this icon slot holding one of the illustrated 3D icons?
+ *
+ * ★ The one question `IconChip`, `Tile` and `StatCard` each need to answer
+ * before tinting their well — client, 2026-09-24: a line icon loses its
+ * coloured square, a drawing keeps it.
+ *
+ * Asked of the element rather than of a prop, because the call sites already
+ * say which they are passing — `<Art name="food" />` or `<Users size={20} />`
+ * — and a second prop repeating that is one more thing to get wrong.
+ */
+export function isArtwork(icon: ReactNode): boolean {
+  return isValidElement(icon) && icon.type === Art;
 }

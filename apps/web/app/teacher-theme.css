@@ -540,9 +540,13 @@ body:has([data-app-theme]) button:hover [data-nav-icon][data-icon-surface="none"
   }
 }
 
-@media (min-width: 1280px) {
-  [data-app-theme="teacher"] .teacher-dashboard-header {
-    grid-template-columns: minmax(0, 1.6fr) minmax(360px, 0.9fr);
+/*
+ * The illustration is a phone-only greeting. From `lg` — where the shell
+ * switches to its desktop sidebar — the header is the name and date alone.
+ */
+@media (min-width: 1024px) {
+  [data-app-theme="teacher"] .teacher-dashboard-banner {
+    display: none;
   }
 }
 

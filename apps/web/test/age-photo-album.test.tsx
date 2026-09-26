@@ -171,9 +171,16 @@ describe("five-year photo library", () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Ковер болгох/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Шинэ зураг оруулах/ })).not.toBeInTheDocument();
+    /*
+      ★ A card holds at most three photographs — client, 2026-09-18. The
+      fixture's counts are 24, 1, 2, … 11, so only "1" and "2" still offer an
+      upload; the other ten say they are full instead of offering a fourth.
+    */
     expect(within(albums).getAllByRole("button", { name: /ангилалд зураг нэмэх/ })).toHaveLength(
-      12,
+      2,
     );
+    expect(within(albums).getAllByText("Дүүрсэн")).toHaveLength(10);
+    expect(within(albums).getByText("1/3 зураг")).toBeInTheDocument();
     const ageLibrary = screen
       .getByRole("heading", { name: "5 насны зургийн сан" })
       .closest("section")!;

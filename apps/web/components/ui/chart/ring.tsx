@@ -40,7 +40,7 @@ export function Ring({
   /** Nothing to show yet — draws a flat track and no fill. */
   muted?: boolean;
   /**
-   * The colour of the filled arc. Defaults to `--color-primary`.
+   * The colour of the filled arc. Defaults to `--color-primary-chart`.
    *
    * ★ Added 2026-08-28 because the client's dashboard draws the attendance
    * ring in green, and this component had the brand blue welded in.
@@ -58,7 +58,7 @@ export function Ring({
   className?: string;
 }) {
   const value = clampPercent(percent);
-  const fill = tone ? TONE_VAR[tone] : "var(--color-primary)";
+  const fill = tone ? TONE_VAR[tone] : "var(--color-primary-chart)";
 
   return (
     <span

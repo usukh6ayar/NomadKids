@@ -25,35 +25,23 @@ import { PORTFOLIO } from "@/lib/vocabulary";
  * channel in the MVP, and polling a single job for the seconds it takes is
  * exactly the case where that decision costs nothing.
  */
-export function ReportDialog({
-  childId,
-  trigger,
-  /**
-   * The child's current school year, if the page knows it.
-   *
-   * ★ Without it the annual option is not offered at all, rather than offered
-   * and refused: RFP §6.5 compares one year's four terms, so the API requires a
-   * `schoolYearId` and answers 400 without one. A button that always fails
-   * teaches people the feature is broken.
-   */
-  schoolYearId,
-}: {
-  childId: string;
-  trigger: React.ReactNode;
-  schoolYearId?: string | null;
-}) {
+export function ReportDialog({ childId, trigger }: { childId: string; trigger: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
+  /*
+    ★ One kind of job — client, 2026-09-25: "Жилийн нэгдсэн тайлан энэ товчийг
+    хасчих". The dialog offered two, and the second went with the button.
+    `ANNUAL_REPORT` is untouched on the API (RFP §6.5) and still queued by the
+    teacher's own report screen; what is gone is the family's second choice in
+    a dialog whose one job is the portfolio.
+  */
   const create = useMutation({
-    mutationFn: (type: "CHILD_PORTFOLIO" | "ANNUAL_REPORT") =>
+    mutationFn: () =>
       mutate("/reports", reportJobSchema, {
         method: "POST",
-        body:
-          type === "ANNUAL_REPORT"
-            ? { childId, type, schoolYearId }
-            : { childId, type: "CHILD_PORTFOLIO" },
+        body: { childId, type: "CHILD_PORTFOLIO" },
       }),
     onSuccess: (job) => {
       setJobId(job.id);
@@ -92,18 +80,21 @@ export function ReportDialog({
           className="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-card border border-border bg-surface p-5 shadow-lg"
           aria-describedby="report-dialog-description"
         >
-          <div className="mb-3 flex items-start justify-between gap-3">
-            <div>
-              <Dialog.Title className="text-lead font-semibold text-ink">
-                {PORTFOLIO} PDF
-              </Dialog.Title>
-              <Dialog.Description
-                id="report-dialog-description"
-                className="mt-1 text-body text-muted"
-              >
-                {PORTFOLIO} эсвэл жилийн тайланг PDF болгон бэлтгэнэ. Хэдэн секунд болно.
-              </Dialog.Description>
-            </div>
+          {/*
+            ★ The heading and the line under it are read, not printed —
+            client, 2026-09-25: "энийг хас". Two buttons that name themselves
+            do not need a paragraph explaining that they make a PDF.
+
+            They stay in the markup as `sr-only` because the dialog is
+            `Dialog.Root`: Radix requires a title, and `aria-describedby`
+            points at the description. Deleting them outright leaves a dialog
+            a screen reader announces as nameless.
+          */}
+          <div className="mb-3 flex items-start justify-end gap-3">
+            <Dialog.Title className="sr-only">{PORTFOLIO} PDF</Dialog.Title>
+            <Dialog.Description id="report-dialog-description" className="sr-only">
+              {PORTFOLIO} эсвэл жилийн тайланг PDF болгон бэлтгэнэ.
+            </Dialog.Description>
             <Dialog.Close asChild>
               <Button variant="ghost" size="icon" aria-label="Хаах">
                 <X size={18} />
@@ -116,32 +107,13 @@ export function ReportDialog({
           <div className="mt-3">
             {!jobId ? (
               <div className="flex flex-col gap-2">
-                <Button
-                  block
-                  size="lg"
-                  disabled={create.isPending}
-                  onClick={() => create.mutate("CHILD_PORTFOLIO")}
-                >
+                <Button block size="lg" disabled={create.isPending} onClick={() => create.mutate()}>
                   <FileText size={18} />
                   {create.isPending ? "Илгээж байна…" : PORTFOLIO}
                 </Button>
-
-                {/* RFP §6.5 — offered only when the year is known. See above. */}
-                {schoolYearId ? (
-                  <Button
-                    block
-                    variant="secondary"
-                    size="lg"
-                    disabled={create.isPending}
-                    onClick={() => create.mutate("ANNUAL_REPORT")}
-                  >
-                    <FileText size={18} />
-                    Жилийн нэгдсэн тайлан
-                  </Button>
-                ) : null}
               </div>
             ) : (
-              <ReportProgress job={job} onRetry={() => create.mutate("CHILD_PORTFOLIO")} />
+              <ReportProgress job={job} onRetry={() => create.mutate()} />
             )}
           </div>
         </Dialog.Content>

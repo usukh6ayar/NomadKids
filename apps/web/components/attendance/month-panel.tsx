@@ -15,7 +15,7 @@ import { groupAttendanceSummarySchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { Donut, type DonutSegment } from "@/components/ui/chart/donut";
-import { TONE_SURFACE, TONE_VAR, type Tone } from "@/components/ui/tone";
+import { TONE_GLYPH, TONE_SURFACE, TONE_VAR, type Tone } from "@/components/ui/tone";
 import { Skeleton } from "@/components/ui/states";
 import type { RegisterCount } from "@/components/register/register-progress";
 import { cn } from "@/lib/utils";
@@ -138,10 +138,7 @@ function StatTile({
   return (
     <div className="flex min-w-0 gap-2.5 rounded-card border border-border-soft bg-surface p-3">
       <span
-        className={cn(
-          "grid size-9 shrink-0 place-items-center rounded-control",
-          TONE_SURFACE[tone],
-        )}
+        className={cn("grid size-9 shrink-0 place-items-center rounded-control", TONE_GLYPH[tone])}
         aria-hidden="true"
       >
         {icon}
@@ -432,7 +429,7 @@ export function AttendanceMonthPanel({
               <span
                 className={cn(
                   "grid size-10 shrink-0 place-items-center rounded-control",
-                  TONE_SURFACE.sky,
+                  TONE_GLYPH.sky,
                 )}
                 aria-hidden="true"
               >

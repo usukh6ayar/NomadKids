@@ -73,8 +73,10 @@ describe("heading hierarchy", () => {
 
     const failed = renderWithProviders(<DashboardPage />);
     await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+    // The dashboard draws its own quieter title since 2026-09-25 (the
+    // kindergarten's name, the client's drawing), so what is pinned is that the
+    // branches agree — not that it is `PageHeader`'s size.
     const whenFailed = failed.container.querySelector("h1")!.className;
-    expect(whenFailed).toContain("text-display");
     failed.unmount();
 
     stubApi([

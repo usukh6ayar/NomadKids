@@ -184,7 +184,7 @@ function Count({
         aria-hidden="true"
         className={cn(
           "grid size-11 shrink-0 place-items-center rounded-pill",
-          tone === "peach" ? "bg-peach text-peach-ink" : "bg-sky text-sky-ink",
+          tone === "peach" ? "text-peach-ink" : "text-sky-ink",
         )}
       >
         {icon}

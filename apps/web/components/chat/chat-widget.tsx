@@ -823,10 +823,10 @@ function ChatEmptyState() {
     <div className="grid min-h-full place-items-center px-4 py-12 text-center">
       <div>
         <div className="relative mx-auto mb-6 h-20 w-28" aria-hidden="true">
-          <span className="absolute bottom-0 right-1 grid size-14 place-items-center rounded-card bg-primary-soft text-primary/40">
+          <span className="absolute bottom-0 right-1 grid size-14 place-items-center rounded-card text-primary/40">
             <MessageSquare size={31} strokeWidth={1.8} />
           </span>
-          <span className="absolute left-1 top-0 grid size-16 place-items-center rounded-card bg-primary text-primary-ink shadow-sm">
+          <span className="absolute left-1 top-0 grid size-16 place-items-center rounded-card text-primary">
             <MessageCircle size={34} strokeWidth={1.9} />
           </span>
         </div>

@@ -189,6 +189,32 @@ describe("a guardian MAY write the portfolio", () => {
     expect(res.body.favoriteColor).toBe("Хөх");
   });
 
+  /** Ам бүлийн тоо — client, 2026-09-24, the family section's new first field. */
+  it("stores the household size, and refuses one that is not a household", async () => {
+    const url = `/v1/children/${a.child.id}/age-profiles/3`;
+
+    const saved = await authed(request(server()).patch(url), parentA).send({
+      familySize: 5,
+      familyDescription: "Аав, ээж, ах, эгч бид тавуулаа.",
+    });
+    expect(saved.status).toBe(200);
+    expect(saved.body.familySize).toBe(5);
+    expect(saved.body.familyDescription).toBe("Аав, ээж, ах, эгч бид тавуулаа.");
+
+    for (const familySize of [0, -1, 21, 2.5]) {
+      const bad = await authed(request(server()).patch(url), parentA).send({ familySize });
+      expect(bad.status, `familySize ${familySize}`).toBe(400);
+    }
+
+    // Null is "not answered", and it clears the stored value.
+    const cleared = await authed(request(server()).patch(url), parentA).send({ familySize: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.familySize).toBeNull();
+    // A field left out of the PATCH is left alone — the memories a family
+    // wrote before the section was simplified survive it.
+    expect(cleared.body.familyDescription).toBe("Аав, ээж, ах, эгч бид тавуулаа.");
+  });
+
   it("writes a birthday note", async () => {
     const res = await authed(
       request(server()).patch(`/v1/children/${a.child.id}/birthday-notes/3`),

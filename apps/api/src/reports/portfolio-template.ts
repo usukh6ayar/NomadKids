@@ -33,6 +33,7 @@ export interface PortfolioAgeProfile {
   characterTraits?: string[];
   characterObservation?: string | null;
   familyMemberTypes?: string[];
+  familySize?: number | null;
   familyDescription?: string | null;
   familyMemories?: unknown;
 }
@@ -307,6 +308,10 @@ export function renderPortfolioHtml(data: PortfolioData): string {
     comparisonTable(
       "Миний гэр бүл",
       [
+        {
+          label: "Ам бүлийн тоо",
+          value: (profile) => (profile.familySize ? String(profile.familySize) : null),
+        },
         { label: "Гэр бүлийн гишүүд", value: (profile) => joined(profile.familyMemberTypes) },
         { label: "Хамтдаа хийх дуртай зүйлс", value: (profile) => profile.familyDescription },
         { label: "Гэр бүлийн дурсамж", value: (profile) => memoryTitles(profile.familyMemories) },

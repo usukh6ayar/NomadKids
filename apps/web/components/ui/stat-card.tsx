@@ -3,7 +3,8 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { TONE_SURFACE, type Tone } from "@/components/ui/tone";
+import { TONE_GLYPH, TONE_SURFACE, type Tone } from "@/components/ui/tone";
+import { isArtwork } from "@/components/ui/art";
 
 /**
  * A statistic that is itself the content — RFP §12.1 and §12.2.
@@ -147,9 +148,13 @@ export function StatCard({
           className={cn(
             "grid shrink-0 place-items-center rounded-card [&>img]:size-full [&>img]:object-contain",
             size === "wide" ? "size-12" : "size-10",
-            artSurface ? TONE_SURFACE[tone] : "bg-transparent",
+            artSurface
+              ? isArtwork(art)
+                ? TONE_SURFACE[tone]
+                : TONE_GLYPH[tone]
+              : "bg-transparent",
           )}
-          data-icon-surface={artSurface ? "tone" : "none"}
+          data-icon-surface={artSurface && isArtwork(art) ? "tone" : "none"}
         >
           {art}
         </span>

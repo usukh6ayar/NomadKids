@@ -51,7 +51,10 @@ const ZODIAC_BOUNDARIES: { month: number; day: number; code: string; name: strin
   { month: 3, day: 21, code: "aries", name: "Хонь" },
   { month: 4, day: 20, code: "taurus", name: "Үхэр" },
   { month: 5, day: 21, code: "gemini", name: "Ихэр" },
-  { month: 6, day: 22, code: "cancer", name: "Хавч" },
+  // Мэлхий, not Хавч — the client's own word, 2026-09-24. The artwork file
+  // has been named "мэлхий орд" since delivery (`identity-art.tsx`), which is
+  // why the code, never the name, is the key.
+  { month: 6, day: 22, code: "cancer", name: "Мэлхий" },
   { month: 7, day: 23, code: "leo", name: "Арслан" },
   { month: 8, day: 23, code: "virgo", name: "Охин" },
   { month: 9, day: 23, code: "libra", name: "Жинлүүр" },

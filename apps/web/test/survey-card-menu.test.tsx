@@ -100,11 +100,9 @@ describe("a survey card's menu", () => {
 
     await openMenu(user);
 
-    for (const label of ["Засах", "Оролцоо", "Тайлан татах", "Дахин ашиглах", "Устгах"]) {
+    for (const label of ["Засах", "Оролцоо", "Эксэл татах", "Дахин ашиглах", "Устгах"]) {
       expect(screen.getByRole("menuitem", { name: new RegExp(label) })).toBeInTheDocument();
     }
-
-    expect(screen.getByText(SURVEY.title).closest('[data-ui="card"]')).toHaveClass("p-3");
   });
 
   /*
@@ -122,16 +120,14 @@ describe("a survey card's menu", () => {
     stubSurveys();
     renderWithProviders(<SurveyBoard kind="FORM" />);
 
-    const card = within(
-      (await screen.findByText(SURVEY.title)).closest('[data-ui="card"]') as HTMLElement,
-    );
+    // ★ A table row since 2026-09-25 — "цэвэрхэн хүснэгтээр". The same six
+    // things, one to a column.
+    const card = within((await screen.findByText(SURVEY.title)).closest("tr") as HTMLElement);
 
-    // The date, the state as a plain coloured word, the title, the count, the
-    // percentage, and the category in the footer.
     expect(card.getByText("2026.09.02")).toBeInTheDocument();
     expect(card.getByText("Нийтэлсэн")).toHaveClass("text-mint-ink");
-    expect(card.getByText(SURVEY.title)).toBeInTheDocument();
-    expect(card.getByText("0 / 0 хариулсан")).toBeInTheDocument();
+    expect(card.getByRole("link", { name: SURVEY.title })).toBeInTheDocument();
+    expect(card.getByText("0 / 0")).toBeInTheDocument();
     expect(card.getByText("0%")).toBeInTheDocument();
     expect(card.getByText("Сэтгэл ханамжийн судалгаа")).toBeInTheDocument();
 
@@ -139,9 +135,20 @@ describe("a survey card's menu", () => {
     // lines the drawing has no room for.
     expect(card.queryByText("Бүх бүлэг")).not.toBeInTheDocument();
     expect(card.queryByText(/асуулт$/)).not.toBeInTheDocument();
-    // One decorative graphic on the card — the chevron. The category icon tile
-    // and the two badges are what used to bring the colour.
+    // The category icon tile and the two badges stay gone.
     expect(card.queryByText("Судалгаа")).not.toBeInTheDocument();
+  });
+
+  it("lists the surveys as a table with one column per fact", async () => {
+    stubSurveys();
+    renderWithProviders(<SurveyBoard kind="FORM" />);
+
+    const table = (await screen.findByText(SURVEY.title)).closest("table")!;
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((th) => th.textContent),
+    ).toEqual(["Гарчиг", "Ангилал", "Төлөв", "Хариулт", "Хувь", "Огноо", "Үйлдэл"]);
   });
 
   it("names who has not answered, before who has", async () => {
@@ -153,8 +160,8 @@ describe("a survey card's menu", () => {
     await user.click(screen.getByRole("menuitem", { name: /Оролцоо/ }));
 
     const dialog = await screen.findByRole("dialog", { name: /Оролцоо/ });
-    expect(within(dialog).getByText("Ганболд Батбаяр")).toBeInTheDocument();
-    expect(within(dialog).getByText("Батжаргал Ануужин")).toBeInTheDocument();
+    expect(within(dialog).getByText("Г.Батбаяр")).toBeInTheDocument();
+    expect(within(dialog).getByText("Б.Ануужин")).toBeInTheDocument();
 
     // The list to ring comes first: DOCUMENT_POSITION_FOLLOWING means the
     // answered heading comes after the pending one.

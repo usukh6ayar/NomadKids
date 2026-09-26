@@ -186,7 +186,9 @@ export function ColumnChart({
                       style={{
                         height: `${percent}%`,
                         minHeight: percent > 0 ? 4 : 0,
-                        background: column.tone ? TONE_VAR[column.tone] : "var(--color-primary)",
+                        background: column.tone
+                          ? TONE_VAR[column.tone]
+                          : "var(--color-primary-chart)",
                       }}
                     />
                   )}

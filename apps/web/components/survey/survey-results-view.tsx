@@ -9,6 +9,7 @@ import {
   hasOptionList,
   surveyComparisonSchema,
   surveyResultsSchema,
+  type SurveyRespondent,
   type SurveyQuestionResult,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
@@ -20,6 +21,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { TONE_SURFACE, TONE_VAR, type Tone } from "@/components/ui/tone";
 import { shortName } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { SurveyComparison } from "@/components/survey/survey-comparison";
 
 /**
  * Судалгааны үр дүн — "Ерөнхий дүн" and "Асуулт тус бүр".
@@ -145,8 +147,26 @@ function averageOf(result: SurveyQuestionResult): number | null {
   return answered === 0 ? null : total / answered;
 }
 
-export function SurveyResultsView({ surveyId }: { surveyId: string }) {
-  const [tab, setTab] = useState<"overview" | "questions" | "answers">("overview");
+export function SurveyResultsView({
+  surveyId,
+  showAnswers = true,
+  showProgress = false,
+}: {
+  surveyId: string;
+  /**
+   * The per-child "Хариулт" tab. Off for a teacher survey — client,
+   * 2026-09-21: the teacher wrote every one of those answers on the sheet, so
+   * a tab reading them back is the table again, without the table.
+   */
+  showAnswers?: boolean;
+  /**
+   * "Ахиц дэвшил" — this wave against the one it was cloned from. On for a
+   * teacher survey (client, 2026-09-21), whose whole point is to be run again
+   * and compared.
+   */
+  showProgress?: boolean;
+}) {
+  const [tab, setTab] = useState<"overview" | "questions" | "answers" | "progress">("overview");
 
   const results = useQuery({
     queryKey: qk.surveyResults(surveyId, ""),
@@ -164,7 +184,12 @@ export function SurveyResultsView({ surveyId }: { surveyId: string }) {
       <div
         role="tablist"
         aria-label="Судалгааны үр дүн"
-        className="grid grid-cols-3 gap-1 rounded-card bg-sunken p-1"
+        className={cn(
+          "grid gap-1 rounded-card bg-sunken p-1",
+          [true, true, showAnswers, showProgress].filter(Boolean).length === 3
+            ? "grid-cols-3"
+            : "grid-cols-2",
+        )}
       >
         <button
           role="tab"
@@ -188,17 +213,32 @@ export function SurveyResultsView({ surveyId }: { surveyId: string }) {
         >
           Асуулт тус бүр
         </button>
-        <button
-          role="tab"
-          type="button"
-          id="survey-results-tab-answers"
-          aria-selected={tab === "answers"}
-          aria-controls="survey-results-panel-answers"
-          onClick={() => setTab("answers")}
-          className={tabClass(tab === "answers")}
-        >
-          Хариулт
-        </button>
+        {showAnswers ? (
+          <button
+            role="tab"
+            type="button"
+            id="survey-results-tab-answers"
+            aria-selected={tab === "answers"}
+            aria-controls="survey-results-panel-answers"
+            onClick={() => setTab("answers")}
+            className={tabClass(tab === "answers")}
+          >
+            Хариулт
+          </button>
+        ) : null}
+        {showProgress ? (
+          <button
+            role="tab"
+            type="button"
+            id="survey-results-tab-progress"
+            aria-selected={tab === "progress"}
+            aria-controls="survey-results-panel-progress"
+            onClick={() => setTab("progress")}
+            className={tabClass(tab === "progress")}
+          >
+            Ахиц дэвшил
+          </button>
+        ) : null}
       </div>
 
       {tab === "overview" ? (
@@ -208,7 +248,12 @@ export function SurveyResultsView({ surveyId }: { surveyId: string }) {
           aria-labelledby="survey-results-tab-overview"
           className="flex flex-col gap-4"
         >
-          <Coverage answered={data!.totalResponses} expected={data!.expectedResponses} />
+          <Coverage
+            answered={data!.totalResponses}
+            expected={data!.expectedResponses}
+            questions={questions}
+            respondent={data!.survey.respondent}
+          />
 
           <QuestionIndex
             questions={questions}
@@ -276,6 +321,16 @@ export function SurveyResultsView({ surveyId }: { surveyId: string }) {
         </div>
       ) : null}
 
+      {tab === "progress" ? (
+        <div
+          role="tabpanel"
+          id="survey-results-panel-progress"
+          aria-labelledby="survey-results-tab-progress"
+        >
+          <SurveyComparison surveyId={surveyId} />
+        </div>
+      ) : null}
+
       {tab === "answers" ? (
         <div
           role="tabpanel"
@@ -317,7 +372,88 @@ function tabClass(active: boolean): string {
  * link was a second door onto the same lists one tab away — and the ring's own
  * "Бөглөсөн / Бөглөөгүй" legend already names what it led to.
  */
-function Coverage({ answered, expected }: { answered: number; expected: number }) {
+const A79_DOMAINS = [
+  { label: "Мэдлэг", tone: "sky" },
+  { label: "Чадвар", tone: "mint" },
+  { label: "Төлөвшил", tone: "sun" },
+] as const satisfies ReadonlyArray<{ label: string; tone: Tone }>;
+
+type A79DomainSummary = {
+  label: (typeof A79_DOMAINS)[number]["label"];
+  tone: Tone;
+  average: number | null;
+  maximum: number;
+  percent: number | null;
+};
+
+/**
+ * Groups an А/79 sheet's 0/1 criteria into its three official domains.
+ *
+ * An untouched child has no SurveyResponse, so `answered` contains only the
+ * children the teacher actually assessed. That is deliberately the
+ * denominator here: an absent child neither lowers a domain nor appears as a
+ * zero, and starts contributing as soon as the teacher fills their row later.
+ */
+function a79DomainSummaries(
+  respondent: SurveyRespondent,
+  questions: SurveyQuestionResult[],
+  answered: number,
+): A79DomainSummary[] | null {
+  if (respondent !== "TEACHER" || questions.length === 0) return null;
+
+  const grouped = new Map<
+    A79DomainSummary["label"],
+    { tone: Tone; questionCount: number; earned: number }
+  >(
+    A79_DOMAINS.map((domain) => [domain.label, { tone: domain.tone, questionCount: 0, earned: 0 }]),
+  );
+
+  for (const result of questions) {
+    const domain = A79_DOMAINS.find(({ label }) => result.question.prompt.startsWith(`${label}:`));
+    const options = result.question.options;
+    if (
+      !domain ||
+      result.question.type !== "SINGLE_CHOICE" ||
+      !Array.isArray(options) ||
+      !options.includes("0") ||
+      !options.includes("1")
+    ) {
+      return null;
+    }
+
+    const current = grouped.get(domain.label)!;
+    current.questionCount += 1;
+    current.earned += result.counts?.["1"] ?? 0;
+  }
+
+  if ([...grouped.values()].some(({ questionCount }) => questionCount === 0)) return null;
+
+  return A79_DOMAINS.map(({ label }) => {
+    const { tone, questionCount, earned } = grouped.get(label)!;
+    return {
+      label,
+      tone,
+      average: answered === 0 ? null : earned / answered,
+      maximum: questionCount,
+      percent: answered === 0 ? null : Math.round((earned / (answered * questionCount)) * 100),
+    };
+  });
+}
+
+function Coverage({
+  answered,
+  expected,
+  questions,
+  respondent,
+}: {
+  answered: number;
+  expected: number;
+  questions: SurveyQuestionResult[];
+  respondent: SurveyRespondent;
+}) {
+  const domains = a79DomainSummaries(respondent, questions, answered);
+  if (domains) return <A79Coverage answered={answered} domains={domains} />;
+
   const missing = Math.max(0, expected - answered);
   const percent = expected === 0 ? null : Math.round((answered / expected) * 100);
 
@@ -362,6 +498,68 @@ function Coverage({ answered, expected }: { answered: number; expected: number }
           ))}
         </dl>
       </div>
+    </Card>
+  );
+}
+
+/** А/79 overview: domain achievement among assessed children only. */
+function A79Coverage({ answered, domains }: { answered: number; domains: A79DomainSummary[] }) {
+  return (
+    <Card pad="roomy" className="flex flex-col gap-4">
+      <h3 className="text-lead font-semibold text-ink">Хамрагдсан байдал</h3>
+
+      <div className="overflow-x-auto rounded-control border border-border">
+        <table className="w-full min-w-[440px] border-collapse text-body">
+          <thead>
+            <tr className="bg-canvas">
+              <th className="px-3 py-2.5 text-left text-caption font-semibold text-muted">
+                Үзүүлэлт
+              </th>
+              <th className="px-3 py-2.5 text-right text-caption font-semibold text-muted">
+                Дундаж оноо
+              </th>
+              <th className="px-3 py-2.5 text-right text-caption font-semibold text-muted">
+                Эзлэх хувь
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {domains.map((domain) => (
+              <tr key={domain.label} className="border-t border-border-soft">
+                <th scope="row" className="px-3 py-3 text-left font-semibold text-ink">
+                  {domain.label}
+                </th>
+                <td className="px-3 py-3 text-right font-semibold tabular-nums text-ink">
+                  {domain.average === null
+                    ? "—"
+                    : `${domain.average.toFixed(1)} / ${domain.maximum}`}
+                </td>
+                <td className="min-w-[150px] px-3 py-3">
+                  <div className="flex items-center justify-end gap-3">
+                    <span className="h-2 min-w-16 flex-1 overflow-hidden rounded-pill bg-track">
+                      <span
+                        className="block h-full rounded-pill"
+                        style={{
+                          width: `${domain.percent ?? 0}%`,
+                          background: TONE_VAR[domain.tone],
+                        }}
+                      />
+                    </span>
+                    <span className="w-10 text-right font-bold tabular-nums text-ink">
+                      {domain.percent === null ? "—" : `${domain.percent}%`}
+                    </span>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <dl className="flex items-center justify-between rounded-control bg-sunken px-3 py-3">
+        <dt className="text-body text-ink">Нийт үнэлэгдсэн хүүхдийн тоо</dt>
+        <dd className="text-lead font-bold tabular-nums text-ink">{answered}</dd>
+      </dl>
     </Card>
   );
 }

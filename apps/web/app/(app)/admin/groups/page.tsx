@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ChevronRight, Plus, UserMinus, UserPlus } from "lucide-react";
 import { z } from "zod";
@@ -23,7 +23,7 @@ import { useSession } from "@/lib/auth/session";
 import { fullName } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DataList, DataRow } from "@/components/ui/data-list";
+import { TableShell, Td, Th } from "@/components/ui/table";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
@@ -59,10 +59,10 @@ const PROGRAM_KINDS = programKindSchema.options;
 const ATTENDANCE_FORMS = attendanceFormSchema.options;
 
 const GROUP_COLUMNS = [
-  { key: "band", label: "Насны бүлэг", className: "md:w-[124px]" },
-  { key: "year", label: "Хичээлийн жил", className: "md:w-[120px]" },
-  { key: "children", label: "Хүүхэд", className: "md:w-[92px]" },
-];
+  { key: "band", label: "Насны бүлэг" },
+  { key: "year", label: "Хичээлийн жил" },
+  { key: "children", label: "Хүүхэд" },
+] as const;
 
 /**
  * Groups and the teachers assigned to them.
@@ -142,11 +142,30 @@ function AdminGroups() {
       ) : null}
 
       {items.length > 0 ? (
-        <DataList columns={GROUP_COLUMNS} leadWidth={null} actionsWidth="w-[104px]">
-          {items.map((group) => (
-            <GroupRow key={group.id} group={group} />
-          ))}
-        </DataList>
+        /*
+          ★ A table — client, 2026-09-25: "бүлгүүд хүснэгт хэлбэрээр харагд".
+          The same four facts and the same Багш control per group, in columns
+          a director reads across; it scrolls sideways on a phone rather than
+          stacking.
+        */
+        <TableShell caption="Бүлгүүдийн жагсаалт" minWidth="min-w-[640px]">
+          <thead>
+            <tr>
+              <Th>Бүлэг</Th>
+              {GROUP_COLUMNS.map((column) => (
+                <Th key={column.key}>{column.label}</Th>
+              ))}
+              <Th>
+                <span className="sr-only">Үйлдэл</span>
+              </Th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((group) => (
+              <GroupRow key={group.id} group={group} />
+            ))}
+          </tbody>
+        </TableShell>
       ) : null}
 
       {/*
@@ -193,12 +212,45 @@ function GroupRow({ group }: { group: z.infer<typeof groupListItemSchema> }) {
   const [managing, setManaging] = useState(false);
   const children = group._count?.enrollments ?? 0;
 
+  const cells: Record<(typeof GROUP_COLUMNS)[number]["key"], ReactNode> = {
+    /*
+      ★ A band that only repeats the name is written quietly.
+
+      A kindergarten may name a group after its age band — the demo data
+      does, so "Дунд бүлэг" is the group's name *and* the label of its
+      JUNIOR band, and the row printed the same two words twice at the
+      same weight, one column apart. It read as a rendering fault.
+
+      The cell keeps the value, because the column has to mean the same
+      thing on every row for a reader scanning down it — a blank here
+      would say "no age band set", which is a different and false claim.
+      What changes is the weight.
+    */
+    band: group.ageBand ? (
+      <span
+        className={
+          BAND_LABEL[group.ageBand] === group.name ? "text-body text-muted" : "text-body text-ink"
+        }
+      >
+        {BAND_LABEL[group.ageBand] ?? group.ageBand}
+      </span>
+    ) : null,
+    year: group.schoolYear?.name ? (
+      <span className="text-body text-muted">{group.schoolYear.name}</span>
+    ) : null,
+    children: (
+      <span className="text-body tabular-nums text-ink">
+        {children}
+        <span className="text-muted"> хүүхэд</span>
+      </span>
+    ),
+  };
+
   return (
-    <>
-      <DataRow
-        title={
-          <span className="flex flex-wrap items-center gap-2">
-            {/*
+    <tr>
+      <Td>
+        <span className="flex flex-wrap items-center gap-2">
+          {/*
               ★ The name is the way in — 2026-09-06, at the client's request:
               "нэр гэдэг хэсэгт дэлгэрэнгүй харуулдаг хэсэг байх, дараад орохоор
               дотор нь ирц гэх мэтийг нь засаж болдог".
@@ -209,19 +261,19 @@ function GroupRow({ group }: { group: z.infer<typeof groupListItemSchema> }) {
               carries the product's link colour and a chevron, the same mark
               `StatCard` and `ChildTableRow` use for the same promise.
             */}
-            <Link
-              href={`/groups/${group.id}`}
-              className="group/name inline-flex min-w-0 items-center gap-1 text-primary hover:underline"
-            >
-              <span className="min-w-0 truncate">{group.name}</span>
-              <ChevronRight
-                size={16}
-                aria-hidden="true"
-                className="shrink-0 text-primary/60 transition-transform group-hover/name:translate-x-0.5"
-              />
-            </Link>
-            {group.status === "ARCHIVED" ? <Badge tone="neutral">Архивласан</Badge> : null}
-            {/*
+          <Link
+            href={`/groups/${group.id}`}
+            className="group/name inline-flex min-w-0 items-center gap-1 text-primary hover:underline"
+          >
+            <span className="min-w-0 truncate">{group.name}</span>
+            <ChevronRight
+              size={16}
+              aria-hidden="true"
+              className="shrink-0 text-primary/60 transition-transform group-hover/name:translate-x-0.5"
+            />
+          </Link>
+          {group.status === "ARCHIVED" ? <Badge tone="neutral">Архивласан</Badge> : null}
+          {/*
               ★ Drawn only when it differs from the ordinary case.
 
               Most groups are main-programme and standard-hours, so badging
@@ -229,70 +281,37 @@ function GroupRow({ group }: { group: z.infer<typeof groupListItemSchema> }) {
               chips on every line and teach the eye to skip the strip that the
               exceptions live in. The default is the absence of a badge.
             */}
-            {group.programKind === "ALTERNATIVE" ? (
-              <Badge tone="sky">{PROGRAM_KIND_LABEL.ALTERNATIVE}</Badge>
-            ) : null}
-            {group.attendanceForm && group.attendanceForm !== "STANDARD" ? (
-              <Badge tone="sun">{ATTENDANCE_FORM_LABEL[group.attendanceForm]}</Badge>
-            ) : null}
-          </span>
-        }
-        cells={{
-          /*
-            ★ A band that only repeats the name is written quietly.
-
-            A kindergarten may name a group after its age band — the demo data
-            does, so "Дунд бүлэг" is the group's name *and* the label of its
-            JUNIOR band, and the row printed the same two words twice at the
-            same weight, one column apart. It read as a rendering fault.
-
-            The cell keeps the value, because the column has to mean the same
-            thing on every row for a reader scanning down it — a blank here
-            would say "no age band set", which is a different and false claim.
-            What changes is the weight.
-          */
-          band: group.ageBand ? (
-            <span
-              className={
-                BAND_LABEL[group.ageBand] === group.name
-                  ? "text-body text-muted"
-                  : "text-body text-ink"
-              }
-            >
-              {BAND_LABEL[group.ageBand] ?? group.ageBand}
-            </span>
-          ) : null,
-          year: group.schoolYear?.name ? (
-            <span className="text-body text-muted">{group.schoolYear.name}</span>
-          ) : null,
-          children: (
-            <span className="text-body tabular-nums text-ink">
-              {children}
-              <span className="text-muted"> хүүхэд</span>
-            </span>
-          ),
-        }}
-        actions={
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setManaging(true)}
-            aria-label={`${group.name} — багш хуваарилах`}
-          >
-            <UserPlus size={16} aria-hidden />
-            Багш
-          </Button>
-        }
-      />
-
-      {managing ? (
-        <ManageTeachersDialog
-          groupId={group.id}
-          groupName={group.name}
-          onClose={() => setManaging(false)}
-        />
-      ) : null}
-    </>
+          {group.programKind === "ALTERNATIVE" ? (
+            <Badge tone="sky">{PROGRAM_KIND_LABEL.ALTERNATIVE}</Badge>
+          ) : null}
+          {group.attendanceForm && group.attendanceForm !== "STANDARD" ? (
+            <Badge tone="sun">{ATTENDANCE_FORM_LABEL[group.attendanceForm]}</Badge>
+          ) : null}
+        </span>
+      </Td>
+      {GROUP_COLUMNS.map((column) => (
+        <Td key={column.key}>{cells[column.key]}</Td>
+      ))}
+      <Td className="text-right">
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => setManaging(true)}
+          aria-label={`${group.name} — багш хуваарилах`}
+        >
+          <UserPlus size={16} aria-hidden />
+          Багш
+        </Button>
+        {/* Fixed-position, so it may sit in the cell that opens it. */}
+        {managing ? (
+          <ManageTeachersDialog
+            groupId={group.id}
+            groupName={group.name}
+            onClose={() => setManaging(false)}
+          />
+        ) : null}
+      </Td>
+    </tr>
   );
 }
 

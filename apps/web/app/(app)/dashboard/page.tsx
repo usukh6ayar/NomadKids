@@ -1,11 +1,12 @@
 "use client";
 
 import Image from "next/image";
+import { useId, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { z } from "zod";
 import Link from "next/link";
 import { teacherDashboardSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
-import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { formatLongDate, formatWeekday } from "@/lib/format";
@@ -22,7 +23,7 @@ import { WeeklyAttendance } from "@/components/dashboard/weekly-attendance";
 import { AssessmentProgress } from "@/components/dashboard/assessment-progress";
 import { DashboardChatPreview } from "@/components/dashboard/dashboard-chat-preview";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
-import { ArrowRight, CalendarDays, UsersRound } from "lucide-react";
+import { ArrowRight, ChevronDown } from "lucide-react";
 
 /**
  * "What needs my attention today."
@@ -134,7 +135,18 @@ export default function DashboardPage() {
  * where that ordering is recorded as an open question rather than settled here.
  */
 function TeacherDashboard() {
-  const { session } = useSession();
+  const { session, primaryKindergartenId } = useSession();
+  /*
+    The kindergarten's name for the header. Its own key rather than the admin
+    screen's: that one parses the full record, and one key under two schemas
+    would hand each screen the other's shape.
+  */
+  const kindergarten = useQuery({
+    queryKey: ["kindergarten", primaryKindergartenId ?? "", "name"],
+    queryFn: () => get(`/kindergartens/${primaryKindergartenId}`, z.object({ name: z.string() })),
+    enabled: Boolean(primaryKindergartenId),
+    staleTime: 5 * 60_000,
+  });
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: qk.dashboard.teacher(),
     queryFn: () => get("/dashboard/teacher", teacherDashboardSchema),
@@ -188,28 +200,27 @@ function TeacherDashboard() {
   const weekday = formatWeekday(today);
   const header = (
     <div className="teacher-dashboard-header">
-      <PageHeader
-        title={teacherName}
-        meta={
-          <>
-            {group ? (
-              /*
-                ★ A step quieter than the greeting — the client's reading.
-                Which group and which day are context for the name above them,
-                not two more headings.
-              */
-              <span className="inline-flex min-h-6 items-center gap-1 rounded-pill bg-surface px-2 text-compact font-medium text-muted shadow-sm">
-                <UsersRound size={12} aria-hidden="true" className="text-primary" />
-                {group.name}
-              </span>
-            ) : null}
-            <span className="inline-flex min-h-6 items-center gap-1 rounded-pill bg-surface px-2 text-compact font-medium text-muted shadow-sm">
-              <CalendarDays size={12} aria-hidden="true" className="text-mint-ink" />
-              {formatLongDate(today)} · {weekday}
-            </span>
-          </>
-        }
-      />
+      {/*
+        ★ The kindergarten, the group and the day — client, 2026-09-25, with a
+        drawing: the kindergarten's name as the title, the group in italics
+        beneath it, the date in grey on the right. The teacher's own name is
+        at the head of their side menu already.
+      */}
+      <div data-ui="page-header" className="flex items-start justify-between gap-3">
+        <div className="inline-flex min-w-0 flex-col items-end">
+          <h1 className="max-w-full truncate text-lead font-medium leading-heading text-ink">
+            {kindergarten.data?.name ?? teacherName}
+          </h1>
+          {group ? (
+            <p className="max-w-full truncate text-compact italic leading-snug text-ink">
+              {group.name}
+            </p>
+          ) : null}
+        </div>
+        <p className="min-w-0 pt-0.5 text-right text-compact leading-snug text-faint">
+          {formatLongDate(today)} · {weekday}
+        </p>
+      </div>
       <div className="teacher-dashboard-banner">
         <Image
           src="/illustrations/teacher-reading-with-children.png"
@@ -315,10 +326,9 @@ function TeacherDashboard() {
         <QuickAction
           href={group ? `/groups/${group.id}/attendance` : "/attendance"}
           title="Ирц"
-          description="Өнөөдрийн ирц бүртгэх"
           art="attendance"
         />
-        <QuickAction href="/children" title="Суралцагч" description="Бүлгийн нэрс" art="child" />
+        <QuickAction href="/children" title="Суралцагч" art="child" />
         {/*
           ★ Group-scoped, like Ирц and Явцын үнэлгээ beside it.
 
@@ -332,80 +342,99 @@ function TeacherDashboard() {
           is what is being served; who ate it is marked afterwards, from
           "Хоолны бүртгэл" in the menu below.
         */}
-        <QuickAction href="/menu" title="Хоолны цэс" description="Өдрийн хоол, харшил" art="food" />
-        <QuickAction
-          href="/notifications/new"
-          title="Мэдээ"
-          description="Зураг, мэдээ нийтлэх"
-          art="notice"
-        />
-        <QuickAction
-          href="/surveys"
-          title="Судалгаа"
-          description="Шинэ судалгаа үүсгэх"
-          art="survey"
-        />
+        <QuickAction href="/menu" title="Хоолны цэс" art="food" />
+        <QuickAction href="/notifications/new" title="Мэдээ" art="notice" />
+        <QuickAction href="/surveys" title="Судалгаа" art="survey" />
         <QuickAction
           href={group ? `/groups/${group.id}/assessment` : "/children"}
           title="Явцын үнэлгээ"
-          description="Хүүхдийн үнэлгээ оруулах"
           art="progress"
         />
-        <QuickAction
-          href="/reports"
-          title="Тайлан"
-          description="Бүлгээ сараар харах"
-          art="report"
-        />
-        <QuickAction
-          href="/documents"
-          title="Баримт бичгийн сан"
-          description="Хөтөлбөр, арга зүй, журам"
-          art="documents"
-        />
+        <QuickAction href="/reports" title="Тайлан" art="report" />
+        <QuickAction href="/documents" title="Баримт бичгийн сан" art="documents" />
       </div>
 
-      <div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-[1.05fr_1.1fr_1fr_1.35fr]">
-        <AttendanceToday />
-        <WeeklyAttendance />
-        <MonthBirthdays birthdays={birthdaysThisMonth} />
-        <AssessmentProgress
-          progress={termProgress}
-          href={group ? `/groups/${group.id}/assessment` : "/children"}
-        />
-      </div>
+      <DesktopCollapsible title="Самбарын үзүүлэлтүүд">
+        <div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-[1.05fr_1.1fr_1fr_1.35fr]">
+          <AttendanceToday />
+          <WeeklyAttendance />
+          <MonthBirthdays birthdays={birthdaysThisMonth} />
+          <AssessmentProgress
+            progress={termProgress}
+            href={group ? `/groups/${group.id}/assessment` : "/children"}
+          />
+        </div>
 
-      <div className="grid items-stretch gap-4 xl:grid-cols-[1.05fr_1.3fr_1fr]">
-        <TodayMenu />
-        <ClassBoardNotice notice={boardNotice} />
-        <DashboardChatPreview />
-      </div>
+        <div className="grid items-stretch gap-4 xl:grid-cols-[1.05fr_1.3fr_1fr]">
+          <TodayMenu />
+          <ClassBoardNotice notice={boardNotice} />
+          <DashboardChatPreview />
+        </div>
+      </DesktopCollapsible>
     </div>
   );
 }
 
-function QuickAction({
-  href,
-  title,
-  description,
-  art,
-}: {
-  href: string;
-  title: string;
-  description: string;
-  art: ArtName;
-}) {
+/**
+ * The widget bands under the quick tiles, collapsible on the web only.
+ *
+ * ★ Not `Disclosure`. A closed `<details>` hides its content in every width,
+ * and on a phone these bands must always show. Here the toggle exists only
+ * from `lg` — where the shell switches to its desktop sidebar — and a closed
+ * state hides the content with `lg:hidden`, so the phone never sees either.
+ */
+function DesktopCollapsible({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(true);
+  const contentId = useId();
+
+  return (
+    <section className="flex flex-col gap-4">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={contentId}
+        onClick={() => setOpen((value) => !value)}
+        className="hidden min-h-11 w-full items-center gap-3 rounded-card border border-border bg-surface/88 px-4 py-2.5 text-left shadow-sm transition hover:shadow-md lg:flex"
+      >
+        <span className="flex-1 text-lead font-semibold text-ink">{title}</span>
+        <ChevronDown
+          size={18}
+          aria-hidden="true"
+          className={
+            open
+              ? "shrink-0 rotate-180 text-muted transition-transform"
+              : "shrink-0 text-muted transition-transform"
+          }
+        />
+      </button>
+      <div
+        id={contentId}
+        className={open ? "flex flex-col gap-4" : "flex flex-col gap-4 lg:hidden"}
+      >
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function QuickAction({ href, title, art }: { href: string; title: string; art: ArtName }) {
   return (
     <Link
       href={href}
-      className="group relative flex min-h-[136px] flex-col items-start gap-2 rounded-card border border-border bg-surface/88 p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:min-h-[92px] sm:flex-row sm:items-center sm:gap-3 sm:p-3.5"
+      /*
+        ★ A row on a phone too — client, 2026-09-25, with a drawing: the
+        picture on the left, the name beside it, the arrow in the corner, and
+        less height than the stacked 136px tile it replaces.
+      */
+      className="group relative flex min-h-[88px] flex-row items-center gap-2 rounded-card border border-border bg-surface/88 p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:min-h-[92px] sm:gap-3 sm:p-3.5"
     >
-      <span aria-hidden="true" className="grid size-12 shrink-0 place-items-center sm:size-14">
-        <Art name={art} size={42} />
+      <span aria-hidden="true" className="grid size-10 shrink-0 place-items-center sm:size-14">
+        <Art name={art} size={42} className="size-9 object-contain sm:size-[42px]" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-lead font-semibold leading-heading text-ink">{title}</span>
-        <span className="mt-0.5 block text-caption leading-snug text-muted">{description}</span>
+        <span className="block text-body font-bold leading-heading text-ink sm:text-lead sm:font-semibold">
+          {title}
+        </span>
       </span>
       <span className="absolute right-3 top-3 grid size-8 shrink-0 place-items-center rounded-pill bg-surface text-primary shadow-sm transition group-hover:bg-primary group-hover:text-white sm:static sm:size-9">
         <ArrowRight size={17} aria-hidden="true" />

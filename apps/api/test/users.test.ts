@@ -475,6 +475,36 @@ describe("own profile", () => {
     expect(res.status).toBe(200);
   });
 
+  /**
+   * The three lines the family's "Цэцэрлэгийн мэдээлэл" card reads off a
+   * teacher — client, 2026-09-24. Both the teacher and an administrator can
+   * fill them in, and the profile read hands them back.
+   */
+  it("carries мэргэжил, мэргэшлийн зэрэг and төгссөн сургууль, written by either", async () => {
+    const mine = await authed(request(server()).patch("/v1/me/profile"), teacherA).send({
+      specialization: "СӨБ-ийн багш",
+      qualification: "Заах аргач",
+      education: "МУБИС",
+    });
+    expect(mine.status).toBe(200);
+
+    const read = await request(server()).get("/v1/me/profile").set("Cookie", teacherA.cookies);
+    expect(read.body).toMatchObject({
+      specialization: "СӨБ-ийн багш",
+      qualification: "Заах аргач",
+      education: "МУБИС",
+    });
+
+    const byAdmin = await authed(
+      request(server()).patch(`/v1/users/${a.teacherUser.id}`),
+      adminA,
+    ).send({ qualification: "Тэргүүлэх багш" });
+    expect(byAdmin.status).toBe(200);
+
+    const after = await db.user.findUniqueOrThrow({ where: { id: a.teacherUser.id } });
+    expect(after.qualification).toBe("Тэргүүлэх багш");
+  });
+
   it("IGNORES an attempt to reactivate a deactivated account", async () => {
     // ★ `isActive` is absent from the profile DTO, and unknown properties are
     // stripped — so a user cannot undo an admin's deactivation.

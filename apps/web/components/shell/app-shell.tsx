@@ -13,9 +13,11 @@ import {
   Search,
   Settings as SettingsIcon,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import {
   createContext,
+  useContext,
   isValidElement,
   useId,
   useState,
@@ -36,8 +38,9 @@ import { z } from "zod";
 import { Input } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/states";
 import { qk } from "@/lib/api/keys";
+import { useMyProfile } from "@/lib/use-my-profile";
 import { useLogout, useSession } from "@/lib/auth/session";
-import { formatRelative, fullName, initials } from "@/lib/format";
+import { formatRelative, fullName, groupLabel, initials, shortName } from "@/lib/format";
 import { BRAND } from "@/lib/vocabulary";
 import { BrandWordmark } from "@/components/ui/brand-wordmark";
 import { Art } from "@/components/ui/art";
@@ -46,6 +49,13 @@ import { useMyGroup } from "@/components/dashboard/use-my-group";
 import { ChildAvatar } from "@/components/media/media-image";
 import { ChatWidget } from "@/components/chat/chat-widget";
 import { BackButton } from "@/components/ui/back-button";
+import { AdministrationTag } from "@/components/survey/administration-tag";
+import {
+  ADMINISTRATION_AUTHOR,
+  administrationSurveysSchema,
+  useAdministrationSurveyUnread,
+  useReadsAdministrationSurveys,
+} from "@/lib/administration-surveys";
 
 /** The bell panel reads five rows; the feed reads fifteen and paginates. */
 const bellListSchema = paginated(notificationSchema);
@@ -66,8 +76,20 @@ export interface NavItem {
   href?: string;
   label: string;
   icon: ReactNode;
-  /** Shows the unread-notification count. Only one item ever sets this. */
-  badge?: "unread";
+  /**
+   * The drawing the phone bar uses, when it differs from the menu's.
+   *
+   * ★ The guardian bar is a floating pill of plain glyphs (client,
+   * 2026-09-25) while the menu beside it carries their illustrated set. One
+   * `icon` cannot be both, and copying the nav array to change five icons
+   * would leave two lists to keep in step.
+   */
+  barIcon?: ReactNode;
+  /**
+   * `unread` shows the unread-notification count — only one item sets it.
+   * `surveys` shows the administration's surveys a teacher has not opened.
+   */
+  badge?: "unread" | "surveys";
   /** Small trailing context used by the guardian service row. */
   tag?: string;
   /** Runs instead of navigating. See `href`. */
@@ -108,7 +130,7 @@ export interface NavSection {
   entries: {
     label: string;
     href?: string;
-    badge?: "unread";
+    badge?: "unread" | "surveys";
     tag?: string;
     /**
      * A small mark before the label — a lucide icon at the same weight as
@@ -155,7 +177,31 @@ function navIconTone(label: string) {
 }
 
 function isBackgroundlessArt(icon: ReactNode) {
-  return isValidElement(icon) && icon.type === Art;
+  return (isValidElement(icon) && icon.type === Art) || isRailGlyph(icon);
+}
+
+/**
+ * A thin, soft-grey line glyph for the teacher's side menu — client,
+ * 2026-09-25: "маш нарийн зөөлөн саарал". Drawn with no tinted square behind
+ * it, like `Art`; the row's colour is what it takes, so the current page's
+ * glyph turns blue with its label.
+ */
+export function RailGlyph({ icon: Icon }: { icon: LucideIcon }) {
+  return <Icon size={22} strokeWidth={1.35} aria-hidden="true" />;
+}
+RailGlyph.displayName = "RailGlyph";
+
+/*
+  ★ By name, not by reference. `icon.type === RailGlyph` fails whenever the
+  element was made from another copy of this function — Fast Refresh swaps the
+  module under a layout still holding the old one — and the row then falls back
+  to `navIconTone`'s coloured square.
+*/
+function isRailGlyph(icon: ReactNode) {
+  return (
+    isValidElement(icon) &&
+    (icon.type as { displayName?: string } | undefined)?.displayName === "RailGlyph"
+  );
 }
 
 /**
@@ -352,7 +398,7 @@ function HeaderSearch({ className }: { className?: string }) {
         Хүүхэд хайх
       </label>
       <div className="group relative rounded-control border border-border bg-surface shadow-sm transition-all focus-within:border-primary focus-within:shadow-md">
-        <span className="pointer-events-none absolute left-2 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-control bg-primary-soft text-primary transition-colors group-focus-within:bg-primary group-focus-within:text-primary-ink">
+        <span className="pointer-events-none absolute left-2 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-control text-primary transition-colors">
           <Search size={17} aria-hidden="true" />
         </span>
         {/*
@@ -408,7 +454,14 @@ function HeaderSearch({ className }: { className?: string }) {
  * job was to repeat navigation already present beside it.
  */
 function NotificationBell() {
-  const count = useUnreadCount();
+  /*
+    ★ The administration's unopened surveys count toward the bell — client,
+    2026-09-17: "цэцэрлэгийн захиргаанаас ямар судалгаа авч байгаа нь хонх дээр
+    харагд". They are not notices and do not live on the board (a board post
+    would reach every family too), so the two counts are added here rather
+    than one pretending to be the other.
+  */
+  const count = useUnreadCount() + useAdministrationSurveyUnread();
   const [open, setOpen] = useState(false);
 
   return (
@@ -520,6 +573,7 @@ function NotificationBellList({
   });
 
   const items = data?.items ?? [];
+  const surveys = useUnreadAdministrationSurveys();
 
   if (isLoading) {
     return (
@@ -531,7 +585,7 @@ function NotificationBellList({
     );
   }
 
-  if (items.length === 0) {
+  if (items.length === 0 && surveys.length === 0) {
     return <p className="px-4 py-8 text-center text-body text-muted">Мэдэгдэл алга байна.</p>;
   }
 
@@ -554,6 +608,30 @@ function NotificationBellList({
       ) : null}
 
       <ul className="min-h-0 flex-1 divide-y divide-border-soft overflow-y-auto">
+        {surveys.map((survey) => (
+          <li key={`survey-${survey.id}`}>
+            <Link
+              href={`/surveys/administration/${survey.id}`}
+              onClick={onNavigate}
+              className="flex items-start gap-2.5 bg-primary-soft/60 px-4 py-3 transition-colors hover:bg-primary-soft"
+            >
+              <span aria-hidden="true" className="mt-1.5 size-2 shrink-0 rounded-pill bg-primary" />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1.5 text-caption font-medium text-primary">
+                  <AdministrationTag />
+                  {ADMINISTRATION_AUTHOR} · Судалгаа
+                </span>
+                <span className="block truncate text-body font-semibold text-ink">
+                  {survey.title}
+                </span>
+                <span className="sr-only">Уншаагүй</span>
+                <span className="mt-0.5 block text-caption text-muted">
+                  {formatRelative(survey.publishedAt ?? survey.createdAt)}
+                </span>
+              </span>
+            </Link>
+          </li>
+        ))}
         {items.map((notification) => {
           const unread = notification.reads.length === 0;
           return (
@@ -798,14 +876,22 @@ export function AppShell({
           </main>
         </div>
 
-        <BottomBar nav={bottomNav} hideOnDesktop={desktopSidebar} />
+        <BottomBar
+          nav={bottomNav}
+          hideOnDesktop={desktopSidebar}
+          floating={variant === "parent"}
+          pill={variant === "teacher" && (teacherTheme || resolvedTheme === "admin")}
+        />
 
         {/*
-          Teachers and administrators already have Chat in navigation. Parents
-          reach it from the floating trigger. Kitchen and finance workspaces
-          intentionally have no communications surface.
+          ★ Back for teachers and administrators — 2026-09-25, the client: the
+          chat button at the bottom right "олга болсон байна гаргаад ир". It was
+          withdrawn from them on 2026-09-07 for covering register actions and
+          form controls; the client has asked for it regardless. It stays off
+          their /chat page, which is the chat itself. Kitchen and finance
+          workspaces intentionally have no communications surface.
         */}
-        {!hasDedicatedChatNavigation && !isSupportWorkspace ? <ChatWidget /> : null}
+        {!isSupportWorkspace && !(hasDedicatedChatNavigation && isChatPage) ? <ChatWidget /> : null}
 
         <MobileMenuDrawer
           open={menuOpen}
@@ -899,9 +985,24 @@ function Brand({ subtitle }: { subtitle: string }) {
  * product gives a teacher one group, and a switcher would invent a choice that
  * does not exist.
  */
-function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
+function WhoAmI({
+  variant,
+  isAdmin,
+  part = "all",
+}: {
+  variant: Variant;
+  isAdmin: boolean;
+  /**
+   * The teacher's menu draws the identity at its head and the two actions at
+   * its foot — client, 2026-09-25. Every other menu keeps all three together.
+   */
+  part?: "all" | "identity" | "actions";
+}) {
   const { session, hasRole } = useSession();
   const logout = useLogout();
+  // Same key as the settings screen, so an upload there refreshes the picture
+  // here without a reload.
+  const { data: profile } = useMyProfile();
 
   // The teacher variant covers three staff roles; only a real teacher has a
   // group to show beneath their name.
@@ -922,10 +1023,39 @@ function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
   */
   const context =
     isTeacher && count === 1 && group
-      ? group.name
+      ? groupLabel(group.name)
       : variant === "platform"
         ? "Платформын удирдлага"
         : ROLE_LABEL[highestRole(session?.memberships)];
+
+  if (part === "identity") {
+    return (
+      <div className="flex shrink-0 flex-col">
+        <div className="flex items-center gap-2.5 px-1.5 py-1">
+          {/*
+            ★ The photograph from Хувийн тохиргоо — 2026-09-25, the client: a
+            teacher who had uploaded one still saw "С" here. The session carries
+            no photo, so this reads the profile the settings screen writes and
+            invalidates; initials remain the answer when there is none.
+          */}
+          {profile?.photoMediaFileId ? (
+            <ChildAvatar child={profile} size={40} className="shrink-0" />
+          ) : (
+            <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-primary-soft text-body font-bold text-primary">
+              {initials(session?.user)}
+            </span>
+          )}
+          <div className="flex min-w-0 flex-1 flex-col justify-center">
+            <span className="block truncate text-body font-semibold leading-tight text-ink">
+              {/* `С.Дэлгэрмаа` in the teacher shell — the client's 2026-09-25 note. */}
+              {variant === "teacher" ? shortName(session?.user) : fullName(session?.user)}
+            </span>
+            <span className="block truncate text-caption text-muted">{context}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     /*
@@ -952,17 +1082,32 @@ function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
         gets all three, because `SidebarContent` is the one menu the desktop
         column and the phone drawer both render — "5 хэрэглэгчийг тавууланг нь".
       */}
-      <div className="flex items-center gap-2.5 px-1.5 py-1">
-        <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-primary-soft text-body font-bold text-primary">
-          {initials(session?.user)}
-        </span>
-        <div className="flex min-w-0 flex-1 flex-col justify-center">
-          <span className="block truncate text-body font-semibold leading-tight text-ink">
-            {fullName(session?.user)}
-          </span>
-          <span className="block truncate text-caption text-muted">{context}</span>
-        </div>
-      </div>
+      {part === "all" ? (
+        <>
+          <div className="flex items-center gap-2.5 px-1.5 py-1">
+            {/*
+            ★ The photograph from Хувийн тохиргоо — 2026-09-25, the client: a
+            teacher who had uploaded one still saw "С" here. The session carries
+            no photo, so this reads the profile the settings screen writes and
+            invalidates; initials remain the answer when there is none.
+          */}
+            {profile?.photoMediaFileId ? (
+              <ChildAvatar child={profile} size={40} className="shrink-0" />
+            ) : (
+              <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-primary-soft text-body font-bold text-primary">
+                {initials(session?.user)}
+              </span>
+            )}
+            <div className="flex min-w-0 flex-1 flex-col justify-center">
+              <span className="block truncate text-body font-semibold leading-tight text-ink">
+                {/* `С.Дэлгэрмаа` in the teacher shell — the client's 2026-09-25 note. */}
+                {variant === "teacher" ? shortName(session?.user) : fullName(session?.user)}
+              </span>
+              <span className="block truncate text-caption text-muted">{context}</span>
+            </div>
+          </div>
+        </>
+      ) : null}
 
       {/*
         ★ "Хувийн тохиргоо", and it is the row's whole accessible name now.
@@ -976,7 +1121,23 @@ function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
         href="/settings"
         className="group flex min-h-[44px] items-center gap-2.5 rounded-card px-2.5 py-2 text-compact font-medium text-ink transition-colors hover:bg-primary-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
-        <SettingsIcon size={17} aria-hidden="true" className="shrink-0 text-muted" />
+        {/*
+          ★ The guardian menu draws its own set — client, 2026-09-25. These two
+          rows are shared by every role (`SidebarContent` is one menu), so the
+          drawing is chosen per variant rather than swapped outright: a teacher
+          keeps the lucide glyph they have always had.
+        */}
+        {variant === "parent" ? (
+          <Art name="navParentSettings" size={20} className="size-5 shrink-0" />
+        ) : (
+          // Thin grey line glyphs, the teacher's and the administrator's — 2026-09-25.
+          <SettingsIcon
+            size={22}
+            strokeWidth={1.35}
+            aria-hidden="true"
+            className="shrink-0 text-faint"
+          />
+        )}
         <span className="min-w-0 flex-1 truncate">Хувийн тохиргоо</span>
         <ChevronRight
           size={16}
@@ -1000,7 +1161,11 @@ function WhoAmI({ variant, isAdmin }: { variant: Variant; isAdmin: boolean }) {
         onClick={() => void logout()}
         className="flex min-h-[44px] items-center gap-2.5 rounded-card px-2.5 py-2 text-compact font-medium text-danger transition-colors hover:bg-danger-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
       >
-        <LogOut size={17} aria-hidden="true" className="shrink-0" />
+        {variant === "parent" ? (
+          <Art name="navParentSignOut" size={20} className="size-5 shrink-0" />
+        ) : (
+          <LogOut size={17} aria-hidden="true" className="shrink-0" />
+        )}
         Системээс гарах
       </button>
     </div>
@@ -1025,7 +1190,6 @@ function SidebarContent({
   variant,
   isAdmin,
   childSwitcher,
-  showTeacherArt = false,
 }: {
   nav: NavItem[];
   sections?: NavSection[];
@@ -1035,9 +1199,11 @@ function SidebarContent({
   /** Whether the signed-in person administers this kindergarten. */
   isAdmin: boolean;
   childSwitcher?: ChildSwitcher;
-  showTeacherArt?: boolean;
 }) {
   const pathname = usePathname();
+  // The administrator's menu is the teacher's design too — 2026-09-25.
+  const railTheme = useContext(WorkspaceThemeContext);
+  const teacherRail = railTheme === "teacher" ? !isAdmin : railTheme === "admin";
   const sectionEntries =
     sections?.flatMap((section) => section.entries).filter((entry) => entry.href !== "/settings") ??
     [];
@@ -1061,7 +1227,20 @@ function SidebarContent({
 
   return (
     <>
-      <Brand subtitle={subtitle} />
+      {/*
+        ★ The teacher's menu opens on the person, not the brand — client,
+        2026-09-25, with a drawing: photograph, name and group at the head,
+        Хувийн тохиргоо and Системээс гарах alone at the foot.
+      */}
+      {/*
+        A family's menu opens straight on its rows — 2026-09-25, the client:
+        "лого бичиг арилгаад дээш шах".
+      */}
+      {teacherRail ? (
+        <WhoAmI variant={variant} isAdmin={isAdmin} part="identity" />
+      ) : variant === "parent" ? null : (
+        <Brand subtitle={subtitle} />
+      )}
 
       {variant === "parent" ? (
         <ParentSidebarContent
@@ -1202,20 +1381,6 @@ function SidebarContent({
               className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-surface to-transparent"
             />
           </div>
-
-          {showTeacherArt ? (
-            <div className="relative hidden h-36 shrink-0 overflow-hidden rounded-card bg-mint/70 xl:block">
-              <Image
-                src="/illustrations/teacher-talking-with-children.png"
-                alt=""
-                fill
-                priority
-                unoptimized
-                sizes="264px"
-                className="object-cover object-[68%_43%]"
-              />
-            </div>
-          ) : null}
         </>
       )}
 
@@ -1235,7 +1400,15 @@ function SidebarContent({
         component, so the drawer gets the correct role line too — which the
         pre-merge code on neither side did.
       */}
-      <WhoAmI variant={variant} isAdmin={isAdmin} />
+      {/*
+        A family's foot is the two actions alone — 2026-09-25, the client: the
+        guardian's name and picture above Хувийн тохиргоо are not needed.
+      */}
+      <WhoAmI
+        variant={variant}
+        isAdmin={isAdmin}
+        part={teacherRail || variant === "parent" ? "actions" : "all"}
+      />
     </>
   );
 }
@@ -1334,7 +1507,7 @@ function ParentSidebarDisclosure({
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen((current) => !current)}
-        className="flex min-h-[47px] w-full items-center gap-3 rounded-card px-3 py-2.5 text-left text-lead text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
+        className="flex min-h-[47px] w-full items-center gap-3 rounded-card px-3 py-2.5 text-left text-compact text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800"
       >
         <span className="grid size-7 shrink-0 place-items-center text-sky-500">{section.icon}</span>
         <span className="min-w-0 flex-1 leading-snug">{section.title}</span>
@@ -1405,7 +1578,7 @@ function ParentSidebarRow({
     </>
   );
   const className = cn(
-    "flex min-h-[47px] w-full items-center gap-3 rounded-card px-3 py-2.5 text-left text-lead transition-colors",
+    "flex min-h-[47px] w-full items-center gap-3 rounded-card px-3 py-2.5 text-left text-compact transition-colors",
     active
       ? "bg-sky-50 font-semibold text-sky-700"
       : item.href
@@ -1481,7 +1654,6 @@ function Sidebar({
         variant={variant}
         isAdmin={isAdmin}
         childSwitcher={childSwitcher}
-        showTeacherArt={teacherTheme}
       />
     </nav>
   );
@@ -1501,7 +1673,7 @@ function ChildSwitcherControl({ switcher }: { switcher: ChildSwitcher }) {
   return (
     <label className="relative flex min-h-[64px] w-full cursor-pointer items-center gap-3 rounded-card border border-sky-100 bg-sky-50/40 px-3 py-2.5 text-slate-700 transition-colors hover:bg-sky-50 focus-within:ring-2 focus-within:ring-sky-400 focus-within:ring-offset-2">
       <ChildAvatar child={selected} size={44} className="bg-sky-100 text-sky-700" />
-      <span className="min-w-0 flex-1 truncate text-lead font-semibold">{fullName(selected)}</span>
+      <span className="min-w-0 flex-1 truncate text-body font-semibold">{fullName(selected)}</span>
       <ChevronDown size={20} className="shrink-0 text-slate-700" aria-hidden="true" />
       <select
         id="child-switcher"
@@ -1617,14 +1789,25 @@ function MobileHeader({
   subtitle: string;
   showNotifications: boolean;
 }) {
+  // The teacher's and the family's bars are pressed as far as the 44px tap
+  // floor allows — client, 2026-09-25: "лого жижигрүүлэн зайг дээш шахаарай",
+  // "ерөнхий зай эзлэхгүй сайн шах". The bell and the brand link are 44px, so
+  // the bar is those plus a hairline of padding and nothing more.
+  const theme = useContext(WorkspaceThemeContext);
+  const compact = theme === "teacher" || theme === "parent";
+
   return (
     <header
       className={cn(
-        "sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-surface px-4 py-3 lg:hidden",
+        "sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-surface px-4 lg:hidden",
+        compact ? "py-0.5" : "py-3",
       )}
     >
-      <Link href="/" className="flex min-h-[44px] items-center gap-3">
-        <span data-brand-mark className="grid size-[46px] shrink-0 place-items-center">
+      <Link href="/" className={cn("flex min-h-[44px] items-center", compact ? "gap-2" : "gap-3")}>
+        <span
+          data-brand-mark
+          className={cn("grid shrink-0 place-items-center", compact ? "size-8" : "size-[46px]")}
+        >
           <Image
             src="/brand-logo.png"
             alt={BRAND}
@@ -1634,8 +1817,10 @@ function MobileHeader({
           />
         </span>
         <span className="min-w-0">
-          <BrandWordmark className="block text-body" />
-          <span className="block text-caption text-muted">{subtitle}</span>
+          <BrandWordmark className={cn("block text-body", compact && "leading-tight")} />
+          <span className={cn("block text-caption text-muted", compact && "leading-tight")}>
+            {subtitle}
+          </span>
         </span>
       </Link>
 
@@ -1657,7 +1842,19 @@ function MobileHeader({
   );
 }
 
-function BottomBar({ nav, hideOnDesktop }: { nav: NavItem[]; hideOnDesktop: boolean }) {
+function BottomBar({
+  nav,
+  hideOnDesktop,
+  floating = false,
+  pill = false,
+}: {
+  nav: NavItem[];
+  hideOnDesktop: boolean;
+  /** The guardian's bar — `PillBottomBar`, under its own test id. */
+  floating?: boolean;
+  /** The teacher's rounded bar of plain glyphs — see `PillBottomBar`. */
+  pill?: boolean;
+}) {
   const pathname = usePathname();
 
   // One tab lit, resolved across the bar's own five — see `activeHrefIn`. The
@@ -1666,6 +1863,25 @@ function BottomBar({ nav, hideOnDesktop }: { nav: NavItem[]; hideOnDesktop: bool
     pathname,
     nav.map((entry) => entry.href),
   );
+
+  /*
+    ★ The families' bar is the teacher's now — 2026-09-25, the client's
+    drawing: the current tab in a pale blue square inside the bar, where it
+    used to lift out as a filled blue disc.
+  */
+  if (floating) {
+    return (
+      <PillBottomBar
+        nav={nav}
+        activeHref={activeHref}
+        hideOnDesktop={hideOnDesktop}
+        testId="parent-bottom-bar"
+      />
+    );
+  }
+  if (pill) {
+    return <PillBottomBar nav={nav} activeHref={activeHref} hideOnDesktop={hideOnDesktop} />;
+  }
 
   return (
     <nav
@@ -1715,6 +1931,97 @@ function BottomBar({ nav, hideOnDesktop }: { nav: NavItem[]; hideOnDesktop: bool
           activeHref={activeHref}
         />
       ))}
+    </nav>
+  );
+}
+
+/**
+ * The guardian's phone bar — client, 2026-09-25, to their own drawing.
+ *
+ * ★ A pill that floats, rather than a strip welded to the screen's edge. The
+ * card sits clear of the bottom with the page visible underneath it, which is
+ * the whole difference between the drawing and what was there.
+ *
+ * ★★ The current tab rises out of the bar as a blue disc. That is the
+ * drawing's own way of saying "you are here" — the client was explicit that
+ * the disc follows whichever tab is open rather than belonging to Хоол — and
+ * it is the reason this bar is its own component: the shared `NavLink` draws
+ * a tinted well behind a glyph, which cannot become a raised circle without
+ * making every other menu's rows argue about it.
+ *
+ * ★★★ Glyphs, no words. Also the drawing. The label survives as the link's
+ * accessible name (`sr-only`), so a screen reader still reads "Нүүр" and
+ * `aria-current` still says which one is open — a bar of five unlabelled
+ * pictures is a keyboard trap for anyone who cannot see them.
+ */
+/**
+ * The teacher's phone bar — the client's 2026-09-25 drawing: a white rounded
+ * bar floating over the page on a soft blue shadow, five grey line glyphs and
+ * no words, the current one in a pale blue rounded square with its glyph in
+ * blue.
+ *
+ * ★ The families' bar too since the same day — theirs used to lift the
+ * current tab out as a filled disc. The label is still every tab's accessible
+ * name, only not drawn.
+ */
+function PillBottomBar({
+  nav,
+  activeHref,
+  hideOnDesktop,
+  testId = "teacher-bottom-bar",
+}: {
+  nav: NavItem[];
+  activeHref: string | null;
+  hideOnDesktop: boolean;
+  testId?: string;
+}) {
+  return (
+    <nav
+      data-print-hide
+      aria-label="Доод цэс"
+      data-testid={testId}
+      className={cn(
+        "pointer-events-none fixed inset-x-0 bottom-0 z-20 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-3",
+        "transform-[translateZ(0)] will-change-transform",
+        hideOnDesktop && "lg:hidden",
+      )}
+    >
+      <div className="pointer-events-auto mx-auto flex max-w-[520px] items-center justify-between gap-1 rounded-pill bg-surface px-2 py-1.5 shadow-[0_6px_24px_-6px_rgb(37_99_235_/_0.28)]">
+        {nav.map((item) => {
+          const active = Boolean(item.href) && item.href === activeHref;
+          const content = (
+            <>
+              <span
+                className={cn(
+                  "relative grid h-12 w-14 place-items-center rounded-card transition-colors duration-150 [&_svg]:size-6",
+                  active ? "bg-primary-soft text-primary" : "text-muted",
+                )}
+              >
+                {item.barIcon ?? item.icon}
+                {item.badge === "unread" ? <UnreadDot /> : null}
+                {item.badge === "surveys" ? <SurveyUnreadDot /> : null}
+              </span>
+              <span className="sr-only">{item.label}</span>
+            </>
+          );
+          const className = "flex min-h-12 flex-1 items-center justify-center rounded-card";
+
+          return item.href ? (
+            <Link
+              key={item.label}
+              href={item.href}
+              aria-current={active ? "page" : undefined}
+              className={className}
+            >
+              {content}
+            </Link>
+          ) : (
+            <button key={item.label} type="button" onClick={item.onSelect} className={className}>
+              {content}
+            </button>
+          );
+        })}
+      </div>
     </nav>
   );
 }
@@ -1784,7 +2091,10 @@ function NavLink({
 
   const horizontal = orientation === "horizontal";
   const backgroundlessIcon = isBackgroundlessArt(item.icon);
-
+  // The teacher's side menu reads at the size of "Хувийн тохиргоо" beneath it —
+  // client, 2026-09-25.
+  const railTheme = useContext(WorkspaceThemeContext);
+  const compactRail = (railTheme === "teacher" || railTheme === "admin") && !horizontal;
   const className = cn(
     "relative flex items-center rounded-control font-medium transition-colors",
     horizontal
@@ -1796,7 +2106,7 @@ function NavLink({
         // `items-stretch`, so the tallest tab sets the height for all five and
         // the row stays even.
         "min-h-[60px] flex-1 flex-col justify-center gap-1 px-1 py-2 text-center text-caption"
-      : "min-h-[44px] gap-[11px] px-3 py-2.5 text-lead",
+      : cn("min-h-[44px] gap-[11px] px-3 py-2.5", compactRail ? "text-compact" : "text-lead"),
     /*
       ★ On a phone the tint is on the **icon**, not on the tab.
 
@@ -1850,10 +2160,12 @@ function NavLink({
           !horizontal && "size-9 rounded-control",
           horizontal && active && "scale-105",
           horizontal && active && !backgroundlessIcon && "bg-primary-soft",
+          !horizontal && !active && isRailGlyph(item.icon) && "text-faint",
         )}
       >
-        {item.icon}
+        {horizontal ? (item.barIcon ?? item.icon) : item.icon}
         {item.badge === "unread" ? <UnreadDot /> : null}
+        {item.badge === "surveys" ? <SurveyUnreadDot /> : null}
       </span>
       <span className={cn(horizontal && "leading-tight", horizontal && active && "font-semibold")}>
         {item.label}
@@ -1893,6 +2205,41 @@ function NavLink({
  * item read the same query key, so they cannot disagree — and they share a
  * single request, which is the whole point of the cache key being stable.
  */
+/**
+ * The administration's surveys this teacher has not opened, for the bell's
+ * panel. The newest ten are asked for and the opened ones dropped — the badge's
+ * number comes from the count endpoint, so a long backlog still reads right
+ * even when the panel shows only the recent few.
+ */
+function useUnreadAdministrationSurveys() {
+  const { enabled, kindergartenId } = useReadsAdministrationSurveys();
+  const { data } = useQuery({
+    queryKey: qk.administrationSurveys(kindergartenId, 0),
+    queryFn: () =>
+      get(
+        `/kindergartens/${kindergartenId}/surveys/administration?page=1&pageSize=10`,
+        administrationSurveysSchema,
+      ),
+    enabled,
+    staleTime: 30_000,
+    retry: false,
+  });
+  return enabled ? (data?.items ?? []).filter((survey) => !survey.isRead) : [];
+}
+
+/** `UnreadDot`'s twin for the Судалгаа row — see `useAdministrationSurveyUnread`. */
+function SurveyUnreadDot() {
+  const count = useAdministrationSurveyUnread();
+  if (count === 0) return null;
+
+  return (
+    <span className="absolute -right-2.5 -top-1.5 flex min-w-[18px] items-center justify-center rounded-pill bg-danger px-1 text-caption font-bold leading-[18px] text-white">
+      <span aria-hidden="true">{count > 99 ? "99+" : count}</span>
+      <span className="sr-only">{count} шинэ судалгаа</span>
+    </span>
+  );
+}
+
 function useUnreadCount(): number {
   const { data } = useQuery({
     queryKey: qk.unreadCount(),

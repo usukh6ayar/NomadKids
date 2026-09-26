@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { TONE_SURFACE, type Tone } from "@/components/ui/tone";
+import { TONE_GLYPH, TONE_SURFACE, type Tone } from "@/components/ui/tone";
+import { isArtwork } from "@/components/ui/art";
 
 /**
  * A glyph on a tinted square — the product's one way of giving a thing a face.
@@ -52,6 +53,16 @@ import { TONE_SURFACE, type Tone } from "@/components/ui/tone";
  */
 const BRAND = "bg-primary-soft text-primary";
 
+/**
+ * The brand tint as a glyph colour — the stroke alone, no tile.
+ *
+ * ★ Client, 2026-09-24: "арын өнгөнүүдийг арилгаад зөвхөн зураасан icon
+ * үлдээ". A lucide glyph now takes this (or `TONE_GLYPH`); the illustrated 3D
+ * icons keep the filled chip they were drawn for, which the same instruction
+ * asked to leave alone.
+ */
+const BRAND_GLYPH = "text-primary";
+
 const SIZE = {
   /** Inline, beside a row title. */
   sm: "size-8 [&>svg]:size-4",
@@ -85,17 +96,28 @@ export function IconChip({
   label?: string;
   className?: string;
 }) {
+  // A drawing keeps its tinted well; a glyph is now just the glyph.
+  const artwork = isArtwork(icon);
+
   return (
     <span
       {...(label ? { role: "img", "aria-label": label } : { "aria-hidden": "true" })}
-      data-icon-surface={surface ? "tinted" : "none"}
+      data-icon-surface={surface && artwork ? "tinted" : "none"}
       className={cn(
         "grid shrink-0 place-items-center rounded-card",
         // An illustrated .webp fills the chip; a lucide glyph is sized by the
         // `[&>svg]` rule above. One slot, either kind of art.
         "[&>img]:size-full [&>img]:rounded-card [&>img]:object-contain",
         SIZE[size],
-        surface ? (tone === "primary" ? BRAND : TONE_SURFACE[tone]) : "bg-transparent",
+        surface
+          ? artwork
+            ? tone === "primary"
+              ? BRAND
+              : TONE_SURFACE[tone]
+            : tone === "primary"
+              ? BRAND_GLYPH
+              : TONE_GLYPH[tone]
+          : "bg-transparent",
         className,
       )}
     >

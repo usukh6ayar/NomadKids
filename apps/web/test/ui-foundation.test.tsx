@@ -9,9 +9,9 @@ import { BarRow } from "@/components/ui/chart/bar-row";
 import { Donut } from "@/components/ui/chart/donut";
 import { Ring } from "@/components/ui/chart/ring";
 import { Sparkline } from "@/components/ui/chart/sparkline";
-import { TONES, TONE_CARD, TONE_SURFACE, TONE_VAR } from "@/components/ui/tone";
-import { StatCard } from "@/components/ui/stat-card";
+import { TONES, TONE_CARD, TONE_GLYPH, TONE_SURFACE, TONE_VAR } from "@/components/ui/tone";
 import { Art } from "@/components/ui/art";
+import { StatCard } from "@/components/ui/stat-card";
 import { renderWithProviders } from "./support/render";
 
 /**
@@ -157,9 +157,27 @@ describe("IconChip", () => {
     expect(screen.getByRole("img", { name: "Ирц" })).toBeInTheDocument();
   });
 
-  it.each(TONES)("carries the %s surface and its paired ink", (tone) => {
+  /**
+   * ★ A glyph takes the accent as ink; only a drawing keeps the tile — client,
+   * 2026-09-24: "арын өнгөнүүдийг арилгаад зөвхөн зураасан icon үлдээ ...
+   * бусад 3d icon өөрчилж болохгүй". Both halves are asserted, because
+   * removing the tint from the drawn icons is the way this gets broken.
+   */
+  it.each(TONES)("draws a %s glyph as ink alone, with no tile behind it", (tone) => {
     const { container } = render(<IconChip icon={<span>i</span>} tone={tone} />);
-    expect(container.firstElementChild!.className).toContain(TONE_SURFACE[tone]);
+    const chip = container.firstElementChild!;
+
+    expect(chip.className).toContain(TONE_GLYPH[tone]);
+    expect(chip.className).not.toContain(`bg-${tone}`);
+    expect(chip).toHaveAttribute("data-icon-surface", "none");
+  });
+
+  it.each(TONES)("keeps the %s tile behind an illustrated icon", (tone) => {
+    const { container } = render(<IconChip icon={<Art name="food" />} tone={tone} />);
+    const chip = container.firstElementChild!;
+
+    expect(chip.className).toContain(TONE_SURFACE[tone]);
+    expect(chip).toHaveAttribute("data-icon-surface", "tinted");
   });
 
   it("scales without the call site choosing pixels", () => {

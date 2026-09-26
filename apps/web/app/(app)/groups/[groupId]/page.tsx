@@ -20,7 +20,9 @@ import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
-import { formatAge, fullName } from "@/lib/format";
+import { formatAge, fullName, shortName } from "@/lib/format";
+import { TableShell, Td, Th } from "@/components/ui/table";
+import { useSession } from "@/lib/auth/session";
 import { Art } from "@/components/ui/art";
 
 const childrenSchema = paginated(childSummarySchema);
@@ -64,6 +66,10 @@ export default function GroupDetailPage() {
 }
 
 function GroupDetail() {
+  const { hasRole } = useSession();
+  // The director reads this page as two tables — client, 2026-09-25. A
+  // teacher's copy is unchanged.
+  const isAdmin = hasRole("ADMIN");
   const params = useParams<{ groupId: string }>();
   const groupId = params.groupId;
 
@@ -105,7 +111,7 @@ function GroupDetail() {
             {data.attendanceForm && data.attendanceForm !== "STANDARD" ? (
               <Badge tone="sun">{ATTENDANCE_FORM_LABEL[data.attendanceForm]}</Badge>
             ) : null}
-            <Badge tone="mint">{data._count?.enrollments ?? 0} хүүхэд</Badge>
+            {isAdmin ? null : <Badge tone="mint">{data._count?.enrollments ?? 0} хүүхэд</Badge>}
           </>
         }
       />
@@ -118,53 +124,93 @@ function GroupDetail() {
         they are the size of something you are meant to press, not three ghost
         buttons in a row's gutter.
       */}
-      <div className="grid gap-2.5 sm:grid-cols-3">
-        <RegisterDoor
-          href={`/groups/${groupId}/attendance`}
-          icon={<Art name="attendance" size={28} className="size-7" />}
-          tone="bg-transparent"
-          title="Ирц"
-          hint="Өдрийн ирц бүртгэх"
-        />
-        <RegisterDoor
-          href={`/groups/${groupId}/meals`}
-          icon={<Art name="food" size={28} className="size-7" />}
-          tone="bg-transparent"
-          title="Хоол"
-          hint="Хоолны бүртгэл"
-        />
-        <RegisterDoor
-          href={`/groups/${groupId}/assessment`}
-          icon={<Art name="progress" size={28} className="size-7" />}
-          tone="bg-transparent"
-          title="Явцын үнэлгээ"
-          hint="Улирлын үнэлгээ"
-        />
-      </div>
+      {/*
+        A director's copy carries no doors — client, 2026-09-25 ("эдгээр
+        арилга"). The registers are a teacher's work; a teacher's copy keeps them.
+      */}
+      {isAdmin ? null : (
+        <div className="grid gap-2.5 sm:grid-cols-3">
+          <RegisterDoor
+            href={`/groups/${groupId}/attendance`}
+            icon={<Art name="attendance" size={28} className="size-7" />}
+            tone="bg-transparent"
+            title="Ирц"
+            hint="Өдрийн ирц бүртгэх"
+          />
+          <RegisterDoor
+            href={`/groups/${groupId}/meals`}
+            icon={<Art name="food" size={28} className="size-7" />}
+            tone="bg-transparent"
+            title="Хоол"
+            hint="Хоолны бүртгэл"
+          />
+          <RegisterDoor
+            href={`/groups/${groupId}/assessment`}
+            icon={<Art name="progress" size={28} className="size-7" />}
+            tone="bg-transparent"
+            title="Явцын үнэлгээ"
+            hint="Улирлын үнэлгээ"
+          />
+        </div>
+      )}
 
-      <Card pad="roomy">
-        <SectionHeader title="Хариуцсан багш" as="h2" />
-        {teachers.length === 0 ? (
-          <p className="text-body text-muted">
-            Багш хуваарилаагүй байна. Бүлгүүд хуудсаас хуваарилна.
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {teachers.map((assignment) => (
-              <li key={assignment.id} className="flex items-center gap-2">
-                <span className="text-body text-ink">
-                  {assignment.membership?.user ? fullName(assignment.membership.user) : "—"}
-                </span>
-                {assignment.role ? (
-                  <Badge tone={assignment.role === "LEAD" ? "sky" : "neutral"}>
-                    {assignment.role === "LEAD" ? "Үндсэн" : "Туслах"}
-                  </Badge>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+      {isAdmin ? (
+        <section className="flex flex-col gap-2.5">
+          <SectionHeader title="Хариуцсан багш" as="h2" />
+          {teachers.length === 0 ? (
+            <p className="text-body text-muted">
+              Багш хуваарилаагүй байна. Бүлгүүд хуудсаас хуваарилна.
+            </p>
+          ) : (
+            <TableShell caption="Бүлгийн багш нар" minWidth="min-w-0">
+              <thead>
+                <tr>
+                  <Th>Үүрэг</Th>
+                  <Th>Нэр</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...teachers]
+                  .sort((a, b) => Number(b.role === "LEAD") - Number(a.role === "LEAD"))
+                  .map((assignment) => (
+                    <tr key={assignment.id}>
+                      <Td className="text-muted">
+                        {assignment.role === "LEAD" ? "Бүлгийн багш" : "Туслах багш"}
+                      </Td>
+                      <Td className="font-medium text-ink">
+                        {assignment.membership?.user ? shortName(assignment.membership.user) : "—"}
+                      </Td>
+                    </tr>
+                  ))}
+              </tbody>
+            </TableShell>
+          )}
+        </section>
+      ) : (
+        <Card pad="roomy">
+          <SectionHeader title="Хариуцсан багш" as="h2" />
+          {teachers.length === 0 ? (
+            <p className="text-body text-muted">
+              Багш хуваарилаагүй байна. Бүлгүүд хуудсаас хуваарилна.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {teachers.map((assignment) => (
+                <li key={assignment.id} className="flex items-center gap-2">
+                  <span className="text-body text-ink">
+                    {assignment.membership?.user ? fullName(assignment.membership.user) : "—"}
+                  </span>
+                  {assignment.role ? (
+                    <Badge tone={assignment.role === "LEAD" ? "sky" : "neutral"}>
+                      {assignment.role === "LEAD" ? "Үндсэн" : "Туслах"}
+                    </Badge>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
 
       <SectionHeader
         title="Бүлгийн хүүхдүүд"
@@ -186,7 +232,37 @@ function GroupDetail() {
         />
       ) : null}
 
-      {roster.data && roster.data.items.length > 0 ? (
+      {isAdmin && roster.data && roster.data.items.length > 0 ? (
+        <TableShell caption="Бүлгийн хүүхдүүд" minWidth="min-w-0">
+          <thead>
+            <tr>
+              <Th className="w-12">№</Th>
+              <Th>Нэр</Th>
+              <Th>Нас</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {roster.data.items.map((child, index) => (
+              <tr key={child.id}>
+                <Td className="tabular-nums text-muted">{index + 1}</Td>
+                <Td>
+                  <Link
+                    href={`/children/${child.id}/general`}
+                    className="font-medium text-ink hover:text-primary"
+                  >
+                    {shortName(child)}
+                  </Link>
+                </Td>
+                <Td className="text-muted">
+                  {child.dateOfBirth ? formatAge(child.dateOfBirth) : "—"}
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </TableShell>
+      ) : null}
+
+      {!isAdmin && roster.data && roster.data.items.length > 0 ? (
         <Card className="divide-y divide-border">
           {roster.data.items.map((child) => (
             <Link

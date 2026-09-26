@@ -139,48 +139,45 @@ describe("the administrator report", () => {
     renderAdminReport();
 
     expect(
-      await screen.findByRole("heading", { level: 1, name: "Цэцэрлэгийн нэгтгэл" }),
+      await screen.findByRole("heading", { level: 1, name: "Цэцэрлэгийн нэгдсэн тайлан" }),
     ).toBeInTheDocument();
     const summary = await screen.findByRole("region", { name: "Тайлангийн товч үзүүлэлт" });
 
     for (const label of [
-      "Нийт бүлэг",
       "Нийт хүүхэд",
-      "Үнэлгээ хийсэн",
-      "Ирцтэй",
-      "Ажиглалттай",
-      "Үнэлгээ дутуу",
+      "Нийт бүлэг",
+      "Ирц",
+      "Явцын үнэлгээ",
+      "Судалгааны явц",
     ]) {
       expect(within(summary).getByText(label)).toBeInTheDocument();
     }
     expect(within(summary).getByText("49")).toBeInTheDocument();
-    expect(within(summary).getByText("44")).toBeInTheDocument();
-    expect(within(summary).getByText("5")).toBeInTheDocument();
+    expect(within(summary).getByText("2")).toBeInTheDocument();
+    expect(within(summary).getByText("91%")).toBeInTheDocument();
+    expect(within(summary).getByText("90%")).toBeInTheDocument();
+    expect(within(summary).getByText("67%")).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Бүлэг сонгох" })).toBeNull();
   });
 
-  it("puts trend, domains, every group, and attention notes on one screen", async () => {
+  it("keeps only the two group-comparison charts below the summary", async () => {
     renderAdminReport();
 
-    expect(await screen.findByRole("img", { name: /Ирцийн хандлага:/ })).toBeInTheDocument();
-    expect(screen.getByText("Хэл яриа")).toBeInTheDocument();
-    expect(screen.getByText("Танин мэдэхүй")).toBeInTheDocument();
-
-    const table = screen.getByRole("table", { name: "Бүлгүүдийн нэгдсэн тайлан" });
-    expect(within(table).getByText("Дэлбээ")).toBeInTheDocument();
-    expect(within(table).getByText("Нархан")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Сарын онцлох үзүүлэлт" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Анхаарах зүйл" })).toBeInTheDocument();
-    expect(screen.getByText(/1 бүлгийн үнэлгээний гүйцэтгэл 85%-аас доош/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Бүлгүүдийн харьцуулалт" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Ирцийн хувь (бүлэг тус бүр)" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Явцын үнэлгээний гүйцэтгэл" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Дэлбээ бүлгийн ирц: 95%")).toBeInTheDocument();
+    expect(screen.getByLabelText("Нархан бүлгийн явцын үнэлгээ: 80%")).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Бүлгүүдийн нэгдсэн тайлан" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Сарын онцлох үзүүлэлт" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Анхаарах зүйл" })).toBeNull();
   });
 
-  it("offers the same month, term, and year periods as the design", async () => {
+  it("uses a single month selector", async () => {
     renderAdminReport();
 
-    await screen.findByRole("heading", { name: "Цэцэрлэгийн нэгтгэл" });
-    const periods = screen.getByRole("radiogroup", { name: "Тайлангийн хугацаа" });
-    for (const label of ["Сар", "Улирал", "Жил"]) {
-      expect(within(periods).getByRole("radio", { name: label })).toBeInTheDocument();
-    }
+    await screen.findByRole("heading", { name: "Цэцэрлэгийн нэгдсэн тайлан" });
+    expect(screen.getByLabelText("Тайлангийн сар")).toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup", { name: "Тайлангийн хугацаа" })).toBeNull();
   });
 });

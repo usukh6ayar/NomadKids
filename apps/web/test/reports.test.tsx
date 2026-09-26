@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, stubApi } from "./support/render";
@@ -214,4 +214,23 @@ describe("images are served through the authorized endpoint", () => {
     expect(img.getAttribute("src")).toContain("/v1/media/ffffffff-ffff-4fff-8fff-ffffffffffff");
     expect(img.getAttribute("alt")).toBe("Тоглож байгаа нь");
   });
+});
+
+/** Client, 2026-09-25: the dialog's heading and its explanatory line are gone. */
+it("prints no heading or blurb above the two buttons", async () => {
+  const user = userEvent.setup();
+  stubApi([{ path: "/auth/me", body: sessionFor(["PARENT"]) }]);
+  renderWithProviders(<ReportDialog childId={CHILD_ID} trigger={<Button>PDF</Button>} />);
+
+  await user.click(screen.getByRole("button", { name: "PDF" }));
+
+  const dialog = await screen.findByRole("dialog");
+  // Nothing printed: both survive only as the dialog's accessible name and
+  // description, which Radix requires and a screen reader still reads.
+  expect(within(dialog).getByText(/PDF болгон бэлтгэнэ/)).toHaveClass("sr-only");
+  expect(within(dialog).getByText("Цахим хувийн хавтас PDF")).toHaveClass("sr-only");
+  // One button, not two — "Жилийн нэгдсэн тайлан" went on 2026-09-25 at the
+  // client's request. The job type still exists on the API.
+  expect(within(dialog).getByRole("button", { name: /Цахим хувийн хавтас/ })).toBeInTheDocument();
+  expect(within(dialog).queryByRole("button", { name: /Жилийн нэгдсэн тайлан/ })).toBeNull();
 });

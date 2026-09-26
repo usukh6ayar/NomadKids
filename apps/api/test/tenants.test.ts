@@ -135,6 +135,24 @@ describe("PATCH /kindergartens/:id", () => {
     expect(res.body.name).toBe("Шинэ нэр");
   });
 
+  /** Хүчин чадал — client, 2026-09-24; the one institution fact ESIS lacks. */
+  it("stores the capacity, and refuses one that is not a headcount", async () => {
+    const url = `/v1/kindergartens/${a.kindergarten.id}`;
+
+    const saved = await authed(request(server()).patch(url), adminA).send({ capacity: 120 });
+    expect(saved.status).toBe(200);
+    expect(saved.body.capacity).toBe(120);
+
+    for (const capacity of [0, -5, 1.5]) {
+      const bad = await authed(request(server()).patch(url), adminA).send({ capacity });
+      expect(bad.status, `capacity ${capacity}`).toBe(400);
+    }
+
+    const cleared = await authed(request(server()).patch(url), adminA).send({ capacity: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.capacity).toBeNull();
+  });
+
   it("REFUSES a director of another kindergarten", async () => {
     const res = await authed(
       request(server()).patch(`/v1/kindergartens/${b.kindergarten.id}`),
