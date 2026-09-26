@@ -118,10 +118,11 @@ function FinancialAuditRow({ entry }: { entry: ReturnType<typeof auditEntrySchem
       </div>
 
       {/* Хэн → Хэзээ → Ямар мэдээлэл is above; Өмнөх/Шинэ утга is here — §14. */}
-      {hasMetadata ? (
+      {hasMetadata && isChange(metadata) ? <ChangeTable metadata={metadata} /> : null}
+      {hasMetadata && !isChange(metadata) ? (
         <details className="group">
           <summary className="inline-flex min-h-[44px] cursor-pointer list-none items-center text-caption font-medium text-primary hover:underline [&::-webkit-details-marker]:hidden">
-            Өмнөх → Шинэ утга
+            Дэлгэрэнгүй
           </summary>
           <Card pad="compact" className="mt-1.5 overflow-x-auto">
             <pre className="text-caption text-muted">{JSON.stringify(metadata, null, 2)}</pre>
@@ -131,3 +132,103 @@ function FinancialAuditRow({ entry }: { entry: ReturnType<typeof auditEntrySchem
     </RowCard>
   );
 }
+
+type Values = Record<string, unknown>;
+
+function isChange(metadata: object): metadata is { before?: Values; after?: Values } {
+  const { before, after } = metadata as { before?: unknown; after?: unknown };
+  return isValues(before) || isValues(after);
+}
+
+function isValues(value: unknown): value is Values {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * «Өмнөх утга → Шинэ утга» as a table — 2026-09-26.
+ *
+ * ★ It printed the metadata as JSON under the API's English keys, which put
+ * §14's whole point — what a figure was before somebody changed it — behind a
+ * format an accountant does not read. One row per field, in Mongolian, with
+ * the old value beside the new one.
+ *
+ * ★★ A creation has no `before` and a removal no `after`; the empty side is a
+ * dash, not a missing column, so every row reads the same way.
+ */
+function ChangeTable({ metadata }: { metadata: { before?: Values; after?: Values } }) {
+  const before = metadata.before ?? {};
+  const after = metadata.after ?? {};
+  const fields = [...new Set([...Object.keys(before), ...Object.keys(after)])];
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-caption">
+        <caption className="sr-only">Өмнөх → Шинэ утга</caption>
+        <thead>
+          <tr className="text-left text-muted">
+            <th scope="col" className="py-1 pr-3 font-medium">
+              Талбар
+            </th>
+            <th scope="col" className="py-1 pr-3 font-medium">
+              Өмнөх
+            </th>
+            <th scope="col" className="py-1 font-medium">
+              Шинэ
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {fields.map((field) => {
+            const was = field in before ? formatValue(before[field]) : "—";
+            const now = field in after ? formatValue(after[field]) : "—";
+            return (
+              <tr key={field} className="border-t border-border">
+                <th scope="row" className="py-1 pr-3 text-left font-normal text-muted">
+                  {FIELD_LABEL[field] ?? field}
+                </th>
+                <td className="py-1 pr-3 text-ink">{was}</td>
+                <td className={was === now ? "py-1 text-muted" : "py-1 font-medium text-ink"}>
+                  {now}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function formatValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+/** The API's field names, as the accountant's screens name them. */
+const FIELD_LABEL: Record<string, string> = {
+  name: "Нэр",
+  note: "Тайлбар",
+  source: "Эх үүсвэр",
+  ageBand: "Насны бүлэг",
+  effectiveFrom: "Хүчинтэй эхлэх",
+  effectiveTo: "Хүчинтэй дуусах",
+  dailyRate: "Өдрийн тариф",
+  monthlyRate: "Сарын тариф",
+  approvedAmount: "Баталсан дүн",
+  receivedAmount: "Хүлээн авсан дүн",
+  children: "Хүүхдийн тоо",
+  calculatedTotal: "Тооцсон дүн",
+  month: "Сар",
+  status: "Төлөв",
+  dueDate: "Төлөх хугацаа",
+  totalDue: "Нийт төлбөр",
+  baseAmount: "Үндсэн төлбөр",
+  mealAmount: "Хоолны төлбөр",
+  extraAmount: "Нэмэлт төлбөр",
+  discountAmount: "Хөнгөлөлт",
+  amount: "Дүн",
+  method: "Төлбөрийн хэлбэр",
+  invoiceId: "Нэхэмжлэл",
+  voidedAt: "Цуцалсан",
+};

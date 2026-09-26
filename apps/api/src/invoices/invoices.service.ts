@@ -509,6 +509,11 @@ export class InvoicesService {
 
     const updated = await this.repo.updateInvoice(id, data);
 
+    // Only the fields this call changed, as they were — §14.
+    const before: Record<string, unknown> = {};
+    if ("dueDate" in data) before.dueDate = ref.dueDate.toISOString().slice(0, 10);
+    if ("note" in data) before.note = ref.note;
+
     await this.audit.append({
       action: "UPDATE",
       kindergartenId: ref.kindergartenId,
@@ -516,7 +521,7 @@ export class InvoicesService {
       objectType: "Invoice",
       objectId: id,
       childId: ref.childId,
-      metadata: { after: data },
+      metadata: { before, after: data },
     });
 
     return updated;
@@ -543,6 +548,17 @@ export class InvoicesService {
       objectType: "Invoice",
       objectId: id,
       childId: ref.childId,
+      // What was removed — a line reading only "an invoice was deleted" cannot
+      // answer which month or how much, which is what an auditor asks. §14.
+      metadata: {
+        before: {
+          month: ref.month.toISOString().slice(0, 7),
+          totalDue: ref.totalDue.toString(),
+          dueDate: ref.dueDate.toISOString().slice(0, 10),
+          status: ref.status,
+          note: ref.note,
+        },
+      },
     });
 
     return { id };
