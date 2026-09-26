@@ -1380,6 +1380,32 @@ describe("GET /kindergartens/:id/esis/coverage", () => {
    * ★ One kindergarten's matrix is what its director hands the ministry about
    * their own institution. Another tenant's traffic must not appear on it.
    */
+  /*
+   * ★ The header says one month, so the count is one month — 2026-09-26.
+   * Audit rows were counted for all time while sync runs were windowed, so a
+   * call from the week before the trial read as a call inside it.
+   */
+  it("leaves a call from before the window out of the count", async () => {
+    const twoMonthsAgo = new Date();
+    twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
+    await db.auditLog.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        actorUserId: a.adminUser.id,
+        action: "VIEW",
+        objectType: "EsisResource",
+        objectId: "subjectAreas",
+        createdAt: twoMonthsAgo,
+      },
+    });
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
+    const subjectAreas = res.body.rows.find(
+      (row: { serviceKey: string | null }) => row.serviceKey === "subjectAreas",
+    );
+    expect(subjectAreas.calls).toBe(0);
+  });
+
   it("counts only this kindergarten's calls", async () => {
     await db.esisSyncRun.create({
       data: {
@@ -1632,6 +1658,27 @@ describe("POST /kindergartens/:id/esis/roster-import", () => {
   /*
    * ★★★ The rule the whole feature rests on. Pressed twice, nothing doubles.
    */
+  /*
+   * ★ The import reads two ESIS services, and the ministry's matrix must see
+   * both — 2026-09-26. Its audit row is `EsisRosterImport`, which the matrix
+   * does not count, so every import was a call the evidence left out.
+   */
+  it("shows up in the coverage matrix as a call to each service it read", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+    await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    const matrix = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/esis/coverage`),
+      adminA,
+    );
+    const calls = (key: string) =>
+      matrix.body.rows.find((row: { serviceKey: string | null }) => row.serviceKey === key)?.calls;
+    expect(calls("groups")).toBe(1);
+    expect(calls("students")).toBe(1);
+  });
+
   it("is idempotent — a second run creates nothing", async () => {
     await mapInstitution(a.kindergarten.id, superAdmin);
     await withCurrentYear(a.kindergarten.id);
