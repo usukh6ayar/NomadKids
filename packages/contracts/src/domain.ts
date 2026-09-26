@@ -5726,10 +5726,13 @@ export type StaffSelfRegistrationResult = z.infer<typeof staffSelfRegistrationRe
  * written into this kindergarten's own records.
  *
  * ★ Every number is a count of what **changed**, so a second run answering all
- * zeroes is the import working, not failing. The two string lists are the half
+ * zeroes is the import working, not failing. The string lists are the half
  * a director has to act on: `groups.skipped` names groups whose ESIS level this
  * product has no age band for, and `enrollments.unplaced` names children who
- * arrived but whose group was one of those.
+ * arrived but whose group was one of those. `children.adopted` counts children
+ * typed here before the import and now linked by name and date of birth;
+ * `children.ambiguous` names ESIS children two or more unlinked rows fit, so
+ * nothing was linked or created for them.
  */
 export const esisRosterImportSchema = z.object({
   groups: z.object({
@@ -5737,7 +5740,12 @@ export const esisRosterImportSchema = z.object({
     updated: z.number(),
     skipped: z.array(z.string()),
   }),
-  children: z.object({ created: z.number(), updated: z.number() }),
+  children: z.object({
+    created: z.number(),
+    updated: z.number(),
+    adopted: z.number(),
+    ambiguous: z.array(z.string()),
+  }),
   enrollments: z.object({
     created: z.number(),
     moved: z.number(),

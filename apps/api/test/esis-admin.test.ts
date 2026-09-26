@@ -1667,6 +1667,110 @@ describe("POST /kindergartens/:id/esis/roster-import", () => {
   });
 
   /*
+   * ★★★★ **A child typed by hand is adopted, not duplicated** — 2026-09-26.
+   *
+   * Children matched on `esisPersonId` alone, so every child entered before
+   * the first import — by hand, or by `seed-esis.ts` on a local database —
+   * arrived a second time. The client's rule of 2026-09-25 is the one groups
+   * already follow: link what came from ESIS to what is here, never copy it.
+   */
+  it("★ adopts an unlinked child with the same name and date of birth", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+
+    const identity = {
+      lastName: " батаа",
+      firstName: "НОМИН ",
+      sex: "FEMALE" as const,
+      dateOfBirth: new Date(CHILD_ROW.dateOfBirth),
+    };
+    const byHand = await db.child.create({
+      data: { kindergartenId: a.kindergarten.id, ...identity },
+    });
+    // The same person on another tenant's roll is somebody else's record.
+    const elsewhere = await db.child.create({
+      data: { kindergartenId: b.kindergarten.id, ...identity },
+    });
+
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.children.created).toBe(0);
+    expect(res.body.children.adopted).toBe(1);
+
+    const adopted = await db.child.findUniqueOrThrow({ where: { id: byHand.id } });
+    expect(adopted.esisPersonId).toBe(String(CHILD_ROW.personId));
+    // ESIS's spelling wins once the two are known to be one person.
+    expect(adopted.firstName).toBe("Номин");
+    const enrollment = await db.enrollment.findFirst({ where: { childId: byHand.id } });
+    expect(enrollment).not.toBeNull();
+
+    expect(
+      (await db.child.findUniqueOrThrow({ where: { id: elsewhere.id } })).esisPersonId,
+    ).toBeNull();
+  });
+
+  /*
+   * ★ Two unlinked children fit the same name and birthday — twins named
+   * alike, or a record typed twice. Picking one would give the ministry's id
+   * to a guess, and creating a third would add to the mess, so neither is
+   * done: the director is told the name and links it by hand.
+   */
+  it("★ links nobody and creates nothing when two unlinked children fit", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+
+    const identity = {
+      kindergartenId: a.kindergarten.id,
+      lastName: "Батаа",
+      firstName: "Номин",
+      sex: "FEMALE" as const,
+      dateOfBirth: new Date(CHILD_ROW.dateOfBirth),
+    };
+    await db.child.create({ data: identity });
+    await db.child.create({ data: identity });
+
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.children.created).toBe(0);
+    expect(res.body.children.adopted).toBe(0);
+    expect(res.body.children.ambiguous).toEqual(["Батаа Номин"]);
+    expect(
+      await db.child.count({
+        where: { kindergartenId: a.kindergarten.id, esisPersonId: String(CHILD_ROW.personId) },
+      }),
+    ).toBe(0);
+  });
+
+  /* A different birthday is a different child, whatever the name. */
+  it("creates rather than adopts when only the name matches", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+
+    const namesake = await db.child.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        lastName: "Батаа",
+        firstName: "Номин",
+        sex: "FEMALE",
+        dateOfBirth: new Date("2021-03-05"),
+      },
+    });
+
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.body.children.created).toBe(1);
+    expect(res.body.children.adopted).toBe(0);
+    expect(
+      (await db.child.findUniqueOrThrow({ where: { id: namesake.id } })).esisPersonId,
+    ).toBeNull();
+  });
+
+  /*
    * ★ A group the director typed by hand is adopted, not duplicated —
    * `@@unique([schoolYearId, name])` would refuse a second one anyway, so the
    * alternative to adopting is failing the whole import on a constraint.

@@ -79,7 +79,7 @@ export class EsisRosterImportRepository {
    * Mongolian locale — the letters this kindergarten's group names are full of.
    */
   async findGroupByName(schoolYearId: string, name: string) {
-    const wanted = normaliseGroupName(name);
+    const wanted = normaliseName(name);
     if (!wanted) return null;
 
     const groups = await this.prisma.group.findMany({
@@ -94,7 +94,7 @@ export class EsisRosterImportRepository {
      * the linked one keeps the children where they are; adopting the empty
      * one would move the ministry's id onto a group nobody is enrolled in.
      */
-    const matches = groups.filter((group) => normaliseGroupName(group.name) === wanted);
+    const matches = groups.filter((group) => normaliseName(group.name) === wanted);
     const linked = matches.find((group) => group.esisGroupId !== null);
     const chosen = linked ?? matches[0];
 
@@ -127,6 +127,72 @@ export class EsisRosterImportRepository {
       where: { kindergartenId, esisPersonId, deletedAt: null },
       select: { id: true },
     });
+  }
+
+  /**
+   * Children of this kindergarten not yet linked to any ESIS person who carry
+   * the ministry's name and date of birth — the candidates for adoption.
+   *
+   * ★ **Only unlinked rows.** A child already carrying an `esisPersonId` is
+   * somebody the ministry has named; handing them a second id would merge two
+   * people.
+   *
+   * ★★ Narrowed by the date in the query, compared by name in memory — the
+   * same normalisation `findGroupByName` uses, for the same reason: a capital
+   * letter or a stray space is how two people type one name. A date of birth
+   * is shared by a handful of children at most, so the read costs nothing.
+   *
+   * Every match is returned, not the first. Two candidates is an answer the
+   * service needs — it means "do not guess".
+   */
+  async findUnlinkedChildren(
+    kindergartenId: string,
+    identity: { lastName: string; firstName: string; dateOfBirth: Date },
+  ) {
+    const children = await this.prisma.child.findMany({
+      where: {
+        kindergartenId,
+        esisPersonId: null,
+        dateOfBirth: identity.dateOfBirth,
+        deletedAt: null,
+      },
+      select: { id: true, lastName: true, firstName: true },
+    });
+    const last = normaliseName(identity.lastName);
+    const first = normaliseName(identity.firstName);
+    if (!last || !first) return [];
+    return children
+      .filter(
+        (child) =>
+          normaliseName(child.lastName) === last && normaliseName(child.firstName) === first,
+      )
+      .map((child) => ({ id: child.id }));
+  }
+
+  /**
+   * Adopts a child typed here before the import: gives the row the ministry's
+   * id and ESIS's spelling of the three fields `updateChild` writes.
+   *
+   * ★ `esisPersonId: null` in the `where` is the guard, not decoration. The
+   * lookup above and this write are two statements; a row linked in between
+   * by a concurrent import is not overwritten — the update matches nothing
+   * and `@@unique([kindergartenId, esisPersonId])` refuses the rest.
+   */
+  async linkChild(
+    id: string,
+    data: {
+      esisPersonId: string;
+      lastName: string;
+      firstName: string;
+      sex: "MALE" | "FEMALE";
+      dateOfBirth: Date;
+    },
+  ) {
+    const { count } = await this.prisma.child.updateMany({
+      where: { id, esisPersonId: null, deletedAt: null },
+      data,
+    });
+    return count === 1;
   }
 
   createChild(input: {
@@ -193,13 +259,14 @@ export class EsisRosterImportRepository {
 }
 
 /**
- * A group name reduced to what two people typing the same class agree on.
+ * A name reduced to what two people typing the same class, or the same
+ * child, agree on.
  *
  * Case and surrounding space are the two differences seen in practice; the
  * inner spacing is left alone, because «бага бүлэг» and «багабүлэг» are not
  * obviously the same name and guessing that they are would merge two real
- * classes.
+ * classes — or two real children.
  */
-function normaliseGroupName(name: string): string {
+function normaliseName(name: string): string {
   return name.trim().toLocaleLowerCase("mn-MN");
 }

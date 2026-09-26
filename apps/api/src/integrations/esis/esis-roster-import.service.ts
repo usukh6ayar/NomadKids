@@ -36,7 +36,7 @@ const AGE_BAND_BY_LEVEL: Record<string, AgeBand> = {
 
 export interface RosterImportOutcome {
   groups: { created: number; updated: number; skipped: string[] };
-  children: { created: number; updated: number };
+  children: { created: number; updated: number; adopted: number; ambiguous: string[] };
   enrollments: { created: number; moved: number; unplaced: string[] };
 }
 
@@ -114,7 +114,7 @@ export class EsisRosterImportService {
 
     const outcome: RosterImportOutcome = {
       groups: { created: 0, updated: 0, skipped: [] },
-      children: { created: 0, updated: 0 },
+      children: { created: 0, updated: 0, adopted: 0, ambiguous: [] },
       enrollments: { created: 0, moved: 0, unplaced: [] },
     };
 
@@ -189,11 +189,38 @@ export class EsisRosterImportService {
       };
 
       const existing = await this.repo.findChildByEsisPersonId(kindergartenId, esisPersonId);
+      const candidates = existing
+        ? []
+        : await this.repo.findUnlinkedChildren(kindergartenId, fields);
+      const name = `${fields.lastName} ${fields.firstName}`.trim();
       let childId: string;
       if (existing) {
         await this.repo.updateChild(existing.id, fields);
         outcome.children.updated += 1;
         childId = existing.id;
+      } else if (candidates.length > 1) {
+        /*
+         * ★ More than one unlinked child fits. Giving the ministry's id to one
+         * of them is a guess about who is who, and creating another row adds
+         * a third copy — so neither happens. The name goes back to the
+         * director, who links the right one by hand.
+         */
+        outcome.children.ambiguous.push(name);
+        continue;
+      } else if (
+        candidates.length === 1 &&
+        (await this.repo.linkChild(candidates[0]!.id, { esisPersonId, ...fields }))
+      ) {
+        /*
+         * ★★ Adoption before creation — 2026-09-26, the client's rule of the
+         * day before: «esis ees irsen medeelliig … holbood … dawharduulahgui».
+         * A child typed here before the first import is the same person ESIS
+         * sends, recognised by name and date of birth. Groups were already
+         * adopted this way; children were not, so every hand-entered child
+         * arrived twice.
+         */
+        outcome.children.adopted += 1;
+        childId = candidates[0]!.id;
       } else {
         const created = await this.repo.createChild({
           kindergartenId,
@@ -211,7 +238,7 @@ export class EsisRosterImportService {
          * here now — which is the point, they can be found and edited — but
          * nothing pretends to know which group they belong to.
          */
-        outcome.enrollments.unplaced.push(`${fields.lastName} ${fields.firstName}`.trim());
+        outcome.enrollments.unplaced.push(name);
         continue;
       }
 
@@ -262,7 +289,12 @@ export class EsisRosterImportService {
       metadata: {
         schoolYear: year.name,
         groups: outcome.groups,
-        children: outcome.children,
+        children: {
+          created: outcome.children.created,
+          updated: outcome.children.updated,
+          adopted: outcome.children.adopted,
+          ambiguous: outcome.children.ambiguous.length,
+        },
         enrollments: {
           created: outcome.enrollments.created,
           moved: outcome.enrollments.moved,

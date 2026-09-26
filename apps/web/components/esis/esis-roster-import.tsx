@@ -64,6 +64,9 @@ export function EsisRosterImportButton({ kindergartenId }: { kindergartenId: str
         result.enrollments.unplaced.length > 0
           ? `Бүлэггүй үлдсэн ${result.enrollments.unplaced.length} хүүхэд: ${result.enrollments.unplaced.slice(0, 5).join(", ")}${result.enrollments.unplaced.length > 5 ? "…" : ""}`
           : null,
+        result.children.ambiguous.length > 0
+          ? `Давхар бүртгэлтэй тул холбоогүй ${result.children.ambiguous.length} хүүхэд: ${result.children.ambiguous.slice(0, 5).join(", ")}${result.children.ambiguous.length > 5 ? "…" : ""}`
+          : null,
       ].filter(Boolean);
 
       if (unresolved.length > 0) toast.error(unresolved.join(" · "));
@@ -82,7 +85,7 @@ export function EsisRosterImportButton({ kindergartenId }: { kindergartenId: str
         </Button>
       }
       title="ESIS-ээс бүлэг, хүүхэд татах"
-      description="ESIS дээрх бүлгүүд болон тэдгээрт бүртгэлтэй хүүхдүүдийг энэ цэцэрлэгийн бүртгэлд үүсгэнэ. Байгаа мэдээллийг шинэчилнэ, юу ч устгахгүй. Дахин татахад давхардахгүй."
+      description="ESIS дээрх бүлгүүд болон тэдгээрт бүртгэлтэй хүүхдүүдийг энэ цэцэрлэгийн бүртгэлд үүсгэнэ. Гараар оруулсан хүүхдийг нэр, төрсөн огноогоор нь танина. Байгаа мэдээллийг шинэчилнэ, юу ч устгахгүй. Дахин татахад давхардахгүй."
       confirmLabel="Татах"
       pendingLabel="Татаж байна…"
       pending={run.isPending}
@@ -102,6 +105,7 @@ function summarise(result: EsisRosterImport): string {
   const parts = [
     result.groups.created > 0 ? `${result.groups.created} бүлэг нэмэгдлээ` : null,
     result.children.created > 0 ? `${result.children.created} хүүхэд нэмэгдлээ` : null,
+    result.children.adopted > 0 ? `${result.children.adopted} хүүхэд ЭСИС-тэй холбогдлоо` : null,
     result.enrollments.created > 0 ? `${result.enrollments.created} хүүхэд бүлэгт орлоо` : null,
     result.enrollments.moved > 0 ? `${result.enrollments.moved} хүүхэд бүлэг сольсон` : null,
   ].filter(Boolean);
