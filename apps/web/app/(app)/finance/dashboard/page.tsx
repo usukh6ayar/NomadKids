@@ -94,7 +94,10 @@ function FinanceBoardScreen() {
               Нэхэмжлэл
             </Link>
           </Button>
-          <Field label="Сар">
+          {/* Label for screen readers only: shown, it pushed the field 29px below
+              the title line the header is centred on, and the value names
+              itself («2026 оны 9-р сар»). */}
+          <Field label="Сар" labelHidden>
             {({ id }) => (
               <MonthSelect id={id} value={month} onValueChange={setMonth} className="w-[170px]" />
             )}

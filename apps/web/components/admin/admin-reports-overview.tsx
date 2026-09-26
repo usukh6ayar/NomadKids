@@ -291,7 +291,7 @@ export function AdminReportsOverview() {
             />
           </section>
 
-          <div className="grid items-start gap-4 xl:grid-cols-2">
+          <div data-equal-row className="grid gap-4 xl:grid-cols-2">
             <section aria-labelledby="report-trend-heading">
               <SectionHeader
                 id="report-trend-heading"
@@ -462,7 +462,7 @@ export function AdminReportsOverview() {
             </div>
           </section>
 
-          <div className="grid items-start gap-4 xl:grid-cols-2">
+          <div data-equal-row className="grid gap-4 xl:grid-cols-2">
             <Card pad="roomy">
               <div className="flex items-center gap-2">
                 <MessageSquare size={20} className="text-primary" />

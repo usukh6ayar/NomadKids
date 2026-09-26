@@ -339,7 +339,7 @@ export function AdminAssessmentOverview() {
                 </div>
               </Card>
 
-              <div className="grid items-start gap-4 xl:grid-cols-2">
+              <div data-equal-row className="grid gap-4 xl:grid-cols-2">
                 {coverage.map((group) => {
                   const domainGroup = domainGroups.get(group.groupId);
                   const percent = coveragePercent(group);
@@ -404,7 +404,11 @@ export function AdminAssessmentOverview() {
         </section>
 
         {coverage.length > 0 ? (
-          <section aria-label="Бүлгүүдийн эрэмбэ" className="grid items-start gap-4 xl:grid-cols-2">
+          <section
+            data-equal-row
+            aria-label="Бүлгүүдийн эрэмбэ"
+            className="grid gap-4 xl:grid-cols-2"
+          >
             <Card pad="compact">
               <div className="mb-2 flex items-center gap-2">
                 <CircleAlert size={20} className="text-peach-ink" aria-hidden />

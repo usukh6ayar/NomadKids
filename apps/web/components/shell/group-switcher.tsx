@@ -8,6 +8,7 @@ import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
 import { groupLabel } from "@/lib/format";
+import { GroupBadge } from "@/components/ui/group-badge";
 
 const groupsSchema = paginated(groupListItemSchema);
 
@@ -103,6 +104,12 @@ export function GroupSwitcher({
                     : "border-border bg-surface text-muted hover:bg-canvas hover:text-ink",
                 )}
               >
+                <GroupBadge
+                  name={group.name}
+                  ageBand={group.ageBand}
+                  size="sm"
+                  className={active ? "ring-2 ring-primary-ink/60" : undefined}
+                />
                 <span className="whitespace-nowrap">{groupLabel(group.name)}</span>
                 {/*
                   The headcount is the second thing a reader wants from a group

@@ -13,6 +13,7 @@ import {
   Search,
   Settings as SettingsIcon,
   X,
+  Menu,
 } from "lucide-react";
 import {
   createContext,
@@ -353,39 +354,56 @@ export function PageHeader({
   return (
     <div
       data-ui="page-header"
-      className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 lg:mb-5"
+      className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-3 lg:mb-5"
     >
       {/* `icon` remains a compatibility prop, but the compact header does not
           spend a second visual slot on decorative artwork. */}
-      <div className="flex min-w-0 flex-1 items-start gap-3">
-        {resolvedBackHref ? <BackButton href={resolvedBackHref} /> : null}
-        <div className="min-w-0">
+      {/*
+        ★ A floor on the title's width — 2026-09-26. With `flex-1` and
+        `min-w-0` alone the title could shrink to nothing beside two actions,
+        and on a phone «Бүлгүүд» was set one letter per line. At 12rem the row
+        wraps instead and the actions drop under the title.
+      */}
+      {/*
+        ★ One 48px title line, and everything else hangs off it — 2026-09-26,
+        the client asking that nothing sit above or below the line it belongs
+        on («x тэнхлэгийн дагуу … дээш доошоо орохгүй»).
+
+        Буцах and the h1 share that line, centred on it. The lede and the chips
+        sit under it, indented to where the title starts (48px button + 12px
+        gap), and the actions on the right are centred on the same 48px line —
+        so a lede or a row of chips under the title no longer drags the back
+        button and the actions down to the middle of a taller block, which is
+        what measured 13–30px off on /reports, /surveys and /finance.
+      */}
+      <div className="min-w-[min(100%,12rem)] flex-1">
+        <div className="flex min-h-12 items-center gap-3">
+          {resolvedBackHref ? <BackButton href={resolvedBackHref} /> : null}
           <h1
             className={cn(
-              "font-semibold leading-heading tracking-[-0.02em] text-ink",
+              "min-w-0 font-semibold leading-heading tracking-[-0.02em] text-ink",
               compact ? "text-title sm:text-display" : "text-display",
             )}
           >
             {title}
           </h1>
-
-          {lede ? (
-            <div
-              className={cn(
-                "text-muted",
-                compact ? "mt-0.5 text-caption sm:mt-1 sm:text-body" : "mt-1 text-body",
-              )}
-            >
-              {lede}
-            </div>
-          ) : null}
-
-          {/*
-          `flex-wrap`, because a row of chips at 375px is the width that
-          decides how many fit — not a number chosen here.
-        */}
-          {meta ? <div className="mt-2 flex flex-wrap items-center gap-1.5">{meta}</div> : null}
         </div>
+
+        {lede || meta ? (
+          <div className={cn(resolvedBackHref && "pl-15")}>
+            {lede ? (
+              <div
+                className={cn(
+                  "text-muted",
+                  compact ? "mt-0.5 text-caption sm:mt-1 sm:text-body" : "mt-1 text-body",
+                )}
+              >
+                {lede}
+              </div>
+            ) : null}
+            {meta ? <div className="mt-2 flex flex-wrap items-center gap-1.5">{meta}</div> : null}
+          </div>
+        ) : null}
       </div>
 
       {/*
@@ -421,7 +439,7 @@ export function PageHeader({
       {actions ? (
         <div
           className={cn(
-            "flex max-w-full shrink-0 flex-wrap items-center gap-2",
+            "flex min-h-12 max-w-full shrink-0 flex-wrap items-center gap-2",
             compact ? "basis-full justify-start sm:basis-auto sm:justify-end" : "justify-end",
           )}
         >
@@ -921,6 +939,9 @@ export function AppShell({
         `sidebar-prefs.tsx` defines both halves.
       */}
             <div className={cn(desktopSidebar && "lg:pl-[var(--shell-pad)]")}>
+              {desktopSidebar ? (
+                <DesktopTopBar subtitle={subtitle} showNotifications={!isSupportWorkspace} />
+              ) : null}
               {/*
           `pb-24` on mobile clears the fixed bottom bar. Without it the last row
           of every list sits underneath the navigation and cannot be tapped —
@@ -946,7 +967,7 @@ export function AppShell({
                 className={cn(
                   "w-full",
                   isChatPage
-                    ? "h-[calc(100dvh-4.25rem)] overflow-hidden pb-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom))] lg:h-dvh lg:max-w-none lg:pb-0"
+                    ? "h-[calc(100dvh-4.25rem)] overflow-hidden pb-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom))] lg:h-[calc(100dvh-4rem)] lg:max-w-none lg:pb-0"
                     : "mx-auto max-w-[1920px] px-4 pb-24 pt-4 sm:px-6 lg:px-7 lg:pb-16 lg:pt-6 2xl:px-8",
                 )}
               >
@@ -1015,12 +1036,12 @@ function Brand({ subtitle }: { subtitle: string }) {
         square and includes "БЯЦХАН НҮҮДЭЛЧИД" under the drawing, so it goes in
         whole, `object-contain` inside a square box so nothing is trimmed.
       */}
-      <span data-brand-mark className="grid size-[58px] shrink-0 place-items-center">
+      <span data-brand-mark className="grid size-12 shrink-0 place-items-center">
         <Image
           src="/brand-logo.png"
           alt={BRAND}
-          width={58}
-          height={58}
+          width={48}
+          height={48}
           className="size-full object-contain"
         />
       </span>
@@ -1221,7 +1242,21 @@ function SidebarContent({
 
   return (
     <>
-      <Brand subtitle={subtitle} />
+      {/*
+        ★ One 64px band with a rule under it — 2026-09-26, the client asking
+        for things to line up («тэгш хэмтэй»). The desktop top bar is 64px with
+        the same rule, so the line under the brand and the line under ☰ are one
+        line across the screen rather than two at different heights.
+      */}
+      <div
+        data-sidebar-brand
+        className={cn(
+          "flex h-16 shrink-0 items-center border-b border-border-soft",
+          variant === "parent" ? "-mx-4 px-4" : "-mx-3.5 px-3.5",
+        )}
+      >
+        <Brand subtitle={subtitle} />
+      </div>
 
       {variant === "parent" ? (
         <ParentSidebarContent
@@ -1646,7 +1681,11 @@ function Sidebar({
        */
       style={{ width: "var(--sidebar-w)" }}
       className={cn(
-        "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r border-border-soft bg-surface/92 py-[18px] shadow-[8px_0_28px_-22px_rgb(29_78_216_/_0.28)] backdrop-blur lg:flex",
+        // ★ A wash of the brand blue at the top, fading to white — 2026-09-26,
+        // the client asking for the product to be «гоё өнгөлөг». Text on it is
+        // `--color-ink`/`--color-muted` against at most `--color-primary-soft`,
+        // which both clear 4.5:1.
+        "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r border-border-soft bg-linear-to-b from-primary-soft via-surface to-surface pb-[18px] shadow-[8px_0_28px_-22px_rgb(29_78_216_/_0.28)] lg:flex",
         teacherTheme || isAdmin
           ? "gap-5 px-3.5"
           : variant === "parent"
@@ -1790,6 +1829,56 @@ function MobileMenuDrawer({
  * the brand and identity. Showing them twice is what crowded
  * the page title in the reference, which solved it the same way.
  */
+/**
+ * The desktop top bar: ☰ on the left, the workspace beside it, the bell on
+ * the right — 2026-09-26.
+ *
+ * ★ The client's choice, from four offered: the ministry SIS's own layout,
+ * where the menu is shown and hidden by one ☰ that is always in the same
+ * place. It replaced a round button floating on the seam between the menu and
+ * the page, over the first column of whatever table was open.
+ *
+ * ★★ One control, both directions. Its accessible name says what a press will
+ * do — «хаах» while the menu is out, «нээх» while it is away — and
+ * `aria-expanded` says which state that is, so a screen reader hears both.
+ *
+ * Desktop only: below `lg` the phone has its own header and its menu is the
+ * bottom bar's sheet.
+ */
+function DesktopTopBar({
+  subtitle,
+  showNotifications,
+}: {
+  subtitle: string;
+  showNotifications: boolean;
+}) {
+  const { collapsed, setCollapsed } = useSidebarPrefs();
+
+  return (
+    <header
+      data-print-hide
+      className="sticky top-0 z-10 hidden h-16 items-center gap-3 border-b border-border-soft bg-surface/90 px-4 backdrop-blur lg:flex lg:px-7 2xl:px-8"
+    >
+      <button
+        type="button"
+        onClick={() => setCollapsed(!collapsed)}
+        aria-expanded={!collapsed}
+        aria-label={collapsed ? "Хажуугийн цэсийг нээх" : "Хажуугийн цэсийг хаах"}
+        title={collapsed ? "Цэс нээх" : "Цэс хаах"}
+        className="grid size-10 place-items-center rounded-control border border-border-soft bg-primary-soft text-primary transition-colors hover:bg-primary hover:text-primary-ink focus-visible:outline-2 focus-visible:outline-primary"
+      >
+        <Menu size={20} aria-hidden />
+      </button>
+      <span className="min-w-0 truncate text-body font-semibold text-ink">{subtitle}</span>
+      {showNotifications ? (
+        <div className="ml-auto flex items-center">
+          <NotificationBell />
+        </div>
+      ) : null}
+    </header>
+  );
+}
+
 function MobileHeader({
   subtitle,
   showNotifications,
@@ -2032,6 +2121,14 @@ function NavLink({
           !horizontal && "size-9 rounded-control",
           horizontal && active && "scale-105",
           horizontal && active && !backgroundlessIcon && "bg-primary-soft",
+          /*
+            ★ The current row's icon well goes solid — 2026-09-26, the client
+            asking for the product to be «гоё өнгөлөг». The SIS sidebar marks
+            the current page with a filled blue square behind a white glyph;
+            the tinted row and the left rule stay, so colour is still not the
+            only signal.
+          */
+          !horizontal && active && !backgroundlessIcon && "bg-primary text-primary-ink shadow-sm",
         )}
       >
         {item.icon}

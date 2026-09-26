@@ -1,6 +1,5 @@
 "use client";
 
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import {
   createContext,
   useCallback,
@@ -52,13 +51,14 @@ export const SIDEBAR_MAX_WIDTH = 420;
 /** The gutter between the rail's right edge and the content column. */
 export const SIDEBAR_GUTTER = 12;
 /**
- * What the frame keeps clear when the rail is hidden.
+ * What the content frame keeps clear when the menu is hidden: nothing.
  *
- * Not zero: the handle that brings the rail back sits in this strip, and a
- * control overlapping the first column of a table is how someone loses a row
- * they were reading.
+ * ★ 2026-09-26. The toggle lives in the desktop top bar (`DesktopTopBar`) now,
+ * not on the seam — the client chose the ministry SIS's ☰ over a floating
+ * handle and over an icon rail — so a hidden menu leaves the content the
+ * whole width, as that layout does.
  */
-export const SIDEBAR_COLLAPSED_PAD = 44;
+export const SIDEBAR_COLLAPSED_PAD = 0;
 
 const WIDTH_KEY = "nk.sidebar.width";
 const COLLAPSED_KEY = "nk.sidebar.collapsed";
@@ -177,7 +177,8 @@ function writeLiveVars(width: number): void {
 }
 
 /**
- * The rail's right edge: drag it to resize, press the button to hide it.
+ * The rail's right edge: drag it to resize. Hiding it is the ☰ in the
+ * desktop top bar — see `DesktopTopBar` in `app-shell.tsx`.
  *
  * ★ One control, not two, because they are one thing to the eye — the seam
  * between the menu and the work. Two separate affordances at the same
@@ -259,13 +260,16 @@ export function SidebarEdge({ defaultWidth }: { defaultWidth: number }) {
     }
   };
 
+  // Folded, there is nothing to size — the rail is fixed at its own width.
+  if (collapsed) return null;
+
   return (
     <div
       data-print-hide
       className="fixed inset-y-0 z-30 hidden w-3 lg:block"
       style={{ left: "var(--sidebar-w)" }}
     >
-      {!collapsed ? (
+      {
         <div
           role="separator"
           aria-orientation="vertical"
@@ -290,29 +294,7 @@ export function SidebarEdge({ defaultWidth }: { defaultWidth: number }) {
             dragging && "before:w-0.5 before:bg-primary",
           )}
         />
-      ) : null}
-
-      <button
-        type="button"
-        onClick={() => setCollapsed(!collapsed)}
-        aria-expanded={!collapsed}
-        aria-label={collapsed ? "Хажуугийн цэсийг нээх" : "Хажуугийн цэсийг хаах"}
-        title={collapsed ? "Хажуугийн цэсийг нээх" : "Хажуугийн цэсийг хаах"}
-        className={cn(
-          "absolute top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-pill",
-          "border border-border-soft bg-surface text-muted shadow-md transition-colors",
-          "hover:border-primary hover:text-primary focus-visible:outline-2 focus-visible:outline-primary",
-          // Centred on the seam when the rail is out, tucked against the
-          // viewport edge when it is away.
-          collapsed ? "left-1.5" : "-left-3.5",
-        )}
-      >
-        {collapsed ? (
-          <PanelLeftOpen size={16} aria-hidden />
-        ) : (
-          <PanelLeftClose size={16} aria-hidden />
-        )}
-      </button>
+      }
     </div>
   );
 }

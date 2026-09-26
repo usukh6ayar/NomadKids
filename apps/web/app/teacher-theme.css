@@ -432,7 +432,12 @@ body:has([data-app-theme]) nav a[aria-current="page"] {
   background-color: #ffffff;
 }
 
-[data-app-theme] main [data-ui-table="true"] thead th {
+/*
+ * `:not([data-tone])` — 2026-09-26. A header cell that carries its own tone
+ * (the attendance status columns, `STATUS_COLUMN`) keeps it; this workspace
+ * wash would otherwise repaint every one of them the same blue.
+ */
+[data-app-theme] main [data-ui-table="true"] thead th:not([data-tone]) {
   background-color: color-mix(in srgb, var(--workspace-accent) 10%, white);
   color: var(--color-primary-strong);
 }
@@ -445,7 +450,11 @@ body:has([data-app-theme]) nav a[aria-current="page"] {
   background-color: color-mix(in srgb, var(--workspace-accent) 5%, white);
 }
 
-[data-app-theme="teacher"] main[data-layout="content"] [data-ui-table="true"] thead th {
+[data-app-theme="teacher"]
+  main[data-layout="content"]
+  [data-ui-table="true"]
+  thead
+  th:not([data-tone]) {
   background-color: #e8f2fc;
   border-bottom-color: #cfdfea;
 }

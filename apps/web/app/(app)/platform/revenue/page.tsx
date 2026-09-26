@@ -98,8 +98,10 @@ function PlatformRevenue() {
         title="Санхүү"
         lede="Платформын орлого, цэцэрлэгийн төлөлт болон тохирсон хуваарилалт."
         mark={<WalletCards />}
+        // Label for screen readers only: shown, it pushed the field 29px below
+        // the title line the header is centred on, and the value names itself.
         actions={
-          <Field label="Сар">
+          <Field label="Сар" labelHidden>
             {({ id }) => (
               <MonthSelect id={id} value={month} onValueChange={setMonth} className="w-[170px]" />
             )}

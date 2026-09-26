@@ -74,6 +74,29 @@ describe("hiding and showing the rail", () => {
     expect(await sidebar()).toBeInTheDocument();
   });
 
+  /*
+   * ★ ☰ in the top bar — 2026-09-26, the client's choice of four: the
+   * ministry SIS's layout. One control, always in the same place, that hides
+   * the menu entirely and brings it back; nothing floats on the seam and
+   * nothing lives inside the menu it is hiding.
+   */
+  it("toggles from one ☰ in the top bar, never from a button on the seam", async () => {
+    renderShell();
+    const menu = await sidebar();
+
+    const hide = screen.getAllByRole("button", { name: "Хажуугийн цэсийг хаах" });
+    expect(hide).toHaveLength(1);
+    expect(menu).not.toContainElement(hide[0]!);
+    expect(hide[0]!.closest("header")).not.toBeNull();
+    expect(hide[0]).toHaveAttribute("aria-expanded", "true");
+
+    await userEvent.click(hide[0]!);
+    const show = await screen.findByRole("button", { name: "Хажуугийн цэсийг нээх" });
+    expect(show).toHaveAttribute("aria-expanded", "false");
+    // The same control in the same bar, not a second one somewhere else.
+    expect(show.closest("header")).toBe(hide[0]!.closest("header"));
+  });
+
   it("remembers the choice for the next visit", async () => {
     renderShell();
     await sidebar();

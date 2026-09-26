@@ -13,6 +13,8 @@ import { Art } from "@/components/ui/art";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { TableShell, Td, Th } from "@/components/ui/table";
 import { groupLabel } from "@/lib/format";
+import { STATUS_COLUMN } from "@/components/attendance/status-columns";
+import { cn } from "@/lib/utils";
 
 /**
  * «Өнөөдрийн бүлгийн ирц» — every group, today, on the director's board.
@@ -79,10 +81,18 @@ export function TodayRegister() {
           <thead>
             <tr>
               <Th>Бүлэг</Th>
-              <Th numeric>Ирсэн</Th>
-              <Th numeric>Өвчтэй</Th>
-              <Th numeric>Чөлөөтэй</Th>
-              <Th numeric>Тасалсан</Th>
+              <Th numeric data-tone className={STATUS_COLUMN.present.head}>
+                Ирсэн
+              </Th>
+              <Th numeric data-tone className={STATUS_COLUMN.sick.head}>
+                Өвчтэй
+              </Th>
+              <Th numeric data-tone className={STATUS_COLUMN.excused.head}>
+                Чөлөөтэй
+              </Th>
+              <Th numeric data-tone className={STATUS_COLUMN.absent.head}>
+                Тасалсан
+              </Th>
               <Th>Бүртгэл</Th>
             </tr>
           </thead>
@@ -97,17 +107,20 @@ export function TodayRegister() {
                     {groupLabel(row.group)}
                   </Link>
                 </Td>
-                <Td numeric className="text-ink">
+                <Td numeric className={cn("font-semibold", STATUS_COLUMN.present.value)}>
                   {row.present}
                   <span className="text-muted">/{row.expected}</span>
                 </Td>
-                <Td numeric className="text-muted">
+                <Td numeric className={row.sick > 0 ? STATUS_COLUMN.sick.value : "text-muted"}>
                   {row.sick}
                 </Td>
-                <Td numeric className="text-muted">
+                <Td
+                  numeric
+                  className={row.excused > 0 ? STATUS_COLUMN.excused.value : "text-muted"}
+                >
                   {row.excused}
                 </Td>
-                <Td numeric className="text-muted">
+                <Td numeric className={row.absent > 0 ? STATUS_COLUMN.absent.value : "text-muted"}>
                   {row.absent}
                 </Td>
                 <Td className="whitespace-nowrap">
