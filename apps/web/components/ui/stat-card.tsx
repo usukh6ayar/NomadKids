@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { TONE_SURFACE, type Tone } from "@/components/ui/tone";
+import { TONE_FILL, TONE_INK, TONE_SURFACE, TONE_WASH, type Tone } from "@/components/ui/tone";
 
 /**
  * A statistic that is itself the content — RFP §12.1 and §12.2.
@@ -117,14 +117,22 @@ export function StatCard({
         shortens by about a fifth without any of the three parts moving.
       */
       pad="compact"
+      /*
+        ★ Tinted by its tone — 2026-09-26, the client: «гоё өнгөлөг болгоё».
+        The row of figures was six white rectangles told apart only by a 40px
+        chip; the ministry's SIS dashboard, which the client pointed at, washes
+        each tile in its colour. The wash is `TONE_WASH`, so body text stays
+        `--color-ink` (10.65:1 or better) and the secondary lines take the
+        tone's ink, never grey — see `TONE_INK`.
+      */
       className={cn(
-        "flex items-start gap-3 overflow-hidden",
+        "relative flex items-start gap-3 overflow-hidden",
+        TONE_WASH[tone],
         size === "wide" && "sm:col-span-2",
         // `h-full` only when linked: the `<Link>` wrapper becomes the grid
         // item, so without it the card no longer stretches to the row's height
         // and a linked card sits shorter than the unlinked one beside it.
-        href &&
-          "h-full transition-colors group-hover:border-primary/40 group-hover:bg-primary-soft/40",
+        href && "h-full transition-shadow group-hover:shadow-md",
         className,
       )}
     >
@@ -141,6 +149,19 @@ export function StatCard({
         `--radius-card`, so this and every other chip in the product are the
         same object.
       */}
+      {/*
+        A soft disc in the corner, the SIS tiles' own ornament. Decoration
+        only: `aria-hidden`, behind the content, and never under text that has
+        to be read (the figure sits left of it at every width).
+      */}
+      <span
+        aria-hidden="true"
+        className={cn(
+          "pointer-events-none absolute -right-8 -top-8 size-28 rounded-pill opacity-70",
+          TONE_FILL[tone],
+        )}
+      />
+
       {art ? (
         <span
           aria-hidden="true"
@@ -155,8 +176,8 @@ export function StatCard({
         </span>
       ) : null}
 
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <p className="text-body text-muted">{label}</p>
+      <div className="relative flex min-w-0 flex-1 flex-col gap-1">
+        <p className={cn("text-body font-medium", TONE_INK[tone])}>{label}</p>
 
         {/*
           `tabular-nums` so a figure that ticks upward does not shift the
@@ -182,7 +203,7 @@ export function StatCard({
           size, "2 нийт · 1 амжилтгүй", "идэвхтэй" — rather than a category the
           label already gave.
         */}
-        {unit ? <p className="text-caption text-muted">{unit}</p> : null}
+        {unit ? <p className={cn("text-caption", TONE_INK[tone])}>{unit}</p> : null}
 
         {/*
           ★ The trend sits under a rule, so it reads as a second statement

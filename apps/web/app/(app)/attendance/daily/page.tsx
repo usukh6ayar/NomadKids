@@ -48,6 +48,7 @@ import { useToast } from "@/components/ui/toast";
 import { SearchField } from "@/components/ui/search-field";
 import { formatDate, groupLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { STATUS_COLUMN } from "@/components/attendance/status-columns";
 
 const groupsSchema = paginated(groupListItemSchema);
 
@@ -849,10 +850,18 @@ function DailyTable({
           <Th numeric>Ирц бүртгээгүй</Th>
           <Th>Ирц бүрэн</Th>
           <Th numeric>Сурагчийн тоо</Th>
-          <Th numeric>Ирсэн</Th>
-          <Th numeric>Чөлөөтэй</Th>
-          <Th numeric>Өвчтэй</Th>
-          <Th numeric>Тасалсан</Th>
+          <Th numeric className={STATUS_COLUMN.present.head}>
+            Ирсэн
+          </Th>
+          <Th numeric className={STATUS_COLUMN.excused.head}>
+            Чөлөөтэй
+          </Th>
+          <Th numeric className={STATUS_COLUMN.sick.head}>
+            Өвчтэй
+          </Th>
+          <Th numeric className={STATUS_COLUMN.absent.head}>
+            Тасалсан
+          </Th>
           <Th numeric>Хүсэлт хүлээгдэж буй</Th>
           <Th numeric>Хүсэлт зөвшөөрсөн</Th>
           <Th numeric>Хүсэлт татгалзсан</Th>
@@ -910,16 +919,16 @@ function DailyTable({
             <Td numeric className="text-muted">
               {row.expected}
             </Td>
-            <Td numeric className="text-ink">
+            <Td numeric className={cn("font-semibold", STATUS_COLUMN.present.value)}>
               {row.present}
             </Td>
-            <Td numeric className="text-muted">
+            <Td numeric className={row.excused > 0 ? STATUS_COLUMN.excused.value : "text-muted"}>
               {row.excused}
             </Td>
-            <Td numeric className="text-muted">
+            <Td numeric className={row.sick > 0 ? STATUS_COLUMN.sick.value : "text-muted"}>
               {row.sick}
             </Td>
-            <Td numeric className="text-muted">
+            <Td numeric className={row.absent > 0 ? STATUS_COLUMN.absent.value : "text-muted"}>
               {row.absent}
             </Td>
             {/*

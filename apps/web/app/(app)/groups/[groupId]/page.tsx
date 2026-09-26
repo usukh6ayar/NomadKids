@@ -22,6 +22,7 @@ import { EsisGroupWrite } from "@/components/esis/esis-group-write";
 import { GroupRosterCheck } from "@/components/admin/groups/group-roster-check";
 import { ManageChildrenDialog } from "@/components/admin/groups/manage-children-dialog";
 import { Badge } from "@/components/ui/badge";
+import { GroupBadge } from "@/components/ui/group-badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Tabs, TabButton } from "@/components/ui/tabs";
@@ -144,6 +145,7 @@ function GroupDetail() {
         actions={<GroupGuardianInvitations groupId={groupId} groupName={groupLabel(data.name)} />}
         meta={
           <>
+            <GroupBadge name={data.name} ageBand={data.ageBand} size="sm" />
             <Badge tone="mint">{childCount} суралцагч</Badge>
             {/*
               ★ The lead teacher in the header — "Бага бүлэг → 21 хүүхэд →
