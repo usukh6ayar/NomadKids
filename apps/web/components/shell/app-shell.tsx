@@ -13,6 +13,8 @@ import {
   Search,
   Settings as SettingsIcon,
   X,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import {
   createContext,
@@ -1611,7 +1613,7 @@ function Sidebar({
   childSwitcher?: ChildSwitcher;
   teacherTheme?: boolean;
 }) {
-  const { collapsed } = useSidebarPrefs();
+  const { collapsed, setCollapsed } = useSidebarPrefs();
 
   /*
    * ★ Removed from the tree, not hidden with a class.
@@ -1622,7 +1624,9 @@ function Sidebar({
    * `MobileMenuDrawer` is untouched: below `lg` there is no rail to collapse
    * and the phone's menu is a sheet of its own.
    */
-  if (collapsed) return null;
+  if (collapsed) {
+    return <CompactRail nav={nav} sections={sections} onExpand={() => setCollapsed(false)} />;
+  }
 
   return (
     <nav
@@ -1646,7 +1650,11 @@ function Sidebar({
        */
       style={{ width: "var(--sidebar-w)" }}
       className={cn(
-        "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r border-border-soft bg-surface/92 py-[18px] shadow-[8px_0_28px_-22px_rgb(29_78_216_/_0.28)] backdrop-blur lg:flex",
+        // ★ A wash of the brand blue at the top, fading to white — 2026-09-26,
+        // the client asking for the product to be «гоё өнгөлөг». Text on it is
+        // `--color-ink`/`--color-muted` against at most `--color-primary-soft`,
+        // which both clear 4.5:1.
+        "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r border-border-soft bg-linear-to-b from-primary-soft via-surface to-surface py-[18px] shadow-[8px_0_28px_-22px_rgb(29_78_216_/_0.28)] lg:flex",
         teacherTheme || isAdmin
           ? "gap-5 px-3.5"
           : variant === "parent"
@@ -1663,6 +1671,107 @@ function Sidebar({
         childSwitcher={childSwitcher}
         showTeacherArt={teacherTheme}
       />
+      <SidebarCollapseRow onCollapse={() => setCollapsed(true)} />
+    </nav>
+  );
+}
+
+/**
+ * «Цэс хураах» — the menu's own way of folding itself, at its foot.
+ *
+ * ★ 2026-09-26. This was a round button floating on the seam between the menu
+ * and the page, over the first column of whatever table was open; the client
+ * did not want it («iim baimaargui»). A labelled row inside the menu says what
+ * it does in words and sits where nothing else is.
+ */
+function SidebarCollapseRow({ onCollapse }: { onCollapse: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onCollapse}
+      aria-expanded
+      aria-label="Хажуугийн цэсийг хаах"
+      className="flex min-h-[40px] shrink-0 items-center gap-[11px] rounded-control px-3 text-body text-muted transition-colors hover:bg-canvas hover:text-ink focus-visible:outline-2 focus-visible:outline-primary"
+    >
+      <span className="grid size-9 place-items-center">
+        <PanelLeftClose size={18} aria-hidden />
+      </span>
+      Цэс хураах
+    </button>
+  );
+}
+
+/**
+ * The folded menu: the same destinations as icons, 64px wide.
+ *
+ * ★ A navigation of its own, named «Товч цэс», not the main one squeezed. The
+ * full menu leaves the tree when folded (see `Sidebar`), so a screen reader
+ * hears one menu at a time; each icon carries its screen's name as
+ * `aria-label` and on hover, because an icon alone is not a name.
+ */
+function CompactRail({
+  nav,
+  sections,
+  onExpand,
+}: {
+  nav: NavItem[];
+  sections?: NavSection[];
+  onExpand: () => void;
+}) {
+  const pathname = usePathname();
+  const entries: { href?: string; label: string; icon?: ReactNode }[] = [
+    ...(nav[0] ? [nav[0]] : []),
+    ...(sections
+      ? sections.flatMap((section) => section.entries).filter((entry) => entry.href !== "/settings")
+      : nav.slice(1)),
+  ].filter((entry) => Boolean(entry.href));
+  const activeHref = activeHrefIn(
+    pathname,
+    entries.map((entry) => entry.href),
+  );
+
+  return (
+    <nav
+      aria-label="Товч цэс"
+      data-print-hide
+      style={{ width: "var(--sidebar-w)" }}
+      className="fixed inset-y-0 left-0 z-20 hidden flex-col items-center gap-1 overflow-y-auto border-r border-border-soft bg-linear-to-b from-primary-soft via-surface to-surface py-4 lg:flex"
+    >
+      <button
+        type="button"
+        onClick={onExpand}
+        aria-expanded={false}
+        aria-label="Хажуугийн цэсийг нээх"
+        title="Цэс дэлгэх"
+        className="mb-3 grid size-10 shrink-0 place-items-center rounded-control text-muted transition-colors hover:bg-surface hover:text-primary focus-visible:outline-2 focus-visible:outline-primary"
+      >
+        <PanelLeftOpen size={20} aria-hidden />
+      </button>
+
+      {entries.map((entry, index) => {
+        const active = entry.href === activeHref;
+        return (
+          <Link
+            key={`${entry.href}-${index}`}
+            href={entry.href!}
+            aria-label={entry.label}
+            title={entry.label}
+            aria-current={active ? "page" : undefined}
+            className={cn(
+              "grid size-10 shrink-0 place-items-center rounded-control transition-colors [&_img]:size-6",
+              active
+                ? "bg-primary text-primary-ink shadow-sm"
+                : "text-muted hover:bg-surface hover:text-ink",
+            )}
+          >
+            {entry.icon ?? (
+              <span aria-hidden="true" className="text-body font-semibold">
+                {entry.label.charAt(0)}
+              </span>
+            )}
+          </Link>
+        );
+      })}
     </nav>
   );
 }
