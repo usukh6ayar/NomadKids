@@ -30,7 +30,7 @@ import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { formatDate, fullName, initials } from "@/lib/format";
+import { formatDate, fullName, initials, capitalize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Art } from "@/components/ui/art";
 
@@ -156,7 +156,7 @@ function ArchiveHero({
       <div className="min-w-0">
         <p className="text-caption font-medium text-muted">Цэцэрлэг, бүлгийн архив</p>
         <h1 className="truncate text-heading font-semibold text-ink">
-          {child.firstName}-ийн суралцсан түүх
+          {capitalize(child.firstName)}-ийн суралцсан түүх
         </h1>
         <p className="truncate text-body text-muted">{subtitle}</p>
       </div>

@@ -19,7 +19,7 @@ import { downloadUrl } from "@/lib/api/client";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
-import { formatDate, fullName } from "@/lib/format";
+import { formatDate, fullName, groupLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useDebounced } from "@/lib/use-debounced";
 import { ChildAvatar } from "@/components/media/media-image";
@@ -282,7 +282,7 @@ function Invoices() {
             <option value="">Бүх бүлэг</option>
             {(groups.data?.items ?? []).map((group) => (
               <option key={group.id} value={group.id}>
-                {group.name}
+                {groupLabel(group.name)}
               </option>
             ))}
           </Select>

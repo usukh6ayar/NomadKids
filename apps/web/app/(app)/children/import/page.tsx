@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { EmptyState, FormError, LoadingState } from "@/components/ui/states";
+import { groupLabel } from "@/lib/format";
 
 const resultSchema = z.object({
   dryRun: z.boolean(),
@@ -213,7 +214,10 @@ function ImportChildren() {
                         <span className="text-caption text-muted">мөр {row.rowNumber}</span>{" "}
                         {row.name}
                         {row.group ? (
-                          <span className="text-caption text-muted"> · {row.group}</span>
+                          <span className="text-caption text-muted">
+                            {" "}
+                            · {groupLabel(row.group)}
+                          </span>
                         ) : null}
                       </li>
                     ))}

@@ -30,6 +30,7 @@ import { RequireRole } from "@/components/shell/require-role";
 import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 import { GroupGrid } from "@/components/admin/groups/group-grid";
 import { ManageTeachersDialog } from "@/components/admin/groups/manage-teachers-dialog";
+import { groupLabel } from "@/lib/format";
 
 const groupsSchema = paginated(groupListItemSchema);
 const yearsSchema = z.array(schoolYearSchema);
@@ -152,7 +153,7 @@ function AdminGroups() {
       {managing ? (
         <ManageTeachersDialog
           groupId={managing.id}
-          groupName={managing.name}
+          groupName={groupLabel(managing.name)}
           onClose={() => setManaging(null)}
         />
       ) : null}

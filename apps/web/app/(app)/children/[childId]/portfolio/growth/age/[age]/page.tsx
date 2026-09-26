@@ -19,6 +19,7 @@ import {
   KindergartenSkillsCard,
 } from "@/components/child/age-profile-cards";
 import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
+import { capitalize } from "@/lib/format";
 
 const ageProfilesSchema = z.array(ageProfileSchema);
 
@@ -105,7 +106,7 @@ export default function AgeProfilePage() {
 
       <AgeProfileProgress
         age={age}
-        childName={data.firstName}
+        childName={capitalize(data.firstName)}
         childSex={data.sex}
         profile={profile}
       />

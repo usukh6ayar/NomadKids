@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/field";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { useBackdropDismiss } from "@/components/ui/modal-overlay";
+import { capitalize } from "@/lib/format";
 
 /** `"126900.00"` → `"126 900₮"`. */
 function money(value: string): string {
@@ -102,7 +103,7 @@ function FoodOrderDetail() {
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
       <PageHeader
-        title={data.supplier.name}
+        title={capitalize(data.supplier.name)}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={STATUS_TONE[data.status]}>{FOOD_ORDER_STATUS_LABEL[data.status]}</Badge>
@@ -144,7 +145,9 @@ function FoodOrderDetail() {
               className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
             >
               <div className="min-w-0">
-                <p className="truncate text-body font-medium text-ink">{line.ingredient.name}</p>
+                <p className="truncate text-body font-medium text-ink">
+                  {capitalize(line.ingredient.name)}
+                </p>
                 <p className="text-caption text-muted">
                   {line.quantity} × {money(line.unitPrice)}
                   {line.receivedQuantity ? ` · Хүлээн авсан: ${line.receivedQuantity}` : ""}
@@ -187,7 +190,7 @@ function FoodOrderDetail() {
               {data.lines.map((line) => (
                 <label key={line.id} className="flex items-center justify-between gap-3">
                   <span className="min-w-0 truncate text-body text-ink">
-                    {line.ingredient.name}{" "}
+                    {capitalize(line.ingredient.name)}{" "}
                     <span className="text-caption text-muted">({line.quantity})</span>
                   </span>
                   <Input

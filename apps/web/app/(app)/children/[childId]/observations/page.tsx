@@ -14,6 +14,7 @@ import { ChildObservations } from "@/components/child/child-observations";
 import { ObservationHub } from "@/components/child/observation-hub";
 import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { useSession } from "@/lib/auth/session";
+import { capitalize } from "@/lib/format";
 
 const observationTypesSchema = z.array(observationTypeSchema);
 
@@ -101,7 +102,7 @@ function Body() {
             childId={childId}
             typeCode={typeCode}
             typeId={type.id}
-            title={type.name}
+            title={capitalize(type.name)}
             initialPanel={initialPanel}
           />
         ) : (

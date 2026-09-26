@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { useMyGroup } from "./use-my-group";
 import { Art } from "@/components/ui/art";
+import { groupLabel } from "@/lib/format";
 
 /**
  * Who is looking, and at which group — the sketch's top-left block.
@@ -122,7 +123,7 @@ export function TeacherHero() {
                 is a step *away* from every accent.
               */}
               <span className="inline-flex items-center rounded-pill bg-surface px-2.5 py-0.5 text-caption font-medium text-primary">
-                {group.name}
+                {groupLabel(group.name)}
               </span>
               {group.ageBand ? (
                 <span className="text-caption text-muted">{group.ageBand}</span>

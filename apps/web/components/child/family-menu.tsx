@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/field";
 import { EmptyState } from "@/components/ui/states";
-import { formatDayMonth, formatLongDate } from "@/lib/format";
+import { formatDayMonth, formatLongDate, capitalize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
@@ -525,7 +525,7 @@ function MealRow({
                 <span aria-hidden="true" className="text-faint">
                   •
                 </span>
-                <span className="min-w-0">{dish.name}</span>
+                <span className="min-w-0">{capitalize(dish.name)}</span>
               </li>
             ))}
           </ul>

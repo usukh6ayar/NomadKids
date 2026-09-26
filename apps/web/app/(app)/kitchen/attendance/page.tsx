@@ -16,7 +16,7 @@ import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { cn } from "@/lib/utils";
-import { formatDate, todayLocal } from "@/lib/format";
+import { formatDate, todayLocal, groupLabel } from "@/lib/format";
 import {
   ATTENDANCE_STATUS_BG,
   ATTENDANCE_STATUS_LABEL,
@@ -191,7 +191,7 @@ function KitchenAttendance() {
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <span className="flex min-w-0 items-baseline gap-2">
                       <span className="truncate text-body font-semibold text-ink">
-                        {group.name}
+                        {groupLabel(group.name)}
                       </span>
                       <span className="shrink-0 text-caption tabular-nums text-muted">
                         {group.recorded === 0 ? "—" : group.present} / {group.enrolled}

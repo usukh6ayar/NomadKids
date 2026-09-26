@@ -25,7 +25,7 @@ import { Field, Input, Select } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { Pagination } from "@/components/ui/pagination";
-import { formatDate } from "@/lib/format";
+import { formatDate, capitalize } from "@/lib/format";
 import { useToast } from "@/components/ui/toast";
 
 const levelsSchema = z.array(stockLevelSchema);
@@ -104,7 +104,9 @@ function Stock() {
                 className="flex items-center justify-between gap-3 px-4 py-3"
               >
                 <span className="flex min-w-0 items-center gap-2">
-                  <span className="truncate text-body text-ink">{level.ingredient.name}</span>
+                  <span className="truncate text-body text-ink">
+                    {capitalize(level.ingredient.name)}
+                  </span>
                   {level.low ? <Badge tone="danger">Нөөц багассан</Badge> : null}
                 </span>
                 <span
@@ -139,7 +141,7 @@ function Stock() {
                   <div className="min-w-0">
                     <p className="flex flex-wrap items-center gap-2">
                       <span className="truncate text-body font-medium text-ink">
-                        {movement.ingredient.name}
+                        {capitalize(movement.ingredient.name)}
                       </span>
                       <Badge tone={DIRECTION_TONE[movement.direction]}>
                         {STOCK_DIRECTION_LABEL[movement.direction]}
@@ -254,7 +256,7 @@ function AdjustmentDialog({
               <option value="">Сонгоно уу</option>
               {(ingredients.data?.items ?? []).map((ingredient) => (
                 <option key={ingredient.id} value={ingredient.id}>
-                  {ingredient.name}
+                  {capitalize(ingredient.name)}
                 </option>
               ))}
             </Select>

@@ -10,6 +10,7 @@ import {
   type StaffDirectoryRow,
 } from "./staff-model";
 import { StaffSourceBadge, StaffStatusBadge } from "./staff-status";
+import { groupLabel } from "@/lib/format";
 
 /**
  * The staff directory, as a table.
@@ -103,7 +104,7 @@ function StaffRow({ row, onOpen }: { row: StaffDirectoryRow; onOpen: () => void 
       <Td data-label="Бүлэг">
         {row.assignedGroups.length > 0 ? (
           <span className="text-ink">
-            {row.assignedGroups.map((group) => group.name).join(", ")}
+            {row.assignedGroups.map((group) => groupLabel(group.name)).join(", ")}
           </span>
         ) : row.kind === "TEACHER" ? (
           <span className="text-sun-ink">Бүлэггүй</span>

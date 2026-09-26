@@ -24,6 +24,7 @@ import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field"
 import { FormError } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
+import { groupLabel } from "@/lib/format";
 
 /**
  * Registering a child.
@@ -323,7 +324,7 @@ function NewChild() {
                   <option value="">Сонгоогүй</option>
                   {groupItems.map((group) => (
                     <option key={group.id} value={group.id}>
-                      {group.name}
+                      {groupLabel(group.name)}
                     </option>
                   ))}
                 </Select>

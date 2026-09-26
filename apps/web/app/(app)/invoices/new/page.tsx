@@ -18,7 +18,7 @@ import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
-import { formatDate, fullName } from "@/lib/format";
+import { formatDate, fullName, groupLabel } from "@/lib/format";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
@@ -288,7 +288,7 @@ function NewInvoice() {
                     <option value="">Бүх бүлэг</option>
                     {(groups.data?.items ?? []).map((group) => (
                       <option key={group.id} value={group.id}>
-                        {group.name}
+                        {groupLabel(group.name)}
                       </option>
                     ))}
                   </Select>

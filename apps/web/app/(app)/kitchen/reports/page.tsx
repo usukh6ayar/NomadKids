@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { formatDate } from "@/lib/format";
+import { formatDate, capitalize } from "@/lib/format";
 
 const consumptionSchema = z.array(consumptionReportRowSchema);
 const nutritionSchema = z.array(nutritionReportRowSchema);
@@ -176,7 +176,7 @@ function ConsumptionReport({
               key={row.ingredient.id}
               className="flex items-center justify-between gap-3 px-4 py-3"
             >
-              <span className="truncate text-body text-ink">{row.ingredient.name}</span>
+              <span className="truncate text-body text-ink">{capitalize(row.ingredient.name)}</span>
               <span className="shrink-0 text-body font-semibold tabular-nums text-ink">
                 {row.quantity}
               </span>
@@ -277,7 +277,7 @@ function PurchaseReport({
               className="flex items-center justify-between gap-3 px-4 py-3"
             >
               <div>
-                <p className="text-body font-medium text-ink">{row.supplier.name}</p>
+                <p className="text-body font-medium text-ink">{capitalize(row.supplier.name)}</p>
                 <p className="text-caption text-muted">{row.orderCount} захиалга</p>
               </div>
               <span className="shrink-0 text-body font-semibold tabular-nums text-ink">

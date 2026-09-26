@@ -5,7 +5,7 @@ import type { TeacherDashboard } from "@kinder/contracts";
 import { ChildAvatar } from "@/components/media/media-image";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { fullName } from "@/lib/format";
+import { fullName, groupLabel } from "@/lib/format";
 
 /**
  * Everything on this screen that is asking for something.
@@ -142,7 +142,7 @@ export function NeedsAttentionAlerts({
                     </span>
                     {child.group ? (
                       <span className="block truncate text-caption leading-tight text-muted">
-                        {child.group.name}
+                        {groupLabel(child.group.name)}
                       </span>
                     ) : null}
                   </span>

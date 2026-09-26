@@ -46,7 +46,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { SelectBox, SelectionBar, useSelection } from "@/components/ui/selection";
 import { useToast } from "@/components/ui/toast";
 import { SearchField } from "@/components/ui/search-field";
-import { formatDate } from "@/lib/format";
+import { formatDate, groupLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const groupsSchema = paginated(groupListItemSchema);
@@ -441,7 +441,7 @@ function DailyAttendance() {
                     <option value="">Бүх бүлэг</option>
                     {(groups.data?.items ?? []).map((group) => (
                       <option key={group.id} value={group.id}>
-                        {group.name}
+                        {groupLabel(group.name)}
                       </option>
                     ))}
                   </Select>
@@ -718,7 +718,7 @@ function SubmissionOverview({
             >
               <AlertTriangle size={14} aria-hidden="true" className="shrink-0 text-sun-ink" />
               <span className="min-w-0 truncate">
-                {row.group} — {formatDate(row.date)}
+                {groupLabel(row.group)} — {formatDate(row.date)}
                 <span className="text-muted"> ({row.unrecorded} хүүхэд дутуу)</span>
               </span>
             </li>
@@ -881,7 +881,7 @@ function DailyTable({
                 <SelectBox
                   checked={selection.has(rowKey(row))}
                   onChange={() => selection.toggle(rowKey(row))}
-                  label={`${row.group}, ${row.date} — сонгох`}
+                  label={`${groupLabel(row.group)}, ${row.date} — сонгох`}
                 />
               ) : null}
             </Td>
@@ -897,7 +897,7 @@ function DailyTable({
                 href={`/groups/${row.groupId}/attendance?date=${row.date}`}
                 className="text-ink underline-offset-2 hover:text-primary hover:underline"
               >
-                {row.group}
+                {groupLabel(row.group)}
               </Link>
             </Td>
             <Td className="whitespace-nowrap tabular-nums text-muted">{formatDate(row.date)}</Td>

@@ -28,6 +28,7 @@ import { useToast } from "@/components/ui/toast";
 import { SearchField } from "@/components/ui/search-field";
 import { useDebounced } from "@/lib/use-debounced";
 import { RecipeLinesEditor, type RecipeLineDraft } from "@/components/kitchen/recipe-lines-editor";
+import { capitalize } from "@/lib/format";
 
 const recipesSchema = paginated(recipeSummarySchema);
 const ingredientsSchema = paginated(ingredientSchema);
@@ -149,7 +150,7 @@ function Recipes() {
               interactive
               title={
                 <Link href={`/kitchen/recipes/${recipe.id}`} className="hover:text-primary">
-                  {recipe.name}
+                  {capitalize(recipe.name)}
                 </Link>
               }
               subtitle={recipe.mealKind ? MEAL_KIND_LABEL[recipe.mealKind] : undefined}
@@ -170,7 +171,7 @@ function Recipes() {
               }}
               actions={
                 recipe.status === "DRAFT" && kindergartenId ? (
-                  <ApproveButton recipeId={recipe.id} name={recipe.name} />
+                  <ApproveButton recipeId={recipe.id} name={capitalize(recipe.name)} />
                 ) : null
               }
             />

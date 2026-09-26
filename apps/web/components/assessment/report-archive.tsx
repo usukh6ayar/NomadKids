@@ -8,7 +8,7 @@ import { qk } from "@/lib/api/keys";
 import { Badge } from "@/components/ui/badge";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { EmptyState, LoadingState } from "@/components/ui/states";
-import { formatDayMonthLong } from "@/lib/format";
+import { formatDayMonthLong, fullName, capitalize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
@@ -74,11 +74,7 @@ export function ReadOnlyReport({ report }: { report: z.infer<typeof termReportSc
 
   return (
     <div className="flex flex-col gap-4">
-      {report.author ? (
-        <Badge tone="sky">
-          {report.author.lastName} {report.author.firstName}
-        </Badge>
-      ) : null}
+      {report.author ? <Badge tone="sky">{fullName(report.author)}</Badge> : null}
 
       {sections.map((section) => (
         <section key={section.title}>
@@ -144,7 +140,7 @@ export function WrittenReports({
         <Card key={term.id} pad="roomy" className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-body font-semibold text-ink">
-              {term.number}. {term.name}
+              {term.number}. {capitalize(term.name)}
             </h3>
             <Badge tone={report!.status === "FINAL" ? "mint" : "sun"}>
               {report!.status === "FINAL" ? "Баталгаажсан" : "Ноорог"}

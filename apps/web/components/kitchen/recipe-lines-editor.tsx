@@ -1,6 +1,7 @@
 import { Plus, X } from "lucide-react";
 import type { Ingredient } from "@kinder/contracts";
 import { Input, Select } from "@/components/ui/field";
+import { capitalize } from "@/lib/format";
 
 export interface RecipeLineDraft {
   key: string;
@@ -37,7 +38,7 @@ export function RecipeLinesEditor({
             <option value="">Орц сонгоно уу</option>
             {ingredients.map((ingredient) => (
               <option key={ingredient.id} value={ingredient.id}>
-                {ingredient.name}
+                {capitalize(ingredient.name)}
               </option>
             ))}
           </Select>

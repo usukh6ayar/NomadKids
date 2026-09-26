@@ -18,6 +18,7 @@ import { InvitationHandover } from "@/components/admin/invitation-handover";
 import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 import { StaffDirectory } from "@/components/admin/staff/staff-directory";
 import type { StaffDirectoryRow } from "@/components/admin/staff/staff-model";
+import { fullName } from "@/lib/format";
 
 const ROLES: { value: Role; label: string }[] = ASSIGNABLE_ROLES.map((value) => ({
   value,
@@ -205,7 +206,7 @@ function InviteUserDialog({
           <InvitationHandover
             token={invite.data.invitationToken}
             title="Урилга бэлэн"
-            subtitle={`${invite.data.user.lastName} ${invite.data.user.firstName} — ${ROLE_LABEL[role]}`}
+            subtitle={`${fullName(invite.data.user)} — ${ROLE_LABEL[role]}`}
             onClose={onClose}
           />
         ) : (

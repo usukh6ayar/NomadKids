@@ -30,7 +30,7 @@ import { Select } from "@/components/ui/field";
 import { SearchField } from "@/components/ui/search-field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
-import { formatAge, fullName, shortName } from "@/lib/format";
+import { formatAge, fullName, shortName, groupLabel } from "@/lib/format";
 import { Art } from "@/components/ui/art";
 import { GroupGuardianInvitations } from "@/components/child/group-guardian-invitations";
 
@@ -136,12 +136,12 @@ function GroupDetail() {
     <div className="flex flex-col gap-4">
       <PageHeader
         backHref="/admin/groups"
-        title={data.name}
+        title={groupLabel(data.name)}
         /*
           In the header rather than beside the roster: it acts on the whole
           group, and a control that acts on a list belongs above it.
         */
-        actions={<GroupGuardianInvitations groupId={groupId} groupName={data.name} />}
+        actions={<GroupGuardianInvitations groupId={groupId} groupName={groupLabel(data.name)} />}
         meta={
           <>
             <Badge tone="mint">{childCount} суралцагч</Badge>
@@ -345,7 +345,7 @@ function GroupDetail() {
       ) : (
         <GroupAbout
           groupId={groupId}
-          groupName={data.name}
+          groupName={groupLabel(data.name)}
           teachers={teachers}
           schoolYear={data.schoolYear?.name ?? null}
           isAdmin={hasRole("ADMIN")}
@@ -356,7 +356,7 @@ function GroupDetail() {
       {managingChildren ? (
         <ManageChildrenDialog
           groupId={groupId}
-          groupName={data.name}
+          groupName={groupLabel(data.name)}
           onClose={() => setManagingChildren(false)}
         />
       ) : null}

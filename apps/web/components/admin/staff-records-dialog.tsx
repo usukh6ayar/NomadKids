@@ -13,7 +13,7 @@ import {
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
-import { formatDate } from "@/lib/format";
+import { formatDate, fullName } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -100,7 +100,7 @@ export function StaffRecordsDialog({
         if (!next) onClose();
       }}
       title="Хувийн хэрэг"
-      description={`${user.lastName} ${user.firstName} — ажлын туршлага, гэрчилгээ, зэрэг`}
+      description={`${fullName(user)} — ажлын туршлага, гэрчилгээ, зэрэг`}
       footer={
         <Button type="button" variant="secondary" size="sm" onClick={onClose}>
           Хаах

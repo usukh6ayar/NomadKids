@@ -2,6 +2,7 @@ import type { TeacherDashboard } from "@kinder/contracts";
 import { TileShell } from "./tile-shell";
 import { BarRow } from "@/components/ui/chart/bar-row";
 import { Art } from "@/components/ui/art";
+import { capitalize } from "@/lib/format";
 
 /**
  * What kinds of observation this term is made of.
@@ -100,7 +101,7 @@ export function ObservationMix({
                   transition are one decision instead of one per screen.
                 */}
                 <BarRow
-                  label={row.type.name}
+                  label={capitalize(row.type.name)}
                   percent={share}
                   tone="mint"
                   value={

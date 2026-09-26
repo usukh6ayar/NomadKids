@@ -18,7 +18,7 @@ import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
-import { formatDate } from "@/lib/format";
+import { formatDate, capitalize } from "@/lib/format";
 import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
 const TERM_COLUMNS = [
@@ -142,7 +142,7 @@ function AdminTerms() {
               title={
                 <span className="flex flex-wrap items-center gap-2">
                   <span className="min-w-0 truncate">
-                    {term.number}. {term.name}
+                    {term.number}. {capitalize(term.name)}
                   </span>
                   {/*
                     ★ Derived from the dates, not from a flag, because that is
@@ -179,7 +179,7 @@ function AdminTerms() {
               actions={
                 <Button variant="ghost" size="icon" onClick={() => setEditing(term)}>
                   <Pencil size={18} />
-                  <span className="sr-only">{term.name} засах</span>
+                  <span className="sr-only">{capitalize(term.name)} засах</span>
                 </Button>
               }
             />

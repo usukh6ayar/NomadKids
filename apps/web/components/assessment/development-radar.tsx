@@ -1,5 +1,6 @@
 import type { AssessmentRadar } from "@kinder/contracts";
 import { cn } from "@/lib/utils";
+import { groupLabel, capitalize } from "@/lib/format";
 
 /**
  * One child's standing across the five development domains — RFP §12.1.
@@ -212,8 +213,8 @@ function ScoreTable({ radar }: { radar: AssessmentRadar }) {
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-caption">
           <caption className="sr-only">
-            {radar.term.name} — хөгжлийн чиглэл тус бүрийн үнэлгээ
-            {cohort ? ` болон ${cohort.group.name} бүлгийн дундаж` : ""}
+            {capitalize(radar.term.name)} — хөгжлийн чиглэл тус бүрийн үнэлгээ
+            {cohort ? ` болон ${groupLabel(cohort.group.name)} бүлгийн дундаж` : ""}
           </caption>
           <thead>
             <tr className="border-b border-border text-left text-muted">
@@ -234,7 +235,7 @@ function ScoreTable({ radar }: { radar: AssessmentRadar }) {
             {axes.map((axis) => (
               <tr key={axis.domain.id} className="border-b border-border-soft">
                 <th scope="row" className="py-1.5 pr-3 text-left font-normal text-ink">
-                  {axis.domain.name}
+                  {capitalize(axis.domain.name)}
                 </th>
                 {/*
                   The level's own word, not the number. "Хүрсэн" is what a

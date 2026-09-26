@@ -203,11 +203,44 @@ export function formatDayMonth(value: string | Date | null | undefined): string 
 }
 
 /** `Ганболд Батбаяр` — surname first, as Mongolian names are written. */
+/**
+ * The first letter raised, the rest exactly as typed — «ахлах бүлэг» →
+ * «Ахлах бүлэг».
+ *
+ * ★ The client, 2026-09-26: «UI дээр эхний үсэг томоор». A **display** rule,
+ * deliberately. Names arrive from ESIS in whatever case the ministry typed
+ * them, and the roster import rewrites `Group.name` and a child's name from
+ * ESIS on every run — capitalizing the stored value would be undone by the
+ * next import and counted as an update each time. So the data keeps ESIS's
+ * spelling and the screen raises one letter.
+ *
+ * ★★ `mn-MN`, because Ө and Ү only fold correctly under the Mongolian locale.
+ * Only the first character, never every word: `text-transform: capitalize`
+ * would make «Ахлах Бүлэг», which nobody writes.
+ *
+ * Never apply it to an input's `value` — a prefilled form would save the
+ * capital and put it into the data after all.
+ */
+export function capitalize<T extends string | null | undefined>(text: T): T {
+  if (!text) return text;
+  return (text.charAt(0).toLocaleUpperCase("mn-MN") + text.slice(1)) as T;
+}
+
+/** A group's name as the screen shows it — see `capitalize`. */
+export function groupLabel(name: string | null | undefined): string {
+  return name ? capitalize(name) : "—";
+}
+
 export function fullName(
   person: { lastName?: string | null; firstName?: string | null } | null | undefined,
 ): string {
   if (!person) return "—";
-  return [person.lastName, person.firstName].filter(Boolean).join(" ") || "—";
+  return (
+    [person.lastName, person.firstName]
+      .filter((part): part is string => Boolean(part))
+      .map(capitalize)
+      .join(" ") || "—"
+  );
 }
 
 /**
@@ -228,8 +261,8 @@ export function shortName(
 ): string {
   const last = person?.lastName?.trim();
   const first = person?.firstName?.trim();
-  if (!first) return last || "—";
-  return last ? `${last[0]!.toUpperCase()}.${first}` : first;
+  if (!first) return last ? capitalize(last) : "—";
+  return last ? `${last[0]!.toLocaleUpperCase("mn-MN")}.${capitalize(first)}` : capitalize(first);
 }
 
 /** Initials for a photoless avatar. */
@@ -238,7 +271,7 @@ export function initials(
 ): string {
   const first = person?.firstName?.trim()?.[0] ?? "";
   const last = person?.lastName?.trim()?.[0] ?? "";
-  return (first || last || "?").toUpperCase();
+  return (first || last || "?").toLocaleUpperCase("mn-MN");
 }
 
 /** `4.7 MB` */

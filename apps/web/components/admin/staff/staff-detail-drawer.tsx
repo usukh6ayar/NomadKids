@@ -16,6 +16,7 @@ import {
   type StaffDirectoryRow,
 } from "./staff-model";
 import { StaffSourceBadge, StaffStatusBadge } from "./staff-status";
+import { groupLabel } from "@/lib/format";
 
 /**
  * One staff member, in full — the other half of the table above.
@@ -144,7 +145,7 @@ export function StaffDetailDrawer({
                       href={`/groups/${group.groupId}`}
                       className="text-body text-primary hover:underline"
                     >
-                      {group.name}
+                      {groupLabel(group.name)}
                     </Link>
                     <span className="text-caption text-muted">
                       {group.role === "ASSISTANT" ? "Туслах багш" : "Үндсэн багш"}

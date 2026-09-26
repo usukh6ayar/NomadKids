@@ -18,6 +18,7 @@ import { ModalOverlay } from "@/components/ui/modal-overlay";
 import { FormError } from "@/components/ui/states";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
 import { cn } from "@/lib/utils";
+import { fullName } from "@/lib/format";
 
 /**
  * Registering a kindergarten — the platform operator's one creating act.
@@ -162,7 +163,7 @@ export function RegisterKindergartenDialog({ onClose }: { onClose: () => void })
           <InvitationHandover
             token={create.data.invitationToken}
             title="Цэцэрлэг бүртгэгдлээ"
-            subtitle={`${create.data.kindergarten.name} — ${create.data.admin.lastName} ${create.data.admin.firstName}, удирдлага`}
+            subtitle={`${create.data.kindergarten.name} — ${fullName(create.data.admin)}, удирдлага`}
             onClose={onClose}
           />
         </div>
@@ -544,9 +545,7 @@ function EsisFlow(props: {
                     onChange={() => props.onChooseStaff(person)}
                   />
                   <span className="min-w-0">
-                    <span className="block text-body text-ink">
-                      {person.lastName} {person.firstName}
-                    </span>
+                    <span className="block text-body text-ink">{fullName(person)}</span>
                     <span className="block text-caption text-muted">
                       {[
                         person.positionName,

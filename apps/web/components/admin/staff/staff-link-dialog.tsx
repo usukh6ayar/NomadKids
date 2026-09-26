@@ -12,6 +12,7 @@ import { FormError } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 import { displayName, type StaffDirectoryRow } from "./staff-model";
+import { fullName } from "@/lib/format";
 
 /**
  * «Одоо байгаа бүртгэлтэй холбох» — tying an ESIS person to an account here.
@@ -116,7 +117,7 @@ export function StaffLinkDialog({
                     <option value="">Сонгоно уу</option>
                     {candidates.map((candidate) => (
                       <option key={candidate.localUserId!} value={candidate.localUserId!}>
-                        {candidate.lastName} {candidate.firstName}
+                        {fullName(candidate)}
                       </option>
                     ))}
                   </Select>

@@ -13,7 +13,7 @@ import {
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
-import { formatRelative } from "@/lib/format";
+import { formatRelative, fullName } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
@@ -99,7 +99,7 @@ export function KindergartenAdmins({
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-body font-bold text-ink">
-                    {admin.lastName} {admin.firstName}
+                    {fullName(admin)}
                   </span>
                   <span className="block truncate text-caption text-muted">
                     {admin.username}
@@ -220,7 +220,7 @@ function AddAdminDialog({
         <InvitationHandover
           token={create.data.invitationToken}
           title="Урилга бэлэн"
-          subtitle={`${create.data.user.lastName} ${create.data.user.firstName} — Захирал/Эрхлэгч`}
+          subtitle={`${fullName(create.data.user)} — Захирал/Эрхлэгч`}
           onClose={onClose}
         />
       </FormDialog>
@@ -297,9 +297,7 @@ function AddAdminDialog({
                       onChange={() => choose(person)}
                     />
                     <span className="min-w-0">
-                      <span className="block text-body text-ink">
-                        {person.lastName} {person.firstName}
-                      </span>
+                      <span className="block text-body text-ink">{fullName(person)}</span>
                       <span className="block text-caption text-muted">
                         {[
                           person.positionName,

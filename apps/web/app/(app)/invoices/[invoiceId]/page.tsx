@@ -14,7 +14,7 @@ import {
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
-import { formatDate, formatRelative } from "@/lib/format";
+import { formatDate, formatRelative, capitalize } from "@/lib/format";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
@@ -111,7 +111,7 @@ function InvoiceDetail() {
     <div className="flex flex-col gap-5 lg:gap-6">
       <PageHeader
         backHref="/invoices"
-        title={`${data.child.lastName ? `${data.child.lastName} ` : ""}${data.child.firstName}`}
+        title={`${data.child.lastName ? `${data.child.lastName} ` : ""}${capitalize(data.child.firstName)}`}
         // `month` comes back as an ISO date (`DateTime @db.Date` — see the
         // model's own comment) — sliced to `YYYY-MM` for `formatMonthLabel`.
         actions={<Badge tone={STATUS_TONE[data.status]}>{INVOICE_STATUS_LABEL[data.status]}</Badge>}
@@ -303,7 +303,7 @@ function PaymentsSection({
                   {payment.reversalOfId ? <Badge tone="peach">Буцаалт</Badge> : null}
                 </p>
                 <p className="text-caption text-muted">
-                  {payment.recordedBy ? `${payment.recordedBy.firstName} · ` : ""}
+                  {payment.recordedBy ? `${capitalize(payment.recordedBy.firstName)} · ` : ""}
                   {formatRelative(payment.createdAt)}
                   {payment.note ? ` · ${payment.note}` : ""}
                 </p>

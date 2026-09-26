@@ -30,6 +30,7 @@ import { FormDialog } from "@/components/ui/form-dialog";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { RecipeLinesEditor, type RecipeLineDraft } from "@/components/kitchen/recipe-lines-editor";
+import { capitalize } from "@/lib/format";
 
 const ingredientsSchema = paginated(ingredientSchema);
 
@@ -151,7 +152,7 @@ function RecipeDetail() {
         <Card className="divide-y divide-border-soft">
           {data.ingredients.map((line) => (
             <div key={line.id} className="flex items-center justify-between gap-3 px-4 py-3">
-              <span className="text-body text-ink">{line.ingredient.name}</span>
+              <span className="text-body text-ink">{capitalize(line.ingredient.name)}</span>
               <span className="text-body tabular-nums text-muted">{line.quantity}</span>
             </div>
           ))}

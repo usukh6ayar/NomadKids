@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { ModalOverlay } from "@/components/ui/modal-overlay";
 import { FormError } from "@/components/ui/states";
 import { BRAND } from "@/lib/vocabulary";
+import { fullName } from "@/lib/format";
 
 /**
  * One press, one invitation per child, and a sheet the teacher can print.
@@ -184,7 +185,7 @@ function Sheet({
             {result.items.map((item) => (
               <InvitationCard
                 key={item.childId}
-                name={`${item.lastName} ${item.firstName}`}
+                name={`${fullName(item)}`}
                 token={item.invitationToken}
               />
             ))}
