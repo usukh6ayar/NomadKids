@@ -1906,7 +1906,7 @@ describe("POST /kindergartens/:id/esis/roster-import", () => {
     const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
 
     expect(res.status).toBe(409);
-    expect(res.body.detail).toMatch(/Хичээлийн жил/);
+    expect(res.body.detail).toMatch(/ESIS татах/);
     expect(await db.group.count({ where: { esisGroupId: String(GROUP_ROW.studentGroupId) } })).toBe(
       0,
     );
@@ -1962,6 +1962,152 @@ describe("POST /kindergartens/:id/esis/roster-import", () => {
     const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
 
     expect(res.status).toBe(404);
+  });
+});
+
+/**
+ * `POST …/esis/sync-groups` — the «ESIS татах» button on «Анги, бүлэг»:
+ * school years from `academicYearStatuses`, then the groups filed under them.
+ */
+describe("POST /kindergartens/:id/esis/sync-groups", () => {
+  const url = (kindergartenId: string) => `/v1/kindergartens/${kindergartenId}/esis/sync-groups`;
+
+  // Live 42778's two rows, 2026-09-28.
+  const YEARS = [
+    {
+      academicYear: "2025",
+      currentAcademicYearFlag: "N",
+      openDate: "2025-04-01",
+      closedDate: "2026-07-31",
+      academicYearStatus: "CLOSED",
+    },
+    {
+      academicYear: "2026",
+      currentAcademicYearFlag: "Y",
+      openDate: "2026-04-01",
+      closedDate: "2027-07-31",
+      academicYearStatus: "ACTIVE",
+    },
+  ];
+  const GROUP = {
+    studentGroupId: 100006351517832,
+    studentGroupName: "ахлах бүлэг",
+    academicLevel: "17",
+    academicYear: "2026",
+  };
+
+  const syncReads = (years: unknown[], groups: unknown[]) =>
+    read.mockImplementation(async (key: string) => ({
+      data: key === "academicYearStatuses" ? years : key === "groups" ? groups : [],
+      status: 200,
+      durationMs: 9,
+    }));
+
+  /** The year a director typed before ESIS existed here — not current. */
+  const handMadeYear = (kindergartenId: string) =>
+    db.schoolYear.create({
+      data: {
+        kindergartenId,
+        name: "2026-2027",
+        startsOn: new Date("2026-09-01"),
+        endsOn: new Date("2027-06-01"),
+        isCurrent: false,
+      },
+    });
+
+  it("adopts the hand-made year, makes it current and files the group under it", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    const year = await handMadeYear(a.kindergarten.id);
+    syncReads(YEARS, [GROUP]);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(200);
+    // The scenario's "2025-2026-…" year is adopted as ESIS 2025, the typed one
+    // as 2026 — two years updated, none created.
+    expect(res.body.schoolYears).toEqual({ created: 0, updated: 2 });
+    expect(res.body.groups).toEqual({ created: 1, updated: 0 });
+    expect(res.body.warnings).toEqual([]);
+    expect(typeof res.body.syncedAt).toBe("string");
+
+    const adopted = await db.schoolYear.findUniqueOrThrow({ where: { id: year.id } });
+    expect(adopted.esisAcademicYear).toBe("2026");
+    expect(adopted.isCurrent).toBe(true);
+    // The director's calendar survives: ESIS's April opening is not written.
+    expect(adopted.startsOn.toISOString().slice(0, 10)).toBe("2026-09-01");
+    expect(
+      await db.schoolYear.count({ where: { kindergartenId: a.kindergarten.id, isCurrent: true } }),
+    ).toBe(1);
+
+    const group = await db.group.findFirstOrThrow({
+      where: { kindergartenId: a.kindergarten.id, esisGroupId: String(GROUP.studentGroupId) },
+    });
+    expect(group.schoolYearId).toBe(year.id);
+    expect(group.ageBand).toBe("MIDDLE");
+  });
+
+  it("★ a second press changes nothing and creates nothing", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await handMadeYear(a.kindergarten.id);
+    syncReads(YEARS, [GROUP]);
+    await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    const [years, groups] = await Promise.all([
+      db.schoolYear.count({ where: { kindergartenId: a.kindergarten.id } }),
+      db.group.count({ where: { kindergartenId: a.kindergarten.id } }),
+    ]);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.schoolYears).toEqual({ created: 0, updated: 0 });
+    expect(res.body.groups).toEqual({ created: 0, updated: 0 });
+    expect(await db.schoolYear.count({ where: { kindergartenId: a.kindergarten.id } })).toBe(years);
+    expect(await db.group.count({ where: { kindergartenId: a.kindergarten.id } })).toBe(groups);
+  });
+
+  it("creates a year nothing here matches, and warns about a group of an unknown year", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    syncReads(YEARS, [GROUP, { ...GROUP, studentGroupId: 7, academicYear: "2030" }]);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(200);
+    // 2026 is new here; the scenario's year is still adopted as 2025.
+    expect(res.body.schoolYears).toEqual({ created: 1, updated: 1 });
+    expect(res.body.groups).toEqual({ created: 1, updated: 0 });
+    expect(res.body.warnings).toHaveLength(1);
+    expect(res.body.warnings[0]).toContain("2030");
+
+    const created = await db.schoolYear.findFirstOrThrow({
+      where: { kindergartenId: a.kindergarten.id, esisAcademicYear: "2026" },
+    });
+    expect(created.name).toBe("2026-2027");
+    expect(created.isCurrent).toBe(true);
+    expect(await db.group.count({ where: { esisGroupId: "7" } })).toBe(0);
+  });
+
+  // ── §4.1 ────────────────────────────────────────────────────────────────
+
+  it("returns 404 to an admin of another kindergarten, and writes nothing", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    syncReads(YEARS, [GROUP]);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminB).send({});
+
+    expect(res.status).toBe(404);
+    expect(await db.group.count({ where: { esisGroupId: String(GROUP.studentGroupId) } })).toBe(0);
+    expect(await db.schoolYear.count({ where: { esisAcademicYear: { not: null } } })).toBe(0);
+  });
+
+  it("returns 404 to a teacher of this very kindergarten", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    syncReads(YEARS, [GROUP]);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), teacherA).send({});
+
+    expect(res.status).toBe(404);
+    expect(await db.group.count({ where: { esisGroupId: String(GROUP.studentGroupId) } })).toBe(0);
   });
 });
 

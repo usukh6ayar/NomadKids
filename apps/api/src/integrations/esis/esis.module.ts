@@ -7,6 +7,8 @@ import { EsisService } from "./esis.service";
 import { EsisAdminService } from "./esis-admin.service";
 import { EsisRosterImportService } from "./esis-roster-import.service";
 import { EsisRosterImportRepository } from "./esis-roster-import.repository";
+import { EsisGroupSyncService } from "./esis-group-sync.service";
+import { EsisGroupSyncRepository } from "./esis-group-sync.repository";
 import { EsisSyncService } from "./esis-sync.service";
 import { EsisSyncScheduler } from "./esis-sync.scheduler";
 import { EsisRepository } from "./esis.repository";
@@ -67,6 +69,8 @@ import {
      */
     EsisRosterImportService,
     EsisRosterImportRepository,
+    EsisGroupSyncService,
+    EsisGroupSyncRepository,
     /*
      * ★ `EsisSyncService` — added 2026-09-16 for tier 1's reference sweep
      * (plan Task 3). Registered here, not exported: Task 5's route and Task

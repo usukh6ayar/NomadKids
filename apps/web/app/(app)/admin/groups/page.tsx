@@ -6,6 +6,7 @@ import Link from "next/link";
 import {
   CircleAlert,
   Info,
+  Loader2,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -46,6 +47,15 @@ import { RequireRole } from "@/components/shell/require-role";
 const groupsSchema = paginated(groupListItemSchema);
 const usersSchema = paginated(adminUserSchema);
 const yearsSchema = z.array(schoolYearSchema);
+
+/** `POST /kindergartens/:id/esis/sync-groups` — years, then groups, from ESIS. */
+const syncResultSchema = z.object({
+  schoolYears: z.object({ created: z.number(), updated: z.number() }),
+  groups: z.object({ created: z.number(), updated: z.number() }),
+  warnings: z.array(z.string()),
+  syncedAt: z.string(),
+});
+type SyncResult = z.infer<typeof syncResultSchema>;
 
 const AGE_BANDS = [
   { value: "NURSERY", label: "Бага бүлэг" },
@@ -143,6 +153,27 @@ function AdminGroups() {
   // The current school year until the director picks another; "" is all years.
   const selectedYear = yearId ?? currentYear?.id ?? "";
 
+  /*
+    ★ «ESIS татах» pulls the school years and the groups in one press —
+    2026-09-28, the client. It used to link to the ESIS screen, which only
+    read and never saved; «Хичээлийн жил» and «Улирал» left the menu at the
+    same time, so this button is now how a year arrives.
+  */
+  const sync = useMutation({
+    mutationFn: () =>
+      mutate(`/kindergartens/${primaryKindergartenId}/esis/sync-groups`, syncResultSchema, {
+        method: "POST",
+        body: {},
+      }),
+    onSuccess: (result) => {
+      toast.success(syncSummary(result));
+      void queryClient.invalidateQueries({ queryKey: ["admin", "groups"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin", "school-years"] });
+      void queryClient.invalidateQueries({ queryKey: ["kindergarten", primaryKindergartenId] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   const remove = useMutation({
     mutationFn: (id: string) => mutate(`/groups/${id}`, z.unknown(), { method: "DELETE" }),
     onSuccess: () => {
@@ -183,10 +214,19 @@ function AdminGroups() {
         title="Анги, бүлэг"
         actions={
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button asChild size="sm" variant="secondary">
-              <Link href="/admin/integrations/esis">
-                <RefreshCw size={16} aria-hidden /> ESIS татах
-              </Link>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={sync.isPending || !primaryKindergartenId}
+              aria-busy={sync.isPending}
+              onClick={() => sync.mutate()}
+            >
+              {sync.isPending ? (
+                <Loader2 size={16} className="animate-spin" aria-hidden />
+              ) : (
+                <RefreshCw size={16} aria-hidden />
+              )}
+              {sync.isPending ? "Татаж байна…" : "ESIS татах"}
             </Button>
             <Button size="sm" onClick={() => setDialog({ kind: "create" })}>
               <Plus size={18} aria-hidden />
@@ -230,8 +270,25 @@ function AdminGroups() {
       </div>
 
       <p className="flex items-center gap-2 rounded-control border border-primary/20 bg-primary-soft px-3 py-2 text-caption text-primary">
-        <Info size={15} aria-hidden /> Нэгдсэн журмаар шинэчлэгдсэн: —
+        <Info size={15} aria-hidden /> Нэгдсэн журмаар шинэчлэгдсэн:{" "}
+        {sync.data ? formatSyncedAt(sync.data.syncedAt) : "—"}
       </p>
+
+      {sync.data && sync.data.warnings.length > 0 ? (
+        <div
+          role="status"
+          className="rounded-control border border-sun bg-sun/40 px-3 py-2 text-caption text-sun-ink"
+        >
+          <p className="flex items-center gap-2 font-medium">
+            <CircleAlert size={15} aria-hidden /> ESIS-ээс татахад анхааруулга гарлаа
+          </p>
+          <ul className="mt-1 list-disc pl-6">
+            {sync.data.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {groups.isLoading ? <LoadingState rows={5} /> : null}
       {groups.isError ? <ErrorState description={errorMessage(groups.error)} /> : null}
@@ -817,4 +874,23 @@ function GroupFormDialog({
       </div>
     </div>
   );
+}
+
+/** «Хичээлийн жил: 1 шинэ, 0 шинэчилсэн · Бүлэг: 5 шинэ, 2 шинэчилсэн». */
+function syncSummary(result: SyncResult): string {
+  const { schoolYears: y, groups: g } = result;
+  if (y.created + y.updated + g.created + g.updated === 0) {
+    return "ESIS-ээс татлаа. Өөрчлөлт гараагүй.";
+  }
+  return `ESIS-ээс татлаа. Хичээлийн жил: ${y.created} шинэ, ${y.updated} шинэчилсэн · Бүлэг: ${g.created} шинэ, ${g.updated} шинэчилсэн.`;
+}
+
+function formatSyncedAt(iso: string): string {
+  return new Date(iso).toLocaleString("mn-MN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }

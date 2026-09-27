@@ -220,8 +220,6 @@ describe("navigation icons", () => {
       "Ирцийн дэлгэрэнгүй",
       "Тайлан",
       "Баримт бичгийн сан",
-      "Хичээлийн жил",
-      "Улирал",
       "Сургалтын хөтөлбөр",
       "ESIS мэдээллийн төв",
     ];
@@ -513,8 +511,6 @@ describe("role-based navigation", () => {
       ["Анги бүлэг", "/admin/groups"],
       ["Багш, ажилтан", "/admin/users"],
       ["Байгууллага", "/admin/kindergarten"],
-      ["Хичээлийн жил", "/admin/school-years"],
-      ["Улирал", "/admin/terms"],
       ["Сургалтын хөтөлбөр", "/admin/curriculum"],
       ["Ирц ба тооцоолол", "/admin/funding"],
       ["ESIS мэдээллийн төв", "/admin/integrations/esis"],
@@ -533,6 +529,9 @@ describe("role-based navigation", () => {
     }
 
     expect(within(nav).queryByRole("link", { name: "Аюулгүй байдал" })).not.toBeInTheDocument();
+    // 2026-09-28: a year arrives from ESIS through «Анги, бүлэг» now.
+    expect(within(nav).queryByRole("link", { name: "Хичээлийн жил" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Улирал" })).not.toBeInTheDocument();
   });
 
   /**

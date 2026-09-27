@@ -7,6 +7,7 @@ import { SuperAdmin } from "../../auth/decorators/super-admin.decorator";
 import type { Actor } from "../../authz/actor";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { EsisRosterImportService } from "./esis-roster-import.service";
+import { EsisGroupSyncService } from "./esis-group-sync.service";
 import { EsisAdminService } from "./esis-admin.service";
 import { EsisInstitutionLookupService } from "./esis-institution-lookup.service";
 import { EsisSyncService } from "./esis-sync.service";
@@ -48,6 +49,7 @@ export class KindergartenEsisController {
     private readonly writes: EsisWriteRequestService,
     private readonly coverage: EsisCoverageService,
     private readonly rosterImport: EsisRosterImportService,
+    private readonly groupSync: EsisGroupSyncService,
   ) {}
 
   /**
@@ -167,6 +169,24 @@ export class KindergartenEsisController {
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
   ) {
     return this.rosterImport.importRoster(actor, params.id);
+  }
+
+  /**
+   * School years and groups from ESIS, in one press — the «ESIS татах» button
+   * on «Анги, бүлэг».
+   *
+   * ★ ADMIN-only, a `POST` and `@HttpCode(200)` for the same reasons as
+   * `roster-import` above: it spends the rate-limited token, it writes, and a
+   * second press that changes nothing is the expected answer, not a 201.
+   */
+  @Post("sync-groups")
+  @HttpCode(200)
+  @Roles("ADMIN")
+  syncGroups(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.groupSync.syncGroups(actor, params.id);
   }
 
   /**

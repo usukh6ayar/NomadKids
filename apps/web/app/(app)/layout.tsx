@@ -592,8 +592,11 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
       {
         title: "Сургалтын төлөвлөгөө",
         entries: [
-          entry("Хичээлийн жил", "/admin/school-years", "adminSchoolYear"),
-          entry("Улирал", "/admin/terms", "adminTerm"),
+          /*
+            ★ «Хичээлийн жил» and «Улирал» left the menu on 2026-09-28, the
+            client: a year now arrives from ESIS through «Анги, бүлэг»'s
+            «ESIS татах». The routes stay — the setup guide still links one.
+          */
           entry("Сургалтын хөтөлбөр", "/admin/curriculum", "adminCurriculum"),
         ],
       },
@@ -938,8 +941,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          * tidier path; the label is what they read.
          */
         ...adminEntry("Ажилтны бүртгэл", "/admin/staff-code"),
-        ...adminEntry("Хичээлийн жил", "/admin/school-years", "adminSchoolYear"),
-        ...adminEntry("Улирал", "/admin/terms", "adminTerm"),
+        // «Хичээлийн жил», «Улирал» — out of the menu 2026-09-28, see above.
         /*
          * ★ Added 2026-09-10 with the four ESIS curriculum services. It sits
          * after Улирал because it answers the same kind of question — what
