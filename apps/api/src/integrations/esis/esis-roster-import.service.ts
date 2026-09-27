@@ -7,32 +7,10 @@ import {
 import { AuditRepository } from "../../audit/audit.repository";
 import { TenantAccessService } from "../../authz/tenant-access.service";
 import type { Actor } from "../../authz/actor";
-import type { AgeBand } from "../../domain/enums";
 import { EsisRepository } from "./esis.repository";
 import { EsisRosterImportRepository } from "./esis-roster-import.repository";
 import { EsisService } from "./esis.service";
-
-/**
- * ESIS's own level code → the age band this product files a group under.
- *
- * ★ **By the numeric code, not the name.** `academicLevelName` is Mongolian
- * free-ish text the ministry may reword; the code is the key. Verified live
- * against institution 42778 on 2026-09-20 — it returns exactly these four and
- * nothing else:
- *
- *     17=Ахлах  15=Бага  16=Дунд  18=Бэлтгэл
- *
- * ★★ The band names and the level names are **off by one**, and that is not a
- * mistake to "fix": ESIS's Бага is this product's NURSERY, its Дунд is JUNIOR,
- * and so on up. `seed-esis.ts` carries the same table with the same comment;
- * changing one without the other would silently refile every group.
- */
-const AGE_BAND_BY_LEVEL: Record<string, AgeBand> = {
-  "15": "NURSERY",
-  "16": "JUNIOR",
-  "17": "MIDDLE",
-  "18": "SENIOR",
-};
+import { AGE_BAND_BY_LEVEL, esisDate } from "./esis-roster.shared";
 
 export interface RosterImportOutcome {
   groups: { created: number; updated: number; skipped: string[] };
@@ -103,7 +81,7 @@ export class EsisRosterImportService {
     const year = await this.repo.findCurrentSchoolYear(kindergartenId);
     if (!year) {
       throw new ConflictException(
-        "Одоогийн хичээлийн жил тохируулаагүй байна. «Хичээлийн жил» хэсэгт жил үүсгэж, идэвхтэй болгоно уу.",
+        "Одоогийн хичээлийн жил тохируулаагүй байна. «Анги, бүлэг» хэсгийн «ESIS татах» товчийг дарж хичээлийн жилийг ESIS-ээс татна уу.",
       );
     }
 
@@ -330,17 +308,4 @@ export class EsisRosterImportService {
 
     return outcome;
   }
-}
-
-/**
- * ESIS's date strings → a `Date`, or null.
- *
- * ★ Null rather than `new Date("")`, which is `Invalid Date` and reaches
- * Postgres as an error a hundred rows later, naming neither the row nor the
- * field. A child with no readable birth date is skipped where they are read.
- */
-function esisDate(value: unknown): Date | null {
-  if (typeof value !== "string" || value.trim() === "") return null;
-  const parsed = new Date(value.slice(0, 10));
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }

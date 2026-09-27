@@ -992,6 +992,15 @@ model SchoolYear {
   endsOn         DateTime @db.Date
   isCurrent      Boolean  @default(false)
 
+  /// ESIS's own key for this year — `academicYearStatuses`' `academicYear`,
+  /// the year it opens in ("2026" for 2026-2027). Filled by
+  /// `POST …/esis/sync-groups`, NULL for a year typed here and never matched.
+  ///
+  /// ★ Unique per kindergarten so a second press of the sync finds the row it
+  /// made rather than making another. NULLs do not collide in Postgres, so any
+  /// number of hand-made years can sit beside the linked ones.
+  esisAcademicYear String? @db.VarChar(16)
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -1005,6 +1014,7 @@ model SchoolYear {
   methodUnions        MethodUnion[]
 
   @@unique([kindergartenId, name])
+  @@unique([kindergartenId, esisAcademicYear])
   @@index([kindergartenId, isCurrent])
   @@map("school_years")
 }

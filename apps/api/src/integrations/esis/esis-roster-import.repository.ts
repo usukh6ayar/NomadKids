@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { AgeBand } from "../../domain/enums";
+import { normaliseName } from "./esis-roster.shared";
 
 /**
  * The writes an ESIS roster import makes: groups, children and their
@@ -256,17 +257,4 @@ export class EsisRosterImportRepository {
       select: { id: true },
     });
   }
-}
-
-/**
- * A name reduced to what two people typing the same class, or the same
- * child, agree on.
- *
- * Case and surrounding space are the two differences seen in practice; the
- * inner spacing is left alone, because «бага бүлэг» and «багабүлэг» are not
- * obviously the same name and guessing that they are would merge two real
- * classes — or two real children.
- */
-function normaliseName(name: string): string {
-  return name.trim().toLocaleLowerCase("mn-MN");
 }

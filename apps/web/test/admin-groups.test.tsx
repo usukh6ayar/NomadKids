@@ -133,13 +133,50 @@ describe("the group list", () => {
     renderWithProviders(<AdminGroupsPage />);
 
     await screen.findByRole("table", { name: "Бүлгүүдийн жагсаалт" });
-    expect(screen.getByRole("link", { name: /ESIS татах/ })).toHaveAttribute(
-      "href",
-      "/admin/integrations/esis",
-    );
+    expect(screen.getByRole("button", { name: /ESIS татах/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Бүлэг нэмэх/ })).toBeInTheDocument();
     expect(screen.getByText(/Нэгдсэн журмаар шинэчлэгдсэн: —/)).toBeInTheDocument();
     expect(screen.getByText(/Нийт/).textContent).toMatch(/Нийт 1 бүлэг/);
+  });
+
+  /*
+    ★ 2026-09-28 — «ESIS татах» saves: one POST pulls the years and the groups,
+    and the director is told what changed and what could not be placed.
+  */
+  it("pulls years and groups from ESIS and says what changed", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: `/kindergartens/${KG}/esis/sync-groups`,
+        method: "POST",
+        body: {
+          schoolYears: { created: 1, updated: 0 },
+          groups: { created: 5, updated: 2 },
+          warnings: ["«X» бүлгийн мэдээлэл дутуу тул алгасав."],
+          syncedAt: "2026-09-28T10:00:00Z",
+        },
+      },
+      {
+        path: "/groups",
+        body: { items: [group()], page: 1, pageSize: 100, total: 1, totalPages: 1 },
+      },
+      {
+        path: `/kindergartens/${KG}/school-years`,
+        body: [{ id: YEAR, name: "2026-2027", isCurrent: true, kindergartenId: KG }],
+      },
+    ]);
+    renderWithProviders(<AdminGroupsPage />);
+
+    await user.click(await screen.findByRole("button", { name: /ESIS татах/ }));
+
+    expect(
+      await screen.findByText(/Хичээлийн жил: 1 шинэ, 0 шинэчилсэн · Бүлэг: 5 шинэ, 2 шинэчилсэн/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("«X» бүлгийн мэдээлэл дутуу тул алгасав.")).toBeInTheDocument();
+    expect(
+      api.calls.filter((c) => c.method === "POST" && c.url.endsWith("/esis/sync-groups")),
+    ).toHaveLength(1);
   });
 
   it("offers the four row actions", async () => {
