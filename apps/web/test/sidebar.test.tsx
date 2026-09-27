@@ -150,7 +150,11 @@ describe("the brand header", () => {
     renderShell(["COOK"], "/kitchen/dashboard");
     const nav = await sidebar();
 
-    expect(within(nav).getByAltText(BRAND).closest("a")).toHaveAttribute("href", "/");
+    // The workspace's own first screen, never `/` — which renders the public
+    // landing page until `/auth/me` answers (see `useHomeHref`).
+    const href = within(nav).getByAltText(BRAND).closest("a")!.getAttribute("href");
+    expect(href).not.toBe("/");
+    expect(href?.startsWith("/kitchen")).toBe(true);
   });
 
   /*
