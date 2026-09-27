@@ -3,6 +3,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { toSkipTake, type PageParams } from "../common/pagination";
 import type { Role } from "../domain/enums";
 import { searchWhere } from "../common/repository/search";
+import type { StaffCategory } from "../generated/prisma/enums";
 
 /**
  * Users and their memberships.
@@ -26,26 +27,7 @@ export class UsersRepository {
    */
   async list(kindergartenIds: string[], filters: UserFilters, page: PageParams) {
     const { skip, take } = toSkipTake(page);
-
-    const where = {
-      deletedAt: null,
-      memberships: {
-        some: {
-          kindergartenId: { in: kindergartenIds },
-          deletedAt: null,
-          /*
-            `role` narrows to one; `roles` narrows to a set. Both are applied
-            when both are given — the intersection is the honest reading of
-            "teachers, out of the staff roles", and it is what the users screen
-            sends when its own role picker is set while the staff scope stays.
-          */
-          ...(filters.role ? { role: filters.role } : {}),
-          ...(filters.roles?.length ? { role: { in: filters.roles } } : {}),
-          ...(filters.isActive !== undefined ? { isActive: filters.isActive } : {}),
-        },
-      },
-      ...(searchWhere(filters.q, ["lastName", "firstName", "username"]) ?? {}),
-    };
+    const where = staffWhere(kindergartenIds, filters);
 
     const [items, total] = await Promise.all([
       this.prisma.user.findMany({
@@ -53,27 +35,48 @@ export class UsersRepository {
         orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
         skip,
         take,
-        select: {
-          id: true,
-          username: true,
-          email: true,
-          phone: true,
-          lastName: true,
-          firstName: true,
-          // The join key to an ESIS staff row — see `adminUserSchema`.
-          esisPersonId: true,
-          isActive: true,
-          lastLoginAt: true,
-          memberships: {
-            where: { kindergartenId: { in: kindergartenIds }, deletedAt: null },
-            select: { id: true, kindergartenId: true, role: true, isActive: true },
-          },
-        },
+        select: staffSelect(kindergartenIds),
       }),
       this.prisma.user.count({ where }),
     ]);
 
     return { items, total };
+  }
+
+  /**
+   * Every matching member of staff, for the spreadsheet — not the page on
+   * screen, with the same filters. Capped rather than unbounded (§3.4): a
+   * kindergarten's staff is tens of people.
+   */
+  async listForExport(kindergartenIds: string[], filters: UserFilters) {
+    return this.prisma.user.findMany({
+      where: staffWhere(kindergartenIds, filters),
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      take: EXPORT_CAP,
+      select: staffSelect(kindergartenIds),
+    });
+  }
+
+  async updateMembershipProfile(
+    id: string,
+    data: {
+      position?: string | null;
+      staffCategory?: StaffCategory | null;
+      startedOn?: Date | null;
+    },
+  ) {
+    return this.prisma.membership.update({
+      where: { id },
+      data,
+      select: {
+        id: true,
+        kindergartenId: true,
+        role: true,
+        position: true,
+        staffCategory: true,
+        startedOn: true,
+      },
+    });
   }
 
   /** A single user, visible only if they share a kindergarten with the actor. */
@@ -268,6 +271,85 @@ export interface UserFilters {
   roles?: Role[];
   isActive?: boolean;
   q?: string;
+  groupId?: string;
+  hasGroup?: boolean;
+}
+
+/**
+ * Users holding a membership in one of the given kindergartens, narrowed by
+ * the directory's filters.
+ *
+ * ★ `role` narrows to one; `roles` narrows to a set. Both are applied when both
+ * are given — the intersection is the honest reading of "teachers, out of the
+ * staff roles".
+ */
+function staffWhere(kindergartenIds: string[], filters: UserFilters) {
+  return {
+    deletedAt: null,
+    memberships: {
+      some: {
+        kindergartenId: { in: kindergartenIds },
+        deletedAt: null,
+        ...(filters.role ? { role: filters.role } : {}),
+        ...(filters.roles?.length ? { role: { in: filters.roles } } : {}),
+        ...(filters.isActive !== undefined ? { isActive: filters.isActive } : {}),
+        // «Бүлэг хариуцсан / Бүлэггүй» and one group — through the live
+        // assignment rows, the same ones `canAccessChild` reads.
+        ...(filters.groupId
+          ? { assignments: { some: { ...ACTIVE_ASSIGNMENT, groupId: filters.groupId } } }
+          : {}),
+        ...(filters.hasGroup === true ? { assignments: { some: ACTIVE_ASSIGNMENT } } : {}),
+        ...(filters.hasGroup === false ? { assignments: { none: ACTIVE_ASSIGNMENT } } : {}),
+      },
+    },
+    ...(searchWhere(filters.q, ["lastName", "firstName", "username", "phone", "registerNumber"]) ??
+      {}),
+  };
+}
+
+/** A group assignment that is live today — not ended, not soft-deleted. */
+const ACTIVE_ASSIGNMENT = { deletedAt: null, endedOn: null } as const;
+
+const EXPORT_CAP = 2000;
+
+/**
+ * One member of staff as the directory draws them.
+ *
+ * ★ Memberships narrowed to the admin's own kindergartens — the same second
+ * filter `list` explains: without it an admin of A would learn what a person
+ * does at B.
+ */
+function staffSelect(kindergartenIds: string[]) {
+  return {
+    id: true,
+    username: true,
+    email: true,
+    phone: true,
+    lastName: true,
+    firstName: true,
+    registerNumber: true,
+    dateOfBirth: true,
+    // The join key to an ESIS staff row — see `adminUserSchema`.
+    esisPersonId: true,
+    isActive: true,
+    lastLoginAt: true,
+    memberships: {
+      where: { kindergartenId: { in: kindergartenIds }, deletedAt: null },
+      select: {
+        id: true,
+        kindergartenId: true,
+        role: true,
+        isActive: true,
+        position: true,
+        staffCategory: true,
+        startedOn: true,
+        assignments: {
+          where: ACTIVE_ASSIGNMENT,
+          select: { role: true, group: { select: { id: true, name: true } } },
+        },
+      },
+    },
+  } as const;
 }
 
 export interface CreateUserData {
@@ -293,6 +375,8 @@ export interface CreateUserData {
 export interface UpdateUserData {
   email?: string | null;
   phone?: string | null;
+  registerNumber?: string | null;
+  dateOfBirth?: Date | null;
   lastName?: string;
   firstName?: string;
   specialization?: string | null;

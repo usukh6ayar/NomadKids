@@ -1,13 +1,34 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { BriefcaseBusiness, Building2, Database, KeyRound, LogOut, Mail } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import {
+  Bell,
+  BriefcaseBusiness,
+  Building2,
+  ChevronRight,
+  Database,
+  GraduationCap,
+  IdCard,
+  KeyRound,
+  Link2,
+  LogOut,
+  Mail,
+  MessageCircleQuestion,
+  Pencil,
+  Phone,
+  Settings,
+  ShieldCheck,
+  UsersRound,
+} from "lucide-react";
 import { z } from "zod";
 import {
   esisMyProfileSchema,
   parentDashboardSchema,
   PASSWORD_RULES,
+  ROLE_LABEL,
   userProfileSchema,
   validatePasswordStrength,
 } from "@kinder/contracts";
@@ -23,13 +44,18 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, PasswordInput } from "@/components/ui/field";
+import { FormDialog } from "@/components/ui/form-dialog";
+import { TabButton, Tabs } from "@/components/ui/tabs";
+import { TONE_SURFACE } from "@/components/ui/tone";
 import { useToast } from "@/components/ui/toast";
+import { useMyGroup } from "@/components/dashboard/use-my-group";
+import { fullName, groupLabel } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
-import { ChildPhotoButton } from "@/components/child/child-photo-button";
-import { fullName } from "@/lib/format";
 import { PhotoBadgeButton } from "@/components/media/photo-badge-button";
 import { MyStaffRecords } from "@/components/staff/my-staff-records";
+import { ChildPhotoButton } from "@/components/child/child-photo-button";
 
 const profileSchema = userProfileSchema.extend({
   specialization: z.string().nullish(),
@@ -43,121 +69,186 @@ const profileSchema = userProfileSchema.extend({
  * signed-in person's account controls.
  */
 export default function SettingsPage() {
+  const { hasRole } = useSession();
+  const [tab, setTab] = useState<SettingsTab>("professional");
+  const isStaffWithEsis = hasRole("TEACHER") || hasRole("ADMIN");
+
   return (
     /*
-      ★ Capped, and one column again — 2026-09-06.
+      ★ Redesigned 2026-09-27, to the client's drawing: a profile card with
+      the person's contacts under it, the rest behind four tabs, and three
+      cards down the right — security, notifications, help. It replaces one
+      long column where a teacher scrolled past two ESIS tables to find the
+      password form.
 
-      It was two columns from `xl`: the profile on the left, the password form
-      and the sign-out row on the right. There is one account card now:
-      password and sign-out both belong to the signed-in profile, while the
-      ESIS records below remain read-only content.
-
-      The reasoning the old note recorded, kept because it is still the reason
-      for the 760px cap:
-
-      A form at 1336px is a label on the far left with its field running to the
-      far right, and the eye has to travel the whole width to connect them. So
-      the forms are capped, and were capped at a flat 760px until 2026-08-29.
-
-      That fixed the field width and created a different fault: on a 1440px
-      screen the content column is about 1140px, so a 760px page left 380px of
-      nothing down its right-hand side. The report was that it does not fill the
-      screen — and it does not, because a cap is a limit on a *line*, not a
-      layout for a page.
-
-      A cap is a limit on a *line*, not a layout for a page — but with one form
-      on the page, the line is the page.
+      ★★ Profile editing is back. The client took it away on 2026-09-08
+      («профайлыг засдаг байх хэрэггүй») and the drawing puts «Мэдээлэл
+      засах» back on the card; the drawing is the newer instruction.
     */
     <div className="flex w-full flex-col gap-6 lg:gap-8">
-      <PageHeader title="Хувийн тохиргоо" />
-
-      {/*
-        ★ The reading measure holds the form, not the ESIS panels —
-        2026-09-10, at the client's instruction ("дэлгэц дүүрэн"). A profile
-        form and a sign-out button are controls, and 760px is the right width
-        for those; the two ESIS sections below are the ministry's records, and
-        capping a table of them at a third of the screen is what made the
-        columns squeeze. So the column wraps what it was reasoned for and the
-        panels sit outside it.
-      */}
-      <div className="flex w-full max-w-[760px] flex-col gap-6 lg:gap-8">
-        <ProfileCard />
-        <StaffProfileCard />
-        <ChildPhotosCard />
+      <div className="relative">
+        <PageHeader
+          title="Хувийн тохиргоо"
+          lede="Хувийн мэдээлэл, аюулгүй байдал, мэдэгдэл болон бусад тохиргоогоо эндээс удирдаарай."
+        />
+        <Image
+          src="/illustrations/audience-teacher.png"
+          alt=""
+          width={180}
+          height={180}
+          className="pointer-events-none absolute -top-6 right-0 hidden size-[150px] object-contain xl:block"
+        />
       </div>
 
-      {/*
-        ★ The reader's own мэргэшлийн зэрэг — 2026-09-22, the client asking for
-        it "Багш болон удирдлага хэсэгт". Management's half has existed since
-        #119; this is the teacher's, and it is read-only because
-        `assertCanManageStaffRecords` is administrator-only on purpose.
-        `MyStaffRecords`'s own docblock carries the reasoning.
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="flex min-w-0 flex-col gap-6">
+          <ProfileCard />
+          <ChildPhotosCard />
 
-        Above the ESIS panels: it is this kindergarten's record of the reader,
-        which is nearer to their profile than the ministry's roll is.
-      */}
-      <MyStaffRecords />
+          <Card className="flex flex-col gap-5 p-0">
+            <div className="overflow-x-auto px-4 sm:px-5">
+              <Tabs label="Тохиргооны хэсгүүд">
+                {SETTINGS_TABS.filter((t) => isStaffWithEsis || !t.staffOnly).map((t) => (
+                  <TabButton key={t.key} active={tab === t.key} onClick={() => setTab(t.key)}>
+                    <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                      <t.icon size={18} aria-hidden="true" />
+                      {t.label}
+                    </span>
+                  </TabButton>
+                ))}
+              </Tabs>
+            </div>
+            <div className="px-4 pb-5 sm:px-5">
+              {tab === "professional" ? (
+                <div className="flex flex-col gap-6">
+                  <StaffProfileCard />
+                  <MyStaffRecords />
+                </div>
+              ) : null}
+              {tab === "work" ? <EsisProfileSection /> : null}
+              {tab === "systems" ? (
+                <div className="flex flex-col gap-6">
+                  <EsisDataPanel
+                    resource="teacherAcademicOrg"
+                    title="Заах аргын нэгдэл"
+                    description="ЭСИС-д бүртгэлтэй заах аргын нэгдэл, албан тушаал"
+                  />
+                  <EsisDataPanel
+                    resource="teachers"
+                    title="Багшийн жагсаалт"
+                    description="ESIS-д бүртгэлтэй багш нарын томилгоо"
+                  />
+                </div>
+              ) : null}
+              {tab === "other" ? <SignOutCard /> : null}
+            </div>
+          </Card>
+        </div>
 
-      <EsisProfileSection />
-
-      {/*
-        ★ The kindergarten's teaching staff, under the reader's own record —
-        2026-09-09, at the client's request ("багшийн ерөнхий мэдээлэл").
-
-        `EsisProfileSection` above is `my-profile`: one person, matched to
-        whoever is signed in. This is `teacher/list`, the whole roll — the
-        instructor ids the group services refer to, and the assignment each
-        one carries. A teacher's own screen is where it belongs, because the
-        user list that would otherwise hold it is `@Roles("ADMIN")`.
-
-        It renders nothing for a cook or an accountant: `teachers` is not in
-        their service list, so the catalog does not return it.
-      */}
-      {/*
-        ★ The reader's own заах аргын нэгдэл — 2026-09-10, at the client's
-        request. `api-34` takes a `:personId`, so it is one person's record
-        rather than a roll, which is why it sits here beside `my-profile`
-        rather than on `/admin/users` where the staff-wide lists live.
-
-        Nothing stores an ESIS person id yet, so the panel asks for one. See
-        `child-esis.tsx` for the same note and the same reason.
-      */}
-      <EsisDataPanel
-        resource="teacherAcademicOrg"
-        title="Заах аргын нэгдэл"
-        description="ЭСИС-д бүртгэлтэй заах аргын нэгдэл, албан тушаал"
-      />
-
-      <EsisDataPanel
-        resource="teachers"
-        /*
-          ★ "Жагсаалт" for the same reason the roster panel took it —
-          2026-09-09. `api-41` is `teacher/list` and returns the roll; the
-          reader's *own* ESIS record is the panel above this one, built from
-          `my-profile`. Two panels, two questions, and only the first is a
-          list.
-        */
-        title="Багшийн жагсаалт"
-        description="ESIS-д бүртгэлтэй багш нарын томилгоо"
-      />
-
-      {/*
-        ★ Sign-out, at the very foot of the screen — #88's own instruction,
-        recorded in `ProfileCard`'s note above: "`SignOutCard` is the last
-        thing on the page instead."
-        
-        It was lost resolving the conflict between #88 and this branch: #88's
-        diff showed `- <SignOutCard />` where the row left the profile card,
-        and the resolution read that as a deletion rather than a move. Nothing
-        rendered it afterwards, which is what `no-unused-vars` caught on main.
-
-        The 760px column is the same one the profile form sits in — this is a
-        control, not a record, so it keeps the reading measure the ESIS panels
-        above it deliberately do not.
-      */}
-      <div className="flex w-full max-w-[760px] flex-col gap-6 lg:gap-8">
-        <SignOutCard />
+        <aside aria-label="Тохиргооны товчлол" className="flex flex-col gap-4">
+          <SideCard
+            tone="cornflower"
+            icon={<ShieldCheck size={22} aria-hidden="true" />}
+            title="Аюулгүй байдал"
+            text="Бүртгэлийн аюулгүй байдлаа хамгаалан, нууц үгээ шинэчлээрэй."
+          >
+            <PasswordFromProfile />
+          </SideCard>
+          <SideCard
+            tone="mint"
+            icon={<Bell size={22} aria-hidden="true" />}
+            title="Мэдэгдэл"
+            text="Цэцэрлэгийн мэдээ, мэдэгдлээ нэг дор харна."
+          >
+            <SideLink href="/notifications">Мэдэгдэл харах</SideLink>
+          </SideCard>
+          <SideCard
+            tone="peach"
+            icon={<MessageCircleQuestion size={22} aria-hidden="true" />}
+            title="Тусламж хэрэгтэй юу?"
+            text="Асуудал гарвал цэцэрлэгийн удирдлага эсвэл системийн оператортой холбогдоно уу."
+          >
+            {hasRole("COOK") || hasRole("ACCOUNTANT") ? null : (
+              <SideLink href="/chat">Холбоо барих</SideLink>
+            )}
+          </SideCard>
+        </aside>
       </div>
+    </div>
+  );
+}
+
+type SettingsTab = "professional" | "work" | "systems" | "other";
+
+const SETTINGS_TABS: {
+  key: SettingsTab;
+  label: string;
+  icon: typeof GraduationCap;
+  staffOnly?: boolean;
+}[] = [
+  { key: "professional", label: "Мэргэжлийн мэдээлэл", icon: GraduationCap },
+  { key: "work", label: "Ажлын мэдээлэл", icon: BriefcaseBusiness },
+  { key: "systems", label: "Холбоотой систем", icon: Link2, staffOnly: true },
+  { key: "other", label: "Бусад тохиргоо", icon: Settings },
+];
+
+/** A right-column card: a tinted panel, an icon chip, a line, and one action. */
+function SideCard({
+  tone,
+  icon,
+  title,
+  text,
+  children,
+}: {
+  tone: "cornflower" | "mint" | "peach";
+  icon: ReactNode;
+  title: string;
+  text: string;
+  children?: ReactNode;
+}) {
+  return (
+    <Card pad="roomy" tone={tone} className="flex flex-col gap-3">
+      <div className="flex items-start gap-3">
+        <span
+          aria-hidden="true"
+          className={cn(
+            "grid size-11 shrink-0 place-items-center rounded-pill",
+            TONE_SURFACE[tone],
+          )}
+        >
+          {icon}
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-lead font-semibold text-ink">{title}</h2>
+          <p className="mt-0.5 text-body text-ink/80">{text}</p>
+        </div>
+      </div>
+      {children}
+    </Card>
+  );
+}
+
+function SideLink({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <Link
+      href={href}
+      className="flex min-h-11 items-center justify-between rounded-pill border border-border bg-surface px-4 text-body font-medium text-ink transition-colors hover:border-primary/40 hover:text-primary"
+    >
+      {children}
+      <ChevronRight size={18} aria-hidden="true" />
+    </Link>
+  );
+}
+
+/** The password form, fed the account's own identifier. */
+function PasswordFromProfile() {
+  const { data } = useQuery({
+    queryKey: qk.profile(),
+    queryFn: () => get("/me/profile", profileSchema),
+  });
+  return (
+    <div className="rounded-card bg-surface p-3">
+      <PasswordSection identifier={data?.email || data?.username || ""} email={data?.email} />
     </div>
   );
 }
@@ -176,59 +267,6 @@ export default function SettingsPage() {
  * person's own; only the ESIS identifiers are illustrative, and no civil id,
  * register number or credential is ever represented.
  */
-/**
- * "Хүүхдийн зураг" — a guardian changes the face on their child's card.
- *
- * ★ Client, 2026-09-24: "цэс хэсэг дээр хувийн тохиргоо байгаа, энэ дээр
- * хүүхдийн зургийг нь сольдог байя". The badge on the child's own avatar does
- * the same thing and stays; this is the place people look when they cannot
- * find it, and the only place a family with two children sees both at once.
- *
- * ★★ The picture only. The name, the birth date and the group are the
- * kindergarten's record and stay staff-only — `canRecordForChild`, unchanged.
- *
- * Renders nothing for staff: `/dashboard/parent` is the guardian's own
- * endpoint, and a teacher opening this page has no children of their own to
- * list here.
- */
-function ChildPhotosCard() {
-  const { hasRole } = useSession();
-  const isGuardian = hasRole("PARENT");
-
-  const { data } = useQuery({
-    queryKey: qk.dashboard.parent(),
-    queryFn: () => get("/dashboard/parent", parentDashboardSchema),
-    enabled: isGuardian,
-  });
-
-  if (!isGuardian || !data || data.children.length === 0) return null;
-
-  return (
-    <Card pad="roomy" className="flex flex-col gap-4">
-      <SectionHeader
-        title="Хүүхдийн зураг"
-        lede="Зураг дээрх камер дээр дарж солино. Нэр, бүлгийг цэцэрлэг өөрчилнө."
-      />
-      <ul className="flex flex-col gap-3">
-        {data.children.map((child) => (
-          <li key={child.id} className="flex items-center gap-3">
-            <div className="relative shrink-0">
-              <ChildAvatar child={child} size={56} />
-              <ChildPhotoButton childId={child.id} childName={fullName(child)} />
-            </div>
-            <div className="min-w-0">
-              <p className="truncate font-semibold text-ink">{fullName(child)}</p>
-              <p className="truncate text-caption text-muted">
-                {child.group?.name ?? "Бүлэг тодорхойгүй"}
-              </p>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </Card>
-  );
-}
-
 function EsisProfileSection() {
   const { roles, primaryKindergartenId } = useSession();
   const { data, isLoading, isError } = useQuery({
@@ -244,15 +282,16 @@ function EsisProfileSection() {
   });
 
   if (isLoading || esisQuery.isLoading || isError || !data) return null;
-  /*
-    ★ Nothing at all when the ESIS read fails — client, 2026-09-24. The panel
-    used to show "Ажлын мэдээлэл түр татагдсангүй" with the raw reason under
-    it, and for a parent that reason is always "Not Found": they have no ESIS
-    record, so a request that was never meant for them reported a fault on
-    their own settings page. This section is a bonus panel; when it has
-    nothing to say it says nothing.
-  */
-  if (esisQuery.isError) return null;
+  if (esisQuery.isError) {
+    return (
+      <section aria-label="Ажлын мэдээлэл">
+        <Card pad="compact" tone="sun">
+          <p className="font-medium text-ink">Ажлын мэдээлэл түр татагдсангүй.</p>
+          <p className="mt-1 text-body text-muted">{errorMessage(esisQuery.error)}</p>
+        </Card>
+      </section>
+    );
+  }
 
   const esis = buildEsisDemoProfile(data, roles);
   const live = esisQuery.data?.mode === "LIVE" ? esisQuery.data : null;
@@ -383,7 +422,9 @@ function EsisFieldGroup({
  * read-only records. `SignOutCard` is the last thing on the page instead.
  */
 function ProfileCard() {
-  const { hasRole } = useSession();
+  const { session } = useSession();
+  const { group } = useMyGroup();
+  const [editing, setEditing] = useState(false);
   const { data, isLoading, isError, error } = useQuery({
     queryKey: qk.profile(),
     queryFn: () => get("/me/profile", profileSchema),
@@ -392,34 +433,19 @@ function ProfileCard() {
   if (isLoading) return <LoadingState rows={2} shape="text" />;
   if (isError) return <ErrorState description={errorMessage(error)} />;
 
-  /*
-    ★ A family's card is the password alone — 2026-09-25, the client: the
-    guardian's name, "И-мэйл оруулаагүй" and the photo control are not needed
-    here. Staff keep the whole card.
-  */
-  if (hasRole("PARENT") && !hasRole("TEACHER") && !hasRole("ADMIN")) {
-    return (
-      <section aria-label="Хувийн мэдээлэл">
-        <Card pad="roomy">
-          <PasswordSection identifier={data?.email || data?.username || ""} email={data?.email} />
-        </Card>
-      </section>
-    );
-  }
+  const role = session?.memberships?.[0]?.role;
+  const roleLabel = role ? ROLE_LABEL[role] : "Эцэг эх";
 
   return (
     <section aria-label="Хувийн мэдээлэл">
       <Card pad="roomy" className="flex flex-col gap-5">
-        {/*
-          ★ The picture is the control — 2026-09-06, at the client's request:
-          "зураг нэмэх гэж тусдаа button байхгүй, камерын зурагтай тэнд нь
-          дардаг болгоё". `ChildAvatar` draws the picture, or the person's
-          initials on a tinted circle when there is none — a name is a real
-          answer where a dashed ring reads as a broken image.
-        */}
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-wrap items-start gap-4 sm:gap-5">
+          {/*
+            ★ The picture is the control — 2026-09-06, the client: "камерын
+            зурагтай тэнд нь дардаг болгоё".
+          */}
           <span className="relative shrink-0">
-            <ChildAvatar child={data ?? {}} size={72} />
+            <ChildAvatar child={data ?? {}} size={96} />
             <PhotoBadgeButton
               endpoint={`/users/${data?.id}/photo`}
               label="Профайл зураг солих"
@@ -427,19 +453,211 @@ function ProfileCard() {
             />
           </span>
 
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-title font-semibold text-ink">
-              {[data?.lastName, data?.firstName].filter(Boolean).join(" ") || "—"}
-            </p>
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <p className="truncate text-title font-semibold text-ink">{fullName(data)}</p>
             <p className="truncate text-body text-muted">{data?.email || "И-мэйл оруулаагүй"}</p>
+            <div className="flex flex-wrap gap-2">
+              {group ? (
+                <Badge tone="primary">
+                  <UsersRound size={14} aria-hidden="true" /> {groupLabel(group.name)}
+                </Badge>
+              ) : null}
+              <Badge tone="neutral">
+                <IdCard size={14} aria-hidden="true" /> {roleLabel}
+              </Badge>
+            </div>
           </div>
+
+          <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+            <Pencil size={16} aria-hidden="true" />
+            Мэдээлэл засах
+          </Button>
         </div>
 
-        <div className="border-t border-border-soft pt-5">
-          <PasswordSection identifier={data?.email || data?.username || ""} email={data?.email} />
-        </div>
+        <dl className="grid gap-4 border-t border-border-soft pt-5 sm:grid-cols-3">
+          <ContactItem
+            icon={<Phone size={18} aria-hidden="true" />}
+            label="Утас"
+            value={data?.phone}
+          />
+          <ContactItem
+            icon={<Mail size={18} aria-hidden="true" />}
+            label="И-мэйл"
+            value={data?.email}
+          />
+          <ContactItem
+            icon={<BriefcaseBusiness size={18} aria-hidden="true" />}
+            label="Албан тушаал"
+            value={roleLabel}
+          />
+        </dl>
       </Card>
+
+      {data ? <EditProfileDialog open={editing} onOpenChange={setEditing} profile={data} /> : null}
     </section>
+  );
+}
+
+function ContactItem({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  value?: string | null;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <span
+        aria-hidden="true"
+        className="grid size-10 shrink-0 place-items-center rounded-pill bg-primary-soft text-primary"
+      >
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <dt className="text-caption text-muted">{label}</dt>
+        <dd className="truncate text-body font-medium text-ink">{value?.trim() || "—"}</dd>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * «Мэдээлэл засах» — the fields `PATCH /me/profile` accepts that a person
+ * owns: their name, phone and e-mail. Toast on save (§5); the server's field
+ * errors land under the field they are about.
+ */
+function EditProfileDialog({
+  open,
+  onOpenChange,
+  profile,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  profile: z.infer<typeof profileSchema>;
+}) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({
+    lastName: profile.lastName ?? "",
+    firstName: profile.firstName ?? "",
+    phone: profile.phone ?? "",
+    email: profile.email ?? "",
+  });
+
+  const save = useMutation({
+    mutationFn: () =>
+      mutate("/me/profile", z.unknown(), {
+        method: "PATCH",
+        body: {
+          lastName: form.lastName.trim(),
+          firstName: form.firstName.trim(),
+          phone: form.phone.trim() || null,
+          email: form.email.trim() || null,
+        },
+      }),
+    onSuccess: () => {
+      toast.success("Мэдээлэл хадгалагдлаа.");
+      void queryClient.invalidateQueries({ queryKey: qk.profile() });
+      void queryClient.invalidateQueries({ queryKey: qk.session() });
+      onOpenChange(false);
+    },
+  });
+  const errors = save.isError ? fieldErrors(save.error) : {};
+  const set = (key: keyof typeof form) => (event: { target: { value: string } }) =>
+    setForm((current) => ({ ...current, [key]: event.target.value }));
+
+  return (
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Мэдээлэл засах"
+      busy={save.isPending}
+      footer={
+        <>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            Болих
+          </Button>
+          <Button onClick={() => save.mutate()} disabled={save.isPending}>
+            {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+          </Button>
+        </>
+      }
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Овог" error={errors.lastName} required>
+          {({ id }) => <Input id={id} value={form.lastName} onChange={set("lastName")} />}
+        </Field>
+        <Field label="Нэр" error={errors.firstName} required>
+          {({ id }) => <Input id={id} value={form.firstName} onChange={set("firstName")} />}
+        </Field>
+        <Field label="Утас" error={errors.phone}>
+          {({ id }) => (
+            <Input id={id} inputMode="numeric" value={form.phone} onChange={set("phone")} />
+          )}
+        </Field>
+        <Field label="И-мэйл" error={errors.email}>
+          {({ id }) => <Input id={id} type="email" value={form.email} onChange={set("email")} />}
+        </Field>
+      </div>
+      <FormError
+        message={save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null}
+      />
+    </FormDialog>
+  );
+}
+
+/**
+ * "Хүүхдийн зураг" — a guardian changes the face on their child's card.
+ *
+ * ★ Client, 2026-09-24: "цэс хэсэг дээр хувийн тохиргоо байгаа, энэ дээр
+ * хүүхдийн зургийг нь сольдог байя". The badge on the child's own avatar does
+ * the same thing and stays; this is the place people look when they cannot
+ * find it, and the only place a family with two children sees both at once.
+ *
+ * ★★ The picture only. The name, the birth date and the group are the
+ * kindergarten's record and stay staff-only — `canRecordForChild`, unchanged.
+ *
+ * Renders nothing for staff: `/dashboard/parent` is the guardian's own
+ * endpoint, and a teacher opening this page has no children of their own to
+ * list here.
+ */
+function ChildPhotosCard() {
+  const { hasRole } = useSession();
+  const isGuardian = hasRole("PARENT");
+
+  const { data } = useQuery({
+    queryKey: qk.dashboard.parent(),
+    queryFn: () => get("/dashboard/parent", parentDashboardSchema),
+    enabled: isGuardian,
+  });
+
+  if (!isGuardian || !data || data.children.length === 0) return null;
+
+  return (
+    <Card pad="roomy" className="flex flex-col gap-4">
+      <SectionHeader
+        title="Хүүхдийн зураг"
+        lede="Зураг дээрх камер дээр дарж солино. Нэр, бүлгийг цэцэрлэг өөрчилнө."
+      />
+      <ul className="flex flex-col gap-3">
+        {data.children.map((child) => (
+          <li key={child.id} className="flex items-center gap-3">
+            <div className="relative shrink-0">
+              <ChildAvatar child={child} size={56} />
+              <ChildPhotoButton childId={child.id} childName={fullName(child)} />
+            </div>
+            <div className="min-w-0">
+              <p className="truncate font-semibold text-ink">{fullName(child)}</p>
+              <p className="truncate text-caption text-muted">
+                {child.group?.name ?? "Бүлэг тодорхойгүй"}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 

@@ -887,3 +887,117 @@ describe("PATCH /memberships/:id — албан тушаал солих", () => 
     expect(change?.metadata).toMatchObject({ from: "TEACHER", to: "COOK" });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// «Багш, ажилтан» — the staff directory's backend, 2026-09-27
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("staff directory", () => {
+  const list = (session: AuthSession, query = "") =>
+    authed(request(server()).get(`/v1/users?kindergartenId=${a.kindergarten.id}${query}`), session);
+
+  it("keeps a person's register number and date of birth", async () => {
+    const res = await authed(request(server()).patch(`/v1/users/${a.teacherUser.id}`), adminA).send(
+      { registerNumber: "УБ98061234", dateOfBirth: "1998-06-12" },
+    );
+    expect(res.status).toBe(200);
+
+    const listed = await list(adminA);
+    const teacher = listed.body.items.find((u: { id: string }) => u.id === a.teacherUser.id);
+    expect(teacher.registerNumber).toBe("УБ98061234");
+    expect(teacher.dateOfBirth.slice(0, 10)).toBe("1998-06-12");
+  });
+
+  it("refuses a register number that is not two letters and eight digits", async () => {
+    const res = await authed(request(server()).patch(`/v1/users/${a.teacherUser.id}`), adminA).send(
+      { registerNumber: "12345" },
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("keeps a membership's position, category and start date", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/memberships/${a.teacherMembership.id}/profile`),
+      adminA,
+    ).send({ position: "Арга зүйч", staffCategory: "TEACHING", startedOn: "2021-09-01" });
+    expect(res.status).toBe(200);
+
+    const listed = await list(adminA);
+    const teacher = listed.body.items.find((u: { id: string }) => u.id === a.teacherUser.id);
+    expect(teacher.memberships[0]).toMatchObject({
+      position: "Арга зүйч",
+      staffCategory: "TEACHING",
+    });
+    expect(teacher.memberships[0].startedOn.slice(0, 10)).toBe("2021-09-01");
+  });
+
+  it("a membership in another kindergarten is 404 to this admin", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/memberships/${b.teacherMembership.id}/profile`),
+      adminA,
+    ).send({ position: "Арга зүйч" });
+    expect(res.status).toBe(404);
+  });
+
+  it("a teacher cannot edit a membership's position", async () => {
+    const res = await authed(
+      request(server()).patch(`/v1/memberships/${a.teacherMembership.id}/profile`),
+      teacherA,
+    ).send({ position: "Эрхлэгч" });
+    expect(res.status).toBe(404);
+  });
+
+  it("names each teacher's groups, and filters by them", async () => {
+    const listed = await list(adminA);
+    const teacher = listed.body.items.find((u: { id: string }) => u.id === a.teacherUser.id);
+    expect(teacher.memberships[0].groups).toEqual([
+      expect.objectContaining({ id: a.group.id, name: a.group.name }),
+    ]);
+
+    const inGroup = await list(adminA, `&groupId=${a.group.id}`);
+    expect(inGroup.body.items.map((u: { id: string }) => u.id)).toEqual([a.teacherUser.id]);
+
+    const withoutGroup = await list(adminA, "&roles=TEACHER&hasGroup=false");
+    expect(withoutGroup.body.items.map((u: { id: string }) => u.id)).not.toContain(
+      a.teacherUser.id,
+    );
+  });
+
+  it("finds a person by phone and by register number", async () => {
+    await authed(request(server()).patch(`/v1/users/${a.teacherUser.id}`), adminA).send({
+      phone: "88112233",
+      registerNumber: "УБ98061234",
+    });
+
+    for (const q of ["88112233", "УБ98061234"]) {
+      const res = await list(adminA, `&q=${encodeURIComponent(q)}`);
+      expect(res.body.items.map((u: { id: string }) => u.id)).toEqual([a.teacherUser.id]);
+    }
+  });
+
+  describe("GET /users/export", () => {
+    const exportUrl = (kindergartenId = a.kindergarten.id) =>
+      `/v1/users/export?kindergartenId=${kindergartenId}`;
+
+    it("gives an administrator a spreadsheet", async () => {
+      const res = await authed(request(server()).get(exportUrl()), adminA)
+        .buffer(true)
+        .parse((response, done) => {
+          const chunks: Buffer[] = [];
+          response.on("data", (c: Buffer) => chunks.push(c));
+          response.on("end", () => done(null, Buffer.concat(chunks)));
+        });
+      expect(res.status).toBe(200);
+      expect(res.headers["content-type"]).toContain("spreadsheetml");
+      expect((res.body as Buffer).subarray(0, 2).toString()).toBe("PK");
+    });
+
+    it("a teacher gets 404", async () => {
+      expect((await authed(request(server()).get(exportUrl()), teacherA)).status).toBe(404);
+    });
+
+    it("an administrator of another kindergarten gets 404", async () => {
+      expect((await authed(request(server()).get(exportUrl()), adminB)).status).toBe(404);
+    });
+  });
+});

@@ -129,13 +129,20 @@ describe("settings — changing a password", () => {
    * the profile" is the property worth pinning. A card that swallowed it again
    * would otherwise pass unnoticed.
    */
-  it("keeps sign-out at the foot of the page, in a card of its own", async () => {
+  /*
+   * ★ Behind «Бусад тохиргоо» since 2026-09-27 — the client's redesign puts
+   * the page's secondary sections in tabs. The sidebar's foot carries its own
+   * «Системээс гарах», so this is no longer the only way out.
+   */
+  it("keeps sign-out under «Бусад тохиргоо», in a card of its own", async () => {
+    const user = userEvent.setup();
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       { path: "/me/profile", body: PROFILE },
     ]);
 
     renderWithProviders(<SettingsPage />);
+    await user.click(await screen.findByRole("tab", { name: /Бусад тохиргоо/ }));
 
     const signOut = await screen.findByRole("button", { name: "Системээс гарах" });
     const card = signOut.closest('[data-ui="card"]');
@@ -378,5 +385,32 @@ describe("invitation — who is accepting", () => {
     expect(sent.email).toBe("b@example.mn");
     expect(sent).not.toHaveProperty("phone");
     expect(sent).not.toHaveProperty("relation");
+  });
+});
+
+/*
+ * ★ «Мэдээлэл засах» — 2026-09-27, the client's redesign puts profile editing
+ * back on the card. What is pinned is that the save goes to the person's own
+ * profile and sends the four fields the dialog shows.
+ */
+describe("settings — editing one's own profile", () => {
+  it("saves the name, phone and e-mail to /me/profile", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/me/profile", body: PROFILE },
+    ]);
+    renderWithProviders(<SettingsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Мэдээлэл засах" }));
+    const phone = await screen.findByLabelText("Утас");
+    await user.clear(phone);
+    await user.type(phone, "99112233");
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+
+    await waitFor(() => {
+      const call = api.calls.find((c) => c.method === "PATCH" && c.url === "/me/profile");
+      expect(call?.body).toMatchObject({ phone: "99112233" });
+    });
   });
 });
