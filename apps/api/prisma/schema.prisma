@@ -372,15 +372,15 @@ enum AuditAction {
 /// teacher in one kindergarten and a parent in another, so all authority comes
 /// from Membership.
 model User {
-  id           String  @id @default(uuid()) @db.Uuid
-  username     String  @unique
-  email        String? @unique
-  phone        String? @unique
+  id             String    @id @default(uuid()) @db.Uuid
+  username       String    @unique
+  email          String?   @unique
+  phone          String?   @unique
   /// Регистрийн дугаар — two Cyrillic letters and eight digits, upper-cased.
   /// Administrators only: read by `GET /users`, which is `@Roles("ADMIN")`.
   registerNumber String?
   dateOfBirth    DateTime? @db.Date
-  passwordHash String
+  passwordHash   String
 
   /// The ESIS person this account belongs to.
   ///
@@ -518,7 +518,7 @@ model Membership {
   isActive       Boolean @default(true)
 
   /// When this person started here — «Ажилд орсон огноо».
-  startedOn DateTime? @db.Date
+  startedOn     DateTime?      @db.Date
   /// «Албан тушаал» — "Бүлгийн багш", "Арга зүйч"… Free text: positions vary
   /// by kindergarten and the role column already carries what access needs.
   position      String?
