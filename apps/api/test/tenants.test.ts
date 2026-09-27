@@ -190,6 +190,7 @@ describe("GET /kindergartens/:id", () => {
       expect(res.status).toBe(200);
       expect(Object.keys(res.body as object).sort()).toEqual([
         "address",
+        "capacity",
         "country",
         "description",
         "district",
@@ -225,6 +226,7 @@ describe("GET /kindergartens/:id", () => {
     expect(res.status).toBe(200);
     expect(Object.keys(res.body as object).sort()).toEqual([
       "address",
+      "capacity",
       "country",
       "description",
       "district",
@@ -269,6 +271,7 @@ describe("GET /kindergartens/:id", () => {
     expect(res.status).toBe(200);
     expect(Object.keys(res.body as object).sort()).toEqual([
       "address",
+      "capacity",
       "country",
       "description",
       "district",
