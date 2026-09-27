@@ -272,6 +272,15 @@ export class TenantImageController {
     return this.service.uploadKindergartenLogo(actor, params.id, file);
   }
 
+  @Delete("kindergartens/:id/logo")
+  @Roles("ADMIN")
+  async removeLogo(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.removeKindergartenLogo(actor, params.id);
+  }
+
   /*
    * No `@Roles`: a guardian has a profile too, and the service refuses any
    * `userId` that is not the caller's own. A role guard here would be the

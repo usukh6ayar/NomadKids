@@ -619,6 +619,24 @@ model Kindergarten {
   description String?
   isActive    Boolean @default(true)
 
+  /// The «Байгууллага» profile — 2026-09-27. Free text, nullable: the lists
+  /// these would be chosen from (улс, аймаг, өмчийн хэлбэр, хэв шинж) have no
+  /// agreed source yet, and a closed list invented here would be wrong the
+  /// first time a kindergarten did not fit it.
+  shortName       String?
+  propertyType    String?
+  institutionType String?
+  location        String?
+  responsibleUnit String?
+  country         String?
+  province        String?
+  district        String?
+  website         String?
+  facebook        String?
+  headName        String?
+  /// The director's own phone — administrators only (`ADMIN_FIELDS`).
+  headPhone       String?
+
   /// The ESIS institution this tenant is allowed to read.
   ///
   /// Set only through the platform-operator route. A kindergarten admin may
