@@ -30,12 +30,31 @@ export const createUserSchema = z.object({
 });
 export type CreateUserDto = z.infer<typeof createUserSchema>;
 
+/**
+ * Регистрийн дугаар — two Cyrillic letters and eight digits. Upper-cased on
+ * the way in: ESIS's own staff list sends them in lower case, and a register
+ * stored both ways is two people to a search.
+ */
+const registerNumberSchema = z
+  .string()
+  .trim()
+  .transform((value) => value.toLocaleUpperCase("mn-MN"))
+  .pipe(z.string().regex(/^[А-ЯӨҮЁ]{2}\d{8}$/, "Регистрийн дугаар 2 үсэг, 8 тооноос бүрдэнэ"))
+  .nullable();
+
+const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Огноо YYYY-MM-DD хэлбэртэй байна")
+  .nullable();
+
 export const updateUserSchema = z.object({
   email: z.string().email().max(254).nullable().optional(),
   phone: phoneSchema.optional(),
   lastName: z.string().min(1).max(100).optional(),
   firstName: z.string().min(1).max(100).optional(),
   isActive: z.boolean().optional(),
+  registerNumber: registerNumberSchema.optional(),
+  dateOfBirth: isoDate.optional(),
 });
 export type UpdateUserDto = z.infer<typeof updateUserSchema>;
 
@@ -82,6 +101,16 @@ export const listUsersQuerySchema = paginationQuerySchema.extend({
   roles: rolesSchema.optional(),
   isActive: z.coerce.boolean().optional(),
   q: searchTermSchema,
+  /** Staff assigned to this group. */
+  groupId: uuidSchema.optional(),
+  /**
+   * «Бүлэг хариуцсан / Бүлэггүй». An enum, not `z.coerce.boolean()`, which
+   * reads the string "false" as `true`.
+   */
+  hasGroup: z
+    .enum(["true", "false"])
+    .transform((value) => value === "true")
+    .optional(),
 });
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 
@@ -111,3 +140,18 @@ export type AddMembershipDto = z.infer<typeof addMembershipSchema>;
  */
 export const changeMembershipRoleSchema = z.object({ role: roleSchema });
 export type ChangeMembershipRoleDto = z.infer<typeof changeMembershipRoleSchema>;
+
+/**
+ * A membership's place on the staff — «Албан тушаал», «Ангилал», «Ажилд орсон
+ * огноо». Separate from `changeMembershipRoleSchema`: a role change moves
+ * access and runs in a transaction of its own; these three describe the job.
+ */
+export const updateMembershipProfileSchema = z.object({
+  position: z.string().trim().max(100).nullable().optional(),
+  staffCategory: z
+    .enum(["MANAGEMENT", "TEACHING", "ADMINISTRATION", "SERVICE"])
+    .nullable()
+    .optional(),
+  startedOn: isoDate.optional(),
+});
+export type UpdateMembershipProfileDto = z.infer<typeof updateMembershipProfileSchema>;

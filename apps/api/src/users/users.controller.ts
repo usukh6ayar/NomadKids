@@ -9,7 +9,9 @@ import {
   Patch,
   Post,
   Query,
+  Res,
 } from "@nestjs/common";
+import type { Response } from "express";
 import { idParamSchema } from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
@@ -22,11 +24,13 @@ import {
   createUserSchema,
   listUsersQuerySchema,
   updateProfileSchema,
+  updateMembershipProfileSchema,
   updateUserSchema,
   type AddMembershipDto,
   type ChangeMembershipRoleDto,
   type CreateUserDto,
   type ListUsersQuery,
+  type UpdateMembershipProfileDto,
   type UpdateProfileDto,
   type UpdateUserDto,
 } from "./users.dto";
@@ -62,6 +66,23 @@ export class UsersController {
     @Query(new ZodValidationPipe(listUsersQuerySchema)) query: ListUsersQuery,
   ) {
     return this.service.list(actor, query);
+  }
+
+  /** «Excel татах». Declared before `users/:id`, which would take "export" as an id. */
+  @Get("users/export")
+  @Roles("ADMIN")
+  async exportStaff(
+    @CurrentActor() actor: Actor,
+    @Query(new ZodValidationPipe(listUsersQuerySchema)) query: ListUsersQuery,
+    @Res() res: Response,
+  ) {
+    const { buffer, filename } = await this.service.exportStaff(actor, query);
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(buffer);
   }
 
   @Get("users/:id")
@@ -132,6 +153,17 @@ export class UsersController {
     @Body(new ZodValidationPipe(changeMembershipRoleSchema)) body: ChangeMembershipRoleDto,
   ) {
     return this.service.changeMembershipRole(actor, params.id, body);
+  }
+
+  /** A membership's «Албан тушаал», «Ангилал» and start date. */
+  @Patch("memberships/:id/profile")
+  @Roles("ADMIN")
+  async updateMembershipProfile(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(updateMembershipProfileSchema)) body: UpdateMembershipProfileDto,
+  ) {
+    return this.service.updateMembershipProfile(actor, params.id, body);
   }
 
   /** Deactivates, never deletes — the record of the role has to survive. */
