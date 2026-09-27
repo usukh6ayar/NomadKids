@@ -36,6 +36,7 @@ function row(overrides: Partial<DailyAttendanceRow>): DailyAttendanceRow {
     createdAt: null,
     createdBy: [],
     requests: { pending: 0, approved: 0, rejected: 0 },
+    esis: { succeeded: 0, failed: 0, lastOutcome: null, lastError: null, lastAttemptAt: null },
     ...overrides,
   };
 }
@@ -57,6 +58,7 @@ function daily(items: DailyAttendanceRow[]): DailyAttendance {
       sent: 0,
       days: items.length,
       requests: { pending: 0, approved: 0, rejected: 0 },
+      esis: { sentDays: 0, failedDays: 0 },
     },
   };
 }

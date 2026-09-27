@@ -728,6 +728,14 @@ export const attendanceRequestCountsSchema = z.object({
   rejected: z.number(),
 });
 
+export const attendanceEsisCountsSchema = z.object({
+  succeeded: z.number(),
+  failed: z.number(),
+  lastOutcome: z.enum(["SUCCEEDED", "FAILED"]).nullable(),
+  lastError: z.string().nullable(),
+  lastAttemptAt: z.string().nullable(),
+});
+
 export const dailyAttendanceRowSchema = z.object({
   schoolYear: z.string(),
   groupId: z.string(),
@@ -775,6 +783,20 @@ export const dailyAttendanceRowSchema = z.object({
    * spanning several days counts on each of them.
    */
   requests: attendanceRequestCountsSchema,
+  /**
+   * ESIS send attempts for this group-day (API-000269) — 2026-09-27.
+   *
+   * `succeeded` and `failed` count **attempts**; `lastOutcome` is the latest
+   * answer, and `lastError` its message when that answer was a refusal.
+   * Defaulted so an older API answer still parses.
+   */
+  esis: attendanceEsisCountsSchema.default({
+    succeeded: 0,
+    failed: 0,
+    lastOutcome: null,
+    lastError: null,
+    lastAttemptAt: null,
+  }),
 });
 export type DailyAttendanceRow = z.infer<typeof dailyAttendanceRowSchema>;
 
@@ -796,6 +818,10 @@ export const dailyAttendanceSchema = z.object({
     sent: z.number(),
     days: z.number(),
     requests: attendanceRequestCountsSchema,
+    /** Group-days by their latest ESIS answer — days, not attempts. */
+    esis: z
+      .object({ sentDays: z.number(), failedDays: z.number() })
+      .default({ sentDays: 0, failedDays: 0 }),
   }),
 });
 export type DailyAttendance = z.infer<typeof dailyAttendanceSchema>;

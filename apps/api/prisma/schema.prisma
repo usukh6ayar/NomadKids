@@ -446,59 +446,60 @@ model User {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  photo                 MediaFile?                @relation("UserPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
-  uploadedMedia         MediaFile[]               @relation("MediaUploader")
-  memberships           Membership[]
-  guardianships         Guardianship[]
-  authTokens            AuthToken[]
-  sessions              Session[]
-  auditLogs             AuditLog[]
-  observations          Observation[]             @relation("ObservationAuthor")
-  reviewed              Observation[]             @relation("ObservationReviewer")
-  assessments           Assessment[]              @relation("AssessmentAuthor")
-  termReports           TermReport[]              @relation("TermReportAuthor")
-  childMealNotes        ChildMealNote[]           @relation("ChildMealNoteAuthor")
-  notifications         Notification[]            @relation("NotificationAuthor")
-  reads                 NotificationRead[]
-  reactions             NotificationReaction[]
-  reportJobs            ReportJob[]
-  attendanceRecorded    Attendance[]              @relation("AttendanceRecordedBy")
-  attendanceRequested   AttendanceRequest[]       @relation("AttendanceRequestedBy")
-  attendanceReviewed    AttendanceRequest[]       @relation("AttendanceReviewedBy")
-  attendanceSubmitted   AttendanceSubmission[]    @relation("AttendanceSubmittedBy")
-  calendarDaysCreated   CalendarDay[]             @relation("CalendarDayCreatedBy")
-  menuDaysCreated       MenuDay[]                 @relation("MenuDayCreatedBy")
-  menuDaysApproved      MenuDay[]                 @relation("MenuDayApprovedBy")
-  ingredientsCreated    Ingredient[]              @relation("IngredientCreatedBy")
-  recipesCreated        Recipe[]                  @relation("RecipeCreatedBy")
-  recipesApproved       Recipe[]                  @relation("RecipeApprovedBy")
-  foodOrdersCreated     FoodOrder[]               @relation("FoodOrderCreatedBy")
-  stockMovementsCreated StockMovement[]           @relation("StockMovementCreatedBy")
-  mealServingsRecorded  MealServing[]             @relation("MealServingRecordedBy")
-  surveysCreated        Survey[]                  @relation("SurveyCreatedBy")
-  surveyResponses       SurveyResponse[]          @relation("SurveyRespondent")
-  growthRecorded        GrowthMeasurement[]       @relation("GrowthRecordedBy")
-  milestonesRecorded    Milestone[]               @relation("MilestoneRecordedBy")
-  allergiesRecorded     AllergyRecord[]           @relation("AllergyRecordedBy")
-  specialNeedsRecorded  SpecialNeedRecord[]       @relation("SpecialNeedRecordedBy")
-  staffRecords          StaffRecord[]             @relation("StaffRecordSubject")
-  staffRecordsCreated   StaffRecord[]             @relation("StaffRecordCreatedBy")
-  medicationsAuthorised MedicationAuthorisation[] @relation("MedicationAuthorisedBy")
-  vaccinationsRecorded  VaccinationRecord[]       @relation("VaccinationRecordedBy")
-  incidentsRecorded     SafetyIncident[]          @relation("IncidentRecordedBy")
-  artworkComparisons    ArtworkComparison[]       @relation("ComparisonAuthor")
-  documentsPublished    Document[]                @relation("DocumentPublishedBy")
-  documentBookmarks     DocumentBookmark[]        @relation("DocumentBookmarkUser")
-  consentsDecided       ConsentRecord[]           @relation("ConsentDecidedBy")
-  mealsRecorded         MealRecord[]              @relation("MealRecordedBy")
-  paymentsRecorded      Payment[]                 @relation("PaymentRecordedBy")
-  qpayInvoicesInitiated QpayInvoice[]             @relation("QpayInvoiceInitiatedBy")
-  applicationsReviewed  KindergartenApplication[] @relation("ApplicationReviewer")
-  chatMessages          ChatMessage[]             @relation("ChatAuthor")
-  chatReads             ChatRead[]                @relation("ChatReader")
-  esisSyncRuns          EsisSyncRun[]             @relation("EsisSyncInitiator")
-  esisWritesPrepared    EsisWriteRequest[]        @relation("EsisWritePreparer")
-  esisWritesApproved    EsisWriteRequest[]        @relation("EsisWriteApprover")
+  photo                  MediaFile?                @relation("UserPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
+  uploadedMedia          MediaFile[]               @relation("MediaUploader")
+  memberships            Membership[]
+  guardianships          Guardianship[]
+  authTokens             AuthToken[]
+  sessions               Session[]
+  auditLogs              AuditLog[]
+  observations           Observation[]             @relation("ObservationAuthor")
+  reviewed               Observation[]             @relation("ObservationReviewer")
+  assessments            Assessment[]              @relation("AssessmentAuthor")
+  termReports            TermReport[]              @relation("TermReportAuthor")
+  childMealNotes         ChildMealNote[]           @relation("ChildMealNoteAuthor")
+  notifications          Notification[]            @relation("NotificationAuthor")
+  reads                  NotificationRead[]
+  reactions              NotificationReaction[]
+  reportJobs             ReportJob[]
+  attendanceRecorded     Attendance[]              @relation("AttendanceRecordedBy")
+  attendanceRequested    AttendanceRequest[]       @relation("AttendanceRequestedBy")
+  attendanceReviewed     AttendanceRequest[]       @relation("AttendanceReviewedBy")
+  attendanceSubmitted    AttendanceSubmission[]    @relation("AttendanceSubmittedBy")
+  attendanceEsisAttempts AttendanceEsisAttempt[]   @relation("AttendanceEsisAttemptBy")
+  calendarDaysCreated    CalendarDay[]             @relation("CalendarDayCreatedBy")
+  menuDaysCreated        MenuDay[]                 @relation("MenuDayCreatedBy")
+  menuDaysApproved       MenuDay[]                 @relation("MenuDayApprovedBy")
+  ingredientsCreated     Ingredient[]              @relation("IngredientCreatedBy")
+  recipesCreated         Recipe[]                  @relation("RecipeCreatedBy")
+  recipesApproved        Recipe[]                  @relation("RecipeApprovedBy")
+  foodOrdersCreated      FoodOrder[]               @relation("FoodOrderCreatedBy")
+  stockMovementsCreated  StockMovement[]           @relation("StockMovementCreatedBy")
+  mealServingsRecorded   MealServing[]             @relation("MealServingRecordedBy")
+  surveysCreated         Survey[]                  @relation("SurveyCreatedBy")
+  surveyResponses        SurveyResponse[]          @relation("SurveyRespondent")
+  growthRecorded         GrowthMeasurement[]       @relation("GrowthRecordedBy")
+  milestonesRecorded     Milestone[]               @relation("MilestoneRecordedBy")
+  allergiesRecorded      AllergyRecord[]           @relation("AllergyRecordedBy")
+  specialNeedsRecorded   SpecialNeedRecord[]       @relation("SpecialNeedRecordedBy")
+  staffRecords           StaffRecord[]             @relation("StaffRecordSubject")
+  staffRecordsCreated    StaffRecord[]             @relation("StaffRecordCreatedBy")
+  medicationsAuthorised  MedicationAuthorisation[] @relation("MedicationAuthorisedBy")
+  vaccinationsRecorded   VaccinationRecord[]       @relation("VaccinationRecordedBy")
+  incidentsRecorded      SafetyIncident[]          @relation("IncidentRecordedBy")
+  artworkComparisons     ArtworkComparison[]       @relation("ComparisonAuthor")
+  documentsPublished     Document[]                @relation("DocumentPublishedBy")
+  documentBookmarks      DocumentBookmark[]        @relation("DocumentBookmarkUser")
+  consentsDecided        ConsentRecord[]           @relation("ConsentDecidedBy")
+  mealsRecorded          MealRecord[]              @relation("MealRecordedBy")
+  paymentsRecorded       Payment[]                 @relation("PaymentRecordedBy")
+  qpayInvoicesInitiated  QpayInvoice[]             @relation("QpayInvoiceInitiatedBy")
+  applicationsReviewed   KindergartenApplication[] @relation("ApplicationReviewer")
+  chatMessages           ChatMessage[]             @relation("ChatAuthor")
+  chatReads              ChatRead[]                @relation("ChatReader")
+  esisSyncRuns           EsisSyncRun[]             @relation("EsisSyncInitiator")
+  esisWritesPrepared     EsisWriteRequest[]        @relation("EsisWritePreparer")
+  esisWritesApproved     EsisWriteRequest[]        @relation("EsisWriteApprover")
 
   @@index([deletedAt])
   @@index([registerNumber])
@@ -708,6 +709,7 @@ model Kindergarten {
   auditLogs              AuditLog[]
   attendanceRecords      Attendance[]
   attendanceSubmissions  AttendanceSubmission[]
+  attendanceEsisAttempts AttendanceEsisAttempt[]
   attendanceRequests     AttendanceRequest[]
   calendarDays           CalendarDay[]
   menuDays               MenuDay[]
@@ -1044,18 +1046,19 @@ model Group {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  photo                 MediaFile?             @relation("GroupPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
-  kindergarten          Kindergarten           @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  schoolYear            SchoolYear             @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
-  teachers              GroupTeacher[]
-  enrollments           Enrollment[]
-  chatMessages          ChatMessage[]
-  notificationTargets   NotificationTarget[]
-  attendanceSubmissions AttendanceSubmission[]
-  surveys               Survey[]               @relation("SurveyGroup")
-  documents             Document[]             @relation("DocumentGroup")
-  mealServings          MealServing[]
-  esisWriteRequests     EsisWriteRequest[]
+  photo                  MediaFile?              @relation("GroupPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
+  kindergarten           Kindergarten            @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  schoolYear             SchoolYear              @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
+  teachers               GroupTeacher[]
+  enrollments            Enrollment[]
+  chatMessages           ChatMessage[]
+  notificationTargets    NotificationTarget[]
+  attendanceSubmissions  AttendanceSubmission[]
+  attendanceEsisAttempts AttendanceEsisAttempt[]
+  surveys                Survey[]                @relation("SurveyGroup")
+  documents              Document[]              @relation("DocumentGroup")
+  mealServings           MealServing[]
+  esisWriteRequests      EsisWriteRequest[]
 
   @@unique([schoolYearId, name])
   @@index([kindergartenId, status])
@@ -4705,6 +4708,46 @@ model AttendanceSubmission {
   @@index([kindergartenId, date])
   @@index([groupId, date])
   @@map("attendance_submissions")
+}
+
+enum EsisSendOutcome {
+  SUCCEEDED
+  FAILED
+}
+
+/// One attempt to send one group-day's attendance to ESIS (API-000269).
+///
+/// ★ Append-only, and separate from `AttendanceSubmission` on purpose. A
+/// submission is the state "this day is final"; an attempt is an event, and a
+/// failure has to leave a trace that a later success does not overwrite — the
+/// daily register counts both per group-day.
+///
+/// Written only when the network send was actually made. A register refused
+/// before it left (incomplete, unmatched children, no ESIS connection) is not
+/// an ESIS error and is not recorded here.
+///
+/// ★★ `errorCode` is a safe category and `errorMessage` our own Mongolian
+/// text — never ESIS's raw body, which echoes children's `personId`s.
+model AttendanceEsisAttempt {
+  id             String          @id @default(uuid()) @db.Uuid
+  kindergartenId String          @db.Uuid
+  groupId        String          @db.Uuid
+  date           DateTime        @db.Date
+  outcome        EsisSendOutcome
+  errorCode      String?
+  errorMessage   String?
+  attemptedById  String          @db.Uuid
+
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  group        Group        @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  attemptedBy  User         @relation("AttendanceEsisAttemptBy", fields: [attemptedById], references: [id], onDelete: Restrict)
+
+  @@index([kindergartenId, date])
+  @@index([groupId, date])
+  @@map("attendance_esis_attempts")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

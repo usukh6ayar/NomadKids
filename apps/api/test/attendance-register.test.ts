@@ -17,6 +17,7 @@ import {
 } from "./support/fixtures";
 import ExcelJS from "exceljs";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
+import { EsisError } from "../src/integrations/esis/esis.client";
 
 /**
  * The kindergarten-wide attendance register — the director's and the
@@ -40,6 +41,9 @@ const db = testDb();
  * mismatch is a 409 rather than a submission.
  */
 const esisRoster: { groups: unknown[]; students: unknown[] } = { groups: [], students: [] };
+
+/** Days the stubbed ESIS refuses to save — emptied before every test. */
+const esisRefuses = new Set<string>();
 
 let a: Scenario;
 let b: Scenario;
@@ -81,7 +85,12 @@ beforeAll(async () => {
        */
       groups: async () => ok(esisRoster.groups),
       groupStudents: async () => ok(esisRoster.students),
-      saveAttendance: async () => ok({ SUCCESS_CODE: 200 }),
+      saveAttendance: async (payload: { dayDate: string }) => {
+        if (esisRefuses.has(payload.dayDate)) {
+          throw new EsisError("http", "ESIS 500", { status: 500 });
+        }
+        return ok({ SUCCESS_CODE: 200 });
+      },
     } as unknown as TestAppOptions["esis"],
   });
 }, 60_000);
@@ -96,6 +105,7 @@ beforeEach(async () => {
   // starts answering 429 partway through the file and the failures read as
   // register defects.
   await app.get(RateLimitService).resetAll();
+  esisRefuses.clear();
 
   a = await createScenario("a");
   b = await createScenario("b");
@@ -1111,5 +1121,119 @@ describe("POST /kindergartens/:id/attendance/daily/submit", () => {
     const rows = await db.auditLog.findMany({ where: { objectType: "AttendanceSubmission" } });
     expect(rows).toHaveLength(1);
     expect(rows[0]!.metadata).toMatchObject({ count: 2 });
+  });
+
+  /**
+   * ★ ESIS success and failure counts per group-day — 2026-09-27.
+   *
+   * A refusal leaves a trace on the register: it is counted, its message is
+   * kept, and nothing is marked Илгээсэн.
+   */
+  it("records a refused send and shows it on the register", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
+    esisRefuses.add("2026-03-03");
+
+    const res = await submit(admin, a.kindergarten.id, [
+      { groupId: a.group.id, date: "2026-03-03" },
+    ]);
+    expect(res.status).toBe(502);
+    expect(res.body.detail ?? res.body.title).toContain(a.group.name);
+    expect(await db.attendanceSubmission.count()).toBe(0);
+
+    const daily = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/attendance/daily?from=2026-03-02&to=2026-03-06`,
+      ),
+      admin,
+    );
+    const row = daily.body.items.find(
+      (r: { groupId: string; date: string }) => r.groupId === a.group.id && r.date === "2026-03-03",
+    );
+    expect(row.esis).toMatchObject({ succeeded: 0, failed: 1, lastOutcome: "FAILED" });
+    expect(row.esis.lastError).toBeTruthy();
+    expect(daily.body.totals.esis).toEqual({ sentDays: 0, failedDays: 1 });
+  });
+
+  /**
+   * ★ One refused day no longer abandons the batch. The days ESIS took are
+   * saved and audited, the refused one is named, and a later success on it
+   * keeps the failure's count but clears its message.
+   */
+  it("keeps the days ESIS took when another is refused, and counts the retry", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-04", "PRESENT");
+    esisRefuses.add("2026-03-04");
+
+    const both = [
+      { groupId: a.group.id, date: "2026-03-03" },
+      { groupId: a.group.id, date: "2026-03-04" },
+    ];
+    const res = await submit(admin, a.kindergarten.id, both);
+    expect(res.status).toBe(502);
+    expect(res.body.detail ?? res.body.title).toContain("2026-03-04");
+    expect(res.body.detail ?? res.body.title).not.toContain("2026-03-03");
+
+    const saved = await db.attendanceSubmission.findMany({ select: { date: true } });
+    expect(saved.map((row) => row.date.toISOString().slice(0, 10))).toEqual(["2026-03-03"]);
+    const audit = await db.auditLog.findFirstOrThrow({
+      where: { objectType: "AttendanceSubmission" },
+    });
+    expect(audit.metadata).toMatchObject({ count: 1, failed: 1, esisStatus: "PARTIAL" });
+
+    esisRefuses.clear();
+    const retry = await submit(admin, a.kindergarten.id, [both[1]!]);
+    expect(retry.status).toBe(201);
+
+    const daily = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/attendance/daily?from=2026-03-02&to=2026-03-06`,
+      ),
+      admin,
+    );
+    const row = daily.body.items.find(
+      (r: { groupId: string; date: string }) => r.groupId === a.group.id && r.date === "2026-03-04",
+    );
+    expect(row.esis).toMatchObject({
+      succeeded: 1,
+      failed: 1,
+      lastOutcome: "SUCCEEDED",
+      lastError: null,
+    });
+    expect(daily.body.totals.esis).toEqual({ sentDays: 2, failedDays: 0 });
+  });
+});
+
+/**
+ * The teacher's own Илгээх — `POST /groups/:id/attendance/submit`. Its sends
+ * are counted on the director's register exactly like the batch's.
+ */
+describe("POST /groups/:id/attendance/submit", () => {
+  const send = (session: AuthSession) =>
+    authed(request(server()).post(`/v1/groups/${a.group.id}/attendance/submit`), session).send({
+      date: "2026-03-03",
+    });
+
+  it("records a refusal, then the success after it", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
+
+    esisRefuses.add("2026-03-03");
+    expect((await send(teacher)).status).toBe(502);
+    esisRefuses.clear();
+    expect((await send(teacher)).status).toBe(201);
+
+    const attempts = await db.attendanceEsisAttempt.findMany({
+      orderBy: { createdAt: "asc" },
+      select: { outcome: true, kindergartenId: true, attemptedById: true },
+    });
+    expect(attempts).toEqual([
+      { outcome: "FAILED", kindergartenId: a.kindergarten.id, attemptedById: a.teacherUser.id },
+      { outcome: "SUCCEEDED", kindergartenId: a.kindergarten.id, attemptedById: a.teacherUser.id },
+    ]);
+  });
+
+  it("another kindergarten's administrator gets 404 and nothing is recorded", async () => {
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
+    expect((await send(adminB)).status).toBe(404);
+    expect(await db.attendanceEsisAttempt.count()).toBe(0);
   });
 });
