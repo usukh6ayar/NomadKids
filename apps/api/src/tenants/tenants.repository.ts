@@ -68,6 +68,8 @@ export class TenantsRepository {
     email: true,
     description: true,
     logoMediaFileId: true,
+    // Хүчин чадал — shown on a family's «Суралцалтын түүх» card.
+    capacity: true,
     // The public half of the «Байгууллага» profile (2026-09-27) — what a
     // family may read. The director's phone is `ADMIN_FIELDS` only.
     shortName: true,
@@ -108,6 +110,7 @@ export class TenantsRepository {
     email: true,
     description: true,
     logoMediaFileId: true,
+    capacity: true,
     esisInstitutionId: true,
     shortName: true,
     propertyType: true,

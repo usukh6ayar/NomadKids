@@ -696,7 +696,7 @@ export function ObservationHub({
                     ).length;
                     return (
                       <option key={term.id} value={term.id}>
-                        {capitalize(term.name)} ({count})
+                        {term.name} ({count})
                       </option>
                     );
                   })}
@@ -850,7 +850,7 @@ export function ObservationHub({
                 <option value="">Бүх чиглэл</option>
                 {domainOptions.map((domain) => (
                   <option key={domain.id} value={domain.id}>
-                    {capitalize(domain.name)}
+                    {domain.name}
                   </option>
                 ))}
               </Select>
@@ -886,7 +886,7 @@ export function ObservationHub({
                 >
                   {typeOptions.map((type) => (
                     <option key={type.code} value={type.code}>
-                      {capitalize(type.name)}
+                      {type.name}
                     </option>
                   ))}
                   <option value="all">Бүх төрөл</option>

@@ -107,7 +107,7 @@ export default function NotificationDetailPage() {
 
         <p className="mt-1 text-body text-muted">
           {[
-            fullName(notification.author),
+            notification.authorIsAdministration ? "Цэцэрлэг" : fullName(notification.author),
             formatLongDate(notification.publishedAt ?? notification.createdAt),
           ]
             .filter((v) => v !== "—")

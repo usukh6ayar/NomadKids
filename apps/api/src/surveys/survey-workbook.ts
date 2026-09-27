@@ -6,6 +6,7 @@ import {
   type WaveQuestion,
 } from "./survey-comparison";
 import { indicatorsOf, matrixOptions, scoreOf } from "./survey-scoring";
+import { SURVEY_PERIOD_LABEL } from "@kinder/contracts";
 
 /**
  * The five-sheet survey workbook — RFP Module 1.3.
@@ -85,11 +86,7 @@ export interface WorkbookInput {
   kindergartenName: string;
 }
 
-const PERIOD_LABEL: Record<string, string> = {
-  BASELINE: "Эхний үнэлгээ",
-  MIDLINE: "Завсрын үнэлгээ",
-  ENDLINE: "Жилийн эцсийн үнэлгээ",
-};
+const PERIOD_LABEL: Record<string, string> = SURVEY_PERIOD_LABEL;
 
 const ROLE_LABEL: Record<string, string> = {
   TEACHER: "Багш",
@@ -110,6 +107,25 @@ export async function buildSurveyWorkbook(input: WorkbookInput): Promise<Buffer>
   writeChildComparison(book, input, childById);
   writeGroupComparison(book, input);
   writeYearComparison(book, input);
+  const table = writeAnswerTable(book, input, childById);
+
+  /*
+    ★ Opens on the full table — client, 2026-09-22: "орсон бүх асуулгууд нэг
+    файлд орно". The five §1.3 sheets keep their names and their order; the
+    table is a sixth, and the file simply opens on it, because it is the one
+    sheet that shows every question whether or not anybody answered it.
+  */
+  book.views = [
+    {
+      x: 0,
+      y: 0,
+      width: 20000,
+      height: 12000,
+      firstSheet: 0,
+      activeTab: book.worksheets.indexOf(table),
+      visibility: "visible",
+    },
+  ];
 
   // `as Buffer` because exceljs types this as its own ArrayBuffer alias while
   // returning a Node Buffer — a known gap in its type definitions.
@@ -143,6 +159,15 @@ function writeSummary(book: ExcelJS.Workbook, input: WorkbookInput) {
     const row = sheet.addRow([label, value]);
     row.getCell(1).font = { bold: true };
   }
+
+  // Every question the survey asked, numbered as the answer table numbers its
+  // columns — including one nobody has answered yet (client, 2026-09-22).
+  sheet.addRow([]);
+  sheet.addRow(["Асуултууд"]).getCell(1).font = { bold: true };
+  survey.questions.forEach((question, index) => {
+    const row = sheet.addRow([`${index + 1}.`, question.prompt]);
+    row.getCell(2).alignment = { wrapText: true, vertical: "top" };
+  });
 
   if (input.baseline) {
     sheet.addRow([]);
@@ -257,6 +282,99 @@ function writeRawData(
       });
     }
   }
+}
+
+/**
+ * Sheet 6 — "Асуулт, хариулт": every question as a column, every response as
+ * a row. Client, 2026-09-22: "орсон бүх асуулгууд нэг файлд орно".
+ *
+ * ★ Driven by the questions, not the answers. The raw sheet writes a row per
+ * answer, so a question nobody has answered yet never appears in it; here
+ * each question has its column from the start, and an unanswered cell is "—".
+ * A MATRIX gets a column per row, for the reason the raw sheet fans it out.
+ *
+ * ★★ Names are withheld on an anonymous survey, exactly as on the raw sheet.
+ */
+function writeAnswerTable(
+  book: ExcelJS.Workbook,
+  input: WorkbookInput,
+  childById: Map<string, WorkbookChild>,
+): ExcelJS.Worksheet {
+  const sheet = book.addWorksheet("Асуулт, хариулт");
+  const { survey } = input;
+  const hidden = survey.isAnonymous === true;
+
+  type AnswerColumn = { question: WaveQuestion; rowKey: string | null; header: string };
+  const columns = survey.questions.flatMap((question, index): AnswerColumn[] => {
+    const matrix = question.type === "MATRIX" ? matrixOptions(question) : null;
+    if (!matrix) return [{ question, rowKey: null, header: `${index + 1}. ${question.prompt}` }];
+    return matrix.rows.map((row) => ({
+      question,
+      rowKey: row.key,
+      header: `${index + 1}. ${question.prompt} — ${row.label}`,
+    }));
+  });
+
+  sheet.columns = [
+    { header: "№", key: "n", width: 5 },
+    { header: "Бүлэг", key: "group", width: 16 },
+    { header: "Хүүхдийн нэр", key: "child", width: 24 },
+    { header: "Бөглөсөн", key: "respondent", width: 22 },
+    { header: "Огноо", key: "submitted", width: 12 },
+    ...columns.map((column, index) => ({ header: column.header, key: `q${index}`, width: 24 })),
+  ];
+  headerStyle(sheet);
+  const header = sheet.getRow(1);
+  header.alignment = { wrapText: true, vertical: "top" };
+  header.height = 60;
+  // Freeze the name columns as well as the header: a 49-question sheet is
+  // read sideways, and the child has to stay in view while it is.
+  sheet.views = [{ state: "frozen", ySplit: 1, xSplit: 3 }];
+
+  const answersByResponse = new Map<string, Map<string, unknown>>();
+  for (const answer of survey.answers) {
+    const byQuestion = answersByResponse.get(answer.responseId) ?? new Map<string, unknown>();
+    byQuestion.set(answer.questionId, answer.value);
+    answersByResponse.set(answer.responseId, byQuestion);
+  }
+
+  const childOf = (response: WorkbookResponse) =>
+    response.childId ? childById.get(response.childId) : undefined;
+  const rows = [...survey.responses].sort((a, b) => {
+    const ca = childOf(a);
+    const cb = childOf(b);
+    return (
+      (ca?.groupName ?? "").localeCompare(cb?.groupName ?? "", "mn") ||
+      `${ca?.lastName ?? ""} ${ca?.firstName ?? ""}`.localeCompare(
+        `${cb?.lastName ?? ""} ${cb?.firstName ?? ""}`,
+        "mn",
+      ) ||
+      a.submittedAt.localeCompare(b.submittedAt)
+    );
+  });
+
+  rows.forEach((response, index) => {
+    const child = childOf(response);
+    const values = answersByResponse.get(response.id) ?? new Map<string, unknown>();
+    const row: Record<string, string | number> = {
+      n: index + 1,
+      group: child?.groupName ?? "—",
+      child: hidden ? "—" : child ? `${child.lastName} ${child.firstName}` : "—",
+      respondent: hidden ? "—" : response.respondentName,
+      submitted: response.submittedAt.slice(0, 10),
+    };
+    columns.forEach((column, i) => {
+      row[`q${i}`] = readableAnswer(column.question, values.get(column.question.id), column.rowKey);
+    });
+    sheet.addRow(row);
+  });
+
+  if (rows.length === 0) {
+    const note = sheet.addRow(["Одоогоор хариулт алга. Асуултууд дээрх мөрөнд байна."]);
+    sheet.mergeCells(note.number, 1, note.number, Math.max(5, columns.length + 5));
+  }
+
+  return sheet;
 }
 
 /** Sheet 3 — Child Comparison: each child's begin-to-end movement. */

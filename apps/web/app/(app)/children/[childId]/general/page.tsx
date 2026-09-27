@@ -150,13 +150,7 @@ export default function ChildGeneralPage() {
           {
             value: PLACEMENT,
             label: "Суралцсан түүх",
-            content: (
-              <ChildEnrollmentArchive
-                childId={childId}
-                showHero={false}
-                dateOfBirth={data.dateOfBirth}
-              />
-            ),
+            content: <ChildEnrollmentArchive childId={childId} dateOfBirth={data.dateOfBirth} />,
           },
         ]}
       />

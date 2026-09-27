@@ -12,6 +12,14 @@ import { sanitiseFilename, UploadRejected, validateImageUpload } from "./upload-
 import { paginate, type PageParams } from "../common/pagination";
 import { MediaAttribution, type MediaPurpose } from "../domain/enums";
 import type { ListMediaQuery, UpdateMediaDto } from "./media.dto";
+import {
+  AGE_ALBUM_CATEGORY_LABEL,
+  isAgeAlbumCategory,
+  MAX_PHOTOS_PER_AGE_ALBUM_CATEGORY,
+} from "@kinder/contracts";
+
+/** Enough for a family's own occasions; a wall of cards is not an album. */
+const MAX_ADDED_ALBUM_CATEGORIES_PER_AGE = 20;
 
 /** What a caller may set when a photograph is uploaded. */
 export interface UploadOptions {
@@ -25,6 +33,8 @@ export interface UploadOptions {
   takenAt?: Date | null;
   age?: number | null;
   category?: string | null;
+  /** An added photo type — `AlbumCategory`. */
+  albumCategoryId?: string | null;
   attribution?: MediaAttribution | null;
 }
 
@@ -35,6 +45,9 @@ const MAX_PHOTOS_PER_NOTIFICATION = 12;
 const MAX_PHOTOS_PER_MILESTONE = 6;
 /** RFP Module 2.1 — a few photographs of an injury, not an album. */
 const MAX_PHOTOS_PER_INCIDENT = 6;
+
+/** The message a full album card answers with — see the constant's note. */
+const ALBUM_CATEGORY_FULL = `Нэг төрөлд дээд тал нь ${MAX_PHOTOS_PER_AGE_ALBUM_CATEGORY} зураг оруулна`;
 
 /**
  * Media that belongs to a kindergarten rather than to a child.
@@ -73,6 +86,19 @@ const STAFF_ONLY_TENANT_PURPOSES: ReadonlySet<MediaPurpose> = new Set<MediaPurpo
   "DOCUMENT_COVER",
 ]);
 
+/**
+ * One name per card in an age: not a built-in type's label, not another added
+ * type's. Compared without case or surrounding space, which is how a person
+ * reading the grid would compare them.
+ */
+function assertAlbumCategoryName(name: string, others: { name: string }[]) {
+  const key = name.trim().toLocaleLowerCase("mn");
+  const taken = [...Object.values(AGE_ALBUM_CATEGORY_LABEL), ...others.map((row) => row.name)];
+  if (taken.some((label) => label.trim().toLocaleLowerCase("mn") === key)) {
+    throw new BadRequestException("Ийм нэртэй зургийн төрөл аль хэдийн байна");
+  }
+}
+
 @Injectable()
 export class MediaService {
   constructor(
@@ -110,6 +136,30 @@ export class MediaService {
     // is wider than every other write about a child.
     const facts = await this.childAccess.assertCanContributeMedia(actor, childId);
     const isGuardian = isGuardianOf(actor, facts);
+
+    // Before decoding: a full card refuses the file whatever it contains. Each
+    // file of a batch re-counts (`uploadMany` is sequential), so the fourth of
+    // four is the one refused and the first three are kept.
+    let age = options.age ?? null;
+    let category = options.category ?? null;
+    let albumCategoryId: string | null = null;
+    if (options.albumCategoryId) {
+      // An added type must be THIS child's — an id from another family's
+      // album would file a photograph there. Its own age wins, so a photo can
+      // never sit in a type under a year the type does not belong to.
+      const type = await this.repo.findAlbumCategory(options.albumCategoryId);
+      if (!type || type.childId !== childId) {
+        throw new BadRequestException("Зургийн төрөл олдсонгүй");
+      }
+      if ((await this.repo.countInAlbumCategory(type.id)) >= MAX_PHOTOS_PER_AGE_ALBUM_CATEGORY) {
+        throw new BadRequestException(ALBUM_CATEGORY_FULL);
+      }
+      albumCategoryId = type.id;
+      age = type.age;
+      category = null;
+    } else {
+      await this.assertAgeAlbumRoom(childId, age, category);
+    }
 
     let validated;
     try {
@@ -254,8 +304,9 @@ export class MediaService {
       // could forge.
       uploadedById: actor.userId,
       takenAt: options.takenAt ?? null,
-      age: options.age ?? null,
-      category: options.category ?? null,
+      age,
+      category,
+      albumCategoryId,
       // RFP §4.4 "багшийн, эцэг эхийн эсвэл хамтын".
       //
       // ★ Defaulted from the relationship to THIS child, not from a role: a
@@ -279,6 +330,139 @@ export class MediaService {
     });
 
     return this.toPublicShape(media);
+  }
+
+  /**
+   * Refuses a photograph into an age-album card that already holds
+   * `MAX_PHOTOS_PER_AGE_ALBUM_CATEGORY`. Anything not filed under one of the
+   * twelve cards for an age — an observation photo, an ungrouped one — is not
+   * an album card and passes.
+   */
+  private async assertAgeAlbumRoom(
+    childId: string,
+    age: number | null | undefined,
+    category: string | null | undefined,
+    excludeMediaId?: string,
+  ) {
+    if (age === null || age === undefined || !isAgeAlbumCategory(category)) return;
+    const existing = await this.repo.countInAgeAlbumCategory(
+      childId,
+      age,
+      category,
+      excludeMediaId,
+    );
+    if (existing >= MAX_PHOTOS_PER_AGE_ALBUM_CATEGORY) {
+      throw new BadRequestException(ALBUM_CATEGORY_FULL);
+    }
+  }
+
+  // ── Added photo types — client, 2026-09-18 ─────────────────────────────
+
+  /**
+   * Adds a photo type to one child's album for one age.
+   *
+   * ★ Anyone who may add photographs to this child may add a type — staff or
+   * one of the child's guardians (`assertCanContributeMedia`), 404 for anyone
+   * else. The twelve built-in types are not rows and cannot be touched here.
+   */
+  async createAlbumCategory(actor: Actor, childId: string, input: { age: number; name: string }) {
+    const facts = await this.childAccess.assertCanContributeMedia(actor, childId);
+    const existing = await this.repo.albumCategoryNames(childId, input.age);
+    if (existing.length >= MAX_ADDED_ALBUM_CATEGORIES_PER_AGE) {
+      throw new BadRequestException(
+        `Нэг насанд дээд тал нь ${MAX_ADDED_ALBUM_CATEGORIES_PER_AGE} төрөл нэмнэ`,
+      );
+    }
+    assertAlbumCategoryName(input.name, existing);
+
+    const created = await this.repo.createAlbumCategory({
+      kindergartenId: facts.childKindergartenId,
+      childId,
+      age: input.age,
+      name: input.name,
+      createdById: actor.userId,
+    });
+
+    await this.audit.append({
+      action: "CREATE",
+      kindergartenId: facts.childKindergartenId,
+      actorUserId: actor.userId,
+      objectType: "AlbumCategory",
+      objectId: created.id,
+      childId,
+      metadata: { age: input.age, name: input.name },
+    });
+
+    return created;
+  }
+
+  async renameAlbumCategory(actor: Actor, childId: string, id: string, name: string) {
+    const { type, kindergartenId } = await this.editableAlbumCategory(actor, childId, id);
+    const others = (await this.repo.albumCategoryNames(childId, type.age)).filter(
+      (row) => row.id !== id,
+    );
+    assertAlbumCategoryName(name, others);
+
+    const updated = await this.repo.renameAlbumCategory(id, name);
+
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "AlbumCategory",
+      objectId: id,
+      childId,
+      metadata: { before: { name: type.name }, name },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Deletes an added type — soft (§3.2), and only when it is empty.
+   *
+   * ★ Refused while it holds a photograph. Deleting the card would either
+   * take the photographs with it or leave them filed under nothing, and the
+   * family would not know which; asking them to remove the photos first keeps
+   * every photograph where somebody can see it.
+   */
+  async removeAlbumCategory(actor: Actor, childId: string, id: string) {
+    const { type, kindergartenId } = await this.editableAlbumCategory(actor, childId, id);
+    if ((await this.repo.countInAlbumCategory(id)) > 0) {
+      throw new BadRequestException(
+        "Энэ төрөлд зураг байна. Эхлээд зургуудыг устгаад дараа нь төрлийг устгана уу",
+      );
+    }
+
+    await this.repo.softDeleteAlbumCategory(id);
+
+    await this.audit.append({
+      action: "DELETE",
+      kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "AlbumCategory",
+      objectId: id,
+      childId,
+      metadata: { age: type.age, name: type.name },
+    });
+
+    return { id };
+  }
+
+  /**
+   * An added type this actor may change: it must be this child's, the actor
+   * must be able to add to the album, and a guardian may change only a type
+   * they added — the authorship rule `updateMetadata` applies to photographs.
+   * 404 in every refusal (§1.7).
+   */
+  private async editableAlbumCategory(actor: Actor, childId: string, id: string) {
+    const facts = await this.childAccess.assertCanContributeMedia(actor, childId);
+    const type = await this.repo.findAlbumCategory(id);
+    if (!type || type.childId !== childId) throw new NotFoundException();
+    if (isGuardianOf(actor, facts) && type.createdById !== actor.userId) {
+      throw new NotFoundException();
+    }
+    return { type, kindergartenId: type.kindergartenId };
   }
 
   /**
@@ -533,6 +717,7 @@ export class MediaService {
       purpose: query.purpose,
       observationId: query.observationId,
       category: query.category,
+      albumCategoryId: query.albumCategoryId,
       age: query.age,
       attribution: query.attribution,
     };
@@ -613,7 +798,25 @@ export class MediaService {
       throw new NotFoundException();
     }
 
-    const updated = await this.repo.updateMetadata(mediaId, dto);
+    /*
+      Moving a photograph *into* a card counts against that card — otherwise
+      the limit is one upload plus one edit away. The photograph itself is
+      excluded, so re-saving a caption on the third photo is not a refusal.
+    */
+    if (dto.age !== undefined || dto.category !== undefined) {
+      await this.assertAgeAlbumRoom(
+        media.childId,
+        dto.age === undefined ? media.age : dto.age,
+        dto.category === undefined ? media.category : dto.category,
+        mediaId,
+      );
+    }
+
+    // Choosing one of the twelve takes the photograph out of an added type.
+    const updated = await this.repo.updateMetadata(mediaId, {
+      ...dto,
+      ...(dto.category === undefined ? {} : { albumCategoryId: null }),
+    });
 
     await this.audit.append({
       action: "UPDATE",
@@ -671,7 +874,7 @@ export class MediaService {
   async saveNotificationPhotoToChild(
     actor: Actor,
     childId: string,
-    input: { mediaId: string; age?: number | null; category?: string | null },
+    input: { mediaId: string; age?: number | null },
   ) {
     const facts = await this.childAccess.assertCanContributeMedia(actor, childId);
     /*
@@ -712,7 +915,17 @@ export class MediaService {
       caption: null,
       order: 0,
       age: input.age ?? null,
-      category: input.category ?? null,
+      /*
+        ★ Filed as the teacher's, under the chosen age — client, 2026-09-18:
+        "мэдээнээс оруулсан зураг ... насныхаа багшийн илгээсэн зурагт орно".
+        The photograph is one the kindergarten took and posted; the family
+        only chose to keep it. So it goes in "Багшийн илгээсэн зураг"
+        (`attribution: TEACHER`) rather than into one of the twelve cards,
+        and no card's three-photo limit applies. `uploadedById` stays the
+        person who pressed Хадгалах, which is what the audit row records.
+      */
+      category: null,
+      attribution: MediaAttribution.TEACHER,
       uploadedById: actor.userId,
     });
 
@@ -911,8 +1124,23 @@ export class MediaService {
   }
 
   /** Makes an already-uploaded photo the child's profile picture. */
+  /**
+   * Makes one of the child's photographs their profile picture.
+   *
+   * ★ `assertCanContributeMedia`, not `assertCanRecord` — client, 2026-09-24:
+   * a parent asked where they change the face on their own child's card, and
+   * the answer was "you cannot, ask a teacher".
+   *
+   * That is the same predicate the album upload and the age-album cover
+   * already use: staff, plus this child's own guardians. It widens nothing
+   * else — deleting a photograph and editing somebody else's caption stay
+   * `canRecordForChild`, and the picture must still be one of *this* child's
+   * `READY` rows, so a family can only choose from what is already in the
+   * album they are allowed to see. `docs/SECURITY.md` §6.6 records the
+   * amended reference case.
+   */
   async setAsChildPhoto(actor: Actor, childId: string, mediaId: string) {
-    await this.childAccess.assertCanRecord(actor, childId);
+    await this.childAccess.assertCanContributeMedia(actor, childId);
 
     const media = await this.repo.findForAuthorization(mediaId);
     if (!media || media.childId !== childId || media.status !== "READY") {

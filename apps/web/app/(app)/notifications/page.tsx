@@ -12,6 +12,8 @@ import {
   NOTIFICATION_CATEGORY_LABEL,
   childSummarySchema,
   notificationSchema,
+  personRefSchema,
+  uuidSchema,
   paginated,
   surveySchema,
   type NotificationCategory,
@@ -23,6 +25,7 @@ import { SavePostPhoto } from "@/components/notifications/save-post-photo";
 import { LikeButton } from "@/components/notifications/like-button";
 import { ChildAvatar, MediaThumb } from "@/components/media/media-image";
 import { useSession } from "@/lib/auth/session";
+import { useMyProfile } from "@/lib/use-my-profile";
 import { useSelectedChildIfAny } from "@/lib/selected-child";
 import {
   CalendarRange,
@@ -44,11 +47,21 @@ import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
-import { excerpt, formatRelative, shortName, groupLabel } from "@/lib/format";
+import { excerpt, formatRelative, shortName } from "@/lib/format";
 import { FamilySurveyCard } from "@/components/survey/family-survey-card";
 import { cn } from "@/lib/utils";
 
-const listSchema = paginated(notificationSchema);
+/*
+  ★ The author's photograph, when the API sends one — 2026-09-25, the client:
+  a teacher's post shows their picture to them and an initial to everyone else.
+  `notificationSchema`'s author is a bare name, which would strip the field on
+  parse; this keeps it, so the card needs no change once the endpoint selects
+  `photoMediaFileId` for the author.
+*/
+const feedNotificationSchema = notificationSchema.extend({
+  author: personRefSchema.extend({ photoMediaFileId: uuidSchema.nullish() }).nullish(),
+});
+const listSchema = paginated(feedNotificationSchema);
 const ownChildrenSchema = z.array(childSummarySchema);
 const activeSurveysSchema = z.array(surveySchema);
 
@@ -449,7 +462,7 @@ export default function NotificationsPage() {
                     {isAdmin ? <option value="">Бүх бүлэг</option> : null}
                     {(boardGroups.data?.items ?? []).map((group) => (
                       <option key={group.id} value={group.id}>
-                        {groupLabel(group.name)}
+                        {group.name}
                       </option>
                     ))}
                   </Select>
@@ -895,7 +908,7 @@ function NotificationRow({
   canDelete,
   savableChildren,
 }: {
-  notification: z.infer<typeof notificationSchema>;
+  notification: z.infer<typeof feedNotificationSchema>;
   /**
    * Whether *this* reader may withdraw *this* post.
    *
@@ -920,6 +933,21 @@ function NotificationRow({
   const toast = useToast();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const isUnread = notification.reads.length === 0;
+  /*
+    ★ The reader's own post shows their photograph — 2026-09-25, the client: a
+    teacher who had uploaded one still saw "С" on what they had just posted.
+    The feed's author carries no photo, so the reader's own comes from their
+    profile; anybody else's post keeps its initials until the API sends one.
+  */
+  const { session } = useSession();
+  const { data: myProfile } = useMyProfile();
+  const author =
+    notification.author && notification.author.id === session?.user.id
+      ? {
+          ...notification.author,
+          photoMediaFileId: notification.author.photoMediaFileId ?? myProfile?.photoMediaFileId,
+        }
+      : notification.author;
 
   const remove = useMutation({
     mutationFn: () =>
@@ -995,9 +1023,8 @@ function NotificationRow({
           : "border-border-soft bg-white/70 hover:border-border hover:bg-white",
       )}
     >
-      {/* Who posted it, and when. `ChildAvatar` takes any `{firstName,
-          lastName}` and draws initials when there is no photograph — an author
-          has no `photoMediaFileId`, so it is always the initials here. */}
+      {/* Who posted it, and when. `ChildAvatar` draws initials when there is
+          no photograph — the reader's own post borrows their profile's. */}
       {/*
         ★ One row on a phone, and it cannot wrap — 2026-09-10, at the client's
         request.
@@ -1021,7 +1048,21 @@ function NotificationRow({
         below its content, which is the usual reason `truncate` does nothing.
       */}
       <div className="flex items-center gap-2.5">
-        <ChildAvatar child={notification.author ?? {}} size={36} />
+        {/*
+          ★ An administrator's post speaks as the kindergarten — client,
+          2026-09-17: "цэцэрлэгийн зураг, цэцэрлэг гэсэн бичиг". The person's
+          initials would read as one more teacher on the board.
+        */}
+        {notification.authorIsAdministration ? (
+          <span
+            aria-hidden="true"
+            className="grid size-9 shrink-0 place-items-center rounded-pill bg-sun"
+          >
+            <Art name="kindergarten" size={28} className="size-7 object-contain" />
+          </span>
+        ) : (
+          <ChildAvatar child={author ?? {}} size={36} />
+        )}
 
         {/*
           ★ One line, not two.
@@ -1056,11 +1097,17 @@ function NotificationRow({
         */}
         <p className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-body font-semibold text-ink">
-            {notification.author ? "Бүлгийн багш" : "Цэцэрлэг"}
+            {notification.authorIsAdministration
+              ? "Цэцэрлэг"
+              : notification.author
+                ? "Бүлгийн багш"
+                : "Цэцэрлэг"}
           </span>
           <span className="truncate text-caption text-muted">
             {[
-              notification.author ? shortName(notification.author) : null,
+              notification.author && !notification.authorIsAdministration
+                ? shortName(notification.author)
+                : null,
               formatRelative(when),
               audienceLabel(notification.targets),
               NOTIFICATION_CATEGORY_LABEL[notification.category],

@@ -2,21 +2,15 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { Camera, ChevronRight, MoreVertical, Pencil, X } from "lucide-react";
-import {
-  ageProfileSchema,
-  mediaSchema,
-  type AgeProfile,
-  type FamilyMemory,
-  type Media,
-} from "@kinder/contracts";
+import { useCallback, useEffect, useState, type ChangeEvent, type ReactNode } from "react";
+import { ChevronRight, MoreVertical, Pencil, Plus, X } from "lucide-react";
+import { ageProfileSchema, type AgeProfile, type FamilyMemory } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Checkbox, Field, Input, Textarea } from "@/components/ui/field";
+import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { RowMenu } from "@/components/ui/menu";
 import { FormError } from "@/components/ui/states";
@@ -24,27 +18,21 @@ import { useToast } from "@/components/ui/toast";
 import { Art, type ArtName } from "@/components/ui/art";
 import {
   CHARACTER_TRAITS,
+  CHARACTER_TRAIT_EMOJI,
   FAVORITE_FIELDS,
   ageSectionCompletion,
   familyLearningCategories,
   kindergartenSkillCategories,
   type PortfolioAge,
 } from "@/lib/age-development";
-import {
-  FamilyMemberSelector,
-  MemoryList,
-  MemoryPhotoPicker,
-  MemoryPreview,
-  draftFrom,
-  emptyDraft,
-  type MemoryDraft,
-} from "@/components/child/family-memories";
-import { todayLocal } from "@/lib/format";
 import type { GradientTone } from "@/lib/gradient-tones";
 import { cn } from "@/lib/utils";
 
 type Profile = AgeProfile | undefined;
-type PatchBody = Record<string, string | null | string[] | Record<string, string> | FamilyMemory[]>;
+type PatchBody = Record<
+  string,
+  string | number | null | string[] | Record<string, string> | FamilyMemory[]
+>;
 
 const CARD_FOR_TONE: Record<GradientTone, string> = {
   green: "border-[#deefe3] bg-[linear-gradient(135deg,#fbfffc_0%,#effaf1_100%)]",
@@ -287,7 +275,12 @@ export function FavoritesCard({
           }}
         >
           <FormError message={save.isError ? errorMessage(save.error) : null} />
-          <div className="grid gap-4 sm:grid-cols-2">
+          {/*
+            ★ Two to a row at every width — client, 2026-09-24. It was one
+            column on a phone, which is a long scroll through short answers:
+            "Тоглоом", "Ном", "Дуу" are a word each, and they read as pairs.
+          */}
+          <div className="grid grid-cols-2 gap-x-3 gap-y-4">
             {FAVORITE_FIELDS.map(({ key, label }) => (
               <Field key={key} label={label} error={errors[key]}>
                 {({ id, describedBy, invalid }) => (
@@ -312,6 +305,16 @@ export function FavoritesCard({
 
 type SkillCategory = { id: string; label: string; options: string[] };
 
+function customSkillsByCategory(values: string[], labels: string[]) {
+  const grouped = Object.fromEntries(labels.map((label) => [label, [] as string[]]));
+  for (const value of values) {
+    const label = labels.find((candidate) => value.startsWith(`${candidate}: `));
+    if (label) grouped[label]!.push(value.slice(label.length + 2));
+    else if (labels[0]) grouped[labels[0]]!.push(value);
+  }
+  return grouped;
+}
+
 function SkillsSectionCard({
   childId,
   age,
@@ -320,12 +323,11 @@ function SkillsSectionCard({
   emptyPrompt,
   categories,
   selectedKey,
-  notesKey,
   otherKey,
   legacyKey,
-  disclaimer,
   art,
   tone,
+  customEntries = false,
 }: {
   childId: string;
   age: PortfolioAge;
@@ -334,22 +336,23 @@ function SkillsSectionCard({
   emptyPrompt: string;
   categories: SkillCategory[];
   selectedKey: "kindergartenSkills" | "familyLearningSkills";
-  notesKey: "kindergartenSkillNotes" | "familyLearningNotes";
   otherKey: "kindergartenOtherSkill" | "familyLearningOther";
   legacyKey: "newSkills" | "familyMembers";
-  disclaimer?: string;
   art: ArtName;
   tone: GradientTone;
+  customEntries?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
-  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [entries, setEntries] = useState<Record<string, string[]>>({});
   const [other, setOther] = useState("");
+  const categoryKey = categories.map((category) => category.label).join("\u0000");
   const reset = useCallback(() => {
-    setSelected(profile?.[selectedKey] ?? []);
-    setNotes(profile?.[notesKey] ?? {});
+    const saved = profile?.[selectedKey] ?? [];
+    setSelected(saved);
+    setEntries(customSkillsByCategory(saved, categoryKey.split("\u0000")));
     setOther(profile?.[otherKey] ?? profile?.[legacyKey] ?? "");
-  }, [legacyKey, notesKey, otherKey, profile, selectedKey]);
+  }, [categoryKey, legacyKey, otherKey, profile, selectedKey]);
   useEffect(reset, [reset]);
 
   const close = () => {
@@ -359,18 +362,25 @@ function SkillsSectionCard({
   const save = useAgeProfileSave(childId, age, close);
   const errors = fieldErrors(save.error);
   const storedSelected = profile?.[selectedKey] ?? [];
-  const storedNotes = profile?.[notesKey] ?? {};
   const storedOther = profile?.[otherKey] ?? profile?.[legacyKey] ?? "";
-  const rows = [
-    ...(storedSelected.length
-      ? [{ label: "Сонгосон чадвар", value: storedSelected.join(", ") }]
-      : []),
-    ...categories.flatMap((category) => {
-      const value = storedNotes[category.id]?.trim();
-      return value ? [{ label: `${category.label} — Нэмэлт тайлбар`, value }] : [];
-    }),
-    ...(storedOther.trim() ? [{ label: "Өөр сурсан зүйл", value: storedOther }] : []),
-  ];
+  const storedEntries = customSkillsByCategory(
+    storedSelected,
+    categories.map((category) => category.label),
+  );
+  const rows = customEntries
+    ? [
+        ...categories.flatMap((category) => {
+          const values = storedEntries[category.label] ?? [];
+          return values.length ? [{ label: category.label, value: values.join(", ") }] : [];
+        }),
+        ...(storedOther.trim() ? [{ label: "Өөр сурсан зүйл", value: storedOther }] : []),
+      ]
+    : [
+        ...(storedSelected.length
+          ? [{ label: "Сонгосон чадвар", value: storedSelected.join(", ") }]
+          : []),
+        ...(storedOther.trim() ? [{ label: "Өөр сурсан зүйл", value: storedOther }] : []),
+      ];
   const formId = `${selectedKey}-${age}-form`;
 
   return (
@@ -387,16 +397,12 @@ function SkillsSectionCard({
         }}
       >
         <ValuesList rows={rows} />
-        {disclaimer ? (
-          <p className="mt-4 text-caption leading-relaxed text-muted">{disclaimer}</p>
-        ) : null}
       </ProfileCard>
       <FormDialog
         open={open}
         onOpenChange={(next) => (next ? setOpen(true) : close())}
         busy={save.isPending}
         title={title}
-        description={`${age} насны ажиглалтыг олон сонголтоор тэмдэглэнэ үү.`}
         footer={<DialogActions formId={formId} busy={save.isPending} onCancel={close} />}
       >
         <form
@@ -406,76 +412,129 @@ function SkillsSectionCard({
           onSubmit={(event) => {
             event.preventDefault();
             if (save.isPending) return;
-            save.mutate({
-              [selectedKey]: selected,
-              [notesKey]: Object.fromEntries(
-                Object.entries(notes)
-                  .map(([key, value]) => [key, value.trim()])
-                  .filter(([, value]) => value),
-              ),
-              [otherKey]: other.trim() || null,
-            });
+            /*
+              ★ No `kindergartenSkillNotes` / `familyLearningNotes` — client, 2026-09-24 asked for "Нэмэлт
+              тайлбар" to go. A partial upsert leaves an absent field alone, so
+              whatever a family wrote in those boxes before today is still in
+              the database and still printed by the keepsake PDF and the age
+              comparison. Wiping it would be a deletion of their words, which
+              is not what "remove the box" asks for.
+            */
+            save.mutate(
+              customEntries
+                ? {
+                    [selectedKey]: categories.flatMap((category) =>
+                      (entries[category.label] ?? [])
+                        .map((value) => value.trim())
+                        .filter(Boolean)
+                        .map((value) => `${category.label}: ${value}`),
+                    ),
+                  }
+                : {
+                    [selectedKey]: selected,
+                    [otherKey]: other.trim() || null,
+                  },
+            );
           }}
         >
           <FormError message={save.isError ? errorMessage(save.error) : null} />
-          {categories.map((category) => (
-            <fieldset key={category.id} className="rounded-row border border-border p-3.5">
-              <legend className="px-1 text-body font-semibold text-ink">{category.label}</legend>
-              <div className="mt-1 grid gap-x-4 sm:grid-cols-2">
-                {category.options.map((option) => (
-                  <Checkbox
-                    key={option}
-                    label={option}
-                    checked={selected.includes(option)}
-                    onChange={() =>
-                      setSelected((current) =>
-                        current.includes(option)
-                          ? current.filter((item) => item !== option)
-                          : [...current, option],
-                      )
+          {customEntries
+            ? categories.map((category) => (
+                <fieldset key={category.id} className="rounded-row border border-border p-3.5">
+                  <legend className="px-1 text-body font-semibold text-ink">
+                    {category.label}
+                  </legend>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() =>
+                      setEntries((current) => ({
+                        ...current,
+                        [category.label]: [...(current[category.label] ?? []), ""],
+                      }))
                     }
-                  />
-                ))}
-              </div>
-              <Field label="Нэмэлт тайлбар" className="mt-3" error={errors[notesKey]}>
-                {({ id, describedBy, invalid }) => (
-                  <Textarea
-                    id={id}
-                    aria-describedby={describedBy}
-                    invalid={invalid}
-                    value={notes[category.id] ?? ""}
-                    onChange={(event) =>
-                      setNotes((current) => ({ ...current, [category.id]: event.target.value }))
-                    }
-                  />
-                )}
-              </Field>
-            </fieldset>
-          ))}
-          <Field label="Өөр сурсан зүйл нэмэх" error={errors[otherKey]}>
-            {({ id, describedBy, invalid }) => (
-              <Textarea
-                id={id}
-                aria-describedby={describedBy}
-                invalid={invalid}
-                value={other}
-                onChange={(event) => setOther(event.target.value)}
-              />
-            )}
-          </Field>
-          {disclaimer ? (
-            <p className="rounded-row bg-primary-soft px-3.5 py-3 text-caption leading-relaxed text-muted">
-              {disclaimer}
-            </p>
+                  >
+                    <Plus size={18} aria-hidden="true" />
+                    Нэмэх
+                  </Button>
+                  <div className="mt-3 flex flex-col gap-2">
+                    {(entries[category.label] ?? []).map((entry, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <Input
+                          aria-label={`${category.label} ${index + 1}`}
+                          placeholder="Юу сурсныг бичнэ үү"
+                          value={entry}
+                          onChange={(event) =>
+                            setEntries((current) => ({
+                              ...current,
+                              [category.label]: (current[category.label] ?? []).map(
+                                (value, itemIndex) =>
+                                  itemIndex === index ? event.target.value : value,
+                              ),
+                            }))
+                          }
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`${category.label} ${index + 1} устгах`}
+                          onClick={() =>
+                            setEntries((current) => ({
+                              ...current,
+                              [category.label]: (current[category.label] ?? []).filter(
+                                (_, itemIndex) => itemIndex !== index,
+                              ),
+                            }))
+                          }
+                        >
+                          <X size={18} aria-hidden="true" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </fieldset>
+              ))
+            : categories.map((category) => (
+                <fieldset key={category.id} className="rounded-row border border-border p-3.5">
+                  <legend className="px-1 text-body font-semibold text-ink">
+                    {category.label}
+                  </legend>
+                  <div className="mt-1 grid gap-x-4 sm:grid-cols-2">
+                    {category.options.map((option) => (
+                      <Checkbox
+                        key={option}
+                        label={option}
+                        checked={selected.includes(option)}
+                        onChange={() =>
+                          setSelected((current) =>
+                            current.includes(option)
+                              ? current.filter((item) => item !== option)
+                              : [...current, option],
+                          )
+                        }
+                      />
+                    ))}
+                  </div>
+                </fieldset>
+              ))}
+          {!customEntries ? (
+            <Field label="Өөр сурсан зүйл нэмэх" error={errors[otherKey]}>
+              {({ id, describedBy, invalid }) => (
+                <Textarea
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  value={other}
+                  onChange={(event) => setOther(event.target.value)}
+                />
+              )}
+            </Field>
           ) : null}
         </form>
       </FormDialog>
     </>
   );
 }
-
-const OBSERVATION_DISCLAIMER =
-  "Эдгээр нь ажиглалтаа тэмдэглэх сонголтууд бөгөөд хүүхэд бүр заавал эзэмшсэн байх үнэлгээний стандарт биш. Сонгоогүй чадварыг хоцрогдол гэж үнэлэхгүй.";
 
 export function KindergartenSkillsCard({
   childId,
@@ -495,12 +554,11 @@ export function KindergartenSkillsCard({
       emptyPrompt={`${age} насандаа цэцэрлэгтээ ямар шинэ зүйл сурсан бэ?`}
       categories={kindergartenSkillCategories(age)}
       selectedKey="kindergartenSkills"
-      notesKey="kindergartenSkillNotes"
       otherKey="kindergartenOtherSkill"
       legacyKey="newSkills"
-      disclaimer={OBSERVATION_DISCLAIMER}
       art="ageKindergartenLearning"
       tone="green"
+      customEntries
     />
   );
 }
@@ -523,7 +581,6 @@ export function FamilyLearningCard({
       emptyPrompt={`${age} насандаа гэр бүлээсээ юу сурсан бэ?`}
       categories={familyLearningCategories(age)}
       selectedKey="familyLearningSkills"
-      notesKey="familyLearningNotes"
       otherKey="familyLearningOther"
       legacyKey="familyMembers"
       art="ageFamilyLearning"
@@ -596,7 +653,6 @@ export function CharacterCard({
         onOpenChange={(next) => (next ? setOpen(true) : close())}
         busy={save.isPending}
         title="Миний зан араншин"
-        description="Тухайн үеийн ажиглалтаас хэд хэдийг сонгож болно."
         footer={<DialogActions formId={formId} busy={save.isPending} onCancel={close} />}
       >
         <form
@@ -614,15 +670,26 @@ export function CharacterCard({
           }}
         >
           <FormError message={save.isError ? errorMessage(save.error) : null} />
-          <fieldset>
-            <legend className="text-body font-semibold text-ink">Зан араншингийн ажиглалт</legend>
-            <div className="mt-2 grid gap-x-4 sm:grid-cols-2">
+          {/*
+            ★ The legend is a name, not a line of text — client, 2026-09-24
+            asked for the words "Зан араншингийн ажиглалт" off the screen. The
+            group keeps the name for a screen reader, which is what stops the
+            eleven boxes being announced as eleven unrelated checkboxes.
+          */}
+          <fieldset aria-label="Зан араншингийн ажиглалт">
+            {/*
+              ★ Two columns at every width, and a face on each — client,
+              2026-09-24: "зан авир сонгохыг cute emoji той болгоод 2 эгнээ
+              болго". It was a one-column list of checkboxes on a phone, which
+              is eleven rows to scroll past before reaching the box below.
+            */}
+            <div className="mt-2 grid grid-cols-2 gap-2">
               {CHARACTER_TRAITS.map((trait) => (
-                <Checkbox
+                <TraitChoice
                   key={trait}
-                  label={trait}
+                  trait={trait}
                   checked={traits.includes(trait)}
-                  onChange={() =>
+                  onToggle={() =>
                     setTraits((current) =>
                       current.includes(trait)
                         ? current.filter((item) => item !== trait)
@@ -644,9 +711,6 @@ export function CharacterCard({
               />
             )}
           </Field>
-          <p className="rounded-row bg-primary-soft px-3.5 py-3 text-caption leading-relaxed text-muted">
-            Энэ мэдээллийг оноо, онош эсвэл хүүхдийн тогтмол шошго болгон ашиглахгүй.
-          </p>
         </form>
       </FormDialog>
     </>
@@ -654,8 +718,49 @@ export function CharacterCard({
 }
 
 /** Bounds mirrored from `updateAgeProfileSchema` — a counter that lies is worse than none. */
-const MEMORY_TITLE_MAX = 120;
-const MEMORY_DESCRIPTION_MAX = 1000;
+
+/**
+ * One observation to tick — an emoji, the word, and a real checkbox.
+ *
+ * ★ The input is the control, merely hidden. A `<button aria-pressed>` would
+ * look identical and lose what a checkbox gives for free: the space bar, the
+ * group's own semantics, and — the reason it matters here — an accessible name
+ * that is exactly the word, because the emoji is `aria-hidden`. That is what
+ * keeps "the thing a parent ticked" and "the string stored" the same thing.
+ */
+function TraitChoice({
+  trait,
+  checked,
+  onToggle,
+}: {
+  trait: (typeof CHARACTER_TRAITS)[number];
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <label
+      className={cn(
+        "flex min-h-12 cursor-pointer items-center gap-2 rounded-card border px-3 py-2 text-body transition-colors",
+        "focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary",
+        checked
+          ? "border-primary bg-primary-soft font-semibold text-primary"
+          : "border-border bg-surface text-ink hover:border-primary/50 hover:bg-canvas",
+      )}
+    >
+      <input type="checkbox" className="sr-only" checked={checked} onChange={onToggle} />
+      <span aria-hidden="true" className="text-lead leading-none">
+        {CHARACTER_TRAIT_EMOJI[trait]}
+      </span>
+      <span className="min-w-0 flex-1 leading-snug">{trait}</span>
+    </label>
+  );
+}
+
+/** Ам бүлийн тоо — one to ten, the last of them read as "10+". */
+const FAMILY_SIZES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+
+/** The ceiling the API enforces on `familyDescription`. */
+const FAMILY_TEXT_MAX = 2000;
 
 /** A live count under a bounded field. Turns amber near the ceiling, not at it. */
 function CharCounter({ value, max }: { value: string; max: number }) {
@@ -673,45 +778,24 @@ function CharCounter({ value, max }: { value: string; max: number }) {
 }
 
 /**
- * "Гэр бүл" — the family section, and the memory builder added 2026-09-10 at
- * the client's request.
+ * "Миний гэр бүл" — a household size and a box to write in.
  *
- * ★ The section is now a memory builder and nothing else — client, 2026-09-10,
- * in two steps: first the five-card member picker, then the "Хамтдаа хийх
- * дуртай зүйлс" box.
+ * ★ The memory builder is gone — client, 2026-09-24: "эдгээрийг бүгдийг
+ * арилгаад ам бүлийн тоо сонгох хэсэг, Миний гэр бүл гээд бичих хэсэг л
+ * оруул". The photo picker, the five-card member selector, the per-memory
+ * title, date and description, the saved list and its preview all went with
+ * it, and so did `family-memories.tsx`, which nothing else used.
  *
- * Neither stored field was dropped, and neither is wiped:
+ * ★★ Nothing stored is wiped. `familyMemories` and `familyMemberTypes` are
+ * simply **absent from the PATCH**, and a partial upsert leaves an absent
+ * field alone — so a family who built memories before today still has them in
+ * the database and in the keepsake PDF, which still prints both rows. Erasing
+ * what families wrote is a deletion of their data and its own decision, not
+ * something to infer from a request to simplify a form.
  *
- *   · `familyMemberTypes` is **derived** from the memories — `derivedMembers`.
- *   · `familyDescription` is **omitted from the PATCH**. A partial upsert
- *     leaves an absent field alone, so whatever a parent wrote before the box
- *     was removed is still there, still rendered by the detail card, the age
- *     comparison and the keepsake card. It is deliberately *not* derived from
- *     the memories: "what this family likes doing together" is not the sum of
- *     four captions, and inventing it would be the mock-data problem this
- *     codebase refuses.
- *
- * Both are read-only remnants now. If the client wants them gone from the
- * read views too, that is a deletion of stored data and its own decision —
- * not something to infer from a request to remove a text box.
- *
- * ★★ What is new is `familyMemories`, empty until somebody fills it.
- *
- * ★★ A memory's photograph is an ordinary album row.
- *
- * `MemoryPhotoUpload` posts it to `POST /children/:id/media` with
- * `category=FAMILY` and this `age`, which is precisely what
- * `portfolio/gallery/:age` reads — so a picture added here appears in that
- * age's "Миний гэр бүл" album with no second write and no second model. The
- * memory stores the id and nothing else about the file.
- *
- * ★★★ Saving only ever *fills* a photograph's blanks — see `syncMemoryMedia`.
- *
- * A picture chosen from the archive may already be filed under "Аялал,
- * зугаалга" with a caption of its own, and quietly re-filing it under the
- * family album because it was reused in a memory would move a photograph the
- * parent never asked to move. An empty facet is filled; a set one is left
- * alone.
+ * ★★★ The photographs were never owned by this card: each one is an ordinary
+ * album row under `category=FAMILY`, so they keep appearing in that age's
+ * "Миний гэр бүл" album exactly as before.
  */
 export function FamilyCard({
   childId,
@@ -722,40 +806,13 @@ export function FamilyCard({
   age: PortfolioAge;
   profile: Profile;
 }) {
-  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [memories, setMemories] = useState<FamilyMemory[]>([]);
-  const [draft, setDraft] = useState<MemoryDraft>(() => emptyDraft());
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [previewId, setPreviewId] = useState<string | null>(null);
-  /**
-   * The delete awaiting a "Тийм", and **where it was raised**.
-   *
-   * The list and the preview both draw a memory and both offer to remove it,
-   * so an id alone put the same "Устгах уу? Тийм / Үгүй" strip in two places
-   * at once. The confirmation belongs where the question was asked.
-   */
-  const [confirming, setConfirming] = useState<{ id: string; where: "list" | "preview" } | null>(
-    null,
-  );
-  const [memoryErrors, setMemoryErrors] = useState<Record<string, string>>({});
-
-  /**
-   * What is known about each photograph's album facets.
-   *
-   * A ref, not state: nothing renders from it. It exists so the save can tell
-   * "this photo has no age yet" from "this photo is already filed elsewhere",
-   * and it is filled by the archive listing and by every upload.
-   */
-  const knownMedia = useRef(new Map<string, Media>());
+  const [familySize, setFamilySize] = useState("");
+  const [description, setDescription] = useState("");
 
   const reset = useCallback(() => {
-    setMemories(profile?.familyMemories ?? []);
-    setDraft(emptyDraft());
-    setEditingId(null);
-    setPreviewId(null);
-    setConfirming(null);
-    setMemoryErrors({});
+    setFamilySize(profile?.familySize ? String(profile.familySize) : "");
+    setDescription(profile?.familyDescription ?? "");
   }, [profile]);
   useEffect(reset, [reset]);
 
@@ -767,193 +824,20 @@ export function FamilyCard({
   const errors = fieldErrors(save.error);
   const formId = `family-${age}-form`;
 
-  const storedMemories = profile?.familyMemories ?? [];
   const rows = [
-    ...(profile?.familyMemberTypes.length
-      ? [{ label: "Гэр бүлийн гишүүд", value: profile.familyMemberTypes.join(", ") }]
-      : []),
+    ...(profile?.familySize ? [{ label: "Ам бүлийн тоо", value: `${profile.familySize}` }] : []),
     ...(profile?.familyDescription?.trim()
-      ? [
-          {
-            label: "Хамтдаа хийх дуртай зүйлс",
-            value: profile.familyDescription,
-          },
-        ]
+      ? [{ label: "Миний гэр бүл", value: profile.familyDescription }]
       : []),
   ];
-
-  /**
-   * Stable across renders: `MemoryArchive` reports its listing from an effect,
-   * and a new function identity every render would re-run that effect every
-   * render.
-   */
-  const rememberMedia = useCallback((items: Media[]) => {
-    for (const item of items) knownMedia.current.set(item.id, item);
-  }, []);
-
-  /**
-   * Fills in the album facets a memory's photograph is still missing.
-   *
-   * Runs after the profile save, not before: the memory is the thing the
-   * parent pressed "Хадгалах" for, and a failed `PATCH /media/:id` must not
-   * take it down with it. Each photo is attempted independently and a failure
-   * is swallowed — the picture is already in the album either way, since
-   * `category` and `age` went in at upload time; this only adds the caption
-   * and the date the memory now knows, and re-files an untagged archive photo.
-   */
-  const syncMemoryMedia = async (list: FamilyMemory[]) => {
-    let touched = false;
-
-    for (const memory of list) {
-      const media = memory.mediaId ? knownMedia.current.get(memory.mediaId) : undefined;
-      if (!media) continue;
-
-      const patch: Record<string, string | number> = {};
-      const title = memory.title.trim();
-      if (title && !media.caption?.trim()) patch.caption = title.slice(0, 255);
-      if (memory.date && !media.takenAt) patch.takenAt = memory.date;
-      if (media.age === null || media.age === undefined) patch.age = age;
-      if (!media.category) patch.category = "FAMILY";
-      if (Object.keys(patch).length === 0) continue;
-
-      const updated = await mutate(`/media/${media.id}`, mediaSchema, {
-        method: "PATCH",
-        body: patch,
-      }).catch(() => null);
-      if (updated) knownMedia.current.set(updated.id, updated);
-      touched = true;
-    }
-
-    // `["child", id, "media"]` is a structural prefix of every filtered
-    // gallery key *and* of `childAgeAlbum`, so one invalidation refreshes the
-    // archive strip above and the age album this photo just joined.
-    if (touched) void queryClient.invalidateQueries({ queryKey: qk.childMedia(childId) });
-  };
-
-  const toggle = (list: string[], value: string) =>
-    list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
-
-  const draftHasContent = Boolean(
-    draft.mediaId || draft.title.trim() || draft.description.trim() || draft.date,
-  );
-  const showingDraft = Boolean(editingId) || draftHasContent;
-  const previewMemory = showingDraft
-    ? draft
-    : (memories.find((item) => item.id === previewId) ?? memories[0] ?? null);
-
-  /**
-   * Moves the draft into the list, or reports why it cannot.
-   *
-   * Returns the new list rather than only setting state, because the dialog's
-   * own "Хадгалах" commits an unfinished draft first and needs the result in
-   * the same tick — `memories` would still hold the previous value.
-   */
-  const commitDraft = (): FamilyMemory[] | null => {
-    const title = draft.title.trim();
-    const found: Record<string, string> = {};
-    if (draft.members.length === 0) found.members = "Хэнтэй хамт байсныг сонгоно уу.";
-    if (!title) found.title = "Дурсамжийн нэрийг бичнэ үү.";
-    if (draft.date && draft.date > todayLocal()) found.date = "Огноо ирээдүйд байж болохгүй.";
-
-    if (Object.keys(found).length > 0) {
-      setMemoryErrors(found);
-      return null;
-    }
-
-    const existing = memories.find((item) => item.id === draft.id);
-    const stored: FamilyMemory = {
-      id: draft.id,
-      mediaId: draft.mediaId,
-      members: draft.members,
-      title,
-      description: draft.description.trim() || null,
-      date: draft.date || null,
-      createdAt: existing?.createdAt ?? new Date().toISOString(),
-    };
-
-    const next = existing
-      ? memories.map((item) => (item.id === stored.id ? stored : item))
-      : [stored, ...memories];
-
-    setMemories(next);
-    setPreviewId(stored.id);
-    setEditingId(null);
-    setDraft(emptyDraft());
-    setMemoryErrors({});
-    return next;
-  };
-
-  const cancelDraft = () => {
-    setEditingId(null);
-    setDraft(emptyDraft());
-    setMemoryErrors({});
-  };
-
-  const editMemory = (memory: FamilyMemory) => {
-    setDraft(draftFrom(memory));
-    setEditingId(memory.id);
-    setPreviewId(memory.id);
-    setConfirming(null);
-    setMemoryErrors({});
-  };
-
-  const deleteMemory = (memory: FamilyMemory) => {
-    setMemories((current) => current.filter((item) => item.id !== memory.id));
-    setConfirming(null);
-    if (previewId === memory.id) setPreviewId(null);
-    if (editingId === memory.id) cancelDraft();
-  };
-
-  /**
-   * "Гэр бүлийн гишүүд" — derived from the memories, not ticked a second time.
-   *
-   * ★ The section used to open with its own five-card picker, above the one
-   * each memory carries. Two pickers for the same five strings in one dialog,
-   * and the client asked for the upper one to go (2026-09-10). The stored
-   * field stays — the detail card, the age comparison and the keepsake card
-   * all read it — so it is now answered by the memories themselves: the people
-   * a year's memories name *are* that year's family members.
-   *
-   * ★★ With no memories it returns what is already stored, rather than `[]`.
-   *
-   * Otherwise the first save of a description on a record filled in before
-   * this change would silently wipe a parent's earlier selection — a field
-   * losing its editor must not also lose its data.
-   */
-  const derivedMembers = (list: FamilyMemory[]): string[] => {
-    const named = Array.from(new Set(list.flatMap((memory) => memory.members)));
-    return named.length > 0 ? named : (profile?.familyMemberTypes ?? []);
-  };
-
-  const submit = () => {
-    if (save.isPending) return;
-
-    // An unfinished draft is the parent's work too. Committing it here is what
-    // stops "Хадгалах" from silently throwing away a memory they had typed but
-    // not yet added; if it does not validate, the save waits and says why.
-    let list = memories;
-    if (showingDraft) {
-      const committed = commitDraft();
-      if (!committed) return;
-      list = committed;
-    }
-
-    save.mutate(
-      {
-        familyMemberTypes: derivedMembers(list),
-        familyMemories: list,
-      },
-      { onSuccess: () => void syncMemoryMedia(list) },
-    );
-  };
 
   return (
     <>
       <ProfileCard
         title="Миний гэр бүл"
         tone="orange"
-        hasContent={rows.length > 0 || storedMemories.length > 0}
-        emptyPrompt="Гэр бүлийнхээ тухай нандин дурсамжаа тэмдэглээрэй."
+        hasContent={rows.length > 0}
+        emptyPrompt="Ам бүлийн тоогоо сонгож, гэр бүлийнхээ тухай бичээрэй."
         art="ageFamily"
         wide
         onEdit={() => {
@@ -962,217 +846,69 @@ export function FamilyCard({
         }}
       >
         <ValuesList rows={rows} />
-        {storedMemories.length > 0 ? (
-          <section aria-labelledby={`family-${age}-memories`} className="mt-4">
-            <h3 id={`family-${age}-memories`} className="mb-2 text-body font-semibold text-ink">
-              Гэр бүлийн дурсамж
-            </h3>
-            <MemoryList memories={storedMemories} />
-          </section>
-        ) : null}
       </ProfileCard>
 
       <FormDialog
         open={open}
         onOpenChange={(next) => (next ? setOpen(true) : close())}
         busy={save.isPending}
-        size="wide"
         title="Миний гэр бүл"
         description={`${age} насны гэр бүлийн мэдээлэл.`}
         footer={<DialogActions formId={formId} busy={save.isPending} onCancel={close} />}
       >
         <form
           id={formId}
-          className="flex min-w-0 flex-col gap-5"
+          className="flex min-w-0 flex-col gap-4"
           noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            submit();
+            save.mutate({
+              // "" is "not answered", which is null rather than a zero.
+              familySize: familySize ? Number(familySize) : null,
+              familyDescription: description.trim() || null,
+            });
           }}
         >
           <FormError message={save.isError ? errorMessage(save.error) : null} />
 
-          <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-            <div className="flex min-w-0 flex-col gap-5">
-              <section
-                aria-labelledby={`${formId}-memory-heading`}
-                className="flex min-w-0 flex-col gap-4 rounded-card border border-border bg-sunken p-3 md:p-4"
+          <Field label="Ам бүлийн тоо" error={errors.familySize}>
+            {({ id, describedBy, invalid }) => (
+              <Select
+                id={id}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                value={familySize}
+                onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                  setFamilySize(event.target.value)
+                }
               >
-                <div>
-                  <h3
-                    id={`${formId}-memory-heading`}
-                    className="flex items-center gap-2 text-body font-semibold text-ink"
-                  >
-                    <Camera size={17} aria-hidden="true" className="text-primary" />
-                    Гэр бүлийн дурсамж
-                  </h3>
-                  <p className="mt-1 text-caption leading-relaxed text-muted">
-                    Нэмсэн зураг {age} насны цомгийн «Миний гэр бүл» хэсэгт бас орно.
-                  </p>
-                </div>
+                <option value="">Сонгох</option>
+                {FAMILY_SIZES.map((size) => (
+                  <option key={size} value={String(size)}>
+                    {size === FAMILY_SIZES[FAMILY_SIZES.length - 1] ? `${size}+` : `${size}`}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
 
-                <FormError message={errors.familyMemories ?? null} />
-
-                <MemoryPhotoPicker
-                  childId={childId}
-                  age={age}
-                  selectedMediaId={draft.mediaId}
-                  onLoaded={rememberMedia}
-                  onSelect={(media) => {
-                    rememberMedia([media]);
-                    setDraft((current) => ({
-                      ...current,
-                      mediaId: current.mediaId === media.id ? null : media.id,
-                    }));
-                  }}
+          <Field label="Миний гэр бүл" error={errors.familyDescription}>
+            {({ id, describedBy, invalid }) => (
+              <>
+                <Textarea
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  rows={5}
+                  maxLength={FAMILY_TEXT_MAX}
+                  placeholder="Жишээ: Манайх аав, ээж, ах бид дөрвүүлээ амьдардаг. Амралтын өдөр хамт зугаалдаг."
+                  value={description}
+                  onChange={(event) => setDescription(event.target.value)}
                 />
-
-                <FamilyMemberSelector
-                  legend="Хэнтэй хамт байсан бэ?"
-                  compact
-                  selected={draft.members}
-                  onToggle={(member) =>
-                    setDraft((current) => ({
-                      ...current,
-                      members: toggle(current.members, member),
-                    }))
-                  }
-                  error={memoryErrors.members}
-                />
-
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_170px]">
-                  <Field label="Дурсамжийн нэр" required error={memoryErrors.title}>
-                    {({ id, describedBy, invalid }) => (
-                      <>
-                        <Input
-                          id={id}
-                          aria-describedby={describedBy}
-                          invalid={invalid}
-                          maxLength={MEMORY_TITLE_MAX}
-                          placeholder="Жишээ: 2 насандаа эмээтэйгээ парк орсон"
-                          value={draft.title}
-                          onChange={(event) =>
-                            setDraft((current) => ({ ...current, title: event.target.value }))
-                          }
-                          // Enter here means "add this memory", not "save the whole
-                          // section" — the form's own submit is the dialog's button.
-                          onKeyDown={(event) => {
-                            if (event.key !== "Enter") return;
-                            event.preventDefault();
-                            commitDraft();
-                          }}
-                        />
-                        <CharCounter value={draft.title} max={MEMORY_TITLE_MAX} />
-                      </>
-                    )}
-                  </Field>
-
-                  <Field label="Огноо" error={memoryErrors.date}>
-                    {({ id, describedBy, invalid }) => (
-                      <Input
-                        id={id}
-                        type="date"
-                        aria-describedby={describedBy}
-                        invalid={invalid}
-                        max={todayLocal()}
-                        value={draft.date}
-                        onChange={(event) =>
-                          setDraft((current) => ({ ...current, date: event.target.value }))
-                        }
-                      />
-                    )}
-                  </Field>
-                </div>
-
-                <Field label="Дурсамжийн тайлбар">
-                  {({ id, describedBy, invalid }) => (
-                    <>
-                      <Textarea
-                        id={id}
-                        aria-describedby={describedBy}
-                        invalid={invalid}
-                        maxLength={MEMORY_DESCRIPTION_MAX}
-                        placeholder="Парканд эмээтэйгээ хамт зугаалж, цэцэг үзэж, жижигхэн алхсан дурсамж."
-                        value={draft.description}
-                        onChange={(event) =>
-                          setDraft((current) => ({ ...current, description: event.target.value }))
-                        }
-                      />
-                      <CharCounter value={draft.description} max={MEMORY_DESCRIPTION_MAX} />
-                    </>
-                  )}
-                </Field>
-
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-caption text-muted">«Хадгалах» дарж бүгдийг хадгална.</p>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    {/*
-                      Not "Болих". The dialog's own footer already has a
-                      button by that name, and it closes the whole section — two
-                      controls one word apart, one of which discards a sentence
-                      and the other an afternoon's work.
-                    */}
-                    {showingDraft ? (
-                      <Button type="button" variant="ghost" size="sm" onClick={cancelDraft}>
-                        {editingId ? "Засварыг болих" : "Ноорог цэвэрлэх"}
-                      </Button>
-                    ) : null}
-                    <Button type="button" size="sm" onClick={() => commitDraft()}>
-                      {editingId ? "Дурсамжийг шинэчлэх" : "Дурсамж нэмэх"}
-                    </Button>
-                  </div>
-                </div>
-              </section>
-
-              <section aria-labelledby={`${formId}-memory-list`} className="min-w-0">
-                <h3 id={`${formId}-memory-list`} className="mb-2 text-body font-semibold text-ink">
-                  Хадгалсан дурсамжууд ({memories.length})
-                </h3>
-                <MemoryList
-                  memories={memories}
-                  activeId={showingDraft ? draft.id : previewId}
-                  onSelect={(memory) => setPreviewId(memory.id)}
-                  onEdit={editMemory}
-                  onDelete={(memory) => setConfirming({ id: memory.id, where: "list" })}
-                  confirmingId={confirming?.where === "list" ? confirming.id : null}
-                  onConfirmDelete={deleteMemory}
-                  onCancelDelete={() => setConfirming(null)}
-                  emptyText="Дурсамж нэмээгүй байна. Дээрээс зураг сонгоод эхний дурсамжаа бичээрэй."
-                />
-              </section>
-            </div>
-
-            <div className="min-w-0">
-              <div className="lg:sticky lg:top-0">
-                <h3 className="mb-2 text-body font-semibold text-ink">Урьдчилан харах</h3>
-                <MemoryPreview
-                  memory={previewMemory}
-                  age={age}
-                  saved={!showingDraft && previewMemory !== null}
-                  onEdit={
-                    !showingDraft && previewMemory
-                      ? () => editMemory(previewMemory as FamilyMemory)
-                      : undefined
-                  }
-                  onDelete={
-                    !showingDraft && previewMemory
-                      ? () => setConfirming({ id: previewMemory.id, where: "preview" })
-                      : undefined
-                  }
-                  confirming={
-                    !showingDraft &&
-                    confirming?.where === "preview" &&
-                    confirming.id === previewMemory?.id
-                  }
-                  onConfirmDelete={() =>
-                    previewMemory ? deleteMemory(previewMemory as FamilyMemory) : undefined
-                  }
-                  onCancelDelete={() => setConfirming(null)}
-                />
-              </div>
-            </div>
-          </div>
+                <CharCounter value={description} max={FAMILY_TEXT_MAX} />
+              </>
+            )}
+          </Field>
         </form>
       </FormDialog>
     </>

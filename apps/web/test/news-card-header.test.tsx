@@ -76,9 +76,10 @@ function notice(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function stubBoard(items: Record<string, unknown>[]) {
+function stubBoard(items: Record<string, unknown>[], profile: unknown = null) {
   return stubApi([
     { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+    ...(profile ? [{ path: "/me/profile", body: profile }] : []),
     { path: "/children/mine", body: [] },
     { path: "/groups", body: GROUPS },
     {
@@ -188,5 +189,52 @@ describe("the notice card's header", () => {
 
     expect(badges).toContain("Чухал");
     expect(badges).not.toContain("Сургалт, үйл ажиллагаа");
+  });
+
+  /*
+    ★ The reader's own post shows their photograph — 2026-09-25: a teacher who
+    had uploaded one still saw "С" on what they had just posted. Someone else's
+    post keeps its initials; the feed's author carries no photo.
+  */
+  it("shows the reader's own photograph on their own post", async () => {
+    const me = sessionFor(["TEACHER"]).user;
+    const photoId = "99999999-9999-4999-8999-999999999999";
+    stubBoard([notice({ author: { id: me.id, firstName: me.firstName, lastName: me.lastName } })], {
+      id: me.id,
+      firstName: me.firstName,
+      lastName: me.lastName,
+      photoMediaFileId: photoId,
+    });
+    renderWithProviders(<NotificationsPage />);
+
+    const own = await card();
+    const photo = await own.findByRole("img", { name: /-ийн зураг$/ });
+    expect(photo.getAttribute("src")).toContain(photoId);
+  });
+
+  it("keeps someone else's initials", async () => {
+    const me = sessionFor(["TEACHER"]).user;
+    stubBoard([notice()], {
+      id: me.id,
+      firstName: me.firstName,
+      lastName: me.lastName,
+      photoMediaFileId: "99999999-9999-4999-8999-999999999999",
+    });
+    renderWithProviders(<NotificationsPage />);
+
+    expect((await card()).queryByRole("img", { name: /-ийн зураг$/ })).toBeNull();
+  });
+
+  /*
+    Anyone's post shows its author's photograph once the API sends it — the
+    feed keeps the field rather than stripping it on parse.
+  */
+  it("shows another author's photograph when the feed carries one", async () => {
+    const photoId = "88888888-8888-4888-8888-000000000009";
+    stubBoard([notice({ author: { ...AUTHOR, photoMediaFileId: photoId } })]);
+    renderWithProviders(<NotificationsPage />);
+
+    const photo = await (await card()).findByRole("img", { name: /-ийн зураг$/ });
+    expect(photo.getAttribute("src")).toContain(photoId);
   });
 });

@@ -1,5 +1,5 @@
 import type { AgeProfile } from "@kinder/contracts";
-import { AGE_FAMILY_OPTIONS, AGE_SKILL_OPTIONS } from "@/lib/age-content";
+import { AGE_FAMILY_OPTIONS, LEARNING_DOMAINS } from "@/lib/age-content";
 import type { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
 
 export type PortfolioAge = (typeof PORTFOLIO_AGES)[number];
@@ -31,6 +31,28 @@ export const CHARACTER_TRAITS = [
   "Зоригтой",
 ] as const;
 
+/**
+ * A face for each observation — client, 2026-09-24: "cute emoji той болго".
+ *
+ * ★ Decoration, not data. The stored value is still the word (`characterTraits`
+ * is a `String[]`), so nothing in the database, the PDF or the comparison
+ * changes; the emoji is `aria-hidden` in the picker, which keeps each choice's
+ * accessible name the word a parent reads aloud.
+ */
+export const CHARACTER_TRAIT_EMOJI: Record<(typeof CHARACTER_TRAITS)[number], string> = {
+  Хөгжилтэй: "😄",
+  Эелдэг: "🤗",
+  "Баяр хөөртэй": "🥳",
+  Тайван: "😌",
+  Гунигтай: "😢",
+  Зөрүүд: "😤",
+  Ууртай: "😠",
+  Сандруу: "😰",
+  Унтамхай: "😴",
+  Ичимхий: "🙈",
+  Зоригтой: "🦁",
+};
+
 export const FAMILY_MEMBER_TYPES = [
   "Эмээ, өвөө",
   "Аав, ээж",
@@ -45,25 +67,17 @@ export const FAMILY_MEMBER_TYPES = [
  * observation category. The UI/data shape is category-aware, so adding the
  * approved categories later changes this map, not stored answers.
  */
-export function kindergartenSkillCategories(age: PortfolioAge) {
-  return [
-    {
-      id: "current",
-      label: `${age} насны ажиглалтын сонголтууд`,
-      options: AGE_SKILL_OPTIONS[age],
-    },
-  ];
+export function kindergartenSkillCategories(_age: PortfolioAge) {
+  return LEARNING_DOMAINS.map((label) => ({ id: label, label, options: [] }));
 }
 
-/** Existing per-age family choices are preserved verbatim. */
+/** The client's age-specific family questions, grouped by development domain. */
 export function familyLearningCategories(age: PortfolioAge) {
-  return [
-    {
-      id: "family",
-      label: `${age} насанд гэр бүлээсээ сурсан зүйлс`,
-      options: AGE_FAMILY_OPTIONS[age],
-    },
-  ];
+  return LEARNING_DOMAINS.map((label) => ({
+    id: label,
+    label,
+    options: AGE_FAMILY_OPTIONS[age][label],
+  }));
 }
 
 export const AGE_SECTION_TITLES = [

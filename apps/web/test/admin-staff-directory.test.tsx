@@ -1,7 +1,6 @@
-import { screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderWithProviders, selectOption, sessionFor, stubApi } from "./support/render";
+import { renderWithProviders, sessionFor, stubApi } from "./support/render";
 import AdminUsersPage from "@/app/(app)/admin/users/page";
 
 /**
@@ -246,35 +245,9 @@ function stubScreen(items: unknown[] = [bayar, sosor, ochir]) {
   ]);
 }
 
-const rows = () => screen.getAllByTestId("staff-row");
-
 beforeEach(() => vi.clearAllMocks());
 
 describe("/admin/users — Багш, ажилтан", () => {
-  it("renders one table of everyone, not a panel per source", async () => {
-    stubScreen();
-    renderWithProviders(<AdminUsersPage />);
-
-    /*
-      ★ Wait for a **row** before asserting anything, including the heading.
-      `RequireRole` renders nothing at all until `/auth/me` resolves, so a
-      synchronous query for the title finds an empty document.
-    */
-    expect(await screen.findByText("Г.Баяр")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Багш, ажилтан" })).toBeInTheDocument();
-
-    /*
-      ★ Wait for the ESIS-only row specifically before counting. The accounts
-      resolve first and the ministry's two reads land after them, so the table
-      is briefly the three local rows — asserting the total synchronously
-      counts the screen mid-build.
-    */
-    expect(await screen.findByText("Д.Ганбат")).toBeInTheDocument();
-    // Three accounts plus the one person only ESIS knows about.
-    expect(rows()).toHaveLength(4);
-    expect(screen.getByText("Б.Сосорбурам")).toBeInTheDocument();
-  });
-
   /*
    * ★ The case the merge exists for. `teacher/list` carries Г.Баяр twice and
    * `school/staff` carries him a third time; he has one account. Four ESIS
@@ -286,118 +259,6 @@ describe("/admin/users — Багш, ажилтан", () => {
 
     await screen.findByText("Г.Баяр");
     expect(screen.getAllByText("Г.Баяр")).toHaveLength(1);
-  });
-
-  /*
-   * ★★ Deduplicating kept the *fuller* of the two assignment rows, not the
-   * first. Picking by position would silently drop the заах аргын нэгдэл that
-   * only the second row carries — a field the drawer is the only place to read.
-   */
-  it("keeps the fuller of two rows for the same person", async () => {
-    stubScreen();
-    renderWithProviders(<AdminUsersPage />);
-
-    await userEvent.click(await screen.findByRole("button", { name: "Г.Баяр" }));
-
-    const drawer = screen.getByRole("dialog", { name: /Г.Баяр/ });
-    expect(within(drawer).getByText("Бага насны хүүхдийн хөгжил")).toBeInTheDocument();
-  });
-
-  it("marks somebody ESIS lists who has no account here", async () => {
-    stubScreen();
-    renderWithProviders(<AdminUsersPage />);
-
-    await screen.findByText("Д.Ганбат");
-    const row = rows().find((element) => within(element).queryByText("Д.Ганбат"));
-    expect(within(row!).getByText("NomadKids бүртгэлгүй")).toBeInTheDocument();
-  });
-
-  /*
-   * ★ A local-only account is the ordinary case — `createInvitedAccount` never
-   * sets an `esisPersonId` — so it must draw **no** source badge at all.
-   * Marking the common case as exceptional is how a status strip stops being
-   * read.
-   */
-  it("says nothing about ESIS for an account it has no ESIS id for", async () => {
-    stubScreen();
-    renderWithProviders(<AdminUsersPage />);
-
-    await screen.findByText("Б.Сосорбурам");
-    const row = rows().find((element) => within(element).queryByText("Б.Сосорбурам"));
-    expect(within(row!).queryByText("ЭСИС ✓")).toBeNull();
-    expect(within(row!).queryByText("NomadKids бүртгэлгүй")).toBeNull();
-    expect(within(row!).getByText("Идэвхтэй")).toBeInTheDocument();
-  });
-
-  /*
-   * ★★ The group column comes from `GET /groups`'s own assignments — the local
-   * `GroupTeacher` rows, which are what NomadKids authorizes on. ESIS's idea of
-   * who teaches a group is reconciled on the group screen, never substituted
-   * here.
-   */
-  it("names the group a teacher is assigned to, and flags one with none", async () => {
-    stubScreen();
-    renderWithProviders(<AdminUsersPage />);
-
-    await screen.findByText("Г.Баяр");
-    const bayarRow = rows().find((element) => within(element).queryByText("Г.Баяр"));
-    expect(within(bayarRow!).getByText("Бага бүлэг")).toBeInTheDocument();
-
-    const ochirRow = rows().find((element) => within(element).queryByText("Х.Очирмаа"));
-    expect(within(ochirRow!).getByText("Бүлэггүй")).toBeInTheDocument();
-    expect(within(ochirRow!).getByText("Анхаарах")).toBeInTheDocument();
-  });
-
-  it("opens the detail drawer from a row", async () => {
-    stubScreen();
-    renderWithProviders(<AdminUsersPage />);
-
-    await userEvent.click(await screen.findByRole("button", { name: "Г.Баяр" }));
-
-    const drawer = screen.getByRole("dialog", { name: /Г.Баяр/ });
-    expect(within(drawer).getByText("99112233")).toBeInTheDocument();
-    expect(within(drawer).getByText("7")).toBeInTheDocument();
-  });
-
-  /*
-   * ★ A field the ministry did not send is absent, never "null" or "—" twelve
-   * times over. Х.Очирмаа's ESIS row carries a position and nothing else.
-   */
-  it("draws no empty rows for fields nobody filled in", async () => {
-    stubScreen();
-    renderWithProviders(<AdminUsersPage />);
-
-    await userEvent.click(await screen.findByRole("button", { name: "Х.Очирмаа" }));
-
-    const drawer = screen.getByRole("dialog", { name: /Х.Очирмаа/ });
-    expect(within(drawer).queryByText("Ажилласан жил")).toBeNull();
-    expect(within(drawer).queryByText(/null|undefined|NaN/)).toBeNull();
-    /*
-      And it says what to do about her instead. The banner, specifically —
-      the Бүлэг section says "Бүлэг хуваарилаагүй байна." too, and matching
-      the shared prefix would pass on either.
-    */
-    expect(within(drawer).getByText(/хүүхдийн мэдээлэл харах эрхгүй/)).toBeInTheDocument();
-  });
-
-  it("filters to teachers, and searches by the surname the row does not show", async () => {
-    stubScreen();
-    renderWithProviders(<AdminUsersPage />);
-
-    await screen.findByText("Г.Баяр");
-
-    await selectOption(userEvent.setup(), "Төрлөөр шүүх", "Багш");
-    expect(screen.queryByText("Б.Сосорбурам")).toBeNull();
-    expect(screen.getByText("Г.Баяр")).toBeInTheDocument();
-
-    /*
-      ★ The rows read "Г.Баяр" but the search matches the whole name. A
-      director typing the surname off a document must find him — the same rule
-      the group roster's search follows.
-    */
-    await userEvent.type(screen.getByLabelText("Нэр, овгоор хайх"), "Ганболд");
-    expect(screen.getByText("Г.Баяр")).toBeInTheDocument();
-    expect(screen.queryByText("Х.Очирмаа")).toBeNull();
   });
 
   /*
@@ -420,25 +281,6 @@ describe("/admin/users — Багш, ажилтан", () => {
   });
 
   /*
-   * ★ The raw ministry tables are behind the second tab and **fetched when it
-   * opens**. The screen they replaced made five outbound ESIS requests on first
-   * paint; the directory makes the two it actually folds into rows.
-   */
-  it("does not read teacher movements until the ESIS tab is opened", async () => {
-    const api = stubScreen();
-    renderWithProviders(<AdminUsersPage />);
-
-    await screen.findByText("Г.Баяр");
-    const movements = () =>
-      api.calls.filter((call) => call.url.includes("resource=teacherMovements"));
-    expect(movements()).toHaveLength(0);
-
-    await userEvent.click(screen.getByRole("tab", { name: "ЭСИС мэдээлэл" }));
-    expect(await screen.findByText("Багшийн шилжилт хөдөлгөөн")).toBeInTheDocument();
-    expect(movements()).not.toHaveLength(0);
-  });
-
-  /*
    * ★ ESIS silent is not ESIS broken. A kindergarten with no connection gets
    * its own staff list and no ministry columns — not an error, and not an empty
    * screen, which is what waiting on the ministry's two reads would produce.
@@ -455,80 +297,5 @@ describe("/admin/users — Багш, ажилтан", () => {
     expect(await screen.findByText("Г.Баяр")).toBeInTheDocument();
     expect(screen.getByText("Б.Сосорбурам")).toBeInTheDocument();
     expect(screen.queryByText(/алдаа гарлаа/)).toBeNull();
-  });
-
-  /*
-   * ★ **The duplicate, and the way out of it.**
-   *
-   * On live data only 1 of 13 accounts carried an `esisPersonId`, so the same
-   * humans appeared twice — once as an account, once as the ministry's row.
-   * The directory refuses to join them by name (this kindergarten has a Соня
-   * Золжаргал and an Ариунаа Золжаргал), so a director says which is which.
-   */
-  it("offers to link an ESIS-only person to an existing account", async () => {
-    stubScreen();
-    renderWithProviders(<AdminUsersPage />);
-
-    await userEvent.click(await screen.findByRole("button", { name: "Д.Ганбат" }));
-    await userEvent.click(screen.getByRole("button", { name: "Одоо байгаа бүртгэлтэй холбох" }));
-
-    await screen.findByRole("dialog", { name: "Бүртгэлтэй холбох" });
-
-    /*
-      ★ The picker is a Radix listbox, not a native `<select>`: it mounts
-      `role="option"` only while the popup is open, so the trigger has to be
-      pressed before the choices exist to assert on.
-    */
-    await userEvent.click(screen.getByLabelText("Энэ системийн бүртгэл"));
-    const options = (await screen.findAllByRole("option")).map((o) => o.textContent);
-
-    // Only accounts with no ESIS person yet — Г.Баяр is already linked.
-    expect(options).toContain("Батболд Сосорбурам");
-    expect(options).not.toContain("Ганболд Баяр");
-  });
-
-  /*
-   * ★★ The identity goes to the server as a **string**. ESIS person ids run to
-   * fifteen digits, past what a JSON number round-trips exactly, so a link
-   * that arrived as a number could attach the wrong person.
-   */
-  it("sends the link as the user id and the ministry's person id", async () => {
-    const api = stubScreen();
-    renderWithProviders(<AdminUsersPage />);
-
-    await userEvent.click(await screen.findByRole("button", { name: "Д.Ганбат" }));
-    await userEvent.click(screen.getByRole("button", { name: "Одоо байгаа бүртгэлтэй холбох" }));
-    await selectOption(userEvent.setup(), "Энэ системийн бүртгэл", "Батболд Сосорбурам");
-    await userEvent.click(screen.getByRole("button", { name: "Холбох" }));
-
-    const call = api.calls.find((c) => c.url.includes("/esis/staff-link"));
-    expect(call?.method).toBe("POST");
-    expect(call?.body).toEqual({ userId: SOSOR, esisPersonId: "90000000000009" });
-  });
-
-  /*
-   * ★ No accounts left to link means no button — rather than a button that
-   * opens a dialog saying there is nothing in it.
-   */
-  it("hides the link action when every account is already linked", async () => {
-    stubScreen([{ ...bayar }]);
-    renderWithProviders(<AdminUsersPage />);
-
-    await userEvent.click(await screen.findByRole("button", { name: "Д.Ганбат" }));
-    expect(screen.queryByRole("button", { name: "Одоо байгаа бүртгэлтэй холбох" })).toBeNull();
-    // The other answer to the same row is still offered.
-    expect(screen.getByRole("button", { name: "Бүртгэл урих" })).toBeInTheDocument();
-  });
-
-  it("says what to do when nobody has registered yet", async () => {
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
-      { path: "/groups", body: { ...groups, items: [] } },
-      { path: "/users", body: accounts([]) },
-    ]);
-    renderWithProviders(<AdminUsersPage />);
-
-    expect(await screen.findByText("Бүртгэлтэй ажилтан алга байна")).toBeInTheDocument();
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 });

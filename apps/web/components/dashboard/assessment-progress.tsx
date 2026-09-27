@@ -44,7 +44,7 @@ export function AssessmentProgress({
 
         <div aria-hidden="true" className="mt-5 h-3 overflow-hidden rounded-pill bg-track">
           <div
-            className="h-full rounded-pill bg-mint-ink transition-[width]"
+            className="h-full rounded-pill bg-mint-chart transition-[width]"
             style={{ width: `${percent}%` }}
           />
         </div>

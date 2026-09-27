@@ -98,12 +98,10 @@ describe("the administrator assessment overview", () => {
     ).toBeInTheDocument();
     expect(await screen.findByText("2026 оны 1-р улирал")).toBeInTheDocument();
 
-    const summary = screen.getByRole("region", { name: "Үнэлгээний товч мэдээлэл" });
-    for (const label of ["Нийт бүлэг", "Үнэлгээний гүйцэтгэл", "Анхаарах бүлэг", "Үнэлгээ дутуу"]) {
-      expect(within(summary).getByText(label)).toBeInTheDocument();
-    }
-    expect(within(summary).getAllByText("87%")).toHaveLength(2);
-    expect(within(summary).getByText("8")).toBeInTheDocument();
+    // One table since 2026-09-25 — no summary, no lede, no legend.
+    expect(screen.queryByRole("table", { name: "Үнэлгээний товч мэдээлэл" })).toBeNull();
+    expect(screen.queryByText(/бүлгийн хүүхдийн хөгжлийн явцын тойм/)).toBeNull();
+    expect(screen.queryByText(/ба түүнээс дээш/)).toBeNull();
 
     const comparison = screen.getByRole("region", { name: "Бүлгүүдийн харьцуулалт" });
     for (const group of ["Дэлбээ", "Солонго", "Одод"]) {
@@ -114,17 +112,32 @@ describe("the administrator assessment overview", () => {
     expect(within(comparison).getByText("70%")).toBeInTheDocument();
   });
 
-  it("renders every configured development domain for every group without tabs", async () => {
+  /*
+    ★ Removed — client, 2026-09-25: "Хөгжлийн бүх үзүүлэлт … Анхаарах бүлгүүд
+    Шилдэг бүлгүүд гэсэн график хэрэггүй устга", and the page is tables with
+    no charts at all.
+  */
+  it("carries no domain panels, no rankings and no charts", async () => {
     renderPage();
+    await screen.findByRole("table", { name: "Бүлгүүдийн үнэлгээний гүйцэтгэл" });
 
-    const domains = await screen.findByRole("region", { name: "Хөгжлийн бүх үзүүлэлт" });
+    for (const title of ["Хөгжлийн бүх үзүүлэлт", "Анхаарах бүлгүүд", "Шилдэг бүлгүүд"]) {
+      expect(screen.queryByRole("heading", { name: title })).toBeNull();
+    }
+    expect(screen.queryByRole("img")).toBeNull();
+  });
 
-    expect(within(domains).getAllByText("Хэл яриа")).toHaveLength(4);
-    expect(within(domains).getAllByText("Танин мэдэхүй")).toHaveLength(4);
+  it("lays each group's counts and percentage out in columns", async () => {
+    renderPage();
+    const table = await screen.findByRole("table", { name: "Бүлгүүдийн үнэлгээний гүйцэтгэл" });
+
     expect(
-      within(domains).getByRole("img", { name: "Одод, Танин мэдэхүй — үнэлгээгүй" }),
-    ).toBeInTheDocument();
-    expect(within(domains).queryByRole("tab")).toBeNull();
+      within(table)
+        .getAllByRole("columnheader")
+        .map((th) => th.textContent),
+    ).toEqual(["№", "Бүлэг", "Хүүхэд", "Үнэлсэн", "Дутуу", "Гүйцэтгэл"]);
+    // No status column — removed 2026-09-25.
+    expect(within(table).queryByText("Сайн")).toBeNull();
   });
 
   it("keeps every group linked to its detailed assessment sheet", async () => {

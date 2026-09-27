@@ -127,7 +127,21 @@ export class NotificationsRepository {
         skip,
         take,
         include: {
-          author: { select: { id: true, lastName: true, firstName: true } },
+          author: {
+            select: {
+              id: true,
+              lastName: true,
+              firstName: true,
+              // Whether they administer a kindergarten — the card says
+              // "Цэцэрлэгийн захиргаа" rather than "Бүлгийн багш" for them.
+              // `toPublicShape` matches it to the notice's own kindergarten
+              // and drops the list; no membership leaves the server.
+              memberships: {
+                where: { role: "ADMIN" as const, isActive: true, deletedAt: null },
+                select: { kindergartenId: true },
+              },
+            },
+          },
           // Only this user's receipt, so the response says "have I read it"
           // rather than listing everyone who has.
           reads: { where: { userId }, select: { readAt: true } },
@@ -167,7 +181,21 @@ export class NotificationsRepository {
     return this.prisma.notification.findFirst({
       where: { AND: [where, { id }] },
       include: {
-        author: { select: { id: true, lastName: true, firstName: true } },
+        author: {
+          select: {
+            id: true,
+            lastName: true,
+            firstName: true,
+            // Whether they administer a kindergarten — the card says
+            // "Цэцэрлэгийн захиргаа" rather than "Бүлгийн багш" for them.
+            // `toPublicShape` matches it to the notice's own kindergarten
+            // and drops the list; no membership leaves the server.
+            memberships: {
+              where: { role: "ADMIN" as const, isActive: true, deletedAt: null },
+              select: { kindergartenId: true },
+            },
+          },
+        },
         reads: { where: { userId }, select: { readAt: true } },
         reactions: { where: { userId, deletedAt: null }, select: { id: true } },
         _count: { select: { reactions: { where: { deletedAt: null } } } },

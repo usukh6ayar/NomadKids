@@ -1586,3 +1586,38 @@ describe("who may address whom", () => {
     expect((await post(session, { targets: [] })).status).toBe(404);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Who is speaking — "Цэцэрлэгийн захиргаа" or "Бүлгийн багш", 2026-09-17
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("authorIsAdministration", () => {
+  it("is true for an administrator's notice and false for a teacher's", async () => {
+    const byAdmin = await notify([], { title: "Захиргааны" });
+    const byTeacher = await notify([{ groupId: a.group.id }], { title: "Багшийн", as: teacherA });
+
+    const res = await authed(request(server()).get("/v1/notifications"), parentA);
+    expect(res.status).toBe(200);
+
+    const find = (id: string) => res.body.items.find((n: { id: string }) => n.id === id);
+    expect(find(byAdmin).authorIsAdministration).toBe(true);
+    expect(find(byTeacher).authorIsAdministration).toBe(false);
+    // The memberships used to decide it never leave the server.
+    expect(find(byAdmin).author).not.toHaveProperty("memberships");
+
+    const detail = await authed(request(server()).get(`/v1/notifications/${byAdmin}`), parentA);
+    expect(detail.body.authorIsAdministration).toBe(true);
+  });
+
+  it("does not count administering a different kindergarten", async () => {
+    // Teacher A is made an administrator of kindergarten B only.
+    await db.membership.create({
+      data: { userId: a.teacherUser.id, kindergartenId: b.kindergarten.id, role: "ADMIN" },
+    });
+    const teacherAAgain = await login(app, a.teacherUser.username);
+    const id = await notify([{ groupId: a.group.id }], { as: teacherAAgain });
+
+    const res = await authed(request(server()).get(`/v1/notifications/${id}`), parentA);
+    expect(res.body.authorIsAdministration).toBe(false);
+  });
+});

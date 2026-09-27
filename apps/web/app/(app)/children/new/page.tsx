@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, ShieldCheck } from "lucide-react";
+import { CheckCircle2, ShieldCheck, Database } from "lucide-react";
 import { z } from "zod";
 import {
   esisStudentRegistrationTemplateSchema,
@@ -16,7 +16,6 @@ import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
-import { EsisRowValues, esisSampleColumns } from "@/components/esis/esis-rows";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
@@ -383,11 +382,21 @@ function EsisStudentOutput({
           </Badge>
         }
       />
-      <Card pad="roomy" className="flex flex-col gap-4">
-        <p className="text-caption text-muted">
-          Сүүлд татсан: {new Date(template.syncedAt).toLocaleString("mn-MN")}
-        </p>
-        <EsisRowValues columns={esisSampleColumns(template.fields)} rows={[template.row]} />
+      <Card pad="roomy">
+        <div className="flex items-start gap-3 border-b border-border-soft pb-4">
+          <span className="grid size-10 shrink-0 place-items-center rounded-control text-sky-ink">
+            <Database size={20} aria-hidden />
+          </span>
+          <div className="min-w-0">
+            <p className="font-semibold text-ink">
+              {template.row.lastName} {template.row.firstName}
+            </p>
+            <p className="mt-0.5 text-caption text-muted">
+              personId {template.row.personId} · studentGroupId {template.row.studentGroupId} ·
+              шинэчилсэн {template.syncedAt.slice(0, 16).replace("T", " ")}
+            </p>
+          </div>
+        </div>
 
         {protectedFields.length > 0 ? (
           <section className="border-t border-border-soft pt-4" aria-label="Хамгаалсан талбар">

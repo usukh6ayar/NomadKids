@@ -5,6 +5,7 @@ import type {
   SurveyKind,
   SurveyPeriod,
   SurveyQuestionType,
+  SurveyRespondent,
   SurveyScope,
   SurveyStatus,
 } from "../domain/enums";
@@ -25,6 +26,8 @@ export class SurveysRepository {
     scope: SurveyScope;
     /** Optional so the clone path keeps compiling; the column defaults to FORM. */
     kind?: SurveyKind;
+    /** Optional for the same reason; the column defaults to GUARDIAN. */
+    respondent?: SurveyRespondent;
     closesAt?: Date | null;
     createdById: string;
     schoolYear?: string | null;
@@ -153,6 +156,9 @@ export class SurveysRepository {
         id: true,
         kindergartenId: true,
         scope: true,
+        // Who answers — `submitResponse` decides between a family and a
+        // teacher from this row.
+        respondent: true,
         status: true,
         closesAt: true,
         /*
@@ -283,6 +289,102 @@ export class SurveysRepository {
     return { enrollments, responses };
   }
 
+  // ── The administration's surveys, as a teacher reads them ───────────────
+
+  /**
+   * Which of the administration's surveys this staff member is shown — the
+   * client's 2026-09-17 "Удирдлагын судалгаа".
+   *
+   * ★ One WHERE, used by the list, the count and the single read, so the badge
+   * can never count a survey the list will not show or the detail page will
+   * not open.
+   *
+   * - Published or closed. A draft is its author's.
+   * - Written by someone who administers *this* kindergarten — "Цэцэрлэгийн
+   *   захиргаа" is a statement about who asked, and the membership is where
+   *   that fact lives. A teacher's own survey is on their own boards.
+   * - Never the reader's own survey: a director who also teaches does not need
+   *   a badge for what they published themselves.
+   * - `groupIds: "all"` for an administrator reading it; otherwise the survey
+   *   is for everyone (`groupId: null`) or for a group the reader teaches.
+   */
+  administrationWhere(kindergartenId: string, userId: string, groupIds: string[] | "all") {
+    return {
+      kindergartenId,
+      deletedAt: null,
+      status: { in: ["PUBLISHED", "CLOSED"] as SurveyStatus[] },
+      // What the office asked families; a teacher assessment is not that.
+      respondent: "GUARDIAN" as SurveyRespondent,
+      createdById: { not: userId },
+      createdBy: {
+        memberships: {
+          some: { kindergartenId, role: "ADMIN" as const, isActive: true, deletedAt: null },
+        },
+      },
+      ...(groupIds === "all" ? {} : { OR: [{ groupId: null }, { groupId: { in: groupIds } }] }),
+    };
+  }
+
+  private administrationInclude(userId: string) {
+    return {
+      questions: { orderBy: questionOrder, where: { deletedAt: null } },
+      group: { select: { id: true, name: true } },
+      // Only this reader's receipt — "have I opened it", never who else has.
+      staffReads: { where: { userId }, select: { readAt: true } },
+    };
+  }
+
+  async findAdministrationSurveys(
+    where: ReturnType<SurveysRepository["administrationWhere"]>,
+    userId: string,
+    page: { skip: number; take: number },
+  ) {
+    const [items, total] = await Promise.all([
+      this.prisma.survey.findMany({
+        where,
+        orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+        skip: page.skip,
+        take: page.take,
+        include: this.administrationInclude(userId),
+      }),
+      this.prisma.survey.count({ where }),
+    ]);
+    return { items, total };
+  }
+
+  async findAdministrationSurvey(
+    where: ReturnType<SurveysRepository["administrationWhere"]>,
+    surveyId: string,
+    userId: string,
+  ) {
+    return this.prisma.survey.findFirst({
+      where: { ...where, id: surveyId },
+      include: this.administrationInclude(userId),
+    });
+  }
+
+  async countAdministrationSurveys(where: ReturnType<SurveysRepository["administrationWhere"]>) {
+    return this.prisma.survey.count({ where });
+  }
+
+  async countUnreadAdministrationSurveys(
+    where: ReturnType<SurveysRepository["administrationWhere"]>,
+    userId: string,
+  ) {
+    return this.prisma.survey.count({
+      where: { ...where, staffReads: { none: { userId } } },
+    });
+  }
+
+  /** Idempotent — opening the same survey twice keeps the first receipt. */
+  async markStaffRead(surveyId: string, kindergartenId: string, userId: string) {
+    await this.prisma.surveyStaffRead.upsert({
+      where: { surveyId_userId: { surveyId, userId } },
+      create: { surveyId, kindergartenId, userId },
+      update: {},
+    });
+  }
+
   // ── Reading (parent + staff) ─────────────────────────────────────────────
 
   /**
@@ -303,6 +405,12 @@ export class SurveysRepository {
         kindergartenId,
         deletedAt: null,
         status: "PUBLISHED",
+        /*
+          ★ Never a teacher's own assessment — 2026-09-21. It is filled in by
+          the staff about the child, not asked of the family, and this is the
+          one read every family-facing survey route goes through.
+        */
+        respondent: "GUARDIAN",
         OR: groupId ? [{ groupId: null }, { groupId }] : [{ groupId: null }],
       },
       orderBy: { publishedAt: "desc" },
@@ -352,6 +460,98 @@ export class SurveysRepository {
           orderBy: { question: { order: "asc" } },
         },
       },
+    });
+  }
+
+  /**
+   * The children on a teacher survey's sheet — active enrollments in the
+   * given groups of this kindergarten, sorted as a register is read.
+   *
+   * `groupIds: "all"` is an administrator with a kindergarten-wide survey;
+   * otherwise the caller has already narrowed to groups the reader teaches.
+   */
+  async teacherSheetRoster(kindergartenId: string, groupIds: string[] | "all") {
+    return this.prisma.enrollment.findMany({
+      where: {
+        status: "ACTIVE",
+        deletedAt: null,
+        child: { deletedAt: null },
+        group: { kindergartenId, deletedAt: null },
+        ...(groupIds === "all" ? {} : { groupId: { in: groupIds } }),
+      },
+      orderBy: [{ group: { name: "asc" } }, { child: { firstName: "asc" } }],
+      select: {
+        child: { select: { id: true, lastName: true, firstName: true } },
+        group: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  /** The live responses of a teacher survey, one per child, with answers. */
+  async teacherSheetResponses(surveyId: string, childIds: string[]) {
+    return this.prisma.surveyResponse.findMany({
+      where: { surveyId, childId: { in: childIds }, deletedAt: null },
+      select: {
+        id: true,
+        childId: true,
+        submittedAt: true,
+        respondent: { select: { id: true, lastName: true, firstName: true } },
+        answers: { select: { questionId: true, value: true } },
+      },
+    });
+  }
+
+  /**
+   * Writes a sheet's rows in one transaction.
+   *
+   * ★ A corrected row replaces the child's response rather than editing it:
+   * the old one gets `deletedAt` (§3.2) and a new one is written, so what was
+   * recorded first is still there to be read and the audit log says who
+   * changed it. Every read filters `deletedAt: null`, so results count the
+   * new one only.
+   */
+  async saveTeacherSheet(
+    base: { kindergartenId: string; surveyId: string; respondentId: string },
+    rows: { childId: string; answers: { questionId: string; value: unknown }[] }[],
+    replacedIds: string[],
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      if (replacedIds.length > 0) {
+        await tx.surveyResponse.updateMany({
+          where: { id: { in: replacedIds }, surveyId: base.surveyId, deletedAt: null },
+          data: { deletedAt: new Date() },
+        });
+      }
+
+      // Two inserts for the whole sheet, not two per child (§3.4). The
+      // children are distinct (the DTO refuses a repeat), so the child is
+      // what matches each new response back to its answers.
+      const created = await tx.surveyResponse.createManyAndReturn({
+        data: rows.map((row) => ({ ...base, childId: row.childId })),
+        select: { id: true, childId: true },
+      });
+      const responseIdByChild = new Map(created.map((row) => [row.childId, row.id]));
+
+      await tx.surveyAnswer.createMany({
+        data: rows.flatMap((row) =>
+          row.answers.map((answer) => ({
+            kindergartenId: base.kindergartenId,
+            responseId: responseIdByChild.get(row.childId)!,
+            questionId: answer.questionId,
+            value: answer.value as object,
+          })),
+        ),
+      });
+
+      return created;
+    });
+  }
+
+  /** Names for a list of children in this kindergarten, in one query. */
+  async childNames(childIds: string[], kindergartenId: string) {
+    return this.prisma.child.findMany({
+      where: { id: { in: childIds }, kindergartenId, deletedAt: null },
+      select: { id: true, lastName: true, firstName: true },
     });
   }
 

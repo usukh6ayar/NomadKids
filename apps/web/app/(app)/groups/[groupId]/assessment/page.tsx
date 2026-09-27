@@ -1121,7 +1121,7 @@ function NewRecordStrip({
               )}
             >
               <Art name={style.art} size={36} className="size-9 shrink-0 object-contain" />
-              <span className="truncate">{capitalize(type.name)}</span>
+              <span className="truncate">{type.name}</span>
             </button>
           );
         })}

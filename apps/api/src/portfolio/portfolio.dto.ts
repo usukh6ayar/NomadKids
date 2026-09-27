@@ -151,6 +151,12 @@ export const updateAgeProfileSchema = z
     characterObservation: text(2000),
     familyMemberTypes: choices,
     familyDescription: text(2000),
+    /*
+      Ам бүлийн тоо — 2026-09-24. A household, not a count of anything that
+      can be zero: one person living alone is the floor, and the ceiling keeps
+      a typo from being stored as a number nothing will ever read sensibly.
+    */
+    familySize: z.number().int().min(1).max(20).nullable().optional(),
     familyMemories,
     parentNote: text(2000),
     teacherNote: text(2000),

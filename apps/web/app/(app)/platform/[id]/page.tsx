@@ -14,7 +14,6 @@ import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { RequireSuperAdmin } from "@/components/shell/require-role";
-import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
 import {
   AssessmentCoverageSection,
   RecentActivitySection,
@@ -29,6 +28,7 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
+import { PageHeader } from "@/components/shell/app-shell";
 
 /**
  * The platform operator's view into one kindergarten — the "info from
@@ -86,12 +86,12 @@ function KindergartenDetail() {
   const kg = data!;
 
   return (
-    <div className="flex flex-col gap-6 pb-8 lg:gap-8">
-      <PlatformPageHeading
+    <div className="flex flex-col gap-6 lg:gap-8">
+      <PageHeader
         backHref="/platform"
         title={kg.name}
         lede={kg.description || "Байгууллагын мэдээлэл, удирдлага болон ESIS холболт."}
-        mark={<Building2 />}
+        icon={<Building2 />}
         actions={
           <span className="flex items-center gap-2">
             <Badge tone={kg.isActive ? "mint" : "neutral"}>

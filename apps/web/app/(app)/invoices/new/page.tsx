@@ -12,13 +12,12 @@ import {
   groupListItemSchema,
   paginated,
   type InvoiceLineType,
-  localDate,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
-import { formatDate, fullName, groupLabel } from "@/lib/format";
+import { formatDate, fullName } from "@/lib/format";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
@@ -48,7 +47,7 @@ function emptyLine(type: InvoiceLineType = "TUITION"): DraftLine {
 }
 
 function today(): string {
-  return localDate();
+  return new Date().toISOString().slice(0, 10);
 }
 
 function thisMonth(): string {
@@ -288,7 +287,7 @@ function NewInvoice() {
                     <option value="">Бүх бүлэг</option>
                     {(groups.data?.items ?? []).map((group) => (
                       <option key={group.id} value={group.id}>
-                        {groupLabel(group.name)}
+                        {group.name}
                       </option>
                     ))}
                   </Select>

@@ -226,11 +226,6 @@ export function capitalize<T extends string | null | undefined>(text: T): T {
   return (text.charAt(0).toLocaleUpperCase("mn-MN") + text.slice(1)) as T;
 }
 
-/** A group's name as the screen shows it — see `capitalize`. */
-export function groupLabel(name: string | null | undefined): string {
-  return name ? capitalize(name) : "—";
-}
-
 export function fullName(
   person: { lastName?: string | null; firstName?: string | null } | null | undefined,
 ): string {
@@ -263,6 +258,21 @@ export function shortName(
   const first = person?.firstName?.trim();
   if (!first) return last ? capitalize(last) : "—";
   return last ? `${last[0]!.toLocaleUpperCase("mn-MN")}.${capitalize(first)}` : capitalize(first);
+}
+
+/**
+ * `Дэлбээ бүлэг` — a group's name as a teacher says it aloud.
+ *
+ * The client's 2026-09-25 note: a group reads as its name *and* the word
+ * "бүлэг". Names already typed with the suffix are left alone, so an admin who
+ * named a group "Цэцэрлэг бүлэг" does not get "Цэцэрлэг бүлэг бүлэг".
+ */
+export function groupLabel(name: string | null | undefined): string {
+  const trimmed = name?.trim();
+  if (!trimmed) return "—";
+  // Capitalised for the screen as well — see `capitalize`.
+  const shown = capitalize(trimmed);
+  return /бүлэг$/i.test(shown) ? shown : `${shown} бүлэг`;
 }
 
 /** Initials for a photoless avatar. */

@@ -44,6 +44,7 @@ export function BoardCard({
   children,
   footer,
   className,
+  withIcon = false,
 }: {
   title: string;
   /**
@@ -58,6 +59,12 @@ export function BoardCard({
   /** Pinned to the bottom, so a row of cards lines its footers up. */
   footer?: ReactNode;
   className?: string;
+  /**
+   * The drawing before the title — off by default since 2026-09-25, when the
+   * client asked for it gone from the teacher's dashboard: "өмнөх icon-ууд
+   * хэрэггүй". The administrator's survey summary still asks for it.
+   */
+  withIcon?: boolean;
 }) {
   return (
     // `h-full` so a card in a two-across row fills the height its taller
@@ -66,7 +73,7 @@ export function BoardCard({
     <Card pad="compact" className={cn("flex h-full flex-col gap-2.5", className)}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2.5">
-          <BoardIcon title={title} />
+          {withIcon ? <BoardIcon title={title} /> : null}
           <Tag id={id} className="min-w-0 text-body font-bold leading-heading text-ink">
             {title}
           </Tag>

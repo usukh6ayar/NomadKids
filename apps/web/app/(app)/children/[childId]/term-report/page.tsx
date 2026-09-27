@@ -16,7 +16,6 @@ import {
   paginated,
   termReportSchema,
   termSchema,
-  localDate,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
@@ -33,7 +32,7 @@ import { ChildAvatar } from "@/components/media/media-image";
 import { ChildPickerDialog } from "@/components/child/child-picker-dialog";
 import { ConclusionNotes } from "@/components/assessment/conclusion-notes";
 import { ConclusionForm } from "@/components/assessment/conclusion-form";
-import { formatAge, fullName, capitalize } from "@/lib/format";
+import { formatAge, fullName } from "@/lib/format";
 
 /**
  * Дүгнэлт бичих — the teacher's conclusion about one child, one term.
@@ -177,7 +176,7 @@ function TermReport({ childId }: { childId: string }) {
   useEffect(() => {
     if (from || ordered.length === 0) return;
 
-    const today = localDate();
+    const today = new Date().toISOString().slice(0, 10);
     const current = ordered.find(
       (row) => (row.startsOn ?? "") <= today && today <= (row.endsOn ?? ""),
     );
@@ -238,7 +237,7 @@ function TermReport({ childId }: { childId: string }) {
   if (child.isError) return <ErrorState description={errorMessage(child.error)} />;
 
   const data = child.data!;
-  const group = capitalize(data.enrollments?.find((row) => row.group)?.group?.name);
+  const group = data.enrollments?.find((row) => row.group)?.group?.name;
 
   return (
     <div className="flex flex-col gap-4 py-2">
@@ -381,7 +380,7 @@ function TermReport({ childId }: { childId: string }) {
                     <option value="">Бүх чиглэл</option>
                     {(config.data?.domains ?? []).map((domain) => (
                       <option key={domain.id} value={domain.id}>
-                        {capitalize(domain.name)}
+                        {domain.name}
                       </option>
                     ))}
                   </Select>
@@ -410,7 +409,7 @@ function TermReport({ childId }: { childId: string }) {
                       active={typeCode === type.code}
                       onClick={() => setTypeCode(type.code ?? "")}
                     >
-                      {capitalize(type.name)} ({count})
+                      {type.name} ({count})
                     </FilterChip>
                   );
                 })}

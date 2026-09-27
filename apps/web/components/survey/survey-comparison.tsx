@@ -6,7 +6,9 @@ import {
   surveyComparisonSchema,
   SURVEY_PERIOD_LABEL,
   type IndicatorComparison,
+  type SurveyComparison as SurveyComparisonData,
 } from "@kinder/contracts";
+import { shortName } from "@/lib/format";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
@@ -38,8 +40,8 @@ export function SurveyComparison({ surveyId }: { surveyId: string }) {
   if (!data.baseline) {
     return (
       <EmptyState
-        title="Харьцуулах судалгаа алга"
-        description="Энэ судалгааг эхний үнэлгээтэй харьцуулахын тулд хичээлийн жил, үнэлгээний үеийг тохируулж, эхний судалгаанаас хувилж үүсгэнэ үү."
+        title="Харьцуулах өмнөх судалгаа алга"
+        description='Дахин авахдаа дээрх "Хувилах" товчийг дарж, шинэ үнэлгээний үеийг сонгоно уу. Хувилсан судалгааг бөглөсний дараа тэнд энэ судалгаатай харьцуулсан ахиц харагдана.'
       />
     );
   }
@@ -82,8 +84,8 @@ export function SurveyComparison({ surveyId }: { surveyId: string }) {
 
       {data.indicators.length === 0 ? (
         <EmptyState
-          title="Тохирох үзүүлэлт алга"
-          description="Хоёр судалгаанд ижил үзүүлэлт олдсонгүй. Асуулт бүрд үзүүлэлтийн түлхүүр өгсөн эсэхийг шалгана уу."
+          title="Оноогоор харьцуулах асуулт алга"
+          description="Үнэлгээ (1–5), Тийм/Үгүй, тоон сонголт (жишээ нь 0 / 1), олон сонголт болон матриц асуулт харьцуулагдана."
         />
       ) : (
         <ul className="flex flex-col gap-2">
@@ -94,7 +96,75 @@ export function SurveyComparison({ surveyId }: { surveyId: string }) {
           ))}
         </ul>
       )}
+
+      <ChildProgress rows={data.children} />
     </section>
+  );
+}
+
+type ChildRow = SurveyComparisonData["children"][number];
+
+/**
+ * Хүүхэд бүрийн ахиц — client, 2026-09-21.
+ *
+ * ★ One figure per child: the mean of their indicators as a share of each
+ * indicator's maximum, before and after, over the indicators they have in
+ * both waves. A row of every indicator per child would be the teacher's
+ * sheet again; this answers "who moved, and who did not".
+ */
+function childTotals(row: ChildRow) {
+  const both = row.indicators.filter(
+    (indicator) =>
+      indicator.baselineMean !== null &&
+      indicator.baselineMean !== undefined &&
+      indicator.endlineMean !== null &&
+      indicator.endlineMean !== undefined &&
+      (indicator.maxScore ?? 0) > 0,
+  );
+  if (both.length === 0) return null;
+  const share = (pick: (i: IndicatorComparison) => number) =>
+    (both.reduce((sum, i) => sum + pick(i) / i.maxScore!, 0) / both.length) * 100;
+  const before = share((i) => i.baselineMean!);
+  const after = share((i) => i.endlineMean!);
+  return { before, after, delta: Math.round(after - before) };
+}
+
+function ChildProgress({ rows }: { rows: ChildRow[] }) {
+  const measured = rows
+    .map((row) => ({ row, totals: childTotals(row) }))
+    .filter(
+      (entry): entry is { row: ChildRow; totals: NonNullable<ReturnType<typeof childTotals>> } =>
+        Boolean(entry.totals && entry.row.child),
+    )
+    .sort((a, b) => b.totals.delta - a.totals.delta);
+
+  if (measured.length === 0) return null;
+
+  return (
+    <Card pad="compact" className="flex flex-col gap-2" aria-labelledby="child-progress-heading">
+      <h3 id="child-progress-heading" className="font-semibold text-ink">
+        Хүүхэд бүрийн ахиц
+      </h3>
+      <ul className="flex flex-col divide-y divide-border-soft">
+        {measured.map(({ row, totals }) => (
+          <li key={row.childId} className="flex items-center gap-3 py-2">
+            <span className="min-w-0 flex-1 truncate text-body text-ink">
+              {shortName(row.child)}
+            </span>
+            <span className="text-caption tabular-nums text-muted">
+              {Math.round(totals.before)}% → {Math.round(totals.after)}%
+            </span>
+            <span
+              className={`w-14 text-right text-body font-semibold tabular-nums ${
+                totals.delta > 0 ? "text-mint-ink" : totals.delta < 0 ? "text-danger" : "text-muted"
+              }`}
+            >
+              {signed(totals.delta)}%
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 

@@ -9,6 +9,7 @@ import {
   stubApi,
 } from "./support/render";
 import SurveyDetailPage from "@/app/(app)/surveys/[surveyId]/page";
+import { SurveyResultsView } from "@/components/survey/survey-results-view";
 
 /**
  * A published survey's results — the client's 2026-09-10 design.
@@ -333,6 +334,70 @@ describe("closing, re-opening and previewing", () => {
 });
 
 describe("ерөнхий дүн", () => {
+  it("summarises an А/79 teacher assessment by its three domains", async () => {
+    const knowledgeA = {
+      ...CHOICE,
+      id: "10000000-0000-4000-8000-000000000001",
+      order: 0,
+      prompt: "Мэдлэг: Өнгийг нэрлэдэг.",
+      options: ["0", "1"],
+    };
+    const knowledgeB = {
+      ...knowledgeA,
+      id: "10000000-0000-4000-8000-000000000002",
+      order: 1,
+      prompt: "Мэдлэг: Дүрсийг нэрлэдэг.",
+    };
+    const skill = {
+      ...knowledgeA,
+      id: "10000000-0000-4000-8000-000000000003",
+      order: 2,
+      prompt: "Чадвар: Өөрөө зурдаг.",
+    };
+    const formation = {
+      ...knowledgeA,
+      id: "10000000-0000-4000-8000-000000000004",
+      order: 3,
+      prompt: "Төлөвшил: Бусдыг сонсдог.",
+    };
+    const questions = [
+      { question: knowledgeA, responseCount: 2, counts: { "0": 1, "1": 1 }, responses: null },
+      { question: knowledgeB, responseCount: 2, counts: { "1": 2 }, responses: null },
+      { question: skill, responseCount: 2, counts: { "0": 1, "1": 1 }, responses: null },
+      { question: formation, responseCount: 2, counts: { "1": 2 }, responses: null },
+    ];
+
+    stubApi([
+      {
+        path: `/surveys/${SURVEY_ID}/results`,
+        body: {
+          ...RESULTS,
+          survey: {
+            ...SURVEY,
+            respondent: "TEACHER",
+            questions: questions.map((row) => row.question),
+          },
+          totalResponses: 2,
+          expectedResponses: 10,
+          missingResponses: 8,
+          questions,
+        },
+      },
+    ]);
+    renderWithProviders(
+      <SurveyResultsView surveyId={SURVEY_ID} showAnswers={false} showProgress={false} />,
+    );
+
+    expect(await screen.findByText("Хамрагдсан байдал")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Дундаж оноо" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Эзлэх хувь" })).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /Мэдлэг 1.5 \/ 2 75%/ })).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /Чадвар 0.5 \/ 1 50%/ })).toBeInTheDocument();
+    expect(screen.getByRole("row", { name: /Төлөвшил 1.0 \/ 1 100%/ })).toBeInTheDocument();
+    expect(screen.getByText("Нийт үнэлэгдсэн хүүхдийн тоо").parentElement).toHaveTextContent("2");
+    expect(screen.queryByText("Бөглөөгүй")).not.toBeInTheDocument();
+  });
+
   it("shows the questionnaire's real answer shapes behind the eye", async () => {
     const user = userEvent.setup();
     stubResults();
@@ -639,6 +704,103 @@ describe("асуулт тус бүр", () => {
   finding the same name in six lists. The axis is turned: the child is the row,
   and their whole questionnaire opens underneath it.
 */
+describe("a teacher survey's results", () => {
+  /**
+   * Client, 2026-09-21: Ерөнхий дүн and Асуулт тус бүр without Хариулт, then
+   * "Ахиц дэвшил" — the wave compared with the one it was cloned from.
+   */
+  it("offers Ерөнхий дүн, Асуулт тус бүр and Ахиц дэвшил", async () => {
+    stubResults({ respondent: "TEACHER" });
+    renderWithProviders(<SurveyDetailPage />);
+
+    const tabs = await screen.findByRole("tablist", { name: "Судалгааны үр дүн" });
+    expect(
+      within(tabs)
+        .getAllByRole("tab")
+        .map((tab) => tab.textContent),
+    ).toEqual(["Ерөнхий дүн", "Асуулт тус бүр", "Ахиц дэвшил"]);
+  });
+
+  it("keeps Хариулт, and no progress tab, on a family survey", async () => {
+    stubResults();
+    renderWithProviders(<SurveyDetailPage />);
+
+    const tabs = await screen.findByRole("tablist", { name: "Судалгааны үр дүн" });
+    expect(within(tabs).getByRole("tab", { name: "Хариулт" })).toBeInTheDocument();
+    expect(within(tabs).queryByRole("tab", { name: "Ахиц дэвшил" })).toBeNull();
+  });
+
+  it("tells the teacher to clone when there is nothing to compare yet", async () => {
+    const user = userEvent.setup();
+    stubResults({ respondent: "TEACHER" }, [
+      {
+        path: `/surveys/${SURVEY_ID}/comparison`,
+        body: {
+          baseline: null,
+          indicators: [],
+          questions: [],
+          children: [],
+          note: "Харьцуулах эхний үнэлгээ олдсонгүй",
+        },
+      },
+    ]);
+    renderWithProviders(<SurveyDetailPage />);
+
+    await user.click(await screen.findByRole("tab", { name: "Ахиц дэвшил" }));
+    expect(await screen.findByText("Харьцуулах өмнөх судалгаа алга")).toBeInTheDocument();
+    expect(screen.getByText(/"Хувилах" товчийг дарж/)).toBeInTheDocument();
+  });
+
+  it("shows each child's progress against the first wave", async () => {
+    const user = userEvent.setup();
+    const indicator = {
+      indicatorKey: "q_colors",
+      rowKey: null,
+      label: "Өнгө ялгадаг уу?",
+      baselineMean: 0,
+      endlineMean: 1,
+      maxScore: 1,
+      delta: 1,
+      deltaPercent: 100,
+      baselineCount: 1,
+      endlineCount: 1,
+    };
+    stubResults({ respondent: "TEACHER" }, [
+      {
+        path: `/surveys/${SURVEY_ID}/comparison`,
+        body: {
+          baseline: {
+            id: POLL_ID,
+            title: "Өнгө ялгах",
+            period: "BASELINE",
+            publishedAt: "2026-09-01T00:00:00.000Z",
+          },
+          endline: { id: SURVEY_ID, title: "Өнгө ялгах", publishedAt: null },
+          indicators: [indicator],
+          questions: [],
+          children: [
+            {
+              childId: CHILD_A,
+              child: { id: CHILD_A, firstName: "Ану", lastName: "Батжаргал" },
+              indicators: [indicator],
+            },
+          ],
+          note: null,
+        },
+      },
+    ]);
+    renderWithProviders(<SurveyDetailPage />);
+
+    await user.click(await screen.findByRole("tab", { name: "Ахиц дэвшил" }));
+    const list = (await screen.findByRole("heading", { name: "Хүүхэд бүрийн ахиц" })).closest(
+      "div",
+    )!;
+    expect(within(list).getByText("Б.Ану")).toBeInTheDocument();
+    expect(within(list).getByText("0% → 100%")).toBeInTheDocument();
+    expect(within(list).getByText("+100%")).toBeInTheDocument();
+  });
+});
+
 describe("хүүхэд бүрийн хариулт", () => {
   /** The per-question answers, pivoted by the screen into one child's replies. */
   const ANSWER_STUBS = [

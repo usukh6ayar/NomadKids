@@ -420,7 +420,17 @@ model User {
   /// near-empty TeacherProfile/GuardianProfile side tables.
   specialization String?
   education      String?
-  bio            String?
+
+  /// Мэргэшлийн зэрэг — заах аргач, тэргүүлэх, зөвлөх. Client, 2026-09-24,
+  /// for the teacher card on the family's "Цэцэрлэгийн мэдээлэл" screen.
+  ///
+  /// ★ Its own column rather than a line inside `education`: it is a grade
+  /// awarded to the teacher, not the school they attended, and the card
+  /// labels them separately. ESIS does not return it — the teacher or an
+  /// administrator types it.
+  qualification String?
+
+  bio String?
 
   /// RFP §3.3 — профайл зураг. A MediaFile reference for the same reason as
   /// `Kindergarten.logoMediaFileId`.
@@ -448,6 +458,7 @@ model User {
 
   photo                  MediaFile?                @relation("UserPhoto", fields: [photoMediaFileId], references: [id], onDelete: SetNull)
   uploadedMedia          MediaFile[]               @relation("MediaUploader")
+  albumCategoriesCreated AlbumCategory[]           @relation("AlbumCategoryCreatedBy")
   memberships            Membership[]
   guardianships          Guardianship[]
   authTokens             AuthToken[]
@@ -478,6 +489,7 @@ model User {
   mealServingsRecorded   MealServing[]             @relation("MealServingRecordedBy")
   surveysCreated         Survey[]                  @relation("SurveyCreatedBy")
   surveyResponses        SurveyResponse[]          @relation("SurveyRespondent")
+  surveyStaffReads       SurveyStaffRead[]
   growthRecorded         GrowthMeasurement[]       @relation("GrowthRecordedBy")
   milestonesRecorded     Milestone[]               @relation("MilestoneRecordedBy")
   allergiesRecorded      AllergyRecord[]           @relation("AllergyRecordedBy")
@@ -622,6 +634,12 @@ model Kindergarten {
   description String?
   isActive    Boolean @default(true)
 
+  /// Хүчин чадал — how many children this kindergarten is licensed for.
+  /// Client, 2026-09-24, for the family's "Суралцалтын түүх" card. Nullable:
+  /// it is a number an administrator fills in, and the card simply omits the
+  /// row until they do rather than inventing a capacity.
+  capacity Int?
+
   /// The «Байгууллага» profile — 2026-09-27. Free text, nullable: the lists
   /// these would be chosen from (улс, аймаг, өмчийн хэлбэр, хэв шинж) have no
   /// agreed source yet, and a closed list invented here would be wrong the
@@ -702,6 +720,7 @@ model Kindergarten {
   termReportObservations TermReportObservation[]
   childMealNotes         ChildMealNote[]
   mediaFiles             MediaFile[]
+  albumCategories        AlbumCategory[]
   notifications          Notification[]
   notificationTargets    NotificationTarget[]
   notificationReactions  NotificationReaction[]
@@ -714,6 +733,7 @@ model Kindergarten {
   calendarDays           CalendarDay[]
   menuDays               MenuDay[]
   surveys                Survey[]
+  surveyStaffReads       SurveyStaffRead[]
   surveyQuestions        SurveyQuestion[]
   surveyResponses        SurveyResponse[]
   surveyAnswers          SurveyAnswer[]
@@ -1183,6 +1203,7 @@ model Child {
   assessments         Assessment[]
   termReports         TermReport[]
   mediaFiles          MediaFile[]               @relation("ChildMedia")
+  albumCategories     AlbumCategory[]
   notificationTargets NotificationTarget[]
   reportJobs          ReportJob[]
   auditLogs           AuditLog[]
@@ -1365,6 +1386,12 @@ model ChildAgeProfile {
   characterObservation   String?
   familyMemberTypes      String[] @default([])
   familyDescription      String?
+
+  /// Ам бүлийн тоо — how many people live in the child's household. Client,
+  /// 2026-09-24, when the family section became "a household size and a box
+  /// to write in". Nullable because it is a question a family may not have
+  /// answered yet, and 0 is not the answer.
+  familySize Int?
 
   /// Гэр бүлийн дурсамж — one entry per photographed moment: who the child was
   /// with, what they did, when, and the `MediaFile` id of the picture. JSON
@@ -3495,6 +3522,18 @@ enum SurveyKind {
   FORM
 }
 
+/// Who fills the survey in — client, 2026-09-21: "Багшийн судалгаа".
+///
+/// ★ GUARDIAN is every survey written before the column: a family answers
+/// about their own child. TEACHER is a teacher assessing each child of their
+/// own group — the same questions, the same `SurveyResponse` per child, with
+/// the teacher as `respondentId`. A family is never shown one: it is the
+/// staff's assessment, not a question put to them.
+enum SurveyRespondent {
+  GUARDIAN
+  TEACHER
+}
+
 enum SurveyQuestionType {
   RATING // 1-5
   YES_NO
@@ -3549,15 +3588,16 @@ enum SurveyCategory {
 }
 
 model Survey {
-  id             String         @id @default(uuid()) @db.Uuid
-  kindergartenId String         @db.Uuid
+  id             String           @id @default(uuid()) @db.Uuid
+  kindergartenId String           @db.Uuid
   title          String
   description    String?
-  category       SurveyCategory @default(PARENT_ENGAGEMENT)
+  category       SurveyCategory   @default(PARENT_ENGAGEMENT)
   scope          SurveyScope
-  kind           SurveyKind     @default(FORM)
-  status         SurveyStatus   @default(DRAFT)
-  createdById    String?        @db.Uuid
+  kind           SurveyKind       @default(FORM)
+  respondent     SurveyRespondent @default(GUARDIAN)
+  status         SurveyStatus     @default(DRAFT)
+  createdById    String?          @db.Uuid
   publishedAt    DateTime?
   closedAt       DateTime?
 
@@ -3697,14 +3737,15 @@ model Survey {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  kindergarten Kindergarten     @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  createdBy    User?            @relation("SurveyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  group        Group?           @relation("SurveyGroup", fields: [groupId], references: [id], onDelete: Restrict)
-  term         Term?            @relation(fields: [termId], references: [id], onDelete: Restrict)
+  kindergarten Kindergarten      @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  createdBy    User?             @relation("SurveyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  group        Group?            @relation("SurveyGroup", fields: [groupId], references: [id], onDelete: Restrict)
+  term         Term?             @relation(fields: [termId], references: [id], onDelete: Restrict)
   questions    SurveyQuestion[]
   responses    SurveyResponse[]
-  clonedFrom   Survey?          @relation("SurveyClone", fields: [clonedFromSurveyId], references: [id], onDelete: SetNull)
-  clones       Survey[]         @relation("SurveyClone")
+  staffReads   SurveyStaffRead[]
+  clonedFrom   Survey?           @relation("SurveyClone", fields: [clonedFromSurveyId], references: [id], onDelete: SetNull)
+  clones       Survey[]          @relation("SurveyClone")
 
   @@index([kindergartenId, status])
   @@index([kindergartenId, category])
@@ -3715,6 +3756,36 @@ model Survey {
   /// The staff list grouped by term, and the FK's own lookups.
   @@index([kindergartenId, termId])
   @@map("surveys")
+}
+
+/// A teacher has opened an administrator's survey — the client's 2026-09-17
+/// request: "багшид удирдлага судалгаа гэдэг товч дээр 1 гэж харагдаад
+/// мэдэгдэл ирж ... хонх дээр харагд".
+///
+/// ★ A receipt, not a notice. The notice board (`Notification`) is read by
+/// families as well as staff, and an announcement aimed at "everyone" there
+/// would tell every parent that the teachers have a survey to look at. What
+/// the teacher needs is "which of the administration's surveys have I not
+/// opened", which is this row's absence — the same shape as
+/// `NotificationRead`, and the badge and the bell are counts of it.
+///
+/// Carries `kindergartenId` like every tenant table (§3.1). Never soft
+/// deleted: a receipt is a fact about the past, and there is nothing to
+/// withdraw.
+model SurveyStaffRead {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  surveyId       String   @db.Uuid
+  userId         String   @db.Uuid
+  readAt         DateTime @default(now())
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  survey       Survey       @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([surveyId, userId])
+  @@index([userId, kindergartenId])
+  @@map("survey_staff_reads")
 }
 
 model SurveyQuestion {
@@ -3984,6 +4055,37 @@ model TermReportObservation {
 /// derived from the child's name, id or the uploaded filename. The real
 /// filename lives only in `originalName`, for display, and is never used to
 /// build a URL. docs/SECURITY.md §7.
+/// A photo type added to one child's album for one age — client, 2026-09-18:
+/// "зургийн төрөл нэмж 3 цэг дээр засаж устгаж болдог болго, үндсэн төрлүүдийг
+/// засаж устгахгүй".
+///
+/// ★ A table, not a thirteenth enum value (§2.3): the name is whatever the
+/// family typed. The twelve built-in cards stay `AGE_ALBUM_CATEGORIES` in code
+/// precisely because nobody may rename or delete them.
+///
+/// ★★ Per child and per age, like the twelve: "Бассейн" at four is not a card
+/// in the three-year album. Soft deleted (§3.2), and only when it holds no live
+/// photograph — `MediaService` refuses otherwise, so no photo is orphaned.
+model AlbumCategory {
+  id             String    @id @default(uuid()) @db.Uuid
+  kindergartenId String    @db.Uuid
+  childId        String    @db.Uuid
+  age            Int       @db.SmallInt
+  name           String
+  createdById    String?   @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("AlbumCategoryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  media        MediaFile[]
+
+  @@index([childId, age])
+  @@map("album_categories")
+}
+
 model MediaFile {
   id                  String  @id @default(uuid()) @db.Uuid
   kindergartenId      String  @db.Uuid
@@ -4046,6 +4148,11 @@ model MediaFile {
   /// the existing values become seed rows in a new table.
   category String?
 
+  /// A photo type the family or the teacher added for this child and age —
+  /// client, 2026-09-18. Set instead of `category`, never with it: a photograph
+  /// sits in one card.
+  albumCategoryId String? @db.Uuid
+
   /// This photograph is the cover of this age's album. Null for ordinary
   /// photographs. The compound unique constraint allows many NULL rows while
   /// guaranteeing only one selected cover for a child and age.
@@ -4076,6 +4183,7 @@ model MediaFile {
   attendanceRequest  AttendanceRequest?  @relation("AttendanceRequestAttachment", fields: [attendanceRequestId], references: [id], onDelete: Cascade)
   chatMessage        ChatMessage?        @relation("ChatMessageMedia", fields: [chatMessageId], references: [id], onDelete: Cascade)
   uploadedBy         User?               @relation("MediaUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  albumCategory      AlbumCategory?      @relation(fields: [albumCategoryId], references: [id], onDelete: Restrict)
   childPhotoOf       Child?              @relation("ChildPhoto")
   comparisonEarlier  ArtworkComparison[] @relation("ComparisonEarlier")
   documentFileOf     Document?           @relation("DocumentFile")
@@ -4096,6 +4204,7 @@ model MediaFile {
   @@index([notificationId, order])
   @@index([milestoneId, order])
   @@index([incidentId, order])
+  @@index([albumCategoryId])
   @@index([status, deletedAt])
   /// ★ This does NOT serve the gallery's default sort, and the comment that
   /// claimed it did was wrong.

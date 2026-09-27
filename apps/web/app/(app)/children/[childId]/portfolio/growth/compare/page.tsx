@@ -11,7 +11,6 @@ import { BackButton } from "@/components/ui/back-button";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { FAVORITE_FIELDS, type PortfolioAge } from "@/lib/age-development";
 import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
-import { capitalize } from "@/lib/format";
 
 const ageProfilesSchema = z.array(ageProfileSchema);
 
@@ -68,7 +67,7 @@ export default function GrowthComparePage() {
         <div className="min-w-0">
           <h1 className="text-heading font-semibold text-ink">2-5 насны мэдээлэл</h1>
           <p className="mt-1 text-body text-muted">
-            {capitalize(data.firstName)}-ийн нас насны мэдээллийг хажуу тийш гүйлгэн харьцуулна уу.
+            {data.firstName}-ийн нас насны мэдээллийг хажуу тийш гүйлгэн харьцуулна уу.
           </p>
         </div>
       </header>

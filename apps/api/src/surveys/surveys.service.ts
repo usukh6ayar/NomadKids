@@ -2,19 +2,43 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { AuditRepository } from "../audit/audit.repository";
 import { ChildAccessService } from "../authz/child-access.service";
 import { TenantAccessService } from "../authz/tenant-access.service";
+import { AuthzRepository } from "../authz/authz.repository";
+import { hasRoleIn } from "../authz/actor";
+import { Role } from "../domain/enums";
+import { paginate, toSkipTake, type PageParams } from "../common/pagination";
 import { childKindergartenIds, isGuardianOf } from "../authz/child-access";
 import type { Actor } from "../authz/actor";
 import { SurveysRepository } from "./surveys.repository";
 import { buildSurveyWorkbook, type SurveyWave } from "./survey-workbook";
 import { compareQuestions, compareWaves, compareWavesByChild } from "./survey-comparison";
 import { MAX_POLL_OPTIONS, matrixOptions, optionStrings } from "./survey-scoring";
+import { withIndicatorKeys } from "./indicator-key";
 import { hasOptionList } from "@kinder/contracts";
 import type {
   CloneSurveyDto,
   CreateSurveyDto,
   SaveQuestionsDto,
+  SaveTeacherSheetDto,
   SubmitResponseDto,
 } from "./surveys.dto";
+
+type QuestionForValidation = NonNullable<
+  Awaited<ReturnType<SurveysRepository["findWithQuestions"]>>
+>["questions"][number];
+
+type ParticipationCounts = Awaited<ReturnType<SurveysRepository["participationCounts"]>>;
+
+/**
+ * How many were asked — the survey's *audience*, not the roster. See
+ * `listForKindergarten` for why a KINDERGARTEN-scope survey counts parents.
+ */
+function expectedRespondents(
+  survey: { scope: string; groupId: string | null },
+  counts: ParticipationCounts,
+) {
+  if (survey.scope === "KINDERGARTEN") return counts.parentCount;
+  return survey.groupId ? (counts.childrenByGroup.get(survey.groupId) ?? 0) : counts.childrenTotal;
+}
 
 @Injectable()
 export class SurveysService {
@@ -23,6 +47,7 @@ export class SurveysService {
     private readonly childAccess: ChildAccessService,
     private readonly tenants: TenantAccessService,
     private readonly audit: AuditRepository,
+    private readonly authz: AuthzRepository,
   ) {}
 
   // ── Management — staff only ─────────────────────────────────────────────
@@ -69,6 +94,26 @@ export class SurveysService {
       if (!term) throw new BadRequestException("Улирал олдсонгүй");
     }
 
+    /*
+      ★ A teacher survey is one named questionnaire per child — 2026-09-21.
+
+      Each of these would be a survey that cannot be filled in as asked: a
+      KINDERGARTEN scope has no child to assess, a poll is a family's one-tap
+      vote, anonymity hides the one thing the record is for (which teacher
+      assessed which child), and a second response would be a second
+      assessment of the same child. Refused rather than quietly corrected, so
+      a caller learns what it sent was not what it got.
+    */
+    const respondent = dto.respondent ?? "GUARDIAN";
+    if (respondent === "TEACHER") {
+      if (dto.scope !== "CHILD" || dto.kind === "POLL") {
+        throw new BadRequestException("Багшийн судалгаа хүүхэд бүрээр бөглөх судалгаа байна");
+      }
+      if (dto.isAnonymous || dto.allowMultipleResponses) {
+        throw new BadRequestException("Багшийн судалгаа нэрээ нууцлах, давтан бөглөх боломжгүй");
+      }
+    }
+
     const survey = await this.repo.create({
       kindergartenId,
       title: dto.title,
@@ -78,6 +123,7 @@ export class SurveysService {
       // The column defaults to FORM, and so does an omitted field: a caller
       // that predates `kind` keeps creating exactly what it created before.
       kind: dto.kind ?? "FORM",
+      respondent,
       closesAt: dto.closesAt ?? null,
       createdById: actor.userId,
       schoolYear: dto.schoolYear ?? null,
@@ -106,7 +152,12 @@ export class SurveysService {
       actorUserId: actor.userId,
       objectType: "Survey",
       objectId: survey.id,
-      metadata: { category: dto.category, scope: dto.scope, groupId: dto.groupId ?? null },
+      metadata: {
+        category: dto.category,
+        scope: dto.scope,
+        respondent,
+        groupId: dto.groupId ?? null,
+      },
     });
 
     return survey;
@@ -141,13 +192,104 @@ export class SurveysService {
     return surveys.map((survey) => ({
       ...survey,
       respondedCount: counts.responded.get(survey.id) ?? 0,
-      expectedCount:
-        survey.scope === "KINDERGARTEN"
-          ? counts.parentCount
-          : survey.groupId
-            ? (counts.childrenByGroup.get(survey.groupId) ?? 0)
-            : counts.childrenTotal,
+      expectedCount: expectedRespondents(survey, counts),
     }));
+  }
+
+  // ── The administration's surveys, read by a teacher ────────────────────
+
+  /**
+   * "Удирдлагын судалгаа" — the client's 2026-09-17 request.
+   *
+   * ★ Why a teacher needs this at all. Every teacher screen filters to the
+   * surveys that teacher wrote (`isSurveyOwner` on the web side), which is
+   * right for managing them and left the administration's questionnaires
+   * invisible to the people whose families are answering them. This is the
+   * read-only window: what was asked, the questions, and how many answered.
+   *
+   * ★★ The audience is decided once, here, from the actor's memberships and
+   * active `GroupTeacher` rows — re-read on every request (§1.3), so a
+   * teacher moved off a group stops seeing its surveys on the next call.
+   * Anyone who is not staff of the kindergarten gets 404 (§1.7).
+   */
+  private async administrationScope(actor: Actor, kindergartenId: string) {
+    this.tenants.assertStaff(actor, kindergartenId);
+    const groupIds = hasRoleIn(actor, Role.ADMIN, kindergartenId)
+      ? ("all" as const)
+      : await this.authz.loadActiveTeachingGroupIds(actor);
+    return this.repo.administrationWhere(kindergartenId, actor.userId, groupIds);
+  }
+
+  async listFromAdministration(actor: Actor, kindergartenId: string, page: PageParams) {
+    const where = await this.administrationScope(actor, kindergartenId);
+    const [{ items, total }, counts] = await Promise.all([
+      this.repo.findAdministrationSurveys(where, actor.userId, toSkipTake(page)),
+      this.repo.participationCounts(kindergartenId),
+    ]);
+
+    return paginate(
+      items.map((survey) => this.toAdministrationShape(survey, counts)),
+      total,
+      page,
+    );
+  }
+
+  async administrationUnreadCount(actor: Actor, kindergartenId: string) {
+    const where = await this.administrationScope(actor, kindergartenId);
+    const [count, total] = await Promise.all([
+      this.repo.countUnreadAdministrationSurveys(where, actor.userId),
+      this.repo.countAdministrationSurveys(where),
+    ]);
+    // `count` is what is new to this teacher (the red number); `total` is how
+    // many the administration has asked, which the hub card states beside it.
+    return { count, total };
+  }
+
+  /**
+   * One of the administration's surveys, if this reader is shown it.
+   *
+   * ★ 404 for anything outside `administrationWhere` — another kindergarten's
+   * survey, a teacher's own, another group's, a draft. The kindergarten comes
+   * from the row, never from the request.
+   */
+  async getFromAdministration(actor: Actor, surveyId: string) {
+    const survey = await this.findReadableFromAdministration(actor, surveyId);
+    const counts = await this.repo.participationCounts(survey.kindergartenId);
+    return this.toAdministrationShape(survey, counts);
+  }
+
+  /** Marks it opened — what clears the badge and the bell row. */
+  async markSeenFromAdministration(actor: Actor, surveyId: string) {
+    const survey = await this.findReadableFromAdministration(actor, surveyId);
+    await this.repo.markStaffRead(survey.id, survey.kindergartenId, actor.userId);
+    return { id: survey.id };
+  }
+
+  private async findReadableFromAdministration(actor: Actor, surveyId: string) {
+    const row = await this.repo.findForAuthorization(surveyId);
+    if (!row) throw new NotFoundException();
+    const where = await this.administrationScope(actor, row.kindergartenId);
+    const survey = await this.repo.findAdministrationSurvey(where, surveyId, actor.userId);
+    if (!survey) throw new NotFoundException();
+    return survey;
+  }
+
+  private toAdministrationShape(
+    survey: Awaited<ReturnType<SurveysRepository["findAdministrationSurvey"]>> & object,
+    counts: ParticipationCounts,
+  ) {
+    const { staffReads, createdById: _author, ...rest } = survey;
+    return {
+      ...rest,
+      /*
+        The author is named as the office, not the person — the client asked
+        for "Цэцэрлэгийн захиргаа", and a teacher has no use for which
+        administrator pressed Нийтлэх.
+      */
+      isRead: staffReads.length > 0,
+      respondedCount: counts.responded.get(survey.id) ?? 0,
+      expectedCount: expectedRespondents(survey, counts),
+    };
   }
 
   async getOne(actor: Actor, surveyId: string) {
@@ -171,7 +313,12 @@ export class SurveysService {
       throw new BadRequestException("Зөвхөн ноорог судалгааны асуултыг өөрчлөх боломжтой");
     }
 
-    await this.repo.replaceQuestions(surveyId, survey.kindergartenId, dto.questions);
+    // Every question leaves here with an indicator key — see `indicator-key.ts`.
+    await this.repo.replaceQuestions(
+      surveyId,
+      survey.kindergartenId,
+      withIndicatorKeys(dto.questions),
+    );
 
     await this.audit.append({
       action: "UPDATE",
@@ -558,7 +705,9 @@ export class SurveysService {
 
     let childId: string | null = null;
 
-    if (survey.scope === "CHILD") {
+    if (survey.respondent === "TEACHER") {
+      childId = await this.assertCanAssess(actor, survey, dto.childId);
+    } else if (survey.scope === "CHILD") {
       if (!dto.childId) throw new BadRequestException("Хүүхэд сонгоно уу");
 
       const facts = await this.childAccess.assertCanAccess(actor, dto.childId);
@@ -587,13 +736,51 @@ export class SurveysService {
       хэн ирэх вэ", asked every week. The rule moved onto the row so the person
       writing the survey chooses, and the default is what it always did.
     */
-    if (!survey.allowMultipleResponses) {
+    if (survey.respondent === "TEACHER") {
+      // One assessment per child, whichever of the group's teachers wrote it.
+      const [existing] = await this.repo.teacherSheetResponses(surveyId, [childId!]);
+      if (existing) {
+        throw new BadRequestException("Энэ хүүхдийн судалгааг аль хэдийн бөглөсөн байна");
+      }
+    } else if (!survey.allowMultipleResponses) {
       const existing = await this.repo.findResponse(surveyId, actor.userId, childId);
       if (existing) throw new BadRequestException("Та энэ судалгааг аль хэдийн бөглөсөн байна");
     }
 
-    const validQuestionIds = await this.repo.questionIds(surveyId);
-    for (const answer of dto.answers) {
+    const withQuestions = await this.repo.findWithQuestions(surveyId);
+    this.assertValidAnswers(withQuestions?.questions ?? [], dto.answers);
+
+    const response = await this.repo.createResponse(
+      { kindergartenId: survey.kindergartenId, surveyId, childId, respondentId: actor.userId },
+      dto.answers,
+    );
+
+    await this.audit.append({
+      action: "CREATE",
+      kindergartenId: survey.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "SurveyResponse",
+      objectId: response.id,
+      childId: childId ?? undefined,
+      metadata: { surveyId },
+    });
+
+    return response;
+  }
+
+  // ── Teacher surveys — filled in by staff, one child at a time ──────────
+
+  /**
+   * Every answer names a question of this survey and a value that question
+   * can hold. Shared by a family's submit and the teacher's sheet, so the two
+   * cannot come to accept different things.
+   */
+  private assertValidAnswers(
+    questions: QuestionForValidation[],
+    answers: { questionId: string; value: unknown }[],
+  ) {
+    const validQuestionIds = new Set(questions.map((q) => q.id));
+    for (const answer of answers) {
       if (!validQuestionIds.has(answer.questionId)) {
         throw new BadRequestException("Асуулт олдсонгүй");
       }
@@ -610,10 +797,9 @@ export class SurveysService {
      * would know which of the two it was. Zod cannot do this check: the valid
      * keys live in the question's own `options`.
      */
-    const withQuestions = await this.repo.findWithQuestions(surveyId);
-    const questionById = new Map((withQuestions?.questions ?? []).map((q) => [q.id, q]));
+    const questionById = new Map(questions.map((q) => [q.id, q]));
 
-    for (const answer of dto.answers) {
+    for (const answer of answers) {
       const question = questionById.get(answer.questionId);
       if (question?.type !== "MATRIX") continue;
 
@@ -653,7 +839,7 @@ export class SurveysService {
      * failure the matrix note describes, in a type a parent meets far more
      * often.
      */
-    for (const answer of dto.answers) {
+    for (const answer of answers) {
       const question = questionById.get(answer.questionId);
       if (question?.type !== "SINGLE_CHOICE") continue;
 
@@ -662,23 +848,154 @@ export class SurveysService {
         throw new BadRequestException("Сонголтод байхгүй хариулт сонгосон");
       }
     }
+  }
 
-    const response = await this.repo.createResponse(
-      { kindergartenId: survey.kindergartenId, surveyId, childId, respondentId: actor.userId },
-      dto.answers,
+  /**
+   * May this actor write this child's answer to a teacher survey?
+   *
+   * ★ `assertCanRecord`, not `assertCanAccess`: an assessment is something
+   * written *about* a child, which is the same right an observation needs —
+   * the child's assigned teacher or an administrator. A guardian passes
+   * `canAccessChild` and must not pass this; that is the whole difference
+   * between this survey and a family's (404, §1.7).
+   *
+   * The child must also be one the survey is for — its group when it names
+   * one, and this kindergarten either way.
+   */
+  private async assertCanAssess(
+    actor: Actor,
+    survey: { kindergartenId: string; groupId: string | null },
+    childId: string | null | undefined,
+  ): Promise<string> {
+    if (!childId) throw new BadRequestException("Хүүхэд сонгоно уу");
+
+    const facts = await this.childAccess.assertCanRecord(actor, childId);
+    if (!childKindergartenIds(facts).has(survey.kindergartenId)) throw new NotFoundException();
+
+    if (survey.groupId) {
+      const groupId = await this.repo.activeGroupIdForChild(childId);
+      if (groupId !== survey.groupId) {
+        throw new BadRequestException("Энэ хүүхэд судалгааны бүлэгт харьяалагдахгүй");
+      }
+    }
+    return childId;
+  }
+
+  /**
+   * Which children this actor may fill a teacher survey in for, as a group
+   * filter — or 404 when the answer is none of the survey's.
+   *
+   * ★ The groups come from the actor's live `GroupTeacher` rows (§1.3), the
+   * same read `canAccessChild` makes, so the sheet cannot show a child the
+   * single-child submit would refuse. An administrator reaches every group.
+   */
+  private async teacherSheetScope(
+    actor: Actor,
+    survey: { kindergartenId: string; groupId: string | null; respondent: string },
+  ): Promise<string[] | "all"> {
+    if (survey.respondent !== "TEACHER") throw new NotFoundException();
+    this.tenants.assertStaff(actor, survey.kindergartenId);
+
+    if (hasRoleIn(actor, Role.ADMIN, survey.kindergartenId)) {
+      return survey.groupId ? [survey.groupId] : "all";
+    }
+
+    const teaching = await this.authz.loadActiveTeachingGroupIds(actor);
+    if (survey.groupId) {
+      if (!teaching.includes(survey.groupId)) throw new NotFoundException();
+      return [survey.groupId];
+    }
+    return teaching;
+  }
+
+  /**
+   * A teacher survey as one table — a row per child, with whatever has been
+   * written for them. Client, 2026-09-21.
+   */
+  async teacherSheet(actor: Actor, surveyId: string) {
+    const survey = await this.repo.findWithQuestions(surveyId);
+    if (!survey) throw new NotFoundException();
+    const groupIds = await this.teacherSheetScope(actor, survey);
+
+    const roster =
+      groupIds !== "all" && groupIds.length === 0
+        ? []
+        : await this.repo.teacherSheetRoster(survey.kindergartenId, groupIds);
+    const responses = await this.repo.teacherSheetResponses(
+      surveyId,
+      roster.map((row) => row.child.id),
+    );
+    const byChild = new Map(responses.map((row) => [row.childId, row]));
+
+    return {
+      survey,
+      rows: roster.map(({ child, group }) => {
+        const response = byChild.get(child.id);
+        return {
+          child,
+          group,
+          response: response
+            ? {
+                id: response.id,
+                submittedAt: response.submittedAt.toISOString(),
+                respondent: response.respondent,
+                answers: response.answers,
+              }
+            : null,
+        };
+      }),
+    };
+  }
+
+  /**
+   * Saves the sheet — each row the child's complete answers, written or
+   * corrected. Only while the survey is open, only for children on this
+   * actor's sheet: a child outside it is 404, whatever the reason (§1.7).
+   */
+  async saveTeacherSheet(actor: Actor, surveyId: string, dto: SaveTeacherSheetDto) {
+    const survey = await this.repo.findWithQuestions(surveyId);
+    if (!survey) throw new NotFoundException();
+    const groupIds = await this.teacherSheetScope(actor, survey);
+
+    if (survey.status !== "PUBLISHED") {
+      throw new BadRequestException("Энэ судалгаа одоогоор бөглөх боломжгүй байна");
+    }
+
+    const roster =
+      groupIds !== "all" && groupIds.length === 0
+        ? []
+        : await this.repo.teacherSheetRoster(survey.kindergartenId, groupIds);
+    const allowed = new Set(roster.map((row) => row.child.id));
+    if (dto.responses.some((row) => !allowed.has(row.childId))) throw new NotFoundException();
+
+    for (const row of dto.responses) this.assertValidAnswers(survey.questions, row.answers);
+
+    const existing = await this.repo.teacherSheetResponses(
+      surveyId,
+      dto.responses.map((row) => row.childId),
     );
 
-    await this.audit.append({
-      action: "CREATE",
-      kindergartenId: survey.kindergartenId,
-      actorUserId: actor.userId,
-      objectType: "SurveyResponse",
-      objectId: response.id,
-      childId: childId ?? undefined,
-      metadata: { surveyId },
-    });
+    const created = await this.repo.saveTeacherSheet(
+      { kindergartenId: survey.kindergartenId, surveyId, respondentId: actor.userId },
+      dto.responses,
+      existing.map((row) => row.id),
+    );
 
-    return response;
+    const replaced = new Map(existing.map((row) => [row.childId, row.id]));
+    for (const row of created) {
+      const before = replaced.get(row.childId);
+      await this.audit.append({
+        action: before ? "UPDATE" : "CREATE",
+        kindergartenId: survey.kindergartenId,
+        actorUserId: actor.userId,
+        objectType: "SurveyResponse",
+        objectId: row.id,
+        childId: row.childId ?? undefined,
+        metadata: { surveyId, ...(before ? { replaces: before } : {}) },
+      });
+    }
+
+    return { saved: created.length };
   }
 
   // ── Results — staff only ────────────────────────────────────────────────
@@ -975,6 +1292,8 @@ export class SurveysService {
       description: source.description,
       category: source.category,
       scope: source.scope,
+      // A teacher assessment cloned for the next wave is still one.
+      respondent: source.respondent,
       createdById: actor.userId,
       schoolYear: dto.schoolYear ?? source.schoolYear,
       period: dto.period ?? null,
@@ -1007,7 +1326,7 @@ export class SurveysService {
     if (!survey) throw new NotFoundException();
     this.tenants.assertStaff(actor, survey.kindergartenId);
 
-    const { endWave, baseWave } = await this.loadPair(surveyId, baselineId);
+    const { endWave, baseWave, raw } = await this.loadPair(surveyId, baselineId);
 
     if (!baseWave) {
       return {
@@ -1030,9 +1349,34 @@ export class SurveysService {
       endline: { id: endWave.id, title: endWave.title, publishedAt: endWave.publishedAt ?? null },
       indicators: compareWaves(baseWave, endWave),
       questions: compareQuestions(baseWave, endWave),
-      children: compareWavesByChild(baseWave, endWave),
+      children: await this.withChildNames(
+        compareWavesByChild(baseWave, endWave),
+        raw.kindergartenId,
+        raw.isAnonymous,
+      ),
       note: null,
     };
+  }
+
+  /**
+   * Names each child's progress row — client, 2026-09-21, for the teacher
+   * survey's "Ахиц дэвшил". One read for the whole list (§3.4).
+   *
+   * ★ Not on an anonymous survey. Its rows already carry only an id, and a
+   * name beside a family's answers is the disclosure the flag exists to stop.
+   */
+  private async withChildNames<T extends { childId: string }>(
+    rows: T[],
+    kindergartenId: string,
+    anonymous: boolean,
+  ) {
+    if (anonymous || rows.length === 0) return rows.map((row) => ({ ...row, child: null }));
+    const children = await this.repo.childNames(
+      rows.map((row) => row.childId),
+      kindergartenId,
+    );
+    const byId = new Map(children.map((child) => [child.id, child]));
+    return rows.map((row) => ({ ...row, child: byId.get(row.childId) ?? null }));
   }
 
   /**
@@ -1190,7 +1534,7 @@ export class SurveysService {
         // The role is not on the response row, and re-reading Membership per
         // response would be an N+1. A response carrying a child is a family's;
         // Module 1.3 asks only to distinguish "багш/эцэг эх", which this does.
-        respondentRole: response.childId ? "GUARDIAN" : "TEACHER",
+        respondentRole: row.respondent === "TEACHER" || !response.childId ? "TEACHER" : "GUARDIAN",
       })),
     };
   }

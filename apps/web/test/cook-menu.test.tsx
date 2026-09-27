@@ -819,8 +819,8 @@ describe("the menu as a spreadsheet", () => {
 
   /*
     ★ Editing a sitting without leaving the day — the client's 2026-09-11
-    report: on the teacher's Өнөөдөр card they expect two small photo buttons
-    on the picture and "засах, хуулах, устгах" behind a ⋮ beside the time.
+    report: on the teacher's Өнөөдөр card they expect a photo button on the
+    picture (one camera since 2026-09-25) and "засах, хуулах, устгах" behind a ⋮ beside the time.
 
     ★★ A parent's screen is unchanged — `family-menu.test.tsx` asserts the same
     card carries none of these when no `actions` are passed.
@@ -837,6 +837,9 @@ describe("the menu as a spreadsheet", () => {
     expect(screen.getByRole("menuitem", { name: "Засах" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: /Хуулах/ })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Устгах" })).toBeInTheDocument();
+    // The photograph's removal lives on this menu since 2026-09-25, and only
+    // when there is a photograph to remove.
+    expect(screen.queryByRole("menuitem", { name: "Зургийг устгах" })).not.toBeInTheDocument();
   });
 
   /*

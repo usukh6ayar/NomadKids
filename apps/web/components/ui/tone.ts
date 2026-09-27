@@ -67,6 +67,28 @@ export const TONE_SURFACE: Record<Tone, string> = {
 };
 
 /**
+ * The accent as a **glyph colour** — the ink, with no tile behind it.
+ *
+ * ★ Added 2026-09-24, at the client's request: "арын өнгөнүүдийг арилгаад
+ * зөвхөн зураасан icon үлдээ". A line icon now carries the accent in its own
+ * strokes rather than sitting on a filled square.
+ *
+ * ★★ `TONE_SURFACE` stays, and is still what the illustrated 3D icons take.
+ * They are drawings with their own colour and shape; the client asked for
+ * those to be left exactly as they are, so the tile behind artwork survives
+ * and only the glyphs lose theirs.
+ */
+export const TONE_GLYPH: Record<Tone, string> = {
+  sky: "text-sky-ink",
+  mint: "text-mint-ink",
+  sun: "text-sun-ink",
+  peach: "text-peach-ink",
+  cornflower: "text-cornflower-ink",
+  teal: "text-teal-ink",
+  pink: "text-pink-ink",
+};
+
+/**
  * A tinted *card* surface — the wash, without claiming the text colour.
  *
  * ★ Deliberately different from `TONE_SURFACE`, and this is the distinction

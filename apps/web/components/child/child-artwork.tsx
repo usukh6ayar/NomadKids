@@ -209,6 +209,50 @@ export function ChildArtwork({ childId, isStaff }: { childId: string; isStaff: b
                       );
                     })}
                   </ol>
+
+                  {works.length >= 2 ? (
+                    <div className="rounded-row border border-border bg-canvas p-3">
+                      <p className="mb-2 text-caption font-semibold text-ink">
+                        Сүүлийн хоёр бүтээлийн ахиц
+                      </p>
+                      <div className="flex items-center justify-center gap-2 sm:gap-4">
+                        {works.slice(-2).map((work, index) => (
+                          <div key={work.id} className="contents">
+                            {index === 1 ? (
+                              <ArrowRight
+                                size={18}
+                                aria-hidden="true"
+                                className="shrink-0 text-muted"
+                              />
+                            ) : null}
+                            <figure className="flex min-w-0 flex-1 flex-col items-center gap-1">
+                              <MediaThumb
+                                mediaId={work.id}
+                                caption={work.caption ?? type}
+                                className="h-28 w-full max-w-[160px]"
+                              />
+                              <figcaption className="text-caption text-muted">
+                                {artworkDate(work) ? formatDate(artworkDate(work)!) : "Огноогүй"}
+                              </figcaption>
+                            </figure>
+                          </div>
+                        ))}
+                      </div>
+                      {isStaff ? (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="mt-3"
+                          onClick={() => {
+                            setComparing(true);
+                            setSelected(works.slice(-2).map((work) => work.id));
+                          }}
+                        >
+                          Эдгээрийг харьцуулах
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </Card>
               </li>
             ))}

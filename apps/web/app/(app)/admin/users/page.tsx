@@ -10,16 +10,35 @@ import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
-import { Tabs, TabButton } from "@/components/ui/tabs";
-import { EsisDataPanel } from "@/components/esis/esis-data-panel";
-import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
-import { useBackdropDismiss } from "@/components/ui/modal-overlay";
-import { StaffDirectory } from "@/components/admin/staff/staff-directory";
-import type { StaffDirectoryRow } from "@/components/admin/staff/staff-model";
+import { StaffDirectory } from "@/components/admin/staff-directory";
 import { fullName } from "@/lib/format";
+import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
+/**
+ * `POST /users/:id/password-reset`.
+ *
+ * The user is echoed back so the dialog can name who the link is for without
+ * trusting the row it was opened from — which may have been refetched in the
+ * meantime. Only the token is used beyond that.
+ */
+
+/** One row of the admin list — the shape both dialogs below edit. */
+
+/**
+ * The roles this screen may hand out.
+ *
+ * ★ From `@kinder/contracts` rather than restated here — 2026-08-30.
+ *
+ * Two more staff roles arrived that day (Тогооч, Нягтлан) and this list was one
+ * of three places spelling the names inline. A local copy is how a fourth
+ * screen ends up offering three roles when the system has five.
+ *
+ * PARENT is deliberately absent from `ASSIGNABLE_ROLES` — a guardian is
+ * created by inviting them against a child, which is what links the family to
+ * the record. Offering it here would make an account with no child attached.
+ */
 const ROLES: { value: Role; label: string }[] = ASSIGNABLE_ROLES.map((value) => ({
   value,
   label: ROLE_LABEL[value],
@@ -64,114 +83,44 @@ export default function AdminUsersPage() {
 
 function AdminStaff() {
   const { primaryKindergartenId } = useSession();
-  const [tab, setTab] = useState<"directory" | "esis">("directory");
+  const [inviting, setInviting] = useState<Role | null>(null);
+
   /*
-   * `null` closes the dialog; an object opens it. The object may carry a
-   * person from the directory — the "Бүртгэл урих" button in the drawer — so
-   * that inviting somebody ESIS already lists does not mean retyping their
-   * name off the row that prompted it.
-   */
-  const [inviting, setInviting] = useState<{ prefill?: StaffDirectoryRow } | null>(null);
-
+    ★ Багш and Ажилтан, as two tables — client, 2026-09-25, with two drawings.
+    The count tiles and the ESIS panels that stood here are not in either, so
+    they went; `StaffDirectory` carries the lists, the person panel and the
+    row actions, and this screen keeps the invitation.
+  */
   return (
-    <div className="flex flex-col gap-5 lg:gap-6">
-      <PageHeader title="Багш, ажилтан" />
-
-      <Tabs label="Харагдац">
-        <TabButton active={tab === "directory"} onClick={() => setTab("directory")}>
-          Жагсаалт
-        </TabButton>
-        <TabButton active={tab === "esis"} onClick={() => setTab("esis")}>
-          ЭСИС мэдээлэл
-        </TabButton>
-      </Tabs>
-
-      {tab === "directory" ? (
-        <StaffDirectory onInvite={(prefill) => setInviting({ prefill })} />
-      ) : (
-        <EsisReference />
-      )}
-
+    <>
+      <StaffDirectory onInvite={setInviting} />
       {inviting && primaryKindergartenId ? (
         <InviteUserDialog
           kindergartenId={primaryKindergartenId}
-          prefill={inviting.prefill}
+          initialRole={inviting}
           onClose={() => setInviting(null)}
         />
       ) : null}
-    </div>
-  );
-}
-
-/**
- * The ministry's own tables, kept for reconciliation.
- *
- * ★ Two panels for the staff question, because ESIS answers it with two
- * services and neither is a subset of the other. `teacher/list` carries the
- * teaching assignment — instructor type, заах аргын нэгдэл, availability — and
- * `school/staff` carries employment: position, job code, years of service, the
- * parent education authority. The directory merges the people; here they stay
- * as the ministry sends them, which is what makes this tab useful for checking
- * one against the other.
- *
- * ★★ The мэргэшлийн зэрэг pair ask for a request number rather than reading on
- * open: a service that needs an id the reader has to supply cannot be called
- * without guessing one, and guessing means asking the ministry about somebody
- * else's application.
- */
-function EsisReference() {
-  return (
-    <div className="flex flex-col gap-6">
-      <EsisDataPanel resource="teachers" title="Багш нар" description="Томилгоо ба заах эрх" />
-      <EsisDataPanel
-        resource="staff"
-        title="Ажилтнууд"
-        description="Эрхлэгч, эмч, тогооч, нягтлан — албан тушаал ба ажил эрхлэлт"
-      />
-      <EsisDataPanel
-        resource="teacherMovements"
-        title="Багшийн шилжилт хөдөлгөөн"
-        description="Томилгоо, шилжилт, чөлөөлөлт — сонгосон огнооноос хойш"
-      />
-      <EsisDataPanel
-        resource="degreeDecisions"
-        title="Мэргэшлийн зэргийн шийдвэрлэлт"
-        description="Хүсэлтийн дугаараар ЭСИС-ийн шийдвэрлэлтийн төлөв"
-      />
-      <EsisDataPanel
-        resource="degreeHistory"
-        title="Мэргэшлийн зэргийн хүсэлтийн түүх"
-        description="Хүсэлтийн дугаараар өөрчлөлтийн түүх"
-      />
-    </div>
+    </>
   );
 }
 
 function InviteUserDialog({
   kindergartenId,
-  prefill,
+  initialRole = "TEACHER",
   onClose,
 }: {
   kindergartenId: string;
-  prefill?: StaffDirectoryRow;
+  /** The section the invitation was started from — Багш or Ажилтан. */
+  initialRole?: Role;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
   const [username, setUsername] = useState("");
-  const [lastName, setLastName] = useState(prefill?.lastName ?? "");
-  const [firstName, setFirstName] = useState(prefill?.firstName ?? "");
+  const [lastName, setLastName] = useState("");
+  const [firstName, setFirstName] = useState("");
   const [email, setEmail] = useState("");
-  /*
-   * ★ The prefill carries a name and never a role.
-   *
-   * Copying a name off an ESIS row saves retyping something the ministry and
-   * this product already agree on. A role is an authorization decision — it is
-   * what `Membership` grants and what every `canAccessChild` check resolves
-   * through — and deriving one from a job title ESIS happens to have recorded
-   * would let the ministry's spreadsheet decide who administers a kindergarten.
-   * So the select opens where it always did and the administrator chooses.
-   */
-  const [role, setRole] = useState<Role>("TEACHER");
+  const [role, setRole] = useState<Role>(initialRole);
 
   const invite = useMutation({
     mutationFn: () =>

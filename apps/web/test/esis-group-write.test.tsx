@@ -178,7 +178,7 @@ describe("Бичих самбар", () => {
        read rather than summarised into a word by this screen.
     */
     expect(await screen.findByText("Илгээгдсэн")).toBeInTheDocument();
-    expect(screen.getByText("Дэлбээ")).toBeInTheDocument();
+    expect(screen.getByText("Дэлбээ бүлэг")).toBeInTheDocument();
     expect(screen.getByText(/Оюун/)).toBeInTheDocument();
     expect(screen.getByText("100006351517832")).toBeInTheDocument();
     expect(screen.getByText("studentGroupId")).toBeInTheDocument();

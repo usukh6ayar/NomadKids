@@ -1,4 +1,3 @@
-import { localDate } from "@kinder/contracts";
 import { screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, stubApi } from "./support/render";
@@ -49,7 +48,7 @@ function stub(data: Record<string, unknown> = board()) {
       body: [
         {
           id: "55555555-5555-4555-8555-555555555555",
-          date: localDate(),
+          date: new Date().toISOString().slice(0, 10),
           dishes: [
             { name: "Сүүтэй овъёосны каш", kind: "BREAKFAST", time: "08:00" },
             { name: "Үхрийн махтай шөл", kind: "SNACK", time: "12:30" },

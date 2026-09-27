@@ -715,10 +715,10 @@ describe("дүрслэл", () => {
   });
 
   /**
-   * The owner's attendance drawing is shared across the whole product and is
-   * silent here: both it and the ring repeat text already visible on the card.
+   * No drawing before the title since 2026-09-25 — the client: "өмнөх icon-ууд
+   * хэрэггүй". The ring repeats text already on the card, so it stays silent.
    */
-  it("uses the shared attendance art without announcing duplicate images", async () => {
+  it("draws no title art and announces no duplicate images", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       {
@@ -731,9 +731,7 @@ describe("дүрслэл", () => {
     const { container } = renderWithProviders(<AttendanceToday />);
     await screen.findByText("50%");
 
-    const art = container.querySelector('img[src*="icon-attendance"]');
-    expect(art).not.toBeNull();
-    expect(art).toHaveAttribute("alt", "");
+    expect(container.querySelector('img[src*="icon-attendance"]')).toBeNull();
     expect(screen.queryByRole("img")).toBeNull();
   });
 
@@ -788,7 +786,7 @@ describe("дүрслэл", () => {
    * the whole statement. The browser pass confirmed it renders that way at
    * 1440, 1280 and 1024.
    */
-  it("keeps the dishes three across at desktop widths", async () => {
+  it("keeps the dishes three across at every width", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       {
@@ -816,8 +814,9 @@ describe("дүрслэл", () => {
     expect(dishes).toHaveLength(3);
 
     const grid = dishes[0]!.parentElement!;
-    expect(grid.className).toContain("lg:grid-cols-3");
-    expect(grid.className).toContain("sm:grid-cols-2");
+    // Three across at every width since 2026-09-25 — 3×2 on a phone.
+    expect(grid.className).toContain("grid-cols-3");
+    expect(grid.className).not.toContain("grid-cols-2");
   });
 
   /**
@@ -828,6 +827,42 @@ describe("дүрслэл", () => {
    * fine. Colour is never the carrier — "Харшил" is, and the warning list
    * below still names who.
    */
+  /*
+    Picture cards — 2026-09-25. A dish with a photograph shows it, named by the
+    dish; one without shows the drawn placeholder, which is decorative.
+  */
+  it("shows each dish's photograph, and a placeholder where there is none", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/kindergartens/33333333-3333-4333-8333-333333333333/menu/with-warnings",
+        body: [
+          {
+            id: "88888888-8888-4888-8888-888888888888",
+            date: TODAY,
+            status: "DRAFT",
+            dishes: [
+              {
+                name: "Бууз",
+                allergenTags: [],
+                photoMediaFileId: "99999999-9999-4999-8999-999999999999",
+              },
+              { name: "Сүү", allergenTags: [] },
+            ],
+            warnings: [],
+          },
+        ],
+      },
+    ]);
+
+    renderWithProviders(<TodayMenu />);
+
+    const buuz = (await screen.findByText("Бууз")).closest("li")!;
+    expect(within(buuz).getByRole("img", { name: "Бууз" })).toBeInTheDocument();
+    const milk = screen.getByText("Сүү").closest("li")!;
+    expect(within(milk).queryByRole("img")).toBeNull();
+  });
+
   it("labels a risky dish rather than only tinting it", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },

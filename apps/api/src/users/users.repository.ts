@@ -95,6 +95,7 @@ export class UsersRepository {
         lastName: true,
         firstName: true,
         specialization: true,
+        qualification: true,
         education: true,
         bio: true,
         isActive: true,
@@ -165,6 +166,7 @@ export class UsersRepository {
         lastName: true,
         firstName: true,
         specialization: true,
+        qualification: true,
         education: true,
         bio: true,
         // RFP §3.3 — профайл зураг. The settings screen previews it, so the id
@@ -378,6 +380,7 @@ export interface UpdateUserData {
   lastName?: string;
   firstName?: string;
   specialization?: string | null;
+  qualification?: string | null;
   education?: string | null;
   bio?: string | null;
   isActive?: boolean;

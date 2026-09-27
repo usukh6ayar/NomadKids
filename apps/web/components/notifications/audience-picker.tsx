@@ -13,7 +13,7 @@ import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { Checkbox, Select } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
-import { fullName, groupLabel } from "@/lib/format";
+import { groupLabel } from "@/lib/format";
 
 /** The roster, already scoped by `canAccessChild` — see the note below. */
 const childListSchema = paginated(childSummarySchema);
@@ -332,7 +332,7 @@ export function AudiencePicker({
                     {childItems.map((child) => (
                       <li key={child.id}>
                         <Checkbox
-                          label={fullName(child)}
+                          label={`${child.lastName ? `${child.lastName} ` : ""}${child.firstName}`}
                           checked={childIds.includes(child.id)}
                           disabled={disabled}
                           onChange={() => toggleChild(child.id)}

@@ -1,63 +1,64 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   ATTENDANCE_FORM_LABEL,
   PROGRAM_KIND_LABEL,
+  adminUserSchema,
   childSummarySchema,
   groupWithTeachersSchema,
   paginated,
-  MAX_PAGE_SIZE,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
-import { useSession } from "@/lib/auth/session";
-import { EsisGroupWrite } from "@/components/esis/esis-group-write";
-import { GroupRosterCheck } from "@/components/admin/groups/group-roster-check";
-import { ManageChildrenDialog } from "@/components/admin/groups/manage-children-dialog";
 import { Badge } from "@/components/ui/badge";
-import { GroupBadge } from "@/components/ui/group-badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
-import { Tabs, TabButton } from "@/components/ui/tabs";
-import { TableShell, Td, Th } from "@/components/ui/table";
-import { Select } from "@/components/ui/field";
-import { SearchField } from "@/components/ui/search-field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
-import { formatAge, fullName, shortName, groupLabel } from "@/lib/format";
+import { formatAge, fullName, shortName } from "@/lib/format";
+import { TableShell, Td, Th } from "@/components/ui/table";
+import { useSession } from "@/lib/auth/session";
+import { ChildRosterTable } from "@/components/child/admin-roster";
 import { Art } from "@/components/ui/art";
-import { GroupGuardianInvitations } from "@/components/child/group-guardian-invitations";
 
 const childrenSchema = paginated(childSummarySchema);
+const staffSchema = paginated(adminUserSchema);
 
 /**
  * One group, in full — "Бүлгийн дэлгэрэнгүй".
  *
- * ★ Built 2026-09-06 at the client's request — "бүлгүүд дотор нэр гэдэг хэсэгт
- * дэлгэрэнгүй харуулдаг хэсэг байх, дараад орохоор дотор нь ирц гэх мэтийг нь
- * засаж болдог боломжийг үүсгэх" — and regrouped 2026-09-23 into two tabs.
- * Everything that was on it is still on it; what changed is that the roster
- * and the group's own facts stopped competing for the same scroll.
+ * ★ New on 2026-09-06, at the client's request: "бүлгүүд дотор нэр гэдэг
+ * хэсэгт дэлгэрэнгүй харуулдаг хэсэг байх, дараад орохоор дотор нь ирц гэх
+ * мэтийг нь засаж болдог боломжийг үүсгэх".
  *
- * ★★ **It reads; the registers write.** The three doors lead to the only
- * places attendance, meals and assessment are recorded. This page does not
- * grow a fourth copy of a register — `/attendance/daily`'s docblock counts
- * three attendance screens and gives each a reason, and a fourth that happened
- * to live inside a group page would be the one nobody could name the purpose
- * of.
+ * `/admin/groups` answered every question about a group *except* "what is this
+ * group": its row carried a name, a band, a year, a count and eight controls,
+ * and the eight controls were the only way in. So a director wanting the roster
+ * and the teachers had to open the assign-a-teacher dialog to read the second
+ * and the children screen with a filter to read the first — two places, neither
+ * of which is about this group.
  *
- * ★★★ **The roster is local, and the ESIS check is a comparison.** The table
- * is `/children?groupId=` — our own `Enrollment` rows, which is what every
- * other screen in the product operates on. `GroupRosterCheck` asks the
- * ministry the same question and reports whether the two agree; it never
- * writes, and the import that does is on `/admin/groups`.
+ * ★★ It reads; the registers write.
+ *
+ * The three doors are the same three the list row's buttons opened, and they
+ * are still the only place attendance, meals or assessment are recorded. This
+ * page does not grow a fourth copy of a register — `/attendance/daily`'s own
+ * docblock counts three attendance screens and gives the reason each exists,
+ * and a fourth that happened to be inside a group page would be the one nobody
+ * could name the purpose of.
+ *
+ * ★★★ The roster is a page of twenty, linking out.
+ *
+ * `/children?groupId=` is the roster proper — it searches, filters, exports and
+ * pages. Repeating that here would be a second children screen; what this
+ * shows is who is in the group, which is the fact a director came for, with a
+ * link to the real list when they want to do something to it.
  */
 export default function GroupDetailPage() {
   return (
@@ -68,383 +69,234 @@ export default function GroupDetailPage() {
 }
 
 function GroupDetail() {
+  const { hasRole, primaryKindergartenId } = useSession();
+  // The director reads this page as two tables — client, 2026-09-25. A
+  // teacher's copy is unchanged.
+  const isAdmin = hasRole("ADMIN");
   const params = useParams<{ groupId: string }>();
   const groupId = params.groupId;
-  const { hasRole, primaryKindergartenId } = useSession();
-  const [tab, setTab] = useState<"children" | "about">("children");
-  const [managingChildren, setManagingChildren] = useState(false);
 
   const group = useQuery({
-    // The same key `ManageTeachersDialog` uses, so arriving from the list
+    // The same key `ManageTeachersDialog` uses, so opening this from the list
     // usually reads a cache that dialog has already filled.
     queryKey: ["admin", "groups", groupId],
     queryFn: () => get(`/groups/${groupId}`, groupWithTeachersSchema),
   });
 
   /*
-   * ★ The whole group, not the first twenty — 2026-09-20, the client asking
-   * for "хүүхдийн жагсаалт хайлт шүүлтүүр байлгая хүснэгтээр". A search box
-   * over twenty of thirty rows is not a search box.
-   *
-   * ★★ `MAX_PAGE_SIZE`, not 200 — 2026-09-26. The API caps every list at 100
-   * and answered this page with «100-аас ихгүй байх ёстой», so opening any
-   * group showed an error. A class of more than a hundred is not a class this
-   * product serves; the ministry's largest in the SIS trial was 45.
-   */
-  const roster = useQuery({
-    queryKey: qk.children({ groupId, page: 1, pageSize: MAX_PAGE_SIZE }),
-    queryFn: () =>
-      get(`/children?groupId=${groupId}&page=1&pageSize=${MAX_PAGE_SIZE}`, childrenSchema),
+    The teachers' telephones — 2026-09-25, "хариуцсан багш хэсэгт Регистр,
+    Утас нэм". The group carries names only; the director's staff list has the
+    telephone, in one request (the same one the teacher dialog makes). No
+    staff account stores a register number, so that column reads "—".
+  */
+  const staff = useQuery({
+    queryKey: qk.adminUsers({ role: "TEACHER" }),
+    queryFn: () => {
+      const params = new URLSearchParams({ page: "1", pageSize: "100", role: "TEACHER" });
+      if (primaryKindergartenId) params.set("kindergartenId", primaryKindergartenId);
+      return get(`/users?${params}`, staffSchema);
+    },
+    enabled: isAdmin,
   });
+  const phoneOf = new Map((staff.data?.items ?? []).map((u) => [u.id, u.phone ?? null]));
 
-  const [query, setQuery] = useState("");
-  const [sex, setSex] = useState("");
-
-  /*
-   * ★ Filtered in the browser: the whole group is already here, so a round
-   * trip per keystroke would be slower and would make the list flicker.
-   *
-   * ★★ `toLocaleLowerCase("mn-MN")` rather than `toLowerCase()`. Cyrillic Ө
-   * and Ү case-fold correctly only under the Mongolian locale, and a director
-   * typing "өнө" for Өнөбилэг must find her.
-   */
-  const visible = useMemo(() => {
-    const needle = query.trim().toLocaleLowerCase("mn-MN");
-    return (roster.data?.items ?? []).filter((child) => {
-      if (sex && child.sex !== sex) return false;
-      if (!needle) return true;
-      /*
-        `fullName`, deliberately, while the rows *render* `shortName`. Matching
-        against "Г.Батбаяр" would stop "Ганболд" finding him — a teacher typing
-        the surname off a document would get an empty list for a child who is
-        in the group.
-      */
-      return fullName(child).toLocaleLowerCase("mn-MN").includes(needle);
-    });
-  }, [roster.data, query, sex]);
+  const roster = useQuery({
+    queryKey: qk.children({ groupId, page: 1, pageSize: 20 }),
+    queryFn: () => get(`/children?groupId=${groupId}&page=1&pageSize=20`, childrenSchema),
+  });
 
   if (group.isLoading) return <LoadingState rows={5} />;
   if (group.isError) return <ErrorState description={errorMessage(group.error)} />;
 
   const data = group.data!;
   // Only assignments that have not ended — `endedOn` is how the API retires one.
-  const teachers = (data.teachers ?? []).filter((teacher) => !teacher.endedOn);
-  const lead = teachers.find((teacher) => teacher.role === "LEAD") ?? teachers[0];
+  const teachers = (data.teachers ?? []).filter((t) => !t.endedOn);
   const isArchived = data.status === "ARCHIVED";
-  const childCount = data._count?.enrollments ?? 0;
 
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
         backHref="/admin/groups"
-        title={groupLabel(data.name)}
-        /*
-          In the header rather than beside the roster: it acts on the whole
-          group, and a control that acts on a list belongs above it.
-        */
-        actions={<GroupGuardianInvitations groupId={groupId} groupName={groupLabel(data.name)} />}
+        title={data.name}
         meta={
           <>
-            <GroupBadge name={data.name} ageBand={data.ageBand} size="sm" />
-            <Badge tone="mint">{childCount} суралцагч</Badge>
-            {/*
-              ★ The lead teacher in the header — "Бага бүлэг → 21 хүүхэд →
-              Г.Баяр багш" is the sentence this screen exists to say, and it
-              was two scrolls apart before.
-            */}
-            {lead ? (
-              <span className="text-caption text-muted">
-                Үндсэн багш: <span className="text-ink">{shortName(lead.membership?.user)}</span>
-              </span>
-            ) : (
-              <Badge tone="sun">Багш тохируулаагүй</Badge>
-            )}
             {isArchived ? <Badge tone="neutral">Архивласан</Badge> : null}
-            {/* The ordinary case gets no badge, so the exceptions are what the eye finds. */}
+            {/*
+              Same rule the list row follows: the ordinary case gets no badge,
+              so the exceptions are what the eye finds.
+            */}
             {data.programKind === "ALTERNATIVE" ? (
               <Badge tone="sky">{PROGRAM_KIND_LABEL.ALTERNATIVE}</Badge>
             ) : null}
             {data.attendanceForm && data.attendanceForm !== "STANDARD" ? (
               <Badge tone="sun">{ATTENDANCE_FORM_LABEL[data.attendanceForm]}</Badge>
             ) : null}
+            {isAdmin ? null : <Badge tone="mint">{data._count?.enrollments ?? 0} хүүхэд</Badge>}
           </>
         }
       />
 
       {/*
-        ★ The three registers, as doors rather than as a toolbar — the reason
-        the client asked for this page ("дараад орохоор дотор нь ирцийг нь засаж
-        болдог"), so they are the first thing on it and they are the size of
-        something you are meant to press.
+        ★ The three registers, as doors rather than as a toolbar.
 
-        They stay links rather than joining the tab strip below: a tab that
-        navigates away is a tab you cannot come back from, and these three are
-        whole screens with their own group switcher.
+        This is the reason the client asked for the page — "дараад орохоор
+        дотор нь ирцийг нь засаж болдог" — so they are the first thing on it and
+        they are the size of something you are meant to press, not three ghost
+        buttons in a row's gutter.
       */}
-      <div className="grid gap-2.5 sm:grid-cols-3">
-        <RegisterDoor
-          href={`/groups/${groupId}/attendance`}
-          icon={<Art name="attendance" size={28} className="size-7" />}
-          title="Ирц"
-          hint="Өдрийн ирц бүртгэх"
-        />
-        <RegisterDoor
-          href={`/groups/${groupId}/meals`}
-          icon={<Art name="food" size={28} className="size-7" />}
-          title="Хоол"
-          hint="Хоолны бүртгэл"
-        />
-        <RegisterDoor
-          href={`/groups/${groupId}/assessment`}
-          icon={<Art name="progress" size={28} className="size-7" />}
-          title="Явцын үнэлгээ"
-          hint="Улирлын үнэлгээ"
-        />
-      </div>
-
-      <Tabs label="Бүлгийн харагдац">
-        <TabButton
-          active={tab === "children"}
-          onClick={() => setTab("children")}
-          count={childCount}
-        >
-          Суралцагчид
-        </TabButton>
-        <TabButton active={tab === "about"} onClick={() => setTab("about")}>
-          Мэдээлэл
-        </TabButton>
-      </Tabs>
-
-      {tab === "children" ? (
-        <>
-          {roster.isLoading ? <LoadingState rows={4} /> : null}
-          {roster.isError ? <ErrorState description={errorMessage(roster.error)} /> : null}
-
-          {roster.data && roster.data.items.length === 0 ? (
-            <EmptyState
-              title="Суралцагч бүртгэгдээгүй"
-              description="Энэ бүлэгт суралцагч бүртгэгдээгүй байна. «Бүлгүүд» хэсгээс ЭСИС-ээс татах боломжтой."
-            />
-          ) : null}
-
-          {roster.data && roster.data.items.length > 0 ? (
-            <>
-              <div className="flex flex-wrap items-center gap-3">
-                <SearchField
-                  label="Суралцагчийн нэрээр хайх"
-                  placeholder="Нэрээр хайх…"
-                  value={query}
-                  onChange={setQuery}
-                  className="sm:max-w-[320px]"
-                />
-                <Select
-                  aria-label="Хүйсээр шүүх"
-                  value={sex}
-                  onChange={(event) => setSex(event.target.value)}
-                  className="w-full sm:w-[160px]"
-                >
-                  <option value="">Бүх хүйс</option>
-                  <option value="MALE">Хүү</option>
-                  <option value="FEMALE">Охин</option>
-                </Select>
-                <span className="rounded-pill bg-primary-soft px-3 py-1.5 text-caption font-semibold text-primary">
-                  {visible.length} / {roster.data.total}
-                </span>
-                <span className="ms-auto flex flex-wrap gap-2">
-                  {/*
-                    ★ The director's only — `POST /children/:id/enrollments`
-                    and `PATCH /enrollments/:id` are both `@Roles("ADMIN")`, and
-                    a teacher shown a button that always answers 403 is worse
-                    off than one who never sees it.
-                  */}
-                  {hasRole("ADMIN") ? (
-                    <Button variant="secondary" size="sm" onClick={() => setManagingChildren(true)}>
-                      Суралцагч хуваарилах
-                    </Button>
-                  ) : null}
-                  <Button asChild variant="secondary" size="sm">
-                    <Link href={`/children?groupId=${groupId}`}>Бүх жагсаалт</Link>
-                  </Button>
-                </span>
-              </div>
-
-              {/*
-                ★ The ministry's own count for this class, beside ours. It is a
-                comparison and never a correction — see `GroupRosterCheck`.
-              */}
-              <GroupRosterCheck esisGroupId={data.esisGroupId} localCount={roster.data.total} />
-
-              {/*
-                ★ A filter that matches nothing is not an empty group, and must
-                not read as one. The empty state above says "nobody is
-                enrolled"; this one says "nobody matches", which is the only
-                difference that matters to somebody who has just typed a name.
-              */}
-              {visible.length === 0 ? (
-                <EmptyState
-                  title="Хайлтад тохирох суралцагч олдсонгүй"
-                  description="Хайлт, шүүлтээ өөрчилж үзнэ үү."
-                />
-              ) : (
-                /*
-                  ★ `min-w-0` and `stacked`: the client's 2026-09-09 rule is no
-                  sideways scroll, and a pixel floor is what breaks it.
-                */
-                <TableShell caption="Бүлгийн суралцагчид" minWidth="min-w-0" stacked>
-                  <thead>
-                    <tr>
-                      <Th>Нэр</Th>
-                      <Th>Регистр</Th>
-                      <Th>Хүйс</Th>
-                      <Th>Нас</Th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visible.map((child) => (
-                      <tr key={child.id}>
-                        <Td data-label="Нэр">
-                          <Link
-                            href={`/children/${child.id}/general`}
-                            className="flex min-w-0 items-center gap-2.5 font-medium text-primary hover:underline"
-                          >
-                            <ChildAvatar child={child} size={28} />
-                            <span className="min-w-0 truncate">{shortName(child)}</span>
-                          </Link>
-                        </Td>
-                        {/*
-                          ★ A foreign child's identifier is labelled as one
-                          rather than rendering as a bare number, and an
-                          unrecorded регистр is "—": a dash for a гадаад иргэн
-                          reads identically to a dash for a child whose регистр
-                          nobody has typed yet, and only the second is
-                          somebody's to-do.
-                        */}
-                        <Td data-label="Регистр" className="tabular-nums text-muted">
-                          {child.isForeign ? (
-                            child.foreignId ? (
-                              `${child.foreignId} (гадаад)`
-                            ) : (
-                              <span className="text-faint">Гадаад иргэн</span>
-                            )
-                          ) : (
-                            child.nationalId || <span className="text-faint">—</span>
-                          )}
-                        </Td>
-                        <Td data-label="Хүйс" className="text-muted">
-                          {child.sex ? (child.sex === "FEMALE" ? "Охин" : "Хүү") : "—"}
-                        </Td>
-                        <Td data-label="Нас" className="tabular-nums text-muted">
-                          {child.dateOfBirth ? formatAge(child.dateOfBirth) : "—"}
-                        </Td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </TableShell>
-              )}
-            </>
-          ) : null}
-        </>
-      ) : (
-        <GroupAbout
-          groupId={groupId}
-          groupName={groupLabel(data.name)}
-          teachers={teachers}
-          schoolYear={data.schoolYear?.name ?? null}
-          isAdmin={hasRole("ADMIN")}
-          kindergartenId={primaryKindergartenId}
-        />
+      {/*
+        A director's copy carries no doors — client, 2026-09-25 ("эдгээр
+        арилга"). The registers are a teacher's work; a teacher's copy keeps them.
+      */}
+      {isAdmin ? null : (
+        <div className="grid gap-2.5 sm:grid-cols-3">
+          <RegisterDoor
+            href={`/groups/${groupId}/attendance`}
+            icon={<Art name="attendance" size={28} className="size-7" />}
+            tone="bg-transparent"
+            title="Ирц"
+            hint="Өдрийн ирц бүртгэх"
+          />
+          <RegisterDoor
+            href={`/groups/${groupId}/meals`}
+            icon={<Art name="food" size={28} className="size-7" />}
+            tone="bg-transparent"
+            title="Хоол"
+            hint="Хоолны бүртгэл"
+          />
+          <RegisterDoor
+            href={`/groups/${groupId}/assessment`}
+            icon={<Art name="progress" size={28} className="size-7" />}
+            tone="bg-transparent"
+            title="Явцын үнэлгээ"
+            hint="Улирлын үнэлгээ"
+          />
+        </div>
       )}
 
-      {managingChildren ? (
-        <ManageChildrenDialog
-          groupId={groupId}
-          groupName={groupLabel(data.name)}
-          onClose={() => setManagingChildren(false)}
+      {isAdmin ? (
+        <section className="flex flex-col gap-2.5">
+          <SectionHeader title="Хариуцсан багш" as="h2" />
+          {teachers.length === 0 ? (
+            <p className="text-body text-muted">
+              Багш хуваарилаагүй байна. Бүлгүүд хуудсаас хуваарилна.
+            </p>
+          ) : (
+            <TableShell caption="Бүлгийн багш нар" minWidth="min-w-0">
+              <thead>
+                <tr>
+                  <Th>Үүрэг</Th>
+                  <Th>Нэр</Th>
+                  <Th>Регистр</Th>
+                  <Th>Утас</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...teachers]
+                  .sort((a, b) => Number(b.role === "LEAD") - Number(a.role === "LEAD"))
+                  .map((assignment) => (
+                    <tr key={assignment.id}>
+                      <Td className="text-muted">
+                        {assignment.role === "LEAD" ? "Бүлгийн багш" : "Туслах багш"}
+                      </Td>
+                      <Td className="font-medium text-ink">
+                        {assignment.membership?.user ? shortName(assignment.membership.user) : "—"}
+                      </Td>
+                      {/* Not on a staff account yet. */}
+                      <Td className="text-faint">—</Td>
+                      <Td className="tabular-nums text-muted">
+                        {(assignment.membership?.user &&
+                          phoneOf.get(assignment.membership.user.id)) ||
+                          "—"}
+                      </Td>
+                    </tr>
+                  ))}
+              </tbody>
+            </TableShell>
+          )}
+        </section>
+      ) : (
+        <Card pad="roomy">
+          <SectionHeader title="Хариуцсан багш" as="h2" />
+          {teachers.length === 0 ? (
+            <p className="text-body text-muted">
+              Багш хуваарилаагүй байна. Бүлгүүд хуудсаас хуваарилна.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {teachers.map((assignment) => (
+                <li key={assignment.id} className="flex items-center gap-2">
+                  <span className="text-body text-ink">
+                    {assignment.membership?.user ? fullName(assignment.membership.user) : "—"}
+                  </span>
+                  {assignment.role ? (
+                    <Badge tone={assignment.role === "LEAD" ? "sky" : "neutral"}>
+                      {assignment.role === "LEAD" ? "Үндсэн" : "Туслах"}
+                    </Badge>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
+
+      <SectionHeader
+        title="Бүлгийн хүүхдүүд"
+        as="h2"
+        action={
+          <Button asChild variant="secondary" size="sm">
+            <Link href={`/children?groupId=${groupId}`}>Бүх жагсаалт</Link>
+          </Button>
+        }
+      />
+
+      {roster.isLoading ? <LoadingState rows={4} /> : null}
+      {roster.isError ? <ErrorState description={errorMessage(roster.error)} /> : null}
+
+      {roster.data && roster.data.items.length === 0 ? (
+        <EmptyState
+          title="Хүүхэд бүртгэгдээгүй"
+          description="Энэ бүлэгт идэвхтэй бүртгэлтэй хүүхэд алга байна."
         />
       ) : null}
-    </div>
-  );
-}
-
-/**
- * The Мэдээлэл tab — who teaches the group, and where that stands with ESIS.
- *
- * ★ **The two registers are reported separately, deliberately.** The local
- * `GroupTeacher` row is what NomadKids authorizes on and it is in force the
- * moment it is written; the ministry's `groupInstructor` record is a separate,
- * approved write that a director prepares, reads in full and sends. Showing
- * one tick for both would claim something no press has done — so this says
- * "NomadKids ✓" for the half that is certain and leaves the other half to the
- * panel that performs it.
- */
-function GroupAbout({
-  groupId,
-  groupName,
-  teachers,
-  schoolYear,
-  isAdmin,
-  kindergartenId,
-}: {
-  groupId: string;
-  groupName: string;
-  teachers: {
-    id: string;
-    role?: string | null;
-    membership?: { user?: { lastName?: string | null; firstName?: string | null } | null } | null;
-  }[];
-  schoolYear: string | null;
-  isAdmin: boolean;
-  kindergartenId: string | null;
-}) {
-  return (
-    <div className="flex flex-col gap-4">
-      <Card pad="roomy">
-        <SectionHeader title="Хариуцсан багш" as="h2" />
-        {teachers.length === 0 ? (
-          <p className="text-body text-muted">
-            Багш тохируулаагүй байна. «Бүлгүүд» хэсгээс хуваарилна уу.
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {teachers.map((assignment) => (
-              <li key={assignment.id} className="flex flex-wrap items-center gap-2">
-                {/*
-                  "С.Бямбараш" — the client's own example, 2026-09-22. A header
-                  carrying a lead and an assistant side by side wraps onto a
-                  second line on a phone with two full Mongolian names.
-                */}
-                <span className="text-body text-ink">
-                  {assignment.membership?.user ? shortName(assignment.membership.user) : "—"}
-                </span>
-                <Badge tone={assignment.role === "ASSISTANT" ? "neutral" : "sky"}>
-                  {assignment.role === "ASSISTANT" ? "Туслах" : "Үндсэн"}
-                </Badge>
-                <Badge tone="mint">NomadKids ✓</Badge>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {teachers.length > 0 && isAdmin ? (
-          <p className="mt-3 text-caption leading-relaxed text-muted">
-            Энэ хуваарилалт NomadKids-ийн эрхэд хүчинтэй. ЭСИС-ийн бүртгэлд тусгахын тулд доорх
-            «Багш тохируулах»-аар баталгаажуулж илгээнэ.
-          </p>
-        ) : null}
-
-        {schoolYear ? (
-          <p className="mt-3 text-caption text-muted">Хичээлийн жил: {schoolYear}</p>
-        ) : null}
-      </Card>
 
       {/*
-        ★ The director's only. The routes behind it are `@Roles("ADMIN")`, and
-        a teacher seeing a button that always answers 403 is worse than not
-        seeing it — the client's 2026-09-14 rule puts the ministry's register
-        of this kindergarten's classes on the director.
+        ★ The director's roster table, the same one Суралцагч draws — client,
+        2026-09-25: the group's children "ийм загвараар".
       */}
-      {isAdmin && kindergartenId ? (
-        <EsisGroupWrite kindergartenId={kindergartenId} groupId={groupId} groupName={groupName} />
+      {isAdmin && roster.data && roster.data.items.length > 0 ? (
+        <ChildRosterTable caption="Бүлгийн хүүхдүүд" items={roster.data.items} />
+      ) : null}
+
+      {!isAdmin && roster.data && roster.data.items.length > 0 ? (
+        <Card className="divide-y divide-border">
+          {roster.data.items.map((child) => (
+            <Link
+              key={child.id}
+              href={`/children/${child.id}/general`}
+              className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-sunken"
+            >
+              <ChildAvatar child={child} size={36} />
+              <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">
+                {fullName(child)}
+              </span>
+              {child.dateOfBirth ? (
+                <span className="shrink-0 text-caption text-muted">
+                  {formatAge(child.dateOfBirth)}
+                </span>
+              ) : null}
+            </Link>
+          ))}
+        </Card>
+      ) : null}
+
+      {/* The roster is capped at twenty; say so rather than let a group of
+          thirty look like a group of twenty. */}
+      {roster.data && roster.data.total > roster.data.items.length ? (
+        <p className="text-caption text-muted">
+          Нийт {roster.data.total} хүүхдээс эхний {roster.data.items.length} нь харагдаж байна.
+        </p>
       ) : null}
     </div>
   );
@@ -453,11 +305,13 @@ function GroupAbout({
 function RegisterDoor({
   href,
   icon,
+  tone,
   title,
   hint,
 }: {
   href: string;
   icon: React.ReactNode;
+  tone: string;
   title: string;
   hint: string;
 }) {
@@ -466,7 +320,9 @@ function RegisterDoor({
       href={href}
       className="flex min-h-[64px] items-center gap-3 rounded-row border border-border bg-surface px-3.5 py-3 transition-colors hover:border-primary/40 hover:bg-canvas"
     >
-      <span className="grid size-10 shrink-0 place-items-center rounded-control">{icon}</span>
+      <span className={`grid size-10 shrink-0 place-items-center rounded-control ${tone}`}>
+        {icon}
+      </span>
       <span className="min-w-0">
         <span className="block truncate text-body font-semibold text-ink">{title}</span>
         <span className="block truncate text-caption text-muted">{hint}</span>

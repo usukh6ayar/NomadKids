@@ -101,7 +101,7 @@ function Legend({ tone, label, value }: { tone: "mint" | "sun"; label: string; v
     <li className="flex items-center gap-1.5 text-caption text-muted">
       <span
         aria-hidden="true"
-        className={`size-2.5 shrink-0 rounded-pill ${tone === "mint" ? "bg-mint-ink" : "bg-sun-ink"}`}
+        className={`size-2.5 shrink-0 rounded-pill ${tone === "mint" ? "bg-mint-chart" : "bg-sun-chart"}`}
       />
       {label}
       <span className="font-semibold tabular-nums text-ink">{value}</span>

@@ -111,7 +111,7 @@ function InvoiceDetail() {
     <div className="flex flex-col gap-5 lg:gap-6">
       <PageHeader
         backHref="/invoices"
-        title={`${data.child.lastName ? `${data.child.lastName} ` : ""}${capitalize(data.child.firstName)}`}
+        title={`${data.child.lastName ? `${data.child.lastName} ` : ""}${data.child.firstName}`}
         // `month` comes back as an ISO date (`DateTime @db.Date` — see the
         // model's own comment) — sliced to `YYYY-MM` for `formatMonthLabel`.
         actions={<Badge tone={STATUS_TONE[data.status]}>{INVOICE_STATUS_LABEL[data.status]}</Badge>}

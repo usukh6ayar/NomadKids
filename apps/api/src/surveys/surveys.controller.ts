@@ -1,10 +1,11 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query, Res } from "@nestjs/common";
 import type { Response } from "express";
-import { idParamSchema, uuidSchema } from "@kinder/contracts";
+import { idParamSchema, paginationQuerySchema, uuidSchema } from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
 import type { Actor } from "../authz/actor";
+import type { PageParams } from "../common/pagination";
 import { SurveysService } from "./surveys.service";
 import {
   addPollOptionSchema,
@@ -13,6 +14,7 @@ import {
   createSurveySchema,
   questionAnswersParamsSchema,
   saveQuestionsSchema,
+  saveTeacherSheetSchema,
   submitResponseSchema,
   surveyResultsQuerySchema,
   type AddPollOptionDto,
@@ -20,6 +22,7 @@ import {
   type CompareSurveyQuery,
   type CreateSurveyDto,
   type SaveQuestionsDto,
+  type SaveTeacherSheetDto,
   type SubmitResponseDto,
   type SurveyResultsQuery,
 } from "./surveys.dto";
@@ -36,6 +39,30 @@ export class KindergartenSurveysController {
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
   ) {
     return this.service.listForKindergarten(actor, params.id);
+  }
+
+  /**
+   * The administration's surveys this staff member is shown — "Удирдлагын
+   * судалгаа". Read-only; see `SurveysService.listFromAdministration`.
+   */
+  @Get("administration")
+  @Roles("TEACHER", "ADMIN")
+  async listFromAdministration(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(paginationQuerySchema)) query: PageParams,
+  ) {
+    return this.service.listFromAdministration(actor, params.id, query);
+  }
+
+  /** How many of them this person has not opened — the badge and the bell. */
+  @Get("administration/unread-count")
+  @Roles("TEACHER", "ADMIN")
+  async administrationUnreadCount(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.administrationUnreadCount(actor, params.id);
   }
 
   @Post()
@@ -117,6 +144,49 @@ export class ChildSurveysController {
 @Controller("surveys")
 export class SurveysController {
   constructor(private readonly service: SurveysService) {}
+
+  /** One of the administration's surveys, read-only, if this reader is shown it. */
+  @Get(":id/administration")
+  @Roles("TEACHER", "ADMIN")
+  async getFromAdministration(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.getFromAdministration(actor, params.id);
+  }
+
+  /** Records that this reader opened it. Idempotent. */
+  @Post(":id/administration/seen")
+  @Roles("TEACHER", "ADMIN")
+  async markSeenFromAdministration(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.markSeenFromAdministration(actor, params.id);
+  }
+
+  /**
+   * A teacher survey as one table, a row per child — client, 2026-09-21.
+   * Read and saved whole.
+   */
+  @Get(":id/teacher-sheet")
+  @Roles("TEACHER", "ADMIN")
+  async teacherSheet(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.teacherSheet(actor, params.id);
+  }
+
+  @Put(":id/teacher-sheet")
+  @Roles("TEACHER", "ADMIN")
+  async saveTeacherSheet(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(saveTeacherSheetSchema)) body: SaveTeacherSheetDto,
+  ) {
+    return this.service.saveTeacherSheet(actor, params.id, body);
+  }
 
   @Get(":id")
   @Roles("TEACHER", "ADMIN")

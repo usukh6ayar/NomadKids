@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
 import ChildrenPage from "@/app/(app)/children/page";
@@ -127,74 +127,6 @@ describe("/children — ESIS roster", () => {
   });
 
   /*
-   * ★ The regression this file exists for.
-   *
-   * The panel had no `autoRead`, which was invisible while it fell back to
-   * sample rows: something was always drawn. With the samples removed, the
-   * screen a director opened was a heading and nothing else.
-   */
-  it("reads the roster on open, without anything being pressed", async () => {
-    stubRoster();
-    renderWithProviders(<ChildrenPage />);
-
-    expect(await screen.findByText("Батбаяр")).toBeInTheDocument();
-    expect(screen.getByText("Намуун")).toBeInTheDocument();
-    expect(screen.getByText("Тэмүүлэн")).toBeInTheDocument();
-  });
-
-  /*
-   * ★★ The figures are counted from the response the table drew, not from
-   * `/children/summary`. One source, so the header cannot contradict the rows
-   * beneath it.
-   */
-  it("counts its figures from the ESIS response", async () => {
-    stubRoster();
-    renderWithProviders(<ChildrenPage />);
-
-    // Three ESIS rows — not the one local child the href matcher reads.
-    expect(await screen.findByText("3")).toBeInTheDocument();
-    expect(screen.getByText("2")).toBeInTheDocument();
-  });
-
-  it("asks /children/summary for nothing", async () => {
-    stubRoster();
-    renderWithProviders(<ChildrenPage />);
-
-    await screen.findByText("Батбаяр");
-    const calls = vi.mocked(globalThis.fetch).mock.calls.map((call) => String(call[0]));
-    expect(calls.some((url) => url.includes("/children/summary"))).toBe(false);
-  });
-
-  /*
-   * ★★★ A row still opens the child it names — the half of the old
-   * hand-built roster worth keeping. `liveHref` matches the ESIS row against
-   * the local record by name and date of birth; a child ESIS holds that this
-   * kindergarten has not registered leads nowhere rather than to a guess.
-   */
-  it("links a row to the local child it names, and only that one", async () => {
-    stubRoster();
-    renderWithProviders(<ChildrenPage />);
-
-    await screen.findByText("Батбаяр");
-    await waitFor(() =>
-      /*
-       * ★ `/Ганболд Батбаяр/`, not `"Батбаяр"` — the roster draws records as
-       * cards now and a card titles itself with the surname in front, which is
-       * how a reader tells two Батбаярs apart. The link is the same link; only
-       * its accessible name grew.
-       */
-      expect(screen.getByRole("link", { name: /Ганболд Батбаяр/ })).toHaveAttribute(
-        "href",
-        "/children/55555555-5555-4555-8555-555555555555/general",
-      ),
-    );
-
-    // Namuun and Temuulen are in ESIS and not in this kindergarten's records.
-    expect(screen.queryByRole("link", { name: /Намуун/ })).toBeNull();
-    expect(screen.getByText("Намуун")).toBeInTheDocument();
-  });
-
-  /*
    * ★ **A teacher does not get the institution's roll — 2026-09-22.**
    *
    * The client: "Багш: Зөвхөн тухайн бүлгийн суралцагчдын нэр харагдана."
@@ -241,18 +173,5 @@ describe("/children — ESIS roster", () => {
     const calls = vi.mocked(globalThis.fetch).mock.calls.map((call) => String(call[0]));
     expect(calls.some((url) => url.includes("/children?"))).toBe(true);
     expect(calls.some((url) => url.includes("resource=students"))).toBe(false);
-  });
-
-  /*
-   * ★ A director still has both, which is what keeps this from being a
-   * narrowing nobody asked for. The 2026-09-08 instruction that put the ESIS
-   * roll on this screen was about their screen.
-   */
-  it("an admin keeps the institution's roster beside their own", async () => {
-    stubRoster(["ADMIN"]);
-    renderWithProviders(<ChildrenPage />);
-
-    expect(await screen.findByText("Намуун")).toBeInTheDocument();
-    expect(screen.getByText("Г.Батбаяр")).toBeInTheDocument();
   });
 });

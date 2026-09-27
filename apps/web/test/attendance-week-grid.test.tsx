@@ -338,7 +338,7 @@ describe("the teacher's week register", () => {
 // The three doors under the register
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe("the register's three panels", () => {
+describe("the register's panels", () => {
   const door = (name: string) => screen.getByRole("button", { name: new RegExp(name) });
 
   /*
@@ -353,7 +353,7 @@ describe("the register's three panels", () => {
     await grid();
     expect(door("Ирцийн дэлгэрэнгүй")).toHaveAttribute("aria-expanded", "false");
     expect(door("Чөлөөний хүсэлт")).toHaveAttribute("aria-expanded", "false");
-    expect(door("Esis ирц")).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: /Esis ирц/ })).toBeNull();
     expect(screen.queryByLabelText("Сар")).not.toBeInTheDocument();
   });
 

@@ -3,29 +3,34 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { CalendarRange, CheckCircle2, Database, MailQuestion, Search } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarRange,
+  CheckCircle2,
+  ChevronRight,
+  MailQuestion,
+  Search,
+} from "lucide-react";
 import { z } from "zod";
 import {
   attendanceRecordSchema,
   attendanceSubmissionSchema,
   esisAttendancePreviewSchema,
+  esisResourceReadSchema,
   groupAttendanceRangeSchema,
   groupAttendanceRowSchema,
   type EsisAttendancePreview,
   localDate,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
-import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { GroupSwitcher, useSwitchableGroups } from "@/components/shell/group-switcher";
 import { qk } from "@/lib/api/keys";
 import { useToast } from "@/components/ui/toast";
 import { errorMessage } from "@/lib/api/errors";
 import { RequireRole } from "@/components/shell/require-role";
-import { Card, SectionHeader } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { TableShell, Td, Th } from "@/components/ui/table";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import {
   AttendanceRequestQueue,
@@ -296,8 +301,8 @@ function GroupAttendance() {
     onSuccess: () => {
       toast.success(
         esisPreview.data?.demo
-          ? "Mock client ирцийг хүлээн авлаа (DEMO_SUCCESS). Production ESIS рүү илгээгээгүй."
-          : "Ирц ESIS рүү амжилттай илгээгдлээ.",
+          ? "Туршилтын горим: ирц ESIS рүү бодитоор илгээгдээгүй."
+          : "Ирц ESIS рүү илгээгдлээ.",
       );
       void queryClient.invalidateQueries({ queryKey: ["attendance"] });
     },
@@ -551,9 +556,10 @@ function GroupAttendance() {
           <FormError message={save.isError ? errorMessage(save.error) : null} />
 
           {!editing && esisPreview.data ? (
-            <GroupEsisPayload
+            <EsisStatus
+              key={date}
               preview={esisPreview.data}
-              submittedAt={submitEsis.data?.submittedAt}
+              submittedAt={submitEsis.data?.date === date ? submitEsis.data.submittedAt : undefined}
             />
           ) : null}
           {!editing && esisPreview.isError ? (
@@ -605,7 +611,11 @@ function GroupAttendance() {
 }
 
 /**
- * Ирцийн дэлгэрэнгүй · Чөлөөний хүсэлт · Esis ирц.
+ * Ирцийн дэлгэрэнгүй · Чөлөөний хүсэлт.
+ *
+ * ★ "Esis ирц" removed 2026-09-27 at the client's request: its two ESIS field
+ * tables were technical and have no place on a teacher's daily screen. The
+ * ESIS step now lives beside the register as Илгээх → Шалгах (`EsisStatus`).
  *
  * ★ One open at a time, and none open to begin with.
  *
@@ -628,7 +638,7 @@ function RegisterPanels({
   month: string;
   pendingRequests: number;
 }) {
-  const [open, setOpen] = useState<"journal" | "requests" | "esis" | null>(null);
+  const [open, setOpen] = useState<"journal" | "requests" | null>(null);
   const panelId = "register-panel";
 
   const doors = [
@@ -639,7 +649,6 @@ function RegisterPanels({
       count: pendingRequests,
       icon: MailQuestion,
     },
-    { key: "esis" as const, label: "Esis ирц", count: 0, icon: Database },
   ];
 
   return (
@@ -702,145 +711,147 @@ function RegisterPanels({
       <div id={panelId} hidden={open === null}>
         {open === "journal" ? <TeacherJournal groupId={groupId} initialMonth={month} /> : null}
         {open === "requests" ? <AttendanceRequestQueue heading="Эцэг эхийн мэдэгдэл" /> : null}
-        {open === "esis" ? (
-          <div className="flex flex-col gap-4">
-            {/*
-              The two halves of one exchange: the fields this screen sends when
-              a confirmed day goes up, and the record that comes back when it is
-              read again. Reading them apart is how a teacher ends up believing
-              a day was filed because the button said so.
-
-              Both are keyed by ESIS's `studentGroupId`, which the panel asks
-              for — our group ids are uuids the ministry has never seen, and
-              §15's external-id history is what would fill this in.
-            */}
-            <EsisDataPanel
-              resource="saveAttendanceV3"
-              title="Ирц хадгалах"
-              description="Баталгаажсан өдрийн ирцээр ESIS рүү илгээх талбарууд"
-            />
-            <EsisDataPanel
-              resource="groupAttendance"
-              title="Ирц харах"
-              description="Илгээсэн ирцийг ESIS-ээс буцааж уншсан нь"
-            />
-          </div>
-        ) : null}
       </div>
     </section>
   );
 }
 
-function GroupEsisPayload({
+/**
+ * ESIS, in the teacher's words — client, 2026-09-27: "Илгээх → Шалгах →
+ * Баталгаажсан / Зөрүүтэй", and no technical code, API name or person number
+ * on screen.
+ *
+ * Шалгах reads the day back from ESIS (`groupAttendance`, the same read the
+ * "ESIS-ээс татах" buttons use) and compares it with what was sent, child by
+ * child: the same children, each with the same reason. Only the verdict and
+ * how many differ are shown.
+ *
+ * ★ A MOCK read is never called Баталгаажсан or Зөрүүтэй. The demo fixture is
+ * a fixed sample, not the day that was sent, so comparing against it would
+ * invent a verdict either way.
+ */
+function EsisStatus({
   preview,
   submittedAt,
 }: {
   preview: EsisAttendancePreview;
   submittedAt?: string;
 }) {
+  const { primaryKindergartenId } = useSession();
+  const toast = useToast();
   const request = preview.requests[0];
+
+  const check = useMutation({
+    mutationFn: () => {
+      const payload = request!.payload;
+      const params = new URLSearchParams({
+        resource: "groupAttendance",
+        studentGroupId: String(payload.studentGroupId),
+        dayDate: payload.dayDate,
+      });
+      return get(
+        `/kindergartens/${primaryKindergartenId}/esis/resource?${params.toString()}`,
+        esisResourceReadSchema,
+      );
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   if (!request) return null;
 
-  return (
-    <section aria-labelledby="group-esis-payload-heading">
-      <SectionHeader
-        id="group-esis-payload-heading"
-        title="ESIS рүү илгээх утга"
-        lede={`API-000269 · ID ${preview.apiId} · POST ${preview.endpoint}`}
-        action={
-          <Badge tone={preview.demo ? "sun" : "mint"}>
-            {!preview.demo ? <CheckCircle2 size={13} aria-hidden /> : null}
-            {submittedAt
-              ? preview.demo
-                ? `DEMO_SUCCESS ${submittedAt.slice(11, 16)}`
-                : `Илгээсэн ${submittedAt.slice(11, 16)}`
-              : preview.demo
-                ? "MOCK · production руу илгээхгүй"
-                : "ESIS бэлэн"}
-          </Badge>
-        }
-      />
-      <Card pad="roomy" className="flex flex-col gap-4">
-        <dl className="grid gap-3 sm:grid-cols-4">
-          <PayloadField label="institutionId" value={request.payload.institutionId} />
-          <PayloadField label="studentGroupId" value={request.payload.studentGroupId} />
-          <PayloadField label="dayDate" value={request.payload.dayDate} />
-          <PayloadField
-            label="attendanceList"
-            value={`${request.payload.attendanceList.length} мөр`}
-          />
-        </dl>
-        <TableShell caption="API-000269 attendanceList" minWidth="min-w-[680px]">
-          <thead>
-            <tr>
-              <Th>personId</Th>
-              <Th>attendReasonCode</Th>
-              <Th numeric>tardyMinutes</Th>
-              <Th>attendReasonList</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {request.payload.attendanceList.map((item) => (
-              <tr key={item.personId}>
-                <Td className="font-mono text-caption">{item.personId}</Td>
-                <Td>{item.attendReasonCode}</Td>
-                <Td numeric>{item.tardyMinutes}</Td>
-                <Td className="font-mono text-caption">[]</Td>
-              </tr>
-            ))}
-          </tbody>
-        </TableShell>
+  const sent = Boolean(submittedAt);
+  const read = check.data;
+  // ESIS has no demo mode any more (2026-09-14), so every read is a live one.
+  const mismatches = read ? countMismatches(request.payload.attendanceList, read.rows) : 0;
+  const verdict = !read ? null : mismatches === 0 ? "ok" : "diff";
 
-        <section className="border-t border-border-soft pt-4" aria-label="ESIS ирцийн гаралт">
-          <h3 className="text-body font-semibold text-primary">
-            ESIS-ээс буцааж шалгах гаралтын утга
-          </h3>
-          <p className="mt-2 font-mono text-caption text-muted">
-            api-22 · GET /svc/api/hub/v2/group/list/attendance/
-            {request.payload.studentGroupId}/{request.payload.dayDate}
+  const steps = [
+    { label: "Илгээх", done: sent },
+    { label: "Шалгах", done: Boolean(read) },
+    {
+      label:
+        verdict === "diff"
+          ? "Зөрүүтэй"
+          : verdict === "ok"
+            ? "Баталгаажсан"
+            : "Баталгаажсан / Зөрүүтэй",
+      done: verdict !== null,
+    },
+  ];
+
+  return (
+    <section aria-label="ESIS төлөв">
+      <Card pad="roomy" className="flex flex-col gap-3">
+        <ol className="flex flex-wrap items-center gap-1.5 text-caption">
+          {steps.map((step, index) => (
+            <li key={index} className="inline-flex items-center gap-1.5">
+              <span
+                className={cn(
+                  "rounded-pill px-2.5 py-1 font-semibold",
+                  step.done
+                    ? index === 2 && verdict === "diff"
+                      ? "bg-danger-soft text-danger"
+                      : "bg-mint text-mint-ink"
+                    : "bg-sunken text-muted",
+                )}
+              >
+                {step.label}
+              </span>
+              {index < steps.length - 1 ? (
+                <ChevronRight size={14} aria-hidden className="text-faint" />
+              ) : null}
+            </li>
+          ))}
+        </ol>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-body text-ink" role="status">
+            {verdict === "ok" ? (
+              <span className="inline-flex items-center gap-1.5 font-semibold text-mint-ink">
+                <CheckCircle2 size={16} aria-hidden /> Баталгаажсан — ESIS дээр зөв хадгалагдсан.
+              </span>
+            ) : verdict === "diff" ? (
+              <span className="inline-flex items-center gap-1.5 font-semibold text-danger">
+                <AlertTriangle size={16} aria-hidden /> Зөрүүтэй — {mismatches} хүүхдийн ирц ESIS
+                дээр өөр байна.
+              </span>
+            ) : sent ? (
+              <span className="text-muted">
+                Илгээсэн {submittedAt!.slice(11, 16)}. ESIS дээр зөв хадгалагдсан эсэхийг шалгана
+                уу.
+              </span>
+            ) : (
+              <span className="text-muted">Ирц ESIS рүү илгээгдээгүй байна.</span>
+            )}
           </p>
-          <TableShell className="mt-3" caption="ESIS attendance output" minWidth="min-w-[820px]">
-            <thead>
-              <tr>
-                <Th>academicLevel</Th>
-                <Th>personId</Th>
-                <Th>dayDate</Th>
-                <Th>attendanceReasonCode</Th>
-                <Th>attendanceReasonName</Th>
-                <Th numeric>tardyMinutes</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {request.payload.attendanceList.map((item) => (
-                <tr key={item.personId}>
-                  <Td>2</Td>
-                  <Td className="font-mono text-caption">{item.personId}</Td>
-                  <Td>{request.payload.dayDate}</Td>
-                  <Td>{item.attendReasonCode}</Td>
-                  <Td>{reasonName(item.attendReasonCode)}</Td>
-                  <Td numeric>{item.tardyMinutes}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </TableShell>
-        </section>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => check.mutate()}
+            disabled={!sent || check.isPending || !primaryKindergartenId}
+          >
+            {check.isPending ? "Шалгаж байна…" : read ? "Дахин шалгах" : "ESIS-ээс шалгах"}
+          </Button>
+        </div>
       </Card>
     </section>
   );
 }
 
-function reasonName(code: string): string {
-  if (code === "PRESENT") return "Ирсэн";
-  if (code === "EXCUSED") return "Чөлөөтэй";
-  if (code === "SICK") return "Өвчтэй";
-  return "Тасалсан";
-}
-
-function PayloadField({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div>
-      <dt className="font-mono text-caption text-muted">{label}</dt>
-      <dd className="mt-1 text-body font-semibold text-ink">{value}</dd>
-    </div>
-  );
+/** Children missing on either side, or read back with a different reason. */
+function countMismatches(
+  sent: EsisAttendancePreview["requests"][number]["payload"]["attendanceList"],
+  rows: Record<string, string | null>[],
+): number {
+  const stored = new Map<string, string | null>();
+  for (const row of rows) {
+    if (row.personId) stored.set(row.personId, row.attendanceReasonCode ?? null);
+  }
+  let differ = 0;
+  for (const item of sent) {
+    const key = String(item.personId);
+    if (stored.get(key) !== item.attendReasonCode) differ += 1;
+    stored.delete(key);
+  }
+  return differ + stored.size;
 }

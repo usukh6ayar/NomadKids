@@ -74,24 +74,6 @@ export function chatRoomDisplayName(
     return hasSeveralStaffRooms && kindergartenName ? `Багш нар · ${kindergartenName}` : "Багш нар";
   }
 
-  /*
-   * ★ A private room is named after the other person, by the API, and the
-   * label must not be rewritten here — "Манай анги" for a conversation with
-   * one named teacher would be actively misleading about who can read it.
-   */
-  if (room.kind === "DIRECT") return room.name;
-
-  /*
-   * ★★ The parents' room, 2026-09-20. The API's name already carries the
-   * group ("Бамбарууш · эцэг эхчүүд"); this shortens it when there is only one
-   * such room to disambiguate, the same way the group room above does.
-   */
-  if (room.kind === "PARENTS") {
-    const hasSeveralParentRooms =
-      rooms.filter((candidate) => candidate.kind === "PARENTS").length > 1;
-    return hasSeveralParentRooms ? room.name : "Эцэг эхчүүд";
-  }
-
   const hasSeveralGroupRooms = rooms.filter((candidate) => candidate.kind === "GROUP").length > 1;
   const qualifier = hasSeveralGroupRooms ? ` · ${room.name}` : "";
 
@@ -600,7 +582,7 @@ export function ChatRoom({
           </span>
 
           <div className="min-w-0 flex-1">
-            <Title className="truncate text-lead font-extrabold text-ink">{displayName}</Title>
+            <Title className="truncate text-lead font-bold text-ink">{displayName}</Title>
             <p className="mt-0.5 truncate text-caption text-muted">{room.memberCount} гишүүн</p>
           </div>
 
@@ -859,10 +841,10 @@ function ChatEmptyState() {
     <div className="grid min-h-full place-items-center px-4 py-12 text-center">
       <div>
         <div className="relative mx-auto mb-6 h-20 w-28" aria-hidden="true">
-          <span className="absolute bottom-0 right-1 grid size-14 place-items-center rounded-card bg-primary-soft text-primary/40">
+          <span className="absolute bottom-0 right-1 grid size-14 place-items-center rounded-card text-primary/40">
             <MessageSquare size={31} strokeWidth={1.8} />
           </span>
-          <span className="absolute left-1 top-0 grid size-16 place-items-center rounded-card bg-primary text-primary-ink shadow-sm">
+          <span className="absolute left-1 top-0 grid size-16 place-items-center rounded-card text-primary">
             <MessageCircle size={34} strokeWidth={1.9} />
           </span>
         </div>

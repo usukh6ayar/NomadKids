@@ -1,6 +1,6 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, stubApi } from "./support/render";
 import { ChildMenu } from "@/components/child/child-menu";
 
@@ -83,13 +83,15 @@ describe("the family's meal screen", () => {
     expect(within(panel).queryByText("Үндсэн хоол")).not.toBeInTheDocument();
   });
 
-  it("prints the time of each sitting", async () => {
+  /** Client, 2026-09-25: "цагууд хэрэггүй" — the sittings are named and in order. */
+  it("prints no clock beside a sitting", async () => {
     stub();
     render();
 
     const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
-    expect(within(panel).getByText("08:30")).toBeInTheDocument();
-    expect(within(panel).getByText("17:30")).toBeInTheDocument();
+    expect(within(panel).getByText("Өглөөний хоол")).toBeInTheDocument();
+    expect(within(panel).queryByText("08:30")).not.toBeInTheDocument();
+    expect(within(panel).queryByText("17:30")).not.toBeInTheDocument();
   });
 
   /*
@@ -329,5 +331,45 @@ describe("the staff view of a child's menu", () => {
 
     await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
     expect(screen.queryByLabelText("Нэмэлт мэдээлэл")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Шөнө дунд — found 2026-09-25, at 00:14 in Ulaanbaatar.
+ *
+ * ★ The screen read "today" off the UTC instant, and UB is UTC+8: between
+ * midnight and 08:00 "Өнөөдөр" showed the *previous* day's menu. The fix is
+ * in `child-menu.tsx`; this holds it, and it holds in any timezone because
+ * both the stub and the assertion are built from the same local clock.
+ */
+describe("the day the screen calls today", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("is the reader's own day, not the UTC one", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // 00:30 local, whatever the machine's timezone — in UB that is still
+    // yesterday in UTC.
+    const local = new Date();
+    local.setHours(0, 30, 0, 0);
+    vi.setSystemTime(local);
+
+    const todayIso = `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}-${String(
+      local.getDate(),
+    ).padStart(2, "0")}`;
+    const yesterday = new Date(local.getTime() - 86_400_000);
+    const yesterdayIso = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(
+      2,
+      "0",
+    )}-${String(yesterday.getDate()).padStart(2, "0")}`;
+
+    stub([
+      day(yesterdayIso, [{ name: "Өчигдрийн шөл", allergenTags: [], kind: "BREAKFAST" }]),
+      day(todayIso, [{ name: "Өнөөдрийн тараг", allergenTags: [], kind: "BREAKFAST" }]),
+    ]);
+    renderWithProviders(<ChildMenu kindergartenId={KG_ID} healthNotes={null} isStaff={false} />);
+
+    const panel = await screen.findByRole("tabpanel", { name: "Өнөөдөр" });
+    expect(await within(panel).findByText("Өнөөдрийн тараг")).toBeInTheDocument();
+    expect(within(panel).queryByText("Өчигдрийн шөл")).not.toBeInTheDocument();
   });
 });

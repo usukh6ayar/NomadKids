@@ -9,6 +9,8 @@ import {
   mediaListSchema,
   mediaSchema,
   ageAlbumSummarySchema,
+  isAgeAlbumCategory,
+  MAX_PHOTOS_PER_AGE_ALBUM_CATEGORY,
   MEDIA_CATEGORIES,
   MEDIA_CATEGORY_LABEL,
 } from "@kinder/contracts";
@@ -81,6 +83,7 @@ export function ChildGallery({
   title = GALLERY,
   lede = "Ажиглалтад хавсаргасан болон тусад нь нэмсэн бүх зураг.",
   category,
+  albumCategoryId,
   age,
   emptyTitle = "Зураг алга",
   emptyDescription,
@@ -102,6 +105,8 @@ export function ChildGallery({
   lede?: string;
   /** Filters to one album "ангилал" — omit for every category at once. */
   category?: string;
+  /** Filters to one added photo type — `AlbumCategory`. */
+  albumCategoryId?: string;
   /** Filters to one "нас" — omit for every age at once. */
   age?: number;
   emptyTitle?: string;
@@ -123,7 +128,7 @@ export function ChildGallery({
   const [editing, setEditing] = useState<z.infer<typeof mediaSchema> | null>(null);
   const [draftCaption, setDraftCaption] = useState("");
   const [deleting, setDeleting] = useState<z.infer<typeof mediaSchema> | null>(null);
-  const filters = { pageSize: GALLERY_PAGE_SIZE, category, age };
+  const filters = { pageSize: GALLERY_PAGE_SIZE, category, albumCategoryId, age };
 
   /*
    * ★ Who may retitle or remove *this* photograph.
@@ -144,6 +149,7 @@ export function ChildGallery({
     queryFn: () => {
       const params = new URLSearchParams({ pageSize: String(GALLERY_PAGE_SIZE) });
       if (category) params.set("category", category);
+      if (albumCategoryId) params.set("albumCategoryId", albumCategoryId);
       if (age) params.set("age", String(age));
       return get(`/children/${childId}/media?${params}`, mediaListSchema);
     },
@@ -229,6 +235,14 @@ export function ChildGallery({
 
   const items = photos.data?.items ?? [];
   const total = photos.data?.total ?? 0;
+  /*
+    ★ An age-album card holds at most three — client, 2026-09-18. `null` when
+    this gallery is not one of the twelve cards, which stay unlimited.
+  */
+  const albumRoom =
+    albumCategoryId || (age !== undefined && isAgeAlbumCategory(category))
+      ? Math.max(MAX_PHOTOS_PER_AGE_ALBUM_CATEGORY - total, 0)
+      : null;
   const truncated = total > items.length;
   const viewingPhoto = items.find((p) => p.id === viewing);
 
@@ -351,12 +365,19 @@ export function ChildGallery({
           </p>
         ) : null}
 
-        {canEdit ? (
+        {canEdit && albumRoom === 0 && photos.data ? (
+          <p className="rounded-control bg-canvas px-3 py-2 text-body text-muted">
+            Энэ төрөлд {MAX_PHOTOS_PER_AGE_ALBUM_CATEGORY} зураг орсон байна — дээд хэмжээ. Шинэ
+            зураг нэмэх бол аль нэгийг нь устгана уу.
+          </p>
+        ) : canEdit ? (
           <PhotoUpload
             childId={childId}
             purpose="CHILD_PHOTO"
             category={category}
+            albumCategoryId={albumCategoryId}
             age={age}
+            maxFiles={albumRoom ?? undefined}
             label={uploadLabel}
             withCaption={uploadWithCaption}
             hint={

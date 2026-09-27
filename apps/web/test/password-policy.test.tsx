@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -403,10 +403,12 @@ describe("settings — editing one's own profile", () => {
     renderWithProviders(<SettingsPage />);
 
     await user.click(await screen.findByRole("button", { name: "Мэдээлэл засах" }));
-    const phone = await screen.findByLabelText("Утас");
+    // Inside the dialog: the professional tab's card has a «Утас» of its own.
+    const dialog = await screen.findByRole("dialog");
+    const phone = within(dialog).getByLabelText("Утас");
     await user.clear(phone);
     await user.type(phone, "99112233");
-    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+    await user.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
 
     await waitFor(() => {
       const call = api.calls.find((c) => c.method === "PATCH" && c.url === "/me/profile");

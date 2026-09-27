@@ -1,178 +1,83 @@
-import { screen, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MAX_PAGE_SIZE } from "@kinder/contracts";
 import { renderWithProviders, sessionFor, setParams, stubApi } from "./support/render";
 import GroupDetailPage from "@/app/(app)/groups/[groupId]/page";
 
 /**
- * `/groups/[groupId]` — one class.
- *
- * ★ **The screen had no test at all** before 2026-09-23, which is worth
- * recording rather than quietly fixing: it is the page every register is
- * reached from and the only place the local roster and the ministry's are
- * compared.
- *
- * ★★ What these pin is the boundary the refactor had to keep: the roster is
- * **local** — `/children?groupId=`, our own `Enrollment` rows — and ESIS is a
- * comparison drawn beside it. A version of this screen that listed the
- * ministry's `group/student/list` instead would look identical and would break
- * every child link, because those rows carry a `personId` and not a
- * `Child.id`.
+ * A group's own page — the director's copy as two tables, client 2026-09-25:
+ * "бүлгийн болон туслах багшийн мэдээлэл хүүхдийн нэрс хүснэгтээр харагд
+ * Б.Ану". A teacher's copy is unchanged.
  */
 
+const GROUP = "55555555-5555-4555-8555-555555555555";
 const KG = "33333333-3333-4333-8333-333333333333";
-const GROUP = "44444444-4444-4444-8444-444444444444";
-const ESIS_GROUP = "100006351517832";
-const CHILD = "77777777-7777-4777-8777-777777777777";
-const CATALOG_PATH = `/kindergartens/${KG}/esis/catalog`;
-const GROUP_STUDENTS = `/kindergartens/${KG}/esis/resource?resource=groupStudents`;
 
-const group = (over: Record<string, unknown> = {}) => ({
+const DETAIL = {
   id: GROUP,
-  name: "Бага бүлэг",
-  ageBand: "NURSERY",
+  name: "Наран бүлэг",
+  ageBand: "MIDDLE",
   kindergartenId: KG,
   status: "ACTIVE",
-  schoolYear: { id: "55555555-5555-4555-8555-555555555555", name: "2026-2027", isCurrent: true },
   _count: { enrollments: 2 },
-  photoMediaFileId: null,
-  esisGroupId: ESIS_GROUP,
   teachers: [
     {
-      id: "88888888-8888-4888-8888-888888888888",
-      role: "LEAD",
-      endedOn: null,
+      id: "66666666-6666-4666-8666-000000000002",
+      role: "ASSISTANT",
       membership: {
-        id: "66666666-6666-4666-8666-666666666666",
-        user: {
-          id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-          lastName: "Ганболд",
-          firstName: "Баяр",
-        },
+        id: "77777777-7777-4777-8777-000000000002",
+        user: { id: "88888888-8888-4888-8888-000000000002", lastName: "Дорж", firstName: "Сараа" },
+      },
+    },
+    {
+      id: "66666666-6666-4666-8666-000000000001",
+      role: "LEAD",
+      membership: {
+        id: "77777777-7777-4777-8777-000000000001",
+        user: { id: "88888888-8888-4888-8888-000000000001", lastName: "Бат", firstName: "Сувдаа" },
       },
     },
   ],
-  ...over,
-});
+};
 
-/**
- * One roster row, as `/children` returns it.
- *
- * ★ `enrollments` is not decoration: the assignment dialog decides who is in
- * this class by looking for an ACTIVE enrolment pointing at this group, and
- * the remove control needs that enrolment's id. A fixture without it renders
- * an empty dialog that looks like a bug in the screen.
- */
-const child = (
-  id: string,
-  lastName: string,
-  firstName: string,
-  sex = "MALE",
-  /*
-   * ★ A real UUID. `enrollmentSummarySchema` types this as `uuidSchema`, and
-   * `get()` parses every response — so "enr-1" does not merely look wrong, it
-   * makes Zod reject the whole payload and the roster renders empty. That
-   * failure looks exactly like a broken screen.
-   */
-  enrolmentId = "99999999-9999-4999-8999-999999999991",
-) => ({
-  id,
-  lastName,
-  firstName,
-  sex,
-  dateOfBirth: "2021-04-12",
-  nationalId: "УБ12345678",
-  isForeign: false,
-  photoMediaFileId: null,
-  enrollments: [
+const ROSTER = {
+  items: [
     {
-      id: enrolmentId,
-      status: "ACTIVE",
-      group: { id: GROUP, name: "Бага бүлэг" },
-      schoolYear: { id: "55555555-5555-4555-8555-555555555555", name: "2026-2027" },
+      id: "99999999-9999-4999-8999-000000000001",
+      lastName: "Болд",
+      firstName: "Ану",
+      dateOfBirth: "2021-04-12",
+      kindergartenId: KG,
     },
   ],
-});
-
-const roster = {
-  items: [
-    child(CHILD, "Ганболд", "Батбаяр"),
-    child(
-      "88888888-8888-4888-8888-000000000001",
-      "Дорж",
-      "Сараа",
-      "FEMALE",
-      "99999999-9999-4999-8999-999999999992",
-    ),
-  ],
   page: 1,
-  pageSize: 200,
-  total: 2,
+  pageSize: 20,
+  total: 1,
   totalPages: 1,
 };
 
-const endpoint = {
-  key: "groupStudents",
-  apiId: 100004874669783,
-  slug: "api-13",
-  method: "GET",
-  path: "/svc/api/hub/v2/group/student/list/:studentGroupId",
-  name: "Бүлгийн суралцагчид",
-  domain: "ROSTER",
-  usage: "Бүлгээр",
-  previewable: true,
-  readable: true,
-  params: ["studentGroupId"],
-  fields: [],
-  fieldSource: "PORTAL",
-  ingestedFieldCount: 0,
-  accessStatus: "GRANTED",
-  direction: "ESIS_TO_NOMADKIDS",
-  targetModel: "Child",
-  mappings: [],
-  responseMode: "LIVE",
-  syncStatus: "OK",
-  syncErrorCode: null,
-  httpStatus: 200,
-  lastSyncAt: null,
-};
-
-const esisRead = (count: number) => {
-  const rows = Array.from({ length: count }, (_, index) => ({
-    personId: `9000000000000${index}`,
-  }));
-  return {
-    resource: "groupStudents",
-    source: "LIVE" as const,
-    status: "SUCCEEDED" as const,
-    errorCode: null,
-    count,
-    durationMs: 9,
-    fields: [],
-    rows,
-    response: { SUCCESS_CODE: 200, RESPONSE_MESSAGE: "OK", RESULT: rows },
-  };
-};
-
-function stubScreen({
-  groupBody = group(),
-  rosterBody = roster,
-  esisCount,
-}: { groupBody?: unknown; rosterBody?: unknown; esisCount?: number } = {}) {
-  return stubApi([
-    { path: "/auth/me", body: sessionFor(["ADMIN"]) },
-    { path: `/groups/${GROUP}`, body: groupBody },
-    { path: "/children", body: rosterBody },
-    ...(esisCount === undefined
-      ? []
-      : [
+function stub(role: "ADMIN" | "TEACHER") {
+  stubApi([
+    { path: "/auth/me", body: sessionFor([role]) },
+    { path: `/groups/${GROUP}`, body: DETAIL },
+    { path: "/children", body: ROSTER },
+    {
+      path: "/users",
+      body: {
+        items: [
           {
-            path: CATALOG_PATH,
-            body: { mode: "LIVE" as const, canRead: true, endpoints: [endpoint] },
+            id: "88888888-8888-4888-8888-000000000001",
+            lastName: "Бат",
+            firstName: "Сувдаа",
+            phone: "99112233",
+            memberships: [],
           },
-          { path: GROUP_STUDENTS, body: esisRead(esisCount) },
-        ]),
+        ],
+        page: 1,
+        pageSize: 100,
+        total: 1,
+        totalPages: 1,
+      },
+    },
   ]);
 }
 
@@ -181,305 +86,80 @@ beforeEach(() => {
   setParams({ groupId: GROUP });
 });
 
-describe("/groups/[groupId]", () => {
-  /*
-   * ★ "Бага бүлэг → 2 суралцагч → Г.Баяр багш" — the sentence the screen
-   * exists to say, and it is in the header rather than two scrolls apart.
-   */
-  it("names the group, its roll and its lead teacher in the header", async () => {
-    stubScreen();
+describe("a group's page", () => {
+  it("shows a director the teachers, lead first, as a table", async () => {
+    stub("ADMIN");
     renderWithProviders(<GroupDetailPage />);
 
-    expect(await screen.findByRole("heading", { name: "Бага бүлэг" })).toBeInTheDocument();
-    expect(screen.getByText("2 суралцагч")).toBeInTheDocument();
-    expect(screen.getByText("Г.Баяр")).toBeInTheDocument();
-  });
-
-  it("warns in the header when nobody is assigned", async () => {
-    stubScreen({ groupBody: group({ teachers: [] }) });
-    renderWithProviders(<GroupDetailPage />);
-
-    expect(await screen.findByText("Багш тохируулаагүй")).toBeInTheDocument();
-  });
-
-  /*
-   * ★★ **Local ids, local roster.** The child link is `/children/{Child.id}`,
-   * and the request behind the table is `/children?groupId={local group id}`.
-   * Both are the boundary the ESIS integration sits behind: a roster drawn
-   * from `group/student/list` would carry `personId` and link nowhere.
-   */
-  it("lists the group's own enrolled children, linking to their local profile", async () => {
-    const api = stubScreen();
-    renderWithProviders(<GroupDetailPage />);
-
-    const link = await screen.findByRole("link", { name: /Г.Батбаяр/ });
-    expect(link).toHaveAttribute("href", `/children/${CHILD}/general`);
-
-    const request = api.calls.find((call) => call.url.startsWith("/children?"));
-    expect(request!.url).toContain(`groupId=${GROUP}`);
-  });
-
-  it("filters the roster by name and by sex", async () => {
-    stubScreen();
-    renderWithProviders(<GroupDetailPage />);
-
-    await screen.findByRole("link", { name: /Г.Батбаяр/ });
-
-    /*
-      The rows read "Г.Батбаяр" but the search matches the whole name — a
-      teacher typing the surname off a document must find him.
-    */
-    await userEvent.type(screen.getByLabelText("Суралцагчийн нэрээр хайх"), "Ганболд");
-    expect(screen.getByRole("link", { name: /Г.Батбаяр/ })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /Д.Сараа/ })).toBeNull();
-  });
-
-  it("tells an empty group apart from a filter that matched nothing", async () => {
-    stubScreen();
-    renderWithProviders(<GroupDetailPage />);
-
-    await screen.findByRole("link", { name: /Г.Батбаяр/ });
-    await userEvent.type(screen.getByLabelText("Суралцагчийн нэрээр хайх"), "Цэцэгмаа");
-
-    expect(screen.getByText("Хайлтад тохирох суралцагч олдсонгүй")).toBeInTheDocument();
-    expect(screen.queryByText("Суралцагч бүртгэгдээгүй")).toBeNull();
-  });
-
-  it("says what to do for a group with nobody enrolled", async () => {
-    stubScreen({
-      rosterBody: { items: [], page: 1, pageSize: 200, total: 0, totalPages: 0 },
-    });
-    renderWithProviders(<GroupDetailPage />);
-
-    expect(await screen.findByText("Суралцагч бүртгэгдээгүй")).toBeInTheDocument();
-  });
-
-  /*
-   * ★ The reconciliation: `group/student/list`, keyed by `Group.esisGroupId`,
-   * compared against our own count. Agreement is reported quietly.
-   */
-  it("reports that the ministry's register agrees", async () => {
-    stubScreen({ esisCount: 2 });
-    renderWithProviders(<GroupDetailPage />);
-
-    expect(await screen.findByText(/ЭСИС-ийн бүртгэлтэй тохирч байна/)).toBeInTheDocument();
-  });
-
-  /*
-   * ★★ A mismatch names both numbers and points at the import — it never
-   * offers to fix the roster here. `Enrollment` has exactly one writer.
-   */
-  it("names both counts when they disagree, and sends the reader to the import", async () => {
-    stubScreen({ esisCount: 3 });
-    renderWithProviders(<GroupDetailPage />);
-
-    const warning = await screen.findByText(/ЭСИС-д 3, энд 2 суралцагч/);
-    expect(warning).toHaveTextContent("ЭСИС-ээс дахин татна уу");
-  });
-
-  /*
-   * ★ A group the ministry has never been told about is not a mismatch. "0 vs
-   * 2" there would read as drift; there is nothing to compare against.
-   */
-  it("says so for a group ESIS has no id for, instead of comparing to zero", async () => {
-    stubScreen({ groupBody: group({ esisGroupId: null }), esisCount: 2 });
-    renderWithProviders(<GroupDetailPage />);
-
-    expect(await screen.findByText("Энэ бүлэг ЭСИС-д бүртгэгдээгүй байна.")).toBeInTheDocument();
-  });
-
-  it("asks ESIS nothing for a group with no ministry id", async () => {
-    const api = stubScreen({ groupBody: group({ esisGroupId: null }), esisCount: 2 });
-    renderWithProviders(<GroupDetailPage />);
-
-    await screen.findByText("Энэ бүлэг ЭСИС-д бүртгэгдээгүй байна.");
-    expect(api.calls.filter((call) => call.url.includes("groupStudents"))).toHaveLength(0);
-  });
-
-  /*
-   * ★★ **The two registers are reported apart.** The local assignment is in
-   * force the moment it is written; the ministry's is a separate approved
-   * write. One tick for both would claim something no press has done.
-   */
-  it("marks the local assignment done without claiming ESIS has it", async () => {
-    stubScreen();
-    renderWithProviders(<GroupDetailPage />);
-
-    await screen.findByRole("heading", { name: "Бага бүлэг" });
-    await userEvent.click(screen.getByRole("tab", { name: "Мэдээлэл" }));
-
-    expect(await screen.findByText("NomadKids ✓")).toBeInTheDocument();
-    expect(screen.queryByText("ЭСИС ✓")).toBeNull();
-    // And the approval flow is the way to send it.
-    expect(screen.getByRole("button", { name: "Багш тохируулах" })).toBeInTheDocument();
-  });
-
-  /*
-   * ★ The ESIS write panel is the director's. The routes behind it are
-   * `@Roles("ADMIN")`, and a teacher seeing a button that always answers 403
-   * is worse than not seeing it.
-   */
-  it("keeps the ESIS write panel away from a teacher", async () => {
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      { path: `/groups/${GROUP}`, body: group() },
-      { path: "/children", body: roster },
-    ]);
-    renderWithProviders(<GroupDetailPage />);
-
-    await screen.findByRole("heading", { name: "Бага бүлэг" });
-    await userEvent.click(screen.getByRole("tab", { name: "Мэдээлэл" }));
-
-    expect(screen.queryByRole("button", { name: "Багш тохируулах" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "ЭСИС-д бүртгүүлэх" })).toBeNull();
-  });
-
-  /*
-   * ★ **Суралцагч хуваарилах** — 2026-09-25, at the client's request that
-   * adding a child to a group work like assigning a teacher.
-   *
-   * It writes `Enrollment`, which is what `canAccessChild` resolves a
-   * teacher's reach through — so this dialog changes who can open a child's
-   * record, and both endpoints behind it are `@Roles("ADMIN")`.
-   */
-  it("★ opens the child assignment dialog and lists who is in the group", async () => {
-    stubScreen();
-    renderWithProviders(<GroupDetailPage />);
-
-    await screen.findByRole("link", { name: /Г.Батбаяр/ });
-    await userEvent.click(screen.getByRole("button", { name: "Суралцагч хуваарилах" }));
-
-    const dialog = await screen.findByRole("dialog", { name: /суралцагч хуваарилалт/i });
-    expect(within(dialog).getByText("Бүлгийн суралцагчид")).toBeInTheDocument();
-    expect(within(dialog).getByText("Г.Батбаяр")).toBeInTheDocument();
-  });
-
-  /*
-   * ★★ Removing ends the enrolment rather than deleting it — an enrolment
-   * records that a child sat in this class between two dates, and that is
-   * history. `PATCH … { status: "ENDED" }`, never `DELETE`.
-   */
-  it("★ ends an enrolment rather than deleting it", async () => {
-    const api = stubScreen();
-    renderWithProviders(<GroupDetailPage />);
-
-    await screen.findByRole("link", { name: /Г.Батбаяр/ });
-    await userEvent.click(screen.getByRole("button", { name: "Суралцагч хуваарилах" }));
-
-    const dialog = await screen.findByRole("dialog", { name: /суралцагч хуваарилалт/i });
-    await userEvent.click(
-      within(dialog).getByRole("button", { name: /Ганболд Батбаяр-г бүлгээс хасах/ }),
+    const table = await screen.findByRole("table", { name: "Бүлгийн багш нар" });
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((th) => th.textContent),
+    ).toEqual(["Үүрэг", "Нэр", "Регистр", "Утас"]);
+    // The telephone comes from the staff list; no account stores a register.
+    await waitFor(() =>
+      expect(rows.map((row) => row.textContent)).toEqual([
+        "Бүлгийн багшБ.Сувдаа—99112233",
+        "Туслах багшД.Сараа——",
+      ]),
     );
-    // Confirmed, never on the first press.
-    await userEvent.click(within(dialog).getByRole("button", { name: "Тийм" }));
-
-    const call = api.calls.find((c) => c.url.startsWith("/enrollments/"));
-    expect(call?.method).toBe("PATCH");
-    expect(call?.body).toEqual({ status: "ENDED" });
   });
 
-  /*
-   * ★ **Never past the API's ceiling** — 2026-09-26. The screen and the
-   * dialog both asked `/children` for `pageSize=200`; the API caps it at
-   * `MAX_PAGE_SIZE` (100) and answered «100-аас ихгүй байх ёстой», so a
-   * director clicking a group got an error instead of the roster. Stubs never
-   * enforce the cap, which is how it shipped — so this asserts the requests.
-   */
-  it("★ never asks /children for more than the API's page ceiling", async () => {
-    const api = stubScreen();
+  // The Суралцагч roster's own table — 2026-09-25, "ийм загвараар".
+  it("shows a director the children in the roster's table", async () => {
+    stub("ADMIN");
     renderWithProviders(<GroupDetailPage />);
 
-    await screen.findByRole("link", { name: /Г.Батбаяр/ });
-    await userEvent.click(screen.getByRole("button", { name: "Суралцагч хуваарилах" }));
-    await screen.findByRole("dialog", { name: /суралцагч хуваарилалт/i });
-
-    const sizes = api.calls
-      .filter((call) => call.url.startsWith("/children?"))
-      .map((call) => Number(new URLSearchParams(call.url.split("?")[1]).get("pageSize")));
-    expect(sizes.length).toBeGreaterThan(0);
-    expect(sizes.every((size) => size <= MAX_PAGE_SIZE)).toBe(true);
-  });
-
-  /*
-   * ★★ **Several at once** — 2026-09-26, the client: "бүлэгтээ хүүхдүүдээ
-   * сонгож хуваарилах хэрэгтэй". One child per press through a dropdown made
-   * filling a new class twenty round trips; now they are ticked and added
-   * together, one `POST /children/:id/enrollments` each.
-   */
-  it("★ adds every ticked child to the group in one press", async () => {
-    const elsewhere = (id: string, lastName: string, firstName: string) => ({
-      ...child(id, lastName, firstName, "FEMALE", `${id.slice(0, 30)}999999`),
-      enrollments: [],
-    });
-    // The class by `groupId`, the kindergarten-wide search without — the way
-    // the API answers them, so the group-less children reach only the picker.
-    const api = stubApi([
-      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
-      { path: `/groups/${GROUP}`, body: group() },
-      { path: `/children?groupId=${GROUP}`, body: roster },
-      {
-        path: "/children",
-        body: {
-          ...roster,
-          items: [
-            ...roster.items,
-            elsewhere("88888888-8888-4888-8888-000000000002", "Бат", "Номин"),
-            elsewhere("88888888-8888-4888-8888-000000000003", "Эрдэнэ", "Тэмүүлэн"),
-          ],
-          total: 4,
-        },
-      },
-      { path: "/children/", method: "POST", body: {} },
+    const table = await screen.findByRole("table", { name: "Бүлгийн хүүхдүүд" });
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((th) => th.textContent),
+    ).toEqual([
+      "№",
+      "Суралцагчийн нэр",
+      "Регистр",
+      "Хүйс",
+      "Бүлэг",
+      "Хөнгөлөлт",
+      "ESIS төлөв",
+      "Үйлдэл",
     ]);
-    renderWithProviders(<GroupDetailPage />);
-
-    await screen.findByRole("link", { name: /Г.Батбаяр/ });
-    await userEvent.click(screen.getByRole("button", { name: "Суралцагч хуваарилах" }));
-    const dialog = await screen.findByRole("dialog", { name: /суралцагч хуваарилалт/i });
-
-    await userEvent.click(await within(dialog).findByRole("checkbox", { name: /Бат Номин/ }));
-    await userEvent.click(within(dialog).getByRole("checkbox", { name: /Эрдэнэ Тэмүүлэн/ }));
-    await userEvent.click(within(dialog).getByRole("button", { name: "Нэмэх (2)" }));
-
-    await vi.waitFor(() => {
-      const posts = api.calls.filter((c) => c.method === "POST" && c.url.endsWith("/enrollments"));
-      expect(posts.map((c) => c.url).sort()).toEqual([
-        "/children/88888888-8888-4888-8888-000000000002/enrollments",
-        "/children/88888888-8888-4888-8888-000000000003/enrollments",
-      ]);
-      expect(posts.every((c) => (c.body as { groupId: string }).groupId === GROUP)).toBe(true);
-    });
-  });
-
-  /*
-   * ★ A teacher never sees the control: both endpoints answer 403 to them, and
-   * a button that always fails is worse than no button.
-   */
-  it("★ keeps the child assignment control away from a teacher", async () => {
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      { path: `/groups/${GROUP}`, body: group() },
-      { path: "/children", body: roster },
-    ]);
-    renderWithProviders(<GroupDetailPage />);
-
-    await screen.findByRole("link", { name: /Г.Батбаяр/ });
-    expect(screen.queryByRole("button", { name: "Суралцагч хуваарилах" })).toBeNull();
-  });
-
-  /* The three registers stay reachable, and by the local group id. */
-  it("keeps the attendance, meal and assessment doors", async () => {
-    stubScreen();
-    renderWithProviders(<GroupDetailPage />);
-
-    await screen.findByRole("heading", { name: "Бага бүлэг" });
-    for (const [name, route] of [
-      ["Ирц", "attendance"],
-      ["Хоол", "meals"],
-      ["Явцын үнэлгээ", "assessment"],
-    ] as const) {
-      const door = screen.getByRole("link", { name: new RegExp(name) });
-      expect(door).toHaveAttribute("href", `/groups/${GROUP}/${route}`);
+    const link = within(table).getByRole("link", { name: "Болд Ану" });
+    expect(link).toHaveAttribute("href", "/children/99999999-9999-4999-8999-000000000001/general");
+    // No photographs in the director's table — 2026-09-25.
+    expect(table.querySelector("img")).toBeNull();
+    // Unclipped, so the ⋯ menu opens whole.
+    for (
+      let node = table.parentElement;
+      node && node !== document.body;
+      node = node.parentElement
+    ) {
+      expect(node.className).not.toMatch(/overflow-(hidden|x-auto|auto)/);
     }
+  });
+
+  // No count badge and no register doors on a director's copy — 2026-09-25.
+  it("leaves the count and the three doors off a director's copy", async () => {
+    stub("ADMIN");
+    renderWithProviders(<GroupDetailPage />);
+
+    await screen.findByRole("table", { name: "Бүлгийн хүүхдүүд" });
+    expect(screen.queryByText("2 хүүхэд")).toBeNull();
+    for (const hint of ["Өдрийн ирц бүртгэх", "Хоолны бүртгэл", "Улирлын үнэлгээ"]) {
+      expect(screen.queryByText(hint)).toBeNull();
+    }
+  });
+
+  it("keeps a teacher's copy as it was", async () => {
+    stub("TEACHER");
+    renderWithProviders(<GroupDetailPage />);
+
+    expect(await screen.findByText("Болд Ану")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getByText("2 хүүхэд")).toBeInTheDocument();
+    expect(screen.getByText("Өдрийн ирц бүртгэх")).toBeInTheDocument();
   });
 });

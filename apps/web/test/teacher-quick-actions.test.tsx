@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
 import DashboardPage from "@/app/(app)/dashboard/page";
@@ -33,7 +34,7 @@ const emptyDashboard = {
   termProgress: { assessed: 0, total: 0 },
 };
 
-function stubDashboard(withGroup = true) {
+function stubDashboard(withGroup = true, extra: Parameters<typeof stubApi>[0] = []) {
   return stubApi([
     { path: "/auth/me", body: sessionFor(["TEACHER"]) },
     { path: "/dashboard/teacher", body: emptyDashboard },
@@ -49,6 +50,7 @@ function stubDashboard(withGroup = true) {
           }
         : { items: [], page: 1, pageSize: 25, total: 0, totalPages: 0 },
     },
+    ...extra,
   ]);
 }
 
@@ -152,5 +154,46 @@ describe("the teacher dashboard's quick actions", () => {
       "href",
       "/documents",
     );
+  });
+
+  /*
+   * The widget bands under the tiles fold away on the web and never on a
+   * phone. jsdom applies no media queries, so this asserts the classes that
+   * carry the breakpoint: the toggle exists only from `lg`, and a closed
+   * state hides the bands only from `lg`.
+   */
+  it("folds the widget bands on the web only", async () => {
+    stubDashboard();
+    const user = userEvent.setup();
+    renderWithProviders(<DashboardPage />);
+
+    const toggle = await screen.findByRole("button", { name: /Самбарын үзүүлэлтүүд/ });
+    expect(toggle).toHaveClass("hidden", "lg:flex");
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+    const bands = document.getElementById(toggle.getAttribute("aria-controls")!)!;
+    expect(bands).not.toHaveClass("lg:hidden");
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(bands).toHaveClass("lg:hidden");
+    expect(bands).not.toHaveClass("hidden");
+  });
+
+  /*
+    ★ The header — client, 2026-09-25, with a drawing: the kindergarten's name
+    as the title, the group in italics beneath it, the date in grey.
+  */
+  it("titles the dashboard with the kindergarten and its group", async () => {
+    stubDashboard(true, [
+      {
+        path: "/kindergartens/33333333-3333-4333-8333-333333333333",
+        body: { id: "33333333-3333-4333-8333-333333333333", name: "115-р цэцэрлэг" },
+      },
+    ]);
+    renderWithProviders(<DashboardPage />);
+
+    expect(await screen.findByRole("heading", { level: 1, name: "115-р цэцэрлэг" })).toBeVisible();
+    expect(await screen.findByText("Дэлбээ бүлэг")).toHaveClass("italic");
   });
 });

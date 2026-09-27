@@ -126,9 +126,8 @@ describe("the grid", () => {
     const cells = within(row).getAllByRole("cell");
 
     // Ирсэн · Өвчтэй · Чөлөөтэй · Тасалсан · Нийт — багшийн хүснэгтийн
-    // төгсгөлийн таван баганатай ижил дараалал, ижил recorded дүн — дараа нь
-    // Зохих: элсэлтэд хамаарах ажлын өдөр.
-    expect(cells.slice(-6).map((cell) => cell.textContent)).toEqual(["1", "1", "0", "0", "2", "3"]);
+    // төгсгөлийн таван баганатай ижил дараалал, ижил recorded дүн.
+    expect(cells.slice(-5).map((cell) => cell.textContent)).toEqual(["1", "1", "0", "0", "2"]);
   });
 
   it("distinguishes a day nobody marked from a recorded absence", async () => {
@@ -174,9 +173,9 @@ describe("the grid", () => {
     expect(
       within(childRow)
         .getAllByRole("cell")
-        .slice(-6)
+        .slice(-5)
         .map((cell) => cell.textContent),
-    ).toEqual(["1", "1", "0", "0", "2", "3"]);
+    ).toEqual(["1", "1", "0", "0", "2"]);
 
     const classTable = screen.getByRole("table", { name: /Ангийн дүн/ });
     const classRow = within(classTable).getByRole("rowheader", { name: "Бэлтгэл" }).closest("tr")!;
@@ -303,7 +302,7 @@ describe("the filters", () => {
     renderWithProviders(<AttendanceJournalPage />);
     await screen.findByText(/Дорж/);
 
-    await selectOption(user, "Бүлэг", "Бэлтгэл");
+    await selectOption(user, "Бүлэг", "Бэлтгэл бүлэг");
 
     expect(await screen.findByText("Бэлтгэл бүлгийн нэгтгэл")).toBeInTheDocument();
     const childTable = screen.getByRole("table", { name: "Хүүхэд тус бүрийн ирцийн дүн" });
