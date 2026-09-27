@@ -49,6 +49,11 @@ function stub(source: "LIVE" | "MOCK" = "LIVE") {
   return stubApi([
     { path: "/auth/me", body: sessionFor(["ADMIN"]) },
     { path: `/kindergartens/${KG}/esis/resource?resource=organization`, body: esis(source) },
+    {
+      path: `/kindergartens/${KG}/method-unions`,
+      body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 },
+    },
+    { path: `/kindergartens/${KG}/school-years`, body: [] },
     { path: `/kindergartens/${KG}`, method: "PATCH", body: DETAIL },
     { path: `/kindergartens/${KG}`, body: DETAIL },
   ]);
@@ -95,7 +100,8 @@ describe("the kindergarten's details", () => {
     expect(screen.getByLabelText("Хариуцалагч нэгж")).toHaveValue("");
   });
 
-  it("saves only the address and capacity it stores", async () => {
+  // Only what was changed — a PATCH, not the whole record re-sent.
+  it("saves only the fields that were changed", async () => {
     const user = userEvent.setup();
     const api = stub();
     renderWithProviders(<AdminKindergartenPage />);
@@ -110,10 +116,11 @@ describe("the kindergarten's details", () => {
       expect(call).toBeDefined();
       return call!;
     });
-    expect(patch.body).toEqual({ address: "Гудамж-14", capacity: 120, phone: null, email: null });
+    expect(patch.body).toEqual({ address: "Гудамж-14" });
   });
 
-  it("keeps contact in the same form, the unstored fields empty", async () => {
+  // #145 stores website, Facebook and the head's name and phone — editable now.
+  it("keeps contact in the same form, and saves the website and the head's phone", async () => {
     const user = userEvent.setup();
     const api = stub();
     renderWithProviders(<AdminKindergartenPage />);
@@ -122,25 +129,27 @@ describe("the kindergarten's details", () => {
       await screen.findByRole("heading", { name: "Холбоо барих мэдээлэл" }),
     ).toBeInTheDocument();
     for (const label of ["Вэб сайт", "Facebook", "Удирдлагын нэр", "Удирдлагын утас"]) {
-      expect(screen.getByLabelText(label)).toHaveValue("");
-      expect(screen.getByLabelText(label)).toBeDisabled();
+      expect(screen.getByLabelText(label)).toBeEnabled();
     }
 
     await user.type(screen.getByLabelText("Утас"), "77112233");
+    await user.type(screen.getByLabelText("Вэб сайт"), "https://example.mn");
+    await user.type(screen.getByLabelText("Удирдлагын утас"), "99001122");
     await user.click(screen.getByRole("button", { name: /Хадгалах/ }));
     const patch = await vi.waitFor(() => {
       const call = api.calls.find((c) => c.method === "PATCH");
       expect(call).toBeDefined();
       return call!;
     });
-    expect(patch.body).toMatchObject({ phone: "77112233" });
+    expect(patch.body).toEqual({
+      phone: "77112233",
+      website: "https://example.mn",
+      headPhone: "99001122",
+    });
   });
 
-  /*
-    ★ Заах аргын нэгдэл as an empty shell — 2026-09-25. Nothing stores a union
-    yet, so the list is empty, says why, and "Нэгдэл нэмэх" is disabled.
-  */
-  it("shows the method unions as an empty, honest list", async () => {
+  // The drawing's list, now over #148's endpoint — detailed in admin-method-unions.
+  it("opens Заах аргын нэгдэл as the drawing's list", async () => {
     const user = userEvent.setup();
     stub();
     renderWithProviders(<AdminKindergartenPage />);
@@ -149,22 +158,9 @@ describe("the kindergarten's details", () => {
     expect(
       screen.getByRole("heading", { level: 1, name: "Заах аргын нэгдэл" }),
     ).toBeInTheDocument();
-    const table = screen.getByRole("table", { name: "Заах аргын нэгдлийн жагсаалт" });
-    expect(
-      within(table)
-        .getAllByRole("columnheader")
-        .map((th) => th.textContent),
-    ).toEqual([
-      "№",
-      "Заах аргын нэгдлийн нэр",
-      "Ахлагч багш",
-      "Багшийн тоо",
-      "Хичээлийн жил",
-      "Үйлдэл",
-    ]);
-    expect(screen.getByText("Нэгдэл бүртгэгдээгүй байна")).toBeInTheDocument();
+    expect(await screen.findByText("Нэгдэл бүртгэгдээгүй байна")).toBeInTheDocument();
     expect(screen.getByText("Нийт: 0")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Нэгдэл нэмэх/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Нэгдэл нэмэх/ })).toBeEnabled();
     expect(screen.getByRole("link", { name: /ESIS татах/ })).toHaveAttribute(
       "href",
       "/admin/integrations/esis",

@@ -122,7 +122,18 @@ export const listUsersQuerySchema = paginationQuerySchema.extend({
     .enum(["true", "false"])
     .transform((value) => value === "true")
     .optional(),
+  /** «Албан тушаал» — matched whole, any case. */
+  position: z.string().trim().min(1).max(100).optional(),
+  /** «Ангилал». */
+  staffCategory: z.enum(["MANAGEMENT", "TEACHING", "ADMINISTRATION", "SERVICE"]).optional(),
 });
+
+/** `GET /users/positions` — the posts in use, for the filter. */
+export const listPositionsQuerySchema = z.object({
+  kindergartenId: uuidSchema.optional(),
+  roles: rolesSchema.optional(),
+});
+export type ListPositionsQuery = z.infer<typeof listPositionsQuerySchema>;
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
 
 export const addMembershipSchema = z.object({

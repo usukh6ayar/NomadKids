@@ -18,6 +18,7 @@ import type {
   AddMembershipDto,
   ChangeMembershipRoleDto,
   CreateUserDto,
+  ListPositionsQuery,
   ListUsersQuery,
   UpdateMembershipProfileDto,
   UpdateProfileDto,
@@ -33,6 +34,8 @@ function staffFilters(query: ListUsersQuery) {
     q: query.q,
     groupId: query.groupId,
     hasGroup: query.hasGroup,
+    position: query.position,
+    staffCategory: query.staffCategory,
   };
 }
 
@@ -98,6 +101,14 @@ export class UsersService {
    * ★ Audited as a DOWNLOAD: the file carries register numbers, and "who took
    * the staff list away with its РД" is a question somebody may need answered.
    */
+  /** The posts in use in the admin's kindergartens — «Албан тушаал» filter choices. */
+  async listPositions(actor: Actor, query: ListPositionsQuery) {
+    const scope = query.kindergartenId
+      ? (this.tenants.assertAdmin(actor, query.kindergartenId), [query.kindergartenId])
+      : this.tenants.adminKindergartenIds(actor);
+    return this.repo.listPositions(scope, query.roles);
+  }
+
   async exportStaff(actor: Actor, query: ListUsersQuery) {
     const scope = query.kindergartenId
       ? (this.tenants.assertAdmin(actor, query.kindergartenId), [query.kindergartenId])
@@ -163,7 +174,7 @@ export class UsersService {
   async get(actor: Actor, id: string) {
     const user = await this.repo.findInScope(id, this.tenants.adminKindergartenIds(actor));
     if (!user) throw new NotFoundException();
-    return user;
+    return withGroups(user);
   }
 
   /**

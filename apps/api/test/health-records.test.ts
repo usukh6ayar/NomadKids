@@ -47,8 +47,9 @@ beforeEach(async () => {
   parentB = await login(app, b.parentUser.username);
 });
 
+/** Ulaanbaatar's today plus `days` — the service's `localDate()`, not UTC's. */
 function inDays(days: number): string {
-  const d = new Date();
+  const d = new Date(`${localDate()}T00:00:00.000Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }

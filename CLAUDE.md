@@ -346,6 +346,17 @@ waved through.
 
 Still not a diagnosis. But the next person can skip "it is the money tables".
 
+★★★★★★★ **2026-09-28 — two consecutive full runs, two different failure sets,
+nothing else running** (`pgrep` empty). Run 1: 14 failures in four files not
+touched by the change under test — `finance-dashboard`, `funding-register`,
+`invoices`, `survey-wizard` — five of them 5000 ms timeouts and seven
+`Not implemented: navigation`. The four files alone: 54/54. Run 2, unchanged
+code: one failure, `admin-reports-overview > "keeps only the two
+group-comparison charts…"`, a heading that never appeared; alone 3/3 three
+times. Verbose logs were captured this time. What it adds: the failing set is
+not stable between runs of the same tree, which fits ★★★★★'s "full-run
+environment" reading and argues against any one file's logic.
+
 ---
 
 ## 5. UI rules
