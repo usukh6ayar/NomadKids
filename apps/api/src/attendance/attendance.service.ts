@@ -222,7 +222,7 @@ export class AttendanceService {
 
   async dailySummary(actor: Actor, kindergartenId: string, query: AttendanceRegisterQuery) {
     const built = await this.buildRegister(actor, kindergartenId, query);
-    const [kindergarten, submissions, requests] = await Promise.all([
+    const [kindergarten, submissions, requests, attempts] = await Promise.all([
       this.authz.loadKindergartenNames(actor),
       this.repo.findSubmissions(
         kindergartenId,
@@ -236,9 +236,19 @@ export class AttendanceService {
         toUtcDate(query.to),
         query.groupId,
       ),
+      this.repo.findEsisAttempts(
+        kindergartenId,
+        toUtcDate(query.from),
+        toUtcDate(query.to),
+        query.groupId,
+      ),
     ]);
 
-    const rows = summariseDays(built.rows, built.days, submissions, requests);
+    const esis = foldEsisAttempts(attempts);
+    const rows = summariseDays(built.rows, built.days, submissions, requests).map((row) => ({
+      ...row,
+      esis: esis.get(`${row.groupId} ${row.date}`) ?? NO_ESIS_ATTEMPTS,
+    }));
 
     return {
       kindergartenName: kindergarten[kindergartenId] ?? "",
@@ -265,6 +275,15 @@ export class AttendanceService {
           pending: rows.reduce((sum, row) => sum + row.requests.pending, 0),
           approved: rows.reduce((sum, row) => sum + row.requests.approved, 0),
           rejected: rows.reduce((sum, row) => sum + row.requests.rejected, 0),
+        },
+        /*
+          Group-days by their **latest** ESIS answer — not attempts. A day that
+          failed twice and then went through is one sent day, and a director
+          reading the foot of the table wants what is still outstanding.
+        */
+        esis: {
+          sentDays: rows.filter((row) => row.esis.lastOutcome === "SUCCEEDED").length,
+          failedDays: rows.filter((row) => row.esis.lastOutcome === "FAILED").length,
         },
       },
     };
@@ -418,8 +437,31 @@ export class AttendanceService {
 
     const preview = await this.esisAttendancePreview(actor, kindergartenId, dto);
     const saved = [];
+    /*
+      ★ One group-day's failure no longer abandons the rest — 2026-09-27.
+
+      Each request is one group-day, so there is nothing to duplicate by
+      carrying on: the days ESIS took are saved and counted, the ones it
+      refused are recorded as failures and named in the error below. Stopping
+      at the first refusal left earlier days sent but unaudited.
+    */
+    const failed: string[] = [];
     for (const request of preview.requests) {
-      await this.sendAttendance(request.payload);
+      const failure = await this.trySend(request.payload);
+      await this.repo.recordEsisAttempt({
+        kindergartenId,
+        groupId: request.groupId,
+        date: new Date(`${request.payload.dayDate}T00:00:00.000Z`),
+        outcome: failure ? "FAILED" : "SUCCEEDED",
+        errorCode: failure?.code ?? null,
+        errorMessage: failure?.message ?? null,
+        attemptedById: actor.userId,
+      });
+      if (failure) {
+        failed.push(`${request.groupName} (${request.payload.dayDate}) — ${failure.message}`);
+        continue;
+      }
+
       const local = rows.find(
         (row) =>
           row.groupId === request.groupId &&
@@ -444,12 +486,20 @@ export class AttendanceService {
       objectId: kindergartenId,
       metadata: {
         count: saved.length,
+        failed: failed.length,
         dates: [...new Set(dto.entries.map((e) => e.date))],
         esisMode: "LIVE" as const,
-        esisStatus: "SUCCEEDED" as const,
+        esisStatus: failed.length === 0 ? "SUCCEEDED" : saved.length > 0 ? "PARTIAL" : "FAILED",
         apiId: 171,
       },
     });
+
+    if (failed.length > 0) {
+      throw new BadGatewayException(
+        `ESIS хүлээж аваагүй: ${failed.join("; ")}.` +
+          (saved.length > 0 ? ` Бусад ${saved.length} бүртгэл амжилттай илгээгдсэн.` : ""),
+      );
+    }
 
     return saved.map((row) => ({
       groupId: row.groupId,
@@ -993,9 +1043,21 @@ export class AttendanceService {
 
   async submitGroupDay(actor: Actor, groupId: string, dateIso: string) {
     const preview = await this.groupEsisAttendancePreview(actor, groupId, dateIso);
-    await this.sendAttendance(preview.requests[0]!.payload);
+    // Looked up before the send, so a failure has a kindergarten to be recorded against.
     const group = await this.repo.findGroup(groupId, this.tenants.memberKindergartenIds(actor));
     if (!group) throw new NotFoundException();
+
+    const failure = await this.trySend(preview.requests[0]!.payload);
+    await this.repo.recordEsisAttempt({
+      kindergartenId: group.kindergartenId,
+      groupId,
+      date: new Date(`${dateIso}T00:00:00.000Z`),
+      outcome: failure ? "FAILED" : "SUCCEEDED",
+      errorCode: failure?.code ?? null,
+      errorMessage: failure?.message ?? null,
+      attemptedById: actor.userId,
+    });
+    if (failure) throw new BadGatewayException(failure.message);
     const { enrollments } = await this.repo.groupDaySheet(
       groupId,
       new Date(`${dateIso}T00:00:00.000Z`),
@@ -1033,7 +1095,15 @@ export class AttendanceService {
     };
   }
 
-  private async sendAttendance(payload: {
+  /**
+   * Sends one group-day; null on success, otherwise a safe category and the
+   * message the screen shows.
+   *
+   * ★ Returns rather than throws, so the caller can record the attempt before
+   * deciding what to tell the client. `code` is ours — the HTTP status or the
+   * client's error kind — and never ESIS's body, which echoes `personId`s.
+   */
+  private async trySend(payload: {
     institutionId: number;
     studentGroupId: number;
     dayDate: string;
@@ -1043,17 +1113,26 @@ export class AttendanceService {
       tardyMinutes: number;
       attendReasonList: string[];
     }[];
-  }) {
+  }): Promise<{ code: string; message: string } | null> {
     try {
-      return await this.esis.saveAttendance(payload);
+      await this.esis.saveAttendance(payload);
+      return null;
     } catch (error) {
-      if (error instanceof EsisError && error.kind === "http" && error.detail.status === 401) {
-        throw new BadGatewayException("ESIS Bearer token хүчингүй эсвэл хугацаа дууссан байна.");
+      if (!(error instanceof EsisError)) {
+        return {
+          code: "UNKNOWN",
+          message: "ESIS ирцийн хүсэлтийг хүлээж авсангүй. Дахин шалгана уу.",
+        };
       }
-      if (error instanceof EsisError && error.kind === "http" && error.detail.status === 403) {
-        throw new BadGatewayException("ESIS token-д API-000269 ирц илгээх эрх алга байна.");
+      const status = error.kind === "http" ? error.detail.status : undefined;
+      const code = status ? `HTTP_${status}` : error.kind.toUpperCase();
+      if (status === 401) {
+        return { code, message: "ESIS Bearer token хүчингүй эсвэл хугацаа дууссан байна." };
       }
-      throw new BadGatewayException("ESIS ирцийн хүсэлтийг хүлээж авсангүй. Дахин шалгана уу.");
+      if (status === 403) {
+        return { code, message: "ESIS token-д API-000269 ирц илгээх эрх алга байна." };
+      }
+      return { code, message: "ESIS ирцийн хүсэлтийг хүлээж авсангүй. Дахин шалгана уу." };
     }
   }
 
@@ -1669,4 +1748,50 @@ export function workingDays(
     if (override !== undefined) return override;
     return !isWeekend(day);
   });
+}
+
+type EsisAttemptFact = {
+  groupId: string;
+  date: Date;
+  outcome: "SUCCEEDED" | "FAILED";
+  errorMessage: string | null;
+  createdAt: Date;
+};
+
+type EsisDayCounts = {
+  succeeded: number;
+  failed: number;
+  lastOutcome: "SUCCEEDED" | "FAILED" | null;
+  lastError: string | null;
+  lastAttemptAt: string | null;
+};
+
+const NO_ESIS_ATTEMPTS: EsisDayCounts = {
+  succeeded: 0,
+  failed: 0,
+  lastOutcome: null,
+  lastError: null,
+  lastAttemptAt: null,
+};
+
+/**
+ * Per group-day ESIS attempt counts, keyed `${groupId} ${YYYY-MM-DD}`.
+ *
+ * Attempts arrive oldest first, so the last one folded in is the latest —
+ * which is what `lastOutcome` and `lastError` describe. A failure followed by
+ * a success keeps its count but not its message.
+ */
+function foldEsisAttempts(attempts: EsisAttemptFact[]): Map<string, EsisDayCounts> {
+  const byDay = new Map<string, EsisDayCounts>();
+  for (const attempt of attempts) {
+    const key = `${attempt.groupId} ${attempt.date.toISOString().slice(0, 10)}`;
+    const day = byDay.get(key) ?? { ...NO_ESIS_ATTEMPTS };
+    if (attempt.outcome === "SUCCEEDED") day.succeeded += 1;
+    else day.failed += 1;
+    day.lastOutcome = attempt.outcome;
+    day.lastError = attempt.outcome === "FAILED" ? attempt.errorMessage : null;
+    day.lastAttemptAt = attempt.createdAt.toISOString();
+    byDay.set(key, day);
+  }
+  return byDay;
 }

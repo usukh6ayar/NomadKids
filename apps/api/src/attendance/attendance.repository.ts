@@ -495,6 +495,51 @@ export class AttendanceRepository {
   }
 
   /**
+   * Every ESIS send attempt in the range, oldest first — what the register's
+   * per-group-day success and failure counts are folded from.
+   *
+   * ★ One query for the register, like `findSubmissions`, and bounded by the
+   * same ≤ 92-day range the query schema enforces (§3.4). Only the columns
+   * the count needs.
+   */
+  async findEsisAttempts(kindergartenId: string, from: Date, to: Date, groupIds?: string[]) {
+    return this.prisma.attendanceEsisAttempt.findMany({
+      where: {
+        kindergartenId,
+        deletedAt: null,
+        date: { gte: from, lte: to },
+        ...(groupIds?.length ? { groupId: { in: groupIds } } : {}),
+      },
+      select: {
+        groupId: true,
+        date: true,
+        outcome: true,
+        errorMessage: true,
+        createdAt: true,
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+  }
+
+  /**
+   * Appends one attempt.
+   *
+   * ★ Never inside a transaction (CLAUDE.md §3.6): a failure is exactly the
+   * row a rolled-back request would otherwise take with it.
+   */
+  async recordEsisAttempt(data: {
+    kindergartenId: string;
+    groupId: string;
+    date: Date;
+    outcome: "SUCCEEDED" | "FAILED";
+    errorCode: string | null;
+    errorMessage: string | null;
+    attemptedById: string;
+  }) {
+    await this.prisma.attendanceEsisAttempt.create({ data });
+  }
+
+  /**
    * Guardians' requests that overlap the range, for the director's register.
    *
    * ★ Only what the count needs — the span, the review state and the group of
