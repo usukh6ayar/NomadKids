@@ -349,6 +349,34 @@ describe("the working week", () => {
 });
 
 describe("the grid", () => {
+  /**
+   * «Зөвшөөрсөн», «Татгалзсан» on the «Суралцагчаар» table — a child's
+   * absence requests overlapping the range, once per request, never another
+   * child's.
+   */
+  it("counts each child's own requests in the range by review state", async () => {
+    const request_ = (reviewStatus: string, from: string, to: string, childId = a.child.id) =>
+      db.attendanceRequest.create({
+        data: {
+          kindergartenId: a.kindergarten.id,
+          childId,
+          enrollmentId: a.enrollment.id,
+          requestedById: a.parentUser.id,
+          dateFrom: new Date(`${from}T00:00:00.000Z`),
+          dateTo: new Date(`${to}T00:00:00.000Z`),
+          requestedStatus: "SICK",
+          reviewStatus,
+        } as never,
+      });
+    await request_("APPROVED", "2026-03-02", "2026-03-04");
+    await request_("REJECTED", "2026-03-05", "2026-03-05");
+    await request_("APPROVED", "2026-04-01", "2026-04-02"); // outside the range
+
+    const res = await register(admin, a.kindergarten.id, "from=2026-03-02&to=2026-03-06");
+    const row = res.body.items.find((r: { childId: string }) => r.childId === a.child.id);
+    expect(row.requests).toEqual({ pending: 0, approved: 1, rejected: 1 });
+  });
+
   it("returns one column per day in the range, both ends included", async () => {
     const res = await register(admin, a.kindergarten.id, "from=2026-03-02&to=2026-03-06");
 

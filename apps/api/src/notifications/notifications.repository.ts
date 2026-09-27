@@ -132,6 +132,9 @@ export class NotificationsRepository {
               id: true,
               lastName: true,
               firstName: true,
+              // The face on the card (client, 2026-09-25). A `USER_PHOTO` is
+              // readable by anyone in the kindergarten — see media.service.
+              photoMediaFileId: true,
               // Whether they administer a kindergarten — the card says
               // "Цэцэрлэгийн захиргаа" rather than "Бүлгийн багш" for them.
               // `toPublicShape` matches it to the notice's own kindergarten
@@ -186,6 +189,8 @@ export class NotificationsRepository {
             id: true,
             lastName: true,
             firstName: true,
+            // The face on the card — see the list query above.
+            photoMediaFileId: true,
             // Whether they administer a kindergarten — the card says
             // "Цэцэрлэгийн захиргаа" rather than "Бүлгийн багш" for them.
             // `toPublicShape` matches it to the notice's own kindergarten

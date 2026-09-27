@@ -211,6 +211,8 @@ export class ChildrenRepository {
           dateOfBirth: true,
           status: true,
           photoMediaFileId: true,
+          // Read to become `esisLinked` below — the ministry id itself stays here.
+          esisPersonId: true,
           enrollments: {
             where: { status: "ACTIVE", deletedAt: null },
             select: {
@@ -252,8 +254,10 @@ export class ChildrenRepository {
      * different files, and the one that forgets is the one that ships. Doing it
      * in the same function that asked for them keeps the two edits together.
      */
-    const rows = items.map(({ healthNotes, guardianships, ...child }) => ({
+    const rows = items.map(({ healthNotes, guardianships, esisPersonId, ...child }) => ({
       ...child,
+      // «ESIS төлөв»: whether this child has been matched to an ESIS person.
+      esisLinked: esisPersonId !== null,
       profile: {
         photo: Boolean(child.photoMediaFileId),
         health: Boolean(healthNotes?.trim()),

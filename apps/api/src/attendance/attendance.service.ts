@@ -118,8 +118,36 @@ export class AttendanceService {
     const built = await this.buildRegister(actor, kindergartenId, query);
     const { page, pageSize } = query;
     const start = (page - 1) * pageSize;
-    const items = built.rows.slice(start, start + pageSize).map((row) => ({
+    const pageRows = built.rows.slice(start, start + pageSize);
+    /*
+      Each child's absence requests by review state — the «Зөвшөөрсөн» and
+      «Татгалзсан» columns of «Суралцагчаар». For the page only, in one query.
+    */
+    const requestStates = await this.repo.findChildRequestStates(
+      kindergartenId,
+      toUtcDate(query.from),
+      toUtcDate(query.to),
+      pageRows.map((row) => row.child.id),
+    );
+    const requestsByChild = new Map<
+      string,
+      { pending: number; approved: number; rejected: number }
+    >();
+    for (const request of requestStates) {
+      const counts = requestsByChild.get(request.childId) ?? {
+        pending: 0,
+        approved: 0,
+        rejected: 0,
+      };
+      if (request.reviewStatus === "APPROVED") counts.approved += 1;
+      else if (request.reviewStatus === "REJECTED") counts.rejected += 1;
+      else counts.pending += 1;
+      requestsByChild.set(request.childId, counts);
+    }
+
+    const items = pageRows.map((row) => ({
       ...row,
+      requests: requestsByChild.get(row.child.id) ?? { pending: 0, approved: 0, rejected: 0 },
       child: {
         id: row.child.id,
         lastName: row.child.lastName,

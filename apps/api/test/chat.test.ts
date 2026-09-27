@@ -4,7 +4,19 @@ import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestApp } from "./support/app";
 import { resetData, testDb } from "./support/db";
-import { authed, createScenario, login, type AuthSession, type Scenario } from "./support/fixtures";
+import {
+  authed,
+  createChild,
+  createGroup,
+  createMembership,
+  createScenario,
+  createUser,
+  enrollChild,
+  linkGuardian,
+  login,
+  type AuthSession,
+  type Scenario,
+} from "./support/fixtures";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
 import { StorageService } from "../src/storage/storage.service";
 
@@ -328,6 +340,60 @@ describe("messages", () => {
     // `mine` is per reader, not a property of the row.
     expect(res.body.items[0].mine).toBe(true);
     expect(res.body.items[1].mine).toBe(false);
+  });
+
+  /**
+   * ★ A guardian is named by their child — client, 2026-09-25. The room names
+   * only the children it is about: a sibling in another group is not listed.
+   * The photograph id goes to staff only; another family would get 404 for it.
+   */
+  it("names a guardian's message by the room's child, and shows the face to staff only", async () => {
+    const photo = await db.mediaFile.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        childId: a.child.id,
+        purpose: "CHILD_PHOTO",
+        storageKey: `test/${a.child.id}.jpg`,
+        originalName: "a.jpg",
+        mimeType: "image/jpeg",
+        sizeBytes: 1,
+      } as never,
+    });
+    await db.child.update({ where: { id: a.child.id }, data: { photoMediaFileId: photo.id } });
+
+    const otherGroup = await createGroup(a.kindergarten.id, a.schoolYear.id, "Бусад");
+    const sibling = await createChild(a.kindergarten.id, { firstName: "Ах" });
+    await enrollChild(a.kindergarten.id, sibling.id, otherGroup.id, a.schoolYear.id);
+    await linkGuardian(a.kindergarten.id, sibling.id, a.parentUser.id);
+
+    await authed(request(server()).post(`/v1/chat/rooms/${groupRoom(a)}/messages`), parentA)
+      .send({ body: "Сайн байна уу" })
+      .expect(201);
+
+    const asTeacher = await authed(
+      request(server()).get(`/v1/chat/rooms/${groupRoom(a)}/messages`),
+      teacherA,
+    );
+    expect(asTeacher.body.items[0].author.children).toEqual([
+      expect.objectContaining({ id: a.child.id, photoMediaFileId: photo.id }),
+    ]);
+
+    // Another family in the same group sees the child's name, not the photo id.
+    const otherParent = await createUser();
+    await createMembership(otherParent.id, a.kindergarten.id, "PARENT");
+    const neighbour = await createChild(a.kindergarten.id, { firstName: "Хөрш" });
+    await enrollChild(a.kindergarten.id, neighbour.id, a.group.id, a.schoolYear.id);
+    await linkGuardian(a.kindergarten.id, neighbour.id, otherParent.id);
+    const other = await login(app, otherParent.username);
+
+    const asFamily = await authed(
+      request(server()).get(`/v1/chat/rooms/${groupRoom(a)}/messages`),
+      other,
+    );
+    expect(asFamily.status).toBe(200);
+    expect(asFamily.body.items[0].author.children).toEqual([
+      expect.objectContaining({ id: a.child.id, photoMediaFileId: null }),
+    ]);
   });
 
   it("refuses an empty or oversized body", async () => {

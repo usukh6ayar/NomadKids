@@ -31,6 +31,7 @@ function child(n: number) {
     sex: "FEMALE",
     dateOfBirth: "2021-04-12",
     kindergartenId: KG,
+    esisLinked: n === 1,
     enrollments: [
       {
         id: `88888888-8888-4888-8888-${String(n).padStart(12, "0")}`,
@@ -40,8 +41,9 @@ function child(n: number) {
   };
 }
 
-function stub() {
+function stub(extra: Parameters<typeof stubApi>[0] = []) {
   return stubApi([
+    ...extra,
     { path: "/auth/me", body: sessionFor(["ADMIN"]) },
     {
       path: "/groups",
@@ -66,6 +68,35 @@ beforeEach(() => {
 });
 
 describe("the director's roster", () => {
+  it("fills Хөнгөлөлт from ESIS on press, and ESIS төлөв from the row", async () => {
+    const user = userEvent.setup();
+    const api = stub([
+      {
+        path: `/kindergartens/${KG}/funding/food-discounts`,
+        body: {
+          status: "READ",
+          reason: null,
+          counts: { eligible: 1, notEligible: 0, unassessed: 1 },
+          rows: [
+            { childId: child(1).id, status: "ELIGIBLE", orderNum: null },
+            { childId: child(2).id, status: "UNASSESSED", orderNum: null },
+          ],
+        },
+      },
+    ]);
+    renderWithProviders(<ChildrenPage />);
+
+    const table = await screen.findByRole("table", { name: "Суралцагчийн жагсаалт" });
+    const first = within(table).getAllByRole("row")[1]!;
+    expect(first).toHaveTextContent("Холбогдсон");
+    expect(within(table).getAllByRole("row")[2]!).toHaveTextContent("Холбогдоогүй");
+    expect(api.calls.some((c) => c.url.includes("food-discounts"))).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: /ESIS Хөнгөлөлттэй/ }));
+    expect(await within(first).findByText("Хөнгөлөлттэй")).toBeInTheDocument();
+    expect(within(table).getAllByRole("row")[2]!).toHaveTextContent("Тогтоогоогүй");
+  });
+
   it("carries the four actions the drawing has, and no import", async () => {
     stub();
     renderWithProviders(<ChildrenPage />);
@@ -74,8 +105,8 @@ describe("the director's roster", () => {
     expect(screen.getByRole("link", { name: /Excel/ }).getAttribute("href")).toContain(
       `/kindergartens/${KG}/children/export`,
     );
-    // No screen or action exists for it yet — shown, and disabled.
-    expect(screen.getByRole("button", { name: /ESIS Хөнгөлөлттэй/ })).toBeDisabled();
+    // Reads ESIS's discounts on press — never on open, it is an audited ministry read.
+    expect(screen.getByRole("button", { name: /ESIS Хөнгөлөлттэй/ })).toBeEnabled();
     expect(screen.getByRole("link", { name: /ESIS Суралцагч/ })).toHaveAttribute(
       "href",
       "/admin/integrations/esis",
@@ -112,8 +143,9 @@ describe("the director's roster", () => {
     expect(within(row).getByText("УР23262971")).toBeInTheDocument();
     expect(within(row).getByText(SEX_LABEL.FEMALE!)).toBeInTheDocument();
     expect(within(row).getByText("Ахлах А")).toBeInTheDocument();
-    // Discount and ESIS state are not on the record yet: a dash, never a guess.
-    expect(within(row).getAllByText("—")).toHaveLength(2);
+    // Discount reads "—" until ESIS's discounts are pulled; ESIS state is the row's.
+    expect(within(row).getAllByText("—")).toHaveLength(1);
+    expect(row).toHaveTextContent("Холбогдсон");
   });
 
   it("invents no figures in the summary line", async () => {

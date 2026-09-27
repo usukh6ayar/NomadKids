@@ -473,6 +473,11 @@ export const childSummarySchema = z.object({
   dateOfBirth: z.string(),
   status: childStatusSchema.nullish(),
   photoMediaFileId: uuidSchema.nullish(),
+  /**
+   * «ESIS төлөв» — whether the child is matched to an ESIS person
+   * (`Child.esisPersonId`). The roster carries the fact, never the id.
+   */
+  esisLinked: z.boolean().optional(),
   // `/children/mine` returns a slimmer row with no enrollments at all, so this
   // defaults rather than being required.
   enrollments: z.array(enrollmentSummarySchema).default([]),
@@ -707,6 +712,14 @@ export const attendanceJournalRowSchema = z.object({
   recorded: z.number(),
   /** «Хамрагдвал зохих» — working days in range inside the child's enrolment. */
   expectedDays: z.number(),
+  /**
+   * This child's absence requests overlapping the range, by review state —
+   * «Зөвшөөрсөн», «Татгалзсан» on the «Суралцагчаар» table. A request is
+   * counted once however many days it spans. Defaulted so an older API parses.
+   */
+  requests: z
+    .object({ pending: z.number(), approved: z.number(), rejected: z.number() })
+    .default({ pending: 0, approved: 0, rejected: 0 }),
 });
 export type AttendanceJournalRow = z.infer<typeof attendanceJournalRowSchema>;
 
@@ -4863,6 +4876,22 @@ export type ChatRoom = z.infer<typeof chatRoomSchema>;
  */
 export const chatAuthorSchema = personRefSchema.extend({
   photoMediaFileId: uuidSchema.nullish(),
+  /**
+   * For a guardian, the children they are in this room for — a group room
+   * names that group's children only. Empty for staff. The photograph id is
+   * sent to staff only; a family reading another family's message gets the
+   * name (client, 2026-09-25: «эцэг эхийн мессежийг хүүхдийн нэр, зургаар»).
+   */
+  children: z
+    .array(
+      z.object({
+        id: uuidSchema,
+        lastName: z.string(),
+        firstName: z.string(),
+        photoMediaFileId: uuidSchema.nullish(),
+      }),
+    )
+    .default([]),
 });
 export type ChatAuthor = z.infer<typeof chatAuthorSchema>;
 
@@ -6123,3 +6152,27 @@ export const methodUnionDetailSchema = methodUnionSchema.extend({
   members: z.array(methodUnionMemberSchema),
 });
 export type MethodUnionDetail = z.infer<typeof methodUnionDetailSchema>;
+
+/**
+ * `GET /kindergartens/:id/funding/food-discounts` — which children the state
+ * subsidises the meals of, read live from ESIS api 128 and stored nowhere.
+ *
+ * ★ Three states per child, not two: `UNASSESSED` is "not assessed", never
+ * "not eligible". `UNAVAILABLE` means ESIS could not be asked at all.
+ */
+export const foodDiscountStatusSchema = z.enum(["ELIGIBLE", "NOT_ELIGIBLE", "UNASSESSED"]);
+export type FoodDiscountStatus = z.infer<typeof foodDiscountStatusSchema>;
+
+export const foodDiscountsSchema = z.object({
+  status: z.enum(["READ", "UNAVAILABLE"]),
+  reason: z.string().nullable(),
+  counts: z.object({ eligible: z.number(), notEligible: z.number(), unassessed: z.number() }),
+  rows: z.array(
+    z.object({
+      childId: z.string(),
+      status: foodDiscountStatusSchema,
+      orderNum: z.string().nullable(),
+    }),
+  ),
+});
+export type FoodDiscounts = z.infer<typeof foodDiscountsSchema>;

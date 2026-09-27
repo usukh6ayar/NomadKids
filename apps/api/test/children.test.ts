@@ -70,6 +70,18 @@ const server = () => app.getHttpServer();
 // IDOR — changing an id in the URL
 // ═══════════════════════════════════════════════════════════════════════════
 
+describe("the roster's ESIS state", () => {
+  it("says whether a child is matched to ESIS, and never sends the ministry id", async () => {
+    await db.child.update({ where: { id: a.child.id }, data: { esisPersonId: "90000000000001" } });
+
+    const res = await authed(request(server()).get("/v1/children"), adminA);
+    expect(res.status).toBe(200);
+    const row = res.body.items.find((c: { id: string }) => c.id === a.child.id);
+    expect(row.esisLinked).toBe(true);
+    expect(row).not.toHaveProperty("esisPersonId");
+  });
+});
+
 describe("IDOR", () => {
   it("guardian of another child gets 404 on detail", async () => {
     const res = await request(server())
