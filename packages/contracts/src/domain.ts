@@ -2923,6 +2923,17 @@ export const groupSchema = z.object({
  * admin of one kindergarten never learns that a parent also has a child at
  * another. The shape mirrors that; it is not a full user record.
  */
+/** Where a membership sits on the staff — see `StaffCategory` in the schema. */
+export const staffCategorySchema = z.enum(["MANAGEMENT", "TEACHING", "ADMINISTRATION", "SERVICE"]);
+export type StaffCategory = z.infer<typeof staffCategorySchema>;
+
+export const STAFF_CATEGORY_LABEL: Record<StaffCategory, string> = {
+  MANAGEMENT: "Удирдлага",
+  TEACHING: "Сургалт",
+  ADMINISTRATION: "Захиргаа",
+  SERVICE: "Үйлчилгээ",
+};
+
 export const adminUserSchema = z.object({
   id: uuidSchema,
   username: z.string().nullish(),
@@ -2943,6 +2954,9 @@ export const adminUserSchema = z.object({
    * absence as "no file to open" instead of an error.
    */
   esisPersonId: z.string().nullish(),
+  /** Регистрийн дугаар — `GET /users` is administrators only. */
+  registerNumber: z.string().nullish(),
+  dateOfBirth: z.string().nullish(),
   isActive: z.boolean().nullish(),
   lastLoginAt: z.string().nullish(),
   memberships: z
@@ -2952,6 +2966,14 @@ export const adminUserSchema = z.object({
         kindergartenId: uuidSchema,
         role: roleSchema,
         isActive: z.boolean().nullish(),
+        /** «Албан тушаал», «Ангилал», «Ажилд орсон огноо» — 2026-09-27. */
+        position: z.string().nullish(),
+        staffCategory: staffCategorySchema.nullish(),
+        startedOn: z.string().nullish(),
+        /** Live group assignments — the directory's «Бүлэг» column. */
+        groups: z
+          .array(z.object({ id: uuidSchema, name: z.string(), role: z.string() }))
+          .default([]),
       }),
     )
     .default([]),
