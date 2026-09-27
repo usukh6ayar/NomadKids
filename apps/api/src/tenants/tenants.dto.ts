@@ -25,6 +25,19 @@ export const updateKindergartenSchema = z.object({
   email: z.string().email().max(254).nullable().optional(),
   description: z.string().max(2000).nullable().optional(),
   isActive: z.boolean().optional(),
+  // «Байгууллага» profile — free text until the lists have a source.
+  shortName: z.string().trim().max(100).nullable().optional(),
+  propertyType: z.string().trim().max(100).nullable().optional(),
+  institutionType: z.string().trim().max(100).nullable().optional(),
+  location: z.string().trim().max(100).nullable().optional(),
+  responsibleUnit: z.string().trim().max(200).nullable().optional(),
+  country: z.string().trim().max(100).nullable().optional(),
+  province: z.string().trim().max(100).nullable().optional(),
+  district: z.string().trim().max(100).nullable().optional(),
+  website: z.string().trim().url().max(300).nullable().optional(),
+  facebook: z.string().trim().url().max(300).nullable().optional(),
+  headName: z.string().trim().max(200).nullable().optional(),
+  headPhone: z.string().trim().max(20).nullable().optional(),
 });
 export type UpdateKindergartenDto = z.infer<typeof updateKindergartenSchema>;
 

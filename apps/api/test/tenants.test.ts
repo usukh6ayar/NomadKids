@@ -176,7 +176,7 @@ describe("GET /kindergartens/:id", () => {
    * Both halves are asserted, because the interesting failure is not "the
    * admin set is wrong" but "the member set quietly grew to match it".
    */
-  it("sends a member exactly the seven fields a client reads", async () => {
+  it("sends a member exactly the fields a client reads — the profile, not the head's phone", async () => {
     await db.kindergarten.update({
       where: { id: a.kindergarten.id },
       data: { esisInstitutionId: "42778" },
@@ -190,17 +190,28 @@ describe("GET /kindergartens/:id", () => {
       expect(res.status).toBe(200);
       expect(Object.keys(res.body as object).sort()).toEqual([
         "address",
+        "country",
         "description",
+        "district",
         "email",
+        "facebook",
+        "headName",
         "id",
+        "institutionType",
+        "location",
         "logoMediaFileId",
         "name",
         "phone",
+        "propertyType",
+        "province",
+        "responsibleUnit",
+        "shortName",
+        "website",
       ]);
     }
   });
 
-  it("sends an admin those seven and the ESIS institution number", async () => {
+  it("sends an admin those, the ESIS institution number and the head's phone", async () => {
     await db.kindergarten.update({
       where: { id: a.kindergarten.id },
       data: { esisInstitutionId: "42778" },
@@ -214,13 +225,25 @@ describe("GET /kindergartens/:id", () => {
     expect(res.status).toBe(200);
     expect(Object.keys(res.body as object).sort()).toEqual([
       "address",
+      "country",
       "description",
+      "district",
       "email",
       "esisInstitutionId",
+      "facebook",
+      "headName",
+      "headPhone",
       "id",
+      "institutionType",
+      "location",
       "logoMediaFileId",
       "name",
       "phone",
+      "propertyType",
+      "province",
+      "responsibleUnit",
+      "shortName",
+      "website",
     ]);
   });
 
@@ -246,12 +269,23 @@ describe("GET /kindergartens/:id", () => {
     expect(res.status).toBe(200);
     expect(Object.keys(res.body as object).sort()).toEqual([
       "address",
+      "country",
       "description",
+      "district",
       "email",
+      "facebook",
+      "headName",
       "id",
+      "institutionType",
+      "location",
       "logoMediaFileId",
       "name",
       "phone",
+      "propertyType",
+      "province",
+      "responsibleUnit",
+      "shortName",
+      "website",
     ]);
   });
 });
@@ -293,6 +327,58 @@ describe("PATCH /kindergartens/:id", () => {
       parentA,
     ).send({ name: "Эцэг эхийн оролдлого" });
     expect(res.status).toBe(404);
+  });
+
+  /*
+   * ★ The profile fields the «Байгууллага» screen edits — 2026-09-27. Free
+   * text for now: the lists (улс, аймаг, өмчийн хэлбэр…) have no agreed
+   * source yet, and a closed list invented here would be wrong the first
+   * time a kindergarten did not fit it.
+   */
+  it("keeps every profile field it is sent, and returns them", async () => {
+    const profile = {
+      shortName: "Дэгдээхий",
+      propertyType: "Төрийн",
+      institutionType: "Цэцэрлэг",
+      location: "Хот",
+      responsibleUnit: "БЗД БХХ",
+      country: "Монгол",
+      province: "Улаанбаатар",
+      district: "Баянзүрх",
+      website: "https://degdeekhii.mn",
+      facebook: "https://facebook.com/degdeekhii",
+      headName: "Б.Сарнай",
+      headPhone: "99112233",
+    };
+    const res = await authed(
+      request(server()).patch(`/v1/kindergartens/${a.kindergarten.id}`),
+      adminA,
+    ).send(profile);
+    expect(res.status).toBe(200);
+
+    const read = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}`),
+      adminA,
+    );
+    expect(read.body).toMatchObject(profile);
+  });
+
+  /* The director's own phone is an administrator's to read, not a family's. */
+  it("keeps the head's phone from a parent, and shows them the rest", async () => {
+    await authed(request(server()).patch(`/v1/kindergartens/${a.kindergarten.id}`), adminA).send({
+      shortName: "Дэгдээхий",
+      headName: "Б.Сарнай",
+      headPhone: "99112233",
+    });
+
+    const read = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}`),
+      parentA,
+    );
+    expect(read.status).toBe(200);
+    expect(read.body.shortName).toBe("Дэгдээхий");
+    expect(read.body.headName).toBe("Б.Сарнай");
+    expect(read.body.headPhone).toBeUndefined();
   });
 
   it("writes an audit entry", async () => {
