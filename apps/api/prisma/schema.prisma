@@ -507,11 +507,11 @@ model Membership {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  kindergarten Kindergarten   @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  assignments  GroupTeacher[]
-  methodUnionsLed     MethodUnion[]       @relation("MethodUnionLead")
-  methodUnionSeats    MethodUnionMember[]
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kindergarten     Kindergarten        @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  assignments      GroupTeacher[]
+  methodUnionsLed  MethodUnion[]       @relation("MethodUnionLead")
+  methodUnionSeats MethodUnionMember[]
 
   @@unique([userId, kindergartenId, role])
   @@index([userId, isActive])
