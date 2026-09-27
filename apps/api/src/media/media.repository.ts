@@ -531,6 +531,31 @@ export class MediaRepository {
   }
 
   /** The kindergarten a logo is being attached to. */
+  /**
+   * Detaches the kindergarten's logo and soft-deletes the file, in one
+   * transaction — the retirement `attachTenantImage` gives a displaced logo,
+   * without a replacement. Returns the retired id, or `null` if there was none.
+   */
+  async detachKindergartenLogo(kindergartenId: string): Promise<string | null> {
+    return this.prisma.$transaction(async (tx) => {
+      const row = await tx.kindergarten.findFirst({
+        where: { id: kindergartenId, deletedAt: null },
+        select: { logoMediaFileId: true },
+      });
+      const previousId = row?.logoMediaFileId ?? null;
+      if (!previousId) return null;
+      await tx.kindergarten.update({
+        where: { id: kindergartenId },
+        data: { logoMediaFileId: null },
+      });
+      await tx.mediaFile.updateMany({
+        where: { id: previousId, kindergartenId, deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
+      return previousId;
+    });
+  }
+
   async findKindergartenForImage(kindergartenId: string) {
     return this.prisma.kindergarten.findFirst({
       where: { id: kindergartenId, deletedAt: null },

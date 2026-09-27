@@ -337,6 +337,17 @@ enum ReportStatus {
   FAILED
 }
 
+/// Which part of the staff a membership belongs to — «Удирдлага / Сургалт /
+/// Захиргаа / Үйлчилгээ», the grouping every Mongolian kindergarten's staffing
+/// table uses. A classification the system reports by, so an enum (§2.3's
+/// "system-level values"); the position inside it is free text.
+enum StaffCategory {
+  MANAGEMENT
+  TEACHING
+  ADMINISTRATION
+  SERVICE
+}
+
 enum AuditAction {
   LOGIN
   LOGIN_FAILED
@@ -361,11 +372,15 @@ enum AuditAction {
 /// teacher in one kindergarten and a parent in another, so all authority comes
 /// from Membership.
 model User {
-  id           String  @id @default(uuid()) @db.Uuid
-  username     String  @unique
-  email        String? @unique
-  phone        String? @unique
-  passwordHash String
+  id             String    @id @default(uuid()) @db.Uuid
+  username       String    @unique
+  email          String?   @unique
+  phone          String?   @unique
+  /// Регистрийн дугаар — two Cyrillic letters and eight digits, upper-cased.
+  /// Administrators only: read by `GET /users`, which is `@Roles("ADMIN")`.
+  registerNumber String?
+  dateOfBirth    DateTime? @db.Date
+  passwordHash   String
 
   /// The ESIS person this account belongs to.
   ///
@@ -487,6 +502,7 @@ model User {
   esisWritesApproved     EsisWriteRequest[]        @relation("EsisWriteApprover")
 
   @@index([deletedAt])
+  @@index([registerNumber])
   @@map("users")
 }
 
@@ -502,15 +518,22 @@ model Membership {
   /// Revocation without deletion — the record of the relationship survives.
   isActive       Boolean @default(true)
 
-  startedOn DateTime? @db.Date
+  /// When this person started here — «Ажилд орсон огноо».
+  startedOn     DateTime?      @db.Date
+  /// «Албан тушаал» — "Бүлгийн багш", "Арга зүйч"… Free text: positions vary
+  /// by kindergarten and the role column already carries what access needs.
+  position      String?
+  staffCategory StaffCategory?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  kindergarten Kindergarten   @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  assignments  GroupTeacher[]
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kindergarten     Kindergarten        @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  assignments      GroupTeacher[]
+  methodUnionsLed  MethodUnion[]       @relation("MethodUnionLead")
+  methodUnionSeats MethodUnionMember[]
 
   @@unique([userId, kindergartenId, role])
   @@index([userId, isActive])
@@ -598,6 +621,24 @@ model Kindergarten {
   email       String?
   description String?
   isActive    Boolean @default(true)
+
+  /// The «Байгууллага» profile — 2026-09-27. Free text, nullable: the lists
+  /// these would be chosen from (улс, аймаг, өмчийн хэлбэр, хэв шинж) have no
+  /// agreed source yet, and a closed list invented here would be wrong the
+  /// first time a kindergarten did not fit it.
+  shortName       String?
+  propertyType    String?
+  institutionType String?
+  location        String?
+  responsibleUnit String?
+  country         String?
+  province        String?
+  district        String?
+  website         String?
+  facebook        String?
+  headName        String?
+  /// The director's own phone — administrators only (`ADMIN_FIELDS`).
+  headPhone       String?
 
   /// The ESIS institution this tenant is allowed to read.
   ///
@@ -710,6 +751,8 @@ model Kindergarten {
   esisWriteRequests      EsisWriteRequest[]
   esisStaffRoster        EsisStaffRoster[]
   esisReference          EsisReference[]
+  methodUnions           MethodUnion[]
+  methodUnionMembers     MethodUnionMember[]
 
   @@index([deletedAt])
   @@map("kindergartens")
@@ -939,6 +982,7 @@ model SchoolYear {
   terms               Term[]
   childAgeProfiles    ChildAgeProfile[]
   accessSubscriptions AccessSubscription[]
+  methodUnions        MethodUnion[]
 
   @@unique([kindergartenId, name])
   @@index([kindergartenId, isCurrent])
@@ -4704,4 +4748,62 @@ model AttendanceEsisAttempt {
   @@index([kindergartenId, date])
   @@index([groupId, date])
   @@map("attendance_esis_attempts")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Method unions — «Заах аргын нэгдэл»
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A teaching-method union: teachers of one kindergarten who work on method
+/// together for a school year, with an optional lead.
+///
+/// ★ The lead and the members are `Membership` rows, not `User` rows — a union
+/// belongs to one kindergarten, and a person teaching in two is two memberships.
+/// The service accepts only an active TEACHER membership of the union's own
+/// kindergarten, so a pasted id from elsewhere is refused rather than stored.
+model MethodUnion {
+  id                String    @id @default(uuid()) @db.Uuid
+  kindergartenId    String    @db.Uuid
+  name              String
+  schoolYearId      String    @db.Uuid
+  leadMembershipId  String?   @db.Uuid
+  startsOn          DateTime  @db.Date
+  endsOn            DateTime? @db.Date
+  /// ESIS's academic-organisation id, for the later sync. Nothing writes it yet.
+  esisAcademicOrgId String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten        @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  schoolYear   SchoolYear          @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
+  lead         Membership?         @relation("MethodUnionLead", fields: [leadMembershipId], references: [id], onDelete: Restrict)
+  members      MethodUnionMember[]
+
+  @@index([kindergartenId, schoolYearId])
+  @@map("method_unions")
+}
+
+/// One teacher's seat in a method union.
+///
+/// One live seat per membership per union. Hand-written as a **partial**
+/// unique index (`WHERE "deletedAt" IS NULL`), so a removed teacher can be
+/// added back — the same correction `meal_servings` needed.
+model MethodUnionMember {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  unionId        String @db.Uuid
+  membershipId   String @db.Uuid
+
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  union        MethodUnion  @relation(fields: [unionId], references: [id], onDelete: Restrict)
+  membership   Membership   @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+
+  @@unique([unionId, membershipId])
+  @@index([membershipId])
+  @@map("method_union_members")
 }

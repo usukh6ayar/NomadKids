@@ -2949,6 +2949,17 @@ export const groupSchema = z.object({
  * admin of one kindergarten never learns that a parent also has a child at
  * another. The shape mirrors that; it is not a full user record.
  */
+/** Where a membership sits on the staff — see `StaffCategory` in the schema. */
+export const staffCategorySchema = z.enum(["MANAGEMENT", "TEACHING", "ADMINISTRATION", "SERVICE"]);
+export type StaffCategory = z.infer<typeof staffCategorySchema>;
+
+export const STAFF_CATEGORY_LABEL: Record<StaffCategory, string> = {
+  MANAGEMENT: "Удирдлага",
+  TEACHING: "Сургалт",
+  ADMINISTRATION: "Захиргаа",
+  SERVICE: "Үйлчилгээ",
+};
+
 export const adminUserSchema = z.object({
   id: uuidSchema,
   username: z.string().nullish(),
@@ -2969,6 +2980,9 @@ export const adminUserSchema = z.object({
    * absence as "no file to open" instead of an error.
    */
   esisPersonId: z.string().nullish(),
+  /** Регистрийн дугаар — `GET /users` is administrators only. */
+  registerNumber: z.string().nullish(),
+  dateOfBirth: z.string().nullish(),
   isActive: z.boolean().nullish(),
   lastLoginAt: z.string().nullish(),
   memberships: z
@@ -2978,6 +2992,14 @@ export const adminUserSchema = z.object({
         kindergartenId: uuidSchema,
         role: roleSchema,
         isActive: z.boolean().nullish(),
+        /** «Албан тушаал», «Ангилал», «Ажилд орсон огноо» — 2026-09-27. */
+        position: z.string().nullish(),
+        staffCategory: staffCategorySchema.nullish(),
+        startedOn: z.string().nullish(),
+        /** Live group assignments — the directory's «Бүлэг» column. */
+        groups: z
+          .array(z.object({ id: uuidSchema, name: z.string(), role: z.string() }))
+          .default([]),
       }),
     )
     .default([]),
@@ -5933,3 +5955,44 @@ export const mealCostSchema = z.object({
   total: z.string(),
 });
 export type MealCost = z.infer<typeof mealCostSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Method unions — «Заах аргын нэгдэл»
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A teacher as a union shows them: the membership, and whose it is. */
+export const methodUnionPersonSchema = z.object({
+  membershipId: z.string(),
+  userId: z.string(),
+  lastName: z.string(),
+  firstName: z.string(),
+});
+export type MethodUnionPerson = z.infer<typeof methodUnionPersonSchema>;
+
+export const methodUnionSchema = z.object({
+  id: z.string(),
+  kindergartenId: z.string(),
+  name: z.string(),
+  schoolYear: z.object({ id: z.string(), name: z.string() }),
+  lead: methodUnionPersonSchema.nullable(),
+  /** `YYYY-MM-DD`. */
+  startsOn: z.string(),
+  endsOn: z.string().nullable(),
+  esisAcademicOrgId: z.string().nullable(),
+  memberCount: z.number().int(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type MethodUnion = z.infer<typeof methodUnionSchema>;
+
+export const methodUnionMemberSchema = methodUnionPersonSchema.extend({
+  /** The seat's own id — what `DELETE /method-union-members/:id` takes. */
+  id: z.string(),
+  createdAt: z.string(),
+});
+export type MethodUnionMember = z.infer<typeof methodUnionMemberSchema>;
+
+export const methodUnionDetailSchema = methodUnionSchema.extend({
+  members: z.array(methodUnionMemberSchema),
+});
+export type MethodUnionDetail = z.infer<typeof methodUnionDetailSchema>;
