@@ -68,6 +68,19 @@ export class TenantsRepository {
     email: true,
     description: true,
     logoMediaFileId: true,
+    // The public half of the «Байгууллага» profile (2026-09-27) — what a
+    // family may read. The director's phone is `ADMIN_FIELDS` only.
+    shortName: true,
+    propertyType: true,
+    institutionType: true,
+    location: true,
+    responsibleUnit: true,
+    country: true,
+    province: true,
+    district: true,
+    website: true,
+    facebook: true,
+    headName: true,
   } as const;
 
   /**
@@ -96,6 +109,18 @@ export class TenantsRepository {
     description: true,
     logoMediaFileId: true,
     esisInstitutionId: true,
+    shortName: true,
+    propertyType: true,
+    institutionType: true,
+    location: true,
+    responsibleUnit: true,
+    country: true,
+    province: true,
+    district: true,
+    website: true,
+    facebook: true,
+    headName: true,
+    headPhone: true,
   } as const;
 
   async listKindergartens(scope: TenantScope) {
