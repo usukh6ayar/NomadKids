@@ -16,6 +16,7 @@ import {
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
+import { AdminRoster } from "@/components/child/admin-roster";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
@@ -70,7 +71,8 @@ export default function ChildrenPage() {
   */
   return (
     <RequireRole roles={["TEACHER", "ADMIN", "PARENT"]}>
-      {isStaff ? <StaffChildren /> : <MyChildren />}
+      {/* The director's roster is its own compact table — 2026-09-25. */}
+      {isStaff ? hasRole("ADMIN") ? <AdminRoster /> : <StaffChildren /> : <MyChildren />}
     </RequireRole>
   );
 }

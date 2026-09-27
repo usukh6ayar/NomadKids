@@ -1,9 +1,20 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Plus, UserMinus, UserPlus } from "lucide-react";
+import {
+  CircleAlert,
+  Info,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Trash2,
+  UserPlus,
+  UsersRound,
+  X,
+} from "lucide-react";
 import { z } from "zod";
 import {
   adminUserSchema,
@@ -12,24 +23,24 @@ import {
   paginated,
   schoolYearSchema,
   programKindSchema,
-  attendanceFormSchema,
   PROGRAM_KIND_LABEL,
-  ATTENDANCE_FORM_LABEL,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
+import { cn } from "@/lib/utils";
 import { fullName } from "@/lib/format";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { TableShell, Td, Th } from "@/components/ui/table";
+import { Td, Th } from "@/components/ui/table";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
-import { EsisDataPanel } from "@/components/esis/esis-data-panel";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { RowMenu } from "@/components/ui/menu";
+import { Pagination } from "@/components/ui/pagination";
+import { SearchField } from "@/components/ui/search-field";
 import { PageHeader } from "@/components/shell/app-shell";
-import { SingleImageUpload } from "@/components/media/single-image-upload";
 import { RequireRole } from "@/components/shell/require-role";
 
 const groupsSchema = paginated(groupListItemSchema);
@@ -56,13 +67,10 @@ const BAND_LABEL = Object.fromEntries(AGE_BANDS.map((b) => [b.value, b.label]));
  * file.
  */
 const PROGRAM_KINDS = programKindSchema.options;
-const ATTENDANCE_FORMS = attendanceFormSchema.options;
 
-const GROUP_COLUMNS = [
-  { key: "band", label: "Насны бүлэг" },
-  { key: "year", label: "Хичээлийн жил" },
-  { key: "children", label: "Хүүхэд" },
-] as const;
+type GroupItem = z.infer<typeof groupListItemSchema>;
+
+const PAGE_SIZES = [20, 50, 100] as const;
 
 /**
  * Groups and the teachers assigned to them.
@@ -101,220 +109,297 @@ export default function AdminGroupsPage() {
 
 function AdminGroups() {
   const { primaryKindergartenId } = useSession();
-  const [creating, setCreating] = useState(false);
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [dialog, setDialog] = useState<
+    | { kind: "create" }
+    | { kind: "edit"; group: GroupItem }
+    | { kind: "teachers"; group: GroupItem }
+    | { kind: "delete"; group: GroupItem }
+    | null
+  >(null);
+  const [band, setBand] = useState("");
+  const [yearId, setYearId] = useState<string | null>(null);
+  const [typed, setTyped] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(20);
 
   const groups = useQuery({
     queryKey: qk.adminGroups(),
     /*
-     * ★ `pageSize=100`, the API's maximum, and this screen has no pager.
-     *
-     * A director assigning teachers works down the whole list, so a default
-     * page of 25 would silently hide the groups at the bottom — and a group
-     * that is not on screen is a group nobody notices has no teacher. A
-     * kindergarten does not have a hundred groups; if one ever does, this
-     * needs a pager, and it should be built then rather than guessed at now.
+     * ★ `pageSize=100`, the API's maximum. A kindergarten has far fewer
+     * groups, so every filter and the pager below work on the whole list in
+     * the browser rather than guessing at a server page.
      */
     queryFn: () => get("/groups?pageSize=100", groupsSchema),
   });
 
-  const items = groups.data?.items ?? [];
+  const years = useQuery({
+    queryKey: qk.adminSchoolYears(primaryKindergartenId ?? ""),
+    queryFn: () => get(`/kindergartens/${primaryKindergartenId}/school-years`, yearsSchema),
+    enabled: Boolean(primaryKindergartenId),
+  });
+  const currentYear = (years.data ?? []).find((y) => y.isCurrent) ?? years.data?.[0];
+  // The current school year until the director picks another; "" is all years.
+  const selectedYear = yearId ?? currentYear?.id ?? "";
 
+  const remove = useMutation({
+    mutationFn: (id: string) => mutate(`/groups/${id}`, z.unknown(), { method: "DELETE" }),
+    onSuccess: () => {
+      toast.success("Бүлэг устгагдлаа.");
+      setDialog(null);
+      void queryClient.invalidateQueries({ queryKey: ["admin", "groups"] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const term = typed.trim().toLowerCase();
+  const filtered = (groups.data?.items ?? []).filter(
+    (group) =>
+      (!band || group.ageBand === band) &&
+      (!selectedYear || group.schoolYear?.id === selectedYear) &&
+      (!term || group.name.toLowerCase().includes(term)),
+  );
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const current = Math.min(page, totalPages);
+  const offset = (current - 1) * pageSize;
+  const visible = filtered.slice(offset, offset + pageSize);
+  const resetting =
+    <T,>(set: (value: T) => void) =>
+    (value: T) => {
+      set(value);
+      setPage(1);
+    };
+
+  /*
+    ★ The client's 2026-09-25 drawing: title and two actions, three filters, the
+    register's sync date, one compact table, a pager. Two things it shows have
+    no data yet — the group's teacher on the list and the sync date — and read
+    "—" rather than anything invented; see the report for the API work.
+  */
   return (
-    <div className="flex flex-col gap-6 lg:gap-8">
+    <div className="flex flex-col gap-3">
       <PageHeader
-        title="Бүлгүүд"
+        title="Анги, бүлэг"
         actions={
-          <Button size="sm" onClick={() => setCreating(true)}>
-            <Plus size={18} />
-            Бүлэг нэмэх
-          </Button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button asChild size="sm" variant="secondary">
+              <Link href="/admin/integrations/esis">
+                <RefreshCw size={16} aria-hidden /> ESIS татах
+              </Link>
+            </Button>
+            <Button size="sm" onClick={() => setDialog({ kind: "create" })}>
+              <Plus size={18} aria-hidden />
+              Бүлэг нэмэх
+            </Button>
+          </div>
         }
       />
 
-      {groups.isLoading ? <LoadingState rows={3} /> : null}
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[200px_170px_minmax(0,1fr)]">
+        <Select
+          aria-label="Насны бүлэг"
+          value={band}
+          onChange={(event) => resetting(setBand)(event.target.value)}
+        >
+          <option value="">Бүх насны бүлэг</option>
+          {AGE_BANDS.map((b) => (
+            <option key={b.value} value={b.value}>
+              {b.label}
+            </option>
+          ))}
+        </Select>
+        <Select
+          aria-label="Хичээлийн жил"
+          value={selectedYear}
+          onChange={(event) => resetting(setYearId)(event.target.value)}
+        >
+          <option value="">Бүх хичээлийн жил</option>
+          {(years.data ?? []).map((y) => (
+            <option key={y.id} value={y.id}>
+              {y.name}
+            </option>
+          ))}
+        </Select>
+        <SearchField
+          label="Бүлэг эсвэл багш хайх"
+          placeholder="Бүлэг эсвэл багш хайх..."
+          value={typed}
+          onChange={resetting(setTyped)}
+        />
+      </div>
+
+      <p className="flex items-center gap-2 rounded-control border border-primary/20 bg-primary-soft px-3 py-2 text-caption text-primary">
+        <Info size={15} aria-hidden /> Нэгдсэн журмаар шинэчлэгдсэн: —
+      </p>
+
+      {groups.isLoading ? <LoadingState rows={5} /> : null}
       {groups.isError ? <ErrorState description={errorMessage(groups.error)} /> : null}
 
-      {groups.data && items.length === 0 ? (
+      {groups.data && groups.data.items.length === 0 ? (
         <EmptyState
           title="Бүлэг байхгүй байна"
           description="Хүүхэд бүртгэхийн өмнө бүлэг үүсгэх шаардлагатай."
         />
       ) : null}
-
-      {items.length > 0 ? (
-        /*
-          ★ A table — client, 2026-09-25: "бүлгүүд хүснэгт хэлбэрээр харагд".
-          The same four facts and the same Багш control per group, in columns
-          a director reads across; it scrolls sideways on a phone rather than
-          stacking.
-        */
-        <TableShell caption="Бүлгүүдийн жагсаалт" minWidth="min-w-[640px]">
-          <thead>
-            <tr>
-              <Th>Бүлэг</Th>
-              {GROUP_COLUMNS.map((column) => (
-                <Th key={column.key}>{column.label}</Th>
-              ))}
-              <Th>
-                <span className="sr-only">Үйлдэл</span>
-              </Th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((group) => (
-              <GroupRow key={group.id} group={group} />
-            ))}
-          </tbody>
-        </TableShell>
+      {groups.data && groups.data.items.length > 0 && filtered.length === 0 ? (
+        <EmptyState title="Бүлэг олдсонгүй" description="Шүүлтүүр эсвэл хайлтаа өөрчилж үзнэ үү." />
       ) : null}
 
-      {/*
-        ★ ESIS's group list, including the teacher it has assigned to each.
+      {visible.length > 0 ? (
+        /*
+          ★ A plain table, not `TableShell` — 2026-09-25, the client: the ⋯ menu
+          came out cut off. `TableShell` clips its card and scrolls sideways,
+          and the row menu opens inside that box; here nothing clips it.
+        */
+        <div className="rounded-card border border-border bg-surface">
+          <table className="w-full border-collapse text-body">
+            <caption className="sr-only">Бүлгүүдийн жагсаалт</caption>
+            <thead>
+              <tr>
+                <Th className="w-12 rounded-tl-card py-2">№</Th>
+                <Th className="py-2">Бүлгийн нэр</Th>
+                <Th className="py-2">Насны бүлэг</Th>
+                <Th className="py-2">Хөтөлбөр</Th>
+                <Th className="py-2">Бүлгийн багш</Th>
+                <Th className="py-2">Хүүхэд</Th>
+                <Th className="w-12 rounded-tr-card py-2">
+                  <span className="sr-only">Үйлдэл</span>
+                </Th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((group, index) => (
+                <tr key={group.id} className="hover:bg-sunken/60">
+                  <Td className="py-1.5 tabular-nums text-muted">{offset + index + 1}</Td>
+                  <Td className="py-1.5">
+                    <Link
+                      href={`/groups/${group.id}`}
+                      className="font-medium text-ink hover:text-primary hover:underline"
+                    >
+                      {group.name}
+                    </Link>
+                  </Td>
+                  <Td className="py-1.5 text-muted">
+                    {group.ageBand ? (BAND_LABEL[group.ageBand] ?? group.ageBand) : "—"}
+                  </Td>
+                  <Td className="py-1.5 text-muted">
+                    {group.programKind ? (PROGRAM_KIND_LABEL[group.programKind] ?? "—") : "—"}
+                  </Td>
+                  {/* The list endpoint carries no teacher yet — see the report. */}
+                  <Td className="py-1.5 text-faint">—</Td>
+                  <Td className="py-1.5 tabular-nums text-ink">{group._count?.enrollments ?? 0}</Td>
+                  <Td className="py-1 text-right">
+                    <RowMenu
+                      ariaLabel={`${group.name} — үйлдэл`}
+                      triggerIcon={<MoreHorizontal size={18} aria-hidden="true" />}
+                      items={[
+                        {
+                          label: "Мэдээлэл засах",
+                          icon: <Pencil size={16} aria-hidden />,
+                          onSelect: () => setDialog({ kind: "edit", group }),
+                        },
+                        {
+                          label: "Багш солих",
+                          icon: <UsersRound size={16} aria-hidden />,
+                          onSelect: () => setDialog({ kind: "teachers", group }),
+                        },
+                        {
+                          label: "Суралцагчдыг харах",
+                          icon: <UsersRound size={16} aria-hidden />,
+                          href: `/groups/${group.id}`,
+                        },
+                        {
+                          label: "Устгах",
+                          icon: <Trash2 size={16} aria-hidden />,
+                          tone: "danger",
+                          separated: true,
+                          onSelect: () => setDialog({ kind: "delete", group }),
+                        },
+                      ]}
+                    />
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
 
-        `instructorId` and `instructorName` are the reason this panel sits
-        directly under the list rather than only on the integration screen:
-        assigning a teacher to a group is a decision the ministry also records,
-        and the director's question is whether the two agree. The local
-        assignment is the "Багш" dialog on each row above; ESIS's answer is the
-        `Багшийн код` and `Багшийн нэр` columns below, in one downward read.
-      */}
-      {/*
-        ★ Next year's groups — 2026-09-10. The client asked for a "татах,
-        илгээх" pair here; the read half already existed (`api-40` below) and
-        there is no group *write* service in the ministry's catalog, so nothing
-        was invented to fill the other half. `API-000113` is the read that the
-        ahead-of-time question actually needs, and it is the source
-        `POST /v1/groups/:id/promotions` has been missing.
-      */}
-      <EsisDataPanel
-        resource="groupsNextYear"
-        title="Дараа жилийн бүлэг"
-        description="Дараагийн хичээлийн жилд бүлэг хэрхэн бүрэлдэхийг ЭСИС-ээс харах"
-      />
+      {groups.data && filtered.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-body font-semibold text-ink">
+            Нийт <span className="tabular-nums">{filtered.length}</span> бүлэг
+          </p>
+          <Pagination page={current} totalPages={totalPages} onPage={setPage} />
+          <label className="flex items-center gap-2 text-caption text-muted">
+            Хуудас тутамд:
+            <Select
+              aria-label="Хуудас тутамд"
+              value={String(pageSize)}
+              onChange={(event) => {
+                setPageSize(Number(event.target.value) as (typeof PAGE_SIZES)[number]);
+                setPage(1);
+              }}
+              className="h-9 w-auto px-2"
+            >
+              {PAGE_SIZES.map((size) => (
+                <option key={size} value={String(size)}>
+                  {size}
+                </option>
+              ))}
+            </Select>
+          </label>
+        </div>
+      ) : null}
 
-      <EsisDataPanel
-        resource="groups"
-        title="Бүлгүүд"
-        description="Бүлэг, түвшин, хөтөлбөр — мөн ESIS-д бүртгэлтэй бүлгийн багш"
-      />
-
-      {creating && primaryKindergartenId ? (
-        <CreateGroupDialog
+      {dialog?.kind === "create" && primaryKindergartenId ? (
+        <GroupFormDialog
           kindergartenId={primaryKindergartenId}
-          onClose={() => setCreating(false)}
+          schoolYearId={selectedYear || currentYear?.id || ""}
+          onClose={() => setDialog(null)}
         />
       ) : null}
+      {dialog?.kind === "edit" && primaryKindergartenId ? (
+        <GroupFormDialog
+          kindergartenId={primaryKindergartenId}
+          schoolYearId={dialog.group.schoolYear?.id ?? ""}
+          group={dialog.group}
+          onClose={() => setDialog(null)}
+        />
+      ) : null}
+      {dialog?.kind === "teachers" ? (
+        <ManageTeachersDialog
+          groupId={dialog.group.id}
+          groupName={dialog.group.name}
+          onClose={() => setDialog(null)}
+        />
+      ) : null}
+      <ConfirmDialog
+        open={dialog?.kind === "delete"}
+        onOpenChange={(next) => (next ? undefined : setDialog(null))}
+        title="Энэ бүлгийг устгах уу?"
+        description={dialog?.kind === "delete" ? dialog.group.name : ""}
+        confirmLabel="Устгах"
+        cancelLabel="Болих"
+        tone="danger"
+        pending={remove.isPending}
+        onConfirm={() => (dialog?.kind === "delete" ? remove.mutate(dialog.group.id) : undefined)}
+      />
     </div>
   );
 }
 
-function GroupRow({ group }: { group: z.infer<typeof groupListItemSchema> }) {
-  const [managing, setManaging] = useState(false);
-  const children = group._count?.enrollments ?? 0;
-
-  const cells: Record<(typeof GROUP_COLUMNS)[number]["key"], ReactNode> = {
-    /*
-      ★ A band that only repeats the name is written quietly.
-
-      A kindergarten may name a group after its age band — the demo data
-      does, so "Дунд бүлэг" is the group's name *and* the label of its
-      JUNIOR band, and the row printed the same two words twice at the
-      same weight, one column apart. It read as a rendering fault.
-
-      The cell keeps the value, because the column has to mean the same
-      thing on every row for a reader scanning down it — a blank here
-      would say "no age band set", which is a different and false claim.
-      What changes is the weight.
-    */
-    band: group.ageBand ? (
-      <span
-        className={
-          BAND_LABEL[group.ageBand] === group.name ? "text-body text-muted" : "text-body text-ink"
-        }
-      >
-        {BAND_LABEL[group.ageBand] ?? group.ageBand}
-      </span>
-    ) : null,
-    year: group.schoolYear?.name ? (
-      <span className="text-body text-muted">{group.schoolYear.name}</span>
-    ) : null,
-    children: (
-      <span className="text-body tabular-nums text-ink">
-        {children}
-        <span className="text-muted"> хүүхэд</span>
-      </span>
-    ),
-  };
-
-  return (
-    <tr>
-      <Td>
-        <span className="flex flex-wrap items-center gap-2">
-          {/*
-              ★ The name is the way in — 2026-09-06, at the client's request:
-              "нэр гэдэг хэсэгт дэлгэрэнгүй харуулдаг хэсэг байх, дараад орохоор
-              дотор нь ирц гэх мэтийг нь засаж болдог".
-
-              It has to *look* like a way in at rest. A link that is black text
-              and underlined on hover is indistinguishable from plain text on a
-              touch screen, where the pointer never arrives — so the name
-              carries the product's link colour and a chevron, the same mark
-              `StatCard` and `ChildTableRow` use for the same promise.
-            */}
-          <Link
-            href={`/groups/${group.id}`}
-            className="group/name inline-flex min-w-0 items-center gap-1 text-primary hover:underline"
-          >
-            <span className="min-w-0 truncate">{group.name}</span>
-            <ChevronRight
-              size={16}
-              aria-hidden="true"
-              className="shrink-0 text-primary/60 transition-transform group-hover/name:translate-x-0.5"
-            />
-          </Link>
-          {group.status === "ARCHIVED" ? <Badge tone="neutral">Архивласан</Badge> : null}
-          {/*
-              ★ Drawn only when it differs from the ordinary case.
-
-              Most groups are main-programme and standard-hours, so badging
-              every row with "Үндсэн сургалт · Энгийн" would put two constant
-              chips on every line and teach the eye to skip the strip that the
-              exceptions live in. The default is the absence of a badge.
-            */}
-          {group.programKind === "ALTERNATIVE" ? (
-            <Badge tone="sky">{PROGRAM_KIND_LABEL.ALTERNATIVE}</Badge>
-          ) : null}
-          {group.attendanceForm && group.attendanceForm !== "STANDARD" ? (
-            <Badge tone="sun">{ATTENDANCE_FORM_LABEL[group.attendanceForm]}</Badge>
-          ) : null}
-        </span>
-      </Td>
-      {GROUP_COLUMNS.map((column) => (
-        <Td key={column.key}>{cells[column.key]}</Td>
-      ))}
-      <Td className="text-right">
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => setManaging(true)}
-          aria-label={`${group.name} — багш хуваарилах`}
-        >
-          <UserPlus size={16} aria-hidden />
-          Багш
-        </Button>
-        {/* Fixed-position, so it may sit in the cell that opens it. */}
-        {managing ? (
-          <ManageTeachersDialog
-            groupId={group.id}
-            groupName={group.name}
-            onClose={() => setManaging(false)}
-          />
-        ) : null}
-      </Td>
-    </tr>
-  );
-}
-
+/**
+ * Багш хуваарилалт — the client's 2026-09-25 drawing: the group's teachers in
+ * two lists, Бүлгийн багш (LEAD) and Багшийн туслах (ASSISTANT), each with its
+ * own "Багш нэмэх" and a bin on every row.
+ *
+ * ★ The same two endpoints as before — `POST /groups/:id/teachers` with the
+ * list's role, `DELETE /group-teachers/:id` — and a removal still asks first
+ * (§5): it takes a teacher's children away from them on their next request.
+ * The class photograph's upload went on 2026-09-25, at the client's request.
+ */
 function ManageTeachersDialog({
   groupId,
   groupName,
@@ -327,18 +412,10 @@ function ManageTeachersDialog({
   const toast = useToast();
   const queryClient = useQueryClient();
   const { primaryKindergartenId } = useSession();
+  const [adding, setAdding] = useState<"LEAD" | "ASSISTANT" | null>(null);
   const [membershipId, setMembershipId] = useState("");
-  const [role, setRole] = useState("LEAD");
   const [removingId, setRemovingId] = useState<string | null>(null);
 
-  /*
-   * ★ `GET /groups/:id` is the assignment list — there is no `/teachers` route.
-   *
-   * The detail endpoint includes the group's active `GroupTeacher` rows with
-   * the teacher's name on each, which is exactly what this dialog draws. A
-   * second endpoint returning the same rows would be a second thing to keep in
-   * step with `findGroup`'s include.
-   */
   const group = useQuery({
     queryKey: ["admin", "groups", groupId],
     queryFn: () => get(`/groups/${groupId}`, groupWithTeachersSchema),
@@ -358,7 +435,7 @@ function ManageTeachersDialog({
   };
 
   const assign = useMutation({
-    mutationFn: () =>
+    mutationFn: (role: "LEAD" | "ASSISTANT") =>
       mutate(`/groups/${groupId}/teachers`, z.unknown(), {
         method: "POST",
         body: { membershipId, role },
@@ -366,6 +443,7 @@ function ManageTeachersDialog({
     onSuccess: () => {
       toast.success("Багш хуваарилагдлаа.");
       setMembershipId("");
+      setAdding(null);
       refresh();
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -381,21 +459,19 @@ function ManageTeachersDialog({
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  // Only assignments that have not ended — `endedOn` is how the API retires one.
   const assigned = (group.data?.teachers ?? []).filter((t) => !t.endedOn);
   const assignedMembershipIds = new Set(assigned.map((t) => t.membership?.id));
-
-  /*
-   * The API takes a `membershipId`, not a user id — the assignment is to this
-   * person's role *in this kindergarten*. Anyone already assigned is left out
-   * rather than shown and rejected with a 409.
-   */
   const options = (teachers.data?.items ?? []).flatMap((u) => {
     const m = u.memberships.find((x) => x.role === "TEACHER");
     return m && !assignedMembershipIds.has(m.id)
       ? [{ membershipId: m.id, label: fullName(u) }]
       : [];
   });
+
+  const lists = [
+    { role: "LEAD" as const, title: "Бүлгийн багш", tone: "bg-primary-soft text-primary" },
+    { role: "ASSISTANT" as const, title: "Багшийн туслах", tone: "bg-mint text-mint-ink" },
+  ];
 
   return (
     <div
@@ -404,200 +480,267 @@ function ManageTeachersDialog({
       aria-label={`${groupName} — багш`}
       className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
     >
-      <div className="w-full max-w-[460px] rounded-card border border-border bg-surface p-5">
-        <div className="flex flex-col gap-4">
-          <div>
-            <h2 className="text-title font-semibold text-ink">Багш хуваарилалт</h2>
-            <p className="mt-0.5 text-body text-muted">{groupName}</p>
-          </div>
-
-          <FormError
-            message={
-              assign.isError
-                ? errorMessage(assign.error)
-                : remove.isError
-                  ? errorMessage(remove.error)
-                  : null
-            }
-          />
-
-          {group.isLoading ? <LoadingState rows={1} /> : null}
-
-          {/*
-            RFP §3.2 — ангийн зураг. It lives in this dialog rather than on the
-            list because the list is a roster of names and a column of class
-            photographs would push the group names off a phone screen. This is
-            already the place a director opens to change who teaches the group.
-          */}
-          <SingleImageUpload
-            endpoint={`/groups/${groupId}/photo`}
-            currentMediaId={group.data?.photoMediaFileId}
-            label="Ангийн зураг нэмэх"
-            alt={`${groupName} бүлгийн зураг`}
-            invalidateKeys={[["admin", "groups"]]}
-          />
-
-          <div className="flex flex-wrap items-center gap-2">
-            {assigned.length === 0 && !group.isLoading ? (
-              <span className="text-body text-muted">Багш хуваарилаагүй байна.</span>
-            ) : null}
-
-            {assigned.map((t) => (
-              <span
-                key={t.id}
-                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-pill border border-border bg-canvas py-1 pl-3 pr-1.5 text-body"
-              >
-                <span className="text-ink">{fullName(t.membership?.user)}</span>
-                {t.role === "ASSISTANT" ? <Badge tone="sky">Туслах</Badge> : null}
-
-                {removingId === t.id ? (
-                  <>
-                    <span className="text-caption text-muted">Хасах уу?</span>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => remove.mutate(t.id)}
-                      disabled={remove.isPending}
-                    >
-                      Тийм
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setRemovingId(null)}>
-                      Үгүй
-                    </Button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setRemovingId(t.id)}
-                    aria-label={`${fullName(t.membership?.user)}-г бүлгээс хасах`}
-                    className="grid size-11 place-items-center rounded-pill text-muted hover:bg-surface hover:text-danger"
-                  >
-                    <UserMinus size={15} />
-                  </button>
-                )}
-              </span>
-            ))}
-          </div>
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (membershipId && !assign.isPending) assign.mutate();
-            }}
-            className="flex flex-col gap-3 border-t border-border pt-4"
-          >
-            {options.length === 0 && teachers.data ? (
-              <p className="rounded-control bg-sun px-3 py-2 text-body text-sun-ink">
-                Нэмэх багш алга. «Хэрэглэгчид» хэсгээс багш урина уу.
-              </p>
-            ) : (
-              <>
-                <Field label="Багш нэмэх">
-                  {({ id }) => (
-                    <Select
-                      id={id}
-                      value={membershipId}
-                      onChange={(e) => setMembershipId(e.target.value)}
-                    >
-                      <option value="">Сонгоно уу</option>
-                      {options.map((o) => (
-                        <option key={o.membershipId} value={o.membershipId}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </Select>
-                  )}
-                </Field>
-
-                <Field label="Үүрэг">
-                  {({ id }) => (
-                    <Select id={id} value={role} onChange={(e) => setRole(e.target.value)}>
-                      <option value="LEAD">Үндсэн багш</option>
-                      <option value="ASSISTANT">Туслах багш</option>
-                    </Select>
-                  )}
-                </Field>
-
-                <Button type="submit" disabled={!membershipId || assign.isPending}>
-                  <UserPlus size={16} />
-                  {assign.isPending ? "Нэмж байна…" : "Нэмэх"}
-                </Button>
-              </>
-            )}
-          </form>
-
-          <div className="border-t border-border pt-4">
-            <Button type="button" variant="ghost" onClick={onClose}>
-              Хаах
-            </Button>
-          </div>
+      <div className="relative flex w-full max-w-[480px] flex-col gap-3 rounded-card border border-border bg-surface p-5">
+        <button
+          type="button"
+          aria-label="Хаах"
+          onClick={onClose}
+          className="absolute right-3 top-3 grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
+        >
+          <X size={18} aria-hidden />
+        </button>
+        <div>
+          <h2 className="text-lead font-bold leading-heading text-ink">Багш хуваарилалт</h2>
+          <p className="mt-0.5 text-caption text-muted">
+            {groupName} бүлэгт ажиллах багш нарыг нэмнэ.
+          </p>
         </div>
+
+        <FormError
+          message={
+            assign.isError
+              ? errorMessage(assign.error)
+              : remove.isError
+                ? errorMessage(remove.error)
+                : null
+          }
+        />
+
+        {group.isLoading ? <LoadingState rows={2} /> : null}
+
+        {lists.map(({ role, title, tone }) => {
+          const people = assigned.filter((t) =>
+            role === "LEAD" ? t.role !== "ASSISTANT" : t.role === "ASSISTANT",
+          );
+          const headingId = `teachers-${role}`;
+          return (
+            <section
+              key={role}
+              aria-labelledby={headingId}
+              className="flex flex-col rounded-card border border-border-soft"
+            >
+              <div className="flex items-center justify-between gap-3 rounded-t-card bg-sunken px-3 py-2">
+                <h3
+                  id={headingId}
+                  className="flex items-center gap-2 text-body font-semibold text-ink"
+                >
+                  {title}
+                  <span
+                    className={cn(
+                      "grid min-w-6 place-items-center rounded-pill px-1.5 text-caption tabular-nums",
+                      tone,
+                    )}
+                  >
+                    {people.length}
+                  </span>
+                </h3>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={options.length === 0}
+                  onClick={() => {
+                    setAdding(role);
+                    setMembershipId("");
+                  }}
+                >
+                  <Plus size={16} aria-hidden /> Багш нэмэх
+                </Button>
+              </div>
+
+              <div className="flex flex-col gap-1.5 p-2">
+                {people.length === 0 && !group.isLoading ? (
+                  <p className="px-1 text-caption text-muted">Хуваарилаагүй байна.</p>
+                ) : null}
+                {people.map((t) => (
+                  <div
+                    key={t.id}
+                    className="flex min-h-11 items-center justify-between gap-2 rounded-control border border-border-soft px-3 py-1"
+                  >
+                    <span className="text-compact text-ink">{fullName(t.membership?.user)}</span>
+                    {removingId === t.id ? (
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-caption text-muted">Хасах уу?</span>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => remove.mutate(t.id)}
+                          disabled={remove.isPending}
+                        >
+                          Тийм
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => setRemovingId(null)}>
+                          Үгүй
+                        </Button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setRemovingId(t.id)}
+                        aria-label={`${fullName(t.membership?.user)}-г бүлгээс хасах`}
+                        className="grid size-8 place-items-center rounded-control border border-border-soft text-muted hover:text-danger"
+                      >
+                        <Trash2 size={15} aria-hidden />
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                {adding === role ? (
+                  <form
+                    className="flex flex-wrap items-end gap-2 pt-1"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (membershipId && !assign.isPending) assign.mutate(role);
+                    }}
+                  >
+                    <Field label="Багш" className="min-w-[220px] flex-1">
+                      {({ id }) => (
+                        <Select
+                          id={id}
+                          value={membershipId}
+                          onChange={(e) => setMembershipId(e.target.value)}
+                        >
+                          <option value="">Сонгоно уу</option>
+                          {options.map((o) => (
+                            <option key={o.membershipId} value={o.membershipId}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </Select>
+                      )}
+                    </Field>
+                    <Button type="submit" disabled={!membershipId || assign.isPending}>
+                      <UserPlus size={16} aria-hidden />
+                      {assign.isPending ? "Нэмж байна…" : "Нэмэх"}
+                    </Button>
+                    <Button type="button" variant="ghost" onClick={() => setAdding(null)}>
+                      Болих
+                    </Button>
+                  </form>
+                ) : null}
+              </div>
+            </section>
+          );
+        })}
+
+        {options.length === 0 && teachers.data ? (
+          <p className="flex items-center gap-2 rounded-control bg-sun px-3 py-2.5 text-caption text-sun-ink">
+            <CircleAlert size={18} aria-hidden className="shrink-0" />
+            Нэмэх багш алга. «Хэрэглэгчид» хэсгээс багш урина уу.
+          </p>
+        ) : null}
       </div>
     </div>
   );
 }
 
-function CreateGroupDialog({
+/**
+ * Бүлэг нэмэх / Мэдээлэл засах — the client's 2026-09-25 drawing: name, age
+ * band, programme and (when adding) the group's teacher.
+ *
+ * ★ Only existing endpoints: `POST …/groups` and then `POST /groups/:id/teachers`
+ * for the teacher, or `PATCH /groups/:id` when editing. The school year the
+ * API requires is the one the list is filtered to, so the new group lands
+ * where the director is looking.
+ */
+function GroupFormDialog({
   kindergartenId,
+  schoolYearId,
+  group,
   onClose,
 }: {
   kindergartenId: string;
+  schoolYearId: string;
+  group?: GroupItem;
   onClose: () => void;
 }) {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [name, setName] = useState("");
-  const [ageBand, setAgeBand] = useState<string>("JUNIOR");
-  const [programKind, setProgramKind] = useState<string>("MAIN");
-  const [attendanceForm, setAttendanceForm] = useState<string>("STANDARD");
-  const [schoolYearId, setSchoolYearId] = useState("");
+  const editing = Boolean(group);
+  const [name, setName] = useState(group?.name ?? "");
+  const [ageBand, setAgeBand] = useState<string>(group?.ageBand ?? "");
+  const [programKind, setProgramKind] = useState<string>(group?.programKind ?? "");
+  const [membershipId, setMembershipId] = useState("");
 
-  const years = useQuery({
-    queryKey: qk.adminSchoolYears(kindergartenId),
-    queryFn: () => get(`/kindergartens/${kindergartenId}/school-years`, yearsSchema),
+  const teachers = useQuery({
+    queryKey: qk.adminUsers({ role: "TEACHER" }),
+    queryFn: () => {
+      const params = new URLSearchParams({ page: "1", pageSize: "100", role: "TEACHER" });
+      params.set("kindergartenId", kindergartenId);
+      return get(`/users?${params}`, usersSchema);
+    },
+    enabled: !editing,
+  });
+  const options = (teachers.data?.items ?? []).flatMap((u) => {
+    const m = u.memberships.find((x) => x.role === "TEACHER");
+    return m ? [{ membershipId: m.id, label: fullName(u) }] : [];
   });
 
-  // Default to the current year — the one a new group almost always belongs to.
-  const current = (years.data ?? []).find((y) => y.isCurrent) ?? years.data?.[0];
-  const selectedYear = schoolYearId || current?.id || "";
-
-  const create = useMutation({
-    mutationFn: () =>
-      mutate(`/kindergartens/${kindergartenId}/groups`, z.unknown(), {
+  const save = useMutation({
+    mutationFn: async () => {
+      if (group) {
+        return mutate(`/groups/${group.id}`, z.unknown(), {
+          method: "PATCH",
+          body: { name, ageBand, programKind },
+        });
+      }
+      const created = await mutate(
+        `/kindergartens/${kindergartenId}/groups`,
+        z.object({ id: z.string() }).passthrough(),
+        { method: "POST", body: { name, ageBand, programKind, schoolYearId } },
+      );
+      await mutate(`/groups/${created.id}/teachers`, z.unknown(), {
         method: "POST",
-        body: { name, ageBand, schoolYearId: selectedYear, programKind, attendanceForm },
-      }),
+        body: { membershipId, role: "LEAD" },
+      });
+      return created;
+    },
     onSuccess: () => {
-      toast.success("Бүлэг үүслээ.");
+      toast.success(editing ? "Бүлгийн мэдээлэл хадгалагдлаа." : "Бүлэг үүслээ.");
       void queryClient.invalidateQueries({ queryKey: ["admin", "groups"] });
       onClose();
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  const errors = fieldErrors(create.error);
+  const errors = fieldErrors(save.error);
+  const ready =
+    name.trim() && ageBand && programKind && (editing || (membershipId && schoolYearId));
 
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Бүлэг нэмэх"
+      aria-label={editing ? "Мэдээлэл засах" : "Бүлэг нэмэх"}
       className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4"
     >
-      <div className="w-full max-w-[420px] rounded-card border border-border bg-surface p-5">
+      <div className="w-full max-w-[560px] rounded-card border border-border bg-surface p-5">
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (selectedYear && !create.isPending) create.mutate();
+            if (ready && !save.isPending) save.mutate();
           }}
-          className="flex flex-col gap-4"
+          className="flex flex-col gap-3"
           noValidate
         >
-          <h2 className="text-title font-semibold text-ink">Бүлэг нэмэх</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lead font-semibold text-ink">
+              {editing ? "Мэдээлэл засах" : "Бүлэг нэмэх"}
+            </h2>
+            <button
+              type="button"
+              aria-label="Хаах"
+              onClick={onClose}
+              className="grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
+            >
+              <X size={18} aria-hidden />
+            </button>
+          </div>
 
-          <FormError message={create.isError ? errorMessage(create.error) : null} />
+          <FormError message={save.isError ? errorMessage(save.error) : null} />
 
-          {years.data && years.data.length === 0 ? (
+          {!editing && !schoolYearId ? (
             <p className="rounded-control bg-sun px-3 py-2 text-body text-sun-ink">
               Хичээлийн жил үүсгээгүй байна. «Хичээлийн жил» хэсгээс эхэлнэ үү.
             </p>
@@ -611,15 +754,16 @@ function CreateGroupDialog({
                 invalid={invalid}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Дунд бүлэг"
+                placeholder="Жишээ: Дэлбээ"
                 autoFocus
               />
             )}
           </Field>
 
-          <Field label="Насны ангилал" error={errors.ageBand} required>
+          <Field label="Насны бүлэг" error={errors.ageBand} required>
             {({ id }) => (
               <Select id={id} value={ageBand} onChange={(e) => setAgeBand(e.target.value)}>
+                <option value="">Сонгох</option>
                 {AGE_BANDS.map((b) => (
                   <option key={b.value} value={b.value}>
                     {b.label}
@@ -629,9 +773,10 @@ function CreateGroupDialog({
             )}
           </Field>
 
-          <Field label="Сургалтын төрөл" error={errors.programKind} required>
+          <Field label="Хөтөлбөр" error={errors.programKind} required>
             {({ id }) => (
               <Select id={id} value={programKind} onChange={(e) => setProgramKind(e.target.value)}>
+                <option value="">Сонгох</option>
                 {PROGRAM_KINDS.map((value) => (
                   <option key={value} value={value}>
                     {PROGRAM_KIND_LABEL[value]}
@@ -641,45 +786,31 @@ function CreateGroupDialog({
             )}
           </Field>
 
-          <Field label="Сургалтын хэлбэр" error={errors.attendanceForm} required>
-            {({ id }) => (
-              <Select
-                id={id}
-                value={attendanceForm}
-                onChange={(e) => setAttendanceForm(e.target.value)}
-              >
-                {ATTENDANCE_FORMS.map((value) => (
-                  <option key={value} value={value}>
-                    {ATTENDANCE_FORM_LABEL[value]}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
+          {editing ? null : (
+            <Field label="Бүлгийн багш" required>
+              {({ id }) => (
+                <Select
+                  id={id}
+                  value={membershipId}
+                  onChange={(e) => setMembershipId(e.target.value)}
+                >
+                  <option value="">Багш сонгох</option>
+                  {options.map((o) => (
+                    <option key={o.membershipId} value={o.membershipId}>
+                      {o.label}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          )}
 
-          <Field label="Хичээлийн жил" error={errors.schoolYearId} required>
-            {({ id }) => (
-              <Select
-                id={id}
-                value={selectedYear}
-                onChange={(e) => setSchoolYearId(e.target.value)}
-              >
-                {(years.data ?? []).map((y) => (
-                  <option key={y.id} value={y.id}>
-                    {y.name}
-                    {y.isCurrent ? " (одоогийн)" : ""}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
-
-          <div className="flex flex-wrap gap-2 border-t border-border pt-4">
-            <Button type="submit" disabled={!selectedYear || create.isPending}>
-              {create.isPending ? "Үүсгэж байна…" : "Үүсгэх"}
-            </Button>
-            <Button type="button" variant="ghost" onClick={onClose}>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="secondary" onClick={onClose}>
               Болих
+            </Button>
+            <Button type="submit" disabled={!ready || save.isPending}>
+              {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
             </Button>
           </div>
         </form>

@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
 import AdminGroupsPage from "@/app/(app)/admin/groups/page";
@@ -66,38 +67,185 @@ describe("эрх", () => {
 /*
   ★ A table — client, 2026-09-25: "бүлгүүд хүснэгт хэлбэрээр харагд".
 */
+/*
+  ★ The client's 2026-09-25 drawing: filters, a compact table, a pager, and
+  the four row actions — using only the endpoints that already exist.
+*/
 describe("the group list", () => {
-  it("lays the groups out as a table, a row each", async () => {
-    stubApi([
+  function stubList(items = [group({ name: "Наран бүлэг", _count: { enrollments: 18 } })]) {
+    return stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
       {
         path: "/groups",
-        body: {
-          items: [group({ name: "Наран бүлэг", _count: { enrollments: 18 } })],
-          page: 1,
-          pageSize: 100,
-          total: 1,
-          totalPages: 1,
-        },
+        body: { items, page: 1, pageSize: 100, total: items.length, totalPages: 1 },
+      },
+      {
+        path: `/kindergartens/${KG}/school-years`,
+        body: [{ id: YEAR, name: "2026-2027", isCurrent: true, kindergartenId: KG }],
       },
     ]);
+  }
+
+  it("lays the groups out as the drawing's table", async () => {
+    stubList();
     renderWithProviders(<AdminGroupsPage />);
 
     const table = await screen.findByRole("table", { name: "Бүлгүүдийн жагсаалт" });
-    const headers = within(table)
-      .getAllByRole("columnheader")
-      .map((th) => th.textContent);
-    expect(headers).toEqual(["Бүлэг", "Насны бүлэг", "Хичээлийн жил", "Хүүхэд", "Үйлдэл"]);
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((th) => th.textContent),
+    ).toEqual(["№", "Бүлгийн нэр", "Насны бүлэг", "Хөтөлбөр", "Бүлгийн багш", "Хүүхэд", "Үйлдэл"]);
 
     const row = within(table).getByRole("row", { name: /Наран бүлэг/ });
     expect(within(row).getByRole("link", { name: "Наран бүлэг" })).toHaveAttribute(
       "href",
       `/groups/${GROUP}`,
     );
-    expect(within(row).getByText("2026-2027")).toBeInTheDocument();
     expect(within(row).getByText("18")).toBeInTheDocument();
+    // The list carries no teacher yet: a dash, never a guess.
+    expect(within(row).getAllByRole("cell")[4]).toHaveTextContent(/^—$/);
+  });
+
+  /*
+    ★ Titled "Анги, бүлэг", and the table does not scroll or clip — 2026-09-25:
+    the ⋯ menu came out cut off inside a scrolling, clipped box.
+  */
+  it("is titled Анги, бүлэг and keeps its table unclipped", async () => {
+    stubList();
+    renderWithProviders(<AdminGroupsPage />);
+
     expect(
-      within(row).getByRole("button", { name: "Наран бүлэг — багш хуваарилах" }),
+      await screen.findByRole("heading", { level: 1, name: "Анги, бүлэг" }),
     ).toBeInTheDocument();
+    const table = await screen.findByRole("table", { name: "Бүлгүүдийн жагсаалт" });
+    for (
+      let node = table.parentElement;
+      node && node !== document.body;
+      node = node.parentElement
+    ) {
+      expect(node.className).not.toMatch(/overflow-(hidden|x-auto|auto)/);
+    }
+  });
+
+  it("shows the header actions and an honest sync line", async () => {
+    stubList();
+    renderWithProviders(<AdminGroupsPage />);
+
+    await screen.findByRole("table", { name: "Бүлгүүдийн жагсаалт" });
+    expect(screen.getByRole("link", { name: /ESIS татах/ })).toHaveAttribute(
+      "href",
+      "/admin/integrations/esis",
+    );
+    expect(screen.getByRole("button", { name: /Бүлэг нэмэх/ })).toBeInTheDocument();
+    expect(screen.getByText(/Нэгдсэн журмаар шинэчлэгдсэн: —/)).toBeInTheDocument();
+    expect(screen.getByText(/Нийт/).textContent).toMatch(/Нийт 1 бүлэг/);
+  });
+
+  it("offers the four row actions", async () => {
+    const user = userEvent.setup();
+    stubList();
+    renderWithProviders(<AdminGroupsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Наран бүлэг — үйлдэл" }));
+    for (const label of ["Мэдээлэл засах", "Багш солих", "Суралцагчдыг харах", "Устгах"]) {
+      expect(screen.getByRole("menuitem", { name: new RegExp(label) })).toBeInTheDocument();
+    }
+  });
+
+  it("filters by name as the director types", async () => {
+    const user = userEvent.setup();
+    stubList([
+      group({ name: "Наран бүлэг" }),
+      group({ id: "12121212-1212-4121-8121-121212121212", name: "Дэлбээ бүлэг" }),
+    ]);
+    renderWithProviders(<AdminGroupsPage />);
+
+    await screen.findByRole("table", { name: "Бүлгүүдийн жагсаалт" });
+    await user.type(screen.getByRole("searchbox", { name: /Бүлэг эсвэл багш хайх/ }), "Дэлбээ");
+    expect(screen.queryByRole("link", { name: "Наран бүлэг" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Дэлбээ бүлэг" })).toBeInTheDocument();
+  });
+
+  it("asks for name, age band, programme and teacher when adding", async () => {
+    const user = userEvent.setup();
+    stubList();
+    renderWithProviders(<AdminGroupsPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Бүлэг нэмэх/ }));
+    const dialog = screen.getByRole("dialog", { name: "Бүлэг нэмэх" });
+    for (const label of ["Бүлгийн нэр", "Насны бүлэг", "Хөтөлбөр", "Бүлгийн багш"]) {
+      expect(within(dialog).getByText(label)).toBeInTheDocument();
+    }
+    expect(within(dialog).getByRole("button", { name: "Хадгалах" })).toBeDisabled();
+  });
+
+  /*
+    ★ Багш хуваарилалт — 2026-09-25: two lists, each with its own add, a bin
+    on every row, and the warning when nobody is left to add.
+  */
+  it("assigns teachers in two lists, lead and assistant", async () => {
+    const user = userEvent.setup();
+    const lead = {
+      id: "61616161-6161-4616-8616-616161616161",
+      role: "LEAD",
+      endedOn: null,
+      membership: {
+        id: "62626262-6262-4626-8626-626262626262",
+        user: {
+          id: "63636363-6363-4636-8636-636363636363",
+          lastName: "Дэлгэрмаа",
+          firstName: "Сувдаа",
+        },
+      },
+    };
+    const assistant = {
+      ...lead,
+      id: "64646464-6464-4646-8646-646464646464",
+      role: "ASSISTANT",
+      membership: {
+        id: "65656565-6565-4656-8656-656565656565",
+        user: {
+          id: "66666666-6666-4666-8666-666666666666",
+          lastName: "Ариунаа",
+          firstName: "Золжаргал",
+        },
+      },
+    };
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: `/groups/${GROUP}`,
+        body: { ...group({ name: "Дэлбээ" }), teachers: [lead, assistant] },
+      },
+      {
+        path: "/groups",
+        body: {
+          items: [group({ name: "Дэлбээ" })],
+          page: 1,
+          pageSize: 100,
+          total: 1,
+          totalPages: 1,
+        },
+      },
+      { path: "/users", body: { items: [], page: 1, pageSize: 100, total: 0, totalPages: 0 } },
+    ]);
+    renderWithProviders(<AdminGroupsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Дэлбээ — үйлдэл" }));
+    await user.click(screen.getByRole("menuitem", { name: /Багш солих/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Дэлбээ — багш" });
+
+    expect(within(dialog).getByRole("heading", { name: "Багш хуваарилалт" })).toBeInTheDocument();
+    const leads = within(dialog).getByRole("region", { name: /Бүлгийн багш/ });
+    expect(await within(leads).findByText("Дэлгэрмаа Сувдаа")).toBeInTheDocument();
+    const assistants = within(dialog).getByRole("region", { name: /Багшийн туслах/ });
+    expect(within(assistants).getByText("Ариунаа Золжаргал")).toBeInTheDocument();
+    expect(
+      within(assistants).getByRole("button", { name: "Ариунаа Золжаргал-г бүлгээс хасах" }),
+    ).toBeInTheDocument();
+    expect(await within(dialog).findByText(/Нэмэх багш алга/)).toBeInTheDocument();
+    // No class-photo upload here since 2026-09-25.
+    expect(within(dialog).queryByText("Ангийн зураг нэмэх")).toBeNull();
   });
 });

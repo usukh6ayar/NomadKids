@@ -52,21 +52,37 @@ body:has([data-app-theme="teacher"]) {
   }
 }
 
+/*
+ * ★ The administrator's colours are the teacher's — 2026-09-27, at the
+ * client's request ("багшийн хэсгийн өнгөтэй ижил болгоход болно"). Same
+ * values as the teacher block above; only colour moves, the layout does not.
+ */
 body:has([data-app-theme="admin"]) {
   --color-canvas: #f4f8fb;
-  --color-sunken: #edf4f8;
-  --color-border: #d9e4ec;
-  --color-border-soft: #eaf0f4;
-  --color-ink: #183a54;
-  --color-primary: #236da8;
-  --color-primary-strong: #174f7d;
-  --color-primary-hover: #1c5d91;
-  --color-primary-soft: #e8f3fa;
-  --workspace-accent: #236da8;
-  --workspace-accent-secondary: #2f9d8f;
-  --workspace-button-start: #236da8;
-  --workspace-button-end: #2f8eba;
-  --workspace-button-hover: #174f7d;
+  --color-sunken: #f0f6fb;
+  --color-border: #d9e5ef;
+  --color-border-soft: #eaf1f6;
+  --color-ink: #153b66;
+  --color-primary: #2582eb;
+  --color-primary-strong: #1767bc;
+  --color-primary-hover: #1d73d3;
+  --color-primary-soft: #eaf6ff;
+  --color-track: #edf3f9;
+  --color-sky: #eaf6ff;
+  --color-sky-ink: #246bb2;
+  --color-mint: #e9f9f1;
+  --color-mint-ink: #28794e;
+  --color-sun: #fff2c8;
+  --color-sun-ink: #8a6418;
+  --color-peach: #fff1e8;
+  --color-peach-ink: #b45628;
+  --color-cornflower: #f2ecff;
+  --color-teal: #e4faf3;
+  --workspace-accent: #2582eb;
+  --workspace-accent-secondary: #58bf91;
+  --workspace-button-start: #2582eb;
+  --workspace-button-end: #3d9cf5;
+  --workspace-button-hover: #1d73d3;
   --workspace-background: #ffffff;
 }
 

@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import {
   ATTENDANCE_FORM_LABEL,
   PROGRAM_KIND_LABEL,
+  adminUserSchema,
   childSummarySchema,
   groupWithTeachersSchema,
   paginated,
@@ -23,9 +24,11 @@ import { ChildAvatar } from "@/components/media/media-image";
 import { formatAge, fullName, shortName } from "@/lib/format";
 import { TableShell, Td, Th } from "@/components/ui/table";
 import { useSession } from "@/lib/auth/session";
+import { ChildRosterTable } from "@/components/child/admin-roster";
 import { Art } from "@/components/ui/art";
 
 const childrenSchema = paginated(childSummarySchema);
+const staffSchema = paginated(adminUserSchema);
 
 /**
  * One group, in full — "Бүлгийн дэлгэрэнгүй".
@@ -66,7 +69,7 @@ export default function GroupDetailPage() {
 }
 
 function GroupDetail() {
-  const { hasRole } = useSession();
+  const { hasRole, primaryKindergartenId } = useSession();
   // The director reads this page as two tables — client, 2026-09-25. A
   // teacher's copy is unchanged.
   const isAdmin = hasRole("ADMIN");
@@ -79,6 +82,23 @@ function GroupDetail() {
     queryKey: ["admin", "groups", groupId],
     queryFn: () => get(`/groups/${groupId}`, groupWithTeachersSchema),
   });
+
+  /*
+    The teachers' telephones — 2026-09-25, "хариуцсан багш хэсэгт Регистр,
+    Утас нэм". The group carries names only; the director's staff list has the
+    telephone, in one request (the same one the teacher dialog makes). No
+    staff account stores a register number, so that column reads "—".
+  */
+  const staff = useQuery({
+    queryKey: qk.adminUsers({ role: "TEACHER" }),
+    queryFn: () => {
+      const params = new URLSearchParams({ page: "1", pageSize: "100", role: "TEACHER" });
+      if (primaryKindergartenId) params.set("kindergartenId", primaryKindergartenId);
+      return get(`/users?${params}`, staffSchema);
+    },
+    enabled: isAdmin,
+  });
+  const phoneOf = new Map((staff.data?.items ?? []).map((u) => [u.id, u.phone ?? null]));
 
   const roster = useQuery({
     queryKey: qk.children({ groupId, page: 1, pageSize: 20 }),
@@ -167,6 +187,8 @@ function GroupDetail() {
                 <tr>
                   <Th>Үүрэг</Th>
                   <Th>Нэр</Th>
+                  <Th>Регистр</Th>
+                  <Th>Утас</Th>
                 </tr>
               </thead>
               <tbody>
@@ -179,6 +201,13 @@ function GroupDetail() {
                       </Td>
                       <Td className="font-medium text-ink">
                         {assignment.membership?.user ? shortName(assignment.membership.user) : "—"}
+                      </Td>
+                      {/* Not on a staff account yet. */}
+                      <Td className="text-faint">—</Td>
+                      <Td className="tabular-nums text-muted">
+                        {(assignment.membership?.user &&
+                          phoneOf.get(assignment.membership.user.id)) ||
+                          "—"}
                       </Td>
                     </tr>
                   ))}
@@ -232,34 +261,12 @@ function GroupDetail() {
         />
       ) : null}
 
+      {/*
+        ★ The director's roster table, the same one Суралцагч draws — client,
+        2026-09-25: the group's children "ийм загвараар".
+      */}
       {isAdmin && roster.data && roster.data.items.length > 0 ? (
-        <TableShell caption="Бүлгийн хүүхдүүд" minWidth="min-w-0">
-          <thead>
-            <tr>
-              <Th className="w-12">№</Th>
-              <Th>Нэр</Th>
-              <Th>Нас</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {roster.data.items.map((child, index) => (
-              <tr key={child.id}>
-                <Td className="tabular-nums text-muted">{index + 1}</Td>
-                <Td>
-                  <Link
-                    href={`/children/${child.id}/general`}
-                    className="font-medium text-ink hover:text-primary"
-                  >
-                    {shortName(child)}
-                  </Link>
-                </Td>
-                <Td className="text-muted">
-                  {child.dateOfBirth ? formatAge(child.dateOfBirth) : "—"}
-                </Td>
-              </tr>
-            ))}
-          </tbody>
-        </TableShell>
+        <ChildRosterTable caption="Бүлгийн хүүхдүүд" items={roster.data.items} />
       ) : null}
 
       {!isAdmin && roster.data && roster.data.items.length > 0 ? (

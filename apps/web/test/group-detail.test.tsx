@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setParams, stubApi } from "./support/render";
 import GroupDetailPage from "@/app/(app)/groups/[groupId]/page";
@@ -60,6 +60,24 @@ function stub(role: "ADMIN" | "TEACHER") {
     { path: "/auth/me", body: sessionFor([role]) },
     { path: `/groups/${GROUP}`, body: DETAIL },
     { path: "/children", body: ROSTER },
+    {
+      path: "/users",
+      body: {
+        items: [
+          {
+            id: "88888888-8888-4888-8888-000000000001",
+            lastName: "Бат",
+            firstName: "Сувдаа",
+            phone: "99112233",
+            memberships: [],
+          },
+        ],
+        page: 1,
+        pageSize: 100,
+        total: 1,
+        totalPages: 1,
+      },
+    },
   ]);
 }
 
@@ -75,22 +93,52 @@ describe("a group's page", () => {
 
     const table = await screen.findByRole("table", { name: "Бүлгийн багш нар" });
     const rows = within(table).getAllByRole("row").slice(1);
-    expect(rows.map((row) => row.textContent)).toEqual([
-      "Бүлгийн багшБ.Сувдаа",
-      "Туслах багшД.Сараа",
-    ]);
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((th) => th.textContent),
+    ).toEqual(["Үүрэг", "Нэр", "Регистр", "Утас"]);
+    // The telephone comes from the staff list; no account stores a register.
+    await waitFor(() =>
+      expect(rows.map((row) => row.textContent)).toEqual([
+        "Бүлгийн багшБ.Сувдаа—99112233",
+        "Туслах багшД.Сараа——",
+      ]),
+    );
   });
 
-  it("shows a director the children as a table, named Б.Ану", async () => {
+  // The Суралцагч roster's own table — 2026-09-25, "ийм загвараар".
+  it("shows a director the children in the roster's table", async () => {
     stub("ADMIN");
     renderWithProviders(<GroupDetailPage />);
 
     const table = await screen.findByRole("table", { name: "Бүлгийн хүүхдүүд" });
-    const link = within(table).getByRole("link", { name: /Б\.Ану/ });
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((th) => th.textContent),
+    ).toEqual([
+      "№",
+      "Суралцагчийн нэр",
+      "Регистр",
+      "Хүйс",
+      "Бүлэг",
+      "Хөнгөлөлт",
+      "ESIS төлөв",
+      "Үйлдэл",
+    ]);
+    const link = within(table).getByRole("link", { name: "Болд Ану" });
     expect(link).toHaveAttribute("href", "/children/99999999-9999-4999-8999-000000000001/general");
-    expect(within(table).getByText("1")).toBeInTheDocument();
     // No photographs in the director's table — 2026-09-25.
     expect(table.querySelector("img")).toBeNull();
+    // Unclipped, so the ⋯ menu opens whole.
+    for (
+      let node = table.parentElement;
+      node && node !== document.body;
+      node = node.parentElement
+    ) {
+      expect(node.className).not.toMatch(/overflow-(hidden|x-auto|auto)/);
+    }
   });
 
   // No count badge and no register doors on a director's copy — 2026-09-25.

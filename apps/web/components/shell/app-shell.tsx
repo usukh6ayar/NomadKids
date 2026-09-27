@@ -1981,19 +1981,19 @@ function PillBottomBar({
       aria-label="Доод цэс"
       data-testid={testId}
       className={cn(
-        "pointer-events-none fixed inset-x-0 bottom-0 z-20 px-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-3",
+        "pointer-events-none fixed inset-x-0 bottom-0 z-20 px-3 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2",
         "transform-[translateZ(0)] will-change-transform",
         hideOnDesktop && "lg:hidden",
       )}
     >
-      <div className="pointer-events-auto mx-auto flex max-w-[520px] items-center justify-between gap-1 rounded-pill bg-surface px-2 py-1.5 shadow-[0_6px_24px_-6px_rgb(37_99_235_/_0.28)]">
+      <div className="pointer-events-auto mx-auto flex max-w-[520px] items-center justify-between gap-1 rounded-pill bg-surface px-2 py-1 shadow-[0_6px_24px_-6px_rgb(37_99_235_/_0.28)]">
         {nav.map((item) => {
           const active = Boolean(item.href) && item.href === activeHref;
           const content = (
             <>
               <span
                 className={cn(
-                  "relative grid h-12 w-14 place-items-center rounded-card transition-colors duration-150 [&_svg]:size-6",
+                  "relative grid h-9 w-11 place-items-center rounded-card transition-colors duration-150 [&_svg]:size-5",
                   active ? "bg-primary-soft text-primary" : "text-muted",
                 )}
               >
@@ -2004,7 +2004,7 @@ function PillBottomBar({
               <span className="sr-only">{item.label}</span>
             </>
           );
-          const className = "flex min-h-12 flex-1 items-center justify-center rounded-card";
+          const className = "flex min-h-9 flex-1 items-center justify-center rounded-card";
 
           return item.href ? (
             <Link
