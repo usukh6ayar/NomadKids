@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
@@ -33,7 +33,14 @@ function row(day: number, group = "Дэлбээ бүлэг", sent = false) {
     sentBy: null,
     createdAt: null,
     createdBy: [],
-    requests: { pending: 0, approved: 0, rejected: 0 },
+    requests: { pending: 1, approved: 2, rejected: 0 },
+    esis: {
+      succeeded: sent ? 1 : 0,
+      failed: sent ? 1 : 0,
+      lastOutcome: sent ? ("SUCCEEDED" as const) : null,
+      lastError: null,
+      lastAttemptAt: null,
+    },
   };
 }
 
@@ -90,18 +97,38 @@ describe("the daily attendance register", () => {
       "0",
       "16",
       "0",
-      "—",
-      "—",
-      "—",
+      // Баталгаажуулалт — approved, refused, pending (#135).
+      "2",
+      "0",
+      "1",
+      // ESIS — sent, then the attempts that succeeded and failed (#149).
       "✓",
-      "—",
-      "—",
+      "1",
+      "1",
       "Бүртгэх",
     ]);
     expect(within(table).getByRole("link", { name: /Бүртгэх/ })).toHaveAttribute(
       "href",
       `/groups/${GROUP}/attendance?date=2026-09-25`,
     );
+  });
+
+  it("sends a finished, unsent day to ESIS after a confirmation", async () => {
+    const user = userEvent.setup();
+    const api = stub([row(24)]);
+    renderWithProviders(<DailyAttendancePage />);
+
+    const table = await screen.findByRole("table", { name: "Өдөр тутмын ирцийн бүртгэл" });
+    await user.click(within(table).getByRole("button", { name: "Илгээх" }));
+    const dialog = await screen.findByRole("dialog", { name: "ESIS рүү илгээх үү?" });
+    await user.click(within(dialog).getByRole("button", { name: "Илгээх" }));
+
+    await waitFor(() => {
+      const call = api.calls.find(
+        (c) => c.method === "POST" && c.url === `/kindergartens/${KG}/attendance/daily/submit`,
+      );
+      expect(call?.body).toEqual({ entries: [{ groupId: GROUP, date: "2026-09-24" }] });
+    });
   });
 
   it("pages ten days at a time", async () => {
