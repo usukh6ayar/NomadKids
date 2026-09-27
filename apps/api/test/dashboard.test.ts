@@ -1,3 +1,4 @@
+import { localDate } from "@kinder/contracts";
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -531,17 +532,9 @@ describe("primary dashboard", () => {
  * difference rather than the arithmetic.
  */
 describe("admin dashboard — kindergarten-wide figures", () => {
-  const today = new Date(
-    Date.UTC(
-      new Date().getUTCFullYear(),
-      new Date().getUTCMonth(),
-      new Date().getUTCDate(),
-      0,
-      0,
-      0,
-      0,
-    ),
-  );
+  // Ulaanbaatar's today, as the service reads it (`localDate`) — a UTC date
+  // is yesterday between 00:00 and 08:00 here, and the tests failed there.
+  const today = new Date(`${localDate()}T00:00:00.000Z`);
 
   async function mark(status: "PRESENT" | "HALF_DAY" | "SICK" | "ABSENT", date = today) {
     return db.attendance.create({
@@ -756,17 +749,9 @@ describe("admin dashboard — kindergarten-wide figures", () => {
  * and whether anything is waiting on the kitchen, not a 30-day trend.
  */
 describe("cook dashboard", () => {
-  const today = new Date(
-    Date.UTC(
-      new Date().getUTCFullYear(),
-      new Date().getUTCMonth(),
-      new Date().getUTCDate(),
-      0,
-      0,
-      0,
-      0,
-    ),
-  );
+  // Ulaanbaatar's today, as the service reads it (`localDate`) — a UTC date
+  // is yesterday between 00:00 and 08:00 here, and the tests failed there.
+  const today = new Date(`${localDate()}T00:00:00.000Z`);
 
   async function cookSession(kindergartenId: string) {
     const user = await createUser({ username: uniq("cook") });
