@@ -96,12 +96,12 @@ describe("TodayRegister", () => {
     const table = await screen.findByRole("table", { name: /Өнөөдрийн бүлгийн ирц/ });
     const behind = within(table).getByRole("link", { name: "Сарны бүлэг" }).closest("tr")!;
     expect(behind).toHaveTextContent("15 дутуу");
-    expect(within(table).getByRole("link", { name: "Нарны бүлэг" }).closest("tr")!).toHaveTextContent(
-      "Бүрэн",
-    );
-    expect(within(table).getByRole("link", { name: "Одны бүлэг" }).closest("tr")!).toHaveTextContent(
-      "Илгээсэн",
-    );
+    expect(
+      within(table).getByRole("link", { name: "Нарны бүлэг" }).closest("tr")!,
+    ).toHaveTextContent("Бүрэн");
+    expect(
+      within(table).getByRole("link", { name: "Одны бүлэг" }).closest("tr")!,
+    ).toHaveTextContent("Илгээсэн");
     // The group opens its own day sheet on today's date.
     expect(within(table).getByRole("link", { name: "Сарны бүлэг" })).toHaveAttribute(
       "href",

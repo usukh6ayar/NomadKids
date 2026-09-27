@@ -143,13 +143,7 @@ describe("the administrator report", () => {
     ).toBeInTheDocument();
     const summary = await screen.findByRole("region", { name: "Тайлангийн товч үзүүлэлт" });
 
-    for (const label of [
-      "Нийт хүүхэд",
-      "Нийт бүлэг",
-      "Ирц",
-      "Явцын үнэлгээ",
-      "Судалгааны явц",
-    ]) {
+    for (const label of ["Нийт хүүхэд", "Нийт бүлэг", "Ирц", "Явцын үнэлгээ", "Судалгааны явц"]) {
       expect(within(summary).getByText(label)).toBeInTheDocument();
     }
     expect(within(summary).getByText("49")).toBeInTheDocument();
@@ -163,8 +157,12 @@ describe("the administrator report", () => {
   it("keeps only the two group-comparison charts below the summary", async () => {
     renderAdminReport();
 
-    expect(await screen.findByRole("heading", { name: "Бүлгүүдийн харьцуулалт" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Ирцийн хувь (бүлэг тус бүр)" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Бүлгүүдийн харьцуулалт" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Ирцийн хувь (бүлэг тус бүр)" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Явцын үнэлгээний гүйцэтгэл" })).toBeInTheDocument();
     expect(screen.getByLabelText("Дэлбээ бүлгийн ирц: 95%")).toBeInTheDocument();
     expect(screen.getByLabelText("Нархан бүлгийн явцын үнэлгээ: 80%")).toBeInTheDocument();

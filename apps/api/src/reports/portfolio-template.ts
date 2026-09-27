@@ -1,9 +1,4 @@
-import {
-  ageInYears,
-  birthFacts,
-  YEAR_ANIMALS,
-  ZODIAC_SIGNS,
-} from "@kinder/contracts";
+import { ageInYears, birthFacts, YEAR_ANIMALS, ZODIAC_SIGNS } from "@kinder/contracts";
 import { baseCss, esc, formatDate, masthead, paragraphs, reportChrome } from "./template-utils";
 
 export interface PortfolioAgeProfile {
@@ -270,7 +265,10 @@ export function renderPortfolioHtml(data: PortfolioData): string {
       "Миний цэцэрлэгтээ сурсан зүйлс",
       [
         { label: "Сонгосон чадварууд", value: (profile) => joined(profile.kindergartenSkills) },
-        { label: "Нэмэлт тайлбар", value: (profile) => joinedNotes(profile.kindergartenSkillNotes) },
+        {
+          label: "Нэмэлт тайлбар",
+          value: (profile) => joinedNotes(profile.kindergartenSkillNotes),
+        },
         {
           label: "Өөр сурсан зүйл",
           value: (profile) => profile.kindergartenOtherSkill ?? profile.newSkills,

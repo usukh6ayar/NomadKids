@@ -106,7 +106,9 @@ export function AdminReportsOverview() {
 
       {failed ? (
         <ErrorState
-          description={errorMessage(groups.error ?? reportQueries.find((query) => query.error)?.error)}
+          description={errorMessage(
+            groups.error ?? reportQueries.find((query) => query.error)?.error,
+          )}
           action={<Button onClick={retry}>Дахин оролдох</Button>}
         />
       ) : loading ? (
@@ -163,7 +165,9 @@ export function AdminReportsOverview() {
             />
             <div className="grid items-start gap-4 xl:grid-cols-2">
               <Card pad="roomy">
-                <h3 className="mb-5 text-lead font-semibold text-ink">Ирцийн хувь (бүлэг тус бүр)</h3>
+                <h3 className="mb-5 text-lead font-semibold text-ink">
+                  Ирцийн хувь (бүлэг тус бүр)
+                </h3>
                 {attendanceColumns.length ? (
                   <ColumnChart
                     columns={attendanceColumns}

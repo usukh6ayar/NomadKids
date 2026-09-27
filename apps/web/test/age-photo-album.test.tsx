@@ -176,9 +176,7 @@ describe("five-year photo library", () => {
       fixture's counts are 24, 1, 2, … 11, so only "1" and "2" still offer an
       upload; the other ten say they are full instead of offering a fourth.
     */
-    expect(within(albums).getAllByRole("button", { name: /ангилалд зураг нэмэх/ })).toHaveLength(
-      2,
-    );
+    expect(within(albums).getAllByRole("button", { name: /ангилалд зураг нэмэх/ })).toHaveLength(2);
     expect(within(albums).getAllByText("Дүүрсэн")).toHaveLength(10);
     expect(within(albums).getByText("1/3 зураг")).toBeInTheDocument();
     const ageLibrary = screen

@@ -23,8 +23,6 @@ describe("create survey validation messages", () => {
     expect(result.success).toBe(false);
     if (result.success) return;
 
-    expect(result.error.issues).toContainEqual(
-      expect.objectContaining({ path: [field], message }),
-    );
+    expect(result.error.issues).toContainEqual(expect.objectContaining({ path: [field], message }));
   });
 });

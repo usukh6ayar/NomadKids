@@ -414,10 +414,7 @@ export class ReportsRepository {
           purpose: "CHILD_PHOTO",
           observationId: null,
           age: { in: [2, 3, 4, 5] },
-          OR: [
-            { category: { in: [...AGE_ALBUM_CATEGORIES] } },
-            { albumCategoryId: { not: null } },
-          ],
+          OR: [{ category: { in: [...AGE_ALBUM_CATEGORIES] } }, { albumCategoryId: { not: null } }],
         },
         orderBy: [
           { age: "asc" },

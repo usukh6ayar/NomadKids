@@ -181,5 +181,4 @@ describe("ESIS: Илгээх → Шалгах → Баталгаажсан / З�
     await sendThenCheck(user);
     expect(await screen.findByText(/Зөрүүтэй — 1 хүүхдийн ирц/)).toBeInTheDocument();
   });
-
 });
