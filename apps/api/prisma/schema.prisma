@@ -337,6 +337,17 @@ enum ReportStatus {
   FAILED
 }
 
+/// Which part of the staff a membership belongs to — «Удирдлага / Сургалт /
+/// Захиргаа / Үйлчилгээ», the grouping every Mongolian kindergarten's staffing
+/// table uses. A classification the system reports by, so an enum (§2.3's
+/// "system-level values"); the position inside it is free text.
+enum StaffCategory {
+  MANAGEMENT
+  TEACHING
+  ADMINISTRATION
+  SERVICE
+}
+
 enum AuditAction {
   LOGIN
   LOGIN_FAILED
@@ -361,11 +372,15 @@ enum AuditAction {
 /// teacher in one kindergarten and a parent in another, so all authority comes
 /// from Membership.
 model User {
-  id           String  @id @default(uuid()) @db.Uuid
-  username     String  @unique
-  email        String? @unique
-  phone        String? @unique
-  passwordHash String
+  id             String    @id @default(uuid()) @db.Uuid
+  username       String    @unique
+  email          String?   @unique
+  phone          String?   @unique
+  /// Регистрийн дугаар — two Cyrillic letters and eight digits, upper-cased.
+  /// Administrators only: read by `GET /users`, which is `@Roles("ADMIN")`.
+  registerNumber String?
+  dateOfBirth    DateTime? @db.Date
+  passwordHash   String
 
   /// The ESIS person this account belongs to.
   ///
@@ -486,6 +501,7 @@ model User {
   esisWritesApproved    EsisWriteRequest[]        @relation("EsisWriteApprover")
 
   @@index([deletedAt])
+  @@index([registerNumber])
   @@map("users")
 }
 
@@ -501,7 +517,12 @@ model Membership {
   /// Revocation without deletion — the record of the relationship survives.
   isActive       Boolean @default(true)
 
-  startedOn DateTime? @db.Date
+  /// When this person started here — «Ажилд орсон огноо».
+  startedOn     DateTime?      @db.Date
+  /// «Албан тушаал» — "Бүлгийн багш", "Арга зүйч"… Free text: positions vary
+  /// by kindergarten and the role column already carries what access needs.
+  position      String?
+  staffCategory StaffCategory?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

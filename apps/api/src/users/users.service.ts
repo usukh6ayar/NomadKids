@@ -19,9 +19,40 @@ import type {
   ChangeMembershipRoleDto,
   CreateUserDto,
   ListUsersQuery,
+  UpdateMembershipProfileDto,
   UpdateProfileDto,
   UpdateUserDto,
 } from "./users.dto";
+import { buildStaffWorkbook } from "./staff-workbook";
+
+function staffFilters(query: ListUsersQuery) {
+  return {
+    role: query.role,
+    roles: query.roles,
+    isActive: query.isActive,
+    q: query.q,
+    groupId: query.groupId,
+    hasGroup: query.hasGroup,
+  };
+}
+
+/**
+ * A membership's live group assignments as `groups: {id, name, role}[]` —
+ * the shape the directory's «Бүлэг» column and filter read.
+ */
+function withGroups<
+  T extends {
+    memberships: { assignments: { role: string; group: { id: string; name: string } }[] }[];
+  },
+>(user: T) {
+  return {
+    ...user,
+    memberships: user.memberships.map(({ assignments, ...m }) => ({
+      ...m,
+      groups: assignments.map((a) => ({ id: a.group.id, name: a.group.name, role: a.role })),
+    })),
+  };
+}
 
 /** Invitation links last a week — long enough for a parent to notice the SMS. */
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -57,12 +88,76 @@ export class UsersService {
       : this.tenants.adminKindergartenIds(actor);
 
     const page: PageParams = { page: query.page, pageSize: query.pageSize };
-    const { items, total } = await this.repo.list(
-      scope,
-      { role: query.role, roles: query.roles, isActive: query.isActive, q: query.q },
-      page,
+    const { items, total } = await this.repo.list(scope, staffFilters(query), page);
+    return paginate(items.map(withGroups), total, page);
+  }
+
+  /**
+   * «Excel татах» — the directory with the screen's filters, every row.
+   *
+   * ★ Audited as a DOWNLOAD: the file carries register numbers, and "who took
+   * the staff list away with its РД" is a question somebody may need answered.
+   */
+  async exportStaff(actor: Actor, query: ListUsersQuery) {
+    const scope = query.kindergartenId
+      ? (this.tenants.assertAdmin(actor, query.kindergartenId), [query.kindergartenId])
+      : this.tenants.adminKindergartenIds(actor);
+    const rows = await this.repo.listForExport(scope, staffFilters(query));
+    const buffer = await buildStaffWorkbook(rows);
+
+    await this.audit.append({
+      action: "DOWNLOAD",
+      kindergartenId: query.kindergartenId ?? scope[0] ?? null,
+      actorUserId: actor.userId,
+      objectType: "StaffDirectory",
+      objectId: query.kindergartenId ?? null,
+      metadata: { rows: rows.length },
+    });
+
+    return { buffer, filename: `staff-${new Date().toISOString().slice(0, 10)}.xlsx` };
+  }
+
+  /**
+   * «Албан тушаал», «Ангилал», «Ажилд орсон огноо» — 2026-09-27. Admin of the
+   * membership's kindergarten only; anyone else gets the 404 `findMembership`
+   * gives a row outside their scope. The audit row carries before and after.
+   */
+  async updateMembershipProfile(
+    actor: Actor,
+    membershipId: string,
+    dto: UpdateMembershipProfileDto,
+  ) {
+    const membership = await this.repo.findMembership(
+      membershipId,
+      this.tenants.adminKindergartenIds(actor),
     );
-    return paginate(items, total, page);
+    if (!membership) throw new NotFoundException();
+
+    const data = {
+      ...(dto.position !== undefined ? { position: dto.position || null } : {}),
+      ...(dto.staffCategory !== undefined ? { staffCategory: dto.staffCategory } : {}),
+      ...(dto.startedOn !== undefined
+        ? { startedOn: dto.startedOn ? new Date(`${dto.startedOn}T00:00:00.000Z`) : null }
+        : {}),
+    };
+    const updated = await this.repo.updateMembershipProfile(membership.id, data);
+
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId: membership.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "Membership",
+      objectId: membership.id,
+      metadata: {
+        before: {
+          position: membership.position,
+          staffCategory: membership.staffCategory,
+          startedOn: membership.startedOn?.toISOString().slice(0, 10) ?? null,
+        },
+        after: dto,
+      },
+    });
+    return updated;
   }
 
   async get(actor: Actor, id: string) {
@@ -251,7 +346,13 @@ export class UsersService {
       if (clash && clash.id !== id) throw new ConflictException("Энэ утас аль хэдийн бүртгэлтэй");
     }
 
-    const updated = await this.repo.update(id, dto);
+    const { dateOfBirth, ...rest } = dto;
+    const updated = await this.repo.update(id, {
+      ...rest,
+      ...(dateOfBirth !== undefined
+        ? { dateOfBirth: dateOfBirth ? new Date(`${dateOfBirth}T00:00:00.000Z`) : null }
+        : {}),
+    });
     await this.audit.append({
       action: "UPDATE",
       actorUserId: actor.userId,
