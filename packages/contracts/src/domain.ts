@@ -5929,3 +5929,44 @@ export const mealCostSchema = z.object({
   total: z.string(),
 });
 export type MealCost = z.infer<typeof mealCostSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Method unions — «Заах аргын нэгдэл»
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A teacher as a union shows them: the membership, and whose it is. */
+export const methodUnionPersonSchema = z.object({
+  membershipId: z.string(),
+  userId: z.string(),
+  lastName: z.string(),
+  firstName: z.string(),
+});
+export type MethodUnionPerson = z.infer<typeof methodUnionPersonSchema>;
+
+export const methodUnionSchema = z.object({
+  id: z.string(),
+  kindergartenId: z.string(),
+  name: z.string(),
+  schoolYear: z.object({ id: z.string(), name: z.string() }),
+  lead: methodUnionPersonSchema.nullable(),
+  /** `YYYY-MM-DD`. */
+  startsOn: z.string(),
+  endsOn: z.string().nullable(),
+  esisAcademicOrgId: z.string().nullable(),
+  memberCount: z.number().int(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type MethodUnion = z.infer<typeof methodUnionSchema>;
+
+export const methodUnionMemberSchema = methodUnionPersonSchema.extend({
+  /** The seat's own id — what `DELETE /method-union-members/:id` takes. */
+  id: z.string(),
+  createdAt: z.string(),
+});
+export type MethodUnionMember = z.infer<typeof methodUnionMemberSchema>;
+
+export const methodUnionDetailSchema = methodUnionSchema.extend({
+  members: z.array(methodUnionMemberSchema),
+});
+export type MethodUnionDetail = z.infer<typeof methodUnionDetailSchema>;
