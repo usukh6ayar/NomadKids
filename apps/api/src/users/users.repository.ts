@@ -87,23 +87,14 @@ export class UsersRepository {
         deletedAt: null,
         memberships: { some: { kindergartenId: { in: kindergartenIds }, deletedAt: null } },
       },
+      // The directory's own row, so the side panel shows what the table does —
+      // plus the professional lines only the detail carries.
       select: {
-        id: true,
-        username: true,
-        email: true,
-        phone: true,
-        lastName: true,
-        firstName: true,
+        ...staffSelect(kindergartenIds),
         specialization: true,
         qualification: true,
         education: true,
         bio: true,
-        isActive: true,
-        lastLoginAt: true,
-        memberships: {
-          where: { kindergartenId: { in: kindergartenIds }, deletedAt: null },
-          select: { id: true, kindergartenId: true, role: true, isActive: true },
-        },
       },
     });
   }

@@ -30,7 +30,20 @@ function user(id: string, lastName: string, firstName: string, role: string, pho
   };
 }
 
-const TEACHER = user(TEACHER_ID, "Анхбаяр", "Энх-Адьяа", "TEACHER", "99112233");
+const TEACHER = (() => {
+  const base = user(TEACHER_ID, "Анхбаяр", "Энх-Адьяа", "TEACHER", "99112233");
+  return {
+    ...base,
+    registerNumber: "УБ92010112",
+    memberships: [
+      {
+        ...base.memberships[0]!,
+        position: "Бүлгийн багш",
+        groups: [{ id: "55555555-5555-4555-8555-555555555555", name: "Дэлбээ", role: "LEAD" }],
+      },
+    ],
+  };
+})();
 const COOK = user(COOK_ID, "Батаа", "Ёндонжамц", "COOK", "88113344");
 
 function page(items: unknown[]) {
@@ -40,9 +53,9 @@ function page(items: unknown[]) {
 function stub() {
   return stubApi([
     { path: "/auth/me", body: sessionFor(["ADMIN"]) },
-    { path: "/users?page=1&pageSize=20&roles=TEACHER", body: page([TEACHER]) },
-    { path: "/users?page=1&pageSize=20&roles=COOK", body: page([COOK]) },
-    { path: "/users?page=1&pageSize=20&roles=ADMIN", body: page([COOK]) },
+    { path: "/users?roles=TEACHER", body: page([TEACHER]) },
+    { path: "/users?roles=COOK", body: page([COOK]) },
+    { path: "/users?roles=ADMIN", body: page([COOK]) },
     { path: `/users/${TEACHER_ID}`, body: { ...TEACHER, specialization: "СӨБ-ийн багш" } },
   ]);
 }
@@ -64,9 +77,10 @@ describe("the staff directory", () => {
     ).toEqual(["№", "Багшийн нэр", "Регистр", "Албан тушаал", "Хариуцсан бүлэг", "Утас", "Үйлдэл"]);
     const row = within(teachers).getByRole("row", { name: /А\.Энх-Адьяа/ });
     const cells = within(row).getAllByRole("cell");
-    expect(cells[2]).toHaveTextContent(/^—$/);
-    expect(cells[3]).toHaveTextContent("Багш");
-    expect(cells[4]).toHaveTextContent(/^—$/);
+    // #147's fields: register, the post held here, and the live groups.
+    expect(cells[2]).toHaveTextContent("УБ92010112");
+    expect(cells[3]).toHaveTextContent("Бүлгийн багш");
+    expect(cells[4]).toHaveTextContent("Дэлбээ");
     expect(cells[5]).toHaveTextContent("99112233");
 
     const staff = await screen.findByRole("table", { name: "Ажилтны жагсаалт" });
@@ -80,7 +94,10 @@ describe("the staff directory", () => {
     renderWithProviders(<AdminUsersPage />);
 
     const section = (await screen.findByRole("heading", { name: "Багш" })).closest("section")!;
-    expect(within(section).getByRole("button", { name: /Excel/ })).toBeDisabled();
+    // The section's own filters, every page — `GET /users/export`.
+    expect(within(section).getByRole("link", { name: /Excel/ }).getAttribute("href")).toContain(
+      "/users/export?roles=TEACHER",
+    );
     expect(within(section).getByRole("link", { name: /ESIS татах/ })).toHaveAttribute(
       "href",
       "/admin/integrations/esis",
@@ -135,11 +152,46 @@ describe("the staff directory", () => {
         .map((tab) => tab.textContent),
     ).toEqual(["Ерөнхий", "Ажлын мэдээлэл", "Бүлэг/үүрэг", "Системийн эрх"]);
     expect(within(panel).getByText("99112233")).toBeInTheDocument();
-    // Not on a staff account: a dash, never a guess.
-    expect(within(panel).getByText("Регистр").nextElementSibling).toHaveTextContent("—");
+    // The person's own record — and a dash for what nobody filled in, never a guess.
+    expect(within(panel).getByText("Регистр").nextElementSibling).toHaveTextContent("УБ92010112");
+    expect(within(panel).getByText("Төрсөн огноо").nextElementSibling).toHaveTextContent("—");
 
     await user.click(within(panel).getByRole("tab", { name: "Ажлын мэдээлэл" }));
     expect(within(panel).getByText("СӨБ-ийн багш")).toBeInTheDocument();
     expect(within(panel).getByRole("button", { name: "Мэдээлэл засах" })).toBeInTheDocument();
+  });
+
+  /*
+    ★ The post is the membership's, not the person's — #147. Албан тушаал goes
+    to `PATCH /memberships/:id/profile`, the register to `PATCH /users/:id`.
+  */
+  it("saves the register to the person and the post to their membership", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/users/", method: "PATCH", body: {} },
+      { path: "/memberships/", method: "PATCH", body: {} },
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: "/users?roles=TEACHER", body: page([TEACHER]) },
+      { path: "/users?roles=ADMIN", body: page([COOK]) },
+    ]);
+    renderWithProviders(<AdminUsersPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Анхбаяр Энх-Адьяа — үйлдэл/ }));
+    await user.click(await screen.findByRole("menuitem", { name: "Мэдээлэл засах" }));
+    const dialog = await screen.findByRole("dialog", { name: "Мэдээлэл засах" });
+    const post = within(dialog).getByLabelText(/^Албан тушаал/);
+    await user.clear(post);
+    await user.type(post, "Арга зүйч");
+    await user.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
+
+    await waitFor(() => {
+      const profile = api.calls.find(
+        (c) =>
+          c.method === "PATCH" && c.url === `/memberships/${TEACHER.memberships[0]!.id}/profile`,
+      );
+      expect(profile?.body).toMatchObject({ position: "Арга зүйч" });
+    });
+    const person = api.calls.find((c) => c.method === "PATCH" && c.url === `/users/${TEACHER_ID}`);
+    expect(person?.body).toMatchObject({ registerNumber: "УБ92010112" });
   });
 });

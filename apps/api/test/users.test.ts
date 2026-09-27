@@ -896,6 +896,20 @@ describe("staff directory", () => {
   const list = (session: AuthSession, query = "") =>
     authed(request(server()).get(`/v1/users?kindergartenId=${a.kindergarten.id}${query}`), session);
 
+  // The side panel reads the detail, so it has to carry what the table does.
+  it("returns the staff fields and live groups on the person's own record", async () => {
+    await authed(request(server()).patch(`/v1/users/${a.teacherUser.id}`), adminA)
+      .send({ registerNumber: "УБ98061234" })
+      .expect(200);
+
+    const res = await authed(request(server()).get(`/v1/users/${a.teacherUser.id}`), adminA);
+    expect(res.status).toBe(200);
+    expect(res.body.registerNumber).toBe("УБ98061234");
+    const membership = res.body.memberships.find((m: { role: string }) => m.role === "TEACHER");
+    expect(membership.groups).toEqual([expect.objectContaining({ id: a.group.id })]);
+    expect(membership).not.toHaveProperty("assignments");
+  });
+
   it("keeps a person's register number and date of birth", async () => {
     const res = await authed(request(server()).patch(`/v1/users/${a.teacherUser.id}`), adminA).send(
       { registerNumber: "УБ98061234", dateOfBirth: "1998-06-12" },

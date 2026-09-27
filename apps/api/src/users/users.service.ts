@@ -163,7 +163,7 @@ export class UsersService {
   async get(actor: Actor, id: string) {
     const user = await this.repo.findInScope(id, this.tenants.adminKindergartenIds(actor));
     if (!user) throw new NotFoundException();
-    return user;
+    return withGroups(user);
   }
 
   /**

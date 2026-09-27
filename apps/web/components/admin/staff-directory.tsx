@@ -23,7 +23,15 @@ import {
   UsersRound,
   X,
 } from "lucide-react";
-import { ROLE_LABEL, adminUserSchema, paginated, type Role } from "@kinder/contracts";
+import {
+  ROLE_LABEL,
+  STAFF_CATEGORY_LABEL,
+  adminUserSchema,
+  groupListItemSchema,
+  paginated,
+  type Role,
+} from "@kinder/contracts";
+import { downloadUrl } from "@/lib/api/client";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
@@ -56,16 +64,38 @@ const OTHER_STAFF_ROLES = ["ADMIN", "COOK", "ACCOUNTANT"] as const satisfies rea
 
 type SectionKind = "teacher" | "staff";
 
+const groupsSchema = paginated(groupListItemSchema);
+
+/** How many of a section's accounts have (or lack) a group — `total` of a one-row page. */
+function useStaffCount(
+  kindergartenId: string | null | undefined,
+  roles: string,
+  hasGroup: "true" | "false",
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: qk.adminUsers({ section: "count", roles, hasGroup }),
+    queryFn: () =>
+      get(
+        `/users?kindergartenId=${kindergartenId}&roles=${roles}&hasGroup=${hasGroup}&page=1&pageSize=1`,
+        listSchema,
+      ),
+    select: (page) => page.total,
+    enabled: enabled && Boolean(kindergartenId),
+  });
+}
+
 /**
  * Багш ба Ажилтан — the director's staff directory, client 2026-09-25, with two
  * drawings: two compact tables, and a side panel that opens on a person.
  *
- * ★ Only what the API holds is shown. It has no register number, birth date,
- * position title, category, hire date, assigned group or ESIS record for a
- * staff member; those cells and filters read "—" or are disabled rather than
- * invented, and the report lists the API work each needs. The actions are the
- * existing ones: edit (`PATCH /users/:id`), the role (`PATCH /memberships/:id`),
- * deactivate (`isActive`), and invite.
+ * ★ Only what the API holds is shown. Регистр, төрсөн огноо, албан тушаал,
+ * ангилал, ажилд орсон огноо and the live groups arrived on 2026-09-27 (#147);
+ * the position and category filters stay shut because the API filters by role
+ * and by group, not by either. The actions: edit (`PATCH /users/:id` and
+ * `PATCH /memberships/:id/profile`), the role (`PATCH /memberships/:id`),
+ * deactivate (`isActive`), invite, and the Excel file (`GET /users/export`,
+ * the same filters as the table).
  */
 export function StaffDirectory({ onInvite }: { onInvite: (role: Role) => void }) {
   const [openUserId, setOpenUserId] = useState<{ id: string; kind: SectionKind } | null>(null);
@@ -110,6 +140,8 @@ function StaffSection({
   const [typed, setTyped] = useState("");
   const search = useDebounced(typed.trim());
   const [role, setRole] = useState("");
+  /** "" every teacher, "with"/"without" by assignment, or a group id. */
+  const [groupFilter, setGroupFilter] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(20);
   const [editing, setEditing] = useState<StaffUser | null>(null);
@@ -121,26 +153,40 @@ function StaffSection({
   const teacher = kind === "teacher";
   const roles = teacher ? "TEACHER" : role || OTHER_STAFF_ROLES.join(",");
 
+  /*
+    The section's filters as the API's query — the list and the Excel file read
+    the same one, so the file is always what the table shows (every page).
+  */
+  const filters = new URLSearchParams({ roles });
+  if (search) filters.set("q", search);
+  if (primaryKindergartenId) filters.set("kindergartenId", primaryKindergartenId);
+  if (teacher && groupFilter === "with") filters.set("hasGroup", "true");
+  else if (teacher && groupFilter === "without") filters.set("hasGroup", "false");
+  else if (teacher && groupFilter) filters.set("groupId", groupFilter);
+
   const users = useQuery({
     queryKey: qk.adminUsers({
       section: kind,
       q: search,
       roles,
+      group: groupFilter,
       page: String(page),
       pageSize: String(pageSize),
     }),
-    queryFn: () => {
-      const params = new URLSearchParams({
-        page: String(page),
-        pageSize: String(pageSize),
-        roles,
-      });
-      if (search) params.set("q", search);
-      if (primaryKindergartenId) params.set("kindergartenId", primaryKindergartenId);
-      return get(`/users?${params}`, listSchema);
-    },
+    queryFn: () => get(`/users?${filters}&page=${page}&pageSize=${pageSize}`, listSchema),
     enabled: Boolean(primaryKindergartenId),
   });
+
+  const groups = useQuery({
+    queryKey: qk.groups({ pageSize: 100 }),
+    queryFn: () => get("/groups?page=1&pageSize=100", groupsSchema),
+    enabled: teacher,
+    staleTime: 60_000,
+  });
+
+  // «Бүлэг хариуцсан · Бүлэггүй» — two counts, one row each, never a guess.
+  const assignedCount = useStaffCount(primaryKindergartenId, roles, "true", teacher);
+  const unassignedCount = useStaffCount(primaryKindergartenId, roles, "false", teacher);
 
   const deactivate = useMutation({
     mutationFn: (id: string) =>
@@ -173,14 +219,10 @@ function StaffSection({
           {title}
         </h2>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {/* No staff export exists yet — shown, never faked. */}
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled
-            title="Ажилтны Excel экспорт хараахан байхгүй байна"
-          >
-            <Download size={16} aria-hidden /> Excel
+          <Button asChild size="sm" variant="secondary">
+            <a href={downloadUrl(`/users/export?${filters}`)}>
+              <Download size={16} aria-hidden /> Excel
+            </a>
           </Button>
           <Button asChild size="sm" variant="secondary">
             <Link href="/admin/integrations/esis">
@@ -217,14 +259,27 @@ function StaffSection({
             ))}
           </Select>
         )}
-        <Select
-          aria-label={teacher ? "Бүлэг" : "Ангилал"}
-          value=""
-          disabled
-          title={teacher ? "Багшийн бүлгийн мэдээлэл байхгүй" : "Ангиллын мэдээлэл байхгүй"}
-        >
-          <option value="">{teacher ? "Бүх бүлэг" : "Бүх ангилал"}</option>
-        </Select>
+        {teacher ? (
+          <Select
+            aria-label="Бүлэг"
+            value={groupFilter}
+            onChange={(event) => resetting(setGroupFilter)(event.target.value)}
+          >
+            <option value="">Бүх бүлэг</option>
+            <option value="with">Бүлэг хариуцсан</option>
+            <option value="without">Бүлэггүй</option>
+            {(groups.data?.items ?? []).map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.name}
+              </option>
+            ))}
+          </Select>
+        ) : (
+          /* The API filters by role, not by category — so this stays shut. */
+          <Select aria-label="Ангилал" value="" disabled title="Ангиллаар шүүх боломжгүй">
+            <option value="">Бүх ангилал</option>
+          </Select>
+        )}
         <SearchField
           label={`${title} хайх`}
           placeholder="Нэр, регистр, утсаар хайх..."
@@ -239,8 +294,9 @@ function StaffSection({
         {teacher ? (
           <>
             {" "}
-            · Бүлэг хариуцсан <span className="text-ink">—</span> · Бүлэггүй{" "}
-            <span className="text-ink">—</span>
+            · Бүлэг хариуцсан{" "}
+            <span className="tabular-nums text-ink">{assignedCount.data ?? "—"}</span> · Бүлэггүй{" "}
+            <span className="tabular-nums text-ink">{unassignedCount.data ?? "—"}</span>
           </>
         ) : null}
       </p>
@@ -289,13 +345,19 @@ function StaffSection({
                         {teacher ? shortName(user) : fullName(user)}
                       </button>
                     </Td>
-                    {/* No register number on a staff account yet. */}
-                    <Td className="py-1.5 text-faint">—</Td>
+                    <Td className="py-1.5 tabular-nums text-muted">{user.registerNumber ?? "—"}</Td>
                     <Td className="py-1.5 text-muted">
-                      {membership ? ROLE_LABEL[membership.role] : "—"}
+                      {membership ? (membership.position ?? ROLE_LABEL[membership.role]) : "—"}
                     </Td>
-                    {/* No group or category on the list yet. */}
-                    <Td className="py-1.5 text-faint">—</Td>
+                    <Td className="py-1.5 text-muted">
+                      {teacher
+                        ? membership?.groups.length
+                          ? membership.groups.map((group) => group.name).join(", ")
+                          : "Бүлэггүй"
+                        : membership?.staffCategory
+                          ? STAFF_CATEGORY_LABEL[membership.staffCategory]
+                          : "—"}
+                    </Td>
                     <Td className="py-1.5 tabular-nums text-muted">{user.phone || "—"}</Td>
                     <Td className="py-1 text-right">
                       <RowMenu
@@ -372,7 +434,13 @@ function StaffSection({
         </div>
       ) : null}
 
-      {editing ? <EditUserDialog user={editing} onClose={() => setEditing(null)} /> : null}
+      {editing ? (
+        <EditUserDialog
+          user={editing}
+          membership={sectionMembership(editing, primaryKindergartenId, kind)}
+          onClose={() => setEditing(null)}
+        />
+      ) : null}
       {roleOf ? (
         <RoleDialog
           user={roleOf}
@@ -425,7 +493,11 @@ function StaffPanel({
   });
   const data = user.data;
   const membership = data ? sectionMembership(data, primaryKindergartenId, kind) : undefined;
-  const roleLabel = membership ? ROLE_LABEL[membership.role] : "—";
+  const roleLabel = membership ? (membership.position ?? ROLE_LABEL[membership.role]) : "—";
+  const groupNames = membership?.groups.length
+    ? membership.groups.map((group) => group.name).join(", ")
+    : "Бүлэггүй";
+  const day = (value: string | null | undefined) => (value ? value.slice(0, 10) : null);
   const active = data?.isActive !== false;
 
   return (
@@ -506,8 +578,16 @@ function StaffPanel({
               {tab === "Ерөнхий" ? (
                 <>
                   <InfoBlock title="Хувийн мэдээлэл">
-                    <InfoRow icon={<IdCard size={16} />} label="Регистр" value={null} />
-                    <InfoRow icon={<CalendarDays size={16} />} label="Төрсөн огноо" value={null} />
+                    <InfoRow
+                      icon={<IdCard size={16} />}
+                      label="Регистр"
+                      value={data.registerNumber}
+                    />
+                    <InfoRow
+                      icon={<CalendarDays size={16} />}
+                      label="Төрсөн огноо"
+                      value={day(data.dateOfBirth)}
+                    />
                     <InfoRow icon={<Phone size={16} />} label="Утас" value={data.phone} />
                     <InfoRow icon={<Mail size={16} />} label="Цахим шуудан" value={data.email} />
                   </InfoBlock>
@@ -521,15 +601,23 @@ function StaffPanel({
                       <InfoRow
                         icon={<UsersRound size={16} />}
                         label="Хариуцсан бүлэг"
-                        value={null}
+                        value={groupNames}
                       />
                     ) : (
-                      <InfoRow icon={<UsersRound size={16} />} label="Ангилал" value={null} />
+                      <InfoRow
+                        icon={<UsersRound size={16} />}
+                        label="Ангилал"
+                        value={
+                          membership?.staffCategory
+                            ? STAFF_CATEGORY_LABEL[membership.staffCategory]
+                            : null
+                        }
+                      />
                     )}
                     <InfoRow
                       icon={<CalendarDays size={16} />}
                       label="Ажилд орсон огноо"
-                      value={null}
+                      value={day(membership?.startedOn)}
                     />
                   </InfoBlock>
                 </>
@@ -557,7 +645,11 @@ function StaffPanel({
 
               {tab === "Бүлэг/үүрэг" ? (
                 <InfoBlock title="Бүлэг, үүрэг">
-                  <InfoRow icon={<UsersRound size={16} />} label="Хариуцсан бүлэг" value={null} />
+                  <InfoRow
+                    icon={<UsersRound size={16} />}
+                    label="Хариуцсан бүлэг"
+                    value={groupNames}
+                  />
                   <p className="text-caption text-muted">
                     Багш хуваарилалтыг «Анги, бүлэг» хуудаснаас хийнэ.
                   </p>
@@ -608,7 +700,9 @@ function StaffPanel({
           </>
         ) : null}
 
-        {editing && data ? <EditUserDialog user={data} onClose={() => setEditing(false)} /> : null}
+        {editing && data ? (
+          <EditUserDialog user={data} membership={membership} onClose={() => setEditing(false)} />
+        ) : null}
       </div>
     </div>
   );
@@ -647,25 +741,57 @@ function InfoRow({
 }
 
 /** Мэдээлэл засах — the fields `PATCH /users/:id` already takes. */
-function EditUserDialog({ user, onClose }: { user: StaffUser; onClose: () => void }) {
+/**
+ * «Мэдээлэл засах» — the person (`PATCH /users/:id`) and, when they have one
+ * here, their post in this kindergarten (`PATCH /memberships/:id/profile`):
+ * албан тушаал, ангилал, ажилд орсон огноо belong to the membership, because
+ * a person can hold a different post in a second kindergarten.
+ */
+function EditUserDialog({
+  user,
+  membership,
+  onClose,
+}: {
+  user: StaffUser;
+  membership?: StaffUser["memberships"][number];
+  onClose: () => void;
+}) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [lastName, setLastName] = useState(user.lastName);
   const [firstName, setFirstName] = useState(user.firstName);
   const [phone, setPhone] = useState(user.phone ?? "");
   const [email, setEmail] = useState(user.email ?? "");
+  const [registerNumber, setRegisterNumber] = useState(user.registerNumber ?? "");
+  const [dateOfBirth, setDateOfBirth] = useState(user.dateOfBirth?.slice(0, 10) ?? "");
+  const [position, setPosition] = useState(membership?.position ?? "");
+  const [staffCategory, setStaffCategory] = useState<string>(membership?.staffCategory ?? "");
+  const [startedOn, setStartedOn] = useState(membership?.startedOn?.slice(0, 10) ?? "");
 
   const save = useMutation({
-    mutationFn: () =>
-      mutate(`/users/${user.id}`, z.unknown(), {
+    mutationFn: async () => {
+      await mutate(`/users/${user.id}`, z.unknown(), {
         method: "PATCH",
         body: {
           lastName: lastName.trim(),
           firstName: firstName.trim(),
           ...(phone.trim() ? { phone: phone.trim() } : {}),
           email: email.trim() || null,
+          registerNumber: registerNumber.trim() || null,
+          dateOfBirth: dateOfBirth || null,
         },
-      }),
+      });
+      if (membership) {
+        await mutate(`/memberships/${membership.id}/profile`, z.unknown(), {
+          method: "PATCH",
+          body: {
+            position: position.trim() || null,
+            staffCategory: staffCategory || null,
+            startedOn: startedOn || null,
+          },
+        });
+      }
+    },
     onSuccess: () => {
       toast.success("Мэдээлэл хадгалагдлаа.");
       void queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
@@ -687,7 +813,7 @@ function EditUserDialog({ user, onClose }: { user: StaffUser; onClose: () => voi
           e.preventDefault();
           if (!save.isPending) save.mutate();
         }}
-        className="flex w-full max-w-[460px] flex-col gap-3 rounded-card border border-border bg-surface p-5"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-[520px] flex-col gap-3 overflow-y-auto rounded-card border border-border bg-surface p-5"
         noValidate
       >
         <h2 className="text-lead font-semibold text-ink">Мэдээлэл засах</h2>
@@ -710,6 +836,74 @@ function EditUserDialog({ user, onClose }: { user: StaffUser; onClose: () => voi
             <Input id={id} type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           )}
         </Field>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Регистр" error={errors.registerNumber} hint="Жишээ: УБ12345678">
+            {({ id, describedBy }) => (
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                value={registerNumber}
+                onChange={(e) => setRegisterNumber(e.target.value)}
+              />
+            )}
+          </Field>
+          <Field label="Төрсөн огноо" error={errors.dateOfBirth}>
+            {({ id }) => (
+              <Input
+                id={id}
+                type="date"
+                value={dateOfBirth}
+                onChange={(e) => setDateOfBirth(e.target.value)}
+              />
+            )}
+          </Field>
+        </div>
+        {membership ? (
+          <>
+            <Field
+              label="Албан тушаал"
+              error={errors.position}
+              hint="Жишээ: Бүлгийн багш, Арга зүйч"
+            >
+              {({ id, describedBy }) => (
+                <Input
+                  id={id}
+                  aria-describedby={describedBy}
+                  value={position}
+                  onChange={(e) => setPosition(e.target.value)}
+                />
+              )}
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Ангилал" error={errors.staffCategory}>
+                {({ id }) => (
+                  <Select
+                    id={id}
+                    value={staffCategory}
+                    onChange={(e) => setStaffCategory(e.target.value)}
+                  >
+                    <option value="">Сонгоогүй</option>
+                    {Object.entries(STAFF_CATEGORY_LABEL).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+              <Field label="Ажилд орсон огноо" error={errors.startedOn}>
+                {({ id }) => (
+                  <Input
+                    id={id}
+                    type="date"
+                    value={startedOn}
+                    onChange={(e) => setStartedOn(e.target.value)}
+                  />
+                )}
+              </Field>
+            </div>
+          </>
+        ) : null}
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="secondary" onClick={onClose}>
             Болих
