@@ -23,6 +23,7 @@ import { Art } from "@/components/ui/art";
 import type { GradientTone } from "@/lib/gradient-tones";
 import type { Tone } from "@/components/ui/tone";
 import { todayLocal } from "@/lib/format";
+import { shrinkIfTooLarge } from "@/lib/image-shrink";
 
 /**
  * The three growth-note sections — client reference screenshot, 2026-08-30.
@@ -328,18 +329,28 @@ function QuickShareForm({
             multiple
             className="sr-only"
             onChange={(event) => {
-              const selected = Array.from(event.target.files ?? []);
-              const tooBig = selected.filter((file) => file.size > MAX_UPLOAD_BYTES);
-              setFileError(
-                tooBig.length > 0
-                  ? `${tooBig.map((file) => file.name).join(", ")} хэт том байна.`
-                  : null,
-              );
-              setFiles((current) => [
-                ...current,
-                ...selected.filter((file) => file.size <= MAX_UPLOAD_BYTES),
-              ]);
-              if (inputRef.current) inputRef.current.value = "";
+              /*
+               * ★ Shrunk before it is measured — 2026-09-20. A phone shoots
+               * 8–12 MB frames, so refusing past the ceiling meant refusing
+               * ordinary photographs. Files already under it are untouched.
+               */
+              const picked = Array.from(event.target.files ?? []);
+              void (async () => {
+                const selected = await Promise.all(
+                  picked.map((file) => shrinkIfTooLarge(file, MAX_UPLOAD_BYTES)),
+                );
+                const tooBig = selected.filter((file) => file.size > MAX_UPLOAD_BYTES);
+                setFileError(
+                  tooBig.length > 0
+                    ? `${tooBig.map((file) => file.name).join(", ")} хэт том байна.`
+                    : null,
+                );
+                setFiles((current) => [
+                  ...current,
+                  ...selected.filter((file) => file.size <= MAX_UPLOAD_BYTES),
+                ]);
+                if (inputRef.current) inputRef.current.value = "";
+              })();
             }}
           />
           <div className="flex flex-wrap items-center gap-2 rounded-control border border-dashed border-border bg-canvas p-3">

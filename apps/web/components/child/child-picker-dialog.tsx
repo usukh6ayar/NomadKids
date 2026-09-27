@@ -11,8 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { ChildAvatar } from "@/components/media/media-image";
 import { ErrorState, LoadingState } from "@/components/ui/states";
-import { formatAge, fullName, shortName } from "@/lib/format";
+import { formatAge, fullName, shortName, capitalize } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
 const childrenPageSchema = paginated(childSummarySchema);
 
@@ -99,11 +100,14 @@ export function ChildPickerDialog({
     ? rosterItems.filter((child) => (coverage.counts[child.id] ?? 0) >= coverage.target).length
     : 0;
 
+  const backdrop = useBackdropDismiss(onClose);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label={title}
+      {...backdrop}
       /*
         ★ `justify-items-center` — 2026-09-16, at the client's request that
         this stop hugging the left edge on a phone.
@@ -214,7 +218,7 @@ export function ChildPickerDialog({
           >
             {items.map((child) => {
               const chosen = pending === child.id;
-              const group = child.enrollments?.find((row) => row.group)?.group?.name;
+              const group = capitalize(child.enrollments?.find((row) => row.group)?.group?.name);
               const count = coverage?.counts[child.id] ?? 0;
               const complete = coverage ? count >= coverage.target : false;
 

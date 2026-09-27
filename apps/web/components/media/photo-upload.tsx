@@ -12,9 +12,18 @@ import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { cn } from "@/lib/utils";
+import { shrinkIfTooLarge } from "@/lib/image-shrink";
 
-/** The API's own ceiling. Checked here too, so a 12 MB photo fails instantly. */
-export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+/**
+ * The API's own ceiling, mirrored so a file that cannot fit is refused without
+ * a round trip.
+ *
+ * ★ 20 MB since 2026-09-20 — 10 was below what the phones in use produce, so
+ * the check was refusing ordinary photographs. Anything larger is now shrunk
+ * by `shrinkIfTooLarge` before this is consulted, which turns "хэт том" from
+ * the usual answer into the rare one.
+ */
+export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 const MAX_MB = MAX_UPLOAD_BYTES / 1024 / 1024;
 
 /**
@@ -224,7 +233,17 @@ export function PhotoUpload({
     setRefused([]);
 
     const picked = Array.from(list);
-    const chosen = maxFiles === undefined ? picked : picked.slice(0, Math.max(maxFiles, 0));
+    /*
+     * ★ Shrink first, refuse second — 2026-09-20. A phone shoots 8–12 MB
+     * frames; `shrinkIfTooLarge` re-encodes past the limit and leaves anything
+     * under it byte for byte, so "хэт том" only reaches a file the browser
+     * could not decode at all.
+     */
+    const chosen = await Promise.all(
+      (maxFiles === undefined ? picked : picked.slice(0, Math.max(maxFiles, 0))).map((file) =>
+        shrinkIfTooLarge(file, MAX_UPLOAD_BYTES),
+      ),
+    );
     const tooBig = chosen.filter((file) => file.size > MAX_UPLOAD_BYTES);
     const sendable = chosen.filter((file) => file.size <= MAX_UPLOAD_BYTES);
 

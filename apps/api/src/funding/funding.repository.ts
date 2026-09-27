@@ -1,3 +1,4 @@
+import Decimal from "decimal.js";
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import type { AgeBand, FundingSource } from "../domain/enums";
@@ -8,6 +9,30 @@ import type { AgeBand, FundingSource } from "../domain/enums";
 @Injectable()
 export class FundingRepository {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * The enrolled children, with what the ESIS match needs — `нэмэлт.md` §3.
+   *
+   * ★ Separate from `monthInputs`, which loads the same enrolments for the
+   * calculation and deliberately selects only `id`, `lastName` and
+   * `firstName`. The subsidy match also needs `dateOfBirth`: a name alone is
+   * not enough to identify a child against a ministry roster, and widening
+   * `monthInputs` would make every monthly calculation carry a field it has no
+   * use for.
+   */
+  async childrenForEsisMatch(kindergartenId: string) {
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: { kindergartenId, status: "ACTIVE", deletedAt: null },
+      select: {
+        child: {
+          select: { id: true, lastName: true, firstName: true, dateOfBirth: true },
+        },
+      },
+      orderBy: [{ child: { lastName: "asc" } }, { child: { firstName: "asc" } }],
+    });
+
+    return enrollments.map((enrollment) => enrollment.child);
+  }
 
   // ── Rules ──────────────────────────────────────────────────────────────────
 
@@ -77,7 +102,19 @@ export class FundingRepository {
       where: { id, deletedAt: null },
       // Widened past {id, kindergartenId} so a caller correcting a rule can
       // log what the field actually was, not just that it changed — §14.
-      select: { id: true, kindergartenId: true, name: true, note: true, effectiveTo: true },
+      select: {
+        id: true,
+        kindergartenId: true,
+        name: true,
+        note: true,
+        effectiveTo: true,
+        // What a removal takes away, for its audit row — §14.
+        source: true,
+        ageBand: true,
+        effectiveFrom: true,
+        dailyRate: true,
+        monthlyRate: true,
+      },
     });
   }
 
@@ -215,6 +252,22 @@ export class FundingRepository {
     rows: Record<string, unknown>[],
   ) {
     return this.prisma.$transaction(async (tx) => {
+      /*
+       * ★ What the run being superseded said, read inside the same
+       * transaction as the replacement so the two cannot straddle another
+       * run. Counts and a total, not the rows — the rows stay in the table,
+       * soft-deleted, and this is the audit row's «Өмнөх утга» (§14).
+       */
+      const previous = await tx.fundingCalculation.aggregate({
+        where: { kindergartenId, month, source, deletedAt: null },
+        _count: { _all: true },
+        _sum: { calculatedAmount: true },
+      });
+      const before = {
+        children: previous._count._all,
+        calculatedTotal: new Decimal(previous._sum.calculatedAmount?.toString() ?? "0").toString(),
+      };
+
       await tx.fundingCalculation.updateMany({
         where: { kindergartenId, month, source, deletedAt: null },
         data: { deletedAt: new Date() },
@@ -224,11 +277,33 @@ export class FundingRepository {
         await tx.fundingCalculation.create({ data: row as never });
       }
 
-      return tx.fundingCalculation.findMany({
+      const written = await tx.fundingCalculation.findMany({
         where: { kindergartenId, month, source, deletedAt: null },
         orderBy: { child: { lastName: "asc" } },
         include: { child: { select: { id: true, lastName: true, firstName: true } } },
       });
+      return { written, before };
+    });
+  }
+
+  /**
+   * The month's calculation rows priced by a meal rule — `нэмэлт.md` §3.
+   *
+   * ★ Filtered on the **rule**, not the source. A source can carry both a
+   * per-meal tariff and a monthly flat fee; only the first is a meal cost, and
+   * the rule's `dependsOnMeals` is the one place that says which is which.
+   *
+   * Bounded by construction: one row per child per source per month.
+   */
+  mealCalculations(kindergartenId: string, month: Date) {
+    return this.prisma.fundingCalculation.findMany({
+      where: {
+        kindergartenId,
+        month,
+        deletedAt: null,
+        fundingRule: { dependsOnMeals: true },
+      },
+      select: { childId: true, source: true, daysFed: true, calculatedAmount: true },
     });
   }
 
@@ -364,6 +439,14 @@ export class FundingRepository {
     ]);
 
     return { enrollments, attendance, meals, approvedRequests, calculations };
+  }
+
+  /** The tenant's confirmed ESIS institution, or null when unmapped. */
+  async findKindergartenEsisMapping(id: string) {
+    return this.prisma.kindergarten.findFirst({
+      where: { id, deletedAt: null },
+      select: { esisInstitutionId: true },
+    });
   }
 
   /** The kindergarten's name, for the spreadsheet's title row. */

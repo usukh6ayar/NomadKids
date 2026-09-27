@@ -1,7 +1,7 @@
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { createTestApp } from "./support/app";
+import { createTestApp, type TestAppOptions } from "./support/app";
 import { resetData, testDb, uniq } from "./support/db";
 import {
   authed,
@@ -31,6 +31,16 @@ import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
 let app: INestApplication;
 const db = testDb();
 
+/**
+ * What the stubbed ESIS says this kindergarten's roster is.
+ *
+ * ★ Filled by `beforeEach` from the scenario it just created, so the names and
+ * birth dates match exactly what `resolveAttendanceDrafts` looks for — it
+ * matches a local child to an ESIS student by name *and* date of birth, and a
+ * mismatch is a 409 rather than a submission.
+ */
+const esisRoster: { groups: unknown[]; students: unknown[] } = { groups: [], students: [] };
+
 let a: Scenario;
 let b: Scenario;
 let admin: AuthSession;
@@ -42,7 +52,38 @@ let adminB: AuthSession;
 const server = () => app.getHttpServer();
 
 beforeAll(async () => {
-  app = await createTestApp();
+  /*
+   * ★ ESIS is stubbed here, and was not before 2026-09-14.
+   *
+   * Submitting a day pushes it to `group/school/attendance/save/v3`, and the
+   * suite has no token — `test/setup.ts` deletes it so `pnpm test` cannot
+   * reach a government system. That used to be covered by demo mode, which
+   * answered every read from a committed fixture; with the mock transport
+   * removed, an unstubbed submit is a 502.
+   *
+   * Only the transport is replaced. `submitDays` still resolves each child
+   * against the roster these methods return, still writes the submission rows,
+   * still audits — which is what these tests are about. The stub returns one
+   * group and one student because the scenario has one of each; a child the
+   * roster does not name makes `resolveAttendanceDrafts` throw, which is its
+   * job and is tested where that behaviour belongs.
+   */
+  const ok = <T>(data: T) => ({ data, status: 200, durationMs: 1, source: "LIVE" as const });
+
+  app = await createTestApp({
+    esis: {
+      isConfigured: true,
+      /*
+       * ★ The roster is read off `esisRoster`, which `beforeEach` fills once
+       * the scenario exists. The app is built once in `beforeAll`, before
+       * there is a group or a child to name, so the stub has to close over a
+       * mutable handle rather than capture values.
+       */
+      groups: async () => ok(esisRoster.groups),
+      groupStudents: async () => ok(esisRoster.students),
+      saveAttendance: async () => ok({ SUCCESS_CODE: 200 }),
+    } as unknown as TestAppOptions["esis"],
+  });
 }, 60_000);
 
 afterAll(async () => {
@@ -58,6 +99,41 @@ beforeEach(async () => {
 
   a = await createScenario("a");
   b = await createScenario("b");
+
+  /*
+   * ★ The ESIS mapping, for the submit tests — 2026-09-14.
+   *
+   * `submitDays` pushes the day to the ministry and `assertOperable` refuses
+   * with 409 until the tenant carries an institution id. Demo mode used to
+   * paper over that with a fallback constant; it is gone, so the fixture has
+   * to state the mapping the same way a real kindergarten does.
+   */
+  esisRoster.groups = [{ studentGroupId: "10001", studentGroupName: a.group.name }];
+  esisRoster.students = [
+    {
+      personId: "90000000000001",
+      lastName: a.child.lastName,
+      firstName: a.child.firstName,
+      familyName: null,
+      lastNameMgl: null,
+      firstNameMgl: null,
+      dateOfBirth: a.child.dateOfBirth.toISOString(),
+    },
+  ];
+
+  await db.kindergarten.update({
+    where: { id: a.kindergarten.id },
+    /*
+     * ★ Digits only. `esisInstitutionId` is a text column, but the attendance
+     * payload runs it through `positiveEsisNumber` — ESIS types it as a
+     * number — so a `uniq()` suffix answers 502 "institutionId буруу
+     * форматтай". It still has to be unique across kindergartens, hence the
+     * random digits rather than a shared constant.
+     */
+    data: {
+      esisInstitutionId: String(40000 + Math.floor(Math.random() * 50000)),
+    },
+  });
 
   const accUser = await createUser({ username: uniq("acct") });
   await createMembership(accUser.id, a.kindergarten.id, "ACCOUNTANT");
@@ -294,6 +370,30 @@ describe("the grid", () => {
       null,
     ]);
     expect(row.counts).toEqual({ PRESENT: 1, SICK: 1 });
+  });
+
+  /*
+   * ★ «Хамрагдвал зохих» — 2026-09-26, after the ministry SIS register, which
+   * puts it beside each child's totals. It is the working days the child was
+   * enrolled for, so a child who joined on Wednesday owes three days of a
+   * five-day week, not five — and "recorded 3 of 5" would read as two
+   * missing marks that nobody could ever have made.
+   */
+  it("counts the working days each child was enrolled for", async () => {
+    const joiner = await createChild(a.kindergarten.id, { firstName: "Шинэ" });
+    const enrollment = await enrollChild(a.kindergarten.id, joiner.id, a.group.id, a.schoolYear.id);
+    await db.enrollment.update({
+      where: { id: enrollment.id },
+      data: { startedOn: new Date("2026-03-04") },
+    });
+
+    const res = await register(admin, a.kindergarten.id, "from=2026-03-02&to=2026-03-08");
+    const row = (childId: string) =>
+      res.body.items.find((r: { childId: string }) => r.childId === childId);
+
+    // Mon–Fri; the weekend is not a working day.
+    expect(row(a.child.id).expectedDays).toBe(5);
+    expect(row(joiner.id).expectedDays).toBe(3);
   });
 
   it("totals across every matching child, not just the page on screen", async () => {
@@ -784,6 +884,60 @@ describe("GET /kindergartens/:id/attendance/daily", () => {
 
     const groupIds = new Set(res.body.items.map((r: { groupId: string }) => r.groupId));
     expect([...groupIds]).toEqual([other.id]);
+  });
+
+  /*
+   * ★ Guardians' requests on the director's row — 2026-09-26, after the
+   * ministry's own SIS register, which puts Зөвшөөрсөн / Татгалзсан /
+   * Хүлээгдэж байгаа beside the counts. A request covering several days
+   * counts on each working day it covers, in the group the child is enrolled
+   * in, and another kindergarten's requests never reach this table.
+   */
+  it("counts guardians' requests on each day they cover, by review state", async () => {
+    const request = (
+      dateFrom: string,
+      dateTo: string,
+      reviewStatus: "PENDING" | "APPROVED" | "REJECTED",
+    ) =>
+      db.attendanceRequest.create({
+        data: {
+          kindergartenId: a.kindergarten.id,
+          childId: a.child.id,
+          enrollmentId: a.enrollment.id,
+          requestedById: a.parentUser.id,
+          dateFrom: new Date(dateFrom),
+          dateTo: new Date(dateTo),
+          requestedStatus: "EXCUSED",
+          reviewStatus,
+        },
+      });
+    // Wednesday–Thursday, approved; Thursday, one pending and one rejected.
+    await request("2026-03-04", "2026-03-05", "APPROVED");
+    await request("2026-03-05", "2026-03-05", "PENDING");
+    await request("2026-03-05", "2026-03-05", "REJECTED");
+    // Another kindergarten's request on the same day must not be counted here.
+    await db.attendanceRequest.create({
+      data: {
+        kindergartenId: b.kindergarten.id,
+        childId: b.child.id,
+        enrollmentId: b.enrollment.id,
+        requestedById: b.parentUser.id,
+        dateFrom: new Date("2026-03-05"),
+        dateTo: new Date("2026-03-05"),
+        requestedStatus: "SICK",
+      },
+    });
+
+    const res = await daily(admin, a.kindergarten.id);
+    const on = (date: string) =>
+      res.body.items.find(
+        (r: { groupId: string; date: string }) => r.groupId === a.group.id && r.date === date,
+      );
+
+    expect(on("2026-03-03").requests).toEqual({ pending: 0, approved: 0, rejected: 0 });
+    expect(on("2026-03-04").requests).toEqual({ pending: 0, approved: 1, rejected: 0 });
+    expect(on("2026-03-05").requests).toEqual({ pending: 1, approved: 1, rejected: 1 });
+    expect(res.body.totals.requests).toEqual({ pending: 1, approved: 2, rejected: 1 });
   });
 
   it("totals the period across every row on screen", async () => {

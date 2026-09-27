@@ -33,6 +33,7 @@ function row(day: number, group = "Дэлбээ бүлэг", sent = false) {
     sentBy: null,
     createdAt: null,
     createdBy: [],
+    requests: { pending: 0, approved: 0, rejected: 0 },
   };
 }
 
@@ -56,6 +57,7 @@ function stub(items: ReturnType<typeof row>[]) {
           complete: 0,
           sent: 0,
           days: 0,
+          requests: { pending: 0, approved: 0, rejected: 0 },
         },
       },
     },
@@ -149,6 +151,7 @@ function stubRegister() {
             ],
             counts: { PRESENT: 2, ABSENT: 1 },
             recorded: 3,
+            expectedDays: 3,
           },
         ],
         page: 1,

@@ -35,7 +35,7 @@ export type Role = z.infer<typeof roleSchema>;
  * inline, which is how a fourth screen ends up saying "Багш нар".
  */
 export const ROLE_LABEL: Record<Role, string> = {
-  ADMIN: "Админ",
+  ADMIN: "Захирал/Эрхлэгч",
   TEACHER: "Багш",
   PARENT: "Эцэг эх",
   COOK: "Тогооч",
@@ -56,6 +56,28 @@ export const ROLE_LABEL: Record<Role, string> = {
  * reach the API has.
  */
 export const ASSIGNABLE_ROLES = ["ADMIN", "TEACHER", "PARENT", "COOK", "ACCOUNTANT"] as const;
+
+/**
+ * The roles that mean "works here" — what `/admin/users?roles=` asks for.
+ *
+ * ★ **Not `ASSIGNABLE_ROLES`, and the difference is a bug this fixes.**
+ * `/admin/users` derived its staff filter from that list "rather than
+ * restating it", which reads as the careful choice and is the wrong one: the
+ * assignable list deliberately contains `PARENT` so an administrator can
+ * repair a guardian's account, and passing it as a *filter* asked the API for
+ * every family in the kindergarten. The client's instruction on that screen is
+ * the opposite and is explicit — "хэрэглэгч эрх дотор ерөөсөө эцэг эх
+ * байхгүй" (`users.dto.ts`, whose own example writes this list out).
+ *
+ * It went unnoticed because the two lists are the same length in every fixture
+ * that has a parent in it and none of them did.
+ *
+ * ★★ Named rather than computed as `ASSIGNABLE_ROLES` minus `PARENT`, for the
+ * reason `rolesSchema` gives about the query it feeds: naming what you want
+ * survives a sixth role being added, where "everything except PARENT" would
+ * silently start including it.
+ */
+export const STAFF_ROLES = ["ADMIN", "TEACHER", "COOK", "ACCOUNTANT"] as const;
 
 export const sexSchema = z.enum(["MALE", "FEMALE"]);
 /**
@@ -213,6 +235,8 @@ export const currentUserSchema = z.object({
 export const sessionSchema = z.object({
   user: currentUserSchema,
   memberships: z.array(membershipSchema),
+  /** The names of the kindergartens in `memberships` — the desktop top bar. */
+  kindergartens: z.array(namedRefSchema).default([]),
   csrfToken: z.string().nullish(),
 });
 export type Session = z.infer<typeof sessionSchema>;
@@ -299,15 +323,17 @@ export const enrollmentArchiveEntrySchema = z.object({
    * A family knows which teacher their child had; the staff profile behind
    * that name belongs to the kindergarten the child is in now.
    */
-  teachers: z.array(
-    z.object({
-      id: uuidSchema,
-      lastName: z.string(),
-      firstName: z.string(),
-      role: teacherRoleSchema,
-      photoMediaFileId: uuidSchema.nullish(),
-    }),
-  ).default([]),
+  teachers: z
+    .array(
+      z.object({
+        id: uuidSchema,
+        lastName: z.string(),
+        firstName: z.string(),
+        role: teacherRoleSchema,
+        photoMediaFileId: uuidSchema.nullish(),
+      }),
+    )
+    .default([]),
 });
 
 export const enrollmentArchiveTeacherSchema = z.object({
@@ -328,7 +354,6 @@ export const enrollmentArchiveTeacherSchema = z.object({
   email: z.string().nullish(),
   photoMediaFileId: uuidSchema.nullish(),
 });
-
 
 const enrollmentArchiveEsisSchema = z.object({
   mode: z.enum(["DEMO", "LIVE"]),
@@ -680,6 +705,8 @@ export const attendanceJournalRowSchema = z.object({
   /** Only the statuses that occur — a status with no days is simply absent. */
   counts: z.record(z.string(), z.number()),
   recorded: z.number(),
+  /** «Хамрагдвал зохих» — working days in range inside the child's enrolment. */
+  expectedDays: z.number(),
 });
 export type AttendanceJournalRow = z.infer<typeof attendanceJournalRowSchema>;
 
@@ -738,6 +765,12 @@ export type AttendanceJournal = z.infer<typeof attendanceJournalSchema>;
  * asked for the numbers as they already stand — so this response carries no
  * child ids and nothing writable.
  */
+export const attendanceRequestCountsSchema = z.object({
+  pending: z.number(),
+  approved: z.number(),
+  rejected: z.number(),
+});
+
 export const dailyAttendanceRowSchema = z.object({
   schoolYear: z.string(),
   groupId: z.string(),
@@ -780,6 +813,11 @@ export const dailyAttendanceRowSchema = z.object({
   createdAt: z.string().nullish(),
   /** More than one name when a correction came from a second person. */
   createdBy: z.array(z.string()).default([]),
+  /**
+   * Guardians' requests covering this group-day, by review state. A request
+   * spanning several days counts on each of them.
+   */
+  requests: attendanceRequestCountsSchema,
 });
 export type DailyAttendanceRow = z.infer<typeof dailyAttendanceRowSchema>;
 
@@ -800,6 +838,7 @@ export const dailyAttendanceSchema = z.object({
     /** How many are already submitted — what Илгээх has left to do. */
     sent: z.number(),
     days: z.number(),
+    requests: attendanceRequestCountsSchema,
   }),
 });
 export type DailyAttendance = z.infer<typeof dailyAttendanceSchema>;
@@ -3010,6 +3049,19 @@ export const adminUserSchema = z.object({
   phone: z.string().nullish(),
   lastName: z.string(),
   firstName: z.string(),
+  /**
+   * The ministry's id for this person, when we hold one.
+   *
+   * ★ Added 2026-09-20 so `/admin/users` can put a row of the ESIS staff table
+   * next to the account it belongs to — `esisPersonId` is the only key the two
+   * share, and `StaffRecord` hangs off `User.id`, which an ESIS row has no way
+   * to reach on its own.
+   *
+   * ★★ Null for anybody invited rather than self-registered
+   * (`createInvitedAccount` never sets it), which is why the screen treats its
+   * absence as "no file to open" instead of an error.
+   */
+  esisPersonId: z.string().nullish(),
   isActive: z.boolean().nullish(),
   lastLoginAt: z.string().nullish(),
   memberships: z
@@ -3064,12 +3116,43 @@ export const invitedUserSchema = z.object({
 });
 
 /**
+ * One `GroupTeacher` row — who teaches a group, and in which role.
+ *
+ * ★ A named shape since 2026-09-23, because the list and the detail now return
+ * the same one. `membership.id` is here rather than only the user's: the
+ * assignment is to a person's role *in this kindergarten*, and it is the
+ * `membershipId` that `POST /groups/:id/teachers` takes.
+ */
+export const groupTeacherAssignmentSchema = z.object({
+  id: uuidSchema,
+  role: z.string().nullish(),
+  endedOn: z.string().nullish(),
+  membership: z
+    .object({
+      id: uuidSchema,
+      user: personRefSchema.nullish(),
+    })
+    .nullish(),
+});
+
+/**
  * A group as the *list* returns it.
  *
- * ★ No teachers here — `GET /groups` does not include them, only a count of
- * enrolments. Fetching the assignments for every row would be an N+1 the client
- * pays on a screen that mostly does not need them, so the list shows how many
- * children are in a group and the teacher list is fetched per group, on demand.
+ * ★ **It carries its teachers — changed 2026-09-23.** This said for a long time
+ * that it did not, on the grounds that fetching the assignments per row "would
+ * be an N+1 the client pays". That was true of the shape it described: the only
+ * way to learn who taught a group was `GET /groups/:id`, once per row.
+ *
+ * What replaced it is not an N+1. `listGroups` carries one more `include` on a
+ * query it already runs, bounded by the same `pageSize` cap (100) the screen
+ * already asks for, and each group has one or two teachers. The alternative was
+ * the browser making a request per group to answer "which of these has no
+ * teacher" — which is the question `/admin/groups` is *for*, and the reason the
+ * old shape could not answer it without becoming the thing it warned about.
+ *
+ * ★★ Only active assignments arrive (`endedOn: null`), and the user select is
+ * an id and a name. This list is read by TEACHER as well as ADMIN, so it must
+ * not become a way to read staff contact details.
  */
 export const groupListItemSchema = groupSchema.extend({
   status: z.string().nullish(),
@@ -3077,26 +3160,41 @@ export const groupListItemSchema = groupSchema.extend({
   _count: z.object({ enrollments: z.number() }).nullish(),
   /** RFP §3.2 — ангийн зураг, so the assignment dialog can preview it. */
   photoMediaFileId: uuidSchema.nullish(),
+  /**
+   * The ministry's `studentGroupId` for this class, where the roster import
+   * has matched one.
+   *
+   * ★ For **reconciliation**, and never for a route. `/groups/:id` is always
+   * the local UUID — every screen behind it resolves children through
+   * `Enrollment`, which hangs off our own id. This is what lets the group page
+   * ask ESIS "who does *your* register say is in this class" and compare the
+   * answer, which is the whole value of api-13 (`group/student/list`).
+   *
+   * ★★ Null until an import matches the group, and that is a real state: a
+   * class created by hand that the ministry has not been told about yet. The
+   * screen says "ЭСИС-д бүртгэгдээгүй" rather than showing an empty roster.
+   */
+  esisGroupId: z.string().nullish(),
+  /**
+   * ★ `.default([])` matters more than it looks: every fixture and every
+   * caller written before the field existed still parses, and a group with no
+   * teacher is an empty array rather than a missing key the screens must guard.
+   */
+  teachers: z.array(groupTeacherAssignmentSchema).default([]),
 });
 
-/** A single group, from `GET /groups/:id` — this one carries the assignments. */
-export const groupWithTeachersSchema = groupListItemSchema.extend({
-  teachers: z
-    .array(
-      z.object({
-        id: uuidSchema,
-        role: z.string().nullish(),
-        endedOn: z.string().nullish(),
-        membership: z
-          .object({
-            id: uuidSchema,
-            user: personRefSchema.nullish(),
-          })
-          .nullish(),
-      }),
-    )
-    .default([]),
-});
+/**
+ * A single group, from `GET /groups/:id`.
+ *
+ * ★ The same shape as a list row since 2026-09-23 — kept as its own name
+ * because thirty call sites read it and because the name says what the caller
+ * is relying on. Both endpoints include the assignments now; if they ever
+ * diverge again, this is where the difference gets written down.
+ */
+export const groupWithTeachersSchema = groupListItemSchema;
+
+/** The row every group screen draws. Inferred, so it cannot drift from the parse. */
+export type GroupListItem = z.infer<typeof groupListItemSchema>;
 
 export const userProfileSchema = z.object({
   id: uuidSchema,
@@ -3267,9 +3365,46 @@ export const adminDashboardSchema = z.object({
   counts: z.object({
     children: z.number(),
     groups: z.number(),
+    /**
+     * ★ `TEACHER` and `ADMIN` only — narrower than the label above it.
+     *
+     * A тогооч and a нягтлан are staff and are not counted here, so a
+     * kindergarten employing both is told it has two fewer people than it
+     * does. The figure is left alone because several screens read it with
+     * that meaning; `esis.staffRegistered` below is the count of *everyone*,
+     * and the two sitting together is what makes the narrowing visible.
+     */
     staff: z.number(),
     guardians: z.number(),
   }),
+  /**
+   * What ESIS lists, against what this system holds.
+   *
+   * ★ **Every field is a local count — the dashboard calls the ministry
+   * nowhere.** `staffInRoster` is `EsisStaffRoster`, which tier 2 of the sync
+   * refills nightly, so the ministry's staff total is already on disk.
+   *
+   * ★★ Children and groups have **no** stored ministry total — tier 3 reads a
+   * child at a time — so `childrenLinked` and `groupsLinked` count records
+   * that *came from* an import (`esisPersonId` / `esisGroupId` set). That is
+   * provenance, not the ministry's own number, and the screen says so. The
+   * live comparison is `GroupRosterCheck`, per group, on demand.
+   */
+  esis: z
+    .object({
+      /** Staff the ministry lists for this kindergarten. */
+      staffInRoster: z.number(),
+      /** Accounts that can sign in — every staff role, not only TEACHER/ADMIN. */
+      staffRegistered: z.number(),
+      /** Of those, how many are tied to their ESIS person. */
+      staffLinked: z.number(),
+      childrenLinked: z.number(),
+      childrenTotal: z.number(),
+      groupsLinked: z.number(),
+      /** When the roster was last refilled — a count with no age misleads. */
+      rosterSyncedAt: z.string().nullish(),
+    })
+    .nullish(),
   /**
    * RFP §12.2 — "Хадгалалтын хэмжээ" and "Тайлангийн статистик".
    *
@@ -3605,8 +3740,28 @@ export const platformStatsSchema = z.object({
   kindergartens: z.number(),
   groups: z.number(),
   children: z.number(),
+  /** `TEACHER` and `ADMIN` only — see `esis.staffRegistered` for everyone. */
   staff: z.number(),
   guardians: z.number(),
+  /**
+   * The ESIS comparison, summed across every tenant.
+   *
+   * ★ Local counts — `EsisStaffRoster` is refilled nightly per kindergarten,
+   * so the operator's page costs one query rather than an outbound request per
+   * tenant. `connected` is how many kindergartens carry an
+   * `esisInstitutionId`, which is a fact this database holds; whether the
+   * ministry answers today is not, and the figure does not claim it.
+   */
+  esis: z
+    .object({
+      staffInRoster: z.number(),
+      staffRegistered: z.number(),
+      staffLinked: z.number(),
+      childrenLinked: z.number(),
+      groupsLinked: z.number(),
+      connected: z.number(),
+    })
+    .nullish(),
 });
 export type PlatformStats = z.infer<typeof platformStatsSchema>;
 
@@ -3623,15 +3778,86 @@ export const platformKindergartenSchema = z.object({
 export type PlatformKindergarten = z.infer<typeof platformKindergartenSchema>;
 
 /**
+ * `DELETE /platform/kindergartens/:id` — what the deletion actually closed.
+ *
+ * ★ Counts, not a boolean. Retiring a tenant closes every membership in it,
+ * and the operator should be told how many people just lost their way in
+ * rather than "Амжилттай".
+ */
+export const deletedKindergartenSchema = z.object({
+  id: uuidSchema,
+  name: z.string(),
+  closedMemberships: z.number(),
+  children: z.number(),
+  groups: z.number(),
+  staff: z.number(),
+  guardians: z.number(),
+});
+export type DeletedKindergarten = z.infer<typeof deletedKindergartenSchema>;
+
+/**
  * `GET /platform/kindergartens/:id` — the list row plus the same
  * counts/coverage/activity shape `adminDashboardSchema` gives a kindergarten's
  * own admin, scoped by the API to just this one kindergarten.
  */
+/**
+ * One Захирал/Эрхлэгч of a kindergarten, as the platform operator sees them.
+ *
+ * ★ `lastLoginAt` is the field that earns this list its place. The operator's
+ * real question is not "who administers this kindergarten" but "**can anybody
+ * get in**" — a director who was invited and never accepted looks identical to
+ * a working one in every other column, and that is precisely the tenant that
+ * needs a second invitation.
+ *
+ * ★★ No `email` beyond what is needed to recognise the person, and never a
+ * password field of any kind. This is an operator reading across tenants.
+ */
+export const platformAdminSchema = z.object({
+  id: uuidSchema,
+  username: z.string(),
+  lastName: z.string(),
+  firstName: z.string(),
+  email: z.string().nullish(),
+  isActive: z.boolean(),
+  /** Null when they have never signed in — see the note above. */
+  lastLoginAt: z.string().nullable(),
+});
+export type PlatformAdmin = z.infer<typeof platformAdminSchema>;
+
+/** `POST /platform/kindergartens/:id/admins`. */
+export const platformAdminInvitedSchema = z.object({
+  user: platformAdminSchema,
+  invitationToken: z.string(),
+});
+export type PlatformAdminInvited = z.infer<typeof platformAdminInvitedSchema>;
+
+/**
+ * `POST /groups/:id/guardian-invitations` — one token per child.
+ *
+ * ★ A list, not a single code. Each entry names the child it belongs to
+ * because the sheet the teacher prints has to be cut up and handed out, and a
+ * QR with no name on it is a QR nobody can deliver.
+ */
+export const groupGuardianInvitationsSchema = z.object({
+  items: z.array(
+    z.object({
+      childId: uuidSchema,
+      lastName: z.string(),
+      firstName: z.string(),
+      invitationToken: z.string(),
+    }),
+  ),
+  /** Children in the group this press passed over — already invited or linked. */
+  skipped: z.number(),
+});
+export type GroupGuardianInvitations = z.infer<typeof groupGuardianInvitationsSchema>;
+
 export const platformKindergartenDetailSchema = platformKindergartenSchema.extend({
   description: z.string().nullish(),
   esisInstitutionId: z.string().nullish(),
-  esisEnvironment: z.enum(["TEST", "PRODUCTION"]).nullish(),
   esisMappedAt: z.string().nullish(),
+  /** Every live ADMIN membership in this tenant. See `platformAdminSchema`. */
+  admins: z.array(platformAdminSchema),
   counts: z.object({
     children: z.number(),
     groups: z.number(),
@@ -3673,6 +3899,13 @@ export const esisResourceKeySchema = z.enum([
   "studentMovements",
   "teachers",
   "staff",
+  /*
+   * ★ Мэргэшлийн зэргийн хүсэлт — the two reads, 2026-09-22. Beside `staff`
+   * because that is what they are about; `EsisDomain` puts them in `ROSTER` for
+   * the same reason.
+   */
+  "degreeDecisions",
+  "degreeHistory",
   "groupAttendance",
   "saveAttendanceV3",
   "foodProductTypes",
@@ -3685,6 +3918,18 @@ export const esisResourceKeySchema = z.enum([
   "livelihoodForm2",
   "foodKit",
   "foodKitProducts",
+  /*
+   * ★ `foodDiscountStudents` — added to `ESIS_ENDPOINTS` on 2026-09-14 and
+   * missing here until 2026-09-15.
+   *
+   * It is the ACCOUNTANT's service, so no teacher's or admin's scoped catalog
+   * carried it and the schema test — which uses a teacher — kept passing. An
+   * accountant opening the ESIS panel would have had the whole payload
+   * rejected by this enum and seen nothing, with no error naming the cause.
+   * That is the shape of bug this list exists to prevent, and it hid for a day
+   * behind the one role the test does not use.
+   */
+  "foodDiscountStudents",
   /*
    * Added 2026-09-10 — суралцагчийн нэмэлт мэдээлэл, багш, хөтөлбөр, орчин.
    * The three `…Save` keys are writes; every other one is a read.
@@ -3706,6 +3951,58 @@ export const esisResourceKeySchema = z.enum([
   "rooms",
   "academicOrg",
   "subjectAreas",
+  /*
+   * Added 2026-09-15 — эрүүл мэнд, вакцин, хэмжилт, эрт илрүүлэг, багшийн
+   * бүртгэл, ирцийн нэгдсэн дүн. Twenty-seven services the ministry's own
+   * granted-service export listed as approved and the catalogue was not
+   * calling. The ten `…Save` keys are writes; every other one is a read.
+   */
+  "studentAllergy",
+  "studentAllergySave",
+  "studentProhibitedFood",
+  "studentProhibitedFoodSave",
+  "studentDisability",
+  "studentDisabilitySave",
+  "studentAssessments",
+  "studentAssessmentsSave",
+  "studentMeasurements",
+  "studentMeasurementSave",
+  "studentSurgery",
+  "studentSurgerySave",
+  "studentIncident",
+  "studentIncidentSave",
+  "studentAttachmentSave",
+  "vaccineCatalog",
+  "vaccineHistory",
+  "vaccinePlan",
+  "groupMeasurements",
+  "groupMeasurementsSave",
+  "screeningQuestions",
+  "studentScreening",
+  "studentScreeningSave",
+  "schoolAttendance",
+  "workerInfo",
+  "teacherProfile",
+  "teacherCheck",
+  /*
+   * ★ Added 2026-09-19, and they are the second instance of exactly the bug the
+   * `foodDiscountStudents` note above describes — so the note is no longer the
+   * only defence. `esis-catalog-contract.test.ts` now diffs `ESIS_ENDPOINTS`
+   * against this enum in both directions.
+   *
+   * The three group writes and three reads shipped in the catalogue and never
+   * reached this list. The consequence is worse than a missing row: `key` is
+   * read by `esisOverviewSchema.endpoints`, so one unknown value rejects the
+   * **whole** payload and the ESIS panel renders "Алдаа гарлаа" with nothing
+   * naming the cause. It reached production and was found from a HAR file
+   * showing the request answering 200.
+   */
+  "groupCreate",
+  "groupUpdate",
+  "groupInstructor",
+  "studentAwards",
+  "studentSearch",
+  "buildingByRegisterNumber",
 ]);
 export type EsisResourceKey = z.infer<typeof esisResourceKeySchema>;
 
@@ -3722,9 +4019,22 @@ export const esisPreviewResourceKeySchema = z.enum([
   "foodMaterials",
   "foodProducts",
   "foodProductMaterials",
-  // Added 2026-09-10 — the institution-level reads a dry run can call without
-  // asking the operator for a group id, a date or a register number.
-  "studentContacts",
+  /*
+   * Added 2026-09-10 — the institution-level reads a dry run can call without
+   * asking the operator for a group id, a date or a register number.
+   *
+   * ★ `studentContacts` was one of them and left on 2026-09-14. It is a
+   * per-child lookup that takes `{ personId }` in its POST body — without one
+   * it answers `400 personId шаардлагатай`, so the dry run this list drives
+   * had a guaranteed failure in it. It was listed here because the catalogue
+   * described it as the whole roster's guardians, which it never was.
+   *
+   * ★★ None of the twenty-seven services added on 2026-09-15 is here either.
+   * Every one needs a `personId`, a group, a date or a register number; the
+   * two that need none (`vaccineCatalog`, `screeningQuestions`) are reference
+   * lookups, and adding those to the connection test spends the deployment's
+   * rate limit proving nothing new.
+   */
   "groupsNextYear",
   "programs",
   "rooms",
@@ -3733,7 +4043,14 @@ export const esisPreviewResourceKeySchema = z.enum([
 ]);
 export type EsisPreviewResourceKey = z.infer<typeof esisPreviewResourceKeySchema>;
 
-const esisSyncStatusSchema = z.enum(["RUNNING", "SUCCEEDED", "PARTIAL", "FAILED"]);
+/**
+ * ★ Exported since 2026-09-17, plan `2026-09-16-esis-sync-tiers.md` Task 10.
+ * It was local to this file while only `esisOverviewSchema.recentRuns` read
+ * it; `esisSyncRunSchema` below needs the same four values for `GET
+ * …/kindergartens/:id/esis/sync-runs`, and a second, hand-copied enum is
+ * exactly the drift CLAUDE.md §2.3 exists to prevent.
+ */
+export const esisSyncStatusSchema = z.enum(["RUNNING", "SUCCEEDED", "PARTIAL", "FAILED"]);
 
 /**
  * One input or output field of an ESIS service, and whether NomadKids keeps it.
@@ -3755,11 +4072,43 @@ export const esisFieldSchema = z.object({
    * shows it only while no live read has succeeded — see `esis.fields.ts`.
    */
   sample: z.string().optional(),
+  /**
+   * This field's place among the columns a table actually draws — 1 is the
+   * leftmost. Absent on the fields a table does not draw.
+   *
+   * ★ Why a position and not a flag. The table used to show the service's
+   * first five fields in catalog order, and catalog order is the ESIS
+   * developer portal's documentation order, which leads with identifiers. The
+   * student roster's first two columns were "Байгууллагын код" — the same
+   * value on all 83 rows — and "ESIS хүний дугаар", with the child's name
+   * pushed to the third. Seventeen of the twenty-nine services opened that
+   * way.
+   *
+   * A boolean could not fix it: `studentGroupName` sits fifteenth in the
+   * catalog, so a filter that preserved catalog order still could not put
+   * Бүлэг beside Нэр. The number is the reading order, declared once in
+   * `ESIS_SUMMARY_FIELDS` and carried here so the web does not keep a second
+   * copy of the field names that could drift from the catalog.
+   */
+  summary: z.number().int().positive().optional(),
 });
 export type EsisField = z.infer<typeof esisFieldSchema>;
 
-/** `PORTAL` — read from the ESIS developer catalog. `ADAPTER` — our schema. */
-export const esisFieldSourceSchema = z.enum(["PORTAL", "ADAPTER"]);
+/**
+ * Where a service's field names came from.
+ *
+ * `PORTAL` — read from the ESIS developer catalog: the ministry documented them.
+ * `LIVE` — read from a real response: the ministry **sent** them. Stronger than
+ * `PORTAL`, because a catalogue page can be out of date and a payload cannot.
+ * `ADAPTER` — our own schema's, unchecked against either.
+ *
+ * ★ `LIVE` was added 2026-09-14, when nine services marked `ADAPTER` were
+ * compared with real responses from institution 42778 and every one of them
+ * turned out to be wrong. `ADAPTER` had been read as "not confirmed yet" while
+ * it actually meant "invented", and nothing on the screen distinguished a field
+ * list somebody had verified from one nobody had.
+ */
+export const esisFieldSourceSchema = z.enum(["PORTAL", "LIVE", "ADAPTER"]);
 
 /** One preview row: every ingested field name → its value, `null` when absent. */
 export const esisRowSchema = z.record(z.string(), z.string().nullable());
@@ -3768,15 +4117,19 @@ export type EsisRow = z.infer<typeof esisRowSchema>;
 export const esisOverviewSchema = z.object({
   deployment: z.object({
     configured: z.boolean(),
-    demoMode: z.boolean(),
-    mode: z.enum(["MOCK", "LIVE"]),
+    /*
+     * ★ `demoMode` was here until 2026-09-14, beside a `mode` that could read
+     * `"MOCK"`. Both described a second transport that served committed
+     * fixtures instead of calling the ministry; it is gone, so `mode` has one
+     * member and the flag has nothing left to say.
+     */
+    mode: z.literal("LIVE"),
     baseUrl: z.string(),
     hasToken: z.boolean(),
   }),
   connection: z.object({
     mapped: z.boolean(),
     institutionId: z.string().nullable(),
-    environment: z.enum(["TEST", "PRODUCTION"]).nullable(),
     mappedAt: z.string().nullable(),
     mappingMatchesDeployment: z.boolean(),
   }),
@@ -3796,7 +4149,20 @@ export const esisOverviewSchema = z.object({
       method: z.enum(["GET", "POST"]),
       path: z.string(),
       name: z.string(),
-      domain: z.enum(["ORGANIZATION", "ROSTER", "ATTENDANCE", "FOOD"]),
+      /*
+       * ★ `HEALTH` added 2026-09-15 with the twenty health, vaccine,
+       * measurement and screening services. It is a fifth value rather than a
+       * reuse of `ROSTER`, where a child's name and group live: a screen that
+       * files a вакцины бүртгэл beside a бүлгийн жагсаалт tells an operator the
+       * two are the same kind of fact, and one of them is a medical record.
+       *
+       * ★★ Missing it from this enum is what `esis-admin.test.ts > "matches the
+       * schema the browser parses it with"` caught — the api was emitting
+       * `domain: "HEALTH"` and this schema rejected the whole payload, so every
+       * ESIS panel would have rendered nothing. Keep in step with `EsisDomain`
+       * in `esis.catalog.ts`.
+       */
+      domain: z.enum(["ORGANIZATION", "ROSTER", "ATTENDANCE", "FOOD", "HEALTH"]),
       usage: z.string(),
       note: z.string().optional(),
       previewable: z.boolean(),
@@ -3805,17 +4171,31 @@ export const esisOverviewSchema = z.object({
       fields: z.array(esisFieldSchema),
       fieldSource: esisFieldSourceSchema,
       ingestedFieldCount: z.number(),
-      /** One illustrative row — shown only until a live read succeeds. */
-      sampleRow: esisRowSchema,
       /**
-       * Every illustrative record of the service, `sampleRow` first.
+       * Where this service stands in the deployment's ESIS request register.
        *
-       * ★ A list service demonstrates a list. One row answers "what fields come
-       * back?"; it does not answer "what does a synced kindergarten look like?",
-       * which is the question asked before a token exists. Same rule as
-       * `sampleRow`: the whole set disappears the moment ESIS returns anything.
+       * ★ `NOT_REQUESTED` is a real answer, not a missing one: a service the
+       * client asked for before the scope request was filed has a path and a
+       * field list here and no grant, and the operator screen should say so
+       * rather than imply approval. `esis.requests.ts` is the register.
        */
-      sampleRows: z.array(esisRowSchema),
+      grant: z.enum(["APPROVED", "PENDING", "CANCELLED", "NOT_REQUESTED"]),
+      /** The register's own name for `apiId`, for checking a row against it. */
+      portalName: z.string().nullable(),
+      /*
+       * ★ `sampleRow` and `sampleRows` were here until 2026-09-14.
+       *
+       * They carried invented records that the screens fell back to whenever a
+       * read had not happened or had failed, so a panel could look populated
+       * while the integration was broken. Removed at the client's instruction
+       * once institution 42778 began answering: a surface with no live data
+       * now renders `EsisNoAnswer` — the endpoint that did not answer, and
+       * why — instead of something that resembles a result.
+       *
+       * `fields` below stays. The contract is a published fact about the
+       * service and is not invented; it is the honest answer to "what will
+       * come back?" that needs nothing to have come back yet.
+       */
       direction: z.enum(["ESIS_TO_NOMADKIDS", "NOMADKIDS_TO_ESIS"]),
       targetModel: z.string(),
       mappings: z.array(
@@ -3834,7 +4214,7 @@ export const esisOverviewSchema = z.object({
           note: z.string(),
         }),
       ),
-      accessStatus: z.enum(["MOCK", "UNKNOWN", "ENABLED", "NOT_ENABLED"]),
+      accessStatus: z.enum(["UNKNOWN", "ENABLED", "NOT_ENABLED"]),
       responseMode: z.enum(["DEMO", "LIVE"]),
       httpStatus: z.number().int().nullable(),
       syncStatus: z.enum(["DEMO_SUCCESS", "SUCCESS", "FAILED", "PENDING"]),
@@ -3851,14 +4231,235 @@ export const esisOverviewSchema = z.object({
       errorCode: z.string().nullable(),
       startedAt: z.string(),
       finishedAt: z.string().nullable(),
-      initiatedBy: z.string(),
-      mode: z.enum(["MOCK", "LIVE"]),
+      /**
+       * `null` when the schedule ran it rather than a person.
+       *
+       * ★ Was `z.string()` until 2026-09-17, which is a Zod schema silently
+       * *dropping* the field for a run with no initiator rather than
+       * rejecting it (this repo's memory has the general form of that bug).
+       * `EsisSyncRun.initiatedById` became nullable when tiers 1 and 2 turned
+       * into repeatable jobs (`esis-sync.service.ts`), and `EsisAdminService.
+       * overview()` already renders `null` for that case — the schema just
+       * had not caught up. Nothing produces a NULL run yet (every caller so
+       * far passes an actor), so this was unreachable until the scheduler
+       * ships; fixing it now means the first scheduled run does not surface
+       * as a silently blanked column.
+       */
+      initiatedBy: z.string().nullable(),
+      mode: z.literal("LIVE"),
     }),
   ),
   canPreview: z.boolean(),
   blockers: z.array(z.string()),
+  /**
+   * The deployment's ESIS request register, joined against what the code calls.
+   *
+   * ★ A **platform** fact, which is why it is only on this payload: one ESIS
+   * developer account and one `ESIS_TOKEN` serve every kindergarten, so the
+   * granted scope is the deployment's and `GET /platform/kindergartens/:id/esis`
+   * is the only route that carries it.
+   *
+   * ★★ `reviewedAt` is load-bearing. No ESIS service reports a token's own
+   * granted scope, so this is a snapshot read off the portal by hand; the date
+   * is what stops it being read as the state of things right now.
+   */
+  requests: z.object({
+    reviewedAt: z.string(),
+    counts: z.object({
+      total: z.number(),
+      approved: z.number(),
+      pending: z.number(),
+      cancelled: z.number(),
+      /** Approved services a screen in this product actually calls. */
+      wired: z.number(),
+      /** Approved and unused — granted scope the product does not draw on. */
+      approvedUnwired: z.number(),
+    }),
+    items: z.array(
+      z.object({
+        apiId: z.number(),
+        name: z.string(),
+        group: z.enum(["EBS", "OPEN", "ZEREG", "OTHER"]),
+        status: z.enum(["APPROVED", "PENDING", "CANCELLED"]),
+        requestedAt: z.string(),
+        /** The catalog key that calls it, or `null` when nothing does. */
+        serviceKey: z.string().nullable(),
+      }),
+    ),
+  }),
 });
 export type EsisOverview = z.infer<typeof esisOverviewSchema>;
+
+/**
+ * What `GET /platform/esis/institutions/:institutionId` answers.
+ *
+ * ★ `personId` is a **string** here and arrives from ESIS as a `number`
+ * (13 digits; `civilId` is 12 and `assignmentId` 15). `Child.esisPersonId` and
+ * the staff roster both store text, and the last time a numeric ESIS id was
+ * declared to be a string the roster died on it — so the conversion happens in
+ * the parser, once, rather than at each call site.
+ *
+ * ★★ The staff row is a **whitelist**, never a passthrough. The live
+ * `school/staff` payload carries `microsoftEmailPass` and `googleEmailPass` —
+ * real credentials — and naming the seven fields that may leave is a stronger
+ * guarantee than removing the two that may not.
+ */
+export const esisInstitutionStaffSchema = z.object({
+  personId: z.string(),
+  registerNumber: z.string(),
+  lastName: z.string(),
+  firstName: z.string(),
+  positionName: z.string().nullable(),
+  jobCode: z.string().nullable(),
+  /** `roleForJobCode(jobCode)` — advice for the operator, not a filter. */
+  suggestedRole: roleSchema.nullable(),
+});
+
+export const esisInstitutionLookupSchema = z.object({
+  institutionId: z.string(),
+  name: z.string(),
+  longName: z.string(),
+  address: z.string().nullable(),
+  classification: z.string().nullable(),
+  propertyType: z.string().nullable(),
+  isKindergarten: z.boolean(),
+  /** A kindergarten already holds this id — `esisInstitutionId` is `@unique`. */
+  alreadyUsed: z.boolean(),
+  staff: z.array(esisInstitutionStaffSchema),
+});
+export type EsisInstitutionLookup = z.infer<typeof esisInstitutionLookupSchema>;
+export type EsisInstitutionStaff = z.infer<typeof esisInstitutionStaffSchema>;
+
+/**
+ * `{ tier: "REFERENCE" | "ROSTER" }` — the body of `POST
+ * …/kindergartens/:id/esis/sync` (plan `2026-09-16-esis-sync-tiers.md` Task
+ * 5). Shared rather than re-typed on the web side so the two tier buttons on
+ * the operator's panel cannot name a tier the API does not recognise.
+ */
+export const esisSyncTierSchema = z.enum(["REFERENCE", "ROSTER"]);
+export type EsisSyncTier = z.infer<typeof esisSyncTierSchema>;
+
+/**
+ * One resource's outcome within a reference sweep — `EsisSyncService.
+ * runReferenceSync`'s `ReferenceSyncResourceResult`, unchanged across the
+ * wire.
+ */
+export const esisReferenceSyncResultSchema = z.object({
+  resource: z.string(),
+  status: z.enum(["SUCCEEDED", "FAILED"]),
+  stored: z.number().int().min(0),
+  skipped: z.number().int().min(0),
+  errorCode: z.string().nullable(),
+});
+
+/**
+ * `POST …/esis/sync` with `{ tier: "REFERENCE" }` answers this shape —
+ * `EsisSyncService.runReferenceSync`'s `ReferenceSyncOutcome`. Thirteen
+ * entries in `results`, one per `REFERENCE_RESOURCES` row, whether or not
+ * that resource's read succeeded (`esis-sync.service.ts`'s `Promise.
+ * allSettled` — one resource failing does not shrink this array).
+ */
+export const esisReferenceSyncOutcomeSchema = z.object({
+  runId: uuidSchema,
+  status: z.enum(["SUCCEEDED", "PARTIAL", "FAILED"]),
+  results: z.array(esisReferenceSyncResultSchema),
+});
+export type EsisReferenceSyncOutcome = z.infer<typeof esisReferenceSyncOutcomeSchema>;
+
+/**
+ * `POST …/esis/sync` with `{ tier: "ROSTER" }` answers this shape —
+ * `EsisSyncService.runRosterSync`'s `RosterSyncOutcome`.
+ *
+ * ★ `movements.count` is nullable rather than the whole `movements` object,
+ * matching the service: the roster half can succeed while `studentMovements`
+ * fails, and the run still reports `PARTIAL` with a `beginDate` and an
+ * `errorCode` rather than losing the roster counts along with it.
+ */
+export const esisRosterSyncOutcomeSchema = z.object({
+  runId: uuidSchema,
+  status: z.enum(["SUCCEEDED", "PARTIAL"]),
+  roster: z.object({ stored: z.number().int().min(0), skipped: z.number().int().min(0) }),
+  movements: z.object({
+    beginDate: z.string(),
+    count: z.number().int().min(0).nullable(),
+    errorCode: z.string().nullable(),
+  }),
+});
+export type EsisRosterSyncOutcome = z.infer<typeof esisRosterSyncOutcomeSchema>;
+
+/**
+ * One row of `GET …/kindergartens/:id/esis/sync-runs` — plan Task 5's paginated
+ * history, alongside `esisOverviewSchema.recentRuns`'s fixed-ten list rather
+ * than folded into it: the operator's overview is a platform-only route
+ * (`PlatformEsisController`) and this one is tenant-`ADMIN`-scoped
+ * (`KindergartenEsisController`), so the two payloads come from different
+ * controllers even though `EsisSyncRun` is the one table behind both.
+ *
+ * ★ `summary` stays `z.unknown()`, exactly as it does on `recentRuns` above —
+ * it carries a different shape per run kind (a reference sweep's per-resource
+ * array, a roster run's `{ roster, movements }`, a dry-run preview's
+ * `{ mode, resources }`) and no screen needs to validate it structurally, only
+ * to read `summary.kind` defensively to tell a tier sync from a preview run.
+ * See `apps/web/app/(app)/platform/[id]/esis/page.tsx`'s `runTier`.
+ */
+export const esisSyncRunSchema = z.object({
+  id: uuidSchema,
+  status: esisSyncStatusSchema,
+  resources: z.array(z.string()),
+  summary: z.unknown().nullable(),
+  errorCode: z.string().nullable(),
+  startedAt: z.string(),
+  finishedAt: z.string().nullable(),
+  /** `null` for a scheduled run — see `esisOverviewSchema.recentRuns.initiatedBy`. */
+  initiatedBy: z.string().nullable(),
+});
+export type EsisSyncRun = z.infer<typeof esisSyncRunSchema>;
+
+export const esisSyncRunsPageSchema = paginated(esisSyncRunSchema);
+export type EsisSyncRunsPage = z.infer<typeof esisSyncRunsPageSchema>;
+
+/**
+ * One ESIS group write — spec №3б's prepare → approve → send.
+ *
+ * ★ `payload` is `z.record(z.string(), z.unknown())` rather than a typed shape,
+ * and that is the contract rather than laziness: what the screen must show is
+ * **the bytes that will be sent**, under ESIS's own field names. Typing it here
+ * would mean this file deciding which of the ministry's fields are worth
+ * showing, which is the opposite of the client's instruction on output —
+ * "garaltiin utguudiig bugdiig ni haruulna nuuj haaj bolohgui".
+ */
+export const esisWriteStateSchema = z.enum(["PREPARED", "APPROVED", "SENT", "FAILED", "CANCELLED"]);
+export type EsisWriteState = z.infer<typeof esisWriteStateSchema>;
+
+export const esisWriteServiceSchema = z.enum([
+  "groupCreate",
+  "groupUpdate",
+  "groupDelete",
+  "groupInstructor",
+]);
+export type EsisWriteServiceKey = z.infer<typeof esisWriteServiceSchema>;
+
+const esisWritePersonSchema = z.object({ lastName: z.string(), firstName: z.string() });
+
+export const esisWriteRequestSchema = z.object({
+  id: uuidSchema,
+  service: esisWriteServiceSchema,
+  apiId: z.number().int(),
+  state: esisWriteStateSchema,
+  payload: z.record(z.string(), z.unknown()),
+  response: z.record(z.string(), z.unknown()).nullish(),
+  errorCode: z.string().nullish(),
+  sentAt: z.string().nullish(),
+  createdAt: z.string(),
+  groupId: uuidSchema,
+  group: z.object({ id: uuidSchema, name: z.string() }).nullish(),
+  preparedBy: esisWritePersonSchema.nullish(),
+  approvedBy: esisWritePersonSchema.nullish(),
+});
+export type EsisWriteRequest = z.infer<typeof esisWriteRequestSchema>;
+
+export const esisWriteRequestsPageSchema = paginated(esisWriteRequestSchema);
+export type EsisWriteRequestsPage = z.infer<typeof esisWriteRequestsPageSchema>;
 
 /**
  * `GET /kindergartens/:id/esis/catalog` — the services this role uses.
@@ -3891,6 +4492,25 @@ export const esisScopedCatalogSchema = z.object({
       syncStatus: true,
       syncErrorCode: true,
       lastSyncAt: true,
+      /*
+       * ★ `grant` and `portalName` are omitted for the same reason as the six
+       * above — added to the overview on 2026-09-14 and omitted here the same
+       * day. They read as catalog metadata, but they are the *deployment's*
+       * ESIS account state: which scopes the ministry granted it, under which
+       * name. One account serves every kindergarten, nobody on a working
+       * screen can change a grant, and a service a role cannot reach is
+       * already absent from this list.
+       *
+       * ★★ Leaving them in broke thirteen tests before it broke anything
+       * else, and the way it broke is the one this comment block has warned
+       * about twice: `get()` parses every response, a payload short of a
+       * required field throws, and the panel renders blank rather than
+       * erroring. That is a feature — the contract is enforced on both sides —
+       * and it is why the service `.map()`s them off rather than trusting Zod
+       * to strip them.
+       */
+      grant: true,
+      portalName: true,
     }),
   ),
 });
@@ -3899,7 +4519,7 @@ export type EsisScopedCatalog = z.infer<typeof esisScopedCatalogSchema>;
 export const esisPreviewResultSchema = z.object({
   runId: uuidSchema,
   dryRun: z.literal(true),
-  mode: z.enum(["MOCK", "LIVE"]),
+  mode: z.literal("LIVE"),
   status: z.enum(["SUCCEEDED", "PARTIAL", "FAILED"]),
   results: z.array(
     z.object({
@@ -3909,7 +4529,7 @@ export const esisPreviewResultSchema = z.object({
       preview: z.array(esisRowSchema),
       status: z.enum(["SUCCEEDED", "FAILED"]),
       errorCode: z.string().nullable(),
-      source: z.enum(["MOCK", "LIVE"]),
+      source: z.literal("LIVE"),
     }),
   ),
 });
@@ -3923,13 +4543,45 @@ export type EsisPreviewResult = z.infer<typeof esisPreviewResultSchema>;
  */
 export const esisResourceReadSchema = z.object({
   resource: esisResourceKeySchema,
-  source: z.enum(["MOCK", "LIVE"]),
+  /**
+   * The ESIS service this read actually called.
+   *
+   * ★ Here rather than looked up from the catalog, because the screens that
+   * most need it do not hold one. `esis-curriculum.tsx` chains four services
+   * off each other's ids and never fetches `…/esis/catalog`, so when a level
+   * failed it could print the error code and nothing else — "HTTP", with no
+   * way to tell which of the four produced it. The read result is the one
+   * thing every caller already has.
+   *
+   * ★★ Optional so that an older payload — or a test fixture written before
+   * this field existed — still parses. Every live response carries it; a
+   * consumer that finds it missing omits the line rather than guessing.
+   */
+  endpoint: z.object({ method: z.string(), path: z.string() }).optional(),
+  /**
+   * `"LIVE"` when this read called the ministry directly. `"STORE"` — added
+   * 2026-09-17, plan `2026-09-16-esis-sync-tiers.md` Task 7 — when it was
+   * served from `EsisReference` instead, the copy tier 1's monthly sweep
+   * keeps. Every resource on `REFERENCE_RESOURCES` (`esis.reference.ts`)
+   * answers `"STORE"`; nothing else can, so a caller can tell whether a value
+   * on screen came from the ministry just now or from last month's sweep.
+   */
+  source: z.enum(["LIVE", "STORE"]),
   status: z.enum(["SUCCEEDED", "FAILED"]),
   errorCode: z.string().nullable(),
   count: z.number(),
   durationMs: z.number().nullable(),
   fields: z.array(esisFieldSchema),
   rows: z.array(esisRowSchema),
+  /**
+   * When the stored copy behind this read was last swept — present only when
+   * `source` is `"STORE"`, `null`/absent for a live read.
+   *
+   * ★ An operator reading a catalogue needs to know whether they are looking
+   * at this morning's roster or last month's, and nothing else on this
+   * payload says that: `count` and `rows` look identical either way.
+   */
+  syncedAt: z.string().nullable().optional(),
   response: z.object({
     SUCCESS_CODE: z.number(),
     RESPONSE_MESSAGE: z.string(),
@@ -3948,7 +4600,7 @@ export type EsisResourceRead = z.infer<typeof esisResourceReadSchema>;
  */
 export const esisWriteResultSchema = z.object({
   resource: esisResourceKeySchema,
-  source: z.enum(["MOCK", "LIVE"]),
+  source: z.literal("LIVE"),
   status: z.enum(["SUCCEEDED", "FAILED"]),
   errorCode: z.string().nullable(),
   durationMs: z.number().nullable(),
@@ -4096,7 +4748,17 @@ export type RosterSummary = z.infer<typeof rosterSummarySchema>;
  * the types live: there is no assistant, no generated reply, no model call.
  * These are messages people typed, in rooms they already belong to.
  */
-export const chatRoomKindSchema = z.enum(["GROUP", "STAFF"]);
+/**
+ * ★ Four kinds since 2026-09-20, at the client's request. `PARENTS` is a
+ * group's families **without** its teachers, and `DIRECT` is one guardian and
+ * one member of staff privately.
+ *
+ * The screen needs the kind rather than inferring from the key: a `DIRECT`
+ * room is named after the other person and shows no member count, and a
+ * `PARENTS` room has to be distinguishable from the `GROUP` room of the same
+ * group, which it sits next to in the list.
+ */
+export const chatRoomKindSchema = z.enum(["GROUP", "STAFF", "PARENTS", "DIRECT"]);
 export type ChatRoomKind = z.infer<typeof chatRoomKindSchema>;
 
 /**
@@ -5182,6 +5844,88 @@ export type ApplicationApproval = z.infer<typeof applicationApprovalSchema>;
  * The client asked for all three ("1 сараар, улиралаар, бүтэн жилээр") and a
  * report that changed shape per period is three screens to keep in step.
  */
+// ── Staff self-registration ─────────────────────────────────────────────────
+
+/**
+ * `POST /staff-registration` — the teacher's public form.
+ *
+ * ★ The only field is the token: on success the screen redirects to
+ * `/invitation/[token]`, which already collects the password. On refusal the
+ * API answers 401 with a `Problem.detail` — the same uniform sentence for an
+ * unknown institution number, an unmatched register number or anything else —
+ * which the form renders verbatim rather than deriving its own message.
+ *
+ * ★★ There is no `staffRegistrationCodeIssuedSchema` beside this any more.
+ * The form's first field is the kindergarten's ESIS institution number as of
+ * 2026-09-20, so nothing is issued and there is no response to model.
+ */
+export const staffSelfRegistrationResultSchema = z.object({
+  invitationToken: z.string(),
+});
+export type StaffSelfRegistrationResult = z.infer<typeof staffSelfRegistrationResultSchema>;
+
+/**
+ * `POST /kindergartens/:id/esis/roster-import` — ESIS's groups and children,
+ * written into this kindergarten's own records.
+ *
+ * ★ Every number is a count of what **changed**, so a second run answering all
+ * zeroes is the import working, not failing. The string lists are the half
+ * a director has to act on: `groups.skipped` names groups whose ESIS level this
+ * product has no age band for, and `enrollments.unplaced` names children who
+ * arrived but whose group was one of those. `children.adopted` counts children
+ * typed here before the import and now linked by name and date of birth;
+ * `children.ambiguous` names ESIS children two or more unlinked rows fit, so
+ * nothing was linked or created for them.
+ */
+export const esisRosterImportSchema = z.object({
+  groups: z.object({
+    created: z.number(),
+    updated: z.number(),
+    skipped: z.array(z.string()),
+  }),
+  children: z.object({
+    created: z.number(),
+    updated: z.number(),
+    adopted: z.number(),
+    ambiguous: z.array(z.string()),
+  }),
+  enrollments: z.object({
+    created: z.number(),
+    moved: z.number(),
+    unplaced: z.array(z.string()),
+  }),
+});
+export type EsisRosterImport = z.infer<typeof esisRosterImportSchema>;
+
+/** `POST /kindergartens/:id/esis/staff-roster/refresh`. */
+export const staffRosterRefreshSchema = z.object({
+  count: z.number(),
+  skipped: z.number(),
+  syncedAt: z.string(),
+});
+export type StaffRosterRefresh = z.infer<typeof staffRosterRefreshSchema>;
+
+/**
+ * One row of `GET /kindergartens/:id/staff-registrations` — the director's
+ * review list, "хэн хэн бүртгүүлсэн байгаа эсэх мэдээлэл".
+ *
+ * ★ No register number and no `esisPersonId`. The API keeps both out of this
+ * list on purpose (`StaffRegistrationService.listSelfRegistered`), so this
+ * schema does not model them either — a field added here by mirroring the
+ * database would be the one place a typed register number could leak onto a
+ * screen.
+ */
+export const selfRegisteredStaffSchema = z.object({
+  membershipId: uuidSchema,
+  lastName: z.string(),
+  firstName: z.string(),
+  role: roleSchema,
+  registeredAt: z.string(),
+  source: z.literal("SELF_REGISTERED"),
+});
+export type SelfRegisteredStaff = z.infer<typeof selfRegisteredStaffSchema>;
+export const selfRegisteredStaffListSchema = paginated(selfRegisteredStaffSchema);
+
 export const groupReportSchema = z.object({
   range: z.object({ from: z.string(), to: z.string() }),
   group: namedRefSchema,
@@ -5227,3 +5971,66 @@ export const groupReportSchema = z.object({
   }),
 });
 export type GroupReport = z.infer<typeof groupReportSchema>;
+
+/**
+ * `GET /kindergartens/:id/esis/coverage` — the ministry's matrix, one row per
+ * granted service with how it was used or why it was not. Built on the API by
+ * `buildEsisCoverage`; this is only its shape.
+ */
+export const esisCoverageStateSchema = z.enum([
+  "IN_USE",
+  "WIRED_UNUSED",
+  "DISPOSITIONED",
+  "UNDECIDED",
+  "SUPERSEDED",
+]);
+export type EsisCoverageState = z.infer<typeof esisCoverageStateSchema>;
+
+export const esisCoverageMatrixSchema = z.object({
+  from: z.string(),
+  to: z.string(),
+  totals: z.object({
+    granted: z.number(),
+    wired: z.number(),
+    inUse: z.number(),
+    wiredUnused: z.number(),
+    dispositioned: z.number(),
+    superseded: z.number(),
+    undecided: z.number(),
+  }),
+  rows: z.array(
+    z.object({
+      apiId: z.number(),
+      name: z.string(),
+      serviceKey: z.string().nullable(),
+      method: z.string().nullable(),
+      path: z.string().nullable(),
+      purpose: z.string(),
+      trigger: z.string(),
+      lastCalledAt: z.string().nullable(),
+      calls: z.number(),
+      state: esisCoverageStateSchema,
+      reason: z.string().nullable(),
+    }),
+  ),
+});
+export type EsisCoverageMatrix = z.infer<typeof esisCoverageMatrixSchema>;
+
+/**
+ * `GET /kindergartens/:id/funding/meal-cost?month=` — `нэмэлт.md` §3, the
+ * month's meal cost split by source. All four sources, always; amounts are
+ * decimal strings like every other figure of money in this API.
+ */
+export const mealCostSchema = z.object({
+  month: z.string(),
+  sources: z.array(
+    z.object({
+      source: z.enum(["STATE", "PARENT", "KINDERGARTEN", "OTHER"]),
+      children: z.number(),
+      daysFed: z.number(),
+      amount: z.string(),
+    }),
+  ),
+  total: z.string(),
+});
+export type MealCost = z.infer<typeof mealCostSchema>;

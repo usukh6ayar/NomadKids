@@ -1222,6 +1222,49 @@ describe("kindergarten logo", () => {
   });
 });
 
+/*
+ * ★ Removing the logo — 2026-09-27, for the ✕ beside it on «Байгууллага».
+ * The kindergarten stops pointing at the file and the file is soft-deleted,
+ * the same retirement a replacement gives the logo it displaces.
+ */
+describe("removing the kindergarten logo", () => {
+  async function upload() {
+    return authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/logo`),
+      adminA,
+    ).attach("file", await photoBytes("blue"), "лого.jpg");
+  }
+  const remove = (session: AuthSession, kindergartenId = a.kindergarten.id) =>
+    authed(request(server()).delete(`/v1/kindergartens/${kindergartenId}/logo`), session);
+
+  it("an administrator removes it, and the file is retired", async () => {
+    if (!storageAvailable) return;
+    const uploaded = await upload();
+    const res = await remove(adminA);
+    expect(res.status).toBe(200);
+
+    const kindergarten = await db.kindergarten.findUniqueOrThrow({
+      where: { id: a.kindergarten.id },
+    });
+    expect(kindergarten.logoMediaFileId).toBeNull();
+    const file = await db.mediaFile.findUniqueOrThrow({ where: { id: uploaded.body.id } });
+    expect(file.deletedAt).not.toBeNull();
+  });
+
+  it("a teacher cannot", async () => {
+    expect((await remove(teacherA)).status).toBe(404);
+  });
+
+  it("a parent cannot", async () => {
+    expect((await remove(parentA)).status).toBe(404);
+  });
+
+  it("an administrator of another kindergarten gets 404", async () => {
+    const adminB = await login(app, b.adminUser.username);
+    expect((await remove(adminB)).status).toBe(404);
+  });
+});
+
 describe("staff portrait", () => {
   it("a teacher uploads their own", async () => {
     const res = await authed(

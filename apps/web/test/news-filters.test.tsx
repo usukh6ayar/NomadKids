@@ -161,3 +161,22 @@ describe("whose board a teacher sees", () => {
     expect(await screen.findByText("Бүх бүлэг")).toBeInTheDocument();
   });
 });
+
+/*
+ * ★ The board opens for the roles whose shell has no selected child —
+ * 2026-09-26. `(app)/layout.tsx` gives the cook, the accountant and the
+ * platform operator their shell *before* `SelectedChildProvider`, and this
+ * page called `useSelectedChild()`, which throws outside it: all three got
+ * «Алдаа гарлаа» on the notice board. Found by walking the screens in a
+ * browser; every test passed because the render helper supplied the provider
+ * the real layout never mounts.
+ */
+describe("the board without a selected child", () => {
+  it.each([["COOK"], ["ACCOUNTANT"]] as const)("opens for a %s", async (role) => {
+    stubBoard([role]);
+    renderWithProviders(<NotificationsPage />, { selectedChild: false });
+
+    expect(await screen.findByRole("heading", { level: 1 })).toBeInTheDocument();
+    expect(screen.queryByText("Алдаа гарлаа")).not.toBeInTheDocument();
+  });
+});

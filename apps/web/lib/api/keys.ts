@@ -67,6 +67,24 @@ export const qk = {
   consent: (childId: string) => ["child", childId, "consent"] as const,
   audit: (filters: Record<string, unknown> = {}) => ["admin", "audit", filters] as const,
   esis: (kindergartenId: string) => ["admin", "esis", kindergartenId] as const,
+  /**
+   * `GET …/esis/sync-runs`, paginated — the director's manual-pull history
+   * (`/admin/esis-sync`, CLAUDE.md's 2026-09-17 decision: a sync spends *that*
+   * kindergarten's token, so it is the tenant `ADMIN`'s screen, not the
+   * platform operator's).
+   */
+  esisSyncRuns: (kindergartenId: string, page: number) =>
+    ["admin", "esis", kindergartenId, "sync-runs", page] as const,
+  /** The ministry's 84/84 matrix — see `EsisCoverageSection`. */
+  esisCoverage: (kindergartenId: string) => ["admin", "esis", kindergartenId, "coverage"] as const,
+  /**
+   * Prefix of every `esisSyncRuns(kindergartenId, page)` key, regardless of
+   * page — what a sync mutation invalidates after a manual pull, so the tier
+   * card (fixed at page 1) and whichever page of the table is open both
+   * refetch, without hand-listing every open page.
+   */
+  esisSyncRunsAll: (kindergartenId: string) =>
+    ["admin", "esis", kindergartenId, "sync-runs"] as const,
   /** The role-scoped service list every working screen's panel reads. */
   esisCatalog: (kindergartenId: string) => ["esis", kindergartenId, "catalog"] as const,
   esisStudentRegistration: (kindergartenId: string) =>
@@ -362,8 +380,28 @@ export const qk = {
   adminUsers: (filters: Record<string, string>) => ["admin", "users", filters] as const,
   adminGroups: () => ["admin", "groups"] as const,
   adminSchoolYears: (kindergartenId: string) => ["admin", "school-years", kindergartenId] as const,
+  /**
+   * The kindergarten's own record, as the profile form reads it.
+   *
+   * ★ **A key is a promise about the *shape*, not only the URL** — found
+   * 2026-09-23. `GET /kindergartens/:id` is parsed by three different schemas
+   * on three screens, and `get()` strips whatever the schema does not name.
+   * So whichever query filled the cache first decided what the others saw: the
+   * profile form's parse drops `esisInstitutionId`, and a screen that needs
+   * that field, arriving within `staleTime`, would read a cached object where
+   * it is simply absent — and say "not connected" about a kindergarten that is.
+   *
+   * Nothing had gone wrong yet because the two screens that collided were
+   * rarely opened in one session. That is luck, not a design, so each parse
+   * gets its own key below.
+   */
   adminKindergarten: (kindergartenId: string) => ["admin", "kindergarten", kindergartenId] as const,
+  /** The same row, parsed for its ESIS institution number. See above. */
+  adminKindergartenInstitution: (kindergartenId: string) =>
+    ["admin", "kindergarten", kindergartenId, "institution"] as const,
   adminTerms: (kindergartenId: string) => ["admin", "terms", kindergartenId] as const,
+  adminStaffRegistrations: (kindergartenId: string, page: number) =>
+    ["admin", "staff-registrations", kindergartenId, page] as const,
 
   profile: () => ["me", "profile"] as const,
 

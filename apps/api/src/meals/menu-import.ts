@@ -64,8 +64,14 @@ const COLUMNS = [
   { field: "year", aliases: ["он", "жил", "year"] },
   { field: "month", aliases: ["сар", "month"] },
   { field: "day", aliases: ["өдөр", "өдрийн тоо", "day"] },
-  { field: "kind", aliases: ["хоолны цаг", "хоолны төрөл", "төрөл", "хооллох цаг", "meal", "meal type"] },
-  { field: "name", aliases: ["хоолны нэр", "хоолны нэршил", "хоол", "нэр", "name", "dish", "menu"] },
+  {
+    field: "kind",
+    aliases: ["хоолны цаг", "хоолны төрөл", "төрөл", "хооллох цаг", "meal", "meal type"],
+  },
+  {
+    field: "name",
+    aliases: ["хоолны нэр", "хоолны нэршил", "хоол", "нэр", "name", "dish", "menu"],
+  },
   { field: "portions", aliases: ["порц", "порцын хэмжээ", "portions"] },
   { field: "calories", aliases: ["ккал", "илчлэг", "илчлэг ккал", "калори", "calories", "kcal"] },
   { field: "allergenTags", aliases: ["харшлын шошго", "харшил", "allergens"] },
@@ -123,12 +129,18 @@ export async function parseMenuWorkbook(input: Buffer): Promise<MenuParseResult>
       worksheet.getRow(rowNumber).eachCell((cell, column) => {
         const heading = normalize(text(cell));
         for (const spec of COLUMNS) {
-          if (!index.has(spec.field) && spec.aliases.some((alias) => normalize(alias) === heading)) {
+          if (
+            !index.has(spec.field) &&
+            spec.aliases.some((alias) => normalize(alias) === heading)
+          ) {
             index.set(spec.field, column);
           }
         }
       });
-      if (index.has("name") && (index.has("date") || (index.has("year") && index.has("month") && index.has("day")))) {
+      if (
+        index.has("name") &&
+        (index.has("date") || (index.has("year") && index.has("month") && index.has("day")))
+      ) {
         found.push({ rowNumber, index });
       }
     }
@@ -138,10 +150,17 @@ export async function parseMenuWorkbook(input: Buffer): Promise<MenuParseResult>
   const selected = candidates[0];
   if (!selected) {
     const matrix = book.worksheets.map(parseMenuMatrix).find((result) => result.days.length > 0);
-    return matrix ?? {
-      days: [],
-      problems: [{ rowNumber: 0, message: "Огноо, хоолны нэртэй хүснэгт олдсонгүй. Багануудыг шалгана уу." }],
-    };
+    return (
+      matrix ?? {
+        days: [],
+        problems: [
+          {
+            rowNumber: 0,
+            message: "Огноо, хоолны нэртэй хүснэгт олдсонгүй. Багануудыг шалгана уу.",
+          },
+        ],
+      }
+    );
   }
   const { sheet, index, rowNumber: headerRow } = selected;
 
@@ -158,7 +177,11 @@ export async function parseMenuWorkbook(input: Buffer): Promise<MenuParseResult>
     };
 
     const dateParts = [cell("year"), cell("month"), cell("day")];
-    const rawDate = index.has("date") ? cell("date") : dateParts.some(Boolean) ? dateParts.join("-") : "";
+    const rawDate = index.has("date")
+      ? cell("date")
+      : dateParts.some(Boolean)
+        ? dateParts.join("-")
+        : "";
     const name = cell("name");
 
     // A wholly blank row is how Excel pads a sheet somebody deleted rows from.
@@ -298,7 +321,12 @@ function text(cell: ExcelJS.Cell | undefined): string {
  * and a kitchen typing a menu will produce all three.
  */
 function isoDate(raw: string): string | null {
-  const value = raw.trim().replace(/\s*(?:оны|он)\s*/g, "-").replace(/\s*(?:сарын|сар)\s*/g, "-").replace(/\s*(?:өдөр)\s*/g, "").replace(/\s+/g, "");
+  const value = raw
+    .trim()
+    .replace(/\s*(?:оны|он)\s*/g, "-")
+    .replace(/\s*(?:сарын|сар)\s*/g, "-")
+    .replace(/\s*(?:өдөр)\s*/g, "")
+    .replace(/\s+/g, "");
   if (!value) return null;
 
   const iso = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(value);
@@ -314,18 +342,37 @@ function pad(year: string, month: string, day: string): string | null {
   const m = Number(month);
   const d = Number(day);
   const y = Number(year);
-  if (y < 1900 || y > 2100 || m < 1 || m > 12 || d < 1 || d > new Date(Date.UTC(y, m, 0)).getUTCDate()) return null;
+  if (
+    y < 1900 ||
+    y > 2100 ||
+    m < 1 ||
+    m > 12 ||
+    d < 1 ||
+    d > new Date(Date.UTC(y, m, 0)).getUTCDate()
+  )
+    return null;
   return `${year}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
 function number(raw: string): number | null {
   if (!raw) return null;
-  const value = Number(raw.replace(/\s*(?:ккал|kcal|калори|cal)\s*$/i, "").replace(",", ".").trim());
+  const value = Number(
+    raw
+      .replace(/\s*(?:ккал|kcal|калори|cal)\s*$/i, "")
+      .replace(",", ".")
+      .trim(),
+  );
   return Number.isFinite(value) ? value : null;
 }
 
 function normalize(raw: string): string {
-  return raw.toLowerCase().replace(/[().,:/_-]+/g, " ").replace(/\s+/g, " ").trim();
+  // The hyphen stays last in the class, where it is a literal. Moving it into
+  // the middle would turn it into a range and silently change what matches.
+  return raw
+    .toLowerCase()
+    .replace(/[().,:/_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function integer(raw: string): number | null {

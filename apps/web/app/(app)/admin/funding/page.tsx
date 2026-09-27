@@ -19,7 +19,7 @@ import { downloadUrl } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
-import { formatMonthLabel, formatRelative, fullName } from "@/lib/format";
+import { formatMonthLabel, formatRelative, fullName, groupLabel } from "@/lib/format";
 import { ATTENDANCE_STATUS_LABEL, ATTENDANCE_STATUS_TONE } from "@/lib/attendance-meta";
 import {
   currentMonth,
@@ -432,7 +432,7 @@ function FilterBar({
               <option value="">Бүх бүлэг</option>
               {groups.map((group) => (
                 <option key={group.id} value={group.id}>
-                  {group.name}
+                  {groupLabel(group.name)}
                 </option>
               ))}
             </Select>

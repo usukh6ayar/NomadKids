@@ -21,6 +21,7 @@ import { Pagination, ResultCount } from "@/components/ui/pagination";
 import { useToast } from "@/components/ui/toast";
 import { SearchField } from "@/components/ui/search-field";
 import { useDebounced } from "@/lib/use-debounced";
+import { capitalize } from "@/lib/format";
 
 const suppliersSchema = paginated(supplierSchema);
 
@@ -136,7 +137,7 @@ function SupplierRow({ supplier }: { supplier: Supplier }) {
       <DataRow
         title={
           <span className="flex flex-wrap items-center gap-2">
-            <span className="min-w-0 truncate">{supplier.name}</span>
+            <span className="min-w-0 truncate">{capitalize(supplier.name)}</span>
             {!supplier.isActive ? <Badge tone="neutral">Идэвхгүй</Badge> : null}
           </span>
         }

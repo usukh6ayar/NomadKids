@@ -16,7 +16,7 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { useDebounced } from "@/lib/use-debounced";
-import { formatDate, formatFileSize } from "@/lib/format";
+import { formatDate, formatFileSize, groupLabel } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { Card, SectionHeader } from "@/components/ui/card";
@@ -573,7 +573,7 @@ function AudienceField({
           <option value="">Бүх багш</option>
           {groups.map((group) => (
             <option key={group.id} value={group.id}>
-              {group.name}
+              {groupLabel(group.name)}
             </option>
           ))}
         </Select>

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { FormError } from "@/components/ui/states";
 import { cn } from "@/lib/utils";
 import { ACCEPTED_TYPES, MAX_UPLOAD_BYTES } from "@/components/media/photo-upload";
+import { shrinkIfTooLarge } from "@/lib/image-shrink";
 
 const MAX_MB = MAX_UPLOAD_BYTES / 1024 / 1024;
 
@@ -78,7 +79,16 @@ export function NoticePhotoUpload({
     if (!files?.length) return;
     setLocalError(null);
 
-    for (const file of Array.from(files)) {
+    /*
+     * ★ Shrunk before it is measured — 2026-09-20. A phone shoots 8–12 MB
+     * frames, so refusing past the ceiling meant refusing ordinary
+     * photographs. Anything already under it is passed through untouched.
+     */
+    const chosen = await Promise.all(
+      Array.from(files).map((file) => shrinkIfTooLarge(file, MAX_UPLOAD_BYTES)),
+    );
+
+    for (const file of chosen) {
       if (file.size > MAX_UPLOAD_BYTES) {
         setLocalError(`"${file.name}" хэт том байна. Дээд хэмжээ ${MAX_MB} MB.`);
         continue;

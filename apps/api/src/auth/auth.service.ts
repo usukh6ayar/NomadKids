@@ -1,4 +1,4 @@
-import { Injectable, Logger, UnauthorizedException } from "@nestjs/common";
+import { ConflictException, Injectable, Logger, UnauthorizedException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { AuditRepository } from "../audit/audit.repository";
 import { AuthzRepository } from "../authz/authz.repository";
@@ -385,6 +385,36 @@ export class AuthService {
       throw new UnauthorizedException("Урилга хүчингүй эсвэл хугацаа нь дууссан байна");
     }
 
+    /*
+     * ★★★ **Before the token is consumed**, and that ordering is the whole
+     * point — 2026-09-19, from a production 500.
+     *
+     * `email` and `phone` are unique on `User`. A person accepting an
+     * invitation types one of them, and if it already belongs to somebody else
+     * the write below raised `PrismaClientKnownRequestError` — unhandled, so a
+     * 500 and «серверт алдаа гарлаа» on screen.
+     *
+     * The status was the smaller half. By the time it threw, `consumeAuthToken`
+     * and `setPassword` had already run two lines down: the one-time invitation
+     * was **burnt** and the password **set**, while the reader was told the
+     * server had failed. They could in fact sign in, and had no way to know it;
+     * a second attempt on the same link then answered "хүчингүй".
+     *
+     * Checking first means a recoverable mistake stays recoverable — the link
+     * still works, and the message names the field to change.
+     */
+    const taken = await this.repo.findOtherUserByContact(row.userId, {
+      email: profile.email,
+      phone: profile.phone,
+    });
+    if (taken) {
+      throw new ConflictException(
+        profile.email && taken.email === profile.email
+          ? "Энэ и-мэйл хаяг өөр бүртгэлд ашиглагдсан байна"
+          : "Энэ утасны дугаар өөр бүртгэлд ашиглагдсан байна",
+      );
+    }
+
     await this.repo.consumeAuthToken(row.id);
     await this.repo.setPassword(row.userId, await this.passwords.hash(password));
 
@@ -408,7 +438,22 @@ export class AuthService {
       profile.lastName ||
       profile.email
     ) {
-      await this.repo.completeInvitedProfile(row.userId, profile);
+      try {
+        await this.repo.completeInvitedProfile(row.userId, profile);
+      } catch (error) {
+        /*
+         * Closes the race between the check above and this write. The token is
+         * spent by now, so the message has to say that signing in will work —
+         * the alternative is a reader who believes nothing happened.
+         */
+        if (isUniqueViolation(error)) {
+          throw new ConflictException(
+            "Энэ и-мэйл эсвэл утас өөр бүртгэлд ашиглагдсан байна. " +
+              "Нууц үг тань тохирсон тул нэвтрэх нэрээрээ орно уу.",
+          );
+        }
+        throw error;
+      }
     }
 
     /*
@@ -507,3 +552,21 @@ export class AuthService {
 /** One message for every credential failure — never "no such user". */
 const INVALID_CREDENTIALS = "Нэвтрэх нэр эсвэл нууц үг буруу байна";
 const SESSION_EXPIRED = "Нэвтрэх хугацаа дууссан байна. Дахин нэвтэрнэ үү.";
+
+/**
+ * Prisma's unique-constraint code. Narrowed without importing the client —
+ * `PrismaClient` is repository-only (CLAUDE.md §2.2), and `Prisma.
+ * PrismaClientKnownRequestError` comes from the same module.
+ *
+ * A copy of `platform.service.ts`'s, deliberately: four lines duplicated is
+ * cheaper than a shared helper that tempts somebody to import the client for
+ * the type.
+ */
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2002"
+  );
+}

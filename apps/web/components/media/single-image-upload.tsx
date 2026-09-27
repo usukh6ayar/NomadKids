@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { FormError } from "@/components/ui/states";
 import { ACCEPTED_TYPES, MAX_UPLOAD_BYTES } from "@/components/media/photo-upload";
 import { cn } from "@/lib/utils";
+import { shrinkIfTooLarge } from "@/lib/image-shrink";
 
 const MAX_MB = MAX_UPLOAD_BYTES / 1024 / 1024;
 
@@ -108,14 +109,21 @@ export function SingleImageUpload({
     },
   });
 
-  function handleFile(list: FileList | null) {
-    const file = list?.[0];
-    if (!file) return;
+  async function handleFile(list: FileList | null) {
+    const picked = list?.[0];
+    if (!picked) return;
 
     setLocalError(null);
 
-    // Checked here as well as on the server so an oversized file fails at once
-    // rather than after a slow upload the API was always going to refuse.
+    /*
+     * ★ Shrunk before it is measured — 2026-09-20. A phone shoots 8–12 MB
+     * frames, so refusing past the ceiling meant refusing ordinary
+     * photographs. Anything already under it is passed through untouched.
+     */
+    const file = await shrinkIfTooLarge(picked, MAX_UPLOAD_BYTES);
+
+    // Checked here as well as on the server so a file the browser could not
+    // shrink fails at once rather than after a slow upload.
     if (file.size > MAX_UPLOAD_BYTES) {
       setLocalError(`Файл хэт том байна. Дээд хэмжээ ${MAX_MB} MB.`);
       if (inputRef.current) inputRef.current.value = "";
@@ -168,7 +176,7 @@ export function SingleImageUpload({
             type="file"
             accept={ACCEPTED_TYPES}
             className="sr-only"
-            onChange={(e) => handleFile(e.target.files)}
+            onChange={(e) => void handleFile(e.target.files)}
           />
           {compactIcon ? (
             <label

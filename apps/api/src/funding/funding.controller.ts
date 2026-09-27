@@ -55,6 +55,31 @@ export class KindergartenFundingController {
     return this.service.createRule(actor, params.id, body);
   }
 
+  /**
+   * Which children the state subsidises the meals of — `нэмэлт.md` §3.
+   *
+   * ★ A `GET`, because it writes no NomadKids record: the only row it creates
+   * is the `AuditLog` entry naming who looked. The answer itself is read from
+   * ESIS on every request and stored nowhere — see `FundingService.foodDiscounts`.
+   */
+  @Get("food-discounts")
+  async foodDiscounts(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.foodDiscounts(actor, params.id);
+  }
+
+  /** The month's meal cost by source — `нэмэлт.md` §3. */
+  @Get("meal-cost")
+  async mealCost(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(listFundingQuerySchema)) query: ListFundingQuery,
+  ) {
+    return this.service.mealCost(actor, params.id, query.month);
+  }
+
   /** The month's rows and totals — §6. */
   @Get()
   async listMonth(

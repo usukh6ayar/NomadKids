@@ -112,3 +112,60 @@ describe("нарийвчилсан байрлал", () => {
     expect(ROW).toMatch(/flex basis-full items-center justify-end gap-1 md:basis-auto/);
   });
 });
+
+/**
+ * The years a kindergarten has created, on the screen that creates them —
+ * 2026-09-20, the client: "он үүсгэж болж байна он нь дэлгэц дээр хүснэгтээр
+ * харагддаг болгоод өгөөч".
+ *
+ * ★ They were fetched and thrown away. The query existed; its result fed
+ * exactly one decision (whether a new year should default to current) and was
+ * never rendered, so a director created a year, got a success toast, and saw
+ * the ministry's panel with their own year nowhere in it.
+ */
+describe("the local years are visible", () => {
+  it("lists every year this kindergarten has created", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: YEARS_PATH, body: [current, older] },
+    ]);
+    renderWithProviders(<AdminSchoolYearsPage />);
+
+    expect(await screen.findByText("2026-2027")).toBeInTheDocument();
+    expect(screen.getByText("2025-2026")).toBeInTheDocument();
+  });
+
+  it("shows each year's dates", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: YEARS_PATH, body: [current] },
+    ]);
+    renderWithProviders(<AdminSchoolYearsPage />);
+
+    expect(await screen.findByText("2026.09.01 – 2027.06.01")).toBeInTheDocument();
+  });
+
+  /*
+   * ★ Only the current year is badged. Marking the others "Идэвхгүй" would put
+   * a constant chip down the column and hide the one row that differs.
+   */
+  it("badges the current year and only the current year", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: YEARS_PATH, body: [current, older] },
+    ]);
+    renderWithProviders(<AdminSchoolYearsPage />);
+
+    expect(await screen.findAllByText("Одоогийн")).toHaveLength(1);
+  });
+
+  it("says so when no year has been created yet", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: YEARS_PATH, body: [] },
+    ]);
+    renderWithProviders(<AdminSchoolYearsPage />);
+
+    expect(await screen.findByText("Хичээлийн жил үүсгээгүй байна")).toBeInTheDocument();
+  });
+});

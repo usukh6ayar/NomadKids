@@ -29,7 +29,8 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { FinanceDashboardPanel } from "@/components/finance/finance-dashboard";
 import { FinanceReports } from "@/components/finance/finance-reports";
-import { formatDate } from "@/lib/format";
+import { formatDate, capitalize } from "@/lib/format";
+import { MealCostBySource } from "@/components/finance/meal-cost";
 
 const rulesSchema = z.array(fundingRuleSchema);
 
@@ -197,7 +198,14 @@ function Finance() {
                 Аудит
               </Link>
             </Button>
-            <Field label="Сар">
+            {/*
+              ★ Labels for screen readers only — 2026-09-26. Shown, they sat
+              above the two fields and pushed both 29px below the title line
+              the rest of the header is centred on. Each value names itself
+              («2026 оны 9-р сар», «Бүх эх үүсвэр»), so nothing is lost to a
+              sighted reader.
+            */}
+            <Field label="Сар" labelHidden>
               {({ id }) => (
                 <MonthSelect id={id} value={month} onValueChange={setMonth} className="w-[170px]" />
               )}
@@ -208,7 +216,7 @@ function Finance() {
               the "Энэ сарын тооцоо" card, where it looked like a filter and
               behaved like an argument to one button.
             */}
-            <Field label="Эх үүсвэр">
+            <Field label="Эх үүсвэр" labelHidden>
               {({ id }) => (
                 <Select
                   id={id}
@@ -216,7 +224,7 @@ function Finance() {
                   onChange={(event) => setSource(event.target.value as SourceFilter)}
                   className="w-[170px]"
                 >
-                  <option value="ALL">Бүгд</option>
+                  <option value="ALL">Бүх эх үүсвэр</option>
                   {Object.entries(FUNDING_SOURCE_LABEL).map(([value, label]) => (
                     <option key={value} value={value}>
                       {label}
@@ -257,6 +265,9 @@ function Finance() {
       {kindergartenId ? (
         <FinanceDashboardPanel kindergartenId={kindergartenId} month={month} />
       ) : null}
+
+      {/* `нэмэлт.md` §3 — the month's meal cost by source, from the same run. */}
+      {kindergartenId ? <MealCostBySource kindergartenId={kindergartenId} month={month} /> : null}
 
       {/*
         ★★★ Everything below opens closed.
@@ -509,7 +520,7 @@ function MonthRows({ items }: { items: z.infer<typeof fundingMonthSchema>["items
   const sorted = [...items].sort(
     (a, b) =>
       `${a.child.lastName ?? ""}${a.child.firstName}`.localeCompare(
-        `${b.child.lastName ?? ""}${b.child.firstName}`,
+        `${b.child.lastName ?? ""}${capitalize(b.child.firstName)}`,
       ) || a.source.localeCompare(b.source),
   );
 
@@ -530,7 +541,7 @@ function MonthRows({ items }: { items: z.infer<typeof fundingMonthSchema>["items
             <p className="flex flex-wrap items-center gap-2">
               <span className="truncate text-body font-medium text-ink">
                 {item.child.lastName ? `${item.child.lastName} ` : ""}
-                {item.child.firstName}
+                {capitalize(item.child.firstName)}
               </span>
               <Badge tone="sky">{FUNDING_SOURCE_LABEL[item.source]}</Badge>
             </p>

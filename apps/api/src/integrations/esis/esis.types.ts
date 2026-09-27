@@ -17,8 +17,6 @@ export interface EsisRequest {
   query?: Record<string, string | number | boolean | undefined>;
   /** Overrides `ESIS_TIMEOUT_MS` for one call. */
   timeoutMs?: number;
-  /** Deterministic fixture selected when `ESIS_DEMO_MODE=true`. */
-  demoFixture?: import("./esis.samples").EsisEndpointKey;
   /**
    * Validates and narrows the response body.
    *
@@ -34,8 +32,17 @@ export interface EsisRequest {
 export interface EsisResponse<T> {
   data: T;
   status: number;
-  /** Makes mock and live data impossible to confuse above the transport layer. */
-  source: "MOCK" | "LIVE";
+  /**
+   * Always `"LIVE"` — retained so callers and the stored `EsisSyncRun` rows do
+   * not all change shape at once.
+   *
+   * ★ `"MOCK"` was the other value until 2026-09-14, when demo mode was
+   * removed: every read now goes to `hubv2.esis.edu.mn` or fails and says so.
+   * The field survives its own alternative because it is persisted on sync
+   * runs and rendered on the operator screen; narrowing the union to one
+   * member keeps those honest without a migration.
+   */
+  source: "LIVE";
   /**
    * Milliseconds the call took. Useful in a log line; carries no secret.
    */

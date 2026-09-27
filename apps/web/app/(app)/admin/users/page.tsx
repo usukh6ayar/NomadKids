@@ -13,6 +13,8 @@ import { FormError } from "@/components/ui/states";
 import { RequireRole } from "@/components/shell/require-role";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
 import { StaffDirectory } from "@/components/admin/staff-directory";
+import { fullName } from "@/lib/format";
+import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
 /**
  * `POST /users/:id/password-reset`.
@@ -43,31 +45,43 @@ const ROLES: { value: Role; label: string }[] = ASSIGNABLE_ROLES.map((value) => 
 }));
 
 /**
- * Staff and families in this kindergarten.
+ * Багш, ажилтан — the staff directory.
  *
- * ★ Creating a user here never sets a password.
+ * ★ **Renamed from "Хэрэглэгчид" and rebuilt, 2026-09-23.** What stood here
+ * was an accurate description of the data and a poor description of the job:
+ * the kindergarten's own accounts, then ESIS `teacher/list`, then ESIS
+ * `school/staff`, then `teacherMovements`, then two мэргэшлийн зэрэг services,
+ * each as a full-width panel of ministry field names. Six sections, five
+ * outbound requests on first paint, and a person who works here appearing on
+ * as many as three of them.
  *
- * The API generates 32 random bytes nobody sees and returns an invitation
- * token; the person chooses their own password on `/invitation/[token]`. An
- * administrator who types a password for someone else knows that password, and
- * "temporary" credentials are permanent in practice.
+ * The directory below merges those *concepts* — one row per person, joined on
+ * `esisPersonId` — without merging the sources. `StaffDirectory` explains the
+ * join; `staff-model.ts` is where it lives and is a pure function, so the
+ * dedupe and the group-assignment rules are testable without a screen.
  *
- * ★★ Parents are normally invited from a child's page, not here.
+ * ★★ **The raw panels are not deleted**, they are behind the second tab.
+ * Reconciling our records against the ministry's is a real task and those
+ * tables are how it is done — but it is not the task a director opens this
+ * screen for, and it is not one they should pay five ministry requests for on
+ * the way to finding a teacher's phone number. The tab renders nothing until
+ * it is selected, so nothing is fetched until it is.
  *
- * That flow attaches the guardianship at the same time, so the account is bound
- * to a child from the moment it exists. Creating a PARENT here makes an account
- * with no children attached — occasionally what you want (a second guardian
- * added later), usually not. The copy says so rather than hiding the option.
+ * ★★★ Creating a user here never sets a password. The API generates 32 random
+ * bytes nobody sees and returns an invitation token; the person chooses their
+ * own password on `/invitation/[token]`. An administrator who types a password
+ * for someone else knows that password, and "temporary" credentials are
+ * permanent in practice.
  */
 export default function AdminUsersPage() {
   return (
     <RequireRole roles={["ADMIN"]}>
-      <AdminUsers />
+      <AdminStaff />
     </RequireRole>
   );
 }
 
-function AdminUsers() {
+function AdminStaff() {
   const { primaryKindergartenId } = useSession();
   const [inviting, setInviting] = useState<Role | null>(null);
 
@@ -126,12 +140,14 @@ function InviteUserDialog({
   });
 
   const errors = fieldErrors(invite.error);
+  const backdrop = useBackdropDismiss(onClose);
 
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Хэрэглэгч нэмэх"
+      {...backdrop}
       className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
     >
       <div className="w-full max-w-[480px] rounded-card border border-border bg-surface p-5">
@@ -139,7 +155,7 @@ function InviteUserDialog({
           <InvitationHandover
             token={invite.data.invitationToken}
             title="Урилга бэлэн"
-            subtitle={`${invite.data.user.lastName} ${invite.data.user.firstName} — ${ROLE_LABEL[role]}`}
+            subtitle={`${fullName(invite.data.user)} — ${ROLE_LABEL[role]}`}
             onClose={onClose}
           />
         ) : (
@@ -235,6 +251,12 @@ function InviteUserDialog({
               )}
             </Field>
 
+            {/*
+              Parents are normally invited from a child's page: that flow
+              attaches the guardianship at the same time, so the account is
+              bound to a child from the moment it exists. Creating one here
+              makes an account with no children attached.
+            */}
             {role === "PARENT" ? (
               <p className="rounded-control bg-sun px-3 py-2 text-caption leading-relaxed text-sun-ink">
                 Эцэг эхийг ихэвчлэн хүүхдийн хуудаснаас урина — тэгвэл хүүхэдтэй нь шууд холбогдоно.

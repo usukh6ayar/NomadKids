@@ -52,7 +52,7 @@ import {
   type RecipeOption,
 } from "@/components/menu/menu-dish-editor";
 import { useEsisFoodProducts } from "@/components/esis/use-esis-food-products";
-import { formatDate, formatLongDate, formatMonthLabel } from "@/lib/format";
+import { formatDate, formatLongDate, formatMonthLabel, capitalize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const weekSchema = z.array(menuDayWithWarningsSchema);
@@ -1235,7 +1235,7 @@ function MenuDayCard({
           <ul className="flex flex-col gap-1">
             {shortages.map((row) => (
               <li key={row.ingredient.id} className="text-caption text-sky-ink">
-                {row.ingredient.name} — хэрэгтэй {row.required}, байгаа {row.available}
+                {capitalize(row.ingredient.name)} — хэрэгтэй {row.required}, байгаа {row.available}
               </li>
             ))}
           </ul>
@@ -1256,7 +1256,7 @@ function MenuDayCard({
           ) : (
             draftDishes.map((dish, index) => (
               <li key={index} className="flex flex-wrap items-baseline gap-x-2 text-body text-ink">
-                <span className="font-medium">{dish.name}</span>
+                <span className="font-medium">{capitalize(dish.name)}</span>
                 {dish.calories ? (
                   <span className="text-caption text-muted">{dish.calories} ккал</span>
                 ) : null}

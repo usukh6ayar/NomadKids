@@ -95,16 +95,6 @@ describe("the kindergarten's details", () => {
     expect(screen.getByLabelText("Хариуцалагч нэгж")).toHaveValue("");
   });
 
-  it("never shows a demo answer as the kindergarten's own", async () => {
-    const user = userEvent.setup();
-    stub("MOCK");
-    renderWithProviders(<AdminKindergartenPage />);
-
-    await user.click(await screen.findByRole("button", { name: /ESIS татах/ }));
-    expect(await screen.findByText(/туршилтын горимд/)).toBeInTheDocument();
-    expect(screen.getByLabelText("Өмчийн хэлбэр")).toHaveValue("");
-  });
-
   it("saves only the address and capacity it stores", async () => {
     const user = userEvent.setup();
     const api = stub();

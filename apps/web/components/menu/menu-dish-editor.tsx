@@ -24,6 +24,7 @@ import { MEAL_KIND_STYLE } from "@/components/child/family-menu";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { cn } from "@/lib/utils";
+import { capitalize } from "@/lib/format";
 
 /**
  * One day's dish editor — every field `saveMenuDaySchema` accepts
@@ -732,7 +733,7 @@ export function MenuDishEditor({
                                     <optgroup key={label} label={label}>
                                       {options.map((r) => (
                                         <option key={r.id} value={r.id}>
-                                          {r.name}
+                                          {capitalize(r.name)}
                                         </option>
                                       ))}
                                     </optgroup>
@@ -751,7 +752,7 @@ export function MenuDishEditor({
                                           key={product.productId}
                                           value={`${ESIS_OPTION_PREFIX}${product.productId}`}
                                         >
-                                          {product.name}
+                                          {capitalize(product.name)}
                                         </option>
                                       ))}
                                     </optgroup>

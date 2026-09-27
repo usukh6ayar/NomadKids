@@ -29,6 +29,7 @@ import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui
 import { Pagination, ResultCount } from "@/components/ui/pagination";
 import { useToast } from "@/components/ui/toast";
 import { SearchField } from "@/components/ui/search-field";
+import { capitalize } from "@/lib/format";
 
 const ingredientsSchema = paginated(ingredientSchema);
 
@@ -219,7 +220,7 @@ function IngredientRow({
   return (
     <>
       <DataRow
-        title={ingredient.name}
+        title={capitalize(ingredient.name)}
         subtitle={ingredient.note ?? undefined}
         cells={{
           category: ingredient.category ? (
@@ -259,14 +260,14 @@ function IngredientRow({
               variant="ghost"
               size="icon"
               onClick={() => setEditing(true)}
-              aria-label={`"${ingredient.name}" засах`}
+              aria-label={`"${capitalize(ingredient.name)}" засах`}
             >
               <Pencil size={18} aria-hidden="true" />
             </Button>
             <ArchiveButton
               path={`/ingredients/${ingredient.id}`}
               label="Архивлах"
-              confirmation={`"${ingredient.name}" орцыг архивлах уу?`}
+              confirmation={`"${capitalize(ingredient.name)}" орцыг архивлах уу?`}
               invalidate={[["kitchen", "ingredients"]]}
               variant="ghost"
               iconOnly

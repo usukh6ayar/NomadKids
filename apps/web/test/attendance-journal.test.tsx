@@ -43,6 +43,7 @@ function journal(overrides: Record<string, unknown> = {}) {
         days: [{ status: "PRESENT", note: null }, null, { status: "SICK", note: null }],
         counts: { PRESENT: 1, SICK: 1 },
         recorded: 2,
+        expectedDays: 3,
       },
     ],
     total: 1,
@@ -60,6 +61,7 @@ function journal(overrides: Record<string, unknown> = {}) {
         children: 1,
         counts: { PRESENT: 1, SICK: 1 },
         recorded: 2,
+        expectedDays: 3,
       },
     ],
     ...overrides,
@@ -300,7 +302,7 @@ describe("the filters", () => {
     renderWithProviders(<AttendanceJournalPage />);
     await screen.findByText(/Дорж/);
 
-    await selectOption(user, "Бүлэг", "Бэлтгэл");
+    await selectOption(user, "Бүлэг", "Бэлтгэл бүлэг");
 
     expect(await screen.findByText("Бэлтгэл бүлгийн нэгтгэл")).toBeInTheDocument();
     const childTable = screen.getByRole("table", { name: "Хүүхэд тус бүрийн ирцийн дүн" });

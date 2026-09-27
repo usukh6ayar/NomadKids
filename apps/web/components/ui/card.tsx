@@ -237,7 +237,9 @@ export function SectionHeader({
     <div
       data-ui="section-header"
       className={cn(
-        "mb-2.5 flex flex-wrap items-start justify-between gap-x-3 gap-y-2 md:mb-3",
+        // `items-center` — 2026-09-26: an action sat on the title's top edge,
+        // a few pixels above the line the eye reads the heading on.
+        "mb-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 md:mb-3",
         className,
       )}
     >

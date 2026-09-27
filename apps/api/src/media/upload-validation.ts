@@ -13,7 +13,19 @@ import sharp from "sharp";
 export const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 
 /** 10 MB — a modern phone photo with room to spare. */
-export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+/**
+ * ★ 20 MB since 2026-09-20, from 10 — at the client's instruction, and because
+ * 10 was below what the devices in use produce. A current phone shoots frames
+ * of 8–12 MB, so the ceiling was refusing ordinary photographs taken on the
+ * ordinary way of taking them.
+ *
+ * The browser now shrinks anything past this before sending
+ * (`lib/image-shrink.ts`), so a file arriving here over the limit is one the
+ * browser could not decode — a HEIC, usually — and the refusal is correct.
+ * This stays the real gate: multer buffers the whole file in memory, and the
+ * limit is what stops one request from costing the API a gigabyte.
+ */
+export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 
 export interface ValidatedUpload {
   buffer: Buffer;

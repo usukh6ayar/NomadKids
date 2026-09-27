@@ -16,6 +16,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
     "seed:demo": "tsx prisma/seed-demo.ts",
+    "seed:esis": "tsx prisma/seed-esis.ts",
     "seed:showcase": "tsx prisma/seed-showcase.ts",
     "reset-password": "tsx scripts/reset-password.ts",
     "db:reset": "prisma migrate reset --force && pnpm seed"

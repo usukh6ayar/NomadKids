@@ -16,6 +16,15 @@ export const ESIS_PARAM_LABEL: Record<string, string> = {
    * director can actually answer.
    */
   personId: "ESIS хүний дугаар",
+  /*
+   * ★ Added 2026-09-22 for `degreeDecisions` (167) and `degreeHistory` (170).
+   *
+   * Labelled as a *request* number rather than an ESIS id, because that is what
+   * a director holds: the number on the мэргэшлийн зэрэг application, not a key
+   * out of another panel. It is not a personal identifier, so unlike
+   * `personRegNumber` it needs no special handling — see `isPersonalParam`.
+   */
+  requestId: "Хүсэлтийн дугаар",
   programOfStudyId: "ESIS хөтөлбөрийн дугаар",
   programStageId: "ESIS үе шатны дугаар",
   programPlanId: "ESIS төлөвлөгөөний дугаар",

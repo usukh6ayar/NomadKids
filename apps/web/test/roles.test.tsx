@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ROLE_LABEL } from "@kinder/contracts";
 import { renderWithProviders, ROUTER, sessionFor, setParams, stubApi } from "./support/render";
 import AppLayout from "@/app/(app)/layout";
 import { Providers } from "@/app/providers";
@@ -375,5 +376,13 @@ describe("the children screen adapts to who is asking", () => {
 
     expect(screen.queryByLabelText("Хүүхдийн нэрээр хайх")).toBeNull();
     expect(calls.some((c) => c.url.startsWith("/children/mine"))).toBe(true);
+  });
+});
+
+describe("ROLE_LABEL", () => {
+  it("calls the administrator захирал/эрхлэгч, the client's own term", () => {
+    // "Админ" is a transliteration of a job nobody in a kindergarten holds by
+    // that name. ESIS's own occupation code 1341 is эрхлэгч.
+    expect(ROLE_LABEL.ADMIN).toBe("Захирал/Эрхлэгч");
   });
 });

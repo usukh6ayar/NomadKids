@@ -234,8 +234,8 @@ export function PageHeader({
   backHref,
 }: {
   title: string;
-  /** Keeps the back control on the title row; it is never a row of its own. */
-  backHref?: string;
+  /** Keeps the back control on the title row; it is never a row of its own. Null is none. */
+  backHref?: string | null;
   /** Trailing controls — a count, a filter, a primary action. */
   actions?: ReactNode;
   /** Shows the header search field. Screens with something to search set it. */

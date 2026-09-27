@@ -26,7 +26,7 @@ import { LikeButton } from "@/components/notifications/like-button";
 import { ChildAvatar, MediaThumb } from "@/components/media/media-image";
 import { useSession } from "@/lib/auth/session";
 import { useMyProfile } from "@/lib/use-my-profile";
-import { useSelectedChild } from "@/lib/selected-child";
+import { useSelectedChildIfAny } from "@/lib/selected-child";
 import {
   CalendarRange,
   PenLine,
@@ -35,6 +35,7 @@ import {
   Pencil,
   SlidersHorizontal,
   Trash2,
+  Megaphone,
 } from "lucide-react";
 import { Art } from "@/components/ui/art";
 import { qk } from "@/lib/api/keys";
@@ -78,7 +79,8 @@ const activeSurveysSchema = z.array(surveySchema);
  */
 export default function NotificationsPage() {
   const { hasRole, session } = useSession();
-  const { selectedChildId } = useSelectedChild();
+  // `IfAny`: the cook's and the accountant's shells have no provider.
+  const selectedChildId = useSelectedChildIfAny()?.selectedChildId ?? null;
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
   /*
    * ★ Added 2026-09-08, when COOK started reading this board too
@@ -282,18 +284,34 @@ export default function NotificationsPage() {
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   return (
-    <div className="flex flex-col gap-4 lg:gap-5">
-      {/*
-        ★ The heading is `sr-only` — 2026-09-10, at the client's request that
-        the first word go and the page move up.
-
-        `PageHeader` already draws its `<h1>` `sr-only` on every other screen
-        (see `page-header.test.tsx`); what this removes is the block's own
-        vertical space above a toolbar that names the tab anyway. The heading
-        itself stays, because a page with no `<h1>` has no name in a screen
-        reader's landmark list and no top level in its outline.
-      */}
-      <h1 className="sr-only">{tab === "news" ? "Мэдээ" : "Судалгаа"}</h1>
+    <div className="flex flex-col gap-5 pb-8 lg:gap-6">
+      {/* The active heading follows the guardian's news/survey tab. */}
+      <div className="flex max-w-[920px] items-start gap-3 border-b border-border pb-5 sm:items-center sm:gap-4">
+        <span
+          className="grid size-12 shrink-0 place-items-center rounded-control bg-primary-soft text-primary shadow-[0_8px_18px_rgba(29,78,216,.08)] sm:size-14"
+          aria-hidden="true"
+        >
+          <Megaphone size={26} strokeWidth={1.8} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-caption font-bold uppercase tracking-[0.12em] text-primary">
+            Харилцаа холбоо
+          </p>
+          <h1 className="mt-0.5 text-heading font-extrabold leading-tight tracking-tight text-ink">
+            {tab === "news" ? "Мэдээ" : "Судалгаа"}
+          </h1>
+          <p className="mt-1 text-caption leading-5 text-muted sm:text-body">
+            {tab === "news"
+              ? "Цэцэрлэгийн зарлал, мэдээллийг нэг дороос."
+              : "Хүүхэдтэй холбоотой идэвхтэй судалгаанууд."}
+          </p>
+        </div>
+        {tab === "news" && data ? (
+          <span className="hidden shrink-0 rounded-pill bg-white px-3 py-1.5 text-caption font-semibold text-muted shadow-sm sm:inline-flex">
+            {data.pages[0]?.total ?? 0} мэдээ
+          </span>
+        ) : null}
+      </div>
 
       <section
         aria-label={tab === "news" ? "Мэдээний удирдлага" : "Судалгааны удирдлага"}
@@ -308,10 +326,10 @@ export default function NotificationsPage() {
          * guardian's tab strip keeps its own surface below — that one is a
          * control that needs a ground to sit on.
          */
-        className="flex flex-col gap-3"
+        className="flex max-w-[920px] flex-col gap-4"
       >
         {isGuardian ? (
-          <div className="rounded-card bg-sunken p-1.5">
+          <div className="rounded-card border border-border bg-white p-1.5 shadow-[0_6px_20px_rgba(30,70,112,.04)]">
             <div
               role="tablist"
               aria-label="Мэдээ эсвэл судалгаа"
@@ -339,7 +357,7 @@ export default function NotificationsPage() {
 
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <div className="relative min-w-0 flex-1 sm:max-w-[440px]">
+            <div className="relative min-w-0 flex-1 sm:max-w-[500px]">
               <Search
                 size={18}
                 aria-hidden="true"
@@ -351,7 +369,7 @@ export default function NotificationsPage() {
                 onChange={(e) => setSearchInput(e.target.value)}
                 placeholder={tab === "news" ? "Мэдээнээс хайх" : "Судалгаанаас хайх"}
                 aria-label={tab === "news" ? "Мэдээнээс хайх" : "Судалгаанаас хайх"}
-                className="border-border-soft bg-canvas pl-11 focus:bg-surface"
+                className="rounded-control border-border bg-white pl-11 shadow-sm focus:bg-white"
               />
             </div>
 
@@ -626,7 +644,7 @@ export default function NotificationsPage() {
              */
             <section
               aria-labelledby="news-feed-heading"
-              className="flex w-full max-w-[920px] flex-col gap-3"
+              className="flex w-full max-w-[920px] flex-col gap-4"
             >
               {/*
                 ★ The heading is `sr-only` — 2026-09-10, at the client's
@@ -688,7 +706,7 @@ export default function NotificationsPage() {
                 still exists; it is now all on one side, where it reads as a
                 margin rather than as a hole.
               */}
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-4">
                 {items.map((notification) => (
                   <NotificationRow
                     key={notification.id}
@@ -999,10 +1017,10 @@ function NotificationRow({
     */
     <article
       className={cn(
-        "flex flex-col gap-2.5 rounded-card border p-4 transition-all duration-150",
+        "flex flex-col gap-3 rounded-card border p-4 transition-all duration-150 sm:p-5",
         isUnread
-          ? "border-border bg-surface shadow-sm hover:border-primary/50 hover:shadow-md"
-          : "border-border-soft bg-canvas hover:border-border",
+          ? "border-border bg-white shadow-[0_12px_32px_rgba(23,70,112,.08)] hover:border-primary/50 hover:shadow-[0_16px_38px_rgba(23,70,112,.12)]"
+          : "border-border-soft bg-white/70 hover:border-border hover:bg-white",
       )}
     >
       {/* Who posted it, and when. `ChildAvatar` draws initials when there is
@@ -1219,7 +1237,7 @@ function NotificationRow({
         */}
         <h3
           className={cn(
-            "text-lead leading-heading text-ink",
+            "text-lead leading-heading text-ink sm:text-title",
             isUnread ? "font-semibold" : "font-medium",
           )}
         >

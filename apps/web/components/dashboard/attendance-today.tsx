@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, CloudOff, Users } from "lucide-react";
 import Link from "next/link";
-import { groupAttendanceRowSchema } from "@kinder/contracts";
+import { groupAttendanceRowSchema, localDate } from "@kinder/contracts";
 import { z } from "zod";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -18,7 +18,7 @@ import { Art } from "@/components/ui/art";
 const daySheetSchema = z.array(groupAttendanceRowSchema);
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localDate();
 }
 
 /**

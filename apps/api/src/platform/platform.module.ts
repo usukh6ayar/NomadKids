@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
 import { DashboardModule } from "../dashboard/dashboard.module";
+import { EsisModule } from "../integrations/esis/esis.module";
 import { UsersModule } from "../users/users.module";
 import { PlatformController } from "./platform.controller";
 import { PlatformRevenueController } from "./platform-revenue.controller";
@@ -14,7 +15,13 @@ import { PlatformService } from "./platform.service";
   // AuthModule supplies PasswordService and TokenService; UsersModule supplies
   // UsersRepository for the identifier collision checks; DashboardModule
   // supplies DashboardRepository, reused for the detail view's stats.
-  imports: [AuditModule, AuthModule, UsersModule, DashboardModule],
+  //
+  // ★ EsisModule supplies EsisInstitutionLookupService, so that a kindergarten
+  // is created already mapped to its institution rather than mapped by a second
+  // screen afterwards. Importing it is this module saying out loud that it
+  // reaches the integration — see EsisModule's own note on why it is not
+  // `@Global()`.
+  imports: [AuditModule, AuthModule, UsersModule, DashboardModule, EsisModule],
   controllers: [PlatformController, PlatformRevenueController],
   providers: [
     PlatformService,

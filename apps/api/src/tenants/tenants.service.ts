@@ -54,8 +54,19 @@ export class TenantsService {
     return this.repo.listKindergartens(this.memberScope(actor));
   }
 
+  /**
+   * ★ A director sees one field more — `esisInstitutionId`, which is what
+   * their staff now type into the public registration form.
+   *
+   * The scope is still the **member** scope, so authorization is unchanged and
+   * a stranger still gets 404; being an admin only widens the `select`. Doing
+   * it the other way round — reading through `adminScope` first and falling
+   * back — would cost a second query and, worse, put a second authorization
+   * decision in a method that already has a correct one.
+   */
   async getKindergarten(actor: Actor, id: string) {
-    const kindergarten = await this.repo.findKindergarten(this.memberScope(actor), id);
+    const asAdmin = this.tenants.adminKindergartenIds(actor).includes(id);
+    const kindergarten = await this.repo.findKindergarten(this.memberScope(actor), id, asAdmin);
     if (!kindergarten) throw new NotFoundException();
     return kindergarten;
   }

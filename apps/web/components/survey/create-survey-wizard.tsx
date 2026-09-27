@@ -37,6 +37,7 @@ import {
   type SurveyRespondent,
   type SurveyPeriod,
   type SurveyQuestionType,
+  localDate,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { A79_LEVELS, a79Questions } from "@/lib/a79-assessment";
@@ -47,6 +48,8 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Switch } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { cn } from "@/lib/utils";
+import { useBackdropDismiss } from "@/components/ui/modal-overlay";
+import { groupLabel } from "@/lib/format";
 
 const groupsSchema = paginated(groupListItemSchema);
 const termsSchema = z.array(termSchema);
@@ -360,7 +363,7 @@ export function CreateSurveyWizard({
   /* The active term is metadata, not another decision for the teacher. */
   useEffect(() => {
     if (termId || !terms.data?.length) return;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDate();
     const active =
       terms.data.find(
         (term) =>
@@ -487,11 +490,14 @@ export function CreateSurveyWizard({
     setPreviewing(false);
   };
 
+  const backdrop = useBackdropDismiss(onClose);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label={heading}
+      {...backdrop}
       className="fixed inset-0 z-50 grid items-end overflow-y-auto bg-ink/50 p-0 sm:place-items-center sm:p-4"
     >
       <div className="max-h-[calc(100dvh-0.5rem)] w-full max-w-[680px] overflow-y-auto rounded-t-card border border-border bg-surface p-4 shadow-lg sm:max-h-[calc(100vh-2rem)] sm:rounded-card sm:p-5">
@@ -770,7 +776,7 @@ function Audience({
                 <option value="">Бүх бүлэг</option>
                 {groups.map((group) => (
                   <option key={group.id} value={group.id}>
-                    {group.name}
+                    {groupLabel(group.name)}
                   </option>
                 ))}
               </Select>

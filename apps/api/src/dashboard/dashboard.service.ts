@@ -1,3 +1,4 @@
+import { localDate } from "@kinder/contracts";
 import { Injectable } from "@nestjs/common";
 import { AuthzRepository } from "../authz/authz.repository";
 import { TenantAccessService } from "../authz/tenant-access.service";
@@ -17,20 +18,18 @@ import { withActorLabel } from "./audit-actor";
  * The parent home is a feed of what happened, not a dashboard at all.
  */
 /**
- * Midnight UTC for the given instant.
+ * Today's `Attendance.date` key — UTC midnight of **Ulaanbaatar's** calendar
+ * day.
  *
- * ★ UTC, because `Attendance.date` is stored as a bare calendar day.
+ * ★ UTC midnight, because `Attendance.date` is stored as a bare calendar day;
+ * matching it against a local midnight would miss by the offset.
  *
- * The register writes a date with no time, so matching it against a local
- * midnight would miss by the timezone offset — in Ulaanbaatar (UTC+8) a local
- * midnight is 16:00 the previous day in UTC, and today's register would be
- * looked up under yesterday. `growth.service.ts` carries the same helper for
- * the same reason.
+ * ★★ Ulaanbaatar's day, corrected 2026-09-26. This took the *UTC* date of
+ * `new Date()`, which is yesterday until 08:00 local, so the morning
+ * dashboard counted yesterday's register in the hour it is being taken.
  */
-function startOfDay(value: Date): Date {
-  return new Date(
-    Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(), 0, 0, 0, 0),
-  );
+function localToday(): Date {
+  return new Date(`${localDate()}T00:00:00.000Z`);
 }
 
 @Injectable()
@@ -197,7 +196,7 @@ export class DashboardService {
      * it. It is also independent of whether a term is configured, which the
      * coverage figures beside it are not.
      */
-    const today = startOfDay(new Date());
+    const today = localToday();
     const monthAgo = new Date(today);
     monthAgo.setDate(monthAgo.getDate() - 29);
 
@@ -210,6 +209,7 @@ export class DashboardService {
       childrenAMonthAgo,
       attendanceByGroup,
       domains,
+      esis,
     ] = await Promise.all([
       this.repo.kindergartenCounts(kindergartenIds),
       term ? this.repo.assessmentCoverage(kindergartenIds, term.id) : Promise.resolve([]),
@@ -220,6 +220,7 @@ export class DashboardService {
       this.repo.childrenEnrolledOn(kindergartenIds, monthAgo),
       this.repo.attendanceByGroup(kindergartenIds, monthAgo, today),
       term ? this.repo.domainAveragesByGroup(kindergartenIds, term.id) : Promise.resolve([]),
+      this.repo.esisCounts(kindergartenIds),
     ]);
 
     return {
@@ -240,6 +241,15 @@ export class DashboardService {
       attendanceByGroup,
       /** Empty without a current term — an assessment belongs to one. */
       domainAveragesByGroup: domains,
+      /**
+       * What the ministry lists against what this system holds.
+       *
+       * ★ Local queries only — see `esisCounts`. It joins the `Promise.all`
+       * above rather than being fetched by the screen separately, because it
+       * is the same question the counts beside it answer and a second request
+       * would let the two disagree for as long as one was in flight.
+       */
+      esis,
     };
   }
 
@@ -256,7 +266,7 @@ export class DashboardService {
    */
   async cook(actor: Actor) {
     const kindergartenIds = this.tenants.memberKindergartenIds(actor);
-    const today = startOfDay(new Date());
+    const today = localToday();
 
     const [
       attendanceToday,

@@ -49,7 +49,7 @@ import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
-import { excerpt, formatAge, formatDate, fullName } from "@/lib/format";
+import { excerpt, formatAge, formatDate, fullName, capitalize } from "@/lib/format";
 
 const AGE_BAND_LABEL: Record<string, string> = {
   NURSERY: "Бага бүлэг",
@@ -89,7 +89,7 @@ function teacherLabel(archive: EnrollmentArchive | undefined): string {
     archive?.current?.teachers.find((person) => person.role === "LEAD") ??
     archive?.current?.teachers[0];
   if (!teacher) return "—";
-  return `${teacher.lastName.slice(0, 1)}. ${teacher.firstName}`;
+  return `${teacher.lastName.slice(0, 1)}. ${capitalize(teacher.firstName)}`;
 }
 
 /**

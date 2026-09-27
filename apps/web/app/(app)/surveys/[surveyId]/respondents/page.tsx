@@ -14,7 +14,7 @@ import { BackButton } from "@/components/ui/back-button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { shortName } from "@/lib/format";
+import { shortName, fullName } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
@@ -90,9 +90,7 @@ export default function SurveyRespondentsPage() {
     if (tab === "done" && !row.answered) return false;
     if (tab === "todo" && row.answered) return false;
     if (!needle) return true;
-    return `${row.child.lastName ?? ""} ${row.child.firstName}`
-      .toLocaleLowerCase("mn-MN")
-      .includes(needle);
+    return `${fullName(row.child)}`.toLocaleLowerCase("mn-MN").includes(needle);
   });
 
   const tabs: { key: Tab; label: string; count: number }[] = [

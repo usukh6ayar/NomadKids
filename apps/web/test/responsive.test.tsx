@@ -147,7 +147,9 @@ describe("horizontal overflow", () => {
   */
   it("a header action block is allowed to wrap rather than pin the page wide", () => {
     // `max-w-full` is what caps `shrink-0` at the row's width.
-    expect(APP_SHELL).toMatch(/flex max-w-full shrink-0 flex-wrap items-center gap-2/);
+    // `min-h-12` sits in front since 2026-09-26 (the actions share the title's
+    // 48px line); what this pins is the wrap, not the class order.
+    expect(APP_SHELL).toMatch(/flex (min-h-12 )?max-w-full shrink-0 flex-wrap items-center gap-2/);
     expect(APP_SHELL).toMatch(/justify-end/);
   });
 

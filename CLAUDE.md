@@ -320,6 +320,30 @@ CPU starvation. **Never run the two suites at the same time**, and before
 blaming this section, check what else was running. Run serially and both are
 clean — api 1885/0, web 559/0.
 
+★★★★★★ **2026-09-22 — a sixth instance, and the cleanest data point yet.**
+`invoices.test.tsx > "sends only the lines that were priced…"` **timed out at
+5000 ms** in `pnpm --filter web test`. Alone it passes in **774 ms** — six
+times inside the budget it missed. The suite then passed **twice
+consecutively**, 1107/1107 both times, with no change in between.
+
+What this adds to ★★★★★:
+
+- **A fifth distinct web file.** `admin-users`, `funding-register`, `flows`,
+  `password-policy` and now `invoices` — the "one bad test" theory is finished.
+- **It is a timeout again**, which is the shape ★★★★★ identified: work not
+  finishing, not an assertion going wrong. Four of the six instances now are.
+- **Nothing was running beside it.** ★'s concurrency cause is ruled out for
+  this one: no api suite, no `pnpm dev`, one vitest process.
+- **The margin is the evidence.** 774 ms against a 5000 ms budget means the
+  full-run environment cost this test _at least_ 6× — that is not a slow
+  machine, it is a stall.
+
+★ **What it cost to establish**, so nobody re-spends it: three full runs, about
+nine minutes, to turn one red line into "known flake". That is the price of
+this section staying undiagnosed, and it is worth paying — the alternative is
+shipping through a red suite, which is how the one failure that matters gets
+waved through.
+
 Still not a diagnosis. But the next person can skip "it is the money tables".
 
 ---
@@ -395,8 +419,18 @@ section keeps repeating: a rule the codebase contradicts stops being read.
   **done**: `FundingRule`, `FundingCalculation`, `settle()`, the monthly
   register and its Excel export, `/admin/funding` and `/finance`. The rule
   table ships **empty**, by §4's own instruction that no tariff is hard-coded
-- §3 meal cost — **partial**: `dependsOnMeals` weights a funding rule, but
-  there is no per-child meal cost split by source
+- §3 meal cost — **partial**, and the half that was missing now has a source.
+  `dependsOnMeals` weights a funding rule; what nothing could answer was _which
+  children the state pays for_, so a split by source had no input. ESIS api 128
+  (`cook/levelHood/students`) is the ministry's own answer and is wired as
+  `GET …/funding/food-discounts` — `funding/food-discount.ts`, read live and
+  **stored nowhere**, because eligibility changes without telling us and a
+  stored copy would be quietly wrong.
+  ★ Its answer has **three** states, not two: 65 rows came back against a
+  roster of 83, so eighteen children are `UNASSESSED` — not assessed rather
+  than not eligible. Pricing those as "no discount" would bill a family for
+  something the state may be about to pay. The per-child cost split itself is
+  still to build
 - §7 invoices — **done**: `Invoice`, `InvoiceLineItem`, `Payment`, a
   hand-written invoice, the carried balance, and `POST
 …/invoices/generate-month` which bills a whole month from the `PARENT`
@@ -446,7 +480,7 @@ longer carries `quantity × unitAmount`) are in `docs/FINANCE_MODULE.md` §1.
   "Ирц–санхүүжилтийн тулгалт" is the monthly register, which shipped with §6 and
   already exports. ★ A `FINANCE_REPORT` job carries **no `childId`**, which is
   what keeps every `canAccessChild`-gated report route from ever serving one
-- §14 the financial audit log — **partial**, and half of it is now done.
+- §14 the financial audit log — **done**.
   ★ **The reversal rule is built**, which this line said it was not until
   2026-09-11. `Payment.reversalOfId`, `InvoicesRepository.voidPayment()` — it
   sets `voidedAt` on the original and inserts a reversing row rather than
@@ -455,11 +489,13 @@ longer carries `quantity × unitAmount`) are in `docs/FINANCE_MODULE.md` §1.
   void, since the reversal is what cancels it, and `finance-reports` reads
   `reversalOfId`. That is §14's "Залруулга эсвэл reversal transaction
   ашиглана", and the ★ below §16 already treats it as the rule.
-  **What is still missing is `Өмнөх утга → Шинэ утга`**, and the measure is
-  exact: of the fourteen `audit.append()` calls across `invoices.service.ts`
-  and `funding.service.ts`, twelve carry `metadata` but only **two** carry a
-  `before` — `voidPayment` and `markRefunded`. Everything else records what the
-  value became and not what it was.
+  ★★ **`Өмнөх утга → Шинэ утга` is done too, 2026-09-26.** This line said
+  two of fourteen `audit.append()` calls carried a `before`; by then five of
+  fifteen did, and the four that still overwrote or removed something without
+  one — an invoice edit, an invoice removal, a funding rule removal and a
+  month's recalculation — now record what was there. A creation carries no
+  `before`, because nothing was. `/finance/audit-log` shows the pair as a
+  table in Mongolian rather than the JSON it printed.
 - §15 the external-ID history — **not started**
 
 ★ §14 asks that a confirmed financial transaction is **never deleted** —

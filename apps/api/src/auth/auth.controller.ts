@@ -159,8 +159,23 @@ export class AuthController {
   /** The current user, their memberships and a CSRF token. */
   @Get("me")
   async me(@CurrentActor() actor: Actor, @Req() req: Request) {
-    const user = await this.users.findById(actor.userId);
-    return { user, memberships: actor.memberships, csrfToken: cookie(req, CSRF_COOKIE) ?? null };
+    const [user, kindergartens] = await Promise.all([
+      this.users.findById(actor.userId),
+      /*
+       * ★ The names of the actor's own kindergartens — 2026-09-26, for the
+       * desktop top bar («БЗД 115-р цэцэрлэг», as the ministry's SIS shows
+       * it). Read from the same memberships the actor was built from, so it
+       * can only ever name a kindergarten they belong to; a guardian, who has
+       * none, gets an empty list.
+       */
+      this.authz.loadOwnKindergartens(actor),
+    ]);
+    return {
+      user,
+      memberships: actor.memberships,
+      kindergartens,
+      csrfToken: cookie(req, CSRF_COOKIE) ?? null,
+    };
   }
 
   /**

@@ -275,6 +275,9 @@ export class AttendanceRepository {
         /* The export's first column — a register belongs to a school year, and
            a file with no year on it cannot be filed. */
         schoolYear: { select: { id: true, name: true } },
+        /* The span the child owes attendance for — «Хамрагдвал зохих». */
+        startedOn: true,
+        endedOn: true,
       },
       orderBy: [{ group: { name: "asc" } }, { child: { lastName: "asc" } }],
     });
@@ -492,6 +495,36 @@ export class AttendanceRepository {
   }
 
   /**
+   * Guardians' requests that overlap the range, for the director's register.
+   *
+   * ★ Only what the count needs — the span, the review state and the group of
+   * the enrolment the request was made against. No child, no reason, no
+   * attachment: the daily register is counts, and a column of figures should
+   * not carry names it never draws.
+   *
+   * ★★ Unbounded by design, like `findSubmissions` beside it: the range is
+   * capped at a quarter by the query schema and one kindergarten's requests
+   * over a quarter are the size of that quarter's absences.
+   */
+  async findRequestsOverlapping(kindergartenId: string, from: Date, to: Date, groupIds?: string[]) {
+    return this.prisma.attendanceRequest.findMany({
+      where: {
+        kindergartenId,
+        deletedAt: null,
+        dateFrom: { lte: to },
+        dateTo: { gte: from },
+        ...(groupIds?.length ? { enrollment: { groupId: { in: groupIds } } } : {}),
+      },
+      select: {
+        dateFrom: true,
+        dateTo: true,
+        reviewStatus: true,
+        enrollment: { select: { groupId: true } },
+      },
+    });
+  }
+
+  /**
    * Records a submission for each group-day, in one transaction.
    *
    * ★ Idempotent: re-submitting a day already sent updates the existing row
@@ -666,8 +699,43 @@ export class AttendanceRepository {
   findEsisConnection(kindergartenId: string) {
     return this.prisma.kindergarten.findFirst({
       where: { id: kindergartenId, deletedAt: null },
-      select: { esisInstitutionId: true, esisEnvironment: true },
+      select: { esisInstitutionId: true },
     });
+  }
+
+  /**
+   * Records which ESIS person each child turned out to be.
+   *
+   * ★ An authorization fact, not a sync artefact. `Child.esisPersonId` is what
+   * lets a per-child ESIS read resolve a `personId` back to a child so
+   * `canAccessChild` can run; without it a teacher is refused. See the column's
+   * own note.
+   *
+   * ★★ `updateMany` scoped by `kindergartenId`, so a mapping can never be
+   * written onto another tenant's child even if a caller supplied the wrong
+   * pair. The tenant filter is the repository's job (CLAUDE.md §2.2), and this
+   * is the one write in this file that takes an id from an external system.
+   *
+   * ★★★ Idempotent and non-destructive: re-resolving the same child writes the
+   * same value, and a child already mapped is simply written again rather than
+   * compared. The unique index on `(kindergartenId, esisPersonId)` is what
+   * stops two children claiming one ESIS person — it throws, loudly, which is
+   * the right outcome for a roster that has genuinely gone wrong.
+   */
+  async rememberEsisPersonIds(
+    kindergartenId: string,
+    matches: { childId: string; esisPersonId: string }[],
+  ): Promise<void> {
+    if (matches.length === 0) return;
+
+    await Promise.all(
+      matches.map((match) =>
+        this.prisma.child.updateMany({
+          where: { id: match.childId, kindergartenId, deletedAt: null },
+          data: { esisPersonId: match.esisPersonId },
+        }),
+      ),
+    );
   }
 
   /** The child's active enrollment — attendance is pinned to it. */

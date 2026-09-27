@@ -60,6 +60,8 @@ export class UsersRepository {
           phone: true,
           lastName: true,
           firstName: true,
+          // The join key to an ESIS staff row — see `adminUserSchema`.
+          esisPersonId: true,
           isActive: true,
           lastLoginAt: true,
           memberships: {
@@ -113,6 +115,18 @@ export class UsersRepository {
 
   async findByPhone(phone: string) {
     return this.prisma.user.findUnique({ where: { phone }, select: { id: true } });
+  }
+
+  /**
+   * The account, if any, already tied to this ESIS person.
+   *
+   * ★ `esisPersonId` is globally unique (schema.prisma), which is what makes
+   * this a yes/no question rather than a search: one person in the ministry's
+   * database is one account, so `StaffRegistrationService` refuses a second
+   * registration for the same person by checking this before it creates one.
+   */
+  async findByEsisPersonId(esisPersonId: string) {
+    return this.prisma.user.findUnique({ where: { esisPersonId }, select: { id: true } });
   }
 
   async create(data: CreateUserData) {
@@ -263,6 +277,17 @@ export interface CreateUserData {
   passwordHash: string;
   lastName: string;
   firstName: string;
+  /**
+   * The ministry identity, when the account is created by self-registration.
+   *
+   * ★ It is no longer "set only by self-registration" — a director may attach
+   * one to an invited account afterwards (`linkStaffToEsisPerson`). At
+   * *creation* time self-registration is still the only source, which is why
+   * it stays here and why `selfRegisteredAt` is set alongside it.
+   */
+  esisPersonId?: string | null;
+  /** When the person made their own account. NULL for an invitation. */
+  selfRegisteredAt?: Date | null;
 }
 
 export interface UpdateUserData {

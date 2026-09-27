@@ -116,11 +116,177 @@ describe("GET /kindergartens/:id", () => {
     expect(res.status).toBe(404);
   });
 
+  /*
+   * ★ **A bare `NotFoundException()` must not send English — 2026-09-20.**
+   *
+   * Nest fills an argument-less `NotFoundException` with `message: "Not
+   * Found"`, `problem.filter.ts` forwarded any message unequal to the title
+   * into `detail`, and `apps/web/lib/api/errors.ts` prefers `detail` over its
+   * own Mongolian status map. So a director opening a deleted record read
+   * **"Not Found"**. The `message !== title` guard could not catch it: it
+   * compares against «Олдсонгүй», which "Not Found" differs from exactly as a
+   * real thrown message would.
+   *
+   * The filter now drops the phrase Nest itself would have generated for that
+   * status, leaving `title` to answer. Asserted on `detail` being absent
+   * rather than on any sentence, because the fix is "do not invent a detail",
+   * not "invent a better one".
+   */
+  it("sends no English detail for a 404 nobody wrote a message for", async () => {
+    const res = await request(server())
+      .get("/v1/kindergartens/00000000-0000-4000-8000-000000000000")
+      .set("Cookie", adminA.cookies);
+
+    expect(res.status).toBe(404);
+    expect(res.body.title).toBe("Олдсонгүй");
+    expect(res.body.detail).toBeUndefined();
+  });
+
+  /* The same for an unauthenticated request, whose detail was "Unauthorized". */
+  it("sends no English detail for a bare 401 either", async () => {
+    const res = await request(server()).get(`/v1/kindergartens/${a.kindergarten.id}`);
+
+    expect(res.status).toBe(401);
+    expect(res.body.detail).toBeUndefined();
+  });
+
   it("returns 400 for a malformed id", async () => {
     const res = await request(server())
       .get("/v1/kindergartens/not-a-uuid")
       .set("Cookie", adminA.cookies);
     expect(res.status).toBe(400);
+  });
+
+  /*
+   * ★ The row is not the payload — 2026-09-16.
+   *
+   * `findKindergarten` had no `select`, so every column reached every member
+   * of the kindergarten. That was harmless while the table held a name and an
+   * address; it stopped being harmless the moment a credential-shaped column
+   * was added, because a teacher, a cook and a parent all pass this route's
+   * membership check.
+   *
+   * ★★ **Two field sets since 2026-09-20**, not one. A director additionally
+   * reads `esisInstitutionId` — it is what their staff type into the public
+   * registration form, so somebody has to be able to see it — and nobody else
+   * does. The number is on the ministry's public register rather than secret;
+   * the reason to keep it off the member set is the reason the allowlist
+   * exists at all, that widening this route publishes to parents too.
+   *
+   * Both halves are asserted, because the interesting failure is not "the
+   * admin set is wrong" but "the member set quietly grew to match it".
+   */
+  it("sends a member exactly the fields a client reads — the profile, not the head's phone", async () => {
+    await db.kindergarten.update({
+      where: { id: a.kindergarten.id },
+      data: { esisInstitutionId: "42778" },
+    });
+
+    for (const session of [teacherA, parentA]) {
+      const res = await request(server())
+        .get(`/v1/kindergartens/${a.kindergarten.id}`)
+        .set("Cookie", session.cookies);
+
+      expect(res.status).toBe(200);
+      expect(Object.keys(res.body as object).sort()).toEqual([
+        "address",
+        "country",
+        "description",
+        "district",
+        "email",
+        "facebook",
+        "headName",
+        "id",
+        "institutionType",
+        "location",
+        "logoMediaFileId",
+        "name",
+        "phone",
+        "propertyType",
+        "province",
+        "responsibleUnit",
+        "shortName",
+        "website",
+      ]);
+    }
+  });
+
+  it("sends an admin those, the ESIS institution number and the head's phone", async () => {
+    await db.kindergarten.update({
+      where: { id: a.kindergarten.id },
+      data: { esisInstitutionId: "42778" },
+    });
+
+    const res = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}`),
+      adminA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body as object).sort()).toEqual([
+      "address",
+      "country",
+      "description",
+      "district",
+      "email",
+      "esisInstitutionId",
+      "facebook",
+      "headName",
+      "headPhone",
+      "id",
+      "institutionType",
+      "location",
+      "logoMediaFileId",
+      "name",
+      "phone",
+      "propertyType",
+      "province",
+      "responsibleUnit",
+      "shortName",
+      "website",
+    ]);
+  });
+
+  /*
+   * ★★★ The write answers with the **member** shape, which is narrower than
+   * what the same admin just read. That is deliberate rather than an
+   * oversight: `PATCH` cannot change `esisInstitutionId` — only the platform
+   * operator sets it — so echoing it back would suggest it had been part of
+   * the write. `updateKindergarten` returns a fresh `prisma.update`, which is
+   * the second place the whole row used to escape.
+   */
+  it("does not widen the row on a write either", async () => {
+    await db.kindergarten.update({
+      where: { id: a.kindergarten.id },
+      data: { esisInstitutionId: "42778" },
+    });
+
+    const res = await authed(
+      request(server()).patch(`/v1/kindergartens/${a.kindergarten.id}`),
+      adminA,
+    ).send({ phone: "99112233" });
+
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body as object).sort()).toEqual([
+      "address",
+      "country",
+      "description",
+      "district",
+      "email",
+      "facebook",
+      "headName",
+      "id",
+      "institutionType",
+      "location",
+      "logoMediaFileId",
+      "name",
+      "phone",
+      "propertyType",
+      "province",
+      "responsibleUnit",
+      "shortName",
+      "website",
+    ]);
   });
 });
 
@@ -179,6 +345,58 @@ describe("PATCH /kindergartens/:id", () => {
       parentA,
     ).send({ name: "Эцэг эхийн оролдлого" });
     expect(res.status).toBe(404);
+  });
+
+  /*
+   * ★ The profile fields the «Байгууллага» screen edits — 2026-09-27. Free
+   * text for now: the lists (улс, аймаг, өмчийн хэлбэр…) have no agreed
+   * source yet, and a closed list invented here would be wrong the first
+   * time a kindergarten did not fit it.
+   */
+  it("keeps every profile field it is sent, and returns them", async () => {
+    const profile = {
+      shortName: "Дэгдээхий",
+      propertyType: "Төрийн",
+      institutionType: "Цэцэрлэг",
+      location: "Хот",
+      responsibleUnit: "БЗД БХХ",
+      country: "Монгол",
+      province: "Улаанбаатар",
+      district: "Баянзүрх",
+      website: "https://degdeekhii.mn",
+      facebook: "https://facebook.com/degdeekhii",
+      headName: "Б.Сарнай",
+      headPhone: "99112233",
+    };
+    const res = await authed(
+      request(server()).patch(`/v1/kindergartens/${a.kindergarten.id}`),
+      adminA,
+    ).send(profile);
+    expect(res.status).toBe(200);
+
+    const read = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}`),
+      adminA,
+    );
+    expect(read.body).toMatchObject(profile);
+  });
+
+  /* The director's own phone is an administrator's to read, not a family's. */
+  it("keeps the head's phone from a parent, and shows them the rest", async () => {
+    await authed(request(server()).patch(`/v1/kindergartens/${a.kindergarten.id}`), adminA).send({
+      shortName: "Дэгдээхий",
+      headName: "Б.Сарнай",
+      headPhone: "99112233",
+    });
+
+    const read = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}`),
+      parentA,
+    );
+    expect(read.status).toBe(200);
+    expect(read.body.shortName).toBe("Дэгдээхий");
+    expect(read.body.headName).toBe("Б.Сарнай");
+    expect(read.body.headPhone).toBeUndefined();
   });
 
   it("writes an audit entry", async () => {
@@ -267,6 +485,67 @@ describe("school years", () => {
 
     expect(res.status).toBe(409);
     expect(res.body.detail).toMatch(/аль хэдийн/);
+  });
+
+  /*
+   * ★ The ceiling was **20** until 2026-09-20 and the client asked for it to
+   * go — twenty fits "2025-2026" and nothing a director would add to it. The
+   * name below is 41 characters and is the shape the request came in about.
+   *
+   * `SchoolYear.name` is an unbounded `text` column, so 100 is the only limit
+   * there is and raising it needed no migration.
+   */
+  it("accepts a school year name well past the old twenty-character ceiling", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/school-years`),
+      adminA,
+    ).send({
+      name: "2027-2028 оны хичээлийн жил — ахлах бүлэг",
+      startsOn: "2027-09-01",
+      endsOn: "2028-06-01",
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.name).toBe("2027-2028 оны хичээлийн жил — ахлах бүлэг");
+  });
+
+  /*
+   * ★★ **Every validation message a user reads is Mongolian** — CLAUDE.md §5.
+   *
+   * Zod 4 ships 53 locales and no `mn`, so `packages/contracts/src/mn-locale.ts`
+   * is one, installed by `z.config()` at the contracts entry point. Without it
+   * `ZodValidationPipe` put `issue.message` — "Too small: expected string to
+   * have >=1 characters" — straight under the input, for the 436 constraints
+   * that carry no message of their own.
+   *
+   * Asserted as "contains no Latin letters" rather than against the exact
+   * sentence: the wording is allowed to improve, the language is not.
+   */
+  it("refuses a nameless year in Mongolian, not English", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/school-years`),
+      adminA,
+    ).send({ name: "", startsOn: "2027-09-01", endsOn: "2028-06-01" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errors.name[0]).toMatch(/[А-Яа-яӨөҮү]/);
+    expect(res.body.errors.name[0]).not.toMatch(/[A-Za-z]/);
+  });
+
+  /*
+   * ★★★ A field with **no** message of its own, to prove the locale is what
+   * answers rather than a hand-written string. `startsOn` is a bare
+   * `z.coerce.date()`; before the locale it produced "Invalid input: expected
+   * date, received Date".
+   */
+  it("refuses an unparseable date in Mongolian too", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/school-years`),
+      adminA,
+    ).send({ name: "2027-2028", startsOn: "огноо биш", endsOn: "2028-06-01" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.errors.startsOn[0]).not.toMatch(/[A-Za-z]/);
   });
 });
 
@@ -544,6 +823,59 @@ describe("GET /groups", () => {
       .get("/v1/groups?pageSize=100000")
       .set("Cookie", adminA.cookies);
     expect(res.status).toBe(400);
+  });
+
+  /*
+    ★ 2026-09-23 — the list carries its assignments.
+
+    "Which group has nobody teaching it" is the question `/admin/groups` exists
+    to answer, and until now the only way to ask it was `GET /groups/:id` once
+    per row. The include is what replaced that; this is the case that says so,
+    and the one that fails if somebody removes it as redundant.
+  */
+  it("★ carries each group's active teachers", async () => {
+    const res = await request(server()).get("/v1/groups").set("Cookie", adminA.cookies);
+
+    const group = res.body.items.find((g: { id: string }) => g.id === a.group.id);
+    expect(group.teachers).toHaveLength(1);
+    expect(group.teachers[0].membership.user.id).toBe(a.teacherUser.id);
+    expect(group.teachers[0].membership.id).toBe(a.teacherMembership.id);
+  });
+
+  /*
+    ★ An ended assignment is not a teacher. `endedOn` is how the API retires
+    one, and a row that kept appearing here would tell a director a group is
+    covered by somebody who has stopped teaching it.
+  */
+  it("★ leaves out an assignment that has ended", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Дууссан бүлэг");
+    await assignTeacher(
+      a.kindergarten.id,
+      other.id,
+      a.teacherMembership.id,
+      new Date("2026-01-31"),
+    );
+
+    const res = await request(server()).get("/v1/groups").set("Cookie", adminA.cookies);
+
+    const group = res.body.items.find((g: { id: string }) => g.id === other.id);
+    expect(group.teachers).toEqual([]);
+  });
+
+  /*
+    ★★ **The include must not become a staff contact list.**
+
+    This route is read by TEACHER and ACCOUNTANT as well as ADMIN. Widening the
+    user `select` to the whole record — which is the obvious "while we are here"
+    change — would hand every staff role each teacher's phone, e-mail and ESIS
+    person id on a screen about classrooms. A name and an id is what the screens
+    draw, so a name and an id is what arrives.
+  */
+  it("★ sends a teacher's name and id, and none of their contact details", async () => {
+    const res = await request(server()).get("/v1/groups").set("Cookie", teacherA.cookies);
+
+    const teacher = res.body.items[0].teachers[0].membership.user;
+    expect(Object.keys(teacher).sort()).toEqual(["firstName", "id", "lastName"]);
   });
 });
 
@@ -1283,5 +1615,39 @@ describe("school year isolation", () => {
 
     expect(res.body.items).toHaveLength(1);
     expect(res.body.items[0].id).toBe(a.group.id);
+  });
+});
+
+/**
+ * The fields the group screens read off a group, end to end.
+ *
+ * ★ `esisGroupId` arrives because `findGroup` uses `include` rather than
+ * `select`, so every scalar column comes with it — but "it happens to work"
+ * is exactly the property that breaks the day somebody narrows the query for
+ * an unrelated reason. `/groups/:id`'s roster check is keyed by it, and with
+ * it absent the group page says "ЭСИС-д бүртгэгдээгүй" about a class that is.
+ */
+describe("group payload", () => {
+  it("★ carries the ministry's group id, which the roster check is keyed by", async () => {
+    await db.group.update({
+      where: { id: a.group.id },
+      data: { esisGroupId: "100006351517832" },
+    });
+
+    const res = await request(server())
+      .get(`/v1/groups/${a.group.id}`)
+      .set("Cookie", adminA.cookies);
+
+    expect(res.status).toBe(200);
+    expect(res.body.esisGroupId).toBe("100006351517832");
+  });
+
+  /* Null for a group created by hand — a real state, not a missing field. */
+  it("★ sends null for a group ESIS has never been told about", async () => {
+    const res = await request(server())
+      .get(`/v1/groups/${a.group.id}`)
+      .set("Cookie", adminA.cookies);
+
+    expect(res.body.esisGroupId).toBeNull();
   });
 });

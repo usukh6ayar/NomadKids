@@ -5,6 +5,7 @@ import { ImagePlus, X } from "lucide-react";
 import { ACCEPTED_TYPES, MAX_UPLOAD_BYTES } from "@/components/media/photo-upload";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
+import { shrinkIfTooLarge } from "@/lib/image-shrink";
 
 /** The design's ceiling. The API takes six per request; five is what it draws. */
 export const MAX_OBSERVATION_PHOTOS = 5;
@@ -57,16 +58,25 @@ export function ObservationPhotoPicker({
     return () => urls.forEach((url) => URL.revokeObjectURL(url));
   }, [files]);
 
-  function add(picked: FileList | null) {
+  async function add(picked: FileList | null) {
     if (!picked || picked.length === 0) return;
 
     const room = MAX_OBSERVATION_PHOTOS - files.length;
     const accepted: File[] = [];
     let oversize = 0;
 
-    for (const file of Array.from(picked)) {
-      // Checked here as well as on the server, so a 12 MB photograph fails now
-      // rather than after the note has been written and saved.
+    /*
+     * ★ Shrunk before it is measured — 2026-09-20. A phone shoots 8–12 MB
+     * frames, so refusing past the ceiling meant refusing ordinary
+     * photographs. Anything already under it is passed through untouched.
+     */
+    const chosen = await Promise.all(
+      Array.from(picked).map((file) => shrinkIfTooLarge(file, MAX_UPLOAD_BYTES)),
+    );
+
+    for (const file of chosen) {
+      // Checked here as well as on the server, so a photograph the browser
+      // could not shrink fails now rather than after the note is written.
       if (file.size > MAX_UPLOAD_BYTES) {
         oversize += 1;
         continue;
@@ -75,7 +85,7 @@ export function ObservationPhotoPicker({
     }
 
     if (oversize > 0) {
-      toast.error(`${oversize} зураг 10MB-аас том тул хасагдлаа.`);
+      toast.error(`${oversize} зургийг оруулах боломжгүй тул хасагдлаа.`);
     }
     // Trimmed rather than refused: the point of the cap is the note, not
     // punishing a teacher who selected their whole camera roll.
@@ -112,7 +122,7 @@ export function ObservationPhotoPicker({
               disabled={disabled}
               className="sr-only"
               onChange={(event) => {
-                add(event.target.files);
+                void add(event.target.files);
                 event.target.value = "";
               }}
             />
@@ -210,7 +220,7 @@ export function ObservationPhotoPicker({
                 disabled={disabled}
                 className="sr-only"
                 onChange={(event) => {
-                  add(event.target.files);
+                  void add(event.target.files);
                   // Cleared so picking the same file twice still fires
                   // `change` — otherwise removing a photo and re-adding it
                   // silently does nothing.

@@ -13,7 +13,7 @@ import { ChildHeroProfile } from "@/components/child/child-hero-profile";
 import { TodayAttendanceRecorder } from "@/components/child/child-attendance";
 import { ChildGallery } from "@/components/media/child-gallery";
 import { useSession } from "@/lib/auth/session";
-import { fullName } from "@/lib/format";
+import { fullName, capitalize } from "@/lib/format";
 import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
 import { cn } from "@/lib/utils";
 
@@ -175,7 +175,9 @@ export function ChildOverviewContent({
         />
       ) : null}
 
-      {isStaff ? <TodayAttendanceRecorder childId={childId} childName={data.firstName} /> : null}
+      {isStaff ? (
+        <TodayAttendanceRecorder childId={childId} childName={capitalize(data.firstName)} />
+      ) : null}
 
       <section aria-labelledby="special-days-heading">
         <SectionHeader id="special-days-heading" title="Онцгой өдрүүд" />

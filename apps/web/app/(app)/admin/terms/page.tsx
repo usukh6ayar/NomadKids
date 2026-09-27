@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Pencil, Plus } from "lucide-react";
 import { z } from "zod";
-import { schoolYearSchema, termSchema } from "@kinder/contracts";
+import { schoolYearSchema, termSchema, localDate } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
@@ -18,7 +18,8 @@ import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
-import { formatDate } from "@/lib/format";
+import { formatDate, capitalize } from "@/lib/format";
+import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
 const TERM_COLUMNS = [
   { key: "startsOn", label: "Эхлэх", className: "md:w-[112px]" },
@@ -37,7 +38,7 @@ function isRunning(
   endsOn: string | null | undefined,
 ): boolean {
   if (!startsOn || !endsOn) return false;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
   return startsOn.slice(0, 10) <= today && today <= endsOn.slice(0, 10);
 }
 
@@ -141,7 +142,7 @@ function AdminTerms() {
               title={
                 <span className="flex flex-wrap items-center gap-2">
                   <span className="min-w-0 truncate">
-                    {term.number}. {term.name}
+                    {term.number}. {capitalize(term.name)}
                   </span>
                   {/*
                     ★ Derived from the dates, not from a flag, because that is
@@ -178,7 +179,7 @@ function AdminTerms() {
               actions={
                 <Button variant="ghost" size="icon" onClick={() => setEditing(term)}>
                   <Pencil size={18} />
-                  <span className="sr-only">{term.name} засах</span>
+                  <span className="sr-only">{capitalize(term.name)} засах</span>
                 </Button>
               }
             />
@@ -240,11 +241,14 @@ function CreateTermDialog({
 
   const errors = fieldErrors(create.error);
 
+  const backdrop = useBackdropDismiss(onClose);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Улирал нэмэх"
+      {...backdrop}
       className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4"
     >
       <div className="w-full max-w-[420px] rounded-card border border-border bg-surface p-5">
@@ -399,11 +403,14 @@ function EditTermDialog({
 
   const errors = fieldErrors(save.error);
 
+  const backdrop = useBackdropDismiss(onClose);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Улирал засах"
+      {...backdrop}
       className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4"
     >
       <div className="w-full max-w-[420px] rounded-card border border-border bg-surface p-5">

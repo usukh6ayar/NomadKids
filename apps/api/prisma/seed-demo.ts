@@ -10,8 +10,10 @@
  * an empty state cannot be compared against a design, and every list, card,
  * table and pagination control in this product only exists once there are rows.
  *
- * Written for `docs/UI_MIGRATION_STATUS.md`, which needs the two applications
- * side by side with comparable content.
+ * Written for the UI port, which needed this product and the Django reference
+ * side by side with comparable content. That port is finished and its progress
+ * tracker is gone; the seed outlived it because every screen still needs rows
+ * to be looked at.
  *
  * ★★ It refuses to run anywhere but a local database. See `assertLocalOnly`.
  * The deployment-facing counterpart is `seed-showcase.ts`, which carries its own

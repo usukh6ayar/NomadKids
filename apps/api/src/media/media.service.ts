@@ -1206,6 +1206,32 @@ export class MediaService {
   }
 
   /**
+   * Removes the kindergarten's logo — 2026-09-27, the ✕ beside it on
+   * «Байгууллага». Administrator only, like the upload. The file is
+   * soft-deleted (§3.2) and the audit row names it, so "where did the logo go"
+   * has an answer after the pointer is gone. Removing a logo that is not
+   * there is not an error: the screen asked for "no logo", and there is none.
+   */
+  async removeKindergartenLogo(actor: Actor, kindergartenId: string) {
+    this.tenants.assertAdmin(actor, kindergartenId);
+    const kindergarten = await this.repo.findKindergartenForImage(kindergartenId);
+    if (!kindergarten) throw new NotFoundException();
+
+    const removedId = await this.repo.detachKindergartenLogo(kindergartenId);
+    if (removedId) {
+      await this.audit.append({
+        action: "DELETE",
+        kindergartenId,
+        actorUserId: actor.userId,
+        objectType: "MediaFile",
+        objectId: removedId,
+        metadata: { purpose: "KINDERGARTEN_LOGO", owner: "kindergarten", ownerId: kindergartenId },
+      });
+    }
+    return { removed: Boolean(removedId) };
+  }
+
+  /**
    * A staff portrait — RFP §3.3.
    *
    * ★ Own account only, whatever the role.

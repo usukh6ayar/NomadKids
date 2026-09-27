@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Cake } from "lucide-react";
 import type { TeacherDashboard } from "@kinder/contracts";
 import { BoardCard, BoardCardEmpty } from "./board-card";
-import { formatDayMonth } from "@/lib/format";
+import { formatDayMonth, capitalize } from "@/lib/format";
 
 /**
  * Энэ сард төрсөн хүүхдүүд — the month's birthdays, day-ordered.
@@ -135,7 +135,7 @@ export function MonthBirthdays({
                 <Cake size={16} />
               </span>
               <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">
-                {child.firstName}
+                {capitalize(child.firstName)}
               </span>
               {/*
                 The date, not "in 3 days": a relative phrase is re-read every

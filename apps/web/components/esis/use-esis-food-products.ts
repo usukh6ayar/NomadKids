@@ -70,22 +70,21 @@ export function useEsisFoodProducts(): EsisFoodProduct[] {
   if (!endpoint) return [];
 
   /*
-   * A live response replaces the catalog's demo rows entirely — never merged,
-   * for the reason `EsisDataPanel` gives: an invented product must not sit in
-   * the same dropdown as a real one.
+   * ★ Live rows, or none — 2026-09-14.
+   *
+   * This fell back to the catalog's demo products, so a cook building a menu
+   * could pick a dish the ministry does not list and save it against a real
+   * meal plan. The picker is now empty until `cook/product` answers, and an
+   * empty picker is the honest report of a failed read: the screen around it
+   * says the service did not answer.
    */
-  const rows = read.data?.status === "SUCCEEDED" ? read.data.rows : endpoint.sampleRows;
+  const rows = read.data?.status === "SUCCEEDED" ? read.data.rows : [];
 
-  return (
-    rows
-      .map((row) => ({
-        productId: row.productId ?? "",
-        name: row.productName ?? "",
-        calories: row.calories ?? null,
-      }))
-      // The catalog's sample sets open with an all-defaults `{}` row that exists
-      // to show the field shape. It has no name, and a blank option in a picker
-      // is indistinguishable from "nothing chosen".
-      .filter((product) => product.productId && product.name)
-  );
+  return rows
+    .map((row) => ({
+      productId: row.productId ?? "",
+      name: row.productName ?? "",
+      calories: row.calories ?? null,
+    }))
+    .filter((product) => product.productId && product.name);
 }

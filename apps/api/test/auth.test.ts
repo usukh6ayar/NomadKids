@@ -256,6 +256,25 @@ describe("GET /auth/me", () => {
     expect(res.body.memberships[0].role).toBe("TEACHER");
   });
 
+  /*
+   * ★ The names of the kindergartens they belong to — 2026-09-26, for the
+   * desktop top bar, which says «БЗД 115-р цэцэрлэг» the way the ministry's
+   * SIS does. Only their own: another kindergarten's name is not theirs to
+   * see.
+   */
+  it("names the kindergartens the user belongs to, and no others", async () => {
+    const own = await createKindergarten();
+    const other = await createKindergarten();
+    const user = await createUser({ username: uniq("u") });
+    await createMembership(user.id, own.id, "ADMIN");
+
+    const session = await login(app, user.username);
+    const res = await request(server()).get("/v1/auth/me").set("Cookie", session.cookies);
+
+    expect(res.body.kindergartens).toEqual([{ id: own.id, name: own.name }]);
+    expect(JSON.stringify(res.body)).not.toContain(other.id);
+  });
+
   it("refuses an unauthenticated request", async () => {
     expect((await request(server()).get("/v1/auth/me")).status).toBe(401);
   });

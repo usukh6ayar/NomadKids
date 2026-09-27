@@ -9,9 +9,12 @@ import { createTestApp } from "./support/app";
 import { resetData, testDb, uniq } from "./support/db";
 import {
   authed,
+  createChild,
+  createGroup,
   createMembership,
   createScenario,
   createUser,
+  enrollChild,
   login,
   type AuthSession,
   type Scenario,
@@ -23,6 +26,7 @@ const organizationRow = { institutionId, institutionName: "Цэцэрлэг A" }
 const studentRow = {
   institutionId,
   personId: "90000000000001",
+  personRegNumber: "УБ99223344",
   lastName: "Баяр",
   firstName: "Ану",
   dateOfBirth: "2021-03-04",
@@ -34,6 +38,15 @@ const read = vi.fn(async (key: string) => ({
   status: 200,
   durationMs: 9,
 }));
+/*
+ * ★ `myProfile()` calls `this.esis.teachers(...)` / `this.esis.staff(...)`
+ * directly — they are their own methods on `EsisService`, not routed through
+ * the generic `read` this file already mocks — so they need mocks of their
+ * own. Empty by default; each test that exercises `/esis/my-profile` sets its
+ * own `mockResolvedValueOnce`.
+ */
+const teachers = vi.fn(async () => ({ data: [] as unknown[], status: 200, durationMs: 5 }));
+const staff = vi.fn(async () => ({ data: [] as unknown[], status: 200, durationMs: 5 }));
 const esis = {
   status: () => ({
     configured: true,
@@ -41,20 +54,25 @@ const esis = {
     institutionId,
     hasToken: true,
   }),
+  // `myProfile()` checks `this.esis.isConfigured` directly, not `.status()`.
+  isConfigured: true,
   organization,
   read,
+  teachers,
+  staff,
 } as unknown as Partial<EsisService>;
 
 const mapInstitution = (kindergartenId: string, session: AuthSession) =>
   authed(
     request(server()).put(`/v1/platform/kindergartens/${kindergartenId}/esis/mapping`),
     session,
-  ).send({ mapped: true, institutionId, environment: "TEST" });
+  ).send({ mapped: true, institutionId });
 
 let app: INestApplication;
 let a: Scenario;
 let b: Scenario;
 let adminA: AuthSession;
+let adminB: AuthSession;
 let teacherA: AuthSession;
 let parentA: AuthSession;
 let superAdmin: AuthSession;
@@ -74,53 +92,119 @@ beforeEach(async () => {
   await app.get(RateLimitService).resetAll();
   organization.mockClear();
   read.mockClear();
+  teachers.mockClear();
+  staff.mockClear();
 
   a = await createScenario("esis-a");
   b = await createScenario("esis-b");
   const operator = await createUser({ username: uniq("esis-operator"), isSuperAdmin: true });
 
-  [adminA, teacherA, parentA, superAdmin] = await Promise.all([
+  [adminA, adminB, teacherA, parentA, superAdmin] = await Promise.all([
     login(app, a.adminUser.username),
+    login(app, b.adminUser.username),
     login(app, a.teacherUser.username),
     login(app, a.parentUser.username),
     login(app, operator.username),
   ]);
 });
 
+/**
+ * The operator's readiness view — `GET /platform/kindergartens/:id/esis`.
+ *
+ * ★ **It was `GET /kindergartens/:id/esis` and `@Roles("ADMIN")` until
+ * 2026-09-14**, when the client asked for the ESIS system screens to sit with
+ * the platform operator rather than a kindergarten's director. The facts on it
+ * are the deployment's: `ESIS_TOKEN` and `ESIS_BASE_URL` are environment
+ * settings, one ESIS developer account serves every tenant, and the institution
+ * mapping it reports was already superadmin-only — so a director read blockers
+ * that only somebody else could clear.
+ *
+ * ★★ Through HTTP against the real route, per §4.1. `assertSuperAdmin` inside
+ * the service is the decision, but only a request proves the controller asks.
+ */
 describe("ESIS administration authorization", () => {
-  it("lets a kindergarten admin read only their own readiness", async () => {
-    const own = await authed(
-      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/esis`),
-      adminA,
-    );
-    const other = await authed(
-      request(server()).get(`/v1/kindergartens/${b.kindergarten.id}/esis`),
-      adminA,
-    );
+  const overviewUrl = (kindergartenId: string) =>
+    `/v1/platform/kindergartens/${kindergartenId}/esis`;
 
-    expect(own.status).toBe(200);
-    expect(own.body.endpoints).toHaveLength(39);
-    expect(other.status).toBe(404);
+  it("lets the platform operator read any tenant's readiness", async () => {
+    const [first, second] = await Promise.all([
+      authed(request(server()).get(overviewUrl(a.kindergarten.id)), superAdmin),
+      authed(request(server()).get(overviewUrl(b.kindergarten.id)), superAdmin),
+    ]);
+
+    expect(first.status).toBe(200);
+    /*
+     * ★ 70 since 2026-09-17, was 67 since 2026-09-15 (which was 40). Task 9 of
+     * `2026-09-16-esis-sync-tiers.md` wired three more — `studentAwards`,
+     * `studentSearch`, `buildingByRegisterNumber` — and dispositioned rather
+     * than wired the other three the task named (`esis.requests.ts`'s
+     * `ESIS_DISPOSITIONS`).
+     *
+     * ★★ **73 since 2026-09-18** — spec №3б wired the three group writes the
+     * client asked for: 150, 152 and 162.
+     *
+     * ★★★ **75 since 2026-09-22** — the two мэргэшлийн зэрэг reads, 167 and
+     * 170. The other two the client named are not here and each has its own
+     * reason in `ESIS_DISPOSITIONS`: 119 is refused by the live gateway and
+     * dropped at their instruction, 165 is a POST awaiting a body the
+     * login-gated developer portal has not yielded.
+     */
+    expect(first.body.endpoints).toHaveLength(75);
+    // Every kindergarten, because the token and the grants are one account's.
+    expect(second.status).toBe(200);
   });
 
+  /*
+   * ★ The director is refused with **404**, not 403 — CLAUDE.md §1.7. They
+   * administer the kindergarten in the path and still learn nothing about the
+   * route, which is what keeps its existence from being an oracle.
+   */
   it.each([
+    ["kindergarten admin", () => adminA],
     ["teacher", () => teacherA],
     ["guardian", () => parentA],
   ])("refuses a %s before any ESIS data is returned", async (_label, session) => {
+    const res = await authed(request(server()).get(overviewUrl(a.kindergarten.id)), session());
+    expect(res.status).toBe(404);
+  });
+
+  /*
+   * ★ The old route is gone rather than left answering. A director's bookmark
+   * gets a 404 from the router, not a payload from a controller that kept its
+   * `@Roles("ADMIN")`.
+   */
+  it("no longer serves the tenant-scoped overview route", async () => {
     const res = await authed(
       request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/esis`),
-      session(),
+      adminA,
     );
     expect(res.status).toBe(404);
   });
 
   it("requires authentication", async () => {
-    const res = await request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/esis`);
+    const res = await request(server()).get(overviewUrl(a.kindergarten.id));
     expect(res.status).toBe(401);
   });
 
+  /*
+   * ★ "Хэдэн хүсэлт зөвшөөрөгдсөн, хэдийг ашиглаж байна" — the client's own
+   * question, and the reason the register is on this payload and no other. The
+   * counts are computed from `esis.requests.ts` joined against the catalog by
+   * `apiId`; `esis.requests.test.ts` pins the join itself.
+   */
+  it("reports the deployment's ESIS grants and how many are in use", async () => {
+    const res = await authed(request(server()).get(overviewUrl(a.kindergarten.id)), superAdmin);
+
+    expect(res.status).toBe(200);
+    expect(res.body.requests.counts.approved).toBeGreaterThan(0);
+    expect(res.body.requests.counts.wired).toBeGreaterThan(0);
+    expect(res.body.requests.counts.total).toBe(res.body.requests.items.length);
+    // A snapshot read off the portal by hand says when it was read.
+    expect(res.body.requests.reviewedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
   it("allows only the platform operator to map an institution", async () => {
-    const body = { mapped: true, institutionId, environment: "TEST" };
+    const body = { mapped: true, institutionId };
     const denied = await authed(
       request(server()).put(`/v1/platform/kindergartens/${a.kindergarten.id}/esis/mapping`),
       adminA,
@@ -139,11 +223,31 @@ describe("ESIS administration authorization", () => {
   });
 });
 
+/**
+ * The dry run behind "Синк шалгалт".
+ *
+ * ★ On the platform route since 2026-09-14, with `overview()`. It spends the
+ * deployment's token against the ministry's rate limits to prove the connection
+ * works — the operator's job. The staff-facing "ESIS-ээс татах" reads are
+ * `…/esis/resource` and did not move; the describe below them is unchanged.
+ */
 describe("read-only preview", () => {
+  it("refuses a kindergarten admin, who no longer owns the dry run", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+
+    const res = await authed(
+      request(server()).post(`/v1/platform/kindergartens/${a.kindergarten.id}/esis/preview`),
+      adminA,
+    ).send({ resources: ["organization"] });
+
+    expect(res.status).toBe(404);
+    expect(organization).not.toHaveBeenCalled();
+  });
+
   it("refuses a preview before the platform mapping exists", async () => {
     const res = await authed(
-      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/esis/preview`),
-      adminA,
+      request(server()).post(`/v1/platform/kindergartens/${a.kindergarten.id}/esis/preview`),
+      superAdmin,
     ).send({ resources: ["organization"] });
 
     expect(res.status).toBe(409);
@@ -154,12 +258,12 @@ describe("read-only preview", () => {
     await authed(
       request(server()).put(`/v1/platform/kindergartens/${a.kindergarten.id}/esis/mapping`),
       superAdmin,
-    ).send({ mapped: true, institutionId, environment: "TEST" });
+    ).send({ mapped: true, institutionId });
 
     const beforeChildren = await db.child.count({ where: { kindergartenId: a.kindergarten.id } });
     const res = await authed(
-      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/esis/preview`),
-      adminA,
+      request(server()).post(`/v1/platform/kindergartens/${a.kindergarten.id}/esis/preview`),
+      superAdmin,
     ).send({ resources: ["organization"] });
 
     expect(res.status).toBe(201);
@@ -197,8 +301,8 @@ describe("read-only preview", () => {
     });
 
     const res = await authed(
-      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/esis/preview`),
-      adminA,
+      request(server()).post(`/v1/platform/kindergartens/${a.kindergarten.id}/esis/preview`),
+      superAdmin,
     ).send({ resources: ["organization"] });
 
     expect(res.status).toBe(201);
@@ -234,7 +338,13 @@ describe("role-scoped ESIS catalog", () => {
     const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
 
     expect(res.status).toBe(200);
-    expect(res.body.endpoints).toHaveLength(39);
+    /*
+      ADMIN takes every key, so this moves with the catalogue — 73 since
+      2026-09-18, when spec №3б added the three group writes, and **75 since
+      2026-09-22**, when the two мэргэшлийн зэрэг reads were wired
+      (`degreeDecisions` 167, `degreeHistory` 170).
+    */
+    expect(res.body.endpoints).toHaveLength(75);
   });
 
   /*
@@ -296,7 +406,17 @@ describe("role-scoped ESIS catalog", () => {
     }
   });
 
-  it("gives an accountant the two income statements, and no roster", async () => {
+  /*
+   * ★ Three services since 2026-09-14, and the third is the interesting one.
+   *
+   * `foodDiscountStudents` names children, where the two income statements are
+   * monthly totals — so it is the first entry on the accountant's list that
+   * carries people. It is here rather than on the cook's list, which holds
+   * every other `cook/*` read: who the state subsidises changes no quantity a
+   * cook works with, and it is a fact about a family's circumstances. Least
+   * privilege puts it with the role that prices the month.
+   */
+  it("gives an accountant the income statements and the subsidy list, and no roster", async () => {
     const accountant = await createUser({ username: uniq("esis-accountant") });
     await createMembership(accountant.id, a.kindergarten.id, "ACCOUNTANT");
     const session = await login(app, accountant.username);
@@ -307,6 +427,7 @@ describe("role-scoped ESIS catalog", () => {
     expect(res.body.endpoints.map((e: { key: string }) => e.key)).toEqual([
       "livelihoodForm1",
       "livelihoodForm2",
+      "foodDiscountStudents",
     ]);
   });
 
@@ -325,7 +446,7 @@ describe("role-scoped ESIS catalog", () => {
    * whole institution's appointments and releases — a director's question —
    * and lives on `/admin/users`, so it must not appear here.
    */
-  it("gives a teacher the sixteen their screens draw, and no others", async () => {
+  it("gives a teacher the twenty-eight their screens draw, and no others", async () => {
     const res = await authed(request(server()).get(url(a.kindergarten.id)), teacherA);
 
     expect(res.status).toBe(200);
@@ -347,9 +468,54 @@ describe("role-scoped ESIS catalog", () => {
         "studentCondition",
         "studentConditionSave",
         "teacherAcademicOrg",
+        /*
+         * ★ Added 2026-09-15, and the split is per service rather than per
+         * block. A teacher gets the three facts the day depends on — харшил,
+         * хориотой хүнс, хөгжлийн бэрхшээл — because a child who must not eat
+         * something is classroom information, and `child-health.tsx` already
+         * draws those sections for staff. The measurement pair is theirs
+         * because a teacher runs the measuring session.
+         */
+        "studentAllergy",
+        "studentAllergySave",
+        "studentProhibitedFood",
+        "studentProhibitedFoodSave",
+        "studentDisability",
+        "studentDisabilitySave",
+        "studentMeasurements",
+        "studentMeasurementSave",
+        "groupMeasurements",
+        "groupMeasurementsSave",
+        "vaccineCatalog",
+        "schoolAttendance",
       ].sort(),
     );
-    expect(res.body.endpoints.map((e: { key: string }) => e.key)).not.toContain("teacherMovements");
+    /*
+     * ★★ The medical record a teacher does not get. Consultation results,
+     * surgical history and vaccine serial numbers are not classroom
+     * information, and no screen a teacher opens draws them — so the absence
+     * is asserted rather than left to the list above being read carefully.
+     */
+    const keys = res.body.endpoints.map((e: { key: string }) => e.key);
+    for (const withheld of [
+      "teacherMovements",
+      "studentAssessments",
+      "studentAssessmentsSave",
+      "studentSurgery",
+      "studentSurgerySave",
+      "studentIncident",
+      "studentIncidentSave",
+      "vaccineHistory",
+      "vaccinePlan",
+      "studentScreening",
+      "studentScreeningSave",
+      "studentAttachmentSave",
+      "workerInfo",
+      "teacherProfile",
+      "teacherCheck",
+    ]) {
+      expect({ withheld, present: keys.includes(withheld) }).toEqual({ withheld, present: false });
+    }
   });
 
   /*
@@ -379,6 +545,14 @@ describe("role-scoped ESIS catalog", () => {
       "syncStatus",
       "syncErrorCode",
       "lastSyncAt",
+      /*
+       * ★★★ And the grant half, since 2026-09-14. "Which ESIS scopes has this
+       * deployment been granted, and under what name in the portal" is the
+       * operator's question about their own developer account; a teacher's
+       * panel draws the services their screens use and needs no opinion on it.
+       */
+      "grant",
+      "portalName",
     ]) {
       expect(res.body.endpoints[0], key).not.toHaveProperty(key);
     }
@@ -448,10 +622,16 @@ describe("single-resource ESIS read", () => {
 
   /*
    * ★ `studentByRegister` left this list on 2026-09-09 — the client asked that
-   * a teacher be able to search by register number. It is a service they may
-   * *use*, not a number they may read: `personRegNumber` is a refused output
-   * on it as on every roster service, and `read` keeps the value they typed
-   * out of the audit row.
+   * a teacher be able to search by register number. `read` still keeps the
+   * value they typed out of the audit row (`REDACTED_READ_PARAMS`).
+   *
+   * ★★ **The second half of this comment stopped being true on 2026-09-15.**
+   * `personRegNumber` was a refused *output* on every roster service; the
+   * client's decision that day ("РД-г тийм") ended that, and nothing yet gates
+   * it per caller (`EsisAdminService.visibleRows` is unwired — see the note on
+   * `esisVisibleRows` in `esis.schemas.ts`). A teacher reading `students` or
+   * `studentByRegister` through this same route now receives every matched
+   * child's register number until that gate lands.
    */
   it.each([
     ["organization", "resource=organization"],
@@ -534,10 +714,26 @@ describe("single-resource ESIS read", () => {
     expect(res.body.status).toBe("SUCCEEDED");
     expect(res.body.count).toBe(1);
     expect(res.body.rows[0]).toMatchObject({ firstName: "Ану", personId: "90000000000001" });
+    /*
+     * ★ `personRegNumber` flows through — 2026-09-15, "РД-г тийм, нууц үгийг
+     * үгүй". It is no longer refused at the parser (`esisStudentSchema` now
+     * names it) or at the catalog (`esis.fields.ts`'s `students` entry marks
+     * it `keep(…)`), and this is a live value, not a `null` column: the
+     * operator screen's column list is built from that same catalog
+     * (`rowValues`), so a schema that still dropped the field would show a
+     * column claiming ingestion of a value it silently discarded — the exact
+     * defect `esis.fields.test.ts`'s "matches the parsing schema key for key"
+     * exists to catch.
+     *
+     * ★★ Who besides an admin may see it is not decided here — nothing gates
+     * it per caller yet (`EsisAdminService.visibleRows` is unwired), so this
+     * assertion is deliberately about the admin caller this test already uses.
+     */
+    expect(res.body.rows[0]).toMatchObject({ personRegNumber: "УБ99223344" });
     // Refused fields are described, never valued.
     const refused = res.body.fields.filter((field: { ingested: boolean }) => !field.ingested);
-    expect(refused.map((field: { name: string }) => field.name)).toContain("personRegNumber");
-    expect(Object.keys(res.body.rows[0])).not.toContain("personRegNumber");
+    expect(refused.map((field: { name: string }) => field.name)).toContain("microsoftPassword");
+    expect(Object.keys(res.body.rows[0])).not.toContain("microsoftPassword");
 
     expect(await db.child.count({ where: { kindergartenId: a.kindergarten.id } })).toBe(
       beforeChildren,
@@ -596,5 +792,1367 @@ describe("single-resource ESIS read", () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ status: "FAILED", errorCode: "SCOPE_DENIED", count: 0 });
     expect(res.body.fields.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Who may read *this child's* ESIS record.
+ *
+ * ★ **The subject was never checked until 2026-09-15**, and these are the
+ * cases CLAUDE.md §4.1 makes mandatory for any route touching child data.
+ *
+ * `assertReadable` asked two questions — is the caller in this tenant, does
+ * their role reach this service — and neither is about the child. Every
+ * per-child ESIS service is addressed by a `personId` the caller supplies, and
+ * `students` hands the whole roster's ids to any teacher. So a teacher of one
+ * group could read another group's харшил or хэмжилт by substituting an id.
+ *
+ * ★★ Through HTTP against the real route, not by calling `canAccessChild` —
+ * §4.1 is explicit that the latter passes even when the endpoint never calls
+ * it, which is precisely the defect these cover.
+ */
+describe("per-child ESIS reads are gated by canAccessChild", () => {
+  const resourceUrl = (kindergartenId: string, personId: string) =>
+    `/v1/kindergartens/${kindergartenId}/esis/resource` +
+    `?resource=studentMeasurements&personId=${personId}`;
+
+  /** The teacher's own child, with the ESIS match already proven. */
+  const MINE = "90000000000777";
+  /** A child of the same kindergarten, in a group this teacher does not teach. */
+  const THEIRS = "90000000000888";
+
+  beforeEach(async () => {
+    const otherGroup = await createGroup(a.kindergarten.id, a.schoolYear.id, "Бусад бүлэг");
+    const otherChild = await createChild(a.kindergarten.id);
+    await enrollChild(a.kindergarten.id, otherChild.id, otherGroup.id, a.schoolYear.id);
+
+    await db.child.update({ where: { id: a.child.id }, data: { esisPersonId: MINE } });
+    await db.child.update({ where: { id: otherChild.id }, data: { esisPersonId: THEIRS } });
+    await mapInstitution(a.kindergarten.id, superAdmin);
+  });
+
+  it("lets a teacher read a child in their own group", async () => {
+    const res = await authed(request(server()).get(resourceUrl(a.kindergarten.id, MINE)), teacherA);
+
+    expect(res.status).toBe(200);
+  });
+
+  /* The case this whole block exists for. */
+  it("returns 404 to a teacher for a child in another group", async () => {
+    const res = await authed(
+      request(server()).get(resourceUrl(a.kindergarten.id, THEIRS)),
+      teacherA,
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  /*
+   * ★ Unproven is refused, not waved through. `esisPersonId` is written only
+   * where the product has established the match against the live roster; a
+   * child without one cannot be attributed to anybody, and "we do not know
+   * whose record this is" is not a reason to show it.
+   */
+  it("returns 404 to a teacher for a personId no child is mapped to", async () => {
+    const res = await authed(
+      request(server()).get(resourceUrl(a.kindergarten.id, "90000000000999")),
+      teacherA,
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  /*
+   * ★★ An admin is exempt, and the exemption is not a hole: `isAdminOver`
+   * passes for every child of a kindergarten they administer, so the gate could
+   * only ever answer yes. Running it anyway would refuse an admin a child whose
+   * ESIS id nobody has proven yet — denying access the rule itself grants.
+   */
+  it("lets an admin read a child whose ESIS id is not mapped", async () => {
+    const res = await authed(
+      request(server()).get(resourceUrl(a.kindergarten.id, "90000000000999")),
+      adminA,
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 404 to a guardian, who reaches no ESIS service at all", async () => {
+    const res = await authed(request(server()).get(resourceUrl(a.kindergarten.id, MINE)), parentA);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 to a teacher of another kindergarten", async () => {
+    const teacherB = await login(app, b.teacherUser.username);
+    const res = await authed(request(server()).get(resourceUrl(a.kindergarten.id, MINE)), teacherB);
+
+    expect(res.status).toBe(404);
+  });
+
+  /*
+   * ★ Tier 3 (plan `2026-09-16-esis-sync-tiers.md` Task 6) was already built
+   * before this plan started — `EsisAdminService.read` gates on
+   * `assertCanReadEsisChild` and writes one `AuditLog` `VIEW` row. This is the
+   * case that proves the row is attributable, not merely present: it names
+   * who looked (`actorUserId`), what they looked at (`objectId`, the
+   * resource), and whose record it was (`metadata.params.personId`) — the
+   * three facts a ministry reviewer would ask for about any per-child read.
+   */
+  it("leaves exactly one AuditLog row naming the actor, the child and the resource", async () => {
+    read.mockResolvedValueOnce({ data: [] });
+
+    const res = await authed(request(server()).get(resourceUrl(a.kindergarten.id, MINE)), teacherA);
+
+    expect(res.status).toBe(200);
+
+    const rows = await db.auditLog.findMany({
+      where: { kindergartenId: a.kindergarten.id, objectType: "EsisResource", action: "VIEW" },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      actorUserId: teacherA.userId,
+      objectId: "studentMeasurements",
+    });
+    expect(rows[0]!.metadata).toMatchObject({
+      resource: "studentMeasurements",
+      params: { personId: MINE },
+    });
+  });
+});
+
+/*
+ * ★ CLAUDE.md §4.1 — through HTTP, against the real route. A unit test on
+ * `esisVisibleRows` passes whether or not any controller calls it, which is
+ * exactly the failure mode that rule exists to catch.
+ */
+describe("register numbers by role", () => {
+  const url = (kindergartenId: string, query: string) =>
+    `/v1/kindergartens/${kindergartenId}/esis/resource?${query}`;
+
+  const REG = "УЛ24270406";
+  const CIVIL = "4812345619";
+  const rosterRow = {
+    personId: "90000000000001",
+    firstName: "Ану",
+    personRegNumber: REG,
+    civilId: CIVIL,
+    googleEmailPass: "leaked",
+    microsoftEmailPass: "leaked",
+    username: "leaked",
+  };
+
+  it("shows an admin of this kindergarten the register number", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    read.mockResolvedValueOnce({ data: [rosterRow] });
+
+    const res = await authed(
+      request(server()).get(url(a.kindergarten.id, "resource=students")),
+      adminA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(JSON.stringify(res.body)).toContain(REG);
+  });
+
+  it("hides it from a teacher reading the same service", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    read.mockResolvedValueOnce({ data: [rosterRow] });
+
+    const res = await authed(
+      request(server()).get(url(a.kindergarten.id, "resource=students")),
+      teacherA,
+    );
+
+    expect(res.status).toBe(200);
+    const body = JSON.stringify(res.body);
+    expect({ reg: body.includes(REG), civil: body.includes(CIVIL) }).toEqual({
+      reg: false,
+      civil: false,
+    });
+    // …and the row is still there, minus the two fields.
+    expect(body).toContain("Ану");
+  });
+
+  /*
+   * ★ `myProfile()` does not call the generic `read` mock — it calls
+   * `this.esis.teachers(...)` directly (teacherA holds a TEACHER membership,
+   * so `myProfile` picks the `teachers` resource) and matches the returned
+   * rows against the signed-in user's own name before rendering one. A row
+   * shaped like `rosterRow` above would never match — it carries no
+   * `lastName`, and `createUser`'s default identity is "Овог Nэр" — so the
+   * match would fail with 0 results and the assertions below would pass
+   * vacuously against a conflict error rather than against a stripped row.
+   * This row is teacherA's own identity (`createScenario` does not override
+   * it), so the match succeeds and there is a real row to strip.
+   */
+  const teacherProfileRow = {
+    personId: "90000000000002",
+    lastName: "Овог",
+    firstName: "Нэр",
+    personRegNumber: REG,
+    civilId: CIVIL,
+    googleEmailPass: "leaked",
+    microsoftEmailPass: "leaked",
+    username: "leaked",
+  };
+
+  it("hides it from a teacher's own ESIS profile", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    teachers.mockResolvedValueOnce({ data: [teacherProfileRow], status: 200, durationMs: 5 });
+
+    const res = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/esis/my-profile`),
+      teacherA,
+    );
+
+    expect(res.status).toBe(200);
+    const body = JSON.stringify(res.body);
+    expect({ reg: body.includes(REG), civil: body.includes(CIVIL) }).toEqual({
+      reg: false,
+      civil: false,
+    });
+  });
+
+  /*
+   * ★★ Spec §4.3's "any guardian payload: never" is already covered — see
+   * "returns 404 to a guardian and never calls ESIS" earlier in this file. A
+   * parent never reaches the route, so there is no body to strip. Confirm that
+   * test still passes rather than writing a third.
+   */
+
+  /*
+   * ★★★ The credential half, asserted on the route that shows the most. If an
+   * ADMIN cannot see a provider password, no narrower caller needs checking.
+   *
+   * ★ Scoped to `res.body.rows`, not the whole response — a change from the
+   * literal draft. `res.body.fields` is the catalog's description of every
+   * known field, refused ones included (`CREDENTIAL_FIELDS` declares
+   * `googleEmailPass`, `microsoftEmailPass` and `username` by name so the
+   * operator screen can say *why* a column is empty — see "returns every
+   * ingested field…" above, which pins that behaviour deliberately). Checking
+   * the whole JSON body would fail on that description string every time,
+   * whether or not any *value* leaked, which is not what this test is for.
+   */
+  it("never shows a provider password, even to an admin", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    read.mockResolvedValueOnce({ data: [rosterRow] });
+
+    const res = await authed(
+      request(server()).get(url(a.kindergarten.id, "resource=staff")),
+      adminA,
+    );
+
+    const rows = JSON.stringify(res.body.rows);
+    // No leaked value, under any key.
+    expect(rows).not.toContain("leaked");
+    // And no leaked key either — `username` has no declared field for
+    // `staff` (only for `teachers`), so without the gate it would arrive as
+    // a *discovered* field and `esisFieldsFor` would mark it `ingested: true`.
+    for (const name of ["googleEmailPass", "microsoftEmailPass", "username"]) {
+      expect({ name, present: rows.includes(`"${name}"`) }).toEqual({ name, present: false });
+    }
+  });
+});
+
+/*
+ * ★ The roster exists so that `POST /v1/staff-registration` — which is public —
+ * never has to call ESIS. This is the only route that fills it, and it is
+ * ADMIN-only: a refresh spends the deployment's token against the ministry's
+ * rate limits.
+ */
+describe("staff roster refresh", () => {
+  const url = (kindergartenId: string) =>
+    `/v1/kindergartens/${kindergartenId}/esis/staff-roster/refresh`;
+
+  /*
+   * ★ The register number is **lower case here on purpose.**
+   *
+   * Measured live on 2026-09-16: `school/staff` returns register numbers in
+   * lower case — 0 of 13 matched the pattern as sent, 13 of 13 after
+   * upper-casing — while `teacher/list` returns the same thirteen people's
+   * numbers in upper case. The roster is built from `school/staff` because it
+   * is the superset, so this fixture is what the service actually receives.
+   */
+  const staffRow = {
+    personId: "90000000000001",
+    personRegNumber: "ул24270406",
+    lastName: "Овог",
+    firstName: "Нэр",
+    jobCode: "2342-13",
+    positionName: "Багш, цэцэрлэгийн /мэргэжлийн/ /СӨБ/",
+  };
+
+  it("stores the register number normalised, not as the ministry cased it", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    read.mockResolvedValue({ data: [staffRow] });
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(1);
+
+    const stored = await db.esisStaffRoster.findMany({
+      where: { kindergartenId: a.kindergarten.id },
+    });
+    expect(stored).toHaveLength(1);
+    /*
+     * Upper case, though the fixture was lower. Storing it raw would make the
+     * registration lookup fail for every member of staff, and the screen would
+     * say "you are not on the list" — indistinguishable from the truth.
+     */
+    expect(stored[0]).toMatchObject({ registerNumber: "УЛ24270406", jobCode: "2342-13" });
+  });
+
+  /* A row nobody could ever match is counted and skipped, not stored. */
+  it("skips a row whose register number cannot be read", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    read.mockResolvedValue({
+      data: [staffRow, { ...staffRow, personId: "90000000000002", personRegNumber: "" }],
+    });
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.body).toMatchObject({ count: 1, skipped: 1 });
+  });
+
+  /*
+   * ★ The two services are not interchangeable, and every test above this one
+   * would pass if they were swapped.
+   *
+   * `read.mockResolvedValue(...)` answers both `read("staff", …)` and
+   * `read("teachers", …)` with the same array, so nothing above can tell the
+   * two apart. That matters: on institution 42778 `school/staff` returns 13
+   * rows and `teacher/list` returns 10, and the three who appear only in the
+   * larger list are the two тогооч and the жижүүр. Building the roster from
+   * `teacher/list` would silently lock the cooks out of registering — they map
+   * to `COOK` through jobCode `5120` and have every right to an account.
+   *
+   * This mock answers per service, so a transposition fails here.
+   */
+  it("builds the roster from school/staff, and flags who teacher/list also names", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+
+    const cook = {
+      ...staffRow,
+      personId: "90000000000002",
+      personRegNumber: "аб11112222",
+      jobCode: "5120-11",
+      positionName: "ахлах Тогооч",
+    };
+
+    read.mockImplementation(async (resource: string) => ({
+      data: resource === "teachers" ? [staffRow] : [staffRow, cook],
+    }));
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.body.count).toBe(2);
+
+    const stored = await db.esisStaffRoster.findMany({
+      where: { kindergartenId: a.kindergarten.id },
+      orderBy: { registerNumber: "asc" },
+    });
+
+    /* The cook is on the roster — she is in `school/staff` and not in `teacher/list`. */
+    expect(stored.map((row) => row.registerNumber)).toEqual(["АБ11112222", "УЛ24270406"]);
+    expect(stored.map((row) => row.isInstructor)).toEqual([false, true]);
+  });
+
+  /*
+   * ★★ Replace, not merge. Somebody who has left the kindergarten must stop
+   * being able to register, and a merge would leave their row behind.
+   */
+  it("replaces the previous roster rather than merging into it", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+
+    read.mockResolvedValue({ data: [staffRow] });
+    await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    read.mockResolvedValue({
+      data: [{ ...staffRow, personId: "90000000000002", personRegNumber: "УБ11112222" }],
+    });
+    await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    const stored = await db.esisStaffRoster.findMany({
+      where: { kindergartenId: a.kindergarten.id },
+    });
+    expect(stored.map((row) => row.registerNumber)).toEqual(["УБ11112222"]);
+  });
+
+  it("returns 404 to a teacher and stores nothing", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), teacherA).send({});
+
+    expect(res.status).toBe(404);
+    expect(await db.esisStaffRoster.count({ where: { kindergartenId: a.kindergarten.id } })).toBe(
+      0,
+    );
+  });
+
+  it("returns 404 to an admin of another kindergarten", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminB).send({});
+
+    expect(res.status).toBe(404);
+  });
+});
+
+/*
+ * ★ The issued registration code is gone — 2026-09-20, replaced by the
+ * kindergarten's ESIS institution number. `POST …/staff-registration-code` no
+ * longer exists and the three cases that drove it went with it; what they
+ * protected is covered by `staff-registration.test.ts`, which matches the
+ * institution number and the roster together.
+ *
+ * ★★ The one rule that needed a home here rather than there: the number is an
+ * ADMIN field. A teacher reading their own kindergarten must not see it.
+ */
+describe("the kindergarten's ESIS institution number", () => {
+  const url = (kindergartenId: string) => `/v1/kindergartens/${kindergartenId}`;
+
+  it("shows the institution number to an admin", async () => {
+    await db.kindergarten.update({
+      where: { id: a.kindergarten.id },
+      data: { esisInstitutionId: "42778" },
+    });
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.esisInstitutionId).toBe("42778");
+  });
+
+  it("withholds it from a teacher of the same kindergarten", async () => {
+    await db.kindergarten.update({
+      where: { id: a.kindergarten.id },
+      data: { esisInstitutionId: "42778" },
+    });
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), teacherA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.esisInstitutionId).toBeUndefined();
+  });
+});
+
+/**
+ * `POST /kindergartens/:id/esis/write` — the immediate write route.
+ *
+ * ★ It had **no test at all** until 2026-09-18, which is how six services whose
+ * field names nothing has ever confirmed stayed reachable by a teacher. The
+ * gate below is the product's answer; this is the part that proves it, because
+ * a comment saying "unproven" stopped nothing when 162 had the same problem.
+ */
+describe("POST /kindergartens/:id/esis/write", () => {
+  const url = (kindergartenId: string) => `/v1/kindergartens/${kindergartenId}/esis/write`;
+
+  /*
+   * ★ Their read halves answered `203` for every child on institution 42778,
+   * the portal renders none of them, and the probe cannot reach their
+   * validation — so the field lists are inference with nothing behind them.
+   * These describe a child's allergies, disability, surgery and safety
+   * incidents; a wrong field there is a wrong medical record.
+   */
+  for (const resource of [
+    "studentAllergySave",
+    "studentProhibitedFoodSave",
+    "studentDisabilitySave",
+    "studentSurgerySave",
+    "studentIncidentSave",
+    "studentScreeningSave",
+  ]) {
+    it(`refuses ${resource}, whose fields ESIS has never documented`, async () => {
+      const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+        resource,
+        payload: { personId: 1 },
+      });
+
+      expect(res.status).toBe(409);
+    });
+  }
+
+  /*
+   * ★★ And the three that were corrected are **not** refused — 86, 71 and 101
+   * now carry the ministry's own field names rather than this product's
+   * inventions, so the gate has to let them past or it is just an outage.
+   */
+  it("lets a corrected service through the gate", async () => {
+    /*
+     * ★ The mapping matters: without a confirmed `esisInstitutionId` the route
+     * answers 409 for an entirely different reason ("байгууллагын код
+     * баталгаажаагүй"), which would make this assertion pass while proving
+     * nothing about the gate.
+     */
+    await testDb().kindergarten.update({
+      where: { id: a.kindergarten.id },
+      data: { esisInstitutionId: "42778", esisMappedAt: new Date() },
+    });
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+      resource: "studentStatisticsSave",
+      payload: { personId: 1, infoFlag9: "N" },
+    });
+
+    expect(res.status).not.toBe(409);
+  });
+
+  it("returns 404 to an administrator of another kindergarten", async () => {
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminB).send({
+      resource: "studentStatisticsSave",
+      payload: { personId: 1 },
+    });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+/**
+ * `GET /kindergartens/:id/esis/coverage` — the 84/84 matrix.
+ *
+ * ★ The artifact that argues for the next institutions: the ministry granted 84
+ * services for one month and will ask both "did you use them?" and "did you
+ * call anything without a reason?". These two questions pull against each
+ * other, and the matrix is the one page that answers both.
+ */
+describe("GET /kindergartens/:id/esis/coverage", () => {
+  const url = (kindergartenId: string) => `/v1/kindergartens/${kindergartenId}/esis/coverage`;
+
+  it("reports one row per approved grant, and no unexplained zero", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.rows.length).toBeGreaterThan(50);
+    /*
+       The claim the whole report rests on. A granted service reading zero calls
+       must be either wired to a screen or carry a named reason; `UNDECIDED`
+       means a grant was left lying around.
+    */
+    expect(res.body.totals.undecided).toBe(0);
+    for (const row of res.body.rows) {
+      if (row.calls > 0) continue;
+      expect({
+        apiId: row.apiId,
+        explained: row.serviceKey !== null || row.reason !== null,
+      }).toEqual({ apiId: row.apiId, explained: true });
+    }
+  });
+
+  /*
+   * ★★ **It reaches ESIS not at all.** A report that called the ministry to say
+   * how often it calls the ministry would add traffic with no purpose a
+   * reviewer could name, in the month they are reading the logs.
+   */
+  it("makes no ESIS call to produce itself", async () => {
+    read.mockClear();
+    organization.mockClear();
+    staff.mockClear();
+
+    await authed(request(server()).get(url(a.kindergarten.id)), adminA);
+
+    expect(read).not.toHaveBeenCalled();
+    expect(organization).not.toHaveBeenCalled();
+    expect(staff).not.toHaveBeenCalled();
+  });
+
+  it("counts a sync run's resources, not just the run", async () => {
+    await db.esisSyncRun.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        initiatedById: a.adminUser.id,
+        status: "SUCCEEDED",
+        resources: ["buildings", "rooms"],
+      },
+    });
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
+    const buildings = res.body.rows.find(
+      (row: { serviceKey: string | null }) => row.serviceKey === "buildings",
+    );
+
+    expect(buildings.calls).toBeGreaterThan(0);
+    expect(buildings.state).toBe("IN_USE");
+  });
+
+  /*
+   * ★ One kindergarten's matrix is what its director hands the ministry about
+   * their own institution. Another tenant's traffic must not appear on it.
+   */
+  /*
+   * ★ The header says one month, so the count is one month — 2026-09-26.
+   * Audit rows were counted for all time while sync runs were windowed, so a
+   * call from the week before the trial read as a call inside it.
+   */
+  it("leaves a call from before the window out of the count", async () => {
+    const twoMonthsAgo = new Date();
+    twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
+    await db.auditLog.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        actorUserId: a.adminUser.id,
+        action: "VIEW",
+        objectType: "EsisResource",
+        objectId: "subjectAreas",
+        createdAt: twoMonthsAgo,
+      },
+    });
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
+    const subjectAreas = res.body.rows.find(
+      (row: { serviceKey: string | null }) => row.serviceKey === "subjectAreas",
+    );
+    expect(subjectAreas.calls).toBe(0);
+  });
+
+  it("counts only this kindergarten's calls", async () => {
+    await db.esisSyncRun.create({
+      data: {
+        kindergartenId: b.kindergarten.id,
+        initiatedById: b.adminUser.id,
+        status: "SUCCEEDED",
+        resources: ["subjectAreas"],
+      },
+    });
+
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
+    const subjectAreas = res.body.rows.find(
+      (row: { serviceKey: string | null }) => row.serviceKey === "subjectAreas",
+    );
+
+    expect(subjectAreas.calls).toBe(0);
+  });
+
+  it("returns 404 to an administrator of another kindergarten", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), adminB);
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 to a teacher of this kindergarten", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), teacherA);
+    expect(res.status).toBe(404);
+  });
+
+  it("serves the same matrix as a spreadsheet", async () => {
+    /*
+       ★ `.buffer()` alone is not enough — supertest still runs its default
+       text parser over a binary body and `res.body` comes back as something
+       with no `slice`. The explicit binary parser is what makes the assertion
+       about a real xlsx rather than about a mangled string.
+    */
+    const res = await authed(request(server()).get(`${url(a.kindergarten.id)}/export`), adminA)
+      .buffer()
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => chunks.push(Buffer.from(chunk)));
+        response.on("end", () => callback(null, Buffer.concat(chunks)));
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toContain("spreadsheetml");
+    expect(res.headers["content-disposition"]).toContain("esis-coverage-");
+    // "PK" — a real zip, which is what an xlsx is.
+    expect((res.body as Buffer).subarray(0, 2).toString()).toBe("PK");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The roster import — ESIS's groups and children, into our own records
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * 2026-09-20, the client: "esis ees shuud buleg bolon buleg dotorh huuhduud ni
+ * irehgui ymuu? tged irwel shuud hadgalchmaar baina."
+ *
+ * ★ The import writes `Group`, `Child` and `Enrollment` — the only ESIS read
+ * in the product that creates child records. So the §4.1 three are not a
+ * formality here: a route that can mint children in the wrong tenant is the
+ * worst defect this codebase could ship.
+ *
+ * ★★ **Idempotence is the safety property**, because the client asked for no
+ * preview step. If a second run duplicates anything, the feature is unsafe to
+ * press twice and there is nothing else standing between it and a doubled
+ * roster.
+ */
+describe("POST /kindergartens/:id/esis/roster-import", () => {
+  const url = (kindergartenId: string) => `/v1/kindergartens/${kindergartenId}/esis/roster-import`;
+
+  const GROUP_ROW = {
+    studentGroupId: 100006351517832,
+    studentGroupName: "ахлах бүлэг",
+    academicLevel: "17",
+  };
+  const CHILD_ROW = {
+    personId: 9425579614258,
+    lastName: "Батаа",
+    firstName: "Номин",
+    dateOfBirth: "2021-03-04",
+    genderCode: "F",
+    studentGroupId: 100006351517832,
+    actionDate: "2026-05-14",
+  };
+
+  /** The shape `EsisService.read` is mocked with for this block. */
+  const rosterReads = (groups: unknown[], students: unknown[]) =>
+    read.mockImplementation(async (key: string) => ({
+      data: key === "groups" ? groups : key === "students" ? students : [organizationRow],
+      status: 200,
+      durationMs: 9,
+    }));
+
+  async function withCurrentYear(kindergartenId: string) {
+    await db.schoolYear.updateMany({ where: { kindergartenId }, data: { isCurrent: false } });
+    return db.schoolYear.create({
+      data: {
+        kindergartenId,
+        name: `2026-2027-${uniq()}`,
+        startsOn: new Date("2026-09-01"),
+        endsOn: new Date("2027-06-01"),
+        isCurrent: true,
+      },
+    });
+  }
+
+  it("creates the group, the child and the enrolment that joins them", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.groups.created).toBe(1);
+    expect(res.body.children.created).toBe(1);
+    expect(res.body.enrollments.created).toBe(1);
+
+    const group = await db.group.findFirst({
+      where: { kindergartenId: a.kindergarten.id, esisGroupId: String(GROUP_ROW.studentGroupId) },
+    });
+    expect(group?.name).toBe("ахлах бүлэг");
+    // ESIS level 17 "Ахлах" is this product's MIDDLE — the two scales are off
+    // by one and the mapping is by code, never by name.
+    expect(group?.ageBand).toBe("MIDDLE");
+
+    const child = await db.child.findFirst({
+      where: { kindergartenId: a.kindergarten.id, esisPersonId: String(CHILD_ROW.personId) },
+    });
+    expect(child?.firstName).toBe("Номин");
+
+    const enrollment = await db.enrollment.findFirst({ where: { childId: child!.id } });
+    expect(enrollment?.groupId).toBe(group!.id);
+    // ESIS's own actionDate, not the school year's September start.
+    expect(enrollment?.startedOn.toISOString().slice(0, 10)).toBe("2026-05-14");
+  });
+
+  /*
+   * ★★★★ **A group typed by hand is adopted, not duplicated — even when the
+   * capital letter differs.**
+   *
+   * This is not hypothetical: on the live deployment a director had created
+   * «Бэлтгэл бүлэг» and the ministry sends «бэлтгэл бүлэг». The lookup matched
+   * `name` exactly, `@@unique([schoolYearId, name])` is case-sensitive under
+   * Postgres's default collation, so both rows fitted — and the kindergarten
+   * ended up with an empty hand-made group beside the imported one holding 22
+   * children. Two groups, one class, and the empty one is the one a teacher
+   * might be assigned to.
+   */
+  it("★ adopts a hand-made group whose name differs only by case", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    const year = await withCurrentYear(a.kindergarten.id);
+
+    // Typed by a director before the first import — capital Б, ESIS sends б.
+    const byHand = await db.group.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        schoolYearId: year.id,
+        name: "Ахлах бүлэг",
+        ageBand: "MIDDLE",
+      },
+    });
+
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(200);
+    // Adopted, so nothing was created and the existing row carries the id now.
+    expect(res.body.groups.created).toBe(0);
+    expect(res.body.groups.updated).toBe(1);
+
+    const groups = await db.group.findMany({
+      where: { schoolYearId: year.id, deletedAt: null },
+    });
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.id).toBe(byHand.id);
+    expect(groups[0]!.esisGroupId).toBe(String(GROUP_ROW.studentGroupId));
+
+    // And the child landed in it rather than in a second copy.
+    const child = await db.child.findFirst({
+      where: { kindergartenId: a.kindergarten.id, esisPersonId: String(CHILD_ROW.personId) },
+    });
+    const enrollment = await db.enrollment.findFirst({ where: { childId: child!.id } });
+    expect(enrollment?.groupId).toBe(byHand.id);
+  });
+
+  /* Surrounding space is the same mistake one keystroke along. */
+  it("★ adopts a hand-made group whose name differs only by spacing", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    const year = await withCurrentYear(a.kindergarten.id);
+
+    await db.group.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        schoolYearId: year.id,
+        name: "  ахлах бүлэг ",
+        ageBand: "MIDDLE",
+      },
+    });
+
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+    await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    const groups = await db.group.findMany({
+      where: { schoolYearId: year.id, deletedAt: null },
+    });
+    expect(groups).toHaveLength(1);
+    expect(groups[0]!.esisGroupId).toBe(String(GROUP_ROW.studentGroupId));
+  });
+
+  /*
+   * ★ Where the mess already exists — one linked group and one empty
+   * lookalike — the import must keep the children where they are. Adopting the
+   * empty one would move the ministry's id onto a group nobody is enrolled in.
+   */
+  it("★ prefers the already-linked group when two names normalise the same", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    const year = await withCurrentYear(a.kindergarten.id);
+
+    const linked = await db.group.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        schoolYearId: year.id,
+        name: "ахлах бүлэг",
+        ageBand: "MIDDLE",
+        esisGroupId: String(GROUP_ROW.studentGroupId),
+      },
+    });
+    await db.group.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        schoolYearId: year.id,
+        name: "Ахлах бүлэг",
+        ageBand: "MIDDLE",
+      },
+    });
+
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+    await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    const child = await db.child.findFirst({
+      where: { kindergartenId: a.kindergarten.id, esisPersonId: String(CHILD_ROW.personId) },
+    });
+    const enrollment = await db.enrollment.findFirst({ where: { childId: child!.id } });
+    expect(enrollment?.groupId).toBe(linked.id);
+  });
+
+  /*
+   * ★★★ The rule the whole feature rests on. Pressed twice, nothing doubles.
+   */
+  /*
+   * ★ The import reads two ESIS services, and the ministry's matrix must see
+   * both — 2026-09-26. Its audit row is `EsisRosterImport`, which the matrix
+   * does not count, so every import was a call the evidence left out.
+   */
+  it("shows up in the coverage matrix as a call to each service it read", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+    await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    const matrix = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/esis/coverage`),
+      adminA,
+    );
+    const calls = (key: string) =>
+      matrix.body.rows.find((row: { serviceKey: string | null }) => row.serviceKey === key)?.calls;
+    expect(calls("groups")).toBe(1);
+    expect(calls("students")).toBe(1);
+  });
+
+  it("is idempotent — a second run creates nothing", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+
+    await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+    const second = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(second.status).toBe(200);
+    expect(second.body.groups.created).toBe(0);
+    expect(second.body.children.created).toBe(0);
+    expect(second.body.enrollments.created).toBe(0);
+
+    /*
+     * ★ Counted by the ESIS key, not by tenant. `createScenario` brings its own
+     * group and its own child, so a tenant-wide count would be asserting the
+     * fixture as much as the import — and would pass for the wrong reason the
+     * day the fixture changes.
+     */
+    expect(
+      await db.group.count({
+        where: {
+          kindergartenId: a.kindergarten.id,
+          esisGroupId: String(GROUP_ROW.studentGroupId),
+        },
+      }),
+    ).toBe(1);
+    expect(
+      await db.child.count({
+        where: { kindergartenId: a.kindergarten.id, esisPersonId: String(CHILD_ROW.personId) },
+      }),
+    ).toBe(1);
+  });
+
+  /*
+   * ★★★★ **A child typed by hand is adopted, not duplicated** — 2026-09-26.
+   *
+   * Children matched on `esisPersonId` alone, so every child entered before
+   * the first import — by hand, or by `seed-esis.ts` on a local database —
+   * arrived a second time. The client's rule of 2026-09-25 is the one groups
+   * already follow: link what came from ESIS to what is here, never copy it.
+   */
+  it("★ adopts an unlinked child with the same name and date of birth", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+
+    const identity = {
+      lastName: " батаа",
+      firstName: "НОМИН ",
+      sex: "FEMALE" as const,
+      dateOfBirth: new Date(CHILD_ROW.dateOfBirth),
+    };
+    const byHand = await db.child.create({
+      data: { kindergartenId: a.kindergarten.id, ...identity },
+    });
+    // The same person on another tenant's roll is somebody else's record.
+    const elsewhere = await db.child.create({
+      data: { kindergartenId: b.kindergarten.id, ...identity },
+    });
+
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.children.created).toBe(0);
+    expect(res.body.children.adopted).toBe(1);
+
+    const adopted = await db.child.findUniqueOrThrow({ where: { id: byHand.id } });
+    expect(adopted.esisPersonId).toBe(String(CHILD_ROW.personId));
+    // ESIS's spelling wins once the two are known to be one person.
+    expect(adopted.firstName).toBe("Номин");
+    const enrollment = await db.enrollment.findFirst({ where: { childId: byHand.id } });
+    expect(enrollment).not.toBeNull();
+
+    expect(
+      (await db.child.findUniqueOrThrow({ where: { id: elsewhere.id } })).esisPersonId,
+    ).toBeNull();
+  });
+
+  /*
+   * ★ Two unlinked children fit the same name and birthday — twins named
+   * alike, or a record typed twice. Picking one would give the ministry's id
+   * to a guess, and creating a third would add to the mess, so neither is
+   * done: the director is told the name and links it by hand.
+   */
+  it("★ links nobody and creates nothing when two unlinked children fit", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+
+    const identity = {
+      kindergartenId: a.kindergarten.id,
+      lastName: "Батаа",
+      firstName: "Номин",
+      sex: "FEMALE" as const,
+      dateOfBirth: new Date(CHILD_ROW.dateOfBirth),
+    };
+    await db.child.create({ data: identity });
+    await db.child.create({ data: identity });
+
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.children.created).toBe(0);
+    expect(res.body.children.adopted).toBe(0);
+    expect(res.body.children.ambiguous).toEqual(["Батаа Номин"]);
+    expect(
+      await db.child.count({
+        where: { kindergartenId: a.kindergarten.id, esisPersonId: String(CHILD_ROW.personId) },
+      }),
+    ).toBe(0);
+  });
+
+  /* A different birthday is a different child, whatever the name. */
+  it("creates rather than adopts when only the name matches", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+
+    const namesake = await db.child.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        lastName: "Батаа",
+        firstName: "Номин",
+        sex: "FEMALE",
+        dateOfBirth: new Date("2021-03-05"),
+      },
+    });
+
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.body.children.created).toBe(1);
+    expect(res.body.children.adopted).toBe(0);
+    expect(
+      (await db.child.findUniqueOrThrow({ where: { id: namesake.id } })).esisPersonId,
+    ).toBeNull();
+  });
+
+  /*
+   * ★ A group the director typed by hand is adopted, not duplicated —
+   * `@@unique([schoolYearId, name])` would refuse a second one anyway, so the
+   * alternative to adopting is failing the whole import on a constraint.
+   */
+  it("adopts a group of the same name rather than colliding with it", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    const year = await withCurrentYear(a.kindergarten.id);
+    const byHand = await db.group.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        schoolYearId: year.id,
+        name: "ахлах бүлэг",
+        ageBand: "JUNIOR",
+      },
+    });
+    rosterReads([GROUP_ROW], []);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.groups.created).toBe(0);
+    expect(res.body.groups.updated).toBe(1);
+
+    const adopted = await db.group.findUniqueOrThrow({ where: { id: byHand.id } });
+    expect(adopted.esisGroupId).toBe(String(GROUP_ROW.studentGroupId));
+    expect(await db.group.count({ where: { schoolYearId: year.id } })).toBe(1);
+  });
+
+  /*
+   * ★★ A level this product has no band for is skipped **and named**. Guessing
+   * one would file somebody else's children under an invented age.
+   */
+  it("skips a group whose ESIS level maps to no age band, and names it", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+    rosterReads(
+      [{ ...GROUP_ROW, academicLevel: "99", studentGroupName: "шинэ бүлэг" }],
+      [CHILD_ROW],
+    );
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(200);
+    expect(res.body.groups.created).toBe(0);
+    expect(res.body.groups.skipped).toEqual(["шинэ бүлэг"]);
+    // The child still arrives — they can be found and placed by hand — but
+    // nothing pretends to know their group.
+    expect(res.body.children.created).toBe(1);
+    expect(res.body.enrollments.created).toBe(0);
+    expect(res.body.enrollments.unplaced).toEqual(["Батаа Номин"]);
+  });
+
+  /*
+   * ★★★ Never removes. A child ESIS has stopped listing stays exactly as they
+   * are — leaving is a decision for a director on the child's own screen.
+   */
+  it("leaves a child ESIS no longer lists untouched", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+    await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    rosterReads([GROUP_ROW], []);
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(200);
+    const child = await db.child.findFirst({
+      where: { kindergartenId: a.kindergarten.id, esisPersonId: String(CHILD_ROW.personId) },
+    });
+    expect(child?.deletedAt).toBeNull();
+    expect(await db.enrollment.count({ where: { childId: child!.id, status: "ACTIVE" } })).toBe(1);
+  });
+
+  /*
+   * ★ Refused before a single ESIS read when there is no year to file anything
+   * under, and the message names the screen that fixes it.
+   */
+  it("refuses with 409 when no school year is current", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await db.schoolYear.updateMany({
+      where: { kindergartenId: a.kindergarten.id },
+      data: { isCurrent: false },
+    });
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(409);
+    expect(res.body.detail).toMatch(/Хичээлийн жил/);
+    expect(await db.group.count({ where: { esisGroupId: String(GROUP_ROW.studentGroupId) } })).toBe(
+      0,
+    );
+  });
+
+  // ── §4.1, on the one ESIS route that creates child records ──────────────
+
+  it("returns 404 to an admin of another kindergarten, and writes nothing", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminB).send({});
+
+    expect(res.status).toBe(404);
+    // Nothing the import would have written exists — the scenario's own child
+    // is not part of this claim.
+    expect(
+      await db.child.count({
+        where: { kindergartenId: a.kindergarten.id, esisPersonId: String(CHILD_ROW.personId) },
+      }),
+    ).toBe(0);
+  });
+
+  it("returns 404 to a teacher of this very kindergarten", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), teacherA).send({});
+
+    expect(res.status).toBe(404);
+    expect(
+      await db.child.count({
+        where: { kindergartenId: a.kindergarten.id, esisPersonId: String(CHILD_ROW.personId) },
+      }),
+    ).toBe(0);
+  });
+
+  it("returns 404 to a guardian", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await withCurrentYear(a.kindergarten.id);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), parentA).send({});
+
+    expect(res.status).toBe(404);
+  });
+
+  /* An unmapped kindergarten has no institution to read, and says 404. */
+  it("returns 404 when the kindergarten is not mapped to ESIS", async () => {
+    await withCurrentYear(a.kindergarten.id);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+    expect(res.status).toBe(404);
+  });
+});
+
+/**
+ * Linking an existing account to its ESIS person — `POST …/esis/staff-link`.
+ *
+ * ★ **Why the feature exists.** `User.esisPersonId` was written by exactly one
+ * path, self-registration, so every invited account had none — 12 of 13 on
+ * live data. The staff directory joins on that column and could not tell the
+ * account it holds from the ministry row describing the same human, so it drew
+ * both. Matching by name is refused by design: this kindergarten has a Соня
+ * Золжаргал and an Ариунаа Золжаргал.
+ *
+ * ★★ **This route writes a globally unique identity column**, which is the
+ * most dangerous shape in this module — taking a `personId` also takes it away
+ * from whoever held it. Every refusal below is asserted through HTTP, because
+ * a unit test of the service passes while the controller forgets to call it
+ * (§4.1).
+ */
+describe("linking a staff account to an ESIS person", () => {
+  const url = (kindergartenId: string) => `/v1/kindergartens/${kindergartenId}/esis/staff-link`;
+
+  /** One roster row, as `refreshStaffRoster` would have stored it. */
+  async function rosterEntry(kindergartenId: string, esisPersonId: string) {
+    return db.esisStaffRoster.create({
+      data: {
+        kindergartenId,
+        esisPersonId,
+        registerNumber: uniq("УБ").toUpperCase(),
+        lastName: "Бямбарааш",
+        firstName: "Сосорбурам",
+        jobCode: "2342-13",
+        positionName: "Багш",
+        isInstructor: true,
+      },
+    });
+  }
+
+  it("attaches the ministry identity to the account", async () => {
+    await rosterEntry(a.kindergarten.id, "90000000512704");
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+      userId: a.teacherUser.id,
+      esisPersonId: "90000000512704",
+    });
+
+    expect(res.status).toBe(200);
+    const user = await db.user.findUnique({ where: { id: a.teacherUser.id } });
+    expect(user?.esisPersonId).toBe("90000000512704");
+  });
+
+  /*
+   * ★ **The link is not a registration.** «Ажилтны бүртгэл» answers "who
+   * signed themselves up"; a director attaching an identity to an account they
+   * invited is a different fact. Before `selfRegisteredAt` existed, that list
+   * selected on `esisPersonId IS NOT NULL` and every linked account would have
+   * appeared on it.
+   */
+  it("does not make the account look self-registered", async () => {
+    await rosterEntry(a.kindergarten.id, "90000000512704");
+
+    await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+      userId: a.teacherUser.id,
+      esisPersonId: "90000000512704",
+    });
+
+    const user = await db.user.findUnique({ where: { id: a.teacherUser.id } });
+    expect(user?.selfRegisteredAt).toBeNull();
+
+    const listed = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/staff-registrations`),
+      adminA,
+    );
+    expect(listed.body.items ?? []).toHaveLength(0);
+  });
+
+  /*
+   * ★★ **The roster is the allow-list.** Without this the control is a
+   * free-text field for claiming any `personId` in the country.
+   */
+  it("refuses a person this kindergarten's roster does not list", async () => {
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+      userId: a.teacherUser.id,
+      esisPersonId: "90000000999999",
+    });
+
+    expect(res.status).toBe(404);
+    const user = await db.user.findUnique({ where: { id: a.teacherUser.id } });
+    expect(user?.esisPersonId).toBeNull();
+  });
+
+  /*
+   * ★★★ **A roster row in kindergarten B does not authorise a link in A.**
+   * The lookup is by the compound key, so B's copy of the same person is not
+   * A's permission to claim them.
+   */
+  it("refuses a person only the other kindergarten's roster lists", async () => {
+    await rosterEntry(b.kindergarten.id, "90000000512704");
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+      userId: a.teacherUser.id,
+      esisPersonId: "90000000512704",
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  /*
+   * ★★★★ **The cross-tenant write, which is the one that must never pass.**
+   * `esisPersonId` is globally unique, so an admin of A writing onto B's staff
+   * account would both corrupt B's records and consume the identity. 404, not
+   * 403 — a 403 confirms the account exists.
+   */
+  it("REFUSES an administrator writing onto another kindergarten's account", async () => {
+    await rosterEntry(a.kindergarten.id, "90000000512704");
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+      userId: b.teacherUser.id,
+      esisPersonId: "90000000512704",
+    });
+
+    expect(res.status).toBe(404);
+    const victim = await db.user.findUnique({ where: { id: b.teacherUser.id } });
+    expect(victim?.esisPersonId).toBeNull();
+  });
+
+  /* Taking an identity from another account is a named conflict, not a 500. */
+  it("refuses an ESIS person already linked elsewhere", async () => {
+    await rosterEntry(a.kindergarten.id, "90000000512704");
+    await db.user.update({
+      where: { id: a.adminUser.id },
+      data: { esisPersonId: "90000000512704" },
+    });
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+      userId: a.teacherUser.id,
+      esisPersonId: "90000000512704",
+    });
+
+    expect(res.status).toBe(409);
+    const user = await db.user.findUnique({ where: { id: a.teacherUser.id } });
+    expect(user?.esisPersonId).toBeNull();
+  });
+
+  /* Re-pressing the same link is the expected case, not a conflict. */
+  it("is idempotent for the link that already holds", async () => {
+    await rosterEntry(a.kindergarten.id, "90000000512704");
+    const body = { userId: a.teacherUser.id, esisPersonId: "90000000512704" };
+
+    await authed(request(server()).post(url(a.kindergarten.id)), adminA).send(body);
+    const second = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send(body);
+
+    expect(second.status).toBe(200);
+  });
+
+  it("refuses a teacher — wrong role gets 404, not 403", async () => {
+    await rosterEntry(a.kindergarten.id, "90000000512704");
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), teacherA).send({
+      userId: a.teacherUser.id,
+      esisPersonId: "90000000512704",
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  /* The ministry's ids run to fifteen digits — a number would lose precision. */
+  it("refuses a person id that is not digits", async () => {
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+      userId: a.teacherUser.id,
+      esisPersonId: "9000000051270X",
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  /* The write is on the audit trail, with what it used to be. */
+  it("records the change, and the value it replaced", async () => {
+    await rosterEntry(a.kindergarten.id, "90000000512704");
+
+    await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({
+      userId: a.teacherUser.id,
+      esisPersonId: "90000000512704",
+    });
+
+    const entry = await db.auditLog.findFirst({
+      where: { objectType: "User", objectId: a.teacherUser.id, action: "UPDATE" },
+      orderBy: { createdAt: "desc" },
+    });
+    const metadata = entry?.metadata as { source?: string; after?: { esisPersonId?: string } };
+    expect(metadata.source).toBe("admin-link");
+    expect(metadata.after?.esisPersonId).toBe("90000000512704");
   });
 });

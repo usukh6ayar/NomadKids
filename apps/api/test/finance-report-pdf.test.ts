@@ -241,37 +241,61 @@ describe("the finance PDF route refuses a child report", () => {
 });
 
 describe.skipIf(!hasPoppler)("the rendered document", () => {
-  it("contains the report's title, its figures and its total — as text", async () => {
-    await calculation({ calculatedAmount: "20000.00" });
+  /**
+   * ★ 20 seconds, not vitest's 5 — and the number is measured, not guessed.
+   *
+   * This case renders a real PDF through Chromium and extracts its text.
+   * `docs/PDF_SPIKE.md` put a warm render at ~2.5 s, and on an idle machine
+   * this test takes **2949 ms** — 60% of the default budget with nothing else
+   * running. It therefore fails whenever anything else is using the CPU, which
+   * it did three times on 2026-09-19: twice against a concurrent suite and
+   * once against `pnpm dev` compiling.
+   *
+   * ★★ Raising the budget is the fix rather than a workaround, and the
+   * distinction matters. Nothing about the assertion changes — Cyrillic in the
+   * text layer is still the canary for missing fonts, still the thing that
+   * makes a blank 1 MB PDF fail. What changes is that the budget now matches
+   * what the work costs, so a failure here means the render broke rather than
+   * that the laptop was busy. A test that cries wolf on load is a test people
+   * stop reading.
+   *
+   * The three siblings below stay on the default: they render nothing.
+   */
+  it(
+    "contains the report's title, its figures and its total — as text",
+    { timeout: 20_000 },
+    async () => {
+      await calculation({ calculatedAmount: "20000.00" });
 
-    const queued = await queuePdf(adminA);
-    const result = await generator.run(queued.body.id as string);
-    expect(result.status).toBe("DONE");
+      const queued = await queuePdf(adminA);
+      const result = await generator.run(queued.body.id as string);
+      expect(result.status).toBe("DONE");
 
-    const job = await db.reportJob.findUnique({
-      where: { id: queued.body.id as string },
-      include: { resultMedia: true },
-    });
-    expect(job?.status).toBe("DONE");
+      const job = await db.reportJob.findUnique({
+        where: { id: queued.body.id as string },
+        include: { resultMedia: true },
+      });
+      expect(job?.status).toBe("DONE");
 
-    const storage = app.get(StorageService);
-    const pdf = await storage.get(job!.resultMedia!.storageKey);
-    const text = extractText(pdf);
+      const storage = app.get(StorageService);
+      const pdf = await storage.get(job!.resultMedia!.storageKey);
+      const text = extractText(pdf);
 
-    /*
-     * ★★★ Cyrillic in the text layer is the canary. With fonts missing,
-     * Chromium renders a page of blank boxes and reports success — the file has
-     * pages, has bytes, and says nothing. Only extraction catches it.
-     */
-    expect(text).toContain("Сарын улсын санхүүжилтийн тайлан");
-    // The child by name, from the fixture — a report that lost its rows would
-    // still have the title.
-    expect(text).toContain(a.child.lastName);
-    expect(text).toContain(a.child.firstName);
-    // Formatted money, not the raw "20000.00" the database holds.
-    expect(text).toMatch(/20 000₮/);
-    expect(text).toContain("хүүхэд");
-  });
+      /*
+       * ★★★ Cyrillic in the text layer is the canary. With fonts missing,
+       * Chromium renders a page of blank boxes and reports success — the file has
+       * pages, has bytes, and says nothing. Only extraction catches it.
+       */
+      expect(text).toContain("Сарын улсын санхүүжилтийн тайлан");
+      // The child by name, from the fixture — a report that lost its rows would
+      // still have the title.
+      expect(text).toContain(a.child.lastName);
+      expect(text).toContain(a.child.firstName);
+      // Formatted money, not the raw "20000.00" the database holds.
+      expect(text).toMatch(/20 000₮/);
+      expect(text).toContain("хүүхэд");
+    },
+  );
 
   it("says an empty report is empty rather than printing a bare table", async () => {
     // A blank grid and a broken export look identical on paper.

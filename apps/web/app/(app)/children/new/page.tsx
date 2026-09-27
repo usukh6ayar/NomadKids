@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, Database } from "lucide-react";
+import { CheckCircle2, ShieldCheck, Database } from "lucide-react";
 import { z } from "zod";
 import {
   esisStudentRegistrationTemplateSchema,
@@ -23,6 +23,7 @@ import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field"
 import { FormError } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
+import { groupLabel } from "@/lib/format";
 
 /**
  * Registering a child.
@@ -322,7 +323,7 @@ function NewChild() {
                   <option value="">Сонгоогүй</option>
                   {groupItems.map((group) => (
                     <option key={group.id} value={group.id}>
-                      {group.name}
+                      {groupLabel(group.name)}
                     </option>
                   ))}
                 </Select>
@@ -366,16 +367,18 @@ function EsisStudentOutput({
 }: {
   template: z.infer<typeof esisStudentRegistrationTemplateSchema>;
 }) {
+  const protectedFields = template.fields.filter((field) => !field.ingested);
+
   return (
     <section aria-labelledby="esis-student-output-heading">
       <SectionHeader
         id="esis-student-output-heading"
-        title="ESIS суралцагчийн гаралт"
-        lede={`${template.slug} · ID ${template.apiId} · ${template.method} ${template.endpoint}`}
+        title="ESIS суралцагчийн мэдээлэл"
+        lede="Сурагчийн ESIS-д бүртгэлтэй мэдээлэл"
         action={
           <Badge tone={template.mode === "LIVE" ? "mint" : "sun"}>
             {template.mode === "LIVE" ? <CheckCircle2 size={13} aria-hidden /> : null}
-            {template.mode === "LIVE" ? "Бодит ESIS синк" : "Demo / Test data · MOCK"}
+            {template.mode === "LIVE" ? "ESIS-ээс ирсэн" : "Туршилтын мэдээлэл"}
           </Badge>
         }
       />
@@ -395,50 +398,36 @@ function EsisStudentOutput({
           </div>
         </div>
 
-        <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            ["Хөтөлбөр", template.row.programOfStudyName],
-            ["Сургалтын төлөвлөгөө", template.row.programPlanName],
-            ["Түвшин", template.row.academicLevelName],
-            ["Суралцах төлөв", template.row.programStatusName],
-          ].map(([label, value]) => (
-            <div key={label} className="min-w-0">
-              <dt className="text-caption font-semibold text-muted">{label}</dt>
-              <dd className="mt-1 break-words text-body font-medium text-ink">{value ?? "—"}</dd>
+        {protectedFields.length > 0 ? (
+          <section className="border-t border-border-soft pt-4" aria-label="Хамгаалсан талбар">
+            <div className="flex items-center gap-2 text-muted">
+              <ShieldCheck size={17} aria-hidden />
+              <h3 className="text-body font-semibold text-ink">Хадгалахгүй талбарууд</h3>
             </div>
-          ))}
-        </dl>
+            <p className="mt-1 text-caption text-muted">
+              Эдгээр талбарын утгыг хувийн мэдээллийг хамгаалах үүднээс харуулахгүй.
+            </p>
+            <ul className="mt-3 flex flex-wrap gap-2">
+              {protectedFields.map((field) => (
+                <li
+                  key={field.name}
+                  className="rounded-pill bg-canvas px-3 py-1.5 text-caption text-muted"
+                >
+                  {field.label}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
 
-        <section
-          className="mt-5 border-t border-border-soft pt-4"
-          aria-label="ESIS гаралтын талбар"
-        >
-          <h3 className="text-body font-semibold text-primary">
-            Бүх {template.fields.length} гаралтын талбар
-          </h3>
-          <ul className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            {template.fields.map((field) => (
-              <li key={field.name} className="rounded-row bg-sunken px-3 py-2">
-                <span className="flex items-start justify-between gap-2">
-                  <span className="min-w-0">
-                    <span className="block text-caption text-muted">{field.label}</span>
-                    <span className="mt-0.5 block break-words text-body font-medium text-ink">
-                      {template.row[field.name] ??
-                        (field.ingested ? "Утга ирээгүй" : "Хадгалахгүй (хамгаалсан талбар)")}
-                    </span>
-                  </span>
-                  <Badge tone={field.ingested ? "mint" : "sun"}>
-                    {field.ingested ? "Гаралт" : "Авахгүй"}
-                  </Badge>
-                </span>
-                <span className="mt-1 block font-mono text-caption text-faint">{field.name}</span>
-                {field.omitReason ? (
-                  <span className="mt-1 block text-caption text-muted">{field.omitReason}</span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </section>
+        <details className="rounded-row border border-border-soft bg-canvas">
+          <summary className="min-h-11 cursor-pointer px-4 py-3 text-caption font-semibold text-muted hover:text-ink">
+            Сервисийн мэдээлэл
+          </summary>
+          <p className="break-all border-t border-border-soft px-4 py-3 font-mono text-caption text-muted">
+            {template.slug} · ID {template.apiId} · {template.method} {template.endpoint}
+          </p>
+        </details>
       </Card>
     </section>
   );

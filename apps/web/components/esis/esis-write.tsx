@@ -121,11 +121,7 @@ function useEsisWrite(onDone: () => void) {
         toast.error("ЭСИС хүлээж авсангүй. Дахин оролдоно уу.");
         return;
       }
-      toast.success(
-        result.source === "MOCK"
-          ? "Илгээлээ. Энэ deployment дээр ЭСИС холболт идэвхгүй тул demo хариу ирлээ."
-          : "ЭСИС рүү амжилттай илгээлээ.",
-      );
+      toast.success("ЭСИС рүү амжилттай илгээлээ.");
       /*
        * ★ Every ESIS read of this kindergarten, by prefix. The panels set
        * `staleTime: Infinity` so nothing refetches on its own — deliberately,

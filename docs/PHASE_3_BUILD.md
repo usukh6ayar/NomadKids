@@ -3,8 +3,7 @@
 The RFP Phase II–III build, requested by the client on 2026-08-25 after the
 Phase 1 MVP was accepted.
 
-Same rule as `IMPLEMENTATION_STATUS.md`: nothing is marked done without a
-command and its real output. Where something is partial, it says what is
+The rule: nothing is marked done without a command and its real output. Where something is partial, it says what is
 missing rather than rounding up.
 
 **Scope boundary:** CLAUDE.md §7. Phase IV — native apps, chat, SMS, push, QR
@@ -128,7 +127,8 @@ the reason on the record.
   shape of `DROP COLUMN` that cannot lose data, argued in the migration's own
   comment per §3.3.
 - **IMPLEMENTATION_STATUS.md** claimed phases 11–13 pending while its own
-  sections marked them complete, and "no commits" against 60-odd.
+  sections marked them complete, and "no commits" against 60-odd. (That file
+  was deleted on 2026-09-19 — this is the defect that eventually retired it.)
 - **PHASE_1_ACCEPTANCE.md** item 5 said the admin screens were deliberately not
   built. They exist and are linked; marked superseded, with the one genuinely
   unlinked area (assessment configuration) carried forward as item 6 above.

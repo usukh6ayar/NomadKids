@@ -44,6 +44,34 @@ export class AuthRepository {
     });
   }
 
+  /**
+   * Does anybody **other than this user** already hold this e-mail or phone?
+   *
+   * ★ Not `findByIdentifier`. That one filters `isActive: true` and
+   * `deletedAt: null` because it answers "who is signing in"; the unique index
+   * knows nothing of either, so a check built on it would pass and the insert
+   * would still fail. The question here is the index's question.
+   *
+   * ★★ `NOT: { id: userId }`, because writing your own address back to your
+   * own row is not a collision — and an invited director whose e-mail was set
+   * by the platform operator types exactly that.
+   */
+  async findOtherUserByContact(
+    userId: string,
+    contact: { email?: string; phone?: string },
+  ): Promise<{ email: string | null; phone: string | null } | null> {
+    const or = [
+      ...(contact.email ? [{ email: contact.email }] : []),
+      ...(contact.phone ? [{ phone: contact.phone }] : []),
+    ];
+    if (or.length === 0) return null;
+
+    return this.prisma.user.findFirst({
+      where: { NOT: { id: userId }, OR: or },
+      select: { email: true, phone: true },
+    });
+  }
+
   async findById(userId: string) {
     return this.prisma.user.findFirst({
       where: { id: userId, deletedAt: null, isActive: true },

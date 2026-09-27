@@ -16,6 +16,17 @@ export const problemSchema = z.object({
   requestId: z.string(),
   /** Field-level messages, present only on a 400. */
   errors: z.record(z.string(), z.array(z.string())).optional(),
+  /**
+   * A machine-readable reason, present only where a screen has to branch on
+   * *which* failure this was — `SCOPE_DENIED`, `TIMEOUT`, `NETWORK` on the
+   * institution lookup, where three different next actions share one status
+   * family. `detail` is what the user reads; this is what the browser decides
+   * with, so it is never shown and never translated.
+   *
+   * ★ Optional, and set only when a thrown exception names one. Every error
+   * body that existed before it stays byte-identical.
+   */
+  code: z.string().optional(),
 });
 
 export type Problem = z.infer<typeof problemSchema>;

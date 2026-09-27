@@ -137,6 +137,54 @@ export class ChildrenRepository {
     };
   }
 
+  /**
+   * The children of one group who have **no live guardian** — the roster a
+   * bulk invitation acts on.
+   *
+   * ★ `visible` is the caller's own authorization predicate, the same one
+   * `listChildren` takes. Passing a `groupId` without it would let a teacher
+   * name somebody else's group and count its children.
+   *
+   * ★★ "No live guardian" is `guardianships: { none: { deletedAt: null } }`,
+   * and the `none` is what makes the bulk action idempotent: a second press
+   * five minutes later skips every child the first press invited, because the
+   * guardianship is created with the invitation rather than when it is
+   * accepted. Revoked guardianships (`canView: false`) still count as present
+   * — a revocation is a decision somebody made, and quietly re-inviting around
+   * it would undo it.
+   *
+   * ★★★ Unpaginated, deliberately, and bounded by the group. §3.4 forbids an
+   * unbounded set; a group is a bounded thing — the service refuses one larger
+   * than `MAX_BULK_INVITATIONS` rather than pretending otherwise.
+   */
+  async listGroupChildrenWithoutGuardian(visible: VisibleChildrenFilter, groupId: string) {
+    return this.prisma.child.findMany({
+      where: {
+        AND: [
+          visible,
+          { status: "ACTIVE" },
+          { enrollments: { some: { deletedAt: null, groupId, status: "ACTIVE" } } },
+          { guardianships: { none: { deletedAt: null } } },
+        ],
+      },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      select: { id: true, lastName: true, firstName: true, kindergartenId: true },
+    });
+  }
+
+  /** How many of this group's children the caller may see at all. */
+  async countGroupChildren(visible: VisibleChildrenFilter, groupId: string) {
+    return this.prisma.child.count({
+      where: {
+        AND: [
+          visible,
+          { status: "ACTIVE" },
+          { enrollments: { some: { deletedAt: null, groupId, status: "ACTIVE" } } },
+        ],
+      },
+    });
+  }
+
   async listChildren(
     visible: VisibleChildrenFilter,
     filters: ChildFilters,

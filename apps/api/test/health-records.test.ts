@@ -1,3 +1,4 @@
+import { localDate } from "@kinder/contracts";
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -557,7 +558,7 @@ describe("the health response", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("menu versus allergies", () => {
-  const TODAY = new Date().toISOString().slice(0, 10);
+  const TODAY = localDate();
 
   async function setMenu(dishes: { name: string; allergenTags: string[] }[]) {
     const res = await authed(

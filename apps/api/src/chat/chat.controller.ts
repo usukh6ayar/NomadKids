@@ -28,12 +28,23 @@ import { ChatService, type ChatUpload } from "./chat.service";
  * guessable by construction, so this only keeps malformed strings out of the
  * database layer — `ChatAccessService` is what decides whether the caller is in
  * the room, on every single request.
+ *
+ * ★★ **Four prefixes since 2026-09-20**, and adding them here was not
+ * cosmetic: a well-formed `parents:<uuid>` was answering **400** while an
+ * equally unreachable `group:<uuid>` answered 404, which is §1.7's oracle in
+ * miniature — the status told a caller which kinds of room the product has,
+ * and would have told them the feature had shipped. Caught by the isolation
+ * tests, which is what they are for.
+ *
+ * ★★★ `direct:` carries two uuids, so the pattern is written out per prefix
+ * rather than loosened to "a prefix and some text". A single permissive regex
+ * would let `direct:<uuid>` through to a layer that assumes two.
  */
+const UUID = "[0-9a-fA-F-]{36}";
+const ROOM_KEY = new RegExp(`^((group|staff|parents):${UUID}|direct:${UUID}:${UUID})$`);
+
 const roomParamSchema = z.object({
-  roomKey: z
-    .string()
-    .max(80)
-    .regex(/^(group|staff):[0-9a-fA-F-]{36}$/, "Өрөөний түлхүүр буруу байна"),
+  roomKey: z.string().max(120).regex(ROOM_KEY, "Өрөөний түлхүүр буруу байна"),
 });
 
 /** `before` is an ISO timestamp cursor — see `ChatService.listMessages`. */

@@ -41,8 +41,39 @@
    * enough to separate them, and heavy shadows are what make a clean layout
    * look cheap. One step of tint does the separating instead, so the card
    * shadow can stay almost invisible.
+   *
+   * ★★ **Neutral again — 2026-09-24.** The paragraph above has said "slate-50"
+   * since it was written and the value did not: it had drifted to `#eef8ff`,
+   * a blue tint, and nothing recorded when or why. So every screen in the
+   * product sat on pale blue while the comment described grey.
+   *
+   * The 2026-09-23 redesign brief asked for the same thing in its own words —
+   * "page background: neutral, very light gray", and under what to avoid,
+   * "giant blue cards, excessive pale blue borders". This restores the stated
+   * intent rather than inventing a new one.
+   *
+   * ★★★ Contrast improves rather than degrades: `--color-muted` and
+   * `--color-faint` were measured against the *darker* `#eef8ff`, so a lighter
+   * canvas lifts both ratios. Nothing that passed before can fail now.
    */
-  --color-canvas: #eef8ff;
+  /*
+   * Typography.
+   *
+   * ★ Added 2026-09-24. The product had no typeface of its own — it rendered
+   * in whatever `font-sans` resolved to, which is San Francisco on a Mac,
+   * Segoe on Windows and Roboto on Android. Three operating systems, three
+   * different products, and none of them chosen.
+   *
+   * `--font-sans` is set by `next/font` in `app/layout.tsx`, with the
+   * **cyrillic** subset — see the note there for why that is a requirement
+   * rather than a nicety. The stack behind it is the previous behaviour, so a
+   * failed font fetch degrades to exactly what shipped before.
+   */
+  --font-sans:
+    var(--font-sans-loaded, ui-sans-serif), system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+
+  --color-canvas: #f8fafc;
   --color-surface: #ffffff;
   --color-border: #e2e8f0;
   /* The lighter hairline, for card edges where --color-border is too present. */
@@ -298,6 +329,23 @@
   --radius-card: 24px;
   --radius-row: 18px;
   --radius-pill: 999px;
+  /*
+   * ★★★ A message bubble, 2026-09-22: "Багш, удирдлага, эцэг эх 3-д дугуй
+   * хэлбэртэй чатуудыг оруулах."
+   *
+   * A step past `--radius-row`, which bubbles borrowed until now. It is a token
+   * of its own rather than a fourth value on the scale above for the reason the
+   * button capsule is: the radius belongs to the *shape of the thing*, not to
+   * its place in a hierarchy of surfaces. A bubble is a spoken line — the one
+   * element in the product that should read as rounder than the card it sits
+   * on, which is the opposite of the ratio the scale above keeps.
+   *
+   * Raising `--radius-row` to get this would have rounded every list row, menu
+   * and sunken panel in the product, which nobody asked for. The 2026-09-08
+   * note above moved all three together *because* the complaint that day was
+   * about the whole page; this one names the chat.
+   */
+  --radius-bubble: 22px;
   /*
    * ★★ Buttons are capsules — 2026-09-08, the same request, second half:
    * "товч ntr н дөрвөлжин юм шиг байгаад байна. гоё зөөлхөн дугуйдуу болгох нь
@@ -593,6 +641,12 @@ body {
  */
 body {
   background: var(--color-canvas);
+  /*
+   * ★ The typeface, applied once — 2026-09-24. Tailwind's `font-sans` utility
+   * is not on `<body>`, so without this line the `@theme` token would decide
+   * nothing and every surface would keep rendering in the system font.
+   */
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   /*
    * Mongolian Cyrillic wraps at word boundaries and its words are long.
@@ -876,4 +930,32 @@ fieldset {
   a[href]::after {
     content: "";
   }
+}
+
+/*
+ * ★ Two panels side by side are the same height — 2026-09-26, the client
+ * asking for the layout to be even («тэгш хэмтэй, адилхан хэмжээтэй»). A row
+ * marked `data-equal-row` stretches its sections, and each section's last
+ * card grows to fill, so a short panel beside a tall one no longer leaves a
+ * ragged bottom edge.
+ */
+[data-equal-row] > section {
+  display: flex;
+  flex-direction: column;
+}
+[data-equal-row] > section > [data-ui="card"]:last-child {
+  flex: 1 1 auto;
+}
+
+/*
+ * ★ A page header inside a band — or any column with its own gap — adds no
+ * margin of its own — 2026-09-26.
+ * `PageHeader` carries `mb-4 lg:mb-5` for screens that stack it by hand; in a
+ * `page-band` that margin stacked on the band's gap, and the title stood 52px
+ * above the first module when the modules themselves were 24–32px apart. The
+ * band's gap is the one rhythm, so the header takes that and nothing more.
+ */
+.page-band > [data-ui="page-header"],
+.flex-col > [data-ui="page-header"] {
+  margin-bottom: 0;
 }

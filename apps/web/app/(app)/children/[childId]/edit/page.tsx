@@ -25,6 +25,7 @@ import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
 import { ArchiveButton } from "@/components/ui/archive-button";
 import { RequireRole } from "@/components/shell/require-role";
+import { groupLabel } from "@/lib/format";
 
 /**
  * Correcting a child's record, and moving them between groups.
@@ -438,7 +439,7 @@ function TransferCard({ childId }: { childId: string }) {
                 <option value="">Сонгоно уу</option>
                 {items.map((group) => (
                   <option key={group.id} value={group.id}>
-                    {group.name}
+                    {groupLabel(group.name)}
                   </option>
                 ))}
               </Select>

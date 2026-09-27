@@ -55,6 +55,14 @@ export const chatRoomsSchema = roomsSchema;
  * A qualifier is only needed when two rooms would otherwise have the same
  * label (two groups or two kindergarten memberships).
  */
+/** What kind of room this is, for the header line under its name. */
+const ROOM_KIND_LABEL: Record<ChatRoomData["kind"], string> = {
+  GROUP: "Бүлгийн чат",
+  STAFF: "Ажилтны чат",
+  PARENTS: "Эцэг эхчүүдийн чат",
+  DIRECT: "Хувийн чат",
+};
+
 export function chatRoomDisplayName(
   room: ChatRoomData,
   roles: ReadonlySet<Role>,
@@ -281,9 +289,13 @@ export function ChatList({
 
   return (
     <>
-      <header className="border-b border-border bg-surface px-4 pb-3 pt-4">
+      <header className="border-b border-track bg-white px-4 pb-4 pt-5">
         <div className="flex min-h-11 items-center justify-between gap-2">
-          {action ?? <Title className="text-title font-bold text-ink">Чатууд</Title>}
+          <div className="min-w-0">
+            <Title className="text-title font-extrabold tracking-tight text-ink">Чатууд</Title>
+            <p className="mt-0.5 text-caption text-muted">Яриагаа сонгож үргэлжлүүлээрэй</p>
+          </div>
+          {action}
           {Close ? (
             <Close
               aria-label="Хаах"
@@ -293,7 +305,7 @@ export function ChatList({
             </Close>
           ) : null}
         </div>
-        <label className="relative mt-2 block">
+        <label className="relative mt-4 block">
           <span className="sr-only">Чатын нэр эсвэл мессежээр хайх</span>
           <Search
             size={18}
@@ -305,7 +317,7 @@ export function ChatList({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={searchPlaceholder}
-            className="h-[44px] bg-canvas pl-11"
+            className="h-[46px] rounded-control border-border bg-canvas pl-11 focus:bg-white"
           />
         </label>
       </header>
@@ -343,7 +355,7 @@ export function ChatList({
           </div>
         </div>
       ) : (
-        <ul className="min-h-0 flex-1 overflow-y-auto bg-surface py-1">
+        <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto bg-white p-2">
           {visibleRooms?.map((room) => (
             <li key={room.key}>
               <button
@@ -351,13 +363,20 @@ export function ChatList({
                 onClick={() => onOpen(room.key)}
                 aria-current={room.key === activeKey ? "true" : undefined}
                 className={cn(
-                  "relative flex min-h-[84px] w-full items-center gap-3 border-b border-border-soft px-4 py-3 text-left transition-colors hover:bg-canvas",
+                  "relative flex min-h-[82px] w-full items-center gap-3 rounded-control px-3 py-3 text-left transition-colors hover:bg-canvas",
                   room.key === activeKey &&
-                    "bg-primary-soft before:absolute before:inset-y-2 before:left-0 before:w-1 before:rounded-r-pill before:bg-primary hover:bg-primary-soft",
+                    "bg-primary-soft ring-1 ring-primary-soft hover:bg-primary-soft",
                 )}
               >
                 {/* Initials, not an avatar: a room is a group of people and
                     there is no one face for it. */}
+                {/*
+                  ★ `rounded-pill` since 2026-09-22 — the round room list the
+                  client asked for. It also puts the room badge in the same
+                  shape as `PersonAvatar`, which has always been a circle: the
+                  list and the messages inside it now agree about what a
+                  participant looks like.
+                */}
                 <span
                   aria-hidden="true"
                   className={cn(
@@ -535,8 +554,8 @@ export function ChatRoom({
 
   return (
     <>
-      <div className="border-b border-border bg-surface">
-        <header className="flex min-h-[76px] items-center gap-2 px-3 py-2.5 sm:px-4">
+      <div className="border-b border-track bg-white">
+        <header className="flex min-h-[76px] items-center gap-2 px-3 py-2.5 sm:px-5">
           {onBack ? (
             <button
               type="button"
@@ -554,6 +573,7 @@ export function ChatRoom({
           <span
             aria-hidden="true"
             className={cn(
+              // Circular, to match the same badge in the list — see its note.
               "hidden size-11 shrink-0 place-items-center rounded-pill text-body font-bold sm:grid",
               room.kind === "GROUP" ? "bg-mint text-mint-ink" : "bg-primary-soft text-primary",
             )}
@@ -643,16 +663,14 @@ export function ChatRoom({
 
         {detailsOpen ? (
           <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-border-soft bg-canvas px-4 py-2.5 text-caption text-muted">
-            <span className="font-medium text-ink">
-              {room.kind === "GROUP" ? "Бүлгийн чат" : "Ажилтны чат"}
-            </span>
+            <span className="font-medium text-ink">{ROOM_KIND_LABEL[room.kind]}</span>
             <span>{room.memberCount} гишүүн</span>
             <span>{room.unreadCount > 0 ? `${room.unreadCount} уншаагүй` : "Шинэ мессежгүй"}</span>
           </div>
         ) : null}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-surface px-3 py-4 sm:px-5">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-canvas px-3 py-5 sm:px-6">
         {history.isLoading ? (
           <div className="mx-auto flex w-full max-w-[860px] flex-col gap-3">
             <Skeleton className="h-12 w-2/3" />
@@ -684,7 +702,7 @@ export function ChatRoom({
             </div>
           </div>
         ) : (
-          <ul className="mx-auto flex w-full max-w-[860px] flex-col gap-3">
+          <ul className="mx-auto flex w-full max-w-[860px] flex-col gap-4">
             {visibleMessages.map((message) => (
               <MessageBubble key={message.id} message={message} />
             ))}
@@ -693,7 +711,7 @@ export function ChatRoom({
         <div ref={bottom} />
       </div>
 
-      <div className="relative border-t border-border bg-surface p-3 sm:p-4">
+      <div className="relative border-t border-track bg-white p-3 sm:p-4">
         {emojiOpen ? (
           <div className="absolute bottom-[76px] right-14 z-10 flex gap-1 rounded-card border border-border bg-surface p-2 shadow-lg sm:right-20">
             {["😊", "👍", "❤️", "🎉", "🙏"].map((emoji) => (
@@ -781,11 +799,11 @@ export function ChatRoom({
               id={draftId}
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
-              placeholder="Бичих..."
+              placeholder="Мессеж бичих..."
               autoComplete="off"
               maxLength={2000}
               disabled={send.isPending}
-              className="bg-canvas pr-12"
+              className="rounded-control border-border bg-canvas pr-12 focus:bg-white"
             />
             <button
               type="button"
@@ -873,10 +891,20 @@ function MessageBubble({ message }: { message: z.infer<typeof chatMessageSchema>
         ) : null}
         <div
           className={cn(
-            "min-w-0 rounded-card px-3.5 py-2.5",
+            /*
+              ★ `rounded-bubble` since 2026-09-22 — the client asking for round
+              chats. See `globals.css` for why it is a token of its own rather
+              than a step on the surface scale.
+
+              ★★ The tail corner stays tight, and that is the whole grammar of
+              a bubble: three round corners and one square-ish one is what says
+              which side of the room a line came from. Rounding all four would
+              make the two speakers' bubbles differ only by colour.
+            */
+            "min-w-0 rounded-bubble px-4 py-3 shadow-[0_2px_8px_rgba(28,65,103,.05)]",
             message.mine
-              ? "bg-primary text-primary-ink"
-              : "border border-border bg-surface text-ink",
+              ? "rounded-br-md bg-primary text-primary-ink"
+              : "rounded-bl-md border border-border bg-white text-ink",
           )}
         >
           {message.media.length > 0 ? (

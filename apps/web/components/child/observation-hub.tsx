@@ -36,7 +36,7 @@ import {
 import { ChildPickerDialog } from "./child-picker-dialog";
 import { ArchiveTab, WrittenReports } from "@/components/assessment/report-archive";
 import { ChildArtwork } from "./child-artwork";
-import { formatAge, fullName } from "@/lib/format";
+import { formatAge, fullName, capitalize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const observationsSchema = paginated(observationSchema);
@@ -412,7 +412,7 @@ export function ObservationHub({
   };
 
   const data = child.data!;
-  const group = data.enrollments?.find((row) => row.group)?.group?.name;
+  const group = capitalize(data.enrollments?.find((row) => row.group)?.group?.name);
 
   return (
     <div className="flex flex-col gap-3">

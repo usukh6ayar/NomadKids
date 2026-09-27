@@ -20,6 +20,7 @@ import {
   groupAttendanceRangeSchema,
   groupAttendanceRowSchema,
   type EsisAttendancePreview,
+  localDate,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { PageHeader } from "@/components/shell/app-shell";
@@ -50,7 +51,7 @@ import { cn } from "@/lib/utils";
 const daySheetSchema = z.array(groupAttendanceRowSchema);
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localDate();
 }
 
 /**
@@ -760,9 +761,9 @@ function EsisStatus({
 
   const sent = Boolean(submittedAt);
   const read = check.data;
-  const demo = read ? read.source === "MOCK" : false;
-  const mismatches = read && !demo ? countMismatches(request.payload.attendanceList, read.rows) : 0;
-  const verdict = !read || demo ? null : mismatches === 0 ? "ok" : "diff";
+  // ESIS has no demo mode any more (2026-09-14), so every read is a live one.
+  const mismatches = read ? countMismatches(request.payload.attendanceList, read.rows) : 0;
+  const verdict = !read ? null : mismatches === 0 ? "ok" : "diff";
 
   const steps = [
     { label: "Илгээх", done: sent },
@@ -813,10 +814,6 @@ function EsisStatus({
               <span className="inline-flex items-center gap-1.5 font-semibold text-danger">
                 <AlertTriangle size={16} aria-hidden /> Зөрүүтэй — {mismatches} хүүхдийн ирц ESIS
                 дээр өөр байна.
-              </span>
-            ) : demo ? (
-              <span className="text-muted">
-                Туршилтын горим: ESIS-тэй бодитоор холбогдоогүй тул шалгах боломжгүй.
               </span>
             ) : sent ? (
               <span className="text-muted">

@@ -31,7 +31,7 @@ import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field"
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ObservationPhotoPicker } from "@/components/observations/observation-photo-picker";
 import { uploadChildPhotos } from "@/components/media/photo-upload";
-import { ageInYears, formatAge, fullName, todayLocal } from "@/lib/format";
+import { ageInYears, formatAge, fullName, todayLocal, capitalize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { readDraft, useDraftAutosave } from "@/lib/use-form-draft";
 
@@ -472,7 +472,7 @@ function NewObservationForm() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  const childGroup = child.data?.enrollments?.find((row) => row.group)?.group?.name;
+  const childGroup = capitalize(child.data?.enrollments?.find((row) => row.group)?.group?.name);
   /*
     ★ The age fills the level in, once, and only while the teacher has not.
 

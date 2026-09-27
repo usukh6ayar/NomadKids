@@ -11,6 +11,7 @@ import {
   paginated,
   supplierSchema,
   type Ingredient,
+  localDate,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
@@ -24,7 +25,7 @@ import { DataList, DataRow } from "@/components/ui/data-list";
 import { Field, Input, Select } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
-import { formatDate } from "@/lib/format";
+import { formatDate, capitalize } from "@/lib/format";
 import { useToast } from "@/components/ui/toast";
 import { SearchField } from "@/components/ui/search-field";
 import { useDebounced } from "@/lib/use-debounced";
@@ -132,7 +133,7 @@ function FoodOrders() {
               interactive
               title={
                 <Link href={`/kitchen/orders/${order.id}`} className="hover:text-primary">
-                  {order.supplier.name}
+                  {capitalize(order.supplier.name)}
                 </Link>
               }
               subtitle={order.note ?? undefined}
@@ -178,7 +179,7 @@ function CreateOrderDialog({
   const toast = useToast();
   const queryClient = useQueryClient();
   const [supplierId, setSupplierId] = useState("");
-  const [orderDate, setOrderDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [orderDate, setOrderDate] = useState(() => localDate());
   const [note, setNote] = useState("");
   const [lines, setLines] = useState<OrderLineDraft[]>([]);
 
@@ -276,7 +277,7 @@ function CreateOrderDialog({
                 <option value="">Сонгоно уу</option>
                 {(suppliers.data?.items ?? []).map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name}
+                    {capitalize(s.name)}
                   </option>
                 ))}
               </Select>
@@ -342,7 +343,7 @@ function OrderLinesEditor({
             <option value="">Орц сонгоно уу</option>
             {ingredients.map((ingredient) => (
               <option key={ingredient.id} value={ingredient.id}>
-                {ingredient.name}
+                {capitalize(ingredient.name)}
               </option>
             ))}
           </Select>

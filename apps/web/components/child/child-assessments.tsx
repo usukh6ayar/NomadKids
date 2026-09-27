@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState, Skeleton } from "@/components/ui/states";
 import { DevelopmentRadar } from "@/components/assessment/development-radar";
+import { capitalize } from "@/lib/format";
 
 const assessmentsSchema = z.array(assessmentSchema);
 
@@ -89,7 +90,7 @@ export function ChildAssessments({ childId, isStaff }: { childId: string; isStaf
         <section key={key} aria-label={term.name}>
           <SectionHeader
             as="h3"
-            title={term.name}
+            title={capitalize(term.name)}
             /*
               ★ Staff only, and only for a real term.
               A guardian's list is already filtered to what was published, so

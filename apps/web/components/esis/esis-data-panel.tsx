@@ -1,8 +1,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CloudDownload, Database } from "lucide-react";
-import { useState } from "react";
+import { CloudDownload, Clock3, Database, Search } from "lucide-react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import {
   esisScopedCatalogSchema,
   esisResourceReadSchema,
@@ -12,31 +12,15 @@ import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
+import { EsisNoAnswer } from "@/components/esis/esis-no-answer";
 import { EsisRowValues, esisSampleColumns } from "@/components/esis/esis-rows";
-import {
-  ESIS_DEMO_PARAM,
-  ESIS_PARAM_LABEL,
-  esisApiIdLabel,
-  isPersonalParam,
-} from "@/components/esis/esis-params";
+import { ESIS_PARAM_LABEL, isPersonalParam } from "@/components/esis/esis-params";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/field";
-import { LoadingState } from "@/components/ui/states";
+import { EmptyState, LoadingState } from "@/components/ui/states";
 import { cn } from "@/lib/utils";
-
-/** The Mongolian sentence behind each upstream failure code. */
-const ERROR_LABEL: Record<string, string> = {
-  UNAUTHORIZED: "Token хүчингүй эсвэл хугацаа нь дууссан байна.",
-  SCOPE_DENIED: "Энэ API-д манай token-д эрх олгоогүй байна.",
-  TIMEOUT: "ESIS хугацаанд хариу өгсөнгүй.",
-  NETWORK: "ESIS сервертэй холбогдож чадсангүй.",
-  INVALID_RESPONSE: "ESIS-ийн хариу гэрээнд тохирохгүй байна.",
-  NOT_CONFIGURED: "Server дээр ESIS тохиргоо алга байна.",
-  HTTP: "ESIS алдаатай хариу буцаалаа.",
-  UNKNOWN: "Тодорхойгүй алдаа гарлаа.",
-};
 
 /**
  * One ESIS service, **on the screen that uses it** — not behind a dialog.
@@ -66,22 +50,47 @@ const ERROR_LABEL: Record<string, string> = {
  * on a director's screen as if it were their own record — and they chose it
  * anyway, with the demo values kept as they are.
  *
- * So the label is recorded here instead of on screen. `/admin/integrations/esis`
+ * So the label is recorded here instead of on screen. `/platform/[id]/esis`
  * keeps its badges: that screen exists to say which services are live and which
  * are not, and is where anybody asking "is this real?" is sent.
+ *
+ * ★★★★★ **The technical half is gone — 2026-09-19**, at the client's
+ * instruction: the panels "нэг тиим сонин демо юм шиг харагдуулаад байна …
+ * энгийн болгоороой", prod and local alike.
+ *
+ * What went, and why none of it had an audience here:
+ *
+ * - `slug · api-128 · GET /v2/cook/levelHood/students` under every heading. A
+ *   director does not have an api id; the only person who does is the platform
+ *   operator, and that screen prints it itself.
+ * - The `ESIS LIVE` badge, which said the same thing the rows already say.
+ * - `showResponseDetails` and everything behind it — Method, Response mode,
+ *   HTTP status, Sync status, Request URL and a dark `<pre>` of the raw
+ *   envelope. It was set on exactly two product screens, `/children`'s
+ *   РД-ээр хайх and `/kitchen/recipes`' Бэлэн бүтээгдэхүүн, so a teacher
+ *   searching for a child and a cook reading the food catalogue were both
+ *   shown a debugger. **`/platform/[id]/esis` does not render this component
+ *   at all** — it has its own UI — so the block had no legitimate reader
+ *   anywhere.
+ * - The footer's field policy, replaced by a plain "Сүүлд шинэчилсэн".
+ *
+ * What stayed is what a person reading their kindergarten's data needs: the
+ * name of the thing, a sentence about it, how many records came back, a button
+ * to refresh, and the rows.
  */
 export function EsisDataPanel({
   resource,
   params,
   rows: given,
   hrefs,
+  liveHref,
   linkField,
+  rowActions,
   title,
   description,
   headingId,
   askForParams = true,
-  autoRead = false,
-  showResponseDetails = false,
+  autoRead = true,
   actionLabel,
   detail,
   compact = false,
@@ -104,8 +113,26 @@ export function EsisDataPanel({
   rows?: Record<string, string | null>[];
   /** Where each of `rows` leads, index-aligned. */
   hrefs?: (string | null)[];
+  /**
+   * Where one **live** ESIS row leads, worked out from the row itself.
+   *
+   * ★ Added 2026-09-14. `hrefs` is index-aligned with the caller's own `rows`
+   * and is therefore meaningless once ESIS answers — the ministry's roster is
+   * not in the caller's order and need not even be the same set. That is why
+   * `hrefs` is dropped for a live read, and why this is a function: the only
+   * honest way to link a returned row is to look at what is in it.
+   *
+   * `/children` uses it to match the ministry's roster against this
+   * kindergarten's own children by name and date of birth — the same pairing
+   * `attendance.service.ts` and `funding/food-discount.ts` use, because a name
+   * alone is not enough to open somebody's record. A row that matches nothing,
+   * or matches twice, leads nowhere rather than to a guess.
+   */
+  liveHref?: (row: Record<string, string | null>) => string | null;
   /** Which column carries the link — the name, on a roster. */
   linkField?: string;
+  /** A control at the end of each row. See `EsisRowValues`. */
+  rowActions?: (row: Record<string, string | null>) => ReactNode;
   /**
    * Whether the panel may ask the reader for a path value it lacks.
    *
@@ -123,10 +150,24 @@ export function EsisDataPanel({
   title?: string;
   description?: string;
   headingId?: string;
-  /** Calls the role-authorised ESIS reader as soon as its catalog is ready. */
+  /**
+   * Calls the role-authorised ESIS reader as soon as its catalog is ready.
+   *
+   * ★ **Default `true` since 2026-09-20**, at the client's instruction:
+   * "хэрэглэгч нэвтрээд өөрсдийн гараар бүх ESIS-ээс ирж байгаа хүснэгтүүдийг
+   * өөрөө гараар дарж татмааргүй байна, автоматаар татсан байдаг байгаасай."
+   *
+   * It defaulted to `false`, so a director opening a screen with four panels
+   * on it pressed four buttons before seeing anything — and the panel's own
+   * docblock already argued that values present on first paint are what make
+   * the screen read as connected. The default had simply never caught up with
+   * the argument.
+   *
+   * A panel that still needs a parameter does not fire: the read is gated on
+   * `missing.length === 0`, so "РД-ээр хайх" waits for a register number
+   * rather than calling the ministry with an empty one.
+   */
   autoRead?: boolean;
-  /** Shows request metadata and the complete ESIS response envelope inline. */
-  showResponseDetails?: boolean;
   /** Overrides the generic pull command for a task-specific action. */
   actionLabel?: string;
   /**
@@ -152,7 +193,7 @@ export function EsisDataPanel({
    * and none of the page furniture.
    *
    * ★ Without this the drill-down renders a *second complete panel* inside a
-   * table cell — database icon, `<h2>`, the slug/ID/path line, the record-count
+   * record card — database icon, `<h2>`, the slug/ID/path line, the record-count
    * badge, a "татах" button and the footer disclaimer — twice over, for the two
    * detail services. A page inside a page, on the screen whose instruction was
    * "зүгээр энгийн харагдуул".
@@ -169,7 +210,7 @@ export function EsisDataPanel({
    * ★ Added 2026-09-10 so a page whose body sits in a narrow reading column
    * can still give the panel the full width. `/settings` and
    * `/admin/kindergarten` cap their content at 760px — the right width for a
-   * form, and far too narrow for a table of ESIS records, which is what the
+   * form, and far too narrow for a list of ESIS records, which is what the
    * client was looking at when they asked for "дэлгэц дүүрэн".
    *
    * It is a class rather than a `wide` flag because the two callers want the
@@ -179,8 +220,10 @@ export function EsisDataPanel({
 }) {
   const { primaryKindergartenId } = useSession();
   const [entered, setEntered] = useState<Record<string, string>>({});
+  const [searchedRegister, setSearchedRegister] = useState("");
   const [pulled, setPulled] = useState(false);
-  const [syncedAt, setSyncedAt] = useState<string | null>(null);
+  /** When the reader last pressed "татах" for a **live** service — see `pull()`. */
+  const [pulledAt, setPulledAt] = useState<string | null>(null);
 
   /*
    * ★ The role-scoped catalog, not the operator's overview — 2026-09-09.
@@ -205,7 +248,6 @@ export function EsisDataPanel({
   });
 
   const endpoint = catalog.data?.endpoints.find((item) => item.key === resource);
-  const demoMode = catalog.data?.mode === "DEMO";
   const required = endpoint?.params ?? [];
 
   /*
@@ -213,8 +255,12 @@ export function EsisDataPanel({
    * complete on first paint. It never pre-fills a personal identifier — see
    * `esis-params.ts`.
    */
+  const registerSearch =
+    resource === "studentByRegister" && askForParams && !params?.personRegNumber;
   const value = (name: string) =>
-    entered[name] ?? params?.[name] ?? (demoMode ? (ESIS_DEMO_PARAM[name] ?? "") : "") ?? "";
+    registerSearch && name === "personRegNumber"
+      ? searchedRegister
+      : (entered[name] ?? params?.[name] ?? "");
   const missing = required.filter((name) => !value(name));
 
   /*
@@ -251,6 +297,9 @@ export function EsisDataPanel({
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     staleTime: Infinity,
+    // A staff-entered register number should leave the query cache when the
+    // search changes or this panel closes.
+    gcTime: registerSearch ? 0 : undefined,
     retry: false,
   });
 
@@ -261,16 +310,26 @@ export function EsisDataPanel({
   if (!endpoint) return null;
 
   const live = read.data?.status === "SUCCEEDED" ? read.data : null;
-  // A live response replaces everything, `rows` included — the caller's records
-  // are a stand-in for the catalog's, not something to merge with a real one.
-  const rows = live ? live.rows : (given ?? endpoint.sampleRows);
+  /*
+   * ★ Live rows, or the caller's own — never invented ones.
+   *
+   * This ended `?? endpoint.sampleRows` until 2026-09-14, so a panel that had
+   * not read yet, or had read and failed, drew a fabricated record under the
+   * ministry's service name. With that gone the empty case falls through to
+   * `EsisNoAnswer` below, which names the endpoint instead of filling the
+   * space.
+   *
+   * `given` stays: those are rows the caller already holds from a real read,
+   * passed in to save a second call.
+   */
+  const rows = live ? live.rows : (given ?? []);
   const columns = esisSampleColumns(live ? live.fields : endpoint.fields);
 
   /*
    * ★ The nested form: a heading, the records, and nothing else. Everything
    * the full panel adds — the icon, the slug/ID/path line, the badges, the
    * pull button, the response envelope, the footer — is page furniture, and a
-   * table cell is not a page. See the `compact` prop for the whole argument.
+   * record card is not a page. See the `compact` prop for the whole argument.
    *
    * It sits below `rows`/`columns` rather than beside the earlier guards so it
    * reads the *same* two values the full panel draws — a compact panel that
@@ -285,7 +344,31 @@ export function EsisDataPanel({
         {read.isFetching && !read.data ? (
           <LoadingState rows={1} />
         ) : rows.length === 0 ? (
-          <p className="text-body text-muted">ESIS энэ сервисээр бичлэг буцаасангүй.</p>
+          /*
+           * ★ Told apart, but not through `EsisNoAnswer` — 2026-09-14.
+           *
+           * This branch said "бичлэг буцаасангүй" whether the service had
+           * answered with an empty list or not answered at all, which are
+           * different facts and lead to different actions. It says which now,
+           * and names the service when the read failed.
+           *
+           * The full card is deliberately not used here: this panel renders
+           * inside an opened record, and a bordered, toned, icon-bearing card
+           * there is the thing `compact` exists to avoid. Two lines of text
+           * carry the same two facts at the weight this slot allows.
+           */
+          read.data?.status === "FAILED" ? (
+            <div className="flex flex-col gap-0.5">
+              <p className="text-body text-muted">ESIS-ээс хариу ирсэнгүй.</p>
+              {read.data.endpoint ? (
+                <p className="break-all font-mono text-caption text-faint">
+                  {read.data.endpoint.method} {read.data.endpoint.path}
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-body text-muted">ESIS энэ сервисээр бичлэг буцаасангүй.</p>
+          )
         ) : (
           <EsisRowValues columns={columns} rows={rows} />
         )}
@@ -293,10 +376,6 @@ export function EsisDataPanel({
     );
   }
   const heading = headingId ?? `esis-panel-${resource}`;
-  const receivedAt = read.dataUpdatedAt
-    ? new Date(read.dataUpdatedAt).toLocaleString("mn-MN")
-    : null;
-
   async function pull() {
     setPulled(true);
     if (catalog.data?.canRead) {
@@ -305,51 +384,152 @@ export function EsisDataPanel({
       // No token: re-read our own catalog, which is what is actually shown.
       await catalog.refetch();
     }
-    setSyncedAt(new Date().toLocaleString("mn-MN"));
+    setPulledAt(new Date().toLocaleString("mn-MN"));
   }
+
+  function submitRegisterSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const number = (entered.personRegNumber ?? "").trim().toUpperCase();
+    if (!number || read.isFetching) return;
+    if (number === searchedRegister) {
+      void pull();
+    } else {
+      // The request key changes only on submit, never on each keystroke.
+      setSearchedRegister(number);
+      if (!catalog.data?.canRead) void catalog.refetch();
+    }
+  }
+
+  /*
+   * When these rows were fetched, in one value.
+   *
+   * ★ **The stored copy's own date first** — 2026-09-17, plan Task 7. For a
+   * reference resource the answer came from `EsisReference` and can be weeks
+   * old regardless of when this browser read it, so `syncedAt` — when the
+   * sweep itself ran — is the date that actually describes the rows.
+   *
+   * ★★ Then `dataUpdatedAt`, and `pulledAt` last. Since the panels read
+   * automatically (2026-09-20) most reads happen without a press, so a date
+   * derived only from pressing would be blank exactly when the reader most
+   * needs to know how fresh this is.
+   */
+  const lastFetchedAt =
+    read.data?.status !== "SUCCEEDED"
+      ? null
+      : read.data.source === "STORE" && read.data.syncedAt
+        ? new Date(read.data.syncedAt).toLocaleString("mn-MN")
+        : read.dataUpdatedAt
+          ? new Date(read.dataUpdatedAt).toLocaleString("mn-MN")
+          : (pulledAt ?? null);
 
   return (
     <section aria-label={title ?? endpoint.name} className={cn("w-full", className)}>
       <Card pad="roomy" className="flex flex-col gap-5">
-        <div className="flex flex-wrap items-start gap-3 border-b border-border-soft pb-5">
-          <span className="flex size-11 shrink-0 items-center justify-center rounded-control bg-sky text-sky-ink">
+        <div
+          className={cn(
+            "flex flex-wrap items-start gap-3",
+            !registerSearch && "border-b border-border-soft pb-5",
+          )}
+        >
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary">
             <Database size={21} aria-hidden />
           </span>
           <div className="min-w-0 flex-1">
-            <h2 id={heading} className="font-semibold text-ink">
+            <h2 id={heading} className="text-lead font-semibold tracking-tight text-ink">
               {title ?? endpoint.name}
             </h2>
-            <p className="mt-0.5 text-body text-muted">{description ?? endpoint.usage}</p>
-            <p className="mt-1 break-all font-mono text-caption text-faint">
-              {endpoint.slug} · {esisApiIdLabel(endpoint.apiId)} · {endpoint.method} {endpoint.path}
+            <p className="mt-0.5 text-caption leading-relaxed text-muted">
+              {description ?? endpoint.usage}
             </p>
+            {lastFetchedAt ? (
+              <p className="mt-2 flex items-center gap-1.5 text-caption text-muted">
+                <Clock3 size={14} aria-hidden />
+                Сүүлд татсан: {lastFetchedAt}
+              </p>
+            ) : null}
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {showResponseDetails ? (
-              <Badge tone={demoMode ? "sun" : "mint"}>
-                {demoMode ? "ESIS DEMO DATA" : "ESIS LIVE"}
+            {read.data?.status === "SUCCEEDED" ? (
+              <Badge tone={read.data.source === "STORE" ? "sky" : "mint"}>
+                {read.data.source === "STORE" ? "Синк хийсэн" : "Шууд ирсэн"}
               </Badge>
             ) : null}
-            <Badge tone="sky">{rows.length} бичлэг</Badge>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={read.isFetching || missing.length > 0}
-              onClick={() => void pull()}
-            >
-              <CloudDownload aria-hidden />
-              {read.isFetching
-                ? resource === "studentByRegister"
-                  ? "Хайж байна…"
-                  : "Татаж байна…"
-                : autoRead && read.data
-                  ? "Дахин татах"
-                  : (actionLabel ?? "ESIS-ээс мэдээллээ татах")}
-            </Button>
+            {(rows.length > 0 || read.data?.status === "SUCCEEDED") && (
+              <Badge tone="sky">{rows.length} бичлэг</Badge>
+            )}
+            {!registerSearch ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={read.isFetching || missing.length > 0}
+                onClick={() => void pull()}
+              >
+                <CloudDownload aria-hidden />
+                {/*
+                ★ "Шинэчлэх", not "ESIS-ээс мэдээллээ татах" — the panels fetch
+                on their own now, so a button promising to fetch would be
+                describing something that already happened. What is left for it
+                to do is ask again.
+
+                A panel still waiting on a parameter keeps its own verb: there
+                the press really is what starts the call.
+              */}
+                {read.isFetching
+                  ? resource === "studentByRegister"
+                    ? "Хайж байна…"
+                    : "Татаж байна…"
+                  : missing.length > 0 || asks.length > 0
+                    ? (actionLabel ?? "Хайх")
+                    : "Шинэчлэх"}
+              </Button>
+            ) : null}
           </div>
         </div>
 
-        {asks.length > 0 ? (
+        {registerSearch ? (
+          <div className="border-b border-border-soft pb-5">
+            <form
+              onSubmit={submitRegisterSearch}
+              role="search"
+              className="flex flex-col gap-2 sm:flex-row sm:items-end"
+            >
+              <Field label="РД (регистрийн дугаар)" labelHidden className="min-w-0 flex-1">
+                {({ id }) => (
+                  <div className="relative">
+                    <Search
+                      size={19}
+                      aria-hidden
+                      className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted"
+                    />
+                    <Input
+                      id={id}
+                      type="search"
+                      placeholder="РД-ээр сурагч хайх"
+                      autoComplete="off"
+                      autoCapitalize="characters"
+                      maxLength={32}
+                      value={entered.personRegNumber ?? ""}
+                      onChange={(event) =>
+                        setEntered((current) => ({
+                          ...current,
+                          personRegNumber: event.target.value.toUpperCase(),
+                        }))
+                      }
+                      className="pl-12"
+                    />
+                  </div>
+                )}
+              </Field>
+              <Button type="submit" disabled={!entered.personRegNumber?.trim() || read.isFetching}>
+                <Search aria-hidden />
+                {read.isFetching ? "Хайж байна…" : "Хайх"}
+              </Button>
+            </form>
+            <p className="mt-2 text-caption text-muted">
+              Регистрийн дугаарыг ESIS рүү илгээх ба хадгалахгүй.
+            </p>
+          </div>
+        ) : asks.length > 0 ? (
           <div>
             <div className="grid gap-3 sm:grid-cols-2">
               {asks.map((name) => (
@@ -381,89 +561,6 @@ export function EsisDataPanel({
           </div>
         ) : null}
 
-        {showResponseDetails ? (
-          <div className="flex flex-col gap-4" aria-label="ESIS хүсэлт ба хариу">
-            {demoMode ? (
-              <p className="rounded-control border border-sun-ink/20 bg-sun px-4 py-3 text-body font-semibold text-sun-ink">
-                ESIS DEMO DATA — LIVE CONNECTION NOT ACTIVE
-              </p>
-            ) : null}
-
-            <dl className="grid overflow-hidden rounded-control border border-border-soft sm:grid-cols-2 xl:grid-cols-4">
-              <ResponseFact label="Method" value={endpoint.method} />
-              <ResponseFact
-                label="Response mode"
-                value={read.data?.source ?? (demoMode ? "MOCK" : "LIVE")}
-              />
-              <ResponseFact
-                label="HTTP status"
-                value={
-                  read.data
-                    ? `${read.data.response.SUCCESS_CODE}${read.data.source === "MOCK" ? " MOCK" : ""}`
-                    : "Хүлээж байна"
-                }
-              />
-              <ResponseFact label="Sync status" value={read.data?.status ?? "PENDING"} />
-              <ResponseFact
-                label="Request parameter"
-                value={
-                  required.length > 0
-                    ? required
-                        .map((name) => {
-                          const currentValue = value(name);
-                          return `${name}=${
-                            isPersonalParam(name) && currentValue ? "••••••••" : currentValue || "—"
-                          }`;
-                        })
-                        .join(", ")
-                    : "Параметргүй"
-                }
-              />
-              <ResponseFact
-                label="Response message"
-                value={read.data?.response.RESPONSE_MESSAGE ?? "Хүлээж байна"}
-              />
-              <ResponseFact
-                label="Response count"
-                value={read.data ? String(read.data.count) : "—"}
-              />
-              <ResponseFact
-                label="Duration"
-                value={
-                  read.data?.durationMs === null || read.data?.durationMs === undefined
-                    ? "—"
-                    : `${read.data.durationMs} ms`
-                }
-              />
-            </dl>
-
-            <div>
-              <p className="text-caption font-semibold uppercase text-muted">Request URL</p>
-              <p className="mt-1 break-all rounded-control bg-canvas px-3 py-2 font-mono text-caption text-ink">
-                {endpoint.method} {endpoint.path}
-              </p>
-            </div>
-
-            <div>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="font-semibold text-ink">Response output · Бүтэн JSON</h3>
-                <span className="text-caption text-muted">
-                  {receivedAt ? `Хүлээн авсан: ${receivedAt}` : "ESIS response хүлээж байна"}
-                </span>
-              </div>
-              {read.isFetching && !read.data ? (
-                <LoadingState rows={2} />
-              ) : read.data ? (
-                <pre className="mt-3 max-h-[520px] overflow-auto rounded-control bg-[#142033] p-4 font-mono text-caption leading-5 text-[#e8f2ff]">
-                  {JSON.stringify(read.data.response, null, 2)}
-                </pre>
-              ) : (
-                <p className="mt-3 text-body text-muted">Response хараахан ирээгүй байна.</p>
-              )}
-            </div>
-          </div>
-        ) : null}
-
         {read.isError ? (
           <p
             role="alert"
@@ -473,23 +570,37 @@ export function EsisDataPanel({
           </p>
         ) : null}
         {read.data?.status === "FAILED" ? (
-          <Card pad="compact" tone="peach">
-            <p className="text-body font-semibold text-ink">ESIS хариу өгсөнгүй</p>
-            <p className="mt-1 text-caption text-muted">
-              {ERROR_LABEL[read.data.errorCode ?? "UNKNOWN"] ?? read.data.errorCode}
-            </p>
-          </Card>
+          <EsisNoAnswer endpoint={endpoint} errorCode={read.data.errorCode} variant="FAILED" />
         ) : null}
 
-        {rows.length === 0 ? (
-          <Card pad="compact">
-            <p className="text-body text-muted">ESIS энэ сервисээр бичлэг буцаасангүй.</p>
-          </Card>
+        {registerSearch && !searchedRegister ? (
+          <p className="rounded-row bg-canvas px-4 py-5 text-body text-muted">
+            Сурагчийн регистрийн дугаарыг оруулаад хайлтаа эхлүүлнэ үү.
+          </p>
+        ) : read.isFetching && !read.data && rows.length === 0 ? (
+          <LoadingState rows={2} />
+        ) : registerSearch && searchedRegister && !catalog.data?.canRead ? (
+          <EsisNoAnswer endpoint={endpoint} errorCode="NOT_CONFIGURED" variant="FAILED" />
+        ) : rows.length === 0 ? (
+          /*
+           * ★ Only once. A failed read has no rows either, so without this the
+           * screen stacked "хариу өгсөнгүй" on top of "бичлэг буцаасангүй" and
+           * invited the reader to work out whether those were two problems.
+           */
+          read.data?.status === "FAILED" || read.isError ? null : registerSearch ? (
+            <EmptyState
+              title="Сурагч олдсонгүй"
+              description="Регистрийн дугаараа шалгаад дахин хайна уу."
+            />
+          ) : (
+            <EsisNoAnswer endpoint={endpoint} errorCode={null} variant="EMPTY" />
+          )
         ) : (
           <EsisRowValues
             columns={columns}
             rows={rows}
-            hrefs={live ? undefined : hrefs}
+            rowActions={rowActions}
+            hrefs={live ? (liveHref ? rows.map(liveHref) : undefined) : hrefs}
             linkField={linkField}
             renderDetail={
               detail
@@ -514,21 +625,7 @@ export function EsisDataPanel({
             }
           />
         )}
-
-        <p className="border-t border-border-soft pt-4 text-caption text-muted">
-          {syncedAt ? `Шинэчилсэн: ${syncedAt} · ` : null}
-          Татахгүй талбар: регистр, иргэний бүртгэлийн дугаар, нэвтрэх мэдээлэл.
-        </p>
       </Card>
     </section>
-  );
-}
-
-function ResponseFact({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0 border-b border-border-soft px-4 py-3 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 xl:border-b-0 xl:border-r xl:last:border-r-0">
-      <dt className="text-caption text-muted">{label}</dt>
-      <dd className="mt-1 break-words font-mono text-caption font-semibold text-ink">{value}</dd>
-    </div>
   );
 }

@@ -20,10 +20,15 @@ describe("menu spreadsheet import", () => {
     ]);
     const result = await parseMenuWorkbook(input);
     expect(result.problems).toEqual([]);
-    expect(result.days).toEqual([{ date: "2026-09-19", dishes: [
-      expect.objectContaining({ name: "Каш", kind: "BREAKFAST", calories: 125 }),
-      expect.objectContaining({ name: "Шөл", kind: "LUNCH", calories: 320 }),
-    ] }]);
+    expect(result.days).toEqual([
+      {
+        date: "2026-09-19",
+        dishes: [
+          expect.objectContaining({ name: "Каш", kind: "BREAKFAST", calories: 125 }),
+          expect.objectContaining({ name: "Шөл", kind: "LUNCH", calories: 320 }),
+        ],
+      },
+    ]);
   });
 
   it("reads a later sheet and fills down dates for subsequent dishes", async () => {
@@ -39,33 +44,44 @@ describe("menu spreadsheet import", () => {
   });
 
   it("does not treat unrecognized sheets as empty days", async () => {
-    const result = await parseMenuWorkbook(await workbook([["Тайлбар"], ["Хоол", "Илчлэг"], ["Шөл", 300]]));
+    const result = await parseMenuWorkbook(
+      await workbook([["Тайлбар"], ["Хоол", "Илчлэг"], ["Шөл", 300]]),
+    );
     expect(result.days).toEqual([]);
     expect(result.problems).toHaveLength(1);
   });
 
   it("imports a weekly matrix with dates across the top", async () => {
-    const input = await workbook([
-      ["2026-2027 ОНЫ ХООЛНЫ ТӨЛӨВЛӨГӨӨ"],
-      ["I долоо хоног"],
-      ["ГАРИГ", new Date("2026-09-21T00:00:00Z"), new Date("2026-09-22T00:00:00Z")],
-      ["Өглөөний хоол", "Сүүтэй будаа", "Шар будаатай шөл"],
-      ["Бага үдийн цай", "Жимс", "Тараг"],
-      ["Үндсэн хоол", "Ногоотой шөл", "Будаатай хуурга"],
-      ["Их үдийн цай", "Аарц", "Сүү"],
-      ["", "Тэжээллэг боов", "Талх"],
-    ], "Хоолны төлөвлөгөө");
+    const input = await workbook(
+      [
+        ["2026-2027 ОНЫ ХООЛНЫ ТӨЛӨВЛӨГӨӨ"],
+        ["I долоо хоног"],
+        ["ГАРИГ", new Date("2026-09-21T00:00:00Z"), new Date("2026-09-22T00:00:00Z")],
+        ["Өглөөний хоол", "Сүүтэй будаа", "Шар будаатай шөл"],
+        ["Бага үдийн цай", "Жимс", "Тараг"],
+        ["Үндсэн хоол", "Ногоотой шөл", "Будаатай хуурга"],
+        ["Их үдийн цай", "Аарц", "Сүү"],
+        ["", "Тэжээллэг боов", "Талх"],
+      ],
+      "Хоолны төлөвлөгөө",
+    );
 
     const result = await parseMenuWorkbook(input);
     expect(result.problems).toEqual([]);
     expect(result.days).toEqual([
-      expect.objectContaining({ date: "2026-09-21", dishes: expect.arrayContaining([
-        expect.objectContaining({ name: "Сүүтэй будаа", kind: "BREAKFAST" }),
-        expect.objectContaining({ name: "Тэжээллэг боов", kind: "AFTERNOON_SNACK" }),
-      ]) }),
-      expect.objectContaining({ date: "2026-09-22", dishes: expect.arrayContaining([
-        expect.objectContaining({ name: "Будаатай хуурга", kind: "LUNCH" }),
-      ]) }),
+      expect.objectContaining({
+        date: "2026-09-21",
+        dishes: expect.arrayContaining([
+          expect.objectContaining({ name: "Сүүтэй будаа", kind: "BREAKFAST" }),
+          expect.objectContaining({ name: "Тэжээллэг боов", kind: "AFTERNOON_SNACK" }),
+        ]),
+      }),
+      expect.objectContaining({
+        date: "2026-09-22",
+        dishes: expect.arrayContaining([
+          expect.objectContaining({ name: "Будаатай хуурга", kind: "LUNCH" }),
+        ]),
+      }),
     ]);
   });
 });

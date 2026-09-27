@@ -234,6 +234,97 @@ describe("admin dashboard", () => {
     ).toBe(404);
   });
 
+  /*
+   * ЭСИС-тэй тулгалт — 2026-09-24, at the client's request: show how many
+   * staff and children the ministry lists beside how many are registered here.
+   *
+   * ★ **The whole point is that it costs no ESIS call.** `EsisStaffRoster` is
+   * refilled nightly by tier 2 of the sync, so the ministry's staff total is
+   * already on disk; a dashboard opened thirty times a day must not spend a
+   * rate-limited token per open. These assert on the numbers, and the absence
+   * of an outbound call is guaranteed by construction — nothing in the path
+   * imports `EsisService`.
+   */
+  it("★ reports the ministry's staff roster beside the accounts that can sign in", async () => {
+    await db.esisStaffRoster.createMany({
+      data: [1, 2, 3].map((n) => ({
+        kindergartenId: a.kindergarten.id,
+        esisPersonId: `9000000000000${n}`,
+        registerNumber: `УБ0000000${n}`,
+        lastName: "Ганболд",
+        firstName: `Багш${n}`,
+        jobCode: "2342-13",
+        isInstructor: true,
+      })),
+    });
+
+    const res = await request(server()).get("/v1/dashboard/admin").set("Cookie", adminA.cookies);
+
+    expect(res.body.esis.staffInRoster).toBe(3);
+    expect(res.body.esis.rosterSyncedAt).toBeTruthy();
+    // The scenario's own admin and teacher — both staff, neither a guardian.
+    expect(res.body.esis.staffRegistered).toBeGreaterThanOrEqual(2);
+  });
+
+  /*
+   * ★★ **Another kindergarten's roster is not this one's count.** The figure
+   * is scoped the same way every other number on this dashboard is, and a
+   * roster row is per-kindergarten (`@@unique([kindergartenId, esisPersonId])`)
+   * precisely so two tenants can list the same person.
+   */
+  it("★ does not count another kindergarten's roster", async () => {
+    await db.esisStaffRoster.create({
+      data: {
+        kindergartenId: b.kindergarten.id,
+        esisPersonId: "90000000000099",
+        registerNumber: "УБ99999999",
+        lastName: "Дорж",
+        firstName: "Сараа",
+        jobCode: "2342-13",
+      },
+    });
+
+    const res = await request(server()).get("/v1/dashboard/admin").set("Cookie", adminA.cookies);
+    expect(res.body.esis.staffInRoster).toBe(0);
+  });
+
+  /*
+   * ★ Children and groups report **provenance**, not the ministry's total —
+   * there is no stored copy of ESIS's student roster. A child imported from
+   * ESIS carries `esisPersonId`; one typed in by hand does not, and the pair
+   * of numbers is what tells a director which they are looking at.
+   */
+  it("★ separates the children that came from ESIS from the rest", async () => {
+    const before = await request(server()).get("/v1/dashboard/admin").set("Cookie", adminA.cookies);
+    expect(before.body.esis.childrenLinked).toBe(0);
+    expect(before.body.esis.childrenTotal).toBe(1);
+
+    await db.child.update({
+      where: { id: a.child.id },
+      data: { esisPersonId: "90000000000042" },
+    });
+
+    const after = await request(server()).get("/v1/dashboard/admin").set("Cookie", adminA.cookies);
+    expect(after.body.esis.childrenLinked).toBe(1);
+    expect(after.body.esis.childrenTotal).toBe(1);
+  });
+
+  /*
+   * ★★ `staffRegistered` counts **every** staff role; `counts.staff` beside it
+   * counts `TEACHER` and `ADMIN` only. A kindergarten employing a тогооч has
+   * always been told it has fewer "Багш, ажилтан" than it does, and this is
+   * the case that pins the difference rather than letting the two drift into
+   * agreement by accident.
+   */
+  it("★ counts a cook as staff where the older tile does not", async () => {
+    const cook = await createUser({ username: uniq("cook") });
+    await createMembership(cook.id, a.kindergarten.id, "COOK");
+
+    const res = await request(server()).get("/v1/dashboard/admin").set("Cookie", adminA.cookies);
+
+    expect(res.body.esis.staffRegistered).toBe(res.body.counts.staff + 1);
+  });
+
   it("shows recent activity from its own kindergartens only", async () => {
     await observe(false);
 

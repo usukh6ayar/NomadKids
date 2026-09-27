@@ -9,15 +9,41 @@ import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DataList, DataRow } from "@/components/ui/data-list";
 import { Checkbox, Field, Input } from "@/components/ui/field";
-import { FormError } from "@/components/ui/states";
+import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
+import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
 const listSchema = z.array(schoolYearSchema);
+
+/**
+ * ★ The years this kindergarten has created, as a table — 2026-09-20, the
+ * client: "он үүсгэж болж байна он нь дэлгэц дээр хүснэгтээр харагддаг болгоод
+ * өгөөч".
+ *
+ * They were already being fetched. `years` has been queried on this screen
+ * since the ESIS panel replaced the local list, and the result was used for
+ * exactly one thing — `hasAny`, to decide whether a new year should default to
+ * being the current one. So a director created a year, the request succeeded,
+ * and the screen showed them the ministry's list with their own year nowhere
+ * in it. Nothing was lost; nothing said so either.
+ */
+const YEAR_COLUMNS = [
+  { key: "range", label: "Хугацаа", className: "md:w-[240px]" },
+  { key: "state", label: "Төлөв", className: "md:w-[120px]" },
+];
+
+/** `2025-09-01` → `2025.09.01`; null → an em dash rather than an empty cell. */
+function shortDate(value: string | null | undefined): string {
+  if (!value) return "—";
+  return value.slice(0, 10).replaceAll("-", ".");
+}
 
 /** Every mutation on this screen refetches the same list. */
 const YEARS_KEY = ["admin", "school-years"] as const;
@@ -81,6 +107,45 @@ function AdminSchoolYears() {
         }
       />
 
+      {years.isLoading ? <LoadingState rows={2} /> : null}
+      {years.isError ? <ErrorState description={errorMessage(years.error)} /> : null}
+
+      {years.data && items.length === 0 ? (
+        <EmptyState
+          title="Хичээлийн жил үүсгээгүй байна"
+          description="Бүлэг, хүүхэд бүртгэхийн өмнө эхлээд хичээлийн жил үүсгэнэ үү."
+        />
+      ) : null}
+
+      {items.length > 0 ? (
+        <DataList columns={YEAR_COLUMNS} leadWidth={null}>
+          {items.map((year) => (
+            <DataRow
+              key={year.id}
+              title={
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="min-w-0 truncate">{year.name}</span>
+                </span>
+              }
+              cells={{
+                range: (
+                  <span className="text-body tabular-nums text-muted">
+                    {shortDate(year.startsOn)} – {shortDate(year.endsOn)}
+                  </span>
+                ),
+                /*
+                 * ★ A badge only on the current year. Marking every other row
+                 * "Идэвхгүй" would put a constant chip down the whole column
+                 * and teach the eye to skip the one row that differs — the
+                 * same reasoning the group list gives for its programme badge.
+                 */
+                state: year.isCurrent ? <Badge tone="mint">Одоогийн</Badge> : null,
+              }}
+            />
+          ))}
+        </DataList>
+      ) : null}
+
       {/*
         ★ The academic years, from ESIS — 2026-09-08, at the client's
         instruction, given twice with the consequence written out first.
@@ -141,11 +206,14 @@ function CreateYearDialog({
 
   const errors = fieldErrors(create.error);
 
+  const backdrop = useBackdropDismiss(onClose);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Хичээлийн жил нэмэх"
+      {...backdrop}
       className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4"
     >
       <div className="w-full max-w-[420px] rounded-card border border-border bg-surface p-5">

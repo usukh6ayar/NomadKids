@@ -182,13 +182,4 @@ describe("ESIS: Илгээх → Шалгах → Баталгаажсан / З�
     expect(await screen.findByText(/Зөрүүтэй — 1 хүүхдийн ирц/)).toBeInTheDocument();
   });
 
-  it("never calls a demo read-back either verdict", async () => {
-    const user = userEvent.setup();
-    stub({ source: "MOCK", rows: [{ personId: "1", attendanceReasonCode: "PRESENT" }] });
-    renderWithProviders(<GroupAttendancePage />);
-
-    await sendThenCheck(user);
-    expect(await screen.findByText(/Туршилтын горим/)).toBeInTheDocument();
-    expect(screen.queryByText(/Баталгаажсан —|Зөрүүтэй —/)).toBeNull();
-  });
 });

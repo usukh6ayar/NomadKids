@@ -33,7 +33,7 @@ import {
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
-import { formatDate } from "@/lib/format";
+import { formatDate, capitalize } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
@@ -852,7 +852,7 @@ function SpecialNeedRow({
       <Card pad="compact" className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
           <Accessibility size={16} aria-hidden="true" className="shrink-0 text-muted" />
-          <span className="text-body font-medium text-ink">{need.category.name}</span>
+          <span className="text-body font-medium text-ink">{capitalize(need.category.name)}</span>
           {need.documentNo ? <Badge tone="neutral">{need.documentNo}</Badge> : null}
 
           {need.endedOn ? (
@@ -882,7 +882,7 @@ function SpecialNeedRow({
               <DeleteHealthRecord
                 childId={childId}
                 path={`/special-needs/${need.id}`}
-                recordLabel={need.category.name}
+                recordLabel={capitalize(need.category.name)}
                 title="Тусгай хэрэгцээний бүртгэлийг устгах"
                 description={`"${need.category.name}" — бүртгэлийг бүрмөсөн устгах уу? Дэмжлэг зогссон бол устгахын оронд "Дуусгах"-ыг сонговол түүх хадгалагдана.`}
               />
@@ -1005,7 +1005,7 @@ function SpecialNeedForm({ childId, compact = false }: { childId: string; compac
                 </option>
                 {(categories.data ?? []).map((category) => (
                   <option key={category.id} value={category.id}>
-                    {category.name}
+                    {capitalize(category.name)}
                   </option>
                 ))}
               </Select>

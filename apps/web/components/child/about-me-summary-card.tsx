@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { BackButton } from "@/components/ui/back-button";
 import { IconChip } from "@/components/ui/icon-chip";
 import type { Tone } from "@/components/ui/tone";
-import { formatDate } from "@/lib/format";
+import { formatDate, capitalize } from "@/lib/format";
 import type { ReactNode } from "react";
 
 /**
@@ -65,7 +65,7 @@ export function AboutMeSummaryCard({
 
         <div className="min-w-0 flex-1">
           <h1 className="text-lead font-semibold text-ink">Миний тухай</h1>
-          <p className="text-body text-muted">{child.firstName}-ийн үндсэн мэдээлэл.</p>
+          <p className="text-body text-muted">{capitalize(child.firstName)}-ийн үндсэн мэдээлэл.</p>
         </div>
 
         {!editing ? (
@@ -80,7 +80,7 @@ export function AboutMeSummaryCard({
           icon={<User size={16} aria-hidden="true" />}
           tone="sky"
           label="Нэр"
-          value={child.firstName}
+          value={capitalize(child.firstName)}
         />
         <IdentityTile
           icon={<CalendarDays size={16} aria-hidden="true" />}

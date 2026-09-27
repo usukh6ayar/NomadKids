@@ -37,14 +37,17 @@ export class EsisConfig {
     return Boolean(this.baseUrl && this.token);
   }
 
-  /** Demo mode is an explicit transport choice, not inferred from a missing token. */
-  get isDemoMode(): boolean {
-    return this.env.ESIS_DEMO_MODE === true;
-  }
-
-  /** Whether the shared client can serve a request in either transport mode. */
+  /**
+   * Whether the shared client can serve a request.
+   *
+   * ★ Identical to `isConfigured` since 2026-09-14, and kept as a separate name
+   * only because several call sites read better asking "is ESIS available?".
+   * It used to be `isDemoMode || isConfigured` — the mock transport meant a
+   * deployment with no token could still answer every read, which is exactly
+   * the arrangement the client ended.
+   */
   get isAvailable(): boolean {
-    return this.isDemoMode || this.isConfigured;
+    return this.isConfigured;
   }
 
   /** Trailing slash removed so joining a path cannot produce `//`. */
@@ -78,15 +81,13 @@ export class EsisConfig {
    */
   describe(): {
     configured: boolean;
-    demoMode: boolean;
-    mode: "MOCK" | "LIVE";
+    mode: "LIVE";
     baseUrl: string;
     hasToken: boolean;
   } {
     return {
       configured: this.isConfigured,
-      demoMode: this.isDemoMode,
-      mode: this.isDemoMode ? "MOCK" : "LIVE",
+      mode: "LIVE",
       baseUrl: this.baseUrl,
       hasToken: this.token !== "",
     };

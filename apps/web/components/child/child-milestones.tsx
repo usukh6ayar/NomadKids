@@ -4,7 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Plus, Star } from "lucide-react";
 import { z } from "zod";
-import { MILESTONE_KIND_LABEL, MILESTONE_KINDS, milestoneSchema } from "@kinder/contracts";
+import {
+  MILESTONE_KIND_LABEL,
+  MILESTONE_KINDS,
+  milestoneSchema,
+  localDate,
+} from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
@@ -173,7 +178,7 @@ function MilestoneCard({
 
 function MilestoneForm({ childId, onDone }: { childId: string; onDone: () => void }) {
   const queryClient = useQueryClient();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDate();
 
   const [kind, setKind] = useState<string>("FIRST_STEP");
   const [title, setTitle] = useState("");

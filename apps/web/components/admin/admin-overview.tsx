@@ -1,12 +1,14 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { adminDashboardSchema, type AdminDashboard } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
-import { formatLongDate } from "@/lib/format";
+import { formatLongDate, groupLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/shell/app-shell";
 import { Button } from "@/components/ui/button";
@@ -18,6 +20,7 @@ import { BarRow } from "@/components/ui/chart/bar-row";
 import { Donut } from "@/components/ui/chart/donut";
 import { Ring } from "@/components/ui/chart/ring";
 import { TONE_VAR, type Tone } from "@/components/ui/tone";
+import { EsisVsRegistered } from "./esis-vs-registered";
 
 /**
  * The administrator's own dashboard — RFP §12.2, and the reference system's
@@ -73,7 +76,7 @@ import { TONE_VAR, type Tone } from "@/components/ui/tone";
  * engine "will correctly calculate nothing" until they do. Drawing either panel
  * from data that does not exist is how a dashboard starts lying.
  */
-export function AdminOverview() {
+export function AdminOverview({ actions }: { actions?: ReactNode } = {}) {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: qk.dashboard.admin(),
     queryFn: () => get("/dashboard/admin", adminDashboardSchema),
@@ -92,7 +95,9 @@ export function AdminOverview() {
     administrator who has not created one needs to read that at the top rather
     than infer it from an empty section further down.
   */
-  const header = <PageHeader title="Удирдлагын самбар" />;
+  // `actions` — the setup guide's button, on the title's own row rather than a
+  // row of its own above it (2026-09-26, «тэгш хэмтэй»).
+  const header = <PageHeader title="Удирдлагын самбар" actions={actions} />;
 
   if (isLoading) {
     return (
@@ -119,7 +124,7 @@ export function AdminOverview() {
     );
   }
 
-  const { counts, attendanceToday, attendanceByGroup, storage } = data!;
+  const { counts, attendanceToday, attendanceByGroup, storage, esis } = data!;
 
   return (
     <>
@@ -270,6 +275,20 @@ export function AdminOverview() {
             </>
           ) : null}
         </section>
+
+        {/*
+          ★ ЭСИС-тэй тулгалт, directly under the tiles those numbers are in —
+          2026-09-24, at the client's request: "esis ees irsen niit heden bagsh
+          ajilchid suraltsagch baigaa tood haruulna … systemd burtgegdsen ni
+          hed baigaag bas harj boldog baih."
+
+          It sits here rather than inside a tile because a tile carries one
+          figure and this is a comparison: "ЭСИС-д 13, бүртгэлтэй 5" is a
+          sentence, and folding it into the strip above would turn five cards
+          into ten numbers. `.nullish()` in the contract, so an older API that
+          does not send the block simply does not draw the card.
+        */}
+        {esis ? <EsisVsRegistered esis={esis} groupsTotal={counts.groups} /> : null}
 
         {/*
         ★ These two are paired because they are the same shape, not because
@@ -597,14 +616,14 @@ function AttendanceByGroup({ groups }: { groups: AdminDashboard["attendanceByGro
               <div key={group.groupId} className="px-4 py-3">
                 <BarRow
                   inline
-                  label={group.name}
+                  label={groupLabel(group.name)}
                   percent={percent}
                   value={`${percent}%`}
                   /* Green once a group is essentially always here, amber below —
                      the tones' own meanings, and the same threshold the client's
                      drawing marks with its own colour change. */
                   tone={percent >= 90 ? "mint" : percent >= 75 ? "sky" : "sun"}
-                  accessibleLabel={`${group.name} — ирц ${percent}%`}
+                  accessibleLabel={`${groupLabel(group.name)} — ирц ${percent}%`}
                 />
               </div>
             );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2, X } from "lucide-react";
+import { Plus, Trash2, WalletCards, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { z } from "zod";
 import {
@@ -12,8 +12,8 @@ import {
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
-import { PageHeader } from "@/components/shell/app-shell";
 import { RequireSuperAdmin } from "@/components/shell/require-role";
+import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
@@ -23,6 +23,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { formatDate } from "@/lib/format";
+import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
 const partnersSchema = z.array(revenuePartnerSchema);
 
@@ -92,11 +93,15 @@ function PlatformRevenue() {
   });
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-6">
-      <PageHeader
+    <div className="flex flex-col gap-6 pb-8 lg:gap-7">
+      <PlatformPageHeading
         title="Санхүү"
+        lede="Платформын орлого, цэцэрлэгийн төлөлт болон тохирсон хуваарилалт."
+        mark={<WalletCards />}
+        // Label for screen readers only: shown, it pushed the field 29px below
+        // the title line the header is centred on, and the value names itself.
         actions={
-          <Field label="Сар">
+          <Field label="Сар" labelHidden>
             {({ id }) => (
               <MonthSelect id={id} value={month} onValueChange={setMonth} className="w-[170px]" />
             )}
@@ -123,11 +128,21 @@ function PlatformRevenue() {
             screen at all. It leads now, because it is the only figure on this
             page a partner's percentage is taken from.
           */}
-          <Card pad="roomy" tone="mint" className="flex flex-col gap-1">
-            <p className="text-caption font-medium text-mint-ink">
+          <Card
+            pad="roomy"
+            tone="mint"
+            className="relative flex flex-col gap-1 overflow-hidden bg-[linear-gradient(110deg,#e4f5ed_0%,#f4fbf7_70%,#ffffff_100%)]"
+          >
+            <span
+              className="mb-2 grid size-11 place-items-center rounded-control bg-white/80 text-mint-ink"
+              aria-hidden="true"
+            >
+              <WalletCards size={22} />
+            </span>
+            <p className="text-body font-bold text-mint-ink">
               Платформын орлого — хандалтын төлбөр
             </p>
-            <p className="text-display font-semibold tabular-nums text-ink">
+            <p className="mt-1 text-display font-extrabold tabular-nums text-ink">
               {money(revenue.data.platform.accessFees)}
             </p>
             <p className="text-caption text-muted">
@@ -146,7 +161,7 @@ function PlatformRevenue() {
               title="Улсаас цэцэрлэгүүдэд"
               lede="Цэцэрлэгүүдийн мөнгө — платформын орлого биш. Ажиллагааны хэмжүүр."
             />
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <Total label="Тооцсон" value={revenue.data.state.calculated} />
               <Total label="Баталгаажсан" value={revenue.data.state.approved} />
               <Total label="Орж ирсэн" value={revenue.data.state.received} />
@@ -175,10 +190,10 @@ function Total({
   accent?: boolean;
 }) {
   return (
-    <Card pad="roomy">
-      <p className="text-caption text-muted">{label}</p>
+    <Card pad="roomy" className="border-border bg-white shadow-sm">
+      <p className="text-caption font-semibold text-muted">{label}</p>
       <p
-        className={`mt-1 text-display font-semibold tabular-nums ${accent ? "text-primary" : "text-ink"}`}
+        className={`mt-2 text-heading font-extrabold tabular-nums sm:text-display ${accent ? "text-primary" : "text-ink"}`}
       >
         {money(value)}
       </p>
@@ -202,14 +217,14 @@ function IncomeByKindergarten({
           </p>
         </Card>
       ) : (
-        <Card className="divide-y divide-border-soft">
+        <Card className="divide-y divide-border-soft overflow-hidden">
           {rows.map((row) => (
             <div
               key={row.kindergartenId}
-              className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+              className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 transition-colors hover:bg-sunken/60 sm:px-5"
             >
               <div className="min-w-0">
-                <p className="truncate text-body font-medium text-ink">{row.name}</p>
+                <p className="truncate text-body font-bold text-ink">{row.name}</p>
                 {/*
                   A count of rows, never who they are about — see the note on
                   the page component. "12 бүртгэл" says how much work the figure
@@ -385,7 +400,7 @@ function PartnerRow({
   });
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
       <div className="min-w-0">
         <p className="flex flex-wrap items-center gap-2">
           <span className="truncate text-body font-medium text-ink">{partner.name}</span>
@@ -476,11 +491,14 @@ function AddPartnerDialog({
     if (!create.isPending) create.mutate();
   }
 
+  const backdrop = useBackdropDismiss(onClose);
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label="Хувь тохирсон хүн нэмэх"
+      {...backdrop}
       className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
     >
       <div className="w-full max-w-[460px] rounded-card border border-border bg-surface p-5">

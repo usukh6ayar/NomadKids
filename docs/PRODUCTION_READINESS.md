@@ -497,9 +497,9 @@ for the header and getting nothing back. It now lists both, and `WEB_ORIGIN`
   full list of settings that move with the records.
 - **`NEXT_PUBLIC_MEDIA_URL` is not set on Vercel.** Without it the page's own
   CSP blocks every photo in the product: `/v1/media/:id` redirects to a
-  presigned URL on the R2 host, and `img-src` is enforced against the redirect
-  target. Found by rendering an upload in a browser — see
-  `UI_MIGRATION_STATUS.md` §7.3. Set it to the R2 S3 endpoint and rebuild;
+  presigned URL on the media host, and `img-src` is enforced against the
+  redirect target. Found by rendering an upload in a browser. Set it to the
+  object-storage endpoint the presigned URLs are issued on and rebuild;
   `NEXT_PUBLIC_*` is inlined at build time.
 - **Every image 401s in a browser, for the same reason.** `lib/api/client.ts`
   documents `mediaUrl` as relying on the auth cookie riding along on an

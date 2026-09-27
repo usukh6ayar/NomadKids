@@ -20,8 +20,20 @@ export type RoomKey = string;
 
 export const GROUP_ROOM = (groupId: string): RoomKey => `group:${groupId}`;
 export const STAFF_ROOM = (kindergartenId: string): RoomKey => `staff:${kindergartenId}`;
+export const PARENTS_ROOM = (groupId: string): RoomKey => `parents:${groupId}`;
 
-export type RoomKind = "GROUP" | "STAFF";
+/**
+ * The private room two people share.
+ *
+ * ★ **Sorted, so the pair has one key.** `direct:a:b` and `direct:b:a` would
+ * be two rooms holding half a conversation each, and which one a person landed
+ * in would depend on who opened it. Sorting is what makes the key a property
+ * of the pair rather than of the opener.
+ */
+export const DIRECT_ROOM = (userIdA: string, userIdB: string): RoomKey =>
+  `direct:${[userIdA, userIdB].sort().join(":")}`;
+
+export type RoomKind = "GROUP" | "STAFF" | "PARENTS" | "DIRECT";
 
 /**
  * Who is in "Бүх багш".
@@ -63,6 +75,27 @@ export interface ChatAccessFacts {
    * that question.
    */
   readonly guardianGroups: readonly { id: string; name: string; kindergartenId: string }[];
+  /**
+   * The people this actor may hold a private conversation with, and who they
+   * are — 2026-09-20's «эцэг эх багш руу хувиараа бичих».
+   *
+   * ★ **Derived, never stored.** A DIRECT room is not a row anybody creates:
+   * it exists exactly while the pairing does. A guardian's counterparts are
+   * the teachers assigned to the groups their children are enrolled in; a
+   * teacher's are the guardians of the children in the groups they teach. The
+   * same `GroupTeacher` / `Enrollment` / `Guardianship` rows every other rule
+   * reads (§1.3) — so unassigning a teacher closes the room on the next
+   * request, with nothing to clean up.
+   *
+   * ★★ Symmetric by construction. Both sides are computed from the same three
+   * tables, so if A may write to B then B may write to A — which is what makes
+   * one sorted `roomKey` answer for both.
+   */
+  readonly directPeers: readonly {
+    userId: string;
+    name: string;
+    kindergartenId: string;
+  }[];
 }
 
 /**
@@ -121,6 +154,53 @@ export function roomsFor(actor: Actor, facts: ChatAccessFacts, names: Kindergart
       kindergartenId: group.kindergartenId,
       groupId: group.id,
       name: group.name,
+    });
+  }
+
+  /*
+   * ★ The parents' room — **`guardianGroups` only**, deliberately not
+   * `teachingGroups`.
+   *
+   * That single omission is the whole feature. A teacher is in the group room
+   * for every group they teach and is in none of these, which is what the
+   * client asked for: "багшгүй дан эцэг эхийн чат". A teacher who is also a
+   * parent in a group they teach **does** get it, through their guardianship
+   * and not through their assignment — they are in it as that child's parent,
+   * which is the correct answer and falls out of reading the right set rather
+   * than needing a rule of its own.
+   *
+   * ★★ It is not conditional on the group room existing. Both are derived from
+   * the same fact, so a guardian gets both and a teacher gets one; there is no
+   * state in which a parent has the private room and not the shared one.
+   */
+  for (const group of facts.guardianGroups) {
+    const key = PARENTS_ROOM(group.id);
+    if (rooms.has(key)) continue;
+    rooms.set(key, {
+      key,
+      kind: "PARENTS",
+      kindergartenId: group.kindergartenId,
+      groupId: group.id,
+      name: `${group.name} · эцэг эхчүүд`,
+    });
+  }
+
+  /*
+   * ★★★ One room per person this actor may write to privately.
+   *
+   * Named after the **other** person, because that is what a list of private
+   * conversations has to say — every other room here is named after the group
+   * or the kindergarten it belongs to, and a row reading "Би" would be useless.
+   */
+  for (const peer of facts.directPeers) {
+    const key = DIRECT_ROOM(actor.userId, peer.userId);
+    if (rooms.has(key)) continue;
+    rooms.set(key, {
+      key,
+      kind: "DIRECT",
+      kindergartenId: peer.kindergartenId,
+      groupId: null,
+      name: peer.name,
     });
   }
 

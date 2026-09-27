@@ -10,7 +10,11 @@
  * parties with a revenue agreement need to be able to check each other.
  *
  * So: one account per person, named, and the shared one retired once both have
- * signed in. `docs/PLATFORM_ACCOUNTS.md`.
+ * signed in. `docs/OPERATOR_MANUAL.md` §1.
+ *
+ * ★ That pointer used to read `docs/PLATFORM_ACCOUNTS.md`, which never
+ * existed — the only reference to it in the tree was this line. The operator
+ * manual is where the content landed on 2026-09-19.
  *
  * ★★ **No password is set, generated or printed.** The account is created with
  * an unusable hash — a random 32-byte string nobody, including this script,
