@@ -38,6 +38,46 @@ export class ChatRepository {
   } as const;
 
   /**
+   * The children a room's guardian authors are there for — «эцэг эхийн
+   * мессежийг хүүхдийн нэрээр» (client, 2026-09-25).
+   *
+   * ★ Scoped to the room: a group or parents' room names only the children
+   * actively enrolled in **that** group, so a family with two children in two
+   * groups is named by the right one in each. A direct room is scoped to the
+   * kindergarten. One query for a whole page of messages (§3.4); bounded by
+   * the page's authors.
+   */
+  async guardianChildren(
+    authorIds: string[],
+    scope: { kindergartenId: string; groupId: string | null },
+  ) {
+    if (authorIds.length === 0) return [];
+    return this.prisma.guardianship.findMany({
+      where: {
+        deletedAt: null,
+        kindergartenId: scope.kindergartenId,
+        guardianUserId: { in: authorIds },
+        child: {
+          deletedAt: null,
+          enrollments: {
+            some: {
+              status: "ACTIVE",
+              deletedAt: null,
+              ...(scope.groupId ? { groupId: scope.groupId } : {}),
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+      take: 200,
+      select: {
+        guardianUserId: true,
+        child: { select: { id: true, lastName: true, firstName: true, photoMediaFileId: true } },
+      },
+    });
+  }
+
+  /**
    * The newest message in each of several rooms, in one query.
    *
    * ★ `distinct` on `roomKey` with a descending sort, not N queries.

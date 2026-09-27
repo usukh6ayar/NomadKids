@@ -4,7 +4,14 @@ import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Download, Info, MoreHorizontal, Plus, RefreshCw } from "lucide-react";
-import { SEX_LABEL, childSummarySchema, groupListItemSchema, paginated } from "@kinder/contracts";
+import {
+  SEX_LABEL,
+  childSummarySchema,
+  foodDiscountsSchema,
+  groupListItemSchema,
+  paginated,
+  type FoodDiscountStatus,
+} from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { downloadUrl } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
@@ -25,19 +32,26 @@ import { useRouter } from "next/navigation";
 const listSchema = paginated(childSummarySchema);
 const groupsSchema = paginated(groupListItemSchema);
 
+const DISCOUNT_LABEL: Record<FoodDiscountStatus, string> = {
+  ELIGIBLE: "Хөнгөлөлттэй",
+  NOT_ELIGIBLE: "Хөнгөлөлтгүй",
+  // Not assessed by the ministry — never read as "no discount".
+  UNASSESSED: "Тогтоогоогүй",
+};
+
 const PAGE_SIZES = [20, 50, 100] as const;
 
 /**
  * The director's roster — client, 2026-09-25, with a drawing: one compact
  * table of every child, filtered by group, sex and discount, searched by name.
  *
- * ★ Nothing on it is invented. Two things the drawing shows have no data
- * behind them yet — a child's discount (Хөнгөлөлт) and their ESIS match state
- * (ESIS төлөв) — and neither does the date the national register last synced.
- * Their columns, the discount filter and the summary figures are drawn, and
- * read "—" until the API sends real values; nothing is guessed from other
- * fields. The same goes for the "ESIS Хөнгөлөлттэй" button, which has no
- * screen or action to open and is shown disabled.
+ * ★ Nothing on it is invented. «ESIS төлөв» is `esisLinked` — whether the
+ * child is matched to an ESIS person. «Хөнгөлөлт» is read live from ESIS (api
+ * 128, `GET …/funding/food-discounts`) when «ESIS Хөнгөлөлттэй» is pressed —
+ * a ministry read that is audited and stored nowhere, so it is not fired on
+ * every visit — and reads "—" until then. The discount filter stays disabled:
+ * the list is paged on the server and the discount lives in ESIS, so a filter
+ * here could only narrow the page on screen.
  *
  * A teacher's roster is unchanged; this is the administrator's only.
  */
@@ -70,6 +84,19 @@ export function AdminRoster() {
     }),
     queryFn: () => get(`/children?${filterQuery}&page=${page}&pageSize=${pageSize}`, listSchema),
   });
+
+  const [discountsPulled, setDiscountsPulled] = useState(false);
+  const discounts = useQuery({
+    queryKey: ["funding", primaryKindergartenId, "food-discounts"],
+    queryFn: () =>
+      get(`/kindergartens/${primaryKindergartenId}/funding/food-discounts`, foodDiscountsSchema),
+    enabled: discountsPulled && Boolean(primaryKindergartenId),
+    staleTime: Infinity,
+  });
+  const discountByChild =
+    discounts.data?.status === "READ"
+      ? new Map(discounts.data.rows.map((row) => [row.childId, row.status] as const))
+      : undefined;
 
   const groups = useQuery({
     queryKey: qk.groups({ pageSize: 100 }),
@@ -106,12 +133,14 @@ export function AdminRoster() {
                 </a>
               </Button>
             ) : null}
-            {/* No screen or action exists for this yet — shown, never faked. */}
             <Button
               size="sm"
               variant="secondary"
-              disabled
-              title="ESIS-ийн хөнгөлөлтийн мэдээлэл хараахан холбогдоогүй байна"
+              disabled={!primaryKindergartenId || discounts.isFetching}
+              onClick={() =>
+                discountsPulled ? void discounts.refetch() : setDiscountsPulled(true)
+              }
+              title="ESIS-ээс хоолны хөнгөлөлтийн мэдээлэл татах"
             >
               <RefreshCw size={16} aria-hidden /> ESIS Хөнгөлөлттэй
             </Button>
@@ -176,13 +205,33 @@ export function AdminRoster() {
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-caption text-muted">
         <p aria-live="polite">
           Нийт <span className="font-semibold tabular-nums text-ink">{data?.total ?? "—"}</span>{" "}
-          суралцагч · Хөнгөлөлттэй <span className="text-ink">—</span> · Хөнгөлөлтгүй{" "}
-          <span className="text-ink">—</span>
+          суралцагч · Хөнгөлөлттэй{" "}
+          <span className="tabular-nums text-ink">
+            {discountByChild ? discounts.data!.counts.eligible : "—"}
+          </span>{" "}
+          · Хөнгөлөлтгүй{" "}
+          <span className="tabular-nums text-ink">
+            {discountByChild ? discounts.data!.counts.notEligible : "—"}
+          </span>
+          {discountByChild && discounts.data!.counts.unassessed > 0 ? (
+            <>
+              {" "}
+              · Тогтоогоогүй{" "}
+              <span className="tabular-nums text-ink">{discounts.data!.counts.unassessed}</span>
+            </>
+          ) : null}
         </p>
         <p className="inline-flex items-center gap-1">
           <Info size={14} aria-hidden /> Нэгдсэн журмаар шинэчлэгдсэн: —
         </p>
       </div>
+
+      {discounts.data?.status === "UNAVAILABLE" ? (
+        <p role="status" className="text-caption text-peach-ink">
+          ESIS-ээс хөнгөлөлтийн мэдээлэл авч чадсангүй ({discounts.data.reason}).
+        </p>
+      ) : null}
+      {discounts.isError ? <ErrorState description={errorMessage(discounts.error)} /> : null}
 
       {roster.isLoading ? <LoadingState rows={6} /> : null}
       {roster.isError ? <ErrorState description={errorMessage(roster.error)} /> : null}
@@ -195,7 +244,12 @@ export function AdminRoster() {
       ) : null}
 
       {data && data.items.length > 0 ? (
-        <ChildRosterTable caption="Суралцагчийн жагсаалт" items={data.items} offset={offset} />
+        <ChildRosterTable
+          caption="Суралцагчийн жагсаалт"
+          items={data.items}
+          offset={offset}
+          discounts={discountByChild}
+        />
       ) : null}
 
       {data ? (
@@ -233,16 +287,20 @@ export function AdminRoster() {
  * (client, 2026-09-25: the group's children "ийм загвараар"). Plain and
  * unclipped, so the ⋯ menu opens whole over the rows beneath it.
  *
- * Discount and ESIS state have no data behind them yet and read "—".
+ * «Хөнгөлөлт» reads "—" until the caller has pulled ESIS's discounts —
+ * `discounts` is absent until then. «ESIS төлөв» is the row's `esisLinked`.
  */
 export function ChildRosterTable({
   caption,
   items,
   offset = 0,
+  discounts,
 }: {
   caption: string;
   items: z.infer<typeof childSummarySchema>[];
   offset?: number;
+  /** Child id → ESIS food-discount status, once pulled. */
+  discounts?: ReadonlyMap<string, FoodDiscountStatus>;
 }) {
   const router = useRouter();
   return (
@@ -280,10 +338,16 @@ export function ChildRosterTable({
               </Td>
               <Td className="py-1.5 text-muted">{(child.sex && SEX_LABEL[child.sex]) || "—"}</Td>
               <Td className="py-1.5 text-muted">{child.enrollments?.[0]?.group?.name ?? "—"}</Td>
-              {/* No discount on the record yet — see the note above. */}
-              <Td className="py-1.5 text-faint">—</Td>
-              {/* No ESIS match state on the record yet — see the note above. */}
-              <Td className="py-1.5 text-faint">—</Td>
+              <Td className="py-1.5 text-muted">
+                {discounts ? DISCOUNT_LABEL[discounts.get(child.id) ?? "UNASSESSED"] : "—"}
+              </Td>
+              <Td className="py-1.5 text-muted">
+                {child.esisLinked === undefined
+                  ? "—"
+                  : child.esisLinked
+                    ? "Холбогдсон"
+                    : "Холбогдоогүй"}
+              </Td>
               <Td className="py-1 text-right">
                 <RowMenu
                   ariaLabel={`${child.lastName} ${child.firstName} — үйлдэл`}

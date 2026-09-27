@@ -578,6 +578,25 @@ describe("ordering and audit", () => {
     expect(list.body.items[0].title).toBe("Чухал");
   });
 
+  // The author's face on the card — client, 2026-09-25.
+  it("sends the author's photograph id with the notice", async () => {
+    const photo = await db.mediaFile.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        purpose: "USER_PHOTO",
+        storageKey: `test/${a.adminUser.id}.jpg`,
+        originalName: "me.jpg",
+        mimeType: "image/jpeg",
+        sizeBytes: 1,
+      } as never,
+    });
+    await db.user.update({ where: { id: a.adminUser.id }, data: { photoMediaFileId: photo.id } });
+    await notify([]);
+
+    const list = await request(server()).get("/v1/notifications").set("Cookie", parentA.cookies);
+    expect(list.body.items[0].author.photoMediaFileId).toBe(photo.id);
+  });
+
   it("writes an audit entry on creation", async () => {
     await notify([]);
     const entry = await db.auditLog.findFirst({

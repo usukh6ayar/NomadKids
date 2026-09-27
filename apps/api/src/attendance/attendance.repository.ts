@@ -551,6 +551,24 @@ export class AttendanceRepository {
    * capped at a quarter by the query schema and one kindergarten's requests
    * over a quarter are the size of that quarter's absences.
    */
+  /**
+   * Review states of the named children's requests overlapping the range —
+   * one page of the register at a time, so bounded by the page size (§3.4).
+   */
+  async findChildRequestStates(kindergartenId: string, from: Date, to: Date, childIds: string[]) {
+    if (childIds.length === 0) return [];
+    return this.prisma.attendanceRequest.findMany({
+      where: {
+        kindergartenId,
+        deletedAt: null,
+        childId: { in: childIds },
+        dateFrom: { lte: to },
+        dateTo: { gte: from },
+      },
+      select: { childId: true, reviewStatus: true },
+    });
+  }
+
   async findRequestsOverlapping(kindergartenId: string, from: Date, to: Date, groupIds?: string[]) {
     return this.prisma.attendanceRequest.findMany({
       where: {

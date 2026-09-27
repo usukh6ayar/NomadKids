@@ -152,6 +152,7 @@ function stubRegister() {
             counts: { PRESENT: 2, ABSENT: 1 },
             recorded: 3,
             expectedDays: 3,
+            requests: { pending: 0, approved: 1, rejected: 0 },
           },
         ],
         page: 1,
@@ -194,8 +195,8 @@ describe("Суралцагчаар", () => {
       "0",
       "0",
       "1",
-      "—",
-      "—",
+      "1",
+      "0",
       "66.7%",
       "Харах",
     ]);

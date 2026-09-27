@@ -26,9 +26,8 @@ const PAGE_SIZES = [20, 50, 100] as const;
  * the journal grid draws: `days` is the working days of the range, `counts`
  * the statuses that occurred. "Ирсэн" is `PRESENT + HALF_DAY`, the definition
  * every other attendance screen uses, and "Ирц %" is Ирсэн over the working
- * days. Two columns the drawing shows — Зөвшөөрсөн and Татгалзсан, a child's
- * approved and refused absence requests — have nothing behind them in this
- * response, and read "—" until the API sends them.
+ * days. Зөвшөөрсөн and Татгалзсан are the child's absence requests in the
+ * range by review state, `row.requests` — counted once per request.
  */
 export function ChildAttendance({
   from,
@@ -141,9 +140,13 @@ export function ChildAttendance({
                   <td className="px-3 py-1.5 text-center tabular-nums text-danger">
                     {counts.absent}
                   </td>
-                  {/* No approved / refused requests in this response yet. */}
-                  <td className="px-3 py-1.5 text-center text-faint">—</td>
-                  <td className="px-3 py-1.5 text-center text-faint">—</td>
+                  {/* The child's absence requests in the range, by review state. */}
+                  <td className="px-3 py-1.5 text-center tabular-nums text-ink">
+                    {row.requests.approved}
+                  </td>
+                  <td className="px-3 py-1.5 text-center tabular-nums text-ink">
+                    {row.requests.rejected}
+                  </td>
                   <td className="px-3 py-1.5 text-center tabular-nums text-ink">
                     {percent(counts.present, workingDays)}
                   </td>

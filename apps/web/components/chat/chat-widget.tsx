@@ -878,16 +878,27 @@ function MessageBubble({ message }: { message: z.infer<typeof chatMessageSchema>
     a 400px panel is the noise that makes it unreadable. That asymmetry is why
     the avatar sits inside the row rather than being a column of its own.
   */
+  /*
+    ★ A guardian is named by the child they are here for — client, 2026-09-25:
+    «эцэг эхийн мессежийг хүүхдийн нэр, зургаар». The API sends the children
+    this room is about (a group room: that group's only); staff get none, and a
+    family is shown the name without the photograph, which is not theirs to see.
+  */
+  const children = message.author?.children ?? [];
+  const speaker =
+    children.length > 0
+      ? `${children.map((child) => fullName(child)).join(", ")} — эцэг эх`
+      : fullName(message.author);
+  const face = children[0] ?? message.author ?? {};
+
   return (
     <li className={cn("flex flex-col", message.mine ? "items-end" : "items-start")}>
       {!message.mine ? (
-        <span className="mb-0.5 px-1 text-caption font-medium text-muted">
-          {fullName(message.author)}
-        </span>
+        <span className="mb-0.5 px-1 text-caption font-medium text-muted">{speaker}</span>
       ) : null}
       <div className={cn("flex max-w-[82%] items-end gap-2 sm:max-w-[72%]")}>
         {!message.mine ? (
-          <PersonAvatar child={message.author ?? {}} size={32} className="mb-4 shrink-0 self-end" />
+          <PersonAvatar child={face} size={32} className="mb-4 shrink-0 self-end" />
         ) : null}
         <div
           className={cn(

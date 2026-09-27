@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import type { ChatMessage, ChatRoom } from "@kinder/contracts";
-import type { Actor } from "../authz/actor";
+import { hasRoleIn, type Actor } from "../authz/actor";
+import { Role } from "../domain/enums";
 import { ChatAccessService } from "../authz/chat-access.service";
 import { StorageService } from "../storage/storage.service";
 import {
@@ -118,7 +119,7 @@ export class ChatService {
     roomKey: string,
     before?: string,
   ): Promise<{ items: ChatMessage[]; nextCursor: string | null }> {
-    await this.access.assertMember(actor, roomKey);
+    const room = await this.access.assertMember(actor, roomKey);
 
     const rows = await this.repo.listMessages(roomKey, {
       before: before ? new Date(before) : undefined,
@@ -130,13 +131,17 @@ export class ChatService {
     const hasMore = rows.length > PAGE_SIZE;
     const page = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
 
+    const childrenByAuthor = await this.authorChildren(actor, room, page);
+
     return {
       items: page.map((row) => ({
         id: row.id,
         roomKey: row.roomKey,
         body: row.body,
         createdAt: row.createdAt.toISOString(),
-        author: row.author,
+        author: row.author
+          ? { ...row.author, children: childrenByAuthor.get(row.author.id) ?? [] }
+          : row.author,
         mine: row.authorId === actor.userId,
         media: row.media,
       })),
@@ -238,10 +243,52 @@ export class ChatService {
       roomKey: row.roomKey,
       body: row.body,
       createdAt: row.createdAt.toISOString(),
-      author: row.author,
+      // Your own message: the screen never names you, so no children are looked up.
+      author: row.author ? { ...row.author, children: [] } : row.author,
       mine: true,
       media: row.media,
     };
+  }
+
+  /**
+   * The children each guardian author is in this room for, by author id.
+   *
+   * ★ The child's photograph id only for staff of the room's kindergarten.
+   * `/media/:id` answers another family 404 for it (`canAccessChild`), so
+   * sending it to a parent would only draw a broken image; they get the name.
+   * The staff room has no guardians in it and costs no query.
+   */
+  private async authorChildren(
+    actor: Actor,
+    room: { kind: string; kindergartenId: string; groupId: string | null },
+    rows: { authorId: string | null }[],
+  ) {
+    const byAuthor = new Map<
+      string,
+      { id: string; lastName: string; firstName: string; photoMediaFileId: string | null }[]
+    >();
+    if (room.kind === "STAFF") return byAuthor;
+
+    const authorIds = [
+      ...new Set(rows.map((row) => row.authorId).filter((id): id is string => Boolean(id))),
+    ];
+    const links = await this.repo.guardianChildren(authorIds, {
+      kindergartenId: room.kindergartenId,
+      groupId: room.groupId,
+    });
+    const isStaff =
+      hasRoleIn(actor, Role.TEACHER, room.kindergartenId) ||
+      hasRoleIn(actor, Role.ADMIN, room.kindergartenId);
+
+    for (const link of links) {
+      const list = byAuthor.get(link.guardianUserId) ?? [];
+      list.push({
+        ...link.child,
+        photoMediaFileId: isStaff ? link.child.photoMediaFileId : null,
+      });
+      byAuthor.set(link.guardianUserId, list);
+    }
+    return byAuthor;
   }
 
   async markRead(actor: Actor, roomKey: string): Promise<void> {
