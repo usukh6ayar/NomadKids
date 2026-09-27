@@ -90,9 +90,9 @@ function useStaffCount(
  * drawings: two compact tables, and a side panel that opens on a person.
  *
  * ★ Only what the API holds is shown. Регистр, төрсөн огноо, албан тушаал,
- * ангилал, ажилд орсон огноо and the live groups arrived on 2026-09-27 (#147);
- * the position and category filters stay shut because the API filters by role
- * and by group, not by either. The actions: edit (`PATCH /users/:id` and
+ * ангилал, ажилд орсон огноо and the live groups arrived on 2026-09-27 (#147),
+ * and the post and category filters on 2026-09-28 — a post is free text, so its
+ * choices are the ones in use (`GET /users/positions`). The actions: edit (`PATCH /users/:id` and
  * `PATCH /memberships/:id/profile`), the role (`PATCH /memberships/:id`),
  * deactivate (`isActive`), invite, and the Excel file (`GET /users/export`,
  * the same filters as the table).
@@ -142,6 +142,9 @@ function StaffSection({
   const [role, setRole] = useState("");
   /** "" every teacher, "with"/"without" by assignment, or a group id. */
   const [groupFilter, setGroupFilter] = useState("");
+  /** A teacher's free-text post — one of the ones in use here. */
+  const [position, setPosition] = useState("");
+  const [category, setCategory] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(20);
   const [editing, setEditing] = useState<StaffUser | null>(null);
@@ -163,6 +166,8 @@ function StaffSection({
   if (teacher && groupFilter === "with") filters.set("hasGroup", "true");
   else if (teacher && groupFilter === "without") filters.set("hasGroup", "false");
   else if (teacher && groupFilter) filters.set("groupId", groupFilter);
+  if (teacher && position) filters.set("position", position);
+  if (!teacher && category) filters.set("staffCategory", category);
 
   const users = useQuery({
     queryKey: qk.adminUsers({
@@ -170,11 +175,25 @@ function StaffSection({
       q: search,
       roles,
       group: groupFilter,
+      position,
+      category,
       page: String(page),
       pageSize: String(pageSize),
     }),
     queryFn: () => get(`/users?${filters}&page=${page}&pageSize=${pageSize}`, listSchema),
     enabled: Boolean(primaryKindergartenId),
+  });
+
+  // The posts in use for this section's roles — the only honest choices for free text.
+  const positions = useQuery({
+    queryKey: qk.adminUsers({ section: "positions", roles }),
+    queryFn: () =>
+      get(
+        `/users/positions?kindergartenId=${primaryKindergartenId}&roles=${roles}`,
+        z.array(z.string()),
+      ),
+    enabled: teacher && Boolean(primaryKindergartenId),
+    staleTime: 60_000,
   });
 
   const groups = useQuery({
@@ -239,11 +258,15 @@ function StaffSection({
         {teacher ? (
           <Select
             aria-label="Албан тушаал"
-            value=""
-            disabled
-            title="Албан тушаалын мэдээлэл байхгүй"
+            value={position}
+            onChange={(event) => resetting(setPosition)(event.target.value)}
           >
             <option value="">Бүх албан тушаал</option>
+            {(positions.data ?? []).map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
           </Select>
         ) : (
           <Select
@@ -275,9 +298,17 @@ function StaffSection({
             ))}
           </Select>
         ) : (
-          /* The API filters by role, not by category — so this stays shut. */
-          <Select aria-label="Ангилал" value="" disabled title="Ангиллаар шүүх боломжгүй">
+          <Select
+            aria-label="Ангилал"
+            value={category}
+            onChange={(event) => resetting(setCategory)(event.target.value)}
+          >
             <option value="">Бүх ангилал</option>
+            {Object.entries(STAFF_CATEGORY_LABEL).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
           </Select>
         )}
         <SearchField

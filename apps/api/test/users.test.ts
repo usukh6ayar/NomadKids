@@ -910,6 +910,38 @@ describe("staff directory", () => {
     expect(membership).not.toHaveProperty("assignments");
   });
 
+  it("filters by post and category, and offers only this kindergarten's posts", async () => {
+    const profile = (membershipId: string, body: object, session = adminA) =>
+      authed(request(server()).patch(`/v1/memberships/${membershipId}/profile`), session)
+        .send(body)
+        .expect(200);
+    await profile(a.teacherMembership.id, { position: "Арга зүйч", staffCategory: "TEACHING" });
+    await profile(a.adminMembership.id, { position: "Эрхлэгч", staffCategory: "MANAGEMENT" });
+    await profile(b.teacherMembership.id, { position: "Нууц тушаал" }, adminB);
+
+    const ids = async (query: string) =>
+      (await list(adminA, query)).body.items.map((u: { id: string }) => u.id);
+    // Whole-value match, any case — «арга зүйч» is the post «Арга зүйч».
+    expect(await ids("&position=%D0%B0%D1%80%D0%B3%D0%B0%20%D0%B7%D2%AF%D0%B9%D1%87")).toEqual([
+      a.teacherUser.id,
+    ]);
+    expect(await ids("&staffCategory=MANAGEMENT")).toEqual([a.adminUser.id]);
+
+    const positions = await authed(
+      request(server()).get(`/v1/users/positions?kindergartenId=${a.kindergarten.id}`),
+      adminA,
+    );
+    expect(positions.status).toBe(200);
+    expect(positions.body).toEqual(["Арга зүйч", "Эрхлэгч"]);
+
+    // Another kindergarten's posts are its own — 404, never its list.
+    const foreign = await authed(
+      request(server()).get(`/v1/users/positions?kindergartenId=${a.kindergarten.id}`),
+      adminB,
+    );
+    expect(foreign.status).toBe(404);
+  });
+
   it("keeps a person's register number and date of birth", async () => {
     const res = await authed(request(server()).patch(`/v1/users/${a.teacherUser.id}`), adminA).send(
       { registerNumber: "УБ98061234", dateOfBirth: "1998-06-12" },

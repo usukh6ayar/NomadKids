@@ -99,6 +99,30 @@ export class UsersRepository {
     });
   }
 
+  /**
+   * The posts in use in these kindergartens — what «Албан тушаал» offers.
+   * Free text, so the choices are the ones people actually typed.
+   */
+  async listPositions(kindergartenIds: string[], roles?: Role[]) {
+    const rows = await this.prisma.membership.findMany({
+      where: {
+        kindergartenId: { in: kindergartenIds },
+        deletedAt: null,
+        position: { not: null },
+        ...(roles?.length ? { role: { in: roles } } : {}),
+        user: { deletedAt: null },
+      },
+      select: { position: true },
+      distinct: ["position"],
+      take: POSITIONS_CAP,
+    });
+    // Sorted here, in Mongolian order — the database collation does not know it.
+    return rows
+      .map((row) => row.position)
+      .filter((p): p is string => Boolean(p?.trim()))
+      .sort((x, y) => x.localeCompare(y, "mn"));
+  }
+
   async findByUsername(username: string) {
     return this.prisma.user.findUnique({ where: { username }, select: { id: true } });
   }
@@ -264,6 +288,10 @@ export interface UserFilters {
   q?: string;
   groupId?: string;
   hasGroup?: boolean;
+  /** «Албан тушаал» — the membership's free-text post, matched whole, any case. */
+  position?: string;
+  /** «Ангилал». */
+  staffCategory?: StaffCategory;
 }
 
 /**
@@ -291,12 +319,19 @@ function staffWhere(kindergartenIds: string[], filters: UserFilters) {
           : {}),
         ...(filters.hasGroup === true ? { assignments: { some: ACTIVE_ASSIGNMENT } } : {}),
         ...(filters.hasGroup === false ? { assignments: { none: ACTIVE_ASSIGNMENT } } : {}),
+        ...(filters.position
+          ? { position: { equals: filters.position, mode: "insensitive" as const } }
+          : {}),
+        ...(filters.staffCategory ? { staffCategory: filters.staffCategory } : {}),
       },
     },
     ...(searchWhere(filters.q, ["lastName", "firstName", "username", "phone", "registerNumber"]) ??
       {}),
   };
 }
+
+/** How many distinct posts the position filter offers — a ceiling, not a page (§3.4). */
+const POSITIONS_CAP = 200;
 
 /** A group assignment that is live today — not ended, not soft-deleted. */
 const ACTIVE_ASSIGNMENT = { deletedAt: null, endedOn: null } as const;

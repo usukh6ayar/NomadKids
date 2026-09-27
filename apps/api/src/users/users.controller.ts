@@ -22,6 +22,7 @@ import {
   addMembershipSchema,
   changeMembershipRoleSchema,
   createUserSchema,
+  listPositionsQuerySchema,
   listUsersQuerySchema,
   updateProfileSchema,
   updateMembershipProfileSchema,
@@ -29,6 +30,7 @@ import {
   type AddMembershipDto,
   type ChangeMembershipRoleDto,
   type CreateUserDto,
+  type ListPositionsQuery,
   type ListUsersQuery,
   type UpdateMembershipProfileDto,
   type UpdateProfileDto,
@@ -69,6 +71,16 @@ export class UsersController {
   }
 
   /** «Excel татах». Declared before `users/:id`, which would take "export" as an id. */
+  /** «Албан тушаал» filter choices — declared before `users/:id`, like export. */
+  @Get("users/positions")
+  @Roles("ADMIN")
+  async listPositions(
+    @CurrentActor() actor: Actor,
+    @Query(new ZodValidationPipe(listPositionsQuerySchema)) query: ListPositionsQuery,
+  ) {
+    return this.service.listPositions(actor, query);
+  }
+
   @Get("users/export")
   @Roles("ADMIN")
   async exportStaff(

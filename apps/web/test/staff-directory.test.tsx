@@ -53,6 +53,7 @@ function page(items: unknown[]) {
 function stub() {
   return stubApi([
     { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+    { path: "/users/positions", body: ["Арга зүйч", "Бүлгийн багш"] },
     { path: "/users?roles=TEACHER", body: page([TEACHER]) },
     { path: "/users?roles=COOK", body: page([COOK]) },
     { path: "/users?roles=ADMIN", body: page([COOK]) },
@@ -193,5 +194,26 @@ describe("the staff directory", () => {
     });
     const person = api.calls.find((c) => c.method === "PATCH" && c.url === `/users/${TEACHER_ID}`);
     expect(person?.body).toMatchObject({ registerNumber: "УБ92010112" });
+  });
+
+  // A post is free text, so the choices are the ones in use; a category is a list.
+  it("filters teachers by post and staff by category through the API", async () => {
+    const user = userEvent.setup();
+    const api = stub();
+    renderWithProviders(<AdminUsersPage />);
+
+    const teachers = (await screen.findByRole("heading", { name: "Багш" })).closest("section")!;
+    await user.click(await within(teachers).findByLabelText("Албан тушаал"));
+    await user.click(await screen.findByRole("option", { name: "Арга зүйч" }));
+    await waitFor(() =>
+      expect(api.calls.some((c) => c.url.includes("position=%D0%90%D1%80%D0%B3%D0%B0"))).toBe(true),
+    );
+
+    const staff = screen.getByRole("heading", { name: "Ажилтан" }).closest("section")!;
+    await user.click(within(staff).getByLabelText("Ангилал"));
+    await user.click(await screen.findByRole("option", { name: "Үйлчилгээ" }));
+    await waitFor(() =>
+      expect(api.calls.some((c) => c.url.includes("staffCategory=SERVICE"))).toBe(true),
+    );
   });
 });
