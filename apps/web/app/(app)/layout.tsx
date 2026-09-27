@@ -359,7 +359,6 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
   "/admin/staff-code": KeyRound,
   "/admin/school-years": CalendarRange,
   "/admin/terms": CalendarDays,
-  "/admin/method-unions": UsersRound,
   "/admin/assessment-config": SlidersHorizontal,
   "/admin/audit": ScrollText,
   "/admin/curriculum": BookOpen,
@@ -595,7 +594,6 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         entries: [
           entry("Хичээлийн жил", "/admin/school-years", "adminSchoolYear"),
           entry("Улирал", "/admin/terms", "adminTerm"),
-          entry("Заах аргын нэгдэл", "/admin/method-unions"),
           entry("Сургалтын хөтөлбөр", "/admin/curriculum", "adminCurriculum"),
         ],
       },
@@ -942,7 +940,6 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         ...adminEntry("Ажилтны бүртгэл", "/admin/staff-code"),
         ...adminEntry("Хичээлийн жил", "/admin/school-years", "adminSchoolYear"),
         ...adminEntry("Улирал", "/admin/terms", "adminTerm"),
-        ...adminEntry("Заах аргын нэгдэл", "/admin/method-unions"),
         /*
          * ★ Added 2026-09-10 with the four ESIS curriculum services. It sits
          * after Улирал because it answers the same kind of question — what
@@ -1068,7 +1065,6 @@ const ADMIN_RAIL_ICON: Record<string, LucideIcon> = {
   "/documents": Briefcase,
   "/admin/school-years": CalendarRange,
   "/admin/terms": CalendarDays,
-  "/admin/method-unions": UsersRound,
   "/admin/curriculum": BookMarked,
   "/admin/integrations/esis": Database,
 };

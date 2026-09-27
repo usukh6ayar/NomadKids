@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MethodUnion } from "@kinder/contracts";
 import { renderWithProviders, selectOption, sessionFor, stubApi } from "./support/render";
-import AdminMethodUnionsPage from "@/app/(app)/admin/method-unions/page";
+import { MethodUnions } from "@/components/admin/method-unions";
 
 /**
  * «Заах аргын нэгдэл» — the screen over #148's endpoints.
@@ -97,12 +97,12 @@ function stub() {
 
 beforeEach(() => vi.clearAllMocks());
 
-describe("/admin/method-unions", () => {
+describe("Байгууллага › Заах аргын нэгдэл", () => {
   it("lists a union with its year, lead and member count", async () => {
     stub();
-    renderWithProviders(<AdminMethodUnionsPage />);
+    renderWithProviders(<MethodUnions kindergartenId={KG} />);
 
-    const table = await screen.findByRole("table", { name: "Заах аргын нэгдлүүд" });
+    const table = await screen.findByRole("table", { name: "Заах аргын нэгдлийн жагсаалт" });
     const row = within(table).getByText("Хэл ярианы нэгдэл").closest("tr")!;
     expect(row).toHaveTextContent("2026-2027");
     expect(row).toHaveTextContent("Бат Сараа");
@@ -112,7 +112,7 @@ describe("/admin/method-unions", () => {
   it("creates a union with the lead as a membership id, in the current year", async () => {
     const u = userEvent.setup();
     const api = stub();
-    renderWithProviders(<AdminMethodUnionsPage />);
+    renderWithProviders(<MethodUnions kindergartenId={KG} />);
 
     await u.click(await screen.findByRole("button", { name: /Нэгдэл нэмэх/ }));
     await u.type(screen.getByLabelText(/^Нэр/), "Математикийн нэгдэл");
@@ -137,7 +137,7 @@ describe("/admin/method-unions", () => {
   it("offers only this kindergarten's teachers who are not members yet", async () => {
     const u = userEvent.setup();
     const api = stub();
-    renderWithProviders(<AdminMethodUnionsPage />);
+    renderWithProviders(<MethodUnions kindergartenId={KG} />);
 
     await u.click(await screen.findByRole("button", { name: "Хэл ярианы нэгдэл" }));
     const members = await screen.findByRole("list", { name: "Нэгдлийн гишүүд" });

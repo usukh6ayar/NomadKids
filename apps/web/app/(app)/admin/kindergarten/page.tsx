@@ -1,13 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import {
-  ChevronLeft,
-  ChevronRight,
-  Inbox,
-  Plus,
   School,
   Building2,
   FileText,
@@ -19,7 +14,7 @@ import {
   UsersRound,
 } from "lucide-react";
 import { z } from "zod";
-import { esisResourceReadSchema, schoolYearSchema, uuidSchema } from "@kinder/contracts";
+import { esisResourceReadSchema, uuidSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { mediaUrl } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
@@ -28,12 +23,12 @@ import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
-import { Field, Input, Select } from "@/components/ui/field";
-import { SearchField } from "@/components/ui/search-field";
-import { Th } from "@/components/ui/table";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Field, Input } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
-import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import { ErrorState, LoadingState } from "@/components/ui/states";
 import { RequireRole } from "@/components/shell/require-role";
+import { MethodUnions } from "@/components/admin/method-unions";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
 
 /**
@@ -62,9 +57,50 @@ const detailSchema = z.object({
   logoMediaFileId: uuidSchema.nullish(),
   capacity: z.number().int().nullish(),
   isActive: z.boolean().nullish(),
+  // The «Байгууллага» profile — #145, 2026-09-27. Free text, all of it.
+  shortName: z.string().nullish(),
+  propertyType: z.string().nullish(),
+  institutionType: z.string().nullish(),
+  location: z.string().nullish(),
+  responsibleUnit: z.string().nullish(),
+  country: z.string().nullish(),
+  province: z.string().nullish(),
+  district: z.string().nullish(),
+  website: z.string().nullish(),
+  facebook: z.string().nullish(),
+  headName: z.string().nullish(),
+  headPhone: z.string().nullish(),
 });
 
-const schoolYearsSchema = z.array(schoolYearSchema);
+/** The text fields this form edits, each stored as-is (null when emptied). */
+type TextField =
+  | "shortName"
+  | "propertyType"
+  | "institutionType"
+  | "location"
+  | "responsibleUnit"
+  | "country"
+  | "province"
+  | "district"
+  | "address"
+  | "phone"
+  | "email"
+  | "website"
+  | "facebook"
+  | "headName"
+  | "headPhone";
+
+/**
+ * What «ESIS татах» can fill, from ESIS's organisation read. A suggestion into
+ * the form, never a save: the director sees it and presses Хадгалах.
+ */
+const FROM_ESIS: Partial<Record<TextField, string>> = {
+  shortName: "shortName",
+  propertyType: "propertyTypeName",
+  institutionType: "institutionTypeName",
+  province: "provinceName",
+  district: "districtName",
+};
 
 export default function AdminKindergartenPage() {
   return (
@@ -102,12 +138,10 @@ function AdminKindergarten() {
     "ESIS татах" is how this screen reads the ministry now, and the panels
     repeated it ("давхар мэдээлэл гарахгүй").
 
-    ★★ Address, capacity, telephone and e-mail are ours and save. Website,
-    Facebook and the head's name and telephone have no column yet and are
-    shown empty. Short name, ownership, type, province and district are ESIS's and
-    are read-only, filled only by a LIVE answer to "ESIS татах"; a demo answer
-    is never shown as the kindergarten's own. Location, country and the
-    responsible unit have no source and stay empty.
+    ★★ Every field is ours and saves (#145, 2026-09-27). «ESIS татах» fills the
+    ministry's five — short name, ownership, type, province, district — into
+    the form as unsaved edits, from a LIVE answer only; the director saves.
+    Заах аргын нэгдэл is `MethodUnions`, over #148's endpoints.
   */
   return (
     <div className="grid w-full items-start gap-5 lg:grid-cols-[240px_minmax(0,1fr)]">
@@ -226,17 +260,15 @@ function useKindergartenSave(kindergartenId: string, onDone: () => void) {
 }
 
 function MainDetails({ kindergartenId, data }: { kindergartenId: string; data: Detail }) {
-  const [address, setAddress] = useState<string | null>(null);
+  const toast = useToast();
+  const [draft, setDraft] = useState<Partial<Record<TextField, string>>>({});
   const [capacity, setCapacity] = useState<string | null>(null);
-  const [phone, setPhone] = useState<string | null>(null);
-  const [email, setEmail] = useState<string | null>(null);
-  const currentAddress = address ?? data?.address ?? "";
-  const currentPhone = phone ?? data?.phone ?? "";
-  const currentEmail = email ?? data?.email ?? "";
+  const value = (key: TextField) => draft[key] ?? data?.[key] ?? "";
+  const set = (key: TextField) => (next: string) => setDraft((prev) => ({ ...prev, [key]: next }));
   const currentCapacity =
     capacity ??
     (data?.capacity === null || data?.capacity === undefined ? "" : String(data.capacity));
-  const dirty = address !== null || capacity !== null || phone !== null || email !== null;
+  const dirty = Object.keys(draft).length > 0 || capacity !== null;
 
   /* One press, one call to the ministry — the ESIS panels' own rule. */
   const esis = useQuery({
@@ -250,42 +282,77 @@ function MainDetails({ kindergartenId, data }: { kindergartenId: string; data: D
     refetchOnWindowFocus: false,
     retry: false,
   });
-  const live =
-    esis.data && esis.data.source === "LIVE" && esis.data.status === "SUCCEEDED"
-      ? esis.data.rows[0]
-      : undefined;
-  const fromEsis = (key: string) => {
-    const value = live?.[key];
-    return value === null || value === undefined ? "" : String(value);
-  };
+
+  /*
+    ★ ESIS fills the form; it does not save it. What came back is put into the
+    fields as unsaved edits, so the director reads the ministry's values next to
+    their own and presses Хадгалах — or does not.
+  */
+  async function pullFromEsis() {
+    const result = await esis.refetch();
+    const row =
+      result.data?.source === "LIVE" && result.data.status === "SUCCEEDED"
+        ? result.data.rows[0]
+        : undefined;
+    if (!row) return;
+    const filled: Partial<Record<TextField, string>> = {};
+    for (const [field, esisKey] of Object.entries(FROM_ESIS) as [TextField, string][]) {
+      const raw = row[esisKey];
+      if (raw !== null && raw !== undefined && String(raw).trim()) filled[field] = String(raw);
+    }
+    setDraft((prev) => ({ ...prev, ...filled }));
+    toast.success(
+      Object.keys(filled).length > 0
+        ? "ESIS-ийн мэдээллийг талбарт орууллаа. Шалгаад «Хадгалах» дарна уу."
+        : "ESIS-ээс шинэ мэдээлэл ирсэнгүй.",
+    );
+  }
 
   const save = useKindergartenSave(kindergartenId, () => {
-    setAddress(null);
+    setDraft({});
     setCapacity(null);
-    setPhone(null);
-    setEmail(null);
   });
   const errors = fieldErrors(save.error);
+
+  const text = (
+    key: TextField,
+    label: string,
+    props: { type?: string; maxLength?: number } = {},
+  ) => (
+    <Field label={label} error={errors[key]}>
+      {({ id, describedBy, invalid }) => (
+        <Input
+          id={id}
+          aria-describedby={describedBy}
+          invalid={invalid}
+          type={props.type}
+          maxLength={props.maxLength ?? 200}
+          value={value(key)}
+          onChange={(event) => set(key)(event.target.value)}
+        />
+      )}
+    </Field>
+  );
 
   return (
     <Pane
       title="Үндсэн мэдээлэл"
       lede="Байгууллагын ерөнхий мэдээллийг засах боломжтой."
       onSubmit={() => {
-        if (dirty && !save.isPending)
-          save.mutate({
-            address: currentAddress.trim() || null,
-            capacity: currentCapacity.trim() === "" ? null : Number(currentCapacity),
-            phone: currentPhone.trim() || null,
-            email: currentEmail.trim() || null,
-          });
+        if (!dirty || save.isPending) return;
+        const body: Record<string, unknown> = {};
+        for (const key of Object.keys(draft) as TextField[]) body[key] = draft[key]!.trim() || null;
+        if (capacity !== null) {
+          body.capacity = capacity.trim() === "" ? null : Number(capacity);
+        }
+        save.mutate(body);
       }}
       actions={
         <>
           <Button
             type="button"
             variant="secondary"
-            onClick={() => void esis.refetch()}
+            onClick={() => void pullFromEsis()}
             disabled={esis.isFetching || !kindergartenId}
           >
             <RefreshCw size={16} aria-hidden /> {esis.isFetching ? "Татаж байна…" : "ESIS татах"}
@@ -298,10 +365,6 @@ function MainDetails({ kindergartenId, data }: { kindergartenId: string; data: D
         <p role="status" className="rounded-control bg-danger-soft px-3 py-2 text-body text-danger">
           ESIS-ээс татаж чадсангүй: {errorMessage(esis.error)}
         </p>
-      ) : esis.data && !live ? (
-        <p role="status" className="rounded-control bg-sun px-3 py-2 text-body text-sun-ink">
-          ESIS туршилтын горимд байна — бодит мэдээлэл биш тул талбарт оруулсангүй.
-        </p>
       ) : null}
 
       <FormSection
@@ -310,14 +373,14 @@ function MainDetails({ kindergartenId, data }: { kindergartenId: string; data: D
         lede="Байгууллагын нэр, хэлбэр, өмчийн хэлбэр болон хариуцах нэгжийн мэдээлэл."
       >
         <div className="grid gap-4 md:grid-cols-2">
-          <ReadOnlyField label="Байршил" value="" />
-          <ReadOnlyField label="Өмчийн хэлбэр" value={fromEsis("propertyTypeName")} />
-          <ReadOnlyField label="Хэв шинж" value={fromEsis("institutionTypeName")} />
-          <ReadOnlyField label="Товч нэр" value={fromEsis("shortName")} />
-          <ReadOnlyField label="Хариуцалагч нэгж" value="" />
+          {text("location", "Байршил")}
+          {text("propertyType", "Өмчийн хэлбэр")}
+          {text("institutionType", "Хэв шинж")}
+          {text("shortName", "Товч нэр", { maxLength: 100 })}
+          {text("responsibleUnit", "Хариуцалагч нэгж")}
           <div className="flex flex-col gap-1.5">
             <span className="text-body font-medium text-ink">Лого оруулах</span>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <KindergartenMark data={data} size="md" />
               <SingleImageUpload
                 endpoint={`/kindergartens/${kindergartenId}/logo`}
@@ -328,6 +391,7 @@ function MainDetails({ kindergartenId, data }: { kindergartenId: string; data: D
                 hidePreview
                 invalidateKeys={[qk.adminKindergarten(kindergartenId), qk.session()]}
               />
+              {data?.logoMediaFileId ? <RemoveLogoButton kindergartenId={kindergartenId} /> : null}
             </div>
           </div>
         </div>
@@ -339,10 +403,11 @@ function MainDetails({ kindergartenId, data }: { kindergartenId: string; data: D
         lede="Байгууллагын албан ёсны хаяг."
       >
         <div className="grid gap-4 md:grid-cols-3">
-          <ReadOnlyField label="Улс" value="" />
-          <ReadOnlyField label="Аймаг/Нийслэл" value={fromEsis("provinceName")} />
-          <ReadOnlyField label="Дүүрэг" value={fromEsis("districtName")} />
+          {text("country", "Улс", { maxLength: 100 })}
+          {text("province", "Аймаг/Нийслэл", { maxLength: 100 })}
+          {text("district", "Дүүрэг", { maxLength: 100 })}
         </div>
+        {/* 500, the API's limit — the screen used to stop at 255. */}
         <Field label="Дэлгэрэнгүй хаяг" error={errors.address}>
           {({ id, describedBy, invalid }) => (
             <div className="flex flex-col gap-1">
@@ -350,12 +415,12 @@ function MainDetails({ kindergartenId, data }: { kindergartenId: string; data: D
                 id={id}
                 aria-describedby={describedBy}
                 invalid={invalid}
-                maxLength={255}
-                value={currentAddress}
-                onChange={(event) => setAddress(event.target.value)}
+                maxLength={500}
+                value={value("address")}
+                onChange={(event) => set("address")(event.target.value)}
               />
               <span className="self-end text-caption tabular-nums text-muted">
-                {currentAddress.length}/255
+                {value("address").length}/500
               </span>
             </div>
           )}
@@ -368,31 +433,12 @@ function MainDetails({ kindergartenId, data }: { kindergartenId: string; data: D
         lede="Байгууллагатай холбогдох үндсэн мэдээлэл."
       >
         <div className="grid gap-4 md:grid-cols-3">
-          <Field label="Утас" error={errors.phone}>
-            {({ id }) => (
-              <Input
-                id={id}
-                maxLength={20}
-                value={currentPhone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
-            )}
-          </Field>
-          <Field label="И-мэйл" error={errors.email}>
-            {({ id }) => (
-              <Input
-                id={id}
-                type="email"
-                value={currentEmail}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            )}
-          </Field>
-          {/* No column for these yet — shown, never invented. */}
-          <ReadOnlyField label="Вэб сайт" value="" />
-          <ReadOnlyField label="Facebook" value="" />
-          <ReadOnlyField label="Удирдлагын нэр" value="" />
-          <ReadOnlyField label="Удирдлагын утас" value="" />
+          {text("phone", "Утас", { maxLength: 20 })}
+          {text("email", "И-мэйл", { type: "email" })}
+          {text("website", "Вэб сайт", { type: "url" })}
+          {text("facebook", "Facebook", { type: "url" })}
+          {text("headName", "Удирдлагын нэр")}
+          {text("headPhone", "Удирдлагын утас", { maxLength: 20 })}
         </div>
       </FormSection>
 
@@ -432,6 +478,38 @@ function MainDetails({ kindergartenId, data }: { kindergartenId: string; data: D
   );
 }
 
+/** «Лого устгах» — `DELETE /kindergartens/:id/logo`, after a confirmation. */
+function RemoveLogoButton({ kindergartenId }: { kindergartenId: string }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const remove = useMutation({
+    mutationFn: () =>
+      mutate(`/kindergartens/${kindergartenId}/logo`, z.unknown(), { method: "DELETE" }),
+    onSuccess: () => {
+      toast.success("Лого устгагдлаа.");
+      void queryClient.invalidateQueries({ queryKey: qk.adminKindergarten(kindergartenId) });
+      void queryClient.invalidateQueries({ queryKey: qk.session() });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  return (
+    <ConfirmDialog
+      trigger={
+        <Button type="button" variant="ghost" size="sm">
+          Лого устгах
+        </Button>
+      }
+      title="Логог устгах уу?"
+      description="Тайлан, толгой хэсэгт лого харагдахгүй болно."
+      confirmLabel="Устгах"
+      tone="danger"
+      pending={remove.isPending}
+      onConfirm={() => remove.mutate()}
+    />
+  );
+}
+
 function FormSection({
   icon,
   title,
@@ -456,134 +534,5 @@ function FormSection({
       </div>
       <div className="flex flex-col gap-4 px-4 pb-4">{children}</div>
     </section>
-  );
-}
-
-/**
- * A field this record does not store: shown, never editable, and empty rather
- * than guessed when there is nothing to show.
- */
-function ReadOnlyField({ label, value }: { label: string; value: string }) {
-  return (
-    <Field label={label}>
-      {({ id }) => <Input id={id} value={value} placeholder="—" readOnly disabled />}
-    </Field>
-  );
-}
-
-/**
- * Заах аргын нэгдэл — the client's 2026-09-25 drawing, as an empty shell.
- *
- * ★ Nothing stores a method union yet: no model, no endpoint, and ESIS answers
- * one teacher's union by their ESIS id, never the kindergarten's list. So the
- * list is drawn with its columns and an empty state that says so, "Нэгдэл
- * нэмэх" is disabled, and the search and year filter narrow an empty list.
- * The day the API lands, the rows go where the empty state is.
- */
-function MethodUnions({ kindergartenId }: { kindergartenId: string }) {
-  const [typed, setTyped] = useState("");
-  const [yearId, setYearId] = useState("");
-  const years = useQuery({
-    queryKey: qk.adminSchoolYears(kindergartenId),
-    queryFn: () => get(`/kindergartens/${kindergartenId}/school-years`, schoolYearsSchema),
-    enabled: Boolean(kindergartenId),
-  });
-
-  return (
-    <div className="flex flex-col gap-5 rounded-card border border-border-soft bg-surface p-5 shadow-sm sm:p-6">
-      <div>
-        <h1 className="text-display font-bold leading-heading text-ink">Заах аргын нэгдэл</h1>
-        <p className="mt-1 text-body text-muted">
-          Байгууллагын заах аргын нэгдлийн мэдээллийг удирдах боломжтой.
-        </p>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="w-full sm:w-[320px]">
-          <SearchField
-            label="Нэгдлийг нэрээр хайх"
-            placeholder="Нэрээр хайх..."
-            value={typed}
-            onChange={setTyped}
-          />
-        </div>
-        <Select
-          aria-label="Хичээлийн жил"
-          value={yearId}
-          onChange={(event) => setYearId(event.target.value)}
-          className="w-full sm:w-[300px]"
-        >
-          <option value="">Хичээлийн жил</option>
-          {(years.data ?? []).map((year) => (
-            <option key={year.id} value={year.id}>
-              {year.name}
-            </option>
-          ))}
-        </Select>
-        {/*
-          No service returns the kindergarten's unions, so this opens the ESIS
-          hub — as on Анги, бүлэг and Багш, ажилтан — where one teacher's
-          union is read by their ESIS id.
-        */}
-        <Button asChild variant="secondary" className="ml-auto">
-          <Link href="/admin/integrations/esis">
-            <RefreshCw size={16} aria-hidden /> ESIS татах
-          </Link>
-        </Button>
-        <Button
-          type="button"
-          disabled
-          title="Заах аргын нэгдлийг бүртгэх боломж backend хөгжүүлэлтийн дараа идэвхжинэ"
-        >
-          <Plus size={16} aria-hidden /> Нэгдэл нэмэх
-        </Button>
-      </div>
-
-      <div className="rounded-card border border-border">
-        <table className="w-full border-collapse text-body">
-          <caption className="sr-only">Заах аргын нэгдлийн жагсаалт</caption>
-          <thead>
-            <tr>
-              <Th className="w-12 rounded-tl-card">№</Th>
-              <Th>Заах аргын нэгдлийн нэр</Th>
-              <Th>Ахлагч багш</Th>
-              <Th>Багшийн тоо</Th>
-              <Th>Хичээлийн жил</Th>
-              <Th className="w-12 rounded-tr-card">
-                <span className="sr-only">Үйлдэл</span>
-              </Th>
-            </tr>
-          </thead>
-        </table>
-        <div className="px-4 py-10">
-          <EmptyState
-            icon={<Inbox size={40} aria-hidden />}
-            title="Нэгдэл бүртгэгдээгүй байна"
-            description="Заах аргын нэгдлийн мэдээллийг бүртгэх боломж backend хөгжүүлэлтийн дараа идэвхжинэ."
-          />
-        </div>
-        <div className="flex items-center justify-between border-t border-border px-4 py-3">
-          <p className="text-body font-semibold text-ink">Нийт: 0</p>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              disabled
-              aria-label="Өмнөх хуудас"
-              className="grid size-9 place-items-center rounded-control text-faint"
-            >
-              <ChevronLeft size={18} aria-hidden />
-            </button>
-            <button
-              type="button"
-              disabled
-              aria-label="Дараах хуудас"
-              className="grid size-9 place-items-center rounded-control text-faint"
-            >
-              <ChevronRight size={18} aria-hidden />
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }

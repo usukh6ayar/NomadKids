@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { MoreHorizontal, Plus, X } from "lucide-react";
+import { MoreHorizontal, Plus, RefreshCw, X } from "lucide-react";
 import { z } from "zod";
 import {
   adminUserSchema,
@@ -14,7 +14,6 @@ import {
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
-import { useSession } from "@/lib/auth/session";
 import { fullName } from "@/lib/format";
 import { useDebounced } from "@/lib/use-debounced";
 import { Button } from "@/components/ui/button";
@@ -27,8 +26,7 @@ import { SearchField } from "@/components/ui/search-field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { Td, Th } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
-import { PageHeader } from "@/components/shell/app-shell";
-import { RequireRole } from "@/components/shell/require-role";
+import Link from "next/link";
 
 const listSchema = paginated(methodUnionSchema);
 const yearsSchema = z.array(schoolYearSchema);
@@ -45,20 +43,13 @@ function shortDate(value: string | null): string {
 }
 
 /**
- * «Заах аргын нэгдэл» — teaching-method unions, administrator only.
+ * «Заах аргын нэгдэл» — teaching-method unions, a section of Байгууллага
+ * (the client's 2026-09-25 drawing), administrator only.
  *
  * ★ The lead and the members are chosen from this kindergarten's **active
  * teachers** — the API refuses anybody else with 400, so the pickers offer
  * nothing else rather than letting a director pick and be told off.
  */
-export default function AdminMethodUnionsPage() {
-  return (
-    <RequireRole roles={["ADMIN"]}>
-      <AdminMethodUnions />
-    </RequireRole>
-  );
-}
-
 type Dialog =
   | { kind: "create" }
   | { kind: "edit"; union: MethodUnion }
@@ -66,8 +57,7 @@ type Dialog =
   | { kind: "delete"; union: MethodUnion }
   | null;
 
-function AdminMethodUnions() {
-  const { primaryKindergartenId: kg } = useSession();
+export function MethodUnions({ kindergartenId: kg }: { kindergartenId: string }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState<Dialog>(null);
@@ -83,7 +73,6 @@ function AdminMethodUnions() {
   const unions = useQuery({
     queryKey: [...UNIONS_KEY, kg, search, yearId, page],
     queryFn: () => get(`/kindergartens/${kg}/method-unions?${params}`, listSchema),
-    enabled: Boolean(kg),
   });
   const years = useSchoolYears(kg);
 
@@ -100,15 +89,26 @@ function AdminMethodUnions() {
   const data = unions.data;
 
   return (
-    <div className="flex flex-col gap-3">
-      <PageHeader
-        title="Заах аргын нэгдэл"
-        actions={
+    <div className="flex flex-col gap-4 rounded-card border border-border-soft bg-surface p-5 shadow-sm sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-display font-bold leading-heading text-ink">Заах аргын нэгдэл</h1>
+          <p className="mt-1 text-body text-muted">
+            Нэгдэл, түүний ахлагч болон гишүүн багш нарыг удирдана.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {/* ESIS answers one teacher's union by their ESIS id — read in the hub. */}
+          <Button asChild size="sm" variant="secondary">
+            <Link href="/admin/integrations/esis">
+              <RefreshCw size={16} aria-hidden /> ESIS татах
+            </Link>
+          </Button>
           <Button size="sm" onClick={() => setDialog({ kind: "create" })}>
             <Plus size={16} aria-hidden /> Нэгдэл нэмэх
           </Button>
-        }
-      />
+        </div>
+      </div>
 
       <div className="grid gap-2 sm:grid-cols-[220px_minmax(0,1fr)]">
         <Select
@@ -137,12 +137,18 @@ function AdminMethodUnions() {
         />
       </div>
 
+      {data ? (
+        <p className="text-caption text-muted" aria-live="polite">
+          Нийт: {data.total}
+        </p>
+      ) : null}
+
       {unions.isLoading ? <LoadingState rows={4} /> : null}
       {unions.isError ? <ErrorState description={errorMessage(unions.error)} /> : null}
 
       {data && data.items.length === 0 ? (
         <EmptyState
-          title={search || yearId ? "Нэгдэл олдсонгүй" : "Заах аргын нэгдэл алга"}
+          title={search || yearId ? "Нэгдэл олдсонгүй" : "Нэгдэл бүртгэгдээгүй байна"}
           description={
             search || yearId
               ? "Шүүлтүүр эсвэл хайлтаа өөрчилж үзнэ үү."
@@ -154,15 +160,14 @@ function AdminMethodUnions() {
       {data && data.items.length > 0 ? (
         <div className="overflow-x-auto rounded-card border border-border bg-surface">
           <table className="w-full border-collapse text-body">
-            <caption className="sr-only">Заах аргын нэгдлүүд</caption>
+            <caption className="sr-only">Заах аргын нэгдлийн жагсаалт</caption>
             <thead>
               <tr>
                 <Th className="w-12 py-2">№</Th>
-                <Th className="py-2">Нэгдэл</Th>
+                <Th className="py-2">Заах аргын нэгдлийн нэр</Th>
+                <Th className="py-2">Ахлагч багш</Th>
+                <Th className="py-2">Багшийн тоо</Th>
                 <Th className="py-2">Хичээлийн жил</Th>
-                <Th className="py-2">Ахлагч</Th>
-                <Th className="py-2">Гишүүд</Th>
-                <Th className="py-2">Хугацаа</Th>
                 <Th className="w-12 py-2">
                   <span className="sr-only">Үйлдэл</span>
                 </Th>
@@ -183,11 +188,13 @@ function AdminMethodUnions() {
                       {union.name}
                     </button>
                   </Td>
-                  <Td className="py-1.5 text-muted">{union.schoolYear.name}</Td>
                   <Td className="py-1.5 text-muted">{union.lead ? fullName(union.lead) : "—"}</Td>
                   <Td className="py-1.5 tabular-nums text-muted">{union.memberCount}</Td>
-                  <Td className="py-1.5 tabular-nums text-muted">
-                    {shortDate(union.startsOn)} – {union.endsOn ? shortDate(union.endsOn) : "…"}
+                  <Td className="py-1.5 text-muted">
+                    {union.schoolYear.name}
+                    <span className="block text-caption tabular-nums text-faint">
+                      {shortDate(union.startsOn)} – {union.endsOn ? shortDate(union.endsOn) : "…"}
+                    </span>
                   </Td>
                   <Td className="py-1 text-right">
                     <RowMenu
@@ -214,7 +221,7 @@ function AdminMethodUnions() {
 
       {data ? <Pagination page={page} totalPages={data.totalPages} onPage={setPage} /> : null}
 
-      {kg && (dialog?.kind === "create" || dialog?.kind === "edit") ? (
+      {dialog?.kind === "create" || dialog?.kind === "edit" ? (
         <UnionFormDialog
           kindergartenId={kg}
           union={dialog.kind === "edit" ? dialog.union : null}
@@ -222,7 +229,7 @@ function AdminMethodUnions() {
         />
       ) : null}
 
-      {kg && dialog?.kind === "members" ? (
+      {dialog?.kind === "members" ? (
         <MembersDialog kindergartenId={kg} union={dialog.union} onClose={() => setDialog(null)} />
       ) : null}
 
