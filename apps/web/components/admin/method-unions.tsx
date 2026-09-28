@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { MoreHorizontal, Plus, RefreshCw, X } from "lucide-react";
+import { MoreHorizontal, Plus, X } from "lucide-react";
 import { z } from "zod";
 import {
   adminUserSchema,
@@ -26,7 +26,6 @@ import { SearchField } from "@/components/ui/search-field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { Td, Th } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
-import Link from "next/link";
 
 const listSchema = paginated(methodUnionSchema);
 const yearsSchema = z.array(schoolYearSchema);
@@ -98,12 +97,6 @@ export function MethodUnions({ kindergartenId: kg }: { kindergartenId: string })
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {/* ESIS answers one teacher's union by their ESIS id — read in the hub. */}
-          <Button asChild size="sm" variant="secondary">
-            <Link href="/admin/integrations/esis">
-              <RefreshCw size={16} aria-hidden /> ESIS татах
-            </Link>
-          </Button>
           <Button size="sm" onClick={() => setDialog({ kind: "create" })}>
             <Plus size={16} aria-hidden /> Нэгдэл нэмэх
           </Button>

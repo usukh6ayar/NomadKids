@@ -99,10 +99,6 @@ describe("the staff directory", () => {
     expect(within(section).getByRole("link", { name: /Excel/ }).getAttribute("href")).toContain(
       "/users/export?roles=TEACHER",
     );
-    expect(within(section).getByRole("link", { name: /ESIS татах/ })).toHaveAttribute(
-      "href",
-      "/admin/integrations/esis",
-    );
 
     await user.click(await screen.findByRole("button", { name: /Анхбаяр Энх-Адьяа — үйлдэл/ }));
     for (const label of [
@@ -215,5 +211,32 @@ describe("the staff directory", () => {
     await waitFor(() =>
       expect(api.calls.some((c) => c.url.includes("staffCategory=SERVICE"))).toBe(true),
     );
+  });
+
+  // It linked to `/admin/integrations/esis`, deleted 2026-09-14 — a 404.
+  it("refreshes the ESIS staff roster in place rather than leaving the page", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: "/users", body: page([]) },
+      {
+        path: "/kindergartens/",
+        method: "POST",
+        body: { count: 13, skipped: 0, syncedAt: "2026-09-28T00:00:00.000Z" },
+      },
+    ]);
+    renderWithProviders(<AdminUsersPage />);
+
+    const section = (await screen.findByRole("heading", { name: "Багш" })).closest("section")!;
+    await user.click(within(section).getByRole("button", { name: /ESIS татах/ }));
+
+    await waitFor(() =>
+      expect(
+        calls.some((c) => c.method === "POST" && c.url.endsWith("/esis/staff-roster/refresh")),
+      ).toBe(true),
+    );
+    expect(
+      await screen.findByText(/ESIS-ээс 13 ажилтны мэдээлэл шинэчлэгдлээ/),
+    ).toBeInTheDocument();
   });
 });

@@ -3,7 +3,6 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { z } from "zod";
 import {
   Briefcase,
@@ -29,6 +28,7 @@ import {
   adminUserSchema,
   groupListItemSchema,
   paginated,
+  staffRosterRefreshSchema,
   type Role,
 } from "@kinder/contracts";
 import { downloadUrl } from "@/lib/api/client";
@@ -218,6 +218,27 @@ function StaffSection({
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  /*
+    ★ «ESIS татах» linked to `/admin/integrations/esis`, deleted on
+    2026-09-14, so it opened a 404 until 2026-09-28. It now refills the ESIS
+    staff roster directly — the list the public staff-registration form is
+    matched against. It creates no accounts: a person gets one by registering
+    with the institution number, which `/admin/staff-code` shows.
+  */
+  const esisRefresh = useMutation({
+    mutationFn: () =>
+      mutate(
+        `/kindergartens/${primaryKindergartenId}/esis/staff-roster/refresh`,
+        staffRosterRefreshSchema,
+        { method: "POST" },
+      ),
+    onSuccess: (result) =>
+      toast.success(
+        `ESIS-ээс ${result.count} ажилтны мэдээлэл шинэчлэгдлээ. Ажилтнууд цэцэрлэгийн кодоор өөрсдөө бүртгүүлнэ.`,
+      ),
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   const resetting =
     <T,>(set: (value: T) => void) =>
     (value: T) => {
@@ -243,10 +264,14 @@ function StaffSection({
               <Download size={16} aria-hidden /> Excel
             </a>
           </Button>
-          <Button asChild size="sm" variant="secondary">
-            <Link href="/admin/integrations/esis">
-              <RefreshCw size={16} aria-hidden /> ESIS татах
-            </Link>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={!primaryKindergartenId || esisRefresh.isPending}
+            onClick={() => esisRefresh.mutate()}
+          >
+            <RefreshCw size={16} aria-hidden />{" "}
+            {esisRefresh.isPending ? "Татаж байна…" : "ESIS татах"}
           </Button>
           <Button size="sm" onClick={() => onInvite(teacher ? "TEACHER" : "COOK")}>
             <Plus size={16} aria-hidden /> {teacher ? "Багш нэмэх" : "Ажилтан нэмэх"}

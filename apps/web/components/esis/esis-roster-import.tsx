@@ -27,7 +27,13 @@ import { useToast } from "@/components/ui/toast";
  * a second press changes nothing the first did not — rather than a dialog
  * nobody reads twice.
  */
-export function EsisRosterImportButton({ kindergartenId }: { kindergartenId: string }) {
+export function EsisRosterImportButton({
+  kindergartenId,
+  label = "ESIS-ээс татах",
+}: {
+  kindergartenId: string;
+  label?: string;
+}) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
@@ -81,7 +87,7 @@ export function EsisRosterImportButton({ kindergartenId }: { kindergartenId: str
       trigger={
         <Button variant="secondary" size="sm">
           <DownloadCloud size={16} aria-hidden="true" />
-          ESIS-ээс татах
+          {label}
         </Button>
       }
       title="ESIS-ээс бүлэг, хүүхэд татах"

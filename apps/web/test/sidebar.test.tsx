@@ -513,7 +513,7 @@ describe("role-based navigation", () => {
       ["Байгууллага", "/admin/kindergarten"],
       ["Сургалтын хөтөлбөр", "/admin/curriculum"],
       ["Ирц ба тооцоолол", "/admin/funding"],
-      ["ESIS мэдээллийн төв", "/admin/integrations/esis"],
+      ["ESIS мэдээллийн төв", "/admin/esis-sync"],
     ] as const) {
       expect(within(nav).getByRole("link", { name: label })).toHaveAttribute("href", href);
     }

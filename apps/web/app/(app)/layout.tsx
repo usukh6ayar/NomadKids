@@ -602,7 +602,12 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
       },
       {
         title: "Интеграц",
-        entries: [entry("ESIS мэдээллийн төв", "/admin/integrations/esis", "adminEsisHub")],
+        /*
+          ★ Pointed at `/admin/integrations/esis` — deleted on 2026-09-14 —
+          and answered 404 until 2026-09-28. `/admin/esis-sync` is the
+          director's ESIS screen now.
+        */
+        entries: [entry("ESIS мэдээллийн төв", "/admin/esis-sync", "adminEsisHub")],
       },
     ];
   }
@@ -1068,7 +1073,7 @@ const ADMIN_RAIL_ICON: Record<string, LucideIcon> = {
   "/admin/school-years": CalendarRange,
   "/admin/terms": CalendarDays,
   "/admin/curriculum": BookMarked,
-  "/admin/integrations/esis": Database,
+  "/admin/esis-sync": Database,
 };
 
 function withRailGlyphs(sections: NavSection[]): NavSection[] {
