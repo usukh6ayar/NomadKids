@@ -922,6 +922,121 @@ describe("per-child ESIS reads are gated by canAccessChild", () => {
 });
 
 /*
+ * ★ 2026-09-28 — the client: "esis хүний дугаар гээд байх юм, тэд нарыг нь
+ * хийхгүйгээр автоматаар байж болохгүй юу?". A child's page sends our
+ * `childId`; a teacher's own service sends nothing. The API finds the ESIS
+ * person, and the child gate runs on *our* id first.
+ */
+describe("ESIS person ids the API fills in itself", () => {
+  const MINE = "90000000000777";
+  const THEIRS = "90000000000888";
+  let otherChildId: string;
+
+  const byChild = (childId: string) =>
+    `/v1/kindergartens/${a.kindergarten.id}/esis/resource?resource=studentMeasurements&childId=${childId}`;
+  const lastParams = () =>
+    (read.mock.calls.at(-1) as unknown as [string, Record<string, string>])[1];
+
+  beforeEach(async () => {
+    const otherGroup = await createGroup(a.kindergarten.id, a.schoolYear.id, "Бусад бүлэг");
+    const otherChild = await createChild(a.kindergarten.id);
+    otherChildId = otherChild.id;
+    await enrollChild(a.kindergarten.id, otherChild.id, otherGroup.id, a.schoolYear.id);
+    await db.child.update({ where: { id: a.child.id }, data: { esisPersonId: MINE } });
+    await db.child.update({ where: { id: otherChild.id }, data: { esisPersonId: THEIRS } });
+    await mapInstitution(a.kindergarten.id, superAdmin);
+  });
+
+  it("reads a teacher's own child by childId, sending ESIS that child's person id", async () => {
+    const res = await authed(request(server()).get(byChild(a.child.id)), teacherA);
+
+    expect(res.status).toBe(200);
+    expect(lastParams()).toMatchObject({ personId: MINE });
+    expect(lastParams()).not.toHaveProperty("childId");
+  });
+
+  it("returns 404 to a teacher for a childId in another group, and never calls ESIS", async () => {
+    const res = await authed(request(server()).get(byChild(otherChildId)), teacherA);
+
+    expect(res.status).toBe(404);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 to an admin of another kindergarten for this kindergarten's child", async () => {
+    const res = await authed(request(server()).get(byChild(a.child.id)), adminB);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("says the child is not linked to ESIS rather than asking for a number", async () => {
+    await db.child.update({ where: { id: a.child.id }, data: { esisPersonId: null } });
+
+    const res = await authed(request(server()).get(byChild(a.child.id)), adminA);
+
+    expect(res.status).toBe(409);
+    expect(res.body.detail).toContain("ESIS-тэй холбогдоогүй");
+  });
+
+  it("reads a teacher's own заах аргын нэгдэл with no number typed", async () => {
+    await db.user.update({
+      where: { id: teacherA.userId },
+      data: { esisPersonId: "70000000000123" },
+    });
+
+    const res = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/esis/resource?resource=teacherAcademicOrg`,
+      ),
+      teacherA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(lastParams()).toMatchObject({ personId: "70000000000123" });
+  });
+
+  it("returns 404 to a teacher reading another person's teacher record", async () => {
+    await db.user.update({
+      where: { id: teacherA.userId },
+      data: { esisPersonId: "70000000000123" },
+    });
+
+    const res = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/esis/resource?resource=teacherAcademicOrg&personId=70000000000999`,
+      ),
+      teacherA,
+    );
+
+    expect(res.status).toBe(404);
+  });
+
+  /* A write was never gated on the child at all until this change. */
+  it("returns 404 to a teacher writing to another group's child, by childId or by number", async () => {
+    const url = `/v1/kindergartens/${a.kindergarten.id}/esis/write`;
+    const byId = await authed(request(server()).post(url), teacherA).send({
+      resource: "studentStatisticsSave",
+      childId: otherChildId,
+      payload: { infoFlag9: "N" },
+    });
+    const byNumber = await authed(request(server()).post(url), teacherA).send({
+      resource: "studentStatisticsSave",
+      payload: { personId: Number(THEIRS), infoFlag9: "N" },
+    });
+
+    expect(byId.status).toBe(404);
+    expect(byNumber.status).toBe(404);
+
+    // …while their own child goes through, so the 404 is the gate, not the role.
+    const own = await authed(request(server()).post(url), teacherA).send({
+      resource: "studentStatisticsSave",
+      childId: a.child.id,
+      payload: { infoFlag9: "N" },
+    });
+    expect(own.status).toBe(201);
+  });
+});
+
+/*
  * ★ CLAUDE.md §4.1 — through HTTP, against the real route. A unit test on
  * `esisVisibleRows` passes whether or not any controller calls it, which is
  * exactly the failure mode that rule exists to catch.

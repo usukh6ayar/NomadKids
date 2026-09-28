@@ -110,6 +110,16 @@ export const ESIS_READ_PARAMS = {
    * arrives, which is the failure this file already avoids twice above.
    */
   requestId: z.string().trim().min(1).max(64).optional(),
+  /*
+   * ── Added 2026-09-28 ────────────────────────────────────────────────────
+   *
+   * ★ **Our** child's id, standing in for `personId` — the client: "esis
+   * хүний дугаар гээд байх юм, тэд нарыг нь хийхгүйгээр автоматаар байж
+   * болохгүй юу?". A child's page knows the child, not the ministry's number
+   * for them; `read()` checks `canAccessChild` on this id and substitutes
+   * `Child.esisPersonId`. It is never sent to ESIS.
+   */
+  childId: z.string().uuid().optional(),
 } as const;
 
 export const esisReadSchema = z.object({
@@ -198,6 +208,11 @@ export const ESIS_UNPROVEN_WRITES = [
 export const esisWriteSchema = z.object({
   resource: z.enum(ESIS_WRITE_RESOURCES),
   payload: z.record(z.string(), z.unknown()),
+  /**
+   * Our child's id; the API sets `payload.personId` from `Child.esisPersonId`
+   * after `canAccessChild` — 2026-09-28, so nobody types the ESIS number.
+   */
+  childId: z.string().uuid().optional(),
 });
 export type EsisWriteDto = z.infer<typeof esisWriteSchema>;
 

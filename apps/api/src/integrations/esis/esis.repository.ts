@@ -60,6 +60,43 @@ export class EsisRepository {
    * repository query carries. A soft-deleted child is not reachable by any
    * route, and an ESIS read must not be the exception that resurrects one.
    */
+  /** A child's ESIS person id, when the roster import has proven one. */
+  findChildEsisPersonId(kindergartenId: string, childId: string) {
+    return this.prisma.child.findFirst({
+      where: { id: childId, kindergartenId, deletedAt: null },
+      select: { esisPersonId: true },
+    });
+  }
+
+  /** What identifies a signed-in member of staff against the ESIS roster. */
+  findUserEsisIdentity(userId: string) {
+    return this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { esisPersonId: true, registerNumber: true, lastName: true, firstName: true },
+    });
+  }
+
+  /** Roster rows that could be this person — by register number, or by name. */
+  findRosterCandidates(
+    kindergartenId: string,
+    identity: { registerNumber: string | null; lastName: string; firstName: string },
+  ) {
+    return this.prisma.esisStaffRoster.findMany({
+      where: {
+        kindergartenId,
+        OR: [
+          ...(identity.registerNumber ? [{ registerNumber: identity.registerNumber }] : []),
+          {
+            lastName: { equals: identity.lastName, mode: "insensitive" as const },
+            firstName: { equals: identity.firstName, mode: "insensitive" as const },
+          },
+        ],
+      },
+      select: { esisPersonId: true, registerNumber: true },
+      take: 5,
+    });
+  }
+
   findChildIdByEsisPersonId(kindergartenId: string, esisPersonId: string) {
     return this.prisma.child.findFirst({
       where: { kindergartenId, esisPersonId, deletedAt: null },

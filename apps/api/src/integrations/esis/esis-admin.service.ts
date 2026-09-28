@@ -754,8 +754,23 @@ export class EsisAdminService {
       );
     }
 
-    const body = { ...dto.payload, institutionId: Number(institutionId) };
-    const personId = typeof dto.payload.personId === "number" ? dto.payload.personId : null;
+    const body: Record<string, unknown> = { ...dto.payload, institutionId: Number(institutionId) };
+    if (dto.childId) {
+      const params: Record<string, string> = { childId: dto.childId };
+      // Any child-addressed reader will do: only its `personId` shape is used.
+      await this.resolvePersonId(actor, kindergartenId, "studentCheck", params);
+      body.personId = Number(params.personId);
+    } else if (typeof body.personId === "number") {
+      /*
+       * ★ A typed `personId` on a write was never checked against the child —
+       * found 2026-09-28. A teacher could send one group's household form onto
+       * another group's child. Same rule as a read: `assertCanReadEsisChild`.
+       */
+      await this.assertCanReadEsisChild(actor, kindergartenId, "studentCheck", {
+        personId: String(body.personId),
+      });
+    }
+    const personId = typeof body.personId === "number" ? body.personId : null;
 
     await this.audit.append({
       action: "UPDATE",
@@ -970,9 +985,93 @@ export class EsisAdminService {
     );
     if (admin) return;
 
+    /*
+     * ★ A `teacher…` service is about a member of staff, not a child — added
+     * 2026-09-28. The child lookup below could never match one, so a teacher
+     * reading their own заах аргын нэгдэл got 404 whatever number they typed.
+     * A non-admin may read their own ESIS person and nobody else's.
+     */
+    if (TEACHER_PERSON_RESOURCES.has(resource)) {
+      if ((await this.ownEsisPersonId(kindergartenId, actor.userId)) !== personId) {
+        throw new NotFoundException();
+      }
+      return;
+    }
+
     const child = await this.repo.findChildIdByEsisPersonId(kindergartenId, personId);
     if (!child) throw new NotFoundException();
     await this.children.assertCanAccess(actor, child.id);
+  }
+
+  /**
+   * Fills `personId` so nobody has to type the ministry's number — 2026-09-28,
+   * the client: "esis хүний дугаар гээд байх юм, тэд нарыг нь хийхгүйгээр
+   * автоматаар байж болохгүй юу?".
+   *
+   * - `childId` → `canAccessChild` first (404 for a child the caller may not
+   *   reach), then `Child.esisPersonId`, which the roster import writes.
+   * - a `teacher…` service with no id → the caller's own ESIS person.
+   *
+   * An explicit `personId` wins and still goes through
+   * `assertCanReadEsisChild`. `childId` is removed either way: it is ours,
+   * and ESIS never sees it.
+   */
+  private async resolvePersonId(
+    actor: Actor,
+    kindergartenId: string,
+    resource: EsisReadableKey,
+    params: Record<string, string>,
+  ) {
+    const childId = params.childId;
+    delete params.childId;
+    if (params.personId || !esisReaderParams(resource).includes("personId")) return;
+
+    if (childId) {
+      await this.children.assertCanAccess(actor, childId);
+      const child = await this.repo.findChildEsisPersonId(kindergartenId, childId);
+      if (!child) throw new NotFoundException();
+      if (!child.esisPersonId) {
+        throw new ConflictException(
+          "Энэ хүүхэд ESIS-тэй холбогдоогүй байна. «Суралцагч» хуудасны «ESIS Суралцагч» товчоор холбоно уу.",
+        );
+      }
+      params.personId = child.esisPersonId;
+      return;
+    }
+
+    if (TEACHER_PERSON_RESOURCES.has(resource)) {
+      const own = await this.ownEsisPersonId(kindergartenId, actor.userId);
+      if (!own) {
+        throw new ConflictException(
+          "Таны ESIS бүртгэл олдсонгүй. Захирал «Багш, ажилтан» хуудасны «ESIS татах» товчийг дарсны дараа дахин оролдоно уу.",
+        );
+      }
+      params.personId = own;
+    }
+  }
+
+  /**
+   * The signed-in person's ESIS id: the linked one, else the one stored
+   * roster row their register number — or, failing that, their name —
+   * points at. Two candidates is no answer; a guess would show one teacher
+   * another's file.
+   */
+  private async ownEsisPersonId(kindergartenId: string, userId: string): Promise<string | null> {
+    const user = await this.repo.findUserEsisIdentity(userId);
+    if (!user) return null;
+    if (user.esisPersonId) return user.esisPersonId;
+
+    const registerNumber = normalizeRegisterNumber(user.registerNumber);
+    const candidates = await this.repo.findRosterCandidates(kindergartenId, {
+      registerNumber,
+      lastName: user.lastName.trim(),
+      firstName: user.firstName.trim(),
+    });
+    const byRegister = registerNumber
+      ? candidates.filter((row) => row.registerNumber === registerNumber)
+      : [];
+    const pick = byRegister.length > 0 ? byRegister : candidates;
+    return pick.length === 1 ? pick[0]!.esisPersonId : null;
   }
 
   /**
@@ -1020,6 +1119,7 @@ export class EsisAdminService {
     const params = Object.fromEntries(
       Object.entries(dto.params ?? {}).filter(([, value]) => value !== undefined),
     ) as Record<string, string>;
+    await this.resolvePersonId(actor, kindergartenId, dto.resource, params);
     const missing = esisReaderParams(dto.resource).filter((name) => !params[name]);
     if (missing.length > 0) {
       throw new ConflictException(`Дараах утга дутуу байна: ${missing.join(", ")}`);
@@ -1469,6 +1569,13 @@ function displayValue(value: unknown): string | null {
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   return JSON.stringify(value);
 }
+
+/** ESIS services addressed by a member of staff's `personId`, not a child's. */
+const TEACHER_PERSON_RESOURCES: ReadonlySet<string> = new Set([
+  "teacherAcademicOrg",
+  "teacherProfile",
+  "teacherCheck",
+]);
 
 function normalizeIdentity(value: string): string {
   return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("mn-MN");
