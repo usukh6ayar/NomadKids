@@ -1331,6 +1331,86 @@ describe("staff roster refresh", () => {
  * ★★ The one rule that needed a home here rather than there: the number is an
  * ADMIN field. A teacher reading their own kindergarten must not see it.
  */
+/*
+ * ★ 2026-09-29 — «ESIS татах» said "13 ажилтан" and the directory showed none
+ * of them: it lists accounts, and nobody had registered yet.
+ */
+describe("GET …/esis/staff-roster/unclaimed", () => {
+  const url = (kindergartenId: string) =>
+    `/v1/kindergartens/${kindergartenId}/esis/staff-roster/unclaimed`;
+
+  beforeEach(async () => {
+    await db.esisStaffRoster.createMany({
+      data: [
+        {
+          kindergartenId: a.kindergarten.id,
+          esisPersonId: "70000000000001",
+          registerNumber: "УБ90010101",
+          lastName: "Бат",
+          firstName: "Сараа",
+          positionName: "Багш",
+          isInstructor: true,
+        },
+        {
+          kindergartenId: a.kindergarten.id,
+          esisPersonId: "70000000000002",
+          registerNumber: "УБ90010102",
+          lastName: "Дорж",
+          firstName: "Номин",
+          positionName: "Тогооч",
+        },
+        {
+          kindergartenId: a.kindergarten.id,
+          esisPersonId: "70000000000003",
+          registerNumber: "УБ90010103",
+          lastName: "Энх",
+          firstName: "Туяа",
+        },
+      ],
+    });
+    // One claimed by ESIS id, one by register number (typed in lower case).
+    await db.user.update({
+      where: { id: teacherA.userId },
+      data: { esisPersonId: "70000000000001" },
+    });
+    await db.user.update({
+      where: { id: a.adminUser.id },
+      data: { registerNumber: "уб90010102" },
+    });
+    // And one invited account that carries neither key, matched by name.
+    await db.esisStaffRoster.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        esisPersonId: "70000000000004",
+        registerNumber: "УБ90010104",
+        lastName: a.teacherUser.lastName,
+        firstName: a.teacherUser.firstName,
+      },
+    });
+  });
+
+  it("lists only the ESIS staff no account here has claimed", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), adminA);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.items.map((row: { lastName: string }) => row.lastName)).toEqual(["Энх"]);
+    expect(res.body.items[0]).not.toHaveProperty("registerNumber");
+  });
+
+  it("returns 404 to a teacher of this kindergarten", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), teacherA);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 to an administrator of another kindergarten", async () => {
+    const res = await authed(request(server()).get(url(a.kindergarten.id)), adminB);
+
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("the kindergarten's ESIS institution number", () => {
   const url = (kindergartenId: string) => `/v1/kindergartens/${kindergartenId}`;
 

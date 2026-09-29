@@ -76,6 +76,39 @@ export class EsisRepository {
     });
   }
 
+  /** Who this kindergarten's staff accounts are, for matching the ESIS roster. */
+  findStaffIdentities(kindergartenId: string) {
+    return this.prisma.user.findMany({
+      where: {
+        deletedAt: null,
+        memberships: { some: { kindergartenId, deletedAt: null, role: { not: "PARENT" } } },
+      },
+      select: { esisPersonId: true, registerNumber: true, lastName: true, firstName: true },
+      take: 1000,
+    });
+  }
+
+  /**
+   * The whole stored roster. Bounded by what `school/staff` returns for one
+   * institution — tens of rows — and capped regardless.
+   */
+  listStaffRoster(kindergartenId: string) {
+    return this.prisma.esisStaffRoster.findMany({
+      where: { kindergartenId },
+      select: {
+        esisPersonId: true,
+        registerNumber: true,
+        lastName: true,
+        firstName: true,
+        positionName: true,
+        isInstructor: true,
+        syncedAt: true,
+      },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      take: 1000,
+    });
+  }
+
   /** Roster rows that could be this person — by register number, or by name. */
   findRosterCandidates(
     kindergartenId: string,
