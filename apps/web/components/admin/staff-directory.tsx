@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { z } from "zod";
 import {
   Briefcase,
@@ -29,6 +30,7 @@ import {
   groupListItemSchema,
   paginated,
   staffRosterRefreshSchema,
+  unclaimedStaffSchema,
   type Role,
 } from "@kinder/contracts";
 import { downloadUrl } from "@/lib/api/client";
@@ -105,6 +107,7 @@ export function StaffDirectory({ onInvite }: { onInvite: (role: Role) => void })
       <h1 className="sr-only">Багш, ажилтан</h1>
       <StaffSection kind="teacher" onInvite={onInvite} onOpen={setOpenUserId} />
       <StaffSection kind="staff" onInvite={onInvite} onOpen={setOpenUserId} />
+      <UnclaimedEsisStaff />
       {openUserId ? (
         <StaffPanel
           userId={openUserId.id}
@@ -232,10 +235,12 @@ function StaffSection({
         staffRosterRefreshSchema,
         { method: "POST" },
       ),
-    onSuccess: (result) =>
+    onSuccess: (result) => {
       toast.success(
-        `ESIS-ээс ${result.count} ажилтны мэдээлэл шинэчлэгдлээ. Ажилтнууд цэцэрлэгийн кодоор өөрсдөө бүртгүүлнэ.`,
-      ),
+        `ESIS-ээс ${result.count} ажилтны мэдээлэл шинэчлэгдлээ. Бүртгүүлээгүй нь доорх жагсаалтад харагдана.`,
+      );
+      void queryClient.invalidateQueries({ queryKey: UNCLAIMED_KEY });
+    },
     onError: (error) => toast.error(errorMessage(error)),
   });
 
@@ -1036,5 +1041,90 @@ function RoleDialog({
         </div>
       </form>
     </div>
+  );
+}
+
+const UNCLAIMED_KEY = ["esis", "staff-unclaimed"] as const;
+
+/**
+ * ESIS staff with no account here yet — 2026-09-29, the client: "ESIS-ээс 13
+ * ажилтны мэдээлэл шинэчлэгдлээ … ингэж ирж байгаа мөртлөө дэлгэцэнд
+ * харуулахгүй байна". «ESIS татах» fills the stored roster; the two tables
+ * above list accounts, so what it brought was nowhere on the page.
+ *
+ * ★ A list, not accounts. A person gets an account by registering with the
+ * institution number (`/admin/staff-code`) — the flow the client chose, which
+ * lets them set their own password — and then moves up into the tables.
+ * Hidden while empty: a heading over nothing reads as a fault.
+ */
+function UnclaimedEsisStaff() {
+  const { primaryKindergartenId } = useSession();
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
+
+  const roster = useQuery({
+    queryKey: [...UNCLAIMED_KEY, primaryKindergartenId, page],
+    queryFn: () =>
+      get(
+        `/kindergartens/${primaryKindergartenId}/esis/staff-roster/unclaimed?page=${page}&pageSize=${pageSize}`,
+        paginated(unclaimedStaffSchema),
+      ),
+    enabled: Boolean(primaryKindergartenId),
+    retry: false,
+  });
+
+  const data = roster.data;
+  if (!data || data.total === 0) return null;
+  const offset = (page - 1) * pageSize;
+
+  return (
+    <section aria-labelledby="staff-unclaimed-heading" className="flex flex-col gap-3">
+      <div>
+        <h2
+          id="staff-unclaimed-heading"
+          className="text-display font-bold leading-heading text-ink"
+        >
+          ESIS-д бүртгэлтэй, системд бүртгүүлээгүй
+        </h2>
+        <p className="mt-1 text-body text-muted">
+          Эдгээр хүмүүс{" "}
+          <Link href="/admin/staff-code" className="text-primary underline">
+            цэцэрлэгийн кодоор
+          </Link>{" "}
+          өөрсдөө бүртгүүлмэгц дээрх жагсаалтад орно.
+        </p>
+      </div>
+      <div className="rounded-card border border-border bg-surface">
+        <table className="w-full border-collapse text-body">
+          <caption className="sr-only">ESIS-д бүртгэлтэй, бүртгүүлээгүй ажилтнууд</caption>
+          <thead>
+            <tr>
+              <Th className="w-12 rounded-tl-card py-2">№</Th>
+              <Th className="py-2">Нэр</Th>
+              <Th className="py-2">Албан тушаал</Th>
+              <Th className="rounded-tr-card py-2">Төрөл</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.items.map((person, index) => (
+              <tr key={person.esisPersonId} className="border-t border-border-soft">
+                <Td className="py-1.5 tabular-nums text-muted">{offset + index + 1}</Td>
+                <Td className="py-1.5 font-medium text-ink">
+                  {person.lastName} {person.firstName}
+                </Td>
+                <Td className="py-1.5 text-muted">{person.positionName || "—"}</Td>
+                <Td className="py-1.5 text-muted">{person.isInstructor ? "Багш" : "Ажилтан"}</Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-body font-semibold text-ink">
+          Нийт <span className="tabular-nums">{data.total}</span> хүн
+        </p>
+        <Pagination page={page} totalPages={data.totalPages} onPage={setPage} />
+      </div>
+    </section>
   );
 }

@@ -116,6 +116,17 @@ export class KindergartenEsisController {
    * replaces the whole table (Task 3's repository note) rather than creating
    * a resource, so "200 with a summary" reads truer than "201 Created".
    */
+  /** ESIS staff with no account here yet — from the stored roster, no ESIS call. */
+  @Get("staff-roster/unclaimed")
+  @Roles("ADMIN")
+  unclaimedStaff(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(paginationQuerySchema)) query: PaginationQuery,
+  ) {
+    return this.service.listUnclaimedStaff(actor, params.id, query);
+  }
+
   @Post("staff-roster/refresh")
   @HttpCode(200)
   @Roles("ADMIN")

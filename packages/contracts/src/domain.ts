@@ -5983,6 +5983,20 @@ export const staffRosterRefreshSchema = z.object({
 export type StaffRosterRefresh = z.infer<typeof staffRosterRefreshSchema>;
 
 /**
+ * `GET /kindergartens/:id/esis/staff-roster/unclaimed` — ESIS staff with no
+ * account here yet. No register number: the screen does not need it.
+ */
+export const unclaimedStaffSchema = z.object({
+  esisPersonId: z.string(),
+  lastName: z.string(),
+  firstName: z.string(),
+  positionName: z.string().nullable(),
+  isInstructor: z.boolean(),
+  syncedAt: z.string(),
+});
+export type UnclaimedStaff = z.infer<typeof unclaimedStaffSchema>;
+
+/**
  * One row of `GET /kindergartens/:id/staff-registrations` — the director's
  * review list, "хэн хэн бүртгүүлсэн байгаа эсэх мэдээлэл".
  *

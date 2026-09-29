@@ -411,6 +411,61 @@ export class EsisAdminService {
    * about who counts as an instructor, which is the ministry's business and
    * not ours to reconcile.
    */
+  /**
+   * ESIS staff who have no account here yet — 2026-09-29, the client: "ESIS-ээс
+   * 13 ажилтны мэдээлэл шинэчлэгдлээ … ингэж ирж байгаа мөртлөө дэлгэцэнд
+   * харуулахгүй байна". «ESIS татах» filled the stored roster and said so,
+   * and the directory — accounts only — showed nothing new.
+   *
+   * ★ Read from `EsisStaffRoster`, not from ESIS: no token spent. "Claimed"
+   * is an account in this kindergarten carrying the person's ESIS id or
+   * register number, the two keys self-registration matches on.
+   */
+  async listUnclaimedStaff(
+    actor: Actor,
+    kindergartenId: string,
+    query: { page: number; pageSize: number },
+  ) {
+    this.tenants.assertAdmin(actor, kindergartenId);
+    const [identities, roster] = await Promise.all([
+      this.repo.findStaffIdentities(kindergartenId),
+      this.repo.listStaffRoster(kindergartenId),
+    ]);
+    const ids = new Set(identities.map((user) => user.esisPersonId).filter(Boolean));
+    const registers = new Set(
+      identities.map((user) => normalizeRegisterNumber(user.registerNumber)).filter(Boolean),
+    );
+    /*
+     * ★ And by name. An invited account carries neither key — 12 of 13 on
+     * live data — so without this every teacher the director already added
+     * would be listed again as "not registered". Display only: nothing is
+     * granted or linked on a name, which is why a name is enough here.
+     */
+    const names = new Set(
+      identities.map((user) => normalizeIdentity(`${user.lastName} ${user.firstName}`)),
+    );
+
+    const unclaimed = roster.filter(
+      (row) =>
+        !ids.has(row.esisPersonId) &&
+        !registers.has(row.registerNumber) &&
+        !names.has(normalizeIdentity(`${row.lastName} ${row.firstName}`)),
+    );
+    const start = (query.page - 1) * query.pageSize;
+    return {
+      items: unclaimed
+        .slice(start, start + query.pageSize)
+        .map(({ registerNumber: _registerNumber, syncedAt, ...row }) => ({
+          ...row,
+          syncedAt: syncedAt.toISOString(),
+        })),
+      page: query.page,
+      pageSize: query.pageSize,
+      total: unclaimed.length,
+      totalPages: Math.ceil(unclaimed.length / query.pageSize),
+    };
+  }
+
   async refreshStaffRoster(actor: Actor, kindergartenId: string) {
     this.tenants.assertAdmin(actor, kindergartenId);
     return this.refreshStaffRosterCore(kindergartenId, actor.userId);
