@@ -150,8 +150,8 @@ export function ChildGeneralInfo({
       {isStaff ? (
         <>
           <ChildEsisRegistration childId={childId} />
-          <ChildEsisHousehold />
-          <ChildEsisLiving />
+          <ChildEsisHousehold childId={childId} />
+          <ChildEsisLiving childId={childId} />
         </>
       ) : null}
 

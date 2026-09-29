@@ -2379,6 +2379,10 @@ function NavLink({
               ? "bg-transparent"
               : navIconTone(item.label),
           !horizontal && "size-9 rounded-control",
+          // ★ The illustrated icons are back in the side menu (2026-09-28), and
+          // at the 18px a line glyph needs they read as specks — the artwork
+          // carries its own padding. 28px fills the 36px well.
+          !horizontal && "[&>img]:size-7",
           horizontal && active && "scale-105",
           horizontal && active && !backgroundlessIcon && "bg-primary-soft",
           !horizontal && !active && isRailGlyph(item.icon) && "text-faint",

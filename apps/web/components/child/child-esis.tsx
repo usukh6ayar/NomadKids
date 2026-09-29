@@ -29,19 +29,14 @@ import { SectionHeader } from "@/components/ui/card";
  */
 
 /**
- * ★ **No child carries an ESIS person id yet.**
+ * ★ The panels pass `childId` and the API finds the ESIS person — 2026-09-28.
  *
- * `Child` has no column for one and `my-profile` matches a signed-in teacher
- * by reading the roster, so there is nothing on this screen to hand the panels
- * as `personId`. They therefore ask for it — `EsisDataPanel` draws the input
- * itself, and a demo deployment pre-fills the demo tenant's own id.
- *
- * That is the honest state rather than a gap left quiet: a director typing an
- * ESIS number once per child is a real cost, and it disappears the day the
- * roster import writes the id onto the record. Until then, asking is better
- * than guessing.
+ * They used to ask the reader for "ESIS хүний дугаар", when no child carried
+ * one. The roster import («ESIS Суралцагч») now writes `Child.esisPersonId`,
+ * and `read()` substitutes it after `canAccessChild`, so the number never has
+ * to reach the browser at all.
  */
-export function ChildEsisRegistration({ childId: _childId }: { childId: string }) {
+export function ChildEsisRegistration({ childId }: { childId: string }) {
   return (
     <section aria-labelledby="esis-registration-heading">
       <SectionHeader
@@ -49,7 +44,7 @@ export function ChildEsisRegistration({ childId: _childId }: { childId: string }
         title="ЭСИС дэх бүртгэл"
         lede="Хүүхэд ЭСИС-д бүртгэлтэй эсэх, ямар бүлэгт байгааг шалгана."
       />
-      <EsisDataPanel resource="studentCheck" />
+      <EsisDataPanel resource="studentCheck" params={{ childId }} askForParams={false} />
     </section>
   );
 }
@@ -57,15 +52,9 @@ export function ChildEsisRegistration({ childId: _childId }: { childId: string }
 /**
  * The guardians, as ESIS holds them.
  *
- * ★ **`stdnt/all/contacts` returns the whole institution, not one child.** It
- * takes no person parameter — the client's own URL has only `institutionId` —
- * so this panel is the kindergarten's contact list rather than this child's
- * three rows. It is placed here anyway because this is where the client asked
- * for it and because it is the only read the service offers; the description
- * says which list it is, so nobody reads a roster as one family.
- *
- * Narrowing it needs a child↔ESIS person mapping, which is the same missing
- * piece the panels above and below wait on.
+ * ★ `stdnt/all/contacts` takes the child's `personId` in its body, so it asks
+ * for the child like the panels above — by `childId`, resolved by the API
+ * (2026-09-28).
  */
 export function ChildEsisGuardians({ child }: { child: ChildDetail }) {
   const prefill = child.guardianships
@@ -87,19 +76,21 @@ export function ChildEsisGuardians({ child }: { child: ChildDetail }) {
   return (
     <div className="mt-4 flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <EsisContactsWriteButton prefill={prefill} />
+        <EsisContactsWriteButton childId={child.id} prefill={prefill} />
       </div>
       <EsisDataPanel
         resource="studentContacts"
+        params={{ childId: child.id }}
+        askForParams={false}
         title="ЭСИС дэх асран хамгаалагчид"
-        description="Хамаарал, утас, ажлын газар — ЭСИС-ийн бүртгэлээр. Энэ жагсаалт бүх цэцэрлэгийн хэмжээнд ирнэ."
+        description="Хамаарал, утас, ажлын газар — ЭСИС-ийн бүртгэлээр."
       />
     </div>
   );
 }
 
 /** Өрхийн мэдээлэл — household composition and livelihood. */
-export function ChildEsisHousehold() {
+export function ChildEsisHousehold({ childId }: { childId: string }) {
   return (
     <section aria-labelledby="esis-household-heading">
       <SectionHeader
@@ -109,18 +100,19 @@ export function ChildEsisHousehold() {
         action={
           <EsisFactsWriteButton
             resource="studentStatisticsSave"
+            childId={childId}
             title="Өрхийн мэдээлэл илгээх"
             description="Хүүхдийн өрхийн мэдээллийг ЭСИС рүү илгээнэ."
           />
         }
       />
-      <EsisDataPanel resource="studentStatistics" />
+      <EsisDataPanel resource="studentStatistics" params={{ childId }} askForParams={false} />
     </section>
   );
 }
 
 /** Амьдрах орчин — dwelling, heating, water, sanitation. */
-export function ChildEsisLiving() {
+export function ChildEsisLiving({ childId }: { childId: string }) {
   return (
     <section aria-labelledby="esis-living-heading">
       <SectionHeader
@@ -130,12 +122,13 @@ export function ChildEsisLiving() {
         action={
           <EsisFactsWriteButton
             resource="studentConditionSave"
+            childId={childId}
             title="Амьдрах орчин илгээх"
             description="Хүүхдийн амьдрах орчны мэдээллийг ЭСИС рүү илгээнэ."
           />
         }
       />
-      <EsisDataPanel resource="studentCondition" />
+      <EsisDataPanel resource="studentCondition" params={{ childId }} askForParams={false} />
     </section>
   );
 }

@@ -105,7 +105,11 @@ function useEsisWrite(onDone: () => void) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { resource: EsisResourceKey; payload: Record<string, unknown> }) =>
+    mutationFn: (input: {
+      resource: EsisResourceKey;
+      payload: Record<string, unknown>;
+      childId?: string;
+    }) =>
       mutate(`/kindergartens/${primaryKindergartenId}/esis/write`, esisWriteResultSchema, {
         method: "POST",
         body: input,
@@ -148,13 +152,16 @@ function useEsisWrite(onDone: () => void) {
  */
 export function EsisFactsWriteButton({
   resource,
-  personId,
+  childId,
   title,
   description,
 }: {
   resource: EsisResourceKey;
-  /** The child's ESIS person id, when the screen knows it. */
-  personId?: string;
+  /**
+   * The child this is about. The API fills `personId` from it — 2026-09-28,
+   * so the form no longer asks for "ESIS хүний дугаар".
+   */
+  childId?: string;
   title: string;
   description: string;
 }) {
@@ -171,7 +178,13 @@ export function EsisFactsWriteButton({
   });
 
   const endpoint = catalog.data?.endpoints.find((item) => item.key === resource);
-  const fields = useMemo(() => operatorInputs(endpoint?.fields ?? []), [endpoint]);
+  const fields = useMemo(
+    () =>
+      operatorInputs(endpoint?.fields ?? []).filter(
+        (field) => !(childId && field.name === "personId"),
+      ),
+    [endpoint, childId],
+  );
   const [values, setValues] = useState<Values>({});
 
   const write = useEsisWrite(() => setOpen(false));
@@ -181,7 +194,7 @@ export function EsisFactsWriteButton({
   if (!endpoint) return null;
 
   function start() {
-    setValues(initialValues(fields, personId ? { personId } : {}));
+    setValues(initialValues(fields, {}));
     setOpen(true);
   }
 
@@ -216,7 +229,7 @@ export function EsisFactsWriteButton({
           onSubmit={(event) => {
             event.preventDefault();
             if (write.isPending) return;
-            write.mutate({ resource, payload: toPayload(fields, values) });
+            write.mutate({ resource, payload: toPayload(fields, values), childId });
           }}
         >
           {write.isError ? (
@@ -303,20 +316,21 @@ const EMPTY_CONTACT: ContactRow = {
  * for the same reason.
  */
 export function EsisContactsWriteButton({
-  personId,
+  childId,
   prefill,
 }: {
-  personId?: string;
+  /** The child this is about; the API fills `personId` from it. */
+  childId?: string;
   prefill?: { lastName: string; firstName: string; phone: string | null; email: string | null }[];
 }) {
   const [open, setOpen] = useState(false);
-  const [person, setPerson] = useState(personId ?? "");
+  const [person, setPerson] = useState("");
   const [rows, setRows] = useState<ContactRow[]>([EMPTY_CONTACT]);
   const formId = useId();
   const write = useEsisWrite(() => setOpen(false));
 
   function start() {
-    setPerson(personId ?? "");
+    setPerson("");
     setRows(
       prefill && prefill.length > 0
         ? prefill.map((guardian, index) => ({
@@ -333,7 +347,7 @@ export function EsisContactsWriteButton({
   }
 
   const valid =
-    person.trim() !== "" &&
+    (Boolean(childId) || person.trim() !== "") &&
     rows.every((row) => row.relationTypeId && row.lastName && row.firstName && row.phoneNumber);
 
   return (
@@ -370,8 +384,9 @@ export function EsisContactsWriteButton({
             if (write.isPending || !valid) return;
             write.mutate({
               resource: "studentContactsSave",
+              childId,
               payload: {
-                personId: Number(person),
+                ...(childId ? {} : { personId: Number(person) }),
                 contactList: rows.map((row) => ({
                   relationTypeId: Number(row.relationTypeId),
                   lastName: row.lastName.trim(),
@@ -393,16 +408,18 @@ export function EsisContactsWriteButton({
             </p>
           ) : null}
 
-          <Field label="Хүүхдийн ЭСИС дугаар" required>
-            {({ id }) => (
-              <Input
-                id={id}
-                inputMode="numeric"
-                value={person}
-                onChange={(event) => setPerson(event.target.value)}
-              />
-            )}
-          </Field>
+          {childId ? null : (
+            <Field label="Хүүхдийн ЭСИС дугаар" required>
+              {({ id }) => (
+                <Input
+                  id={id}
+                  inputMode="numeric"
+                  value={person}
+                  onChange={(event) => setPerson(event.target.value)}
+                />
+              )}
+            </Field>
+          )}
 
           <div className="flex flex-col gap-3">
             {rows.map((row, index) => (

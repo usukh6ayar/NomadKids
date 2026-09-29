@@ -90,6 +90,7 @@ export function EsisDataPanel({
   description,
   headingId,
   askForParams = true,
+  ownRecord = false,
   autoRead = true,
   actionLabel,
   detail,
@@ -146,6 +147,12 @@ export function EsisDataPanel({
    * True everywhere else, which is where searching among many belongs.
    */
   askForParams?: boolean;
+  /**
+   * The signed-in person's own record — `/settings`. The API fills their ESIS
+   * `personId`, so the panel does not ask. Opt-in rather than keyed on the
+   * service: a director looking a teacher up elsewhere still types the id.
+   */
+  ownRecord?: boolean;
   /** Overrides the service's catalog name in the section header. */
   title?: string;
   description?: string;
@@ -261,7 +268,15 @@ export function EsisDataPanel({
     registerSearch && name === "personRegNumber"
       ? searchedRegister
       : (entered[name] ?? params?.[name] ?? "");
-  const missing = required.filter((name) => !value(name));
+  /*
+   * ★ `personId` the server fills itself — 2026-09-28, the client: "esis хүний
+   * дугаар гээд байх юм, тэд нарыг нь хийхгүйгээр автоматаар байж болохгүй
+   * юу?". From `childId` on a child's page, and from the signed-in person
+   * where the caller says `ownRecord`. Neither is a question for the reader.
+   */
+  const serverFills = (name: string) =>
+    name === "personId" && (Boolean(params?.childId) || ownRecord);
+  const missing = required.filter((name) => !value(name) && !serverFills(name));
 
   /*
    * ★ Ask only for what the caller has not already supplied — 2026-09-09, at
@@ -275,9 +290,10 @@ export function EsisDataPanel({
    * `studentByRegister` is where searching among many belongs, and there the
    * caller supplies nothing — so every field it needs is still asked for.
    */
-  const asks = askForParams ? required.filter((name) => !params?.[name]) : [];
+  const asks = askForParams ? required.filter((name) => !params?.[name] && !serverFills(name)) : [];
 
   const query = new URLSearchParams({ resource });
+  if (params?.childId) query.set("childId", params.childId);
   for (const name of required) {
     if (value(name)) query.set(name, value(name));
   }

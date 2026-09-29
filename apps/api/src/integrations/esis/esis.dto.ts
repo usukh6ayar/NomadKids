@@ -115,6 +115,14 @@ export const ESIS_READ_PARAMS = {
 export const esisReadSchema = z.object({
   resource: z.enum(ESIS_READABLE_KEYS as [EsisReadableKey, ...EsisReadableKey[]]),
   params: z.object(ESIS_READ_PARAMS).optional(),
+  /*
+   * ★ **Our** child's id, standing in for `personId` — 2026-09-28, the
+   * client: "esis хүний дугаар гээд байх юм, тэд нарыг нь хийхгүйгээр
+   * автоматаар байж болохгүй юу?". `read()` checks `canAccessChild` on it and
+   * substitutes `Child.esisPersonId`. Beside `params`, not in it: it is not a
+   * value any ESIS reader declares, and it is never sent to ESIS.
+   */
+  childId: z.string().uuid().optional(),
 });
 export type EsisReadDto = z.infer<typeof esisReadSchema>;
 
@@ -198,6 +206,11 @@ export const ESIS_UNPROVEN_WRITES = [
 export const esisWriteSchema = z.object({
   resource: z.enum(ESIS_WRITE_RESOURCES),
   payload: z.record(z.string(), z.unknown()),
+  /**
+   * Our child's id; the API sets `payload.personId` from `Child.esisPersonId`
+   * after `canAccessChild` — 2026-09-28, so nobody types the ESIS number.
+   */
+  childId: z.string().uuid().optional(),
 });
 export type EsisWriteDto = z.infer<typeof esisWriteSchema>;
 
