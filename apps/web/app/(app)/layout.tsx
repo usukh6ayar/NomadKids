@@ -568,7 +568,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         entries: [
           entry("Хоолны цэс", "/menu", "food"),
           entry("Санхүү", "/finance", "finance"),
-          entry("Ирц ба тооцоолол", "/admin/funding", "finance"),
+          entry("Төлбөрийн тайлан", "/admin/funding", "finance"),
           entry("Ирцийн дэлгэрэнгүй", "/attendance/journal", "attendance"),
         ],
       },
@@ -850,7 +850,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
           {
             title: "Санхүү",
             entries: [
-              entry("Ирц ба тооцоолол", "/admin/funding"),
+              entry("Төлбөрийн тайлан", "/admin/funding"),
               entry("Ирцийн дэлгэрэнгүй", "/attendance/journal"),
             ],
           },
@@ -1183,7 +1183,7 @@ function supportSections(isCook: boolean): NavSection[] {
              * reach by typing the URL, which is the same kind of gap this
              * screen exists to close.
              */
-            navEntry("Ирц ба тооцоолол", "/admin/funding", "accountingAttendanceCalculation"),
+            navEntry("Төлбөрийн тайлан", "/admin/funding", "accountingAttendanceCalculation"),
             /*
              * ★ The raw grid the figure above is computed from — child by
              * child, day by day, over any range of dates. `/admin/funding`
