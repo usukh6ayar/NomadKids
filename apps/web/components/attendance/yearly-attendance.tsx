@@ -285,7 +285,7 @@ export function YearlyAttendance() {
 
       {!pending && !failure && rows.length > 0 ? (
         <div className="max-h-[72vh] overflow-auto rounded-card border border-border bg-surface">
-          <table className="border-separate border-spacing-0 text-[11px]">
+          <table className="border-separate border-spacing-0 text-caption">
             <caption className="sr-only">Хичээлийн жилийн ирцийн тайлан</caption>
             <thead className="sticky top-0 z-20">
               <tr>
@@ -382,7 +382,7 @@ export function YearlyAttendance() {
                         >
                           <span
                             className={cn(
-                              "grid h-6 min-w-7 place-items-center rounded-sm tabular-nums",
+                              "grid h-6 min-w-7 place-items-center rounded-check tabular-nums",
                               style?.className ?? "text-faint",
                             )}
                           >
