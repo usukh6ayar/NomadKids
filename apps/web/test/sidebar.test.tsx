@@ -212,13 +212,9 @@ describe("navigation icons", () => {
       "Мэдээ",
       "Чат",
       "Санхүү",
-      "Ирц ба тооцоолол",
-      "Ирцийн дэлгэрэнгүй",
+      "Төлбөрийн тайлан",
       "Тайлан",
       "Баримт бичгийн сан",
-      "Хичээлийн жил",
-      "Улирал",
-      "Сургалтын хөтөлбөр",
       "ESIS мэдээллийн төв",
     ];
 
@@ -438,7 +434,7 @@ describe("role-based navigation", () => {
     const nav = await sidebar();
 
     for (const label of [
-      "Ирц ба тооцоолол",
+      "Төлбөрийн тайлан",
       "Байгууллага",
       "Багш, ажилтан",
       "Хичээлийн жил",
@@ -495,10 +491,7 @@ describe("role-based navigation", () => {
     expect(within(nav).getByRole("link", { name: "Хувийн тохиргоо" })).toBeInTheDocument();
   });
 
-  /**
-   * ★ The reason the seven rows were added: a hub row does not name what is
-   * behind it, and "Улирал" was a word this menu never said.
-   */
+  /** School year and term moved under the group workspace; daily destinations remain here. */
   it("uses the requested management names, routes and section headings", async () => {
     renderShell(["ADMIN"]);
     const nav = await sidebar();
@@ -509,20 +502,20 @@ describe("role-based navigation", () => {
       ["Анги бүлэг", "/admin/groups"],
       ["Багш, ажилтан", "/admin/users"],
       ["Байгууллага", "/admin/kindergarten"],
-      ["Хичээлийн жил", "/admin/school-years"],
-      ["Улирал", "/admin/terms"],
-      ["Сургалтын хөтөлбөр", "/admin/curriculum"],
-      ["Ирц ба тооцоолол", "/admin/funding"],
+      ["Төлбөрийн тайлан", "/admin/funding"],
       ["ESIS мэдээллийн төв", "/admin/integrations/esis"],
     ] as const) {
       expect(within(nav).getByRole("link", { name: label })).toHaveAttribute("href", href);
     }
 
+    expect(within(nav).queryByRole("link", { name: "Хичээлийн жил" })).toBeNull();
+    expect(within(nav).queryByRole("link", { name: "Улирал" })).toBeNull();
+    expect(within(nav).queryByRole("link", { name: "Ирцийн дэлгэрэнгүй" })).toBeNull();
+
     for (const heading of [
       "Сургалт, үйл ажиллагаа",
       "Хоол, санхүү",
       "Тайлан, баримт",
-      "Сургалтын төлөвлөгөө",
       "Интеграц",
     ]) {
       expect(within(nav).getByText(heading)).toBeInTheDocument();

@@ -81,10 +81,9 @@ describe("the staff directory", () => {
 
     const section = (await screen.findByRole("heading", { name: "Багш" })).closest("section")!;
     expect(within(section).getByRole("button", { name: /Excel/ })).toBeDisabled();
-    expect(within(section).getByRole("link", { name: /ESIS татах/ })).toHaveAttribute(
-      "href",
-      "/admin/integrations/esis",
-    );
+    await user.click(within(section).getByRole("button", { name: /ESIS татах/ }));
+    expect(screen.getByRole("dialog", { name: "Багшийн ESIS мэдээлэл" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Хаах" }));
 
     await user.click(await screen.findByRole("button", { name: /Анхбаяр Энх-Адьяа — үйлдэл/ }));
     for (const label of [

@@ -304,3 +304,116 @@ describe("Ирцийн задаргаа", () => {
     expect([...present].map((cell) => cell.textContent)).toEqual(["1", "1", "0", "2"]);
   });
 });
+
+describe("Хичээлийн жилээр", () => {
+  it("merges safe API windows into one September–June grid", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: `/kindergartens/${KG}/attendance/daily`,
+        body: {
+          kindergartenName: "Цэцэрлэг",
+          from: "2026-09-01",
+          to: "2026-09-30",
+          items: [],
+          totals: {
+            expected: 0,
+            unrecorded: 0,
+            present: 0,
+            excused: 0,
+            sick: 0,
+            absent: 0,
+            complete: 0,
+            sent: 0,
+            days: 0,
+          },
+        },
+      },
+      {
+        path: `/kindergartens/${KG}/school-years`,
+        body: [
+          {
+            id: "77777777-7777-4777-8777-777777777777",
+            name: "2026-2027",
+            isCurrent: true,
+            startsOn: "2026-09-01",
+            endsOn: "2027-06-30",
+          },
+        ],
+      },
+      {
+        path: "/groups",
+        body: {
+          items: [
+            {
+              id: GROUP,
+              name: "Дэлбээ",
+              ageBand: "MIDDLE",
+              kindergartenId: KG,
+              schoolYearId: "77777777-7777-4777-8777-777777777777",
+              status: "ACTIVE",
+              schoolYear: null,
+              _count: { enrollments: 1 },
+              photoMediaFileId: null,
+            },
+          ],
+          page: 1,
+          pageSize: 100,
+          total: 1,
+          totalPages: 1,
+        },
+      },
+      {
+        path: `/kindergartens/${KG}/attendance/register`,
+        body: {
+          items: [
+            {
+              childId: CHILD,
+              child: { id: CHILD, lastName: "Аманбек", firstName: "Абдуллин", status: "ACTIVE" },
+              group: {
+                id: GROUP,
+                name: "Дэлбээ",
+                ageBand: "MIDDLE",
+                programKind: "MAIN",
+                attendanceForm: "STANDARD",
+              },
+              days: [{ status: "PRESENT", note: null }],
+              counts: { PRESENT: 1 },
+              recorded: 1,
+            },
+          ],
+          page: 1,
+          pageSize: 200,
+          total: 1,
+          totalPages: 1,
+          from: "2026-09-01",
+          to: "2026-11-30",
+          days: ["2026-09-01"],
+          totals: { PRESENT: 1 },
+          groups: [],
+        },
+      },
+    ]);
+    renderWithProviders(<DailyAttendancePage />);
+
+    await user.click(await screen.findByRole("tab", { name: "Хичээлийн жилээр" }));
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Хичээлийн жилийн ирц" }),
+    ).toBeInTheDocument();
+    const table = await screen.findByRole("table", { name: "Хичээлийн жилийн ирцийн тайлан" });
+    expect(within(table).getByText("Аманбек Абдуллин")).toBeInTheDocument();
+    expect(within(table).getByText("9-р сар")).toBeInTheDocument();
+    expect(within(table).getByText("6-р сар")).toBeInTheDocument();
+    expect(within(table).getAllByText("1").length).toBeGreaterThan(0);
+
+    const registerCalls = calls.filter((call) => call.url.includes("/attendance/register?"));
+    expect(registerCalls).toHaveLength(4);
+    for (const call of registerCalls) {
+      const params = new URLSearchParams(call.url.split("?")[1]);
+      const from = Date.parse(`${params.get("from")}T00:00:00Z`);
+      const to = Date.parse(`${params.get("to")}T00:00:00Z`);
+      expect(Math.floor((to - from) / 86_400_000) + 1).toBeLessThanOrEqual(92);
+    }
+  });
+});

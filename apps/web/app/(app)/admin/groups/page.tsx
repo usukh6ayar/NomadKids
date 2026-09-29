@@ -18,6 +18,7 @@ import {
 import { z } from "zod";
 import {
   adminUserSchema,
+  esisPreviewResultSchema,
   groupListItemSchema,
   groupWithTeachersSchema,
   paginated,
@@ -40,6 +41,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { RowMenu } from "@/components/ui/menu";
 import { Pagination } from "@/components/ui/pagination";
 import { SearchField } from "@/components/ui/search-field";
+import { EsisCurriculumChain } from "@/components/esis/esis-curriculum";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 
@@ -120,6 +122,7 @@ function AdminGroups() {
   >(null);
   const [band, setBand] = useState("");
   const [yearId, setYearId] = useState<string | null>(null);
+  const [esisOpen, setEsisOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(20);
@@ -153,6 +156,17 @@ function AdminGroups() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  const esisBundle = useMutation({
+    mutationFn: () =>
+      mutate(`/kindergartens/${primaryKindergartenId}/esis/preview`, esisPreviewResultSchema, {
+        method: "POST",
+        body: {
+          resources: ["academicYearStatuses", "groups", "groupsNextYear", "programs"],
+        },
+      }),
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   const term = typed.trim().toLowerCase();
   const filtered = (groups.data?.items ?? []).filter(
     (group) =>
@@ -183,10 +197,23 @@ function AdminGroups() {
         title="Анги, бүлэг"
         actions={
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button asChild size="sm" variant="secondary">
-              <Link href="/admin/integrations/esis">
-                <RefreshCw size={16} aria-hidden /> ESIS татах
-              </Link>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={!primaryKindergartenId || esisBundle.isPending}
+              onClick={() => {
+                setEsisOpen(true);
+                esisBundle.reset();
+                esisBundle.mutate();
+              }}
+            >
+              <RefreshCw
+                size={16}
+                className={cn(esisBundle.isPending && "animate-spin")}
+                aria-hidden
+              />
+              {esisBundle.isPending ? "Татаж байна…" : "ESIS татах"}
             </Button>
             <Button size="sm" onClick={() => setDialog({ kind: "create" })}>
               <Plus size={18} aria-hidden />
@@ -375,6 +402,15 @@ function AdminGroups() {
           onClose={() => setDialog(null)}
         />
       ) : null}
+      {esisOpen ? (
+        <EsisGroupBundleDialog
+          pending={esisBundle.isPending}
+          result={esisBundle.data ?? null}
+          error={esisBundle.isError ? errorMessage(esisBundle.error) : null}
+          onRetry={() => esisBundle.mutate()}
+          onClose={() => setEsisOpen(false)}
+        />
+      ) : null}
       <ConfirmDialog
         open={dialog?.kind === "delete"}
         onOpenChange={(next) => (next ? undefined : setDialog(null))}
@@ -386,6 +422,127 @@ function AdminGroups() {
         pending={remove.isPending}
         onConfirm={() => (dialog?.kind === "delete" ? remove.mutate(dialog.group.id) : undefined)}
       />
+    </div>
+  );
+}
+
+function EsisGroupBundleDialog({
+  pending,
+  result,
+  error,
+  onRetry,
+  onClose,
+}: {
+  pending: boolean;
+  result: z.infer<typeof esisPreviewResultSchema> | null;
+  error: string | null;
+  onRetry: () => void;
+  onClose: () => void;
+}) {
+  const [curriculumOpen, setCurriculumOpen] = useState(false);
+  const label = (resource: string) =>
+    resource === "academicYearStatuses"
+      ? "Хичээлийн жил"
+      : resource === "groupsNextYear"
+        ? "Дараа жилийн бүлэг"
+        : resource === "programs"
+          ? "Сургалтын хөтөлбөр"
+          : "Анги бүлэг";
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="ESIS анги бүлгийн мэдээлэл"
+      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
+    >
+      <div className="relative flex w-full max-w-[620px] flex-col gap-4 rounded-card border border-border bg-surface p-5">
+        <button
+          type="button"
+          aria-label="Хаах"
+          onClick={onClose}
+          className="absolute right-3 top-3 grid size-9 place-items-center rounded-control text-muted hover:bg-canvas hover:text-ink"
+        >
+          <X size={18} aria-hidden />
+        </button>
+
+        <div className="pr-10">
+          <h2 className="text-lead font-semibold text-ink">ESIS анги бүлгийн мэдээлэл</h2>
+          <p className="mt-1 text-body text-muted">
+            Хичээлийн жил болон анги бүлгийг нэг үйлдлээр зэрэг татна.
+          </p>
+        </div>
+
+        {pending ? <LoadingState rows={2} /> : null}
+        <FormError message={error} />
+
+        {result ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {result.results.map((item) => (
+              <div
+                key={item.resource}
+                className={cn(
+                  "rounded-row border p-4",
+                  item.status === "SUCCEEDED"
+                    ? "border-mint-ink/20 bg-mint"
+                    : "border-danger/20 bg-danger-soft",
+                )}
+              >
+                <p className="text-body font-semibold text-ink">{label(item.resource)}</p>
+                <p className="mt-1 text-title font-semibold tabular-nums text-ink">
+                  {item.count} бичлэг
+                </p>
+                <p className="mt-1 text-caption text-muted">
+                  {item.status === "SUCCEEDED" ? "Амжилттай татлаа" : `Алдаа: ${item.errorCode}`}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {result ? (
+          <section className="rounded-row border border-border p-4" aria-label="Сургалтын хөтөлбөр">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-body font-semibold text-ink">Сургалтын хөтөлбөр</h3>
+                <p className="mt-1 text-caption text-muted">
+                  Хөтөлбөр → үе шат → төлөвлөгөө → хичээлийг эндээс шалгана.
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => setCurriculumOpen((current) => !current)}
+              >
+                {curriculumOpen ? "Хураах" : "Шатлал харах"}
+              </Button>
+            </div>
+            {curriculumOpen ? (
+              <div className="mt-4 border-t border-border pt-4">
+                <EsisCurriculumChain />
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
+        <p className="rounded-control bg-canvas px-3 py-2 text-caption text-muted">
+          Улирлын тусдаа ESIS сервис байхгүй. Улирал нь татагдсан хичээлийн жилтэй NomadKids дотор
+          холбоотой ажиллана. Энэ үйлдэл одоогоор read-only шалгалт бөгөөд дотоод бүртгэлийг
+          автоматаар өөрчлөхгүй.
+        </p>
+
+        <div className="flex justify-end gap-2 border-t border-border pt-4">
+          {error ? (
+            <Button type="button" variant="secondary" disabled={pending} onClick={onRetry}>
+              Дахин оролдох
+            </Button>
+          ) : null}
+          <Button type="button" onClick={onClose}>
+            Хаах
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -742,7 +899,11 @@ function GroupFormDialog({
 
           {!editing && !schoolYearId ? (
             <p className="rounded-control bg-sun px-3 py-2 text-body text-sun-ink">
-              Хичээлийн жил үүсгээгүй байна. «Хичээлийн жил» хэсгээс эхэлнэ үү.
+              Хичээлийн жил үүсгээгүй байна. ESIS таталтаа шалгаад шаардлагатай бол{" "}
+              <Link href="/admin/school-years" className="font-semibold underline">
+                хичээлийн жил тохируулна уу
+              </Link>
+              .
             </p>
           ) : null}
 

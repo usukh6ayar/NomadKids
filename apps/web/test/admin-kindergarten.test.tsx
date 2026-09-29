@@ -175,9 +175,10 @@ describe("the kindergarten's details", () => {
     expect(screen.getByText("Нэгдэл бүртгэгдээгүй байна")).toBeInTheDocument();
     expect(screen.getByText("Нийт: 0")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Нэгдэл нэмэх/ })).toBeDisabled();
-    expect(screen.getByRole("link", { name: /ESIS татах/ })).toHaveAttribute(
-      "href",
-      "/admin/integrations/esis",
-    );
+    const esisButton = screen.getByRole("button", { name: /ESIS татах/ });
+    await user.click(esisButton);
+    expect(
+      screen.getByRole("dialog", { name: "Заах аргын нэгдлийн ESIS мэдээлэл" }),
+    ).toBeInTheDocument();
   });
 });

@@ -101,7 +101,7 @@ describe("the administration dashboard", () => {
 
     for (const [label, href] of [
       ["Нийт суралцагч", "/children"],
-      ["Өнөөдрийн ирц", "/attendance/journal"],
+      ["Өнөөдрийн ирц", "/attendance/daily"],
       ["Бүлэг", "/admin/groups"],
       ["Багш, ажилтан", "/admin/users"],
       ["Баримт бичгийн сан", "/documents"],

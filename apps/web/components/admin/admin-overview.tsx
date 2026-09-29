@@ -216,7 +216,7 @@ export function AdminOverview() {
             }
             art={<Art name="attendance" size={36} />}
             artSurface={false}
-            href="/attendance/journal"
+            href="/attendance/daily"
           />
           <StatCard
             label="Бүлэг"

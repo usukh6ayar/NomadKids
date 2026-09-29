@@ -3,7 +3,6 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { z } from "zod";
 import {
   Briefcase,
@@ -17,7 +16,6 @@ import {
   Phone,
   Plus,
   Power,
-  RefreshCw,
   Settings,
   UserRound,
   UsersRound,
@@ -40,6 +38,7 @@ import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui
 import { Td, Th } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
+import { EsisBundleButton } from "@/components/esis/esis-bundle-dialog";
 
 const listSchema = paginated(adminUserSchema);
 const userDetailSchema = adminUserSchema.extend({
@@ -182,11 +181,19 @@ function StaffSection({
           >
             <Download size={16} aria-hidden /> Excel
           </Button>
-          <Button asChild size="sm" variant="secondary">
-            <Link href="/admin/integrations/esis">
-              <RefreshCw size={16} aria-hidden /> ESIS татах
-            </Link>
-          </Button>
+          <EsisBundleButton
+            title={teacher ? "Багшийн ESIS мэдээлэл" : "Ажилтны ESIS мэдээлэл"}
+            description={
+              teacher
+                ? "Багшийн шилжилт хөдөлгөөний мэдээллийг эхлэх огноогоор татна."
+                : "Байгууллагын ажилтны жагсаалтыг ESIS-ээс татна."
+            }
+            resources={[
+              teacher
+                ? { resource: "teacherMovements", title: "Багшийн шилжилт хөдөлгөөн" }
+                : { resource: "staff", title: "Ажилтны жагсаалт" },
+            ]}
+          />
           <Button size="sm" onClick={() => onInvite(teacher ? "TEACHER" : "COOK")}>
             <Plus size={16} aria-hidden /> {teacher ? "Багш нэмэх" : "Ажилтан нэмэх"}
           </Button>

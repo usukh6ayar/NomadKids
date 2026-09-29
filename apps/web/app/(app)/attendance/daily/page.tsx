@@ -24,6 +24,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { SearchField } from "@/components/ui/search-field";
 import { AttendanceBreakdown } from "@/components/attendance/attendance-breakdown";
 import { ChildAttendance } from "@/components/attendance/child-attendance";
+import { YearlyAttendance } from "@/components/attendance/yearly-attendance";
 import { useDebounced } from "@/lib/use-debounced";
 import { cn } from "@/lib/utils";
 
@@ -67,7 +68,7 @@ export default function DailyAttendancePage() {
 
 const PAGE_SIZE = 10;
 
-type View = "day" | "child" | "breakdown";
+type View = "day" | "child" | "breakdown" | "year";
 
 /**
  * Өдөр тутмын ирц — the client's 2026-09-25 drawing: range, group and search
@@ -139,20 +140,29 @@ function DailyAttendance() {
   const exportQuery = exportParams.toString();
   const byChild = view === "child";
   const breakdown = view === "breakdown";
+  const yearly = view === "year";
 
   return (
     <div className="flex flex-col gap-4 rounded-card border border-border-soft bg-surface p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-display font-bold leading-heading text-ink">
-            {breakdown ? "Ирц бүртгэл" : byChild ? "Суралцагчаар" : "Өдөр тутмын ирц"}
+            {yearly
+              ? "Хичээлийн жилийн ирц"
+              : breakdown
+                ? "Ирц бүртгэл"
+                : byChild
+                  ? "Суралцагчаар"
+                  : "Өдөр тутмын ирц"}
           </h1>
           <p className="mt-1 text-body text-muted">
-            {breakdown
-              ? "Бүлэг болон сар сонгон тухайн бүлгийн ирцийн задаргаа харах."
-              : byChild
-                ? "Суралцагч бүрийн өдөр тутмын ирцийн мэдээллийг харна."
-                : "Бүлэг болон сар сонгон өдөр тутмын ирцийн мэдээллийг бүртгэнэ."}
+            {yearly
+              ? "Суралцагч бүрийн 9–6 сарын өдөр тутмын ирцийг нэг хүснэгтээр харна."
+              : breakdown
+                ? "Бүлэг болон сар сонгон тухайн бүлгийн ирцийн задаргаа харах."
+                : byChild
+                  ? "Суралцагч бүрийн өдөр тутмын ирцийн мэдээллийг харна."
+                  : "Бүлэг болон сар сонгон өдөр тутмын ирцийн мэдээллийг бүртгэнэ."}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -161,7 +171,7 @@ function DailyAttendance() {
               <Printer size={16} aria-hidden /> Хэвлэх
             </Button>
           ) : null}
-          {primaryKindergartenId ? (
+          {primaryKindergartenId && !yearly ? (
             <Button variant="secondary" asChild>
               <a
                 href={downloadUrl(
@@ -175,72 +185,74 @@ function DailyAttendance() {
         </div>
       </div>
 
-      <div
-        className={cn(
-          "grid gap-3 sm:grid-cols-2",
-          byChild
-            ? "lg:grid-cols-[minmax(0,260px)_minmax(0,240px)_minmax(0,240px)_minmax(0,1fr)]"
-            : breakdown
-              ? "lg:grid-cols-[minmax(0,420px)_minmax(0,300px)]"
-              : "lg:grid-cols-[minmax(0,420px)_minmax(0,300px)_minmax(0,1fr)]",
-        )}
-      >
-        <div className="relative">
-          <CalendarIcon
-            size={18}
-            aria-hidden
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
-          />
+      {!yearly ? (
+        <div
+          className={cn(
+            "grid gap-3 sm:grid-cols-2",
+            byChild
+              ? "lg:grid-cols-[minmax(0,260px)_minmax(0,240px)_minmax(0,240px)_minmax(0,1fr)]"
+              : breakdown
+                ? "lg:grid-cols-[minmax(0,420px)_minmax(0,300px)]"
+                : "lg:grid-cols-[minmax(0,420px)_minmax(0,300px)_minmax(0,1fr)]",
+          )}
+        >
+          <div className="relative">
+            <CalendarIcon
+              size={18}
+              aria-hidden
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
+            />
+            <Select
+              aria-label="Сар"
+              value={month}
+              onChange={(e) => resetting(setMonth)(e.target.value)}
+              className="pl-10"
+            >
+              {months.map((value) => (
+                <option key={value} value={value}>
+                  {Number(value.slice(5))} сар
+                </option>
+              ))}
+            </Select>
+          </div>
           <Select
-            aria-label="Сар"
-            value={month}
-            onChange={(e) => resetting(setMonth)(e.target.value)}
-            className="pl-10"
+            aria-label="Бүлэг"
+            value={groupId}
+            onChange={(e) => resetting(setGroupId)(e.target.value)}
           >
-            {months.map((value) => (
-              <option key={value} value={value}>
-                {Number(value.slice(5))} сар
+            <option value="">Бүх бүлэг</option>
+            {(groups.data?.items ?? []).map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.name}
               </option>
             ))}
           </Select>
-        </div>
-        <Select
-          aria-label="Бүлэг"
-          value={groupId}
-          onChange={(e) => resetting(setGroupId)(e.target.value)}
-        >
-          <option value="">Бүх бүлэг</option>
-          {(groups.data?.items ?? []).map((group) => (
-            <option key={group.id} value={group.id}>
-              {group.name}
-            </option>
-          ))}
-        </Select>
-        {byChild ? (
-          <>
-            <Select aria-label="Төлөв" value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="">Бүх төлөв</option>
-              <option value="PRESENT,HALF_DAY">Ирсэн</option>
-              <option value="SICK">Өвчтэй</option>
-              <option value="EXCUSED">Чөлөөтэй</option>
-              <option value="ABSENT">Тасалсан</option>
-            </Select>
+          {byChild ? (
+            <>
+              <Select aria-label="Төлөв" value={status} onChange={(e) => setStatus(e.target.value)}>
+                <option value="">Бүх төлөв</option>
+                <option value="PRESENT,HALF_DAY">Ирсэн</option>
+                <option value="SICK">Өвчтэй</option>
+                <option value="EXCUSED">Чөлөөтэй</option>
+                <option value="ABSENT">Тасалсан</option>
+              </Select>
+              <SearchField
+                label="Нэрээр хайх"
+                placeholder="Нэрээр хайх..."
+                value={childSearch}
+                onChange={setChildSearch}
+              />
+            </>
+          ) : breakdown ? null : (
             <SearchField
-              label="Нэрээр хайх"
-              placeholder="Нэрээр хайх..."
-              value={childSearch}
-              onChange={setChildSearch}
+              label="Бүлгийн нэрээр хайх"
+              placeholder="Бүлгийн нэрээр хайх..."
+              value={search}
+              onChange={resetting(setSearch)}
             />
-          </>
-        ) : breakdown ? null : (
-          <SearchField
-            label="Бүлгийн нэрээр хайх"
-            placeholder="Бүлгийн нэрээр хайх..."
-            value={search}
-            onChange={resetting(setSearch)}
-          />
-        )}
-      </div>
+          )}
+        </div>
+      ) : null}
 
       <div
         role="tablist"
@@ -252,6 +264,7 @@ function DailyAttendance() {
             ["day", "Өдрөөр"],
             ["child", "Суралцагчаар"],
             ["breakdown", "Ирцийн задаргаа"],
+            ["year", "Хичээлийн жилээр"],
           ] as const
         ).map(([value, label]) => (
           <button
@@ -272,7 +285,9 @@ function DailyAttendance() {
         ))}
       </div>
 
-      {view === "breakdown" ? (
+      {yearly ? (
+        <YearlyAttendance />
+      ) : view === "breakdown" ? (
         <AttendanceBreakdown from={from} to={to} groupId={groupId} />
       ) : byChild ? (
         <ChildAttendance from={from} to={to} groupId={groupId} status={status} q={childQ} />

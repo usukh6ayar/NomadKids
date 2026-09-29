@@ -20,6 +20,7 @@ import { Field, Input, Textarea } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
+import { EsisBundleButton } from "@/components/esis/esis-bundle-dialog";
 
 const domainsSchema = z.array(developmentDomainSchema);
 const levelsSchema = z.array(assessmentLevelSchema);
@@ -99,7 +100,16 @@ function AssessmentConfig() {
 
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
-      <PageHeader title="Үнэлгээний тохиргоо" />
+      <PageHeader
+        title="Үнэлгээний тохиргоо"
+        actions={
+          <EsisBundleButton
+            title="Судлагдахууны ESIS лавлах"
+            description="Үнэлгээ, сургалтын тохиргоонд ашиглах судлагдахууны чиглэлийн лавлахыг татна."
+            resources={[{ resource: "subjectAreas", title: "Судлагдахууны чиглэл" }]}
+          />
+        }
+      />
 
       <ConfigSection
         title="Хөгжлийн чиглэл"

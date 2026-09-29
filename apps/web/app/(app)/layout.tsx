@@ -476,11 +476,10 @@ function staffNav(isAdmin: boolean, groupId: string | null): NavItem[] {
  * merge. The one that shipped stays. What that second pass added *besides* the
  * names is kept below, because none of it depends on them.
  *
- * **The administration screens are rows now.** They were all behind a single
- * "Удирдлага" hub, so a director looking for "Улирал" read one word that did
- * not say it and had to open a page to find out. The reference names its
- * destinations directly and it is right to: a menu whose job is to say what is
- * in the product should not make you open a screen to read the menu.
+ * **The daily administration destinations are rows now.** School years and
+ * terms are the exception: they configure groups, so the group screen pulls
+ * the ESIS year beside its roster instead of spending three permanent sidebar
+ * rows on one setup flow.
  *
  * The hub kept its own row for a day and then lost that too, and on 2026-09-04
  * lost its tiles as well — `/admin` is the administrator's dashboard now, not a
@@ -564,8 +563,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         entries: [
           entry("Хоолны цэс", "/menu", "food"),
           entry("Санхүү", "/finance", "finance"),
-          entry("Ирц ба тооцоолол", "/admin/funding", "finance"),
-          entry("Ирцийн дэлгэрэнгүй", "/attendance/journal", "attendance"),
+          entry("Төлбөрийн тайлан", "/admin/funding", "finance"),
         ],
       },
       {
@@ -573,14 +571,6 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         entries: [
           entry("Тайлан", "/reports", "adminReport"),
           entry("Баримт бичгийн сан", "/documents", "adminDocuments"),
-        ],
-      },
-      {
-        title: "Сургалтын төлөвлөгөө",
-        entries: [
-          entry("Хичээлийн жил", "/admin/school-years", "adminSchoolYear"),
-          entry("Улирал", "/admin/terms", "adminTerm"),
-          entry("Сургалтын хөтөлбөр", "/admin/curriculum", "adminCurriculum"),
         ],
       },
       {
@@ -790,7 +780,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
           The shared weekly menu stays in daily work. The separate per-child
           meal register is intentionally absent from both teacher and director
           navigation; its route and API remain available for existing links.
-        */
+         */
         {
           label: "Хоолны цэс",
           href: "/menu",
@@ -837,10 +827,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
       ? [
           {
             title: "Санхүү",
-            entries: [
-              entry("Ирц ба тооцоолол", "/admin/funding"),
-              entry("Ирцийн дэлгэрэнгүй", "/attendance/journal"),
-            ],
+            entries: [entry("Төлбөрийн тайлан", "/admin/funding")],
           },
         ]
       : []),
@@ -883,7 +870,8 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         entry("Хувийн тохиргоо", "/settings"),
         /*
          * ★ The administration screens, named — and no "Удирдлага" row above
-         * them any more.
+         * them any more. School years and terms belong to the Анги бүлэг setup
+         * flow and therefore do not spend separate permanent navigation rows.
          *
          * Reaching "Аудит" used to mean opening the hub and finding it among
          * seven tiles: two steps for a screen a director opens daily. Once
@@ -905,15 +893,6 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          */
         ...adminEntry("Цэцэрлэгийн мэдээлэл", "/admin/kindergarten"),
         ...adminEntry("Хэрэглэгч ба эрх", "/admin/users", "adminUsersPermissions"),
-        ...adminEntry("Хичээлийн жил", "/admin/school-years", "adminSchoolYear"),
-        ...adminEntry("Улирал", "/admin/terms", "adminTerm"),
-        /*
-         * ★ Added 2026-09-10 with the four ESIS curriculum services. It sits
-         * after Улирал because it answers the same kind of question — what
-         * shape does the year take — and before the ESIS hub, which is the
-         * operator's whole-catalog view rather than a working screen.
-         */
-        ...adminEntry("Сургалтын хөтөлбөр", "/admin/curriculum", "adminCurriculum"),
         ...adminEntry("ESIS мэдээллийн төв", "/admin/integrations/esis", "adminEsisHub"),
         /*
          * ★ "Үнэлгээний тохиргоо" and "Аудит" lost their rows on 2026-09-06,
@@ -1167,7 +1146,7 @@ function supportSections(isCook: boolean): NavSection[] {
              * reach by typing the URL, which is the same kind of gap this
              * screen exists to close.
              */
-            navEntry("Ирц ба тооцоолол", "/admin/funding", "accountingAttendanceCalculation"),
+            navEntry("Төлбөрийн тайлан", "/admin/funding", "accountingAttendanceCalculation"),
             /*
              * ★ The raw grid the figure above is computed from — child by
              * child, day by day, over any range of dates. `/admin/funding`

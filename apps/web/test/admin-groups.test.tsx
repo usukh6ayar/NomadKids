@@ -133,13 +133,94 @@ describe("the group list", () => {
     renderWithProviders(<AdminGroupsPage />);
 
     await screen.findByRole("table", { name: "Бүлгүүдийн жагсаалт" });
-    expect(screen.getByRole("link", { name: /ESIS татах/ })).toHaveAttribute(
-      "href",
-      "/admin/integrations/esis",
-    );
+    expect(screen.getByRole("button", { name: /ESIS татах/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Бүлэг нэмэх/ })).toBeInTheDocument();
     expect(screen.getByText(/Нэгдсэн журмаар шинэчлэгдсэн: —/)).toBeInTheDocument();
     expect(screen.getByText(/Нийт/).textContent).toMatch(/Нийт 1 бүлэг/);
+  });
+
+  it("pulls school years and groups together from one ESIS action", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: "/groups",
+        body: { items: [group()], page: 1, pageSize: 100, total: 1, totalPages: 1 },
+      },
+      {
+        path: `/kindergartens/${KG}/school-years`,
+        body: [{ id: YEAR, name: "2026-2027", isCurrent: true, kindergartenId: KG }],
+      },
+      {
+        path: `/kindergartens/${KG}/esis/preview`,
+        method: "POST",
+        body: {
+          runId: "77777777-7777-4777-8777-777777777777",
+          dryRun: true,
+          mode: "MOCK",
+          status: "SUCCEEDED",
+          results: [
+            {
+              resource: "academicYearStatuses",
+              count: 2,
+              durationMs: 4,
+              preview: [],
+              status: "SUCCEEDED",
+              errorCode: null,
+              source: "MOCK",
+            },
+            {
+              resource: "groups",
+              count: 5,
+              durationMs: 6,
+              preview: [],
+              status: "SUCCEEDED",
+              errorCode: null,
+              source: "MOCK",
+            },
+            {
+              resource: "programs",
+              count: 3,
+              durationMs: 5,
+              preview: [],
+              status: "SUCCEEDED",
+              errorCode: null,
+              source: "MOCK",
+            },
+            {
+              resource: "groupsNextYear",
+              count: 4,
+              durationMs: 5,
+              preview: [],
+              status: "SUCCEEDED",
+              errorCode: null,
+              source: "MOCK",
+            },
+          ],
+        },
+      },
+    ]);
+    renderWithProviders(<AdminGroupsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "ESIS татах" }));
+    const dialog = await screen.findByRole("dialog", { name: "ESIS анги бүлгийн мэдээлэл" });
+    expect(within(dialog).getByText("2 бичлэг")).toBeInTheDocument();
+    expect(within(dialog).getByText("5 бичлэг")).toBeInTheDocument();
+    expect(within(dialog).getByText("3 бичлэг")).toBeInTheDocument();
+    expect(within(dialog).getByText("4 бичлэг")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Шатлал харах" })).toBeInTheDocument();
+    expect(within(dialog).getByText(/Улирлын тусдаа ESIS сервис байхгүй/)).toBeInTheDocument();
+    expect(
+      calls.some(
+        (call) =>
+          call.method === "POST" &&
+          call.url.startsWith(`/kindergartens/${KG}/esis/preview`) &&
+          JSON.stringify(call.body) ===
+            JSON.stringify({
+              resources: ["academicYearStatuses", "groups", "groupsNextYear", "programs"],
+            }),
+      ),
+    ).toBe(true);
   });
 
   it("offers the four row actions", async () => {

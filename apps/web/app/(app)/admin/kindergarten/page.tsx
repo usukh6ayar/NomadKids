@@ -1,7 +1,6 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import {
   ChevronLeft,
@@ -14,7 +13,6 @@ import {
   Info,
   MapPin,
   Phone,
-  RefreshCw,
   Save,
   UsersRound,
 } from "lucide-react";
@@ -35,6 +33,7 @@ import { useToast } from "@/components/ui/toast";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { RequireRole } from "@/components/shell/require-role";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
+import { EsisBundleButton } from "@/components/esis/esis-bundle-dialog";
 
 /**
  * The kindergarten's own details, for its director.
@@ -282,14 +281,16 @@ function MainDetails({ kindergartenId, data }: { kindergartenId: string; data: D
       }}
       actions={
         <>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => void esis.refetch()}
-            disabled={esis.isFetching || !kindergartenId}
-          >
-            <RefreshCw size={16} aria-hidden /> {esis.isFetching ? "Татаж байна…" : "ESIS татах"}
-          </Button>
+          <EsisBundleButton
+            title="Байгууллагын ESIS мэдээлэл"
+            description="Байгууллагын үндсэн мэдээлэл, барилга байгууламж, өрөөний жагсаалтыг хамт татна."
+            label={esis.isFetching ? "Татаж байна…" : "ESIS татах"}
+            onOpen={() => void esis.refetch()}
+            resources={[
+              { resource: "buildings", title: "Барилга байгууламж" },
+              { resource: "rooms", title: "Өрөөний жагсаалт" },
+            ]}
+          />
           <SaveButton disabled={!dirty} pending={save.isPending} />
         </>
       }
@@ -520,16 +521,12 @@ function MethodUnions({ kindergartenId }: { kindergartenId: string }) {
             </option>
           ))}
         </Select>
-        {/*
-          No service returns the kindergarten's unions, so this opens the ESIS
-          hub — as on Анги, бүлэг and Багш, ажилтан — where one teacher's
-          union is read by their ESIS id.
-        */}
-        <Button asChild variant="secondary" className="ml-auto">
-          <Link href="/admin/integrations/esis">
-            <RefreshCw size={16} aria-hidden /> ESIS татах
-          </Link>
-        </Button>
+        <EsisBundleButton
+          className="ml-auto"
+          title="Заах аргын нэгдлийн ESIS мэдээлэл"
+          description="Байгууллагын академик нэгж, заах аргын нэгдлийн жагсаалтыг татна."
+          resources={[{ resource: "academicOrg", title: "Заах аргын нэгдэл" }]}
+        />
         <Button
           type="button"
           disabled
