@@ -756,11 +756,11 @@ export class EsisAdminService {
 
     const body: Record<string, unknown> = { ...dto.payload, institutionId: Number(institutionId) };
     if (dto.childId) {
-      const params: Record<string, string> = { childId: dto.childId };
+      const params: Record<string, string> = {};
       // Any child-addressed reader will do: only its `personId` shape is used.
-      await this.resolvePersonId(actor, kindergartenId, "studentCheck", params);
+      await this.resolvePersonId(actor, kindergartenId, "studentCheck", params, dto.childId);
       body.personId = Number(params.personId);
-    } else if (typeof body.personId === "number") {
+    } else if (body.personId !== undefined && body.personId !== null && body.personId !== "") {
       /*
        * ★ A typed `personId` on a write was never checked against the child —
        * found 2026-09-28. A teacher could send one group's household form onto
@@ -1013,17 +1013,15 @@ export class EsisAdminService {
    * - a `teacher…` service with no id → the caller's own ESIS person.
    *
    * An explicit `personId` wins and still goes through
-   * `assertCanReadEsisChild`. `childId` is removed either way: it is ours,
-   * and ESIS never sees it.
+   * `assertCanReadEsisChild`. `childId` is ours and never reaches ESIS.
    */
   private async resolvePersonId(
     actor: Actor,
     kindergartenId: string,
     resource: EsisReadableKey,
     params: Record<string, string>,
+    childId: string | undefined,
   ) {
-    const childId = params.childId;
-    delete params.childId;
     if (params.personId || !esisReaderParams(resource).includes("personId")) return;
 
     if (childId) {
@@ -1119,7 +1117,7 @@ export class EsisAdminService {
     const params = Object.fromEntries(
       Object.entries(dto.params ?? {}).filter(([, value]) => value !== undefined),
     ) as Record<string, string>;
-    await this.resolvePersonId(actor, kindergartenId, dto.resource, params);
+    await this.resolvePersonId(actor, kindergartenId, dto.resource, params, dto.childId);
     const missing = esisReaderParams(dto.resource).filter((name) => !params[name]);
     if (missing.length > 0) {
       throw new ConflictException(`Дараах утга дутуу байна: ${missing.join(", ")}`);

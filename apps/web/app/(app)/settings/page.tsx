@@ -130,6 +130,7 @@ export default function SettingsPage() {
                 <div className="flex flex-col gap-6">
                   <EsisDataPanel
                     resource="teacherAcademicOrg"
+                    ownRecord
                     title="Заах аргын нэгдэл"
                     description="ЭСИС-д бүртгэлтэй заах аргын нэгдэл, албан тушаал"
                   />

@@ -1023,8 +1023,14 @@ describe("ESIS person ids the API fills in itself", () => {
       payload: { personId: Number(THEIRS), infoFlag9: "N" },
     });
 
+    const byString = await authed(request(server()).post(url), teacherA).send({
+      resource: "studentStatisticsSave",
+      payload: { personId: THEIRS, infoFlag9: "N" },
+    });
+
     expect(byId.status).toBe(404);
     expect(byNumber.status).toBe(404);
+    expect(byString.status).toBe(404);
 
     // …while their own child goes through, so the 404 is the gate, not the role.
     const own = await authed(request(server()).post(url), teacherA).send({

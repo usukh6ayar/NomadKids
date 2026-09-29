@@ -78,13 +78,6 @@ import { cn } from "@/lib/utils";
  * name of the thing, a sentence about it, how many records came back, a button
  * to refresh, and the rows.
  */
-/** ESIS services about the signed-in member of staff; the API finds their id. */
-const SELF_PERSON_RESOURCES: ReadonlySet<string> = new Set([
-  "teacherAcademicOrg",
-  "teacherProfile",
-  "teacherCheck",
-]);
-
 export function EsisDataPanel({
   resource,
   params,
@@ -97,6 +90,7 @@ export function EsisDataPanel({
   description,
   headingId,
   askForParams = true,
+  ownRecord = false,
   autoRead = true,
   actionLabel,
   detail,
@@ -153,6 +147,12 @@ export function EsisDataPanel({
    * True everywhere else, which is where searching among many belongs.
    */
   askForParams?: boolean;
+  /**
+   * The signed-in person's own record — `/settings`. The API fills their ESIS
+   * `personId`, so the panel does not ask. Opt-in rather than keyed on the
+   * service: a director looking a teacher up elsewhere still types the id.
+   */
+  ownRecord?: boolean;
   /** Overrides the service's catalog name in the section header. */
   title?: string;
   description?: string;
@@ -271,11 +271,11 @@ export function EsisDataPanel({
   /*
    * ★ `personId` the server fills itself — 2026-09-28, the client: "esis хүний
    * дугаар гээд байх юм, тэд нарыг нь хийхгүйгээр автоматаар байж болохгүй
-   * юу?". From `childId` on a child's page, and from the signed-in person on
-   * a `teacher…` service. Neither is a question for the reader.
+   * юу?". From `childId` on a child's page, and from the signed-in person
+   * where the caller says `ownRecord`. Neither is a question for the reader.
    */
   const serverFills = (name: string) =>
-    name === "personId" && (Boolean(params?.childId) || SELF_PERSON_RESOURCES.has(resource));
+    name === "personId" && (Boolean(params?.childId) || ownRecord);
   const missing = required.filter((name) => !value(name) && !serverFills(name));
 
   /*

@@ -37,8 +37,10 @@ import {
 /** `?resource=groups&studentGroupId=10001` — path values arrive flat. */
 const esisReadQuerySchema = esisReadSchema.shape.params
   .unwrap()
-  .extend({ resource: esisReadSchema.shape.resource })
-  .transform(({ resource, ...params }) => ({ resource, params }) satisfies EsisReadDto);
+  .extend({ resource: esisReadSchema.shape.resource, childId: esisReadSchema.shape.childId })
+  .transform(
+    ({ resource, childId, ...params }) => ({ resource, childId, params }) satisfies EsisReadDto,
+  );
 
 @Controller("kindergartens/:id/esis")
 @Roles("ADMIN")
