@@ -18,6 +18,7 @@ import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { useDebounced } from "@/lib/use-debounced";
+import { EsisRosterImportButton } from "@/components/esis/esis-roster-import";
 import { PageHeader } from "@/components/shell/app-shell";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/field";
@@ -144,11 +145,13 @@ export function AdminRoster() {
             >
               <RefreshCw size={16} aria-hidden /> ESIS Хөнгөлөлттэй
             </Button>
-            <Button asChild size="sm" variant="secondary">
-              <Link href="/admin/integrations/esis">
-                <RefreshCw size={16} aria-hidden /> ESIS Суралцагч
-              </Link>
-            </Button>
+            {/* ★ Was a link to the deleted `/admin/integrations/esis` — a 404. */}
+            {primaryKindergartenId ? (
+              <EsisRosterImportButton
+                kindergartenId={primaryKindergartenId}
+                label="ESIS Суралцагч"
+              />
+            ) : null}
             <Button asChild size="sm">
               <Link href="/children/new">
                 <Plus size={16} aria-hidden /> Суралцагч

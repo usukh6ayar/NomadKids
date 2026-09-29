@@ -39,6 +39,14 @@ import { cn } from "@/lib/utils";
  *
  * The square `icon` size rather than a narrowed `sm`: at 44×44 the arrow keeps
  * the touch target the text used to justify. §5 — it works on a phone first.
+ *
+ * ★★★★★ **Restyled 2026-09-28** — client: "header хэсгийн UI нэг л
+ * таалагдахгүй байна, буцах button гэх мэт". It was a 48px white disc with a
+ * white rim and a `shadow-md`, floating beside the title like a stray FAB. It
+ * keeps the circle — every icon button is round since 2026-09-19, `button.tsx`
+ * `icon` — but loses the lift: a hairline `border-border-soft` and a primary
+ * tint under the pointer, the same weight as the rest of the chrome. 44px on a
+ * phone (§5), 40px from `sm` where a pointer does not need the extra.
  */
 export function BackButton({
   href,
@@ -58,8 +66,8 @@ export function BackButton({
       variant="ghost"
       size="icon"
       className={cn(
-        "h-12 w-12 shrink-0 self-center rounded-pill border border-white/80 bg-surface",
-        "text-ink shadow-md hover:bg-canvas hover:shadow-lg active:shadow-sm",
+        "shrink-0 border border-border-soft bg-surface sm:h-10 sm:w-10",
+        "text-ink shadow-none transition-colors hover:bg-primary-soft hover:text-primary",
         className,
       )}
     >
@@ -84,7 +92,7 @@ export function BackButton({
           goBack();
         }}
       >
-        <ChevronLeft size={30} strokeWidth={3} aria-hidden />
+        <ChevronLeft size={22} strokeWidth={2.5} aria-hidden />
         <span className="sr-only">{label}</span>
       </Link>
     </Button>

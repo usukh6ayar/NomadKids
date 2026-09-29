@@ -394,13 +394,25 @@ export function PageHeader({
     >
       {/* `icon` remains a compatibility prop, but the compact header does not
           spend a second visual slot on decorative artwork. */}
-      <div className="flex min-w-0 flex-1 items-start gap-3">
+      {/*
+        ★ `basis-56`, not `flex-1` alone — 2026-09-28. With a zero basis the
+        title was the one thing the row could squeeze, so beside two actions at
+        390px «Анги, бүлэг» broke one syllable per line. A 14rem basis is what
+        the wrap measures against, so the actions drop to their own line
+        before the title gives up a letter.
+
+        ★★ The back control sits on the title's first line (`items-start`,
+        and the h1's `min-h` matches the button), not centred on the whole
+        block — centred, a lede or a chip row pushed it down beside nothing.
+      */}
+      <div className="flex min-w-0 flex-[1_1_14rem] items-start gap-3">
         {resolvedBackHref ? <BackButton href={resolvedBackHref} /> : null}
         <div className="min-w-0">
           <h1
             className={cn(
               "font-semibold leading-heading tracking-[-0.02em] text-ink",
-              compact ? "text-title sm:text-display" : "text-display",
+              resolvedBackHref && "flex min-h-11 items-center sm:min-h-10",
+              compact ? "text-title sm:text-display" : "text-heading sm:text-display",
             )}
           >
             {title}
@@ -459,7 +471,9 @@ export function PageHeader({
         <div
           className={cn(
             "flex max-w-full shrink-0 flex-wrap items-center gap-2",
-            compact ? "basis-full justify-start sm:basis-auto sm:justify-end" : "justify-end",
+            compact
+              ? "basis-full justify-start sm:basis-auto sm:justify-end"
+              : "justify-start sm:justify-end",
           )}
         >
           {actions}
@@ -2008,24 +2022,15 @@ function MobileHeader({
   // floor allows — client, 2026-09-25: "лого жижигрүүлэн зайг дээш шахаарай",
   // "ерөнхий зай эзлэхгүй сайн шах". The bell and the brand link are 44px, so
   // the bar is those plus a hairline of padding and nothing more.
-  const theme = useContext(WorkspaceThemeContext);
-  const compact = theme === "teacher" || theme === "parent";
+  //
+  // ★ Every workspace since 2026-09-28. The admin bar kept the 46px mark and
+  // `py-3`, so a director's phone spent 70px on a logo the teacher's spends
+  // 45px on — the same app looking like two. Client: "header хэсгийг янзал".
 
   return (
-    <header
-      className={cn(
-        "sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-surface px-4 lg:hidden",
-        compact ? "py-0.5" : "py-3",
-      )}
-    >
-      <Link
-        href={home}
-        className={cn("flex min-h-[44px] items-center", compact ? "gap-2" : "gap-3")}
-      >
-        <span
-          data-brand-mark
-          className={cn("grid shrink-0 place-items-center", compact ? "size-8" : "size-[46px]")}
-        >
+    <header className="sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-surface px-4 py-0.5 lg:hidden">
+      <Link href={home} className="flex min-h-[44px] items-center gap-2">
+        <span data-brand-mark className="grid size-8 shrink-0 place-items-center">
           <Image
             src="/brand-logo.png"
             alt={BRAND}
@@ -2035,10 +2040,8 @@ function MobileHeader({
           />
         </span>
         <span className="min-w-0">
-          <BrandWordmark className={cn("block text-body", compact && "leading-tight")} />
-          <span className={cn("block text-caption text-muted", compact && "leading-tight")}>
-            {subtitle}
-          </span>
+          <BrandWordmark className="block text-body leading-tight" />
+          <span className="block text-caption leading-tight text-muted">{subtitle}</span>
         </span>
       </Link>
 

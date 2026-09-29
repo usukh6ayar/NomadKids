@@ -161,9 +161,7 @@ describe("the kindergarten's details", () => {
     expect(await screen.findByText("Нэгдэл бүртгэгдээгүй байна")).toBeInTheDocument();
     expect(screen.getByText("Нийт: 0")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Нэгдэл нэмэх/ })).toBeEnabled();
-    expect(screen.getByRole("link", { name: /ESIS татах/ })).toHaveAttribute(
-      "href",
-      "/admin/integrations/esis",
-    );
+    // ESIS has no union resource; the button linked to a deleted page.
+    expect(screen.queryByRole("link", { name: /ESIS татах/ })).not.toBeInTheDocument();
   });
 });
