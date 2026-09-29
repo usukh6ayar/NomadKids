@@ -245,8 +245,15 @@ body:has([data-app-theme]) :is(h1, h2, h3) {
   letter-spacing: 0;
 }
 
-/* Keep primary fills bright like login, with darker ink on text-only links. */
-body:has([data-app-theme]) .text-primary {
+/* Keep primary fills bright like login, with darker ink on text-only links.
+ *
+ * ★ Not while hovered — 2026-09-28, the client: "cursor очиход цэнхэр fill
+ * болоод доторх сум нарын icon нь хар байгаад байна цагаан болдог болго".
+ * This file is unlayered, so this rule beat every layered Tailwind
+ * `hover:text-*` / `group-hover:text-*` on a `text-primary` element whatever
+ * its specificity: the ☰ button filled blue under the cursor and its icon
+ * stayed dark. Stepping aside on hover lets those utilities apply. */
+body:has([data-app-theme]) .text-primary:not(:hover):not(:where(.group:hover *)) {
   color: var(--color-primary-strong);
 }
 

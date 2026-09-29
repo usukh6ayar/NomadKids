@@ -248,9 +248,8 @@ describe("navigation icons", () => {
     for (const name of ["Самбар", "Суралцагч", "Ирц", "Тайлан", "Баримт бичгийн сан", "Чат"]) {
       const link = within(nav).getByRole("link", { name });
       expect(link).toHaveClass("text-compact");
-      expect(link.querySelector("img")).toBeNull();
-      expect(link.querySelector("svg")).toHaveAttribute("stroke-width", "1.35");
-      expect(link.querySelector("[data-nav-icon]")).toHaveAttribute("data-icon-surface", "none");
+      // The illustrated set again — the client, 2026-09-28: "3d icon-уудыг буцаагаад тавь".
+      expect(link.querySelector("[data-nav-icon] img")).not.toBeNull();
     }
 
     const bar = await screen.findByTestId("teacher-bottom-bar");
@@ -306,16 +305,15 @@ describe("navigation icons", () => {
     glyphs with no square behind them ("маш нарийн зөөлөн саарал"), and labels
     at the size of "Хувийн тохиргоо" beneath them.
   */
-  it("draws the teacher's rail in thin line glyphs at the settings row's size", async () => {
+  it("draws the teacher's rail in the illustrated icons at the settings row's size", async () => {
     renderShell(["TEACHER"]);
     const nav = await sidebar();
 
     for (const name of ["Самбар", "Суралцагч", "Ирц", "Хоолны цэс", "Судалгаа", "Чат"]) {
       const link = within(nav).getByRole("link", { name });
       expect(link).toHaveClass("text-compact");
-      expect(link.querySelector("img")).toBeNull();
-      expect(link.querySelector("svg")).toHaveAttribute("stroke-width", "1.35");
-      expect(link.querySelector("[data-nav-icon]")).toHaveAttribute("data-icon-surface", "none");
+      // The illustrated set again — the client, 2026-09-28: "3d icon-уудыг буцаагаад тавь".
+      expect(link.querySelector("[data-nav-icon] img")).not.toBeNull();
     }
   });
 });
