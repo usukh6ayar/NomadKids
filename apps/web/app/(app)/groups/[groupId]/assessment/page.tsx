@@ -1177,6 +1177,7 @@ function NewRecordStrip({
                 }
               : undefined
           }
+          layout="table"
           onClose={() => setSelectedType(null)}
           onSelect={(childId) =>
             router.push(`/children/${childId}/observations?type=${selectedType.code}`)

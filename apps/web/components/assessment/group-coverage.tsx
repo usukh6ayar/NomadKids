@@ -289,7 +289,6 @@ export function GroupCoverage({
     setSelectedMonth,
     typeRows,
     domainRows,
-    activityRows,
   } = rows;
 
   /*
@@ -639,29 +638,6 @@ export function GroupCoverage({
         </p>
       </section>
 
-      {/*
-        ★ The two breakdowns inline, each with a way into its own screen.
-
-        The client's design shows the bars on the summary *and* a Дэлгэрэнгүй
-        link beside them — which is right: the shape is what a teacher reads
-        here, and the screen behind it is where they filter and act. Rows that
-        only navigated made them press to learn whether it was worth pressing.
-      */}
-      <InlineBars
-        title="Сургалтын чиглэлийн хамралт"
-        href={href("domains")}
-        rows={domainRows}
-        tone="sky"
-      />
-      <InlineBars
-        title="Үйл ажиллагааны төрлийн хамралт"
-        href={href("activities")}
-        rows={activityRows}
-        tone="sun"
-      />
-
-      <DailyNotes month={selected.key} byDate={data?.byDate ?? []} />
-
       <MonthBalance months={months} href={href("months")} />
 
       {steady ? (
@@ -828,102 +804,6 @@ function ChildCoverage({
   );
 }
 
-/**
- * Notes per day of the month — the drawing's bar chart.
- *
- * ★ Every day of the month, including the empty ones.
- *
- * The API sends only the days that have notes (`byDate`), because only this
- * screen knows which month is on view. The gaps are the finding: a month
- * documented in two bursts and a month documented steadily produce the same
- * total and a very different picture.
- *
- * ★★ Weekends are drawn on a shaded track rather than dropped. A blank
- * Saturday between two working days is information — it is *why* the run
- * stopped — and a chart that removed them would compress the week and make
- * the rhythm unreadable.
- */
-function DailyNotes({
-  month,
-  byDate,
-}: {
-  month: string;
-  byDate: { date: string; count: number }[];
-}) {
-  const counts = new Map(byDate.map((row) => [row.date, row.count]));
-  const [year, monthIndex] = month.split("-").map(Number);
-  if (!year || !monthIndex) return null;
-
-  const days = new Date(Date.UTC(year, monthIndex, 0)).getUTCDate();
-  const points = Array.from({ length: days }, (_, index) => {
-    const day = index + 1;
-    const date = `${month}-${String(day).padStart(2, "0")}`;
-    const weekday = new Date(`${date}T00:00:00.000Z`).getUTCDay();
-    return { day, date, count: counts.get(date) ?? 0, weekend: weekday === 0 || weekday === 6 };
-  });
-
-  const peak = Math.max(...points.map((point) => point.count), 1);
-  const total = points.reduce((sum, point) => sum + point.count, 0);
-
-  return (
-    <section aria-labelledby="daily-notes" className="flex flex-col gap-2.5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 id="daily-notes" className="text-body font-semibold text-ink">
-          Өдөр тус бүрийн тэмдэглэлийн тоо
-        </h3>
-        <span className="flex items-center gap-3 text-caption text-muted">
-          <span className="flex items-center gap-1.5">
-            <span aria-hidden="true" className="size-2.5 rounded-pill bg-sky-ink" />
-            Тэмдэглэлийн тоо
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span aria-hidden="true" className="size-2.5 rounded-pill bg-canvas" />
-            Амралтын өдөр
-          </span>
-        </span>
-      </div>
-
-      <Card pad="compact">
-        <div
-          role="img"
-          aria-label={`${month} сард өдөр бүрийн тэмдэглэл, нийт ${total}`}
-          className="flex h-28 items-end gap-[3px]"
-        >
-          {points.map((point) => (
-            <span
-              key={point.date}
-              title={`${point.day} — ${point.count} тэмдэглэл`}
-              className={cn(
-                "flex min-w-0 flex-1 flex-col justify-end self-stretch rounded-t-control",
-                point.weekend && "bg-canvas",
-              )}
-            >
-              <span
-                className="block rounded-t-control bg-sky-ink transition-[height]"
-                style={{
-                  height: `${point.count === 0 ? 0 : Math.max(6, (point.count / peak) * 100)}%`,
-                }}
-              />
-            </span>
-          ))}
-        </div>
-
-        {/* Every fifth date, so the axis stays readable at 31 columns. */}
-        <div
-          aria-hidden="true"
-          className="mt-1 flex gap-[3px] text-compact tabular-nums text-faint"
-        >
-          {points.map((point) => (
-            <span key={point.date} className="min-w-0 flex-1 text-center">
-              {point.day % 5 === 0 || point.day === 1 ? point.day : ""}
-            </span>
-          ))}
-        </div>
-      </Card>
-    </section>
-  );
-}
-
 export function observationTypeIcon(name: string): ReactNode {
   const value = normalized(name);
   if (value.includes("ярилц")) return <MessageCircle size={14} aria-hidden="true" />;
@@ -1064,80 +944,6 @@ export function MonthlyCoverage({ months }: { months: MonthPoint[] }) {
       <p className="mt-4 text-caption text-muted">
         Сар бүр хичнээн хүүхдэд тэмдэглэл хөтөлснийг харуулна (9-5 сар).
       </p>
-    </Card>
-  );
-}
-
-/**
- * A breakdown on the summary, with a way into its own screen.
- *
- * ★ The bars *and* the link, not one or the other.
- *
- * Rows that only navigated made a teacher press to find out whether it was
- * worth pressing. The shape is what they read here; the screen behind it is
- * where they filter and act.
- *
- * ★★ Scaled to the busiest row rather than to the roster, because these count
- * notes and a strand can carry more notes than there are children. The
- * question on the summary is which strand is ahead of which, and that is a
- * comparison between the bars themselves.
- */
-function InlineBars({
-  title,
-  href,
-  rows,
-  tone,
-}: {
-  title: string;
-  href: string;
-  rows: CountRow[];
-  tone: Tone;
-}) {
-  /*
-    ★ Scaled to the busiest row, never to the month's goal — corrected
-    2026-09-11, at the client's report that the graph below the goal was wrong.
-
-    It *was* scaled to the goal, from an earlier request that these show
-    whether they reach it. That was the wrong reading of both numbers and it
-    produced exactly the nonsense reported: the goal counts **children** and
-    these bars count **notes**, so a strand with six notes cleared a target of
-    five children, turned green and took a tick — while meaning nothing at all.
-
-    The goal's own progress belongs on the goal card, where the units match:
-    children reached, children at the per-child depth, notes against
-    children × notes. Here the question is which strand is ahead of which,
-    which is a comparison between the bars themselves.
-  */
-  const peak = Math.max(...rows.map((row) => row.count), 1);
-
-  return (
-    <Card pad="roomy" className="flex flex-col gap-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-body font-semibold text-ink">{title}</h3>
-        <Link href={href} className="text-caption font-medium text-primary hover:underline">
-          Дэлгэрэнгүй
-        </Link>
-      </div>
-
-      {rows.map((row) => (
-        <div
-          key={row.id}
-          className="grid grid-cols-[minmax(110px,1fr)_minmax(64px,1.3fr)_28px] items-center gap-2"
-        >
-          <span className="min-w-0 truncate text-caption leading-snug text-ink">{row.name}</span>
-          <span
-            role="img"
-            aria-label={`${row.name}: ${row.count} тэмдэглэл`}
-            className="h-2 overflow-hidden rounded-pill bg-track"
-          >
-            <span
-              className="block h-full rounded-pill"
-              style={{ width: `${(row.count / peak) * 100}%`, background: TONE_VAR[tone] }}
-            />
-          </span>
-          <strong className="text-right text-caption tabular-nums text-ink">{row.count}</strong>
-        </div>
-      ))}
     </Card>
   );
 }

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { ChildAvatar } from "@/components/media/media-image";
 import { ErrorState, LoadingState } from "@/components/ui/states";
+import { Td, Th } from "@/components/ui/table";
 import { formatAge, fullName, shortName, capitalize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useBackdropDismiss } from "@/components/ui/modal-overlay";
@@ -46,9 +47,18 @@ export function ChildPickerDialog({
   title = "Хүүхдээ сонгох",
   summary,
   coverage,
+  layout = "tiles",
   onSelect,
   onClose,
 }: {
+  /**
+   * `table` lists the roster as a plain table with no photographs.
+   *
+   * ★ 2026-09-30, at the client's instruction: when a teacher picks a child to
+   * write a progress-assessment note, the roster is shown in a formal table
+   * and the children's photos are not needed. The other doors keep the tiles.
+   */
+  layout?: "tiles" | "table";
   /** Narrows the roster to one group; omitted, it is every child the actor sees. */
   groupId?: string;
   selectedId?: string;
@@ -121,7 +131,12 @@ export function ChildPickerDialog({
       */
       className="fixed inset-0 z-50 grid items-end justify-items-center bg-ink/50 p-0 sm:place-items-center sm:p-4"
     >
-      <div className="flex max-h-[calc(100dvh-1rem)] w-full max-w-[480px] flex-col gap-3 rounded-t-card border border-border bg-surface p-4 shadow-lg sm:max-h-[calc(100vh-2rem)] sm:rounded-card sm:p-5">
+      <div
+        className={cn(
+          "flex max-h-[calc(100dvh-1rem)] w-full flex-col gap-3 rounded-t-card border border-border bg-surface p-4 shadow-lg sm:max-h-[calc(100vh-2rem)] sm:rounded-card sm:p-5",
+          layout === "table" ? "max-w-[640px]" : "max-w-[480px]",
+        )}
+      >
         <div className="flex items-center gap-2">
           <h2 className="min-w-0 flex-1 text-title font-semibold leading-heading text-ink">
             {title}
@@ -131,22 +146,32 @@ export function ChildPickerDialog({
           </Button>
         </div>
 
-        {summary}
+        {/*
+          The table layout is the client's 2026-09-30 design: title, filter,
+          search, table, Сонгох — no class total and no coverage bar.
+        */}
+        {layout === "tiles" ? summary : null}
 
         {coverage && rosterItems.length > 0 ? (
           <div className="space-y-2">
-            <div className="flex items-center justify-between gap-3 text-caption">
-              <span className="font-medium text-ink">{coverage.title ?? "Ажиглалтын хамралт"}</span>
-              <span className="tabular-nums text-muted">
-                {completeCount}/{rosterItems.length} хүүхэд
-              </span>
-            </div>
-            <div className="h-1.5 overflow-hidden rounded-pill bg-border-soft">
-              <div
-                className="h-full rounded-pill bg-primary transition-[width]"
-                style={{ width: `${Math.round((completeCount / rosterItems.length) * 100)}%` }}
-              />
-            </div>
+            {layout === "tiles" ? (
+              <>
+                <div className="flex items-center justify-between gap-3 text-caption">
+                  <span className="font-medium text-ink">
+                    {coverage.title ?? "Ажиглалтын хамралт"}
+                  </span>
+                  <span className="tabular-nums text-muted">
+                    {completeCount}/{rosterItems.length} хүүхэд
+                  </span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-pill bg-border-soft">
+                  <div
+                    className="h-full rounded-pill bg-primary transition-[width]"
+                    style={{ width: `${Math.round((completeCount / rosterItems.length) * 100)}%` }}
+                  />
+                </div>
+              </>
+            ) : null}
             <div className="grid grid-cols-3 gap-1 rounded-control bg-canvas p-1">
               {(
                 [
@@ -196,7 +221,92 @@ export function ChildPickerDialog({
           </p>
         ) : null}
 
-        {items.length > 0 ? (
+        {items.length > 0 && layout === "table" ? (
+          <div
+            role="radiogroup"
+            aria-label={title}
+            className="min-h-0 flex-1 overflow-auto rounded-card border border-border"
+          >
+            <table className="w-full border-collapse text-body">
+              <caption className="sr-only">{title}</caption>
+              <thead className="sticky top-0 z-10">
+                <tr>
+                  <Th className="w-10">
+                    <span className="sr-only">Сонгох</span>
+                  </Th>
+                  <Th numeric className="w-10">
+                    №
+                  </Th>
+                  <Th>Овог, нэр</Th>
+                  <Th>Нас</Th>
+                  {groupId ? null : <Th>Бүлэг</Th>}
+                  {coverage ? <Th numeric>Ажиглалт</Th> : null}
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((child, index) => {
+                  const chosen = pending === child.id;
+                  const group = capitalize(
+                    child.enrollments?.find((row) => row.group)?.group?.name,
+                  );
+                  const count = coverage?.counts[child.id] ?? 0;
+                  const complete = coverage ? count >= coverage.target : false;
+
+                  return (
+                    <tr
+                      key={child.id}
+                      onClick={() => setPending(child.id)}
+                      className={cn(
+                        "cursor-pointer",
+                        chosen ? "bg-primary-soft" : "bg-surface hover:bg-canvas",
+                      )}
+                    >
+                      <Td>
+                        <input
+                          type="radio"
+                          name="child-picker"
+                          checked={chosen}
+                          onChange={() => setPending(child.id)}
+                          aria-label={
+                            coverage
+                              ? `${fullName(child)} — ${
+                                  complete
+                                    ? "зорилт биелсэн"
+                                    : `${count}/${coverage.target} тэмдэглэл`
+                                }`
+                              : fullName(child)
+                          }
+                          className="size-4 accent-primary"
+                        />
+                      </Td>
+                      <Td numeric className="text-muted">
+                        {index + 1}
+                      </Td>
+                      <Td className="font-medium text-ink">{fullName(child)}</Td>
+                      <Td className="whitespace-nowrap text-muted">
+                        {formatAge(child.dateOfBirth)}
+                      </Td>
+                      {groupId ? null : <Td className="text-muted">{group ?? "—"}</Td>}
+                      {coverage ? (
+                        <Td
+                          numeric
+                          className={cn(
+                            "whitespace-nowrap font-medium",
+                            complete ? "text-mint-ink" : count > 0 ? "text-sun-ink" : "text-muted",
+                          )}
+                        >
+                          {complete ? "Биелсэн" : `${count}/${coverage.target}`}
+                        </Td>
+                      ) : null}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+
+        {items.length > 0 && layout === "tiles" ? (
           <ul
             role="radiogroup"
             aria-label={title}
@@ -295,8 +405,8 @@ export function ChildPickerDialog({
         ) : null}
 
         <Button
-          size="lg"
-          className="w-full"
+          size={layout === "table" ? "sm" : "lg"}
+          className={layout === "table" ? "self-end rounded-pill px-6" : "w-full"}
           disabled={!pending}
           onClick={() => {
             onSelect(pending);
