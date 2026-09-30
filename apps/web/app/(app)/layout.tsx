@@ -30,9 +30,22 @@ import {
   LockKeyhole,
   ChartNoAxesColumnIncreasing,
   FileSearch,
+  UsersRound,
+  Building2,
+  Wallet,
+  Calculator,
+  CalendarCheck,
+  BookMarked,
+  Briefcase,
+  IdCardLanyard,
+  MessageCircle,
+  Newspaper,
+  SearchCheck,
+  Utensils,
   House, // `X` was the picker modal's close button and went with it. The type stays:
   // `ICON_FOR` below is keyed by href and annotated with it.
   type LucideIcon,
+  Database,
   KeyRound,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -41,6 +54,7 @@ import { childSummarySchema, type ChildSummary } from "@kinder/contracts";
 import { z } from "zod";
 import {
   AppShell,
+  RailGlyph,
   type ChildSwitcher,
   type NavItem,
   type NavSection,
@@ -242,7 +256,7 @@ function AuthenticatedShell({
       sections={
         isStaff
           ? isAdmin
-            ? staffSections(true, groupId)
+            ? withRailGlyphs(staffSections(true, groupId))
             : teacherSections(groupId)
           : parentSections(myChildren, selectedChildId)
       }
@@ -412,12 +426,8 @@ function staffNav(isAdmin: boolean, groupId: string | null): NavItem[] {
     {
       href: isAdmin ? "/admin" : "/dashboard",
       label: "Самбар",
-      /*
-        ★ Illustrated again — 2026-09-28, the client: "3d icon-уудыг буцаагаад
-        тавь". The 2026-09-25 thin line glyphs are undone here and in
-        `teacherSections`; the phone bar keeps its `barIcon`.
-      */
-      icon: artIcon("dashboard", 20),
+      // The teacher's side menu opens on a thin line glyph (2026-09-25).
+      icon: <RailGlyph icon={House} />,
       barIcon: <House {...pillIconProps} />,
     },
     /*
@@ -1006,27 +1016,74 @@ function teacherSections(groupId: string | null): NavSection[] {
     {
       title: "",
       /*
-        ★ The illustrated set again — 2026-09-28, the client: "3d icon-уудыг
-        буцаагаад тавь". It was thin grey line glyphs from 2026-09-25.
+        ★ Thin grey line glyphs, not the illustrated set — client, 2026-09-25,
+        with a drawing: "маш нарийн зөөлөн саарал". The teacher's side menu
+        only; the phone bar and every other role keep their own.
       */
       entries: [
-        { label: "Суралцагч", href: "/children", icon: artIcon("child", 20) },
-        { label: "Ирц", href: scoped("attendance"), icon: artIcon("attendance", 20) },
-        { label: "Хоолны цэс", href: "/menu", icon: artIcon("food", 20) },
-        { label: "Явцын үнэлгээ", href: scoped("assessment"), icon: artIcon("progress", 20) },
+        { label: "Суралцагч", href: "/children", icon: <RailGlyph icon={BookOpen} /> },
+        { label: "Ирц", href: scoped("attendance"), icon: <RailGlyph icon={IdCardLanyard} /> },
+        { label: "Хоолны цэс", href: "/menu", icon: <RailGlyph icon={Utensils} /> },
+        {
+          label: "Явцын үнэлгээ",
+          href: scoped("assessment"),
+          icon: <RailGlyph icon={ChartNoAxesColumnIncreasing} />,
+        },
         {
           label: "Судалгаа",
           href: "/surveys",
-          icon: artIcon("survey", 20),
+          icon: <RailGlyph icon={FileSearch} />,
           badge: "surveys" as const,
         },
-        { label: "Тайлан", href: "/reports", icon: artIcon("report", 20) },
-        { label: "Мэдээ", href: "/notifications", icon: artIcon("notice", 20) },
-        { label: "Чат", href: "/chat", icon: artIcon("chat", 20) },
-        { label: "Баримт бичгийн сан", href: "/documents", icon: artIcon("documents", 20) },
+        { label: "Тайлан", href: "/reports", icon: <RailGlyph icon={SearchCheck} /> },
+        { label: "Мэдээ", href: "/notifications", icon: <RailGlyph icon={Newspaper} /> },
+        { label: "Чат", href: "/chat", icon: <RailGlyph icon={MessageCircle} /> },
+        {
+          label: "Баримт бичгийн сан",
+          href: "/documents",
+          icon: <RailGlyph icon={Briefcase} />,
+        },
       ],
     },
   ];
+}
+
+/**
+ * The administrator's menu in the teacher's thin grey line glyphs — client,
+ * 2026-09-25: "удирдлага хэсгийн хажуугийн цэс … багшийнх шиг болго". The
+ * sections, their order and their headings are `staffSections`' own; only
+ * the drawing beside each row changes.
+ */
+const ADMIN_RAIL_ICON: Record<string, LucideIcon> = {
+  "/children": BookOpen,
+  "/admin/groups": UsersRound,
+  "/admin/users": UserCog,
+  "/admin/kindergarten": Building2,
+  "/attendance/daily": IdCardLanyard,
+  "/admin/assessment": ChartNoAxesColumnIncreasing,
+  "/surveys": FileSearch,
+  "/notifications": Newspaper,
+  "/chat": MessageCircle,
+  "/menu": Utensils,
+  "/finance": Wallet,
+  "/admin/funding": Calculator,
+  "/attendance/journal": CalendarCheck,
+  "/reports": SearchCheck,
+  "/documents": Briefcase,
+  "/admin/school-years": CalendarRange,
+  "/admin/terms": CalendarDays,
+  "/admin/curriculum": BookMarked,
+  "/admin/esis-sync": Database,
+};
+
+function withRailGlyphs(sections: NavSection[]): NavSection[] {
+  return sections.map((section) => ({
+    ...section,
+    entries: section.entries.map((entry) => {
+      const glyph = entry.href ? ADMIN_RAIL_ICON[entry.href] : undefined;
+      return glyph ? { ...entry, icon: <RailGlyph icon={glyph} /> } : entry;
+    }),
+  }));
 }
 
 /**
