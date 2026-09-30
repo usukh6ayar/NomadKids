@@ -33,7 +33,7 @@ import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { Input } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/states";
-import { fullName } from "@/lib/format";
+import { fullName, shortName } from "@/lib/format";
 import { PersonAvatar } from "@/components/media/media-image";
 import { Art } from "@/components/ui/art";
 import { cn } from "@/lib/utils";
@@ -286,7 +286,7 @@ export function ChatList({
           roomNames.get(room.key),
           room.name,
           room.lastMessage?.body,
-          room.lastMessage?.author ? fullName(room.lastMessage.author) : undefined,
+          room.lastMessage?.author ? shortName(room.lastMessage.author) : undefined,
         ]
           .filter(Boolean)
           .some((value) => value!.toLocaleLowerCase("mn").includes(normalizedQuery));
@@ -894,8 +894,8 @@ function MessageBubble({ message }: { message: z.infer<typeof chatMessageSchema>
   const children = message.author?.children ?? [];
   const speaker =
     children.length > 0
-      ? `${children.map((child) => fullName(child)).join(", ")} — эцэг эх`
-      : fullName(message.author);
+      ? `${children.map((child) => shortName(child)).join(", ")} — эцэг эх`
+      : shortName(message.author);
   const face = children[0] ?? message.author ?? {};
 
   return (

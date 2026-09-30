@@ -42,7 +42,7 @@ function RecordTitle({
   return (
     <>
       {surname ? <span>{surname} </span> : null}
-      <span>{(field && row[field.name]) || fallback}</span>
+      <span>{(field && esisDisplayValue(row[field.name])) || fallback}</span>
     </>
   );
 }
@@ -355,7 +355,7 @@ function EsisRecordFields({
         </div>
       ) : null}
       {facts.length > 0 ? (
-        <div className="p-4 sm:p-5">
+        <div className="px-4 py-2 sm:px-5">
           <RecordFacts columns={facts} row={row} />
         </div>
       ) : null}
@@ -402,26 +402,47 @@ function RecordFacts({
   columns: EsisField[];
   row: Record<string, string | null>;
 }) {
+  /*
+   * ★ A compact two-column table, not a grid of tiles — 2026-09-30, the
+   * client: ESIS-ээс орж ирсэн мэдээллүүд "хэт том дөрвөлжин байж зай эзэлж
+   * байгаа тул хүснэгтэн хэлбэртэй зай бага эзлэхээр". Label | value, one
+   * line each, two pairs across from `md` up.
+   */
+  const pairs: EsisField[][] = [];
+  for (let i = 0; i < columns.length; i += 2) pairs.push(columns.slice(i, i + 2));
   return (
-    <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-3">
-      {columns.map((field) => {
-        const value = row[field.name];
-        const shown = esisDisplayValue(value);
-        return (
-          <div key={field.name} className="min-w-0">
-            <dt className="text-caption text-muted">{field.label}</dt>
-            <dd
-              className={
-                shown
-                  ? "mt-1 break-words text-body font-medium text-ink"
-                  : "mt-1 text-body text-faint"
-              }
-            >
-              {esisDisplayValue(value) || "Бөглөөгүй"}
-            </dd>
-          </div>
-        );
-      })}
-    </dl>
+    <table className="w-full border-collapse text-body">
+      <tbody>
+        {pairs.map((pair) => (
+          <tr
+            key={pair.map((field) => field.name).join("|")}
+            className="border-b border-border-soft last:border-b-0 max-md:flex max-md:flex-col"
+          >
+            {pair.map((field) => {
+              const shown = esisDisplayValue(row[field.name]);
+              return (
+                <Fragment key={field.name}>
+                  <th
+                    scope="row"
+                    className="w-[22%] py-1.5 pr-3 text-left align-top text-caption font-normal text-muted max-md:w-auto max-md:pb-0"
+                  >
+                    {field.label}
+                  </th>
+                  <td
+                    className={
+                      shown
+                        ? "w-[28%] break-words py-1.5 pr-4 align-top font-medium text-ink max-md:w-auto"
+                        : "w-[28%] py-1.5 pr-4 align-top text-faint max-md:w-auto"
+                    }
+                  >
+                    {shown || "Бөглөөгүй"}
+                  </td>
+                </Fragment>
+              );
+            })}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
