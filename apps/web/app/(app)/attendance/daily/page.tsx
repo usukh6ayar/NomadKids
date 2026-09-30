@@ -1,5 +1,7 @@
 "use client";
 
+import { formatDate, groupLabel } from "@/lib/format";
+
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
@@ -149,7 +151,7 @@ function DailyAttendance() {
     <div className="flex flex-col gap-4 rounded-card border border-border-soft bg-surface p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-display font-bold leading-heading text-ink">
+          <h1 className="text-heading font-bold leading-heading text-ink sm:text-display">
             {yearly
               ? "Хичээлийн жилийн ирц"
               : breakdown
@@ -329,7 +331,9 @@ function DayTable({
   kindergartenId: string;
 }) {
   return (
-    <div className="rounded-card border border-border">
+    // `overflow-x-auto`: thirteen columns do not fit every width, and the
+    // table scrolls inside its card rather than pushing the page (2026-09-29).
+    <div className="overflow-x-auto rounded-card border border-border">
       <table className="w-full border-collapse text-body">
         <caption className="sr-only">Өдөр тутмын ирцийн бүртгэл</caption>
         <thead>
@@ -398,8 +402,11 @@ function DayTable({
               key={`${row.groupId}-${row.date}`}
               className="border-b border-border-soft last:border-b-0 even:bg-sunken/40"
             >
-              <td className="px-3 py-1.5 tabular-nums text-ink">{row.date.slice(0, 10)}</td>
-              <td className="px-3 py-1.5 text-ink">{row.group}</td>
+              {/* `whitespace-nowrap`: "2026-\n09-01" and "ахлах\nбүлэг" (2026-09-29). */}
+              <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-ink">
+                {formatDate(row.date.slice(0, 10))}
+              </td>
+              <td className="whitespace-nowrap px-3 py-1.5 text-ink">{groupLabel(row.group)}</td>
               <NumberCell value={row.expected} tone="text-primary" />
               <NumberCell value={row.present} tone="text-mint-ink" />
               <NumberCell value={row.sick} tone="text-muted" />

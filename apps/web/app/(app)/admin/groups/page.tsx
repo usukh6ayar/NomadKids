@@ -31,7 +31,7 @@ import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { cn } from "@/lib/utils";
-import { fullName } from "@/lib/format";
+import { fullName, groupLabel, shortName } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Td, Th } from "@/components/ui/table";
 import { Field, Input, Select } from "@/components/ui/field";
@@ -269,10 +269,16 @@ function AdminGroups() {
         />
       </div>
 
-      <p className="flex items-center gap-2 rounded-control border border-primary/20 bg-primary-soft px-3 py-2 text-caption text-primary">
-        <Info size={15} aria-hidden /> Нэгдсэн журмаар шинэчлэгдсэн:{" "}
-        {sync.data ? formatSyncedAt(sync.data.syncedAt) : "—"}
-      </p>
+      {/*
+        ★ Only after a pull — 2026-09-29. It printed "Нэгдсэн журмаар
+        шинэчлэгдсэн: —" on every visit, a sentence with no subject a reader
+        could act on.
+      */}
+      {sync.data ? (
+        <p className="flex items-center gap-2 rounded-control border border-primary/20 bg-primary-soft px-3 py-2 text-caption text-primary">
+          <Info size={15} aria-hidden /> ESIS-ээс татсан: {formatSyncedAt(sync.data.syncedAt)}
+        </p>
+      ) : null}
 
       {sync.data && sync.data.warnings.length > 0 ? (
         <div
@@ -334,7 +340,7 @@ function AdminGroups() {
                       href={`/groups/${group.id}`}
                       className="font-medium text-ink hover:text-primary hover:underline"
                     >
-                      {group.name}
+                      {groupLabel(group.name)}
                     </Link>
                   </Td>
                   <Td className="py-1.5 text-muted">
@@ -343,8 +349,12 @@ function AdminGroups() {
                   <Td className="py-1.5 text-muted">
                     {group.programKind ? (PROGRAM_KIND_LABEL[group.programKind] ?? "—") : "—"}
                   </Td>
-                  {/* The list endpoint carries no teacher yet — see the report. */}
-                  <Td className="py-1.5 text-faint">—</Td>
+                  {/*
+                    ★ The list has carried its assignments since 2026-09-23 and
+                    this cell kept printing "—" — found 2026-09-29. Current
+                    lead teachers first; an assistant only when there is none.
+                  */}
+                  <Td className="py-1.5 text-muted">{groupTeacherNames(group)}</Td>
                   <Td className="py-1.5 tabular-nums text-ink">{group._count?.enrollments ?? 0}</Td>
                   <Td className="py-1 text-right">
                     <RowMenu
@@ -893,4 +903,12 @@ function formatSyncedAt(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/** "Б.Ганжаргал" for the group's current teachers, leads first; "—" for none. */
+function groupTeacherNames(group: GroupItem): string {
+  const current = group.teachers.filter((t) => !t.endedOn && t.membership?.user);
+  const leads = current.filter((t) => t.role === "LEAD");
+  const shown = leads.length > 0 ? leads : current;
+  return shown.length > 0 ? shown.map((t) => shortName(t.membership!.user!)).join(", ") : "—";
 }

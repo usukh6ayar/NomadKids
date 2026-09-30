@@ -226,7 +226,9 @@ function Pane({
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-display font-bold leading-heading text-ink">{title}</h1>
+          <h1 className="text-heading font-bold leading-heading text-ink sm:text-display">
+            {title}
+          </h1>
           <p className="mt-1 text-body text-muted">{lede}</p>
         </div>
         <div className="flex flex-wrap gap-2">{actions}</div>

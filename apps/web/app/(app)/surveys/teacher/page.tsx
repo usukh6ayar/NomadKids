@@ -141,7 +141,7 @@ function TeacherSurveys() {
       */}
       <header className="flex items-center gap-2 sm:gap-3">
         <BackButton href={groupId ? hrefFor({ group: null, period: null }) : "/surveys"} />
-        <h1 className="min-w-0 flex-1 text-lead font-semibold leading-heading text-ink sm:text-title">
+        <h1 className="min-w-0 flex-1 text-heading font-semibold leading-heading text-ink sm:text-display">
           {groupId
             ? (selectedGroup?.name ?? SURVEY_RESPONDENT_LABEL.TEACHER)
             : SURVEY_RESPONDENT_LABEL.TEACHER}

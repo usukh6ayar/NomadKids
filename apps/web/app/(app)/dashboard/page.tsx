@@ -431,7 +431,12 @@ function QuickAction({ href, title, art }: { href: string; title: string; art: A
       <span aria-hidden="true" className="grid size-10 shrink-0 place-items-center sm:size-14">
         <Art name={art} size={42} className="size-9 object-contain sm:size-[42px]" />
       </span>
-      <span className="min-w-0 flex-1">
+      {/*
+        `pr-4` on a phone, with a smaller corner arrow: the 32px arrow sat on
+        "Суралцагч", and reserving its full width broke the word in two
+        (2026-09-29). The title keeps whole words.
+      */}
+      <span className="min-w-0 flex-1 pr-4 sm:pr-0">
         <span className="block text-body font-bold leading-heading text-ink sm:text-lead sm:font-semibold">
           {title}
         </span>
@@ -451,11 +456,11 @@ function QuickAction({ href, title, art }: { href: string; title: string; art: A
         `motion-reduce` drops the step and keeps the colour, so the hover is
         still legible without the movement.
       */}
-      <span className="absolute right-3 top-3 grid size-8 shrink-0 place-items-center rounded-pill bg-primary-soft text-primary transition-colors duration-150 group-hover:bg-primary group-hover:text-primary-ink sm:static sm:size-9">
+      <span className="absolute right-2 top-2 grid size-6 shrink-0 place-items-center rounded-pill bg-primary-soft text-primary transition-colors duration-150 group-hover:bg-primary group-hover:text-primary-ink sm:static sm:size-9">
         <ArrowRight
           size={17}
           aria-hidden="true"
-          className="transition-transform duration-150 group-hover:translate-x-px motion-reduce:transform-none"
+          className="size-3.5 transition-transform duration-150 group-hover:translate-x-px motion-reduce:transform-none sm:size-[17px]"
         />
       </span>
     </Link>

@@ -15,6 +15,7 @@ import {
 import { get } from "@/lib/api/browser";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { AdminRoster } from "@/components/child/admin-roster";
+import { Disclosure } from "@/components/ui/disclosure";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
@@ -26,7 +27,7 @@ import { Donut } from "@/components/ui/chart/donut";
 import { Ring } from "@/components/ui/chart/ring";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { formatAge, fullName, shortName } from "@/lib/format";
+import { formatAge, fullName, shortName, groupLabel } from "@/lib/format";
 import { TableShell, Td, Th } from "@/components/ui/table";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
@@ -278,12 +279,6 @@ function StaffChildren() {
         }
       />
 
-      <EsisDataPanel
-        resource="studentByRegister"
-        title="РД-ээр сурагч хайх"
-        description="Сурагчийн мэдээллийг ESIS-ээс регистрийн дугаараар хайна"
-      />
-
       {/*
         ★ Director only, since 2026-09-22 — and this one is the reason the
         change is not cosmetic.
@@ -436,6 +431,20 @@ function StaffChildren() {
         description="Тухайн өдрөөс хойшх элсэлт, шилжилт, гарсан бүртгэл"
         actionLabel="Хөдөлгөөн татах"
       />
+
+      {/*
+        ★ Last and folded — 2026-09-29. It opened this screen, above the
+        teacher's own children, so the first thing a teacher met every morning
+        was a form for finding a child among the whole ministry. It is for the
+        rare new arrival, and lives where that belongs.
+      */}
+      <Disclosure title="ESIS-ээс РД-ээр сурагч хайх" hint="Шинэ хүүхэд бүртгэхэд">
+        <EsisDataPanel
+          resource="studentByRegister"
+          title="РД-ээр сурагч хайх"
+          description="Сурагчийн мэдээллийг ESIS-ээс регистрийн дугаараар хайна"
+        />
+      </Disclosure>
     </div>
   );
 }
@@ -521,6 +530,8 @@ function LocalRoster({
     );
   }
 
+  // "Регистр —" on every card of an ESIS-imported roster said nothing (2026-09-29).
+  const showRegister = rows.some((child) => child.nationalId || child.foreignId || child.isForeign);
   return (
     <section className="space-y-2">
       <div className="flex items-baseline justify-between gap-3">
@@ -542,7 +553,7 @@ function LocalRoster({
         <thead>
           <tr>
             <Th>Нэр</Th>
-            <Th>Регистр</Th>
+            {showRegister ? <Th>Регистр</Th> : null}
             <Th>Бүлэг</Th>
             <Th>Нас</Th>
           </tr>
@@ -575,10 +586,14 @@ function LocalRoster({
                     <span className="min-w-0 truncate">{shortName(child)}</span>
                   </Link>
                 </Td>
-                <Td data-label="Регистр" className="tabular-nums">
-                  {register}
+                {showRegister ? (
+                  <Td data-label="Регистр" className="tabular-nums">
+                    {register}
+                  </Td>
+                ) : null}
+                <Td data-label="Бүлэг">
+                  {enrollment?.group ? groupLabel(enrollment.group.name) : "—"}
                 </Td>
-                <Td data-label="Бүлэг">{enrollment?.group?.name ?? "—"}</Td>
                 <Td data-label="Нас">{formatAge(child.dateOfBirth)}</Td>
               </tr>
             );

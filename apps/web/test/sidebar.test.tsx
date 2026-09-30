@@ -957,18 +957,18 @@ describe("mobile navigation", () => {
    * "хар зурган болгоод бичиггүй", and the open tab rising out of the bar as
    * a blue disc.
    */
-  it("draws the parent bar as glyphs with no visible captions", async () => {
+  it("draws the parent bar as glyphs with a small caption under each", async () => {
     renderShell(["PARENT"], "/home", [OWN_CHILD]);
 
     const bar = await waitFor(() => screen.getByRole("navigation", { name: "Доод цэс" }));
 
     for (const label of ["Нүүр", "Мэдээ", "Зураг", "Хоол"]) {
       const link = within(bar).getByRole("link", { name: label });
-      // A glyph, not one of the menu's illustrations — and the name survives
-      // for a screen reader even though nothing is printed.
+      // A glyph, not one of the menu's illustrations — and, since 2026-09-29,
+      // its name printed under it: bare glyphs left people guessing.
       expect(link.querySelector("svg")).not.toBeNull();
       expect(link.querySelector("img")).toBeNull();
-      expect(within(link).getByText(label)).toHaveClass("sr-only");
+      expect(within(link).getByText(label)).not.toHaveClass("sr-only");
     }
 
     // The menu beside it keeps the illustrated set, untouched.

@@ -104,6 +104,7 @@ function InviteDialog({
               teacher holding up two codes needs to tell them apart.
             */
             subtitle={`${childName}-ийн хавтас руу`}
+            label={childName}
             onClose={onClose}
           />
         ) : (

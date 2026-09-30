@@ -74,9 +74,16 @@ export function chatRoomDisplayName(
     return hasSeveralStaffRooms && kindergartenName ? `Багш нар · ${kindergartenName}` : "Багш нар";
   }
 
-  const hasSeveralGroupRooms = rooms.filter((candidate) => candidate.kind === "GROUP").length > 1;
-  const qualifier = hasSeveralGroupRooms ? ` · ${room.name}` : "";
+  /*
+   * ★ Per kind — 2026-09-29. Every non-staff room fell through to "Манай
+   * анги" for a teacher, and only GROUP rooms got a qualifier, so a teacher
+   * saw three rooms with one name and no way to tell them apart.
+   */
+  if (room.kind === "DIRECT") return room.name;
+  const sameKind = rooms.filter((candidate) => candidate.kind === room.kind).length > 1;
+  const qualifier = sameKind ? ` · ${room.name}` : "";
 
+  if (room.kind === "PARENTS") return `Эцэг эхчүүд${qualifier}`;
   if (roles.has("TEACHER")) return `Манай анги${qualifier}`;
   if (roles.has("PARENT")) return `Багш, эцэг эхчүүд${qualifier}`;
   return room.name;

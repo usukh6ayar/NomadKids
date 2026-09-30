@@ -24,7 +24,7 @@ export default function SurveysChooserPage() {
       <div className="flex flex-col gap-5 lg:gap-6">
         <header className="flex items-center gap-2 sm:gap-3">
           <BackButton href="/dashboard" />
-          <h1 className="min-w-0 flex-1 text-lead font-semibold leading-heading text-ink sm:text-title">
+          <h1 className="min-w-0 flex-1 text-heading font-semibold leading-heading text-ink sm:text-display">
             Судалгаа, асуулга
           </h1>
         </header>

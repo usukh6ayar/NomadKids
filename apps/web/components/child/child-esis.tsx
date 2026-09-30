@@ -106,7 +106,14 @@ export function ChildEsisHousehold({ childId }: { childId: string }) {
           />
         }
       />
-      <EsisDataPanel resource="studentStatistics" params={{ childId }} askForParams={false} />
+      {/* Its own name, not the section's again (2026-09-29). */}
+      <EsisDataPanel
+        resource="studentStatistics"
+        params={{ childId }}
+        askForParams={false}
+        title="ESIS дэх бүртгэл"
+        description="ESIS-д хадгалагдаж буй утга."
+      />
     </section>
   );
 }
@@ -128,7 +135,14 @@ export function ChildEsisLiving({ childId }: { childId: string }) {
           />
         }
       />
-      <EsisDataPanel resource="studentCondition" params={{ childId }} askForParams={false} />
+      {/* Its own name, not the section's again (2026-09-29). */}
+      <EsisDataPanel
+        resource="studentCondition"
+        params={{ childId }}
+        askForParams={false}
+        title="ESIS дэх бүртгэл"
+        description="ESIS-д хадгалагдаж буй утга."
+      />
     </section>
   );
 }

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Code2 } from "lucide-react";
+import { esisDisplayValue } from "@/components/esis/esis-rows";
 
 /** Display every returned key without making a raw JSON block the primary view. */
 export function EsisResponseValues({ response }: { response: Record<string, unknown> }) {
@@ -49,7 +50,7 @@ function ResponseValue({ value }: { value: unknown }): ReactNode {
   if (typeof value === "object") {
     return <ResponseFields entries={Object.entries(value)} />;
   }
-  return String(value);
+  return esisDisplayValue(String(value));
 }
 
 /** Keep the exact envelope available for troubleshooting, without leading with it. */

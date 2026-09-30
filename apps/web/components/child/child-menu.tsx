@@ -329,7 +329,7 @@ export function ChildMenu({
                   <Image src="/background/mascot-boy-orange.webp" alt="" width={96} height={96} />
                 }
                 title="Цэс оруулаагүй байна"
-                description="Багш цэс оруулсны дараа энд харагдана."
+                description="Цэс оруулсны дараа энд харагдана."
               />
             ) : (
               <DayDetail
