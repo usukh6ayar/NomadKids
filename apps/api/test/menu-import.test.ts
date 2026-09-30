@@ -84,4 +84,63 @@ describe("menu spreadsheet import", () => {
       }),
     ]);
   });
+
+  /*
+   * 2026-09-30, the client: "хөндлөнгөөр, босоогоор, зэрэг он сарыг олон
+   * хувилбараар таньдаг байх".
+   */
+  it("reads weekday headings against the week of a date elsewhere in the sheet", async () => {
+    const input = await workbook([
+      ["2026.09.21-ний долоо хоногийн цэс"],
+      ["", "Даваа", "Мягмар", "Лхагва"],
+      ["Өглөөний хоол", "Каш", "Будаа", "Тараг"],
+    ]);
+    const result = await parseMenuWorkbook(input);
+    expect(result.days.map((day) => day.date)).toEqual(["2026-09-21", "2026-09-22", "2026-09-23"]);
+    expect(result.days[1]?.dishes[0]).toMatchObject({ name: "Будаа", kind: "BREAKFAST" });
+  });
+
+  it("reads dates with no year, month first, and «9 сарын 22»", async () => {
+    const input = await workbook([
+      ["2026 оны хоолны цэс · 2026.09.01"],
+      ["", "09.21", "9 сарын 22", "23.09"],
+      ["Өдрийн хоол", "Шөл", "Цуйван", "Бууз"],
+    ]);
+    const result = await parseMenuWorkbook(input);
+    expect(result.days.map((day) => day.date)).toEqual(["2026-09-21", "2026-09-22", "2026-09-23"]);
+  });
+
+  it("reads the grid rotated — dates down the side, meal times across", async () => {
+    const input = await workbook([
+      ["Огноо", "Өглөөний хоол", "Өдрийн хоол"],
+      ["2026-09-21", "Каш", "Шөл"],
+      ["2026-09-22", "Будаа", "Цуйван"],
+    ]);
+    const result = await parseMenuWorkbook(input);
+    expect(result.days).toEqual([
+      {
+        date: "2026-09-21",
+        dishes: [
+          expect.objectContaining({ name: "Каш", kind: "BREAKFAST" }),
+          expect.objectContaining({ name: "Шөл", kind: "LUNCH" }),
+        ],
+      },
+      {
+        date: "2026-09-22",
+        dishes: [
+          expect.objectContaining({ name: "Будаа", kind: "BREAKFAST" }),
+          expect.objectContaining({ name: "Цуйван", kind: "LUNCH" }),
+        ],
+      },
+    ]);
+  });
+
+  it("never reads a calorie figure as an Excel date serial", async () => {
+    const input = await workbook([
+      ["", "2026-09-21", "2026-09-22"],
+      ["Өдрийн хоол", "Шөл", "12345"],
+    ]);
+    const result = await parseMenuWorkbook(input);
+    expect(result.days.map((day) => day.date)).toEqual(["2026-09-21", "2026-09-22"]);
+  });
 });

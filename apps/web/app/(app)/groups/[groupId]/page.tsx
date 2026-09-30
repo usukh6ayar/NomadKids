@@ -102,8 +102,12 @@ function GroupDetail() {
   const phoneOf = new Map((staff.data?.items ?? []).map((u) => [u.id, u.phone ?? null]));
 
   const roster = useQuery({
-    queryKey: qk.children({ groupId, page: 1, pageSize: 20 }),
-    queryFn: () => get(`/children?groupId=${groupId}&page=1&pageSize=20`, childrenSchema),
+    /*
+      ★ 100, the API's ceiling, not 20 — 2026-09-30. A group of 32 showed 20
+      and a footnote; no kindergarten group comes near a hundred.
+    */
+    queryKey: qk.children({ groupId, page: 1, pageSize: 100 }),
+    queryFn: () => get(`/children?groupId=${groupId}&page=1&pageSize=100`, childrenSchema),
   });
 
   if (group.isLoading) return <LoadingState rows={5} />;
@@ -236,7 +240,7 @@ function GroupDetail() {
               {teachers.map((assignment) => (
                 <li key={assignment.id} className="flex items-center gap-2">
                   <span className="text-body text-ink">
-                    {assignment.membership?.user ? fullName(assignment.membership.user) : "—"}
+                    {assignment.membership?.user ? shortName(assignment.membership.user) : "—"}
                   </span>
                   {assignment.role ? (
                     <Badge tone={assignment.role === "LEAD" ? "sky" : "neutral"}>
@@ -251,7 +255,7 @@ function GroupDetail() {
       )}
 
       <SectionHeader
-        title="Бүлгийн хүүхдүүд"
+        title={roster.data ? `Бүлгийн хүүхдүүд · ${roster.data.total}` : "Бүлгийн хүүхдүүд"}
         as="h2"
         action={
           <Button asChild variant="secondary" size="sm">
@@ -300,8 +304,7 @@ function GroupDetail() {
         </Card>
       ) : null}
 
-      {/* The roster is capped at twenty; say so rather than let a group of
-          thirty look like a group of twenty. */}
+      {/* Only past a hundred; say so rather than let a list look complete. */}
       {roster.data && roster.data.total > roster.data.items.length ? (
         <p className="text-caption text-muted">
           Нийт {roster.data.total} хүүхдээс эхний {roster.data.items.length} нь харагдаж байна.

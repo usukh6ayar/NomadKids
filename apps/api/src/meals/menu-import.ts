@@ -122,6 +122,8 @@ export async function parseMenuWorkbook(input: Buffer): Promise<MenuParseResult>
     reading sheet zero blindly would work today and read the warnings sheet the
     day somebody reorders the tabs in Excel.
   */
+  const readDate = dateReader(dateContext(book));
+
   const candidates = book.worksheets.flatMap((worksheet) => {
     const found: { rowNumber: number; index: Map<Field, number> }[] = [];
     for (let rowNumber = 1; rowNumber <= Math.min(worksheet.rowCount, 20); rowNumber++) {
@@ -149,7 +151,17 @@ export async function parseMenuWorkbook(input: Buffer): Promise<MenuParseResult>
   candidates.sort((a, b) => b.index.size - a.index.size || a.rowNumber - b.rowNumber);
   const selected = candidates[0];
   if (!selected) {
-    const matrix = book.worksheets.map(parseMenuMatrix).find((result) => result.days.length > 0);
+    /*
+      ★ Both matrix orientations — 2026-09-30, the client: "хөндлөнгөөр,
+      босоогоор … олон хувилбараар таньдаг байх". Dates across with meal
+      times down the side, or the same grid rotated.
+    */
+    const matrix = book.worksheets
+      .flatMap((sheet) => [
+        parseMenuMatrix(sheet, readDate),
+        parseMenuMatrixRotated(sheet, readDate),
+      ])
+      .find((result) => result.days.length > 0);
     return (
       matrix ?? {
         days: [],
@@ -187,7 +199,7 @@ export async function parseMenuWorkbook(input: Buffer): Promise<MenuParseResult>
     // A wholly blank row is how Excel pads a sheet somebody deleted rows from.
     if (!name && !rawDate) return;
 
-    const date = isoDate(rawDate) ?? (!rawDate && name ? previousDate : null);
+    const date = readDate(rawDate) ?? (!rawDate && name ? previousDate : null);
     if (!date) {
       problems.push({ rowNumber, message: `Огноо танигдсангүй: "${rawDate}"` });
       return;
@@ -240,7 +252,10 @@ export async function parseMenuWorkbook(input: Buffer): Promise<MenuParseResult>
  * sittings as rows. The supplied 2026-09-19 example has no "Огноо" heading:
  * row four contains dates B:F and column A contains "Өглөөний хоол", etc.
  */
-function parseMenuMatrix(sheet: ExcelJS.Worksheet): MenuParseResult {
+function parseMenuMatrix(
+  sheet: ExcelJS.Worksheet,
+  isoDate: (raw: string) => string | null,
+): MenuParseResult {
   const byDate = new Map<string, ParsedMenuDish[]>();
   const problems: MenuParseResult["problems"] = [];
 
@@ -295,6 +310,110 @@ function parseMenuMatrix(sheet: ExcelJS.Worksheet): MenuParseResult {
   };
 }
 
+/**
+ * The same weekly grid rotated: meal times across a header row, one date per
+ * row down column A ("Даваа", "09.14", "2026-09-14" …).
+ */
+function parseMenuMatrixRotated(
+  sheet: ExcelJS.Worksheet,
+  isoDate: (raw: string) => string | null,
+): MenuParseResult {
+  const byDate = new Map<string, ParsedMenuDish[]>();
+
+  for (let headerRow = 1; headerRow <= Math.min(sheet.rowCount, 30); headerRow++) {
+    const kinds = new Map<number, string>();
+    for (let column = 2; column <= sheet.columnCount; column++) {
+      const kind = KIND_ALIASES[normalize(text(sheet.getRow(headerRow).getCell(column)))];
+      if (kind) kinds.set(column, kind);
+    }
+    // Two meal times in one row is the header; one could be a stray word.
+    if (kinds.size < 2) continue;
+
+    for (let rowNumber = headerRow + 1; rowNumber <= sheet.rowCount; rowNumber++) {
+      const row = sheet.getRow(rowNumber);
+      const date = isoDate(text(row.getCell(1)));
+      if (!date) continue;
+      for (const [column, kind] of kinds) {
+        const name = text(row.getCell(column));
+        if (!name) continue;
+        if (!byDate.has(date)) byDate.set(date, []);
+        byDate.get(date)!.push({
+          name,
+          kind,
+          portions: null,
+          calories: null,
+          allergenTags: [],
+          note: null,
+        });
+      }
+    }
+    break;
+  }
+
+  return {
+    days: [...byDate.entries()]
+      .map(([date, dishes]) => ({ date, dishes }))
+      .sort((a, b) => a.date.localeCompare(b.date)),
+    problems: [],
+  };
+}
+
+/** What a date with parts missing is read against. */
+interface DateContext {
+  /** The year for "09.14" / "9 сарын 14". */
+  year: number;
+  /** Monday of the week that "Даваа", "Мягмар" … name. */
+  monday: Date;
+}
+
+const WEEKDAY_INDEX: Record<string, number> = {
+  даваа: 0,
+  да: 0,
+  мягмар: 1,
+  мя: 1,
+  лхагва: 2,
+  лх: 2,
+  пүрэв: 3,
+  пү: 3,
+  баасан: 4,
+  ба: 4,
+  бямба: 5,
+  бя: 5,
+  ням: 6,
+  ня: 6,
+};
+
+/**
+ * The first complete date anywhere in the workbook anchors the others — a
+ * weekly plan usually carries one ("2026.09.14-ний долоо хоног") even when
+ * its columns say only "Даваа". Without one, the current week and year.
+ */
+function dateContext(book: ExcelJS.Workbook): DateContext {
+  let anchor: Date | null = null;
+  outer: for (const sheet of book.worksheets) {
+    for (let r = 1; r <= Math.min(sheet.rowCount, 40); r++) {
+      const row = sheet.getRow(r);
+      for (let c = 1; c <= Math.min(sheet.columnCount, 20); c++) {
+        const raw = text(row.getCell(c));
+        const found =
+          fullDate(raw) ?? fullDate(raw.match(/\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/)?.[0] ?? "");
+        if (found) {
+          anchor = new Date(`${found}T00:00:00Z`);
+          break outer;
+        }
+      }
+    }
+  }
+  const base = anchor ?? new Date();
+  const monday = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate()));
+  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
+  return { year: base.getUTCFullYear(), monday };
+}
+
+function dateReader(ctx: DateContext) {
+  return (raw: string) => isoDate(raw, ctx);
+}
+
 function text(cell: ExcelJS.Cell | undefined): string {
   const value = cell?.value;
   if (value === null || value === undefined) return "";
@@ -320,7 +439,53 @@ function text(cell: ExcelJS.Cell | undefined): string {
  * reaches here; a text cell can be `2026-09-11`, `2026/9/11` or `11.09.2026`,
  * and a kitchen typing a menu will produce all three.
  */
-function isoDate(raw: string): string | null {
+function isoDate(raw: string, ctx?: DateContext): string | null {
+  const full = fullDate(raw);
+  if (full || !ctx) return full;
+
+  const value = raw.trim().toLocaleLowerCase("mn-MN");
+
+  /*
+   * ★ An Excel serial left as a number ("46279") — what a date cell becomes
+   * when somebody pastes values. Bounded to 2020–2040 so a portion count or a
+   * calorie figure is never read as a day.
+   */
+  if (/^\d{5}$/.test(value)) {
+    const serial = Number(value);
+    if (serial >= 43831 && serial <= 51136) {
+      return new Date(Date.UTC(1899, 11, 30) + serial * 86_400_000).toISOString().slice(0, 10);
+    }
+  }
+
+  // "Даваа", "Даваа гараг", "Да" — a day of the anchored week.
+  const weekday = WEEKDAY_INDEX[value.replace(/\s*гараг$/, "").replace(/[.,]$/, "")];
+  if (weekday !== undefined) {
+    const day = new Date(ctx.monday);
+    day.setUTCDate(day.getUTCDate() + weekday);
+    return day.toISOString().slice(0, 10);
+  }
+
+  // "9 сарын 14", "9-р сарын 14", "9 сар 14" — month then day, the Mongolian order.
+  const worded = /^(\d{1,2})(?:-р)?\s*сар(?:ын)?\s*(\d{1,2})/.exec(value);
+  if (worded) return pad(String(ctx.year), worded[1]!, worded[2]!);
+
+  /*
+   * "09.14", "9/14", "09-14" — month.day, the Mongolian order. A first part
+   * over 12 can only be a day ("14.09"), so it is read the other way round.
+   */
+  const short = /^(\d{1,2})[-/.](\d{1,2})\.?$/.exec(value.replace(/\s+/g, ""));
+  if (short) {
+    const [a, b] = [Number(short[1]), Number(short[2])];
+    return a > 12
+      ? pad(String(ctx.year), short[2]!, short[1]!)
+      : pad(String(ctx.year), String(a), String(b));
+  }
+
+  return null;
+}
+
+/** A date that names its own year — the formats read since 2026-09-11. */
+function fullDate(raw: string): string | null {
   const value = raw
     .trim()
     .replace(/\s*(?:оны|он)\s*/g, "-")

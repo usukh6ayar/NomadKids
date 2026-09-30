@@ -1124,9 +1124,7 @@ function UnclaimedEsisStaff() {
             {data.items.map((person, index) => (
               <tr key={person.esisPersonId} className="border-t border-border-soft">
                 <Td className="py-1.5 tabular-nums text-muted">{offset + index + 1}</Td>
-                <Td className="py-1.5 font-medium text-ink">
-                  {person.lastName} {person.firstName}
-                </Td>
+                <Td className="py-1.5 font-medium text-ink">{shortName(person)}</Td>
                 <Td className="py-1.5 text-muted">{person.positionName || "—"}</Td>
                 <Td className="py-1.5 text-muted">{person.isInstructor ? "Багш" : "Ажилтан"}</Td>
               </tr>

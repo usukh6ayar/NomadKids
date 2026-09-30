@@ -1,3 +1,4 @@
+import { GUARDIAN_RELATION_LABEL } from "@kinder/contracts";
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import type { Actor, ActorMembership } from "./actor";
@@ -344,7 +345,44 @@ export class AuthzRepository {
     const guardianGroupIds = guardianGroups.map((group) => group.id);
     const teachingGroupIds = teachingGroups.map((group) => group.id);
 
-    const [teachersOfMyChildren, guardiansOfMyPupils] = await Promise.all([
+    /*
+     * ★ Guardians of the children in these groups, with the child and the
+     * relation — the two things a parent is *named* by in chat (2026-09-30,
+     * the client: "хүүхдийн нэр чатаар байх ёстой, эцэг эхийнх биш").
+     */
+    const guardiansIn = (groupIds: string[]) =>
+      groupIds.length === 0
+        ? Promise.resolve([])
+        : this.prisma.guardianship.findMany({
+            where: {
+              canView: true,
+              deletedAt: null,
+              guardian: { deletedAt: null },
+              child: {
+                deletedAt: null,
+                enrollments: {
+                  some: { groupId: { in: groupIds }, status: "ACTIVE", deletedAt: null },
+                },
+              },
+            },
+            select: {
+              relation: true,
+              guardian: { select: { id: true } },
+              child: {
+                select: {
+                  lastName: true,
+                  firstName: true,
+                  enrollments: {
+                    where: { groupId: { in: groupIds }, status: "ACTIVE", deletedAt: null },
+                    select: { groupId: true },
+                  },
+                },
+              },
+            },
+            take: 2000,
+          });
+
+    const [teachersOfMyChildren, guardiansOfMyPupils, fellowGuardians] = await Promise.all([
       guardianGroupIds.length === 0
         ? Promise.resolve([])
         : this.prisma.groupTeacher.findMany({
@@ -363,53 +401,48 @@ export class AuthzRepository {
               },
             },
           }),
-      teachingGroupIds.length === 0
-        ? Promise.resolve([])
-        : this.prisma.guardianship.findMany({
-            where: {
-              canView: true,
-              deletedAt: null,
-              child: {
-                deletedAt: null,
-                enrollments: {
-                  some: { groupId: { in: teachingGroupIds }, status: "ACTIVE", deletedAt: null },
-                },
-              },
-            },
-            select: {
-              guardian: { select: { id: true, lastName: true, firstName: true } },
-              child: {
-                select: {
-                  enrollments: {
-                    where: { groupId: { in: teachingGroupIds }, status: "ACTIVE", deletedAt: null },
-                    select: { groupId: true },
-                  },
-                },
-              },
-            },
-          }),
+      guardiansIn(teachingGroupIds),
+      /*
+       * ★★ Parent ↔ parent, 2026-09-30: "эцэг эхчүүд хоорондоо … хувь чат
+       * бичиж болно". The other guardians of the actor's children's groups —
+       * the same people already in that group's «эцэг эхчүүд» room, so this
+       * reveals nobody new. Symmetric: B guards a child in G exactly when A
+       * does, so each finds the other.
+       */
+      guardiansIn(guardianGroupIds),
     ]);
 
     const peers = new Map<string, { userId: string; name: string; kindergartenId: string }>();
-
-    const add = (
-      user: { id: string; lastName: string; firstName: string },
-      groupId: string | undefined,
-    ) => {
+    const add = (userId: string, name: string, groupId: string | undefined) => {
       const kindergartenId = groupId ? kindergartenOf.get(groupId) : undefined;
-      if (!kindergartenId || user.id === actor.userId || peers.has(user.id)) return;
-      peers.set(user.id, {
-        userId: user.id,
-        name: `${user.lastName} ${user.firstName}`.trim(),
-        kindergartenId,
-      });
+      if (!kindergartenId || userId === actor.userId) return;
+      const existing = peers.get(userId);
+      if (existing) {
+        // One parent of two children here: both names, once each.
+        if (!existing.name.split(", ").includes(name)) existing.name += `, ${name}`;
+        return;
+      }
+      peers.set(userId, { userId, name, kindergartenId });
     };
 
     for (const row of teachersOfMyChildren) {
-      add(row.membership.user, row.groupId);
+      const user = row.membership.user;
+      add(user.id, `${user.lastName} ${user.firstName}`.trim(), row.groupId);
     }
-    for (const row of guardiansOfMyPupils) {
-      add(row.guardian, row.child.enrollments[0]?.groupId);
+    /*
+     * A guardian is named by their child: "Г.Батбаяр — ээж". A teacher does
+     * not know Ганболд Сарнай; they know Батбаяр's mother.
+     */
+    for (const row of [...guardiansOfMyPupils, ...fellowGuardians]) {
+      const child = row.child;
+      const initial = child.lastName.trim().slice(0, 1).toLocaleUpperCase("mn-MN");
+      const childName = initial ? `${initial}.${child.firstName.trim()}` : child.firstName.trim();
+      const relation = GUARDIAN_RELATION_LABEL[row.relation] ?? "асран хамгаалагч";
+      add(
+        row.guardian.id,
+        `${childName} — ${relation.toLocaleLowerCase("mn-MN")}`,
+        child.enrollments[0]?.groupId,
+      );
     }
 
     return [...peers.values()];
