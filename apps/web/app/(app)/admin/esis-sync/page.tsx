@@ -16,6 +16,7 @@ import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { formatRelative } from "@/lib/format";
 import { PageHeader } from "@/components/shell/app-shell";
+import { Disclosure } from "@/components/ui/disclosure";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -258,7 +259,14 @@ function EsisSyncPanel() {
         </div>
       </section>
 
-      <EsisCoverageSection kindergartenId={kindergartenId} />
+      {/*
+        ★ Folded — 2026-09-29. The 84-service matrix was most of an 11 000px
+        page, and it is a report for the ministry, not what a director opens
+        this screen to do. Native `<details>`: find-in-page still reaches it.
+      */}
+      <Disclosure title="Сервисийн ашиглалт" hint="ЭСИС-ийн 84 сервисийн тайлан">
+        <EsisCoverageSection kindergartenId={kindergartenId} />
+      </Disclosure>
 
       <section aria-labelledby="esis-sync-history-heading">
         <SectionHeader id="esis-sync-history-heading" title="Синкийн түүх" />

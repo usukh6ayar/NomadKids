@@ -157,7 +157,7 @@ function Reports() {
         {/* ★ "Тайлан" — 2026-09-16, the client's word. It is the name of the
             screen in the sidebar and on the dashboard tile that opens it;
             "Судалгааны мэдээлэл" named one of the four panels below. */}
-        <h1 className="min-w-0 flex-1 text-display font-semibold leading-heading tracking-[-0.02em] text-ink">
+        <h1 className="min-w-0 flex-1 text-heading font-semibold leading-heading sm:text-display tracking-[-0.02em] text-ink">
           Тайлан
         </h1>
       </div>

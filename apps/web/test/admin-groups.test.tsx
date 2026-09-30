@@ -135,7 +135,8 @@ describe("the group list", () => {
     await screen.findByRole("table", { name: "Бүлгүүдийн жагсаалт" });
     expect(screen.getByRole("button", { name: /ESIS татах/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Бүлэг нэмэх/ })).toBeInTheDocument();
-    expect(screen.getByText(/Нэгдсэн журмаар шинэчлэгдсэн: —/)).toBeInTheDocument();
+    // A sync line only after a pull; "— " before one said nothing (2026-09-29).
+    expect(screen.queryByText(/Нэгдсэн журмаар шинэчлэгдсэн/)).toBeNull();
     expect(screen.getByText(/Нийт/).textContent).toMatch(/Нийт 1 бүлэг/);
   });
 

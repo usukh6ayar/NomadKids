@@ -297,7 +297,7 @@ export default function NotificationsPage() {
           <p className="text-caption font-bold uppercase tracking-[0.12em] text-primary">
             Харилцаа холбоо
           </p>
-          <h1 className="mt-0.5 text-heading font-extrabold leading-tight tracking-tight text-ink">
+          <h1 className="mt-0.5 text-heading font-bold leading-heading text-ink sm:text-display">
             {tab === "news" ? "Мэдээ" : "Судалгаа"}
           </h1>
           <p className="mt-1 text-caption leading-5 text-muted sm:text-body">

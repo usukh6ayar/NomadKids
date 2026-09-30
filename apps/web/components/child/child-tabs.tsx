@@ -108,14 +108,17 @@ export function ChildTabs({ tabs, paramName = "tab" }: { tabs: ChildTab[]; param
       */}
       <TabsPrimitive.List
         aria-label="Хүүхдийн мэдээллийн хэсгүүд"
-        className="-mx-4 flex gap-1 overflow-x-auto rounded-control bg-sunken p-1 px-4 [scrollbar-width:none] sm:mx-0 sm:px-1 [&::-webkit-scrollbar]:hidden"
+        // ★ Two columns on a phone — 2026-09-29. A scrolling strip with its
+        // scrollbar hidden cut the fourth tab to "Суралцс…" and gave no hint
+        // there was more; four tabs fit in a 2×2 grid at 390px.
+        className="grid grid-cols-2 gap-1 rounded-control bg-sunken p-1 sm:flex"
       >
         {tabs.map((tab) => (
           <TabsPrimitive.Trigger
             key={tab.value}
             value={tab.value}
             className={cn(
-              "relative min-h-[44px] shrink-0 whitespace-nowrap rounded-control px-3.5 text-body font-medium transition-all duration-150 sm:min-w-0 sm:flex-1",
+              "relative min-h-[44px] min-w-0 truncate whitespace-nowrap rounded-control px-3 text-body font-medium transition-all duration-150 sm:flex-1",
               "text-muted hover:text-ink",
               "data-[state=active]:bg-surface data-[state=active]:font-semibold data-[state=active]:text-primary-strong data-[state=active]:shadow-sm",
             )}

@@ -131,7 +131,7 @@ describe("the director's roster", () => {
       "Регистр",
       "Хүйс",
       "Бүлэг",
-      "Хөнгөлөлт",
+      // Хөнгөлөлт only once «ESIS Хөнгөлөлттэй» has been pulled (2026-09-29).
       "ESIS төлөв",
       "Үйлдэл",
     ]);
@@ -140,9 +140,8 @@ describe("the director's roster", () => {
     const row = within(table).getByRole("row", { name: /Алтанзул1/ });
     expect(within(row).getByText("УР23262971")).toBeInTheDocument();
     expect(within(row).getByText(SEX_LABEL.FEMALE!)).toBeInTheDocument();
-    expect(within(row).getByText("Ахлах А")).toBeInTheDocument();
-    // Discount reads "—" until ESIS's discounts are pulled; ESIS state is the row's.
-    expect(within(row).getAllByText("—")).toHaveLength(1);
+    expect(within(row).getByText("Ахлах А бүлэг")).toBeInTheDocument();
+    expect(within(row).queryByText("—")).toBeNull();
     expect(row).toHaveTextContent("Холбогдсон");
   });
 
@@ -151,9 +150,10 @@ describe("the director's roster", () => {
     renderWithProviders(<ChildrenPage />);
 
     await screen.findByRole("table", { name: "Суралцагчийн жагсаалт" });
-    const summary = screen.getByText(/суралцагч ·/).closest("p")!;
-    expect(summary.textContent).toMatch(/Нийт 526 суралцагч · Хөнгөлөлттэй — · Хөнгөлөлтгүй —/);
-    expect(screen.getByText(/Нэгдсэн журмаар шинэчлэгдсэн: —/)).toBeInTheDocument();
+    // No dashes for figures nobody has pulled yet (2026-09-29).
+    const summary = document.querySelector('p[aria-live="polite"]')!;
+    expect(summary.textContent?.trim()).toMatch(/^Нийт 526 суралцагч$/);
+    expect(screen.queryByText(/Нэгдсэн журмаар шинэчлэгдсэн/)).toBeNull();
     // The discount filter is drawn but cannot filter anything yet.
     expect(screen.getByRole("combobox", { name: "Хөнгөлөлт" })).toBeDisabled();
   });

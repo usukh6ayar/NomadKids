@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/card";
 import { LoadingState } from "@/components/ui/states";
 import { EsisRawResponse, EsisResponseValues } from "./esis-response";
 import { ESIS_WRITE_SERVICE_LABEL } from "./esis-group-write";
-import { fullName, groupLabel } from "@/lib/format";
+import { fullName, groupLabel, formatDateTime } from "@/lib/format";
 
 const STATE_LABEL: Record<string, string> = {
   PREPARED: "Хүлээгдэж байна",
@@ -109,9 +109,7 @@ export function EsisWriteQueue(props: { kindergartenId: string }) {
           <dl className="grid gap-3 border-t border-border-soft pt-4 sm:grid-cols-2">
             <div>
               <dt className="text-caption text-muted">Үүсгэсэн</dt>
-              <dd className="mt-0.5 text-body text-ink">
-                {new Date(item.createdAt).toLocaleString("mn-MN")}
-              </dd>
+              <dd className="mt-0.5 text-body text-ink">{formatDateTime(item.createdAt)}</dd>
             </div>
             {item.approvedBy ? (
               <div>
@@ -122,9 +120,7 @@ export function EsisWriteQueue(props: { kindergartenId: string }) {
             {item.sentAt ? (
               <div>
                 <dt className="text-caption text-muted">Илгээсэн</dt>
-                <dd className="mt-0.5 text-body text-ink">
-                  {new Date(item.sentAt).toLocaleString("mn-MN")}
-                </dd>
+                <dd className="mt-0.5 text-body text-ink">{formatDateTime(item.sentAt)}</dd>
               </div>
             ) : null}
           </dl>

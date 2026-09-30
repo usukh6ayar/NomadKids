@@ -31,7 +31,13 @@ import { cn } from "@/lib/utils";
  */
 export function Tabs({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div role="tablist" aria-label={label} className="flex gap-6 border-b border-border">
+    // `flex-wrap`: a fourth tab wraps rather than being cut to "Бусад то…"
+    // inside an overflow box (2026-09-29).
+    <div
+      role="tablist"
+      aria-label={label}
+      className="flex flex-wrap gap-x-6 border-b border-border"
+    >
       {children}
     </div>
   );

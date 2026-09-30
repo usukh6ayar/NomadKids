@@ -51,6 +51,21 @@ export function formatDate(value: string | Date | null | undefined): string {
 }
 
 /**
+ * `2026.09.29 17:02` — a moment, the same shape as `formatDate`.
+ *
+ * ★ Not `toLocaleString("mn-MN")`: a runtime without Mongolian locale data
+ * falls back to en-US, which is how ESIS panels came to say "9/29/2026,
+ * 5:02:36 PM" (2026-09-29). Same reason as `WEEKDAYS` below.
+ */
+export function formatDateTime(value: string | Date | null | undefined): string {
+  const date = toDate(value);
+  if (!date) return "—";
+  const h = String(date.getHours()).padStart(2, "0");
+  const min = String(date.getMinutes()).padStart(2, "0");
+  return `${formatDate(date)} ${h}:${min}`;
+}
+
+/**
  * `Пүрэв` — the weekday, written out rather than asked of `Intl`.
  *
  * ★ `toLocaleDateString("mn-MN", { weekday: "long" })` is not stable across

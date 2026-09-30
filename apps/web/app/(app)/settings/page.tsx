@@ -37,6 +37,7 @@ import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { EsisRowValues, esisSampleColumns } from "@/components/esis/esis-rows";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
+import { ApiError } from "@/lib/api/client";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useLogout, useSession } from "@/lib/auth/session";
 import { buildEsisDemoProfile, type EsisDemoField } from "@/lib/esis/demo-profile";
@@ -49,7 +50,7 @@ import { TabButton, Tabs } from "@/components/ui/tabs";
 import { TONE_SURFACE } from "@/components/ui/tone";
 import { useToast } from "@/components/ui/toast";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
-import { fullName, groupLabel } from "@/lib/format";
+import { fullName, groupLabel, formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
@@ -287,7 +288,16 @@ function EsisProfileSection() {
     return (
       <section aria-label="Ажлын мэдээлэл">
         <Card pad="compact" tone="sun">
-          <p className="font-medium text-ink">Ажлын мэдээлэл түр татагдсангүй.</p>
+          {/*
+            ★ A 409 is ESIS answering "no such person here", not an outage —
+            "түр" (for now) told a director to wait for something that would
+            never arrive (2026-09-29).
+          */}
+          <p className="font-medium text-ink">
+            {esisQuery.error instanceof ApiError && esisQuery.error.status === 409
+              ? "ESIS-ээс таны ажлын бүртгэл олдсонгүй."
+              : "Ажлын мэдээлэл түр татагдсангүй."}
+          </p>
           <p className="mt-1 text-body text-muted">{errorMessage(esisQuery.error)}</p>
         </Card>
       </section>
@@ -312,7 +322,7 @@ function EsisProfileSection() {
               </h2>
               <p className="mt-0.5 text-caption text-muted">ESIS-ээс ирсэн ажлын мэдээлэл</p>
               <p className="mt-2 text-caption text-muted">
-                Сүүлд татсан: {new Date(live.syncedAt).toLocaleString("mn-MN")}
+                Сүүлд татсан: {formatDateTime(live.syncedAt)}
               </p>
             </div>
           </div>
@@ -424,7 +434,14 @@ function EsisFieldGroup({
  */
 function ProfileCard() {
   const { session } = useSession();
-  const { group } = useMyGroup();
+  /*
+   * ★ A teacher's own group only — 2026-09-29. `GET /groups` is staff-only,
+   * so a guardian's call answered 404, and an administrator (who sees every
+   * group) got the first one printed on their card as if it were theirs.
+   */
+  const isTeacher = Boolean(session?.memberships?.some((m) => m.role === "TEACHER"));
+  const { group: myGroup } = useMyGroup({ enabled: isTeacher });
+  const group = isTeacher ? myGroup : null;
   const [editing, setEditing] = useState(false);
   const { data, isLoading, isError, error } = useQuery({
     queryKey: qk.profile(),
@@ -694,10 +711,15 @@ function StaffProfileCard() {
 
   const [form, setForm] = useState<Record<string, string> | null>(null);
   const fields = [
-    { key: "specialization", label: "Мэргэжил", placeholder: "СӨБ-ийн багш" },
-    { key: "qualification", label: "Мэргэшлийн зэрэг", placeholder: "Заах аргач" },
-    { key: "education", label: "Төгссөн сургууль", placeholder: "МУБИС" },
-    { key: "phone", label: "Утас", placeholder: "99001234" },
+    /*
+      ★ "Жишээ: …" — 2026-09-29. "СӨБ-ийн багш" and "99001234" alone in a
+      field read as a value already saved, and a teacher took their card for
+      filled in.
+    */
+    { key: "specialization", label: "Мэргэжил", placeholder: "Жишээ: СӨБ-ийн багш" },
+    { key: "qualification", label: "Мэргэшлийн зэрэг", placeholder: "Жишээ: Заах аргач" },
+    { key: "education", label: "Төгссөн сургууль", placeholder: "Жишээ: МУБИС" },
+    { key: "phone", label: "Утас", placeholder: "Жишээ: 99001234" },
   ] as const;
 
   const current =

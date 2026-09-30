@@ -1,5 +1,7 @@
 "use client";
 
+import { formatDate } from "@/lib/format";
+
 import Link from "next/link";
 import { ArrowUpRight, ChevronDown } from "lucide-react";
 import { Fragment, useId, useState, type ReactNode } from "react";
@@ -190,7 +192,9 @@ export function EsisRowValues({
                   if (!isPrimary) {
                     return (
                       <Td key={field.name} data-label={field.label}>
-                        {row[field.name] || <span className="text-faint">Бөглөөгүй</span>}
+                        {esisDisplayValue(row[field.name]) || (
+                          <span className="text-faint">Бөглөөгүй</span>
+                        )}
                       </Td>
                     );
                   }
@@ -310,35 +314,85 @@ function EsisRecordFields({
   href?: string | null;
   linkField?: string;
 }) {
-  const primary = primaryField(columns, row, linkField);
+  /*
+   * ★ One record about one person — 2026-09-29, from a walk through the
+   * child's page as a director. It opened on "Бүртгэлийн дугаар
+   * 100005421160086" as its title, then the institution code and the child's
+   * ESIS number: three ids nobody reads, above the answer. They are dropped
+   * here; a list keeps them, where telling rows apart is the point.
+   *
+   * ★★ `infoFlag1..13` and friends are labelled by their own key because ESIS
+   * publishes no legend (`esis.fields.ts`, `studentStatistics`) — guessing one
+   * would put a false fact about a family on screen. So they are not deleted
+   * either: they fold under a line that says what they are.
+   */
+  const useful = columns.filter((field) => !TECHNICAL_ID.test(field.name));
+  const undocumented = useful.filter((field) => UNDOCUMENTED_LABEL.test(field.label));
+  const documented = useful.filter((field) => !UNDOCUMENTED_LABEL.test(field.label));
+  const idOnlyTitle = useful.length !== columns.length;
+  const primary = idOnlyTitle ? undefined : primaryField(columns, row, linkField);
   const hasSurname = primary?.name === "firstName" && Boolean(row.lastName);
-  const facts = columns.filter(
+  const facts = documented.filter(
     (field) => field.name !== primary?.name && !(hasSurname && field.name === "lastName"),
   );
 
   return (
     <article className="min-w-0 overflow-hidden rounded-row border border-border bg-surface">
-      <div className="border-b border-border-soft bg-sky/30 px-4 py-4 sm:px-5">
-        <p className="text-caption font-medium text-sky-ink">{primary?.label ?? "ЭСИС бүртгэл"}</p>
-        <h3 className="mt-1 break-words text-title font-semibold text-ink">
-          <RecordTitle row={row} field={primary} fallback="ЭСИС бүртгэл" />
-        </h3>
-        {href && primary?.name === linkField ? (
-          <Link
-            href={href}
-            className="mt-2 inline-flex items-center gap-1 text-caption font-semibold text-primary hover:underline"
-          >
-            Бүртгэл нээх <ArrowUpRight size={16} aria-hidden />
-          </Link>
-        ) : null}
-      </div>
+      {primary ? (
+        <div className="border-b border-border-soft bg-sky/30 px-4 py-4 sm:px-5">
+          <p className="text-caption font-medium text-sky-ink">{primary.label}</p>
+          <h3 className="mt-1 break-words text-title font-semibold text-ink">
+            <RecordTitle row={row} field={primary} fallback="ЭСИС бүртгэл" />
+          </h3>
+          {href && primary.name === linkField ? (
+            <Link
+              href={href}
+              className="mt-2 inline-flex items-center gap-1 text-caption font-semibold text-primary hover:underline"
+            >
+              Бүртгэл нээх <ArrowUpRight size={16} aria-hidden />
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
       {facts.length > 0 ? (
         <div className="p-4 sm:p-5">
           <RecordFacts columns={facts} row={row} />
         </div>
       ) : null}
+      {undocumented.length > 0 ? (
+        <details className="border-t border-border-soft px-4 py-3 sm:px-5">
+          <summary className="cursor-pointer text-body font-medium text-muted">
+            ESIS-ийн тайлбаргүй {undocumented.length} код
+          </summary>
+          <p className="mt-2 text-caption text-muted">
+            ESIS эдгээр талбарын утгыг тайлбарлаагүй тул нэрийг нь таамаглаж бичээгүй.
+          </p>
+          <div className="mt-3">
+            <RecordFacts columns={undocumented} row={row} />
+          </div>
+        </details>
+      ) : null}
     </article>
   );
+}
+
+/** Keys that identify a record rather than say anything about it. */
+const TECHNICAL_ID = /^(institutionId|personId|student[A-Za-z]*Id)$/;
+/** Labels `esis.fields.ts` gives fields ESIS never explained. */
+const UNDOCUMENTED_LABEL = /^(Тэмдэглэгээ|Тэмдэглэл|Тоон утга) \d+$/;
+
+/**
+ * An ESIS value as a person reads it: `Y`/`true` → Тийм, `N`/`false` → Үгүй,
+ * an ISO date → `2026.08.27`. Everything else as sent.
+ */
+export function esisDisplayValue(value: string | null | undefined): string {
+  if (value === null || value === undefined) return "";
+  const v = value.trim();
+  if (/^(y|true)$/i.test(v)) return "Тийм";
+  if (/^(n|false)$/i.test(v)) return "Үгүй";
+  if (/^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:?\d{2})?)?$/.test(v))
+    return formatDate(v.slice(0, 10));
+  return v;
 }
 
 function RecordFacts({
@@ -352,17 +406,18 @@ function RecordFacts({
     <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-3">
       {columns.map((field) => {
         const value = row[field.name];
+        const shown = esisDisplayValue(value);
         return (
           <div key={field.name} className="min-w-0">
             <dt className="text-caption text-muted">{field.label}</dt>
             <dd
               className={
-                value
+                shown
                   ? "mt-1 break-words text-body font-medium text-ink"
                   : "mt-1 text-body text-faint"
               }
             >
-              {value || "Бөглөөгүй"}
+              {esisDisplayValue(value) || "Бөглөөгүй"}
             </dd>
           </div>
         );

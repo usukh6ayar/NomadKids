@@ -256,6 +256,9 @@ function StaffSection({
   const data = users.data;
   const offset = (page - 1) * pageSize;
   const headingId = `staff-${kind}-heading`;
+  // Columns with nothing in them on this page are not drawn (2026-09-29).
+  const showRegister = Boolean(data?.items.some((user) => user.registerNumber));
+  const showPhone = Boolean(data?.items.some((user) => user.phone));
 
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
@@ -269,15 +272,21 @@ function StaffSection({
               <Download size={16} aria-hidden /> Excel
             </a>
           </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={!primaryKindergartenId || esisRefresh.isPending}
-            onClick={() => esisRefresh.mutate()}
-          >
-            <RefreshCw size={16} aria-hidden />{" "}
-            {esisRefresh.isPending ? "Татаж байна…" : "ESIS татах"}
-          </Button>
+          {/*
+            ★ Once, on the first section — 2026-09-29. Both sections drew it
+            and both refreshed the same whole-kindergarten roster.
+          */}
+          {teacher ? (
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={!primaryKindergartenId || esisRefresh.isPending}
+              onClick={() => esisRefresh.mutate()}
+            >
+              <RefreshCw size={16} aria-hidden />{" "}
+              {esisRefresh.isPending ? "Татаж байна…" : "ESIS татах"}
+            </Button>
+          ) : null}
           <Button size="sm" onClick={() => onInvite(teacher ? "TEACHER" : "COOK")}>
             <Plus size={16} aria-hidden /> {teacher ? "Багш нэмэх" : "Ажилтан нэмэх"}
           </Button>
@@ -382,10 +391,10 @@ function StaffSection({
               <tr>
                 <Th className="w-12 rounded-tl-card py-2">№</Th>
                 <Th className="py-2">{teacher ? "Багшийн нэр" : "Ажилтны нэр"}</Th>
-                <Th className="py-2">Регистр</Th>
+                {showRegister ? <Th className="py-2">Регистр</Th> : null}
                 <Th className="py-2">Албан тушаал</Th>
                 <Th className="py-2">{teacher ? "Хариуцсан бүлэг" : "Ангилал"}</Th>
-                <Th className="py-2">Утас</Th>
+                {showPhone ? <Th className="py-2">Утас</Th> : null}
                 <Th className="w-12 rounded-tr-card py-2">
                   <span className="sr-only">Үйлдэл</span>
                 </Th>
@@ -406,7 +415,11 @@ function StaffSection({
                         {teacher ? shortName(user) : fullName(user)}
                       </button>
                     </Td>
-                    <Td className="py-1.5 tabular-nums text-muted">{user.registerNumber ?? "—"}</Td>
+                    {showRegister ? (
+                      <Td className="py-1.5 tabular-nums text-muted">
+                        {user.registerNumber ?? "—"}
+                      </Td>
+                    ) : null}
                     <Td className="py-1.5 text-muted">
                       {membership ? (membership.position ?? ROLE_LABEL[membership.role]) : "—"}
                     </Td>
@@ -419,7 +432,9 @@ function StaffSection({
                           ? STAFF_CATEGORY_LABEL[membership.staffCategory]
                           : "—"}
                     </Td>
-                    <Td className="py-1.5 tabular-nums text-muted">{user.phone || "—"}</Td>
+                    {showPhone ? (
+                      <Td className="py-1.5 tabular-nums text-muted">{user.phone || "—"}</Td>
+                    ) : null}
                     <Td className="py-1 text-right">
                       <RowMenu
                         ariaLabel={`${fullName(user)} — үйлдэл`}

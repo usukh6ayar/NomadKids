@@ -69,9 +69,11 @@ function enrollmentAgeBandLabel(group: Enrollment["group"]): string | null {
 
 function groupLabel(enrollment: Enrollment | null | undefined): string {
   if (!enrollment?.group) return "—";
-  return [enrollment.group.name, enrollmentAgeBandLabel(enrollment.group)]
-    .filter(Boolean)
-    .join(" · ");
+  const name = capitalize(enrollment.group.name);
+  const band = enrollmentAgeBandLabel(enrollment.group);
+  // "ахлах бүлэг · Ахлах бүлэг" said one thing twice (2026-09-29).
+  const same = band && band.toLocaleLowerCase("mn-MN") === name.toLocaleLowerCase("mn-MN");
+  return [name, same ? null : band].filter(Boolean).join(" · ");
 }
 
 function schoolYearLabel(value: string | null | undefined): string {
@@ -191,13 +193,20 @@ export function ChildGeneralInfo({
         and the administrator's service lists and on nobody else's, so the
         scoped catalog simply omits it.
       */}
-      <EsisDataPanel
-        resource="studentInfo"
-        title="Сурагчийн ерөнхий мэдээлэл"
-        description="ESIS дэх энэ хүүхдийн бүртгэл"
-        params={{ personRegNumber: child.nationalId ?? undefined }}
-        askForParams={false}
-      />
+      {/*
+        ★★★★ Not drawn at all without a регистр — 2026-09-29. It rendered an
+        empty "Мэдээлэл алга байна" box and a disabled Хайх on every such
+        child; with ESIS-imported children that was all of them.
+      */}
+      {child.nationalId ? (
+        <EsisDataPanel
+          resource="studentInfo"
+          title="Сурагчийн ерөнхий мэдээлэл"
+          description="ESIS дэх энэ хүүхдийн бүртгэл"
+          params={{ personRegNumber: child.nationalId }}
+          askForParams={false}
+        />
+      ) : null}
     </div>
   );
 }
@@ -343,7 +352,7 @@ function EnrollmentCard({
         <InfoRow label="Одоогийн цэцэрлэг">{active ? kindergarten : "—"}</InfoRow>
         <InfoRow label="Бүлэг">{groupLabel(active)}</InfoRow>
         <InfoRow label="Ангийн багш">{active ? teacherLabel(archive) : "—"}</InfoRow>
-        <InfoRow label="Элссэн огноо">{formatDate(active?.startedOn)}</InfoRow>
+        <InfoRow label="Бүлэгт орсон огноо">{formatDate(active?.startedOn)}</InfoRow>
         <InfoRow label="Хичээлийн жил">{schoolYearLabel(active?.schoolYear?.name)}</InfoRow>
         <InfoRow label="Төлөв" last>
           {active ? <Badge tone="mint">Суралцаж байгаа</Badge> : <Badge>Бүртгэлгүй</Badge>}

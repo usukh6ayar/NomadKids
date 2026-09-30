@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDateTime } from "@/lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { CloudDownload, Clock3, Database, Search } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
@@ -400,7 +401,7 @@ export function EsisDataPanel({
       // No token: re-read our own catalog, which is what is actually shown.
       await catalog.refetch();
     }
-    setPulledAt(new Date().toLocaleString("mn-MN"));
+    setPulledAt(formatDateTime(new Date()));
   }
 
   function submitRegisterSearch(event: FormEvent<HTMLFormElement>) {
@@ -433,9 +434,9 @@ export function EsisDataPanel({
     read.data?.status !== "SUCCEEDED"
       ? null
       : read.data.source === "STORE" && read.data.syncedAt
-        ? new Date(read.data.syncedAt).toLocaleString("mn-MN")
+        ? formatDateTime(read.data.syncedAt)
         : read.dataUpdatedAt
-          ? new Date(read.dataUpdatedAt).toLocaleString("mn-MN")
+          ? formatDateTime(new Date(read.dataUpdatedAt))
           : (pulledAt ?? null);
 
   return (
@@ -465,14 +466,13 @@ export function EsisDataPanel({
             ) : null}
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {read.data?.status === "SUCCEEDED" ? (
-              <Badge tone={read.data.source === "STORE" ? "sky" : "mint"}>
-                {read.data.source === "STORE" ? "Синк хийсэн" : "Шууд ирсэн"}
-              </Badge>
-            ) : null}
-            {(rows.length > 0 || read.data?.status === "SUCCEEDED") && (
-              <Badge tone="sky">{rows.length} бичлэг</Badge>
-            )}
+            {/*
+              ★ No "Шууд ирсэн / Синк хийсэн" badge, and no "1 бичлэг" —
+              2026-09-29. Where the rows came from is an operator's question
+              (`/platform/[id]/esis` still answers it); a count of one says
+              nothing the record below does not.
+            */}
+            {rows.length > 1 ? <Badge tone="sky">{rows.length} бичлэг</Badge> : null}
             {!registerSearch ? (
               <Button
                 size="sm"

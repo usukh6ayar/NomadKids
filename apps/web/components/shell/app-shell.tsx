@@ -882,6 +882,7 @@ export function AppShell({
    */
   const hasDedicatedChatNavigation = resolvedTheme === "teacher" || resolvedTheme === "admin";
   const isChatPage = pathname === "/chat";
+  const isAttendanceRegister = /^\/(groups\/[^/]+\/)?attendance(\/|$)/.test(pathname ?? "");
 
   // Every role gets the sidebar from `lg` up; only the bottom bar is
   // role-dependent (mobile-only, all three variants).
@@ -1020,7 +1021,8 @@ export function AppShell({
                   "w-full",
                   isChatPage
                     ? "h-[calc(100dvh-4.25rem)] overflow-hidden pb-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom))] lg:h-[calc(100dvh-4rem)] lg:max-w-none lg:pb-0"
-                    : "mx-auto max-w-[1920px] px-4 pb-24 pt-4 sm:px-6 lg:px-7 lg:pb-16 lg:pt-6 2xl:px-8",
+                    : // `pb-40` on a phone: the last row scrolls clear of the chat button.
+                      "mx-auto max-w-[1920px] px-4 pb-40 pt-4 sm:px-6 lg:px-7 lg:pb-24 lg:pt-6 2xl:px-8",
                 )}
               >
                 {children}
@@ -1042,8 +1044,15 @@ export function AppShell({
           their /chat page, which is the chat itself. Kitchen and finance
           workspaces intentionally have no communications surface.
         */}
+            {/*
+              ★★ Except on a phone's attendance register — 2026-09-29. There
+              the button sat on the tick circles down the right edge, the very
+              thing it was first withdrawn for; chat is still a tab away.
+            */}
             {!isSupportWorkspace && !(hasDedicatedChatNavigation && isChatPage) ? (
-              <ChatWidget />
+              <div className={cn("contents", isAttendanceRegister && "max-lg:hidden")}>
+                <ChatWidget />
+              </div>
             ) : null}
 
             <MobileMenuDrawer
@@ -2222,10 +2231,24 @@ function PillBottomBar({
                 {item.badge === "unread" ? <UnreadDot /> : null}
                 {item.badge === "surveys" ? <SurveyUnreadDot /> : null}
               </span>
-              <span className="sr-only">{item.label}</span>
+              {/*
+                ★ Drawn again, small — 2026-09-29. Five bare glyphs (📄 📊 🔍)
+                left a teacher guessing which one was the register; the
+                2026-09-25 drawing had no words, and a walk-through as a user
+                found that the one thing it could not survive.
+              */}
+              <span
+                className={cn(
+                  "max-w-full truncate text-caption leading-tight",
+                  active ? "font-semibold text-primary" : "text-muted",
+                )}
+              >
+                {item.label}
+              </span>
             </>
           );
-          const className = "flex min-h-9 flex-1 items-center justify-center rounded-card";
+          const className =
+            "flex min-h-9 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-card py-0.5";
 
           return item.href ? (
             <Link
