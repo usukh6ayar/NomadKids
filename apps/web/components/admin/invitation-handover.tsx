@@ -28,8 +28,11 @@ export function InvitationHandover({
   subtitle,
   onClose,
   path = "/invitation",
+  label,
   validity = "Урилга 7 хоног хүчинтэй.",
 }: {
+  /** Printed right above the QR — whose code this is. */
+  label?: string;
   token: string;
   title: string;
   subtitle: string;
@@ -68,7 +71,18 @@ export function InvitationHandover({
       </div>
 
       <div className="grid place-items-center rounded-row border border-border bg-canvas p-4">
-        <canvas ref={canvasRef} aria-label="Холбоосын QR код" role="img" />
+        {/*
+          ★ Whose code this is, directly above it — 2026-09-30. A QR held up
+          to a parent's phone is the one moment the name has to be on it.
+        */}
+        {label ? (
+          <p className="mb-2 text-center text-title font-bold leading-heading text-ink">{label}</p>
+        ) : null}
+        <canvas
+          ref={canvasRef}
+          aria-label={label ? `${label} — QR код` : "Холбоосын QR код"}
+          role="img"
+        />
         <p className="mt-2 text-center text-caption text-muted">Утсаараа уншуулна уу. {validity}</p>
       </div>
 

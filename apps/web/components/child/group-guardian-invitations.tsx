@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { ModalOverlay } from "@/components/ui/modal-overlay";
 import { FormError } from "@/components/ui/states";
 import { BRAND } from "@/lib/vocabulary";
-import { fullName } from "@/lib/format";
+import { fullName, groupLabel } from "@/lib/format";
 
 /**
  * One press, one invitation per child, and a sheet the teacher can print.
@@ -186,6 +186,7 @@ function Sheet({
               <InvitationCard
                 key={item.childId}
                 name={`${fullName(item)}`}
+                groupName={groupName}
                 token={item.invitationToken}
               />
             ))}
@@ -199,6 +200,11 @@ function Sheet({
 /**
  * One child's card: their name, a QR, and the link written out.
  *
+ * ★ The name sits **above** the code, large — 2026-09-30, the client: "олноор
+ * нь урихад хэний QR гэдгийг QR-ын дээд талд нь хүүхдийн нэр байхаар". Beside
+ * it, in a row, the name was the thing a teacher sorting thirty cards had to
+ * hunt for; on top, it is what the eye lands on before the code.
+ *
  * ★ The URL in text beneath the code is not redundant. A parent whose camera
  * will not read a QR — an old phone, a cracked lens, a dim corridor — can type
  * it, and a teacher reading it down a telephone needs the characters.
@@ -206,7 +212,15 @@ function Sheet({
  * ★★ `break-inside: avoid` so a card is never split across two sheets of
  * paper. Half a QR is not a shorter QR.
  */
-function InvitationCard({ name, token }: { name: string; token: string }) {
+function InvitationCard({
+  name,
+  groupName,
+  token,
+}: {
+  name: string;
+  groupName: string;
+  token: string;
+}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // `window.location.origin`, so the printed link works on whichever host it
@@ -219,20 +233,14 @@ function InvitationCard({ name, token }: { name: string; token: string }) {
   }, [url]);
 
   return (
-    <li className="flex items-center gap-3 rounded-card border border-border p-3 [break-inside:avoid]">
-      <canvas
-        ref={canvasRef}
-        role="img"
-        aria-label={`${name} — урилгын QR код`}
-        className="shrink-0"
-      />
-      <span className="min-w-0 flex-1">
-        <span className="block text-lead font-semibold text-ink">{name}</span>
-        <span className="mt-1 block text-caption leading-relaxed text-muted">
-          Утсаараа уншуулна уу. 7 хоног хүчинтэй.
-        </span>
-        <span className="mt-1 block break-all text-caption text-muted">{url}</span>
+    <li className="flex flex-col items-center gap-2 rounded-card border border-border p-4 text-center [break-inside:avoid]">
+      <span className="block text-title font-bold leading-heading text-ink">{name}</span>
+      <span className="-mt-1 block text-caption text-muted">{groupLabel(groupName)}</span>
+      <canvas ref={canvasRef} role="img" aria-label={`${name} — урилгын QR код`} />
+      <span className="block text-caption leading-relaxed text-muted">
+        Утсаараа уншуулна уу. 7 хоног хүчинтэй.
       </span>
+      <span className="block break-all text-caption text-muted">{url}</span>
     </li>
   );
 }
