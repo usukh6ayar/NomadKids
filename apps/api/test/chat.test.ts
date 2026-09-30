@@ -737,3 +737,80 @@ describe("chat photographs", () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 2026-09-30 — the client: "хүүхдийн нэр чатаар байх ёстой, эцэг эхийнх биш …
+// эцэг эхчүүд хоорондоо … хувь чат бичиж болно"
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("private rooms name a parent by their child", () => {
+  /** A second family in group A, and a third in another group of A's kindergarten. */
+  async function families() {
+    const secondParent = await createUser({ lastName: "Батаа", firstName: "Сарнай" });
+    await createMembership(secondParent.id, a.kindergarten.id, "PARENT");
+    const secondChild = await createChild(a.kindergarten.id, {
+      lastName: "Дорж",
+      firstName: "Номин",
+    });
+    await enrollChild(a.kindergarten.id, secondChild.id, a.group.id, a.schoolYear.id);
+    await linkGuardian(a.kindergarten.id, secondChild.id, secondParent.id);
+
+    const otherGroup = await createGroup(a.kindergarten.id, a.schoolYear.id, "Бусад бүлэг");
+    const outsider = await createUser({ lastName: "Гантөмөр", firstName: "Оюун" });
+    await createMembership(outsider.id, a.kindergarten.id, "PARENT");
+    const outsiderChild = await createChild(a.kindergarten.id, { firstName: "Тэмүүлэн" });
+    await enrollChild(a.kindergarten.id, outsiderChild.id, otherGroup.id, a.schoolYear.id);
+    await linkGuardian(a.kindergarten.id, outsiderChild.id, outsider.id);
+
+    return {
+      secondParent,
+      second: await login(app, secondParent.username!),
+      outsider,
+      outsiderSession: await login(app, outsider.username!),
+    };
+  }
+
+  it("shows a teacher the child's name on a parent's room, not the parent's", async () => {
+    const res = await authed(request(server()).get("/v1/chat/rooms"), teacherA);
+    const direct = res.body.find(
+      (r: { key: string }) => r.key === directRoom(a.teacherUser.id, a.parentUser.id),
+    );
+
+    expect(direct.name).toBe("Г.Батбаяр — ээж");
+    expect(direct.name).not.toContain(a.parentUser.firstName);
+  });
+
+  it("lets two parents of one group write to each other, each named by their child", async () => {
+    const { secondParent, second } = await families();
+    const room = directRoom(a.parentUser.id, secondParent.id);
+
+    const mine = await authed(request(server()).get("/v1/chat/rooms"), parentA);
+    const theirs = await authed(request(server()).get("/v1/chat/rooms"), second);
+    expect(mine.body.find((r: { key: string }) => r.key === room)?.name).toBe("Д.Номин — ээж");
+    expect(theirs.body.find((r: { key: string }) => r.key === room)?.name).toBe("Г.Батбаяр — ээж");
+
+    const sent = await authed(
+      request(server()).post(`/v1/chat/rooms/${room}/messages`),
+      second,
+    ).send({ body: "сайн уу" });
+    expect(sent.status).toBe(201);
+  });
+
+  it("gives a parent of another group 404 on a parent-to-parent room", async () => {
+    const { secondParent, outsider, outsiderSession } = await families();
+
+    for (const room of [
+      directRoom(a.parentUser.id, secondParent.id),
+      directRoom(a.parentUser.id, outsider.id),
+    ]) {
+      for (const route of [
+        { method: "get" as const, path: `/v1/chat/rooms/${room}/messages` },
+        { method: "post" as const, path: `/v1/chat/rooms/${room}/messages`, body: { body: "x" } },
+      ]) {
+        const req = authed(request(server())[route.method](route.path), outsiderSession);
+        const res = route.body ? await req.send(route.body) : await req;
+        expect(res.status, `${route.method} ${room}`).toBe(404);
+      }
+    }
+  });
+});

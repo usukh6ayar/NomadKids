@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, Check, ListChecks, X } from "lucide-react";
 import { z } from "zod";
@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ModalOverlay } from "@/components/ui/modal-overlay";
 import { cn } from "@/lib/utils";
+import { Art } from "@/components/ui/art";
 
 const yearsSchema = z.array(schoolYearSchema);
 
@@ -95,6 +96,8 @@ export function AdminSetupGuide() {
       body: "Бүлэг, ирц, үнэлгээ бүгд хичээлийн жилд харьяалагдана. Тиймээс эхний алхам нь энэ — жилгүйгээр бүлэг үүсгэх боломжгүй.",
       href: "/admin/school-years",
       action: "Хичээлийн жил",
+      art: "adminSchoolYear" as const,
+      short: "Хичээлийн жил",
       done: (years.data?.length ?? 0) > 0,
     },
     {
@@ -102,6 +105,8 @@ export function AdminSetupGuide() {
       body: "Бүлэг тус бүрд нас, хөтөлбөрийн төрөл, ирцийн хэлбэрийг заана. ESIS-ээс бүлэг, хүүхдийг нэг товчоор татаж болно.",
       href: "/admin/groups",
       action: "Бүлгүүд",
+      art: "group" as const,
+      short: "Бүлэг",
       done: (overview.data?.counts.groups ?? 0) > 0,
     },
     {
@@ -109,6 +114,8 @@ export function AdminSetupGuide() {
       body: "Ажилтан цэцэрлэгийн ESIS дугаараар өөрөө бүртгүүлнэ, эсвэл та урина. Дараа нь бүлэг рүү үндсэн ба туслах багшаар хуваарилна.",
       href: "/admin/users",
       action: "Багш, ажилтан",
+      art: "teacher" as const,
+      short: "Багш",
       done: (overview.data?.counts.staff ?? 0) > 0,
     },
   ];
@@ -177,6 +184,41 @@ export function AdminSetupGuide() {
           </button>
         </div>
 
+        {/*
+          ★ The order as a picture — 2026-09-30, the client asked for a step
+          guide "зураглал"-тай. Year → group → teacher is a dependency chain,
+          not a checklist, and a strip of three pictures with arrows says so
+          before a word is read.
+        */}
+        <div
+          aria-hidden
+          className="flex items-center justify-center gap-2 border-b border-border-soft bg-sunken/60 px-5 py-4 sm:gap-4"
+        >
+          {steps.map((step, index) => (
+            <Fragment key={step.href}>
+              {index > 0 ? <ArrowRight size={18} className="shrink-0 text-faint" /> : null}
+              <span className="flex flex-col items-center gap-1.5">
+                <span
+                  className={cn(
+                    "relative grid size-14 place-items-center rounded-card bg-surface shadow-sm ring-1",
+                    step.done ? "ring-mint" : "ring-border-soft",
+                  )}
+                >
+                  <Art name={step.art} size={40} className="size-10 object-contain" />
+                  {step.done ? (
+                    <span className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-pill bg-mint text-mint-ink">
+                      <Check size={12} />
+                    </span>
+                  ) : null}
+                </span>
+                <span className="text-caption font-medium text-muted">
+                  {index + 1}. {step.short}
+                </span>
+              </span>
+            </Fragment>
+          ))}
+        </div>
+
         <ol className="flex flex-col">
           {steps.map((step, index) => (
             <li
@@ -198,6 +240,11 @@ export function AdminSetupGuide() {
                 {step.done ? <Check size={16} /> : index + 1}
               </span>
 
+              <Art
+                name={step.art}
+                size={44}
+                className="hidden size-11 shrink-0 object-contain sm:block"
+              />
               <div className="min-w-0 flex-1">
                 <h3 className="text-body font-semibold text-ink">
                   {step.title}
