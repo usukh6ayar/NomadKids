@@ -216,7 +216,7 @@ describe("navigation icons", () => {
       "Мэдээ",
       "Чат",
       "Санхүү",
-      "Ирц ба тооцоолол",
+      "Төлбөрийн тайлан",
       "Ирцийн дэлгэрэнгүй",
       "Тайлан",
       "Баримт бичгийн сан",
@@ -438,7 +438,7 @@ describe("role-based navigation", () => {
     const nav = await sidebar();
 
     for (const label of [
-      "Ирц ба тооцоолол",
+      "Төлбөрийн тайлан",
       "Байгууллага",
       "Багш, ажилтан",
       "Хичээлийн жил",
@@ -510,7 +510,7 @@ describe("role-based navigation", () => {
       ["Багш, ажилтан", "/admin/users"],
       ["Байгууллага", "/admin/kindergarten"],
       ["Сургалтын хөтөлбөр", "/admin/curriculum"],
-      ["Ирц ба тооцоолол", "/admin/funding"],
+      ["Төлбөрийн тайлан", "/admin/funding"],
       ["ESIS мэдээллийн төв", "/admin/esis-sync"],
     ] as const) {
       expect(within(nav).getByRole("link", { name: label })).toHaveAttribute("href", href);
