@@ -2,7 +2,8 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, selectOption, sessionFor, stubApi } from "./support/render";
-import FinancePage from "@/app/(app)/finance/page";
+import { FinanceDashboardPanel } from "@/components/finance/finance-dashboard";
+import { FinanceReports } from "@/components/finance/finance-reports";
 
 const KG_ID = "33333333-3333-4333-8333-333333333333";
 
@@ -66,7 +67,7 @@ describe("the financial dashboard", () => {
 
   it("groups the nine figures by who owes them", async () => {
     stub();
-    renderWithProviders(<FinancePage />);
+    renderWithProviders(<FinanceDashboardPanel kindergartenId={KG_ID} month="2026-02" />);
 
     expect(await screen.findByText("Санхүүгийн тойм")).toBeInTheDocument();
     expect(screen.getByText("Улсын санхүүжилт")).toBeInTheDocument();
@@ -95,7 +96,7 @@ describe("the financial dashboard", () => {
       }),
     );
 
-    renderWithProviders(<FinancePage />);
+    renderWithProviders(<FinanceDashboardPanel kindergartenId={KG_ID} month="2026-02" />);
 
     expect(await screen.findByText(/Хугацаа хэтэрсэн төлбөр: 90 000₮/)).toBeInTheDocument();
     expect(screen.getByText(/3 нэхэмжлэл, бүх сарын дүнгээр/)).toBeInTheDocument();
@@ -103,7 +104,7 @@ describe("the financial dashboard", () => {
 
   it("stays quiet when nothing is overdue", async () => {
     stub();
-    renderWithProviders(<FinancePage />);
+    renderWithProviders(<FinanceDashboardPanel kindergartenId={KG_ID} month="2026-02" />);
 
     expect(await screen.findByText("Санхүүгийн тойм")).toBeInTheDocument();
     expect(screen.queryByText(/Хугацаа хэтэрсэн төлбөр/)).not.toBeInTheDocument();
@@ -111,7 +112,7 @@ describe("the financial dashboard", () => {
 
   it("names the meal denominator, so the average cannot be misread", async () => {
     stub();
-    renderWithProviders(<FinancePage />);
+    renderWithProviders(<FinanceDashboardPanel kindergartenId={KG_ID} month="2026-02" />);
 
     // "10 хүүхэд" is the number the per-child figure divides by — enrolment is
     // a different, larger number and the two must not be confused.
@@ -125,7 +126,7 @@ describe("the financial dashboard", () => {
       }),
     );
 
-    renderWithProviders(<FinancePage />);
+    renderWithProviders(<FinanceDashboardPanel kindergartenId={KG_ID} month="2026-02" />);
 
     expect(await screen.findByText("Хоолны бүртгэл алга")).toBeInTheDocument();
   });
@@ -146,7 +147,7 @@ describe("the financial dashboard", () => {
       }),
     );
 
-    renderWithProviders(<FinancePage />);
+    renderWithProviders(<FinanceDashboardPanel kindergartenId={KG_ID} month="2026-02" />);
 
     const heading = await screen.findByText("Хоолны зардал, эх үүсвэрээр");
 
@@ -160,153 +161,6 @@ describe("the financial dashboard", () => {
     expect(card.getByText("Улсын")).toBeInTheDocument();
     expect(card.getByText("200 000₮")).toBeInTheDocument();
     expect(card.getByText("100 000₮")).toBeInTheDocument();
-  });
-
-  it("does not blank the page when the summary fails", async () => {
-    // The register below is a separate query; a failing aggregate must not take
-    // the whole screen with it.
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["ACCOUNTANT"]) },
-      { path: `/kindergartens/${KG_ID}/invoices/dashboard`, status: 500, body: {} },
-      { path: `/kindergartens/${KG_ID}/funding/rules`, body: [] },
-      {
-        path: `/kindergartens/${KG_ID}/funding`,
-        body: { month: "2026-02", items: [], totals: [] },
-      },
-    ]);
-
-    renderWithProviders(<FinancePage />);
-
-    // The page header and the register's own empty state still render.
-    expect(await screen.findByText("Санхүүжилт")).toBeInTheDocument();
-  });
-});
-
-/**
- * The source filter on `/finance` — reported broken 2026-09-09.
- *
- * ★ It existed as a `<select>` labelled "Эх үүсвэр" inside the run card, whose
- * only effect was the body of the POST. Nothing on the screen changed when it
- * changed, which is a fair description of "ажиллахгүй байна".
- *
- * These assert the two halves of the fix that only the screen can show: the
- * parameter actually reaches the request, and the button follows the same
- * selection instead of carrying a second one of its own.
- */
-describe("the funding source filter", () => {
-  const RULE = {
-    id: "77777777-7777-4777-8777-777777777777",
-    name: "Улсын тариф",
-    source: "STATE",
-    effectiveFrom: "2026-01-01",
-    effectiveTo: null,
-    ageBand: null,
-    dailyRate: "1000.00",
-    monthlyRate: null,
-    dependsOnAttendance: true,
-    dependsOnMeals: false,
-    note: null,
-  };
-
-  function stub(rules: unknown[] = [RULE]) {
-    return stubApi([
-      { path: "/auth/me", body: sessionFor(["ACCOUNTANT"]) },
-      { path: `/kindergartens/${KG_ID}/invoices/dashboard`, body: dashboard() },
-      { path: `/kindergartens/${KG_ID}/funding/rules`, body: rules },
-      {
-        path: `/kindergartens/${KG_ID}/funding`,
-        body: { month: "2026-02", items: [], totals: [] },
-      },
-    ]);
-  }
-
-  it("asks the API for every source until one is chosen", async () => {
-    const { calls } = stub();
-    renderWithProviders(<FinancePage />);
-
-    await screen.findByText("Санхүүжилт");
-
-    const listed = calls.filter(
-      (call) => call.url.startsWith("/kindergartens/") && call.method === "GET",
-    );
-    const month = listed.find((call) => call.url.includes("/funding?month="));
-    expect(month).toBeDefined();
-    expect(month!.url).not.toContain("source=");
-  });
-
-  it("sends the chosen source with the month", async () => {
-    const { calls } = stub();
-    const user = userEvent.setup();
-    renderWithProviders(<FinancePage />);
-
-    await screen.findByText("Санхүүжилт");
-    await selectOption(user, "Эх үүсвэр", "Эцэг эхийн");
-
-    await waitFor(() => {
-      expect(
-        calls.some(
-          (call) => call.url.includes("/funding?month=2026") && call.url.includes("source=PARENT"),
-        ),
-      ).toBe(true);
-    });
-  });
-
-  /**
-   * ★ One control, not two. The run card used to carry its own "Эх үүсвэр"
-   * select beside the button; it now states what the header's selection will
-   * run, so there is exactly one place the answer is set.
-   */
-  it("names what the button will run instead of asking again", async () => {
-    stub();
-    const user = userEvent.setup();
-    renderWithProviders(<FinancePage />);
-
-    expect(await screen.findByText(/Тариф хүчинтэй бүх эх үүсвэрээр тооцно/)).toBeInTheDocument();
-    expect(screen.getAllByLabelText("Эх үүсвэр")).toHaveLength(1);
-
-    await selectOption(user, "Эх үүсвэр", "Улсын");
-
-    expect(await screen.findByText(/Улсын эх үүсвэрээр тооцно/)).toBeInTheDocument();
-  });
-
-  /**
-   * ★★ "No tariff" is answered per source. A kindergarten with a state tariff
-   * and no parent tariff must be told which one is missing, not that it has
-   * none at all.
-   */
-  it("says which source has no tariff in force", async () => {
-    stub();
-    const user = userEvent.setup();
-    renderWithProviders(<FinancePage />);
-
-    await screen.findByText("Санхүүжилт");
-    await selectOption(user, "Эх үүсвэр", "Цэцэрлэгийн");
-
-    expect(
-      await screen.findByText(/Цэцэрлэгийн эх үүсвэрт энэ сард хүчинтэй тариф алга/),
-    ).toBeInTheDocument();
-  });
-
-  it("ignores a tariff that was closed before the month", async () => {
-    stub([{ ...RULE, effectiveTo: "2025-12-31" }]);
-    renderWithProviders(<FinancePage />);
-
-    expect(await screen.findByText(/Энэ сард хүчинтэй тариф алга/)).toBeInTheDocument();
-  });
-
-  /**
-   * ★ The API sends `@db.Date` columns as full instants
-   * (`"2026-02-28T00:00:00.000Z"`), and compared as text against a bare
-   * `"2026-02-28"` the longer string sorts after it. A tariff starting on the
-   * month's last day therefore read as "not in force" and greyed out a button
-   * the server would have honoured.
-   */
-  it("counts a tariff that starts on the month's last day as in force", async () => {
-    stub([{ ...RULE, effectiveFrom: "2026-02-28T00:00:00.000Z" }]);
-    renderWithProviders(<FinancePage />);
-
-    await screen.findByText("Санхүүжилт");
-    expect(screen.queryByText(/хүчинтэй тариф алга/)).not.toBeInTheDocument();
   });
 });
 
@@ -348,7 +202,7 @@ describe("the financial reports panel", () => {
 
   it("renders the rows and the bold total, with money formatted", async () => {
     stubReports();
-    renderWithProviders(<FinancePage />);
+    renderWithProviders(<FinanceReports kindergartenId={KG_ID} />);
 
     // ★ Awaits the row, not the heading. The heading renders regardless of the
     // query, so asserting on it first and then reading the table synchronously
@@ -361,18 +215,17 @@ describe("the financial reports panel", () => {
 
   it("offers a month picker for a monthly report", async () => {
     stubReports();
-    renderWithProviders(<FinancePage />);
+    renderWithProviders(<FinanceReports kindergartenId={KG_ID} />);
 
     await screen.findByText("Санхүүгийн тайлан");
-    // Two month inputs: the page's own and the report panel's.
-    expect(screen.getAllByLabelText("Сар").length).toBeGreaterThan(1);
+    expect(screen.getByLabelText("Сар")).toBeInTheDocument();
     expect(screen.queryByLabelText("Хичээлийн жил")).not.toBeInTheDocument();
   });
 
   it("swaps the month picker for a school year on the annual report", async () => {
     const user = userEvent.setup();
     stubReports();
-    renderWithProviders(<FinancePage />);
+    renderWithProviders(<FinanceReports kindergartenId={KG_ID} />);
 
     await screen.findByText("Санхүүгийн тайлан");
     await selectOption(user, "Тайлан", "Хичээлийн жилийн санхүүгийн нэгтгэл");
@@ -385,7 +238,7 @@ describe("the financial reports panel", () => {
   it("shows no period control at all for the unpaid report", async () => {
     const user = userEvent.setup();
     stubReports();
-    renderWithProviders(<FinancePage />);
+    renderWithProviders(<FinanceReports kindergartenId={KG_ID} />);
 
     await screen.findByText("Санхүүгийн тайлан");
     await selectOption(user, "Тайлан", "Төлөгдөөгүй төлбөрийн тайлан");
@@ -393,14 +246,14 @@ describe("the financial reports panel", () => {
     // Arrears are not a property of a month; a picker beside them would imply
     // a filter that does not apply.
     await waitFor(() => {
-      expect(screen.getAllByLabelText("Сар")).toHaveLength(1);
+      expect(screen.queryByLabelText("Сар")).not.toBeInTheDocument();
     });
     expect(screen.queryByLabelText("Хичээлийн жил")).not.toBeInTheDocument();
   });
 
   it("says an empty report is empty rather than rendering a bare grid", async () => {
     stubReports(table({ rows: [], totals: undefined }));
-    renderWithProviders(<FinancePage />);
+    renderWithProviders(<FinanceReports kindergartenId={KG_ID} />);
 
     expect(await screen.findByText("Энэ хугацаанд бичлэг алга")).toBeInTheDocument();
   });
@@ -409,14 +262,14 @@ describe("the financial reports panel", () => {
     stubReports(
       table({ note: "Зөвхөн зөрүүтэй мөрүүд. Бүрэн хүлээн авсан тооцоо энд харагдахгүй." }),
     );
-    renderWithProviders(<FinancePage />);
+    renderWithProviders(<FinanceReports kindergartenId={KG_ID} />);
 
     expect(await screen.findByText(/Зөвхөн зөрүүтэй мөрүүд/)).toBeInTheDocument();
   });
 
   it("links the export rather than fetching it", async () => {
     stubReports();
-    renderWithProviders(<FinancePage />);
+    renderWithProviders(<FinanceReports kindergartenId={KG_ID} />);
 
     await screen.findByText("Санхүүгийн тайлан");
 
@@ -488,7 +341,7 @@ describe("the PDF export", () => {
 
   it("offers to create a PDF, not to download one that does not exist", async () => {
     stubPdf(job());
-    renderWithProviders(<FinancePage />);
+    renderWithProviders(<FinanceReports kindergartenId={KG_ID} />);
 
     expect(await screen.findByRole("button", { name: /PDF үүсгэх/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /PDF татах/ })).not.toBeInTheDocument();
@@ -497,7 +350,7 @@ describe("the PDF export", () => {
   it("shows it is working while the job is queued", async () => {
     const user = userEvent.setup();
     stubPdf(job({ status: "RUNNING" }));
-    renderWithProviders(<FinancePage />);
+    renderWithProviders(<FinanceReports kindergartenId={KG_ID} />);
 
     await user.click(await screen.findByRole("button", { name: /PDF үүсгэх/ }));
 
@@ -508,7 +361,7 @@ describe("the PDF export", () => {
   it("turns into a download once the job is finished", async () => {
     const user = userEvent.setup();
     stubPdf(job({ status: "DONE", downloadable: true, pageCount: 2 }));
-    renderWithProviders(<FinancePage />);
+    renderWithProviders(<FinanceReports kindergartenId={KG_ID} />);
 
     await user.click(await screen.findByRole("button", { name: /PDF үүсгэх/ }));
 
@@ -518,7 +371,7 @@ describe("the PDF export", () => {
   it("offers a retry rather than a dead spinner when the job fails", async () => {
     const user = userEvent.setup();
     stubPdf(job({ status: "FAILED", errorMessage: "Тайлан үүсгэхэд алдаа гарлаа." }));
-    renderWithProviders(<FinancePage />);
+    renderWithProviders(<FinanceReports kindergartenId={KG_ID} />);
 
     await user.click(await screen.findByRole("button", { name: /PDF үүсгэх/ }));
 

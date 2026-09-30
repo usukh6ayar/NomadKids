@@ -167,24 +167,22 @@ describe("the assessment summary", () => {
   });
 
   /**
-   * ★ The bars *and* a way into their own screen.
-   *
-   * Rows that only navigated made a teacher press to find out whether it was
-   * worth pressing. The shape is read here; the screen behind it is where they
-   * filter and act.
+   * ★ Removed from the summary — 2026-09-30, at the client's instruction:
+   * the direction and activity coverage charts and the notes-per-day chart.
+   * Asserted as an absence so none of them comes back unnoticed.
    */
-  it("shows each breakdown inline with a link into its screen", async () => {
+  it("does not draw the direction, activity or per-day charts", async () => {
     stubStats();
     summary(TERM_ID);
 
-    expect(await screen.findByText("Сургалтын чиглэлийн хамралт")).toBeInTheDocument();
-    expect(screen.getByText("Үйл ажиллагааны төрлийн хамралт")).toBeInTheDocument();
+    await screen.findByText("Энэ сарын зорилт");
+    expect(screen.queryByText("Сургалтын чиглэлийн хамралт")).not.toBeInTheDocument();
+    expect(screen.queryByText("Үйл ажиллагааны төрлийн хамралт")).not.toBeInTheDocument();
+    expect(screen.queryByText("Өдөр тус бүрийн тэмдэглэлийн тоо")).not.toBeInTheDocument();
 
     const links = screen.getAllByRole("link", { name: "Дэлгэрэнгүй" });
     expect(links.map((link) => link.getAttribute("href"))).toEqual([
       `/groups/${GROUP_ID}/assessment/types?termId=${TERM_ID}`,
-      `/groups/${GROUP_ID}/assessment/domains?termId=${TERM_ID}`,
-      `/groups/${GROUP_ID}/assessment/activities?termId=${TERM_ID}`,
       `/groups/${GROUP_ID}/assessment/months?termId=${TERM_ID}`,
     ]);
   });
@@ -293,30 +291,6 @@ describe("the assessment summary", () => {
         ).toEqual({ monthlyNotesPerChildGoal: 3 }),
       { timeout: 2000 },
     );
-  });
-
-  /**
-   * ★ The direction bars are scaled to the busiest strand, not to the goal —
-   * corrected 2026-09-11.
-   *
-   * They *were* scaled to it, from an earlier request that they show whether
-   * they reach the month's figure. That was the wrong reading of both numbers
-   * and produced exactly the nonsense the client reported: the goal counts
-   * children and these count notes, so a strand with six notes cleared a
-   * target of five children and took a tick while meaning nothing.
-   *
-   * Asserted as an absence, because a tick and a caption reappearing would
-   * look like a feature in review.
-   */
-  it("does not measure the direction bars against the children goal", async () => {
-    stubStats(10);
-    summary();
-
-    const directions = (await screen.findByText("Сургалтын чиглэлийн хамралт")).closest(
-      '[data-ui="card"]',
-    ) as HTMLElement;
-
-    expect(within(directions).queryByText(/хүрсэн/)).not.toBeInTheDocument();
   });
 
   /**
@@ -568,14 +542,11 @@ describe("the new-record strip", () => {
   });
 
   /**
-   * ★ The class's own figure sits above the roster — 2026-09-11, at the
-   * client's request ("ангийн нийт ажиглалт болон хүүхэд сонгох гарна").
-   *
-   * A teacher pressing a door is choosing a child, and the number that makes
-   * that choice easier is how much of this kind the class already has. It
-   * belongs at the moment it is used, not on the screen behind.
+   * ★ The roster is a plain table — 2026-09-30, the client's design, which
+   * replaced the 2026-09-11 class total and coverage bar above it. Each row
+   * still carries the child's own count.
    */
-  it("shows the class's total for the kind above the children", async () => {
+  it("lists the children as a table with their own counts", async () => {
     const user = userEvent.setup();
     stubPage();
     renderWithProviders(<AssessmentPage />);
@@ -583,20 +554,24 @@ describe("the new-record strip", () => {
     await user.click(await screen.findByRole("button", { name: /Ажиглалт/ }));
 
     const picker = await screen.findByRole("dialog", { name: "Ажиглалт" });
-    expect(within(picker).getByText("Ангийн нийт ажиглалт")).toBeInTheDocument();
-    // `STATS.byType` has seven under "Ажиглалт".
-    expect(within(picker).getByText("7")).toBeInTheDocument();
-    expect(within(picker).getByText("Ажиглалт · ангийн хамралт")).toBeInTheDocument();
-    expect(within(picker).getByText("1/1 хүүхэд")).toBeInTheDocument();
+    // ★ 2026-09-30, the client's table design: the class total and the
+    // coverage bar are gone — title, filter, search, table, Сонгох.
+    expect(within(picker).queryByText("Ангийн нийт ажиглалт")).not.toBeInTheDocument();
+    expect(within(picker).queryByText("Ажиглалт · ангийн хамралт")).not.toBeInTheDocument();
+    expect(within(picker).queryByText("1/1 хүүхэд")).not.toBeInTheDocument();
+    expect(within(picker).getByRole("button", { name: "Дутуу" })).toBeInTheDocument();
+    expect(within(picker).getByRole("columnheader", { name: "Ажиглалт" })).toBeInTheDocument();
     // The tile's own line is the count now — three tiles to a phone row has no
     // width for "Зорилт биелсэн", and the colour says which are done. The word
     // survives in the radio's accessible name.
-    const tile = within(picker).getByRole("radio", {
+    const radio = within(picker).getByRole("radio", {
       name: /Батжаргал Ану.* — зорилт биелсэн/,
     });
-    // The tile's own line is one word wide now — three tiles fit a phone row,
-    // so "Зорилт биелсэн" lives in the accessible name and "Биелсэн" is drawn.
-    expect(within(tile).getByText("Биелсэн")).toBeInTheDocument();
+    // A table row since 2026-09-30 — "Биелсэн" is drawn in the row's own
+    // Ажиглалт cell, and no photograph is shown.
+    const row = radio.closest("tr")!;
+    expect(within(row).getByText("Биелсэн")).toBeInTheDocument();
+    expect(within(picker).queryByRole("img")).not.toBeInTheDocument();
   });
 
   /**
