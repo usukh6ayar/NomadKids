@@ -15,13 +15,14 @@ import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { PageHeader } from "@/components/shell/app-shell";
+import { GroupGuardianInvitations } from "@/components/child/group-guardian-invitations";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
-import { formatAge, fullName, shortName } from "@/lib/format";
+import { formatAge, fullName, shortName, groupLabel } from "@/lib/format";
 import { TableShell, Td, Th } from "@/components/ui/table";
 import { useSession } from "@/lib/auth/session";
 import { ChildRosterTable } from "@/components/child/admin-roster";
@@ -117,7 +118,15 @@ function GroupDetail() {
     <div className="flex flex-col gap-4">
       <PageHeader
         backHref="/admin/groups"
-        title={data.name}
+        title={groupLabel(data.name)}
+        /*
+          ★ «Бүх эцэг эхийг урих» — one printable QR card per child. Built on
+          2026-09-19 at the client's request and never placed on a screen
+          until 2026-09-30; an archived group has no families left to invite.
+        */
+        actions={
+          isArchived ? null : <GroupGuardianInvitations groupId={groupId} groupName={data.name} />
+        }
         meta={
           <>
             {isArchived ? <Badge tone="neutral">Архивласан</Badge> : null}

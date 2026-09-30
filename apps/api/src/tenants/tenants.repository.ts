@@ -256,6 +256,9 @@ export class TenantsRepository {
       where: scopedWhere(scope, { id }),
       include: {
         schoolYear: { select: { id: true, name: true } },
+        // The list's own count — without it the group page said "0 хүүхэд"
+        // over a list of thirty-two (2026-09-30).
+        _count: { select: { enrollments: { where: { status: "ACTIVE", deletedAt: null } } } },
         teachers: {
           where: { endedOn: null, deletedAt: null },
           include: {
