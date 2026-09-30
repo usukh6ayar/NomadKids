@@ -105,11 +105,7 @@ function useEsisWrite(onDone: () => void) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: {
-      resource: EsisResourceKey;
-      payload: Record<string, unknown>;
-      childId?: string;
-    }) =>
+    mutationFn: (input: { resource: EsisResourceKey; payload: Record<string, unknown> }) =>
       mutate(`/kindergartens/${primaryKindergartenId}/esis/write`, esisWriteResultSchema, {
         method: "POST",
         body: input,
@@ -125,7 +121,11 @@ function useEsisWrite(onDone: () => void) {
         toast.error("ЭСИС хүлээж авсангүй. Дахин оролдоно уу.");
         return;
       }
-      toast.success("ЭСИС рүү амжилттай илгээлээ.");
+      toast.success(
+        result.source === "MOCK"
+          ? "Илгээлээ. Энэ deployment дээр ЭСИС холболт идэвхгүй тул demo хариу ирлээ."
+          : "ЭСИС рүү амжилттай илгээлээ.",
+      );
       /*
        * ★ Every ESIS read of this kindergarten, by prefix. The panels set
        * `staleTime: Infinity` so nothing refetches on its own — deliberately,
@@ -152,16 +152,16 @@ function useEsisWrite(onDone: () => void) {
  */
 export function EsisFactsWriteButton({
   resource,
-  childId,
+  personId,
+  prefill,
   title,
   description,
 }: {
   resource: EsisResourceKey;
-  /**
-   * The child this is about. The API fills `personId` from it — 2026-09-28,
-   * so the form no longer asks for "ESIS хүний дугаар".
-   */
-  childId?: string;
+  /** The child's ESIS person id, when the screen knows it. */
+  personId?: string;
+  /** Values read from ESIS, so editing starts from the current record. */
+  prefill?: Record<string, string | boolean>;
   title: string;
   description: string;
 }) {
@@ -178,13 +178,7 @@ export function EsisFactsWriteButton({
   });
 
   const endpoint = catalog.data?.endpoints.find((item) => item.key === resource);
-  const fields = useMemo(
-    () =>
-      operatorInputs(endpoint?.fields ?? []).filter(
-        (field) => !(childId && field.name === "personId"),
-      ),
-    [endpoint, childId],
-  );
+  const fields = useMemo(() => operatorInputs(endpoint?.fields ?? []), [endpoint]);
   const [values, setValues] = useState<Values>({});
 
   const write = useEsisWrite(() => setOpen(false));
@@ -194,7 +188,7 @@ export function EsisFactsWriteButton({
   if (!endpoint) return null;
 
   function start() {
-    setValues(initialValues(fields, {}));
+    setValues(initialValues(fields, { ...prefill, ...(personId ? { personId } : {}) }));
     setOpen(true);
   }
 
@@ -229,7 +223,7 @@ export function EsisFactsWriteButton({
           onSubmit={(event) => {
             event.preventDefault();
             if (write.isPending) return;
-            write.mutate({ resource, payload: toPayload(fields, values), childId });
+            write.mutate({ resource, payload: toPayload(fields, values) });
           }}
         >
           {write.isError ? (
@@ -284,21 +278,33 @@ export function EsisFactsWriteButton({
 
 /** One guardian row in the contacts form. */
 interface ContactRow {
+  contactId: string;
   relationTypeId: string;
   lastName: string;
   firstName: string;
   phoneNumber: string;
+  phoneNumber2: string;
   email: string;
+  address: string;
+  occupation: string;
+  workplace: string;
   primaryFlag: boolean;
+  liveTogetherFlag: boolean;
 }
 
 const EMPTY_CONTACT: ContactRow = {
+  contactId: "",
   relationTypeId: "",
   lastName: "",
   firstName: "",
   phoneNumber: "",
+  phoneNumber2: "",
   email: "",
+  address: "",
+  occupation: "",
+  workplace: "",
   primaryFlag: false,
+  liveTogetherFlag: true,
 };
 
 /**
@@ -316,38 +322,45 @@ const EMPTY_CONTACT: ContactRow = {
  * for the same reason.
  */
 export function EsisContactsWriteButton({
-  childId,
+  personId,
   prefill,
 }: {
-  /** The child this is about; the API fills `personId` from it. */
-  childId?: string;
-  prefill?: { lastName: string; firstName: string; phone: string | null; email: string | null }[];
+  personId?: string;
+  prefill?: Array<
+    Partial<ContactRow> & Pick<ContactRow, "lastName" | "firstName" | "phoneNumber" | "email">
+  >;
 }) {
   const [open, setOpen] = useState(false);
-  const [person, setPerson] = useState("");
+  const [person, setPerson] = useState(personId ?? "");
   const [rows, setRows] = useState<ContactRow[]>([EMPTY_CONTACT]);
   const formId = useId();
   const write = useEsisWrite(() => setOpen(false));
 
   function start() {
-    setPerson("");
+    setPerson(personId ?? "");
     setRows(
       prefill && prefill.length > 0
         ? prefill.map((guardian, index) => ({
-            relationTypeId: "",
+            contactId: guardian.contactId ?? "",
+            relationTypeId: guardian.relationTypeId ?? "",
             lastName: guardian.lastName,
             firstName: guardian.firstName,
-            phoneNumber: guardian.phone ?? "",
-            email: guardian.email ?? "",
-            primaryFlag: index === 0,
+            phoneNumber: guardian.phoneNumber,
+            phoneNumber2: guardian.phoneNumber2 ?? "",
+            email: guardian.email,
+            address: guardian.address ?? "",
+            occupation: guardian.occupation ?? "",
+            workplace: guardian.workplace ?? "",
+            primaryFlag: guardian.primaryFlag ?? index === 0,
+            liveTogetherFlag: guardian.liveTogetherFlag ?? true,
           }))
-        : [EMPTY_CONTACT],
+        : [{ ...EMPTY_CONTACT }],
     );
     setOpen(true);
   }
 
   const valid =
-    (Boolean(childId) || person.trim() !== "") &&
+    person.trim() !== "" &&
     rows.every((row) => row.relationTypeId && row.lastName && row.firstName && row.phoneNumber);
 
   return (
@@ -384,16 +397,21 @@ export function EsisContactsWriteButton({
             if (write.isPending || !valid) return;
             write.mutate({
               resource: "studentContactsSave",
-              childId,
               payload: {
-                ...(childId ? {} : { personId: Number(person) }),
+                personId: Number(person),
                 contactList: rows.map((row) => ({
+                  ...(row.contactId ? { contactId: Number(row.contactId) } : {}),
                   relationTypeId: Number(row.relationTypeId),
                   lastName: row.lastName.trim(),
                   firstName: row.firstName.trim(),
                   phoneNumber: row.phoneNumber.trim(),
+                  ...(row.phoneNumber2.trim() ? { phoneNumber2: row.phoneNumber2.trim() } : {}),
                   ...(row.email.trim() ? { email: row.email.trim() } : {}),
+                  ...(row.address.trim() ? { address: row.address.trim() } : {}),
+                  ...(row.occupation.trim() ? { occupation: row.occupation.trim() } : {}),
+                  ...(row.workplace.trim() ? { workplace: row.workplace.trim() } : {}),
                   primaryFlag: row.primaryFlag,
+                  liveTogetherFlag: row.liveTogetherFlag,
                 })),
               },
             });
@@ -408,18 +426,16 @@ export function EsisContactsWriteButton({
             </p>
           ) : null}
 
-          {childId ? null : (
-            <Field label="Хүүхдийн ЭСИС дугаар" required>
-              {({ id }) => (
-                <Input
-                  id={id}
-                  inputMode="numeric"
-                  value={person}
-                  onChange={(event) => setPerson(event.target.value)}
-                />
-              )}
-            </Field>
-          )}
+          <Field label="Хүүхдийн ЭСИС дугаар" required>
+            {({ id }) => (
+              <Input
+                id={id}
+                inputMode="numeric"
+                value={person}
+                onChange={(event) => setPerson(event.target.value)}
+              />
+            )}
+          </Field>
 
           <div className="flex flex-col gap-3">
             {rows.map((row, index) => (
@@ -441,6 +457,25 @@ export function EsisContactsWriteButton({
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2">
+                  <Field
+                    label="ESIS холбоо барих дугаар"
+                    hint="Одоо байгаа бичлэг засах үед бөглөгдөнө"
+                  >
+                    {({ id }) => (
+                      <Input
+                        id={id}
+                        inputMode="numeric"
+                        value={row.contactId}
+                        onChange={(event) =>
+                          setRows((current) =>
+                            current.map((item, i) =>
+                              i === index ? { ...item, contactId: event.target.value } : item,
+                            ),
+                          )
+                        }
+                      />
+                    )}
+                  </Field>
                   <Field label="Хамаарлын код" required hint="ЭСИС-ийн хамаарлын лавлах дугаар">
                     {({ id }) => (
                       <Input
@@ -503,6 +538,22 @@ export function EsisContactsWriteButton({
                       />
                     )}
                   </Field>
+                  <Field label="Нэмэлт утас">
+                    {({ id }) => (
+                      <Input
+                        id={id}
+                        inputMode="tel"
+                        value={row.phoneNumber2}
+                        onChange={(event) =>
+                          setRows((current) =>
+                            current.map((item, i) =>
+                              i === index ? { ...item, phoneNumber2: event.target.value } : item,
+                            ),
+                          )
+                        }
+                      />
+                    )}
+                  </Field>
                   <Field label="И-мэйл">
                     {({ id }) => (
                       <Input
@@ -519,19 +570,77 @@ export function EsisContactsWriteButton({
                       />
                     )}
                   </Field>
+                  <Field label="Хаяг">
+                    {({ id }) => (
+                      <Input
+                        id={id}
+                        value={row.address}
+                        onChange={(event) =>
+                          setRows((current) =>
+                            current.map((item, i) =>
+                              i === index ? { ...item, address: event.target.value } : item,
+                            ),
+                          )
+                        }
+                      />
+                    )}
+                  </Field>
+                  <Field label="Мэргэжил">
+                    {({ id }) => (
+                      <Input
+                        id={id}
+                        value={row.occupation}
+                        onChange={(event) =>
+                          setRows((current) =>
+                            current.map((item, i) =>
+                              i === index ? { ...item, occupation: event.target.value } : item,
+                            ),
+                          )
+                        }
+                      />
+                    )}
+                  </Field>
+                  <Field label="Ажлын газар">
+                    {({ id }) => (
+                      <Input
+                        id={id}
+                        value={row.workplace}
+                        onChange={(event) =>
+                          setRows((current) =>
+                            current.map((item, i) =>
+                              i === index ? { ...item, workplace: event.target.value } : item,
+                            ),
+                          )
+                        }
+                      />
+                    )}
+                  </Field>
                 </div>
 
-                <Checkbox
-                  label="Үндсэн асран хамгаалагч"
-                  checked={row.primaryFlag}
-                  onChange={(event) =>
-                    setRows((current) =>
-                      current.map((item, i) =>
-                        i === index ? { ...item, primaryFlag: event.target.checked } : item,
-                      ),
-                    )
-                  }
-                />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Checkbox
+                    label="Үндсэн асран хамгаалагч"
+                    checked={row.primaryFlag}
+                    onChange={(event) =>
+                      setRows((current) =>
+                        current.map((item, i) =>
+                          i === index ? { ...item, primaryFlag: event.target.checked } : item,
+                        ),
+                      )
+                    }
+                  />
+                  <Checkbox
+                    label="Хүүхэдтэй хамт амьдардаг"
+                    checked={row.liveTogetherFlag}
+                    onChange={(event) =>
+                      setRows((current) =>
+                        current.map((item, i) =>
+                          i === index ? { ...item, liveTogetherFlag: event.target.checked } : item,
+                        ),
+                      )
+                    }
+                  />
+                </div>
               </Card>
             ))}
           </div>
@@ -539,7 +648,7 @@ export function EsisContactsWriteButton({
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => setRows((current) => [...current, EMPTY_CONTACT])}
+            onClick={() => setRows((current) => [...current, { ...EMPTY_CONTACT }])}
           >
             <Plus size={16} aria-hidden />
             Асран хамгаалагч нэмэх
