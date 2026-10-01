@@ -5,6 +5,7 @@ import { paginate, toSkipTake, type PageParams } from "../../common/pagination";
 import { EsisAdminService } from "./esis-admin.service";
 import { EsisError } from "./esis.client";
 import { EsisRepository, type EsisSyncKind } from "./esis.repository";
+import { programStatusRows } from "./esis-roster.shared";
 import { externalIdFor, REFERENCE_RESOURCES, type EsisReferenceResource } from "./esis.reference";
 import { esisVisibleRows } from "./esis.schemas";
 import { EsisService } from "./esis.service";
@@ -55,7 +56,7 @@ export interface ReferenceSyncOutcome {
  * by asserting the *observed* `this.esis.read` calls equal this set, not just
  * that this set itself contains no per-child reader.
  */
-export const ROSTER_RESOURCES = ["staff", "teachers", "studentMovements"] as const;
+export const ROSTER_RESOURCES = ["staff", "teachers", "studentMovements", "students"] as const;
 
 /**
  * How far back `studentMovements` looks when there has never been a
@@ -80,6 +81,8 @@ export interface RosterSyncOutcome {
   status: "SUCCEEDED" | "PARTIAL" | "FAILED";
   roster: { stored: number; skipped: number };
   movements: { beginDate: string; count: number | null; errorCode: string | null };
+  /** `students/list` → `Child.esisProgramStatus` / `esisActionDate`. */
+  students: { count: number | null; updated: number; errorCode: string | null };
 }
 
 /**
@@ -263,6 +266,8 @@ export class EsisSyncService {
    *    it).
    * 2. Reads `studentMovements` since the last successful roster run and
    *    counts the rows.
+   * 3. Reads `students/list` and stores each linked child's enrolment status
+   *    — see `refreshProgramStatuses`.
    *
    * ★★ **`studentMovements` is read and not stored.** There is no table for
    * it and this plan does not add one — it exists purely so the run summary
@@ -338,22 +343,56 @@ export class EsisSyncService {
       movementsErrorCode = safeErrorCode(error);
     }
 
-    const status: "SUCCEEDED" | "PARTIAL" = movementsErrorCode === null ? "SUCCEEDED" : "PARTIAL";
+    const students = await this.refreshProgramStatuses(kindergartenId, institutionId);
+
+    const errorCode = movementsErrorCode ?? students.errorCode;
+    const status: "SUCCEEDED" | "PARTIAL" = errorCode === null ? "SUCCEEDED" : "PARTIAL";
 
     const summary = {
       kind: "ROSTER" as const,
       roster: { stored: roster.count, skipped: roster.skipped },
       movements: { beginDate, count: movementCount, errorCode: movementsErrorCode },
+      students,
     } as unknown as JsonValue;
 
-    await this.repo.finishRun(run.id, { status, summary, errorCode: movementsErrorCode });
+    await this.repo.finishRun(run.id, { status, summary, errorCode });
 
     return {
       runId: run.id,
       status,
       roster: { stored: roster.count, skipped: roster.skipped },
       movements: { beginDate, count: movementCount, errorCode: movementsErrorCode },
+      students,
     };
+  }
+
+  /**
+   * Reads `students/list` and stores each linked child's ESIS enrolment
+   * status and its date — the funding register's «Төлөв» column.
+   *
+   * ★ An institution-wide list, not a per-child read: it takes no `personId`,
+   * so it stays inside the "no scheduled sweep reaches a per-child resource"
+   * guard in `test/esis-sync.test.ts`.
+   *
+   * ★★ Only `personId`, the status name and the date leave a row — see
+   * `programStatusRows`.
+   *
+   * ★★★ Like the movement count, a failure here does not undo the staff
+   * roster that already committed; it makes the run PARTIAL and leaves every
+   * child's last status in place.
+   */
+  private async refreshProgramStatuses(
+    kindergartenId: string,
+    institutionId: string,
+  ): Promise<RosterSyncOutcome["students"]> {
+    try {
+      const response = await this.esis.read("students", {}, institutionId);
+      const rows = programStatusRows(response.data);
+      const updated = await this.repo.updateChildProgramStatuses(kindergartenId, rows);
+      return { count: rows.length, updated, errorCode: null };
+    } catch (error) {
+      return { count: null, updated: 0, errorCode: safeErrorCode(error) };
+    }
   }
 
   /**
