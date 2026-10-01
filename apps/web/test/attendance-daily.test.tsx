@@ -85,6 +85,7 @@ describe("the daily attendance register", () => {
     stub([row(25, "Дэлбээ бүлэг", true)]);
     renderWithProviders(<DailyAttendancePage />);
 
+    await userEvent.click(await screen.findByRole("tab", { name: "Өдрөөр" }));
     const table = await screen.findByRole("table", { name: "Өдөр тутмын ирцийн бүртгэл" });
     const groups = [...table.querySelectorAll('th[scope="colgroup"]')].map((th) => th.textContent);
     expect(groups).toEqual(["Ирц", "Баталгаажуулалт", "ESIS"]);
@@ -118,6 +119,7 @@ describe("the daily attendance register", () => {
     const api = stub([row(24)]);
     renderWithProviders(<DailyAttendancePage />);
 
+    await userEvent.click(await screen.findByRole("tab", { name: "Өдрөөр" }));
     const table = await screen.findByRole("table", { name: "Өдөр тутмын ирцийн бүртгэл" });
     await user.click(within(table).getByRole("button", { name: "Илгээх" }));
     const dialog = await screen.findByRole("dialog", { name: "ESIS рүү илгээх үү?" });
@@ -135,6 +137,7 @@ describe("the daily attendance register", () => {
     stub(Array.from({ length: 12 }, (_, i) => row(i + 1)));
     renderWithProviders(<DailyAttendancePage />);
 
+    await userEvent.click(await screen.findByRole("tab", { name: "Өдрөөр" }));
     const table = await screen.findByRole("table", { name: "Өдөр тутмын ирцийн бүртгэл" });
     expect(within(table).getAllByRole("row")).toHaveLength(2 + 10);
     expect(screen.getByText(/бичлэг/).textContent).toMatch(/Нийт 12 бичлэг/);
@@ -145,6 +148,7 @@ describe("the daily attendance register", () => {
     stub([row(25, "Дэлбээ бүлэг"), row(24, "Наран бүлэг")]);
     renderWithProviders(<DailyAttendancePage />);
 
+    await user.click(await screen.findByRole("tab", { name: "Өдрөөр" }));
     await screen.findByRole("table", { name: "Өдөр тутмын ирцийн бүртгэл" });
     await user.type(screen.getByRole("searchbox", { name: /Бүлгийн нэрээр хайх/ }), "Наран");
     expect(screen.queryByText("Дэлбээ бүлэг")).toBeNull();
@@ -287,15 +291,15 @@ describe("Суралцагчаар", () => {
   });
 });
 
-describe("Ирцийн задаргаа", () => {
+describe("Сараар", () => {
   it("asks for a group before it counts anything", async () => {
     const user = userEvent.setup();
     setSearchParams("from=2026-09-01");
     stubRegister();
     renderWithProviders(<DailyAttendancePage />);
 
-    await user.click(await screen.findByRole("tab", { name: "Ирцийн задаргаа" }));
-    expect(screen.getByRole("heading", { level: 1, name: "Ирц бүртгэл" })).toBeInTheDocument();
+    await user.click(await screen.findByRole("tab", { name: "Сараар" }));
+    expect(screen.getByRole("heading", { level: 1, name: "Сараар" })).toBeInTheDocument();
     expect(screen.getByText("Бүлэг сонгоно уу")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Хэвлэх/ })).toBeInTheDocument();
   });
@@ -306,7 +310,7 @@ describe("Ирцийн задаргаа", () => {
     stubRegister();
     renderWithProviders(<DailyAttendancePage />);
 
-    await user.click(await screen.findByRole("tab", { name: "Ирцийн задаргаа" }));
+    await user.click(await screen.findByRole("tab", { name: "Сараар" }));
     const table = await screen.findByRole("table", { name: "Ирцийн задаргаа" });
     const [weekdays] = within(table).getAllByRole("row");
     expect([...weekdays!.querySelectorAll("th")].slice(3, 6).map((th) => th.textContent)).toEqual([
@@ -336,7 +340,7 @@ describe("Ирцийн задаргаа", () => {
   });
 });
 
-describe("Хичээлийн жилээр", () => {
+describe("Жилээр", () => {
   it("merges safe API windows into one September–June grid", async () => {
     const user = userEvent.setup();
     const { calls } = stubApi([
@@ -429,22 +433,26 @@ describe("Хичээлийн жилээр", () => {
     ]);
     renderWithProviders(<DailyAttendancePage />);
 
-    await user.click(await screen.findByRole("tab", { name: "Хичээлийн жилээр" }));
-    expect(
-      screen.getByRole("heading", { level: 1, name: "Хичээлийн жилийн ирц" }),
-    ).toBeInTheDocument();
-    await waitFor(() =>
-      expect(calls.filter((call) => call.url.includes("/attendance/register?"))).toHaveLength(4),
-    );
-    await waitFor(() => expect(document.querySelector("table")).not.toBeNull());
-    const table = document.querySelector("table")!;
-    expect(within(table).getByText("Хичээлийн жилийн ирцийн тайлан")).toBeInTheDocument();
+    await user.click(await screen.findByRole("tab", { name: "Жилээр" }));
+    expect(screen.getByRole("heading", { level: 1, name: "Жилээр" })).toBeInTheDocument();
+    /*
+     * The page opens on «Суралцагчаар», whose own register read is in `calls`
+     * too — only the year grid's windows (pageSize 200) are counted.
+     */
+    const yearCalls = () =>
+      calls.filter(
+        (call) =>
+          call.url.includes("/attendance/register?") &&
+          new URLSearchParams(call.url.split("?")[1]).get("pageSize") === "200",
+      );
+    await waitFor(() => expect(yearCalls()).toHaveLength(4));
+    const table = await screen.findByRole("table", { name: "Хичээлийн жилийн ирцийн тайлан" });
     expect(within(table).getByText("Аманбек Абдуллин")).toBeInTheDocument();
     expect(within(table).getByText("9-р сар")).toBeInTheDocument();
     expect(within(table).getByText("6-р сар")).toBeInTheDocument();
     expect(within(table).getAllByText("1").length).toBeGreaterThan(0);
 
-    const registerCalls = calls.filter((call) => call.url.includes("/attendance/register?"));
+    const registerCalls = yearCalls();
     expect(registerCalls).toHaveLength(4);
     for (const call of registerCalls) {
       const params = new URLSearchParams(call.url.split("?")[1]);
