@@ -832,13 +832,20 @@ export const ESIS_DISPOSITIONS: Readonly<Record<number, string>> = {
    * progress, as this pass briefly did.
    */
   /*
+   * ★★★★ **And kept it, 2026-10-01:** the ministry's degree-request window
+   * has not opened yet, which explains the 403 better than a missing grant
+   * does, and the client asked for the qualification services to stay even
+   * while they answer nothing. The reason below says so first.
+   *
    * ★★★ **The client dropped it, 2026-09-22:** "ene ni ajillahgui gsen ug orhi
    * ashiglahgui". So this row is no longer "blocked pending БМТТ" — it is a
    * decision, and the reason records both halves: the gateway refuses it, and
    * nobody is waiting for that to change.
    */
   119:
-    "ЗАХИАЛАГЧ ХАССАН (2026-09-22). Стандарт /svc/api/hub/v2/zereg/get/request/:registerNum замаар " +
+    "ХАДГАЛСАН, ХУГАЦАА НЭЭГДЭЭГҮЙ (2026-10-01): яамны мэргэшлийн зэргийн хүсэлтийн " +
+    "хугацаа хараахан нээгдээгүй — захиалагч ажиллахгүй ч хасахгүй байлгахыг хүссэн. " +
+    "Стандарт /svc/api/hub/v2/zereg/get/request/:registerNum замаар " +
     "амьд шалгахад тухайн зам БОДИТ хэмээн танигдсан ч токен 403 « Энэ API-д " +
     "хандах эрх байхгүй» гэж буцаав — экспортод бичсэн /svc/api/zereg/ язгуур " +
     "нь 404 (Зам олдсонгүй) буцаадаг тул зам биш. Портал дээр 119 " +
