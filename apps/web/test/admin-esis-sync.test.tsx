@@ -106,6 +106,50 @@ describe("ESIS синкийн самбар", () => {
    * that also has a ROSTER run, and reads the stored/skipped counts out of
    * `runReferenceSync`'s summary shape.
    */
+  /*
+   * ★ The client, 2026-10-01: the мэргэшлийн зэрэг services stay even though
+   * the ministry's window has not opened — #134 had removed their panels.
+   */
+  it("keeps the мэргэшлийн зэрэг panels, folded, with why they are empty", async () => {
+    const degree = (key: string, apiId: number) => ({
+      key,
+      apiId,
+      slug: `API-${apiId}`,
+      method: "GET",
+      path: `/svc/api/hub/v2/${key}`,
+      name: key,
+      domain: "ROSTER",
+      usage: "Хүсэлтийн дугаараар",
+      previewable: false,
+      readable: true,
+      params: ["requestId"],
+      fields: [{ name: "requestId", label: "Хүсэлтийн дугаар", io: "OUTPUT", ingested: true }],
+      fieldSource: "ADAPTER",
+      ingestedFieldCount: 1,
+      direction: "ESIS_TO_NOMADKIDS",
+      targetModel: "StaffRecord",
+      mappings: [],
+    });
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: SYNC_RUNS_PATH, method: "GET", body: runsPage([]) },
+      {
+        path: `/kindergartens/${KG}/esis/catalog`,
+        body: {
+          mode: "LIVE",
+          canRead: true,
+          endpoints: [degree("degreeDecisions", 167), degree("degreeHistory", 170)],
+        },
+      },
+    ]);
+    renderWithProviders(<AdminEsisSyncPage />);
+
+    expect(await screen.findByText("Мэргэшлийн зэрэг")).toBeInTheDocument();
+    expect(screen.getByText(/хугацаа хараахан нээгдээгүй/)).toBeInTheDocument();
+    expect(await screen.findByText("Мэргэшлийн зэргийн шийдвэрлэлт")).toBeInTheDocument();
+    expect(screen.getByText("Мэргэшлийн зэргийн хүсэлтийн түүх")).toBeInTheDocument();
+  });
+
   it("shows what each tier last did", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
