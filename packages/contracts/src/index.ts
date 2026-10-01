@@ -35,5 +35,6 @@ export * from "./local-date";
 export * from "./mn-locale";
 export * from "./pagination";
 export * from "./password";
+export * from "./phone-verification";
 export * from "./working-days";
 export * from "./problem";

@@ -4,7 +4,7 @@ import { PrismaService } from "../prisma/prisma.service";
 /**
  * Deletions for tables that would otherwise grow without bound.
  *
- * The three `prune*` methods are the only hard deletes in the system:
+ * The `prune*` methods are the only hard deletes in the system:
  * operational records with no historical value once expired, where keeping
  * them forever costs query time on the hot login path.
  *
@@ -41,6 +41,17 @@ export class MaintenanceRepository {
   async pruneAuthTokens(now: Date): Promise<number> {
     const { count } = await this.prisma.authToken.deleteMany({
       where: { OR: [{ expiresAt: { lt: now } }, { usedAt: { not: null } }] },
+    });
+    return count;
+  }
+
+  /**
+   * verify.mn proofs older than the retention window. Every one of them has
+   * long since expired upstream, and a spent one can never be spent again.
+   */
+  async prunePhoneVerifications(olderThan: Date): Promise<number> {
+    const { count } = await this.prisma.phoneVerification.deleteMany({
+      where: { createdAt: { lt: olderThan } },
     });
     return count;
   }

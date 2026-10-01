@@ -221,6 +221,26 @@ export const envSchema = z.object({
   QPAY_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
 
   /**
+   * verify.mn — proof that a person holds a phone number, 2026-10-01.
+   *
+   * The person texts a code **from** the phone to shortcode 144773; nothing is
+   * ever sent *to* them. That is why this is not RFP Phase IV's "SMS мэдэгдэл"
+   * — CLAUDE.md §7.
+   *
+   * ★ Optional, like ESIS and QPay. With no key, phone verification is off and
+   * every flow behaves exactly as it did before it existed: an invitation and
+   * a profile take a phone on the person's word, and the forgot-password
+   * screen offers e-mail only. `VerifyMnConfig.isConfigured` is the one place
+   * that decides.
+   *
+   * `VERIFY_MN_API_KEY` is a credential: read only here and in
+   * `verify-mn.client.ts`, never logged, never `NEXT_PUBLIC_`.
+   */
+  VERIFY_MN_API_KEY: z.string().default(""),
+  VERIFY_MN_BASE_URL: z.string().default("https://api.verify.mn"),
+  VERIFY_MN_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60_000).default(10_000),
+
+  /**
    * Whether this instance consumes the report queue.
    *
    * On by default: one container is the right shape for a kindergarten's
@@ -358,6 +378,12 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     }
     if (env.QPAY_CALLBACK_URL && env.QPAY_CALLBACK_URL.includes("localhost")) {
       problems.push("QPAY_CALLBACK_URL is localhost — QPay's servers cannot reach it");
+    }
+
+    if (env.VERIFY_MN_BASE_URL.startsWith("http://")) {
+      problems.push(
+        "VERIFY_MN_BASE_URL is a plaintext http:// origin — the API key would cross it",
+      );
     }
 
     if (problems.length > 0) {

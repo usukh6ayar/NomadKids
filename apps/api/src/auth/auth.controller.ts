@@ -21,13 +21,21 @@ import {
   loginSchema,
   invitationAcceptSchema,
   passwordResetConfirmSchema,
+  passwordResetPhoneConfirmSchema,
   passwordResetRequestSchema,
   type ChangePasswordDto,
   type LoginDto,
   type InvitationAcceptDto,
   type PasswordResetConfirmDto,
+  type PasswordResetPhoneConfirmDto,
   type PasswordResetRequestDto,
 } from "./auth.dto";
+import {
+  startInvitationPhoneVerificationSchema,
+  startPhoneVerificationSchema,
+  type StartInvitationPhoneVerificationDto,
+  type StartPhoneVerificationDto,
+} from "../phone-verification/phone-verification.dto";
 import { clearAuthCookies, CSRF_COOKIE, REFRESH_COOKIE, setAuthCookies } from "./cookies";
 import { CurrentActor } from "./decorators/actor.decorator";
 import { Public } from "./decorators/public.decorator";
@@ -226,6 +234,54 @@ export class AuthController {
   }
 
   /**
+   * Starts a password reset by phone — verify.mn.
+   *
+   * ★ The same answer whether or not an account holds the number. The SMS is
+   * sent *by* the person, from the phone, so this cannot be turned on a
+   * stranger's number; the limit matches the e-mail reset's.
+   */
+  @Public()
+  @Post("password-reset/phone")
+  @HttpCode(HttpStatus.OK)
+  @RateLimit({ limit: 20, windowMs: HOUR })
+  async startPasswordResetByPhone(
+    @Body(new ZodValidationPipe(startPhoneVerificationSchema)) body: StartPhoneVerificationDto,
+    @Req() req: Request,
+  ) {
+    return this.auth.startPasswordResetByPhone(body.phone, context(req));
+  }
+
+  @Public()
+  @Post("password-reset/phone/confirm")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RateLimit({ limit: 10, windowMs: HOUR })
+  async confirmPasswordResetByPhone(
+    @Body(new ZodValidationPipe(passwordResetPhoneConfirmSchema))
+    body: PasswordResetPhoneConfirmDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    await this.auth.confirmPasswordResetByPhone(body.handle, body.password, context(req));
+    clearAuthCookies(res);
+  }
+
+  /**
+   * Starts verifying the phone a guardian gives on their invitation. Public
+   * for the reason `accept` is; the invitation token is the gate.
+   */
+  @Public()
+  @Post("invitation/phone")
+  @HttpCode(HttpStatus.OK)
+  @RateLimit({ limit: 20, windowMs: HOUR })
+  async startInvitationPhoneVerification(
+    @Body(new ZodValidationPipe(startInvitationPhoneVerificationSchema))
+    body: StartInvitationPhoneVerificationDto,
+    @Req() req: Request,
+  ) {
+    return this.auth.startInvitationPhoneVerification(body.token, body.phone, context(req));
+  }
+
+  /**
    * Accepts an invitation and sets the first password.
    *
    * Public, because by definition the person cannot log in yet — the account
@@ -272,6 +328,7 @@ export class AuthController {
         lastName: body.lastName,
         email: body.email,
       },
+      body.phoneVerification,
       context(req),
     );
     // Any session this account had was revoked server-side; clear the browser's

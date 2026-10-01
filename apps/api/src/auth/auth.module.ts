@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
+import { PhoneVerificationModule } from "../phone-verification/phone-verification.module";
 import { AuthController } from "./auth.controller";
 import { AuthRepository } from "./auth.repository";
 import { AuthService } from "./auth.service";
@@ -11,6 +12,9 @@ import { RolesGuard } from "./guards/roles.guard";
 import { SuperAdminGuard } from "./guards/super-admin.guard";
 
 @Module({
+  // Password reset by phone and the guardian's invitation both consume a
+  // verify.mn proof.
+  imports: [PhoneVerificationModule],
   controllers: [AuthController],
   providers: [
     AuthService,

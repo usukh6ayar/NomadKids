@@ -28,6 +28,7 @@ import {
   esisMyProfileSchema,
   parentDashboardSchema,
   PASSWORD_RULES,
+  phoneVerificationStartSchema,
   ROLE_LABEL,
   userProfileSchema,
   validatePasswordStrength,
@@ -57,6 +58,11 @@ import { ChildAvatar } from "@/components/media/media-image";
 import { PhotoBadgeButton } from "@/components/media/photo-badge-button";
 import { MyStaffRecords } from "@/components/staff/my-staff-records";
 import { ChildPhotoButton } from "@/components/child/child-photo-button";
+import {
+  MOBILE_PHONE,
+  PhoneVerificationStep,
+  usePhoneVerificationEnabled,
+} from "@/components/auth/phone-verification";
 
 const profileSchema = userProfileSchema.extend({
   specialization: z.string().nullish(),
@@ -542,6 +548,44 @@ function ContactItem({
 }
 
 /**
+ * A changed phone is proven by one SMS before `PATCH /me/profile` takes it —
+ * verify.mn, 2026-10-01, and only where it is configured.
+ *
+ * The phone is a login identifier and the way back in through a reset by
+ * phone, so a typo would hand that door to whoever holds the typed number.
+ * The number already on file needs no proof: both forms on this screen send
+ * every field on every save. A save without the proof is refused by the
+ * server with a message under «Утас», which is what a person who skipped the
+ * step reads.
+ */
+function useOwnPhoneProof(saved: string | null | undefined, typed: string) {
+  const enabled = usePhoneVerificationEnabled();
+  const [proof, setProof] = useState<{ phone: string; handle: string } | null>(null);
+
+  const next = typed.trim();
+  const changed = enabled && next !== "" && next !== (saved ?? "");
+  const handle = proof?.phone === next ? proof.handle : undefined;
+
+  return {
+    body: changed && handle ? { phoneVerification: handle } : {},
+    step:
+      changed && MOBILE_PHONE.test(next) ? (
+        <PhoneVerificationStep
+          key={next}
+          phone={next}
+          start={(value) =>
+            mutate("/me/phone-verification", phoneVerificationStartSchema, {
+              method: "POST",
+              body: { phone: value },
+            })
+          }
+          onVerified={(verified) => setProof({ phone: next, handle: verified })}
+        />
+      ) : null,
+  };
+}
+
+/**
  * «Мэдээлэл засах» — the fields `PATCH /me/profile` accepts that a person
  * owns: their name, phone and e-mail. Toast on save (§5); the server's field
  * errors land under the field they are about.
@@ -563,6 +607,7 @@ function EditProfileDialog({
     phone: profile.phone ?? "",
     email: profile.email ?? "",
   });
+  const phoneProof = useOwnPhoneProof(profile.phone, form.phone);
 
   const save = useMutation({
     mutationFn: () =>
@@ -573,6 +618,7 @@ function EditProfileDialog({
           firstName: form.firstName.trim(),
           phone: form.phone.trim() || null,
           email: form.email.trim() || null,
+          ...phoneProof.body,
         },
       }),
     onSuccess: () => {
@@ -619,6 +665,7 @@ function EditProfileDialog({
           {({ id }) => <Input id={id} type="email" value={form.email} onChange={set("email")} />}
         </Field>
       </div>
+      {phoneProof.step}
       <FormError
         message={save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null}
       />
@@ -725,6 +772,7 @@ function StaffProfileCard() {
   const current =
     form ??
     Object.fromEntries(fields.map((field) => [field.key, (data?.[field.key] as string) ?? ""]));
+  const phoneProof = useOwnPhoneProof(data?.phone, current.phone ?? "");
 
   /*
     ★ "ЭСИС-ээс татах" fills the form; it does not save — client, 2026-09-24.
@@ -774,9 +822,12 @@ function StaffProfileCard() {
     mutationFn: () =>
       mutate("/me/profile", profileSchema, {
         method: "PATCH",
-        body: Object.fromEntries(
-          fields.map((field) => [field.key, current[field.key]?.trim() || null]),
-        ),
+        body: {
+          ...Object.fromEntries(
+            fields.map((field) => [field.key, current[field.key]?.trim() || null]),
+          ),
+          ...phoneProof.body,
+        },
       }),
     onSuccess: () => {
       toast.success("Мэдээлэл хадгалагдлаа.");
@@ -827,6 +878,7 @@ function StaffProfileCard() {
               </Field>
             ))}
           </div>
+          {phoneProof.step}
 
           <div className="flex flex-wrap justify-end gap-2">
             {esis.data ? (

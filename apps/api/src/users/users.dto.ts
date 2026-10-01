@@ -11,10 +11,11 @@ export const roleSchema = z.enum(["ADMIN", "TEACHER", "PARENT", "COOK", "ACCOUNT
  * identifier — a malformed one silently locks the user out of a route they were
  * told they could use.
  */
-const phoneSchema = z
+export const mobilePhoneSchema = z
   .string()
-  .regex(/^[5-9]\d{7}$/, "Утасны дугаар 8 оронтой байх ёстой")
-  .nullable();
+  .regex(/^[5-9]\d{7}$/, "Утасны дугаар 8 оронтой байх ёстой");
+
+const phoneSchema = mobilePhoneSchema.nullable();
 
 export const createUserSchema = z.object({
   username: z
@@ -77,6 +78,11 @@ export const updateProfileSchema = z.object({
   qualification: z.string().max(200).nullable().optional(),
   education: z.string().max(1000).nullable().optional(),
   bio: z.string().max(2000).nullable().optional(),
+  /**
+   * The verify.mn handle proving a *changed* `phone` — required once
+   * `VERIFY_MN_API_KEY` is set, ignored otherwise. `UsersService.updateOwnProfile`.
+   */
+  phoneVerification: z.string().min(20).max(200).optional(),
 });
 export type UpdateProfileDto = z.infer<typeof updateProfileSchema>;
 

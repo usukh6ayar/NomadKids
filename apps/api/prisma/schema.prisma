@@ -70,6 +70,14 @@ enum AuthTokenPurpose {
   INVITATION
 }
 
+/// What a verify.mn phone check is proving the phone *for*. A verification is
+/// consumed only by the flow it was started for — `PhoneVerification`.
+enum PhoneVerificationPurpose {
+  PASSWORD_RESET
+  INVITATION
+  PROFILE_PHONE
+}
+
 enum EsisSyncStatus {
   RUNNING
   SUCCEEDED
@@ -462,6 +470,7 @@ model User {
   memberships            Membership[]
   guardianships          Guardianship[]
   authTokens             AuthToken[]
+  phoneVerifications     PhoneVerification[]
   sessions               Session[]
   auditLogs              AuditLog[]
   observations           Observation[]             @relation("ObservationAuthor")
@@ -598,6 +607,57 @@ model AuthToken {
   @@index([userId, purpose, usedAt])
   @@index([expiresAt])
   @@map("auth_tokens")
+}
+
+/// Proof that a person holds a phone number — verify.mn, 2026-10-01.
+///
+/// The person texts `code` **from** `phone` to shortcode 144773; the server
+/// then asks verify.mn whether that SMS arrived (`GET /sessions/:id`). Nothing
+/// is ever sent to the phone.
+///
+/// ★ A row proves **this phone, for this purpose, for this account** — all
+/// three are checked when it is consumed. A handle verified for one's own
+/// number in the profile flow must not open somebody's password reset.
+///
+/// ★★ Not `AuthToken`, whose `userId` is required: a password reset by phone
+/// starts before anybody knows whether an account holds the number, and must
+/// look identical whether one does or not. `userId` is null there and set for
+/// the invitation and profile purposes.
+///
+/// User-level like `AuthToken`, not tenant-scoped — it belongs to a person
+/// (or to nobody yet), never to a kindergarten. Pruned by `MaintenanceService`.
+model PhoneVerification {
+  id      String                   @id @default(uuid()) @db.Uuid
+  purpose PhoneVerificationPurpose
+  /// Eight digits, the form `User.phone` stores.
+  phone   String
+  userId  String?                  @db.Uuid
+
+  /// verify.mn's session id. ★ Never sent to a browser: verify.mn answers
+  /// `GET /sessions/:id` without a key, so the id is a capability.
+  sessionId  String @unique
+  /// The code the person texts. Shown to them; not a secret — the proof is
+  /// which phone the SMS came from.
+  code       String
+  /// SHA-256 of the handle the browser holds. The handle itself is returned
+  /// once, at start, and never stored.
+  handleHash String @unique
+
+  /// verify.mn's deadline for the SMS.
+  expiresAt     DateTime
+  verifiedAt    DateTime?
+  consumedAt    DateTime?
+  /// When verify.mn was last asked. Polls inside the throttle window are
+  /// answered from this row without an upstream call.
+  lastCheckedAt DateTime?
+  requestedIp   String?
+  createdAt     DateTime  @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("phone_verifications")
 }
 
 /// Brute-force lockout counter: 5 failures per identifier in 15 minutes.

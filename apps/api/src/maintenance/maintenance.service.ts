@@ -11,6 +11,11 @@ export const RETENTION = {
   /** A revoked session must outlive its refresh token for reuse detection. */
   sessions: 7 * DAY_MS,
   /**
+   * A verify.mn proof is spent or dead within minutes; a day leaves room to
+   * look into a complaint that "the SMS never worked".
+   */
+  phoneVerifications: DAY_MS,
+  /**
    * How long a notice stays on the board — the client, 2026-09-11.
    *
    * ★ The one entry here that is not an operational record. It is measured
@@ -45,6 +50,9 @@ export class MaintenanceService {
       ),
       authTokens: await this.repo.pruneAuthTokens(now),
       sessions: await this.repo.pruneSessions(new Date(now.getTime() - RETENTION.sessions)),
+      phoneVerifications: await this.repo.prunePhoneVerifications(
+        new Date(now.getTime() - RETENTION.phoneVerifications),
+      ),
       // ★ Generated PDFs are copies of a child's record living outside the
       // permission system that produced them. They expire.
       reportFiles: (await this.reportRetention.sweep(now)).removed,
@@ -60,6 +68,7 @@ export class MaintenanceService {
     this.logger.log(
       `Cleanup: ${result.loginAttempts} login attempts, ` +
         `${result.authTokens} auth tokens, ${result.sessions} sessions, ` +
+        `${result.phoneVerifications} phone verifications, ` +
         `${result.reportFiles} report files, ${result.reportsRequeued} jobs requeued, ` +
         `${result.notifications} notices retired`,
     );
@@ -71,6 +80,7 @@ export interface CleanupResult {
   loginAttempts: number;
   authTokens: number;
   sessions: number;
+  phoneVerifications: number;
   reportFiles: number;
   reportsRequeued: number;
   /** Notices soft-deleted a week after publication. */

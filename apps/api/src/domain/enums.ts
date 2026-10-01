@@ -45,6 +45,7 @@ export {
   ProgramKind,
   IncidentKind,
   PaymentMethod,
+  PhoneVerificationPurpose,
   QpayInvoiceStatus,
   RecipeStatus,
   ReportStatus,
