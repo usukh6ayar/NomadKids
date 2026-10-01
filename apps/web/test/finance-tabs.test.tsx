@@ -24,7 +24,7 @@ const groups = {
   totalPages: 1,
 };
 
-function esisRead(source: "MOCK" | "LIVE", rows: Record<string, string>[]) {
+function esisRead(source: "STORE" | "LIVE", rows: Record<string, string>[]) {
   return {
     resource: "livelihoodForm1",
     source,
@@ -38,7 +38,7 @@ function esisRead(source: "MOCK" | "LIVE", rows: Record<string, string>[]) {
   };
 }
 
-function stub(form1: ReturnType<typeof esisRead> = esisRead("MOCK", [])) {
+function stub(form1: ReturnType<typeof esisRead> = esisRead("STORE", [])) {
   return stubApi([
     { path: "/auth/me", body: sessionFor(["ADMIN"]) },
     {
@@ -90,6 +90,8 @@ function stub(form1: ReturnType<typeof esisRead> = esisRead("MOCK", [])) {
             days: [],
             counts: { PRESENT: 16, HALF_DAY: 2, SICK: 1 },
             recorded: 19,
+            expectedDays: 19,
+            requests: { pending: 0, approved: 0, rejected: 0 },
           },
         ],
         page: 1,
@@ -223,7 +225,7 @@ describe("Төлбөрийн нэгтгэл", () => {
 
   it("fills Маягт-1 only from a LIVE ESIS read", async () => {
     const user = userEvent.setup();
-    stub(esisRead("MOCK", [{ orgName: "Жишээ", studentCnt: "10" }]));
+    stub(esisRead("STORE", [{ orgName: "Жишээ", studentCnt: "10" }]));
     renderWithProviders(<FinancePage />);
 
     await user.click(await screen.findByRole("tab", { name: /Маягт/ }));

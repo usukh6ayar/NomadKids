@@ -775,9 +775,9 @@ export function AnnualTab({ kindergartenId }: { kindergartenId: string }) {
  * foot of Санхүүжилт (client, 2026-09-27: the ESIS fields "шингээнэ").
  *
  * ★ Read from ESIS (`livelihoodForm1`, `livelihoodForm2`) and drawn as the
- * document it is, not as a field table. Only a LIVE read fills it in: a MOCK
- * read is the adapter's sample, and a form that looks ready to sign must not
- * carry invented figures. ESIS has no write service for these forms in this
+ * document it is, not as a field table. Only a LIVE read fills it in: anything
+ * else is not the ministry's answer today, and a form that looks ready to sign
+ * must not carry figures nobody just read. ESIS has no write service for these forms in this
  * product, so ESIS илгээх is shown disabled.
  */
 export function FormsTab({ kindergartenId }: { kindergartenId: string }) {

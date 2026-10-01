@@ -1,24 +1,29 @@
 "use client";
 
+import { formatDate, groupLabel } from "@/lib/format";
+
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { z } from "zod";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Calendar as CalendarIcon, Download, Pencil, Printer } from "lucide-react";
 import {
+  attendanceSubmissionSchema,
   dailyAttendanceSchema,
   groupListItemSchema,
   paginated,
   type DailyAttendanceRow,
 } from "@kinder/contracts";
-import { get } from "@/lib/api/browser";
+import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { downloadUrl } from "@/lib/api/client";
-import { formatDate, groupLabel } from "@/lib/format";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 import { Select } from "@/components/ui/field";
 import { Pagination } from "@/components/ui/pagination";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
@@ -76,11 +81,10 @@ type View = "day" | "child" | "breakdown" | "year";
  * on one row, three tabs, and one table of the days with grouped headers.
  *
  * ★ Per the client ("загварын дагуу хийчих, дараа нь бак дээр хийж холбоно"):
- * the holiday calendar and the ESIS send flow that stood on this screen are
- * not in the drawing and went with it; the endpoints behind them still exist
- * and will be connected again. The approval columns have no data yet and read
- * "—"; ESIS shows only whether the day was sent — the API records the send,
- * not how many rows ESIS accepted or refused.
+ * the holiday calendar is not in the drawing and stays off it. Connected
+ * 2026-09-28: Баталгаажуулалт is the row's `requests` (#135), ESIS is the
+ * row's `esis` attempt counts (#149), and Илгээх sends one finished group-day
+ * through `POST …/attendance/daily/submit`, after a confirmation.
  */
 function DailyAttendance() {
   const { primaryKindergartenId } = useSession();
@@ -297,7 +301,7 @@ function DailyAttendance() {
         />
       ) : (
         <>
-          <DayTable rows={visible} />
+          <DayTable rows={visible} kindergartenId={primaryKindergartenId ?? ""} />
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-lead text-muted">
               Нийт <span className="font-bold tabular-nums text-ink">{rows.length}</span> бичлэг
@@ -313,8 +317,16 @@ function DailyAttendance() {
 const GROUP_HEAD = "border-b border-border px-3 py-2 text-center text-body font-semibold text-ink";
 
 /** One day of one group per row, under three grouped headings. */
-function DayTable({ rows }: { rows: DailyAttendanceRow[] }) {
+function DayTable({
+  rows,
+  kindergartenId,
+}: {
+  rows: DailyAttendanceRow[];
+  kindergartenId: string;
+}) {
   return (
+    // `overflow-x-auto`: thirteen columns do not fit every width, and the
+    // table scrolls inside its card rather than pushing the page (2026-09-29).
     <div className="overflow-x-auto rounded-card border border-border">
       <table className="w-full border-collapse text-body">
         <caption className="sr-only">Өдөр тутмын ирцийн бүртгэл</caption>
@@ -384,6 +396,7 @@ function DayTable({ rows }: { rows: DailyAttendanceRow[] }) {
               key={`${row.groupId}-${row.date}`}
               className="border-b border-border-soft last:border-b-0 even:bg-sunken/40"
             >
+              {/* `whitespace-nowrap`: "2026-\n09-01" and "ахлах\nбүлэг" (2026-09-29). */}
               <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-ink">
                 {formatDate(row.date.slice(0, 10))}
               </td>
@@ -393,22 +406,33 @@ function DayTable({ rows }: { rows: DailyAttendanceRow[] }) {
               <NumberCell value={row.sick} tone="text-muted" />
               <NumberCell value={row.excused} tone="text-sun-ink" />
               <NumberCell value={row.absent} tone="text-muted" />
-              {/* No approval counts per day yet. */}
-              <DashCell />
-              <DashCell />
-              <DashCell />
-              {/* The API records that the day was sent, not ESIS's per-row answer. */}
+              {/* Guardians' requests covering this group-day, by review state. */}
+              <NumberCell value={row.requests.approved} tone="text-mint-ink" />
+              <NumberCell value={row.requests.rejected} tone="text-danger" />
+              <NumberCell value={row.requests.pending} tone="text-sun-ink" />
               <td className="px-2 py-1.5 text-center">
                 {row.sentAt ? (
                   <span className="font-semibold text-mint-ink" title={formatStamp(row.sentAt)}>
                     ✓
                   </span>
+                ) : row.complete && kindergartenId ? (
+                  <SendDayButton kindergartenId={kindergartenId} row={row} />
                 ) : (
-                  <span className="text-faint">—</span>
+                  <span className="text-faint" title="Ирц бүрэн бүртгэгдээгүй">
+                    —
+                  </span>
                 )}
               </td>
-              <DashCell />
-              <DashCell />
+              {/* ESIS send attempts for this group-day (#149). */}
+              <NumberCell value={row.esis.succeeded} tone="text-mint-ink" />
+              <td
+                className="px-2 py-1.5 text-center font-semibold tabular-nums text-danger"
+                title={
+                  row.esis.lastOutcome === "FAILED" ? (row.esis.lastError ?? undefined) : undefined
+                }
+              >
+                {row.esis.failed}
+              </td>
               <td className="px-2 py-1 text-center">
                 <Button asChild size="sm" variant="secondary">
                   <Link href={`/groups/${row.groupId}/attendance?date=${row.date.slice(0, 10)}`}>
@@ -430,8 +454,48 @@ function NumberCell({ value, tone }: { value: number; tone: string }) {
   );
 }
 
-function DashCell() {
-  return <td className="px-2 py-1.5 text-center text-faint">—</td>;
+/**
+ * «Илгээх» — one finished group-day to ESIS, after a confirmation, because it
+ * writes to the ministry. The API records every attempt, success or refusal,
+ * so the list is refreshed whatever the answer (a partial or refused send is
+ * a 502 that still changed the counts).
+ */
+function SendDayButton({
+  kindergartenId,
+  row,
+}: {
+  kindergartenId: string;
+  row: DailyAttendanceRow;
+}) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const date = row.date.slice(0, 10);
+  const send = useMutation({
+    mutationFn: () =>
+      mutate(
+        `/kindergartens/${kindergartenId}/attendance/daily/submit`,
+        z.array(attendanceSubmissionSchema),
+        { method: "POST", body: { entries: [{ groupId: row.groupId, date }] } },
+      ),
+    onSuccess: () => toast.success(`${row.group} (${date}) ESIS рүү илгээгдлээ.`),
+    onError: (error) => toast.error(errorMessage(error)),
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ["attendance", "daily"] }),
+  });
+
+  return (
+    <ConfirmDialog
+      trigger={
+        <Button size="sm" variant="secondary" disabled={send.isPending}>
+          {send.isPending ? "Илгээж байна…" : "Илгээх"}
+        </Button>
+      }
+      title="ESIS рүү илгээх үү?"
+      description={`${row.group} бүлгийн ${date}-ны ирц (${row.expected} хүүхэд) яамны ESIS систем рүү илгээгдэнэ.`}
+      confirmLabel="Илгээх"
+      pending={send.isPending}
+      onConfirm={() => send.mutate()}
+    />
+  );
 }
 
 function formatStamp(iso: string): string {
