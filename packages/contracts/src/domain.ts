@@ -478,6 +478,10 @@ export const childSummarySchema = z.object({
    * (`Child.esisPersonId`). The roster carries the fact, never the id.
    */
   esisLinked: z.boolean().optional(),
+  /** ESIS `students/list` → `programStatusName`, e.g. "Шилжсэн". */
+  esisProgramStatus: z.string().nullable().optional(),
+  /** ESIS `students/list` → `actionDate`, "YYYY-MM-DD". */
+  esisActionDate: z.string().nullable().optional(),
   // `/children/mine` returns a slimmer row with no enrollments at all, so this
   // defaults rather than being required.
   enrollments: z.array(enrollmentSummarySchema).default([]),
