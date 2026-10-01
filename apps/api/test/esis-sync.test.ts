@@ -12,7 +12,16 @@ import { REFERENCE_RESOURCES } from "../src/integrations/esis/esis.reference";
 import { ESIS_READERS } from "../src/integrations/esis/esis.service";
 import { createTestApp } from "./support/app";
 import { resetData, testDb } from "./support/db";
-import { authed, createScenario, login, type AuthSession, type Scenario } from "./support/fixtures";
+import {
+  authed,
+  createChild,
+  createMembership,
+  createScenario,
+  createUser,
+  login,
+  type AuthSession,
+  type Scenario,
+} from "./support/fixtures";
 
 /*
  * ★ The sentence a ministry reviewer will care about most (plan
@@ -334,17 +343,24 @@ describe("EsisSyncService.runRosterSync", () => {
   /**
    * `staff` and `teachers` answer with one matching row each, so
    * `refreshStaffRosterCore` stores exactly one person; `studentMovements`
-   * answers with whatever `movements` says, defaulting to none. Every other
+   * answers with whatever `movements` says and `students` with `students`,
+   * both defaulting to none. Every other
    * key falls through to the reference-sweep default so a stray call during
    * these tests still resolves instead of returning `undefined`.
    */
-  function mockRosterReads(movements: Record<string, unknown>[] = []) {
+  function mockRosterReads(
+    movements: Record<string, unknown>[] = [],
+    students: Record<string, unknown>[] = [],
+  ) {
     read.mockImplementation(async (key: string) => {
       if (key === "staff" || key === "teachers") {
         return { data: [staffRow], status: 200, durationMs: 3 };
       }
       if (key === "studentMovements") {
         return { data: movements, status: 200, durationMs: 3 };
+      }
+      if (key === "students") {
+        return { data: students, status: 200, durationMs: 3 };
       }
       return { data: [DEFAULT_ROWS[key]].filter(Boolean), status: 200, durationMs: 3 };
     });
@@ -548,6 +564,112 @@ describe("EsisSyncService.runRosterSync", () => {
     await sync.runRosterSync({ kindergartenId: a.kindergarten.id, actorUserId: a.adminUser.id });
 
     expect(movementsCall()?.[1]).toEqual({ beginDate: "2026-08-10" });
+  });
+
+  /*
+   * ★ The funding register's «Төлөв» (`/admin/funding`): `students/list`'s
+   * `programStatusName` and `actionDate`, matched on `Child.esisPersonId`
+   * only, and served on `children/finance-roster` — the route an accountant
+   * already reads, so they need no ESIS permission of their own.
+   */
+  describe("the ESIS enrolment status on the finance roster", () => {
+    const PERSON_ID = "51000000000001";
+
+    function financeRoster(session: AuthSession) {
+      return authed(
+        request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/children/finance-roster`),
+        session,
+      );
+    }
+
+    function rowFor(res: request.Response, childId: string) {
+      return res.body.items.find((item: { id: string }) => item.id === childId);
+    }
+
+    beforeEach(async () => {
+      await db.child.update({ where: { id: a.child.id }, data: { esisPersonId: PERSON_ID } });
+    });
+
+    it("serves the status and its date after a sync, and null for an unlinked child", async () => {
+      const unlinked = await createChild(a.kindergarten.id, { firstName: "Холбоогүй" });
+      mockRosterReads(
+        [],
+        [
+          {
+            personId: PERSON_ID,
+            personRegNumber: "УП21041212",
+            programStatusName: "Шилжсэн",
+            actionDate: "2026-10-14",
+          },
+        ],
+      );
+
+      const outcome = await sync.runRosterSync({
+        kindergartenId: a.kindergarten.id,
+        actorUserId: null,
+      });
+      expect(outcome.status).toBe("SUCCEEDED");
+      expect(outcome.students).toEqual({ count: 1, updated: 1, errorCode: null });
+
+      const res = await financeRoster(adminA);
+      expect(res.status).toBe(200);
+      expect(rowFor(res, a.child.id)).toMatchObject({
+        esisProgramStatus: "Шилжсэн",
+        esisActionDate: "2026-10-14",
+      });
+      expect(rowFor(res, unlinked.id)).toMatchObject({
+        esisProgramStatus: null,
+        esisActionDate: null,
+      });
+    });
+
+    it("shows the same fields to an accountant", async () => {
+      const accountantUser = await createUser();
+      await createMembership(accountantUser.id, a.kindergarten.id, "ACCOUNTANT");
+      const accountant = await login(app, accountantUser.username);
+      mockRosterReads(
+        [],
+        [{ personId: PERSON_ID, programStatusName: "Идэвхтэй", actionDate: "2026-09-01" }],
+      );
+
+      await sync.runRosterSync({ kindergartenId: a.kindergarten.id, actorUserId: null });
+
+      const res = await financeRoster(accountant);
+      expect(res.status).toBe(200);
+      expect(rowFor(res, a.child.id)).toMatchObject({
+        esisProgramStatus: "Идэвхтэй",
+        esisActionDate: "2026-09-01",
+      });
+    });
+
+    /* A transferred child leaving the ministry's list is when "Шилжсэн" matters most. */
+    it("keeps the last status when the child drops out of the list", async () => {
+      mockRosterReads(
+        [],
+        [{ personId: PERSON_ID, programStatusName: "Шилжсэн", actionDate: "2026-10-14" }],
+      );
+      await sync.runRosterSync({ kindergartenId: a.kindergarten.id, actorUserId: null });
+
+      mockRosterReads([], []);
+      await sync.runRosterSync({ kindergartenId: a.kindergarten.id, actorUserId: null });
+
+      const child = await db.child.findUniqueOrThrow({ where: { id: a.child.id } });
+      expect(child.esisProgramStatus).toBe("Шилжсэн");
+      expect(child.esisActionDate?.toISOString().slice(0, 10)).toBe("2026-10-14");
+    });
+
+    it("never writes onto another kindergarten's child with the same ESIS id", async () => {
+      await db.child.update({ where: { id: b.child.id }, data: { esisPersonId: PERSON_ID } });
+      mockRosterReads(
+        [],
+        [{ personId: PERSON_ID, programStatusName: "Шилжсэн", actionDate: "2026-10-14" }],
+      );
+
+      await sync.runRosterSync({ kindergartenId: a.kindergarten.id, actorUserId: null });
+
+      const other = await db.child.findUniqueOrThrow({ where: { id: b.child.id } });
+      expect(other.esisProgramStatus).toBeNull();
+    });
   });
 
   it("refuses a second roster sync while one is already running", async () => {
