@@ -1175,6 +1175,17 @@ model Child {
   /// enrolment fail to save.
   esisPersonId String?
 
+  /// ESIS's own enrolment status (`students/list` → `programStatusName`, e.g.
+  /// "Идэвхтэй", "Шилжсэн") and the day it was recorded (`actionDate`), for
+  /// the funding register's «Төлөв» column.
+  ///
+  /// ★ The current value, not a history — overwritten by every roster sync,
+  /// matched on `esisPersonId` only. A child who drops out of the ministry's
+  /// list keeps the last value rather than going null, because a transferred
+  /// child vanishing from the list is exactly when "Шилжсэн" must stay visible.
+  esisProgramStatus String?
+  esisActionDate    DateTime? @db.Date
+
   /// Гадаад иргэн — a child who is not a Mongolian citizen.
   ///
   /// ★ A flag rather than a citizenship/country field, and that is deliberate.

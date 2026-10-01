@@ -213,7 +213,7 @@ function PdfButton({
   );
 }
 
-function ReportTableView({ table }: { table: ReportTable }) {
+export function ReportTableView({ table }: { table: ReportTable }) {
   if (table.rows.length === 0) {
     return (
       <EmptyState

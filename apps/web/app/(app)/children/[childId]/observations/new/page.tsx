@@ -660,6 +660,7 @@ function NewObservationForm() {
 
       {switching ? (
         <ChildPickerDialog
+          layout="table"
           selectedId={childId}
           onClose={() => setSwitching(false)}
           onSelect={(next) => {

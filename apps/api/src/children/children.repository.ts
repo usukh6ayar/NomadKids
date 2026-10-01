@@ -213,6 +213,9 @@ export class ChildrenRepository {
           photoMediaFileId: true,
           // Read to become `esisLinked` below — the ministry id itself stays here.
           esisPersonId: true,
+          // The funding register's «Төлөв» — written by the nightly roster sync.
+          esisProgramStatus: true,
+          esisActionDate: true,
           enrollments: {
             where: { status: "ACTIVE", deletedAt: null },
             select: {
@@ -254,16 +257,20 @@ export class ChildrenRepository {
      * different files, and the one that forgets is the one that ships. Doing it
      * in the same function that asked for them keeps the two edits together.
      */
-    const rows = items.map(({ healthNotes, guardianships, esisPersonId, ...child }) => ({
-      ...child,
-      // «ESIS төлөв»: whether this child has been matched to an ESIS person.
-      esisLinked: esisPersonId !== null,
-      profile: {
-        photo: Boolean(child.photoMediaFileId),
-        health: Boolean(healthNotes?.trim()),
-        guardianContact: guardianships.length > 0,
-      },
-    }));
+    const rows = items.map(
+      ({ healthNotes, guardianships, esisPersonId, esisActionDate, ...child }) => ({
+        ...child,
+        // «ESIS төлөв»: whether this child has been matched to an ESIS person.
+        esisLinked: esisPersonId !== null,
+        // A calendar day, sent as one — not the midnight-UTC instant Prisma reads.
+        esisActionDate: esisActionDate?.toISOString().slice(0, 10) ?? null,
+        profile: {
+          photo: Boolean(child.photoMediaFileId),
+          health: Boolean(healthNotes?.trim()),
+          guardianContact: guardianships.length > 0,
+        },
+      }),
+    );
 
     return { items: rows, total };
   }

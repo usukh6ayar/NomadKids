@@ -21,6 +21,30 @@ import { RequireRole } from "@/components/shell/require-role";
 import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
 const listSchema = z.array(schoolYearSchema);
+const createdYearSchema = z.object({ id: z.string() });
+
+/**
+ * The three terms a new school year gets, from the year it starts in.
+ *
+ * ★ Client's instruction, 2026-09-30: creating a year creates its terms —
+ * I is September–November, II December–February, III March–May. Terms are
+ * only read by the progress assessment, so these fixed dates are all it needs;
+ * `/admin/terms` can still correct them afterwards.
+ */
+function defaultTerms(startYear: number) {
+  const next = startYear + 1;
+  const leap = (next % 4 === 0 && next % 100 !== 0) || next % 400 === 0;
+  return [
+    { number: 1, name: "I улирал", startsOn: `${startYear}-09-01`, endsOn: `${startYear}-11-30` },
+    {
+      number: 2,
+      name: "II улирал",
+      startsOn: `${startYear}-12-01`,
+      endsOn: `${next}-02-${leap ? "29" : "28"}`,
+    },
+    { number: 3, name: "III улирал", startsOn: `${next}-03-01`, endsOn: `${next}-05-31` },
+  ];
+}
 
 /**
  * ★ The years this kindergarten has created, as a table — 2026-09-20, the
@@ -192,13 +216,34 @@ function CreateYearDialog({
 
   const create = useMutation({
     mutationFn: () =>
-      mutate(`/kindergartens/${kindergartenId}/school-years`, z.unknown(), {
+      mutate(`/kindergartens/${kindergartenId}/school-years`, createdYearSchema, {
         method: "POST",
         body: { name, startsOn, endsOn, isCurrent },
       }),
-    onSuccess: () => {
-      toast.success("Хичээлийн жил үүслээ.");
+    onSuccess: async (year) => {
+      // The year exists from here on, so a failed term is reported on its own
+      // rather than as a failed year — the admin fixes it on `/admin/terms`.
+      let termsFailed = false;
+      for (const term of defaultTerms(Number(startsOn.slice(0, 4)))) {
+        try {
+          await mutate(`/kindergartens/${kindergartenId}/terms`, z.unknown(), {
+            method: "POST",
+            body: { schoolYearId: year.id, ...term },
+          });
+        } catch {
+          termsFailed = true;
+        }
+      }
+      if (termsFailed) {
+        toast.error(
+          "Хичээлийн жил үүссэн ч улирлыг бүрэн үүсгэж чадсангүй. Улирал хэсгээс нэмнэ үү.",
+        );
+      } else {
+        toast.success("Хичээлийн жил болон 3 улирал үүслээ.");
+      }
       void queryClient.invalidateQueries({ queryKey: YEARS_KEY });
+      void queryClient.invalidateQueries({ queryKey: ["admin", "terms"] });
+      void queryClient.invalidateQueries({ queryKey: qk.dashboard.admin() });
       onClose();
     },
     onError: (error) => toast.error(errorMessage(error)),
