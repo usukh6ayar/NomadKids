@@ -227,9 +227,7 @@ function BalanceCell({ value, isMoney }: { value: unknown; isMoney: boolean }) {
   return (
     <td
       className={
-        isMoney
-          ? "px-4 py-3 text-right tabular-nums text-ink"
-          : "px-4 py-3 text-left text-ink"
+        isMoney ? "px-4 py-3 text-right tabular-nums text-ink" : "px-4 py-3 text-left text-ink"
       }
     >
       {isMoney ? money(String(value)) : String(value)}

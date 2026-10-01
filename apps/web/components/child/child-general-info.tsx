@@ -33,21 +33,23 @@ import { GuardianAccessButton } from "@/components/child/guardian-access-button"
 import { InviteGuardianDialog } from "@/components/child/invite-guardian-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { EmptyState, FormError } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import {
-  ChildEsisFields,
-  ChildEsisProfile,
-  useChildEsisDraft,
+  ChildEsisGuardians,
+  ChildEsisHousehold,
+  ChildEsisLiving,
+  ChildEsisRegistration,
 } from "@/components/child/child-esis";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
-import { capitalize, excerpt, formatAge, formatDate, fullName } from "@/lib/format";
+import { excerpt, formatAge, formatDate, fullName, capitalize } from "@/lib/format";
 
 const AGE_BAND_LABEL: Record<string, string> = {
   NURSERY: "Бага бүлэг",
@@ -69,6 +71,7 @@ function groupLabel(enrollment: Enrollment | null | undefined): string {
   if (!enrollment?.group) return "—";
   const name = capitalize(enrollment.group.name);
   const band = enrollmentAgeBandLabel(enrollment.group);
+  // "ахлах бүлэг · Ахлах бүлэг" said one thing twice (2026-09-29).
   const same = band && band.toLocaleLowerCase("mn-MN") === name.toLocaleLowerCase("mn-MN");
   return [name, same ? null : band].filter(Boolean).join(" · ");
 }
@@ -88,7 +91,7 @@ function teacherLabel(archive: EnrollmentArchive | undefined): string {
     archive?.current?.teachers.find((person) => person.role === "LEAD") ??
     archive?.current?.teachers[0];
   if (!teacher) return "—";
-  return `${teacher.lastName.slice(0, 1)}. ${teacher.firstName}`;
+  return `${teacher.lastName.slice(0, 1)}. ${capitalize(teacher.firstName)}`;
 }
 
 /**
@@ -118,62 +121,43 @@ export function ChildGeneralInfo({
   return (
     <div className="flex flex-col gap-6">
       <section aria-labelledby="general-information-heading">
-        {isStaff ? (
-          <ChildEsisProfile
-            child={child}
-            header={(action) => (
-              <ProfileSectionHeader
-                id="general-information-heading"
-                title="Ерөнхий мэдээлэл"
-                lede="Хүүхдийн одоогийн бүртгэл болон холбоо барих мэдээлэл."
-                action={action}
-              />
-            )}
-          >
-            <ChildIdentityCard child={child} esisContent={<ChildEsisFields section="personal" />} />
-            <EnrollmentCard
-              child={child}
-              archive={archive.data}
-              canEdit={hasRole("ADMIN")}
-              esisContent={<ChildEsisFields section="education" />}
-            />
-            <Guardians
-              child={child}
-              childId={childId}
-              canManage
-              canEditAny={hasRole("ADMIN")}
-              currentUserId={session?.user.id ?? null}
-              esisContent={<ChildEsisFields section="guardian" />}
-            />
-            <Enrollments child={child} archive={archive.data} />
-          </ChildEsisProfile>
-        ) : (
-          <>
-            <ProfileSectionHeader
-              id="general-information-heading"
-              title="Ерөнхий мэдээлэл"
-              lede="Хүүхдийн одоогийн бүртгэл болон холбоо барих мэдээлэл."
-            />
-            <div className="flex flex-col gap-4">
-              <ChildIdentityCard child={child} />
-              <EnrollmentCard child={child} archive={archive.data} canEdit={hasRole("ADMIN")} />
-            </div>
-          </>
-        )}
+        <ProfileSectionHeader
+          id="general-information-heading"
+          title="Ерөнхий мэдээлэл"
+          lede="Хүүхдийн одоогийн бүртгэл болон холбоо барих мэдээлэл."
+        />
+        <div className="flex flex-col gap-4">
+          <ChildIdentityCard child={child} />
+          <EnrollmentCard child={child} archive={archive.data} canEdit={hasRole("ADMIN")} />
+        </div>
       </section>
 
-      {!isStaff ? (
+      <Guardians
+        child={child}
+        childId={childId}
+        canManage={isStaff}
+        canEditAny={hasRole("ADMIN")}
+        currentUserId={session?.user.id ?? null}
+      />
+
+      {/*
+        ★ The ESIS half of this page — 2026-09-10, at the client's instruction.
+        Contacts sit with the guardians they describe; өрхийн мэдээлэл and
+        амьдрах орчин are two further sections of the same record.
+
+        Staff only. The services are also absent from a parent's own ESIS list,
+        so each panel would draw nothing anyway — see `child-esis.tsx`, which
+        explains why both guards are wanted for this particular data.
+      */}
+      {isStaff ? (
         <>
-          <Guardians
-            child={child}
-            childId={childId}
-            canManage={false}
-            canEditAny={false}
-            currentUserId={session?.user.id ?? null}
-          />
-          <Enrollments child={child} archive={archive.data} />
+          <ChildEsisRegistration childId={childId} />
+          <ChildEsisHousehold childId={childId} />
+          <ChildEsisLiving childId={childId} />
         </>
       ) : null}
+
+      <Enrollments child={child} archive={archive.data} />
 
       {isStaff && child.healthNotes ? (
         <section aria-label="Эрүүл мэндийн тэмдэглэл">
@@ -185,30 +169,55 @@ export function ChildGeneralInfo({
           </Card>
         </section>
       ) : null}
+
+      {/*
+        ★ This child's record as ESIS holds it — 2026-09-09, at the client's
+        request: from the roster, click a child and their general information is
+        here, inside Ерөнхий.
+
+        `student/info/:personRegNumber` is keyed by the register number, and the
+        one passed is the child's own — already on their record because this
+        product collects it (the roster has a Регистр column). So the number
+        travels *to* ESIS and is never read back: `personRegNumber` is a refused
+        output on this service as on every roster service, and `read` keeps the
+        value out of the audit row.
+
+        ★★ It never asks for the number, and never explains its absence
+        either — `askForParams={false}`. Searching by register is how you find
+        a child *among many*, which is the roster's own panel; a box here would
+        be a second search on a screen about one person, and a sentence in its
+        place is a screen explaining itself instead of showing the record. A
+        child with no регистр on file simply cannot be pulled live yet.
+
+        ★★★ It renders nothing for a guardian: `studentInfo` is on the teacher's
+        and the administrator's service lists and on nobody else's, so the
+        scoped catalog simply omits it.
+      */}
+      {/*
+        ★★★★ Not drawn at all without a регистр — 2026-09-29. It rendered an
+        empty "Мэдээлэл алга байна" box and a disabled Хайх on every such
+        child; with ESIS-imported children that was all of them.
+      */}
+      {child.nationalId ? (
+        <EsisDataPanel
+          resource="studentInfo"
+          title="Сурагчийн ерөнхий мэдээлэл"
+          description="ESIS дэх энэ хүүхдийн бүртгэл"
+          params={{ personRegNumber: child.nationalId }}
+          askForParams={false}
+        />
+      ) : null}
     </div>
   );
 }
 
-function ProfileSectionHeader({
-  id,
-  title,
-  lede,
-  action,
-}: {
-  id: string;
-  title: string;
-  lede: string;
-  action?: ReactNode;
-}) {
+function ProfileSectionHeader({ id, title, lede }: { id: string; title: string; lede: string }) {
   return (
-    <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h2 id={id} className="text-heading font-semibold text-ink md:text-display">
-          {title}
-        </h2>
-        <p className="mt-1 text-body text-muted md:text-lead">{lede}</p>
-      </div>
-      {action ? <div className="shrink-0">{action}</div> : null}
+    <div className="mb-4">
+      <h2 id={id} className="text-heading font-semibold text-ink md:text-display">
+        {title}
+      </h2>
+      <p className="mt-1 text-body text-muted md:text-lead">{lede}</p>
     </div>
   );
 }
@@ -235,16 +244,7 @@ function CardHeading({
   );
 }
 
-function ChildIdentityCard({
-  child,
-  esisContent,
-}: {
-  child: ChildDetail;
-  esisContent?: ReactNode;
-}) {
-  const esis = useChildEsisDraft();
-  const dateOfBirth = child.dateOfBirth || esis?.student.dateOfBirth;
-  const sexLabel = (child.sex && SEX_LABEL[child.sex]) || esis?.student.genderName || "—";
+function ChildIdentityCard({ child }: { child: ChildDetail }) {
   const SexIcon = child.sex === "FEMALE" ? Venus : child.sex === "MALE" ? Mars : VenusAndMars;
 
   return (
@@ -252,7 +252,6 @@ function ChildIdentityCard({
       <CardHeading icon={<User size={26} strokeWidth={1.9} />}>
         Хүүхдийн үндсэн мэдээлэл
       </CardHeading>
-      {esisContent}
       <dl className="mt-4 grid gap-3 sm:grid-cols-2">
         <IdentityFact icon={<User size={18} aria-hidden="true" />} label="Овог, нэр">
           {fullName(child)}
@@ -261,13 +260,13 @@ function ChildIdentityCard({
           icon={<CalendarDays size={18} aria-hidden="true" />}
           label="Нас, төрсөн он сар өдөр"
         >
-          {dateOfBirth ? `${formatAge(dateOfBirth)} · ${formatDate(dateOfBirth)}` : "—"}
+          {formatAge(child.dateOfBirth)} · {formatDate(child.dateOfBirth)}
         </IdentityFact>
         <IdentityFact icon={<IdCard size={18} aria-hidden="true" />} label="Регистрийн дугаар">
           {child.nationalId || "—"}
         </IdentityFact>
         <IdentityFact icon={<SexIcon size={18} aria-hidden="true" />} label="Хүйс">
-          {sexLabel}
+          {(child.sex && SEX_LABEL[child.sex]) || "—"}
         </IdentityFact>
       </dl>
     </Card>
@@ -324,26 +323,13 @@ function EnrollmentCard({
   child,
   archive,
   canEdit,
-  esisContent,
 }: {
   child: ChildDetail;
   archive: EnrollmentArchive | undefined;
   canEdit: boolean;
-  esisContent?: ReactNode;
 }) {
-  const esis = useChildEsisDraft();
   const active = child.enrollments.find((enrollment) => enrollment.status === "ACTIVE") ?? null;
   const kindergarten = archive?.current?.kindergarten.name ?? child.kindergarten?.name ?? "—";
-  const esisRegistration = esis?.registration;
-  const esisStudent = esis?.student;
-  const group = active
-    ? groupLabel(active)
-    : esisRegistration?.studentGroupName || esisStudent?.studentGroupName || "—";
-  const teacher = active ? teacherLabel(archive) : esisStudent?.instructorName || "—";
-  const enrolledOn = active?.startedOn || esisRegistration?.enrollmentDate;
-  const schoolYear =
-    active?.schoolYear?.name || esisRegistration?.academicYear || esisStudent?.academicYear;
-  const registered = Boolean(active) || esisRegistration?.isRegistered === "true";
 
   return (
     <Card pad="roomy">
@@ -363,20 +349,15 @@ function EnrollmentCard({
         Цэцэрлэгийн бүртгэл
       </CardHeading>
       <dl>
-        <InfoRow label="Одоогийн цэцэрлэг">{registered ? kindergarten : "—"}</InfoRow>
-        <InfoRow label="Бүлэг">{group}</InfoRow>
-        <InfoRow label="Ангийн багш">{teacher}</InfoRow>
-        <InfoRow label="Бүлэгт орсон огноо">{formatDate(enrolledOn)}</InfoRow>
-        <InfoRow label="Хичээлийн жил">{schoolYearLabel(schoolYear)}</InfoRow>
+        <InfoRow label="Одоогийн цэцэрлэг">{active ? kindergarten : "—"}</InfoRow>
+        <InfoRow label="Бүлэг">{groupLabel(active)}</InfoRow>
+        <InfoRow label="Ангийн багш">{active ? teacherLabel(archive) : "—"}</InfoRow>
+        <InfoRow label="Бүлэгт орсон огноо">{formatDate(active?.startedOn)}</InfoRow>
+        <InfoRow label="Хичээлийн жил">{schoolYearLabel(active?.schoolYear?.name)}</InfoRow>
         <InfoRow label="Төлөв" last>
-          {registered ? (
-            <Badge tone="mint">{esisRegistration?.statusName || "Суралцаж байгаа"}</Badge>
-          ) : (
-            <Badge>Бүртгэлгүй</Badge>
-          )}
+          {active ? <Badge tone="mint">Суралцаж байгаа</Badge> : <Badge>Бүртгэлгүй</Badge>}
         </InfoRow>
       </dl>
-      {esisContent}
     </Card>
   );
 }
@@ -387,14 +368,12 @@ function Guardians({
   canManage,
   canEditAny,
   currentUserId,
-  esisContent,
 }: {
   child: ChildDetail;
   childId: string;
   canManage: boolean;
   canEditAny: boolean;
   currentUserId: string | null;
-  esisContent?: ReactNode;
 }) {
   const invite = (
     <InviteGuardianDialog
@@ -411,7 +390,7 @@ function Guardians({
 
   if (child.guardianships.length === 0) {
     return (
-      <section aria-label="Асран хамгаалагч" className="flex flex-col gap-4">
+      <section aria-label="Асран хамгаалагч">
         <EmptyState
           icon={<Users size={28} aria-hidden="true" />}
           title="Асран хамгаалагч холбогдоогүй байна"
@@ -422,14 +401,7 @@ function Guardians({
           }
           action={canManage ? invite : undefined}
         />
-        {esisContent ? (
-          <Card pad="roomy">
-            <CardHeading icon={<Users size={26} strokeWidth={1.9} />}>
-              Асран хамгаалагч, өрхийн мэдээлэл
-            </CardHeading>
-            <div className="mt-4">{esisContent}</div>
-          </Card>
-        ) : null}
+        {canManage ? <ChildEsisGuardians child={child} /> : null}
       </section>
     );
   }
@@ -509,15 +481,19 @@ function Guardians({
             </Card>
           );
         })}
-        {esisContent ? (
-          <Card pad="roomy">
-            <CardHeading icon={<Users size={26} strokeWidth={1.9} />}>
-              Асран хамгаалагч, өрхийн мэдээлэл
-            </CardHeading>
-            <div className="mt-4">{esisContent}</div>
-          </Card>
-        ) : null}
       </div>
+
+      {/*
+        ★ ESIS's own guardian record, **inside** the Guardian section —
+        2026-09-10, at the client's instruction that it live in
+        "Ерөнхий мэдээлэл → Асран хамгаалагч". It was briefly a sibling section
+        of its own, which put two headings reading "Асран хамгаалагч" one after
+        the other on the same page.
+
+        Staff only: a guardian sees their own record here, not the ministry's
+        copy of the whole institution's contact list.
+      */}
+      {canManage ? <ChildEsisGuardians child={child} /> : null}
     </section>
   );
 }
