@@ -13,7 +13,7 @@ import {
   type FoodDiscountStatus,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
-import { groupLabel } from "@/lib/format";
+import { formatAge, groupLabel, shortName } from "@/lib/format";
 import { downloadUrl } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
@@ -115,7 +115,6 @@ export function AdminRoster() {
     };
 
   const data = roster.data;
-  const offset = (page - 1) * pageSize;
 
   return (
     <div className="flex flex-col gap-3">
@@ -252,10 +251,10 @@ export function AdminRoster() {
       ) : null}
 
       {data && data.items.length > 0 ? (
-        <ChildRosterTable
+        <StudentRosterTable
           caption="Суралцагчийн жагсаалт"
           items={data.items}
-          offset={offset}
+          offset={(page - 1) * pageSize}
           discounts={discountByChild}
         />
       ) : null}
@@ -286,6 +285,126 @@ export function AdminRoster() {
           </label>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Суралцагч — the teacher's and the director's roster, 2026-10-01, at the
+ * client's instruction: №, Бүлэг, the name as "А.Мандах", Регистр, Хүйс,
+ * Нас and ESIS төлөв. No photographs. The group page keeps
+ * `ChildRosterTable` below.
+ *
+ * «Хөнгөлөлт» is drawn after ESIS төлөв once the director has pulled ESIS's
+ * discounts — `discounts` is absent until then.
+ */
+export function StudentRosterTable({
+  items,
+  discounts,
+  forTeacher = false,
+  offset = 0,
+  caption = "Суралцагчдын жагсаалт",
+}: {
+  /** Rows before this page, so № carries on across pages. */
+  offset?: number;
+  items: z.infer<typeof childSummarySchema>[];
+  caption?: string;
+  /**
+   * The teacher's own group — 2026-10-01, the client: every row is the same
+   * group, so Бүлэг is dropped.
+   */
+  forTeacher?: boolean;
+  /** Child id → ESIS food-discount status, once pulled. */
+  discounts?: ReadonlyMap<string, FoodDiscountStatus>;
+}) {
+  const router = useRouter();
+  return (
+    <div className="overflow-x-auto rounded-card border border-border bg-surface">
+      <table className="w-full min-w-[640px] border-collapse text-body">
+        <caption className="sr-only">{caption}</caption>
+        <thead>
+          <tr>
+            <Th className="w-12 rounded-tl-card py-2">№</Th>
+            {forTeacher ? null : <Th className="py-2">Бүлэг</Th>}
+            <Th className="py-2">Нэр</Th>
+            <Th className="py-2">Регистр</Th>
+            <Th className="py-2">Хүйс</Th>
+            <Th className="py-2">Нас</Th>
+            <Th className="py-2">ESIS төлөв</Th>
+            {discounts ? <Th className="py-2">Хөнгөлөлт</Th> : null}
+            <Th className="w-12 rounded-tr-card py-2">
+              <span className="sr-only">Үйлдэл</span>
+            </Th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((child, index) => {
+            const enrollment =
+              child.enrollments?.find((row) => row.status === "ACTIVE") ?? child.enrollments?.[0];
+            // A foreign child's identifier is labelled apart from a missing регистр.
+            const register = child.isForeign
+              ? child.foreignId
+                ? `${child.foreignId} (гадаад)`
+                : "Гадаад иргэн"
+              : (child.nationalId ?? "—");
+            return (
+              <tr key={child.id} className="hover:bg-sunken/60">
+                <Td className="py-1.5 tabular-nums text-muted">{offset + index + 1}</Td>
+                {forTeacher ? null : (
+                  <Td className="py-1.5 text-muted">
+                    {enrollment?.group ? groupLabel(enrollment.group.name) : "—"}
+                  </Td>
+                )}
+                <Td className="py-1.5">
+                  <Link
+                    href={`/children/${child.id}/general`}
+                    className="font-medium text-ink hover:text-primary hover:underline"
+                  >
+                    {shortName(child)}
+                  </Link>
+                </Td>
+                <Td className="py-1.5 tabular-nums text-muted">{register}</Td>
+                <Td className="py-1.5 text-muted">{(child.sex && SEX_LABEL[child.sex]) || "—"}</Td>
+                <Td className="whitespace-nowrap py-1.5 text-muted">
+                  {formatAge(child.dateOfBirth)}
+                </Td>
+                <Td className="py-1.5 text-muted">
+                  {child.esisLinked === undefined
+                    ? "—"
+                    : child.esisLinked
+                      ? "Холбогдсон"
+                      : "Холбогдоогүй"}
+                </Td>
+                {discounts ? (
+                  <Td className="py-1.5 text-muted">
+                    {DISCOUNT_LABEL[discounts.get(child.id) ?? "UNASSESSED"]}
+                  </Td>
+                ) : null}
+                <Td className="py-1 text-right">
+                  <RowMenu
+                    ariaLabel={`${child.lastName} ${child.firstName} — үйлдэл`}
+                    triggerIcon={<MoreHorizontal size={18} aria-hidden="true" />}
+                    items={[
+                      {
+                        label: "Дэлгэрэнгүй",
+                        onSelect: () => router.push(`/children/${child.id}/general`),
+                      },
+                      {
+                        label: "Засах",
+                        onSelect: () => router.push(`/children/${child.id}/edit`),
+                      },
+                      {
+                        label: "Бүртгэлийн түүх",
+                        onSelect: () => router.push(`/children/${child.id}/enrollment-archive`),
+                      },
+                    ]}
+                  />
+                </Td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

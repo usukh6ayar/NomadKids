@@ -60,7 +60,7 @@ export function EsisVsRegistered({
       {untouched ? (
         <p className="text-body text-muted">
           ЭСИС-ээс мэдээлэл татаагүй байна.{" "}
-          <Link href="/admin/esis-sync" className="text-primary underline">
+          <Link href="/admin/kindergarten?tab=esis" className="text-primary underline">
             ЭСИС холболт
           </Link>{" "}
           хэсгээс ажилтны бүртгэлийг, «Анги бүлэг» хэсгээс бүлэг, суралцагчийг татна.

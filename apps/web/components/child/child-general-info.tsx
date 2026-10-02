@@ -1,21 +1,18 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsFetching, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { Query } from "@tanstack/react-query";
 import Link from "next/link";
 import {
-  CalendarDays,
-  ChevronDown,
-  GraduationCap,
-  IdCard,
-  Mars,
+  House,
   Pencil,
   Phone,
+  RefreshCw,
   School,
+  TriangleAlert,
   User,
   UserPlus,
   Users,
-  Venus,
-  VenusAndMars,
 } from "lucide-react";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
@@ -26,8 +23,6 @@ import {
   SEX_LABEL,
   type ChildDetail,
   type EnrollmentArchive,
-  ENROLLMENT_STATUS_LABEL,
-  ENROLLMENT_STATUS_TONE,
 } from "@kinder/contracts";
 import { GuardianAccessButton } from "@/components/child/guardian-access-button";
 import { InviteGuardianDialog } from "@/components/child/invite-guardian-dialog";
@@ -39,12 +34,9 @@ import { Field, Input, Select } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { EmptyState, FormError } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
-import {
-  ChildEsisGuardians,
-  ChildEsisHousehold,
-  ChildEsisLiving,
-  ChildEsisRegistration,
-} from "@/components/child/child-esis";
+import { ChildEsisContactsSend, ChildEsisHousehold } from "@/components/child/child-esis";
+import { EsisFactsWriteButton } from "@/components/esis/esis-write";
+import { useEsisRows } from "@/components/esis/use-esis-rows";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
@@ -118,17 +110,52 @@ export function ChildGeneralInfo({
     queryFn: () => get(`/children/${childId}/enrollment-archive`, enrollmentArchiveSchema),
   });
 
+  /*
+    ★ ESIS's copy of this child, folded into the two cards — 2026-10-01, at
+    the client's request (phase 2 of tidying this tab). "ЭСИС дэх бүртгэл" and
+    "Сурагчийн ерөнхий мэдээлэл" were two more full sections repeating the
+    name, the birth date and the group; their facts now sit on the rows they
+    describe, marked ESIS, and every field ESIS returned is still one press
+    away under "ЭСИС-ийн бүх мэдээлэл".
+
+    The same query keys `EsisDataPanel` uses, so the folded panels below and
+    these rows are one request each, not two. `studentInfo` is keyed by the
+    регистр and simply does not run without one.
+  */
+  const esisInfo = useEsisRows("studentInfo", {
+    enabled: isStaff,
+    params: { personRegNumber: child.nationalId },
+  }).rows[0];
+  const esisCheck = useEsisRows("studentCheck", { enabled: isStaff, params: { childId } }).rows[0];
+
+  /*
+    ★ Compacted 2026-10-01, at the client's request — the tab repeated itself
+    and spent most of a phone screen on padding. The identity and placement
+    cards sit side by side from `lg`, the rows are body-sized, and the
+    placement history that also lives on "Суралцсан түүх" is no longer drawn
+    here a second time. Nothing was removed from the data: every ESIS panel
+    below is a live read, and every action (send to ESIS, invite, edit,
+    revoke) is still on the page.
+  */
   return (
-    <div className="flex flex-col gap-6">
-      <section aria-labelledby="general-information-heading">
+    <div className="flex flex-col gap-5">
+      <section aria-labelledby="general-information-heading" className="flex flex-col gap-3">
         <ProfileSectionHeader
           id="general-information-heading"
           title="Ерөнхий мэдээлэл"
-          lede="Хүүхдийн одоогийн бүртгэл болон холбоо барих мэдээлэл."
+          action={
+            isStaff ? <EsisPullAll childId={childId} nationalId={child.nationalId} /> : undefined
+          }
         />
-        <div className="flex flex-col gap-4">
-          <ChildIdentityCard child={child} />
-          <EnrollmentCard child={child} archive={archive.data} canEdit={hasRole("ADMIN")} />
+        <div className="grid items-start gap-3 lg:grid-cols-2">
+          <ChildIdentityCard child={child} esis={isStaff ? (esisInfo ?? null) : undefined} />
+          <EnrollmentCard
+            child={child}
+            archive={archive.data}
+            canEdit={hasRole("ADMIN")}
+            esisInfo={isStaff ? (esisInfo ?? null) : undefined}
+            esisCheck={isStaff ? (esisCheck ?? null) : undefined}
+          />
         </div>
       </section>
 
@@ -149,15 +176,8 @@ export function ChildGeneralInfo({
         so each panel would draw nothing anyway — see `child-esis.tsx`, which
         explains why both guards are wanted for this particular data.
       */}
-      {isStaff ? (
-        <>
-          <ChildEsisRegistration childId={childId} />
-          <ChildEsisHousehold childId={childId} />
-          <ChildEsisLiving childId={childId} />
-        </>
-      ) : null}
-
-      <Enrollments child={child} archive={archive.data} />
+      {isStaff ? <LivingCard childId={childId} /> : null}
+      {isStaff ? <ChildEsisHousehold childId={childId} /> : null}
 
       {isStaff && child.healthNotes ? (
         <section aria-label="Эрүүл мэндийн тэмдэглэл">
@@ -171,53 +191,104 @@ export function ChildGeneralInfo({
       ) : null}
 
       {/*
-        ★ This child's record as ESIS holds it — 2026-09-09, at the client's
-        request: from the roster, click a child and their general information is
-        here, inside Ерөнхий.
-
-        `student/info/:personRegNumber` is keyed by the register number, and the
-        one passed is the child's own — already on their record because this
-        product collects it (the roster has a Регистр column). So the number
-        travels *to* ESIS and is never read back: `personRegNumber` is a refused
-        output on this service as on every roster service, and `read` keeps the
-        value out of the audit row.
-
-        ★★ It never asks for the number, and never explains its absence
-        either — `askForParams={false}`. Searching by register is how you find
-        a child *among many*, which is the roster's own panel; a box here would
-        be a second search on a screen about one person, and a sentence in its
-        place is a screen explaining itself instead of showing the record. A
-        child with no регистр on file simply cannot be pulled live yet.
-
-        ★★★ It renders nothing for a guardian: `studentInfo` is on the teacher's
-        and the administrator's service lists and on nobody else's, so the
-        scoped catalog simply omits it.
+        ★ Every field ESIS returned for this child — a link at the foot of the
+        tab that opens a dialog, 2026-10-01, at the client's request. It was a
+        fold in the page's flow; the rows the cards above use are only a few of
+        the fields, and the rest (programme, plan, stage, ESIS's teacher, the
+        Mongolian-script names, the child's own contact points, the ids) stay
+        readable here rather than being dropped. Staff only.
       */}
-      {/*
-        ★★★★ Not drawn at all without a регистр — 2026-09-29. It rendered an
-        empty "Мэдээлэл алга байна" box and a disabled Хайх on every such
-        child; with ESIS-imported children that was all of them.
-      */}
-      {child.nationalId ? (
-        <EsisDataPanel
-          resource="studentInfo"
-          title="Сурагчийн ерөнхий мэдээлэл"
-          description="ESIS дэх энэ хүүхдийн бүртгэл"
-          params={{ personRegNumber: child.nationalId }}
-          askForParams={false}
-        />
-      ) : null}
+      {isStaff ? <EsisAllFieldsLink child={child} childId={childId} /> : null}
     </div>
   );
 }
 
-function ProfileSectionHeader({ id, title, lede }: { id: string; title: string; lede: string }) {
+/**
+ * "ЭСИС-ийн бүх талбарыг харах" and the dialog it opens.
+ *
+ * The panels inside read with the same query keys the cards above already
+ * used, so opening the dialog asks ESIS nothing new — it shows what the page
+ * has. `studentInfo` is keyed by the регистр, which travels *to* ESIS only:
+ * `personRegNumber` is a refused output (ESIS_REQUEST.md §1.1 (b)).
+ */
+function EsisAllFieldsLink({ child, childId }: { child: ChildDetail; childId: string }) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <div className="mb-4">
-      <h2 id={id} className="text-heading font-semibold text-ink md:text-display">
+    <div className="flex justify-end">
+      <Button type="button" variant="link" size="sm" onClick={() => setOpen(true)}>
+        ЭСИС-ийн бүх талбарыг харах →
+      </Button>
+      <FormDialog
+        open={open}
+        onOpenChange={setOpen}
+        title="ЭСИС-ийн бүх мэдээлэл"
+        description="ЭСИС-ээс энэ хүүхдийн талаар ирсэн бүх талбар."
+        size="wide"
+        footer={
+          <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
+            Хаах
+          </Button>
+        }
+      >
+        {open ? (
+          <div className="flex flex-col gap-5">
+            {child.nationalId ? (
+              <EsisDataPanel
+                resource="studentInfo"
+                params={{ personRegNumber: child.nationalId }}
+                askForParams={false}
+                compact
+                title="Сурагчийн ерөнхий мэдээлэл"
+              />
+            ) : (
+              <p className="text-body text-muted">
+                Регистрийн дугаар бүртгэгдээгүй тул ЭСИС-ийн ерөнхий мэдээллийг татах боломжгүй.
+              </p>
+            )}
+            <EsisDataPanel
+              resource="studentCheck"
+              params={{ childId }}
+              askForParams={false}
+              compact
+              title="ЭСИС дэх бүртгэл"
+            />
+            <EsisDataPanel
+              resource="studentContacts"
+              params={{ childId }}
+              askForParams={false}
+              compact
+              title="Асран хамгаалагч ба холбоо барих"
+            />
+            <EsisDataPanel
+              resource="studentCondition"
+              params={{ childId }}
+              askForParams={false}
+              compact
+              title="Амьдрах орчин"
+            />
+          </div>
+        ) : null}
+      </FormDialog>
+    </div>
+  );
+}
+
+function ProfileSectionHeader({
+  id,
+  title,
+  action,
+}: {
+  id: string;
+  title: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <h2 id={id} className="text-title font-semibold text-ink">
         {title}
       </h2>
-      <p className="mt-1 text-body text-muted md:text-lead">{lede}</p>
+      {action ? <div className="shrink-0">{action}</div> : null}
     </div>
   );
 }
@@ -232,8 +303,8 @@ function CardHeading({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex min-h-11 items-center justify-between gap-3 border-b border-border pb-4">
-      <div className="flex min-w-0 items-center gap-3 text-lead font-semibold text-ink md:text-heading">
+    <div className="flex min-h-10 items-center justify-between gap-3 border-b border-border pb-2">
+      <div className="flex min-w-0 items-center gap-2 text-body font-semibold text-ink">
         <span aria-hidden="true" className="shrink-0 text-sky-ink">
           {icon}
         </span>
@@ -244,57 +315,108 @@ function CardHeading({
   );
 }
 
-function ChildIdentityCard({ child }: { child: ChildDetail }) {
-  const SexIcon = child.sex === "FEMALE" ? Venus : child.sex === "MALE" ? Mars : VenusAndMars;
+type EsisRow = Record<string, string | null>;
 
+/** "ЭСИС" beside a value that came from the ministry rather than this product. */
+function EsisTag() {
   return (
-    <Card pad="roomy">
-      <CardHeading icon={<User size={26} strokeWidth={1.9} />}>
-        Хүүхдийн үндсэн мэдээлэл
-      </CardHeading>
-      <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-        <IdentityFact icon={<User size={18} aria-hidden="true" />} label="Овог, нэр">
-          {fullName(child)}
-        </IdentityFact>
-        <IdentityFact
-          icon={<CalendarDays size={18} aria-hidden="true" />}
-          label="Нас, төрсөн он сар өдөр"
-        >
-          {formatAge(child.dateOfBirth)} · {formatDate(child.dateOfBirth)}
-        </IdentityFact>
-        <IdentityFact icon={<IdCard size={18} aria-hidden="true" />} label="Регистрийн дугаар">
-          {child.nationalId || "—"}
-        </IdentityFact>
-        <IdentityFact icon={<SexIcon size={18} aria-hidden="true" />} label="Хүйс">
-          {(child.sex && SEX_LABEL[child.sex]) || "—"}
-        </IdentityFact>
-      </dl>
-    </Card>
+    <span className="ml-1.5 inline-flex rounded-pill bg-sky px-1.5 py-px align-middle text-caption font-semibold text-sky-ink">
+      ЭСИС
+    </span>
   );
 }
 
-function IdentityFact({
-  icon,
-  label,
-  children,
-}: {
-  icon: ReactNode;
-  label: string;
-  children: ReactNode;
-}) {
+/** Lower-cased and trimmed, so "Ахлах А бүлэг" and "ахлах а бүлэг " agree. */
+function same(a: string | null | undefined, b: string | null | undefined): boolean {
+  const norm = (value: string) => value.trim().toLocaleLowerCase("mn-MN").replace(/\s+/g, " ");
+  return Boolean(a && b) && norm(a!) === norm(b!);
+}
+
+/**
+ * ESIS-ээс татах — every ESIS read on this tab again, at once.
+ *
+ * ★ One button for the tab — 2026-10-01, at the client's request. The panels
+ * each had their own "Шинэчлэх"; this refetches the ones already on the page
+ * for this child (by its id, or by its регистр for `studentInfo`), so there is
+ * one press and one place to look for the answer.
+ */
+function EsisPullAll({ childId, nationalId }: { childId: string; nationalId?: string | null }) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const { primaryKindergartenId } = useSession();
+  const byRegister = nationalId
+    ? new URLSearchParams({ personRegNumber: nationalId }).toString()
+    : null;
+
+  const predicate = (query: Query) => {
+    const key = query.queryKey;
+    if (key[0] !== "admin" || key[1] !== "esis" || key[2] !== primaryKindergartenId) return false;
+    if (key[3] !== "resource" || typeof key[5] !== "string") return false;
+    return (
+      key[5].includes(`childId=${childId}`) || Boolean(byRegister && key[5].includes(byRegister))
+    );
+  };
+  const fetching = useIsFetching({ predicate }) > 0;
+
   return (
-    <div className="flex min-h-[76px] items-center gap-3 rounded-row border border-border bg-canvas px-4 py-3">
-      <span
-        aria-hidden="true"
-        className="flex size-9 shrink-0 items-center justify-center rounded-control bg-primary-soft text-primary"
-      >
-        {icon}
-      </span>
-      <div className="min-w-0">
-        <dt className="text-caption text-muted">{label}</dt>
-        <dd className="mt-0.5 break-words font-semibold text-ink">{children}</dd>
-      </div>
-    </div>
+    <Button
+      type="button"
+      variant="secondary"
+      size="sm"
+      disabled={fetching}
+      onClick={async () => {
+        await queryClient.refetchQueries({ predicate });
+        toast.success("ЭСИС-ийн мэдээлэл шинэчлэгдлээ.");
+      }}
+    >
+      <RefreshCw size={16} aria-hidden="true" className={fetching ? "animate-spin" : undefined} />
+      {fetching ? "Татаж байна…" : "ЭСИС-ээс татах"}
+    </Button>
+  );
+}
+
+function ChildIdentityCard({
+  child,
+  esis,
+}: {
+  child: ChildDetail;
+  /** ESIS's general record — `undefined` for a guardian, who has no ESIS rows. */
+  esis?: EsisRow | null;
+}) {
+  // A foreign child's identifier stands in for the регистр, labelled apart.
+  const register = child.isForeign
+    ? child.foreignId
+      ? `${child.foreignId} (гадаад)`
+      : "Гадаад иргэн"
+    : child.nationalId || "—";
+
+  return (
+    <Card pad="compact">
+      <CardHeading icon={<User size={18} strokeWidth={2} />}>Хүүхдийн үндсэн мэдээлэл</CardHeading>
+      <dl>
+        {esis !== undefined ? (
+          <InfoRow label="Ургийн овог">
+            {esis?.familyName ? (
+              <>
+                {esis.familyName}
+                <EsisTag />
+              </>
+            ) : (
+              "—"
+            )}
+          </InfoRow>
+        ) : null}
+        <InfoRow label="Овог">{child.lastName}</InfoRow>
+        <InfoRow label="Нэр">{child.firstName}</InfoRow>
+        <InfoRow label="Регистрийн дугаар">{register}</InfoRow>
+        <InfoRow label="Төрсөн огноо">
+          {formatAge(child.dateOfBirth)} · {formatDate(child.dateOfBirth)}
+        </InfoRow>
+        <InfoRow label="Хүйс" last>
+          {(child.sex && SEX_LABEL[child.sex]) || "—"}
+        </InfoRow>
+      </dl>
+    </Card>
   );
 }
 
@@ -309,12 +431,12 @@ function InfoRow({
 }) {
   return (
     <div
-      className={`grid grid-cols-1 gap-1 py-4 sm:grid-cols-2 sm:items-center sm:gap-6 ${
-        last ? "" : "border-b border-border"
+      className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-center gap-3 py-2 ${
+        last ? "" : "border-b border-border-soft"
       }`}
     >
       <dt className="text-body text-muted">{label}</dt>
-      <dd className="min-w-0 text-lead font-medium text-ink">{children}</dd>
+      <dd className="min-w-0 break-words text-body font-medium text-ink">{children}</dd>
     </div>
   );
 }
@@ -323,18 +445,23 @@ function EnrollmentCard({
   child,
   archive,
   canEdit,
+  esisInfo,
+  esisCheck,
 }: {
   child: ChildDetail;
   archive: EnrollmentArchive | undefined;
   canEdit: boolean;
+  /** `undefined` for a guardian; `null` while ESIS has not answered. */
+  esisInfo?: EsisRow | null;
+  esisCheck?: EsisRow | null;
 }) {
   const active = child.enrollments.find((enrollment) => enrollment.status === "ACTIVE") ?? null;
   const kindergarten = archive?.current?.kindergarten.name ?? child.kindergarten?.name ?? "—";
 
   return (
-    <Card pad="roomy">
+    <Card pad="compact">
       <CardHeading
-        icon={<School size={26} strokeWidth={1.9} />}
+        icon={<School size={18} strokeWidth={2} />}
         action={
           canEdit ? (
             <Button asChild variant="secondary" size="sm">
@@ -348,18 +475,224 @@ function EnrollmentCard({
       >
         Цэцэрлэгийн бүртгэл
       </CardHeading>
+      {/*
+        The child's own status is the badge in the hero above; this card says
+        only whether there is a current placement at all, and only when there
+        is not.
+      */}
       <dl>
-        <InfoRow label="Одоогийн цэцэрлэг">{active ? kindergarten : "—"}</InfoRow>
-        <InfoRow label="Бүлэг">{groupLabel(active)}</InfoRow>
-        <InfoRow label="Ангийн багш">{active ? teacherLabel(archive) : "—"}</InfoRow>
-        <InfoRow label="Бүлэгт орсон огноо">{formatDate(active?.startedOn)}</InfoRow>
-        <InfoRow label="Хичээлийн жил">{schoolYearLabel(active?.schoolYear?.name)}</InfoRow>
-        <InfoRow label="Төлөв" last>
-          {active ? <Badge tone="mint">Суралцаж байгаа</Badge> : <Badge>Бүртгэлгүй</Badge>}
+        <InfoRow label="Одоогийн цэцэрлэг">
+          {active ? kindergarten : <Badge>Бүртгэлгүй</Badge>}
         </InfoRow>
+        <InfoRow label="Хичээлийн жил">{schoolYearLabel(active?.schoolYear?.name)}</InfoRow>
+        <InfoRow label="Бүлэг">
+          {groupLabel(active)}
+          {/*
+            The group ESIS has, only when it is not this one — attendance sent
+            to ESIS fails for a child it files under another group.
+          */}
+          {esisInfo?.studentGroupName && !same(esisInfo.studentGroupName, active?.group?.name) ? (
+            <span className="mt-0.5 flex items-center gap-1 text-caption font-medium text-peach-ink">
+              <TriangleAlert size={13} aria-hidden="true" />
+              ЭСИС-д: {esisInfo.studentGroupName}
+            </span>
+          ) : null}
+        </InfoRow>
+        <InfoRow label="Ангийн багш">{active ? teacherLabel(archive) : "—"}</InfoRow>
+        <InfoRow label="Бүлэгт орсон огноо" last={esisInfo === undefined}>
+          {formatDate(active?.startedOn)}
+        </InfoRow>
+        {esisInfo !== undefined ? (
+          <>
+            <InfoRow label="Суралцах төлөв">
+              {esisInfo?.programStatusName ? (
+                <>
+                  {esisInfo.programStatusName}
+                  {esisInfo.actionDate ? (
+                    <span className="text-muted"> · {esisInfo.actionDate.slice(0, 10)}</span>
+                  ) : null}
+                  <EsisTag />
+                </>
+              ) : (
+                "—"
+              )}
+            </InfoRow>
+            <InfoRow label="ЭСИС-д бүртгэл" last>
+              {esisCheck?.isRegistered === "true" ? (
+                <Badge tone="mint">Бүртгэлтэй</Badge>
+              ) : esisCheck?.isRegistered === "false" ? (
+                <Badge tone="peach">Бүртгэлгүй</Badge>
+              ) : (
+                "—"
+              )}
+            </InfoRow>
+          </>
+        ) : null}
       </dl>
     </Card>
   );
+}
+
+/**
+ * Амьдрах орчин — a card like the ones above it, 2026-10-01.
+ *
+ * ★ At the client's request: it was a fold of raw ESIS rows. Its fields do
+ * have names, so it reads like the rest of the tab — only the ones ESIS
+ * filled, under their Mongolian labels, with the "send to ESIS" action in the
+ * heading. The dormitory fields are a school's and are usually empty for a
+ * kindergarten, so an empty one is simply not drawn. The ids ESIS returns
+ * (`studentStatisticId`, `institutionId`, `personId`) are not a reader's
+ * concern and are left out.
+ *
+ * `studentLivingPalace` arrives as a code with no published meaning, so it is
+ * shown as the code rather than guessed at.
+ */
+const LIVING_FIELDS: { key: string; label: string; format?: (value: string) => string }[] = [
+  { key: "academicYear", label: "Мэдээллийн хичээлийн жил" },
+  { key: "studentLivingPalace", label: "Амьдарч буй байр (код)" },
+  { key: "livingPlaceDistance", label: "Цэцэрлэг хүртэлх зай" },
+  { key: "enrollYear", label: "Цэцэрлэгт элссэн огноо", format: (value) => value.slice(0, 10) },
+  {
+    key: "annualTuitionFee",
+    label: "Жилийн сургалтын төлбөр",
+    format: (value) =>
+      Number.isFinite(Number(value))
+        ? `${new Intl.NumberFormat("mn-MN", { maximumFractionDigits: 0 }).format(Number(value))} ₮`
+        : value,
+  },
+  { key: "dormitoryPropertyType", label: "Дотуур байрны өмчийн хэлбэр" },
+  { key: "dormitoryOwner", label: "Дотуур байрны эзэмшигч" },
+  { key: "dormitorySchoolId", label: "Дотуур байртай сургуулийн код" },
+  { key: "dormitoryId", label: "Дотуур байрны код" },
+];
+
+function LivingCard({ childId }: { childId: string }) {
+  const living = useEsisRows("studentCondition", { params: { childId } });
+  // Unavailable: this role's ESIS list has no such service — draw nothing.
+  if (living.isUnavailable) return null;
+
+  const row = living.rows[0];
+  const filled = row ? LIVING_FIELDS.filter((field) => row[field.key]) : [];
+
+  return (
+    <section aria-labelledby="living-heading">
+      <Card pad="compact">
+        <CardHeading
+          icon={<House size={18} strokeWidth={2} />}
+          action={
+            <EsisFactsWriteButton
+              resource="studentConditionSave"
+              childId={childId}
+              title="Амьдрах орчин илгээх"
+              description="Хүүхдийн амьдрах орчны мэдээллийг ЭСИС рүү илгээнэ."
+            />
+          }
+        >
+          <span id="living-heading">Амьдрах орчин</span>
+          <EsisTag />
+        </CardHeading>
+        {living.isPending ? (
+          <p className="py-2 text-body text-muted">ЭСИС-ээс уншиж байна…</p>
+        ) : living.isError ? (
+          <p className="py-2 text-body text-muted">ЭСИС-ээс хариу ирсэнгүй.</p>
+        ) : filled.length === 0 ? (
+          <p className="py-2 text-body text-muted">ЭСИС-д амьдрах орчны мэдээлэл бүртгэгдээгүй.</p>
+        ) : (
+          <dl>
+            {filled.map((field, index) => (
+              <InfoRow key={field.key} label={field.label} last={index === filled.length - 1}>
+                {field.format ? field.format(row![field.key]!) : row![field.key]}
+              </InfoRow>
+            ))}
+          </dl>
+        )}
+      </Card>
+    </section>
+  );
+}
+
+/** One guardian as ESIS holds them: `relInfo`, with their `relPhone`/`relEmail`. */
+interface EsisGuardian {
+  id: string;
+  familyName: string | null;
+  lastName: string;
+  firstName: string;
+  job: string | null;
+  phones: string[];
+  emails: string[];
+}
+
+/**
+ * ESIS's contact rows, regrouped by guardian.
+ *
+ * ★ ESIS sends one row per entry, tagged by `section` (see
+ * `esisContactsParser`): the person in `relInfo`, each of their numbers in
+ * `relPhone`, each address in `relEmail`, joined by `studentContactId`. A
+ * guardian may have several numbers, so phones and emails stay lists. The
+ * child's own `contact*` rows are not a guardian and are left out here.
+ */
+function esisGuardians(rows: EsisRow[]): EsisGuardian[] {
+  return rows
+    .filter((row) => row.section === "relInfo")
+    .map((person) => {
+      const id = person.studentContactId ?? "";
+      const of = (section: string, field: string) =>
+        rows
+          .filter((row) => row.section === section && row.studentContactId === id)
+          .map((row) => row[field])
+          .filter((value): value is string => Boolean(value));
+      return {
+        id,
+        familyName: person.familyName?.trim() || null,
+        lastName: person.lastName?.trim() ?? "",
+        firstName: person.firstName?.trim() ?? "",
+        job: [person.legalEmployerName, person.jobTitle].filter(Boolean).join(" · ") || null,
+        phones: of("relPhone", "phoneNumber"),
+        emails: of("relEmail", "emailAddress"),
+      };
+    });
+}
+
+/** The last eight digits — how a Mongolian mobile number is compared. */
+function phoneKey(value: string | null | undefined): string {
+  return (value ?? "").replace(/\D/g, "").slice(-8);
+}
+
+/**
+ * Which ESIS guardian is this one: the same number first, then the same
+ * овог and нэр. Each ESIS record is matched once, so two parents never claim
+ * the same ministry row.
+ */
+function matchGuardians(
+  guardianships: ChildDetail["guardianships"],
+  esis: EsisGuardian[],
+): { byGuardianship: Map<string, EsisGuardian>; unmatched: EsisGuardian[] } {
+  const byGuardianship = new Map<string, EsisGuardian>();
+  const taken = new Set<string>();
+  const claim = (
+    test: (
+      guardian: NonNullable<ChildDetail["guardianships"][number]["guardian"]>,
+      e: EsisGuardian,
+    ) => boolean,
+  ) => {
+    for (const guardianship of guardianships) {
+      const guardian = guardianship.guardian;
+      if (!guardian || byGuardianship.has(guardianship.id)) continue;
+      const found = esis.find((e) => !taken.has(e.id) && test(guardian, e));
+      if (found) {
+        byGuardianship.set(guardianship.id, found);
+        taken.add(found.id);
+      }
+    }
+  };
+  claim((guardian, e) => {
+    const key = phoneKey(guardian.phone);
+    return key.length === 8 && e.phones.some((phone) => phoneKey(phone) === key);
+  });
+  claim(
+    (guardian, e) => same(guardian.firstName, e.firstName) && same(guardian.lastName, e.lastName),
+  );
+  return { byGuardianship, unmatched: esis.filter((e) => !taken.has(e.id)) };
 }
 
 function Guardians({
@@ -375,6 +708,21 @@ function Guardians({
   canEditAny: boolean;
   currentUserId: string | null;
 }) {
+  /*
+    ★ ESIS's guardians, person by person — 2026-10-01, phase 3 of the tidy.
+    They were a separate table under the cards, so the same parent appeared
+    twice and a reader had to compare the two by eye. Each card now says
+    whether ESIS has this person and adds what only ESIS holds (workplace, a
+    number we do not have); the ESIS guardians nobody here is linked to are
+    listed once, below. Staff only, as before.
+  */
+  const contacts = useEsisRows("studentContacts", { enabled: canManage, params: { childId } });
+  const esis = esisGuardians(contacts.rows);
+  const { byGuardianship, unmatched } = matchGuardians(child.guardianships, esis);
+  // Only say "not in ESIS" once ESIS has actually answered.
+  const esisAnswered =
+    canManage && !contacts.isPending && !contacts.isError && !contacts.isUnavailable;
+
   const invite = (
     <InviteGuardianDialog
       childId={childId}
@@ -388,9 +736,47 @@ function Guardians({
     />
   );
 
+  const actions = canManage ? (
+    <div className="flex flex-wrap items-center gap-2">
+      {invite}
+      <ChildEsisContactsSend child={child} />
+    </div>
+  ) : undefined;
+
+  const unmatchedList =
+    canManage && unmatched.length > 0 ? (
+      <div className="flex flex-col gap-2">
+        <h3 className="text-body font-semibold text-ink">
+          ЭСИС-д бүртгэлтэй, системд холбогдоогүй ({unmatched.length})
+        </h3>
+        <div className="grid items-start gap-3 lg:grid-cols-2">
+          {unmatched.map((person) => (
+            <Card key={person.id} pad="compact" className="border-dashed">
+              <CardHeading icon={<Users size={18} strokeWidth={2} />} action={invite}>
+                {[person.lastName, person.firstName].filter(Boolean).join(" ") || "Нэргүй"}
+                <EsisTag />
+              </CardHeading>
+              <dl>
+                {person.familyName ? (
+                  <InfoRow label="Ургийн овог">{person.familyName}</InfoRow>
+                ) : null}
+                <InfoRow label="Утас">
+                  {person.phones.length > 0 ? person.phones.map(phoneLabel).join(", ") : "—"}
+                </InfoRow>
+                <InfoRow label="Ажлын газар" last>
+                  {person.job ?? "—"}
+                </InfoRow>
+              </dl>
+            </Card>
+          ))}
+        </div>
+      </div>
+    ) : null;
+
   if (child.guardianships.length === 0) {
     return (
-      <section aria-label="Асран хамгаалагч">
+      <section aria-labelledby="guardians-heading" className="flex flex-col gap-3">
+        <ProfileSectionHeader id="guardians-heading" title="Асран хамгаалагч" action={actions} />
         <EmptyState
           icon={<Users size={28} aria-hidden="true" />}
           title="Асран хамгаалагч холбогдоогүй байна"
@@ -399,17 +785,17 @@ function Guardians({
               ? "Эцэг эх урьсны дараа тэд хүүхдийнхээ хавтсыг гар утаснаасаа харах боломжтой болно."
               : "Асран хамгаалагчийн мэдээлэл одоогоор бүртгэгдээгүй байна."
           }
-          action={canManage ? invite : undefined}
         />
-        {canManage ? <ChildEsisGuardians child={child} /> : null}
+        {unmatchedList}
       </section>
     );
   }
 
   return (
-    <section aria-label="Асран хамгаалагч">
-      <div className="flex flex-col gap-3">
-        {child.guardianships.map((guardianship, index) => {
+    <section aria-labelledby="guardians-heading" className="flex flex-col gap-3">
+      <ProfileSectionHeader id="guardians-heading" title="Асран хамгаалагч" action={actions} />
+      <div className="grid items-start gap-3 lg:grid-cols-2">
+        {child.guardianships.map((guardianship) => {
           const revoked = guardianship.canView === false;
           const guardian = guardianship.guardian;
           const canEdit = Boolean(guardian && (canEditAny || guardian.id === currentUserId));
@@ -418,27 +804,34 @@ function Guardians({
             : guardian?.email
               ? `mailto:${guardian.email}`
               : null;
+          const inEsis = byGuardianship.get(guardianship.id);
+          // ESIS numbers this kindergarten does not have for the person.
+          const otherPhones = (inEsis?.phones ?? []).filter(
+            (phone) => phoneKey(phone) !== phoneKey(guardian?.phone),
+          );
 
           return (
-            <Card key={guardianship.id} pad="roomy">
+            <Card key={guardianship.id} pad="compact">
               <CardHeading
-                icon={<Users size={26} strokeWidth={1.9} />}
+                icon={<Users size={18} strokeWidth={2} />}
                 action={
-                  canEdit || (canManage && index === 0) ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      {canEdit && guardian ? (
-                        <EditGuardianDialog
-                          childId={childId}
-                          guardianship={guardianship}
-                          currentUserId={currentUserId}
-                        />
-                      ) : null}
-                      {canManage && index === 0 ? invite : null}
-                    </div>
+                  canEdit && guardian ? (
+                    <EditGuardianDialog
+                      childId={childId}
+                      guardianship={guardianship}
+                      currentUserId={currentUserId}
+                    />
                   ) : undefined
                 }
               >
-                Асран хамгаалагч
+                {GUARDIAN_RELATION_LABEL[guardianship.relation] ?? guardianship.relation}
+                {inEsis ? (
+                  <EsisTag />
+                ) : esisAnswered ? (
+                  <span className="ml-1.5 align-middle text-caption font-normal text-muted">
+                    ЭСИС-д олдсонгүй
+                  </span>
+                ) : null}
               </CardHeading>
               <dl>
                 <InfoRow label="Асран хамгаалагч">
@@ -457,24 +850,32 @@ function Guardians({
                     ) : null}
                   </span>
                 </InfoRow>
-                <InfoRow label="Хүүхэдтэй холбоо">
-                  {GUARDIAN_RELATION_LABEL[guardianship.relation] ?? guardianship.relation}
-                </InfoRow>
-                <InfoRow label="Холбоо барих утас" last>
+                <InfoRow label="Холбоо барих утас" last={!inEsis?.job}>
                   {phoneLabel(guardian?.phone)}
+                  {otherPhones.length > 0 ? (
+                    <span className="mt-0.5 block text-caption font-medium text-peach-ink">
+                      ЭСИС-д: {otherPhones.map(phoneLabel).join(", ")}
+                    </span>
+                  ) : null}
                 </InfoRow>
+                {inEsis?.job ? (
+                  <InfoRow label="Ажлын газар" last>
+                    {inEsis.job}
+                    <EsisTag />
+                  </InfoRow>
+                ) : null}
               </dl>
 
               {href ? (
                 <a
                   href={href}
-                  className="mt-4 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-control bg-primary-soft px-4 text-lead font-medium text-primary transition-colors hover:bg-sky"
+                  className="mt-2 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-control bg-primary-soft px-4 text-body font-medium text-primary transition-colors hover:bg-sky"
                 >
-                  <Phone size={20} aria-hidden="true" />
+                  <Phone size={18} aria-hidden="true" />
                   Холбоо барих
                 </a>
               ) : (
-                <div className="mt-4 flex min-h-[44px] w-full items-center justify-center rounded-control bg-sunken px-4 text-body text-muted">
+                <div className="mt-2 flex min-h-[44px] w-full items-center justify-center rounded-control bg-sunken px-4 text-body text-muted">
                   Холбоо барих мэдээлэл алга
                 </div>
               )}
@@ -483,17 +884,7 @@ function Guardians({
         })}
       </div>
 
-      {/*
-        ★ ESIS's own guardian record, **inside** the Guardian section —
-        2026-09-10, at the client's instruction that it live in
-        "Ерөнхий мэдээлэл → Асран хамгаалагч". It was briefly a sibling section
-        of its own, which put two headings reading "Асран хамгаалагч" one after
-        the other on the same page.
-
-        Staff only: a guardian sees their own record here, not the ministry's
-        copy of the whole institution's contact list.
-      */}
-      {canManage ? <ChildEsisGuardians child={child} /> : null}
+      {unmatchedList}
     </section>
   );
 }
@@ -690,113 +1081,5 @@ function EditGuardianDialog({
         </form>
       </FormDialog>
     </>
-  );
-}
-
-function Enrollments({
-  child,
-  archive,
-}: {
-  child: ChildDetail;
-  archive: EnrollmentArchive | undefined;
-}) {
-  const enrollments = child.enrollments ?? [];
-  const kindergartenByEnrollment = new Map<string, string>();
-  if (archive?.current) {
-    kindergartenByEnrollment.set(archive.current.id, archive.current.kindergarten.name);
-  }
-  for (const entry of archive?.history ?? []) {
-    kindergartenByEnrollment.set(entry.id, entry.kindergarten.name);
-  }
-
-  return (
-    <section aria-labelledby="enrollment-history-heading">
-      <ProfileSectionHeader
-        id="enrollment-history-heading"
-        title="Бүртгэлийн түүх"
-        lede="Хамрагдсан бүлэг болон хичээлийн жилүүд."
-      />
-
-      {enrollments.length === 0 ? (
-        <EmptyState
-          icon={<GraduationCap size={28} aria-hidden="true" />}
-          title="Бүлэгт бүртгэгдээгүй байна"
-          description="Хүүхдийг бүлэгт бүртгэсний дараа ажиглалт, үнэлгээ хийх боломжтой болно."
-        />
-      ) : (
-        <Card className="divide-y divide-border">
-          {enrollments.map((enrollment, index) => {
-            const active = enrollment.status === "ACTIVE";
-            const kindergarten =
-              (enrollment.id ? kindergartenByEnrollment.get(enrollment.id) : null) ??
-              child.kindergarten?.name ??
-              "Цэцэрлэг тодорхойгүй";
-            const endedOn = enrollment.endedOn ? formatDate(enrollment.endedOn) : null;
-
-            return (
-              <details
-                key={enrollment.id ?? `${enrollment.schoolYear?.id}-${index}`}
-                className="group"
-              >
-                <summary className="flex min-h-[88px] cursor-pointer list-none flex-wrap items-center gap-3 px-4 py-4 marker:content-none md:px-6 [&::-webkit-details-marker]:hidden">
-                  <GraduationCap
-                    size={24}
-                    strokeWidth={1.9}
-                    aria-hidden="true"
-                    className="shrink-0 text-sky-ink"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="flex min-w-0 items-center gap-2 text-lead font-medium text-ink">
-                      <span className="truncate">
-                        {enrollment.group?.name ?? "Бүлэг тодорхойгүй"}
-                      </span>
-                      {enrollmentAgeBandLabel(enrollment.group) ? (
-                        <>
-                          <span aria-hidden="true" className="text-border">
-                            ·
-                          </span>
-                          <span className="shrink-0">
-                            {enrollmentAgeBandLabel(enrollment.group)}
-                          </span>
-                        </>
-                      ) : null}
-                    </p>
-                    <p className="truncate text-body text-muted">{kindergarten}</p>
-                    <p className="mt-0.5 truncate text-body text-faint">
-                      {schoolYearLabel(enrollment.schoolYear?.name)} · Элссэн:{" "}
-                      {formatDate(enrollment.startedOn)}
-                    </p>
-                  </div>
-
-                  <span className="grid size-11 shrink-0 place-items-center rounded-pill border border-border bg-surface text-ink shadow-sm">
-                    <ChevronDown
-                      size={22}
-                      aria-hidden="true"
-                      className="transition-transform group-open:rotate-180"
-                    />
-                  </span>
-                  <Badge
-                    tone={
-                      active
-                        ? "mint"
-                        : (ENROLLMENT_STATUS_TONE[enrollment.status ?? "ENDED"] ?? "neutral")
-                    }
-                    className="ml-auto sm:ml-0"
-                  >
-                    {active
-                      ? "Одоогийн"
-                      : (ENROLLMENT_STATUS_LABEL[enrollment.status ?? "ENDED"] ??
-                        ENROLLMENT_STATUS_LABEL.ENDED)}
-                  </Badge>
-                </summary>
-                <div className="border-t border-border-soft px-4 py-3 text-body text-muted md:px-6">
-                  {endedOn ? `Дууссан: ${endedOn}` : "Одоогоор суралцаж байна."}
-                </div>
-              </details>
-            );
-          })}
-        </Card>
-      )}
-    </section>
   );
 }

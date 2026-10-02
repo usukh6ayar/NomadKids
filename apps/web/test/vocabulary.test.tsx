@@ -1,5 +1,4 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -149,55 +148,31 @@ describe("the child hero", () => {
    * The count is unchanged and remains the real guard here; only the name of
    * the one filled control moved.
    */
-  it("offers one primary action and tucks the rest behind a menu", async () => {
+  /*
+    ★ 2026-10-01, at the client's instruction: Улирлын тайлан and the ⋯ menu
+    (Мэдээлэл засах) are gone from the hero. The portfolio is its one action.
+  */
+  it("offers the portfolio as the hero's only action", async () => {
     stubChild();
     renderWithProviders(<ChildGeneralPage />);
 
     const heading = await screen.findByRole("heading", { name: /Ганболд/ });
     const hero = heading.closest("div.rounded-card")!;
-    const controls = within(hero as HTMLElement).getAllByRole("button", { hidden: true });
+    const controls = within(hero as HTMLElement).queryAllByRole("button", { hidden: true });
     const links = within(hero as HTMLElement).getAllByRole("link");
 
-    expect(links.length + controls.length, "the hero carries three controls").toBe(3);
-
-    const filled = [...links, ...controls].filter((el) => el.className.includes("bg-primary"));
-    expect(filled, "exactly one call to action").toHaveLength(1);
-    expect(filled[0]).toHaveTextContent("Цахим хувийн хавтас");
+    expect(links.length + controls.length, "the hero carries one control").toBe(1);
+    expect(links[0]).toHaveTextContent("Цахим хувийн хавтас");
+    expect(links[0]).toHaveAttribute("href", `/children/${CHILD_ID}/portfolio`);
   });
 
-  /**
-   * ★ 2026-09-09 — this asserted the portfolio link was *absent*.
-   *
-   * It was, for as long as the hero's own call to action was "Ажиглалт": the
-   * portfolio had been pulled out of a five-button row and the assertion kept
-   * it from creeping back beside the term report. It is the primary action
-   * now (see the test above), so "not in the document" is no longer true and
-   * asserting it would mean undoing that decision.
-   *
-   * What the test is actually for survives untouched: the term report must
-   * stay a direct link in the visible row rather than sliding into the
-   * overflow menu, which is the regression this file exists to catch.
-   */
-  it("keeps the term report direct beside the portfolio action", async () => {
-    const user = userEvent.setup();
+  it("no longer offers the term report or the ⋯ menu", async () => {
     stubChild();
     renderWithProviders(<ChildGeneralPage />);
 
     await screen.findByRole("heading", { name: /Ганболд/ });
-    expect(screen.getByRole("link", { name: /Улирлын тайлан/ })).toHaveAttribute(
-      "href",
-      `/children/${CHILD_ID}/term-report`,
-    );
-
-    // Editing remains one press deeper for staff, without displacing the term
-    // report from the visible action row.
-    await user.click(screen.getByRole("button", { name: "Бусад үйлдэл" }));
-    const menu = await screen.findByRole("menu", { name: "Бусад үйлдэл" });
-
-    expect(within(menu).getByRole("menuitem", { name: /Мэдээлэл засах/ })).toHaveAttribute(
-      "href",
-      `/children/${CHILD_ID}/edit`,
-    );
+    expect(screen.queryByRole("link", { name: /Улирлын тайлан/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Бусад үйлдэл" })).toBeNull();
   });
 });
 
@@ -214,6 +189,33 @@ describe("signing in", () => {
     expect(screen.getByAltText("Од руу зааж буй хоёр хүүхэд").getAttribute("src")).toContain(
       "nomadkids-cta-children.png",
     );
+  });
+
+  /** The client's drawing, 2026-10-02: their wording in, the old taglines out. */
+  it("names the product as drawn and drops the old taglines", () => {
+    stubApi([{ path: "/auth/me", body: sessionFor([]) }]);
+
+    renderWithProviders(<LoginPage />);
+
+    const hero = screen.getByTestId("login-hero");
+    expect(within(hero).getByText("Цэцэрлэгийн ухаалаг цахим систем")).toBeInTheDocument();
+    expect(within(hero).getByRole("heading", { level: 1, name: "NomadKids" })).toBeInTheDocument();
+    expect(within(hero).getByText("Цахимжуулах цогц шийдэл")).toBeInTheDocument();
+    expect(
+      within(hero).getByText("Өөрийн эрхээр нэвтэрч, ажлаа үргэлжлүүлнэ үү."),
+    ).toBeInTheDocument();
+    expect(within(hero).getByRole("link", { name: "Байгууллагын бүртгэл" })).toHaveAttribute(
+      "href",
+      "/register",
+    );
+    for (const gone of [
+      /жаргалтай мөч бүр/,
+      /нэг орчинд холбосон/,
+      /Тавтай морил/,
+      /нэг дороос үргэлжлүүлээрэй/,
+    ]) {
+      expect(screen.queryByText(gone)).toBeNull();
+    }
   });
 
   it("shows the five supplied audience characters in the requested order", () => {

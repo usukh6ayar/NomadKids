@@ -1,8 +1,11 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { Suspense, useState, type ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
 import {
+  BookOpen,
+  CloudDownload,
   School,
   Building2,
   FileText,
@@ -29,6 +32,10 @@ import { useToast } from "@/components/ui/toast";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { RequireRole } from "@/components/shell/require-role";
 import { MethodUnions } from "@/components/admin/method-unions";
+import { EsisHub } from "@/components/admin/esis-hub";
+import { EsisCurriculumChain } from "@/components/esis/esis-curriculum";
+import { EsisDataPanel } from "@/components/esis/esis-data-panel";
+import { SectionHeader } from "@/components/ui/card";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
 
 /**
@@ -105,17 +112,24 @@ const FROM_ESIS: Partial<Record<TextField, string>> = {
 export default function AdminKindergartenPage() {
   return (
     <RequireRole roles={["ADMIN"]}>
-      <AdminKindergarten />
+      <Suspense fallback={<LoadingState rows={3} />}>
+        <AdminKindergarten />
+      </Suspense>
     </RequireRole>
   );
 }
 
-type Tab = "main" | "method";
+type Tab = "main" | "method" | "curriculum" | "esis";
+const TABS: readonly Tab[] = ["main", "method", "curriculum", "esis"];
 
 function AdminKindergarten() {
   const { primaryKindergartenId } = useSession();
   const kindergartenId = primaryKindergartenId ?? "";
-  const [tab, setTab] = useState<Tab>("main");
+  // `?tab=curriculum` is where `/admin/curriculum` now lands (2026-10-01).
+  const requested = useSearchParams().get("tab");
+  const [tab, setTab] = useState<Tab>(
+    TABS.includes(requested as Tab) ? (requested as Tab) : "main",
+  );
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: qk.adminKindergarten(kindergartenId),
@@ -129,6 +143,8 @@ function AdminKindergarten() {
   const nav: { value: Tab; label: string; icon: ReactNode }[] = [
     { value: "main", label: "Үндсэн мэдээлэл", icon: <School size={18} aria-hidden /> },
     { value: "method", label: "Заах аргын нэгдэл", icon: <FileText size={18} aria-hidden /> },
+    { value: "curriculum", label: "Сургалтын хөтөлбөр", icon: <BookOpen size={18} aria-hidden /> },
+    { value: "esis", label: "ЭСИС холболт", icon: <CloudDownload size={18} aria-hidden /> },
   ];
 
   /*
@@ -173,7 +189,28 @@ function AdminKindergarten() {
       </aside>
 
       {tab === "main" ? <MainDetails kindergartenId={kindergartenId} data={data} /> : null}
-      {tab === "method" ? <MethodUnions kindergartenId={kindergartenId} /> : null}
+      {tab === "method" ? (
+        <div className="flex min-w-0 flex-col gap-6">
+          <MethodUnions kindergartenId={kindergartenId} />
+          {/*
+            ★ ESIS's own академик нэгж — moved here from «Сургалтын хөтөлбөр»
+            on 2026-10-01, at the client's request to fold that page into
+            existing screens. ESIS describes it as "байгууллагын дотоод нэгж,
+            заах аргын нэгдэл", which is this tab's subject.
+          */}
+          <EsisDataPanel
+            resource="academicOrg"
+            title="ЭСИС дэх академик нэгж"
+            description="Байгууллагын дотоод нэгж, заах аргын нэгдэл — ЭСИС-ийн бүртгэлээр"
+          />
+        </div>
+      ) : null}
+      {tab === "curriculum" ? <CurriculumTab /> : null}
+      {tab === "esis" ? (
+        <div className="min-w-0">
+          <EsisHub />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -536,5 +573,38 @@ function FormSection({
       </div>
       <div className="flex flex-col gap-4 px-4 pb-4">{children}</div>
     </section>
+  );
+}
+
+/**
+ * Сургалтын хөтөлбөр — the ESIS curriculum, as a section of the kindergarten.
+ *
+ * ★ Moved here from `/admin/curriculum` on 2026-10-01, at the client's
+ * request: that page was the only entry in its own menu group, which made the
+ * menu read heavier than the product is. It is ESIS reference data about this
+ * kindergarten — read-only, used by no other screen — so it sits with the
+ * kindergarten's own details. The old route redirects here.
+ *
+ * `EsisCurriculumChain` passes each level's selected id to the one below it
+ * (programme → stage → plan → courses); see that component for why it is one
+ * chain and not four panels.
+ */
+function CurriculumTab() {
+  return (
+    <div className="flex min-w-0 flex-col gap-6">
+      <section aria-labelledby="curriculum-chain-heading">
+        <SectionHeader
+          id="curriculum-chain-heading"
+          title="Хөтөлбөрийн шатлал"
+          lede="Хөтөлбөр сонгоод үе шат, дараа нь төлөвлөгөө, эцэст нь хичээлүүд нь харагдана."
+        />
+        <EsisCurriculumChain />
+      </section>
+      <EsisDataPanel
+        resource="subjectAreas"
+        title="Судлагдахууны чиглэл"
+        description="Хичээлүүдийн харьяалагдах судлагдахуун"
+      />
+    </div>
   );
 }

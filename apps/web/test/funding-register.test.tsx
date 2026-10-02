@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, stubApi } from "./support/render";
-import AdminPaymentReportPage from "@/app/(app)/admin/funding/page";
+import { PaymentReport as AdminPaymentReportPage } from "@/components/finance/payment-report";
 
 const KG = "33333333-3333-4333-8333-333333333333";
 const YEAR = "55555555-5555-4555-8555-555555555555";
@@ -52,7 +52,7 @@ function invoice(month: string) {
   };
 }
 
-function stub() {
+function stub(esis: Record<string, unknown> = {}) {
   return stubApi([
     { path: "/auth/me", body: sessionFor(["ADMIN"]) },
     {
@@ -91,6 +91,7 @@ function stub() {
           lastName: "Авирмэд",
           firstName: "Баянмөнх",
           dateOfBirth: "2023-12-05",
+          ...esis,
           enrollments: [
             {
               id: null,
@@ -117,14 +118,14 @@ describe("төлбөрийн тайлан", () => {
     stub();
     renderWithProviders(<AdminPaymentReportPage />);
 
-    expect(await screen.findByRole("heading", { name: "Төлбөрийн тайлан" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Жилийн тайлан" })).toBeInTheDocument();
     const table = await screen.findByRole("table", {
       name: "Суралцагчдын хичээлийн жилийн төлбөрийн тайлан",
     });
     expect(within(table).getByText("Авирмэд Баянмөнх")).toBeInTheDocument();
     expect(within(table).getByText("Хөнгөлөлттэй")).toBeInTheDocument();
     expect(within(table).getByText("40,000 ₮")).toBeInTheDocument();
-    expect(within(table).getByText("50,000 ₮")).toBeInTheDocument();
+    expect(within(table).getAllByText("50,000 ₮").length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: /ESIS/ })).toBeNull();
   });
 
@@ -144,5 +145,88 @@ describe("төлбөрийн тайлан", () => {
 
     const button = await screen.findByRole("button", { name: /Excel/ });
     await waitFor(() => expect(button).toBeEnabled());
+  });
+
+  /**
+   * ★ Төлөв — 2026-10-01, the client: ESIS's enrolment state after Бүлэг, and
+   * the date ESIS recorded it. The API is to send `esisProgramStatus` and
+   * `esisActionDate` on the finance roster.
+   */
+  it("draws ESIS's state and its date after the group", async () => {
+    stub({ esisProgramStatus: "Шилжсэн", esisActionDate: "2026-06-02" });
+    renderWithProviders(<AdminPaymentReportPage />);
+
+    const table = await screen.findByRole("table", {
+      name: "Суралцагчдын хичээлийн жилийн төлбөрийн тайлан",
+    });
+    const headers = within(table)
+      .getAllByRole("columnheader")
+      .map((cell) => cell.textContent);
+    expect(headers.slice(0, 4)).toEqual(["№", "Суралцагчийн нэр", "Бүлэг", "Төлөв"]);
+    expect(within(table).getByText("Шилжсэн")).toBeInTheDocument();
+    expect(within(table).getByText("2026-06-02")).toBeInTheDocument();
+  });
+
+  /**
+   * №, the name and the group are frozen while the months scroll — 2026-10-01.
+   * jsdom lays nothing out, so this pins the contract rather than the pixels.
+   */
+  it("freezes №, the name and the group", async () => {
+    stub();
+    renderWithProviders(<AdminPaymentReportPage />);
+
+    const table = await screen.findByRole("table", {
+      name: "Суралцагчдын хичээлийн жилийн төлбөрийн тайлан",
+    });
+    const headers = within(table).getAllByRole("columnheader");
+    for (const header of headers.slice(0, 3)) expect(header).toHaveClass("sticky");
+    expect(headers[3]).not.toHaveClass("sticky");
+  });
+
+  /** Until the API sends the fields, the column says nothing rather than failing. */
+  it("reads — while the API does not send ESIS's state yet", async () => {
+    stub();
+    renderWithProviders(<AdminPaymentReportPage />);
+
+    const table = await screen.findByRole("table", {
+      name: "Суралцагчдын хичээлийн жилийн төлбөрийн тайлан",
+    });
+    const row = within(table).getByText("Авирмэд Баянмөнх").closest("tr")!;
+    expect(within(row).getAllByRole("cell")[3]).toHaveTextContent("—");
+  });
+
+  /**
+   * ★ 2026-10-02, the client's reference: totals above the table, and Нийт
+   * ирц, Нэхэмжилсэн, Төлсөн, Илүү төлөлт and Өр per child.
+   */
+  it("totals the year and splits each child's balance into overpaid and owed", async () => {
+    stub();
+    renderWithProviders(<AdminPaymentReportPage />);
+
+    expect(await screen.findByText("Нийт суралцагч: 1")).toBeInTheDocument();
+    expect(screen.getByText("Нэхэмжилсэн: 90,000 ₮")).toBeInTheDocument();
+    expect(screen.getByText("Төлсөн: 50,000 ₮")).toBeInTheDocument();
+
+    const table = screen.getByRole("table", {
+      name: "Суралцагчдын хичээлийн жилийн төлбөрийн тайлан",
+    });
+    const headers = within(table)
+      .getAllByRole("columnheader")
+      .map((cell) => cell.textContent);
+    expect(headers.slice(5, 10)).toEqual([
+      "Нийт ирц",
+      "Нэхэмжилсэн дүн",
+      "Төлсөн дүн",
+      "Илүү төлөлт",
+      "Өр",
+    ]);
+    const cells = within(within(table).getByText("Авирмэд Баянмөнх").closest("tr")!).getAllByRole(
+      "cell",
+    );
+    // No register stubbed: attendance reads "—" and the money still draws.
+    expect(cells[5]).toHaveTextContent("—");
+    expect(cells[6]).toHaveTextContent("90,000 ₮");
+    expect(cells[8]).toHaveTextContent("—");
+    expect(cells[9]).toHaveTextContent("40,000 ₮");
   });
 });

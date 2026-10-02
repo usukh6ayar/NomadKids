@@ -123,10 +123,10 @@ beforeEach(() => {
 });
 
 describe("суралцсан түүх", () => {
-  /**
-   * The client's 2026-09-24 design: the current kindergarten with its facts
-   * and its teachers, then the past ones down a timeline of school years.
-   */
+  /*
+    ★ 2026-10-01: the same shape as the other tabs — the current kindergarten
+    as rows, then tables for its teachers and the earlier placements. No folds.
+  */
   it("opens on the current kindergarten, with its facts and its teachers", async () => {
     stubArchive();
     renderWithProviders(<ChildEnrollmentArchive childId={CHILD} />);
@@ -134,31 +134,32 @@ describe("суралцсан түүх", () => {
     const current = await screen.findByRole("region", { name: "Одоогийн сурч байгаа цэцэрлэг" });
     expect(within(current).getByText("Бяцхан нүүдэлчид цэцэрлэг")).toBeInTheDocument();
     expect(within(current).getByText("Дэлбээ бүлэг · Ахлах бүлэг · 18 хүүхэд")).toBeInTheDocument();
-
-    // The four facts, and the teacher's own card beneath them.
     expect(within(current).getByText("120 хүүхэд")).toBeInTheDocument();
     expect(within(current).getByText("6 бүлэг")).toBeInTheDocument();
-    expect(within(current).getByText("Цэцэрлэг")).toBeInTheDocument();
     expect(within(current).getByText("Баянгол дүүрэг, 3-р хороо")).toBeInTheDocument();
-    expect(within(current).getAllByText("Дэлгэрмаа Сувдаа").length).toBeGreaterThan(0);
-    expect(within(current).getByText("СӨБ-ийн багш")).toBeInTheDocument();
-    expect(within(current).getByText("МУБИС")).toBeInTheDocument();
-    expect(within(current).getByRole("link", { name: "99001234" })).toHaveAttribute(
+    expect(within(current).getByText("2026.09.01")).toBeInTheDocument();
+    expect(current.querySelector("details")).toBeNull();
+
+    const teachers = screen.getByRole("region", { name: "Багш" });
+    const row = within(teachers).getByRole("cell", { name: "Дэлгэрмаа Сувдаа" }).closest("tr")!;
+    expect(within(row).getByText("СӨБ-ийн багш")).toBeInTheDocument();
+    expect(within(row).getByText("МУБИС")).toBeInTheDocument();
+    expect(within(row).getByRole("link", { name: "99001234" })).toHaveAttribute(
       "href",
       "tel:99001234",
     );
-    expect(within(current).getByRole("link", { name: "suvdaa@nomadkids.mn" })).toHaveAttribute(
+    expect(within(row).getByRole("link", { name: "suvdaa@nomadkids.mn" })).toHaveAttribute(
       "href",
       "mailto:suvdaa@nomadkids.mn",
     );
   });
 
-  it("lists the past placements by school year, with the age the child was", async () => {
+  it("lists the past placements in a table, with the age the child was", async () => {
     stubArchive();
     renderWithProviders(<ChildEnrollmentArchive childId={CHILD} />);
 
     const past = await screen.findByRole("region", { name: "Өмнөх суралцсан түүх" });
-    const rows = within(past).getAllByRole("listitem");
+    const rows = within(past).getAllByRole("row").slice(1);
     expect(rows).toHaveLength(2);
 
     expect(within(rows[0]!).getByText("2025-2026")).toBeInTheDocument();
@@ -168,10 +169,157 @@ describe("суралцсан түүх", () => {
     expect(within(rows[0]!).getByText("Бүжин бүлэг · Дунд бүлэг · 20 хүүхэд")).toBeInTheDocument();
     expect(within(rows[0]!).getByText("Шилжсэн")).toBeInTheDocument();
     expect(within(rows[0]!).getByText("Өюунцэцэг Болор")).toBeInTheDocument();
-    // A past teacher is a name and a role — never a phone number.
-    expect(within(rows[0]!).queryByRole("link", { name: /@/ })).toBeNull();
+    expect(within(rows[0]!).getByText("2025.09.01 – 2026.08.31")).toBeInTheDocument();
+    // A past teacher is a name — never a phone number or an address.
+    expect(within(rows[0]!).queryByRole("link")).toBeNull();
 
     expect(within(rows[1]!).getByText("2024-2025")).toBeInTheDocument();
     expect(within(rows[1]!).getByText("3 нас")).toBeInTheDocument();
+  });
+
+  it("shows a guardian no ESIS section", async () => {
+    stubArchive();
+    renderWithProviders(<ChildEnrollmentArchive childId={CHILD} />);
+
+    await screen.findByRole("region", { name: "Өмнөх суралцсан түүх" });
+    expect(screen.queryByText("ЭСИС дэх шилжилт")).toBeNull();
+  });
+});
+
+/**
+ * ЭСИС дэх шилжилт — only this child's moves (2026-10-01). `studentMovements`
+ * answers for the whole institution; the rows are narrowed to this child by
+ * ESIS's `personId` (from `studentInfo`, keyed by the регистр), or by овог,
+ * нэр and төрсөн огноо when there is no регистр.
+ */
+describe("ЭСИС дэх шилжилт", () => {
+  const KG = "33333333-3333-4333-8333-333333333333";
+
+  function esisRead(resource: string, rows: Record<string, string | null>[]) {
+    return {
+      resource,
+      endpoint: { method: "GET", path: `/svc/${resource}` },
+      source: "LIVE",
+      status: "SUCCEEDED",
+      errorCode: null,
+      count: rows.length,
+      durationMs: 1,
+      fields: Object.keys(rows[0] ?? {}).map((name, index) => ({
+        name,
+        label: name,
+        io: "OUTPUT",
+        ingested: true,
+        summary: index + 1,
+      })),
+      rows,
+      response: { SUCCESS_CODE: 200, RESPONSE_MESSAGE: "OK", RESULT: rows },
+    };
+  }
+
+  function endpoint(key: string) {
+    return {
+      key,
+      name: key,
+      domain: "ROSTER",
+      usage: key,
+      apiId: 1,
+      slug: key,
+      method: "GET",
+      path: `/svc/${key}`,
+      params:
+        key === "studentInfo"
+          ? ["personRegNumber"]
+          : key === "studentMovements"
+            ? ["beginDate"]
+            : [],
+      previewable: false,
+      readable: true,
+      fields: [],
+      fieldSource: "PORTAL",
+      ingestedFieldCount: 0,
+      grant: "APPROVED",
+      portalName: key,
+      direction: "ESIS_TO_NOMADKIDS",
+      targetModel: "Child",
+      mappings: [],
+    };
+  }
+
+  const movements = [
+    {
+      personId: "900",
+      lastName: "Ганболд",
+      firstName: "Батбаяр",
+      dateOfBirth: "2021-04-12T00:00:00.000Z",
+      actionName: "Шилжиж ирсэн",
+      actionDate: "2026-09-01T00:00:00.000Z",
+      studentGroupName: "Дэлбээ",
+      academicLevelName: "Ахлах",
+      programStatusName: "Суралцаж байгаа",
+    },
+    // Another child of the institution — must not appear.
+    {
+      personId: "901",
+      lastName: "Дорж",
+      firstName: "Намуун",
+      dateOfBirth: "2022-05-30T00:00:00.000Z",
+      actionName: "Гарсан",
+      actionDate: "2026-09-10T00:00:00.000Z",
+      studentGroupName: "Бүжин",
+      academicLevelName: "Дунд",
+      programStatusName: "Шилжсэн",
+    },
+  ];
+
+  function stubStaff() {
+    stubArchive();
+    // `stubArchive` stubs as a guardian; re-stub the session and ESIS on top.
+    const archiveCall = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: `/kindergartens/${KG}/esis/catalog`,
+        body: {
+          mode: "LIVE",
+          canRead: true,
+          endpoints: [endpoint("studentMovements"), endpoint("studentInfo")],
+        },
+      },
+      {
+        path: `/kindergartens/${KG}/esis/resource?resource=studentMovements`,
+        body: esisRead("studentMovements", movements),
+      },
+      {
+        path: `/kindergartens/${KG}/esis/resource?resource=studentInfo`,
+        body: esisRead("studentInfo", [{ personId: "900" }]),
+      },
+    ]);
+    const esisCall = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    vi.mocked(globalThis.fetch).mockImplementation((input, init) => {
+      const url = typeof input === "string" ? input : input.toString();
+      return url.includes("/esis/") || url.includes("/auth/me")
+        ? esisCall(input, init)
+        : archiveCall(input, init);
+    });
+  }
+
+  it("lists only this child's moves, newest first", async () => {
+    stubStaff();
+    renderWithProviders(<ChildEnrollmentArchive childId={CHILD} nationalId="УШ21241200" />);
+
+    const section = await screen.findByRole("region", { name: /ЭСИС дэх шилжилт/ });
+    expect(await within(section).findByText("Шилжиж ирсэн")).toBeInTheDocument();
+    expect(within(section).getByText("2026-09-01")).toBeInTheDocument();
+    expect(within(section).queryByText("Гарсан")).toBeNull();
+    expect(within(section).queryByText("Бүжин")).toBeNull();
+  });
+
+  it("falls back to name and birth date without a регистр", async () => {
+    stubStaff();
+    renderWithProviders(<ChildEnrollmentArchive childId={CHILD} />);
+
+    const section = await screen.findByRole("region", { name: /ЭСИС дэх шилжилт/ });
+    expect(await within(section).findByText("Шилжиж ирсэн")).toBeInTheDocument();
+    expect(within(section).queryByText("Гарсан")).toBeNull();
   });
 });

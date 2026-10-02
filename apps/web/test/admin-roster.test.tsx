@@ -126,11 +126,13 @@ describe("the director's roster", () => {
         .getAllByRole("columnheader")
         .map((th) => th.textContent),
     ).toEqual([
+      // ★ 2026-10-01, the client's order: №, Бүлэг, then the child.
       "№",
-      "Суралцагчийн нэр",
+      "Бүлэг",
+      "Нэр",
       "Регистр",
       "Хүйс",
-      "Бүлэг",
+      "Нас",
       // Хөнгөлөлт only once «ESIS Хөнгөлөлттэй» has been pulled (2026-09-29).
       "ESIS төлөв",
       "Үйлдэл",

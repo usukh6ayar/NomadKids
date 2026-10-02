@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Calculator, ScrollText } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { z } from "zod";
 import {
@@ -15,22 +16,25 @@ import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
-import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
-import { Art } from "@/components/ui/art";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Disclosure } from "@/components/ui/disclosure";
 import { Field, Select } from "@/components/ui/field";
-import { MonthSelect } from "@/components/ui/month-select";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { FinanceDashboardPanel } from "@/components/finance/finance-dashboard";
 import { FinanceReports } from "@/components/finance/finance-reports";
 import { formatDate, capitalize } from "@/lib/format";
 import { MealCostBySource } from "@/components/finance/meal-cost";
+import { BalanceOverview, InvoiceOverview } from "@/components/finance/invoice-overview";
+import { PaymentReport } from "@/components/finance/payment-report";
+import { Transactions } from "@/components/finance/transactions";
+import { EsisForms } from "@/components/finance/esis-forms";
+import { FilterBar, MonthField } from "@/components/finance/finance-ui";
+import { TabButton, Tabs } from "@/components/ui/tabs";
 
 const rulesSchema = z.array(fundingRuleSchema);
 
@@ -121,10 +125,88 @@ export default function FinancePage() {
   );
 }
 
+/*
+  ★ «Санхүү» as tabs — 2026-10-01, at the client's request to gather the
+  finance screens into one, after a reference they sent (its content, not its
+  design). Order and names follow that reference since 2026-10-02:
+  Төлбөрийн үлдэгдэл, Төлбөрийн нэхэмжлэл, Гүйлгээ, Жилийн тайлан, Маягт —
+  and Санхүүжилт, everything this page used to be, last. Each tab carries its
+  own month in its own filter row, as the reference does; the month is shared
+  so switching tabs keeps it. `?tab=` opens a given one, read once at mount.
+*/
+const TABS = [
+  ["balance", "Төлбөрийн үлдэгдэл"],
+  ["invoices", "Төлбөрийн нэхэмжлэл"],
+  ["transactions", "Гүйлгээ"],
+  ["annual", "Жилийн тайлан"],
+  ["esis", "Маягт"],
+  ["funding", "Санхүүжилт"],
+] as const;
+type Tab = (typeof TABS)[number][0];
+
 function Finance() {
   const { session } = useSession();
   const kindergartenId = session?.memberships?.[0]?.kindergartenId ?? null;
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() => {
+    const requested = searchParams.get("tab");
+    return TABS.some(([value]) => value === requested) ? (requested as Tab) : "balance";
+  });
   const [month, setMonth] = useState(thisMonth());
+  const monthly = { month, onMonthChange: setMonth };
+
+  return (
+    <div className="flex flex-col gap-5 lg:gap-6">
+      <PageHeader
+        title="Санхүү"
+        actions={
+          <Button asChild variant="secondary" size="sm">
+            <Link href="/finance/audit-log">
+              <ScrollText size={16} aria-hidden="true" />
+              Аудит
+            </Link>
+          </Button>
+        }
+      />
+
+      <Tabs label="Санхүүгийн хэсэг">
+        {TABS.map(([value, label]) => (
+          <TabButton key={value} active={tab === value} onClick={() => setTab(value)}>
+            {label}
+          </TabButton>
+        ))}
+      </Tabs>
+
+      {kindergartenId && tab === "balance" ? (
+        <BalanceOverview kindergartenId={kindergartenId} {...monthly} />
+      ) : null}
+      {kindergartenId && tab === "invoices" ? (
+        <InvoiceOverview kindergartenId={kindergartenId} {...monthly} />
+      ) : null}
+      {kindergartenId && tab === "transactions" ? (
+        <Transactions kindergartenId={kindergartenId} />
+      ) : null}
+      {tab === "annual" ? <PaymentReport /> : null}
+      {kindergartenId && tab === "esis" ? (
+        <EsisForms kindergartenId={kindergartenId} {...monthly} />
+      ) : null}
+      {kindergartenId && tab === "funding" ? (
+        <Funding kindergartenId={kindergartenId} {...monthly} />
+      ) : null}
+    </div>
+  );
+}
+
+/** Санхүүжилт — what this page was before the tabs, under the shared month. */
+function Funding({
+  kindergartenId,
+  month,
+  onMonthChange,
+}: {
+  kindergartenId: string;
+  month: string;
+  onMonthChange: (month: string) => void;
+}) {
   /*
     ★ The screen's working source — "ALL" until an accountant narrows it.
 
@@ -134,14 +216,13 @@ function Finance() {
     nothing visible until the button was pressed — reported 2026-09-09 as
     "ажиллахгүй байна", and fairly.
 
-    Now it is the page's: it scopes what the register lists, what the totals
+    Now it is the tab's: it scopes what the register lists, what the totals
     add up, and what the button runs. One control, one meaning.
   */
   const [source, setSource] = useState<SourceFilter>("ALL");
 
   const funding = useQuery({
-    enabled: Boolean(kindergartenId),
-    queryKey: qk.kindergartenFunding(kindergartenId ?? "", month, source),
+    queryKey: qk.kindergartenFunding(kindergartenId, month, source),
     queryFn: () =>
       get(
         `/kindergartens/${kindergartenId}/funding?month=${month}` +
@@ -151,8 +232,7 @@ function Finance() {
   });
 
   const rules = useQuery({
-    enabled: Boolean(kindergartenId),
-    queryKey: qk.fundingRules(kindergartenId ?? ""),
+    queryKey: qk.fundingRules(kindergartenId),
     queryFn: () => get(`/kindergartens/${kindergartenId}/funding/rules`, rulesSchema),
   });
 
@@ -180,62 +260,27 @@ function Finance() {
       : rulesInForce.some((rule) => rule.source === source);
 
   return (
-    <div className="flex flex-col gap-5 lg:gap-6">
-      <PageHeader
-        title="Санхүүжилт"
-        actions={
-          <div className="flex flex-wrap items-end gap-3">
-            <Badge tone="peach">ESIS finance API · NOT ENABLED</Badge>
-            <Button asChild variant="secondary" size="sm">
-              <Link href="/invoices">
-                <Art name="finance" size={18} className="size-[18px]" />
-                Нэхэмжлэл
-              </Link>
-            </Button>
-            <Button asChild variant="secondary" size="sm">
-              <Link href="/finance/audit-log">
-                <ScrollText size={16} aria-hidden="true" />
-                Аудит
-              </Link>
-            </Button>
-            {/*
-              ★ Labels for screen readers only — 2026-09-26. Shown, they sat
-              above the two fields and pushed both 29px below the title line
-              the rest of the header is centred on. Each value names itself
-              («2026 оны 9-р сар», «Бүх эх үүсвэр»), so nothing is lost to a
-              sighted reader.
-            */}
-            <Field label="Сар" labelHidden>
-              {({ id }) => (
-                <MonthSelect id={id} value={month} onValueChange={setMonth} className="w-[170px]" />
-              )}
-            </Field>
-            {/*
-              ★ Beside the month, because it is the same kind of control: both
-              say which slice of the ledger this screen is about. It sat inside
-              the "Энэ сарын тооцоо" card, where it looked like a filter and
-              behaved like an argument to one button.
-            */}
-            <Field label="Эх үүсвэр" labelHidden>
-              {({ id }) => (
-                <Select
-                  id={id}
-                  value={source}
-                  onChange={(event) => setSource(event.target.value as SourceFilter)}
-                  className="w-[170px]"
-                >
-                  <option value="ALL">Бүх эх үүсвэр</option>
-                  {Object.entries(FUNDING_SOURCE_LABEL).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
-          </div>
-        }
-      />
+    <div className="flex flex-col gap-5">
+      <FilterBar>
+        <MonthField value={month} onChange={onMonthChange} />
+        <Field label="Эх үүсвэр" labelHidden>
+          {({ id }) => (
+            <Select
+              id={id}
+              value={source}
+              onChange={(event) => setSource(event.target.value as SourceFilter)}
+              className="w-[170px]"
+            >
+              <option value="ALL">Бүх эх үүсвэр</option>
+              {Object.entries(FUNDING_SOURCE_LABEL).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+      </FilterBar>
 
       {funding.isLoading ? <LoadingState rows={3} /> : null}
       {funding.isError ? <ErrorState description={errorMessage(funding.error)} /> : null}
@@ -247,7 +292,7 @@ function Finance() {
         the month once the registers are complete — and it used to sit fourth,
         below two summaries that are both blank until it has been pressed.
       */}
-      {kindergartenId && funding.data ? (
+      {funding.data ? (
         <RunMonth
           kindergartenId={kindergartenId}
           month={month}
@@ -262,12 +307,10 @@ function Finance() {
         ★★ The §9 dashboard. It loads independently: a slow aggregate must not
         hold up the register, and a failing one must not blank the screen.
       */}
-      {kindergartenId ? (
-        <FinanceDashboardPanel kindergartenId={kindergartenId} month={month} />
-      ) : null}
+      <FinanceDashboardPanel kindergartenId={kindergartenId} month={month} />
 
       {/* `нэмэлт.md` §3 — the month's meal cost by source, from the same run. */}
-      {kindergartenId ? <MealCostBySource kindergartenId={kindergartenId} month={month} /> : null}
+      <MealCostBySource kindergartenId={kindergartenId} month={month} />
 
       {/*
         ★★★ Everything below opens closed.
@@ -301,41 +344,13 @@ function Finance() {
         </Disclosure>
       ) : null}
 
-      {kindergartenId ? (
-        <Disclosure title="Тайлан" hint="Excel, PDF">
-          <FinanceReports kindergartenId={kindergartenId} />
-        </Disclosure>
-      ) : null}
+      <Disclosure title="Тайлан" hint="Excel, PDF">
+        <FinanceReports kindergartenId={kindergartenId} />
+      </Disclosure>
 
       <Disclosure title="Тариф" hint={rules.data ? `${rules.data.length} дүрэм` : undefined}>
         <Rules rules={rules} />
       </Disclosure>
-
-      {/*
-        ★ The ministry's own food-income statements — 2026-09-09, at the
-        client's request ("хоолны төвлөрүүлэх орлого маягт 1, 2").
-
-        Маягт 1 is the month in one row: how many children, how many carry the
-        livelihood discount, what is owed and what came in. Маягт 2 is the same
-        month broken to a child at a time, with the days each attended. They sit
-        under Тариф because that is the order the figures are built in — the
-        rate, then what the month made of it.
-
-        ★★ Both are read-only here. The catalog carries a `save` for each, and
-        neither is wired: filing a return is a decision an accountant makes
-        against their own ledger, and this screen is not yet the thing that
-        files it.
-      */}
-      <EsisDataPanel
-        resource="livelihoodForm1"
-        title="Хоолны төвлөрүүлэх орлого — маягт 1"
-        description="Сарын нэгдсэн дүн: сурагчийн тоо, төвлөрүүлэх ба төвлөрүүлсэн орлого"
-      />
-      <EsisDataPanel
-        resource="livelihoodForm2"
-        title="Хоолны төвлөрүүлэх орлого — маягт 2"
-        description="Бүлгийн хүүхэд тус бүрийн ирц, төлөх ба төлсөн дүн"
-      />
     </div>
   );
 }
