@@ -9,11 +9,11 @@ yet. Until they do, each one shows a "coming soon" message on a 404, not an
 error, so the screen can ship now. Once the routes exist, the screens fill in
 with no frontend change, **provided the shapes below are kept exactly**.
 
-| §   | What                              | Frontend file (already written)                     | Priority |
-| --- | --------------------------------- | --------------------------------------------------- | -------- |
-| 1   | Payments ledger + Excel           | `apps/web/components/finance/transactions.tsx`      | High     |
-| 2   | File ESIS food-income forms 1 & 2 | `apps/web/components/finance/esis-forms.tsx`        | High     |
-| 3   | ~~ESIS status on the finance roster~~ ✅ #162 | `apps/web/components/finance/payment-report.tsx`    | Medium   |
+| §   | What                                          | Frontend file (already written)                  | Priority |
+| --- | --------------------------------------------- | ------------------------------------------------ | -------- |
+| 1   | Payments ledger + Excel                       | `apps/web/components/finance/transactions.tsx`   | High     |
+| 2   | File ESIS food-income forms 1 & 2             | `apps/web/components/finance/esis-forms.tsx`     | High     |
+| 3   | ~~ESIS status on the finance roster~~ ✅ #162 | `apps/web/components/finance/payment-report.tsx` | Medium   |
 
 Every route below is tenant-scoped, readable by `ADMIN` and `ACCOUNTANT` only
 (the same gate as `/kindergartens/:id/invoices`), paginated where it lists,
@@ -34,14 +34,14 @@ four totals at the head of the tab: Нийт орлого, Нийт зарлаг
 
 ### `GET /kindergartens/:id/payments`
 
-| Query      | Type                                    | Notes                                                   |
-| ---------- | --------------------------------------- | ------------------------------------------------------- |
-| `from`, `to` | `YYYY-MM-DD`, both required, inclusive | Filters on the day the payment was **recorded** (`createdAt`, Ulaanbaatar time). The UI defaults to the 1st of this month → today. Refuse a range over 366 days with 400 |
-| `groupId`  | uuid, optional                          | The child's current group                               |
-| `method`   | `PaymentMethod`, optional               | `CASH`, `BANK_TRANSFER`, `QPAY`, `SOCIALPAY`, `OTHER`   |
-| `kind`     | `PAYMENT` \| `REVERSAL`, optional       | `REVERSAL` = a row with `reversalOfId` set              |
-| `q`        | string, optional                        | Child's last/first name, registration number or invoice `number`, case-insensitive |
-| `page`, `pageSize` | standard                        | UI sends `pageSize=25`; cap at 100                      |
+| Query              | Type                                   | Notes                                                                                                                                                                    |
+| ------------------ | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `from`, `to`       | `YYYY-MM-DD`, both required, inclusive | Filters on the day the payment was **recorded** (`createdAt`, Ulaanbaatar time). The UI defaults to the 1st of this month → today. Refuse a range over 366 days with 400 |
+| `groupId`          | uuid, optional                         | The child's current group                                                                                                                                                |
+| `method`           | `PaymentMethod`, optional              | `CASH`, `BANK_TRANSFER`, `QPAY`, `SOCIALPAY`, `OTHER`                                                                                                                    |
+| `kind`             | `PAYMENT` \| `REVERSAL`, optional      | `REVERSAL` = a row with `reversalOfId` set                                                                                                                               |
+| `q`                | string, optional                       | Child's last/first name, registration number or invoice `number`, case-insensitive                                                                                       |
+| `page`, `pageSize` | standard                               | UI sends `pageSize=25`; cap at 100                                                                                                                                       |
 
 Response — `paginated(...)` **plus a `summary`**:
 
@@ -50,27 +50,33 @@ Response — `paginated(...)` **plus a `summary`**:
   "items": [
     {
       "id": "uuid",
-      "kind": "PAYMENT",              // "REVERSAL" when reversalOfId is set
-      "amount": "-12500.00",          // negative on a reversal row, as on Payment
+      "kind": "PAYMENT", // "REVERSAL" when reversalOfId is set
+      "amount": "-12500.00", // negative on a reversal row, as on Payment
       "method": "CASH",
-      "note": null,                   // shown in «Утга» after the invoice number
-      "voidedAt": null,               // set on the original when it is voided
+      "note": null, // shown in «Утга» after the invoice number
+      "voidedAt": null, // set on the original when it is voided
       "createdAt": "2026-10-05T03:00:00.000Z",
       "invoice": { "id": "uuid", "number": "INV-7 | null", "month": "2026-10" },
       "child": {
-        "id": "uuid", "lastName": "… | null", "firstName": "…",
+        "id": "uuid",
+        "lastName": "… | null",
+        "firstName": "…",
         "registrationNumber": "ТА22010101 | null",
-        "group": { "id": "uuid", "name": "…" }   // or null — same rule as the invoice register
-      }
-    }
+        "group": { "id": "uuid", "name": "…" }, // or null — same rule as the invoice register
+      },
+    },
   ],
-  "page": 1, "pageSize": 25, "total": 1, "totalPages": 1,
-  "summary": {                        // over EVERY matching row, not the page
-    "income": "130000.00",            // sum of amount (reversals are negative, so they net out)
-    "expense": "0.00",                // always "0.00" until an expense module exists
-    "net": "130000.00",               // income − expense
-    "count": 4                        // = total
-  }
+  "page": 1,
+  "pageSize": 25,
+  "total": 1,
+  "totalPages": 1,
+  "summary": {
+    // over EVERY matching row, not the page
+    "income": "130000.00", // sum of amount (reversals are negative, so they net out)
+    "expense": "0.00", // always "0.00" until an expense module exists
+    "net": "130000.00", // income − expense
+    "count": 4, // = total
+  },
 }
 ```
 
@@ -109,10 +115,10 @@ and `livelihoodForm2` API-000231). The client now wants to **file** them from
 our own ledger. The two ESIS write services are already in
 `esis.portal-snapshot.json`, but nothing calls them yet:
 
-| Our key (proposed)     | ESIS id | ESIS service                                       |
-| ---------------------- | ------- | -------------------------------------------------- |
-| `livelihoodForm1Save`  | 129 / API-000228 | `POST /svc/api/hub/v2/cook/form1/school/livelhood/save` |
-| `livelihoodForm2Save`  | 131 / API-000230 | `POST /svc/api/hub/v2/cook/form2/school/livelhood/save` |
+| Our key (proposed)    | ESIS id          | ESIS service                                            |
+| --------------------- | ---------------- | ------------------------------------------------------- |
+| `livelihoodForm1Save` | 129 / API-000228 | `POST /svc/api/hub/v2/cook/form1/school/livelhood/save` |
+| `livelihoodForm2Save` | 131 / API-000230 | `POST /svc/api/hub/v2/cook/form2/school/livelhood/save` |
 
 (Note ESIS's own spelling: `livelhood`, `livelhoodDiscount`.)
 
@@ -154,11 +160,11 @@ nullable for these two services, or add a separate table. Your choice.
 {
   "month": "2026-10",
   "orgName": "Нийслэлийн 115-р цэцэрлэг", // printed in the title and the «Байгууллагын нэр» cell
-  "studentCnt": 83,               // → studentCNT
-  "livelihoodCnt": 65,            // → inLivelihoodCNT
+  "studentCnt": 83, // → studentCNT
+  "livelihoodCnt": 65, // → inLivelihoodCNT
   "livelihoodBudget": "1250000.00", // → inLivelihoodBudget (what should be collected)
-  "livelihoodAmount": "980000.00",  // → inLivelihoodAmount (what was collected)
-  "lastSubmittedAt": "ISO | null"   // last SENT form-1 write for this month
+  "livelihoodAmount": "980000.00", // → inLivelihoodAmount (what was collected)
+  "lastSubmittedAt": "ISO | null", // last SENT form-1 write for this month
 }
 ```
 
@@ -172,15 +178,17 @@ nullable for these two services, or add a separate table. Your choice.
   "groupName": "Дунд бүлэг",
   "rows": [
     {
-      "childId": "uuid", "lastName": "… | null", "firstName": "…",
-      "comingDays": 22,           // school days the child was due
-      "arrivalDays": 19,          // days attended
+      "childId": "uuid",
+      "lastName": "… | null",
+      "firstName": "…",
+      "comingDays": 22, // school days the child was due
+      "arrivalDays": 19, // days attended
       "amountDue": "90000.00",
       "amountPaid": "50000.00",
-      "livelihoodDiscount": "10000.00"
-    }
+      "livelihoodDiscount": "10000.00",
+    },
   ],
-  "lastSubmittedAt": "ISO | null"
+  "lastSubmittedAt": "ISO | null",
 }
 ```
 
