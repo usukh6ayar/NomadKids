@@ -10,7 +10,7 @@ import type { Actor } from "../../authz/actor";
 import { EsisRepository } from "./esis.repository";
 import { EsisRosterImportRepository } from "./esis-roster-import.repository";
 import { EsisService } from "./esis.service";
-import { AGE_BAND_BY_LEVEL, esisDate } from "./esis-roster.shared";
+import { AGE_BAND_BY_LEVEL, esisDate, programStatusRows } from "./esis-roster.shared";
 
 export interface RosterImportOutcome {
   groups: { created: number; updated: number; skipped: string[] };
@@ -283,6 +283,17 @@ export class EsisRosterImportService {
      * this operation a director has to act on, and an audit row that recorded
      * only "93 children" would not say which two nobody can find.
      */
+    /*
+     * ★ The funding register's «Төлөв», from the list just read — the same
+     * write the nightly roster sync makes, so an import does not leave the
+     * column empty until 03:40. After the loop, so a child created above is
+     * matched too.
+     */
+    await this.esisRepo.updateChildProgramStatuses(
+      kindergartenId,
+      programStatusRows(studentResponse.data),
+    );
+
     await this.audit.append({
       action: "CREATE",
       kindergartenId,

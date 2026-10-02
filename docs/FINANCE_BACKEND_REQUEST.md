@@ -13,7 +13,7 @@ with no frontend change, **provided the shapes below are kept exactly**.
 | --- | --------------------------------- | --------------------------------------------------- | -------- |
 | 1   | Payments ledger + Excel           | `apps/web/components/finance/transactions.tsx`      | High     |
 | 2   | File ESIS food-income forms 1 & 2 | `apps/web/components/finance/esis-forms.tsx`        | High     |
-| 3   | ESIS status on the finance roster | `apps/web/components/finance/payment-report.tsx`    | Medium   |
+| 3   | ~~ESIS status on the finance roster~~ ✅ #162 | `apps/web/components/finance/payment-report.tsx`    | Medium   |
 
 Every route below is tenant-scoped, readable by `ADMIN` and `ACCOUNTANT` only
 (the same gate as `/kindergartens/:id/invoices`), paginated where it lists,
@@ -236,6 +236,8 @@ the UI shows it. Write an `AuditLog` row for every submit.
 ---
 
 ## 3. ESIS status on the finance roster — «Жилийн тайлан» tab
+
+**✅ Delivered in #162 (2026-10-01)** — `finance-roster` now sends both fields. Kept below for reference only.
 
 This was agreed earlier and has not been delivered. The annual report has a
 «Төлөв» column. It shows "—" until

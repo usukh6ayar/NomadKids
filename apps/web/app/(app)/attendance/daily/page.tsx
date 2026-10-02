@@ -157,26 +157,20 @@ function DailyAttendance() {
   const yearly = view === "year";
 
   return (
-    <div className="flex flex-col gap-4 rounded-card border border-border-soft bg-surface p-5 shadow-sm">
+    <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-heading font-bold leading-heading text-ink sm:text-display">
-            {yearly
-              ? "Жилээр"
-              : breakdown
-                ? "Сараар"
-                : byChild
-                  ? "Суралцагчаар"
-                  : "Өдөр тутмын ирц"}
+            {yearly ? "Жилээр" : breakdown ? "Сараар" : byChild ? "Суралцагчаар" : "Өдрөөр"}
           </h1>
           <p className="mt-1 text-body text-muted">
             {yearly
               ? "Суралцагч бүрийн 9–6 сарын өдөр тутмын ирцийг нэг хүснэгтээр харна."
               : breakdown
-                ? "Бүлэг болон сар сонгон тухайн бүлгийн ирцийн задаргаа харах."
+                ? "Сонгосон сарын ирцийг суралцагч, өдөр болон төлвөөр нь харна."
                 : byChild
                   ? "Суралцагч бүрийн өдөр тутмын ирцийн мэдээллийг харна."
-                  : "Бүлэг болон сар сонгон өдөр тутмын ирцийн мэдээллийг бүртгэнэ."}
+                  : "Сонгосон өдрүүдийн бүлгийн ирцийн мэдээллийг харна."}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

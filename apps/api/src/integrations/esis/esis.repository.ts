@@ -635,6 +635,46 @@ export class EsisRepository {
     });
   }
 
+  /**
+   * Writes ESIS's enrolment status onto the children `students/list` names —
+   * the funding register's «Төлөв». Returns how many child rows changed.
+   *
+   * ★ Matched on `esisPersonId` within the kindergarten and nothing else: a
+   * name match is a guess about who is who, and a wrong guess here would bill
+   * one family under another child's status.
+   *
+   * ★★ One `updateMany` per distinct (status, date), not one `update` per
+   * child — a roster is ninety rows and almost all of them share "Идэвхтэй".
+   * Children absent from `rows` are not touched, which is the rule: a child
+   * who left the ministry's list keeps the last status it gave them.
+   */
+  async updateChildProgramStatuses(
+    kindergartenId: string,
+    rows: { esisPersonId: string; status: string | null; actionDate: Date | null }[],
+  ): Promise<number> {
+    const batches = new Map<
+      string,
+      { status: string | null; actionDate: Date | null; ids: string[] }
+    >();
+    for (const row of rows) {
+      const key = `${row.status ?? ""}|${row.actionDate?.toISOString() ?? ""}`;
+      const batch = batches.get(key) ?? { status: row.status, actionDate: row.actionDate, ids: [] };
+      batch.ids.push(row.esisPersonId);
+      batches.set(key, batch);
+    }
+    if (batches.size === 0) return 0;
+
+    const results = await this.prisma.$transaction(
+      [...batches.values()].map((batch) =>
+        this.prisma.child.updateMany({
+          where: { kindergartenId, deletedAt: null, esisPersonId: { in: batch.ids } },
+          data: { esisProgramStatus: batch.status, esisActionDate: batch.actionDate },
+        }),
+      ),
+    );
+    return results.reduce((sum, result) => sum + result.count, 0);
+  }
+
   listRecentRuns(kindergartenId: string) {
     return this.prisma.esisSyncRun.findMany({
       where: { kindergartenId },

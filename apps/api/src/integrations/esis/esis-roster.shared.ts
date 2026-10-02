@@ -53,3 +53,20 @@ export function esisDate(value: unknown): Date | null {
   const parsed = new Date(value.slice(0, 10));
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
+
+/**
+ * `students/list` rows → what `EsisRepository.updateChildProgramStatuses`
+ * writes: the person id to match on, the status name and its date.
+ *
+ * ★ Shared by the nightly roster sync and the manual roster import, which read
+ * the same list. Nothing else leaves a row — the register number and `civilId`
+ * it also carries are never stored (ESIS_REQUEST.md §1.1 (b)).
+ */
+export function programStatusRows(data: unknown[]) {
+  return (data as Record<string, unknown>[]).flatMap((raw) => {
+    const esisPersonId = String(raw.personId ?? "").trim();
+    if (!esisPersonId) return [];
+    const status = typeof raw.programStatusName === "string" ? raw.programStatusName.trim() : "";
+    return [{ esisPersonId, status: status || null, actionDate: esisDate(raw.actionDate) }];
+  });
+}

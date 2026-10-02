@@ -25,6 +25,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { TableShell, Td, Th } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { EsisCoverageSection } from "@/components/esis/esis-coverage";
+import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 
 /**
  * Which tier a run belongs to, read off `EsisSyncRun.summary` — the only
@@ -265,6 +266,33 @@ export function EsisHub() {
       */}
       <Disclosure title="Сервисийн ашиглалт" hint="ЭСИС-ийн 84 сервисийн тайлан">
         <EsisCoverageSection kindergartenId={kindergartenId} />
+      </Disclosure>
+
+      {/*
+        ★ The мэргэшлийн зэрэг pair (167, 170), back on a screen — 2026-10-01
+        (#163, carried over when `/admin/esis-sync` became this hub). #134 took
+        them off `/admin/users` with the rest of that page's ESIS panels, and
+        the client asked for them kept: the ministry's degree-request window
+        has not opened yet, so they answer nothing today, and that is a date
+        rather than a defect.
+      */}
+      <Disclosure title="Мэргэшлийн зэрэг" hint="ЭСИС-ийн хүсэлтийн шийдвэрлэлт, түүх">
+        <div className="flex flex-col gap-4">
+          <p className="text-body text-muted">
+            Яамны мэргэшлийн зэргийн хүсэлтийн хугацаа хараахан нээгдээгүй тул одоогоор мэдээлэл
+            ирэхгүй байж болно. Хугацаа нээгдсэний дараа хүсэлтийн дугаараар шалгана.
+          </p>
+          <EsisDataPanel
+            resource="degreeDecisions"
+            title="Мэргэшлийн зэргийн шийдвэрлэлт"
+            description="Хүсэлтийн дугаараар ЭСИС-ийн шийдвэрлэлтийн төлөв"
+          />
+          <EsisDataPanel
+            resource="degreeHistory"
+            title="Мэргэшлийн зэргийн хүсэлтийн түүх"
+            description="Хүсэлтийн дугаараар өөрчлөлтийн түүх"
+          />
+        </div>
       </Disclosure>
 
       <section aria-labelledby="esis-sync-history-heading">
