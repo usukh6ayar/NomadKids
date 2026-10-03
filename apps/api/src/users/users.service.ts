@@ -62,8 +62,11 @@ function withGroups<
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * An administrator-issued reset link lasts an hour — the same window
- * `AuthService.requestPasswordReset` gives the self-service one.
+ * An administrator-issued reset link lasts an hour.
+ *
+ * ★ Since 2026-10-04 this is the only reset *link* there is: self-service
+ * recovery is by phone (`AuthService.confirmPasswordResetByPhone`) and nothing
+ * is e-mailed any more.
  *
  * ★ Deliberately not the invitation's week. An invitation is delivered to
  * somebody who does not have an account yet and may take days to act; this is
@@ -389,9 +392,9 @@ export class UsersService {
    * teacher, and a one-time link is it — the teacher chooses the password and
    * nobody else ever holds it.
    *
-   * ★★ Unlike `AuthService.requestPasswordReset`, this one 404s for a user it
-   * cannot find. That endpoint is unauthenticated and must not become a
-   * user-enumeration API, so it pretends to succeed for everyone; this one is
+   * ★★ It 404s for a user it cannot find — unlike the public reset by phone,
+   * which must not become a user-enumeration API and answers identically for
+   * every number until the number is proven; this one is
    * `@Roles("ADMIN")` and scoped to the kindergartens the actor administers,
    * so the caller already knows who is on their own staff list. Pretending
    * here would only hide a genuine mistake — a stale row, the wrong id — behind

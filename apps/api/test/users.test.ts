@@ -13,6 +13,7 @@ import {
   type Scenario,
 } from "./support/fixtures";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
+import { hashToken } from "../src/auth/token.service";
 
 /**
  * User administration, memberships and own-profile editing.
@@ -702,11 +703,14 @@ describe("POST /auth/invitation/accept", () => {
 
   it("a password-reset token cannot be used to accept an invitation", async () => {
     const user = await createUser({ username: uniq("existing") });
-    await request(server()).post("/v1/auth/password-reset").send({ identifier: user.username });
-    const row = await db.authToken.findFirst({
-      where: { userId: user.id, purpose: "PASSWORD_RESET" },
+    await db.authToken.create({
+      data: {
+        userId: user.id,
+        purpose: "PASSWORD_RESET",
+        tokenHash: hashToken(`reset-${uniq()}`),
+        expiresAt: new Date(Date.now() + 3_600_000),
+      },
     });
-    expect(row).toBeTruthy();
 
     // The raw token is not readable from the row — only its hash is stored —
     // so this asserts the lookup is scoped by purpose using a token that is

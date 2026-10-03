@@ -744,7 +744,6 @@ described limits the code did not have.
 | ----------------------------------- | ---------------------------------------- | --------------------- |
 | `POST /auth/login`                  | **60 / 15 min**                          | IP                    |
 | `POST /auth/login`                  | **5 failures / 15 min → 15 min lockout** | identifier (database) |
-| `POST /auth/password-reset`         | 20 / hour                                | IP                    |
 | `POST /auth/password-reset/confirm` | 10 / hour                                | IP                    |
 | `POST /auth/refresh`                | 60 / hour                                | IP                    |
 | `PATCH /auth/password`              | 10 / hour                                | user                  |
@@ -802,7 +801,7 @@ All configuration from the environment. `.env` gitignored, `.env.example`
 updated with every new key. No secret in source, in a commit, or in a log line.
 
 `DATABASE_URL`, `JWT_SECRET`, `REFRESH_SECRET`, `R2_ACCESS_KEY_ID`,
-`R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT`, `REDIS_URL`, `SMTP_*`,
+`R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT`, `REDIS_URL`, `VERIFY_MN_API_KEY`,
 `CORS_ORIGINS`, `COOKIE_DOMAIN`.
 
 Rotation: JWT signing keys carry a `kid` so a rotation does not invalidate every

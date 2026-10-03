@@ -23,7 +23,6 @@ import { ChildrenModule } from "./children/children.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { HealthModule } from "./health/health.module";
 import { MaintenanceModule } from "./maintenance/maintenance.module";
-import { MailModule } from "./mail/mail.module";
 import { MealsModule } from "./meals/meals.module";
 import { MethodUnionsModule } from "./method-unions/method-unions.module";
 import { MediaModule } from "./media/media.module";
@@ -56,7 +55,6 @@ import { UsersModule } from "./users/users.module";
     PrismaModule,
     AuditModule,
     RateLimitModule,
-    MailModule,
     AuthzModule,
     AuthModule,
     HealthModule,

@@ -80,16 +80,15 @@ Every route below names an ownership rule. These resolve to the two chains in
 
 ## 2. Auth
 
-| Method | Route                          | Role   | Ownership      | Request                | Response                                                 |
-| ------ | ------------------------------ | ------ | -------------- | ---------------------- | -------------------------------------------------------- |
-| POST   | `/auth/login`                  | public | —              | identifier + password  | user summary + memberships; sets both cookies            |
-| POST   | `/auth/refresh`                | public | refresh cookie | —                      | rotates refresh, sets new access cookie                  |
-| POST   | `/auth/logout`                 | any    | self           | —                      | 204; revokes the refresh family                          |
-| GET    | `/auth/me`                     | any    | self           | —                      | user, memberships, active role, CSRF token               |
-| POST   | `/auth/password-reset`         | public | —              | identifier             | 204 **always** — timing-neutral, never reveals existence |
-| POST   | `/auth/password-reset/confirm` | public | token          | token + new password   | 204                                                      |
-| POST   | `/auth/invitation/accept`      | public | token          | token + password       | 204; activates the account                               |
-| PATCH  | `/auth/password`               | any    | self           | current + new password | 204; revokes all other sessions                          |
+| Method | Route                          | Role   | Ownership      | Request                | Response                                      |
+| ------ | ------------------------------ | ------ | -------------- | ---------------------- | --------------------------------------------- |
+| POST   | `/auth/login`                  | public | —              | identifier + password  | user summary + memberships; sets both cookies |
+| POST   | `/auth/refresh`                | public | refresh cookie | —                      | rotates refresh, sets new access cookie       |
+| POST   | `/auth/logout`                 | any    | self           | —                      | 204; revokes the refresh family               |
+| GET    | `/auth/me`                     | any    | self           | —                      | user, memberships, active role, CSRF token    |
+| POST   | `/auth/password-reset/confirm` | public | token          | token + new password   | 204                                           |
+| POST   | `/auth/invitation/accept`      | public | token          | token + password       | 204; activates the account                    |
+| PATCH  | `/auth/password`               | any    | self           | current + new password | 204; revokes all other sessions               |
 
 Rate limits in [SECURITY.md](SECURITY.md) §9.
 
