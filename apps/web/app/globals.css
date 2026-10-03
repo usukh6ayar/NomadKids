@@ -702,6 +702,27 @@ html {
 }
 
 /*
+ * ★ Except where you type — client, 2026-10-04: «input дээр дарангуут outline-тай
+ * болоод байгааг болимоор байна».
+ *
+ * A text control matches `:focus-visible` on a *mouse click* too (browsers
+ * always show it where the keyboard is about to be used), so every tap into a
+ * field drew a 2px ring outside its own border — a double blue edge. The
+ * field's own border turns `--color-primary` on focus instead (`Input`,
+ * `Textarea`, `Select` in `components/ui/field.tsx`), which is still a visible
+ * focus state, just one edge rather than two.
+ *
+ * `transparent`, not `none`: Windows' forced-colours mode repaints a
+ * transparent outline in the system colour, so a high-contrast user still
+ * sees focus. Checkboxes, radios, buttons and links keep the ring above.
+ */
+input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]):focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline-color: transparent;
+}
+
+/*
  * iOS zooms the page when a focused input's text is under 16px. That zoom does
  * not undo itself, so the user is left on a horizontally scrolled page — which
  * is why every text control is at least 16px and why this is a rule rather
