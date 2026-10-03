@@ -102,7 +102,14 @@ export class PhoneVerificationService {
       throw new ServiceUnavailableException("Утсаар баталгаажуулах боломж идэвхжээгүй байна.");
     }
 
-    await this.repo.retirePending(purpose, phone, userId);
+    /*
+     * ★ Only where the attempt has an owner. An invitation or a profile is
+     * keyed by an account, so only its holder can start one and retire their
+     * own older code. A reset has no subject — anybody may type any number —
+     * and retiring there would let a stranger cancel the SMS a person has
+     * just paid for, or the proof they are about to spend.
+     */
+    if (userId !== null) await this.repo.retirePending(purpose, phone, userId);
 
     // A fresh six-digit code per session: verify.mn refuses (409) a second
     // active session with the same phone and text, and a reused code would

@@ -1,6 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, setParams, setSearchParams, stubApi } from "./support/render";
 import ForgotPasswordPage from "@/app/forgot-password/page";
 import AcceptInvitationPage from "@/app/invitation/[token]/page";
@@ -84,6 +84,54 @@ describe("forgot password — by phone", () => {
 
     expect(await screen.findByText(/бүртгэл олдсонгүй/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/^Шинэ нууц үг/)).not.toBeInTheDocument();
+  });
+});
+
+describe("the SMS step", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /*
+   * ★ A failed poll is not an answer. The first check fires the moment the
+   * code is shown, which is exactly when a phone is switching to its SMS app
+   * and a request is most likely to drop — and stopping there would leave a
+   * person who has paid for the SMS watching a countdown that cannot succeed.
+   */
+  it("keeps polling after a failed check", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const check = {
+      path: "/phone-verifications/check",
+      method: "POST",
+      status: 503,
+      body: {
+        type: "about:blank",
+        title: "Түр ажиллахгүй",
+        status: 503,
+        requestId: "t",
+      } as unknown,
+    };
+    const { calls } = stubApi([
+      { path: "/phone-verifications/availability", body: { enabled: true } },
+      { path: "/auth/password-reset/phone", method: "POST", body: START },
+      check,
+    ]);
+
+    renderWithProviders(<ForgotPasswordPage />);
+    await user.click(await screen.findByRole("tab", { name: "Утсаар" }));
+    await user.type(screen.getByLabelText(/^Бүртгэлтэй утасны дугаар/), "99112233");
+    await user.click(screen.getByRole("button", { name: "SMS-ээр баталгаажуулах" }));
+
+    await waitFor(() =>
+      expect(calls.filter((c) => c.url === "/phone-verifications/check")).toHaveLength(1),
+    );
+
+    check.status = 200;
+    check.body = { status: "VERIFIED", expiresAt: START.expiresAt, accountFound: true };
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    expect(await screen.findByLabelText(/^Шинэ нууц үг/)).toBeInTheDocument();
   });
 });
 

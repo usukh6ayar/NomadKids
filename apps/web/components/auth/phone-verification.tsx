@@ -69,6 +69,8 @@ export function PhoneVerificationStep({
     onSuccess: (data) => setSession(data),
   });
 
+  const secondsLeft = useSecondsUntil(session?.expiresAt);
+
   const check = useQuery({
     queryKey: qk.phoneVerificationCheck(session?.handle ?? ""),
     queryFn: () =>
@@ -76,10 +78,18 @@ export function PhoneVerificationStep({
         method: "POST",
         body: { handle: session?.handle },
       }),
-    enabled: Boolean(session),
+    enabled: Boolean(session) && secondsLeft > 0,
     // ★ Stops the moment there is an answer: every SMS costs the sender 150₮,
     // and a screen that kept asking would read as "send it again".
-    refetchInterval: (query) => (query.state.data?.status === "PENDING" ? POLL_MS : false),
+    //
+    // ★★ And *only* on an answer. A failed poll — a mobile network blip, a
+    // 429 behind a carrier's shared address — has no status, and stopping on
+    // it would leave a person who has already paid for the SMS watching a
+    // countdown that can no longer succeed.
+    refetchInterval: (query) => {
+      const settled = query.state.data?.status;
+      return settled === "VERIFIED" || settled === "EXPIRED" ? false : POLL_MS;
+    },
     retry: false,
   });
 
@@ -92,7 +102,6 @@ export function PhoneVerificationStep({
     // is new on every render, and this must fire once per proof.
   }, [status, handle]);
 
-  const secondsLeft = useSecondsUntil(session?.expiresAt);
   const expired =
     status === "EXPIRED" || (session !== null && secondsLeft === 0 && status !== "VERIFIED");
 

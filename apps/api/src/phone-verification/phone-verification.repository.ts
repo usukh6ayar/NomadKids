@@ -45,7 +45,7 @@ export class PhoneVerificationRepository {
    * newest handle can be consumed — a code abandoned on another screen stops
    * counting the moment a new one is asked for.
    */
-  async retirePending(purpose: PhoneVerificationPurpose, phone: string, userId: string | null) {
+  async retirePending(purpose: PhoneVerificationPurpose, phone: string, userId: string) {
     await this.prisma.phoneVerification.updateMany({
       where: { purpose, phone, userId, consumedAt: null },
       data: { consumedAt: new Date() },

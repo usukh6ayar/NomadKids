@@ -154,7 +154,11 @@ export default function AcceptInvitationPage() {
     // The server refuses an unproven phone too; saying so here saves the
     // round trip and points at the step that is missing.
     if (phoneEnabled && !isStaff && phoneProof?.phone !== phone.trim()) {
-      setLocalError("Утасны дугаараа SMS-ээр баталгаажуулна уу.");
+      setLocalError(
+        MOBILE_PHONE.test(phone.trim())
+          ? "Утасны дугаараа SMS-ээр баталгаажуулна уу."
+          : "Утасны дугаараа 8 оронтойгоор оруулна уу.",
+      );
       return;
     }
 
@@ -261,7 +265,19 @@ export default function AcceptInvitationPage() {
 
         {!isStaff ? (
           <>
-            <Field label="Утасны дугаар" error={errors.phone} required>
+            <Field
+              label="Утасны дугаар"
+              error={errors.phone}
+              hint={
+                // The SMS step appears only for a number verify.mn can prove;
+                // without this a guardian typing "9911 2233" would be told to
+                // verify by SMS with no SMS button on screen.
+                phoneEnabled && phone.trim() && !MOBILE_PHONE.test(phone.trim())
+                  ? "8 оронтой дугаар оруулна уу."
+                  : undefined
+              }
+              required
+            >
               {({ id, describedBy, invalid }) => (
                 <Input
                   id={id}

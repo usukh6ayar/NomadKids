@@ -124,6 +124,21 @@ describe("password reset by phone", () => {
     expect(replay.body.code).toBe("PHONE_UNVERIFIED");
   });
 
+  it("cannot be cancelled by somebody else starting one for the same number", async () => {
+    const user = await createUser({ phone: "99110007" });
+    const mine = await startReset("99110007");
+    deliver("99110007");
+
+    // A stranger types the same number — the reset start is public.
+    await startReset("99110007");
+
+    const confirm = await request(server())
+      .post("/v1/auth/password-reset/phone/confirm")
+      .send({ handle: mine.body.handle, password: NEW_PASSWORD });
+    expect(confirm.status).toBe(204);
+    await login(app, user.username, NEW_PASSWORD);
+  });
+
   it("refuses a handle whose SMS never arrived", async () => {
     await createUser({ phone: "99110004" });
     const { body } = await startReset("99110004");
