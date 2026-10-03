@@ -221,7 +221,7 @@ export function AdminOverview({ actions }: { actions?: ReactNode } = {}) {
             }
             art={<Art name="attendance" size={36} />}
             artSurface={false}
-            href="/attendance/journal"
+            href="/attendance/daily"
           />
           <StatCard
             label="Бүлэг"

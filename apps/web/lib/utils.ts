@@ -23,7 +23,24 @@ const twMerge = extendTailwindMerge({
   extend: {
     classGroups: {
       "font-size": [
-        { text: ["caption", "compact", "body", "lead", "title", "heading", "display"] },
+        {
+          text: [
+            "caption",
+            "compact",
+            "body",
+            "lead",
+            "title",
+            "heading",
+            "display",
+            // ★ The figure and hero steps too — 2026-10-02. Unregistered,
+            // `text-figure-lg` read as a colour and evicted the wordmark's
+            // `text-transparent`, so the login's NomadKids lost its gradient.
+            "figure",
+            "figure-lg",
+            "hero",
+            "hero-lg",
+          ],
+        },
       ],
     },
   },

@@ -6,6 +6,8 @@ import {
   BookOpen,
   Boxes,
   Carrot,
+  NotebookText,
+  ReceiptText,
   ClipboardList,
   CloudDownload,
   FileText,
@@ -171,7 +173,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     return (
       <AppShell
         nav={supportNav(isCook)}
-        sections={supportSections(isCook)}
+        sections={withSupportRailGlyphs(
+          supportSections(isCook),
+          isCook ? COOK_RAIL_ICON : ACCOUNTANT_RAIL_ICON,
+        )}
         variant="teacher"
         workspaceTheme={isCook ? "kitchen" : "finance"}
       >
@@ -578,8 +583,8 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         entries: [
           entry("Хоолны цэс", "/menu", "food"),
           entry("Санхүү", "/finance", "finance"),
-          entry("Төлбөрийн тайлан", "/admin/funding", "finance"),
-          entry("Ирцийн дэлгэрэнгүй", "/attendance/journal", "attendance"),
+          // «Төлбөрийн тайлан» is «Санхүү» → «Жилийн тайлан» since 2026-10-01.
+          // «Ирцийн дэлгэрэнгүй» removed 2026-10-01 — «Ирц» carries its views.
         ],
       },
       {
@@ -589,26 +594,18 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
           entry("Баримт бичгийн сан", "/documents", "adminDocuments"),
         ],
       },
-      {
-        title: "Сургалтын төлөвлөгөө",
-        entries: [
-          /*
-            ★ «Хичээлийн жил» and «Улирал» left the menu on 2026-09-28, the
-            client: a year now arrives from ESIS through «Анги, бүлэг»'s
-            «ESIS татах». The routes stay — the setup guide still links one.
-          */
-          entry("Сургалтын хөтөлбөр", "/admin/curriculum", "adminCurriculum"),
-        ],
-      },
-      {
-        title: "Интеграц",
-        /*
-          ★ Pointed at `/admin/integrations/esis` — deleted on 2026-09-14 —
-          and answered 404 until 2026-09-28. `/admin/esis-sync` is the
-          director's ESIS screen now.
-        */
-        entries: [entry("ESIS мэдээллийн төв", "/admin/esis-sync", "adminEsisHub")],
-      },
+      /*
+        ★ «Сургалтын төлөвлөгөө» left the menu on 2026-10-01: its one entry,
+        «Сургалтын хөтөлбөр», is now a section of «Байгууллага»
+        (`/admin/kindergarten?tab=curriculum`). «Хичээлийн жил» and «Улирал»
+        had already gone on 2026-09-28 — a year arrives from ESIS through
+        «Анги, бүлэг»'s «ESIS татах».
+      */
+      /*
+        ★ «Интеграц» left the menu on 2026-10-01: its one entry, «ESIS
+        мэдээллийн төв», is now «Байгууллага» → «ЭСИС холболт»
+        (`/admin/kindergarten?tab=esis`), at the client's request.
+      */
     ];
   }
 
@@ -855,17 +852,6 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         entry("Чат", "/chat"),
       ],
     },
-    ...(isAdmin
-      ? [
-          {
-            title: "Санхүү",
-            entries: [
-              entry("Төлбөрийн тайлан", "/admin/funding"),
-              entry("Ирцийн дэлгэрэнгүй", "/attendance/journal"),
-            ],
-          },
-        ]
-      : []),
     {
       title: "Санхүү ба баримт бичиг",
       entries: [
@@ -947,12 +933,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          */
         ...adminEntry("Ажилтны бүртгэл", "/admin/staff-code"),
         // «Хичээлийн жил», «Улирал» — out of the menu 2026-09-28, see above.
-        /*
-         * ★ Added 2026-09-10 with the four ESIS curriculum services. It sits
-         * after Улирал because it answers the same kind of question — what
-         * shape does the year take.
-         */
-        ...adminEntry("Сургалтын хөтөлбөр", "/admin/curriculum", "adminCurriculum"),
+        // «Сургалтын хөтөлбөр» — a section of «Байгууллага» since 2026-10-01.
         /*
          * ★ **"ESIS мэдээллийн төв" was the next row and is gone** — 2026-09-14,
          * at the client's request ("superadmin дээр байх нь зөв"). The screen
@@ -987,7 +968,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          * — whether it is live, which institution it is bound to, and how much
          * has come across. The pulls and the write queue are still on it.
          */
-        ...adminEntry("ЭСИС холболт", "/admin/esis-sync"),
+        // «ЭСИС холболт» — a section of «Байгууллага» since 2026-10-01.
         /*
          * ★ "Үнэлгээний тохиргоо" and "Аудит" lost their rows on 2026-09-06,
          * at the client's request — and, as with the two review queues above,
@@ -1087,6 +1068,45 @@ function withRailGlyphs(sections: NavSection[]): NavSection[] {
 }
 
 /**
+ * The cook's menu in the teacher's and the administrator's thin grey line
+ * glyphs — client, 2026-10-02: "тогоочийн хажуугийн цэсний icon зураасан
+ * зурагтай болгоод өг бусад багш удирдлага шиг". Rows shared with those menus
+ * (Ирц, Хоолны цэс, Тайлан) take the same glyph they do there.
+ */
+const COOK_RAIL_ICON: Record<string, LucideIcon> = {
+  "/kitchen/attendance": IdCardLanyard,
+  "/menu": Utensils,
+  "/kitchen/ingredients": Carrot,
+  "/kitchen/recipes": NotebookText,
+  "/kitchen/orders": ShoppingCart,
+  "/kitchen/stock": Boxes,
+  "/kitchen/reports": SearchCheck,
+  "/settings": Settings,
+};
+
+/** The accountant's menu in the same glyphs — client, 2026-10-02. */
+const ACCOUNTANT_RAIL_ICON: Record<string, LucideIcon> = {
+  "/finance": Wallet,
+  "/invoices": ReceiptText,
+  "/attendance/daily": IdCardLanyard,
+  "/finance/audit-log": ScrollText,
+  "/settings": Settings,
+};
+
+function withSupportRailGlyphs(
+  sections: NavSection[],
+  icons: Record<string, LucideIcon>,
+): NavSection[] {
+  return sections.map((section) => ({
+    ...section,
+    entries: section.entries.map((entry) => {
+      const glyph = entry.href ? icons[entry.href] : undefined;
+      return glyph ? { ...entry, icon: <RailGlyph icon={glyph} /> } : entry;
+    }),
+  }));
+}
+
+/**
  * The cook's and the accountant's bottom bar.
  *
  * ★ One function for both — kept together because they used to differ by
@@ -1125,28 +1145,68 @@ function withRailGlyphs(sections: NavSection[]): NavSection[] {
  * is the drawer, not a fourth destination, for the reason the cook's is.
  */
 function supportNav(isCook: boolean): NavItem[] {
+  /*
+    ★ The phone bar is the teacher's floating pill since 2026-10-02 — client:
+    "нягтлан тогоочийн доод хөвдөг цэс багш удирдлагын хэсэг шиг болго" — so
+    each tab carries a `barIcon` line glyph at the pill's size, as
+    `staffNav`'s do. `icon` stays what the side menu draws.
+  */
   return isCook
     ? [
-        { href: "/kitchen/dashboard", label: "Самбар", icon: <LayoutGrid {...iconProps} /> },
-        { href: "/menu", label: "Хоолны цэс", icon: artIcon("food", 20) },
+        {
+          href: "/kitchen/dashboard",
+          label: "Самбар",
+          // The side menu's thin line glyph, as the teacher's (2026-10-02).
+          icon: <RailGlyph icon={House} />,
+          barIcon: <House {...pillIconProps} />,
+        },
+        {
+          href: "/menu",
+          label: "Хоолны цэс",
+          icon: artIcon("food", 20),
+          barIcon: <Utensils {...pillIconProps} />,
+        },
         {
           href: "/kitchen/recipes",
           label: "Технологийн карт",
           icon: artIcon("kitchenRecipeCard", 20),
+          barIcon: <NotebookText {...pillIconProps} />,
         },
-        { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
+        {
+          href: "/settings",
+          label: "Цэс",
+          icon: <Menu {...iconProps} />,
+          barIcon: <Menu {...pillIconProps} />,
+        },
       ]
     : [
         // ★ Самбар first, matching the cook's row above — 2026-09-09. It was
         // `/finance`, which is now the register rather than the overview.
-        { href: "/finance/dashboard", label: "Самбар", icon: <LayoutGrid {...iconProps} /> },
-        { href: "/invoices", label: "Нэхэмжлэл", icon: artIcon("accountingInvoice", 20) },
         {
-          href: "/attendance/journal",
+          href: "/finance/dashboard",
+          label: "Самбар",
+          icon: <RailGlyph icon={House} />,
+          barIcon: <House {...pillIconProps} />,
+        },
+        {
+          href: "/invoices",
+          label: "Нэхэмжлэл",
+          icon: artIcon("accountingInvoice", 20),
+          barIcon: <FileText {...pillIconProps} />,
+        },
+        {
+          // «Ирц» since 2026-10-01 — «Ирцийн дэлгэрэнгүй» was removed.
+          href: "/attendance/daily",
           label: "Ирц",
           icon: artIcon("accountingAttendanceDetails", 20),
+          barIcon: <IdCardLanyard {...pillIconProps} />,
         },
-        { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
+        {
+          href: "/settings",
+          label: "Цэс",
+          icon: <Menu {...iconProps} />,
+          barIcon: <Menu {...pillIconProps} />,
+        },
       ];
 }
 
@@ -1228,19 +1288,9 @@ function supportSections(isCook: boolean): NavSection[] {
              * above it under its own name: the client asked for the short one
              * back the moment they saw the two together.
              */
-            navEntry("Санхүүжилт", "/finance"),
+            navEntry("Санхүү", "/finance"),
             navEntry("Нэхэмжлэл", "/invoices", "accountingInvoice"),
-            /*
-             * ★ Added 2026-09-02. `/admin/funding` widened to
-             * `RequireRole(["ADMIN", "ACCOUNTANT"])` the same day — see that
-             * page's own comment — because `нэмэлт.md` §13 names "Улсын
-             * санхүүжилт" and "Төлбөрийн тулгалт" for this role and the API
-             * had allowed it since the role shipped. A widened `RequireRole`
-             * with no row pointing at it is a page an accountant can only
-             * reach by typing the URL, which is the same kind of gap this
-             * screen exists to close.
-             */
-            navEntry("Төлбөрийн тайлан", "/admin/funding", "accountingAttendanceCalculation"),
+            // «Төлбөрийн тайлан» is a tab of «Санхүү» since 2026-10-01.
             /*
              * ★ The raw grid the figure above is computed from — child by
              * child, day by day, over any range of dates. `/admin/funding`
@@ -1248,7 +1298,12 @@ function supportSections(isCook: boolean): NavSection[] {
              * here, and when", which is the question that precedes it and the
              * one an accountant is asked when a number is queried.
              */
-            navEntry("Ирцийн дэлгэрэнгүй", "/attendance/journal", "accountingAttendanceDetails"),
+            /*
+             * ★ «Ирц» since 2026-10-01: «Ирцийн дэлгэрэнгүй» was removed at the
+             * client's request, its child-by-day grid being «Ирц»'s «Сараар»
+             * and «Жилээр». Same roles (ADMIN, ACCOUNTANT) on both screens.
+             */
+            navEntry("Ирц", "/attendance/daily", "accountingAttendanceDetails"),
             navEntry("Санхүүгийн аудит", "/finance/audit-log", "accountingAudit"),
           ],
     },

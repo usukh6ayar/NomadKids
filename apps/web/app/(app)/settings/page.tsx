@@ -33,8 +33,11 @@ import {
   validatePasswordStrength,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
-import { EsisDataPanel } from "@/components/esis/esis-data-panel";
-import { EsisRowValues, esisSampleColumns } from "@/components/esis/esis-rows";
+import {
+  EsisAcademicOrgCard,
+  EsisTeacherListCard,
+  EsisWorkRecord,
+} from "@/components/esis/esis-teacher-cards";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { ApiError } from "@/lib/api/client";
@@ -129,17 +132,8 @@ export default function SettingsPage() {
               {tab === "work" ? <EsisProfileSection /> : null}
               {tab === "systems" ? (
                 <div className="flex flex-col gap-6">
-                  <EsisDataPanel
-                    resource="teacherAcademicOrg"
-                    ownRecord
-                    title="Заах аргын нэгдэл"
-                    description="ЭСИС-д бүртгэлтэй заах аргын нэгдэл, албан тушаал"
-                  />
-                  <EsisDataPanel
-                    resource="teachers"
-                    title="Багшийн жагсаалт"
-                    description="ESIS-д бүртгэлтэй багш нарын томилгоо"
-                  />
+                  <EsisAcademicOrgCard />
+                  <EsisTeacherListCard />
                 </div>
               ) : null}
               {tab === "other" ? <SignOutCard /> : null}
@@ -326,7 +320,7 @@ function EsisProfileSection() {
               </p>
             </div>
           </div>
-          <EsisRowValues columns={esisSampleColumns(live.fields)} rows={[live.row]} />
+          <EsisWorkRecord resource={live.resource} row={live.row} />
         </Card>
       </section>
     );

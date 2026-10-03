@@ -2,16 +2,6 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import {
-  Building2,
-  ChevronDown,
-  GraduationCap,
-  Info,
-  Mail,
-  MapPin,
-  Phone,
-  Users,
-} from "lucide-react";
 import type { ReactNode } from "react";
 import {
   enrollmentArchiveSchema,
@@ -26,15 +16,13 @@ import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { EsisDataPanel } from "@/components/esis/esis-data-panel";
-import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { formatDate, fullName, initials } from "@/lib/format";
-import { cn } from "@/lib/utils";
-import { Art } from "@/components/ui/art";
+import { ErrorState, LoadingState } from "@/components/ui/states";
+import { formatDate, fullName } from "@/lib/format";
+import { useSession } from "@/lib/auth/session";
+import { useEsisRows } from "@/components/esis/use-esis-rows";
 
 type Current = NonNullable<EnrollmentArchive["current"]>;
 type Past = EnrollmentArchive["history"][number];
-type Teacher = Current["teachers"][number];
 
 /** `Group.ageBand` as a family reads it. */
 const AGE_BAND_LABEL: Record<string, string> = {
@@ -67,10 +55,15 @@ const AGE_BAND_LABEL: Record<string, string> = {
 export function ChildEnrollmentArchive({
   childId,
   dateOfBirth,
+  nationalId,
 }: {
   childId: string;
   dateOfBirth?: string | null;
+  /** The регистр, when the caller has it — lets ESIS name this child exactly. */
+  nationalId?: string | null;
 }) {
+  const { hasRole } = useSession();
+  const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
   const archive = useQuery({
     queryKey: qk.enrollmentArchive(childId),
     queryFn: () => get(`/children/${childId}/enrollment-archive`, enrollmentArchiveSchema),
@@ -99,345 +92,351 @@ export function ChildEnrollmentArchive({
   const { child, current, history } = archive.data!;
   const effectiveDateOfBirth = child.dateOfBirth ?? dateOfBirth;
 
+  /*
+    ★ The same shape as the other tabs — 2026-10-01, at the client's request:
+    a heading and rows for the current kindergarten, then tables for its
+    teachers, the earlier placements and what ESIS recorded. It was cards
+    with folds inside folds (a "Дэлгэрэнгүй" in every placement) and a timeline
+    rail; every fact it showed is still here.
+  */
   return (
-    <div className="flex flex-col gap-8">
-      <section aria-labelledby="current-placement-heading" className="flex flex-col gap-3">
-        <SectionBar
-          id="current-placement-heading"
-          tone="mint"
-          title="Одоогийн сурч байгаа цэцэрлэг"
-        />
-
+    <div className="flex flex-col gap-5">
+      <section aria-labelledby="current-placement-heading" className="flex flex-col gap-2">
+        <SectionTitle id="current-placement-heading" title="Одоогийн сурч байгаа цэцэрлэг" />
         {current ? (
           <CurrentPlacementCard current={current} />
         ) : (
-          <EmptyState
-            icon={<GraduationCap size={28} aria-hidden="true" />}
-            title="Одоогоор бүртгэлгүй байна"
-            description="Энэ хүүхэд одоогоор ямар ч бүлэгт идэвхтэй бүртгэлгүй байна."
-          />
+          <p className="text-body text-muted">
+            Энэ хүүхэд одоогоор ямар ч бүлэгт идэвхтэй бүртгэлгүй байна.
+          </p>
         )}
       </section>
 
-      <section aria-labelledby="past-placements-heading" className="flex flex-col gap-3">
-        <SectionBar id="past-placements-heading" tone="primary" title="Өмнөх суралцсан түүх" />
-
-        {history.length === 0 ? (
-          <EmptyState
-            title="Өмнөх бүртгэл алга"
-            description="Энэ хүүхэд өөр бүлэг, цэцэрлэгт суралцаж байгаагүй байна."
-          />
-        ) : (
-          <ol className="flex flex-col gap-4">
-            {history.map((entry) => (
-              <PastPlacementRow
-                key={entry.id}
-                entry={entry}
-                dateOfBirth={effectiveDateOfBirth ?? null}
-              />
+      {current && current.teachers.length > 0 ? (
+        <section aria-labelledby="current-teachers-heading" className="flex flex-col gap-2">
+          <SectionTitle id="current-teachers-heading" title="Багш" />
+          <Table
+            caption="Багшийн мэдээлэл"
+            columns={["Нэр", "Үүрэг", "Мэргэжил", "Төгссөн сургууль", "Утас", "И-мэйл"]}
+          >
+            {current.teachers.map((teacher) => (
+              <tr key={teacher.id} className="border-t border-border-soft">
+                <td className="px-3 py-2 font-medium text-ink">{fullName(teacher)}</td>
+                <td className="whitespace-nowrap px-3 py-2">
+                  {TEACHER_ROLE_LABEL[teacher.role] ?? teacher.role}
+                </td>
+                <td className="px-3 py-2">{teacher.specialization || "—"}</td>
+                <td className="px-3 py-2">{teacher.education || "—"}</td>
+                <td className="whitespace-nowrap px-3 py-2">
+                  {teacher.phone ? (
+                    <a href={`tel:${teacher.phone}`} className="text-primary hover:underline">
+                      {teacher.phone}
+                    </a>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+                <td className="px-3 py-2">
+                  {teacher.email ? (
+                    <a
+                      href={`mailto:${teacher.email}`}
+                      className="break-all text-primary hover:underline"
+                    >
+                      {teacher.email}
+                    </a>
+                  ) : (
+                    "—"
+                  )}
+                </td>
+              </tr>
             ))}
-          </ol>
+          </Table>
+        </section>
+      ) : null}
+
+      <section aria-labelledby="past-placements-heading" className="flex flex-col gap-2">
+        <SectionTitle id="past-placements-heading" title="Өмнөх суралцсан түүх" />
+        {history.length === 0 ? (
+          <p className="text-body text-muted">
+            Энэ хүүхэд өөр бүлэг, цэцэрлэгт суралцаж байгаагүй байна.
+          </p>
+        ) : (
+          <Table
+            caption="Өмнөх суралцсан түүх"
+            columns={["Хичээлийн жил", "Нас", "Цэцэрлэг", "Бүлэг", "Багш", "Хугацаа", "Төлөв"]}
+          >
+            {history.map((entry) => {
+              const age =
+                effectiveDateOfBirth && entry.startedOn
+                  ? Math.floor(ageInMonths(effectiveDateOfBirth, entry.startedOn) / 12)
+                  : null;
+              return (
+                <tr key={entry.id} className="border-t border-border-soft">
+                  <td className="whitespace-nowrap px-3 py-2 font-medium text-ink">
+                    {schoolYearLabel(entry)}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2">
+                    {age !== null ? `${age} нас` : "—"}
+                  </td>
+                  <td className="px-3 py-2">{entry.kindergarten.name}</td>
+                  <td className="px-3 py-2">
+                    {placementFacts(
+                      entry.group?.name,
+                      entry.group?.ageBand,
+                      entry.group?.childCount,
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    {entry.teachers.length > 0
+                      ? entry.teachers.map((teacher) => fullName(teacher)).join(", ")
+                      : "—"}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 tabular-nums text-muted">
+                    {formatDate(entry.startedOn)}
+                    {entry.endedOn ? ` – ${formatDate(entry.endedOn)}` : ""}
+                  </td>
+                  <td className="px-3 py-2">
+                    <Badge tone="sky">{ENROLLMENT_STATUS_LABEL[entry.status] ?? "Суралцсан"}</Badge>
+                  </td>
+                </tr>
+              );
+            })}
+          </Table>
         )}
       </section>
 
-      {/*
-        ★ ESIS's own movement record, under this product's — 2026-09-10, at the
-        client's instruction. It renders nothing for a parent:
-        `studentMovements` is not in a guardian's ESIS service list.
-      */}
-      <EsisDataPanel
-        resource="studentMovements"
-        title="ЭСИС дэх шилжилтийн түүх"
-        description="Элсэлт, шилжилт, гаралт — ЭСИС-ийн бүртгэлээр"
-      />
+      {isStaff ? <EsisMovements child={{ ...child, nationalId }} /> : null}
     </div>
   );
 }
 
-/** A section heading with the client's colour bar at its left. */
-function SectionBar({ id, title, tone }: { id: string; title: string; tone: "mint" | "primary" }) {
+function SectionTitle({ id, title }: { id: string; title: string }) {
   return (
-    <h2 id={id} className="flex items-center gap-2.5 text-lead font-bold text-ink">
-      <span
-        aria-hidden="true"
-        className={cn(
-          "h-5 w-1 shrink-0 rounded-pill",
-          tone === "mint" ? "bg-mint-ink" : "bg-primary",
-        )}
-      />
+    <h2 id={id} className="text-title font-semibold text-ink">
       {title}
     </h2>
   );
 }
 
-/** The current kindergarten: who teaches there, and what the place is. */
-function CurrentPlacementCard({ current }: { current: Current }) {
-  const kindergartenName = current.esis?.organization.name ?? current.kindergarten.name;
-  const groupName = current.esis?.group?.name ?? current.group?.name ?? null;
-
-  return (
-    <Card pad="none" className="overflow-hidden">
-      <details open className="group">
-        <summary className="flex cursor-pointer list-none flex-col gap-4 p-4 marker:content-none md:flex-row md:items-center md:gap-5 md:p-5 [&::-webkit-details-marker]:hidden">
-          <span className="flex items-center gap-3 md:gap-4">
-            <Art name="kindergarten" size={56} className="size-12 shrink-0 md:size-14" />
-            <span className="min-w-0">
-              <span className="block truncate text-title font-bold text-ink">
-                {kindergartenName}
-              </span>
-              <span className="mt-0.5 block truncate text-body text-muted">
-                {placementFacts(groupName, current.group?.ageBand, current.group?.childCount)}
-              </span>
-            </span>
-          </span>
-
-          <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-5 gap-y-3 md:justify-end">
-            {current.teachers.map((teacher) => (
-              <TeacherChip key={teacher.id} teacher={teacher} />
-            ))}
-            <span className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-control border border-border px-3 text-body font-medium text-primary">
-              Дэлгэрэнгүй
-              <ChevronDown
-                size={17}
-                aria-hidden="true"
-                className="transition-transform group-open:rotate-180"
-              />
-            </span>
-          </span>
-        </summary>
-
-        <div className="flex flex-col gap-5 border-t border-border-soft p-4 md:p-5">
-          <PlacementFacts
-            capacity={current.kindergarten.capacity}
-            groupCount={current.kindergarten.groupCount}
-            organizationType={current.esis?.organization.institutionTypeName}
-            address={current.esis?.organization.address ?? current.kindergarten.address}
-          />
-
-          {current.teachers.length > 0 ? (
-            <div className="flex flex-col gap-3">
-              <h3 className="text-body font-semibold text-ink">Багшийн мэдээлэл</h3>
-              <div className="grid gap-3 lg:grid-cols-2">
-                {current.teachers.map((teacher) => (
-                  <TeacherCard key={teacher.id} teacher={teacher} />
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </div>
-      </details>
-    </Card>
-  );
-}
-
-/** One past placement — its school year on the left, the card on the right. */
-function PastPlacementRow({ entry, dateOfBirth }: { entry: Past; dateOfBirth: string | null }) {
-  const age =
-    dateOfBirth && entry.startedOn
-      ? Math.floor(ageInMonths(dateOfBirth, entry.startedOn) / 12)
-      : null;
-
-  return (
-    <li className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 md:grid-cols-[132px_minmax(0,1fr)] md:gap-5">
-      {/*
-        The dot and its rail, drawn on the year column so the cards keep their
-        full width — the client's timeline, without a wrapper per row.
-      */}
-      <div className="flex gap-3 pt-3.5 md:gap-4">
-        <span
-          aria-hidden="true"
-          className="mt-1.5 size-3 shrink-0 rounded-pill border-2 border-primary bg-surface"
-        />
-        <div className="min-w-0">
-          <p className="text-body font-bold text-ink">{schoolYearLabel(entry)}</p>
-          {age !== null ? <p className="text-caption text-muted">{age} нас</p> : null}
-        </div>
-      </div>
-
-      <Card pad="none" className="overflow-hidden">
-        <details className="group">
-          <summary className="flex cursor-pointer list-none items-center gap-3 p-3.5 marker:content-none md:gap-4 md:p-4 [&::-webkit-details-marker]:hidden">
-            <Art name="kindergarten" size={44} className="size-10 shrink-0 md:size-11" />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-lead font-semibold text-ink">
-                {entry.kindergarten.name}
-              </span>
-              <span className="mt-0.5 block truncate text-caption text-muted">
-                {placementFacts(entry.group?.name, entry.group?.ageBand, entry.group?.childCount)}
-              </span>
-            </span>
-            <Badge tone="sky">{ENROLLMENT_STATUS_LABEL[entry.status] ?? "Суралцсан"}</Badge>
-            <ChevronDown
-              size={18}
-              aria-hidden="true"
-              className="shrink-0 text-faint transition-transform group-open:rotate-180"
-            />
-          </summary>
-
-          <div className="grid gap-5 border-t border-border-soft p-4 lg:grid-cols-[minmax(0,1fr)_240px]">
-            <PlacementFacts
-              capacity={entry.kindergarten.capacity}
-              groupCount={entry.kindergarten.groupCount}
-              address={entry.kindergarten.address}
-            />
-
-            {entry.teachers.length > 0 ? (
-              <div className="flex flex-col gap-3 lg:border-s lg:border-border-soft lg:ps-5">
-                <h4 className="text-body font-semibold text-ink">Багшийн мэдээлэл</h4>
-                {entry.teachers.map((teacher) => (
-                  <TeacherChip key={teacher.id} teacher={teacher} />
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </details>
-      </Card>
-    </li>
-  );
-}
-
-/** Хүчин чадал · Байгууллагын төрөл · Нийт бүлэг · Хаяг. */
-function PlacementFacts({
-  capacity,
-  groupCount,
-  organizationType,
-  address,
+/** A table drawn like the rest of the child's tabs. */
+function Table({
+  caption,
+  columns,
+  children,
 }: {
-  capacity?: number | null;
-  groupCount?: number | null;
-  organizationType?: string | null;
-  address?: string | null;
-}) {
-  const rows: { icon: ReactNode; label: string; value: string }[] = [];
-  if (capacity)
-    rows.push({
-      icon: <Info size={18} aria-hidden="true" />,
-      label: "Хүчин чадал",
-      value: `${capacity} хүүхэд`,
-    });
-  if (groupCount)
-    rows.push({
-      icon: <Users size={18} aria-hidden="true" />,
-      label: "Нийт бүлэг",
-      value: `${groupCount} бүлэг`,
-    });
-  rows.push({
-    icon: <Building2 size={18} aria-hidden="true" />,
-    label: "Байгууллагын төрөл",
-    value: organizationType || "Цэцэрлэг",
-  });
-  if (address)
-    rows.push({ icon: <MapPin size={18} aria-hidden="true" />, label: "Хаяг", value: address });
-
-  return (
-    <dl className="grid gap-4 sm:grid-cols-2">
-      {rows.map((row) => (
-        <div key={row.label} className="flex min-w-0 items-start gap-2.5">
-          <span aria-hidden="true" className="mt-0.5 shrink-0 text-faint">
-            {row.icon}
-          </span>
-          <div className="min-w-0">
-            <dt className="text-caption text-muted">{row.label}</dt>
-            <dd className="break-words font-semibold text-ink">{row.value}</dd>
-          </div>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
-/** A teacher as a face, a name and a role — the header and the past cards. */
-function TeacherChip({
-  teacher,
-}: {
-  teacher: { id: string; lastName: string; firstName: string; role: string };
+  caption: string;
+  columns: string[];
+  children: ReactNode;
 }) {
   return (
-    <span className="flex min-w-0 items-center gap-2.5">
-      <TeacherAvatar teacher={teacher} size="sm" />
-      <span className="min-w-0">
-        <span className="block truncate font-semibold text-primary">{fullName(teacher)}</span>
-        <span className="block truncate text-caption text-muted">
-          {TEACHER_ROLE_LABEL[teacher.role as "LEAD" | "ASSISTANT"] ?? teacher.role}
-        </span>
-      </span>
-    </span>
-  );
-}
-
-/** The current group's teacher, in full: profession, school, and how to reach them. */
-function TeacherCard({ teacher }: { teacher: Teacher }) {
-  const rows = [
-    ["Мэргэжил", teacher.specialization],
-    ["Төгссөн сургууль", teacher.education],
-  ].filter(([, value]) => Boolean(value)) as [string, string][];
-
-  return (
-    <div className="flex flex-col gap-3 rounded-card border border-border p-3.5">
-      <div className="flex min-w-0 items-center gap-2.5">
-        <TeacherAvatar teacher={teacher} size="md" />
-        <p className="min-w-0 truncate font-bold text-ink">{fullName(teacher)}</p>
-        <Badge tone="sky">{TEACHER_ROLE_LABEL[teacher.role] ?? teacher.role}</Badge>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        {rows.length > 0 ? (
-          <dl className="flex flex-col gap-1.5">
-            {rows.map(([label, value]) => (
-              <div key={label} className="flex min-w-0 gap-2">
-                <dt className="shrink-0 text-caption text-muted">{label}</dt>
-                <dd className="min-w-0 break-words text-caption font-medium text-ink">{value}</dd>
-              </div>
+    <div className="overflow-x-auto rounded-card border border-border bg-surface">
+      <table className="w-full min-w-[640px] border-collapse text-body">
+        <caption className="sr-only">{caption}</caption>
+        <thead>
+          <tr className="bg-sunken text-left text-caption font-semibold text-muted">
+            {columns.map((column) => (
+              <th key={column} className="px-3 py-2">
+                {column}
+              </th>
             ))}
-          </dl>
-        ) : null}
-
-        <div className="flex flex-col gap-1.5">
-          {teacher.phone ? (
-            <a
-              href={`tel:${teacher.phone}`}
-              className="flex items-center gap-2 text-caption text-ink hover:text-primary"
-            >
-              <Phone size={15} aria-hidden="true" className="shrink-0 text-primary" />
-              <span className="min-w-0 break-all">{teacher.phone}</span>
-            </a>
-          ) : null}
-          {teacher.email ? (
-            <a
-              href={`mailto:${teacher.email}`}
-              className="flex items-center gap-2 text-caption text-ink hover:text-primary"
-            >
-              <Mail size={15} aria-hidden="true" className="shrink-0 text-primary" />
-              <span className="min-w-0 break-all">{teacher.email}</span>
-            </a>
-          ) : null}
-        </div>
-      </div>
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
     </div>
   );
 }
 
-function TeacherAvatar({
-  teacher,
-  size,
+/** A label and its value, as the Ерөнхий tab draws them. */
+function Fact({
+  label,
+  children,
+  last = false,
 }: {
-  teacher: { lastName: string; firstName: string };
-  size: "sm" | "md";
+  label: string;
+  children: ReactNode;
+  last?: boolean;
 }) {
   return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "flex shrink-0 items-center justify-center rounded-pill bg-sky font-semibold text-sky-ink",
-        size === "sm" ? "size-9 text-caption" : "size-10 text-body",
-      )}
+    <div
+      className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-center gap-3 py-2 ${
+        last ? "" : "border-b border-border-soft"
+      }`}
     >
-      {initials(teacher)}
+      <dt className="text-body text-muted">{label}</dt>
+      <dd className="min-w-0 break-words text-body font-medium text-ink">{children}</dd>
+    </div>
+  );
+}
+
+/**
+ * The current kindergarten. ESIS's own names lead where the archive carries
+ * them (`current.esis`) — the ministry's name for the organisation and the
+ * group, its level and its type — marked ЭСИС.
+ */
+function CurrentPlacementCard({ current }: { current: Current }) {
+  const esis = current.esis ?? null;
+  const facts: { label: string; value: ReactNode }[] = [
+    {
+      label: "Цэцэрлэг",
+      value: esis?.organization.name ? (
+        <>
+          {esis.organization.name}
+          <EsisTag />
+        </>
+      ) : (
+        current.kindergarten.name
+      ),
+    },
+    { label: "Хичээлийн жил", value: current.schoolYear?.name ?? esis?.group?.academicYear ?? "—" },
+    {
+      label: "Бүлэг",
+      value: placementFacts(
+        esis?.group?.name ?? current.group?.name,
+        current.group?.ageBand,
+        current.group?.childCount,
+      ),
+    },
+  ];
+  if (esis?.group?.academicLevelName) {
+    facts.push({
+      label: "Түвшин",
+      value: (
+        <>
+          {esis.group.academicLevelName}
+          <EsisTag />
+        </>
+      ),
+    });
+  }
+  facts.push({ label: "Бүлэгт орсон огноо", value: formatDate(current.startedOn) });
+  facts.push({
+    label: "Байгууллагын төрөл",
+    value: esis?.organization.institutionTypeName || "Цэцэрлэг",
+  });
+  if (current.kindergarten.capacity) {
+    facts.push({ label: "Хүчин чадал", value: `${current.kindergarten.capacity} хүүхэд` });
+  }
+  if (current.kindergarten.groupCount) {
+    facts.push({ label: "Нийт бүлэг", value: `${current.kindergarten.groupCount} бүлэг` });
+  }
+  const address = esis?.organization.address ?? current.kindergarten.address;
+  if (address) facts.push({ label: "Хаяг", value: address });
+  if (current.kindergarten.phone) {
+    facts.push({
+      label: "Утас",
+      value: (
+        <a href={`tel:${current.kindergarten.phone}`} className="text-primary hover:underline">
+          {current.kindergarten.phone}
+        </a>
+      ),
+    });
+  }
+  if (current.kindergarten.email)
+    facts.push({ label: "И-мэйл", value: current.kindergarten.email });
+
+  return (
+    <Card pad="compact">
+      <dl>
+        {facts.map((fact, index) => (
+          <Fact key={fact.label} label={fact.label} last={index === facts.length - 1}>
+            {fact.value}
+          </Fact>
+        ))}
+      </dl>
+    </Card>
+  );
+}
+
+function EsisTag() {
+  return (
+    <span className="ml-1.5 inline-flex rounded-pill bg-sky px-1.5 py-px align-middle text-caption font-semibold text-sky-ink">
+      ЭСИС
     </span>
   );
 }
 
-/** "Дэлбээ бүлэг · Ахлах бүлэг · 18 хүүхэд", skipping whatever is missing. */
+/** Lower-cased and trimmed, for comparing a name ESIS typed with ours. */
+function norm(value: string | null | undefined): string {
+  return (value ?? "").trim().toLocaleLowerCase("mn-MN").replace(/\s+/g, " ");
+}
+
+/**
+ * ЭСИС дэх шилжилт — this child's own moves, as ESIS recorded them.
+ *
+ * ★ Only this child's — 2026-10-01. `studentMovements` answers for the whole
+ * institution since a date, and the panel here used to print all of it: a
+ * stranger's transfer under this child's history. The rows are now narrowed
+ * to this child — by ESIS's `personId` when the child's регистр lets
+ * `studentInfo` say which person they are, and otherwise by овог, нэр and
+ * төрсөн огноо together.
+ *
+ * Read from the child's earliest placement (or birth), so the history is
+ * whole. The ministry caps a read at 500 rows, well above one kindergarten's
+ * moves. Staff only: neither service is on a guardian's list.
+ */
+function EsisMovements({
+  child,
+}: {
+  child: {
+    id: string;
+    lastName: string;
+    firstName: string;
+    dateOfBirth?: string | null;
+    nationalId?: string | null;
+  };
+}) {
+  const beginDate = child.dateOfBirth?.slice(0, 10) ?? "2015-01-01";
+  const movements = useEsisRows("studentMovements", { params: { beginDate } });
+  const info = useEsisRows("studentInfo", { params: { personRegNumber: child.nationalId } });
+  if (movements.isUnavailable) return null;
+
+  const personId = info.rows[0]?.personId ?? null;
+  const birth = child.dateOfBirth?.slice(0, 10) ?? null;
+  const mine = movements.rows
+    .filter((row) =>
+      personId
+        ? row.personId === personId
+        : norm(row.lastName) === norm(child.lastName) &&
+          norm(row.firstName) === norm(child.firstName) &&
+          (!birth || (row.dateOfBirth ?? "").slice(0, 10) === birth),
+    )
+    .sort((a, b) => (b.actionDate ?? "").localeCompare(a.actionDate ?? ""));
+
+  return (
+    <section aria-labelledby="esis-movements-heading" className="flex flex-col gap-2">
+      <h2 id="esis-movements-heading" className="text-title font-semibold text-ink">
+        ЭСИС дэх шилжилт
+        <EsisTag />
+      </h2>
+      {movements.isPending ? (
+        <p className="text-body text-muted">ЭСИС-ээс уншиж байна…</p>
+      ) : movements.isError ? (
+        <p className="text-body text-muted">ЭСИС-ээс хариу ирсэнгүй.</p>
+      ) : mine.length === 0 ? (
+        <p className="text-body text-muted">ЭСИС-д энэ хүүхдийн шилжилт бүртгэгдээгүй.</p>
+      ) : (
+        <Table
+          caption="ЭСИС дэх шилжилт"
+          columns={["Огноо", "Үйлдэл", "Бүлэг", "Түвшин", "Хөтөлбөрийн төлөв"]}
+        >
+          {mine.map((row, index) => (
+            <tr key={`${row.actionDate}-${index}`} className="border-t border-border-soft">
+              <td className="whitespace-nowrap px-3 py-2 tabular-nums">
+                {row.actionDate ? row.actionDate.slice(0, 10) : "—"}
+              </td>
+              <td className="px-3 py-2 font-medium text-ink">{row.actionName || "—"}</td>
+              <td className="px-3 py-2">{row.studentGroupName || "—"}</td>
+              <td className="px-3 py-2">{row.academicLevelName || "—"}</td>
+              <td className="px-3 py-2">{row.programStatusName || "—"}</td>
+            </tr>
+          ))}
+        </Table>
+      )}
+    </section>
+  );
+}
+
 function placementFacts(
   groupName?: string | null,
   ageBand?: string | null,

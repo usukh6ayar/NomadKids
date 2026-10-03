@@ -24,7 +24,7 @@ import { RowMenu } from "@/components/ui/menu";
 import { ChildPickerDialog } from "@/components/child/child-picker-dialog";
 import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
-import { Printer, Users } from "lucide-react";
+import { Plus, Printer, Users } from "lucide-react";
 import {
   MAX_PAGE_SIZE,
   childSummarySchema,
@@ -33,8 +33,6 @@ import {
   paginated,
 } from "@kinder/contracts";
 
-/** The kindergarten's configured record kinds — one shortcut button each. */
-const observationTypesSchema = z.array(observationTypeSchema);
 /** The group's roster — one request, independent of term and domain. */
 const childrenPageSchema = paginated(childSummarySchema);
 import { Card, SectionHeader } from "@/components/ui/card";
@@ -48,7 +46,6 @@ import { FormDialog } from "@/components/ui/form-dialog";
 import { SearchField } from "@/components/ui/search-field";
 import { DevelopmentRadar } from "@/components/assessment/development-radar";
 import { ChildAvatar } from "@/components/media/media-image";
-import { Art, type ArtName } from "@/components/ui/art";
 import { formatDate, fullName, capitalize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -365,21 +362,27 @@ function GroupAssessment() {
         title="Явцын үнэлгээ"
         backHref="/dashboard"
         actions={
-          <RowMenu
-            ariaLabel="Явцын үнэлгээний үйлдэл"
-            items={[
-              {
-                label: "Хэвлэх",
-                icon: <Printer size={16} />,
-                onSelect: () => window.print(),
-              },
-              {
-                label: "Бүлгийн мэдээлэл",
-                icon: <Users size={16} />,
-                onSelect: () => router.push(`/groups/${groupId}`),
-              },
-            ]}
-          />
+          <div className="flex items-center gap-2">
+            <NewRecordStrip
+              groupId={groupId}
+              notesPerChildTarget={group.data?.monthlyNotesPerChildGoal ?? null}
+            />
+            <RowMenu
+              ariaLabel="Явцын үнэлгээний үйлдэл"
+              items={[
+                {
+                  label: "Хэвлэх",
+                  icon: <Printer size={16} />,
+                  onSelect: () => window.print(),
+                },
+                {
+                  label: "Бүлгийн мэдээлэл",
+                  icon: <Users size={16} />,
+                  onSelect: () => router.push(`/groups/${groupId}`),
+                },
+              ]}
+            />
+          </div>
         }
       />
 
@@ -571,15 +574,6 @@ function GroupAssessment() {
           termId={termId}
           startsOn={groupSchoolYear?.startsOn}
           endsOn={groupSchoolYear?.endsOn}
-          recordComposer={({ from, to, notesPerChildTarget }) => (
-            <NewRecordStrip
-              groupId={groupId}
-              embedded
-              from={from}
-              to={to}
-              notesPerChildTarget={notesPerChildTarget}
-            />
-          )}
         />
       ) : null}
 
@@ -994,31 +988,41 @@ function dateRange(startsOn?: string | null, endsOn?: string | null): string | n
   return null;
 }
 
-/** The configured kinds in the compact quick-entry strip. */
-const KIND_STYLE: Record<string, { tone: Tone; art: ArtName }> = {
-  daily: { tone: "mint", art: "observation" },
-  conversation: { tone: "sky", art: "conversation" },
-  artwork: { tone: "sun", art: "artwork" },
-};
+/** The three kinds the picker's tabs offer, in the client's order. */
+const RECORD_KINDS = ["daily", "conversation", "artwork"] as const;
+const observationTypesSchema = z.array(observationTypeSchema);
 
-const KIND_FALLBACK = { tone: "cornflower" as Tone, art: "observation" as ArtName };
+/** This calendar month, as the `from`/`to` the stats endpoint takes. */
+function thisMonthWindow(): { from: string; to: string } {
+  const now = new Date();
+  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  return { from: `${month}-01`, to: `${month}-${String(lastDay).padStart(2, "0")}` };
+}
 
+/**
+ * The header's "+" — pick a kind and a child, then land on that child's
+ * record screen for the kind.
+ *
+ * ★ 2026-10-01, the client's design: one button beside the title, a picker
+ * with Ажиглалт / Ярилцлага / Бүтээл tabs, and the choice opening
+ * `/children/:id/observations?type=…` directly rather than the general hub.
+ *
+ * ★★ The counts are this calendar month's. The picker is used to write a
+ * note now, so "how many does this child have" means this month, whichever
+ * month the summary below happens to be showing.
+ */
 function NewRecordStrip({
   groupId,
-  embedded = false,
-  from,
-  to,
   notesPerChildTarget,
 }: {
   groupId: string;
-  embedded?: boolean;
-  /** The month selected in the goal card. */
-  from: string;
-  to: string;
   notesPerChildTarget: number | null;
 }) {
   const router = useRouter();
-  const [selectedType, setSelectedType] = useState<{ code: string; name: string } | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [kind, setKind] = useState<string>("daily");
+  const { from, to } = thisMonthWindow();
 
   /*
     ★ The same query key `GroupCoverage` uses, so this is a cached read.
@@ -1064,23 +1068,24 @@ function NewRecordStrip({
     staleTime: 60_000,
   });
 
-  const children = (roster.data?.items ?? []).map((child) => ({
-    childId: child.id,
-    lastName: child.lastName,
-    firstName: child.firstName,
-  }));
+  const children = roster.data?.items ?? [];
 
-  const anyChildId = children[0]?.childId;
+  /*
+    The kindergarten's configured kinds. The endpoint is scoped to a child, and
+    every child of one kindergarten sees the same list, so the first child's
+    answer serves the whole group.
+  */
+  const anyChildId = children[0]?.id;
   const types = useQuery({
     queryKey: qk.observationTypes(anyChildId ?? ""),
     queryFn: () => get(`/children/${anyChildId}/observations/types`, observationTypesSchema),
     enabled: Boolean(anyChildId),
     staleTime: 5 * 60_000,
   });
-
-  const doors = (types.data ?? []).filter((type) =>
-    ["daily", "conversation", "artwork"].includes(type.code ?? ""),
-  );
+  const kinds = RECORD_KINDS.map((code) =>
+    (types.data ?? []).find((type) => type.code === code),
+  ).filter((type): type is NonNullable<typeof type> => Boolean(type));
+  const activeType = kinds.find((type) => type.code === kind);
 
   /*
     ★ A skeleton while the roster loads, not nothing.
@@ -1098,95 +1103,45 @@ function NewRecordStrip({
     arrived, and the summary draws "—" rather than a zero that would read as
     "the class has written none".
   */
-  const classTotal = stats.data
-    ? (stats.data.byType.find((row) => row.name === selectedType?.name)?.count ?? 0)
-    : null;
+  if (roster.isLoading || children.length === 0) return null;
 
-  if (roster.isLoading) return <LoadingState rows={1} />;
-  if (children.length === 0) return null;
+  return (
+    <>
+      <Button
+        type="button"
+        size="icon"
+        aria-label="Явцын үнэлгээ бичих"
+        title="Явцын үнэлгээ бичих"
+        onClick={() => setPickerOpen(true)}
+      >
+        <Plus size={20} aria-hidden="true" />
+      </Button>
 
-  const content = (
-    <div className="min-w-0">
-      <div className="grid grid-cols-3 gap-2">
-        {doors.map((type) => {
-          const style = KIND_STYLE[type.code ?? ""] ?? KIND_FALLBACK;
-          return (
-            <button
-              key={type.id}
-              type="button"
-              onClick={() => setSelectedType({ code: type.code ?? "daily", name: type.name })}
-              className={cn(
-                "flex min-h-[56px] min-w-0 items-center justify-center gap-2 rounded-control border border-transparent px-2 text-caption font-semibold transition-transform hover:-translate-y-0.5 sm:text-body",
-                TONE_SURFACE[style.tone],
-              )}
-            >
-              <Art name={style.art} size={36} className="size-9 shrink-0 object-contain" />
-              <span className="truncate">{type.name}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/*
-        ★ The hub, not the compose form — 2026-09-11, the client's design.
-
-        Pressing a door used to open a blank form for the chosen child. That is
-        right when a teacher has already decided what to write and wrong when
-        they came to look, and the design puts a landing between the two: the
-        four things that can be done with this kind of record, the total, and
-        the terms.
-      */}
-      {selectedType ? (
+      {pickerOpen ? (
         <ChildPickerDialog
           groupId={groupId}
-          title={selectedType.name}
-          /*
-            ★ The class's own figure above the roster — 2026-09-11, at the
-            client's request ("ангийн нийт ажиглалт болон хүүхэд сонгох
-            гарна").
-
-            A teacher pressing a door is choosing a child, and the number that
-            makes that choice easier is how much of this kind the class has
-            already. It sits above the list rather than on the screen behind,
-            because that is the moment it is being used.
-          */
-          summary={
-            <div className="flex items-baseline justify-between gap-3 rounded-card bg-sunken px-3.5 py-3">
-              <span className="text-caption text-muted">
-                Ангийн нийт {selectedType.name.toLowerCase()}
-              </span>
-              <span className="text-title font-semibold tabular-nums leading-none text-ink">
-                {classTotal === null ? "—" : classTotal}
-              </span>
-            </div>
-          }
+          title="Хүүхэд сонгох"
+          tabs={kinds.map((type) => ({ key: type.code ?? "daily", label: type.name }))}
+          activeTab={kind}
+          onTabChange={setKind}
           coverage={
             stats.data
               ? {
                   counts: Object.fromEntries(
                     stats.data.byChildType
-                      .filter((row) =>
-                        doors.some(
-                          (type) => type.id === row.typeId && type.name === selectedType.name,
-                        ),
-                      )
+                      .filter((row) => row.typeId === activeType?.id)
                       .map((row) => [row.childId, row.count]),
                   ),
                   target: notesPerChildTarget ?? 1,
-                  title: `${selectedType.name} · ангийн хамралт`,
+                  columnLabel: activeType?.name ?? "Ажиглалт",
                 }
               : undefined
           }
           layout="table"
-          onClose={() => setSelectedType(null)}
-          onSelect={(childId) =>
-            router.push(`/children/${childId}/observations?type=${selectedType.code}`)
-          }
+          onClose={() => setPickerOpen(false)}
+          onSelect={(childId) => router.push(`/children/${childId}/observations?type=${kind}`)}
         />
       ) : null}
-    </div>
+    </>
   );
-
-  if (embedded) return content;
-  return <Card pad="compact">{content}</Card>;
 }

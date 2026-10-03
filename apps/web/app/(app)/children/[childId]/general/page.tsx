@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ClipboardList, FolderOpen, MoreHorizontal, Pencil } from "lucide-react";
+import { FolderOpen } from "lucide-react";
 import { childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -11,7 +11,6 @@ import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { PageHeader } from "@/components/shell/app-shell";
 import { Button } from "@/components/ui/button";
-import { Menu, type MenuItem } from "@/components/ui/menu";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildGrowth } from "@/components/child/child-growth";
 import { ChildHealth } from "@/components/child/child-health";
@@ -150,7 +149,13 @@ export default function ChildGeneralPage() {
           {
             value: PLACEMENT,
             label: "Суралцсан түүх",
-            content: <ChildEnrollmentArchive childId={childId} dateOfBirth={data.dateOfBirth} />,
+            content: (
+              <ChildEnrollmentArchive
+                childId={childId}
+                dateOfBirth={data.dateOfBirth}
+                nationalId={data.nationalId}
+              />
+            ),
           },
         ]}
       />
@@ -158,58 +163,21 @@ export default function ChildGeneralPage() {
   );
 }
 
-/** Profile actions shared by parent and staff views. */
+/**
+ * Profile actions shared by parent and staff views.
+ *
+ * ★ Only the portfolio — 2026-10-01, at the client's instruction: the
+ * Улирлын тайлан button and the ⋯ menu beside it (Мэдээлэл засах) are gone
+ * from this screen. Editing stays reachable from the roster's row menu.
+ */
 function ChildActions({ childId, isStaff }: { childId: string; isStaff: boolean }) {
-  const overflow: MenuItem[] = isStaff
-    ? [
-        {
-          href: `/children/${childId}/edit`,
-          label: "Мэдээлэл засах",
-          hint: "Нэр, төрсөн огноо, бүлгийн бүртгэл.",
-          icon: <Pencil size={18} aria-hidden="true" />,
-        },
-      ]
-    : [];
-
+  if (!isStaff) return null;
   return (
-    <>
-      {isStaff ? (
-        <Button asChild size="sm">
-          <Link href={`/children/${childId}/portfolio`}>
-            <FolderOpen size={18} aria-hidden="true" />
-            Цахим хувийн хавтас
-          </Link>
-        </Button>
-      ) : null}
-
-      {/*
-        ★ Staff only — the client, 2026-09-14: "удирдлага бичсэнг харна, эцэг
-        эх харахгүй." The API answers a guardian with the same empty shape an
-        unwritten report has, so a family following this link would find a
-        screen that is blank for ever and no way to tell why.
-      */}
-      {isStaff ? (
-        <Button asChild variant="secondary" size="sm">
-          <Link href={`/children/${childId}/term-report`}>
-            <ClipboardList size={18} />
-            Улирлын тайлан
-          </Link>
-        </Button>
-      ) : null}
-
-      {overflow.length > 0 ? (
-        <Menu
-          variant="secondary"
-          ariaLabel="Бусад үйлдэл"
-          items={overflow}
-          label={
-            <>
-              <MoreHorizontal size={18} aria-hidden="true" />
-              <span className="sr-only">Бусад үйлдэл</span>
-            </>
-          }
-        />
-      ) : null}
-    </>
+    <Button asChild size="sm">
+      <Link href={`/children/${childId}/portfolio`}>
+        <FolderOpen size={18} aria-hidden="true" />
+        Цахим хувийн хавтас
+      </Link>
+    </Button>
   );
 }

@@ -14,7 +14,7 @@ import {
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
-import { AdminRoster } from "@/components/child/admin-roster";
+import { AdminRoster, StudentRosterTable } from "@/components/child/admin-roster";
 import { Disclosure } from "@/components/ui/disclosure";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
@@ -27,8 +27,7 @@ import { Donut } from "@/components/ui/chart/donut";
 import { Ring } from "@/components/ui/chart/ring";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { formatAge, fullName, shortName, groupLabel } from "@/lib/format";
-import { TableShell, Td, Th } from "@/components/ui/table";
+import { formatAge, fullName } from "@/lib/format";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { cn } from "@/lib/utils";
@@ -494,26 +493,18 @@ const NO_FACETS: RosterFacets = { sort: "name", order: "asc" };
  * the thing doing the work and would be trivially removable — CLAUDE.md §4.1's
  * argument for testing the route rather than the predicate.
  *
- * ★★★ Names as `shortName` — "С.Бямбараш", the client 2026-09-22. `fullName`
- * spent most of a narrow row on the half a teacher does not read; the register
- * column beside it is the one that disambiguates two children called Б.Сараа.
+ * ★★★ The director's table, without photographs — 2026-10-01, at the
+ * client's instruction: the teacher's Суралцагч is a plain table carrying the
+ * same columns as the administration's roster (№, name, регистр, sex, group,
+ * ESIS status and the row menu). `ChildRosterTable` is that table; the group
+ * page already shows it to teachers.
  */
 function LocalRoster({
   rows,
   total,
   search,
 }: {
-  rows: {
-    id: string;
-    lastName: string;
-    firstName: string;
-    nationalId?: string | null;
-    isForeign?: boolean | null;
-    foreignId?: string | null;
-    dateOfBirth: string;
-    photoMediaFileId?: string | null;
-    enrollments?: { group?: { name?: string | null } | null; status?: string | null }[];
-  }[];
+  rows: z.infer<typeof childSummarySchema>[];
   total: number;
   search: string;
 }) {
@@ -530,8 +521,6 @@ function LocalRoster({
     );
   }
 
-  // "Регистр —" on every card of an ESIS-imported roster said nothing (2026-09-29).
-  const showRegister = rows.some((child) => child.nationalId || child.foreignId || child.isForeign);
   return (
     <section className="space-y-2">
       <div className="flex items-baseline justify-between gap-3">
@@ -549,57 +538,7 @@ function LocalRoster({
         </p>
       </div>
 
-      <TableShell caption="Суралцагчдын жагсаалт" minWidth="min-w-0" stacked>
-        <thead>
-          <tr>
-            <Th>Нэр</Th>
-            {showRegister ? <Th>Регистр</Th> : null}
-            <Th>Бүлэг</Th>
-            <Th>Нас</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((child) => {
-            const enrollment =
-              child.enrollments?.find((row) => row.status === "ACTIVE") ?? child.enrollments?.[0];
-            /*
-              ★ A foreign child's identifier stands in for the регистр, and the
-              two are labelled apart rather than both rendering as a number in
-              the same column. `childSummarySchema`'s own note makes the case:
-              "—" for a foreign child reads identically to "—" for a child whose
-              регистр nobody has typed yet, and only the second is a to-do.
-            */
-            const register = child.isForeign
-              ? child.foreignId
-                ? `${child.foreignId} (гадаад)`
-                : "Гадаад иргэн"
-              : (child.nationalId ?? "—");
-
-            return (
-              <tr key={child.id}>
-                <Td data-label="Нэр">
-                  <Link
-                    href={`/children/${child.id}/general`}
-                    className="flex min-w-0 items-center gap-2 font-medium text-ink hover:underline"
-                  >
-                    <ChildAvatar child={child} size={28} />
-                    <span className="min-w-0 truncate">{shortName(child)}</span>
-                  </Link>
-                </Td>
-                {showRegister ? (
-                  <Td data-label="Регистр" className="tabular-nums">
-                    {register}
-                  </Td>
-                ) : null}
-                <Td data-label="Бүлэг">
-                  {enrollment?.group ? groupLabel(enrollment.group.name) : "—"}
-                </Td>
-                <Td data-label="Нас">{formatAge(child.dateOfBirth)}</Td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </TableShell>
+      <StudentRosterTable items={rows} forTeacher />
     </section>
   );
 }

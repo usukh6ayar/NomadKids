@@ -1033,7 +1033,15 @@ export function AppShell({
               nav={bottomNav}
               hideOnDesktop={desktopSidebar}
               floating={variant === "parent"}
-              pill={variant === "teacher" && (teacherTheme || resolvedTheme === "admin")}
+              // The kitchen's and the accountant's too since 2026-10-02 — client:
+              // "нягтлан тогоочийн доод хөвдөг цэс багш удирдлагын хэсэг шиг болго".
+              pill={
+                variant === "teacher" &&
+                (teacherTheme ||
+                  resolvedTheme === "admin" ||
+                  resolvedTheme === "kitchen" ||
+                  resolvedTheme === "finance")
+              }
             />
 
             {/*
@@ -2232,19 +2240,11 @@ function PillBottomBar({
                 {item.badge === "surveys" ? <SurveyUnreadDot /> : null}
               </span>
               {/*
-                ★ Drawn again, small — 2026-09-29. Five bare glyphs (📄 📊 🔍)
-                left a teacher guessing which one was the register; the
-                2026-09-25 drawing had no words, and a walk-through as a user
-                found that the one thing it could not survive.
+                ★ Not drawn — 2026-10-01, at the client's instruction: the
+                phone bar is icons only. (It was drawn small from 2026-09-29.)
+                The label stays as the link's accessible name.
               */}
-              <span
-                className={cn(
-                  "max-w-full truncate text-caption leading-tight",
-                  active ? "font-semibold text-primary" : "text-muted",
-                )}
-              >
-                {item.label}
-              </span>
+              <span className="sr-only">{item.label}</span>
             </>
           );
           const className =
@@ -2411,9 +2411,11 @@ function NavLink({
         {item.badge === "unread" ? <UnreadDot /> : null}
         {item.badge === "surveys" ? <SurveyUnreadDot /> : null}
       </span>
-      <span className={cn(horizontal && "leading-tight", horizontal && active && "font-semibold")}>
-        {item.label}
-      </span>
+      {/*
+        ★ The phone bar draws icons only — 2026-10-01, at the client's
+        instruction. The label stays as the link's accessible name.
+      */}
+      <span className={cn(horizontal && "sr-only")}>{item.label}</span>
     </>
   );
 

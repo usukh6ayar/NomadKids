@@ -17,14 +17,14 @@ import { ChildHealth } from "@/components/child/child-health";
  *
  * ★★ Deleting is deliberately not the same control as ending.
  *
- * "Дуусгах" (`PATCH { endedOn }`) is for a child who outgrew an allergy — real
+ * (Until 2026-10-01 a "Дуусгах" — `PATCH { endedOn }` — sat beside it; the client
+ * asked for one action.) Formerly: "Дуусгах" was for a child who outgrew an allergy — real
  * history. "Устгах" is for a row that was never true. Both exist on the same
  * line, so these assert they stay distinguishable.
  */
 
 const CHILD = "11111111-1111-4111-8111-111111111111";
 const ME = "22222222-2222-4222-8222-222222222222";
-const OTHER_PARENT = "33333333-3333-4333-8333-333333333333";
 
 const ALLERGY = {
   id: "44444444-4444-4444-8444-444444444444",
@@ -93,24 +93,24 @@ beforeEach(() => {
 });
 
 describe("устгах — харшил", () => {
-  it("offers staff a delete beside the end action", async () => {
+  it("offers staff a delete and nothing else on the row", async () => {
     stubHealth(health());
     renderWithProviders(<ChildHealth childId={CHILD} isStaff />);
 
     expect(await screen.findByRole("button", { name: "самар — устгах" })).toBeInTheDocument();
-    // The two are different actions and must stay tellable apart.
-    expect(screen.getByRole("button", { name: "Дуусгах" })).toBeInTheDocument();
+    // ★ 2026-10-01: "Дуусгах" is gone, at the client's instruction.
+    expect(screen.queryByRole("button", { name: "Дуусгах" })).toBeNull();
   });
 
   it("shows a guardian no delete — an allergy is staff's to record and remove", async () => {
     stubHealth(health());
     renderWithProviders(<ChildHealth childId={CHILD} isStaff={false} />);
 
-    expect(await screen.findByText("самар")).toBeInTheDocument();
+    expect(await screen.findByRole("cell", { name: "самар" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /устгах/ })).toBeNull();
   });
 
-  it("opens a confirmation that names the record and says which action to use", async () => {
+  it("opens a confirmation that names the record", async () => {
     stubHealth(health());
     const user = userEvent.setup();
     renderWithProviders(<ChildHealth childId={CHILD} isStaff />);
@@ -118,9 +118,7 @@ describe("устгах — харшил", () => {
     await user.click(await screen.findByRole("button", { name: "самар — устгах" }));
 
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText(/буруу бүртгэсэн бол устгана/)).toBeInTheDocument();
-    // The copy has to steer an outgrown allergy to "Дуусгах" instead.
-    expect(within(dialog).getByText(/Дуусгах/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/самар.*устгах уу/)).toBeInTheDocument();
   });
 
   it("cancelling sends no request", async () => {
@@ -194,19 +192,16 @@ describe("устгах — харшил", () => {
   });
 
   /**
-   * ★★★ A record entered by mistake is often ended before anyone works out it
-   * was wrong. Ending it again is not the repair, so the delete has to reach
-   * the ended list — where "Дуусгах" is correctly absent.
+   * ★ An allergy ended before 2026-10-01 (when "Дуусгах" still existed) is no
+   * longer current, so it is not listed — it would read as live without a
+   * Төлөв column to say otherwise. The record itself is untouched.
    */
-  it("can delete an allergy that has already been ended", async () => {
+  it("does not list an allergy that was ended earlier", async () => {
     stubHealth(health({ allergies: [{ ...ALLERGY, endedOn: "2026-08-01" }] }));
-    const user = userEvent.setup();
     renderWithProviders(<ChildHealth childId={CHILD} isStaff />);
 
-    await user.click(await screen.findByText(/Дууссан харшил/));
-
-    expect(await screen.findByRole("button", { name: "самар — устгах" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Дуусгах" })).toBeNull();
+    expect(await screen.findByText("Бүртгэгдсэн харшил алга")).toBeInTheDocument();
+    expect(screen.queryByRole("cell", { name: "самар" })).toBeNull();
   });
 });
 
@@ -234,30 +229,17 @@ describe("устгах — вакцин ба эм", () => {
     expect(screen.queryByRole("button", { name: /устгах/ })).toBeNull();
   });
 
-  /**
-   * ★ The row *is* the consent, so the parent who signed it may withdraw it —
-   * and `removeMedication` 404s any other guardian. Offering them the button
-   * would be offering a control that always fails.
-   */
-  it("offers the authorising guardian a delete on their own medication", async () => {
+  /*
+    ★ Medication consent is off this screen — 2026-10-01, at the client's
+    instruction. The records stay in the API; the tab neither shows them nor
+    offers to add or withdraw one.
+  */
+  it("shows no medication consent at all", async () => {
     stubHealth(health({ allergies: [], medications: [medication(ME)] }));
-    renderWithProviders(<ChildHealth childId={CHILD} isStaff={false} />);
-
-    expect(await screen.findByRole("button", { name: "Парацетамол — устгах" })).toBeInTheDocument();
-  });
-
-  it("hides it from a guardian who did not authorise it", async () => {
-    stubHealth(health({ allergies: [], medications: [medication(OTHER_PARENT)] }));
-    renderWithProviders(<ChildHealth childId={CHILD} isStaff={false} />);
-
-    expect(await screen.findByText("Парацетамол")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /устгах/ })).toBeNull();
-  });
-
-  it("staff may withdraw a medication a family authorised", async () => {
-    stubHealth(health({ allergies: [], medications: [medication(OTHER_PARENT)] }));
     renderWithProviders(<ChildHealth childId={CHILD} isStaff />);
 
-    expect(await screen.findByRole("button", { name: "Парацетамол — устгах" })).toBeInTheDocument();
+    await screen.findByRole("heading", { name: /Вакцин/ });
+    expect(screen.queryByText("Парацетамол")).toBeNull();
+    expect(screen.queryByText(/Эмийн зөвшөөрөл/)).toBeNull();
   });
 });

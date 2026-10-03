@@ -1,12 +1,13 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Cake, ChevronDown, ChevronUp, Eye, Leaf, Pencil, Plus, Sprout } from "lucide-react";
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { Leaf, MessageSquare, Pencil, Plus, Sprout } from "lucide-react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { z } from "zod";
 import { ageInMonths, growthChartSchema, type GrowthPoint } from "@kinder/contracts";
 import { Button } from "@/components/ui/button";
-import { Card, SectionHeader } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
+import { GrowthChartFigure } from "@/components/child/growth-chart";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
@@ -26,8 +27,6 @@ interface AcademicYearMeasurements {
   autumn: GrowthPoint | null;
   spring: GrowthPoint | null;
 }
-
-const SEASONS: readonly Season[] = ["AUTUMN", "SPRING"];
 
 function localDateInputValue(date = new Date()) {
   const localTime = date.getTime() - date.getTimezoneOffset() * 60_000;
@@ -54,7 +53,6 @@ export function ChildGrowth({
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingPoint, setEditingPoint] = useState<GrowthPoint | null>(null);
   const [viewingPoint, setViewingPoint] = useState<GrowthPoint | null>(null);
-  const [previousOpen, setPreviousOpen] = useState(true);
 
   const chart = useQuery({
     queryKey: qk.growth(childId),
@@ -81,64 +79,180 @@ export function ChildGrowth({
     setEditorOpen(true);
   };
 
+  const reference = chart.data.reference ?? null;
+  const latest = [...chart.data.points].sort((x, y) => y.measuredOn.localeCompare(x.measuredOn))[0];
+  const rows = tableRows(years.current!, years.previous);
+
+  /*
+    ★ Reorganised 2026-10-01, at the client's request that Өсөлт be easier to
+    read. The latest measurement leads, with how much it changed and whether it
+    sits inside the WHO ±2 SD band for the child's age — a band, never a
+    percentile, and said not to be a diagnosis. Under it, every measurement in
+    one table, newest first: the current year's two seasons (an empty one asks
+    to be filled), then the earlier years. It replaces a current-year card and
+    a fold of folds — two presses to read last year's height.
+  */
   return (
-    <div className="flex flex-col gap-7">
-      <section aria-labelledby="seasonal-growth-heading">
-        <SectionHeader
-          id="seasonal-growth-heading"
-          title="Улирлын хэмжилт"
-          lede="Намар, хавар хоёр удаа бүртгэнэ"
-          action={
-            <Button size="sm" onClick={openNewMeasurement}>
-              <Plus aria-hidden="true" />
-              Хэмжилт нэмэх
-            </Button>
-          }
-        />
-
-        <CurrentYearCard
-          year={years.current!}
-          onAdd={openNewMeasurement}
-          onEdit={openEditMeasurement}
-        />
-      </section>
-
-      <section aria-labelledby="previous-growth-years-heading">
-        <div className="mb-4 flex min-h-11 items-center justify-between gap-3">
-          <h3 id="previous-growth-years-heading" className="text-lead font-semibold text-ink">
-            Өмнөх хичээлийн жилүүд ({years.previous.length})
-          </h3>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={previousOpen ? "Өмнөх жилүүдийг хураах" : "Өмнөх жилүүдийг дэлгэх"}
-            aria-expanded={previousOpen}
-            aria-controls="previous-growth-years"
-            onClick={() => setPreviousOpen((value) => !value)}
-          >
-            {previousOpen ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+    <div className="flex flex-col gap-5">
+      <section aria-labelledby="growth-latest-heading" className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 id="growth-latest-heading" className="text-title font-semibold text-ink">
+            Сүүлийн хэмжилт
+          </h2>
+          <Button size="sm" onClick={openNewMeasurement}>
+            <Plus aria-hidden="true" />
+            Хэмжилт нэмэх
           </Button>
         </div>
 
-        {previousOpen ? (
-          <div id="previous-growth-years" className="flex flex-col gap-3">
-            {years.previous.length > 0 ? (
-              years.previous.map((year, index) => (
-                <PreviousYearCard
-                  key={year.startYear}
-                  year={year}
-                  defaultOpen={index === 0}
-                  onView={setViewingPoint}
-                />
-              ))
-            ) : (
-              <EmptyState
-                title="Өмнөх хичээлийн жилийн хэмжилт алга"
-                description="Хэмжилтүүд бүртгэгдэхэд хичээлийн жилээрээ энд автоматаар бүлэглэгдэнэ."
+        {latest ? (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <MetricTile
+                label="Өндөр"
+                unit="см"
+                value={latest.heightCm}
+                change={latest.heightChangeCm}
+                status={bandStatus(latest.heightCm, latest.ageYears, reference?.height)}
               />
-            )}
-          </div>
-        ) : null}
+              <MetricTile
+                label="Жин"
+                unit="кг"
+                value={latest.weightKg}
+                change={latest.weightChangeKg}
+                status={bandStatus(latest.weightKg, latest.ageYears, reference?.weight)}
+              />
+            </div>
+            <p className="text-caption text-muted">
+              {formatDate(latest.measuredOn)} хэмжсэн · {formatAge(latest)}
+              {/* The source and the "not a diagnosis" line are under the chart. */}
+              {reference ? ` · ${reference.source.name}-ын ±2 SD мужтай харьцуулсан` : null}
+            </p>
+          </>
+        ) : (
+          <EmptyState
+            title="Хэмжилт бүртгэгдээгүй байна"
+            description="Намар, хавар хоёр удаа өндөр, жинг бүртгэнэ."
+          />
+        )}
+      </section>
+
+      {/*
+        ★ The chart — 2026-10-01, phase 2. `GrowthChartFigure` was built for
+        RFP §7.2 (the child's line over the WHO ±2 SD band, the source, its
+        version and date, and the "not a diagnosis" line) and had been left
+        unused when this tab was redrawn as cards. Its own number table is
+        off: the table below is the full history. Nothing is drawn without a
+        measurement.
+      */}
+      {latest ? (
+        <section aria-labelledby="growth-chart-heading" className="flex flex-col gap-3">
+          <h2 id="growth-chart-heading" className="text-title font-semibold text-ink">
+            Өсөлтийн график
+          </h2>
+          <Card pad="compact">
+            <GrowthChartFigure chart={chart.data} layout="grid" showTable={false} />
+          </Card>
+        </section>
+      ) : null}
+
+      <section aria-labelledby="growth-history-heading" className="flex flex-col gap-3">
+        <div>
+          <h2 id="growth-history-heading" className="text-title font-semibold text-ink">
+            Бүх хэмжилт
+          </h2>
+          <p className="text-caption text-muted">Намар, хавар хоёр удаа бүртгэнэ</p>
+        </div>
+        <div className="overflow-x-auto rounded-card border border-border bg-surface">
+          <table className="w-full min-w-[720px] border-collapse text-body">
+            <caption className="sr-only">Өсөлтийн бүх хэмжилт</caption>
+            <thead>
+              <tr className="bg-sunken text-left text-caption font-semibold text-muted">
+                <th className="px-3 py-2">Хичээлийн жил</th>
+                <th className="px-3 py-2">Улирал</th>
+                <th className="px-3 py-2">Огноо</th>
+                <th className="px-3 py-2">Нас</th>
+                <th className="px-3 py-2 text-right">Өндөр</th>
+                <th className="px-3 py-2 text-right">Жин</th>
+                <th className="px-3 py-2">Өөрчлөлт</th>
+                <th className="w-12 px-3 py-2">
+                  <span className="sr-only">Үйлдэл</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const point = row.point;
+                return (
+                  <tr
+                    key={`${row.year.startYear}-${row.season}`}
+                    aria-label={`${row.year.label} ${row.season === "AUTUMN" ? "намрын" : "хаврын"} хэмжилт`}
+                    className={`border-t border-border-soft ${row.current ? "bg-primary-soft/40" : ""}`}
+                  >
+                    <td className="whitespace-nowrap px-3 py-2 text-muted">{row.year.label}</td>
+                    <td className="px-3 py-2">
+                      <span className="inline-flex items-center gap-1.5 font-medium text-ink">
+                        {row.season === "AUTUMN" ? (
+                          <Leaf aria-hidden="true" className="size-4 text-mint-ink" />
+                        ) : (
+                          <Sprout aria-hidden="true" className="size-4 text-mint-ink" />
+                        )}
+                        {row.season === "AUTUMN" ? "Намар" : "Хавар"}
+                      </span>
+                    </td>
+                    {point ? (
+                      <>
+                        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-muted">
+                          {formatDate(point.measuredOn)}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-muted">
+                          {formatAge(point)}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-ink">
+                          {isPresent(point.heightCm) ? `${point.heightCm} см` : "—"}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums text-ink">
+                          {isPresent(point.weightKg) ? `${point.weightKg} кг` : "—"}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 tabular-nums text-muted">
+                          {changeLabel(point)}
+                        </td>
+                      </>
+                    ) : (
+                      <td colSpan={5} className="px-3 py-2 text-faint">
+                        {row.current ? "Хүлээгдэж байна" : "Бүртгээгүй"}
+                      </td>
+                    )}
+                    <td className="px-2 py-1 text-right">
+                      {row.current ? (
+                        point ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openEditMeasurement(point)}
+                          >
+                            <Pencil aria-hidden="true" />
+                            Засах
+                          </Button>
+                        ) : (
+                          <Button variant="ghost" size="sm" onClick={openNewMeasurement}>
+                            <Plus aria-hidden="true" />
+                            Нэмэх
+                          </Button>
+                        )
+                      ) : point?.note ? (
+                        <Button variant="ghost" size="sm" onClick={() => setViewingPoint(point)}>
+                          <MessageSquare aria-hidden="true" />
+                          Тэмдэглэл
+                        </Button>
+                      ) : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <MeasurementDialog
@@ -147,172 +261,116 @@ export function ChildGrowth({
         editingPoint={editingPoint}
         onOpenChange={setEditorOpen}
       />
+
       <MeasurementViewDialog point={viewingPoint} onClose={() => setViewingPoint(null)} />
     </div>
   );
 }
 
-function CurrentYearCard({
-  year,
-  onAdd,
-  onEdit,
+type BandStatus = "inside" | "below" | "above" | null;
+
+/** One headline figure: the value, its change since last time, and the band. */
+function MetricTile({
+  label,
+  unit,
+  value,
+  change,
+  status,
 }: {
-  year: AcademicYearMeasurements;
-  onAdd: () => void;
-  onEdit: (point: GrowthPoint) => void;
+  label: string;
+  unit: string;
+  value: number | null | undefined;
+  change: number | null | undefined;
+  status: BandStatus;
 }) {
   return (
-    <Card className="overflow-hidden border-sky">
-      <YearHeader year={year} current />
-      <div className="divide-y divide-border">
-        {SEASONS.map((season) => {
-          const point = season === "AUTUMN" ? year.autumn : year.spring;
-          return (
-            <SeasonRow
-              key={season}
-              season={season}
-              point={point}
-              action={
-                point ? (
-                  <Button variant="ghost" size="sm" onClick={() => onEdit(point)}>
-                    <Pencil aria-hidden="true" />
-                    Засах
-                  </Button>
-                ) : (
-                  <Button variant="ghost" size="sm" onClick={onAdd}>
-                    <Plus aria-hidden="true" />
-                    Нэмэх
-                  </Button>
-                )
-              }
-            />
-          );
-        })}
-      </div>
+    <Card pad="compact" className="flex flex-col gap-1">
+      <span className="text-caption font-medium text-muted">{label}</span>
+      <span className="flex flex-wrap items-baseline gap-x-2">
+        <strong className="text-heading font-semibold tabular-nums text-ink">
+          {isPresent(value) ? `${value} ${unit}` : "—"}
+        </strong>
+        {isPresent(change) ? (
+          <span className="text-caption tabular-nums text-muted">
+            {change > 0 ? "+" : ""}
+            {change} {unit} өмнөхөөс
+          </span>
+        ) : null}
+      </span>
+      {status ? (
+        <span
+          className={`mt-1 inline-flex w-fit rounded-pill px-2 py-0.5 text-caption font-semibold ${
+            status === "inside" ? "bg-mint text-mint-ink" : "bg-peach text-peach-ink"
+          }`}
+        >
+          {status === "inside"
+            ? "Насны хэвийн мужид"
+            : status === "below"
+              ? "Насны мужаас доогуур"
+              : "Насны мужаас дээгүүр"}
+        </span>
+      ) : null}
     </Card>
   );
 }
 
-function PreviousYearCard({
-  year,
-  defaultOpen,
-  onView,
-}: {
+/**
+ * Where a value sits against the reference band at the child's age.
+ *
+ * The band is a list of ages with −2 SD / +2 SD; the child's age falls
+ * between two of them and the bounds are read off the straight line between.
+ * Outside the band's own ages there is nothing honest to say, so null.
+ */
+function bandStatus(
+  value: number | null | undefined,
+  ageYears: number,
+  band: { age: number; low: number; high: number }[] | undefined,
+): BandStatus {
+  if (!isPresent(value) || !band || band.length === 0) return null;
+  const sorted = [...band].sort((a, b) => a.age - b.age);
+  const upper = sorted.findIndex((entry) => entry.age >= ageYears);
+  if (upper === -1 || (upper === 0 && sorted[0]!.age > ageYears)) return null;
+  const hi = sorted[upper]!;
+  const lo = upper === 0 ? hi : sorted[upper - 1]!;
+  const t = hi.age === lo.age ? 0 : (ageYears - lo.age) / (hi.age - lo.age);
+  const low = lo.low + (hi.low - lo.low) * t;
+  const high = lo.high + (hi.high - lo.high) * t;
+  if (value < low) return "below";
+  if (value > high) return "above";
+  return "inside";
+}
+
+/** "+1.8 см · +0.7 кг" — the change since the previous measurement, from the API. */
+function changeLabel(point: GrowthPoint): string {
+  const part = (value: number | null | undefined, unit: string) =>
+    isPresent(value) ? `${value > 0 ? "+" : ""}${value} ${unit}` : null;
+  return (
+    [part(point.heightChangeCm, "см"), part(point.weightChangeKg, "кг")]
+      .filter(Boolean)
+      .join(" · ") || "—"
+  );
+}
+
+interface TableRow {
   year: AcademicYearMeasurements;
-  defaultOpen: boolean;
-  onView: (point: GrowthPoint) => void;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-
-  return (
-    <details
-      className="group overflow-hidden rounded-card border border-border bg-surface shadow-sm"
-      open={open}
-      onToggle={(event) => setOpen(event.currentTarget.open)}
-    >
-      <summary className="flex min-h-[72px] cursor-pointer list-none items-center justify-between gap-3 px-4 py-4 marker:content-none md:px-5 [&::-webkit-details-marker]:hidden">
-        <h4 className="truncate text-lead font-semibold text-ink">{year.label} хичээлийн жил</h4>
-        <div className="flex shrink-0 items-center gap-2">
-          {year.age !== null ? (
-            <span className="inline-flex items-center gap-1.5 rounded-pill bg-primary-soft px-3 py-1.5 text-caption font-semibold text-primary">
-              <Cake aria-hidden="true" className="size-4" />
-              {year.age} нас
-            </span>
-          ) : null}
-          <ChevronDown
-            aria-hidden="true"
-            className="text-muted transition-transform group-open:rotate-180"
-          />
-        </div>
-      </summary>
-
-      <div className="divide-y divide-border border-t border-border">
-        {SEASONS.map((season) => {
-          const point = season === "AUTUMN" ? year.autumn : year.spring;
-          return (
-            <SeasonRow
-              key={season}
-              season={season}
-              point={point}
-              action={
-                point ? (
-                  <Button variant="ghost" size="sm" onClick={() => onView(point)}>
-                    <Eye aria-hidden="true" />
-                    Харах
-                  </Button>
-                ) : null
-              }
-            />
-          );
-        })}
-        <p className="bg-sunken px-4 py-3 text-center text-caption font-medium text-muted">
-          Жилийн өөрчлөлт: {yearChange(year)}
-        </p>
-      </div>
-    </details>
-  );
-}
-
-function YearHeader({ year, current }: { year: AcademicYearMeasurements; current?: boolean }) {
-  const completed = Number(Boolean(year.autumn)) + Number(Boolean(year.spring));
-
-  return (
-    <div
-      className={`flex flex-wrap items-center justify-between gap-3 border-b px-4 py-4 md:px-5 ${
-        current ? "border-sky bg-primary-soft" : "border-border"
-      }`}
-    >
-      <div>
-        <h3 className="text-lead font-semibold text-ink">{year.label} хичээлийн жил</h3>
-        {year.age !== null ? (
-          <p className="mt-0.5 text-caption text-muted">{year.age} нас</p>
-        ) : null}
-      </div>
-      <span className="text-body font-semibold text-primary">{completed}/2 бүртгэсэн</span>
-    </div>
-  );
-}
-
-function SeasonRow({
-  season,
-  point,
-  action,
-}: {
   season: Season;
   point: GrowthPoint | null;
-  action: ReactNode;
-}) {
-  const autumn = season === "AUTUMN";
-
-  return (
-    <div
-      aria-label={autumn ? "Намрын хэмжилт" : "Хаврын хэмжилт"}
-      className="grid gap-3 px-4 py-4 md:grid-cols-[minmax(120px,1.15fr)_minmax(130px,1fr)_minmax(90px,.75fr)_minmax(90px,.75fr)_auto] md:items-center md:px-5"
-    >
-      <div className="flex items-center gap-2.5 font-semibold text-ink">
-        {autumn ? (
-          <Leaf aria-hidden="true" className="size-5 text-mint-ink" />
-        ) : (
-          <Sprout aria-hidden="true" className="size-5 text-mint-ink" />
-        )}
-        {autumn ? "Намар" : "Хавар"}
-      </div>
-      <time className={point ? "text-body text-muted" : "text-body text-faint"}>
-        {point ? formatDate(point.measuredOn) : "Хүлээгдэж байна"}
-      </time>
-      <MeasurementValue value={point?.heightCm} unit="см" />
-      <MeasurementValue value={point?.weightKg} unit="кг" />
-      <div className="flex min-h-11 items-center justify-end">{action}</div>
-    </div>
-  );
+  current: boolean;
 }
 
-function MeasurementValue({ value, unit }: { value: number | null | undefined; unit: string }) {
-  return (
-    <span className={isPresent(value) ? "font-semibold tabular-nums text-ink" : "text-faint"}>
-      {isPresent(value) ? value : "—"} {unit}
-    </span>
-  );
+/** Newest first: this year's spring and autumn, then each earlier year's. */
+function tableRows(
+  current: AcademicYearMeasurements,
+  previous: AcademicYearMeasurements[],
+): TableRow[] {
+  const forYear = (year: AcademicYearMeasurements, isCurrent: boolean): TableRow[] =>
+    (["SPRING", "AUTUMN"] as const).map((season) => ({
+      year,
+      season,
+      point: season === "AUTUMN" ? year.autumn : year.spring,
+      current: isCurrent,
+    }));
+  return [...forYear(current, true), ...previous.flatMap((year) => forYear(year, false))];
 }
 
 function MeasurementDialog({
@@ -570,22 +628,4 @@ function formatAge(point: GrowthPoint): string {
   const years = Math.floor(months / 12);
   const remaining = months % 12;
   return remaining > 0 ? `${years} нас ${remaining} сар` : `${years} нас`;
-}
-
-function yearChange(year: AcademicYearMeasurements): string {
-  if (!year.autumn || !year.spring) return "—";
-
-  const height = difference(year.autumn.heightCm, year.spring.heightCm, "см");
-  const weight = difference(year.autumn.weightKg, year.spring.weightKg, "кг");
-  return [height, weight].filter(Boolean).join(" · ") || "—";
-}
-
-function difference(
-  from: number | null | undefined,
-  to: number | null | undefined,
-  unit: string,
-): string | null {
-  if (!isPresent(from) || !isPresent(to)) return null;
-  const value = Math.round((to - from) * 10) / 10;
-  return `${value > 0 ? "+" : ""}${value} ${unit}`;
 }

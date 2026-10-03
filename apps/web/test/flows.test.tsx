@@ -354,7 +354,9 @@ describe("group assessment", () => {
     const goal = await screen.findByRole("region", { name: "Энэ сарын зорилт" });
     expect(screen.queryByRole("tab", { name: "Үнэлэх" })).not.toBeInTheDocument();
     expect(within(goal).queryByLabelText("Хүүхэд сонгох")).not.toBeInTheDocument();
-    expect(await within(goal).findByRole("button", { name: "Ажиглалт" })).toBeInTheDocument();
+    // ★ 2026-10-01: the "+" moved beside the title, out of the goal block.
+    expect(await screen.findByRole("button", { name: "Явцын үнэлгээ бичих" })).toBeInTheDocument();
+    expect(within(goal).queryByRole("button", { name: "Явцын үнэлгээ бичих" })).toBeNull();
   });
 });
 
@@ -1170,7 +1172,7 @@ describe("the child profile tabs", () => {
     expect(screen.queryByRole("tab", { name: "Бусад" })).toBeNull();
   });
 
-  it("shows the base group category in the registration history", async () => {
+  it("shows the base group category on the placement card", async () => {
     setParams({ childId: CHILD_ID });
     setSearchParams("");
     stubChild(
@@ -1190,10 +1192,13 @@ describe("the child profile tabs", () => {
 
     renderWithProviders(<ChildGeneralPage />);
 
-    const history = await screen.findByRole("region", { name: "Бүртгэлийн түүх" });
-    const groupName = within(history).getByText("Дэлбээ бүлэг");
-    expect(groupName.parentElement).toHaveTextContent(/Дэлбээ бүлэг\s*·\s*Бага бүлэг/);
-    expect(within(history).getByText(/2026–2027 · Элссэн:\s*2026\.08\.01/)).toBeInTheDocument();
+    // ★ 2026-10-01: the history list left Ерөнхий (it is on "Суралцсан түүх"),
+    // so the current placement is read off the card that stays.
+    const general = await screen.findByRole("region", { name: "Ерөнхий мэдээлэл" });
+    expect(within(general).getByText("Дэлбээ бүлэг · Бага бүлэг")).toBeInTheDocument();
+    expect(within(general).getByText("2026–2027")).toBeInTheDocument();
+    expect(within(general).getByText("2026.08.01")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Бүртгэлийн түүх" })).toBeNull();
   });
 
   it("shows the current registration and guardian contact in the general-information cards", async () => {
@@ -1280,12 +1285,15 @@ describe("the child profile tabs", () => {
     expect(
       within(general).getByRole("heading", { name: "Хүүхдийн үндсэн мэдээлэл" }),
     ).toBeInTheDocument();
-    expect(within(general).getByText("Ганболд Батбаяр")).toBeInTheDocument();
+    // ★ 2026-10-01: Овог and Нэр are their own rows, in that order.
+    expect(within(general).getByText("Ганболд")).toBeInTheDocument();
+    expect(within(general).getByText("Батбаяр")).toBeInTheDocument();
     expect(within(general).getByText("5 нас · 2021.04.12")).toBeInTheDocument();
     expect(within(general).getByText("УШ21241200")).toBeInTheDocument();
     expect(within(general).getByText("Хүү")).toBeInTheDocument();
     expect(within(general).getByText("Б. Оюунчимэг")).toBeInTheDocument();
-    expect(within(general).getByText("Суралцаж байгаа")).toBeInTheDocument();
+    // The child's status is the hero's badge; the card does not repeat it.
+    expect(within(general).queryByText("Суралцаж байгаа")).toBeNull();
     expect(screen.getByText("9912 3456")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Холбоо барих" })).toHaveAttribute(
       "href",
@@ -1431,7 +1439,7 @@ describe("the child profile tabs", () => {
    * row at the top is the year they finished. Reading position as state labels
    * that as the group they are in now.
    */
-  it("marks the ended enrollment as finished, not as current", async () => {
+  it("does not show an ended enrollment as the current placement", async () => {
     setParams({ childId: CHILD_ID });
     setSearchParams("");
     stubChild(
@@ -1451,9 +1459,9 @@ describe("the child profile tabs", () => {
 
     renderWithProviders(<ChildGeneralPage />);
 
-    const history = await screen.findByRole("region", { name: "Бүртгэлийн түүх" });
-    expect(within(history).getByText("Дууссан")).toBeInTheDocument();
-    expect(within(history).queryByText("Одоогийн")).not.toBeInTheDocument();
+    const general = await screen.findByRole("region", { name: "Ерөнхий мэдээлэл" });
+    expect(within(general).getByText("Бүртгэлгүй")).toBeInTheDocument();
+    expect(within(general).queryByText(/Ахлах бүлэг/)).toBeNull();
   });
 
   /**
@@ -1475,7 +1483,7 @@ describe("the child profile tabs", () => {
     const { calls } = stubChild(enrolled());
 
     renderWithProviders(<ChildGeneralPage />);
-    await screen.findByRole("region", { name: "Бүртгэлийн түүх" });
+    await screen.findByRole("region", { name: "Ерөнхий мэдээлэл" });
 
     expect(calls.some((c) => c.url.includes("/growth"))).toBe(false);
     // Exactly one panel is in the DOM, which is what makes the above true.
