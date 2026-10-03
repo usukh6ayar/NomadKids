@@ -48,11 +48,15 @@ describe("forgot password — by phone", () => {
 
     renderWithProviders(<ForgotPasswordPage />);
 
-    await user.click(await screen.findByRole("tab", { name: "Утсаар" }));
-    await user.type(screen.getByLabelText(/^Бүртгэлтэй утасны дугаар/), "99112233");
-    await user.click(screen.getByRole("button", { name: "SMS-ээр баталгаажуулах" }));
+    // Phone only since 2026-10-04 — the e-mail path is gone from this screen.
+    expect(await screen.findByRole("textbox", { name: /^Утасны дугаар/ })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/и-мэйл/i)).not.toBeInTheDocument();
 
-    await user.type(await screen.findByLabelText(/^Шинэ нууц үг/), STRONG);
+    // Spaces from a pasted contact card are dropped as typed.
+    await user.type(screen.getByRole("textbox", { name: /^Утасны дугаар/ }), "9911 2233");
+    await user.click(screen.getByRole("button", { name: "Код авах" }));
+
+    await user.type(await screen.findByLabelText(/^Шинэ нууц үг/, { selector: "input" }), STRONG);
     await user.type(screen.getByLabelText(/давтан/), STRONG);
     await user.click(screen.getByRole("button", { name: "Нууц үг шинэчлэх" }));
 
@@ -78,12 +82,11 @@ describe("forgot password — by phone", () => {
 
     renderWithProviders(<ForgotPasswordPage />);
 
-    await user.click(await screen.findByRole("tab", { name: "Утсаар" }));
-    await user.type(screen.getByLabelText(/^Бүртгэлтэй утасны дугаар/), "99112233");
-    await user.click(screen.getByRole("button", { name: "SMS-ээр баталгаажуулах" }));
+    await user.type(await screen.findByRole("textbox", { name: /^Утасны дугаар/ }), "99112233");
+    await user.click(screen.getByRole("button", { name: "Код авах" }));
 
     expect(await screen.findByText(/бүртгэл олдсонгүй/)).toBeInTheDocument();
-    expect(screen.queryByLabelText(/^Шинэ нууц үг/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Шинэ нууц үг/, { selector: "input" })).not.toBeInTheDocument();
   });
 });
 
@@ -119,9 +122,8 @@ describe("the SMS step", () => {
     ]);
 
     renderWithProviders(<ForgotPasswordPage />);
-    await user.click(await screen.findByRole("tab", { name: "Утсаар" }));
-    await user.type(screen.getByLabelText(/^Бүртгэлтэй утасны дугаар/), "99112233");
-    await user.click(screen.getByRole("button", { name: "SMS-ээр баталгаажуулах" }));
+    await user.type(await screen.findByRole("textbox", { name: /^Утасны дугаар/ }), "99112233");
+    await user.click(screen.getByRole("button", { name: "Код авах" }));
 
     await waitFor(() =>
       expect(calls.filter((c) => c.url === "/phone-verifications/check")).toHaveLength(1),
@@ -131,14 +133,16 @@ describe("the SMS step", () => {
     check.body = { status: "VERIFIED", expiresAt: START.expiresAt, accountFound: true };
     await vi.advanceTimersByTimeAsync(3_000);
 
-    expect(await screen.findByLabelText(/^Шинэ нууц үг/)).toBeInTheDocument();
+    expect(
+      await screen.findByLabelText(/^Шинэ нууц үг/, { selector: "input" }),
+    ).toBeInTheDocument();
   });
 });
 
 describe("invitation — the guardian's phone", () => {
   async function fillForm(user: ReturnType<typeof userEvent.setup>) {
     await user.type(screen.getByLabelText(/^Таны нэр/), "Оюун");
-    await user.type(screen.getByLabelText(/^Утасны дугаар/), "99112233");
+    await user.type(screen.getByRole("textbox", { name: /^Утасны дугаар/ }), "99112233");
     await user.type(screen.getByLabelText(/^Нууц үг \*/), STRONG);
     await user.type(screen.getByLabelText(/давтан/), STRONG);
   }

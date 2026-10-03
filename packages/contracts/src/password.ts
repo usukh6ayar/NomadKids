@@ -51,3 +51,17 @@ export function validatePasswordStrength(password: string): string[] {
   if (!DIGIT.test(password)) errors.push("Нууц үгэнд тоо байх ёстой");
   return errors;
 }
+
+/**
+ * Which of `PASSWORD_RULES` a password meets, index for index — for a form
+ * that ticks the rules off as they are typed rather than listing failures
+ * after a submit. Same patterns as `validatePasswordStrength`, so the two
+ * cannot disagree about Cyrillic.
+ */
+export function passwordRuleStatus(password: string): boolean[] {
+  return [
+    password.length >= PASSWORD_MIN_LENGTH,
+    UPPER.test(password) && LOWER.test(password),
+    DIGIT.test(password),
+  ];
+}
