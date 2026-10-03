@@ -159,3 +159,87 @@ export function EsisTeacherListCard() {
     </section>
   );
 }
+
+/*
+  «Ажлын мэдээлэл» — the signed-in person's own ESIS record, 2026-10-03.
+
+  ★ Same request as the two sections above: the tab printed every field the
+  `teachers` / `staff` service returns, codes and ids included
+  (`institutionId`, `assignmentId`, `personId`, `instructorTypeId`,
+  `positionCode`, `jobCode`, …). It now draws only what a person reads about
+  their own job, under Mongolian labels, and only the fields ESIS filled. The
+  civil id and register number are left out as well: they are identifiers,
+  not facts about the job, and this screen is not where they are checked.
+*/
+
+type WorkField = { key: string; label: string; format?: (value: string) => string };
+
+const yesNo = (value: string) =>
+  ["1", "true", "y", "yes"].includes(value.toLowerCase()) ? "Тийм" : "Үгүй";
+
+const PERSON_FIELDS: WorkField[] = [
+  { key: "familyName", label: "Ургийн овог" },
+  { key: "genderName", label: "Хүйс" },
+  { key: "dateOfBirth", label: "Төрсөн огноо", format: (value) => value.slice(0, 10) },
+];
+
+const EMAIL_FIELDS: WorkField[] = [
+  { key: "microsoftEmail", label: "Албан и-мэйл (Microsoft)" },
+  { key: "googleEmail", label: "Албан и-мэйл (Google)" },
+];
+
+const WORK_FIELDS: Record<"teachers" | "staff", WorkField[]> = {
+  teachers: [
+    { key: "positionName", label: "Албан тушаал" },
+    { key: "instructorTypeName", label: "Багшийн төрөл" },
+    { key: "subjectDepartmentName", label: "Заах аргын нэгдэл" },
+    { key: "instructorAvailability", label: "Ажиллах боломж" },
+    ...PERSON_FIELDS,
+    ...EMAIL_FIELDS,
+  ],
+  staff: [
+    { key: "institutionName", label: "Байгууллага" },
+    { key: "parentInstitutionName", label: "Дээд байгууллага" },
+    { key: "positionName", label: "Албан тушаал" },
+    { key: "minor", label: "Мэргэшил" },
+    { key: "primaryFlag", label: "Үндсэн ажлын байр", format: yesNo },
+    { key: "educationSectorYears", label: "Боловсролын салбарт ажилласан жил" },
+    { key: "yearsOfService", label: "Нийт ажилласан жил" },
+    { key: "propertyClassificationName", label: "Өмчийн ангилал" },
+    ...PERSON_FIELDS,
+    ...EMAIL_FIELDS,
+  ],
+};
+
+export function EsisWorkRecord({
+  resource,
+  row,
+}: {
+  resource: "teachers" | "staff";
+  row: Record<string, string | null>;
+}) {
+  const filled = WORK_FIELDS[resource].filter((field) => row[field.key]);
+  const name = personName(row);
+
+  return (
+    <dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+      {name !== "—" ? (
+        <div className="sm:col-span-2">
+          <dt className="text-caption text-muted">Овог, нэр</dt>
+          <dd className="text-lead font-semibold text-ink">{name}</dd>
+        </div>
+      ) : null}
+      {filled.map((field) => (
+        <div key={field.key}>
+          <dt className="text-caption text-muted">{field.label}</dt>
+          <dd className="text-body text-ink">
+            {field.format ? field.format(row[field.key]!) : row[field.key]}
+          </dd>
+        </div>
+      ))}
+      {filled.length === 0 && name === "—" ? (
+        <p className="text-body text-muted">ESIS-д ажлын мэдээлэл бүртгэгдээгүй.</p>
+      ) : null}
+    </dl>
+  );
+}

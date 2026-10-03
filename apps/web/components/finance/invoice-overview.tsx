@@ -209,6 +209,8 @@ export function InvoiceOverview({
 
       {invoices.isLoading || groups.isLoading ? <LoadingState rows={3} /> : null}
       {invoices.isError ? <ErrorState description={errorMessage(invoices.error)} /> : null}
+      {/* Without the groups there is no row to draw — say so, not a blank. */}
+      {groups.isError ? <ErrorState description={errorMessage(groups.error)} /> : null}
 
       {invoices.data && groups.data ? (
         rows.length === 0 ? (

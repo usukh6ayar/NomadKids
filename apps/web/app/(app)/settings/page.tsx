@@ -33,8 +33,11 @@ import {
   validatePasswordStrength,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
-import { EsisAcademicOrgCard, EsisTeacherListCard } from "@/components/esis/esis-teacher-cards";
-import { EsisRowValues, esisSampleColumns } from "@/components/esis/esis-rows";
+import {
+  EsisAcademicOrgCard,
+  EsisTeacherListCard,
+  EsisWorkRecord,
+} from "@/components/esis/esis-teacher-cards";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { ApiError } from "@/lib/api/client";
@@ -317,7 +320,7 @@ function EsisProfileSection() {
               </p>
             </div>
           </div>
-          <EsisRowValues columns={esisSampleColumns(live.fields)} rows={[live.row]} />
+          <EsisWorkRecord resource={live.resource} row={live.row} />
         </Card>
       </section>
     );

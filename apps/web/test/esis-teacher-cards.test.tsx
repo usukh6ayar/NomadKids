@@ -2,7 +2,11 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
-import { EsisAcademicOrgCard, EsisTeacherListCard } from "@/components/esis/esis-teacher-cards";
+import {
+  EsisAcademicOrgCard,
+  EsisTeacherListCard,
+  EsisWorkRecord,
+} from "@/components/esis/esis-teacher-cards";
 
 const KG = "33333333-3333-4333-8333-333333333333";
 
@@ -162,5 +166,66 @@ describe("settings — ESIS teacher sections", () => {
     await user.type(screen.getByRole("searchbox", { name: "Багш хайх" }), "туслах");
     expect(within(table).queryByText("Бат Номин")).toBeNull();
     expect(within(table).getByText("Дорж Сараа")).toBeInTheDocument();
+  });
+});
+
+describe("settings — «Ажлын мэдээлэл»", () => {
+  /** 2026-10-03: the person's own job, in words — no ESIS ids or codes. */
+  it("draws the teacher record by label and leaves the ids out", () => {
+    renderWithProviders(
+      <EsisWorkRecord
+        resource="teachers"
+        row={{
+          institutionId: "42778",
+          assignmentId: "a-1",
+          personId: "900123",
+          instructorId: "76",
+          lastName: "бат",
+          firstName: "номин",
+          positionName: "Багш",
+          instructorTypeId: "1",
+          instructorTypeName: "Үндсэн",
+          subjectDepartmentId: "551",
+          subjectDepartmentName: "Бага бүлгийн нэгдэл",
+          instructorAvailability: null,
+          civilId: "123456789",
+          personRegNumber: "ТА88010101",
+          googleEmail: "nomin@school.edu.mn",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Бат Номин")).toBeInTheDocument();
+    expect(screen.getByText("Албан тушаал").nextSibling).toHaveTextContent("Багш");
+    expect(screen.getByText("Заах аргын нэгдэл").nextSibling).toHaveTextContent(
+      "Бага бүлгийн нэгдэл",
+    );
+    expect(screen.getByText("nomin@school.edu.mn")).toBeInTheDocument();
+    // Empty fields are not drawn.
+    expect(screen.queryByText("Ажиллах боломж")).toBeNull();
+    for (const hidden of ["42778", "a-1", "900123", "76", "551", "123456789", "ТА88010101"]) {
+      expect(screen.queryByText(hidden)).toBeNull();
+    }
+  });
+
+  it("reads a staff record's primary-post flag as Тийм / Үгүй", () => {
+    renderWithProviders(
+      <EsisWorkRecord
+        resource="staff"
+        row={{
+          lastName: "Дорж",
+          firstName: "Сараа",
+          institutionName: "115-р цэцэрлэг",
+          positionName: "Эрхлэгч",
+          primaryFlag: "1",
+          positionCode: "2341",
+          jobCode: "J-9",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Үндсэн ажлын байр").nextSibling).toHaveTextContent("Тийм");
+    expect(screen.queryByText("2341")).toBeNull();
+    expect(screen.queryByText("J-9")).toBeNull();
   });
 });
