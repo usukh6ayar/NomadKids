@@ -171,7 +171,31 @@ admins has no mechanism.
 had identical mechanics — hashed single-use token with an expiry — and differed
 only in what the landing page does. A `purpose` discriminator is enough for the
 MVP. The reference `Invitation.codeHash` (a short SMS code alongside the link) is
-**dropped**: MVP has no SMS.
+**dropped**: MVP has no SMS. ★ Phone proof arrived on 2026-10-01 as its own table,
+§3.3b — an SMS the person _sends_, not one sent to them.
+
+### 3.3b `PhoneVerification` — verify.mn, 2026-10-01
+
+**Purpose:** proof that a person holds a phone number. They text `code` from
+`phone` to verify.mn's shortcode; the server asks verify.mn whether it arrived.
+
+| Field           | Type                                                     | Notes                                                                          |
+| --------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `purpose`       | enum `PASSWORD_RESET` \| `INVITATION` \| `PROFILE_PHONE` | a proof is spent only by the flow it was started for                           |
+| `phone`         | string                                                   | eight digits, as `User.phone`                                                  |
+| `userId`        | uuid? → User                                             | cascade; **null for a reset**, which starts before anyone knows who holds it   |
+| `sessionId`     | string, unique                                           | verify.mn's id — **never sent to a browser**, verify.mn reads it without a key |
+| `code`          | string                                                   | shown to the person; not a secret                                              |
+| `handleHash`    | string, unique                                           | SHA-256 of the handle the browser holds                                        |
+| `expiresAt`     | datetime                                                 | verify.mn's deadline for the SMS                                               |
+| `verifiedAt`    | datetime?                                                | spendable for 15 minutes after                                                 |
+| `consumedAt`    | datetime?                                                | single use; also set on a retired attempt                                      |
+| `lastCheckedAt` | datetime?                                                | throttles upstream status calls to one per 3 s                                 |
+
+**Not `AuthToken`**, whose `userId` is required. **Not tenant-scoped** — like
+`AuthToken` and `LoginAttempt` it belongs to a person, or to nobody yet, never to
+a kindergarten, so §3.1 of CLAUDE.md does not reach it. Hard-deleted after a day
+by `MaintenanceService`, the same treatment as the other operational rows here.
 
 ### 3.4 `LoginAttempt`
 

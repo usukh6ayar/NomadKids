@@ -9,11 +9,18 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   Res,
+  UseGuards,
 } from "@nestjs/common";
-import type { Response } from "express";
+import type { Request, Response } from "express";
 import { idParamSchema } from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
+import { RateLimit, RateLimitGuard } from "../common/rate-limit/rate-limit.guard";
+import {
+  startPhoneVerificationSchema,
+  type StartPhoneVerificationDto,
+} from "../phone-verification/phone-verification.dto";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
 import type { Actor } from "../authz/actor";
@@ -57,6 +64,19 @@ export class UsersController {
     @Body(new ZodValidationPipe(updateProfileSchema)) body: UpdateProfileDto,
   ) {
     return this.service.updateOwnProfile(actor, body);
+  }
+
+  /** Starts proving a new phone number before `PATCH me/profile` saves it. */
+  @Post("me/phone-verification")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ limit: 10, windowMs: 60 * 60 * 1000, byUser: true })
+  async startOwnPhoneVerification(
+    @CurrentActor() actor: Actor,
+    @Body(new ZodValidationPipe(startPhoneVerificationSchema)) body: StartPhoneVerificationDto,
+    @Req() req: Request,
+  ) {
+    return this.service.startOwnPhoneVerification(actor, body.phone, req.ip ?? null);
   }
 
   // ── User administration ───────────────────────────────────────────────────

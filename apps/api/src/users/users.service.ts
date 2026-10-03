@@ -13,6 +13,7 @@ import { TokenService } from "../auth/token.service";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import type { Actor } from "../authz/actor";
 import { paginate, type PageParams } from "../common/pagination";
+import { PhoneVerificationService } from "../phone-verification/phone-verification.service";
 import { UsersRepository } from "./users.repository";
 import type {
   AddMembershipDto,
@@ -80,6 +81,7 @@ export class UsersService {
     private readonly tokens: TokenService,
     private readonly auth: AuthRepository,
     private readonly audit: AuditRepository,
+    private readonly phones: PhoneVerificationService,
   ) {}
 
   async list(actor: Actor, query: ListUsersQuery) {
@@ -567,8 +569,42 @@ export class UsersService {
       }
     }
 
+    const { phoneVerification, ...changes } = dto;
+
+    /*
+     * ★ A new number must be proven — verify.mn, 2026-10-01 — because the
+     * phone is a login identifier and, now, the way back into the account: a
+     * number typed wrong, or somebody else's, would hand the password reset
+     * to whoever holds it. Clearing the phone needs no proof, and saving the
+     * number already on file needs none either: the settings form sends every
+     * field on every save.
+     */
+    if (changes.phone && this.phones.enabled) {
+      const current = await this.repo.findProfile(actor.userId);
+      if (changes.phone !== current?.phone) {
+        await this.phones.consume(phoneVerification, {
+          purpose: "PROFILE_PHONE",
+          userId: actor.userId,
+          phone: changes.phone,
+        });
+      }
+    }
+
     // `isActive` is deliberately absent from UpdateProfileDto — a user must not
     // be able to reactivate an account an admin deactivated.
-    return this.repo.update(actor.userId, dto);
+    return this.repo.update(actor.userId, changes);
+  }
+
+  /**
+   * Starts proving a new number for one's own profile. The clash check runs
+   * here too, so a number that is already somebody's is refused before the
+   * person pays for an SMS rather than after.
+   */
+  async startOwnPhoneVerification(actor: Actor, phone: string, ipAddress: string | null) {
+    const clash = await this.repo.findByPhone(phone);
+    if (clash && clash.id !== actor.userId) {
+      throw new ConflictException("Энэ утас аль хэдийн бүртгэлтэй");
+    }
+    return this.phones.start("PROFILE_PHONE", phone, actor.userId, ipAddress);
   }
 }

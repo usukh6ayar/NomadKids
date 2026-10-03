@@ -28,6 +28,7 @@ import {
   esisMyProfileSchema,
   parentDashboardSchema,
   PASSWORD_RULES,
+  phoneVerificationStartSchema,
   ROLE_LABEL,
   userProfileSchema,
   validatePasswordStrength,
@@ -60,6 +61,11 @@ import { ChildAvatar } from "@/components/media/media-image";
 import { PhotoBadgeButton } from "@/components/media/photo-badge-button";
 import { MyStaffRecords } from "@/components/staff/my-staff-records";
 import { ChildPhotoButton } from "@/components/child/child-photo-button";
+import {
+  MOBILE_PHONE,
+  PhoneVerificationStep,
+  usePhoneVerificationEnabled,
+} from "@/components/auth/phone-verification";
 
 const profileSchema = userProfileSchema.extend({
   specialization: z.string().nullish(),
@@ -236,15 +242,14 @@ function SideLink({ href, children }: { href: string; children: ReactNode }) {
   );
 }
 
-/** The password form, fed the account's own identifier. */
+/**
+ * The password form. It no longer needs the profile: «Мартсан уу?» used to
+ * mail a link to the account's own e-mail, and now leads to the phone reset.
+ */
 function PasswordFromProfile() {
-  const { data } = useQuery({
-    queryKey: qk.profile(),
-    queryFn: () => get("/me/profile", profileSchema),
-  });
   return (
     <div className="rounded-card bg-surface p-3">
-      <PasswordSection identifier={data?.email || data?.username || ""} email={data?.email} />
+      <PasswordSection />
     </div>
   );
 }
@@ -536,6 +541,44 @@ function ContactItem({
 }
 
 /**
+ * A changed phone is proven by one SMS before `PATCH /me/profile` takes it —
+ * verify.mn, 2026-10-01, and only where it is configured.
+ *
+ * The phone is a login identifier and the way back in through a reset by
+ * phone, so a typo would hand that door to whoever holds the typed number.
+ * The number already on file needs no proof: both forms on this screen send
+ * every field on every save. A save without the proof is refused by the
+ * server with a message under «Утас», which is what a person who skipped the
+ * step reads.
+ */
+function useOwnPhoneProof(saved: string | null | undefined, typed: string) {
+  const enabled = usePhoneVerificationEnabled();
+  const [proof, setProof] = useState<{ phone: string; handle: string } | null>(null);
+
+  const next = typed.trim();
+  const changed = enabled && next !== "" && next !== (saved ?? "");
+  const handle = proof?.phone === next ? proof.handle : undefined;
+
+  return {
+    body: changed && handle ? { phoneVerification: handle } : {},
+    step:
+      changed && MOBILE_PHONE.test(next) ? (
+        <PhoneVerificationStep
+          key={next}
+          phone={next}
+          start={(value) =>
+            mutate("/me/phone-verification", phoneVerificationStartSchema, {
+              method: "POST",
+              body: { phone: value },
+            })
+          }
+          onVerified={(verified) => setProof({ phone: next, handle: verified })}
+        />
+      ) : null,
+  };
+}
+
+/**
  * «Мэдээлэл засах» — the fields `PATCH /me/profile` accepts that a person
  * owns: their name, phone and e-mail. Toast on save (§5); the server's field
  * errors land under the field they are about.
@@ -557,6 +600,7 @@ function EditProfileDialog({
     phone: profile.phone ?? "",
     email: profile.email ?? "",
   });
+  const phoneProof = useOwnPhoneProof(profile.phone, form.phone);
 
   const save = useMutation({
     mutationFn: () =>
@@ -567,6 +611,7 @@ function EditProfileDialog({
           firstName: form.firstName.trim(),
           phone: form.phone.trim() || null,
           email: form.email.trim() || null,
+          ...phoneProof.body,
         },
       }),
     onSuccess: () => {
@@ -613,6 +658,7 @@ function EditProfileDialog({
           {({ id }) => <Input id={id} type="email" value={form.email} onChange={set("email")} />}
         </Field>
       </div>
+      {phoneProof.step}
       <FormError
         message={save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null}
       />
@@ -719,6 +765,7 @@ function StaffProfileCard() {
   const current =
     form ??
     Object.fromEntries(fields.map((field) => [field.key, (data?.[field.key] as string) ?? ""]));
+  const phoneProof = useOwnPhoneProof(data?.phone, current.phone ?? "");
 
   /*
     ★ "ЭСИС-ээс татах" fills the form; it does not save — client, 2026-09-24.
@@ -768,9 +815,12 @@ function StaffProfileCard() {
     mutationFn: () =>
       mutate("/me/profile", profileSchema, {
         method: "PATCH",
-        body: Object.fromEntries(
-          fields.map((field) => [field.key, current[field.key]?.trim() || null]),
-        ),
+        body: {
+          ...Object.fromEntries(
+            fields.map((field) => [field.key, current[field.key]?.trim() || null]),
+          ),
+          ...phoneProof.body,
+        },
       }),
     onSuccess: () => {
       toast.success("Мэдээлэл хадгалагдлаа.");
@@ -821,6 +871,7 @@ function StaffProfileCard() {
               </Field>
             ))}
           </div>
+          {phoneProof.step}
 
           <div className="flex flex-wrap justify-end gap-2">
             {esis.data ? (
@@ -912,15 +963,7 @@ function ReadField({
  * says every other device has been signed out, which is a consequence somebody
  * needs to read *after* the change rather than a toast that slides away.
  */
-function PasswordSection({
-  identifier,
-  email,
-}: {
-  /** What `POST /auth/password-reset` is asked about — this account. */
-  identifier: string;
-  /** Where the link would land, or nothing. */
-  email?: string | null;
-}) {
+function PasswordSection() {
   const [open, setOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -940,28 +983,6 @@ function PasswordSection({
     },
   });
 
-  /**
-   * "Мартсан уу?" — the same reset `/forgot-password` requests, from here.
-   *
-   * ★ 2026-09-08, at the client's request: "одоогийн нууц үгээ мэдэхгүй ч
-   * байж болишд". `POST /auth/password` needs the current password, so
-   * somebody who has forgotten it could change nothing from this screen and
-   * had to sign out to reach the recovery they were already signed in beside.
-   *
-   * ★★ It sends this account's own identifier rather than asking for one.
-   * `/forgot-password` asks because it serves a stranger and must not confirm
-   * whether an identifier exists; here the caller is authenticated and it is
-   * their own account, so the neutral wording that page needs would be
-   * evasive rather than careful. It says what happened.
-   */
-  const forgot = useMutation({
-    mutationFn: () =>
-      mutate("/auth/password-reset", z.unknown(), {
-        method: "POST",
-        body: { identifier },
-      }),
-  });
-
   const errors = fieldErrors(change.error);
 
   function close() {
@@ -971,7 +992,6 @@ function PasswordSection({
     setConfirm("");
     setLocalError(null);
     change.reset();
-    forgot.reset();
   }
 
   return (
@@ -1082,37 +1102,22 @@ function PasswordSection({
             Under the field it rescues, because that is where somebody
             discovers they cannot fill it in.
           */}
-          {forgot.isSuccess ? (
-            <p role="status" className="text-body text-mint-ink">
-              Сэргээх холбоосыг {email} хаяг руу илгээлээ. И-мэйлээ шалгана уу.
-            </p>
-          ) : email ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="-ml-2 self-start"
-              disabled={forgot.isPending}
-              onClick={() => forgot.mutate()}
-            >
-              {forgot.isPending ? "Илгээж байна…" : "Одоогийн нууц үгээ мартсан уу?"}
-            </Button>
-          ) : (
-            /*
-              No e-mail, so no link can be sent. Saying so is the honest answer
-              and it is not an enumeration leak: this is the signed-in person's
-              own account, and they can act on it.
-            */
-            <p className="text-caption text-muted">
-              Нууц үгээ мартсан бол эрхлэгчид хандана уу — бүртгэлд и-мэйл бүртгээгүй тул сэргээх
-              холбоос илгээх боломжгүй.
-            </p>
-          )}
-          {forgot.isError ? (
-            <p role="alert" className="text-body text-danger">
-              {errorMessage(forgot.error)}
-            </p>
-          ) : null}
+          {/*
+            «Мартсан уу?» — `/forgot-password`, by phone, since 2026-10-04.
+
+            ★ It used to mail a reset link to the account's own e-mail
+            (client, 2026-09-08: "одоогийн нууц үгээ мэдэхгүй ч байж болишд").
+            E-mail is no longer used ("email-ийг ашиглахаа больсон, зөвхөн
+            дугаар"), and most accounts here have none, so the button was
+            usually replaced by "ask the director". The phone reset works for
+            anyone with a number on their account, signed in or not.
+          */}
+          <Link
+            href="/forgot-password"
+            className="-mt-1 inline-flex min-h-11 items-center self-start text-body font-semibold text-primary hover:underline"
+          >
+            Одоогийн нууц үгээ мартсан уу?
+          </Link>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Шинэ нууц үг" error={errors.newPassword} required>

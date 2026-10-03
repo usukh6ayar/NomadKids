@@ -28,6 +28,17 @@ export const passwordResetConfirmSchema = z.object({
 export type PasswordResetConfirmDto = z.infer<typeof passwordResetConfirmSchema>;
 
 /**
+ * Finishing a reset by phone: the verify.mn handle stands where the e-mailed
+ * token stands. A separate schema, and a separate route, for the reason the
+ * invitation has its own — one token kind per door.
+ */
+export const passwordResetPhoneConfirmSchema = z.object({
+  handle: z.string().min(20).max(200),
+  password: z.string().min(8, "Нууц үг дор хаяж 8 тэмдэгт байх ёстой").max(200),
+});
+export type PasswordResetPhoneConfirmDto = z.infer<typeof passwordResetPhoneConfirmSchema>;
+
+/**
  * Accepting an invitation.
  *
  * The same shape as a password reset, and deliberately not merged with it: the
@@ -87,6 +98,11 @@ export const invitationAcceptSchema = z.object({
    */
   lastName: z.string().trim().min(1, "Овгоо оруулна уу").max(100).optional(),
   email: z.string().trim().email("И-мэйл хаяг буруу байна").max(200).optional(),
+  /**
+   * The verify.mn handle proving `phone` — required with a phone once
+   * `VERIFY_MN_API_KEY` is set, ignored otherwise. `AuthService.acceptInvitation`.
+   */
+  phoneVerification: z.string().min(20).max(200).optional(),
 });
 export type InvitationAcceptDto = z.infer<typeof invitationAcceptSchema>;
 
