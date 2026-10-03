@@ -1,9 +1,19 @@
-import { ConflictException, Injectable, Logger, UnauthorizedException } from "@nestjs/common";
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { AuditRepository } from "../audit/audit.repository";
 import { AuthzRepository } from "../authz/authz.repository";
 import type { Actor } from "../authz/actor";
 import type { GuardianRelation } from "@kinder/contracts";
+import {
+  PhoneVerificationService,
+  type PhoneVerificationStart,
+} from "../phone-verification/phone-verification.service";
 import { AuthRepository } from "./auth.repository";
 import { PasswordService, validatePasswordStrength } from "./password.service";
 import { hashToken, TokenService } from "./token.service";
@@ -50,6 +60,7 @@ export class AuthService {
     private readonly passwords: PasswordService,
     private readonly tokens: TokenService,
     private readonly audit: AuditRepository,
+    private readonly phones: PhoneVerificationService,
   ) {}
 
   /**
@@ -289,12 +300,71 @@ export class AuthService {
     }
 
     await this.repo.consumeAuthToken(row.id);
-    await this.repo.setPassword(row.userId, await this.passwords.hash(newPassword));
+    await this.completeReset(row.userId, newPassword, ctx, "email");
+  }
+
+  /**
+   * Starts a password reset by phone — verify.mn, 2026-10-01.
+   *
+   * ★ The answer is the same whether or not an account holds the number: a
+   * verification is opened either way. Only once the person has proven they
+   * hold the phone does `check` say whether an account was found — at that
+   * point they are the one person entitled to know.
+   *
+   * Nothing is sent to the phone. The person sends an SMS from it, at their
+   * own cost, so this cannot be used to spam somebody else's number.
+   */
+  async startPasswordResetByPhone(
+    phone: string,
+    ctx: RequestContext,
+  ): Promise<PhoneVerificationStart> {
+    return this.phones.start("PASSWORD_RESET", phone, null, ctx.ipAddress);
+  }
+
+  /**
+   * Finishes a reset by phone: the verified handle stands where the e-mailed
+   * token stands in `confirmPasswordReset`.
+   *
+   * ★ No reset token is minted and handed to the browser. The handle is
+   * already a single-use bearer bound to one proven number, so the new
+   * password is set here, through the same `completeReset` the e-mail path
+   * uses — revoked sessions, cleared lockout, one audit row.
+   *
+   * ★★ The account is looked up by phone alone — never `findByIdentifier`,
+   * which also matches a *username* and would let a username made of eight
+   * digits answer for somebody else's number.
+   */
+  async confirmPasswordResetByPhone(handle: string, newPassword: string, ctx: RequestContext) {
+    const errors = validatePasswordStrength(newPassword);
+    if (errors.length > 0) throw new UnauthorizedException(errors.join(". "));
+
+    const { phone } = await this.phones.consume(handle, { purpose: "PASSWORD_RESET" });
+    const user = await this.repo.findActiveByPhone(phone);
+    if (!user) {
+      // Safe to say: the requester has just proven they hold this number.
+      throw new NotFoundException("Энэ утасны дугаартай бүртгэл олдсонгүй");
+    }
+
+    await this.repo.invalidateAuthTokens(user.id, "PASSWORD_RESET");
+    await this.completeReset(user.id, newPassword, ctx, "phone");
+  }
+
+  /**
+   * Everything a reset does once the requester is proven — shared by the
+   * e-mail and the phone paths so the two cannot drift.
+   */
+  private async completeReset(
+    userId: string,
+    newPassword: string,
+    ctx: RequestContext,
+    channel: "email" | "phone",
+  ) {
+    await this.repo.setPassword(userId, await this.passwords.hash(newPassword));
 
     // Changing a password must end every existing session. Otherwise a user
     // resetting because they believe they were compromised leaves the intruder
     // logged in.
-    await this.repo.revokeAllUserSessions(row.userId);
+    await this.repo.revokeAllUserSessions(userId);
 
     // Clear the lockout by every identifier this user can log in with.
     //
@@ -303,14 +373,38 @@ export class AuthService {
     // cannot be cleared by user id, and a user locked out of their account
     // would stay locked out after a successful reset, which reads as the reset
     // silently not working.
-    await this.clearLockoutForUser(row.userId);
+    await this.clearLockoutForUser(userId);
 
     await this.audit.append({
       action: "PASSWORD_RESET",
-      actorUserId: row.userId,
+      actorUserId: userId,
       ipAddress: ctx.ipAddress,
-      metadata: { stage: "completed" },
+      metadata: { stage: "completed", channel },
     });
+  }
+
+  /**
+   * Starts verifying the phone a guardian is about to give on their
+   * invitation.
+   *
+   * Bound to the invitation's account, so the proof cannot be carried to
+   * another invitation. The same "хүчингүй" message as `acceptInvitation` for a
+   * dead link, and the same contact check — run here too, because finding out
+   * the number is taken *after* paying for the SMS is the worse order.
+   */
+  async startInvitationPhoneVerification(
+    token: string,
+    phone: string,
+    ctx: RequestContext,
+  ): Promise<PhoneVerificationStart> {
+    const row = await this.repo.findAuthToken(hashToken(token), "INVITATION");
+    if (!row || row.usedAt || row.expiresAt.getTime() < Date.now()) {
+      throw new UnauthorizedException("Урилга хүчингүй эсвэл хугацаа нь дууссан байна");
+    }
+    if (await this.repo.findOtherUserByContact(row.userId, { phone })) {
+      throw new ConflictException("Энэ утасны дугаар өөр бүртгэлд ашиглагдсан байна");
+    }
+    return this.phones.start("INVITATION", phone, row.userId, ctx.ipAddress);
   }
 
   /**
@@ -375,6 +469,7 @@ export class AuthService {
       lastName?: string;
       email?: string;
     },
+    phoneVerification: string | undefined,
     ctx: RequestContext,
   ) {
     const errors = validatePasswordStrength(password);
@@ -413,6 +508,20 @@ export class AuthService {
           ? "Энэ и-мэйл хаяг өөр бүртгэлд ашиглагдсан байна"
           : "Энэ утасны дугаар өөр бүртгэлд ашиглагдсан байна",
       );
+    }
+
+    /*
+     * ★ The phone is proven before the link is spent — the same ordering as
+     * the contact check above, for the same reason: a refused proof must
+     * leave a working link behind it. Only when verify.mn is configured;
+     * otherwise the phone is taken on the guardian's word, as before.
+     */
+    if (profile.phone && this.phones.enabled) {
+      await this.phones.consume(phoneVerification, {
+        purpose: "INVITATION",
+        userId: row.userId,
+        phone: profile.phone,
+      });
     }
 
     await this.repo.consumeAuthToken(row.id);

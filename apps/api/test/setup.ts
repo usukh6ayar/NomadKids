@@ -118,6 +118,10 @@ for (const key of [
   "QPAY_CALLBACK_URL",
   "ESIS_TOKEN",
   "ESIS_BASE_URL",
+  // verify.mn: with a key, every invitation and profile test would need a
+  // proven phone and a live SMS gateway. `phone-verification.test.ts` sets it
+  // and stubs the client.
+  "VERIFY_MN_API_KEY",
 ]) {
   delete process.env[key];
 }

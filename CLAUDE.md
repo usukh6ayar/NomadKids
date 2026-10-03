@@ -532,6 +532,13 @@ membership derived per request (§1.3), 404 for a room you are not in (§1.7),
 (§3.4). **There is no AI in it**, which the client stated three times: it is a
 group message board, not an assistant.
 
+★★★ **Phone proof through verify.mn moved into scope on 2026-10-01**, at the
+user's request, for three flows: password reset by phone, a guardian's phone on
+an invitation, and changing one's own phone. It is **inbound** — the person
+texts a code _from_ their phone; nothing is sent to it — which is why it is not
+the "SMS мэдэгдэл" below, and that stays Phase IV. Off unless
+`VERIFY_MN_API_KEY` is set. `docs/SECURITY.md` §2.1.
+
 **Still out** — RFP §20 Phase IV, minus what `нэмэлт.md` and the 2026-08-29
 request pulled forward. Say which phase it belongs to and ask:
 

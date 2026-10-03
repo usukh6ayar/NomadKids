@@ -45,6 +45,20 @@ export class AuthRepository {
   }
 
   /**
+   * The active account holding this phone, matched on `phone` alone.
+   *
+   * For the password reset by phone: `findByIdentifier` would also match a
+   * username, and a username that happens to be eight digits must not answer
+   * for somebody else's proven number.
+   */
+  async findActiveByPhone(phone: string) {
+    return this.prisma.user.findFirst({
+      where: { phone, deletedAt: null, isActive: true },
+      select: { id: true },
+    });
+  }
+
+  /**
    * Does anybody **other than this user** already hold this e-mail or phone?
    *
    * ★ Not `findByIdentifier`. That one filters `isActive: true` and
