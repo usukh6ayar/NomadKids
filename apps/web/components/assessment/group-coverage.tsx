@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Eye, Lightbulb, MessageCircle, Palette, Target } from "lucide-react";
+import { Eye, MessageCircle, Palette, Search } from "lucide-react";
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import {
@@ -17,11 +17,9 @@ import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Card } from "@/components/ui/card";
-import { Disclosure } from "@/components/ui/disclosure";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { TONE_VAR, type Tone } from "@/components/ui/tone";
-import { ChildAvatar } from "@/components/media/media-image";
-import { shortName } from "@/lib/format";
+import { formatAge, fullName, shortName } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const ACADEMIC_MONTHS = [9, 10, 11, 12, 1, 2, 3, 4, 5] as const;
@@ -105,13 +103,6 @@ export function defaultWindow(): { from: string; to: string } {
 
 function normalized(value: string): string {
   return value.trim().toLocaleLowerCase("mn-MN");
-}
-
-function calendarMonthWindow(key: string): { from: string; to: string } {
-  const year = Number(key.slice(0, 4));
-  const month = Number(key.slice(5, 7));
-  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  return { from: `${key}-01`, to: `${key}-${String(lastDay).padStart(2, "0")}` };
 }
 
 /** Keep the source screen's fixed order while accepting legacy catalogue names. */
@@ -201,13 +192,6 @@ export function useCoverageRows({
   });
   const data = selectedStats.data;
 
-  /*
-    ★ "Гэр бүлээс ирсэн" is dropped from the type breakdown.
-
-    The panel asks whether the *teacher* is keeping the three kinds of note in
-    balance. A note a parent submitted is not the teacher's work and would make
-    a quiet month look covered.
-  */
   const teacherTypes = (data?.byType ?? []).filter(
     (row) => !normalized(row.name).includes("гэр бүлээс"),
   );
@@ -223,6 +207,7 @@ export function useCoverageRows({
       })
       .reduce((sum, row) => sum + row.count, 0),
   }));
+
   const domainRows = fixedRows(DEVELOPMENT_DOMAINS, data?.byDomain ?? [], DOMAIN_ALIASES);
   const activityRows = fixedRows(
     DAILY_ACTIVITIES,
@@ -238,7 +223,6 @@ export function useCoverageRows({
     data,
     months,
     selected,
-    currentMonth,
     setSelectedMonth,
     typeRows,
     domainRows,
@@ -262,34 +246,16 @@ export function GroupCoverage({
   groupId,
   startsOn,
   endsOn,
-  termId,
-  recordComposer,
 }: {
   groupId: string;
   startsOn?: string | null;
   endsOn?: string | null;
   /** The term the register behind this summary has open, carried into the links. */
   termId?: string;
-  /** Child picker and note shortcuts, placed inside the monthly goal card. */
-  recordComposer?: (context: {
-    from: string;
-    to: string;
-    notesPerChildTarget: number | null;
-  }) => ReactNode;
 }) {
   const { hasRole } = useSession();
   const rows = useCoverageRows({ groupId, startsOn, endsOn });
-  const {
-    stats,
-    selectedStats,
-    data,
-    months,
-    selected,
-    currentMonth,
-    setSelectedMonth,
-    typeRows,
-    domainRows,
-  } = rows;
+  const { stats, selectedStats, data, months, selected, setSelectedMonth } = rows;
 
   /*
     ★ The goal is the group's own — read off the group row, not a browser and
@@ -321,20 +287,6 @@ export function GroupCoverage({
     : completed;
   const goalCompleted = notesPerChildTarget ? childrenMeetingNoteTarget : completed;
   const percent = target ? Math.min(100, Math.round((goalCompleted / target) * 100)) : 0;
-  const targetMet = target !== null && goalCompleted >= target;
-  const totalNoteTarget = target && notesPerChildTarget ? target * notesPerChildTarget : null;
-  const totalNotePercent = totalNoteTarget
-    ? Math.min(100, Math.round(((data?.total ?? 0) / totalNoteTarget) * 100))
-    : null;
-  const selectedMonthLocative = selected.label.replace(" сар", " сард");
-  const selectedMonthGenitive = selected.label.replace(" сар", " сарын");
-  const shouldRemind =
-    target !== null &&
-    selected.key === currentMonth &&
-    new Date().getDate() >= 21 &&
-    !targetMet &&
-    (data?.enrolled ?? 0) > 0;
-
   const enrolled = data?.enrolled ?? 0;
   /*
     ★ Any member of staff on this screen may set it, not only an administrator.
@@ -346,329 +298,78 @@ export function GroupCoverage({
   */
   const canSetGoal = hasRole("TEACHER") || hasRole("ADMIN");
 
-  /*
-    ★ "Сайн байна" only when the recent months are genuinely even.
-
-    Every month that has passed and has notes in it, with none of them at zero
-    — a group that documented in September and stopped is not steady, and
-    congratulating it would be the caption that stops being read.
-  */
-  const elapsed = months.filter((month) => month.key <= currentMonth);
-  const steady = elapsed.length >= 2 && elapsed.every((month) => month.childrenCount > 0);
-
-  const domainTotal = domainRows.reduce((sum, row) => sum + row.count, 0);
-  const highestDomainCount = Math.max(...domainRows.map((row) => row.count), 0);
-  const leadingDomains = domainRows.filter(
-    (row) => highestDomainCount > 0 && row.count === highestDomainCount,
-  );
-  const emptyDomains = domainRows.filter((row) => row.count === 0);
-  const lowestPositiveCount = Math.min(
-    ...domainRows.filter((row) => row.count > 0).map((row) => row.count),
-    Number.POSITIVE_INFINITY,
-  );
-  const trailingDomains = domainRows.filter(
-    (row) => row.count > 0 && row.count === lowestPositiveCount,
-  );
-  const typeTotal = typeRows.reduce((sum, row) => sum + row.count, 0);
-  // Scaled to the busiest kind, for the same reason the percentage is a share
-  // of the records: these count notes and the goal counts children.
-  const typeScale = Math.max(...typeRows.map((row) => row.count), 1);
-  /*
-    ★ The term rides along, so Буцах returns to the one the teacher had open.
-
-    The breakdowns are taken over the school year rather than the term, so
-    `termId` changes nothing about what they show — but it is what the register
-    behind them is keyed on, and dropping it would land a returning teacher on
-    the default term with their selection lost.
-  */
-  const href = (kind: string) =>
-    `/groups/${groupId}/assessment/${kind}${termId ? `?termId=${termId}` : ""}`;
-
   return (
     <section aria-label="Үнэлгээний сарын тойм" className="flex flex-col gap-4">
-      {shouldRemind ? (
-        <div
-          role="status"
-          className="flex items-start gap-2.5 rounded-row border border-sun bg-sun/40 px-4 py-3 text-body text-ink"
-        >
-          <span aria-hidden="true" className="mt-0.5 size-2.5 shrink-0 rounded-pill bg-sun-ink" />
-          <p>
-            {selectedMonthLocative} зорилтоо биелүүлэхэд {Math.max(target - goalCompleted, 0)}
-            хүүхдийн тэмдэглэлийг гүйцээх үлдлээ.
-          </p>
-        </div>
-      ) : null}
-
-      {/*
-        ★ Энэ сарын зорилт — children documented this month, not notes written.
-
-        A goal counted in notes is met by writing twenty about one child; this
-        one is only met by reaching twenty different children, which is what
-        "хүүхэд бүрийн хөгжлийн явц" asks for.
-
-        Drawn only when the kindergarten has set one: a target nobody agreed to
-        would be a bar failing against a number the product invented — and the
-        number used to be exactly that, whatever each teacher had typed into
-        their own browser.
-      */}
-      {/*
-        ★★ No panel behind it — 2026-09-16, the client: "энэ сарын зорилт гэсэн
-        хэсгийн арын цагаан хайрцаг арилгаад тунгалаг болго."
-
-        The same move the observation hub's header made two days earlier, and
-        for the same reason: a tinted card drew a box around the month picker
-        and the goal figures, and its padding pushed the ring below it off the
-        first screen. The content is unchanged — it sits on the page's own
-        ground now, and the one rule left inside is the hairline that separates
-        the composer from the figures.
-      */}
-      <section aria-label="Энэ сарын зорилт" className="flex flex-col gap-4">
-        <div className="flex items-center gap-1.5 text-body font-semibold text-ink">
-          <Target size={16} aria-hidden="true" className="text-mint-ink" />
-          Энэ сарын зорилт
-        </div>
-
-        {/*
-          ★ Three across on a phone too — 2026-09-11, at the client's request.
-
-          The month and the two goal figures are one sentence: "in September,
-          five children, two notes each". Stacked they read as three unrelated
-          settings, and they cost three rows of a screen whose first job is the
-          figures underneath. The two goals are steppers rather than selects
-          precisely so they fit: a `− 5 +` is about 96px where a select
-          spelling out "5 хүүхэд" is not.
-        */}
-        <div className="grid grid-cols-3 gap-2">
-          <label className="flex min-w-0 flex-col gap-1">
-            <span className="text-caption font-medium text-muted">Сар</span>
-            <select
-              aria-label="Тайлант сар сонгох"
-              value={selected.key}
-              onChange={(event) => setSelectedMonth(event.target.value)}
-              className="h-10 w-full rounded-control border border-mint bg-surface px-3 text-body font-semibold text-ink"
+      <section aria-label="Энэ сарын зорилт">
+        <h2 className="sr-only">Энэ сарын зорилт</h2>
+        <Card pad="compact" className="flex items-center gap-2 overflow-x-auto">
+          <div className="flex shrink-0 items-center gap-2">
+            <div
+              role="img"
+              aria-label={`Сарын зорилгын биелэлт ${percent}%`}
+              className="grid size-14 shrink-0 place-items-center rounded-pill"
+              style={{
+                background: `conic-gradient(var(--color-primary) ${percent}%, var(--color-track) 0)`,
+              }}
             >
-              {months.map((month) => (
-                <option key={month.key} value={month.key}>
-                  {month.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          {canSetGoal ? (
-            <GoalDialog
-              groupId={groupId}
-              current={target}
-              currentNotesPerChild={notesPerChildTarget}
-              maxChildren={enrolled}
-            />
-          ) : null}
-        </div>
-
-        <p className="text-caption text-muted">
-          Сараа сонгоход доорх бүх үзүүлэлт тухайн сарын мэдээллээр шинэчлэгдэнэ.
-        </p>
-
-        {recordComposer ? (
-          <div className="border-t border-mint/70 pt-3">
-            {recordComposer({ ...calendarMonthWindow(selected.key), notesPerChildTarget })}
+              <div className="grid size-10 place-items-center rounded-pill bg-surface text-caption font-bold tabular-nums text-ink">
+                {percent}%
+              </div>
+            </div>
+            <div className="whitespace-nowrap text-left">
+              <strong className="block text-body font-bold tabular-nums text-ink">
+                {goalCompleted} / {target ?? enrolled}
+              </strong>
+              <span className="text-caption text-muted">хүүхэд</span>
+            </div>
           </div>
-        ) : null}
 
-        {/*
-          ★ Four figures across, the client's 2026-09-17 drawing.
+          <div className="flex min-w-max flex-1 items-center gap-2">
+            <label className="shrink-0">
+              <span className="sr-only">Тайлант сар</span>
+              <select
+                aria-label="Тайлант сар сонгох"
+                value={selected.key}
+                onChange={(event) => setSelectedMonth(event.target.value)}
+                className="h-10 min-w-[108px] rounded-control border border-border bg-surface px-2 text-caption font-semibold text-ink"
+              >
+                {months.map((month) => (
+                  <option key={month.key} value={month.key}>
+                    {month.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          They were three stacked progress rows under a single percentage —
-          the same facts, read one line at a time. A row of cards says the
-          month in one look: how many children are covered, how much was
-          written, whether the floor is met and who is still missing.
+            <div className="shrink-0 whitespace-nowrap rounded-control bg-sky px-3 py-2.5 text-caption text-sky-ink">
+              <strong>{target ?? enrolled} хүүхэд</strong>
+              <span className="mx-2 text-muted">·</span>
+              тус бүр <strong>{notesPerChildTarget ?? "—"} тэмдэглэл</strong>
+            </div>
 
-          No fill behind them: the section is transparent (see above) and each
-          card is the product's ordinary white one.
-        */}
-        <div className="grid grid-cols-2 gap-2.5 border-t border-border-soft pt-3 lg:grid-cols-4">
-          <GoalStat
-            label="Зорилго хангасан хүүхэд"
-            value={target ? `${childrenMeetingNoteTarget} / ${target}` : String(completed)}
-            percent={target ? percent : null}
-            tone="mint"
-            hint={
-              target
-                ? targetMet
-                  ? "Бүх хүүхэд шаардлагатай тэмдэглэлтэй"
-                  : `${Math.max(target - goalCompleted, 0)} хүүхэд дутуу`
-                : "Зорилтоо тохируулна уу"
-            }
-          />
-
-          <GoalStat
-            label="Нийт бичсэн тэмдэглэл"
-            value={String(data?.total ?? 0)}
-            percent={null}
-            tone="sky"
-            hint={
-              totalNoteTarget
-                ? (data?.total ?? 0) >= totalNoteTarget
-                  ? `Сарын зорилтоос +${(data?.total ?? 0) - totalNoteTarget}`
-                  : `Зорилтод ${totalNoteTarget - (data?.total ?? 0)} дутуу`
-                : `${selectedMonthGenitive} нийт тэмдэглэл`
-            }
-          />
-
-          <GoalStat
-            label="Шаардлагатай тэмдэглэл"
-            value={
-              totalNoteTarget
-                ? `${Math.min(data?.total ?? 0, totalNoteTarget)} / ${totalNoteTarget}`
-                : "—"
-            }
-            percent={totalNotePercent}
-            tone="sun"
-            hint={
-              totalNoteTarget
-                ? totalNotePercent === 100
-                  ? "Доод зорилго биелсэн"
-                  : "Доод зорилго хүрээгүй"
-                : "Хүүхэд бүрийн зорилтоо сонгоно уу"
-            }
-          />
-
-          <GoalStat
-            label="Одоогоор дутуу хүүхэд"
-            value={target ? `${Math.max(target - childrenMeetingNoteTarget, 0)} / ${target}` : "—"}
-            percent={
-              target
-                ? Math.round((Math.max(target - childrenMeetingNoteTarget, 0) / target) * 100)
-                : null
-            }
-            tone={target && childrenMeetingNoteTarget >= target ? "mint" : "peach"}
-            hint={
-              target && childrenMeetingNoteTarget >= target
-                ? "Бүх хүүхэд шаардлагатай тоонд хүрсэн"
-                : "Тэмдэглэл дутуу хүүхдүүд байна"
-            }
-          />
-        </div>
+            {canSetGoal ? (
+              <GoalDialog
+                groupId={groupId}
+                current={target}
+                currentNotesPerChild={notesPerChildTarget}
+                maxChildren={enrolled}
+              />
+            ) : null}
+          </div>
+        </Card>
       </section>
 
-      {/*
-        ★ Хүүхэд бүрийн хамрагдалт — the client's 2026-09-17 drawing.
-
-        The figures above say how many children are covered; this says **which**,
-        and that is the difference between a report and a worklist. A teacher
-        chasing the two children nobody has written about this month could not
-        get their names off this screen at all — they went to the picker, opened
-        each child and counted.
-
-        ★★ The names come from the roster, not from the stats.
-
-        `groupObservationStats` deliberately carries ids and counts and no
-        names ("sending who they are would put a roster into a payload that
-        reports on a group"), so the join happens here against the same
-        `/children` the pickers read — one bounded request the shell usually
-        has warm.
-      */}
       <ChildCoverage
         groupId={groupId}
         byChild={data?.byChild ?? []}
         notesPerChildTarget={notesPerChildTarget}
       />
 
-      <section aria-labelledby="record-kinds" className="flex flex-col gap-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <h3 id="record-kinds" className="text-body font-semibold text-ink">
-            Баримтжуулалтын хэлбэр
-          </h3>
-          <Link
-            href={href("types")}
-            className="text-caption font-medium text-primary hover:underline"
-          >
-            Дэлгэрэнгүй
-          </Link>
-        </div>
-
-        <Card pad="compact" className="flex flex-col gap-3">
-          {typeRows.map((row) => {
-            /*
-              ★ A share of the records written, never of the children goal —
-              corrected 2026-09-11 at the client's report that the figures
-              below the goal were wrong.
-
-              The goal counts **children**; these count **notes**. Dividing one
-              by the other produced "Ажиглалт: 7 тэмдэглэл, 70%" against a
-              target of ten children — a percentage of nothing. The question
-              this panel asks is whether the three kinds are in balance, and
-              the denominator for that is the notes themselves.
-            */
-            const rowPercent = typeTotal > 0 ? Math.round((row.count / typeTotal) * 100) : 0;
-            const barWidth = Math.min(100, (row.count / typeScale) * 100);
-
-            return (
-              <div
-                key={row.id}
-                className="grid grid-cols-[minmax(92px,1fr)_minmax(72px,1.4fr)_64px] items-center gap-2.5"
-              >
-                <span className="flex min-w-0 items-center gap-1.5 text-caption font-medium text-ink">
-                  <span aria-hidden="true" className="shrink-0 text-muted">
-                    {observationTypeIcon(row.name)}
-                  </span>
-                  <span className="truncate">{row.name}</span>
-                </span>
-                <span
-                  role="img"
-                  aria-label={`${row.name}: ${row.count} тэмдэглэл, ${rowPercent}%`}
-                  className="h-2.5 overflow-hidden rounded-pill bg-track"
-                >
-                  <span
-                    className="block h-full rounded-pill bg-sky-ink transition-[width]"
-                    style={{ width: `${barWidth}%` }}
-                  />
-                </span>
-                <span className="text-right text-caption tabular-nums text-muted">
-                  <strong className="text-ink">{row.count}</strong> · {rowPercent}%
-                </span>
-              </div>
-            );
-          })}
-        </Card>
-
-        <p className="text-caption text-muted">
-          {target
-            ? `Зорилт ${target} хүүхэдтэй харьцуулсан хувь`
-            : `Нийт ${typeRows.reduce((sum, row) => sum + row.count, 0)} баримт`}
-        </p>
-      </section>
-
-      <MonthBalance months={months} href={href("months")} />
-
-      {steady ? (
-        <Card pad="roomy" tone="mint" className="flex items-start gap-2.5">
-          <CheckCircle2 size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-mint-ink" />
-          <p className="text-body leading-snug text-ink">
-            <strong className="block">Сайн байна</strong>
-            Сүүлийн саруудад хүүхдүүдийг тогтмол хамруулж баримтжуулсан байна.
-          </p>
-        </Card>
-      ) : null}
-
-      {domainTotal > 0 && leadingDomains.length > 0 ? (
-        <Card pad="roomy" tone="sun" className="flex items-start gap-2.5">
-          <Lightbulb size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-sun-ink" />
-          <p className="text-body leading-snug text-ink">
-            <strong className="block">Чиглэлийн зөвлөмж</strong>
-            Энэ сард {leadingDomains.map((row) => row.name).join(", ")} чиглэлд хамгийн олон буюу{" "}
-            {highestDomainCount} тэмдэглэл ({Math.round((highestDomainCount / domainTotal) * 100)}%)
-            бүртгэгдсэн.{" "}
-            {emptyDomains.length > 0
-              ? `${emptyDomains.length} чиглэлд тэмдэглэл ороогүй байна. Дараагийн тэмдэглэлээ ${emptyDomains
-                  .slice(0, 2)
-                  .map((row) => row.name)
-                  .join(", ")} чиглэлээс эхлүүлбэл хамралт жигдэрнэ.`
-              : trailingDomains.length > 0 && trailingDomains[0]!.count < highestDomainCount
-                ? `${trailingDomains.map((row) => row.name).join(", ")} чиглэл хамгийн бага (${trailingDomains[0]!.count}) байгаа тул дараагийн тэмдэглэлдээ түлхүү сонгоорой.`
-                : "Чиглэлүүд жигд хамрагдсан байна."}
-          </p>
-        </Card>
-      ) : null}
+      {/*
+        ★ 2026-10-01, at the client's instruction: the monthly chart stays on
+        the summary, with no Дэлгэрэнгүй link.
+      */}
+      <MonthlyCoverage months={months} />
     </section>
   );
 }
@@ -696,6 +397,8 @@ function ChildCoverage({
   byChild: { childId: string; count: number }[];
   notesPerChildTarget: number | null;
 }) {
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "incomplete" | "complete">("all");
   const roster = useQuery({
     queryKey: qk.children({ groupId, page: 1, pageSize: MAX_PAGE_SIZE }),
     queryFn: () =>
@@ -715,7 +418,7 @@ function ChildCoverage({
   const counts = new Map(byChild.map((row) => [row.childId, row.count]));
   const target = notesPerChildTarget ?? 0;
 
-  const rows = (roster.data?.items ?? [])
+  const allRows = (roster.data?.items ?? [])
     .map((child) => {
       const count = counts.get(child.id) ?? 0;
       return {
@@ -729,78 +432,109 @@ function ChildCoverage({
     /* Furthest behind first; ties keep the roster's own order. */
     .sort((x, y) => x.percent - y.percent || x.count - y.count);
 
-  if (rows.length === 0) return null;
+  if (allRows.length === 0) return null;
 
-  const met = rows.filter((row) => row.met).length;
+  const normalizedQuery = query.trim().toLocaleLowerCase("mn-MN");
+  const rows = allRows.filter(({ child, met: isMet }) => {
+    const matchesName =
+      !normalizedQuery || fullName(child).toLocaleLowerCase("mn-MN").includes(normalizedQuery);
+    const matchesFilter = filter === "all" || (filter === "complete" ? isMet : !isMet);
+    return matchesName && matchesFilter;
+  });
 
   return (
-    /*
-      ★ Folded, and three across when it opens — 2026-09-17, the client: "50
-      хүүхэдтэй анги байх тул дэлгэрэнгүй харагддаг болго ... 3 бүлгээр
-      харуулж болох билүү".
-
-      Fifty rows at 56px is three screens of scrolling between the month's
-      figures and the breakdowns under them, on a list most readings do not
-      need opened at all. Shut, it is one row that says how many are covered;
-      open, it is three columns of compact cards, so fifty children are about
-      a screen.
-
-      ★★ No "Биелсэн / Дутуу" word on each card — also theirs. The bar and the
-      count say it, the words repeated fifty times were most of the card's
-      width, and the ordering already puts whoever is behind at the top.
-    */
-    <Disclosure title="Хүүхэд бүрийн хамрагдалт" hint={`${met} / ${rows.length} хүүхэд`}>
-      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {rows.map(({ child, count, met: isMet, percent }) => (
-          <li key={child.id}>
-            {/*
-              ★ The card is the link, and it opens the child's hub — 2026-09-17,
-              the client: "тухайн хүүхэд дээр дарахаар ... хүүхдийн хамрагдалт
-              бүхлээрээ харагддаг болго."
-
-              `?type=daily` rather than the bare route: the bare one is the
-              child's whole record as a family sees it, and the hub is the
-              screen with the strand chart, the search and the three kind
-              buttons on it — which is where a teacher who has just found a
-              name goes next.
-            */}
-            <Link
-              href={`/children/${child.id}/observations?type=daily`}
-              className="flex items-center gap-2.5 rounded-card border border-border-soft px-2.5 py-2 transition-colors hover:border-primary hover:bg-canvas"
+    <Card pad="none" className="overflow-hidden">
+      <div className="flex flex-col gap-3 border-b border-border px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-title font-semibold text-ink">
+          Хүүхдийн хамрагдалт ({allRows.length})
+        </h2>
+        <div className="grid grid-cols-3 gap-1 rounded-control bg-canvas p-1">
+          {(
+            [
+              ["all", "Бүгд"],
+              ["incomplete", "Дутуу"],
+              ["complete", "Биелсэн"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setFilter(value)}
+              className={cn(
+                "min-h-8 rounded-control px-3 text-caption font-semibold",
+                filter === value ? "bg-surface text-primary shadow-sm" : "text-muted",
+              )}
             >
-              <ChildAvatar child={child} size={32} />
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
 
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-caption font-semibold leading-snug text-ink">
-                  {shortName(child)}
-                </span>
-                <span
-                  aria-hidden="true"
-                  className="mt-1 block h-1 overflow-hidden rounded-pill bg-track"
+      <div className="relative border-b border-border-soft px-4 py-3">
+        <Search
+          size={18}
+          aria-hidden="true"
+          className="pointer-events-none absolute left-7 top-1/2 -translate-y-1/2 text-muted"
+        />
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Хүүхдийн нэрээр хайх…"
+          aria-label="Хүүхдийн нэрээр хайх"
+          className="h-10 w-full rounded-control border border-border-soft bg-canvas pl-11 pr-3 text-body text-ink outline-none focus:border-primary focus:bg-surface"
+        />
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[560px] border-collapse text-body">
+          <caption className="sr-only">Хүүхдийн хамрагдалт</caption>
+          <thead className="bg-sunken">
+            <tr>
+              <th className="w-14 px-4 py-3 text-left text-caption font-semibold text-muted">№</th>
+              <th className="px-4 py-3 text-left text-caption font-semibold text-muted">
+                Овог, нэр
+              </th>
+              <th className="px-4 py-3 text-left text-caption font-semibold text-muted">Нас</th>
+              <th className="px-4 py-3 text-right text-caption font-semibold text-muted">
+                Тэмдэглэл
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ child, count, met: isMet }, index) => (
+              <tr key={child.id} className="border-t border-border-soft hover:bg-canvas">
+                <td className="px-4 py-3 tabular-nums text-muted">{index + 1}</td>
+                <td className="px-4 py-3">
+                  <Link
+                    href={`/children/${child.id}/observations?type=daily`}
+                    className="flex items-center gap-2.5 font-semibold text-ink hover:text-primary"
+                  >
+                    {shortName(child)}
+                  </Link>
+                </td>
+                <td className="whitespace-nowrap px-4 py-3 text-muted">
+                  {formatAge(child.dateOfBirth)}
+                </td>
+                <td
+                  className={cn(
+                    "whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums",
+                    isMet ? "text-mint-ink" : count > 0 ? "text-sun-ink" : "text-muted",
+                  )}
                 >
-                  <span
-                    className={cn(
-                      "block h-full rounded-pill",
-                      isMet ? "bg-mint-ink" : "bg-sun-ink",
-                    )}
-                    style={{ width: `${percent}%` }}
-                  />
-                </span>
-              </span>
+                  {target > 0 ? `${count}/${target}` : count}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-              <span
-                className={cn(
-                  "shrink-0 text-caption font-semibold tabular-nums",
-                  isMet ? "text-mint-ink" : count > 0 ? "text-sun-ink" : "text-muted",
-                )}
-              >
-                {target > 0 ? `${count}/${target}` : count}
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </Disclosure>
+      {rows.length === 0 ? (
+        <p className="px-4 py-8 text-center text-body text-muted">Тохирох хүүхэд олдсонгүй.</p>
+      ) : null}
+    </Card>
   );
 }
 
@@ -819,49 +553,6 @@ export function observationTypeIcon(name: string): ReactNode {
  * top of a screen whose job is the table below it, and the colour carries
  * nothing the bar does not.
  */
-function GoalStat({
-  label,
-  value,
-  percent,
-  tone,
-  hint,
-}: {
-  label: string;
-  value: string;
-  /** Null draws no bar — a figure with no denominator has no share to show. */
-  percent: number | null;
-  tone: Tone;
-  hint: string;
-}) {
-  return (
-    <Card pad="compact" className="flex flex-col gap-1.5">
-      <span className="text-caption font-medium leading-snug text-muted">{label}</span>
-
-      <span className="flex items-baseline gap-1.5">
-        <span className="text-title font-bold tabular-nums leading-none text-ink">{value}</span>
-        {percent !== null ? (
-          <span className="text-caption tabular-nums text-muted">{percent}%</span>
-        ) : null}
-      </span>
-
-      {percent !== null ? (
-        <span
-          role="img"
-          aria-label={`${label}: ${percent}%`}
-          className="h-1.5 overflow-hidden rounded-pill bg-track"
-        >
-          <span
-            className="block h-full rounded-pill transition-[width]"
-            style={{ width: `${Math.min(100, percent)}%`, background: TONE_VAR[tone] }}
-          />
-        </span>
-      ) : null}
-
-      <span className="text-caption leading-snug text-muted">{hint}</span>
-    </Card>
-  );
-}
-
 export function CoveragePanel({
   title,
   rows,
@@ -944,80 +635,6 @@ export function MonthlyCoverage({ months }: { months: MonthPoint[] }) {
       <p className="mt-4 text-caption text-muted">
         Сар бүр хичнээн хүүхдэд тэмдэглэл хөтөлснийг харуулна (9-5 сар).
       </p>
-    </Card>
-  );
-}
-
-/**
- * 9–5 сарын тэнцвэртэй байдал — children reached against notes written.
- *
- * ★ Two series, and they are not the same question.
- *
- * The columns are how many *children* were documented; the dots are how many
- * notes were written. A month where the two diverge is one where a lot was
- * written about a few — which is exactly what a balance chart is for and what
- * either series alone cannot show.
- *
- * ★★ Columns and a line rather than two sets of columns: the eye reads a line
- * as a trend and a column as a quantity, which is what each of these is.
- */
-function MonthBalance({ months, href }: { months: MonthPoint[]; href: string }) {
-  const peakChildren = Math.max(...months.map((month) => month.childrenCount), 1);
-  const peakNotes = Math.max(...months.map((month) => month.count), 1);
-
-  return (
-    <Card pad="roomy" className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-body font-semibold text-ink">9–5 сарын тэнцвэртэй байдал</h3>
-        <Link href={href} className="text-caption font-medium text-primary hover:underline">
-          Дэлгэрэнгүй
-        </Link>
-      </div>
-
-      <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-caption text-muted">
-        <span className="flex items-center gap-1.5">
-          <span aria-hidden="true" className="size-2.5 rounded-pill bg-primary" />
-          Хамрагдсан хүүхэд
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span aria-hidden="true" className="size-2.5 rounded-pill bg-mint-ink" />
-          Баримтын тоо
-        </span>
-      </p>
-
-      <ul className="grid h-[110px] grid-cols-9 items-end gap-1 border-b border-border-soft">
-        {months.map((month) => (
-          <li
-            key={month.key}
-            aria-label={`${month.label}: ${month.childrenCount} хүүхэд, ${month.count} баримт`}
-            className="relative flex h-full min-w-0 flex-col items-center justify-end"
-          >
-            <span
-              aria-hidden="true"
-              className="w-full max-w-4 rounded-t-control bg-primary"
-              style={{ height: Math.max(2, (month.childrenCount / peakChildren) * 78) }}
-            />
-            {/*
-              The note count as a dot at its own height — a line drawn in SVG
-              would need a viewBox and a scale for two numbers a dot already
-              places.
-            */}
-            <span
-              aria-hidden="true"
-              className="absolute left-1/2 size-2.5 -translate-x-1/2 rounded-pill border-2 border-surface bg-mint-ink"
-              style={{ bottom: Math.max(2, (month.count / peakNotes) * 78) + 14 }}
-            />
-          </li>
-        ))}
-      </ul>
-
-      <ul aria-hidden="true" className="grid grid-cols-9 gap-1 text-center">
-        {months.map((month) => (
-          <li key={month.key} className="text-caption tabular-nums text-muted">
-            {Number(month.key.slice(5))}
-          </li>
-        ))}
-      </ul>
     </Card>
   );
 }

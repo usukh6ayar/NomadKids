@@ -42,6 +42,7 @@ import { RowMenu } from "@/components/ui/menu";
 import { Pagination } from "@/components/ui/pagination";
 import { SearchField } from "@/components/ui/search-field";
 import { PageHeader } from "@/components/shell/app-shell";
+import { EsisWriteQueue } from "@/components/esis/esis-write-queue";
 import { RequireRole } from "@/components/shell/require-role";
 
 const groupsSchema = paginated(groupListItemSchema);
@@ -418,6 +419,26 @@ function AdminGroups() {
             </Select>
           </label>
         </div>
+      ) : null}
+
+      {/*
+        ★ ЭСИС рүү илгээлт — moved here from «ЭСИС холболт» on 2026-10-01, at
+        the client's request. The writes are prepared on this screen (a group's
+        teachers, «ЭСИС-д бүртгүүлэх»), so the queue that shows what was sent
+        and what ESIS answered sits under the groups it is about.
+      */}
+      {primaryKindergartenId ? (
+        <section aria-labelledby="esis-writes-heading" className="mt-4 flex flex-col gap-2">
+          <div>
+            <h2 id="esis-writes-heading" className="text-title font-semibold text-ink">
+              ЭСИС рүү илгээлт
+            </h2>
+            <p className="text-caption text-muted">
+              Бүлгийн дэлгэцээс бэлтгэсэн илгээлтүүд — ЭСИС-ийн хариуг бүтнээр нь харуулна.
+            </p>
+          </div>
+          <EsisWriteQueue kindergartenId={primaryKindergartenId} />
+        </section>
       ) : null}
 
       {dialog?.kind === "create" && primaryKindergartenId ? (

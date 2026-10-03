@@ -35,7 +35,6 @@ import {
   Pencil,
   SlidersHorizontal,
   Trash2,
-  Megaphone,
 } from "lucide-react";
 import { Art } from "@/components/ui/art";
 import { qk } from "@/lib/api/keys";
@@ -285,33 +284,12 @@ export default function NotificationsPage() {
 
   return (
     <div className="flex flex-col gap-5 pb-8 lg:gap-6">
-      {/* The active heading follows the guardian's news/survey tab. */}
-      <div className="flex max-w-[920px] items-start gap-3 border-b border-border pb-5 sm:items-center sm:gap-4">
-        <span
-          className="grid size-12 shrink-0 place-items-center rounded-control bg-primary-soft text-primary shadow-[0_8px_18px_rgba(29,78,216,.08)] sm:size-14"
-          aria-hidden="true"
-        >
-          <Megaphone size={26} strokeWidth={1.8} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-caption font-bold uppercase tracking-[0.12em] text-primary">
-            Харилцаа холбоо
-          </p>
-          <h1 className="mt-0.5 text-heading font-bold leading-heading text-ink sm:text-display">
-            {tab === "news" ? "Мэдээ" : "Судалгаа"}
-          </h1>
-          <p className="mt-1 text-caption leading-5 text-muted sm:text-body">
-            {tab === "news"
-              ? "Цэцэрлэгийн зарлал, мэдээллийг нэг дороос."
-              : "Хүүхэдтэй холбоотой идэвхтэй судалгаанууд."}
-          </p>
-        </div>
-        {tab === "news" && data ? (
-          <span className="hidden shrink-0 rounded-pill bg-white px-3 py-1.5 text-caption font-semibold text-muted shadow-sm sm:inline-flex">
-            {data.pages[0]?.total ?? 0} мэдээ
-          </span>
-        ) : null}
-      </div>
+      {/*
+        ★ No drawn header — 2026-10-01, at the client's instruction: the icon,
+        "Харилцаа холбоо", the title and its description are gone. The title
+        stays for screen readers, so the page still has its heading.
+      */}
+      <h1 className="sr-only">{tab === "news" ? "Мэдээ" : "Судалгаа"}</h1>
 
       <section
         aria-label={tab === "news" ? "Мэдээний удирдлага" : "Судалгааны удирдлага"}

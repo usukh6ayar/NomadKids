@@ -1,7 +1,13 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
+import {
+  renderWithProviders,
+  selectOption,
+  sessionFor,
+  setSearchParams,
+  stubApi,
+} from "./support/render";
 import DailyAttendancePage from "@/app/(app)/attendance/daily/page";
 
 /**
@@ -78,6 +84,37 @@ function stub(items: ReturnType<typeof row>[]) {
 beforeEach(() => {
   vi.clearAllMocks();
   setSearchParams("");
+});
+
+/*
+  ★ 2026-10-01, the client's order and names: Суралцагчаар · Өдрөөр · Сараар ·
+  Жилээр. "Өдрөөр" still opens first, at their choice.
+*/
+describe("the four views", () => {
+  it("names them in the client's order and opens on Өдрөөр", async () => {
+    stub([row(25, "Дэлбээ бүлэг", true)]);
+    renderWithProviders(<DailyAttendancePage />);
+
+    const tabs = await screen.findAllByRole("tab");
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      "Суралцагчаар",
+      "Өдрөөр",
+      "Сараар",
+      "Жилээр",
+    ]);
+    expect(screen.getByRole("tab", { name: "Өдрөөр" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("opens the view a link names with ?view=", async () => {
+    setSearchParams("view=breakdown");
+    stub([row(25, "Дэлбээ бүлэг", true)]);
+    renderWithProviders(<DailyAttendancePage />);
+
+    expect(await screen.findByRole("tab", { name: "Сараар" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
 });
 
 describe("the daily attendance register", () => {
@@ -460,5 +497,97 @@ describe("Жилээр", () => {
       const to = Date.parse(`${params.get("to")}T00:00:00Z`);
       expect(Math.floor((to - from) / 86_400_000) + 1).toBeLessThanOrEqual(92);
     }
+  });
+});
+
+/*
+  ★ «Бүлгээр» — 2026-10-01, the client's reference report: a group per row, the
+  children present each day, the day's total at the foot; a month filter.
+*/
+describe("Жилээр — Бүлгээр", () => {
+  const YEAR = "77777777-7777-4777-8777-777777777777";
+
+  function stubGroups() {
+    return stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: `/kindergartens/${KG}/attendance/daily`,
+        body: {
+          kindergartenName: "Цэцэрлэг",
+          from: "2026-09-01",
+          to: "2026-09-30",
+          items: [
+            row(1, "Дэлбээ"),
+            // A group-day nobody recorded: "—", not 0.
+            { ...row(2, "Дэлбээ"), recorded: 0, present: 0, complete: false },
+          ],
+          totals: {
+            expected: 0,
+            unrecorded: 0,
+            present: 0,
+            excused: 0,
+            sick: 0,
+            absent: 0,
+            complete: 0,
+            sent: 0,
+            days: 0,
+            requests: { pending: 0, approved: 0, rejected: 0 },
+          },
+        },
+      },
+      {
+        path: `/kindergartens/${KG}/school-years`,
+        body: [
+          {
+            id: YEAR,
+            name: "2026-2027",
+            isCurrent: true,
+            startsOn: "2026-09-01",
+            endsOn: "2027-06-30",
+          },
+        ],
+      },
+      { path: "/groups", body: { items: [], page: 1, pageSize: 100, total: 0, totalPages: 0 } },
+    ]);
+  }
+
+  it("counts the children present per group per day, with the day's total", async () => {
+    const user = userEvent.setup();
+    stubGroups();
+    renderWithProviders(<DailyAttendancePage />);
+
+    await user.click(await screen.findByRole("tab", { name: "Жилээр" }));
+    await user.click(await screen.findByRole("button", { name: "Бүлгээр" }));
+
+    const table = await screen.findByRole("table", {
+      name: "Бүлгийн хичээлийн жилийн ирцийн тайлан",
+    });
+    const groupRow = within(table).getByRole("row", { name: /Дэлбээ/ });
+    // 26 present on the 1st; the 2nd was not recorded.
+    expect(within(groupRow).getAllByText("26").length).toBeGreaterThan(0);
+    expect(within(groupRow).getAllByText("—").length).toBeGreaterThan(0);
+    expect(within(table).getByText("Нийт")).toBeInTheDocument();
+    expect(within(table).getByText("6-р сар")).toBeInTheDocument();
+  });
+
+  it("narrows the year to one month", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubGroups();
+    renderWithProviders(<DailyAttendancePage />);
+
+    await user.click(await screen.findByRole("tab", { name: "Жилээр" }));
+    await user.click(await screen.findByRole("button", { name: "Бүлгээр" }));
+    await screen.findByRole("table", { name: "Бүлгийн хичээлийн жилийн ирцийн тайлан" });
+    await selectOption(user, "Сар", "9-р сар");
+
+    const table = await screen.findByRole("table", {
+      name: "Бүлгийн хичээлийн жилийн ирцийн тайлан",
+    });
+    await waitFor(() => expect(within(table).queryByText("10-р сар")).toBeNull());
+    expect(within(table).getByText("9-р сар")).toBeInTheDocument();
+    const last = calls.filter((call) => call.url.includes("/attendance/daily?")).at(-1)!;
+    const params = new URLSearchParams(last.url.split("?")[1]);
+    expect(params.get("from")).toBe("2026-09-01");
+    expect(params.get("to")).toBe("2026-09-30");
   });
 });

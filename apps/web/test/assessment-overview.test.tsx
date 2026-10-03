@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  ROUTER,
   renderWithProviders,
   sessionFor,
   setParams,
@@ -140,15 +141,18 @@ describe("the assessment summary", () => {
    * is whether the three kinds are in balance, and the denominator for that is
    * the notes themselves.
    */
-  it("shows each record kind as a share of the records written", async () => {
+  /*
+    ★ 2026-10-01, the client's design: the goal and the children's coverage
+    are the whole summary. The advice card and the 9–5 balance are gone.
+  */
+  it("draws only the goal and the children's coverage", async () => {
     stubStats();
     summary();
 
-    expect(await screen.findByText("Баримтжуулалтын хэлбэр")).toBeInTheDocument();
-    // 7 + 0 + 5 = 12 notes, so seven of them is 58%.
-    expect(screen.getByRole("img", { name: "Ажиглалт: 7 тэмдэглэл, 58%" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Ярилцлага: 0 тэмдэглэл, 0%" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Бүтээл: 5 тэмдэглэл, 42%" })).toBeInTheDocument();
+    await screen.findByText("Энэ сарын зорилт");
+    expect(screen.queryByText("Чиглэлийн зөвлөмж")).not.toBeInTheDocument();
+    expect(screen.queryByText("9–5 сарын тэнцвэртэй байдал")).not.toBeInTheDocument();
+    expect(screen.queryByText("Баримтжуулалтын хэлбэр")).not.toBeInTheDocument();
   });
 
   /**
@@ -157,13 +161,12 @@ describe("the assessment summary", () => {
    * Asserted with a goal set, because that is the state the client reported:
    * the same shares, whatever the target is.
    */
-  it("keeps those shares the same whatever the goal is", async () => {
+  it("does not restore the removed breakdown when a goal is set", async () => {
     stubStats(10);
     summary();
 
-    expect(
-      await screen.findByRole("img", { name: "Ажиглалт: 7 тэмдэглэл, 58%" }),
-    ).toBeInTheDocument();
+    await screen.findByRole("img", { name: /Сарын зорилгын биелэлт/ });
+    expect(screen.queryByText("Баримтжуулалтын хэлбэр")).not.toBeInTheDocument();
   });
 
   /**
@@ -180,11 +183,9 @@ describe("the assessment summary", () => {
     expect(screen.queryByText("Үйл ажиллагааны төрлийн хамралт")).not.toBeInTheDocument();
     expect(screen.queryByText("Өдөр тус бүрийн тэмдэглэлийн тоо")).not.toBeInTheDocument();
 
-    const links = screen.getAllByRole("link", { name: "Дэлгэрэнгүй" });
-    expect(links.map((link) => link.getAttribute("href"))).toEqual([
-      `/groups/${GROUP_ID}/assessment/types?termId=${TERM_ID}`,
-      `/groups/${GROUP_ID}/assessment/months?termId=${TERM_ID}`,
-    ]);
+    // ★ 2026-10-01: the monthly chart stays, with no Дэлгэрэнгүй link.
+    expect(screen.getByText("Сарын тэмдэглэлийн хамралт")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Дэлгэрэнгүй/ })).not.toBeInTheDocument();
   });
 
   /**
@@ -203,15 +204,15 @@ describe("the assessment summary", () => {
     summary();
 
     expect(await screen.findByText("Энэ сарын зорилт")).toBeInTheDocument();
-    expect(screen.getByText("Зорилго хангасан хүүхэд")).toBeInTheDocument();
     expect(screen.getByText("5 / 2")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Сарын зорилгын биелэлт 100%" })).toBeInTheDocument();
   });
 
   it("says so plainly when no goal is set", async () => {
     stubStats(null);
     summary();
 
-    expect(await screen.findByText(/Зорилтоо тохируулна уу/)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Сарын зорилго засах" })).toBeInTheDocument();
   });
 
   /**
@@ -227,8 +228,11 @@ describe("the assessment summary", () => {
     stubStats();
     summary();
 
-    expect(await screen.findByLabelText("Зорилтот хүүхдийн тоо")).toBeInTheDocument();
-    expect(screen.getByLabelText("Нэг хүүхдэд бичих тэмдэглэлийн тоо")).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Сарын зорилго засах" }));
+    const dialog = screen.getByRole("dialog", { name: "Зорилго засах" });
+    expect(within(dialog).getByLabelText("Зорилтот хүүхдийн тоо")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Нэг хүүхдэд бичих тэмдэглэлийн тоо")).toBeInTheDocument();
   });
 
   /**
@@ -243,12 +247,14 @@ describe("the assessment summary", () => {
    * ★★ Committed on a pause. Walking from 2 to 6 is four presses, and four
    * PUTs would be three writes nobody asked for.
    */
-  it("writes the goal to the group with a stepper, once the presses stop", async () => {
+  it("writes both goal values after the teacher confirms", async () => {
     const user = userEvent.setup();
     const api = stubStats(5);
     summary();
 
-    await user.click(await screen.findByRole("button", { name: /Зорилтот хүүхдийн тоо — нэмэх/ }));
+    await user.click(await screen.findByRole("button", { name: "Сарын зорилго засах" }));
+    await user.click(screen.getByRole("button", { name: /Зорилтот хүүхдийн тоо — нэмэх/ }));
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
 
     await waitFor(
       () =>
@@ -258,7 +264,7 @@ describe("the assessment summary", () => {
               call.method === "PUT" &&
               call.url === `/groups/${GROUP_ID}/assessments/monthly-note-goal`,
           )?.body,
-        ).toEqual({ monthlyNoteGoal: 6 }),
+        ).toEqual({ monthlyNoteGoal: 6, monthlyNotesPerChildGoal: 1 }),
       { timeout: 2000 },
     );
   });
@@ -268,17 +274,12 @@ describe("the assessment summary", () => {
     const api = stubStats(5, ["TEACHER"], 2);
     summary();
 
-    /*
-      The per-child target drives two of the four figures: how many children
-      reached it, and how many notes the month therefore needs (5 × 2 = 10).
-    */
-    expect(await screen.findByText("Шаардлагатай тэмдэглэл")).toBeInTheDocument();
-    expect(screen.getByText(/\/ 10$/)).toBeInTheDocument();
-    expect(screen.getByText("Одоогоор дутуу хүүхэд")).toBeInTheDocument();
-
+    expect(await screen.findByText(/тус бүр/)).toHaveTextContent("тус бүр 2 тэмдэглэл");
+    await user.click(screen.getByRole("button", { name: "Сарын зорилго засах" }));
     await user.click(
       screen.getByRole("button", { name: /Нэг хүүхдэд бичих тэмдэглэлийн тоо — нэмэх/ }),
     );
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
 
     await waitFor(
       () =>
@@ -288,7 +289,7 @@ describe("the assessment summary", () => {
               call.method === "PUT" &&
               call.url === `/groups/${GROUP_ID}/assessments/monthly-note-goal`,
           )?.body,
-        ).toEqual({ monthlyNotesPerChildGoal: 3 }),
+        ).toEqual({ monthlyNoteGoal: 5, monthlyNotesPerChildGoal: 3 }),
       { timeout: 2000 },
     );
   });
@@ -308,18 +309,6 @@ describe("the assessment summary", () => {
     // October has one child documented and every later month none, so the
     // months are not steady and the green card stays away.
     expect(screen.queryByText("Сайн байна")).not.toBeInTheDocument();
-  });
-
-  it("names the strands that are running ahead", async () => {
-    stubStats();
-    summary();
-
-    // Scoped to the advice card: the strand also names a bar above it, which
-    // is the point — the sentence points at a row the reader can go and see.
-    const advice = (await screen.findByText("Чиглэлийн зөвлөмж")).closest("p") as HTMLElement;
-    expect(within(advice).getByText(/Нийгэм-сэтгэл хөдлөл/)).toBeInTheDocument();
-    expect(within(advice).getByText(/10 тэмдэглэл \(67%\)/)).toBeInTheDocument();
-    expect(within(advice).getByText(/5 чиглэлд тэмдэглэл ороогүй/)).toBeInTheDocument();
   });
 });
 
@@ -508,35 +497,16 @@ describe("the new-record strip", () => {
    * than on the form, because a teacher pressing Ажиглалт is as often coming
    * to look as to write.
    */
-  it("offers the three doors and asks for a child only after one is pressed", async () => {
+  it("opens the child roster directly from the write button", async () => {
     const user = userEvent.setup();
-    const api = stubPage();
+    stubPage();
     renderWithProviders(<AssessmentPage />);
 
-    // The doors need a second request — the child's own note types — so the
-    // first is awaited rather than read in the same tick as the picker.
-    await waitFor(() =>
-      expect(api.calls.map((call) => call.url)).toContain(
-        `/children/${CHILD_ID}/observations/types`,
-      ),
-    );
-    const observation = await screen.findByRole("button", { name: /Ажиглалт/ });
-    const doors = [
-      ["Ажиглалт", "icon-observation-3d.png"],
-      ["Ярилцлага", "icon-conversation-3d.png"],
-      ["Бүтээл", "icon-artwork-3d.png"],
-    ] as const;
-    for (const [name, asset] of doors) {
-      const door = screen.getByRole("button", { name: new RegExp(name) });
-      expect(door).toBeInTheDocument();
-      expect(door.querySelector("img")?.getAttribute("src")).toContain(asset);
-    }
-
+    const launch = await screen.findByRole("button", { name: "Явцын үнэлгээ бичих" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    await user.click(observation);
+    await user.click(launch);
 
-    const picker = await screen.findByRole("dialog", { name: "Ажиглалт" });
-    // A face, a name and what distinguishes two Ануs — the age and the group.
+    const picker = await screen.findByRole("dialog", { name: "Хүүхэд сонгох" });
     expect(within(picker).getByRole("radio", { name: /Батжаргал Ану/ })).toBeInTheDocument();
     expect(within(picker).getByLabelText("Хүүхдийн нэрээр хайх")).toBeInTheDocument();
   });
@@ -551,41 +521,76 @@ describe("the new-record strip", () => {
     stubPage();
     renderWithProviders(<AssessmentPage />);
 
-    await user.click(await screen.findByRole("button", { name: /Ажиглалт/ }));
+    await user.click(await screen.findByRole("button", { name: "Явцын үнэлгээ бичих" }));
 
-    const picker = await screen.findByRole("dialog", { name: "Ажиглалт" });
-    // ★ 2026-09-30, the client's table design: the class total and the
-    // coverage bar are gone — title, filter, search, table, Сонгох.
+    const picker = await screen.findByRole("dialog", { name: "Хүүхэд сонгох" });
+    // No class total, no coverage bar, no photographs.
     expect(within(picker).queryByText("Ангийн нийт ажиглалт")).not.toBeInTheDocument();
-    expect(within(picker).queryByText("Ажиглалт · ангийн хамралт")).not.toBeInTheDocument();
     expect(within(picker).queryByText("1/1 хүүхэд")).not.toBeInTheDocument();
-    expect(within(picker).getByRole("button", { name: "Дутуу" })).toBeInTheDocument();
-    expect(within(picker).getByRole("columnheader", { name: "Ажиглалт" })).toBeInTheDocument();
-    // The tile's own line is the count now — three tiles to a phone row has no
-    // width for "Зорилт биелсэн", and the colour says which are done. The word
-    // survives in the radio's accessible name.
-    const radio = within(picker).getByRole("radio", {
-      name: /Батжаргал Ану.* — зорилт биелсэн/,
-    });
-    // A table row since 2026-09-30 — "Биелсэн" is drawn in the row's own
-    // Ажиглалт cell, and no photograph is shown.
-    const row = radio.closest("tr")!;
-    expect(within(row).getByText("Биелсэн")).toBeInTheDocument();
     expect(within(picker).queryByRole("img")).not.toBeInTheDocument();
+
+    // ★ 2026-10-01: the kinds are tabs, and the column counts the active one.
+    // `STATS.byChildType` gives Ану two notes of the daily kind and none else.
+    expect(within(picker).getByRole("tab", { name: "Ажиглалт" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(within(picker).getByRole("columnheader", { name: "Ажиглалт" })).toBeInTheDocument();
+    let row = within(picker)
+      .getByRole("radio", { name: /Батжаргал Ану/ })
+      .closest("tr")!;
+    expect(within(row).getByText("Биелсэн")).toBeInTheDocument();
+
+    await user.click(within(picker).getByRole("tab", { name: "Ярилцлага" }));
+    expect(within(picker).getByRole("columnheader", { name: "Ярилцлага" })).toBeInTheDocument();
+    row = within(picker)
+      .getByRole("radio", { name: /Батжаргал Ану/ })
+      .closest("tr")!;
+    expect(within(row).getByText("0/1")).toBeInTheDocument();
+  });
+
+  /** Бүгд / Дутуу / Биелсэн sit behind the search field's filter icon. */
+  it("keeps the completion filter behind the search's icon", async () => {
+    const user = userEvent.setup();
+    stubPage();
+    renderWithProviders(<AssessmentPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Явцын үнэлгээ бичих" }));
+    const picker = await screen.findByRole("dialog", { name: "Хүүхэд сонгох" });
+
+    expect(within(picker).queryByRole("button", { name: "Дутуу" })).not.toBeInTheDocument();
+    await user.click(within(picker).getByRole("button", { name: "Шүүлтүүр" }));
+    await user.click(within(picker).getByRole("button", { name: "Дутуу" }));
+    // Ану has met the daily goal, so "incomplete" leaves nobody.
+    expect(within(picker).queryByRole("radio", { name: /Батжаргал Ану/ })).toBeNull();
+  });
+
+  /** The choice opens that child's record screen for the chosen kind. */
+  it("opens the chosen child's screen for the active kind", async () => {
+    const user = userEvent.setup();
+    stubPage();
+    renderWithProviders(<AssessmentPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Явцын үнэлгээ бичих" }));
+    const picker = await screen.findByRole("dialog", { name: "Хүүхэд сонгох" });
+    await user.click(within(picker).getByRole("radio", { name: /Батжаргал Ану/ }));
+    await user.click(within(picker).getByRole("button", { name: "Сонгох" }));
+
+    expect(ROUTER.push).toHaveBeenCalledWith(`/children/${CHILD_ID}/observations?type=daily`);
   });
 
   /**
    * ★ The dialog is named for the kind, so the two questions it answers are
    * both on screen: which record, and for whom.
    */
-  it("names the dialog for the kind that was pressed", async () => {
+  it("names the direct dialog for choosing a child", async () => {
     const user = userEvent.setup();
     stubPage();
     renderWithProviders(<AssessmentPage />);
 
-    await user.click(await screen.findByRole("button", { name: /Ярилцлага/ }));
+    await user.click(await screen.findByRole("button", { name: "Явцын үнэлгээ бичих" }));
 
-    expect(await screen.findByRole("dialog", { name: "Ярилцлага" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Хүүхэд сонгох" })).toBeInTheDocument();
   });
 
   /**
@@ -599,8 +604,8 @@ describe("the new-record strip", () => {
     stubPage();
     renderWithProviders(<AssessmentPage />);
 
-    await user.click(await screen.findByRole("button", { name: /Ажиглалт/ }));
-    const picker = await screen.findByRole("dialog", { name: "Ажиглалт" });
+    await user.click(await screen.findByRole("button", { name: "Явцын үнэлгээ бичих" }));
+    const picker = await screen.findByRole("dialog", { name: "Хүүхэд сонгох" });
 
     expect(within(picker).getByRole("button", { name: "Сонгох" })).toBeDisabled();
     await user.click(within(picker).getByRole("radio", { name: /Батжаргал Ану/ }));
@@ -618,6 +623,6 @@ describe("the new-record strip", () => {
     stubPage();
     renderWithProviders(<AssessmentPage />);
 
-    expect(await screen.findByRole("button", { name: /Ажиглалт/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Явцын үнэлгээ бичих" })).toBeInTheDocument();
   });
 });

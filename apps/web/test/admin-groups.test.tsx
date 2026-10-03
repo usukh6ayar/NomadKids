@@ -287,3 +287,51 @@ describe("the group list", () => {
     expect(within(dialog).queryByText("Ангийн зураг нэмэх")).toBeNull();
   });
 });
+
+/*
+  ★ ЭСИС рүү илгээлт — the write queue, moved here from «ЭСИС холболт» on
+  2026-10-01: the writes are prepared on this screen, so the record of what
+  was sent and what ESIS answered sits under the groups.
+*/
+describe("ЭСИС рүү илгээлт", () => {
+  it("lists the kindergarten's ESIS writes under the groups", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: `/kindergartens/${KG}/esis/group-writes`,
+        body: {
+          items: [
+            {
+              id: "66666666-6666-4666-8666-666666666666",
+              service: "groupCreate",
+              apiId: 1,
+              state: "PREPARED",
+              payload: {},
+              response: null,
+              errorCode: null,
+              sentAt: null,
+              createdAt: "2026-10-01T09:00:00.000Z",
+              groupId: GROUP,
+              group: { id: GROUP, name: "Наран бүлэг" },
+              preparedBy: null,
+              approvedBy: null,
+            },
+          ],
+          page: 1,
+          pageSize: 20,
+          total: 1,
+          totalPages: 1,
+        },
+      },
+      {
+        path: "/groups",
+        body: { items: [group()], page: 1, pageSize: 100, total: 1, totalPages: 1 },
+      },
+      { path: `/kindergartens/${KG}/school-years`, body: [] },
+    ]);
+    renderWithProviders(<AdminGroupsPage />);
+
+    const section = await screen.findByRole("region", { name: "ЭСИС рүү илгээлт" });
+    expect(await within(section).findByText("Хүлээгдэж байна")).toBeInTheDocument();
+  });
+});

@@ -2,7 +2,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
-import AdminEsisSyncPage from "@/app/(app)/admin/esis-sync/page";
+import { EsisHub as AdminEsisSyncPage } from "@/components/admin/esis-hub";
 
 /**
  * The director's manual ESIS pull, moved here from `/platform/[id]/esis` on
@@ -257,5 +257,17 @@ describe("ESIS синкийн самбар", () => {
         calls.some((call) => call.url.startsWith(SYNC_RUNS_PATH) && call.url.includes("page=2")),
       ).toBe(true),
     );
+  });
+
+  /** «Бичих» moved to «Анги, бүлэг» on 2026-10-01 — not on this section any more. */
+  it("no longer carries the write queue", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: SYNC_RUNS_PATH, method: "GET", body: runsPage([]) },
+    ]);
+    renderWithProviders(<AdminEsisSyncPage />);
+
+    await screen.findByRole("heading", { name: "Гараар татах" });
+    expect(screen.queryByRole("heading", { name: "Бичих" })).toBeNull();
   });
 });

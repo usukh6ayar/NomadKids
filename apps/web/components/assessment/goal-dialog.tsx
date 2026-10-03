@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Minus, Plus } from "lucide-react";
+import { Minus, Pencil, Plus, X } from "lucide-react";
 import { z } from "zod";
 import { mutate } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { useToast } from "@/components/ui/toast";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
 type GoalPatch = {
   monthlyNoteGoal?: number | null;
@@ -51,6 +53,9 @@ export function GoalDialog({
 }) {
   const toast = useToast();
   const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [childGoal, setChildGoal] = useState(current ?? 1);
+  const [noteGoal, setNoteGoal] = useState(currentNotesPerChild ?? 1);
 
   /*
     ★ The children ceiling is the smaller of the roster and what the API
@@ -70,36 +75,102 @@ export function GoalDialog({
       }),
     onSuccess: () => {
       toast.success("Зорилт хадгалагдлаа.");
+      setOpen(false);
       void queryClient.invalidateQueries({ queryKey: ["group", groupId] });
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  useEffect(() => {
+    if (!open) return;
+    setChildGoal(current ?? 1);
+    setNoteGoal(currentNotesPerChild ?? 1);
+  }, [current, currentNotesPerChild, open]);
+
+  const backdrop = useBackdropDismiss(() => setOpen(false), {
+    dismissable: open,
+    lockScroll: open,
+  });
+
   return (
     <>
-      <Stepper
-        label="Зорилтот хүүхэд"
-        srLabel="Зорилтот хүүхдийн тоо"
-        value={current}
-        min={1}
-        max={ceiling}
-        disabled={save.isPending}
-        onCommit={(next) => save.mutate({ monthlyNoteGoal: next })}
-      />
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        aria-label="Сарын зорилго засах"
+        onClick={() => setOpen(true)}
+      >
+        <Pencil size={17} aria-hidden="true" />
+      </Button>
 
-      <Stepper
-        label="Нэг хүүхдэд"
-        srLabel="Нэг хүүхдэд бичих тэмдэглэлийн тоо"
-        value={currentNotesPerChild}
-        min={1}
-        max={10}
-        disabled={save.isPending}
-        onCommit={(next) => save.mutate({ monthlyNotesPerChildGoal: next })}
-      />
+      {open ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Зорилго засах"
+          {...backdrop}
+          className="fixed inset-0 z-50 grid items-end justify-items-center bg-ink/50 sm:place-items-center sm:p-4"
+        >
+          <div className="w-full max-w-[420px] rounded-t-card border border-border bg-surface p-5 shadow-lg sm:rounded-card">
+            <div className="flex items-center gap-2 border-b border-border-soft pb-3">
+              <h2 className="min-w-0 flex-1 text-title font-semibold text-ink">Зорилго засах</h2>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Хаах"
+                onClick={() => setOpen(false)}
+              >
+                <X size={18} aria-hidden="true" />
+              </Button>
+            </div>
 
-      <span className="sr-only" role="status" aria-live="polite">
-        {save.isPending ? "Зорилтыг хадгалж байна" : ""}
-      </span>
+            <div className="mt-4 flex flex-col gap-4">
+              <Stepper
+                label="Энэ сард үнэлэх хүүхэд"
+                srLabel="Зорилтот хүүхдийн тоо"
+                value={childGoal}
+                min={1}
+                max={ceiling}
+                disabled={save.isPending}
+                onChange={setChildGoal}
+              />
+              <Stepper
+                label="Хүүхэд бүрт"
+                srLabel="Нэг хүүхдэд бичих тэмдэглэлийн тоо"
+                value={noteGoal}
+                min={1}
+                max={10}
+                disabled={save.isPending}
+                onChange={setNoteGoal}
+              />
+
+              <p className="rounded-control bg-sky px-3 py-2 text-caption text-sky-ink">
+                {childGoal} хүүхдэд тус бүр {noteGoal} тэмдэглэл хөтөлнө.
+              </p>
+
+              <div className="grid grid-cols-2 gap-2 border-t border-border-soft pt-4">
+                <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
+                  Болих
+                </Button>
+                <Button
+                  type="button"
+                  disabled={save.isPending}
+                  onClick={() =>
+                    save.mutate({
+                      monthlyNoteGoal: childGoal,
+                      monthlyNotesPerChildGoal: noteGoal,
+                    })
+                  }
+                >
+                  {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }
@@ -120,32 +191,19 @@ function Stepper({
   min,
   max,
   disabled,
-  onCommit,
+  onChange,
 }: {
   label: string;
   srLabel: string;
-  value: number | null;
+  value: number;
   min: number;
   max: number;
   disabled: boolean;
-  onCommit: (next: number) => void;
+  onChange: (next: number) => void;
 }) {
-  const [draft, setDraft] = useState<number | null>(value);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // The server's value wins whenever it changes — a refetch after somebody
-  // else's edit must not be overwritten by a stale local number.
-  useEffect(() => setDraft(value), [value]);
-
-  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
-
   function step(delta: number) {
-    const next = Math.min(max, Math.max(min, (draft ?? min - delta) + delta));
-    if (next === draft) return;
-
-    setDraft(next);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => onCommit(next), 600);
+    const next = Math.min(max, Math.max(min, value + delta));
+    if (next !== value) onChange(next);
   }
 
   const button =
@@ -162,19 +220,19 @@ function Stepper({
         <button
           type="button"
           aria-label={`${srLabel} — хасах`}
-          disabled={disabled || (draft ?? min) <= min}
+          disabled={disabled || value <= min}
           onClick={() => step(-1)}
           className={cn(button, "border-0")}
         >
           <Minus size={15} aria-hidden="true" />
         </button>
         <output className="min-w-0 flex-1 text-center text-body font-semibold tabular-nums text-ink">
-          {draft ?? "—"}
+          {value}
         </output>
         <button
           type="button"
           aria-label={`${srLabel} — нэмэх`}
-          disabled={disabled || (draft ?? 0) >= max}
+          disabled={disabled || value >= max}
           onClick={() => step(1)}
           className={cn(button, "border-0")}
         >

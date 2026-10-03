@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, Search, X } from "lucide-react";
+import { Check, Search, SlidersHorizontal, X } from "lucide-react";
 import { MAX_PAGE_SIZE, childSummarySchema, paginated } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -48,9 +48,20 @@ export function ChildPickerDialog({
   summary,
   coverage,
   layout = "tiles",
+  tabs,
+  activeTab,
+  onTabChange,
   onSelect,
   onClose,
 }: {
+  /**
+   * Record kinds drawn as tabs above the search — Ажиглалт / Ярилцлага /
+   * Бүтээл on the progress assessment's "+" (the client's 2026-10-01 design).
+   * The caller recomputes `coverage` for the active tab.
+   */
+  tabs?: { key: string; label: string }[];
+  activeTab?: string;
+  onTabChange?: (key: string) => void;
   /**
    * `table` lists the roster as a plain table with no photographs.
    *
@@ -72,13 +83,20 @@ export function ChildPickerDialog({
    */
   summary?: ReactNode;
   /** Per-child progress for the selected month and record kind. */
-  coverage?: { counts: Record<string, number>; target: number; title?: string };
+  coverage?: {
+    counts: Record<string, number>;
+    target: number;
+    title?: string;
+    columnLabel?: string;
+  };
   onSelect: (childId: string) => void;
   onClose: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [pending, setPending] = useState(selectedId ?? "");
   const [filter, setFilter] = useState<"all" | "incomplete" | "complete">("all");
+  // In the table layout Бүгд / Дутуу / Биелсэн sit behind the search's filter icon.
+  const [filterOpen, setFilterOpen] = useState(false);
 
   const roster = useQuery({
     queryKey: qk.children({ groupId, page: 1, pageSize: MAX_PAGE_SIZE }),
@@ -152,7 +170,29 @@ export function ChildPickerDialog({
         */}
         {layout === "tiles" ? summary : null}
 
-        {coverage && rosterItems.length > 0 ? (
+        {tabs && tabs.length > 0 ? (
+          <div role="tablist" aria-label="Тэмдэглэлийн төрөл" className="grid grid-cols-3 gap-2">
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.key}
+                onClick={() => onTabChange?.(tab.key)}
+                className={cn(
+                  "min-h-10 truncate rounded-control border px-2 text-caption font-semibold transition-colors",
+                  activeTab === tab.key
+                    ? "border-primary-soft bg-primary-soft text-primary"
+                    : "border-border bg-surface text-muted hover:bg-canvas",
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {coverage && rosterItems.length > 0 && (layout === "tiles" || filterOpen) ? (
           <div className="space-y-2">
             {layout === "tiles" ? (
               <>
@@ -208,8 +248,27 @@ export function ChildPickerDialog({
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Хүүхдийн нэрээр хайх…"
             aria-label="Хүүхдийн нэрээр хайх"
-            className="border-border-soft bg-canvas pl-11 focus:bg-surface"
+            className={cn(
+              "border-border-soft bg-canvas pl-11 focus:bg-surface",
+              layout === "table" && coverage && "pr-12",
+            )}
           />
+          {layout === "table" && coverage ? (
+            <button
+              type="button"
+              aria-label="Шүүлтүүр"
+              aria-expanded={filterOpen}
+              onClick={() => setFilterOpen((open) => !open)}
+              className={cn(
+                "absolute right-1.5 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-pill",
+                filterOpen || filter !== "all"
+                  ? "bg-primary-soft text-primary"
+                  : "text-ink hover:bg-surface",
+              )}
+            >
+              <SlidersHorizontal size={18} aria-hidden="true" />
+            </button>
+          ) : null}
         </div>
 
         {roster.isPending ? <LoadingState rows={4} /> : null}
@@ -240,7 +299,7 @@ export function ChildPickerDialog({
                   <Th>Овог, нэр</Th>
                   <Th>Нас</Th>
                   {groupId ? null : <Th>Бүлэг</Th>}
-                  {coverage ? <Th numeric>Ажиглалт</Th> : null}
+                  {coverage ? <Th numeric>{coverage.columnLabel ?? "Ажиглалт"}</Th> : null}
                 </tr>
               </thead>
               <tbody>

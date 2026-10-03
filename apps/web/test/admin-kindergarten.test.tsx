@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderWithProviders, sessionFor, stubApi } from "./support/render";
+import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
 import AdminKindergartenPage from "@/app/(app)/admin/kindergarten/page";
 
 /**
@@ -61,10 +61,11 @@ function stub(source: "LIVE" | "MOCK" = "LIVE") {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  setSearchParams("");
 });
 
 describe("the kindergarten's details", () => {
-  it("opens on the card, the two sections and Үндсэн мэдээлэл", async () => {
+  it("opens on the card, its sections and Үндсэн мэдээлэл", async () => {
     stub();
     renderWithProviders(<AdminKindergartenPage />);
 
@@ -76,8 +77,10 @@ describe("the kindergarten's details", () => {
       "page",
     );
     expect(within(nav).getByRole("button", { name: /Заах аргын нэгдэл/ })).toBeInTheDocument();
-    // Two sections only, as drawn.
-    expect(within(nav).getAllByRole("button")).toHaveLength(2);
+    // The two drawn sections, and Сургалтын хөтөлбөр and ЭСИС холболт since 2026-10-01.
+    expect(within(nav).getByRole("button", { name: /Сургалтын хөтөлбөр/ })).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: /ЭСИС холболт/ })).toBeInTheDocument();
+    expect(within(nav).getAllByRole("button")).toHaveLength(4);
     // "ESIS татах" is the one way to the ministry here; no panels repeat it.
     expect(screen.queryByText("Барилга байгууламж")).toBeNull();
     expect(screen.queryByText("Өрөө, танхим")).toBeNull();
@@ -163,5 +166,36 @@ describe("the kindergarten's details", () => {
     expect(screen.getByRole("button", { name: /Нэгдэл нэмэх/ })).toBeEnabled();
     // ESIS has no union resource; the button linked to a deleted page.
     expect(screen.queryByRole("link", { name: /ESIS татах/ })).not.toBeInTheDocument();
+  });
+
+  /*
+    ★ Сургалтын хөтөлбөр moved in from its own page on 2026-10-01; the old
+    route sends `?tab=curriculum`, which opens it directly.
+  */
+  it("opens Сургалтын хөтөлбөр from ?tab=curriculum", async () => {
+    setSearchParams("tab=curriculum");
+    stub();
+    renderWithProviders(<AdminKindergartenPage />);
+
+    expect(await screen.findByRole("heading", { name: "Хөтөлбөрийн шатлал" })).toBeInTheDocument();
+    const nav = screen.getByRole("navigation", { name: "Байгууллагын мэдээлэл" });
+    expect(within(nav).getByRole("button", { name: /Сургалтын хөтөлбөр/ })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  /** ЭСИС холболт moved in on 2026-10-01; `/admin/esis-sync` sends `?tab=esis`. */
+  it("opens ЭСИС холболт from ?tab=esis", async () => {
+    setSearchParams("tab=esis");
+    stub();
+    renderWithProviders(<AdminKindergartenPage />);
+
+    const nav = await screen.findByRole("navigation", { name: "Байгууллагын мэдээлэл" });
+    expect(within(nav).getByRole("button", { name: /ЭСИС холболт/ })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("heading", { name: "Гараар татах" })).toBeInTheDocument();
   });
 });
