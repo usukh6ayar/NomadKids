@@ -22,13 +22,11 @@ import {
   invitationAcceptSchema,
   passwordResetConfirmSchema,
   passwordResetPhoneConfirmSchema,
-  passwordResetRequestSchema,
   type ChangePasswordDto,
   type LoginDto,
   type InvitationAcceptDto,
   type PasswordResetConfirmDto,
   type PasswordResetPhoneConfirmDto,
-  type PasswordResetRequestDto,
 } from "./auth.dto";
 import {
   startInvitationPhoneVerificationSchema,
@@ -41,7 +39,6 @@ import { CurrentActor } from "./decorators/actor.decorator";
 import { Public } from "./decorators/public.decorator";
 import { AuthzRepository } from "../authz/authz.repository";
 import { AuthRepository } from "./auth.repository";
-import { MailService } from "../mail/mail.service";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -53,7 +50,6 @@ export class AuthController {
     private readonly auth: AuthService,
     private readonly authz: AuthzRepository,
     private readonly users: AuthRepository,
-    private readonly mail: MailService,
   ) {}
 
   /**
@@ -184,39 +180,6 @@ export class AuthController {
       kindergartens,
       csrfToken: cookie(req, CSRF_COOKIE) ?? null,
     };
-  }
-
-  /**
-   * Requests a password reset.
-   *
-   * ★ Always 204, whether or not the identifier exists. Anything else turns
-   * this into a user-enumeration endpoint. The service burns equivalent work on
-   * the missing-user path so the timing does not leak either.
-   */
-  @Public()
-  @Post("password-reset")
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @RateLimit({ limit: 20, windowMs: HOUR })
-  async requestPasswordReset(
-    @Body(new ZodValidationPipe(passwordResetRequestSchema)) body: PasswordResetRequestDto,
-    @Req() req: Request,
-  ): Promise<void> {
-    const result = await this.auth.requestPasswordReset(body.identifier, context(req));
-
-    // ★ Delivery is fire-and-forget with respect to the response.
-    //
-    // The endpoint returns 204 whether or not the identifier exists, whether or
-    // not SMTP is configured, and whether or not the send succeeded. Any of
-    // those varying — in status, body or timing — turns this into a user
-    // enumeration oracle, which is the whole reason the service burns an argon2
-    // verification on the missing-user path.
-    //
-    // A failure is the operator's problem, logged by MailService. It is never
-    // the requester's, because telling them "we could not email you" confirms
-    // the account exists.
-    if (result?.email) {
-      await this.mail.sendPasswordReset(result.email, result.token, result.name);
-    }
   }
 
   @Public()

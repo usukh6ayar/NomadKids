@@ -26,7 +26,7 @@ and is deliberately blunt about what has not been proven.
 | **Docker image**           | ✅ built, run, PDF verified inside the container       |
 | **Device / browser QA**    | ⛔ needs a real phone                                  |
 | **Production credentials** | ⛔ not provisioned                                     |
-| Email delivery             | ✅ implemented and verified against a real SMTP server |
+| Email delivery             | ➖ removed 2026-10-04 — recovery is by phone (§ below) |
 
 ---
 
@@ -223,7 +223,15 @@ It was found by the QA probes tripping it and locking out the test suite.
 
 ## 5. Known gaps, accepted or deferred
 
-### ~~Email delivery is not implemented~~ — **RESOLVED**
+### ~~Email delivery is not implemented~~ — **RESOLVED**, then **REMOVED**
+
+★ **Removed on 2026-10-04 at the client's word — «email хэрэггүй, бүр мөсөн
+хас».** `MailService`, the `SMTP_*` / `MAIL_FROM` settings, nodemailer and
+`POST /auth/password-reset` are gone. Self-service recovery is a reset by phone
+through verify.mn (`docs/SECURITY.md` §2.1); a reset _link_ is issued only by an
+administrator (`POST /users/:id/password-reset`). E-mail survives as a login
+identifier and a contact field, and nothing is ever sent to it. What follows is
+kept as the record of what was built.
 
 Implemented in Phase 13 (`src/mail/mail.service.ts`) and verified end to end
 against a real SMTP server:
@@ -490,7 +498,6 @@ for the header and getting nothing back. It now lists both, and `WEB_ORIGIN`
 
 ### Still outstanding
 
-- **SMTP** — password reset issues valid tokens but cannot deliver them.
 - **`nomadkids.mn` / `api.nomadkids.mn`** — not yet pointed at Railway or
   Vercel, and now the **launch blocker**, not a tidy-up: browser login cannot
   work on the current host pair at all. §2.4 has the measured DNS state and the

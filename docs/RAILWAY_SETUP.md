@@ -39,23 +39,22 @@ service and run a second, larger service for the worker. Do not simply hope.
 Railway injects `PORT`, `DATABASE_URL` and `REDIS_URL` from the plugins. The
 rest are set by hand.
 
-| Variable                                                                | Value                                                    |
-| ----------------------------------------------------------------------- | -------------------------------------------------------- |
-| `NODE_ENV`                                                              | `production`                                             |
-| `CORS_ORIGINS`                                                          | `https://nomadkids.mn` — exactly this, nothing else      |
-| `WEB_ORIGIN`                                                            | `https://nomadkids.mn`                                   |
-| `COOKIE_DOMAIN`                                                         | **empty** — host-only is correct, see `SECURITY.md` §3.1 |
-| `JWT_SECRET`                                                            | `openssl rand -base64 48`                                |
-| `REFRESH_SECRET`                                                        | a **different** `openssl rand -base64 48`                |
-| `STORAGE_ENDPOINT`                                                      | the R2 S3 endpoint                                       |
-| `STORAGE_BUCKET`                                                        | the R2 bucket name                                       |
-| `STORAGE_ACCESS_KEY_ID`                                                 | R2 token id                                              |
-| `STORAGE_SECRET_ACCESS_KEY`                                             | R2 token secret                                          |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` / `MAIL_FROM` | all together, or none at all                             |
-| `REPORTS_WORKER_ENABLED`                                                | `true`                                                   |
+| Variable                    | Value                                                    |
+| --------------------------- | -------------------------------------------------------- |
+| `NODE_ENV`                  | `production`                                             |
+| `CORS_ORIGINS`              | `https://nomadkids.mn` — exactly this, nothing else      |
+| `WEB_ORIGIN`                | `https://nomadkids.mn`                                   |
+| `COOKIE_DOMAIN`             | **empty** — host-only is correct, see `SECURITY.md` §3.1 |
+| `JWT_SECRET`                | `openssl rand -base64 48`                                |
+| `REFRESH_SECRET`            | a **different** `openssl rand -base64 48`                |
+| `STORAGE_ENDPOINT`          | the R2 S3 endpoint                                       |
+| `STORAGE_BUCKET`            | the R2 bucket name                                       |
+| `STORAGE_ACCESS_KEY_ID`     | R2 token id                                              |
+| `STORAGE_SECRET_ACCESS_KEY` | R2 token secret                                          |
+| `REPORTS_WORKER_ENABLED`    | `true`                                                   |
 
 `loadEnv()` refuses to boot on a plaintext `http://` origin, identical signing
-secrets, a `COOKIE_DOMAIN` without a leading dot, or half-configured SMTP. That
+secrets, or a `COOKIE_DOMAIN` without a leading dot. That
 is deliberate: a misconfiguration should stop the process, not surface a week
 later as a login that silently never works.
 

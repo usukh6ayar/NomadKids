@@ -22,17 +22,6 @@ import { hashToken, TokenService } from "./token.service";
 const MAX_FAILURES = 5;
 const LOCKOUT_WINDOW_MS = 15 * 60 * 1000;
 
-/** Password reset and invitation links expire after an hour. */
-const ONE_TIME_TOKEN_TTL_MS = 60 * 60 * 1000;
-
-/** What the controller needs to send the reset mail — and nothing more. */
-export interface PasswordResetRequest {
-  token: string;
-  /** Null when the account has no email — the token is still valid. */
-  email: string | null;
-  name: string;
-}
-
 export interface RequestContext {
   ipAddress: string | null;
   userAgent: string | null;
@@ -237,58 +226,6 @@ export class AuthService {
   }
 
   // ── Password reset ────────────────────────────────────────────────────────
-
-  /**
-   * Issues a reset token, or pretends to.
-   *
-   * ★ Always succeeds from the caller's perspective. Returning "no such user"
-   * would turn this endpoint into a free user-enumeration API, and the response
-   * must not vary in content or timing.
-   */
-  async requestPasswordReset(
-    identifier: string,
-    ctx: RequestContext,
-  ): Promise<PasswordResetRequest | null> {
-    const user = await this.repo.findByIdentifier(identifier);
-    if (!user) {
-      await this.passwords.burn();
-      return null;
-    }
-
-    // A new link invalidates outstanding ones, so a link mailed to an address
-    // the user has since lost control of stops working.
-    await this.repo.invalidateAuthTokens(user.id, "PASSWORD_RESET");
-
-    const { token, hash } = this.tokens.createOneTimeToken();
-    await this.repo.createAuthToken({
-      userId: user.id,
-      purpose: "PASSWORD_RESET",
-      tokenHash: hash,
-      expiresAt: new Date(Date.now() + ONE_TIME_TOKEN_TTL_MS),
-      requestedIp: ctx.ipAddress,
-    });
-
-    await this.audit.append({
-      action: "PASSWORD_RESET",
-      actorUserId: user.id,
-      ipAddress: ctx.ipAddress,
-      metadata: { stage: "requested" },
-    });
-
-    // Returned so the caller can mail it. It is never logged, never audited,
-    // and never placed in a response body.
-    // ★ The token is issued even when the user has no email address.
-    //
-    // Many parents here have a phone number and no email, and refusing to
-    // create a token for them would mean their account can never be recovered
-    // at all — not even by an administrator reading the link out. Delivery is
-    // the caller's problem and is conditional on `email`; issuing is not.
-    return {
-      token,
-      email: user.email,
-      name: `${user.lastName} ${user.firstName}`.trim(),
-    };
-  }
 
   async confirmPasswordReset(token: string, newPassword: string, ctx: RequestContext) {
     const errors = validatePasswordStrength(newPassword);

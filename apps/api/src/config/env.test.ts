@@ -117,29 +117,6 @@ describe("loadEnv", () => {
       expect(() => loadEnv({ ...prod, WEB_ORIGIN: "http://nomadkids.mn" })).toThrow(/WEB_ORIGIN/);
     });
 
-    /**
-     * ★ Half-configured SMTP is worse than none: it looks configured, and the
-     * failure surfaces only when a parent cannot get a reset link.
-     */
-    it("refuses SMTP_HOST without MAIL_FROM", () => {
-      expect(() => loadEnv({ ...prod, SMTP_HOST: "smtp.example.com" })).toThrow(/MAIL_FROM/);
-    });
-
-    it("refuses MAIL_FROM without SMTP_HOST", () => {
-      expect(() => loadEnv({ ...prod, MAIL_FROM: "noreply@nomadkids.mn" })).toThrow(/SMTP_HOST/);
-    });
-
-    it("accepts a fully configured SMTP block", () => {
-      expect(() =>
-        loadEnv({ ...prod, SMTP_HOST: "smtp.example.com", MAIL_FROM: "noreply@nomadkids.mn" }),
-      ).not.toThrow();
-    });
-
-    /** Mail is optional as a set — an unconfigured deployment still boots. */
-    it("accepts no SMTP configuration at all", () => {
-      expect(() => loadEnv(prod)).not.toThrow();
-    });
-
     it("refuses a localhost origin in production", () => {
       expect(() =>
         loadEnv({ ...prod, CORS_ORIGINS: "https://nomadkids.mn,http://localhost:3000" }),

@@ -27,10 +27,7 @@ import {
 /**
  * The ESIS integration boundary.
  *
- * ★ Not `@Global()`, unlike `MailModule`.
- *
- * Mail is global because two unrelated features send the one message it has.
- * Nothing consumes ESIS yet, and when something does it should say so by
+ * ★ Not `@Global()`. A feature that consumes ESIS should say so by
  * importing this module — an integration that any file can reach without
  * declaring it is one whose blast radius nobody can measure.
  */

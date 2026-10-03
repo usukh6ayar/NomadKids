@@ -16,11 +16,6 @@ export const loginSchema = z.object({
 });
 export type LoginDto = z.infer<typeof loginSchema>;
 
-export const passwordResetRequestSchema = z.object({
-  identifier: z.string().min(1).max(254),
-});
-export type PasswordResetRequestDto = z.infer<typeof passwordResetRequestSchema>;
-
 export const passwordResetConfirmSchema = z.object({
   token: z.string().min(10).max(200),
   password: z.string().min(8, "Нууц үг дор хаяж 8 тэмдэгт байх ёстой").max(200),
