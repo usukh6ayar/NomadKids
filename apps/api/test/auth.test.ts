@@ -105,19 +105,27 @@ describe("POST /auth/login", () => {
     expect(raw.join(";")).not.toContain("Domain=");
   });
 
-  it("accepts login by email and by phone", async () => {
+  /*
+   * ★ By username or phone — and no longer by e-mail, 2026-10-04 (client:
+   * «email-ээр verification хийхгүй, зөвхөн SMS»). An address nobody has
+   * proven is not an identity; the phone is SMS-verified wherever it is set.
+   */
+  it("accepts login by phone, and refuses it by e-mail", async () => {
     const user = await createUser({
       username: uniq("u"),
       email: `${uniq()}@test.mn`,
       phone: `9911${Math.floor(1000 + Math.random() * 8999)}`,
     });
 
-    for (const identifier of [user.email!, user.phone!]) {
-      const res = await request(server())
-        .post("/v1/auth/login")
-        .send({ identifier, password: TEST_PASSWORD });
-      expect(res.status).toBe(200);
-    }
+    const byPhone = await request(server())
+      .post("/v1/auth/login")
+      .send({ identifier: user.phone, password: TEST_PASSWORD });
+    expect(byPhone.status).toBe(200);
+
+    const byEmail = await request(server())
+      .post("/v1/auth/login")
+      .send({ identifier: user.email, password: TEST_PASSWORD });
+    expect(byEmail.status).toBe(401);
   });
 
   it("rejects a wrong password", async () => {

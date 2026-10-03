@@ -305,27 +305,30 @@ describe("invitation — who is accepting", () => {
     expect(await screen.findByLabelText(/^Утасны дугаар/)).toBeInTheDocument();
     expect(screen.getByLabelText(/^Хүүхдийн юу нь болох/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/^Овог/)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/^И-мэйл хаяг/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/и-мэйл/i)).not.toBeInTheDocument();
   });
 
-  it("asks a member of staff for a surname and an e-mail", async () => {
+  /*
+   * ★ A phone, not an e-mail, since 2026-10-04 — client: «email-ээр
+   * verification хийхгүй, зөвхөн SMS». It is what a member of staff signs in
+   * with now, as a guardian does.
+   */
+  it("asks a member of staff for a surname and a phone, never an e-mail", async () => {
     stubApi([{ path: "/auth/invitation/", body: { valid: true, kind: "staff" } }]);
 
     renderWithProviders(<AcceptInvitationPage />);
 
     expect(await screen.findByLabelText(/^Овог/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^И-мэйл хаяг/)).toBeInTheDocument();
-    expect(screen.queryByLabelText(/^Утасны дугаар/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/^Утасны дугаар/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/и-мэйл/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/^Хүүхдийн юу нь болох/)).not.toBeInTheDocument();
   });
 
   /**
    * ★ Only the fields this audience was asked for reach the API.
    *
-   * The accept schema requires `.min(1)` on every optional it does receive, so
-   * sending an empty `phone` for a staff member would fail validation — and
-   * sending the other audience's fields would write facts nobody was asked to
-   * give.
+   * Sending the other audience's fields would write facts nobody was asked to
+   * give: a member of staff has no relationship to a child.
    */
   it("sends the staff fields and none of the guardian's", async () => {
     const user = userEvent.setup();
@@ -338,7 +341,7 @@ describe("invitation — who is accepting", () => {
 
     await user.type(await screen.findByLabelText(/^Овог/), "Сосорбурам");
     await user.type(screen.getByLabelText(/^Таны нэр/), "Бямбарааш");
-    await user.type(screen.getByLabelText(/^И-мэйл хаяг/), "b@example.mn");
+    await user.type(screen.getByLabelText(/^Утасны дугаар/), "99112233");
     await user.type(screen.getByLabelText(/^Нууц үг \*/), STRONG);
     await user.type(screen.getByLabelText(/давтан/), STRONG);
     await user.click(screen.getByRole("button", { name: /Бүртгэл/ }));
@@ -352,8 +355,8 @@ describe("invitation — who is accepting", () => {
       unknown
     >;
     expect(sent.lastName).toBe("Сосорбурам");
-    expect(sent.email).toBe("b@example.mn");
-    expect(sent).not.toHaveProperty("phone");
+    expect(sent.phone).toBe("99112233");
+    expect(sent).not.toHaveProperty("email");
     expect(sent).not.toHaveProperty("relation");
   });
 });
