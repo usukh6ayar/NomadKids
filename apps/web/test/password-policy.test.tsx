@@ -245,55 +245,25 @@ describe("settings — changing a password", () => {
     expect(calls.filter((c) => c.url.startsWith("/auth/password"))).toHaveLength(0);
   });
   /*
-   * ★ "Одоогийн нууц үгээ мэдэхгүй ч байж болишд" — the client, 2026-09-08.
-   *
-   * `POST /auth/password` needs the current password, so somebody who has
-   * forgotten it could do nothing here and had to sign out to reach the
-   * recovery they were already signed in beside. This sends the reset for the
-   * account that is open, without asking them to name it.
+   * ★ «Мартсан уу?» leads to the phone reset, 2026-10-04 — e-mail is no
+   * longer used. `POST /auth/password` needs the current password, so
+   * somebody who has forgotten it needs a way out from here, and the e-mail
+   * link it used to send reached almost nobody.
    */
-  it("asks for a reset link without asking who is asking", async () => {
+  it("sends a forgotten password to the phone reset, not to e-mail", async () => {
     const user = userEvent.setup();
-    const email = "bagsh@nomadkids.mn";
     const { calls } = stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      { path: "/auth/password-reset", method: "POST", status: 204 },
-      { path: "/me/profile", body: { ...PROFILE, email } },
+      { path: "/me/profile", body: { ...PROFILE, email: "bagsh@nomadkids.mn" } },
     ]);
     renderWithProviders(<SettingsPage />);
 
     await openPasswordForm(user);
-    await user.click(await screen.findByRole("button", { name: /мартсан уу/ }));
 
-    await waitFor(() =>
-      expect(calls.some((call) => call.url === "/auth/password-reset")).toBe(true),
+    expect(screen.getByRole("link", { name: /мартсан уу/ })).toHaveAttribute(
+      "href",
+      "/forgot-password",
     );
-    // Its own identifier, not one typed into a field that is not there.
-    const request = calls.find((call) => call.url === "/auth/password-reset")!;
-    expect(request.body).toEqual({ identifier: email });
-    expect(await screen.findByRole("status")).toHaveTextContent(email);
-  });
-
-  /*
-   * ★★ An account with no e-mail cannot be sent a link, and this says so.
-   *
-   * Not an enumeration leak — `/forgot-password` is neutral because it serves
-   * a stranger; here the caller is signed in and it is their own account. The
-   * neutral wording would be evasive rather than careful, and would leave
-   * somebody waiting for a mail that was never going to arrive.
-   */
-  it("says a reset cannot be sent when the account has no e-mail", async () => {
-    const user = userEvent.setup();
-    const { calls } = stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      { path: "/me/profile", body: PROFILE },
-    ]);
-    renderWithProviders(<SettingsPage />);
-
-    await openPasswordForm(user);
-
-    expect(screen.queryByRole("button", { name: /мартсан уу/ })).toBeNull();
-    expect(screen.getByText(/эрхлэгчид хандана уу/)).toBeInTheDocument();
     expect(calls.some((call) => call.url === "/auth/password-reset")).toBe(false);
   });
 });
