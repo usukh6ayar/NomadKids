@@ -22,7 +22,9 @@ export const MOBILE_PHONE = /^[5-9]\d{7}$/;
 const POLL_MS = 3_000;
 
 /**
- * Whether this deployment verifies phones at all.
+ * Whether this deployment verifies phones at all, and whether that is known
+ * yet — a screen that is *only* phone verification has to tell "still asking"
+ * from "off" before it can say which.
  *
  * ★ Anything but a clear `true` reads as off — a failed request included. Off
  * is how every flow behaved before verify.mn, and the server enforces the
@@ -30,43 +32,50 @@ const POLL_MS = 3_000;
  * unproven phone through; at worst it shows a step the server would not ask
  * for.
  */
-export function usePhoneVerificationEnabled(): boolean {
-  const { data } = useQuery({
+export function usePhoneVerificationAvailability(): { enabled: boolean; loading: boolean } {
+  const { data, isPending } = useQuery({
     queryKey: qk.phoneVerificationAvailability(),
     queryFn: () => get("/phone-verifications/availability", phoneVerificationAvailabilitySchema),
     staleTime: 5 * 60_000,
     retry: false,
   });
-  return data?.enabled === true;
+  return { enabled: data?.enabled === true, loading: isPending };
+}
+
+export function usePhoneVerificationEnabled(): boolean {
+  return usePhoneVerificationAvailability().enabled;
 }
 
 /**
- * «SMS-ээр баталгаажуулах» — proving a phone number through verify.mn.
+ * One verify.mn proof, from "send me a code" to "the SMS arrived".
  *
- * The person sends one SMS **from** the phone being proven; nothing is sent to
- * them. On a phone the big button opens the SMS app with the message already
- * written; on a computer the instruction names the number and the code.
- *
- * ★ Mount it with `key={phone}`. A different number is a different proof,
- * and remounting is what throws the old one away.
- *
- * `start` is the caller's: a reset, an invitation and a profile each start a
- * verification at their own route, bound to their own subject.
+ * The state behind every SMS step in the product — the compact
+ * `PhoneVerificationStep` below and the full-page forgot-password flow, which
+ * draws its own screen around the same machine.
  */
-export function PhoneVerificationStep({
-  phone,
+export function usePhoneVerification({
   start,
   onVerified,
 }: {
-  phone: string;
   start: (phone: string) => Promise<PhoneVerificationStartResponse>;
   onVerified: (handle: string, check: PhoneVerificationCheckResponse) => void;
 }) {
-  const [session, setSession] = useState<PhoneVerificationStartResponse | null>(null);
+  const [session, setSession] = useState<
+    (PhoneVerificationStartResponse & { totalSeconds: number }) | null
+  >(null);
 
   const begin = useMutation({
-    mutationFn: () => start(phone),
-    onSuccess: (data) => setSession(data),
+    mutationFn: (phone: string) => start(phone),
+    onSuccess: (data) =>
+      setSession({
+        ...data,
+        // Measured from now, not from verify.mn's clock: the bar that drains
+        // has to start full on *this* screen.
+        totalSeconds: Math.max(
+          1,
+          Math.round((new Date(data.expiresAt).getTime() - Date.now()) / 1_000),
+        ),
+      }),
   });
 
   const secondsLeft = useSecondsUntil(session?.expiresAt);
@@ -79,12 +88,12 @@ export function PhoneVerificationStep({
         body: { handle: session?.handle },
       }),
     enabled: Boolean(session) && secondsLeft > 0,
-    // ★ Stops the moment there is an answer: every SMS costs the sender 150₮,
-    // and a screen that kept asking would read as "send it again".
+    // ★ Stops the moment there is an answer: a screen that kept asking would
+    // read as "send it again".
     //
     // ★★ And *only* on an answer. A failed poll — a mobile network blip, a
     // 429 behind a carrier's shared address — has no status, and stopping on
-    // it would leave a person who has already paid for the SMS watching a
+    // it would leave a person who has already sent the SMS watching a
     // countdown that can no longer succeed.
     refetchInterval: (query) => {
       const settled = query.state.data?.status;
@@ -93,7 +102,7 @@ export function PhoneVerificationStep({
     retry: false,
   });
 
-  const status = check.data?.status;
+  const status = session ? check.data?.status : undefined;
   const handle = session?.handle;
   const result = check.data;
   useEffect(() => {
@@ -102,10 +111,55 @@ export function PhoneVerificationStep({
     // is new on every render, and this must fire once per proof.
   }, [status, handle]);
 
-  const expired =
-    status === "EXPIRED" || (session !== null && secondsLeft === 0 && status !== "VERIFIED");
+  const verified = status === "VERIFIED";
+  const expired = status === "EXPIRED" || (session !== null && secondsLeft === 0 && !verified);
 
-  if (status === "VERIFIED") {
+  return {
+    session,
+    verified,
+    expired,
+    secondsLeft,
+    starting: begin.isPending,
+    startError: begin.isError ? errorMessage(begin.error) : null,
+    /** Asks for a code — a fresh one when there was one before. */
+    begin: (phone: string) => {
+      setSession(null);
+      begin.mutate(phone);
+    },
+    /** Back to before any code was asked for — «Дугаар солих». */
+    reset: () => {
+      setSession(null);
+      begin.reset();
+    },
+  };
+}
+
+/**
+ * «SMS-ээр баталгаажуулах» — the compact step, inside another form.
+ *
+ * The person sends one SMS **from** the phone being proven; nothing is sent to
+ * them. On a phone the big button opens the SMS app with the message already
+ * written; on a computer the instruction names the number and the code.
+ *
+ * ★ Mount it with `key={phone}`. A different number is a different proof,
+ * and remounting is what throws the old one away.
+ *
+ * `start` is the caller's: an invitation and a profile each start a
+ * verification at their own route, bound to their own subject.
+ */
+export function PhoneVerificationStep({
+  phone,
+  start,
+  onVerified,
+}: {
+  phone: string;
+  start: (phone: string) => Promise<PhoneVerificationStartResponse>;
+  onVerified: (handle: string, check: PhoneVerificationCheckResponse) => void;
+}) {
+  const proof = usePhoneVerification({ start, onVerified });
+  const { session } = proof;
+
+  if (proof.verified) {
     return (
       <p role="status" className="flex items-center gap-2 text-body font-semibold text-mint-ink">
         <CheckCircle2 aria-hidden="true" size={18} />
@@ -114,32 +168,24 @@ export function PhoneVerificationStep({
     );
   }
 
-  if (!session || expired) {
+  if (!session || proof.expired) {
     return (
       <div className="flex flex-col gap-2 rounded-control border border-border bg-canvas p-3.5">
-        {expired ? (
-          <p role="status" className="text-body text-ink">
-            Хугацаа дууссан тул өмнөх код хүчингүй боллоо. Шинэ код авна уу.
-          </p>
-        ) : (
-          <p className="text-body text-muted">
-            Энэ дугаараасаа нэг SMS илгээж баталгаажуулна. SMS-ийн үнэ 150₮ — таны операторын
-            төлбөр.
-          </p>
-        )}
-        <FormError message={begin.isError ? errorMessage(begin.error) : null} />
+        <p role={proof.expired ? "status" : undefined} className="text-body text-muted">
+          {proof.expired
+            ? "Хугацаа дууссан тул өмнөх код хүчингүй боллоо. Шинэ код авна уу."
+            : "Энэ дугаараасаа нэг SMS илгээж баталгаажуулна."}
+        </p>
+        <FormError message={proof.startError} />
         <Button
           variant="secondary"
           block
-          disabled={begin.isPending}
-          onClick={() => {
-            setSession(null);
-            begin.mutate();
-          }}
+          disabled={proof.starting}
+          onClick={() => proof.begin(phone)}
         >
-          {begin.isPending
+          {proof.starting
             ? "Код авч байна…"
-            : expired
+            : proof.expired
               ? "Шинэ код авах"
               : "SMS-ээр баталгаажуулах"}
         </Button>
@@ -172,7 +218,7 @@ export function PhoneVerificationStep({
       </dl>
 
       <p role="status" aria-live="polite" className="text-caption text-muted">
-        SMS ирэхийг хүлээж байна… {formatSeconds(secondsLeft)}
+        SMS ирэхийг хүлээж байна… {formatSeconds(proof.secondsLeft)}
       </p>
     </div>
   );
@@ -183,6 +229,7 @@ function useSecondsUntil(iso: string | undefined): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!iso) return;
+    setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(timer);
   }, [iso]);
@@ -190,7 +237,7 @@ function useSecondsUntil(iso: string | undefined): number {
   return Math.max(0, Math.ceil((new Date(iso).getTime() - now) / 1_000));
 }
 
-function formatSeconds(total: number): string {
+export function formatSeconds(total: number): string {
   const minutes = Math.floor(total / 60);
   const seconds = String(total % 60).padStart(2, "0");
   return `${minutes}:${seconds}`;

@@ -608,6 +608,25 @@
    * heading has to survive wrapping without its lines touching.
    */
   --leading-heading: 1.35;
+
+  /*
+   * A step arriving — the forgot-password flow, 2026-10-04. The new content
+   * rises a few pixels into place, so a person who just sent an SMS sees the
+   * screen *answer* rather than silently swap. Short, and flattened to nothing
+   * by the `prefers-reduced-motion` block below like every other animation.
+   */
+  --animate-step-in: step-in 280ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+
+  @keyframes step-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 }
 
 :root {

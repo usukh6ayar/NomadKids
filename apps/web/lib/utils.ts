@@ -23,7 +23,24 @@ const twMerge = extendTailwindMerge({
   extend: {
     classGroups: {
       "font-size": [
-        { text: ["caption", "compact", "body", "lead", "title", "heading", "display"] },
+        {
+          text: [
+            "caption",
+            "compact",
+            "body",
+            "lead",
+            "title",
+            "heading",
+            "display",
+            // ★ The four steps above `display` were missing until 2026-10-04,
+            // so `cn("text-figure", "text-primary-strong")` silently dropped
+            // the size — found as a six-digit SMS code rendering at body size.
+            "figure",
+            "figure-lg",
+            "hero",
+            "hero-lg",
+          ],
+        },
       ],
     },
   },
