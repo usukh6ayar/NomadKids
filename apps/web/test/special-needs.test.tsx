@@ -91,8 +91,8 @@ describe("тусгай хэрэгцээ", () => {
     stubHealth(health({ specialNeeds: [need()] }));
     renderWithProviders(<ChildHealth childId={CHILD} isStaff />);
 
-    // The category is what the state counts…
-    expect(await screen.findByText("Хэл яриа")).toBeInTheDocument();
+    // The category is what the state counts… (it is also in the "Анхаарах" strip)
+    expect((await screen.findAllByText("Хэл яриа")).length).toBeGreaterThan(0);
     // …and the note is what the teacher acts on. Neither stands alone.
     expect(screen.getByText("Долоо хоногт 2 удаа ганцаарчилсан хичээл")).toBeInTheDocument();
     expect(screen.getByText("КОМ-2026/114")).toBeInTheDocument();
@@ -116,26 +116,22 @@ describe("тусгай хэрэгцээ", () => {
     stubHealth(health({ specialNeeds: [need()] }), ["PARENT"]);
     renderWithProviders(<ChildHealth childId={CHILD} isStaff={false} />);
 
-    expect(await screen.findByText("Хэл яриа")).toBeInTheDocument();
+    expect((await screen.findAllByText("Хэл яриа")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "Тусгай хэрэгцээ нэмэх" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Дуусгах" })).toBeNull();
     expect(screen.queryByRole("button", { name: /устгах/i })).toBeNull();
   });
 
   /**
-   * ★ Ended, not gone — the ended allergies' rule applied to support.
-   *
-   * Withdrawn support was still once in place, and a teacher reading back
-   * needs to know it was considered rather than never recorded. So an ended
-   * record leaves the live list and appears under its own disclosure instead
-   * of disappearing.
+   * ★ A record ended before 2026-10-01 (when "Дуусгах" still existed) is not
+   * listed: without a Төлөв column it would read as current support.
    */
-  it("moves an ended record out of the live list without losing it", async () => {
+  it("does not list a record that was ended earlier", async () => {
     stubHealth(health({ specialNeeds: [need({ endedOn: "2026-06-01" })] }));
     renderWithProviders(<ChildHealth childId={CHILD} isStaff />);
 
     expect(await screen.findByText("Бүртгэгдсэн тусгай хэрэгцээ алга")).toBeInTheDocument();
-    expect(screen.getByText("Дууссан бүртгэл (1)")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Дуусгах" })).toBeNull();
   });
 
   /**

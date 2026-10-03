@@ -216,12 +216,8 @@ describe("navigation icons", () => {
       "Мэдээ",
       "Чат",
       "Санхүү",
-      "Төлбөрийн тайлан",
-      "Ирцийн дэлгэрэнгүй",
       "Тайлан",
       "Баримт бичгийн сан",
-      "Сургалтын хөтөлбөр",
-      "ESIS мэдээллийн төв",
     ];
 
     for (const label of entries) {
@@ -295,10 +291,25 @@ describe("navigation icons", () => {
     expect(within(bar).getByRole("button", { name: "Цэс" })).toBeInTheDocument();
   });
 
-  it("keeps the kitchen's bar as it was", async () => {
-    renderShell(["COOK"], "/kitchen/dashboard");
-    await sidebar();
-    expect(screen.queryByTestId("teacher-bottom-bar")).toBeNull();
+  /*
+    The kitchen's and the accountant's phone bars — client, 2026-10-02:
+    "нягтлан тогоочийн доод хөвдөг цэс багш удирдлагын хэсэг шиг болго".
+  */
+  it.each([
+    ["COOK", "/kitchen/dashboard"],
+    ["ACCOUNTANT", "/finance/dashboard"],
+  ] as const)("gives the %s the same rounded bar of plain glyphs", async (role, path) => {
+    renderShell([role], path);
+    const bar = await screen.findByTestId("teacher-bottom-bar");
+
+    const tabs = [...within(bar).getAllByRole("link"), ...within(bar).getAllByRole("button")];
+    expect(tabs).toHaveLength(4);
+    expect(bar.querySelector("img")).toBeNull();
+
+    const home = within(bar).getByRole("link", { name: "Самбар" });
+    expect(home).toHaveAttribute("aria-current", "page");
+    expect(home.firstElementChild).toHaveClass("bg-primary-soft", "text-primary");
+    expect(within(bar).getByRole("button", { name: "Цэс" })).toBeInTheDocument();
   });
 
   /*
@@ -316,6 +327,47 @@ describe("navigation icons", () => {
       expect(link.querySelector("img")).toBeNull();
       expect(link.querySelector("svg")).toHaveAttribute("stroke-width", "1.35");
       expect(link.querySelector("[data-nav-icon]")).toHaveAttribute("data-icon-surface", "none");
+    }
+  });
+
+  /** The accountant's side menu in the same glyphs — client, 2026-10-02. */
+  it("draws the accountant's rail in the same thin line glyphs", async () => {
+    renderShell(["ACCOUNTANT"], "/finance/dashboard");
+    const nav = await sidebar();
+
+    for (const name of [
+      "Самбар",
+      "Санхүү",
+      "Нэхэмжлэл",
+      "Ирц",
+      "Санхүүгийн аудит",
+      "Хувийн тохиргоо",
+    ]) {
+      const link = within(nav).getAllByRole("link", { name })[0]!;
+      expect(link.querySelector("img")).toBeNull();
+      expect(link.querySelector("svg")).toHaveAttribute("stroke-width", "1.35");
+    }
+  });
+
+  /** The cook's side menu in the same glyphs — client, 2026-10-02. */
+  it("draws the cook's rail in the same thin line glyphs", async () => {
+    renderShell(["COOK"], "/kitchen/dashboard");
+    const nav = await sidebar();
+
+    for (const name of [
+      "Самбар",
+      "Ирц",
+      "Хоолны цэс",
+      "Түүхий эд",
+      "Технологийн карт",
+      "Хүнсний захиалга",
+      "Нөөц",
+      "Тайлан",
+      "Хувийн тохиргоо",
+    ]) {
+      const link = within(nav).getAllByRole("link", { name })[0]!;
+      expect(link.querySelector("img")).toBeNull();
+      expect(link.querySelector("svg")).toHaveAttribute("stroke-width", "1.35");
     }
   });
 });
@@ -511,22 +563,23 @@ describe("role-based navigation", () => {
       ["Анги бүлэг", "/admin/groups"],
       ["Багш, ажилтан", "/admin/users"],
       ["Байгууллага", "/admin/kindergarten"],
-      ["Сургалтын хөтөлбөр", "/admin/curriculum"],
-      ["Төлбөрийн тайлан", "/admin/funding"],
-      ["ESIS мэдээллийн төв", "/admin/esis-sync"],
+      ["Санхүү", "/finance"],
     ] as const) {
       expect(within(nav).getByRole("link", { name: label })).toHaveAttribute("href", href);
     }
 
-    for (const heading of [
-      "Сургалт, үйл ажиллагаа",
-      "Хоол, санхүү",
-      "Тайлан, баримт",
-      "Сургалтын төлөвлөгөө",
-      "Интеграц",
-    ]) {
+    for (const heading of ["Сургалт, үйл ажиллагаа", "Хоол, санхүү", "Тайлан, баримт"]) {
       expect(within(nav).getByText(heading)).toBeInTheDocument();
     }
+    // ★ 2026-10-01: Сургалтын хөтөлбөр is a section of «Байгууллага» now, and
+    // the group that held only it is gone.
+    expect(within(nav).queryByText("Сургалтын төлөвлөгөө")).toBeNull();
+    expect(within(nav).queryByRole("link", { name: "Сургалтын хөтөлбөр" })).toBeNull();
+    // And «Интеграц» — ЭСИС холболт is a section of «Байгууллага» too.
+    expect(within(nav).queryByText("Интеграц")).toBeNull();
+    expect(within(nav).queryByRole("link", { name: "ESIS мэдээллийн төв" })).toBeNull();
+    // «Ирцийн дэлгэрэнгүй» was removed on 2026-10-01 — «Ирц» carries its views.
+    expect(within(nav).queryByRole("link", { name: "Ирцийн дэлгэрэнгүй" })).toBeNull();
 
     expect(within(nav).queryByRole("link", { name: "Аюулгүй байдал" })).not.toBeInTheDocument();
     // 2026-09-28: a year arrives from ESIS through «Анги, бүлэг» now.
@@ -585,8 +638,8 @@ describe("role-based navigation", () => {
    * sections as its primary link. Giving the same route a section row as well
    * drew "Самбар" twice, one under the other — reported from a screenshot the
    * same day, and the duplication this change set exists to remove rather than
-   * a new one to add. So the board appears once, and "Санхүүжилт" keeps its
-   * short name below it.
+   * a new one to add. So the board appears once, with «Санхүү» (2026-10-01:
+   * five tabs, renamed from "Санхүүжилт") below it.
    */
   it("names the board once, above a section that keeps its own name", async () => {
     renderShell(["ACCOUNTANT"], "/finance/dashboard");
@@ -597,10 +650,7 @@ describe("role-based navigation", () => {
       "href",
       "/finance/dashboard",
     );
-    expect(within(nav).getByRole("link", { name: "Санхүүжилт" })).toHaveAttribute(
-      "href",
-      "/finance",
-    );
+    expect(within(nav).getByRole("link", { name: "Санхүү" })).toHaveAttribute("href", "/finance");
     expect(
       within(await sections()).queryByRole("link", { name: "Самбар" }),
     ).not.toBeInTheDocument();
@@ -622,9 +672,7 @@ describe("role-based navigation", () => {
       "aria-current",
       "page",
     );
-    expect(within(nav).getByRole("link", { name: "Санхүүжилт" })).not.toHaveAttribute(
-      "aria-current",
-    );
+    expect(within(nav).getByRole("link", { name: "Санхүү" })).not.toHaveAttribute("aria-current");
   });
 
   /*
@@ -959,18 +1007,19 @@ describe("mobile navigation", () => {
    * "хар зурган болгоод бичиггүй", and the open tab rising out of the bar as
    * a blue disc.
    */
-  it("draws the parent bar as glyphs with a small caption under each", async () => {
+  it("draws the parent bar as glyphs only, each still named", async () => {
     renderShell(["PARENT"], "/home", [OWN_CHILD]);
 
     const bar = await waitFor(() => screen.getByRole("navigation", { name: "Доод цэс" }));
 
     for (const label of ["Нүүр", "Мэдээ", "Зураг", "Хоол"]) {
       const link = within(bar).getByRole("link", { name: label });
-      // A glyph, not one of the menu's illustrations — and, since 2026-09-29,
-      // its name printed under it: bare glyphs left people guessing.
+      // A glyph, not one of the menu's illustrations. ★ 2026-10-01, at the
+      // client's instruction: icons only — the name is kept for screen
+      // readers but no longer drawn.
       expect(link.querySelector("svg")).not.toBeNull();
       expect(link.querySelector("img")).toBeNull();
-      expect(within(link).getByText(label)).not.toHaveClass("sr-only");
+      expect(within(link).getByText(label)).toHaveClass("sr-only");
     }
 
     // The menu beside it keeps the illustrated set, untouched.

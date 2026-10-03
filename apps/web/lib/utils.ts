@@ -32,9 +32,10 @@ const twMerge = extendTailwindMerge({
             "title",
             "heading",
             "display",
-            // ★ The four steps above `display` were missing until 2026-10-04,
-            // so `cn("text-figure", "text-primary-strong")` silently dropped
-            // the size — found as a six-digit SMS code rendering at body size.
+            // ★ The figure and hero steps too. Unregistered, `text-figure-lg`
+            // read as a colour and evicted the wordmark's `text-transparent`
+            // (2026-10-02), and `cn("text-figure", "text-primary-strong")`
+            // dropped the size of the SMS code (2026-10-04).
             "figure",
             "figure-lg",
             "hero",

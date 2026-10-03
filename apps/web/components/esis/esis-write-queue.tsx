@@ -36,10 +36,11 @@ const STATE_TONE = {
  * ministry's own response is printed beside the row and the director reads it,
  * rather than this screen summarising it into a word.
  *
- * ★★ On `/admin/esis-sync` rather than the operator's platform screen, for the
- * reason `ee16625` settled for the sync panel: these routes are
+ * ★★ On the director's own surface rather than the operator's platform screen,
+ * for the reason `ee16625` settled for the sync panel: these routes are
  * `@Roles("ADMIN")` and need a **membership**, which a platform operator does
- * not hold. A sync is a working surface; so is this.
+ * not hold. Since 2026-10-01 it sits on «Анги, бүлэг», where the writes are
+ * prepared; it was on «ЭСИС холболт» before.
  */
 export function EsisWriteQueue(props: { kindergartenId: string }) {
   const writes = useQuery({

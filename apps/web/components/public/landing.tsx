@@ -90,33 +90,33 @@ const audienceItems = [
     imageSrc: "/illustrations/audience-accountant.png",
     imageAlt: "Нягтлан бодогч",
     title: "Нягтлангийн веб",
-    copy: "Төлбөр, орлого, зарлага, нэхэмжлэхийн бүртгэлийг нэг дор удирдана.",
+    copy: "Нэхэмжлэл, төлбөр, санхүүжилт, тайлангаа нэг дор удирдана.",
   },
 ] as const;
 
 const benefitItems = [
   {
     icon: Heart,
-    title: "Илүү аюулгүй орчин",
-    copy: "Хүүхдийн мэдээлэл найдвартай хамгаалагдана.",
+    title: "Аюулгүй орчин",
+    copy: "Хүүхдийн мэдээлэл эрхийн хяналттай, найдвартай хамгаалагдана.",
     tone: "bg-[#ffe9ec] text-[#ef6674]",
   },
   {
     icon: Sparkles,
-    title: "Илүү аз жаргалтай хүүхэд",
-    copy: "Ахиц, хэрэгцээг нь өдөр тутам анзаарна.",
+    title: "Хүүхэд бүрийн хөгжил",
+    copy: "Хүүхэд бүрийн ахиц, хэрэгцээг өдөр бүр анзаарч дэмжинэ.",
     tone: "bg-[#fff4d5] text-[#e6ae28]",
   },
   {
     icon: Users,
-    title: "Илүү бүтээмжтэй баг",
-    copy: "Цаг хэмнэж, хамтын ажиллагааг сайжруулна.",
+    title: "Бүтээмжтэй хамт олон",
+    copy: "Бичиг цаасны ажлыг багасгаж, хамтын ажиллагааг дэмжинэ.",
     tone: "bg-[#e8f3ff] text-[#3c8de8]",
   },
   {
     icon: BarChart3,
-    title: "Илүү сайн удирдлага",
-    copy: "Өгөгдөлд суурилсан зөв шийдвэр гаргана.",
+    title: "Өгөгдөлд суурилсан удирдлага",
+    copy: "Бодит мэдээлэлд тулгуурлан оновчтой шийдвэр гаргана.",
     tone: "bg-[#fff0df] text-[#ee9631]",
   },
 ] as const;
@@ -135,11 +135,11 @@ const landingFaqItems = [
   {
     question: "ESIS-тэй мэдээлэл солилцох уу?",
     answer:
-      "Зөвшөөрөгдсөн байгууллага батлагдсан endpoint, эрхийн хүрээнд мэдээлэл татаж, ирц зэрэг утгыг шалгасны дараа илгээнэ.",
+      "Тийм. Зөвшөөрөгдсөн цэцэрлэг ESIS-ээс өөрт олгогдсон эрхийн хүрээнд мэдээлэл татаж, ирц зэрэг мэдээллийг шалгасны дараа илгээнэ.",
   },
 ] as const;
 
-function Brand({ compact = false }: { compact?: boolean }) {
+function Brand(_props: { compact?: boolean }) {
   return (
     <Link
       href="#home"
@@ -158,21 +158,27 @@ function Brand({ compact = false }: { compact?: boolean }) {
           className="size-full object-contain"
         />
       </span>
+      {/* ★ No tagline under it since 2026-10-02 — the client removed
+          "Хүүхдийн хөгжил, жаргалтай мөч бүр" from the front door. */}
       <span className="min-w-0">
         <BrandWordmark className="block text-title" />
-        {!compact ? (
-          <span className="mt-1 block text-caption font-medium text-slate-500">
-            Хүүхдийн хөгжил, жаргалтай мөч бүр
-          </span>
-        ) : null}
       </span>
     </Link>
   );
 }
 
+/**
+ * The logo and the product's name, beside the login card.
+ *
+ * ★ 2026-10-02, to the client's drawing: the logo, then «Цэцэрлэгийн ухаалаг
+ * цахим систем» above a large NomadKids and «Цахимжуулах цогц шийдэл» under
+ * its right edge. The headline and the line beneath it
+ * ("Хүүхдийн хөгжил, жаргалтай мөч бүр", "Багш, эцэг эх, цэцэрлэгийн багийг
+ * нэг орчинд холбосон NomadKids.") were removed at their request.
+ */
 function HeroBrand() {
   return (
-    <div className="flex max-w-[560px] flex-col items-center text-center lg:items-start lg:text-left">
+    <div className="flex w-full max-w-[560px] flex-col items-center text-center">
       <Image
         src="/brand-logo.png"
         alt="Бяцхан нүүдэлчид"
@@ -182,15 +188,18 @@ function HeroBrand() {
         sizes="(max-width: 1023px) 116px, 148px"
         className="size-[116px] object-contain lg:size-[148px]"
       />
-      <p className="mt-2 rounded-pill bg-white/80 px-4 py-2 text-caption font-bold tracking-wide text-[#145ca8] shadow-sm lg:mt-5">
-        ЦЭЦЭРЛЭГИЙН УХААЛАГ ЦАХИМ СИСТЕМ
-      </p>
-      <h1 className="mt-4 max-w-[550px] text-heading font-black leading-[1.12] tracking-tight text-[#123f72] lg:text-display">
-        Хүүхдийн хөгжил, <span className="text-[#1979d0]">жаргалтай мөч бүр</span>
-      </h1>
-      <p className="mt-3 max-w-[430px] text-body leading-7 text-[#37556f] lg:text-lead">
-        Багш, эцэг эх, цэцэрлэгийн багийг нэг орчинд холбосон NomadKids.
-      </p>
+      <div className="mt-6 inline-flex flex-col">
+        {/* ★ Colours measured off the client's drawing, 2026-10-02. */}
+        <p className="self-start text-body font-bold text-[#5b9cf0] lg:text-lead">
+          Цэцэрлэгийн ухаалаг цахим систем
+        </p>
+        <h1 className="-mt-1">
+          <BrandWordmark className="from-[#1f45a6] via-[#5a58c4] to-[#a35fd8] text-figure-lg leading-none sm:text-hero" />
+        </h1>
+        <p className="self-end text-body font-extrabold uppercase tracking-wide text-[#5b63c8] lg:text-lead">
+          Цахимжуулах цогц шийдэл
+        </p>
+      </div>
     </div>
   );
 }
@@ -280,27 +289,28 @@ function LoginCard() {
   return (
     <div
       id="login-card"
-      className="w-full max-w-[440px] scroll-mt-24 overflow-hidden rounded-card border border-white/80 bg-white/95 p-6 text-left shadow-[0_24px_70px_rgba(25,72,111,.16)] backdrop-blur-xl sm:p-8"
+      className="w-full max-w-[400px] scroll-mt-24 overflow-hidden rounded-card border border-white/80 bg-white/95 p-5 text-left shadow-[0_24px_70px_rgba(25,72,111,.16)] backdrop-blur-xl sm:p-6"
     >
-      <span className="inline-flex items-center gap-2 rounded-pill bg-primary-soft px-3 py-1.5 text-caption font-bold text-primary-strong">
-        <span className="size-2 rounded-pill bg-primary" aria-hidden="true" />
-        Тавтай морил
-      </span>
-      <h2 className="mt-4 text-heading font-extrabold leading-tight tracking-tight text-ink">
+      <h2 className="text-title font-extrabold leading-tight tracking-tight text-[#2f6fd6]">
         Системд нэвтрэх
       </h2>
-      <p className="mt-2 text-body leading-6 text-muted">
-        Хүүхдийн өсөлт, өдөр тутмын ажлаа нэг дороос үргэлжлүүлээрэй.
+      <p className="mt-0.5 text-caption leading-5 text-[#8a93a3]">
+        Өөрийн эрхээр нэвтэрч, ажлаа үргэлжлүүлнэ үү.
       </p>
 
-      <form onSubmit={onSubmit} className="mt-7 flex flex-col gap-4" noValidate>
+      <form onSubmit={onSubmit} className="mt-5 flex flex-col gap-3" noValidate>
         <FormError
           message={
             login.isError && Object.keys(errors).length === 0 ? errorMessage(login.error) : null
           }
         />
 
-        <Field label="Нэвтрэх нэр, утас эсвэл и-мэйл" error={errors.identifier} required>
+        <Field
+          label="Нэвтрэх нэр, утас эсвэл и-мэйл"
+          labelHidden
+          error={errors.identifier}
+          required
+        >
           {({ id, describedBy, invalid }) => (
             <div className="relative">
               <UserRound
@@ -317,13 +327,13 @@ function LoginCard() {
                 placeholder="Нэвтрэх нэр"
                 value={identifier}
                 onChange={(event) => setIdentifier(event.target.value)}
-                className="h-13 rounded-control border-border bg-canvas pl-11 text-body transition-colors focus:bg-white"
+                className="h-12 rounded-control border-border bg-canvas pl-11 text-body transition-colors focus:bg-white"
               />
             </div>
           )}
         </Field>
 
-        <Field label="Нууц үг" error={errors.password} required>
+        <Field label="Нууц үг" labelHidden error={errors.password} required>
           {({ id, describedBy, invalid }) => (
             <div className="relative">
               <LockKeyhole
@@ -339,7 +349,7 @@ function LoginCard() {
                 placeholder="Нууц үг"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                className="h-13 rounded-control border-border bg-canvas pl-11 text-body transition-colors focus:bg-white"
+                className="h-12 rounded-control border-border bg-canvas pl-11 text-body transition-colors focus:bg-white"
               />
             </div>
           )}
@@ -362,17 +372,16 @@ function LoginCard() {
           type="submit"
           block
           disabled={login.isPending}
-          className="mt-2 h-13 rounded-control text-body font-bold shadow-[0_10px_24px_rgba(29,78,216,.24)] transition-all hover:-translate-y-0.5 hover:shadow-[0_14px_26px_rgba(29,78,216,.28)]"
+          className="mt-1 h-12 rounded-control bg-[#4585e6] text-body font-bold shadow-[0_10px_24px_rgba(69,133,230,.28)] transition-all hover:-translate-y-0.5 hover:bg-[#3a78d8] hover:shadow-[0_14px_26px_rgba(69,133,230,.32)]"
         >
           {login.isPending ? "Нэвтэрч байна…" : "Нэвтрэх"}
-          {!login.isPending ? <ArrowRight size={18} aria-hidden="true" /> : null}
         </Button>
       </form>
 
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-border pt-4 text-center">
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-center">
         <Link
           href="/forgot-password"
-          className="inline-flex min-h-11 items-center text-caption font-semibold text-primary hover:underline"
+          className="inline-flex min-h-11 items-center text-caption font-semibold text-[#4a8ae8] hover:underline"
         >
           Нууц үгээ мартсан?
         </Link>
@@ -386,109 +395,23 @@ function LoginCard() {
         */}
         <Link
           href="/staff-register"
-          className="inline-flex min-h-11 items-center text-caption font-semibold text-primary hover:underline"
+          className="inline-flex min-h-11 items-center text-caption font-semibold text-[#4a8ae8] hover:underline"
         >
           Багш, ажилтан бүртгүүлэх
         </Link>
       </div>
 
-      <p className="mt-4 text-center text-caption leading-5 text-muted">
+      <p className="mt-3 hidden border-t border-border pt-4 text-center text-caption leading-5 text-muted lg:block">
         Нэвтрэхдээ{" "}
-        <Link href="/terms" className="font-semibold text-primary hover:underline">
+        <Link href="/terms" className="font-semibold text-[#4a8ae8] hover:underline">
           Үйлчилгээний нөхцөл
         </Link>{" "}
         болон{" "}
-        <Link href="/privacy" className="font-semibold text-primary hover:underline">
+        <Link href="/privacy" className="font-semibold text-[#4a8ae8] hover:underline">
           Нууцлалын бодлоготой
         </Link>{" "}
         танилцана уу.
       </p>
-    </div>
-  );
-}
-
-function DashboardPreview({ variant }: { variant: "teacher" | "admin" | "child" }) {
-  const title =
-    variant === "teacher"
-      ? "Сайн байна уу, Саруул багш"
-      : variant === "admin"
-        ? "Нэгдсэн тайлан"
-        : "Хүүхдийн мэдээлэл";
-
-  return (
-    <div className="min-h-[245px] overflow-hidden rounded-control border border-[#e5edf6] bg-white p-3 shadow-[0_12px_35px_rgba(25,72,111,.1)]">
-      <div className="flex items-center justify-between border-b border-[#edf2f7] pb-2.5">
-        <Brand compact />
-        <span className="size-7 rounded-pill bg-[#ffedbe]" />
-      </div>
-      <div className="flex gap-3 pt-3">
-        <div className="hidden w-14 shrink-0 space-y-2 sm:block">
-          {[80, 55, 70, 48, 64, 58].map((width) => (
-            <span
-              key={width}
-              className="block h-1.5 rounded-pill bg-[#e5edf6]"
-              style={{ width: `${width}%` }}
-            />
-          ))}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-caption font-bold text-[#173e70]">{title}</p>
-          {variant === "child" ? (
-            <div className="mt-3 grid grid-cols-[72px_1fr] gap-2.5">
-              <div className="grid place-items-center rounded-control bg-[#fff5dd]">
-                <Users className="size-9 text-[#efa91f]" />
-              </div>
-              <div className="space-y-2 rounded-control bg-[#f7faff] p-3">
-                <span className="block h-2.5 w-20 rounded-pill bg-[#dbe8f7]" />
-                <span className="block h-2 w-full rounded-pill bg-[#e8eff7]" />
-                <span className="block h-2 w-4/5 rounded-pill bg-[#e8eff7]" />
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <span className="h-10 rounded-control bg-[#e7f7ef]" />
-                  <span className="h-10 rounded-control bg-[#fff0e8]" />
-                </div>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="mt-3 grid grid-cols-4 gap-2">
-                {["#4a94ed", "#f39191", "#76c794", "#f1bf55"].map((color, index) => (
-                  <div
-                    key={color}
-                    className="rounded-control p-2"
-                    style={{ backgroundColor: `${color}18` }}
-                  >
-                    <span className="block text-body font-bold" style={{ color }}>
-                      {[24, 3, 18, 2][index]}
-                    </span>
-                    <span
-                      className="mt-1 block h-1 w-5 rounded-pill"
-                      style={{ backgroundColor: `${color}55` }}
-                    />
-                  </div>
-                ))}
-              </div>
-              <div className="mt-3 grid grid-cols-[1.2fr_.8fr] gap-2.5">
-                <div className="flex h-24 items-end gap-2 rounded-control bg-[#f7faff] p-3">
-                  {[38, 62, 47, 77, 60, 86].map((height) => (
-                    <span
-                      key={height}
-                      className="flex-1 rounded-t bg-[#65a8f3]"
-                      style={{ height: `${height}%` }}
-                    />
-                  ))}
-                </div>
-                <div className="grid place-items-center rounded-control bg-[#f8fbff]">
-                  <div className="grid size-16 place-items-center rounded-pill bg-[conic-gradient(#4a94ed_0_44%,#6dc99a_44%_72%,#f0c66b_72%)]">
-                    <span className="grid size-10 place-items-center rounded-pill bg-white text-caption font-bold text-[#173e70]">
-                      92%
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
@@ -529,7 +452,7 @@ export function PublicLanding() {
 
           <a
             href="#login-card"
-            className="hidden min-h-11 items-center rounded-control bg-[#2588ed] px-6 text-body font-bold text-white shadow-sm transition-colors hover:bg-[#1477da] lg:inline-flex"
+            className="hidden min-h-11 items-center rounded-control bg-[#4585e6] px-6 text-body font-bold text-white shadow-sm transition-colors hover:bg-[#3a78d8] lg:inline-flex"
           >
             Нэвтрэх
           </a>
@@ -565,7 +488,7 @@ export function PublicLanding() {
             <a
               href="#login-card"
               onClick={() => setIsMenuOpen(false)}
-              className="mt-1 inline-flex min-h-11 items-center justify-center rounded-control bg-[#2588ed] px-5 text-white"
+              className="mt-1 inline-flex min-h-11 items-center justify-center rounded-control bg-[#4585e6] px-5 text-white"
             >
               Нэвтрэх
             </a>
@@ -578,22 +501,22 @@ export function PublicLanding() {
         data-testid="login-hero"
         className="relative isolate min-h-dvh bg-[#f1f9ff] bg-[url('/background/login-mobile.png')] bg-cover bg-top bg-no-repeat px-5 pb-[45vw] pt-8 sm:px-8 lg:min-h-[calc(100dvh-70px)] lg:bg-[url('/background/login-desktop.png')] lg:px-[7vw] lg:pb-8 lg:pt-10"
       >
-        <div className="relative mx-auto grid w-full max-w-[1320px] items-start gap-y-7 lg:grid-cols-[minmax(420px,470px)_minmax(0,1fr)] lg:gap-x-[7vw]">
-          <div className="order-1 flex justify-center lg:order-2 lg:justify-start lg:pt-14">
+        <div className="relative mx-auto grid w-full max-w-[1320px] items-start gap-y-7 lg:grid-cols-[minmax(380px,420px)_minmax(0,1fr)] lg:gap-x-[7vw]">
+          <div className="order-1 flex justify-center lg:order-2 lg:pt-4">
             <HeroBrand />
           </div>
 
-          <div className="order-2 mx-auto w-full max-w-[440px] lg:order-1 lg:mx-0 lg:pt-9">
-            <LoginCard />
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-x-2 text-body text-[#173e70] lg:justify-start">
-              <span>Танай байгууллага бүртгэлгүй юу?</span>
+          <div className="order-2 mx-auto w-full max-w-[400px] lg:order-1 lg:mx-0">
+            {/* Above the card's right edge, as drawn — 2026-10-02. */}
+            <div className="flex justify-end">
               <Link
                 href="/register"
-                className="inline-flex min-h-11 items-center gap-1 font-bold text-[#176ac2] hover:underline"
+                className="inline-flex min-h-11 items-center text-body font-bold text-[#3f86ef] hover:underline"
               >
-                Байгууллагын бүртгэл <ArrowRight size={16} aria-hidden="true" />
+                Байгууллагын бүртгэл
               </Link>
             </div>
+            <LoginCard />
           </div>
         </div>
       </section>
@@ -661,24 +584,11 @@ export function PublicLanding() {
         </div>
       </section>
 
-      <section id="system-preview" className="px-5 py-16 sm:px-8 sm:py-20">
-        <SectionHeading
-          eyebrow="Харагдац"
-          title="Системийн интерфэйс"
-          copy="Энгийн, ойлгомжтой, өдөр бүр хэрэглэхэд эвтэйхэн."
-        />
-        <div className="mx-auto mt-9 grid max-w-[1180px] gap-5 md:grid-cols-3">
-          <DashboardPreview variant="teacher" />
-          <DashboardPreview variant="admin" />
-          <DashboardPreview variant="child" />
-        </div>
-      </section>
-
       <section id="benefits" className="bg-[#fbfdff] px-5 py-16 sm:px-8 sm:py-20">
         <SectionHeading
           eyebrow={`Яагаад ${BRAND_LATIN}`}
-          title="Хүүхэд бүрд илүү сайн ирээдүй"
-          copy="Жижиг өөрчлөлтүүд том боломжуудыг бүтээнэ."
+          title="Хүүхэд бүрийн гэрэлт ирээдүйн төлөө"
+          copy="Өдөр тутмын жижиг алхмууд том үр дүнд хүргэнэ."
         />
         <div className="mx-auto mt-9 grid max-w-[1050px] gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {benefitItems.map((item) => {
@@ -728,14 +638,15 @@ export function PublicLanding() {
         <div className="relative mx-auto min-h-[250px] max-w-[1180px] overflow-hidden rounded-control bg-[#eaf6ff] px-6 py-8 sm:px-10 lg:flex lg:min-h-[230px] lg:items-center">
           <div className="relative z-10 max-w-[570px] text-center lg:text-left">
             <h2 className="text-heading font-extrabold leading-tight text-[#173e70] sm:text-display">
-              Өнөөдрөөс илүү ойр байцгаая
+              Хүүхдийн хөгжлийг хамтдаа дэмжье
             </h2>
             <p className="mt-3 text-body leading-6 text-slate-600">
-              {BRAND_LATIN} системд нэгдэж, хүүхэд бүрийн гэрэлт ирээдүйг хамтдаа бүтээлцээрэй.
+              {BRAND_LATIN} системд нэгдэж, хүүхэд бүрийн өсөлт, хөгжлийг нэг дороос хамтдаа
+              хөтлөөрэй.
             </p>
             <a
               href="#login-card"
-              className="mt-6 inline-flex min-h-12 items-center gap-2 rounded-control bg-[#2588ed] px-7 text-body font-bold text-white shadow-sm hover:bg-[#1477da]"
+              className="mt-6 inline-flex min-h-12 items-center gap-2 rounded-control bg-[#4585e6] px-7 text-body font-bold text-white shadow-sm hover:bg-[#3a78d8]"
             >
               Нэвтрэх <ArrowRight className="size-4" aria-hidden="true" />
             </a>

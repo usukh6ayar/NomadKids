@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
 import ChildrenPage from "@/app/(app)/children/page";
@@ -144,7 +144,18 @@ describe("/children — ESIS roster", () => {
     renderWithProviders(<ChildrenPage />);
 
     // Their own group's child, from `GET /children`, which the API has scoped.
+    // ★ 2026-10-01: a plain table, no photograph, the name as "Г.Батбаяр" and
+    // the columns in the client's order — numbered, and no Бүлэг column,
+    // since a teacher's rows are all their own group.
     expect(await screen.findByText("Г.Батбаяр")).toBeInTheDocument();
+    const table = screen.getByRole("table", { name: "Суралцагчдын жагсаалт" });
+    expect(table.querySelector("img")).toBeNull();
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((cell) => cell.textContent)
+        .filter((text) => text !== "Үйлдэл"),
+    ).toEqual(["№", "Нэр", "Регистр", "Хүйс", "Нас", "ESIS төлөв"]);
 
     expect(screen.queryByText("Намуун")).toBeNull();
     expect(screen.queryByText("Тэмүүлэн")).toBeNull();

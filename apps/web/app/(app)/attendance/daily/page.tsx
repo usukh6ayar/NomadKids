@@ -49,15 +49,15 @@ const groupsSchema = paginated(groupListItemSchema);
  * right: a director's question is "has Дэлбээ filled in Tuesday, and what did
  * it come to", which is one row per group per day and nothing to click.
  *
- * ★★ Three attendance screens, and each answers a different question.
+ * ★★ Two attendance screens, and each answers a different question.
  *
  *   · `/groups/:id/attendance` — one group, one day, *writable*. The teacher's.
- *   · `/attendance/daily` — every group, every day, as counts. This one.
- *   · `/attendance/journal` — every child, every day, as a grid. The one an
- *     accountant opens when a figure on this screen needs explaining.
+ *   · `/attendance/daily` — this one: Суралцагчаар, Өдрөөр, Сараар, Жилээр.
  *
- * They share `buildRegister` on the API, so no two of them can disagree about
- * what "recorded" means.
+ * `/attendance/journal` («Ирцийн дэлгэрэнгүй», every child every day over any
+ * range) was removed on 2026-10-01 at the client's request — «Сараар» and
+ * «Жилээр» are that grid — and now redirects here. They share `buildRegister`
+ * on the API, so no two of them can disagree about what "recorded" means.
  *
  * ★★★ The columns are the client's list, in their order, with `Хичээлийн жил`
  * moved in front — a register with no school year on it cannot be filed. The
@@ -75,6 +75,7 @@ export default function DailyAttendancePage() {
 const PAGE_SIZE = 10;
 
 type View = "day" | "child" | "breakdown" | "year";
+const VIEWS: readonly View[] = ["child", "day", "breakdown", "year"];
 
 /**
  * Өдөр тутмын ирц — the client's 2026-09-25 drawing: range, group and search
@@ -98,7 +99,15 @@ function DailyAttendance() {
   const [status, setStatus] = useState("");
   const [childSearch, setChildSearch] = useState("");
   const childQ = useDebounced(childSearch.trim());
-  const [view, setView] = useState<View>("child");
+  /*
+    ★ Суралцагчаар · Өдрөөр · Сараар · Жилээр — 2026-10-01, the client's order
+    and names. "Өдрөөр" still opens first, at their choice. `?view=` opens a
+    given one, read once at mount like `groupId` above.
+  */
+  const [view, setView] = useState<View>(() => {
+    const requested = searchParams.get("view");
+    return VIEWS.includes(requested as View) ? (requested as View) : "day";
+  });
   const [page, setPage] = useState(1);
 
   const filters = useMemo(
