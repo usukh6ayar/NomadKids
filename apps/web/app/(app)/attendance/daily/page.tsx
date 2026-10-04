@@ -1,7 +1,5 @@
 "use client";
 
-import { formatDate, groupLabel } from "@/lib/format";
-
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
@@ -160,7 +158,7 @@ function DailyAttendance() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-heading font-bold leading-heading text-ink sm:text-display">
+          <h1 className="text-display font-bold leading-heading text-ink">
             {yearly ? "Жилээр" : breakdown ? "Сараар" : byChild ? "Суралцагчаар" : "Өдрөөр"}
           </h1>
           <p className="mt-1 text-body text-muted">
@@ -405,11 +403,8 @@ function DayTable({
               key={`${row.groupId}-${row.date}`}
               className="border-b border-border-soft last:border-b-0 even:bg-sunken/40"
             >
-              {/* `whitespace-nowrap`: "2026-\n09-01" and "ахлах\nбүлэг" (2026-09-29). */}
-              <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-ink">
-                {formatDate(row.date.slice(0, 10))}
-              </td>
-              <td className="whitespace-nowrap px-3 py-1.5 text-ink">{groupLabel(row.group)}</td>
+              <td className="px-3 py-1.5 tabular-nums text-ink">{row.date.slice(0, 10)}</td>
+              <td className="px-3 py-1.5 text-ink">{row.group}</td>
               <NumberCell value={row.expected} tone="text-primary" />
               <NumberCell value={row.present} tone="text-mint-ink" />
               <NumberCell value={row.sick} tone="text-muted" />

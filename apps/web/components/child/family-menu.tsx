@@ -315,17 +315,9 @@ function DayView({
 
       {kinds.length === 0 ? (
         <div className="p-4">
-          {/*
-            ★ Says what to do to the person who can do it — 2026-09-29. A
-            teacher, who holds the + above, was told to wait for a teacher.
-          */}
           <EmptyState
             title="Цэс оруулаагүй байна"
-            description={
-              actions?.onAdd && allowAdd
-                ? "Дээрх + товчоор өнөөдрийн хоолыг нэмнэ үү."
-                : "Цэс оруулсны дараа энд харагдана."
-            }
+            description="Багш цэс оруулсны дараа энд харагдана."
           />
         </div>
       ) : (
@@ -587,9 +579,7 @@ export function WeekTable({
     return (
       <EmptyState
         title="Энэ долоо хоногт цэс оруулаагүй байна"
-        description={
-          onSaveCell ? "Нүдэн дээр дарж хоол нэмнэ үү." : "Цэс оруулсны дараа энд харагдана."
-        }
+        description="Багш цэс оруулсны дараа энд харагдана."
       />
     );
   }

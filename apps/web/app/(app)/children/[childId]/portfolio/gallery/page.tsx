@@ -57,9 +57,7 @@ export default function PhotoAlbumLandingPage() {
 
       <header className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3">
         <BackButton href={`/children/${childId}/portfolio`} />
-        <h1 className="min-w-0 text-heading font-semibold text-ink sm:text-display">
-          Зургийн цомог
-        </h1>
+        <h1 className="min-w-0 text-heading font-semibold text-ink">Зургийн цомог</h1>
         <p className="col-start-2 mt-1 text-body text-muted">
           Насыг сонгож тухайн үеийн дурсамжуудаа үзээрэй.
         </p>

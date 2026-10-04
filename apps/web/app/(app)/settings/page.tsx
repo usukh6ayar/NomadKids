@@ -751,15 +751,10 @@ function StaffProfileCard() {
 
   const [form, setForm] = useState<Record<string, string> | null>(null);
   const fields = [
-    /*
-      ★ "Жишээ: …" — 2026-09-29. "СӨБ-ийн багш" and "99001234" alone in a
-      field read as a value already saved, and a teacher took their card for
-      filled in.
-    */
-    { key: "specialization", label: "Мэргэжил", placeholder: "Жишээ: СӨБ-ийн багш" },
-    { key: "qualification", label: "Мэргэшлийн зэрэг", placeholder: "Жишээ: Заах аргач" },
-    { key: "education", label: "Төгссөн сургууль", placeholder: "Жишээ: МУБИС" },
-    { key: "phone", label: "Утас", placeholder: "Жишээ: 99001234" },
+    { key: "specialization", label: "Мэргэжил", placeholder: "СӨБ-ийн багш" },
+    { key: "qualification", label: "Мэргэшлийн зэрэг", placeholder: "Заах аргач" },
+    { key: "education", label: "Төгссөн сургууль", placeholder: "МУБИС" },
+    { key: "phone", label: "Утас", placeholder: "99001234" },
   ] as const;
 
   const current =

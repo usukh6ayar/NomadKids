@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Download, MoreHorizontal, Plus, RefreshCw } from "lucide-react";
+import { Download, Info, MoreHorizontal, Plus, RefreshCw } from "lucide-react";
 import {
   SEX_LABEL,
   childSummarySchema,
@@ -206,30 +206,26 @@ export function AdminRoster() {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-caption text-muted">
-        {/*
-          ★ The discount counts only once «ESIS Хөнгөлөлттэй» has been pressed,
-          and no "Нэгдсэн журмаар шинэчлэгдсэн: —" — 2026-09-29. Both printed
-          dashes on every visit.
-        */}
         <p aria-live="polite">
           Нийт <span className="font-semibold tabular-nums text-ink">{data?.total ?? "—"}</span>{" "}
-          суралцагч
-          {discountByChild ? (
+          суралцагч · Хөнгөлөлттэй{" "}
+          <span className="tabular-nums text-ink">
+            {discountByChild ? discounts.data!.counts.eligible : "—"}
+          </span>{" "}
+          · Хөнгөлөлтгүй{" "}
+          <span className="tabular-nums text-ink">
+            {discountByChild ? discounts.data!.counts.notEligible : "—"}
+          </span>
+          {discountByChild && discounts.data!.counts.unassessed > 0 ? (
             <>
               {" "}
-              · Хөнгөлөлттэй{" "}
-              <span className="tabular-nums text-ink">{discounts.data!.counts.eligible}</span> ·
-              Хөнгөлөлтгүй{" "}
-              <span className="tabular-nums text-ink">{discounts.data!.counts.notEligible}</span>
-              {discounts.data!.counts.unassessed > 0 ? (
-                <>
-                  {" "}
-                  · Тогтоогоогүй{" "}
-                  <span className="tabular-nums text-ink">{discounts.data!.counts.unassessed}</span>
-                </>
-              ) : null}
+              · Тогтоогоогүй{" "}
+              <span className="tabular-nums text-ink">{discounts.data!.counts.unassessed}</span>
             </>
           ) : null}
+        </p>
+        <p className="inline-flex items-center gap-1">
+          <Info size={14} aria-hidden /> Нэгдсэн журмаар шинэчлэгдсэн: —
         </p>
       </div>
 
@@ -430,13 +426,6 @@ export function ChildRosterTable({
   discounts?: ReadonlyMap<string, FoodDiscountStatus>;
 }) {
   const router = useRouter();
-  /*
-   * ★ A column is drawn when it has something in it — 2026-09-29. On an
-   * ESIS-imported roster every Регистр cell was "—" (ESIS sends none), and
-   * Хөнгөлөлт was "—" until its button was pressed: two columns of dashes.
-   */
-  const showRegister = items.some((child) => child.nationalId || child.foreignId);
-  const showDiscount = Boolean(discounts);
   return (
     <div className="rounded-card border border-border bg-surface">
       <table className="w-full border-collapse text-body">
@@ -445,10 +434,10 @@ export function ChildRosterTable({
           <tr>
             <Th className="w-12 rounded-tl-card py-2">№</Th>
             <Th className="py-2">Суралцагчийн нэр</Th>
-            {showRegister ? <Th className="py-2">Регистр</Th> : null}
+            <Th className="py-2">Регистр</Th>
             <Th className="py-2">Хүйс</Th>
             <Th className="py-2">Бүлэг</Th>
-            {showDiscount ? <Th className="py-2">Хөнгөлөлт</Th> : null}
+            <Th className="py-2">Хөнгөлөлт</Th>
             <Th className="py-2">ESIS төлөв</Th>
             <Th className="w-12 rounded-tr-card py-2">
               <span className="sr-only">Үйлдэл</span>
@@ -467,20 +456,16 @@ export function ChildRosterTable({
                   {child.lastName} {child.firstName}
                 </Link>
               </Td>
-              {showRegister ? (
-                <Td className="py-1.5 tabular-nums text-muted">
-                  {child.nationalId ?? child.foreignId ?? "—"}
-                </Td>
-              ) : null}
+              <Td className="py-1.5 tabular-nums text-muted">
+                {child.nationalId ?? child.foreignId ?? "—"}
+              </Td>
               <Td className="py-1.5 text-muted">{(child.sex && SEX_LABEL[child.sex]) || "—"}</Td>
               <Td className="py-1.5 text-muted">
                 {child.enrollments?.[0]?.group ? groupLabel(child.enrollments[0].group.name) : "—"}
               </Td>
-              {showDiscount ? (
-                <Td className="py-1.5 text-muted">
-                  {DISCOUNT_LABEL[discounts!.get(child.id) ?? "UNASSESSED"]}
-                </Td>
-              ) : null}
+              <Td className="py-1.5 text-muted">
+                {discounts ? DISCOUNT_LABEL[discounts.get(child.id) ?? "UNASSESSED"] : "—"}
+              </Td>
               <Td className="py-1.5 text-muted">
                 {child.esisLinked === undefined
                   ? "—"
