@@ -68,7 +68,6 @@ export default function AcceptInvitationPage() {
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   /** The verify.mn proof for `phone`, by number — a changed number has none. */
   const [phoneProof, setPhoneProof] = useState<{ phone: string; handle: string } | null>(null);
@@ -116,15 +115,12 @@ export default function AcceptInvitationPage() {
           // Only the fields this audience was asked for. Sending an empty
           // string would fail the schema's `.min(1)`; sending the other
           // audience's fields would write facts nobody was asked to give.
-          ...(isStaff
-            ? { lastName: lastName.trim(), email: email.trim() }
-            : {
-                phone: phone.trim(),
-                relation,
-                ...(phoneProof?.phone === phone.trim()
-                  ? { phoneVerification: phoneProof.handle }
-                  : {}),
-              }),
+          //
+          // ★ The phone for both since 2026-10-04 — it is how a member of
+          // staff signs in now, as a guardian does. No e-mail.
+          ...(isStaff ? { lastName: lastName.trim() } : { relation }),
+          phone: phone.trim(),
+          ...(phoneProof?.phone === phone.trim() ? { phoneVerification: phoneProof.handle } : {}),
         },
       }),
     onSuccess: () => {
@@ -153,7 +149,7 @@ export default function AcceptInvitationPage() {
     }
     // The server refuses an unproven phone too; saying so here saves the
     // round trip and points at the step that is missing.
-    if (phoneEnabled && !isStaff && phoneProof?.phone !== phone.trim()) {
+    if (phoneEnabled && phoneProof?.phone !== phone.trim()) {
       setLocalError(
         MOBILE_PHONE.test(phone.trim())
           ? "Утасны дугаараа SMS-ээр баталгаажуулна уу."
@@ -246,89 +242,70 @@ export default function AcceptInvitationPage() {
           )}
         </Field>
 
-        {isStaff ? (
-          <Field label="И-мэйл хаяг" error={errors.email} hint="Энэ хаягаараа нэвтэрнэ." required>
-            {({ id, describedBy, invalid }) => (
-              <Input
-                id={id}
-                aria-describedby={describedBy}
-                invalid={invalid}
-                type="email"
-                inputMode="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            )}
-          </Field>
-        ) : null}
+        <Field
+          label="Утасны дугаар"
+          error={errors.phone}
+          hint={
+            // The SMS step appears only for a number verify.mn can prove;
+            // without this a guardian typing "9911 2233" would be told to
+            // verify by SMS with no SMS button on screen.
+            phoneEnabled && phone.trim() && !MOBILE_PHONE.test(phone.trim())
+              ? "8 оронтой дугаар оруулна уу."
+              : undefined
+          }
+          required
+        >
+          {({ id, describedBy, invalid }) => (
+            <Input
+              id={id}
+              aria-describedby={describedBy}
+              invalid={invalid}
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+          )}
+        </Field>
 
-        {!isStaff ? (
-          <>
-            <Field
-              label="Утасны дугаар"
-              error={errors.phone}
-              hint={
-                // The SMS step appears only for a number verify.mn can prove;
-                // without this a guardian typing "9911 2233" would be told to
-                // verify by SMS with no SMS button on screen.
-                phoneEnabled && phone.trim() && !MOBILE_PHONE.test(phone.trim())
-                  ? "8 оронтой дугаар оруулна уу."
-                  : undefined
-              }
-              required
-            >
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  type="tel"
-                  inputMode="tel"
-                  autoComplete="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                />
-              )}
-            </Field>
-
-            {/*
+        {/*
               ★ Proven by one SMS from this phone where verify.mn is on —
               2026-10-01. The number becomes a way into the account (password
               reset by phone), so a typo or somebody else's number would hand
               that door to the wrong person.
             */}
-            {phoneEnabled && MOBILE_PHONE.test(phone.trim()) ? (
-              <PhoneVerificationStep
-                key={phone.trim()}
-                phone={phone.trim()}
-                start={(value) =>
-                  mutate("/auth/invitation/phone", phoneVerificationStartSchema, {
-                    method: "POST",
-                    body: { token: params.token, phone: value },
-                  })
-                }
-                onVerified={(handle) => setPhoneProof({ phone: phone.trim(), handle })}
-              />
-            ) : null}
+        {phoneEnabled && MOBILE_PHONE.test(phone.trim()) ? (
+          <PhoneVerificationStep
+            key={phone.trim()}
+            phone={phone.trim()}
+            start={(value) =>
+              mutate("/auth/invitation/phone", phoneVerificationStartSchema, {
+                method: "POST",
+                body: { token: params.token, phone: value },
+              })
+            }
+            onVerified={(handle) => setPhoneProof({ phone: phone.trim(), handle })}
+          />
+        ) : null}
 
-            <Field label="Хүүхдийн юу нь болох" error={errors.relation} required>
-              {({ id, describedBy }) => (
-                <Select
-                  id={id}
-                  aria-describedby={describedBy}
-                  value={relation}
-                  onChange={(e) => setRelation(e.target.value)}
-                >
-                  {RELATIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
-          </>
+        {!isStaff ? (
+          <Field label="Хүүхдийн юу нь болох" error={errors.relation} required>
+            {({ id, describedBy }) => (
+              <Select
+                id={id}
+                aria-describedby={describedBy}
+                value={relation}
+                onChange={(e) => setRelation(e.target.value)}
+              >
+                {RELATIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
         ) : null}
 
         <Field label="Нууц үг" error={errors.password} required>

@@ -1141,12 +1141,13 @@ describe("POST /children/:id/guardian-invitations", () => {
     expect(after.status).toBe(200);
   });
 
-  it("a taken e-mail is refused without burning the invitation", async () => {
+  it("a taken phone is refused without burning the invitation", async () => {
     /*
-     * ★★★ From a production 500 on 2026-09-19. `email` is unique on `User`, and
-     * this endpoint wrote the accepted profile with no check — so somebody
-     * typing an address another account already held got «серверт алдаа
-     * гарлаа».
+     * ★★★ From a production 500 on 2026-09-19, with an e-mail then; the field
+     * is a phone since 2026-10-04 and the rule is the same. `phone` is unique
+     * on `User`, and this endpoint wrote the accepted profile with no check —
+     * so somebody typing a number another account already held got «серверт
+     * алдаа гарлаа».
      *
      * The status was the smaller half. The token had already been consumed and
      * the password already set by the time the write threw, so the invitation
@@ -1160,19 +1161,17 @@ describe("POST /children/:id/guardian-invitations", () => {
     ).send(invitation());
     const token = res.body.invitationToken as string;
 
-    // Somebody already holds this address. `createUser` leaves e-mail null by
-    // default, so the collision has to be set up rather than assumed.
-    const taken = `taken-${uniq()}@example.mn`;
-    await createUser({ username: uniq("holder"), email: taken });
+    // Somebody already holds this number. `createUser` leaves the phone null
+    // by default, so the collision has to be set up rather than assumed.
+    await createUser({ username: uniq("holder"), phone: "99887766" });
 
     const clash = await request(server())
       .post("/v1/auth/invitation/accept")
-      .send(acceptance(token, { email: taken }));
+      .send(acceptance(token, { phone: "99887766" }));
     expect(clash.status).toBe(409);
 
     const retry = await request(server())
       .post("/v1/auth/invitation/accept")
-      // Omitted, not null: the schema takes an address or nothing.
       .send(acceptance(token));
     expect(retry.status).toBe(204);
   });

@@ -150,8 +150,14 @@ Off unless `VERIFY_MN_API_KEY` is set; off, every flow behaves as it did before.
    would let an eight-digit _username_ answer for somebody's number.
 5. **A refused proof leaves an invitation link working.** It is checked
    before `consumeAuthToken`, the 2026-09-19 ordering rule.
-6. **Where a proof is required:** a reset by phone; a guardian's phone on an
-   invitation; changing one's own phone to a new number. Clearing a phone, or
+6. **Where a proof is required:** a reset by phone; the phone on any
+   invitation, a guardian's or a member of staff's; changing one's own phone to
+   a new number.
+7. **The phone is an identity; e-mail is not** — 2026-10-04, client: «email-ээр
+   verification хийхгүй, зөвхөн SMS». Login takes a username or a phone, never
+   an e-mail, and a staff invitation asks for a phone where it used to ask for
+   the login address. `User.email` stays, as a contact field nobody signs in
+   with. Clearing a phone, or
    an administrator editing someone's (`PATCH /users/:id`), needs none.
 
 `test/phone-verification.test.ts` pins 3–5 through HTTP against a stubbed

@@ -237,7 +237,7 @@ export class AuthService {
     }
 
     await this.repo.consumeAuthToken(row.id);
-    await this.completeReset(row.userId, newPassword, ctx, "email");
+    await this.completeReset(row.userId, newPassword, ctx, "link");
   }
 
   /**
@@ -294,7 +294,8 @@ export class AuthService {
     userId: string,
     newPassword: string,
     ctx: RequestContext,
-    channel: "email" | "phone",
+    /** `link` — an administrator-issued one-time link; `phone` — verify.mn. */
+    channel: "link" | "phone",
   ) {
     await this.repo.setPassword(userId, await this.passwords.hash(newPassword));
 
@@ -404,7 +405,6 @@ export class AuthService {
       phone?: string;
       relation?: GuardianRelation;
       lastName?: string;
-      email?: string;
     },
     phoneVerification: string | undefined,
     ctx: RequestContext,
@@ -421,8 +421,8 @@ export class AuthService {
      * ★★★ **Before the token is consumed**, and that ordering is the whole
      * point — 2026-09-19, from a production 500.
      *
-     * `email` and `phone` are unique on `User`. A person accepting an
-     * invitation types one of them, and if it already belongs to somebody else
+     * `phone` is unique on `User`. A person accepting an invitation types
+     * one, and if it already belongs to somebody else
      * the write below raised `PrismaClientKnownRequestError` — unhandled, so a
      * 500 and «серверт алдаа гарлаа» on screen.
      *
@@ -436,22 +436,18 @@ export class AuthService {
      * still works, and the message names the field to change.
      */
     const taken = await this.repo.findOtherUserByContact(row.userId, {
-      email: profile.email,
       phone: profile.phone,
     });
     if (taken) {
-      throw new ConflictException(
-        profile.email && taken.email === profile.email
-          ? "Энэ и-мэйл хаяг өөр бүртгэлд ашиглагдсан байна"
-          : "Энэ утасны дугаар өөр бүртгэлд ашиглагдсан байна",
-      );
+      throw new ConflictException("Энэ утасны дугаар өөр бүртгэлд ашиглагдсан байна");
     }
 
     /*
      * ★ The phone is proven before the link is spent — the same ordering as
      * the contact check above, for the same reason: a refused proof must
-     * leave a working link behind it. Only when verify.mn is configured;
-     * otherwise the phone is taken on the guardian's word, as before.
+     * leave a working link behind it — for a guardian and a member of staff
+     * alike, since the phone is how both sign in. Only when verify.mn is
+     * configured; otherwise the phone is taken on the person's word.
      */
     if (profile.phone && this.phones.enabled) {
       await this.phones.consume(phoneVerification, {
@@ -477,13 +473,7 @@ export class AuthService {
       father in both, and the invitation they just accepted is the only place
       they will ever be asked.
     */
-    if (
-      profile.firstName ||
-      profile.phone ||
-      profile.relation ||
-      profile.lastName ||
-      profile.email
-    ) {
+    if (profile.firstName || profile.phone || profile.relation || profile.lastName) {
       try {
         await this.repo.completeInvitedProfile(row.userId, profile);
       } catch (error) {
@@ -494,7 +484,7 @@ export class AuthService {
          */
         if (isUniqueViolation(error)) {
           throw new ConflictException(
-            "Энэ и-мэйл эсвэл утас өөр бүртгэлд ашиглагдсан байна. " +
+            "Энэ утасны дугаар өөр бүртгэлд ашиглагдсан байна. " +
               "Нууц үг тань тохирсон тул нэвтрэх нэрээрээ орно уу.",
           );
         }
@@ -547,13 +537,13 @@ export class AuthService {
 
   /**
    * Clears failed attempts recorded against any identifier this user can log in
-   * with — username, email or phone. See the note at the call site for why this
+   * with — username or phone. See the note at the call site for why this
    * cannot simply take a user id.
    */
   private async clearLockoutForUser(userId: string): Promise<void> {
     const user = await this.repo.findById(userId);
     if (!user) return;
-    for (const identifier of [user.username, user.email, user.phone]) {
+    for (const identifier of [user.username, user.phone]) {
       if (identifier) await this.repo.clearFailures(identifier);
     }
   }

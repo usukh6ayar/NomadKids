@@ -306,7 +306,7 @@ function LoginCard() {
         />
 
         <Field
-          label="Нэвтрэх нэр, утас эсвэл и-мэйл"
+          label="Утасны дугаар эсвэл нэвтрэх нэр"
           labelHidden
           error={errors.identifier}
           required
@@ -324,7 +324,7 @@ function LoginCard() {
                 name="identifier"
                 autoComplete="username"
                 autoCapitalize="none"
-                placeholder="Нэвтрэх нэр"
+                placeholder="Утас эсвэл нэвтрэх нэр"
                 value={identifier}
                 onChange={(event) => setIdentifier(event.target.value)}
                 className="h-12 rounded-control border-border bg-canvas pl-11 text-body transition-colors focus:bg-white"
