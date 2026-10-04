@@ -15,7 +15,6 @@ import {
 import { get } from "@/lib/api/browser";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { AdminRoster, StudentRosterTable } from "@/components/child/admin-roster";
-import { Disclosure } from "@/components/ui/disclosure";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
@@ -278,6 +277,12 @@ function StaffChildren() {
         }
       />
 
+      <EsisDataPanel
+        resource="studentByRegister"
+        title="РД-ээр сурагч хайх"
+        description="Сурагчийн мэдээллийг ESIS-ээс регистрийн дугаараар хайна"
+      />
+
       {/*
         ★ Director only, since 2026-09-22 — and this one is the reason the
         change is not cosmetic.
@@ -430,20 +435,6 @@ function StaffChildren() {
         description="Тухайн өдрөөс хойшх элсэлт, шилжилт, гарсан бүртгэл"
         actionLabel="Хөдөлгөөн татах"
       />
-
-      {/*
-        ★ Last and folded — 2026-09-29. It opened this screen, above the
-        teacher's own children, so the first thing a teacher met every morning
-        was a form for finding a child among the whole ministry. It is for the
-        rare new arrival, and lives where that belongs.
-      */}
-      <Disclosure title="ESIS-ээс РД-ээр сурагч хайх" hint="Шинэ хүүхэд бүртгэхэд">
-        <EsisDataPanel
-          resource="studentByRegister"
-          title="РД-ээр сурагч хайх"
-          description="Сурагчийн мэдээллийг ESIS-ээс регистрийн дугаараар хайна"
-        />
-      </Disclosure>
     </div>
   );
 }
