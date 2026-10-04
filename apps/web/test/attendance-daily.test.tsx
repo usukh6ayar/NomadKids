@@ -128,7 +128,7 @@ describe("the daily attendance register", () => {
     expect(groups).toEqual(["Ирц", "Баталгаажуулалт", "ESIS"]);
     const cells = within(table).getAllByRole("row").at(-1)!.querySelectorAll("td");
     expect([...cells].map((cell) => cell.textContent?.trim())).toEqual([
-      "2026.09.25",
+      "2026-09-25",
       "Дэлбээ бүлэг",
       "42",
       "26",

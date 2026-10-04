@@ -29,9 +29,11 @@ import {
   adminUserSchema,
   groupListItemSchema,
   paginated,
+  STAFF_ROLES,
   staffRosterRefreshSchema,
   unclaimedStaffSchema,
   type Role,
+  type UnclaimedStaff,
 } from "@kinder/contracts";
 import { downloadUrl } from "@/lib/api/client";
 import { get, mutate } from "@/lib/api/browser";
@@ -49,6 +51,7 @@ import { SearchField } from "@/components/ui/search-field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { Td, Th } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
+import { StaffLinkDialog } from "@/components/admin/staff/staff-link-dialog";
 import { cn } from "@/lib/utils";
 
 const listSchema = paginated(adminUserSchema);
@@ -256,9 +259,6 @@ function StaffSection({
   const data = users.data;
   const offset = (page - 1) * pageSize;
   const headingId = `staff-${kind}-heading`;
-  // Columns with nothing in them on this page are not drawn (2026-09-29).
-  const showRegister = Boolean(data?.items.some((user) => user.registerNumber));
-  const showPhone = Boolean(data?.items.some((user) => user.phone));
 
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
@@ -272,21 +272,15 @@ function StaffSection({
               <Download size={16} aria-hidden /> Excel
             </a>
           </Button>
-          {/*
-            ★ Once, on the first section — 2026-09-29. Both sections drew it
-            and both refreshed the same whole-kindergarten roster.
-          */}
-          {teacher ? (
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={!primaryKindergartenId || esisRefresh.isPending}
-              onClick={() => esisRefresh.mutate()}
-            >
-              <RefreshCw size={16} aria-hidden />{" "}
-              {esisRefresh.isPending ? "Татаж байна…" : "ESIS татах"}
-            </Button>
-          ) : null}
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={!primaryKindergartenId || esisRefresh.isPending}
+            onClick={() => esisRefresh.mutate()}
+          >
+            <RefreshCw size={16} aria-hidden />{" "}
+            {esisRefresh.isPending ? "Татаж байна…" : "ESIS татах"}
+          </Button>
           <Button size="sm" onClick={() => onInvite(teacher ? "TEACHER" : "COOK")}>
             <Plus size={16} aria-hidden /> {teacher ? "Багш нэмэх" : "Ажилтан нэмэх"}
           </Button>
@@ -391,10 +385,10 @@ function StaffSection({
               <tr>
                 <Th className="w-12 rounded-tl-card py-2">№</Th>
                 <Th className="py-2">{teacher ? "Багшийн нэр" : "Ажилтны нэр"}</Th>
-                {showRegister ? <Th className="py-2">Регистр</Th> : null}
+                <Th className="py-2">Регистр</Th>
                 <Th className="py-2">Албан тушаал</Th>
                 <Th className="py-2">{teacher ? "Хариуцсан бүлэг" : "Ангилал"}</Th>
-                {showPhone ? <Th className="py-2">Утас</Th> : null}
+                <Th className="py-2">Утас</Th>
                 <Th className="w-12 rounded-tr-card py-2">
                   <span className="sr-only">Үйлдэл</span>
                 </Th>
@@ -415,11 +409,7 @@ function StaffSection({
                         {teacher ? shortName(user) : fullName(user)}
                       </button>
                     </Td>
-                    {showRegister ? (
-                      <Td className="py-1.5 tabular-nums text-muted">
-                        {user.registerNumber ?? "—"}
-                      </Td>
-                    ) : null}
+                    <Td className="py-1.5 tabular-nums text-muted">{user.registerNumber ?? "—"}</Td>
                     <Td className="py-1.5 text-muted">
                       {membership ? (membership.position ?? ROLE_LABEL[membership.role]) : "—"}
                     </Td>
@@ -432,9 +422,7 @@ function StaffSection({
                           ? STAFF_CATEGORY_LABEL[membership.staffCategory]
                           : "—"}
                     </Td>
-                    {showPhone ? (
-                      <Td className="py-1.5 tabular-nums text-muted">{user.phone || "—"}</Td>
-                    ) : null}
+                    <Td className="py-1.5 tabular-nums text-muted">{user.phone || "—"}</Td>
                     <Td className="py-1 text-right">
                       <RowMenu
                         ariaLabel={`${fullName(user)} — үйлдэл`}
@@ -1074,7 +1062,9 @@ const UNCLAIMED_KEY = ["esis", "staff-unclaimed"] as const;
  */
 function UnclaimedEsisStaff() {
   const { primaryKindergartenId } = useSession();
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
+  const [linking, setLinking] = useState<UnclaimedStaff | null>(null);
   const pageSize = 20;
 
   const roster = useQuery({
@@ -1087,6 +1077,34 @@ function UnclaimedEsisStaff() {
     enabled: Boolean(primaryKindergartenId),
     retry: false,
   });
+
+  /*
+   * ★ «Холбох» — the second answer to a row here, and usually the right one.
+   * "ESIS-д байгаа, энд байхгүй" also covers a person who *has* an account
+   * that nobody tied to their ministry record: every invited account starts
+   * that way. The dialog lived only in `staff/staff-directory.tsx`, which this
+   * page stopped rendering on 2026-09-27, so the dashboard's «Холбох» led to a
+   * screen with no way to do it. The server re-checks everything
+   * (`linkStaffToEsisPerson`); this list is only the shortest path.
+   */
+  const accounts = useQuery({
+    queryKey: qk.adminUsers({ section: "esis-link", kindergartenId: primaryKindergartenId ?? "" }),
+    queryFn: () =>
+      get(
+        `/users?kindergartenId=${primaryKindergartenId}&roles=${STAFF_ROLES.join(",")}&page=1&pageSize=100`,
+        listSchema,
+      ),
+    enabled: Boolean(primaryKindergartenId) && Boolean(roster.data?.total),
+  });
+  const candidates = (accounts.data?.items ?? []).filter(
+    (user) =>
+      !user.esisPersonId &&
+      user.isActive !== false &&
+      user.memberships.some(
+        (m) =>
+          m.kindergartenId === primaryKindergartenId && m.role !== "PARENT" && m.isActive !== false,
+      ),
+  );
 
   const data = roster.data;
   if (!data || data.total === 0) return null;
@@ -1106,7 +1124,8 @@ function UnclaimedEsisStaff() {
           <Link href="/admin/staff-code" className="text-primary underline">
             цэцэрлэгийн кодоор
           </Link>{" "}
-          өөрсдөө бүртгүүлмэгц дээрх жагсаалтад орно.
+          өөрсдөө бүртгүүлмэгц дээрх жагсаалтад орно. Аль хэдийн бүртгэлтэй бол «Холбох» дарж
+          бүртгэлтэй нь холбоно уу.
         </p>
       </div>
       <div className="rounded-card border border-border bg-surface">
@@ -1117,7 +1136,10 @@ function UnclaimedEsisStaff() {
               <Th className="w-12 rounded-tl-card py-2">№</Th>
               <Th className="py-2">Нэр</Th>
               <Th className="py-2">Албан тушаал</Th>
-              <Th className="rounded-tr-card py-2">Төрөл</Th>
+              <Th className="py-2">Төрөл</Th>
+              <Th className="rounded-tr-card py-2">
+                <span className="sr-only">Үйлдэл</span>
+              </Th>
             </tr>
           </thead>
           <tbody>
@@ -1127,6 +1149,18 @@ function UnclaimedEsisStaff() {
                 <Td className="py-1.5 font-medium text-ink">{shortName(person)}</Td>
                 <Td className="py-1.5 text-muted">{person.positionName || "—"}</Td>
                 <Td className="py-1.5 text-muted">{person.isInstructor ? "Багш" : "Ажилтан"}</Td>
+                <Td className="py-1.5 text-right">
+                  {candidates.length > 0 ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      aria-label={`${shortName(person)}-г бүртгэлтэй холбох`}
+                      onClick={() => setLinking(person)}
+                    >
+                      Холбох
+                    </Button>
+                  ) : null}
+                </Td>
               </tr>
             ))}
           </tbody>
@@ -1138,6 +1172,15 @@ function UnclaimedEsisStaff() {
         </p>
         <Pagination page={page} totalPages={data.totalPages} onPage={setPage} />
       </div>
+      {linking && primaryKindergartenId ? (
+        <StaffLinkDialog
+          person={linking}
+          kindergartenId={primaryKindergartenId}
+          candidates={candidates}
+          onLinked={() => void queryClient.invalidateQueries({ queryKey: UNCLAIMED_KEY })}
+          onClose={() => setLinking(null)}
+        />
+      ) : null}
     </section>
   );
 }

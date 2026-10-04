@@ -239,4 +239,44 @@ describe("the staff directory", () => {
       await screen.findByText(/ESIS-ээс 13 ажилтны мэдээлэл шинэчлэгдлээ/),
     ).toBeInTheDocument();
   });
+
+  it("links an ESIS person to an account that already exists", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: "/users", body: page([TEACHER, { ...COOK, esisPersonId: "esis-cook" }]) },
+      {
+        path: `/kindergartens/${KG}/esis/staff-roster/unclaimed`,
+        body: page([
+          {
+            esisPersonId: "esis-teacher",
+            lastName: "Анхбаяр",
+            firstName: "Энх-Адьяа",
+            positionName: "Багш",
+            isInstructor: true,
+            syncedAt: "2026-09-28T00:00:00.000Z",
+          },
+        ]),
+      },
+      { path: `/kindergartens/${KG}/esis/staff-link`, method: "POST", body: {} },
+    ]);
+    renderWithProviders(<AdminUsersPage />);
+
+    await user.click(await screen.findByRole("button", { name: /бүртгэлтэй холбох/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Бүртгэлтэй холбох" });
+    await user.click(within(dialog).getByRole("combobox"));
+    // The cook already carries an ESIS person, so only the teacher is offered.
+    expect(screen.queryByRole("option", { name: /Ёндонжамц/ })).toBeNull();
+    await user.click(await screen.findByRole("option", { name: /Энх-Адьяа/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Холбох" }));
+
+    await waitFor(() =>
+      expect(
+        calls.find((c) => c.method === "POST" && c.url.endsWith("/esis/staff-link"))?.body,
+      ).toEqual({
+        userId: TEACHER_ID,
+        esisPersonId: "esis-teacher",
+      }),
+    );
+  });
 });
