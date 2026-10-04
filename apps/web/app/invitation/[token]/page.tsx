@@ -165,9 +165,9 @@ export default function AcceptInvitationPage() {
   if (accept.isSuccess) {
     return (
       <AuthShell>
-        <h2 className="mb-1.5 text-heading font-semibold tracking-[-.01em] text-ink">
+        <h1 className="mb-1.5 text-heading font-semibold tracking-[-.01em] text-ink">
           Бүртгэл идэвхжлээ
-        </h2>
+        </h1>
         <p role="status" className="text-body text-muted">
           Нэвтрэх хуудас руу шилжиж байна…
         </p>
@@ -185,7 +185,7 @@ export default function AcceptInvitationPage() {
 
   return (
     <AuthShell>
-      <h2 className="mb-1.5 text-heading font-semibold tracking-[-.01em] text-ink">Тавтай морил</h2>
+      <h1 className="mb-1.5 text-heading font-semibold tracking-[-.01em] text-ink">Тавтай морил</h1>
       <p className="mb-4 text-body leading-relaxed text-muted">
         Өөрийнхөө нэр, утсаа бөглөөд нууц үгээ сонгоно уу.
       </p>

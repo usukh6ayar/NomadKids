@@ -1,85 +1,94 @@
 import Image from "next/image";
 import Link from "next/link";
+import { ArrowLeft, CheckCircle2, LockKeyhole, ShieldCheck } from "lucide-react";
+import { BrandWordmark } from "@/components/ui/brand-wordmark";
 import { BRAND } from "@/lib/vocabulary";
+import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
+type AuthShellProps = {
+  children: ReactNode;
+  /** Longer application forms get a little more horizontal breathing room. */
+  wide?: boolean;
+};
+
 /**
- * The shell for every signed-out screen: login, forgot-password, reset-password.
+ * Shared signed-out shell for registration, invitations and token resets.
  *
- * ★ Ported from the reference project's `base_auth.html`, which is the approved
- * visual design (`docs/design/screens/auth-login-and-password-reset.jpeg`).
- *
- * A card on the left with the mark beside the title, and an illustration panel
- * on the right that folds away below 900px. The breakpoint is 900px and not
- * Tailwind's `lg` (1024px) because that is what the reference uses — at 1000px
- * the two-column split still has room, and jumping to one column early leaves a
- * conspicuously empty right half.
- *
- * The art panel is `hidden`, not shrunk: a teacher signing in on a bus needs the
- * form, not the picture. It is also `aria-hidden` — it says nothing the card
- * does not already say, and announcing a decorative logo twice is noise.
+ * The public login owns a full marketing page, while these task-focused routes
+ * need a calm place to finish one job. They still share the same classroom,
+ * clouds, colour and wordmark so following a link never feels like leaving the
+ * product. The illustration is part of the background on desktop; on a phone
+ * it is deliberately omitted so a long form never pays a screenful of art
+ * before reaching its submit button.
  */
-export function AuthShell({ children }: { children: ReactNode }) {
+export function AuthShell({ children, wide = false }: AuthShellProps) {
   return (
-    <div className="grid min-h-dvh grid-cols-1 bg-canvas min-[900px]:grid-cols-2">
-      <div className="grid place-items-center px-6 py-8">
-        {/*
-          `overflow-wrap: anywhere` is load-bearing, not defensive. Mongolian
-          labels are long compounds — "Утасны дугаар эсвэл нэвтрэх нэр" —
-          and without it a single unbroken word pushes the card wider than its
-          column and the inputs run off the right edge.
-        */}
-        <main className="w-full max-w-[440px] rounded-card border border-border bg-surface px-7 py-8 [overflow-wrap:anywhere] min-[900px]:shadow-sm">
-          {/*
-            ★ The drawn logo carries the name; no wordmark is set beside it.
+    <div className="relative isolate min-h-dvh overflow-hidden bg-[#eef8ff] text-ink">
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 -z-20 hidden bg-[url('/background/login-desktop.png')] bg-cover bg-center bg-no-repeat lg:block"
+      />
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_8%_8%,rgba(255,255,255,.95),transparent_34%),radial-gradient(circle_at_88%_12%,rgba(208,231,255,.65),transparent_30%)] lg:bg-[linear-gradient(90deg,rgba(238,248,255,.98)_0%,rgba(238,248,255,.92)_46%,rgba(238,248,255,.12)_70%)]"
+      />
 
-            `brand-logo.png` has "БЯЦХАН НҮҮДЭЛЧИД" lettered into the artwork. Setting
-            another wordmark next to it would put two names for one product on the
-            first screen anybody sees, so the heading below is the logo itself —
-            `alt` is what a screen reader announces, and it is the only place
-            the name appears in text here.
+      <header className="mx-auto flex w-full max-w-[1320px] items-center justify-between gap-4 px-5 py-4 sm:px-8 lg:px-10 lg:py-6">
+        <Link
+          href="/"
+          className="inline-flex min-h-11 items-center gap-2.5"
+          aria-label={`${BRAND} нүүр`}
+        >
+          <span className="grid size-11 shrink-0 place-items-center rounded-control bg-white/90 p-0.5 shadow-sm ring-1 ring-white">
+            <Image
+              src="/brand-logo.png"
+              alt=""
+              width={44}
+              height={44}
+              className="size-full object-contain"
+              priority
+            />
+          </span>
+          <BrandWordmark className="hidden text-title sm:block" />
+        </Link>
 
-            ★★ Client's decision, 2026-09-06: keep the lettering. The
-            alternative was `brand-mark.png`, the same illustration with none.
-          */}
-          <div className="mb-[22px] flex items-center gap-3.5">
-            {/*
-              ★ 76, not the 54 this was while the name sat beside it in text.
+        <Link
+          href="/login"
+          className="inline-flex min-h-11 items-center gap-2 rounded-pill bg-white/80 px-4 text-body font-bold text-primary-strong shadow-sm ring-1 ring-white/90 backdrop-blur hover:bg-white"
+        >
+          <ArrowLeft className="size-4" aria-hidden="true" />
+          Нэвтрэх
+        </Link>
+      </header>
 
-              The lettering is part of the artwork now, so the logo has to be
-              big enough for it to resolve — at 54 it was a coloured smudge over
-              two grey lines. 76 is the width at which "БЯЦХАН" reads on a 1×
-              display, and it is what the card's own left column can hold
-              without pushing the sentence beside it onto a fourth line.
-            */}
-            <h1 className="shrink-0">
-              <Image
-                src="/brand-logo.png"
-                alt={BRAND}
-                width={76}
-                height={76}
-                className="w-[76px]"
-                style={{ height: "auto" }}
-                priority
-              />
-            </h1>
-            <p className="text-compact leading-snug text-muted">
-              Багш, эцэг эх, администраторт зориулсан аюулгүй нэвтрэх систем.
-            </p>
-          </div>
-
+      <div
+        className={cn(
+          "mx-auto grid w-full max-w-[1320px] items-start gap-10 px-5 pb-10 pt-2 sm:px-8 sm:pb-14 lg:grid-cols-[minmax(0,560px)_minmax(320px,1fr)] lg:px-10 lg:pb-16 lg:pt-4",
+          wide && "lg:grid-cols-[minmax(0,680px)_minmax(300px,1fr)]",
+        )}
+      >
+        <main
+          className={cn(
+            "w-full rounded-card border border-white/90 bg-white/95 p-5 shadow-[0_28px_80px_rgba(42,93,132,.16)] backdrop-blur-xl [overflow-wrap:anywhere] sm:p-8 lg:p-9",
+            wide ? "max-w-[680px]" : "max-w-[560px]",
+          )}
+        >
           {children}
 
-          <div className="mt-[22px] flex flex-wrap justify-center gap-x-3.5 gap-y-1.5 border-t border-border pt-4 text-compact text-muted">
-            <span>Аюулгүй нэвтрэлт</span>
-            <span aria-hidden="true">·</span>
-            <span>HTTPS</span>
-            <span aria-hidden="true">·</span>
-            <span>Нууц үг хамгаалагдсан</span>
+          <div className="mt-7 flex flex-wrap justify-center gap-x-4 gap-y-2 border-t border-border pt-5 text-caption text-muted">
+            <span className="inline-flex items-center gap-1.5">
+              <LockKeyhole className="size-3.5 text-primary" aria-hidden="true" />
+              Аюулгүй нэвтрэлт
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <ShieldCheck className="size-3.5 text-primary" aria-hidden="true" />
+              Мэдээлэл хамгаалагдсан
+            </span>
           </div>
           <nav
             aria-label="Нууцлал ба тусламж"
-            className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1 text-caption font-semibold text-primary"
+            className="mt-2 flex flex-wrap justify-center gap-x-4 text-caption font-semibold text-primary"
           >
             <Link href="/privacy" className="min-h-10 content-center hover:underline">
               Нууцлал
@@ -88,71 +97,42 @@ export function AuthShell({ children }: { children: ReactNode }) {
               Үйлчилгээний нөхцөл
             </Link>
             <Link href="/faq" className="min-h-10 content-center hover:underline">
-              Түгээмэл асуулт
+              Тусламж
             </Link>
           </nav>
         </main>
+
+        <aside
+          className="hidden min-h-[560px] flex-col items-center pt-10 text-center lg:flex"
+          aria-hidden="true"
+        >
+          <div className="rounded-card border border-white/70 bg-white/52 px-8 py-7 shadow-[0_20px_60px_rgba(42,93,132,.09)] backdrop-blur-md">
+            <span className="mx-auto grid size-16 place-items-center rounded-control bg-white shadow-sm">
+              <Image
+                src="/brand-logo.png"
+                alt=""
+                width={64}
+                height={64}
+                className="size-full object-contain"
+              />
+            </span>
+            <p className="mt-5 text-heading font-extrabold leading-tight text-[#173e70]">
+              Хүүхэд бүрийн хөгжлийн түүх
+            </p>
+            <p className="mx-auto mt-2 max-w-[34ch] text-body leading-6 text-slate-600">
+              Багш, эцэг эх, цэцэрлэгийн багийг нэг аюулгүй орчинд холбоно.
+            </p>
+            <div className="mt-5 flex flex-wrap justify-center gap-2 text-caption font-semibold text-[#3f6f9f]">
+              <span className="inline-flex items-center gap-1.5 rounded-pill bg-white/85 px-3 py-2">
+                <CheckCircle2 className="size-4 text-[#31a875]" /> Бүх дэлгэцэд тохирно
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-pill bg-white/85 px-3 py-2">
+                <CheckCircle2 className="size-4 text-[#31a875]" /> Хэрэглэхэд хялбар
+              </span>
+            </div>
+          </div>
+        </aside>
       </div>
-
-      <aside
-        aria-hidden="true"
-        className="hidden place-items-center bg-[linear-gradient(160deg,#eef1fd,#e6ecfb_55%,#dfe7fa)] p-10 text-center min-[900px]:grid"
-      >
-        <div>
-          {/*
-            ★ This was capped at 210px, and the cap was a workaround, not a
-            design: the old `/logo-160.png` was 149px wide, so 380 rendered
-            visibly soft and a blurred logo on the first screen anyone sees is
-            worse than a small sharp one. `/brand-logo.png` is the supplied
-            1400² original, so the cap has nothing left to protect against.
-            300 on a 2× display asks for 600 source pixels; there are 1254.
-
-            ★★ No wordmark under it either — the lettering is in the artwork,
-            and this panel is `aria-hidden`, so a name repeated here would be
-            decoration that says the same thing twice.
-          */}
-          <Image
-            src="/brand-logo.png"
-            alt=""
-            width={300}
-            height={300}
-            className="mx-auto w-[300px] max-w-full"
-            style={{ height: "auto" }}
-          />
-          <p className="mt-6 text-title font-semibold text-ink">Хүүхэд бүрийн хөгжлийн түүх</p>
-          <p className="mx-auto mt-2.5 max-w-[34ch] text-body leading-relaxed text-muted">
-            Багшийн ажиглалт, эцэг эхийн оролцоо, улирлын үнэлгээ — бүгд нэг дор, хүүхэд тус бүрийн
-            цахим хувийн хавтаст.
-          </p>
-        </div>
-      </aside>
     </div>
   );
 }
-
-/*
- * ★ The role tabs were removed on 2026-08-24.
- *
- * `LOGIN_TABS` offered Багш / Эцэг эх / Админ and changed one thing: the label
- * above the identifier field. Багш and Админ were byte-identical
- * ("Нэвтрэх нэр эсвэл и-мэйл"), so two of the three did not even do that — and
- * the choice was never sent anywhere. The API takes `identifier` and `password`
- * and resolves the role from `Membership` afterwards, so someone who picked the
- * wrong tab signed in exactly as well as someone who picked the right one.
- *
- * The first control every user in this system touches asked a question, ignored
- * the answer, and in two cases out of three did not change the screen. That is a
- * false affordance in the most consequential position in the product, and the
- * support call it generates is "Би багш дээр дарах ёстой юу?".
- *
- * The docblock that stood here defended the control's *presentational* nature as
- * a security property — filtering authentication by tab would make the form a
- * role oracle — and that argument is correct and still binding. It is an
- * argument for never wiring the tabs up. Given that, the tabs had nothing left
- * to do. `login/page.tsx` asks for one identifier and names all three things it
- * accepts.
- *
- * RFP §3.1 requires "хэрэглэгчийн эрхэд суурилсан нэвтрэх систем" — role-*based
- * access* — and line 800 that all three roles can sign in. Neither asks the user
- * to declare a role at the door.
- */

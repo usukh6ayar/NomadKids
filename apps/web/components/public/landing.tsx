@@ -6,12 +6,15 @@ import {
   ArrowRight,
   BarChart3,
   BookOpenCheck,
+  Building2,
+  ChevronRight,
   Heart,
   LockKeyhole,
   Menu,
   Sparkles,
   UserRound,
   Users,
+  UsersRound,
   X,
   Zap,
 } from "lucide-react";
@@ -289,28 +292,27 @@ function LoginCard() {
   return (
     <div
       id="login-card"
-      className="w-full max-w-[400px] scroll-mt-24 overflow-hidden rounded-card border border-white/80 bg-white/95 p-5 text-left shadow-[0_24px_70px_rgba(25,72,111,.16)] backdrop-blur-xl sm:p-6"
+      className="w-full max-w-[440px] scroll-mt-24 overflow-hidden rounded-card border border-white/90 bg-white/95 p-5 text-left shadow-[0_28px_80px_rgba(25,72,111,.17)] backdrop-blur-xl sm:p-7"
     >
-      <h2 className="text-title font-extrabold leading-tight tracking-tight text-[#2f6fd6]">
+      <span className="inline-flex items-center gap-2 rounded-pill bg-[#edf5ff] px-3 py-1.5 text-caption font-bold text-[#3478d7]">
+        <span className="size-2 rounded-pill bg-[#4f91ed]" aria-hidden="true" />
+        Аюулгүй нэвтрэлт
+      </span>
+      <h2 className="mt-4 text-heading font-extrabold leading-tight tracking-tight text-[#173e70]">
         Системд нэвтрэх
       </h2>
-      <p className="mt-0.5 text-caption leading-5 text-[#8a93a3]">
+      <p className="mt-1.5 text-body leading-6 text-slate-500">
         Өөрийн эрхээр нэвтэрч, ажлаа үргэлжлүүлнэ үү.
       </p>
 
-      <form onSubmit={onSubmit} className="mt-5 flex flex-col gap-3" noValidate>
+      <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-4" noValidate>
         <FormError
           message={
             login.isError && Object.keys(errors).length === 0 ? errorMessage(login.error) : null
           }
         />
 
-        <Field
-          label="Утасны дугаар эсвэл нэвтрэх нэр"
-          labelHidden
-          error={errors.identifier}
-          required
-        >
+        <Field label="Утасны дугаар эсвэл нэвтрэх нэр" error={errors.identifier} required>
           {({ id, describedBy, invalid }) => (
             <div className="relative">
               <UserRound
@@ -324,16 +326,16 @@ function LoginCard() {
                 name="identifier"
                 autoComplete="username"
                 autoCapitalize="none"
-                placeholder="Утас эсвэл нэвтрэх нэр"
+                placeholder="Жишээ: 99112233"
                 value={identifier}
                 onChange={(event) => setIdentifier(event.target.value)}
-                className="h-12 rounded-control border-border bg-canvas pl-11 text-body transition-colors focus:bg-white"
+                className="h-[52px] rounded-control border-[#dce7f1] bg-[#f6f9fc] pl-11 text-body transition-colors focus:bg-white"
               />
             </div>
           )}
         </Field>
 
-        <Field label="Нууц үг" labelHidden error={errors.password} required>
+        <Field label="Нууц үг" error={errors.password} required>
           {({ id, describedBy, invalid }) => (
             <div className="relative">
               <LockKeyhole
@@ -346,62 +348,55 @@ function LoginCard() {
                 invalid={invalid}
                 name="password"
                 autoComplete="current-password"
-                placeholder="Нууц үг"
+                placeholder="Нууц үгээ оруулна уу"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                className="h-12 rounded-control border-border bg-canvas pl-11 text-body transition-colors focus:bg-white"
+                className="h-[52px] rounded-control border-[#dce7f1] bg-[#f6f9fc] pl-11 text-body transition-colors focus:bg-white"
               />
             </div>
           )}
         </Field>
 
-        {/*
-          ★ **The button's own colour, 2026-09-22.**
+        <div className="-mt-1 flex justify-end">
+          <Link
+            href="/forgot-password"
+            className="inline-flex min-h-11 items-center text-caption font-bold text-[#377bdc] hover:underline"
+          >
+            Нууц үгээ мартсан?
+          </Link>
+        </div>
 
-          It was `bg-[#176ac2]` hovering to `#115aa8` — a blue the rest of the
-          product does not have. `--color-primary` is `#1d4ed8`, the E-Mongolia
-          blue the palette was repainted to on 2026-08-23 precisely so that one
-          file decides it, and this was the front door disagreeing with every
-          screen behind it. Dropping the override is the fix; `Button` already
-          paints primary, and its hover comes from `--color-primary-hover`.
-
-          The lift and the shadow stay — they are this card's elevation, not its
-          hue, and `globals.css` deliberately keeps no shadow token.
-        */}
         <Button
           type="submit"
           block
           disabled={login.isPending}
-          className="mt-1 h-12 rounded-control bg-[#4585e6] text-body font-bold shadow-[0_10px_24px_rgba(69,133,230,.28)] transition-all hover:-translate-y-0.5 hover:bg-[#3a78d8] hover:shadow-[0_14px_26px_rgba(69,133,230,.32)]"
+          className="h-[52px] rounded-control bg-[#4585e6] text-body font-bold shadow-[0_12px_26px_rgba(69,133,230,.3)] transition-all hover:-translate-y-0.5 hover:bg-[#3a78d8] hover:shadow-[0_16px_30px_rgba(69,133,230,.34)]"
         >
           {login.isPending ? "Нэвтэрч байна…" : "Нэвтрэх"}
+          {!login.isPending ? <ArrowRight className="size-4" aria-hidden="true" /> : null}
         </Button>
       </form>
 
-      <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-center">
-        <Link
-          href="/forgot-password"
-          className="inline-flex min-h-11 items-center text-caption font-semibold text-[#4a8ae8] hover:underline"
-        >
-          Нууц үгээ мартсан?
-        </Link>
-        {/*
-          ★ "Байгууллагын бүртгэл" above is a director applying to onboard a
-          whole kindergarten (`/register`, `docs/CONTRACT_ONBOARDING.md`). This
-          is a teacher who already has a kindergarten and a code to enter
-          (`/staff-register`). Both land near the login card, so the label
-          names who it is for — a director and a teacher pressing
-          same-looking links here would each land on the other's form.
-        */}
+      <div className="mt-6 border-t border-[#e6edf4] pt-5">
+        <p className="text-caption font-semibold text-slate-500">Анх удаа ашиглаж байна уу?</p>
         <Link
           href="/staff-register"
-          className="inline-flex min-h-11 items-center text-caption font-semibold text-[#4a8ae8] hover:underline"
+          className="mt-2 flex min-h-[52px] items-center gap-3 rounded-control bg-[#f3f8ff] px-3.5 text-left transition-colors hover:bg-[#eaf3ff]"
         >
-          Багш, ажилтан бүртгүүлэх
+          <span className="grid size-9 shrink-0 place-items-center rounded-pill bg-white text-[#4585e6] shadow-sm">
+            <UsersRound className="size-[18px]" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <strong className="block text-body text-[#173e70]">Багш, ажилтан бүртгүүлэх</strong>
+            <span className="block text-caption text-slate-500">
+              Цэцэрлэгийн кодоор эрхээ нээнэ
+            </span>
+          </span>
+          <ChevronRight className="size-4 shrink-0 text-slate-400" aria-hidden="true" />
         </Link>
       </div>
 
-      <p className="mt-3 hidden border-t border-border pt-4 text-center text-caption leading-5 text-muted lg:block">
+      <p className="mt-4 text-center text-caption leading-5 text-muted">
         Нэвтрэхдээ{" "}
         <Link href="/terms" className="font-semibold text-[#4a8ae8] hover:underline">
           Үйлчилгээний нөхцөл
@@ -499,20 +494,20 @@ export function PublicLanding() {
       <section
         id="home"
         data-testid="login-hero"
-        className="relative isolate min-h-dvh bg-[#f1f9ff] bg-[url('/background/login-mobile.png')] bg-cover bg-top bg-no-repeat px-5 pb-[45vw] pt-8 sm:px-8 lg:min-h-[calc(100dvh-70px)] lg:bg-[url('/background/login-desktop.png')] lg:px-[7vw] lg:pb-8 lg:pt-10"
+        className="relative isolate min-h-dvh bg-[#f1f9ff] bg-[url('/background/login-mobile.png')] bg-cover bg-bottom bg-no-repeat px-4 pb-[48vw] pt-6 sm:px-8 sm:pt-8 lg:min-h-[calc(100dvh-70px)] lg:bg-[url('/background/login-desktop.png')] lg:bg-center lg:px-[6vw] lg:pb-10 lg:pt-8"
       >
-        <div className="relative mx-auto grid w-full max-w-[1320px] items-start gap-y-7 lg:grid-cols-[minmax(380px,420px)_minmax(0,1fr)] lg:gap-x-[7vw]">
-          <div className="order-1 flex justify-center lg:order-2 lg:pt-4">
+        <div className="relative mx-auto grid w-full max-w-[1320px] items-start gap-y-6 lg:grid-cols-[minmax(400px,440px)_minmax(0,1fr)] lg:items-center lg:gap-x-[7vw]">
+          <div className="order-1 flex justify-center lg:order-2 lg:-mt-20">
             <HeroBrand />
           </div>
 
-          <div className="order-2 mx-auto w-full max-w-[400px] lg:order-1 lg:mx-0">
-            {/* Above the card's right edge, as drawn — 2026-10-02. */}
+          <div className="order-2 mx-auto w-full max-w-[440px] lg:order-1 lg:mx-0">
             <div className="flex justify-end">
               <Link
                 href="/register"
-                className="inline-flex min-h-11 items-center text-body font-bold text-[#3f86ef] hover:underline"
+                className="mb-2 inline-flex min-h-11 items-center gap-2 rounded-pill bg-white/75 px-4 text-caption font-bold text-[#3478d7] shadow-sm ring-1 ring-white/90 backdrop-blur transition-colors hover:bg-white sm:text-body"
               >
+                <Building2 className="size-4" aria-hidden="true" />
                 Байгууллагын бүртгэл
               </Link>
             </div>

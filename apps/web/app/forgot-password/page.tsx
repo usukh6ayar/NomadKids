@@ -27,6 +27,7 @@ import {
 import { mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
+import { BrandWordmark } from "@/components/ui/brand-wordmark";
 import { Field, Input, PasswordInput } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import {
@@ -36,6 +37,7 @@ import {
   usePhoneVerificationAvailability,
 } from "@/components/auth/phone-verification";
 import { cn } from "@/lib/utils";
+import { BRAND } from "@/lib/vocabulary";
 
 /**
  * «Нууц үг сэргээх» — by phone, and by phone only. Redesigned 2026-10-04.
@@ -142,22 +144,41 @@ export default function ForgotPasswordPage() {
   const copy = COPY[availability.loading ? "phone" : availability.enabled ? phase : "off"];
 
   return (
-    <div className="relative isolate min-h-dvh bg-primary-soft bg-[url('/background/login-mobile.png')] bg-cover bg-top bg-no-repeat px-5 pb-[45vw] pt-6 sm:px-8 lg:bg-[url('/background/login-desktop.png')] lg:px-[7vw] lg:pb-10 lg:pt-10">
+    <div className="relative isolate min-h-dvh bg-primary-soft bg-[url('/background/login-mobile.png')] bg-cover bg-bottom bg-no-repeat px-5 pb-[45vw] pt-4 sm:px-8 lg:bg-[url('/background/login-desktop.png')] lg:bg-center lg:px-[6vw] lg:pb-10 lg:pt-6">
       {/* The login hero's own grid width, so the card sits where the login
           card sat and the backdrop's illustration stays clear of it. */}
       <main className="mx-auto w-full max-w-[1320px]">
-        <div className="mx-auto w-full max-w-[440px] lg:mx-0">
+        <header className="flex items-center justify-between gap-3">
+          <Link
+            href="/"
+            className="inline-flex min-h-11 items-center gap-2.5"
+            aria-label={`${BRAND} нүүр`}
+          >
+            <span className="grid size-11 place-items-center rounded-control bg-white/85 p-0.5 shadow-sm ring-1 ring-white">
+              <Image
+                src="/brand-logo.png"
+                alt=""
+                width={44}
+                height={44}
+                className="size-full object-contain"
+                priority
+              />
+            </span>
+            <BrandWordmark className="hidden text-title sm:block" />
+          </Link>
           <Link
             href="/login"
-            className="inline-flex min-h-11 items-center gap-1.5 rounded-pill px-1 text-body font-semibold text-primary-strong hover:underline"
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-pill bg-white/75 px-4 text-body font-bold text-primary-strong shadow-sm ring-1 ring-white/90 backdrop-blur hover:bg-white"
           >
             <ArrowLeft size={18} aria-hidden="true" />
-            Нэвтрэх хуудас
+            Нэвтрэх
           </Link>
+        </header>
 
+        <div className="mx-auto mt-10 w-full max-w-[480px] lg:mx-0 lg:mt-12">
           <section
             aria-labelledby="reset-heading"
-            className="relative mt-12 rounded-card border border-white/80 bg-white/95 p-6 shadow-[0_24px_70px_rgba(25,72,111,.16)] backdrop-blur-xl [overflow-wrap:anywhere] sm:p-8"
+            className="relative rounded-card border border-white/90 bg-white/95 p-5 shadow-[0_28px_80px_rgba(25,72,111,.17)] backdrop-blur-xl [overflow-wrap:anywhere] sm:p-8"
           >
             {/*
             The teacher from the login backdrop, leaning over the card's edge.
