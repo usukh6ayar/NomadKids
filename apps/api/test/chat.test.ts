@@ -377,6 +377,8 @@ describe("messages", () => {
     expect(asTeacher.body.items[0].author.children).toEqual([
       expect.objectContaining({ id: a.child.id, photoMediaFileId: photo.id }),
     ]);
+    // Named by the child in this room, in the genitive, never by their own name.
+    expect(asTeacher.body.items[0].author.displayName).toBe("Г.Батбаярын ээж");
 
     // Another family in the same group sees the child's name, not the photo id.
     const otherParent = await createUser();
@@ -776,7 +778,7 @@ describe("private rooms name a parent by their child", () => {
       (r: { key: string }) => r.key === directRoom(a.teacherUser.id, a.parentUser.id),
     );
 
-    expect(direct.name).toBe("Г.Батбаяр — ээж");
+    expect(direct.name).toBe("Г.Батбаярын ээж");
     expect(direct.name).not.toContain(a.parentUser.firstName);
   });
 
@@ -786,8 +788,8 @@ describe("private rooms name a parent by their child", () => {
 
     const mine = await authed(request(server()).get("/v1/chat/rooms"), parentA);
     const theirs = await authed(request(server()).get("/v1/chat/rooms"), second);
-    expect(mine.body.find((r: { key: string }) => r.key === room)?.name).toBe("Д.Номин — ээж");
-    expect(theirs.body.find((r: { key: string }) => r.key === room)?.name).toBe("Г.Батбаяр — ээж");
+    expect(mine.body.find((r: { key: string }) => r.key === room)?.name).toBe("Д.Номингийн ээж");
+    expect(theirs.body.find((r: { key: string }) => r.key === room)?.name).toBe("Г.Батбаярын ээж");
 
     const sent = await authed(
       request(server()).post(`/v1/chat/rooms/${room}/messages`),
