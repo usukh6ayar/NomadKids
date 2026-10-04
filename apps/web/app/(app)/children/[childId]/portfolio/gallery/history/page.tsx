@@ -108,9 +108,7 @@ export default function PhotoHistoryPage() {
       <header className="flex items-center gap-3">
         <BackButton href={`/children/${childId}/portfolio/gallery`} />
         <div className="min-w-0">
-          <h1 className="text-heading font-semibold text-ink sm:text-display">
-            Зургийн цомог 2-5 нас
-          </h1>
+          <h1 className="text-heading font-semibold text-ink">Зургийн цомог 2-5 нас</h1>
           <p className="mt-1 text-body text-muted">
             Зургийн төрлөөр насны ахицыг харьцуулна · {total} зураг
           </p>

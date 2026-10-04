@@ -120,9 +120,10 @@ describe("a group's page", () => {
     ).toEqual([
       "№",
       "Суралцагчийн нэр",
-      // No register in this fixture, so no column of dashes (2026-09-29).
+      "Регистр",
       "Хүйс",
       "Бүлэг",
+      "Хөнгөлөлт",
       "ESIS төлөв",
       "Үйлдэл",
     ]);

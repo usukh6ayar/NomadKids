@@ -29,7 +29,7 @@ export default function AgeFolderLandingPage() {
       <div className="flex items-center gap-3">
         <BackButton href={`/children/${childId}/portfolio`} />
         <div>
-          <h1 className="text-heading font-semibold text-ink sm:text-display">Насны мэдээлэл</h1>
+          <h1 className="text-heading font-semibold text-ink">Насны мэдээлэл</h1>
           <GradientUnderline className="mt-1.5" />
         </div>
       </div>
