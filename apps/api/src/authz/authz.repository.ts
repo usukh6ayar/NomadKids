@@ -1,4 +1,4 @@
-import { GUARDIAN_RELATION_LABEL } from "@kinder/contracts";
+import { guardianChatName } from "@kinder/contracts";
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import type { Actor, ActorMembership } from "./actor";
@@ -430,18 +430,16 @@ export class AuthzRepository {
       add(user.id, `${user.lastName} ${user.firstName}`.trim(), row.groupId);
     }
     /*
-     * A guardian is named by their child: "Г.Батбаяр — ээж". A teacher does
-     * not know Ганболд Сарнай; they know Батбаяр's mother.
+     * A guardian is named by their child: "Г.Батбаярын ээж" (2026-10-04, the
+     * user: "тэрний аав, тэрний ээж"). A teacher does not know Ганболд
+     * Сарнай; they know Батбаяр's mother. `guardianChatName` does the
+     * genitive and says why it can be trusted with a name.
      */
     for (const row of [...guardiansOfMyPupils, ...fellowGuardians]) {
-      const child = row.child;
-      const initial = child.lastName.trim().slice(0, 1).toLocaleUpperCase("mn-MN");
-      const childName = initial ? `${initial}.${child.firstName.trim()}` : child.firstName.trim();
-      const relation = GUARDIAN_RELATION_LABEL[row.relation] ?? "асран хамгаалагч";
       add(
         row.guardian.id,
-        `${childName} — ${relation.toLocaleLowerCase("mn-MN")}`,
-        child.enrollments[0]?.groupId,
+        guardianChatName(row.child, row.relation),
+        row.child.enrollments[0]?.groupId,
       );
     }
 

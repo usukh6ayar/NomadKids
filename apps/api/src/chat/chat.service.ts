@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import type { ChatMessage, ChatRoom } from "@kinder/contracts";
+import { guardianChatName, type ChatMessage, type ChatRoom } from "@kinder/contracts";
 import { hasRoleIn, type Actor } from "../authz/actor";
 import { Role } from "../domain/enums";
 import { ChatAccessService } from "../authz/chat-access.service";
@@ -140,7 +140,11 @@ export class ChatService {
         body: row.body,
         createdAt: row.createdAt.toISOString(),
         author: row.author
-          ? { ...row.author, children: childrenByAuthor.get(row.author.id) ?? [] }
+          ? {
+              ...row.author,
+              children: childrenByAuthor.get(row.author.id)?.children ?? [],
+              displayName: childrenByAuthor.get(row.author.id)?.displayName ?? null,
+            }
           : row.author,
         mine: row.authorId === actor.userId,
         media: row.media,
@@ -265,7 +269,15 @@ export class ChatService {
   ) {
     const byAuthor = new Map<
       string,
-      { id: string; lastName: string; firstName: string; photoMediaFileId: string | null }[]
+      {
+        children: {
+          id: string;
+          lastName: string;
+          firstName: string;
+          photoMediaFileId: string | null;
+        }[];
+        displayName: string;
+      }
     >();
     if (room.kind === "STAFF") return byAuthor;
 
@@ -281,12 +293,14 @@ export class ChatService {
       hasRoleIn(actor, Role.ADMIN, room.kindergartenId);
 
     for (const link of links) {
-      const list = byAuthor.get(link.guardianUserId) ?? [];
-      list.push({
+      const entry = byAuthor.get(link.guardianUserId) ?? { children: [], displayName: "" };
+      entry.children.push({
         ...link.child,
         photoMediaFileId: isStaff ? link.child.photoMediaFileId : null,
       });
-      byAuthor.set(link.guardianUserId, list);
+      const name = guardianChatName(link.child, link.relation);
+      entry.displayName = entry.displayName ? `${entry.displayName}, ${name}` : name;
+      byAuthor.set(link.guardianUserId, entry);
     }
     return byAuthor;
   }
