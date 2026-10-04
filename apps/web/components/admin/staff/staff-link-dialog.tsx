@@ -11,8 +11,12 @@ import { Field, Select } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { useBackdropDismiss } from "@/components/ui/modal-overlay";
-import { displayName, type StaffDirectoryRow } from "./staff-model";
-import { fullName } from "@/lib/format";
+import { fullName, shortName } from "@/lib/format";
+
+/** The ESIS side of the link — a roster row, however the caller holds it. */
+type EsisPerson = { esisPersonId: string; lastName: string; firstName: string };
+/** An account here with no ESIS person yet. */
+type LinkCandidate = { id: string; lastName: string; firstName: string };
 
 /**
  * «Одоо байгаа бүртгэлтэй холбох» — tying an ESIS person to an account here.
@@ -35,16 +39,19 @@ import { fullName } from "@/lib/format";
  * shortest path to the choice.
  */
 export function StaffLinkDialog({
-  row,
+  person,
   kindergartenId,
   candidates,
+  onLinked,
   onClose,
 }: {
-  /** The ESIS-only row the director pressed. */
-  row: StaffDirectoryRow;
+  /** The ESIS person the director pressed. */
+  person: EsisPerson;
   kindergartenId: string;
   /** Local accounts not yet tied to an ESIS person. */
-  candidates: StaffDirectoryRow[];
+  candidates: LinkCandidate[];
+  /** Whatever else the caller drew from the roster and must re-read. */
+  onLinked?: () => void;
   onClose: () => void;
 }) {
   const toast = useToast();
@@ -56,7 +63,7 @@ export function StaffLinkDialog({
     mutationFn: () =>
       mutate(`/kindergartens/${kindergartenId}/esis/staff-link`, z.unknown(), {
         method: "POST",
-        body: { userId, esisPersonId: row.esisPersonId },
+        body: { userId, esisPersonId: person.esisPersonId },
       }),
     onSuccess: () => {
       toast.success("Бүртгэл ЭСИС-ийн ажилтантай холбогдлоо.");
@@ -68,6 +75,7 @@ export function StaffLinkDialog({
        * ministry anything.
        */
       void queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+      onLinked?.();
       onClose();
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -92,7 +100,7 @@ export function StaffLinkDialog({
           <div>
             <h2 className="text-title font-semibold text-ink">Бүртгэлтэй холбох</h2>
             <p className="mt-0.5 text-body text-muted">
-              ЭСИС-ийн <span className="text-ink">{displayName(row)}</span> хэн болохыг сонгоно уу.
+              ЭСИС-ийн <span className="text-ink">{shortName(person)}</span> хэн болохыг сонгоно уу.
             </p>
           </div>
 
@@ -116,7 +124,7 @@ export function StaffLinkDialog({
                   >
                     <option value="">Сонгоно уу</option>
                     {candidates.map((candidate) => (
-                      <option key={candidate.localUserId!} value={candidate.localUserId!}>
+                      <option key={candidate.id} value={candidate.id}>
                         {fullName(candidate)}
                       </option>
                     ))}
