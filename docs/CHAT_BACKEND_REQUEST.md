@@ -27,7 +27,7 @@ A family has two children in the same kindergarten:
 | Сараа   | Нарс   | Teacher B |
 
 1. Teacher A opens their room list. The private room with this parent is
-   named **"Б.Батбаяр — ээж"**. That is correct:
+   named **"Б.Батбаярын ээж"** (since #175). That is correct:
    `AuthzRepository.loadDirectPeers` filters by the teacher's own groups.
 2. The parent writes in that room.
 3. Teacher A sees the message labelled **"Батбаяр, Сараа — эцэг эх"**, and the
