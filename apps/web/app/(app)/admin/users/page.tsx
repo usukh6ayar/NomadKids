@@ -1,5 +1,7 @@
 "use client";
 
+import { useBackHref } from "@/components/shell/app-shell";
+import { BackButton } from "@/components/ui/back-button";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { UserPlus } from "lucide-react";
@@ -83,6 +85,7 @@ export default function AdminUsersPage() {
 
 function AdminStaff() {
   const { primaryKindergartenId } = useSession();
+  const backHref = useBackHref();
   const [inviting, setInviting] = useState<Role | null>(null);
 
   /*
@@ -93,6 +96,8 @@ function AdminStaff() {
   */
   return (
     <>
+      {/* ‹ — the screen draws no header of its own (client, 2026-10-06). */}
+      {backHref ? <BackButton href={backHref} className="mb-3" /> : null}
       <StaffDirectory onInvite={setInviting} />
       {inviting && primaryKindergartenId ? (
         <InviteUserDialog

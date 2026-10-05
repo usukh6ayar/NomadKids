@@ -19,6 +19,7 @@ import {
 import {
   createContext,
   useContext,
+  useEffect,
   isValidElement,
   useId,
   useMemo,
@@ -42,6 +43,7 @@ import { Skeleton } from "@/components/ui/states";
 import { qk } from "@/lib/api/keys";
 import { useMyProfile } from "@/lib/use-my-profile";
 import { useLogout, useSession } from "@/lib/auth/session";
+import { setNavigationMenu } from "@/lib/nav-history";
 import { formatRelative, fullName, groupLabel, initials, shortName } from "@/lib/format";
 import { BRAND } from "@/lib/vocabulary";
 import { BrandWordmark } from "@/components/ui/brand-wordmark";
@@ -188,8 +190,10 @@ const NavHrefsContext = createContext<readonly string[]>([]);
 /**
  * Where Буцах goes on this screen, or `null` for a screen it does not belong on.
  *
- * Top-level destinations — anything the menu links to directly — get no button:
- * "back" from the dashboard is not a thing a person means.
+ * ★ Home alone has no ‹. Every other menu destination has one that goes home —
+ * client, 2026-10-06: a page entered from the floating bar or the menu goes
+ * back to the home screen. (Until then they had none: "back from the
+ * dashboard is not a thing a person means" was true of home, not of Мэдээ.)
  */
 function useAutoBackHref(explicit?: string): string | null {
   const hrefs = useContext(NavHrefsContext);
@@ -197,7 +201,7 @@ function useAutoBackHref(explicit?: string): string | null {
 
   if (explicit) return explicit;
   if (!pathname || hrefs.length === 0) return null;
-  if (hrefs.includes(pathname)) return null;
+  if (hrefs.includes(pathname)) return pathname === hrefs[0] ? null : hrefs[0]!;
 
   const segments = pathname.split("/").filter(Boolean);
   for (let depth = segments.length - 1; depth > 0; depth -= 1) {
@@ -224,6 +228,15 @@ function useAutoBackHref(explicit?: string): string | null {
    * screen with no way out.
    */
   return hrefs[0] ?? null;
+}
+
+/**
+ * `PageHeader`'s ‹ target, for a screen that draws its own header — the menu's
+ * home for a top-level page, the nearest menu ancestor below that, `null` on
+ * home itself. `explicit` wins, as it does on `PageHeader`.
+ */
+export function useBackHref(explicit?: string): string | null {
+  return useAutoBackHref(explicit);
 }
 
 /**
@@ -948,6 +961,8 @@ export function AppShell({
     }
     return Array.from(new Set(hrefs));
   }, [nav, sections]);
+  // ‹'s trail starts a section at any of these — see `lib/nav-history.ts`.
+  useEffect(() => setNavigationMenu(navHrefs), [navHrefs]);
 
   return (
     <SidebarPrefsProvider defaultWidth={defaultSidebarWidth}>

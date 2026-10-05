@@ -348,6 +348,7 @@ export function ChatList({
   onOpen,
   activeKey,
   action,
+  back,
   searchPlaceholder = "Нэр эсвэл мессежээр хайх",
   chrome = dialogChrome,
 }: {
@@ -358,6 +359,8 @@ export function ChatList({
   onOpen: (key: string) => void;
   /** Optional full-page action rendered above the room search. */
   action?: ReactNode;
+  /** The page's ‹, before the title — the widget, a dialog, has none. */
+  back?: ReactNode;
   searchPlaceholder?: string;
   /**
    * Which room the frame is showing beside this list, if any.
@@ -477,7 +480,8 @@ export function ChatList({
     <>
       <header className="border-b border-track bg-white px-4 pb-4 pt-5">
         <div className="flex min-h-11 items-center justify-between gap-2">
-          <div className="min-w-0">
+          {back}
+          <div className="min-w-0 flex-1">
             <Title className="text-title font-extrabold tracking-tight text-ink">Чатууд</Title>
             <p className="mt-0.5 text-caption text-muted">Яриагаа сонгож үргэлжлүүлээрэй</p>
           </div>

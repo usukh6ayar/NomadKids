@@ -1,5 +1,7 @@
 "use client";
 
+import { BackButton } from "@/components/ui/back-button";
+import { useBackHref } from "@/components/shell/app-shell";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
@@ -87,6 +89,7 @@ const VIEWS: readonly View[] = ["child", "day", "breakdown", "year"];
  */
 function DailyAttendance() {
   const { primaryKindergartenId } = useSession();
+  const backHref = useBackHref();
 
   const searchParams = useSearchParams();
   const months = useMemo(() => schoolYearMonths(new Date()), []);
@@ -157,19 +160,23 @@ function DailyAttendance() {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-display font-bold leading-heading text-ink">
-            {yearly ? "Жилээр" : breakdown ? "Сараар" : byChild ? "Суралцагчаар" : "Өдрөөр"}
-          </h1>
-          <p className="mt-1 text-body text-muted">
-            {yearly
-              ? "Суралцагч бүрийн 9–6 сарын өдөр тутмын ирцийг нэг хүснэгтээр харна."
-              : breakdown
-                ? "Сонгосон сарын ирцийг суралцагч, өдөр болон төлвөөр нь харна."
-                : byChild
-                  ? "Суралцагч бүрийн өдөр тутмын ирцийн мэдээллийг харна."
-                  : "Сонгосон өдрүүдийн бүлгийн ирцийн мэдээллийг харна."}
-          </p>
+        <div className="flex min-w-0 items-start gap-3">
+          {/* ‹ — client, 2026-10-06 (see `lib/nav-history.ts`). */}
+          {backHref ? <BackButton href={backHref} /> : null}
+          <div className="min-w-0">
+            <h1 className="text-display font-bold leading-heading text-ink">
+              {yearly ? "Жилээр" : breakdown ? "Сараар" : byChild ? "Суралцагчаар" : "Өдрөөр"}
+            </h1>
+            <p className="mt-1 text-body text-muted">
+              {yearly
+                ? "Суралцагч бүрийн 9–6 сарын өдөр тутмын ирцийг нэг хүснэгтээр харна."
+                : breakdown
+                  ? "Сонгосон сарын ирцийг суралцагч, өдөр болон төлвөөр нь харна."
+                  : byChild
+                    ? "Суралцагч бүрийн өдөр тутмын ирцийн мэдээллийг харна."
+                    : "Сонгосон өдрүүдийн бүлгийн ирцийн мэдээллийг харна."}
+            </p>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {breakdown ? (

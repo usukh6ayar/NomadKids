@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { BackButton } from "@/components/ui/back-button";
 import { useParams } from "next/navigation";
 import { useEffect } from "react";
 import { z } from "zod";
@@ -76,12 +77,8 @@ export default function NotificationDetailPage() {
   return (
     <div className="flex flex-col gap-4 py-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Link
-          href="/notifications"
-          className="inline-flex min-h-[44px] items-center text-body text-primary underline underline-offset-4"
-        >
-          ← Мэдэгдэл
-        </Link>
+        {/* The one ‹ every screen uses — client, 2026-10-06. */}
+        <BackButton href="/notifications" />
 
         {/*
           Staff only, matching `@Roles("TEACHER", "ADMIN")` on the endpoint —

@@ -1,5 +1,7 @@
 "use client";
 
+import { BackButton } from "@/components/ui/back-button";
+import { useBackHref } from "@/components/shell/app-shell";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Suspense, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
@@ -252,6 +254,7 @@ function Pane({
   children: ReactNode;
   onSubmit: () => void;
 }) {
+  const backHref = useBackHref();
   return (
     <form
       className="flex flex-col gap-5 rounded-card border border-border-soft bg-surface p-5 shadow-sm sm:p-6"
@@ -262,9 +265,13 @@ function Pane({
       }}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-display font-bold leading-heading text-ink">{title}</h1>
-          <p className="mt-1 text-body text-muted">{lede}</p>
+        <div className="flex min-w-0 items-start gap-3">
+          {/* ‹ — client, 2026-10-06 (see `lib/nav-history.ts`). */}
+          {backHref ? <BackButton href={backHref} /> : null}
+          <div className="min-w-0">
+            <h1 className="text-display font-bold leading-heading text-ink">{title}</h1>
+            <p className="mt-1 text-body text-muted">{lede}</p>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">{actions}</div>
       </div>

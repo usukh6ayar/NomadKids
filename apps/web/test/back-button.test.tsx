@@ -3,7 +3,13 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ROUTER, renderWithProviders, setPathname } from "./support/render";
 import { BackButton } from "@/components/ui/back-button";
-import { resetNavigationHistory, useNavigationHistory } from "@/lib/nav-history";
+import {
+  backTarget,
+  recordNavigation,
+  resetNavigationHistory,
+  setNavigationMenu,
+  useNavigationHistory,
+} from "@/lib/nav-history";
 
 /**
  * "Буцах button дарахад хаанаас ч байсан нэг л ухрана" — the client,
@@ -101,5 +107,92 @@ describe("Буцах", () => {
     fireEvent.click(screen.getByRole("link", { name: /Буцах/ }), { metaKey: true });
 
     expect(ROUTER.back).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * ‹ follows the section, not the browser — client, 2026-10-06: a page entered
+ * from the menu, the floating bar or the home screen goes back home; deeper
+ * pages walk back up their own section.
+ */
+describe("‹ — the section trail", () => {
+  const MENU = ["/dashboard", "/notifications", "/assessment", "/children"];
+
+  beforeEach(() => {
+    resetNavigationHistory();
+    setNavigationMenu(MENU);
+    recordNavigation("/dashboard");
+  });
+
+  it("goes home from a page the floating bar opened", () => {
+    recordNavigation("/notifications");
+    expect(backTarget()).toBe("/dashboard");
+  });
+
+  it("goes home even when the bar was pressed from another section", () => {
+    recordNavigation("/notifications");
+    recordNavigation("/notifications/n1");
+    recordNavigation("/assessment"); // the bar, from deep inside Мэдээ
+    expect(backTarget()).toBe("/dashboard");
+  });
+
+  it("walks back up a section one step at a time, then home", () => {
+    recordNavigation("/assessment");
+    recordNavigation("/groups/g1/assessment");
+    recordNavigation("/children/c1/assessment");
+    expect(backTarget()).toBe("/groups/g1/assessment");
+
+    recordNavigation("/groups/g1/assessment"); // ‹
+    expect(backTarget()).toBe("/assessment");
+
+    recordNavigation("/assessment"); // ‹
+    expect(backTarget()).toBe("/dashboard");
+  });
+
+  it("goes home from a page a home-screen tile opened", () => {
+    recordNavigation("/admin/children-overview");
+    expect(backTarget()).toBe("/dashboard");
+  });
+
+  it("navigates home rather than to the page the reader came from", async () => {
+    const { rerender } = renderWithProviders(
+      <Shell>
+        <BackButton href="/dashboard" />
+      </Shell>,
+    );
+    recordNavigation("/notifications");
+    recordNavigation("/assessment"); // the bar, from Мэдээ
+    setPathname("/assessment");
+    rerender(
+      <Shell>
+        <BackButton href="/dashboard" />
+      </Shell>,
+    );
+
+    await userEvent.click(screen.getByRole("link", { name: /Буцах/ }));
+
+    expect(ROUTER.push).toHaveBeenCalledWith("/dashboard");
+    expect(ROUTER.back).not.toHaveBeenCalled();
+  });
+
+  it("uses the browser's Back for the step it just came from", async () => {
+    const { rerender } = renderWithProviders(
+      <Shell>
+        <BackButton href="/assessment" />
+      </Shell>,
+    );
+    recordNavigation("/assessment");
+    recordNavigation("/groups/g1/assessment");
+    setPathname("/groups/g1/assessment");
+    rerender(
+      <Shell>
+        <BackButton href="/assessment" />
+      </Shell>,
+    );
+
+    await userEvent.click(screen.getByRole("link", { name: /Буцах/ }));
+
+    expect(ROUTER.back).toHaveBeenCalledTimes(1);
+    expect(ROUTER.push).not.toHaveBeenCalled();
   });
 });

@@ -20,6 +20,8 @@ import {
 import { get, mutate } from "@/lib/api/browser";
 import { mediaUrl } from "@/lib/api/client";
 import { useSwitchableGroups } from "@/components/shell/group-switcher";
+import { useBackHref } from "@/components/shell/app-shell";
+import { BackButton } from "@/components/ui/back-button";
 import { RowMenu } from "@/components/ui/menu";
 import { SavePostPhoto } from "@/components/notifications/save-post-photo";
 import { LikeButton } from "@/components/notifications/like-button";
@@ -156,6 +158,7 @@ export default function NotificationsPage() {
    * forward on its own.
    */
   const [tab, setTab] = useState<"news" | "surveys">("news");
+  const backHref = useBackHref();
 
   /*
    * Staff only. A guardian's board is already narrowed to the groups their own
@@ -327,6 +330,9 @@ export default function NotificationsPage() {
 
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            {/* ‹ home — the page has no drawn header (2026-10-01), so it leads the
+                toolbar instead. Client, 2026-10-06. */}
+            {backHref ? <BackButton href={backHref} /> : null}
             <div className="relative min-w-0 flex-1 sm:max-w-[500px]">
               <Search
                 size={18}

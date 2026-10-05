@@ -4,75 +4,144 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 /**
- * How many in-app navigations this page load has made.
+ * Where ‹ goes — a trail of the section the reader is in, not the browser's
+ * history.
  *
- * ★ Module state on purpose. It survives client-side navigation — which is the
- * only kind that adds a history entry worth going back to — and resets on a
- * full page load, which is exactly when there is nothing to go back to. A
- * `sessionStorage` counter would survive the reload too and send a reader who
- * pasted a URL into whatever tab they were on before.
+ * ★ Client, 2026-10-06: "товчлуур ба хөвдөг цэснээс нэг удаа дарахад буцах
+ * нүүр хуудсан дээр авчирна. Харин дараагийн үйлдлүүд рүү ороод яваад байх
+ * тусмаа эргүүлээд буцаж ирэхдээ өөрийн тухайн хэсэг рүүгээ буцаж ирнэ."
+ *
+ * So a trail starts afresh — `[home, page]` — whenever the reader enters a
+ * section: a page the menu names (the sidebar, the floating bar, the drawer),
+ * or anywhere at all reached from the home screen (its tiles and buttons).
+ * Going deeper appends. ‹ steps to the entry before the current one, so the
+ * first ‹ inside a section walks back up it and the last one lands on home.
+ *
+ * `router.back()` alone could not do this: Мэдээ → (bar) Явцын үнэлгээ → ‹
+ * would have returned to Мэдээ, which is where the reader *was*, not where
+ * the section they are in begins.
+ *
+ * ★★ Module state on purpose, as the depth counter it replaces was. It
+ * survives client-side navigation and resets on a full page load, which is
+ * exactly when there is no trail to follow — a pasted URL, a new tab, a
+ * refresh — and `BackButton` falls back to its `href`.
  */
-let depth = 0;
+let trail: string[] = [];
 
-/**
- * The last path counted, so one navigation is counted once.
- *
- * React's development double-invocation runs the effect twice for the same
- * path; a browser Back also fires it. Comparing paths keeps the count on
- * navigations rather than on renders.
- */
+/** The last path seen, so one navigation is handled once (dev double effects). */
 let lastPath: string | null = null;
 
-/** Whether a Back can land somewhere this session actually came from. */
-export const canGoBack = () => depth > 0;
+/** The path the most recent forward navigation came from — a real history entry. */
+let cameFrom: string | null = null;
 
-/** Called by `BackButton` when it hands the navigation to the browser. */
-export const noteBackNavigation = () => {
-  depth = Math.max(0, depth - 1);
-};
+/** Set by a ‹ just before it navigates, so the effect walks back rather than forward. */
+let steppingBackTo: string | null = null;
 
-/** Test-only: forget this module's idea of where the reader has been. */
+/** This workspace's home and the destinations its menu names — `AppShell` sets them. */
+let home: string | null = null;
+let menu: ReadonlySet<string> = new Set();
+
+/** Whether ‹ has somewhere in this section to go. */
+export const canGoBack = () => trail.length > 1;
+
+/** Where ‹ goes from here, or `null` when the trail does not know. */
+export const backTarget = (): string | null => trail[trail.length - 2] ?? null;
+
+/** Kept for callers of the earlier API; the trail walks itself back now. */
+export const noteBackNavigation = () => {};
+
+/** Test-only: forget where the reader has been. */
 export function resetNavigationHistory() {
-  depth = 0;
+  trail = [];
   lastPath = null;
+  cameFrom = null;
+  steppingBackTo = null;
+  home = null;
+  menu = new Set();
 }
 
 /**
- * Counts navigations for `BackButton`. Mounted once, in the app shell.
- *
- * The first path of a page load is the landing page and is deliberately not
- * counted: arriving somewhere is not the same as having come from somewhere.
+ * The workspace's home screen and its menu destinations — called by the shell,
+ * which is what knows them.
+ */
+export function setNavigationMenu(hrefs: readonly string[]) {
+  home = hrefs[0] ?? null;
+  menu = new Set(hrefs);
+}
+
+/** Moves the trail to a new path. Exported for the tests; the hook calls it. */
+export function recordNavigation(path: string) {
+  // The first path of a page load is where the reader landed, not somewhere
+  // they came from: ‹ there follows its own `href`.
+  if (lastPath === null) {
+    lastPath = path;
+    trail = [path];
+    return;
+  }
+  if (path === lastPath) return;
+  const previous = lastPath;
+  lastPath = path;
+
+  if (steppingBackTo === path) {
+    steppingBackTo = null;
+    cameFrom = null;
+    const index = trail.lastIndexOf(path);
+    trail = index >= 0 ? trail.slice(0, index + 1) : [path];
+    return;
+  }
+  steppingBackTo = null;
+  cameFrom = previous;
+
+  // Home itself ends every trail.
+  if (path === home) {
+    trail = [path];
+    return;
+  }
+  // Back up to somewhere already on the trail — the browser's own Back, or a
+  // link to an ancestor: the trail shortens to it.
+  const index = trail.lastIndexOf(path);
+  if (index >= 0) {
+    trail = trail.slice(0, index + 1);
+    return;
+  }
+  // Entering a section: a menu destination, or anything reached from home.
+  if (menu.has(path) || previous === home) {
+    trail = home ? [home, path] : [path];
+    return;
+  }
+  trail = [...trail, path];
+}
+
+/**
+ * Follows every route change for `BackButton`. Mounted once, in the app shell.
  */
 export function useNavigationHistory() {
   const pathname = usePathname();
 
   useEffect(() => {
-    if (lastPath === null) {
-      lastPath = pathname;
-      return;
-    }
-    if (lastPath === pathname) return;
-    lastPath = pathname;
-    depth += 1;
+    if (pathname) recordNavigation(pathname);
   }, [pathname]);
 }
 
 /**
- * "Go back one step, or to `fallback` if this page was opened cold."
+ * "Go one step up this section, or to `fallback` if the trail does not know."
  *
- * The behaviour `BackButton` gives a link, for the places that need a plain
- * handler instead — a form's Буцах, which cannot be an anchor because it sits
- * beside a submit inside the same form.
+ * ★ When the step is the page the reader just came from, it is the browser's
+ * own Back — the history entry exists, and a filter kept in its query string
+ * survives. Otherwise (the step is home, after a section was entered from
+ * elsewhere) it is a navigation to that page.
  */
 export function useGoBack(fallback: string) {
   const router = useRouter();
 
   return () => {
-    if (canGoBack()) {
-      noteBackNavigation();
-      router.back();
+    const target = backTarget();
+    if (!target) {
+      router.push(fallback);
       return;
     }
-    router.push(fallback);
+    steppingBackTo = target;
+    if (target === cameFrom) router.back();
+    else router.push(target);
   };
 }
