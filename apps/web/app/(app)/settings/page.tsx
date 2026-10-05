@@ -2,12 +2,14 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Database, IdCard, KeyRound, Pencil, UsersRound } from "lucide-react";
 import { z } from "zod";
 import {
   esisMyProfileSchema,
   parentDashboardSchema,
   PASSWORD_RULES,
+  phoneVerificationStartSchema,
   ROLE_LABEL,
   userProfileSchema,
   validatePasswordStrength,
@@ -29,14 +31,30 @@ import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { PhotoBadgeButton } from "@/components/media/photo-badge-button";
 import { ChildPhotoButton } from "@/components/child/child-photo-button";
+import {
+  MOBILE_PHONE,
+  PhoneVerificationStep,
+  usePhoneVerificationEnabled,
+} from "@/components/auth/phone-verification";
 
 const profileSchema = userProfileSchema.extend({
   specialization: z.string().nullish(),
   education: z.string().nullish(),
 });
 
-/** Own profile, its compact edit dialog and password control. */
+/**
+ * Own profile and password.
+ *
+ * The profile record is read-only; photo, password and sign-out remain the
+ * signed-in person's account controls.
+ */
 export default function SettingsPage() {
+  /*
+    ★ One column — client, 2026-10-05: the photo and what has been filled in,
+    the password, and «Мэдээлэл засах» with «Esis татах». It replaces the
+    2026-09-27 tabs and side cards. Sign-out is the shell menu's, so it is not
+    repeated here.
+  */
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <PageHeader title="Хувийн тохиргоо" lede="Хувийн мэдээлэл болон нэвтрэх эрхээ удирдана." />
@@ -44,15 +62,6 @@ export default function SettingsPage() {
       <ChildPhotosCard />
     </div>
   );
-}
-
-/** The password form, fed the account's own identifier. */
-function PasswordFromProfile() {
-  const { data } = useQuery({
-    queryKey: qk.profile(),
-    queryFn: () => get("/me/profile", profileSchema),
-  });
-  return <PasswordSection identifier={data?.email || data?.username || ""} email={data?.email} />;
 }
 
 /** Compact read view. Empty properties stay hidden instead of creating dashes. */
@@ -140,12 +149,50 @@ function ProfileCard() {
             ))}
           </dl>
         ) : null}
-        <PasswordFromProfile />
+        <PasswordSection />
       </Card>
 
       {data ? <EditProfileDialog open={editing} onOpenChange={setEditing} profile={data} /> : null}
     </section>
   );
+}
+
+/**
+ * A changed phone is proven by one SMS before `PATCH /me/profile` takes it —
+ * verify.mn, 2026-10-01, and only where it is configured.
+ *
+ * The phone is a login identifier and the way back in through a reset by
+ * phone, so a typo would hand that door to whoever holds the typed number.
+ * The number already on file needs no proof: both forms on this screen send
+ * every field on every save. A save without the proof is refused by the
+ * server with a message under «Утас», which is what a person who skipped the
+ * step reads.
+ */
+function useOwnPhoneProof(saved: string | null | undefined, typed: string) {
+  const enabled = usePhoneVerificationEnabled();
+  const [proof, setProof] = useState<{ phone: string; handle: string } | null>(null);
+
+  const next = typed.trim();
+  const changed = enabled && next !== "" && next !== (saved ?? "");
+  const handle = proof?.phone === next ? proof.handle : undefined;
+
+  return {
+    body: changed && handle ? { phoneVerification: handle } : {},
+    step:
+      changed && MOBILE_PHONE.test(next) ? (
+        <PhoneVerificationStep
+          key={next}
+          phone={next}
+          start={(value) =>
+            mutate("/me/phone-verification", phoneVerificationStartSchema, {
+              method: "POST",
+              body: { phone: value },
+            })
+          }
+          onVerified={(verified) => setProof({ phone: next, handle: verified })}
+        />
+      ) : null,
+  };
 }
 
 /**
@@ -197,6 +244,7 @@ function EditProfileDialog({
     profile.qualification,
     profile.education,
   ]);
+  const phoneProof = useOwnPhoneProof(profile.phone, form.phone);
 
   const esis = useQuery({
     queryKey: ["esis", "my-profile", primaryKindergartenId],
@@ -255,6 +303,7 @@ function EditProfileDialog({
                 education: form.education.trim() || null,
               }
             : {}),
+          ...phoneProof.body,
         },
       }),
     onSuccess: () => {
@@ -333,6 +382,7 @@ function EditProfileDialog({
           </>
         ) : null}
       </div>
+      {phoneProof.step}
       <FormError
         message={save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null}
       />
@@ -393,16 +443,25 @@ function ChildPhotosCard() {
   );
 }
 
-/** Changing the signed-in account's password. Fields mount only when opened. */
-function PasswordSection({
-  identifier,
-  email,
-}: {
-  /** What `POST /auth/password-reset` is asked about — this account. */
-  identifier: string;
-  /** Where the link would land, or nothing. */
-  email?: string | null;
-}) {
+/**
+ * Changing your own password — `POST /auth/password`.
+ *
+ * ★ The last section of the profile's edit form, folded shut. See the note at
+ * its call site for the two attempts this replaces.
+ *
+ * ★★ The fields exist only while the section is open.
+ *
+ * Not `hidden`, not disabled — unmounted. A "current password" input sitting
+ * in the DOM of a page somebody left open is a credential a password manager
+ * will offer to fill and a shoulder will read; there is no reason for it to be
+ * there before somebody has said they are changing their password, and closing
+ * the section clears whatever was typed.
+ *
+ * ★★★ The success line stays until the section is closed, deliberately. It
+ * says every other device has been signed out, which is a consequence somebody
+ * needs to read *after* the change rather than a toast that slides away.
+ */
+function PasswordSection() {
   const [open, setOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -422,28 +481,6 @@ function PasswordSection({
     },
   });
 
-  /**
-   * "Мартсан уу?" — the same reset `/forgot-password` requests, from here.
-   *
-   * ★ 2026-09-08, at the client's request: "одоогийн нууц үгээ мэдэхгүй ч
-   * байж болишд". `POST /auth/password` needs the current password, so
-   * somebody who has forgotten it could change nothing from this screen and
-   * had to sign out to reach the recovery they were already signed in beside.
-   *
-   * ★★ It sends this account's own identifier rather than asking for one.
-   * `/forgot-password` asks because it serves a stranger and must not confirm
-   * whether an identifier exists; here the caller is authenticated and it is
-   * their own account, so the neutral wording that page needs would be
-   * evasive rather than careful. It says what happened.
-   */
-  const forgot = useMutation({
-    mutationFn: () =>
-      mutate("/auth/password-reset", z.unknown(), {
-        method: "POST",
-        body: { identifier },
-      }),
-  });
-
   const errors = fieldErrors(change.error);
 
   function close() {
@@ -453,27 +490,15 @@ function PasswordSection({
     setConfirm("");
     setLocalError(null);
     change.reset();
-    forgot.reset();
-  }
-
-  if (!open) {
-    return (
-      <div className="flex justify-end border-t border-border-soft pt-2">
-        <button
-          type="button"
-          className="inline-flex min-h-9 items-center gap-1.5 rounded-control px-2 text-caption text-muted transition-colors hover:bg-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-          aria-expanded={false}
-          onClick={() => setOpen(true)}
-        >
-          <KeyRound size={14} aria-hidden="true" />
-          Нууц үг солих
-        </button>
-      </div>
-    );
   }
 
   return (
-    <div className="border-t border-border-soft pt-4">
+    <div className="mt-5 border-t border-border-soft pt-5">
+      {/*
+        The row that is always there: what this section is, and one control.
+        Under a rule, so it reads as a second subject rather than a seventh
+        field of the profile above it.
+      */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-body font-medium text-ink">Нэвтрэх нууц үг</p>
@@ -482,46 +507,60 @@ function PasswordSection({
           </p>
         </div>
 
-        <Button type="button" variant="ghost" size="sm" onClick={close}>
-          Болих
-        </Button>
+        {open ? (
+          <Button type="button" variant="ghost" size="sm" onClick={close}>
+            Болих
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            aria-expanded={false}
+            onClick={() => setOpen(true)}
+          >
+            <KeyRound size={16} aria-hidden="true" />
+            Нууц үг солих
+          </Button>
+        )}
       </div>
 
-      <form
-        className="mt-4 flex flex-col gap-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (change.isPending) return;
+      {open ? (
+        <form
+          className="mt-4 flex flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (change.isPending) return;
 
-          // Same rules the API runs, from the same module — see
-          // `@kinder/contracts/password`.
-          const weaknesses = validatePasswordStrength(newPassword);
-          if (weaknesses.length > 0) {
-            setLocalError(`${weaknesses.join(". ")}.`);
-            return;
-          }
-          if (newPassword !== confirm) {
-            setLocalError("Хоёр нууц үг таарахгүй байна.");
-            return;
-          }
+            // Same rules the API runs, from the same module — see
+            // `@kinder/contracts/password`.
+            const weaknesses = validatePasswordStrength(newPassword);
+            if (weaknesses.length > 0) {
+              setLocalError(`${weaknesses.join(". ")}.`);
+              return;
+            }
+            if (newPassword !== confirm) {
+              setLocalError("Хоёр нууц үг таарахгүй байна.");
+              return;
+            }
 
-          setLocalError(null);
-          change.mutate();
-        }}
-        noValidate
-      >
-        <FormError message={localError ?? (change.isError ? errorMessage(change.error) : null)} />
+            setLocalError(null);
+            change.mutate();
+          }}
+          noValidate
+        >
+          <FormError message={localError ?? (change.isError ? errorMessage(change.error) : null)} />
 
-        {change.isSuccess ? (
-          <p
-            role="status"
-            className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink"
-          >
-            Нууц үг солигдлоо. Бусад төхөөрөмжөөс гарсан байна.
-          </p>
-        ) : null}
+          {change.isSuccess ? (
+            <p
+              role="status"
+              className="rounded-control bg-mint px-3.5 py-2.5 text-body text-mint-ink"
+            >
+              Нууц үг солигдлоо. Бусад төхөөрөмжөөс гарсан байна.
+            </p>
+          ) : null}
 
-        {/*
+          {/*
             ★ The rules, before anything is typed — 2026-09-04.
 
             This form has always *checked* `validatePasswordStrength` and never
@@ -538,102 +577,88 @@ function PasswordSection({
             Same `PASSWORD_RULES` the server enforces, so the list cannot drift
             from the check.
           */}
-        <ul className="list-disc space-y-1 pl-5 text-body text-muted">
-          {PASSWORD_RULES.map((rule) => (
-            <li key={rule}>{rule}</li>
-          ))}
-        </ul>
+          <ul className="list-disc space-y-1 pl-5 text-body text-muted">
+            {PASSWORD_RULES.map((rule) => (
+              <li key={rule}>{rule}</li>
+            ))}
+          </ul>
 
-        <Field label="Одоогийн нууц үг" error={errors.currentPassword} required>
-          {({ id, describedBy, invalid }) => (
-            <PasswordInput
-              id={id}
-              aria-describedby={describedBy}
-              invalid={invalid}
-              autoComplete="current-password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-            />
-          )}
-        </Field>
-
-        {/*
-            Under the field it rescues, because that is where somebody
-            discovers they cannot fill it in.
-          */}
-        {forgot.isSuccess ? (
-          <p role="status" className="text-body text-mint-ink">
-            Сэргээх холбоосыг {email} хаяг руу илгээлээ. И-мэйлээ шалгана уу.
-          </p>
-        ) : email ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="-ml-2 self-start"
-            disabled={forgot.isPending}
-            onClick={() => forgot.mutate()}
-          >
-            {forgot.isPending ? "Илгээж байна…" : "Одоогийн нууц үгээ мартсан уу?"}
-          </Button>
-        ) : (
-          /*
-              No e-mail, so no link can be sent. Saying so is the honest answer
-              and it is not an enumeration leak: this is the signed-in person's
-              own account, and they can act on it.
-            */
-          <p className="text-caption text-muted">
-            Нууц үгээ мартсан бол эрхлэгчид хандана уу — бүртгэлд и-мэйл бүртгээгүй тул сэргээх
-            холбоос илгээх боломжгүй.
-          </p>
-        )}
-        {forgot.isError ? (
-          <p role="alert" className="text-body text-danger">
-            {errorMessage(forgot.error)}
-          </p>
-        ) : null}
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Шинэ нууц үг" error={errors.newPassword} required>
+          <Field label="Одоогийн нууц үг" error={errors.currentPassword} required>
             {({ id, describedBy, invalid }) => (
               <PasswordInput
                 id={id}
                 aria-describedby={describedBy}
                 invalid={invalid}
-                autoComplete="new-password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
+                autoComplete="current-password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
               />
             )}
           </Field>
 
-          <Field label="Шинэ нууц үг давтах" required>
-            {({ id, describedBy }) => (
-              <PasswordInput
-                id={id}
-                aria-describedby={describedBy}
-                autoComplete="new-password"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-              />
-            )}
-          </Field>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Button type="submit" disabled={change.isPending}>
-            {change.isPending ? "Солиж байна…" : "Нууц үг шинэчлэх"}
-          </Button>
           {/*
+            Under the field it rescues, because that is where somebody
+            discovers they cannot fill it in.
+          */}
+          {/*
+            «Мартсан уу?» — `/forgot-password`, by phone, since 2026-10-04.
+
+            ★ It used to mail a reset link to the account's own e-mail
+            (client, 2026-09-08: "одоогийн нууц үгээ мэдэхгүй ч байж болишд").
+            E-mail is no longer used ("email-ийг ашиглахаа больсон, зөвхөн
+            дугаар"), and most accounts here have none, so the button was
+            usually replaced by "ask the director". The phone reset works for
+            anyone with a number on their account, signed in or not.
+          */}
+          <Link
+            href="/forgot-password"
+            className="-mt-1 inline-flex min-h-11 items-center self-start text-body font-semibold text-primary hover:underline"
+          >
+            Одоогийн нууц үгээ мартсан уу?
+          </Link>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Шинэ нууц үг" error={errors.newPassword} required>
+              {({ id, describedBy, invalid }) => (
+                <PasswordInput
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                />
+              )}
+            </Field>
+
+            <Field label="Шинэ нууц үг давтах" required>
+              {({ id, describedBy }) => (
+                <PasswordInput
+                  id={id}
+                  aria-describedby={describedBy}
+                  autoComplete="new-password"
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                />
+              )}
+            </Field>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" disabled={change.isPending}>
+              {change.isPending ? "Солиж байна…" : "Нууц үг шинэчлэх"}
+            </Button>
+            {/*
               "Хаах" once it has worked, "Болих" before: the same control, and
               the word says which of the two it is. The success line above stays
               on screen until this is pressed — see the docblock.
             */}
-          <Button type="button" variant="ghost" onClick={close} disabled={change.isPending}>
-            {change.isSuccess ? "Хаах" : "Болих"}
-          </Button>
-        </div>
-      </form>
+            <Button type="button" variant="ghost" onClick={close} disabled={change.isPending}>
+              {change.isSuccess ? "Хаах" : "Болих"}
+            </Button>
+          </div>
+        </form>
+      ) : null}
     </div>
   );
 }

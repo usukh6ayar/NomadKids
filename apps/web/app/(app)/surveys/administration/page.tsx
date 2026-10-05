@@ -55,7 +55,7 @@ function AdministrationSurveys() {
     <div className="flex flex-col gap-5">
       <header className="flex items-center gap-3 !bg-transparent !backdrop-blur-none">
         <BackButton href="/surveys/parents" />
-        <h1 className="min-w-0 text-heading font-bold leading-heading text-ink sm:text-display">
+        <h1 className="min-w-0 text-title font-bold leading-heading text-ink">
           Удирдлагын судалгаа
         </h1>
       </header>

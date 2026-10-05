@@ -22,6 +22,7 @@ import { z } from "zod";
 import {
   chatMessageSchema,
   chatRoomSchema,
+  genitive,
   unreadCountSchema,
   type ChatRoom as ChatRoomData,
   type Role,
@@ -81,10 +82,11 @@ export function chatRoomDisplayName(
    * saw three rooms with one name and no way to tell them apart.
    */
   /*
-    ★ The child's name alone — client, 2026-10-04: "Г.Батбаяр зүгээр дан
-    нэрээрээ". The API names a guardian's room "Г.Батбаяр — ээж" (two
-    children: "Г.Батбаяр — ээж, Г.Сараа — ээж"); the relation is dropped
-    here. A teacher's room carries no dash and is left as it is.
+    ★ The child's name alone — client, 2026-10-04 and again 2026-10-05:
+    "Г.Батбаяр зүгээр дан нэрээрээ". Since #175 the API names a guardian's
+    room "Г.Батбаярын ээж" (two children: "…, Г.Сараагийн ээж"); this undoes
+    the genitive and drops the relation — see `guardianChildName`. A
+    teacher's room is a plain name and is left as it is.
   */
   if (room.kind === "DIRECT") {
     /*
@@ -101,7 +103,7 @@ export function chatRoomDisplayName(
     }
     return room.name
       .split(", ")
-      .map((part) => part.replace(/\s+—\s+.*$/, ""))
+      .map((part) => guardianChildName(part) ?? part)
       .join(", ");
   }
   const sameKind = rooms.filter((candidate) => candidate.kind === room.kind).length > 1;
@@ -118,15 +120,42 @@ function isParentOnly(roles: ReadonlySet<Role>): boolean {
   return roles.has("PARENT") && !roles.has("TEACHER") && !roles.has("ADMIN");
 }
 
+/** The words `guardianChatName` puts after the child's genitive. */
+const GUARDIAN_RELATION = /^(.+) (ээж|аав|өвөө\/эмээ|ах\/эгч|асран хамгаалагч)$/;
+
 /**
- * A private room whose other person is a guardian.
+ * "Г.Батбаярын ээж" → "Г.Батбаяр"; `null` for anything that is not a
+ * guardian's chat name.
  *
- * The API names such a room after the child and the relation — "Г.Батбаяр —
- * ээж" (`AuthzRepository.loadDirectPeers`) — and a member of staff by their
- * plain name, so the dash is what tells the two apart.
+ * ★ Not a guess at Mongolian morphology: every candidate is checked by running
+ * it back through the API's own `genitive()`, so a name is only ever returned
+ * when it reproduces the room's name exactly. The candidates cover each ending
+ * `genitive` can write — `+н`, `+гийн`, `+ийн` (with an э, и or ь dropped
+ * before it), `+ын` and the hyphenated `-ийн`.
+ */
+export function guardianChildName(part: string): string | null {
+  const match = GUARDIAN_RELATION.exec(part.trim());
+  if (!match) return null;
+  const inflected = match[1]!;
+  for (const ending of ["-ийн", "гийн", "ийн", "ын", "н"]) {
+    if (!inflected.endsWith(ending)) continue;
+    const stem = inflected.slice(0, -ending.length);
+    for (const candidate of [stem, `${stem}э`, `${stem}и`, `${stem}ь`]) {
+      if (candidate && genitive(candidate) === inflected) return candidate;
+    }
+  }
+  return null;
+}
+
+/**
+ * A private room whose other person is a guardian — the API names it after
+ * the child (`guardianChatName`), and a member of staff by their plain name.
  */
 function isGuardianPeer(room: ChatRoomData): boolean {
-  return room.kind === "DIRECT" && /\s—\s/.test(room.name);
+  return (
+    room.kind === "DIRECT" &&
+    room.name.split(", ").every((part) => guardianChildName(part) !== null)
+  );
 }
 
 const PARENT_ORDER: Record<ChatRoomData["kind"], number> = {

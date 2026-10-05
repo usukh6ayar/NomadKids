@@ -1,9 +1,19 @@
-import { ConflictException, Injectable, Logger, UnauthorizedException } from "@nestjs/common";
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { AuditRepository } from "../audit/audit.repository";
 import { AuthzRepository } from "../authz/authz.repository";
 import type { Actor } from "../authz/actor";
 import type { GuardianRelation } from "@kinder/contracts";
+import {
+  PhoneVerificationService,
+  type PhoneVerificationStart,
+} from "../phone-verification/phone-verification.service";
 import { AuthRepository } from "./auth.repository";
 import { PasswordService, validatePasswordStrength } from "./password.service";
 import { hashToken, TokenService } from "./token.service";
@@ -11,17 +21,6 @@ import { hashToken, TokenService } from "./token.service";
 /** 5 failures inside 15 minutes locks an identifier for 15 minutes. */
 const MAX_FAILURES = 5;
 const LOCKOUT_WINDOW_MS = 15 * 60 * 1000;
-
-/** Password reset and invitation links expire after an hour. */
-const ONE_TIME_TOKEN_TTL_MS = 60 * 60 * 1000;
-
-/** What the controller needs to send the reset mail — and nothing more. */
-export interface PasswordResetRequest {
-  token: string;
-  /** Null when the account has no email — the token is still valid. */
-  email: string | null;
-  name: string;
-}
 
 export interface RequestContext {
   ipAddress: string | null;
@@ -50,6 +49,7 @@ export class AuthService {
     private readonly passwords: PasswordService,
     private readonly tokens: TokenService,
     private readonly audit: AuditRepository,
+    private readonly phones: PhoneVerificationService,
   ) {}
 
   /**
@@ -227,58 +227,6 @@ export class AuthService {
 
   // ── Password reset ────────────────────────────────────────────────────────
 
-  /**
-   * Issues a reset token, or pretends to.
-   *
-   * ★ Always succeeds from the caller's perspective. Returning "no such user"
-   * would turn this endpoint into a free user-enumeration API, and the response
-   * must not vary in content or timing.
-   */
-  async requestPasswordReset(
-    identifier: string,
-    ctx: RequestContext,
-  ): Promise<PasswordResetRequest | null> {
-    const user = await this.repo.findByIdentifier(identifier);
-    if (!user) {
-      await this.passwords.burn();
-      return null;
-    }
-
-    // A new link invalidates outstanding ones, so a link mailed to an address
-    // the user has since lost control of stops working.
-    await this.repo.invalidateAuthTokens(user.id, "PASSWORD_RESET");
-
-    const { token, hash } = this.tokens.createOneTimeToken();
-    await this.repo.createAuthToken({
-      userId: user.id,
-      purpose: "PASSWORD_RESET",
-      tokenHash: hash,
-      expiresAt: new Date(Date.now() + ONE_TIME_TOKEN_TTL_MS),
-      requestedIp: ctx.ipAddress,
-    });
-
-    await this.audit.append({
-      action: "PASSWORD_RESET",
-      actorUserId: user.id,
-      ipAddress: ctx.ipAddress,
-      metadata: { stage: "requested" },
-    });
-
-    // Returned so the caller can mail it. It is never logged, never audited,
-    // and never placed in a response body.
-    // ★ The token is issued even when the user has no email address.
-    //
-    // Many parents here have a phone number and no email, and refusing to
-    // create a token for them would mean their account can never be recovered
-    // at all — not even by an administrator reading the link out. Delivery is
-    // the caller's problem and is conditional on `email`; issuing is not.
-    return {
-      token,
-      email: user.email,
-      name: `${user.lastName} ${user.firstName}`.trim(),
-    };
-  }
-
   async confirmPasswordReset(token: string, newPassword: string, ctx: RequestContext) {
     const errors = validatePasswordStrength(newPassword);
     if (errors.length > 0) throw new UnauthorizedException(errors.join(". "));
@@ -289,12 +237,72 @@ export class AuthService {
     }
 
     await this.repo.consumeAuthToken(row.id);
-    await this.repo.setPassword(row.userId, await this.passwords.hash(newPassword));
+    await this.completeReset(row.userId, newPassword, ctx, "link");
+  }
+
+  /**
+   * Starts a password reset by phone — verify.mn, 2026-10-01.
+   *
+   * ★ The answer is the same whether or not an account holds the number: a
+   * verification is opened either way. Only once the person has proven they
+   * hold the phone does `check` say whether an account was found — at that
+   * point they are the one person entitled to know.
+   *
+   * Nothing is sent to the phone. The person sends an SMS from it, at their
+   * own cost, so this cannot be used to spam somebody else's number.
+   */
+  async startPasswordResetByPhone(
+    phone: string,
+    ctx: RequestContext,
+  ): Promise<PhoneVerificationStart> {
+    return this.phones.start("PASSWORD_RESET", phone, null, ctx.ipAddress);
+  }
+
+  /**
+   * Finishes a reset by phone: the verified handle stands where the e-mailed
+   * token stands in `confirmPasswordReset`.
+   *
+   * ★ No reset token is minted and handed to the browser. The handle is
+   * already a single-use bearer bound to one proven number, so the new
+   * password is set here, through the same `completeReset` the e-mail path
+   * uses — revoked sessions, cleared lockout, one audit row.
+   *
+   * ★★ The account is looked up by phone alone — never `findByIdentifier`,
+   * which also matches a *username* and would let a username made of eight
+   * digits answer for somebody else's number.
+   */
+  async confirmPasswordResetByPhone(handle: string, newPassword: string, ctx: RequestContext) {
+    const errors = validatePasswordStrength(newPassword);
+    if (errors.length > 0) throw new UnauthorizedException(errors.join(". "));
+
+    const { phone } = await this.phones.consume(handle, { purpose: "PASSWORD_RESET" });
+    const user = await this.repo.findActiveByPhone(phone);
+    if (!user) {
+      // Safe to say: the requester has just proven they hold this number.
+      throw new NotFoundException("Энэ утасны дугаартай бүртгэл олдсонгүй");
+    }
+
+    await this.repo.invalidateAuthTokens(user.id, "PASSWORD_RESET");
+    await this.completeReset(user.id, newPassword, ctx, "phone");
+  }
+
+  /**
+   * Everything a reset does once the requester is proven — shared by the
+   * e-mail and the phone paths so the two cannot drift.
+   */
+  private async completeReset(
+    userId: string,
+    newPassword: string,
+    ctx: RequestContext,
+    /** `link` — an administrator-issued one-time link; `phone` — verify.mn. */
+    channel: "link" | "phone",
+  ) {
+    await this.repo.setPassword(userId, await this.passwords.hash(newPassword));
 
     // Changing a password must end every existing session. Otherwise a user
     // resetting because they believe they were compromised leaves the intruder
     // logged in.
-    await this.repo.revokeAllUserSessions(row.userId);
+    await this.repo.revokeAllUserSessions(userId);
 
     // Clear the lockout by every identifier this user can log in with.
     //
@@ -303,14 +311,38 @@ export class AuthService {
     // cannot be cleared by user id, and a user locked out of their account
     // would stay locked out after a successful reset, which reads as the reset
     // silently not working.
-    await this.clearLockoutForUser(row.userId);
+    await this.clearLockoutForUser(userId);
 
     await this.audit.append({
       action: "PASSWORD_RESET",
-      actorUserId: row.userId,
+      actorUserId: userId,
       ipAddress: ctx.ipAddress,
-      metadata: { stage: "completed" },
+      metadata: { stage: "completed", channel },
     });
+  }
+
+  /**
+   * Starts verifying the phone a guardian is about to give on their
+   * invitation.
+   *
+   * Bound to the invitation's account, so the proof cannot be carried to
+   * another invitation. The same "хүчингүй" message as `acceptInvitation` for a
+   * dead link, and the same contact check — run here too, because finding out
+   * the number is taken *after* paying for the SMS is the worse order.
+   */
+  async startInvitationPhoneVerification(
+    token: string,
+    phone: string,
+    ctx: RequestContext,
+  ): Promise<PhoneVerificationStart> {
+    const row = await this.repo.findAuthToken(hashToken(token), "INVITATION");
+    if (!row || row.usedAt || row.expiresAt.getTime() < Date.now()) {
+      throw new UnauthorizedException("Урилга хүчингүй эсвэл хугацаа нь дууссан байна");
+    }
+    if (await this.repo.findOtherUserByContact(row.userId, { phone })) {
+      throw new ConflictException("Энэ утасны дугаар өөр бүртгэлд ашиглагдсан байна");
+    }
+    return this.phones.start("INVITATION", phone, row.userId, ctx.ipAddress);
   }
 
   /**
@@ -373,8 +405,8 @@ export class AuthService {
       phone?: string;
       relation?: GuardianRelation;
       lastName?: string;
-      email?: string;
     },
+    phoneVerification: string | undefined,
     ctx: RequestContext,
   ) {
     const errors = validatePasswordStrength(password);
@@ -389,8 +421,8 @@ export class AuthService {
      * ★★★ **Before the token is consumed**, and that ordering is the whole
      * point — 2026-09-19, from a production 500.
      *
-     * `email` and `phone` are unique on `User`. A person accepting an
-     * invitation types one of them, and if it already belongs to somebody else
+     * `phone` is unique on `User`. A person accepting an invitation types
+     * one, and if it already belongs to somebody else
      * the write below raised `PrismaClientKnownRequestError` — unhandled, so a
      * 500 and «серверт алдаа гарлаа» on screen.
      *
@@ -404,15 +436,25 @@ export class AuthService {
      * still works, and the message names the field to change.
      */
     const taken = await this.repo.findOtherUserByContact(row.userId, {
-      email: profile.email,
       phone: profile.phone,
     });
     if (taken) {
-      throw new ConflictException(
-        profile.email && taken.email === profile.email
-          ? "Энэ и-мэйл хаяг өөр бүртгэлд ашиглагдсан байна"
-          : "Энэ утасны дугаар өөр бүртгэлд ашиглагдсан байна",
-      );
+      throw new ConflictException("Энэ утасны дугаар өөр бүртгэлд ашиглагдсан байна");
+    }
+
+    /*
+     * ★ The phone is proven before the link is spent — the same ordering as
+     * the contact check above, for the same reason: a refused proof must
+     * leave a working link behind it — for a guardian and a member of staff
+     * alike, since the phone is how both sign in. Only when verify.mn is
+     * configured; otherwise the phone is taken on the person's word.
+     */
+    if (profile.phone && this.phones.enabled) {
+      await this.phones.consume(phoneVerification, {
+        purpose: "INVITATION",
+        userId: row.userId,
+        phone: profile.phone,
+      });
     }
 
     await this.repo.consumeAuthToken(row.id);
@@ -431,13 +473,7 @@ export class AuthService {
       father in both, and the invitation they just accepted is the only place
       they will ever be asked.
     */
-    if (
-      profile.firstName ||
-      profile.phone ||
-      profile.relation ||
-      profile.lastName ||
-      profile.email
-    ) {
+    if (profile.firstName || profile.phone || profile.relation || profile.lastName) {
       try {
         await this.repo.completeInvitedProfile(row.userId, profile);
       } catch (error) {
@@ -448,7 +484,7 @@ export class AuthService {
          */
         if (isUniqueViolation(error)) {
           throw new ConflictException(
-            "Энэ и-мэйл эсвэл утас өөр бүртгэлд ашиглагдсан байна. " +
+            "Энэ утасны дугаар өөр бүртгэлд ашиглагдсан байна. " +
               "Нууц үг тань тохирсон тул нэвтрэх нэрээрээ орно уу.",
           );
         }
@@ -501,13 +537,13 @@ export class AuthService {
 
   /**
    * Clears failed attempts recorded against any identifier this user can log in
-   * with — username, email or phone. See the note at the call site for why this
+   * with — username or phone. See the note at the call site for why this
    * cannot simply take a user id.
    */
   private async clearLockoutForUser(userId: string): Promise<void> {
     const user = await this.repo.findById(userId);
     if (!user) return;
-    for (const identifier of [user.username, user.email, user.phone]) {
+    for (const identifier of [user.username, user.phone]) {
       if (identifier) await this.repo.clearFailures(identifier);
     }
   }

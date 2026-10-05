@@ -126,6 +126,43 @@ matched the code.
 Password reset must be **timing-neutral**: an unknown email returns the same
 response and takes the same time as a known one.
 
+### 2.1 Phone proof — verify.mn, 2026-10-01
+
+A person proves a phone by texting a six-digit code **from** it to verify.mn's
+shortcode (144773). Nothing is ever sent to a phone, so none of these routes can
+be turned on a stranger's number, and the SMS costs the sender (150₮), not us.
+Off unless `VERIFY_MN_API_KEY` is set; off, every flow behaves as it did before.
+
+1. **Only `GET /sessions/:id` is believed.** verify.mn's callback is an
+   unsigned GET; none is registered. The server polls verify.mn on the
+   browser's behalf, throttled to one upstream call per row per 3 s.
+2. **verify.mn's session id never reaches a browser.** Its status endpoint
+   needs no key, so the id is a capability. The browser holds a separate
+   32-byte handle, stored only as its SHA-256.
+3. **A proof is bound to purpose, account and number, and spent once.**
+   `PhoneVerificationService.consume` checks all three. A handle proven for
+   one's own profile cannot open a reset; one started for one invitation
+   cannot finish another. Spendable for 15 minutes after the SMS arrives.
+4. **A reset by phone does not enumerate.** Starting it answers identically
+   whether or not an account holds the number. Only once the number is proven
+   does `check` say `accountFound`. By then the asker has shown it is theirs.
+   The account is looked up by `phone` alone, never `findByIdentifier`, which
+   would let an eight-digit _username_ answer for somebody's number.
+5. **A refused proof leaves an invitation link working.** It is checked
+   before `consumeAuthToken`, the 2026-09-19 ordering rule.
+6. **Where a proof is required:** a reset by phone; the phone on any
+   invitation, a guardian's or a member of staff's; changing one's own phone to
+   a new number.
+7. **The phone is an identity; e-mail is not** — 2026-10-04, client: «email-ээр
+   verification хийхгүй, зөвхөн SMS». Login takes a username or a phone, never
+   an e-mail, and a staff invitation asks for a phone where it used to ask for
+   the login address. `User.email` stays, as a contact field nobody signs in
+   with. Clearing a phone, or
+   an administrator editing someone's (`PATCH /users/:id`), needs none.
+
+`test/phone-verification.test.ts` pins 3–5 through HTTP against a stubbed
+verify.mn.
+
 ---
 
 ## 3. Auth transport
@@ -713,7 +750,6 @@ described limits the code did not have.
 | ----------------------------------- | ---------------------------------------- | --------------------- |
 | `POST /auth/login`                  | **60 / 15 min**                          | IP                    |
 | `POST /auth/login`                  | **5 failures / 15 min → 15 min lockout** | identifier (database) |
-| `POST /auth/password-reset`         | 20 / hour                                | IP                    |
 | `POST /auth/password-reset/confirm` | 10 / hour                                | IP                    |
 | `POST /auth/refresh`                | 60 / hour                                | IP                    |
 | `PATCH /auth/password`              | 10 / hour                                | user                  |
@@ -771,7 +807,7 @@ All configuration from the environment. `.env` gitignored, `.env.example`
 updated with every new key. No secret in source, in a commit, or in a log line.
 
 `DATABASE_URL`, `JWT_SECRET`, `REFRESH_SECRET`, `R2_ACCESS_KEY_ID`,
-`R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT`, `REDIS_URL`, `SMTP_*`,
+`R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT`, `REDIS_URL`, `VERIFY_MN_API_KEY`,
 `CORS_ORIGINS`, `COOKIE_DOMAIN`.
 
 Rotation: JWT signing keys carry a `kid` so a rotation does not invalidate every

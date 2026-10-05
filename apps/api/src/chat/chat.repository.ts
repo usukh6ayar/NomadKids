@@ -72,6 +72,7 @@ export class ChatRepository {
       take: 200,
       select: {
         guardianUserId: true,
+        relation: true,
         child: { select: { id: true, lastName: true, firstName: true, photoMediaFileId: true } },
       },
     });

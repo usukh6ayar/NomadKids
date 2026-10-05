@@ -227,11 +227,11 @@ export function StaffDirectory({ onInvite }: { onInvite: (prefill?: StaffDirecto
         />
       ) : null}
 
-      {linkingRow && primaryKindergartenId ? (
+      {linkingRow?.esisPersonId && primaryKindergartenId ? (
         <StaffLinkDialog
-          row={linkingRow}
+          person={{ ...linkingRow, esisPersonId: linkingRow.esisPersonId }}
           kindergartenId={primaryKindergartenId}
-          candidates={linkCandidates}
+          candidates={linkCandidates.map((row) => ({ ...row, id: row.localUserId! }))}
           onClose={() => setLinking(null)}
         />
       ) : null}

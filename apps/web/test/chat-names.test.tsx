@@ -6,6 +6,7 @@ import {
   ChatList,
   ChatRoom,
   chatRoomDisplayName,
+  guardianChildName,
   type ChatChrome,
 } from "@/components/chat/chat-widget";
 import { DashboardChatPreview } from "@/components/dashboard/dashboard-chat-preview";
@@ -107,7 +108,7 @@ describe("a teacher's private rooms", () => {
     kind: "DIRECT",
     kindergartenId: KINDERGARTEN_ID,
     groupId: null,
-    name: `Хүүхэд${n} — ээж`,
+    name: `Хүүхэд${n}-ийн ээж`,
     memberCount: 2,
     lastMessage: null,
     unreadCount,
@@ -176,7 +177,7 @@ describe("a parent's three rooms", () => {
   const PARENT_DIRECT: ChatRoomData = {
     ...TEACHER_DIRECT,
     key: "direct:parent",
-    name: "Г.Батбаяр — ээж",
+    name: "Г.Батбаярын ээж",
   };
 
   it("draws them in order, the private one as Бүлгийн багш, and no parent-to-parent room", async () => {
@@ -213,7 +214,7 @@ describe("who is speaking", () => {
       key: "direct:1",
       kind: "DIRECT" as const,
       groupId: null,
-      name: "Г.Батбаяр — ээж, Г.Сараа — ээж",
+      name: "Г.Батбаярын ээж, Г.Сараагийн ээж",
     };
     expect(chatRoomDisplayName(room, new Set<Role>(["TEACHER"]))).toBe("Г.Батбаяр, Г.Сараа");
     // A teacher, as another teacher's private room would name them, is left alone.
@@ -306,5 +307,27 @@ describe("who is speaking", () => {
     await screen.findByText("Хурал 3 цагт");
     expect(screen.getByText("Д.Сувдаа")).toBeInTheDocument();
     expect(screen.queryByText("Бүлгийн багш")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Undoing the API's «Г.Батбаярын ээж» — every ending `genitive()` writes, and
+ * a teacher's plain name left alone (client, 2026-10-05: the child's name only).
+ */
+describe("a guardian's chat name, back to the child", () => {
+  it.each([
+    ["Г.Батбаярын ээж", "Г.Батбаяр"],
+    ["Б.Сарнайн аав", "Б.Сарнай"],
+    ["Д.Хулангийн ээж", "Д.Хулан"],
+    ["О.Сараагийн өвөө/эмээ", "О.Сараа"],
+    ["Б.Эрдэнийн ах/эгч", "Б.Эрдэнэ"],
+    ["Т.Доржийн асран хамгаалагч", "Т.Дорж"],
+    ["Э.Энхийн аав", "Э.Энх"],
+  ])("%s → %s", (name, child) => {
+    expect(guardianChildName(name)).toBe(child);
+  });
+
+  it("leaves a teacher's name alone", () => {
+    expect(guardianChildName("Дорж Сувдаа")).toBeNull();
   });
 });

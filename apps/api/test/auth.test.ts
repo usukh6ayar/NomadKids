@@ -105,19 +105,27 @@ describe("POST /auth/login", () => {
     expect(raw.join(";")).not.toContain("Domain=");
   });
 
-  it("accepts login by email and by phone", async () => {
+  /*
+   * ★ By username or phone — and no longer by e-mail, 2026-10-04 (client:
+   * «email-ээр verification хийхгүй, зөвхөн SMS»). An address nobody has
+   * proven is not an identity; the phone is SMS-verified wherever it is set.
+   */
+  it("accepts login by phone, and refuses it by e-mail", async () => {
     const user = await createUser({
       username: uniq("u"),
       email: `${uniq()}@test.mn`,
       phone: `9911${Math.floor(1000 + Math.random() * 8999)}`,
     });
 
-    for (const identifier of [user.email!, user.phone!]) {
-      const res = await request(server())
-        .post("/v1/auth/login")
-        .send({ identifier, password: TEST_PASSWORD });
-      expect(res.status).toBe(200);
-    }
+    const byPhone = await request(server())
+      .post("/v1/auth/login")
+      .send({ identifier: user.phone, password: TEST_PASSWORD });
+    expect(byPhone.status).toBe(200);
+
+    const byEmail = await request(server())
+      .post("/v1/auth/login")
+      .send({ identifier: user.email, password: TEST_PASSWORD });
+    expect(byEmail.status).toBe(401);
   });
 
   it("rejects a wrong password", async () => {
@@ -480,40 +488,27 @@ describe("CSRF protection", () => {
 });
 
 describe("password reset", () => {
-  it("returns 204 for an unknown identifier, revealing nothing", async () => {
+  /*
+   * ★ The e-mailed reset request is gone — 2026-10-04, client: «email
+   * хэрэггүй, бүр мөсөн хас». Self-service recovery is by phone
+   * (`phone-verification.test.ts`); a reset *link* is now only ever issued by
+   * an administrator (`POST /users/:id/password-reset`, `users.test.ts`).
+   */
+  it("no longer accepts an e-mailed reset request", async () => {
+    const user = await createUser({ username: uniq("u") });
     const res = await request(server())
       .post("/v1/auth/password-reset")
-      .send({ identifier: "nobody-here" });
-    expect(res.status).toBe(204);
-  });
+      .send({ identifier: user.username });
 
-  it("issues a single-use token and stores only its hash", async () => {
-    const user = await createUser({ username: uniq("u") });
-    await request(server()).post("/v1/auth/password-reset").send({ identifier: user.username });
-
-    const token = await db.authToken.findFirst({
-      where: { userId: user.id, purpose: "PASSWORD_RESET" },
-    });
-    expect(token).not.toBeNull();
-    // 64 hex characters = SHA-256. The token itself exists only in the email.
-    expect(token!.tokenHash).toMatch(/^[a-f0-9]{64}$/);
-  });
-
-  it("invalidates a previous token when a new one is requested", async () => {
-    const user = await createUser({ username: uniq("u") });
-    await request(server()).post("/v1/auth/password-reset").send({ identifier: user.username });
-    await request(server()).post("/v1/auth/password-reset").send({ identifier: user.username });
-
-    const unused = await db.authToken.count({ where: { userId: user.id, usedAt: null } });
-    expect(unused).toBe(1);
+    expect(res.status).toBe(404);
+    expect(await db.authToken.count({ where: { userId: user.id } })).toBe(0);
   });
 
   it("completes a reset, ends every session and accepts the new password", async () => {
     const user = await createUser({ username: uniq("u") });
     const session = await login(app, user.username);
 
-    // Mint a token directly: the real one is mailed, and the controller only
-    // prints it in development.
+    // Mint a token directly: the real one is handed over by an administrator.
     const raw = "reset-token-" + uniq();
     await db.authToken.create({
       data: {

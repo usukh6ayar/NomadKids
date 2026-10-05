@@ -6,7 +6,6 @@ import { StorageService } from "../storage/storage.service";
 import { PdfRendererService } from "../reports/pdf-renderer.service";
 import { ReportsQueue } from "../reports/reports.queue";
 import { bundledFontDir, checkCyrillicFont } from "../reports/font-check";
-import { MailService } from "../mail/mail.service";
 import { QpayConfig } from "../integrations/qpay/qpay.config";
 import { EsisService } from "../integrations/esis/esis.service";
 
@@ -29,7 +28,6 @@ export class HealthController {
     private readonly storage: StorageService,
     private readonly renderer: PdfRendererService,
     private readonly queue: ReportsQueue,
-    private readonly mail: MailService,
     private readonly esis: EsisService,
     private readonly qpay: QpayConfig,
   ) {}
@@ -55,30 +53,21 @@ export class HealthController {
   async readiness() {
     const font = checkCyrillicFont(bundledFontDir());
 
-    const [storage, chromium, redis, smtp] = await Promise.all([
+    const [storage, chromium, redis] = await Promise.all([
       this.storage.isReachable(),
       this.renderer.isReady(),
       this.queue.isReachable(),
-      this.mail.verify(),
     ]);
 
     return {
-      // ★ SMTP is reported but does NOT gate the status. A deployment without
-      // mail is a real, workable state — tokens are still issued and an
-      // administrator can hand the link over. Failing readiness for it would
-      // make a working system look broken. The other four genuinely break the
-      // product.
       status: storage && chromium && redis && font.ok ? "ok" : "degraded",
       storage,
       chromium,
       redis,
       cyrillicFont: font.ok,
       cyrillicFontDetail: font.detail,
-      smtp,
-      smtpConfigured: this.mail.isConfigured,
       /*
-       * ★ The ministry integration, reported for the same reason as SMTP and
-       * gating the status for neither: an unconfigured ESIS is the normal
+       * ★ The ministry integration — reported, and not gating the status: an unconfigured ESIS is the normal
        * state until БМТТ issues a token (журам A/465 §3.7 — one token per
        * developer, after the data-exchange contract), and a deployment that
        * called itself degraded for the whole of that period would be crying

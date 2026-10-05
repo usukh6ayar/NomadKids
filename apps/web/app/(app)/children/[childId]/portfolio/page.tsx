@@ -83,10 +83,7 @@ export default function PortfolioPage() {
         className="flex h-28 w-full items-center justify-between gap-5 overflow-hidden rounded-card border border-gray-100 bg-gradient-to-r from-white to-gray-100/80 px-6 shadow-sm"
       >
         <BackButton href={`/children/${childId}/general`} />
-        <h1
-          id="portfolio-heading"
-          className="min-w-0 flex-1 text-heading font-bold leading-heading text-ink sm:text-display"
-        >
+        <h1 id="portfolio-heading" className="min-w-0 flex-1 text-title font-bold text-gray-800">
           {PORTFOLIO}
         </h1>
         {profileArt ? (

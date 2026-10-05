@@ -2,13 +2,12 @@
 
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, Search, X } from "lucide-react";
+import { Check, Search, SlidersHorizontal, X } from "lucide-react";
 import { MAX_PAGE_SIZE, childSummarySchema, paginated } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
-import { FilterButton } from "@/components/ui/filter-chip";
 import { Input } from "@/components/ui/field";
 import { ChildAvatar } from "@/components/media/media-image";
 import { ErrorState, LoadingState } from "@/components/ui/states";
@@ -194,7 +193,7 @@ export function ChildPickerDialog({
         ) : null}
 
         {coverage && rosterItems.length > 0 && (layout === "tiles" || filterOpen) ? (
-          <div id="child-picker-coverage-filter" className="space-y-2">
+          <div className="space-y-2">
             {layout === "tiles" ? (
               <>
                 <div className="flex items-center justify-between gap-3 text-caption">
@@ -255,13 +254,20 @@ export function ChildPickerDialog({
             )}
           />
           {layout === "table" && coverage ? (
-            <FilterButton
-              expanded={filterOpen}
-              controls="child-picker-coverage-filter"
-              count={filter === "all" ? 0 : 1}
+            <button
+              type="button"
+              aria-label="Шүүлтүүр"
+              aria-expanded={filterOpen}
               onClick={() => setFilterOpen((open) => !open)}
-              className="absolute right-0.5 top-1/2 -translate-y-1/2 border-0 shadow-none"
-            />
+              className={cn(
+                "absolute right-1.5 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-pill",
+                filterOpen || filter !== "all"
+                  ? "bg-primary-soft text-primary"
+                  : "text-ink hover:bg-surface",
+              )}
+            >
+              <SlidersHorizontal size={18} aria-hidden="true" />
+            </button>
           ) : null}
         </div>
 

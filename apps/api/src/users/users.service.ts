@@ -13,6 +13,7 @@ import { TokenService } from "../auth/token.service";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import type { Actor } from "../authz/actor";
 import { paginate, type PageParams } from "../common/pagination";
+import { PhoneVerificationService } from "../phone-verification/phone-verification.service";
 import { UsersRepository } from "./users.repository";
 import type {
   AddMembershipDto,
@@ -61,8 +62,11 @@ function withGroups<
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * An administrator-issued reset link lasts an hour — the same window
- * `AuthService.requestPasswordReset` gives the self-service one.
+ * An administrator-issued reset link lasts an hour.
+ *
+ * ★ Since 2026-10-04 this is the only reset *link* there is: self-service
+ * recovery is by phone (`AuthService.confirmPasswordResetByPhone`) and nothing
+ * is e-mailed any more.
  *
  * ★ Deliberately not the invitation's week. An invitation is delivered to
  * somebody who does not have an account yet and may take days to act; this is
@@ -80,6 +84,7 @@ export class UsersService {
     private readonly tokens: TokenService,
     private readonly auth: AuthRepository,
     private readonly audit: AuditRepository,
+    private readonly phones: PhoneVerificationService,
   ) {}
 
   async list(actor: Actor, query: ListUsersQuery) {
@@ -387,9 +392,9 @@ export class UsersService {
    * teacher, and a one-time link is it — the teacher chooses the password and
    * nobody else ever holds it.
    *
-   * ★★ Unlike `AuthService.requestPasswordReset`, this one 404s for a user it
-   * cannot find. That endpoint is unauthenticated and must not become a
-   * user-enumeration API, so it pretends to succeed for everyone; this one is
+   * ★★ It 404s for a user it cannot find — unlike the public reset by phone,
+   * which must not become a user-enumeration API and answers identically for
+   * every number until the number is proven; this one is
    * `@Roles("ADMIN")` and scoped to the kindergartens the actor administers,
    * so the caller already knows who is on their own staff list. Pretending
    * here would only hide a genuine mistake — a stale row, the wrong id — behind
@@ -567,8 +572,42 @@ export class UsersService {
       }
     }
 
+    const { phoneVerification, ...changes } = dto;
+
+    /*
+     * ★ A new number must be proven — verify.mn, 2026-10-01 — because the
+     * phone is a login identifier and, now, the way back into the account: a
+     * number typed wrong, or somebody else's, would hand the password reset
+     * to whoever holds it. Clearing the phone needs no proof, and saving the
+     * number already on file needs none either: the settings form sends every
+     * field on every save.
+     */
+    if (changes.phone && this.phones.enabled) {
+      const current = await this.repo.findProfile(actor.userId);
+      if (changes.phone !== current?.phone) {
+        await this.phones.consume(phoneVerification, {
+          purpose: "PROFILE_PHONE",
+          userId: actor.userId,
+          phone: changes.phone,
+        });
+      }
+    }
+
     // `isActive` is deliberately absent from UpdateProfileDto — a user must not
     // be able to reactivate an account an admin deactivated.
-    return this.repo.update(actor.userId, dto);
+    return this.repo.update(actor.userId, changes);
+  }
+
+  /**
+   * Starts proving a new number for one's own profile. The clash check runs
+   * here too, so a number that is already somebody's is refused before the
+   * person pays for an SMS rather than after.
+   */
+  async startOwnPhoneVerification(actor: Actor, phone: string, ipAddress: string | null) {
+    const clash = await this.repo.findByPhone(phone);
+    if (clash && clash.id !== actor.userId) {
+      throw new ConflictException("Энэ утас аль хэдийн бүртгэлтэй");
+    }
+    return this.phones.start("PROFILE_PHONE", phone, actor.userId, ipAddress);
   }
 }

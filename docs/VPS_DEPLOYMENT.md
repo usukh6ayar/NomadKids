@@ -290,7 +290,7 @@ curl -s -c cookies.txt -X POST https://<API_DOMAIN>/v1/auth/login \
 curl -s -b cookies.txt https://<API_DOMAIN>/v1/health/readiness | jq
 ```
 
-Энэ нь Chromium, Redis, storage, **кирилл фонт**, SMTP, QPay бүгдийг нэрлэнэ.
+Энэ нь Chromium, Redis, storage, **кирилл фонт**, ESIS, QPay бүгдийг нэрлэнэ.
 `cyrillicFont` нь `false` бол PDF хоосон гарна (`docs/PDF_SPIKE.md` §4).
 
 ★★ **Энэ route 2026-09-01 хүртэл шинээр seed хийсэн систем дээр 404 буцаадаг

@@ -27,15 +27,17 @@ export class AuthRepository {
       where: {
         deletedAt: null,
         isActive: true,
-        OR: [{ username: value }, { email: value }, { phone: value }],
+        /*
+         * ★ Username or phone — not e-mail, since 2026-10-04 (client: «email-ээр
+         * verification хийхгүй, зөвхөн SMS»). An address nobody has proven is
+         * not an identity, and the phone now is: it is SMS-verified wherever a
+         * person sets it. `User.email` stays as a contact field.
+         */
+        OR: [{ username: value }, { phone: value }],
       },
-      // `email` is needed by the password-reset path, which has to know where
-      // to send the link. It is not returned to any client — the login response
-      // is built from a different shape.
       select: {
         id: true,
         username: true,
-        email: true,
         passwordHash: true,
         lastName: true,
         firstName: true,
@@ -45,30 +47,39 @@ export class AuthRepository {
   }
 
   /**
-   * Does anybody **other than this user** already hold this e-mail or phone?
+   * The active account holding this phone, matched on `phone` alone.
+   *
+   * For the password reset by phone: `findByIdentifier` would also match a
+   * username, and a username that happens to be eight digits must not answer
+   * for somebody else's proven number.
+   */
+  async findActiveByPhone(phone: string) {
+    return this.prisma.user.findFirst({
+      where: { phone, deletedAt: null, isActive: true },
+      select: { id: true },
+    });
+  }
+
+  /**
+   * Does anybody **other than this user** already hold this phone?
    *
    * ★ Not `findByIdentifier`. That one filters `isActive: true` and
    * `deletedAt: null` because it answers "who is signing in"; the unique index
    * knows nothing of either, so a check built on it would pass and the insert
    * would still fail. The question here is the index's question.
    *
-   * ★★ `NOT: { id: userId }`, because writing your own address back to your
-   * own row is not a collision — and an invited director whose e-mail was set
-   * by the platform operator types exactly that.
+   * ★★ `NOT: { id: userId }`, because writing your own number back to your
+   * own row is not a collision.
    */
   async findOtherUserByContact(
     userId: string,
-    contact: { email?: string; phone?: string },
-  ): Promise<{ email: string | null; phone: string | null } | null> {
-    const or = [
-      ...(contact.email ? [{ email: contact.email }] : []),
-      ...(contact.phone ? [{ phone: contact.phone }] : []),
-    ];
-    if (or.length === 0) return null;
+    contact: { phone?: string },
+  ): Promise<{ phone: string | null } | null> {
+    if (!contact.phone) return null;
 
     return this.prisma.user.findFirst({
-      where: { NOT: { id: userId }, OR: or },
-      select: { email: true, phone: true },
+      where: { NOT: { id: userId }, phone: contact.phone },
+      select: { phone: true },
     });
   }
 
@@ -260,8 +271,6 @@ export class AuthRepository {
       relation?: string;
       /** Staff only — a guardian gives a given name and no surname. */
       lastName?: string;
-      /** Staff only. What an invited operator logs in with. */
-      email?: string;
     },
   ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
@@ -271,14 +280,13 @@ export class AuthRepository {
         kindergarten was registered, and overwriting it with `undefined` would
         be this endpoint erasing a fact it was never given.
       */
-      if (profile.firstName || profile.phone || profile.lastName || profile.email) {
+      if (profile.firstName || profile.phone || profile.lastName) {
         await tx.user.update({
           where: { id: userId },
           data: {
             ...(profile.firstName ? { firstName: profile.firstName } : {}),
             ...(profile.phone ? { phone: profile.phone } : {}),
             ...(profile.lastName ? { lastName: profile.lastName } : {}),
-            ...(profile.email ? { email: profile.email } : {}),
           },
         });
       }

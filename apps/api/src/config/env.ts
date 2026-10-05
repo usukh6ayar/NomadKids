@@ -74,21 +74,9 @@ export const envSchema = z.object({
   WEB_ORIGIN: z.url().default("http://localhost:3000"),
 
   /**
-   * SMTP. Optional as a set — an unconfigured deployment still issues valid
-   * reset tokens, it simply cannot deliver them, and `MailService.isConfigured`
-   * reports that honestly rather than pretending mail was sent.
-   */
-  SMTP_HOST: z.string().default(""),
-  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
-  SMTP_USER: z.string().default(""),
-  SMTP_PASSWORD: z.string().default(""),
-  /** e.g. `NomadKids <noreply@nomadkids.mn>` */
-  MAIL_FROM: z.string().default(""),
-
-  /**
    * ESIS — the ministry's education information system.
    *
-   * ★ Optional as a set, exactly like SMTP above, and for the same reason: a
+   * ★ Optional as a set, and for a plain reason: a
    * deployment with no ESIS credentials is a legitimate state. Every existing
    * feature works without it; only the integration boundary reports itself
    * unconfigured, and it does so honestly rather than failing at the first
@@ -221,6 +209,26 @@ export const envSchema = z.object({
   QPAY_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
 
   /**
+   * verify.mn — proof that a person holds a phone number, 2026-10-01.
+   *
+   * The person texts a code **from** the phone to shortcode 144773; nothing is
+   * ever sent *to* them. That is why this is not RFP Phase IV's "SMS мэдэгдэл"
+   * — CLAUDE.md §7.
+   *
+   * ★ Optional, like ESIS and QPay. With no key, phone verification is off and
+   * every flow behaves exactly as it did before it existed: an invitation and
+   * a profile take a phone on the person's word, and the forgot-password
+   * screen offers e-mail only. `VerifyMnConfig.isConfigured` is the one place
+   * that decides.
+   *
+   * `VERIFY_MN_API_KEY` is a credential: read only here and in
+   * `verify-mn.client.ts`, never logged, never `NEXT_PUBLIC_`.
+   */
+  VERIFY_MN_API_KEY: z.string().default(""),
+  VERIFY_MN_BASE_URL: z.string().default("https://api.verify.mn"),
+  VERIFY_MN_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60_000).default(10_000),
+
+  /**
    * Whether this instance consumes the report queue.
    *
    * On by default: one container is the right shape for a kindergarten's
@@ -302,20 +310,11 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     if (env.JWT_SECRET === env.REFRESH_SECRET) {
       problems.push("JWT_SECRET and REFRESH_SECRET are identical");
     }
-    // Half-configured SMTP is worse than none: it looks configured, and the
-    // failure appears only when a parent cannot get a reset link.
-    if (env.SMTP_HOST && !env.MAIL_FROM) {
-      problems.push("SMTP_HOST is set but MAIL_FROM is empty");
-    }
-    if (env.MAIL_FROM && !env.SMTP_HOST) {
-      problems.push("MAIL_FROM is set but SMTP_HOST is empty");
-    }
     if (env.WEB_ORIGIN.startsWith("http://")) {
       problems.push("WEB_ORIGIN is a plaintext http:// origin");
     }
     /*
-     * Half-configured ESIS, refused for the same reason as half-configured
-     * SMTP: it looks configured. `isConfigured` would report true on a base
+     * Half-configured ESIS is refused: it looks configured. `isConfigured` would report true on a base
      * URL alone and every call would then fail unauthenticated, which reads as
      * "the ministry is rejecting us" rather than "we never set the token".
      */
@@ -358,6 +357,12 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     }
     if (env.QPAY_CALLBACK_URL && env.QPAY_CALLBACK_URL.includes("localhost")) {
       problems.push("QPAY_CALLBACK_URL is localhost — QPay's servers cannot reach it");
+    }
+
+    if (env.VERIFY_MN_BASE_URL.startsWith("http://")) {
+      problems.push(
+        "VERIFY_MN_BASE_URL is a plaintext http:// origin — the API key would cross it",
+      );
     }
 
     if (problems.length > 0) {

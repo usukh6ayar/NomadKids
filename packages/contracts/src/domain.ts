@@ -4896,6 +4896,13 @@ export const chatAuthorSchema = personRefSchema.extend({
       }),
     )
     .default([]),
+  /**
+   * For a guardian, what the room calls them: "Г.Батбаярын ээж" — one per
+   * child, comma-joined (2026-10-04, "тэрний аав, тэрний ээж"). Built by
+   * `guardianChatName` from the guardianship's own relation, so a client never
+   * has to inflect a name. Absent for staff, who are named by their own name.
+   */
+  displayName: z.string().nullish(),
 });
 export type ChatAuthor = z.infer<typeof chatAuthorSchema>;
 

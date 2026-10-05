@@ -10,22 +10,28 @@ import { guardianRelationSchema } from "@kinder/contracts";
  */
 
 export const loginSchema = z.object({
-  /** Username, email or phone — the user should not have to remember which. */
+  /** Username or phone — the user should not have to remember which. */
   identifier: z.string().min(1, "Нэвтрэх нэрээ оруулна уу").max(254),
   password: z.string().min(1, "Нууц үгээ оруулна уу").max(200),
 });
 export type LoginDto = z.infer<typeof loginSchema>;
-
-export const passwordResetRequestSchema = z.object({
-  identifier: z.string().min(1).max(254),
-});
-export type PasswordResetRequestDto = z.infer<typeof passwordResetRequestSchema>;
 
 export const passwordResetConfirmSchema = z.object({
   token: z.string().min(10).max(200),
   password: z.string().min(8, "Нууц үг дор хаяж 8 тэмдэгт байх ёстой").max(200),
 });
 export type PasswordResetConfirmDto = z.infer<typeof passwordResetConfirmSchema>;
+
+/**
+ * Finishing a reset by phone: the verify.mn handle stands where the e-mailed
+ * token stands. A separate schema, and a separate route, for the reason the
+ * invitation has its own — one token kind per door.
+ */
+export const passwordResetPhoneConfirmSchema = z.object({
+  handle: z.string().min(20).max(200),
+  password: z.string().min(8, "Нууц үг дор хаяж 8 тэмдэгт байх ёстой").max(200),
+});
+export type PasswordResetPhoneConfirmDto = z.infer<typeof passwordResetPhoneConfirmSchema>;
 
 /**
  * Accepting an invitation.
@@ -71,22 +77,20 @@ export const invitationAcceptSchema = z.object({
   phone: z.string().trim().min(6, "Утасны дугаараа оруулна уу").max(32).optional(),
   relation: guardianRelationSchema.optional(),
   /*
-   * ★ Staff-shaped invitations, added 2026-09-04.
+   * ★ Staff-shaped invitations, added 2026-09-04: a member of staff gives a
+   * surname too, because a register and an audit row name them in full.
    *
-   * A guardian gives a given name only — the client asked for that explicitly
-   * ("эцэг эхийн овог хэрэггүй"). A member of staff needs a surname, because
-   * a register and an audit row name them in full, and an e-mail, because it
-   * is what they will log in with: `findByIdentifier` accepts username, e-mail
-   * or phone, and an operator invited this way has a generated username they
-   * never see.
-   *
-   * Optional here rather than in a second schema: the endpoint is one route
-   * that writes only what it was given (`completeInvitedProfile`), and a
-   * `.strict()` schema that refused these would make the guardian and staff
-   * paths two endpoints with one purpose.
+   * ★★ No e-mail since 2026-10-04 (client: «email-ээр verification хийхгүй,
+   * зөвхөн SMS»). A member of staff signs in with the phone they prove here,
+   * exactly as a guardian does; the field that used to carry their login
+   * address is gone.
    */
   lastName: z.string().trim().min(1, "Овгоо оруулна уу").max(100).optional(),
-  email: z.string().trim().email("И-мэйл хаяг буруу байна").max(200).optional(),
+  /**
+   * The verify.mn handle proving `phone` — required with a phone once
+   * `VERIFY_MN_API_KEY` is set, ignored otherwise. `AuthService.acceptInvitation`.
+   */
+  phoneVerification: z.string().min(20).max(200).optional(),
 });
 export type InvitationAcceptDto = z.infer<typeof invitationAcceptSchema>;
 

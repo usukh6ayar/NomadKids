@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
+import { PhoneVerificationModule } from "../phone-verification/phone-verification.module";
 import { UsersController } from "./users.controller";
 import { UsersRepository } from "./users.repository";
 import { UsersService } from "./users.service";
@@ -7,7 +8,8 @@ import { UsersService } from "./users.service";
 @Module({
   // AuthModule supplies PasswordService, TokenService and AuthRepository —
   // creating a user issues an invitation token, which is auth machinery.
-  imports: [AuthModule],
+  // PhoneVerificationModule: changing one's own phone consumes a verify.mn proof.
+  imports: [AuthModule, PhoneVerificationModule],
   controllers: [UsersController],
   providers: [UsersService, UsersRepository],
   exports: [UsersService, UsersRepository],

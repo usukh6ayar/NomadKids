@@ -152,10 +152,9 @@ describe("the director's roster", () => {
     renderWithProviders(<ChildrenPage />);
 
     await screen.findByRole("table", { name: "Суралцагчийн жагсаалт" });
-    // No dashes for figures nobody has pulled yet (2026-09-29).
-    const summary = document.querySelector('p[aria-live="polite"]')!;
-    expect(summary.textContent?.trim()).toMatch(/^Нийт 526 суралцагч$/);
-    expect(screen.queryByText(/Нэгдсэн журмаар шинэчлэгдсэн/)).toBeNull();
+    const summary = screen.getByText(/суралцагч ·/).closest("p")!;
+    expect(summary.textContent).toMatch(/Нийт 526 суралцагч · Хөнгөлөлттэй — · Хөнгөлөлтгүй —/);
+    expect(screen.getByText(/Нэгдсэн журмаар шинэчлэгдсэн: —/)).toBeInTheDocument();
     // The discount filter is drawn but cannot filter anything yet.
     expect(screen.getByRole("combobox", { name: "Хөнгөлөлт" })).toBeDisabled();
   });

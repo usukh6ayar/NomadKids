@@ -6,6 +6,7 @@ import { AppModule } from "../../src/app.module";
 import { ProblemExceptionFilter } from "../../src/common/filters/problem.filter";
 import { QpayService } from "../../src/integrations/qpay/qpay.service";
 import { EsisService } from "../../src/integrations/esis/esis.service";
+import { VerifyMnClient } from "../../src/integrations/verify-mn/verify-mn.client";
 
 /**
  * Boots the real application for integration tests.
@@ -49,6 +50,9 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<INest
   if (options.esis) {
     builder = builder.overrideProvider(EsisService).useValue(options.esis);
   }
+  if (options.verifyMn) {
+    builder = builder.overrideProvider(VerifyMnClient).useValue(options.verifyMn);
+  }
 
   const moduleRef = await builder.compile();
 
@@ -68,4 +72,9 @@ export interface TestAppOptions {
   qpay?: Partial<QpayService>;
   /** ESIS transport stand-in. Authorization and persistence stay real. */
   esis?: Partial<EsisService>;
+  /**
+   * verify.mn transport stand-in — the SMS gateway, nothing more. Binding,
+   * single use and every route's guard stay real.
+   */
+  verifyMn?: Partial<VerifyMnClient>;
 }

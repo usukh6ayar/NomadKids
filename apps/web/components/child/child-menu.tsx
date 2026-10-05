@@ -325,7 +325,7 @@ export function ChildMenu({
             {!isStaff && !hasAnyDish ? (
               <EmptyState
                 title="Цэс оруулаагүй байна"
-                description="Цэс оруулсны дараа энд харагдана."
+                description="Багш цэс оруулсны дараа энд харагдана."
               />
             ) : (
               <DayDetail

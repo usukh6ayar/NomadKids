@@ -261,7 +261,7 @@ describe("signing in", () => {
     renderWithProviders(<LoginPage />);
 
     await waitFor(() =>
-      expect(screen.getByLabelText(/Нэвтрэх нэр, утас эсвэл и-мэйл/)).toBeInTheDocument(),
+      expect(screen.getByLabelText(/Утасны дугаар эсвэл нэвтрэх нэр/)).toBeInTheDocument(),
     );
 
     expect(screen.queryByRole("group", { name: "Хэрэглэгчийн төрөл" })).toBeNull();

@@ -135,7 +135,7 @@ export function Input({
       className={cn(
         controlBase,
         "h-[48px]",
-        invalid ? "border-danger" : "border-border focus:border-faint",
+        invalid ? "border-danger" : "border-border focus:border-primary",
         className,
       )}
       {...props}
@@ -210,7 +210,7 @@ export function Textarea({
       className={cn(
         controlBase,
         "min-h-[112px] resize-y py-3 leading-relaxed",
-        invalid ? "border-danger" : "border-border focus:border-faint",
+        invalid ? "border-danger" : "border-border focus:border-primary",
         className,
       )}
       {...props}

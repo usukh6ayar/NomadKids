@@ -80,18 +80,39 @@ Every route below names an ownership rule. These resolve to the two chains in
 
 ## 2. Auth
 
-| Method | Route                          | Role   | Ownership      | Request                | Response                                                 |
-| ------ | ------------------------------ | ------ | -------------- | ---------------------- | -------------------------------------------------------- |
-| POST   | `/auth/login`                  | public | —              | identifier + password  | user summary + memberships; sets both cookies            |
-| POST   | `/auth/refresh`                | public | refresh cookie | —                      | rotates refresh, sets new access cookie                  |
-| POST   | `/auth/logout`                 | any    | self           | —                      | 204; revokes the refresh family                          |
-| GET    | `/auth/me`                     | any    | self           | —                      | user, memberships, active role, CSRF token               |
-| POST   | `/auth/password-reset`         | public | —              | identifier             | 204 **always** — timing-neutral, never reveals existence |
-| POST   | `/auth/password-reset/confirm` | public | token          | token + new password   | 204                                                      |
-| POST   | `/auth/invitation/accept`      | public | token          | token + password       | 204; activates the account                               |
-| PATCH  | `/auth/password`               | any    | self           | current + new password | 204; revokes all other sessions                          |
+| Method | Route                          | Role   | Ownership      | Request                                                            | Response                                      |
+| ------ | ------------------------------ | ------ | -------------- | ------------------------------------------------------------------ | --------------------------------------------- |
+| POST   | `/auth/login`                  | public | —              | identifier (username or phone — not e-mail, 2026-10-04) + password | user summary + memberships; sets both cookies |
+| POST   | `/auth/refresh`                | public | refresh cookie | —                                                                  | rotates refresh, sets new access cookie       |
+| POST   | `/auth/logout`                 | any    | self           | —                                                                  | 204; revokes the refresh family               |
+| GET    | `/auth/me`                     | any    | self           | —                                                                  | user, memberships, active role, CSRF token    |
+| POST   | `/auth/password-reset/confirm` | public | token          | token + new password                                               | 204                                           |
+| POST   | `/auth/invitation/accept`      | public | token          | token + password                                                   | 204; activates the account                    |
+| PATCH  | `/auth/password`               | any    | self           | current + new password                                             | 204; revokes all other sessions               |
 
 Rate limits in [SECURITY.md](SECURITY.md) §9.
+
+### 2.1 Phone verification — verify.mn, 2026-10-01
+
+Off unless `VERIFY_MN_API_KEY` is set; then a reset can be done by phone, and
+a phone given on an invitation or changed in a profile must be proven. The
+person texts a code **from** the phone; nothing is sent to it.
+[SECURITY.md](SECURITY.md) §2.1 has the rules, `docs/reference/VERIFY_MN_INTEGRATION.md`
+the upstream contract.
+
+| Method | Route                                | Role   | Ownership        | Request               | Response                                                                                                                         |
+| ------ | ------------------------------------ | ------ | ---------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/phone-verifications/availability`  | public | —                | —                     | `{ enabled }`                                                                                                                    |
+| POST   | `/phone-verifications/check`         | public | handle           | handle                | `{ status, expiresAt, accountFound? }` — `accountFound` only for a verified reset                                                |
+| POST   | `/auth/password-reset/phone`         | public | —                | phone                 | start: handle, shortcode, code, smsUri, displayInstruction, expiresAt — **identical whether or not an account holds the number** |
+| POST   | `/auth/password-reset/phone/confirm` | public | handle           | handle + new password | 204; revokes every session                                                                                                       |
+| POST   | `/auth/invitation/phone`             | public | invitation token | token + phone         | start, as above; 409 if the number is another account's                                                                          |
+| POST   | `/me/phone-verification`             | any    | self             | phone                 | start, as above; 409 if the number is another account's                                                                          |
+
+`/auth/invitation/accept` and `PATCH /me/profile` take the verified handle as
+`phoneVerification`. Without one, where it is required, they answer **400**
+with `code: "PHONE_UNVERIFIED"` and the message on the `phone` field — and an
+invitation link refused this way is **not** spent.
 
 ---
 

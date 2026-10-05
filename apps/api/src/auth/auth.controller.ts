@@ -21,19 +21,24 @@ import {
   loginSchema,
   invitationAcceptSchema,
   passwordResetConfirmSchema,
-  passwordResetRequestSchema,
+  passwordResetPhoneConfirmSchema,
   type ChangePasswordDto,
   type LoginDto,
   type InvitationAcceptDto,
   type PasswordResetConfirmDto,
-  type PasswordResetRequestDto,
+  type PasswordResetPhoneConfirmDto,
 } from "./auth.dto";
+import {
+  startInvitationPhoneVerificationSchema,
+  startPhoneVerificationSchema,
+  type StartInvitationPhoneVerificationDto,
+  type StartPhoneVerificationDto,
+} from "../phone-verification/phone-verification.dto";
 import { clearAuthCookies, CSRF_COOKIE, REFRESH_COOKIE, setAuthCookies } from "./cookies";
 import { CurrentActor } from "./decorators/actor.decorator";
 import { Public } from "./decorators/public.decorator";
 import { AuthzRepository } from "../authz/authz.repository";
 import { AuthRepository } from "./auth.repository";
-import { MailService } from "../mail/mail.service";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -45,7 +50,6 @@ export class AuthController {
     private readonly auth: AuthService,
     private readonly authz: AuthzRepository,
     private readonly users: AuthRepository,
-    private readonly mail: MailService,
   ) {}
 
   /**
@@ -178,39 +182,6 @@ export class AuthController {
     };
   }
 
-  /**
-   * Requests a password reset.
-   *
-   * ★ Always 204, whether or not the identifier exists. Anything else turns
-   * this into a user-enumeration endpoint. The service burns equivalent work on
-   * the missing-user path so the timing does not leak either.
-   */
-  @Public()
-  @Post("password-reset")
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @RateLimit({ limit: 20, windowMs: HOUR })
-  async requestPasswordReset(
-    @Body(new ZodValidationPipe(passwordResetRequestSchema)) body: PasswordResetRequestDto,
-    @Req() req: Request,
-  ): Promise<void> {
-    const result = await this.auth.requestPasswordReset(body.identifier, context(req));
-
-    // ★ Delivery is fire-and-forget with respect to the response.
-    //
-    // The endpoint returns 204 whether or not the identifier exists, whether or
-    // not SMTP is configured, and whether or not the send succeeded. Any of
-    // those varying — in status, body or timing — turns this into a user
-    // enumeration oracle, which is the whole reason the service burns an argon2
-    // verification on the missing-user path.
-    //
-    // A failure is the operator's problem, logged by MailService. It is never
-    // the requester's, because telling them "we could not email you" confirms
-    // the account exists.
-    if (result?.email) {
-      await this.mail.sendPasswordReset(result.email, result.token, result.name);
-    }
-  }
-
   @Public()
   @Post("password-reset/confirm")
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -223,6 +194,54 @@ export class AuthController {
     await this.auth.confirmPasswordReset(body.token, body.password, context(req));
     // Every session was revoked server-side; clear this browser's cookies too.
     clearAuthCookies(res);
+  }
+
+  /**
+   * Starts a password reset by phone — verify.mn.
+   *
+   * ★ The same answer whether or not an account holds the number. The SMS is
+   * sent *by* the person, from the phone, so this cannot be turned on a
+   * stranger's number; the limit matches the e-mail reset's.
+   */
+  @Public()
+  @Post("password-reset/phone")
+  @HttpCode(HttpStatus.OK)
+  @RateLimit({ limit: 20, windowMs: HOUR })
+  async startPasswordResetByPhone(
+    @Body(new ZodValidationPipe(startPhoneVerificationSchema)) body: StartPhoneVerificationDto,
+    @Req() req: Request,
+  ) {
+    return this.auth.startPasswordResetByPhone(body.phone, context(req));
+  }
+
+  @Public()
+  @Post("password-reset/phone/confirm")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RateLimit({ limit: 10, windowMs: HOUR })
+  async confirmPasswordResetByPhone(
+    @Body(new ZodValidationPipe(passwordResetPhoneConfirmSchema))
+    body: PasswordResetPhoneConfirmDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    await this.auth.confirmPasswordResetByPhone(body.handle, body.password, context(req));
+    clearAuthCookies(res);
+  }
+
+  /**
+   * Starts verifying the phone a guardian gives on their invitation. Public
+   * for the reason `accept` is; the invitation token is the gate.
+   */
+  @Public()
+  @Post("invitation/phone")
+  @HttpCode(HttpStatus.OK)
+  @RateLimit({ limit: 20, windowMs: HOUR })
+  async startInvitationPhoneVerification(
+    @Body(new ZodValidationPipe(startInvitationPhoneVerificationSchema))
+    body: StartInvitationPhoneVerificationDto,
+    @Req() req: Request,
+  ) {
+    return this.auth.startInvitationPhoneVerification(body.token, body.phone, context(req));
   }
 
   /**
@@ -270,8 +289,8 @@ export class AuthController {
         phone: body.phone,
         relation: body.relation,
         lastName: body.lastName,
-        email: body.email,
       },
+      body.phoneVerification,
       context(req),
     );
     // Any session this account had was revoked server-side; clear the browser's

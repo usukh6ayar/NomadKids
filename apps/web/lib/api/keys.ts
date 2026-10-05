@@ -405,6 +405,9 @@ export const qk = {
 
   profile: () => ["me", "profile"] as const,
 
+  phoneVerificationAvailability: () => ["phone-verification", "availability"] as const,
+  phoneVerificationCheck: (handle: string) => ["phone-verification", "check", handle] as const,
+
   platformKindergartens: (filters: Record<string, unknown> = {}) =>
     ["platform", "kindergartens", filters] as const,
   platformKindergarten: (id: string) => ["platform", "kindergartens", "detail", id] as const,
