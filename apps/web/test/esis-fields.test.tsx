@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ROUTER,
   renderWithProviders,
+  selectOption,
   sessionFor,
   setParams,
   setSearchParams,
@@ -253,10 +254,9 @@ function overview(canPreview: boolean) {
  * `async`: the selection is a user event, not a query.
  */
 async function fieldsFor(name: string): Promise<HTMLElement> {
-  await userEvent.selectOptions(
-    screen.getByRole("combobox"),
-    screen.getByRole("option", { name: new RegExp(name) }),
-  );
+  // The product's Radix `Select` since 2026-10-04, not a native `<select>`:
+  // its options exist only while the popup is open — see `selectOption`.
+  await selectOption(userEvent.setup(), "API endpoint", new RegExp(name));
 
   const heading = screen.getAllByText(name).find((node) => node.closest("[data-esis-fields]"));
   if (!heading) throw new Error(`No field list for ${name}`);

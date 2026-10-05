@@ -59,6 +59,16 @@ beforeEach(() => {
 });
 
 describe("the child photo card in settings", () => {
+  it("does not repeat notifications or help links in personal settings", async () => {
+    stubSettings(["PARENT"]);
+    renderWithProviders(<SettingsPage />);
+
+    await screen.findByText("Хувийн тохиргоо");
+    expect(screen.queryByText("Мэдэгдэл харах")).toBeNull();
+    expect(screen.queryByText("Тусламж хэрэгтэй юу?")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Холбоо барих" })).toBeNull();
+  });
+
   it("lets a guardian change each child's picture, and nothing else about them", async () => {
     stubSettings(["PARENT"]);
     renderWithProviders(<SettingsPage />);
@@ -82,18 +92,19 @@ describe("the child photo card in settings", () => {
     expect(screen.queryByText(/Not Found/)).not.toBeInTheDocument();
   });
 
-  // An administrator's copy is "Мэдээлэл", without the families line — 2026-09-25.
-  it("titles an administrator's card Мэдээлэл, with no line about families", async () => {
+  it("keeps an administrator's professional fields inside the edit dialog", async () => {
+    const user = userEvent.setup();
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
       { path: "/me/profile", body: PROFILE },
     ]);
     renderWithProviders(<SettingsPage />);
 
-    const card = (await screen.findByText("Мэдээлэл")).closest("section")!;
-    expect(within(card).getByLabelText("Мэргэжил")).toBeInTheDocument();
-    expect(screen.queryByText("Багшийн мэдээлэл")).toBeNull();
-    expect(screen.queryByText("Эцэг эхчүүд таны бүлгийн хуудсан дээр эдгээрийг харна.")).toBeNull();
+    await user.click(await screen.findByRole("button", { name: "Мэдээлэл засах" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText("Мэргэжил")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Мэргэшлийн зэрэг")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Төгссөн сургууль")).toBeInTheDocument();
   });
 
   /**
@@ -113,19 +124,20 @@ describe("the child photo card in settings", () => {
     ]);
     renderWithProviders(<SettingsPage />);
 
-    const card = (await screen.findByText("Багшийн мэдээлэл")).closest("section")!;
-    await user.type(within(card).getByLabelText("Мэргэжил"), "СӨБ-ийн багш");
-    await user.type(within(card).getByLabelText("Мэргэшлийн зэрэг"), "Заах аргач");
-    await user.type(within(card).getByLabelText("Төгссөн сургууль"), "МУБИС");
-    await user.type(within(card).getByLabelText("Утас"), "99001234");
-    await user.click(within(card).getByRole("button", { name: "Хадгалах" }));
+    await user.click(await screen.findByRole("button", { name: "Мэдээлэл засах" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText("Мэргэжил"), "СӨБ-ийн багш");
+    await user.type(within(dialog).getByLabelText("Мэргэшлийн зэрэг"), "Заах аргач");
+    await user.type(within(dialog).getByLabelText("Төгссөн сургууль"), "МУБИС");
+    await user.type(within(dialog).getByLabelText("Утас"), "99001234");
+    await user.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
 
     const patch = await vi.waitFor(() => {
       const call = api.calls.find((c) => c.method === "PATCH" && c.url === "/me/profile");
       expect(call).toBeDefined();
       return call!;
     });
-    expect(patch.body).toEqual({
+    expect(patch.body).toMatchObject({
       specialization: "СӨБ-ийн багш",
       qualification: "Заах аргач",
       education: "МУБИС",
@@ -134,7 +146,7 @@ describe("the child photo card in settings", () => {
   });
 
   /**
-   * "ЭСИС-ээс татах" — client, 2026-09-24. It fills the form and waits: the
+   * "Esis татах" — client, 2026-09-24. It fills the form and waits: the
    * ministry answers the appointment, not the profession, so a person reads
    * the suggestion before it is saved.
    */
@@ -163,23 +175,27 @@ describe("the child photo card in settings", () => {
     ]);
     renderWithProviders(<SettingsPage />);
 
-    const card = (await screen.findByText("Багшийн мэдээлэл")).closest("section")!;
-    await user.click(await within(card).findByRole("button", { name: /ЭСИС-ээс татах/ }));
+    await user.click(await screen.findByRole("button", { name: "Мэдээлэл засах" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /Esis татах/ }));
 
-    expect(within(card).getByLabelText("Мэргэжил")).toHaveValue("Сургуулийн өмнөх боловсрол");
-    expect(within(card).getByLabelText("Мэргэшлийн зэрэг")).toHaveValue("Үндсэн багш");
+    expect(within(dialog).getByLabelText("Мэргэжил")).toHaveValue("Сургуулийн өмнөх боловсрол");
+    expect(within(dialog).getByLabelText("Мэргэшлийн зэрэг")).toHaveValue("Үндсэн багш");
     // Already written by the teacher — the ministry does not overwrite it.
-    expect(within(card).getByLabelText("Төгссөн сургууль")).toHaveValue("МУБИС");
+    expect(within(dialog).getByLabelText("Төгссөн сургууль")).toHaveValue("МУБИС");
     // Nothing is saved until Хадгалах.
     expect(api.calls.some((c) => c.method === "PATCH")).toBe(false);
   });
 
   it("does not offer it to a guardian, who has no teaching profile", async () => {
+    const user = userEvent.setup();
     stubSettings(["PARENT"]);
     renderWithProviders(<SettingsPage />);
 
-    await screen.findByText("Хүүхдийн зураг");
-    expect(screen.queryByText("Багшийн мэдээлэл")).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Мэдээлэл засах" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByRole("button", { name: /Esis татах/ })).toBeNull();
+    expect(within(dialog).queryByLabelText("Мэргэжил")).toBeNull();
   });
 
   it("shows nothing for a teacher, who has no children of their own here", async () => {
@@ -191,22 +207,40 @@ describe("the child photo card in settings", () => {
   });
 });
 
-/*
-  ★ A family's own card is the password alone — 2026-09-25, the client: the
-  guardian's name, "И-мэйл оруулаагүй" and the photo control are not needed.
-  A teacher's card keeps all three.
-*/
 describe("the profile card", () => {
-  it("shows a guardian no name, no e-mail line and no photo control", async () => {
+  it("shows every filled contact and professional value without opening edit", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/me/profile",
+        body: {
+          ...PROFILE,
+          phone: "99112233",
+          email: "saraa@example.mn",
+          specialization: "СӨБ-ийн багш",
+          qualification: "Заах аргач",
+          education: "МУБИС",
+        },
+      },
+    ]);
+    renderWithProviders(<SettingsPage />);
+
+    expect(await screen.findByText("99112233")).toBeInTheDocument();
+    expect(screen.getByText("saraa@example.mn")).toBeInTheDocument();
+    expect(screen.getByText("СӨБ-ийн багш")).toBeInTheDocument();
+    expect(screen.getByText("Заах аргач")).toBeInTheDocument();
+    expect(screen.getByText("МУБИС")).toBeInTheDocument();
+  });
+
+  it("shows a guardian's filled identity and photo control", async () => {
     stubSettings(["PARENT"]);
     renderWithProviders(<SettingsPage />);
 
     await screen.findByRole("button", { name: "Нууц үг солих" });
     // Re-queried: the card re-renders once the profile settles.
     expect(screen.getByRole("button", { name: "Нууц үг солих" })).toBeInTheDocument();
-    expect(screen.queryByText("Дорж Сараа")).toBeNull();
-    expect(screen.queryByText("И-мэйл оруулаагүй")).toBeNull();
-    expect(screen.queryByLabelText("Профайл зураг солих")).toBeNull();
+    expect(screen.getByText("Дорж Сараа")).toBeInTheDocument();
+    expect(screen.getByLabelText("Профайл зураг солих")).toBeInTheDocument();
   });
 
   it("keeps the whole card for a teacher", async () => {
@@ -214,6 +248,6 @@ describe("the profile card", () => {
     renderWithProviders(<SettingsPage />);
 
     expect(await screen.findByText("Дорж Сараа")).toBeInTheDocument();
-    expect(screen.getByText("И-мэйл оруулаагүй")).toBeInTheDocument();
+    expect(screen.getByLabelText("Профайл зураг солих")).toBeInTheDocument();
   });
 });

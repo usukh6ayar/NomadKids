@@ -35,6 +35,7 @@ import { PlatformPageHeading } from "@/components/platform/platform-page-heading
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader, SunkenPanel } from "@/components/ui/card";
+import { Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { TableShell, Td, Th } from "@/components/ui/table";
 
@@ -460,17 +461,17 @@ function ApiScope({ data }: { data: EsisOverview }) {
       />
       <label className="mb-3 block max-w-2xl">
         <span className="mb-1.5 block text-caption font-semibold text-muted">API endpoint</span>
-        <select
+        <Select
           value={selected.key}
           onChange={(event) => setSelectedKey(event.target.value as EsisResourceKey)}
-          className="h-11 w-full rounded-control border border-border bg-surface px-3 text-body text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          className="h-11"
         >
           {data.endpoints.map((endpoint) => (
             <option key={endpoint.key} value={endpoint.key}>
               {endpoint.slug} · {endpoint.name} · {endpoint.method}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
       <EndpointFields endpoint={selected} />
 

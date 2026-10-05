@@ -1,7 +1,6 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Image from "next/image";
 import {
   CalendarDays,
   Check,
@@ -255,9 +254,6 @@ export function ChildAttendance({
 
           {requests.data && requests.data.length === 0 ? (
             <EmptyState
-              icon={
-                <Image src="/background/mascot-girl-teal-b.webp" alt="" width={96} height={96} />
-              }
               title="Хүсэлт алга"
               description="Хүүхэд чөлөөтэй байх өдрөө урьдчилан мэдэгдэхийг хүсвэл энд бичнэ үү."
             />

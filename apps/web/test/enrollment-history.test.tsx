@@ -53,6 +53,16 @@ function stubArchive() {
               phone: "99001234",
               email: "suvdaa@nomadkids.mn",
             },
+            {
+              id: "67676767-6767-4676-8676-676767676767",
+              lastName: "Дорж",
+              firstName: "Сараа",
+              role: "ASSISTANT",
+              specialization: "Туслах багш",
+              education: "МУБИС",
+              phone: "99112233",
+              email: "saraa@nomadkids.mn",
+            },
           ],
         },
         history: [
@@ -80,6 +90,12 @@ function stubArchive() {
                 lastName: "Өюунцэцэг",
                 firstName: "Болор",
                 role: "LEAD",
+              },
+              {
+                id: "efefefef-efef-4efe-8efe-efefefefefef",
+                lastName: "Болд",
+                firstName: "Номин",
+                role: "ASSISTANT",
               },
             ],
             schoolYear: {
@@ -152,6 +168,8 @@ describe("суралцсан түүх", () => {
       "href",
       "mailto:suvdaa@nomadkids.mn",
     );
+    expect(within(teachers).queryByText("Дорж Сараа")).toBeNull();
+    expect(within(teachers).queryByText("Багшийн туслах")).toBeNull();
   });
 
   it("lists the past placements in a table, with the age the child was", async () => {
@@ -169,6 +187,7 @@ describe("суралцсан түүх", () => {
     expect(within(rows[0]!).getByText("Бүжин бүлэг · Дунд бүлэг · 20 хүүхэд")).toBeInTheDocument();
     expect(within(rows[0]!).getByText("Шилжсэн")).toBeInTheDocument();
     expect(within(rows[0]!).getByText("Өюунцэцэг Болор")).toBeInTheDocument();
+    expect(within(rows[0]!).queryByText("Болд Номин")).toBeNull();
     expect(within(rows[0]!).getByText("2025.09.01 – 2026.08.31")).toBeInTheDocument();
     // A past teacher is a name — never a phone number or an address.
     expect(within(rows[0]!).queryByRole("link")).toBeNull();

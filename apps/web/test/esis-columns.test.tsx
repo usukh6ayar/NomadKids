@@ -203,3 +203,74 @@ describe("ESIS хүснэгтийн хайлт", () => {
     expect(screen.queryByRole("button", { name: "Дэлгэрэнгүй харах" })).not.toBeInTheDocument();
   });
 });
+
+/**
+ * A person's civil id and register number — client, 2026-10-03.
+ *
+ * ★ Asserted on the value, not the label: a label can be renamed and the
+ * number still printed.
+ */
+describe("ESIS хувийн дугаар", () => {
+  const columns = [
+    field("lastName", "Овог", 1),
+    field("firstName", "Нэр", 2),
+    field("civilId", "Иргэний бүртгэлийн дугаар"),
+    field("personRegNumber", "Регистрийн дугаар"),
+  ];
+  const person = {
+    lastName: "Бат",
+    firstName: "Сараа",
+    civilId: "880011223344",
+    personRegNumber: "УБ88011223",
+  };
+
+  it("never draws them in a single record", () => {
+    render(<EsisRowValues columns={columns} rows={[person]} />);
+
+    expect(screen.getByText("Сараа")).toBeInTheDocument();
+    expect(screen.queryByText("880011223344")).not.toBeInTheDocument();
+    expect(screen.queryByText("УБ88011223")).not.toBeInTheDocument();
+  });
+
+  it("never draws them in a list, even behind the detail press", async () => {
+    render(<EsisRowValues columns={columns} rows={[person, { ...person, firstName: "Нараа" }]} />);
+
+    for (const button of screen.queryAllByRole("button", { name: "Дэлгэрэнгүй харах" })) {
+      await userEvent.click(button);
+    }
+
+    expect(screen.getByText("Нараа")).toBeInTheDocument();
+    expect(screen.queryByText("880011223344")).not.toBeInTheDocument();
+    expect(screen.queryByText("УБ88011223")).not.toBeInTheDocument();
+  });
+});
+
+/** Codes and ids — client, 2026-10-04: every service is connected, so hide them. */
+describe("ESIS код, дугаар", () => {
+  const columns = [
+    field("lastName", "Овог", 1),
+    field("firstName", "Нэр", 2),
+    field("studentGroupId", "Бүлгийн код"),
+    field("academicLevel", "Түвшний код"),
+    field("assignmentId", "Томилгооны дугаар"),
+    field("phoneNumber", "Утас"),
+  ];
+  const row = {
+    lastName: "Бат",
+    firstName: "Сараа",
+    studentGroupId: "4417",
+    academicLevel: "L02",
+    assignmentId: "998877",
+    phoneNumber: "99112233",
+  };
+
+  it("hides codes by key and by label, and keeps a phone number", () => {
+    render(<EsisRowValues columns={columns} rows={[row]} />);
+
+    expect(screen.getByText("Сараа")).toBeInTheDocument();
+    expect(screen.getByText("99112233")).toBeInTheDocument();
+    for (const hidden of ["4417", "L02", "998877", "Бүлгийн код", "Түвшний код"]) {
+      expect(screen.queryByText(hidden)).not.toBeInTheDocument();
+    }
+  });
+});

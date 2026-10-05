@@ -548,13 +548,6 @@ function GroupAssessment() {
         ) : null}
       </Card>
 
-      {terms.data?.length === 0 ? (
-        <EmptyState
-          title="Улирал тохируулаагүй байна"
-          description="Цэцэрлэгийн удирдлага улирал үүсгэсний дараа үнэлгээ хийх боломжтой."
-        />
-      ) : null}
-
       {/*
         ★ Тойм opens first — the client's 2026-09-10 design.
 

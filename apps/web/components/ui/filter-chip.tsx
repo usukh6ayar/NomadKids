@@ -1,5 +1,44 @@
+import { SlidersHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+
+/** One disclosure button for every list filter, on pointer and touch screens. */
+export function FilterButton({
+  expanded,
+  controls,
+  count = 0,
+  onClick,
+  className,
+}: {
+  expanded: boolean;
+  controls?: string;
+  count?: number;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <Button
+      type="button"
+      variant={expanded ? "primary" : "secondary"}
+      size="icon"
+      aria-expanded={expanded}
+      aria-controls={controls}
+      aria-label="Шүүлтүүр"
+      data-ui="filter-button"
+      className={cn("relative shrink-0", className)}
+      onClick={onClick}
+    >
+      <SlidersHorizontal aria-hidden="true" />
+      {count > 0 ? (
+        <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-pill border-2 border-surface bg-danger px-1 text-compact font-bold leading-none text-white shadow-sm">
+          {count}
+          <span className="sr-only">шүүлтүүр идэвхтэй</span>
+        </span>
+      ) : null}
+    </Button>
+  );
+}
 
 /**
  * One pill of a "narrow this list" row.
@@ -38,11 +77,12 @@ export function FilterChip({
       type="button"
       aria-pressed={active}
       onClick={onClick}
+      data-ui="filter-chip"
       className={cn(
-        "min-h-[44px] shrink-0 whitespace-nowrap rounded-pill border px-4 text-body font-medium transition-colors",
+        "min-h-[44px] shrink-0 whitespace-nowrap rounded-pill border px-4 text-body font-medium shadow-sm transition-all duration-150 active:translate-y-px active:shadow-none",
         active
           ? "border-primary bg-primary text-primary-ink"
-          : "border-border bg-surface text-muted hover:border-primary hover:text-ink",
+          : "border-border bg-surface text-muted hover:border-primary hover:bg-primary-soft/30 hover:text-ink",
       )}
     >
       {children}
@@ -84,6 +124,7 @@ export function FilterChipRow({
     <div
       role="group"
       aria-label={label}
+      data-ui="filter-chip-row"
       className={cn(
         "-mx-4 flex gap-2 overflow-x-auto px-4 pb-1",
         scroll

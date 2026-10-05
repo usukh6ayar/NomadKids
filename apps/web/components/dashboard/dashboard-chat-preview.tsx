@@ -6,7 +6,7 @@ import { ArrowRight, CloudOff } from "lucide-react";
 import { chatRoomDisplayName, chatRoomsSchema, roomPreview } from "@/components/chat/chat-widget";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
-import { formatRelative, fullName } from "@/lib/format";
+import { formatRelative } from "@/lib/format";
 import { BoardCard, BoardCardEmpty } from "./board-card";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/states";
@@ -63,10 +63,12 @@ export function DashboardChatPreview() {
       ) : (
         <ul className="divide-y divide-border-soft">
           {rooms.data.slice(0, 3).map((room) => {
+            /*
+              ★ The room's name, never the last sender's — client, 2026-10-04:
+              a family appears in chat by the child's name, not the parent's,
+              and the last message's author here is the parent's own record.
+            */
             const displayName = chatRoomDisplayName(room, roles, rooms.data);
-            const author = room.lastMessage?.author
-              ? fullName(room.lastMessage.author)
-              : displayName;
 
             return (
               <li key={room.key}>
@@ -79,7 +81,9 @@ export function DashboardChatPreview() {
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline justify-between gap-2">
-                      <span className="truncate text-body font-semibold text-ink">{author}</span>
+                      <span className="truncate text-body font-semibold text-ink">
+                        {displayName}
+                      </span>
                       {room.lastMessage ? (
                         <span className="shrink-0 text-caption text-muted">
                           {formatRelative(room.lastMessage.createdAt)}
@@ -87,7 +91,7 @@ export function DashboardChatPreview() {
                       ) : null}
                     </span>
                     <span className="block truncate text-caption text-muted">
-                      {roomPreview(room.lastMessage, `${displayName} · ${room.memberCount} гишүүн`)}
+                      {roomPreview(room.lastMessage, `${room.memberCount} гишүүн`)}
                     </span>
                   </span>
                   {room.unreadCount > 0 ? (

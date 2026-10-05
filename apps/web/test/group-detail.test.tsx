@@ -102,7 +102,7 @@ describe("a group's page", () => {
     await waitFor(() =>
       expect(rows.map((row) => row.textContent)).toEqual([
         "Бүлгийн багшБ.Сувдаа—99112233",
-        "Туслах багшД.Сараа——",
+        "Багшийн туслахД.Сараа——",
       ]),
     );
   });

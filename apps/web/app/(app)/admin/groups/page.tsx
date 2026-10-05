@@ -326,6 +326,7 @@ function AdminGroups() {
                 <Th className="py-2">Насны бүлэг</Th>
                 <Th className="py-2">Хөтөлбөр</Th>
                 <Th className="py-2">Бүлгийн багш</Th>
+                <Th className="py-2">Багшийн туслах</Th>
                 <Th className="py-2">Хүүхэд</Th>
                 <Th className="w-12 rounded-tr-card py-2">
                   <span className="sr-only">Үйлдэл</span>
@@ -350,12 +351,8 @@ function AdminGroups() {
                   <Td className="py-1.5 text-muted">
                     {group.programKind ? (PROGRAM_KIND_LABEL[group.programKind] ?? "—") : "—"}
                   </Td>
-                  {/*
-                    ★ The list has carried its assignments since 2026-09-23 and
-                    this cell kept printing "—" — found 2026-09-29. Current
-                    lead teachers first; an assistant only when there is none.
-                  */}
-                  <Td className="py-1.5 text-muted">{groupTeacherNames(group)}</Td>
+                  <Td className="py-1.5 text-muted">{groupTeacherNames(group, "LEAD")}</Td>
+                  <Td className="py-1.5 text-muted">{groupTeacherNames(group, "ASSISTANT")}</Td>
                   <Td className="py-1.5 tabular-nums text-ink">{group._count?.enrollments ?? 0}</Td>
                   <Td className="py-1 text-right">
                     <RowMenu
@@ -926,10 +923,12 @@ function formatSyncedAt(iso: string): string {
   });
 }
 
-/** "Б.Ганжаргал" for the group's current teachers, leads first; "—" for none. */
-function groupTeacherNames(group: GroupItem): string {
-  const current = group.teachers.filter((t) => !t.endedOn && t.membership?.user);
-  const leads = current.filter((t) => t.role === "LEAD");
-  const shown = leads.length > 0 ? leads : current;
-  return shown.length > 0 ? shown.map((t) => shortName(t.membership!.user!)).join(", ") : "—";
+/** Current teachers for one assignment role; "—" when that slot is empty. */
+function groupTeacherNames(group: GroupItem, role: "LEAD" | "ASSISTANT"): string {
+  const shown = group.teachers.filter(
+    (teacher) => !teacher.endedOn && teacher.role === role && teacher.membership?.user,
+  );
+  return shown.length > 0
+    ? shown.map((teacher) => shortName(teacher.membership!.user!)).join(", ")
+    : "—";
 }

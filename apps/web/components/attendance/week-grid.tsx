@@ -73,6 +73,8 @@ export function AttendanceWeekGrid({
   onSet,
   disabled = false,
   showChildTotals = false,
+  mobileDays,
+  desktopDays,
 }: {
   data: GroupAttendanceRange;
   /** The one ISO date whose column accepts input, or null for a read-only grid. */
@@ -92,6 +94,10 @@ export function AttendanceWeekGrid({
    * exists to answer.
    */
   showChildTotals?: boolean;
+  /** Days visible below `sm`; omitted when every supplied day is visible. */
+  mobileDays?: string[];
+  /** Days visible from `sm` upward; omitted when every supplied day is visible. */
+  desktopDays?: string[];
 }) {
   const statusFor = (row: GroupAttendanceRange["rows"][number], day: string) =>
     (day === editableDay ? draft[row.child.id] : undefined) ?? row.records[day]?.status ?? null;
@@ -150,6 +156,17 @@ export function AttendanceWeekGrid({
    * one.
    */
   const dense = data.days.length > 10;
+  const mobileExpanded = dense && Boolean(mobileDays);
+  const mobileDaySet = mobileDays ? new Set(mobileDays) : null;
+  const desktopDaySet = desktopDays ? new Set(desktopDays) : null;
+  const dayVisibility = (day: string) => {
+    const mobile = mobileDaySet?.has(day) ?? true;
+    const desktop = desktopDaySet?.has(day) ?? true;
+    if (mobile && desktop) return "";
+    if (mobile) return "table-cell sm:hidden";
+    if (desktop) return "hidden sm:table-cell";
+    return "hidden";
+  };
 
   /** One child's month, counted across the span the grid is drawing. */
   const totalsFor = (row: GroupAttendanceRange["rows"][number]) => {
@@ -167,7 +184,10 @@ export function AttendanceWeekGrid({
   return (
     <div className="overflow-x-auto">
       {/*
-        ★ No `min-w`, and every column as narrow as its content — 2026-09-10.
+        ★ On a phone the table follows its content width and the name column
+        has a small fixed width. This keeps Monday immediately beside the
+        names instead of pouring all spare screen width into an empty gap.
+        From `sm` upward the table fills its container as before.
 
         It forced 560px, so a week never fitted a 390px phone and the teacher
         scrolled the sheet sideways to reach Friday. The journal's month still
@@ -181,7 +201,7 @@ export function AttendanceWeekGrid({
         390px screen without sideways scrolling, which is the constraint this
         note existed to protect.
       */}
-      <table className="w-full border-collapse text-body">
+      <table className="w-max min-w-full border-separate border-spacing-0 text-body">
         <caption className="sr-only">Бүлгийн ирцийн бүртгэл — хүүхэд мөрөөр, өдөр баганаар</caption>
         <thead>
           <tr className="border-b border-border">
@@ -191,23 +211,18 @@ export function AttendanceWeekGrid({
             */}
             <th
               scope="col"
-              className="hidden w-8 px-1 py-2.5 text-left text-caption font-medium text-muted sm:table-cell"
+              className="sticky left-0 z-30 w-8 min-w-8 border-b border-border bg-surface px-1 py-2.5 text-center text-caption font-medium text-muted sm:py-3"
             >
-              <span className="sr-only">Дугаар</span>
+              №
             </th>
             {/*
-              ★ `w-full` on the name — 2026-09-10, at the client's request that
-              the name and the week sit closer together.
-
-              A table shares slack among its columns, so five 36px day columns
-              in a 390px row left ~180px of nothing between the name and Monday.
-              Giving the *name* the full-width claim makes it absorb all of it:
-              the day columns close up to their own width and the register
-              reads as one block instead of two halves either side of a gap.
+              Mobile names get 112px: enough for the abbreviated form while
+              keeping the first day visually attached to it. Desktop can use
+              the remaining width.
             */}
             <th
               scope="col"
-              className="w-full py-2.5 pe-1 ps-0.5 text-left text-caption font-medium text-muted sm:py-3 sm:pe-2 sm:ps-1 sm:text-body"
+              className="sticky left-8 z-30 w-28 min-w-28 max-w-28 border-b border-border bg-surface py-2.5 pe-1 ps-1 text-left text-caption font-medium text-muted sm:w-40 sm:min-w-40 sm:max-w-40 sm:py-3 sm:pe-2 sm:text-body"
             >
               Хүүхэд
             </th>
@@ -218,9 +233,12 @@ export function AttendanceWeekGrid({
                   key={day}
                   scope="col"
                   className={cn(
-                    "px-0 text-center font-medium",
+                    "border-b border-border px-0 text-center font-medium",
+                    dayVisibility(day),
                     dense
-                      ? "w-6 py-1.5 text-compact sm:w-7"
+                      ? mobileExpanded
+                        ? "w-10 py-2.5 text-caption sm:w-7 sm:py-1.5 sm:text-compact"
+                        : "w-6 py-1.5 text-compact sm:w-7"
                       : "w-10 py-2.5 text-caption sm:w-12 sm:py-3 sm:text-body",
                     isWeekend(day)
                       ? "bg-canvas text-faint"
@@ -234,7 +252,11 @@ export function AttendanceWeekGrid({
                   <span
                     className={cn(
                       "block font-bold",
-                      dense ? "text-compact" : "text-body sm:text-lead",
+                      dense
+                        ? mobileExpanded
+                          ? "text-body sm:text-compact"
+                          : "text-compact"
+                        : "text-body sm:text-lead",
                       isWeekend(day) ? "text-faint" : "text-ink",
                     )}
                   >
@@ -268,8 +290,8 @@ export function AttendanceWeekGrid({
 
         <tbody>
           {data.rows.map((row, index) => (
-            <tr key={row.enrollmentId} className="border-b border-border-soft">
-              <td className="hidden px-1 py-2 text-caption tabular-nums text-faint sm:table-cell">
+            <tr key={row.enrollmentId}>
+              <td className="sticky left-0 z-20 w-8 min-w-8 border-b border-border-soft bg-surface px-1 py-2 text-center text-caption tabular-nums text-faint">
                 {index + 1}
               </td>
               {/*
@@ -279,8 +301,12 @@ export function AttendanceWeekGrid({
               */}
               <td
                 className={cn(
-                  "truncate pe-1 ps-0.5 font-semibold text-ink sm:pe-2 sm:ps-1",
-                  dense ? "py-0.5 text-caption" : "py-1.5 text-body sm:py-2 sm:text-lead",
+                  "sticky left-8 z-20 w-28 min-w-28 max-w-28 truncate border-b border-border-soft bg-surface pe-1 ps-1 font-semibold text-ink sm:w-40 sm:min-w-40 sm:max-w-40 sm:pe-2",
+                  dense
+                    ? mobileExpanded
+                      ? "py-1.5 text-body sm:py-0.5 sm:text-caption"
+                      : "py-0.5 text-caption"
+                    : "py-1.5 text-body sm:py-2 sm:text-lead",
                 )}
               >
                 {shortName(row.child)}
@@ -289,8 +315,13 @@ export function AttendanceWeekGrid({
                 <td
                   key={day}
                   className={cn(
-                    "px-0",
-                    dense ? "py-0.5" : "py-1.5 sm:px-0.5 sm:py-2",
+                    "border-b border-border-soft px-0",
+                    dayVisibility(day),
+                    dense
+                      ? mobileExpanded
+                        ? "py-1.5 sm:py-0.5"
+                        : "py-0.5"
+                      : "py-1.5 sm:px-0.5 sm:py-2",
                     isWeekend(day) ? "bg-canvas" : day === editableDay && "bg-sky/25",
                   )}
                 >
@@ -311,6 +342,7 @@ export function AttendanceWeekGrid({
                   <StatusCell
                     childName={shortName(row.child)}
                     dense={dense}
+                    mobileExpanded={mobileExpanded}
                     day={day}
                     status={statusFor(row, day)}
                     editable={!isWeekend(day) && day === editableDay && !disabled}
@@ -344,10 +376,10 @@ export function AttendanceWeekGrid({
         <tfoot className="text-caption sm:text-body">
           {TEACHER_ATTENDANCE_STATUSES.map((status) => (
             <tr key={status}>
-              <td className="hidden sm:table-cell" />
+              <td className="sticky left-0 z-20 w-8 min-w-8 bg-surface" />
               <th
                 scope="row"
-                className="px-1 py-1 text-right text-caption font-normal text-muted sm:px-2 sm:py-1.5 sm:text-body"
+                className="sticky left-8 z-20 w-28 min-w-28 max-w-28 bg-surface px-1 py-1 text-right text-caption font-normal text-muted sm:w-40 sm:min-w-40 sm:max-w-40 sm:px-2 sm:py-1.5 sm:text-body"
               >
                 {ATTENDANCE_STATUS_LABEL[status]}
               </th>
@@ -356,6 +388,7 @@ export function AttendanceWeekGrid({
                   key={day}
                   className={cn(
                     "px-0 py-1 text-center tabular-nums sm:px-0.5 sm:py-1.5",
+                    dayVisibility(day),
                     isWeekend(day)
                       ? "bg-canvas text-faint"
                       : cn("text-ink", day === editableDay && "bg-sky/25"),
@@ -375,10 +408,10 @@ export function AttendanceWeekGrid({
             </tr>
           ))}
           <tr>
-            <td className="hidden sm:table-cell" />
+            <td className="sticky left-0 z-20 w-8 min-w-8 bg-surface" />
             <th
               scope="row"
-              className="px-1 pb-1.5 pt-1 text-right text-caption font-bold text-ink sm:px-2 sm:text-body"
+              className="sticky left-8 z-20 w-28 min-w-28 max-w-28 bg-surface px-1 pb-1.5 pt-1 text-right text-caption font-bold text-ink sm:w-40 sm:min-w-40 sm:max-w-40 sm:px-2 sm:text-body"
             >
               нийт
             </th>
@@ -387,6 +420,7 @@ export function AttendanceWeekGrid({
                 key={day}
                 className={cn(
                   "px-0 pb-1.5 pt-1 text-center text-body font-bold tabular-nums sm:px-0.5 sm:text-lead",
+                  dayVisibility(day),
                   isWeekend(day)
                     ? "bg-canvas text-faint"
                     : cn("text-ink", day === editableDay && "rounded-b-control bg-sky/25"),
@@ -417,6 +451,7 @@ function StatusCell({
   editable,
   muted = false,
   dense = false,
+  mobileExpanded = false,
   onSet,
 }: {
   childName: string;
@@ -427,12 +462,18 @@ function StatusCell({
   muted?: boolean;
   /** A month's worth of columns: the chip that fits thirty-one of them. */
   dense?: boolean;
+  /** A dense month that exposes only its week on a phone. */
+  mobileExpanded?: boolean;
   onSet: (status: string) => void;
 }) {
   const letter = status ? (ATTENDANCE_STATUS_LETTER[status] ?? "?") : "";
   const chip = cn(
     "grid place-items-center rounded-pill font-bold",
-    dense ? "size-5 text-compact" : "size-9 text-body sm:size-11 sm:text-lead",
+    dense
+      ? mobileExpanded
+        ? "size-9 text-body sm:size-5 sm:text-compact"
+        : "size-5 text-compact"
+      : "size-9 text-body sm:size-11 sm:text-lead",
     status
       ? cellSurface(status)
       : muted

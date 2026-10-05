@@ -1,6 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { SURVEY_PERIOD_LABEL, surveyPeriodSchema, type SurveyPeriod } from "@kinder/contracts";
+import { FilterButton } from "@/components/ui/filter-chip";
+import { FormDialog } from "@/components/ui/form-dialog";
 import { cn } from "@/lib/utils";
 
 /**
@@ -18,38 +21,61 @@ const PERIOD_CHOICES: { value: SurveyPeriod | null; label: string }[] = [
   ...surveyPeriodSchema.options.map((value) => ({ value, label: SURVEY_PERIOD_LABEL[value] })),
 ];
 
-export function PeriodButtons({
+export function PeriodFilter({
   selected,
   onSelect,
 }: {
   selected: SurveyPeriod | null;
   onSelect: (period: SurveyPeriod | null) => void;
 }) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <div
-      role="group"
-      aria-label="Үнэлгээний төрлөөр ангилах"
-      className="grid grid-cols-4 gap-1.5 sm:gap-2"
-    >
-      {PERIOD_CHOICES.map(({ value, label }) => {
-        const active = selected === value;
-        return (
-          <button
-            key={value ?? "ALL"}
-            type="button"
-            aria-pressed={active}
-            onClick={() => onSelect(value)}
-            className={cn(
-              "min-h-11 rounded-control border px-1 py-1.5 text-center text-compact font-semibold leading-tight transition-colors sm:min-h-[48px] sm:px-1.5 sm:py-2 sm:text-body",
-              active
-                ? "border-transparent bg-primary/65 text-white shadow-sm"
-                : "border-border-soft bg-surface text-ink shadow-sm hover:border-primary hover:text-primary",
-            )}
-          >
-            {label}
-          </button>
-        );
-      })}
-    </div>
+    <>
+      <FilterButton
+        expanded={open}
+        count={selected ? 1 : 0}
+        controls="survey-period-filter"
+        onClick={() => setOpen(true)}
+        className="h-12 w-12 rounded-field"
+      />
+
+      <FormDialog
+        open={open}
+        onOpenChange={setOpen}
+        title="Үнэлгээний төрөл"
+        description="Харах судалгааны төрлөө сонгоно уу."
+      >
+        <div
+          id="survey-period-filter"
+          role="group"
+          aria-label="Үнэлгээний төрлөөр ангилах"
+          className="grid gap-2"
+        >
+          {PERIOD_CHOICES.map(({ value, label }) => {
+            const active = selected === value;
+            return (
+              <button
+                key={value ?? "ALL"}
+                type="button"
+                aria-pressed={active}
+                onClick={() => {
+                  onSelect(value);
+                  setOpen(false);
+                }}
+                className={cn(
+                  "flex min-h-12 items-center rounded-control border px-4 text-start text-body font-semibold transition-colors",
+                  active
+                    ? "border-primary bg-primary-soft text-primary"
+                    : "border-border-soft bg-surface text-ink hover:border-primary hover:bg-primary-soft/40",
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </FormDialog>
+    </>
   );
 }

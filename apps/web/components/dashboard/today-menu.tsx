@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import Image from "next/image";
 import { z } from "zod";
 import { AlertTriangle, CloudOff, Utensils } from "lucide-react";
 import { menuDayWithWarningsSchema, ALLERGY_SEVERITY_LABEL, localDate } from "@kinder/contracts";
@@ -125,22 +124,13 @@ export function TodayMenu() {
             above it. Centring is right for a narrow card and wrong for a wide
             one, where the same content simply leaves the middle empty.
 
-            The mascot stays — `child-menu.tsx` uses this same drawing for this
-            same condition, and `alt=""` because it repeats the text beside it.
+            ★ No mascot — client, 2026-10-04: a drawing of a person where
+            nothing has been entered read as a photo that had been. The empty
+            states across the product dropped theirs the same day.
           */
           <div className="flex flex-col items-center gap-3 py-1 text-center sm:flex-row sm:gap-4 sm:text-left">
-            <Image
-              src="/background/mascot-boy-orange.webp"
-              alt=""
-              width={72}
-              height={72}
-              className="shrink-0"
-            />
             <div className="min-w-0">
               <p className="text-lead font-semibold text-ink">Өнөөдрийн цэс оруулаагүй</p>
-              <p className="mt-0.5 text-body text-muted">
-                Хүүхдийн хуудасны “Хоол ба цэс” хэсгээс долоо хоногийн цэсийг бөглөнө.
-              </p>
             </div>
           </div>
         ) : (

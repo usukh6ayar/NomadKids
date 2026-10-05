@@ -205,6 +205,7 @@ export function AdminOverview({ actions }: { actions?: ReactNode } = {}) {
             tone="cornflower"
             art={<Art name="child" size={36} />}
             artSurface={false}
+            plain
           />
           <StatCard
             label="Өнөөдрийн ирц"
@@ -222,6 +223,7 @@ export function AdminOverview({ actions }: { actions?: ReactNode } = {}) {
             art={<Art name="attendance" size={36} />}
             artSurface={false}
             href="/attendance/daily"
+            plain
           />
           <StatCard
             label="Бүлэг"
@@ -230,6 +232,7 @@ export function AdminOverview({ actions }: { actions?: ReactNode } = {}) {
             tone="mint"
             art={<Art name="group" size={36} />}
             artSurface={false}
+            plain
           />
           <StatCard
             label="Багш, ажилтан"
@@ -238,6 +241,7 @@ export function AdminOverview({ actions }: { actions?: ReactNode } = {}) {
             tone="sky"
             art={<Art name="teacher" size={36} />}
             artSurface={false}
+            plain
           />
 
           {/*
@@ -263,6 +267,7 @@ export function AdminOverview({ actions }: { actions?: ReactNode } = {}) {
                 tone="teal"
                 art={<Art name="adminDocuments" size={36} />}
                 artSurface={false}
+                plain
               />
               <StatCard
                 label="Тайлан"
@@ -271,6 +276,7 @@ export function AdminOverview({ actions }: { actions?: ReactNode } = {}) {
                 tone="sun"
                 art={<Art name="adminReport" size={36} />}
                 artSurface={false}
+                plain
               />
             </>
           ) : null}

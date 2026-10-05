@@ -3,6 +3,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, stubApi } from "./support/render";
 import NewNotificationPage from "@/app/(app)/notifications/new/page";
 
+const GROUP_ID = "44444444-4444-4444-8444-444444444444";
+const CHILD_ID = "22222222-2222-4222-8222-222222222222";
+const CHILD = {
+  id: CHILD_ID,
+  lastName: "Бат",
+  firstName: "Сараа",
+  sex: "FEMALE",
+  dateOfBirth: "2022-04-12",
+  enrollments: [
+    {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      group: { id: GROUP_ID, name: "Дэлбээ бүлэг" },
+    },
+  ],
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   stubApi([
@@ -63,9 +79,58 @@ describe("new notification layout", () => {
       screen.queryByText(/жагсаалтын дээд талд тэмдэглэгээтэй харагдана/),
     ).not.toBeInTheDocument();
 
-    const important = screen.getByRole("checkbox", { name: "Чухал" });
-    expect(important.closest("label")).toHaveClass("bg-surface", "border-border");
+    // A teacher has no Чухал box — client, 2026-10-04.
+    expect(screen.queryByRole("checkbox", { name: "Чухал" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Нийтлэх" })).toHaveClass("w-full");
     expect(screen.getByRole("button", { name: "Болих" })).toHaveClass("w-full");
+  });
+
+  /**
+   * ★ Client, 2026-10-04: a teacher posts to their own group, choosing the
+   * group or named children in it. The child list is the teacher's own —
+   * `/children` answers a teacher with their groups' children only.
+   */
+  it("lets a teacher choose their group or children in it", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/groups",
+        body: {
+          items: [{ id: GROUP_ID, name: "Дэлбээ бүлэг", ageBand: "MIDDLE", childCount: 1 }],
+          page: 1,
+          pageSize: 100,
+          total: 1,
+          totalPages: 1,
+        },
+      },
+      {
+        path: "/children",
+        body: {
+          items: [CHILD],
+          page: 1,
+          pageSize: 100,
+          total: 1,
+          totalPages: 1,
+        },
+      },
+    ]);
+    renderWithProviders(<NewNotificationPage />);
+
+    expect(await screen.findByLabelText("Дэлбээ бүлэг")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Бат Сараа")).toBeInTheDocument();
+    expect(screen.getByText(/Тодорхой хүүхэд сонгох/)).toBeInTheDocument();
+  });
+
+  it("keeps Чухал for an administrator", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: "/groups",
+        body: { items: [], page: 1, pageSize: 100, total: 0, totalPages: 0 },
+      },
+    ]);
+    renderWithProviders(<NewNotificationPage />);
+
+    expect(await screen.findByRole("checkbox", { name: "Чухал" })).toBeInTheDocument();
   });
 });

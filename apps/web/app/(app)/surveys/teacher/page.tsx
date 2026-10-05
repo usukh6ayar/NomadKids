@@ -2,9 +2,10 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Suspense, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { z } from "zod";
-import { Copy, FileSpreadsheet, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { Copy, FileSpreadsheet, MoreVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   groupListItemSchema,
   paginated,
@@ -21,22 +22,25 @@ import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { RequireRole } from "@/components/shell/require-role";
 import { BackButton } from "@/components/ui/back-button";
-import { Art } from "@/components/ui/art";
+import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 import { RowMenu } from "@/components/ui/menu";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { PeriodButtons } from "@/components/survey/period-buttons";
+import { PeriodFilter } from "@/components/survey/period-buttons";
+import { SearchField } from "@/components/ui/search-field";
 import {
   AdministrationSurveysCard,
   GroupLinkRow,
   SchoolYearSelect,
-  SurveyListRow,
   schoolYearStart,
   schoolYearsOf,
 } from "@/components/survey/survey-hub-parts";
 import { CreateSurveyWizard } from "@/components/survey/create-survey-wizard";
 import { canManageSurvey, staffSurveysSchema, type StaffSurvey } from "@/lib/survey-access";
+import { TableShell, Td, Th } from "@/components/ui/table";
+import { SURVEY_CATEGORY_META } from "@/lib/survey-meta";
+import { formatDate, shortName } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const groupsSchema = paginated(groupListItemSchema);
@@ -77,6 +81,7 @@ function TeacherSurveys() {
   const { primaryKindergartenId, hasRole, session } = useSession();
   const isAdmin = hasRole("ADMIN");
   const [creating, setCreating] = useState(false);
+  const [search, setSearch] = useState("");
   const [schoolYear, setSchoolYear] = useState(() => schoolYearStart(new Date().toISOString()));
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -122,7 +127,13 @@ function TeacherSurveys() {
   const schoolYears = schoolYearsOf(mine);
   const inYear = mine.filter((survey) => schoolYearStart(survey.createdAt) === schoolYear);
   const inScope = groupId ? inYear.filter((survey) => survey.groupId === groupId) : inYear;
-  const visible = period ? inScope.filter((survey) => survey.period === period) : inScope;
+  const searchTerm = search.trim().toLowerCase();
+  const visible = (period ? inScope.filter((survey) => survey.period === period) : inScope).filter(
+    (survey) =>
+      !searchTerm ||
+      survey.title.toLowerCase().includes(searchTerm) ||
+      (survey.description ?? "").toLowerCase().includes(searchTerm),
+  );
   const emptyTitle = period
     ? `${SURVEY_PERIOD_LABEL[period]} алга`
     : `${SURVEY_RESPONDENT_LABEL.TEACHER} алга`;
@@ -139,7 +150,7 @@ function TeacherSurveys() {
         a poll is a family's one-tap vote) — so an Асуулга card here would be a
         door onto an error. The card opens the create wizard, where "Шинэ" did.
       */}
-      <header className="flex items-center gap-2 sm:gap-3">
+      <header className="flex items-center gap-2 !bg-transparent !backdrop-blur-none sm:gap-3">
         <BackButton href={groupId ? hrefFor({ group: null, period: null }) : "/surveys"} />
         <h1 className="min-w-0 flex-1 text-heading font-semibold leading-heading text-ink sm:text-display">
           {groupId
@@ -170,33 +181,41 @@ function TeacherSurveys() {
         </section>
       ) : null}
 
-      {isAdmin ? null : (
-        <button
-          type="button"
-          onClick={() => setCreating(true)}
-          className="group flex min-h-[88px] items-center gap-3 rounded-card border border-border-soft bg-surface p-3 text-start shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary hover:shadow-md sm:min-h-[104px] sm:gap-5 sm:p-4"
-        >
-          <Art
-            name="teacherSurvey"
-            size={128}
-            className="size-14 shrink-0 object-contain transition-transform group-hover:scale-105 sm:size-20"
-          />
-          <span className="min-w-0 flex-1 text-lead font-bold leading-heading text-primary sm:text-title">
-            Судалгаа үүсгэх
-          </span>
-        </button>
-      )}
-
       {isAdmin && !groupId ? null : (
         <>
-          <PeriodButtons selected={period} onSelect={selectPeriod} />
-
           <AdministrationSurveysCard />
 
           <section aria-labelledby="teacher-surveys" className="flex flex-col gap-2.5">
-            <h2 id="teacher-surveys" className="text-title font-bold leading-heading text-ink">
-              {period ? SURVEY_PERIOD_LABEL[period] : "Сүүлийн үүсгэсэн"}
-            </h2>
+            {/*
+              ★ «Бүлгийн судалгаа» with «+ Шинэ» beside it, then search and the
+              filter, then the table — the families' «Судалгаа» board's order,
+              client 2026-10-04. It replaces the «Судалгаа үүсгэх» card and the
+              «Сүүлийн үүсгэсэн» heading; the wave chosen shows on the filter's
+              count, as it does there.
+            */}
+            <div className="flex items-center gap-3">
+              <h2
+                id="teacher-surveys"
+                className="min-w-0 flex-1 text-title font-semibold leading-heading text-ink"
+              >
+                Бүлгийн судалгаа
+              </h2>
+              {isAdmin ? null : (
+                <Button className="shrink-0" onClick={() => setCreating(true)}>
+                  <Plus size={18} aria-hidden="true" />
+                  Шинэ
+                </Button>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <SearchField
+                label="Судалгаа хайх"
+                placeholder="Судалгаа хайх..."
+                value={search}
+                onChange={setSearch}
+              />
+              <PeriodFilter selected={period} onSelect={selectPeriod} />
+            </div>
 
             {surveys.isLoading ? <LoadingState rows={3} /> : null}
             {surveys.isError ? <ErrorState description={errorMessage(surveys.error)} /> : null}
@@ -207,14 +226,40 @@ function TeacherSurveys() {
                 description={
                   isAdmin
                     ? "Энэ бүлгийн багш одоогоор судалгаа аваагүй байна."
-                    : 'Дээрх "Судалгаа үүсгэх" дээр дарж судалгаа үүсгээд, бүлгийнхээ хүүхэд бүрээр бөглөнө үү.'
+                    : "«+ Шинэ» дээр дарж судалгаа үүсгээд, бүлгийнхээ хүүхэд бүрээр бөглөнө үү."
                 }
               />
             ) : null}
 
-            {visible.map((survey) => (
-              <TeacherSurveyRow key={survey.id} survey={survey} />
-            ))}
+            {/*
+              ★ A table, the same columns as the families' «Судалгаа» — client,
+              2026-10-04. Plus Төлөв: this screen has no Идэвхтэй/Ноорог tabs,
+              so a draft would otherwise look like a published survey.
+            */}
+            {visible.length > 0 ? (
+              <TableShell caption="Багшийн судалгаа" minWidth="min-w-[960px]">
+                <thead>
+                  <tr>
+                    <Th>Гарчиг</Th>
+                    <Th>Бүлэг</Th>
+                    <Th>Ангилал</Th>
+                    <Th>Судалгаа авсан</Th>
+                    <Th>Төлөв</Th>
+                    <Th numeric>Хариулт</Th>
+                    <Th numeric>Хувь</Th>
+                    <Th numeric>Огноо</Th>
+                    <Th>
+                      <span className="sr-only">Үйлдэл</span>
+                    </Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map((survey) => (
+                    <TeacherSurveyRow key={survey.id} survey={survey} />
+                  ))}
+                </tbody>
+              </TableShell>
+            ) : null}
           </section>
         </>
       )}
@@ -273,71 +318,86 @@ function TeacherSurveyRow({ survey }: { survey: StaffSurvey }) {
   const filled = survey.respondedCount ?? 0;
   const expected = survey.expectedCount ?? 0;
 
-  return (
-    <>
-      <SurveyListRow
-        survey={survey}
-        meta={
-          <span className="flex flex-wrap items-center gap-2 text-caption tabular-nums">
-            {survey.status !== "DRAFT" ? (
-              <span className="font-medium text-ink">
-                {survey.group?.name ? `${survey.group.name} · ` : ""}
-                {filled}/{expected} хүүхэд
-              </span>
-            ) : null}
-            <span
-              className={cn("rounded-pill px-2 py-0.5 font-semibold", STATUS_PILL[survey.status])}
-            >
-              {STATUS_LABEL[survey.status]}
-            </span>
-          </span>
-        }
-        menu={
-          <RowMenu
-            ariaLabel={`${survey.title} үйлдэл`}
-            triggerIcon={<MoreVertical size={18} aria-hidden="true" />}
-            items={[
-              {
-                label: "Засах",
-                icon: <Pencil size={16} aria-hidden="true" />,
-                onSelect: () => router.push(`/surveys/${survey.id}`),
-              },
-              {
-                label: "Эксэл татах",
-                icon: <FileSpreadsheet size={16} aria-hidden="true" />,
-                onSelect: () => {
-                  window.location.href = downloadUrl(`/surveys/${survey.id}/export`);
-                },
-              },
-              {
-                label: "Дахин ашиглах",
-                icon: <Copy size={16} aria-hidden="true" />,
-                hint: "Асуултуудыг хуулж шинэ ноорог үүсгэнэ",
-                onSelect: () => clone.mutate(),
-              },
-              {
-                label: "Устгах",
-                icon: <Trash2 size={16} aria-hidden="true" />,
-                tone: "danger",
-                separated: true,
-                onSelect: () => setConfirmDelete(true),
-              },
-            ]}
-          />
-        }
-      />
+  const percent = expected > 0 ? Math.round((filled / expected) * 100) : 0;
 
-      <ConfirmDialog
-        open={confirmDelete}
-        onOpenChange={(next) => (next ? undefined : setConfirmDelete(false))}
-        title="Энэ судалгааг устгах уу?"
-        description="Жагсаалтаас хасагдана. Өгсөн хариултууд хэвээр үлдэж, бүртгэлд тэмдэглэгдэнэ."
-        confirmLabel="Устгах"
-        cancelLabel="Болих"
-        tone="danger"
-        pending={remove.isPending}
-        onConfirm={() => remove.mutate()}
-      />
-    </>
+  return (
+    <tr>
+      <Td>
+        <Link
+          href={`/surveys/${survey.id}`}
+          className="font-medium text-ink hover:text-primary hover:underline"
+        >
+          {survey.title}
+        </Link>
+      </Td>
+      <Td className="text-muted">{survey.group?.name ?? (survey.groupId ? "—" : "Бүх бүлэг")}</Td>
+      <Td className="text-muted">{SURVEY_CATEGORY_META[survey.category].label}</Td>
+      <Td className="whitespace-nowrap text-muted">
+        {survey.author ? `Бүлгийн багш · ${shortName(survey.author)}` : "Бүлгийн багш"}
+      </Td>
+      <Td>
+        <span
+          className={cn(
+            "whitespace-nowrap rounded-pill px-2 py-0.5 text-caption font-semibold",
+            STATUS_PILL[survey.status],
+          )}
+        >
+          {STATUS_LABEL[survey.status]}
+        </span>
+      </Td>
+      <Td numeric className="text-muted">
+        {survey.status === "DRAFT" ? "—" : `${filled} / ${expected}`}
+      </Td>
+      <Td numeric className="font-medium text-ink">
+        {survey.status === "DRAFT" ? "—" : `${percent}%`}
+      </Td>
+      <Td numeric className="text-muted">
+        {formatDate(survey.closedAt ?? survey.publishedAt ?? survey.createdAt)}
+      </Td>
+      <Td className="w-12 text-right">
+        <RowMenu
+          ariaLabel={`${survey.title} үйлдэл`}
+          triggerIcon={<MoreVertical size={18} aria-hidden="true" />}
+          items={[
+            {
+              label: "Засах",
+              icon: <Pencil size={16} aria-hidden="true" />,
+              onSelect: () => router.push(`/surveys/${survey.id}`),
+            },
+            {
+              label: "Эксэл татах",
+              icon: <FileSpreadsheet size={16} aria-hidden="true" />,
+              onSelect: () => {
+                window.location.href = downloadUrl(`/surveys/${survey.id}/export`);
+              },
+            },
+            {
+              label: "Дахин ашиглах",
+              icon: <Copy size={16} aria-hidden="true" />,
+              hint: "Асуултуудыг хуулж шинэ ноорог үүсгэнэ",
+              onSelect: () => clone.mutate(),
+            },
+            {
+              label: "Устгах",
+              icon: <Trash2 size={16} aria-hidden="true" />,
+              tone: "danger",
+              separated: true,
+              onSelect: () => setConfirmDelete(true),
+            },
+          ]}
+        />
+        <ConfirmDialog
+          open={confirmDelete}
+          onOpenChange={(next) => (next ? undefined : setConfirmDelete(false))}
+          title="Энэ судалгааг устгах уу?"
+          description="Жагсаалтаас хасагдана. Өгсөн хариултууд хэвээр үлдэж, бүртгэлд тэмдэглэгдэнэ."
+          confirmLabel="Устгах"
+          cancelLabel="Болих"
+          tone="danger"
+          pending={remove.isPending}
+          onConfirm={() => remove.mutate()}
+        />
+      </Td>
+    </tr>
   );
 }

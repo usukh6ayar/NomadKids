@@ -1,7 +1,6 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Image from "next/image";
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import { Check, Pencil } from "lucide-react";
@@ -257,7 +256,6 @@ function AgeSection({
             </div>
           ) : (
             <EmptyState
-              icon={<Image src="/background/mascot-boy-green.webp" alt="" width={96} height={96} />}
               title="Энэ насны тэмдэглэл хоосон байна"
               description="Дуртай зүйлс, зан чанар, шинэ чадварууд — «Засах» дарж бөглөнө үү."
             />

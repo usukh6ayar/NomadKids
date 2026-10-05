@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarDays, PenLine, Plus, SlidersHorizontal, Users } from "lucide-react";
+import { CalendarDays, PenLine, Plus, Users } from "lucide-react";
 import {
   MAX_PAGE_SIZE,
   ARTWORK_TYPES,
@@ -26,6 +26,7 @@ import { FormDialog } from "@/components/ui/form-dialog";
 import { BackButton } from "@/components/ui/back-button";
 import { ChildAvatar } from "@/components/media/media-image";
 import { Button } from "@/components/ui/button";
+import { FilterButton } from "@/components/ui/filter-chip";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import {
   DeleteObservationDialog,
@@ -572,19 +573,12 @@ export function ObservationHub({
             value={searchText}
             onChange={setSearchText}
           />
-          <button
-            type="button"
+          <FilterButton
+            expanded={filtering}
+            count={activeFilters}
             onClick={() => setFiltering(true)}
-            aria-label="Шүүлтүүр"
-            className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-field border border-border bg-surface text-muted transition-colors hover:text-ink"
-          >
-            <SlidersHorizontal size={18} aria-hidden="true" />
-            {activeFilters > 0 ? (
-              <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-pill bg-primary px-1 text-caption font-semibold text-primary-ink">
-                {activeFilters}
-              </span>
-            ) : null}
-          </button>
+            className="h-12 w-12 rounded-field"
+          />
         </div>
 
         {typeCode === "artwork" ? null : (

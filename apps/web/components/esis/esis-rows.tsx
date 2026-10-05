@@ -61,7 +61,7 @@ export function esisVisibleColumns(fields: EsisField[]): EsisField[] {
 }
 
 export function EsisRowValues({
-  columns,
+  columns: allColumns,
   rows,
   hrefs,
   linkField,
@@ -88,6 +88,7 @@ export function EsisRowValues({
    */
   rowActions?: (row: Record<string, string | null>) => ReactNode;
 }) {
+  const columns = withoutCodes(allColumns);
   const [openRow, setOpenRow] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -378,6 +379,31 @@ function EsisRecordFields({
 
 /** Keys that identify a record rather than say anything about it. */
 const TECHNICAL_ID = /^(institutionId|personId|student[A-Za-z]*Id)$/;
+
+/**
+ * Codes, ids and reference numbers — never drawn, in a list or a record.
+ *
+ * ★ Client, 2026-10-04: every service is connected now, so a reader is
+ * always a director, teacher or parent, and "Бүлгийн код 4417" or a civil id
+ * tells them nothing they can use. This replaces the 2026-09 instruction to
+ * show every output value. Matched on the key *and* the label, because the
+ * catalog names some codes plainly (`academicLevel` → "Түвшний код").
+ *
+ * The keys below end in Code or Number but carry a reading a person uses
+ * (Хэмжих нэгж, Утас, Давхар), so they stay.
+ */
+const HIDDEN_KEY =
+  /(Id|ID|_ID|Code|RegNumber|^registerNumber|^SERIAL_NUMBER|^OBJECT_VERSION_NUMBER|^orderNum)$/;
+const HIDDEN_LABEL = /(код|дугаар|\bID)$/i;
+const READABLE_KEY = /^(measureCode|phoneNumber|floorNumber)$/;
+
+function withoutCodes(columns: EsisField[]): EsisField[] {
+  return columns.filter(
+    (field) =>
+      READABLE_KEY.test(field.name) ||
+      !(HIDDEN_KEY.test(field.name) || HIDDEN_LABEL.test(field.label.trim())),
+  );
+}
 /** Labels `esis.fields.ts` gives fields ESIS never explained. */
 const UNDOCUMENTED_LABEL = /^(Тэмдэглэгээ|Тэмдэглэл|Тоон утга) \d+$/;
 

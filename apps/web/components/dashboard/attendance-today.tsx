@@ -197,12 +197,7 @@ export function AttendanceToday() {
 
         <div className="min-w-0 text-center sm:text-left">
           {nothingMarked ? (
-            <>
-              <p className="text-lead font-semibold leading-heading text-ink">Бүртгээгүй байна</p>
-              <p className="mt-0.5 text-caption text-muted">
-                {total} хүүхэд бүртгэхийг хүлээж байна
-              </p>
-            </>
+            <p className="text-lead font-semibold leading-heading text-ink">Бүртгээгүй байна</p>
           ) : (
             <>
               <p className="font-semibold tabular-nums leading-none text-ink text-figure">

@@ -486,6 +486,7 @@ describe("the new-record strip", () => {
     expect(await screen.findByText("Энэ сарын зорилт")).toBeInTheDocument();
     expect(screen.queryByLabelText("Хүүхэд сонгох")).not.toBeInTheDocument();
     expect(screen.queryByText("Шинэ тэмдэглэл")).not.toBeInTheDocument();
+    expect(screen.queryByText("Улирал тохируулаагүй байна")).not.toBeInTheDocument();
   });
 
   /**

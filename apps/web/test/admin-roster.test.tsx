@@ -199,4 +199,31 @@ describe("the director's roster", () => {
       expect(api.calls.some((c) => c.url.includes(`groupId=${GROUP}`))).toBe(true),
     );
   });
+
+  it("filters the API roster by ESIS link state", async () => {
+    const user = userEvent.setup();
+    const api = stub();
+    renderWithProviders(<ChildrenPage />);
+
+    await screen.findByRole("table", { name: "Суралцагчийн жагсаалт" });
+    await selectOption(user, "ESIS төлөв", "ESIS-тэй холбоогүй");
+
+    await waitFor(() =>
+      expect(
+        api.calls.some(
+          (call) => call.url.startsWith("/children?") && call.url.includes("pageSize=100"),
+        ),
+      ).toBe(true),
+    );
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("table", { name: "Суралцагчийн жагсаалт" })).queryByText(
+          "М.Алтанзул1",
+        ),
+      ).toBeNull(),
+    );
+    expect(
+      within(screen.getByRole("table", { name: "Суралцагчийн жагсаалт" })).getByText("М.Алтанзул2"),
+    ).toBeInTheDocument();
+  });
 });

@@ -135,6 +135,80 @@ describe("menu spreadsheet import", () => {
     ]);
   });
 
+  it("reads bare day numbers across when the title supplies year and month", async () => {
+    const input = await workbook([
+      ["2026 оны 10 сарын хоолны төлөвлөгөө"],
+      ["I долоо хоног"],
+      ["ГАРИГ", 5, 6, 7],
+      ["Өглөөний хоол", "Сүүтэй будаа", "Каш", "Бантан"],
+      ["Их үдийн цай", "Сүү", "Тараг", "Аарц"],
+      ["", "Боов", "Талх", "Жимс"],
+    ]);
+
+    const result = await parseMenuWorkbook(input);
+    expect(result.problems).toEqual([]);
+    expect(result.days.map((day) => day.date)).toEqual(["2026-10-05", "2026-10-06", "2026-10-07"]);
+    expect(result.days[0]?.dishes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "Сүүтэй будаа", kind: "BREAKFAST" }),
+        expect.objectContaining({ name: "Боов", kind: "AFTERNOON_SNACK" }),
+      ]),
+    );
+  });
+
+  it("reads bare day numbers vertically when year and month are labelled elsewhere", async () => {
+    const input = await workbook([
+      ["Он", 2026],
+      ["Сар", 10],
+      ["Өдөр", "Өглөөний хоол", "Үндсэн хоол"],
+      [5, "Каш", "Цуйван"],
+      [6, "Будаа", "Бууз"],
+    ]);
+
+    const result = await parseMenuWorkbook(input);
+    expect(result.days).toEqual([
+      {
+        date: "2026-10-05",
+        dishes: [
+          expect.objectContaining({ name: "Каш", kind: "BREAKFAST" }),
+          expect.objectContaining({ name: "Цуйван", kind: "LUNCH" }),
+        ],
+      },
+      {
+        date: "2026-10-06",
+        dishes: [
+          expect.objectContaining({ name: "Будаа", kind: "BREAKFAST" }),
+          expect.objectContaining({ name: "Бууз", kind: "LUNCH" }),
+        ],
+      },
+    ]);
+  });
+
+  it("reads year, month and day as three horizontal header rows", async () => {
+    const input = await workbook([
+      ["Он", 2026, 2026, 2026],
+      ["Сар", 10, 10, 10],
+      ["Өдөр", 5, 6, 7],
+      ["Өглөөний хоол", "Каш", "Будаа", "Бантан"],
+      ["Үндсэн хоол", "Шөл", "Цуйван", "Бууз"],
+    ]);
+
+    const result = await parseMenuWorkbook(input);
+    expect(result.problems).toEqual([]);
+    expect(result.days.map((day) => day.date)).toEqual(["2026-10-05", "2026-10-06", "2026-10-07"]);
+  });
+
+  it("uses a named month's numbered week for weekday-only headings", async () => {
+    const input = await workbook([
+      ["2026 оны 10 сарын II долоо хоногийн цэс"],
+      ["ГАРИГ", "Даваа", "Мягмар"],
+      ["Өглөөний хоол", "Каш", "Будаа"],
+    ]);
+
+    const result = await parseMenuWorkbook(input);
+    expect(result.days.map((day) => day.date)).toEqual(["2026-10-12", "2026-10-13"]);
+  });
+
   it("never reads a calorie figure as an Excel date serial", async () => {
     const input = await workbook([
       ["", "2026-09-21", "2026-09-22"],

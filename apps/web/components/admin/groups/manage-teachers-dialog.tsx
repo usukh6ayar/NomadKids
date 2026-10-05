@@ -230,7 +230,7 @@ export function ManageTeachersDialog({
                       {shortName(teacher.membership?.user)}
                     </span>
                     <Badge tone={teacher.role === "ASSISTANT" ? "neutral" : "sky"}>
-                      {teacher.role === "ASSISTANT" ? "Туслах" : "Үндсэн"}
+                      {teacher.role === "ASSISTANT" ? "Багшийн туслах" : "Үндсэн"}
                     </Badge>
 
                     {removingId === teacher.id ? (
@@ -306,7 +306,7 @@ export function ManageTeachersDialog({
                   {({ id }) => (
                     <Select id={id} value={role} onChange={(event) => setRole(event.target.value)}>
                       <option value="LEAD">Үндсэн багш</option>
-                      <option value="ASSISTANT">Туслах багш</option>
+                      <option value="ASSISTANT">Багшийн туслах</option>
                     </Select>
                   )}
                 </Field>

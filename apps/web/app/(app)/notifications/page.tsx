@@ -1,7 +1,6 @@
 "use client";
 
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -19,6 +18,7 @@ import {
   type NotificationCategory,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
+import { mediaUrl } from "@/lib/api/client";
 import { useSwitchableGroups } from "@/components/shell/group-switcher";
 import { RowMenu } from "@/components/ui/menu";
 import { SavePostPhoto } from "@/components/notifications/save-post-photo";
@@ -27,22 +27,14 @@ import { ChildAvatar, MediaThumb } from "@/components/media/media-image";
 import { useSession } from "@/lib/auth/session";
 import { useMyProfile } from "@/lib/use-my-profile";
 import { useSelectedChildIfAny } from "@/lib/selected-child";
-import {
-  CalendarRange,
-  PenLine,
-  MoreVertical,
-  Search,
-  Pencil,
-  SlidersHorizontal,
-  Trash2,
-} from "lucide-react";
+import { CalendarRange, PenLine, MoreVertical, Search, Pencil, Trash2 } from "lucide-react";
 import { Art } from "@/components/ui/art";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
+import { FilterButton, FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
@@ -362,24 +354,12 @@ export default function NotificationsPage() {
               invisible — the same concern the date chip's own note records.
             */}
             {tab === "news" ? (
-              <Button
-                type="button"
-                variant={filtersOpen ? "primary" : "secondary"}
-                size="icon"
-                aria-expanded={filtersOpen}
-                aria-controls="news-filters"
-                aria-label="Шүүлтүүр"
-                className="relative shrink-0"
+              <FilterButton
+                expanded={filtersOpen}
+                controls="news-filters"
+                count={activeFilters}
                 onClick={() => setFiltersOpen(!filtersOpen)}
-              >
-                <SlidersHorizontal aria-hidden="true" />
-                {activeFilters > 0 ? (
-                  <span className="absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-pill bg-danger px-1 text-compact font-bold text-white">
-                    {activeFilters}
-                    <span className="sr-only">шүүлтүүр идэвхтэй</span>
-                  </span>
-                ) : null}
-              </Button>
+              />
             ) : null}
 
             {isStaff && tab === "news" ? (
@@ -595,7 +575,6 @@ export default function NotificationsPage() {
 
           {data && items.length === 0 ? (
             <EmptyState
-              icon={<Image src="/background/mascot-teacher.webp" alt="" width={96} height={96} />}
               title={showUnreadOnly ? "Уншаагүй мэдэгдэл алга" : "Мэдэгдэл алга"}
               description={
                 showUnreadOnly
@@ -917,8 +896,26 @@ function NotificationRow({
     The feed's author carries no photo, so the reader's own comes from their
     profile; anybody else's post keeps its initials until the API sends one.
   */
-  const { session } = useSession();
+  const { session, primaryKindergartenId } = useSession();
   const { data: myProfile } = useMyProfile();
+  /*
+    ★ The kindergarten's own logo on an administration post — client,
+    2026-10-04: "цэцэрлэг гэсний урд талын дугуйд цэцэрлэгийн лого". Every
+    card asks with the same key, so the feed makes one request. Any member
+    may read `/kindergartens/:id`, and the logo is served through
+    `/media/:id` by membership. No logo yet keeps the drawing.
+  */
+  const { data: kindergarten } = useQuery({
+    queryKey: ["kindergarten", primaryKindergartenId ?? "", "logo"],
+    queryFn: () =>
+      get(
+        `/kindergartens/${primaryKindergartenId}`,
+        z.object({ logoMediaFileId: z.string().nullish() }),
+      ),
+    enabled: notification.authorIsAdministration && Boolean(primaryKindergartenId),
+    staleTime: 5 * 60_000,
+  });
+  const logoMediaFileId = kindergarten?.logoMediaFileId ?? null;
   const author =
     notification.author && notification.author.id === session?.user.id
       ? {
@@ -1032,12 +1029,25 @@ function NotificationRow({
           initials would read as one more teacher on the board.
         */}
         {notification.authorIsAdministration ? (
-          <span
-            aria-hidden="true"
-            className="grid size-9 shrink-0 place-items-center rounded-pill bg-sun"
-          >
-            <Art name="kindergarten" size={28} className="size-7 object-contain" />
-          </span>
+          logoMediaFileId ? (
+            <span
+              aria-hidden="true"
+              className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-pill border border-border bg-surface"
+            >
+              <img
+                src={mediaUrl(logoMediaFileId)}
+                alt=""
+                className="h-full w-full object-contain"
+              />
+            </span>
+          ) : (
+            <span
+              aria-hidden="true"
+              className="grid size-9 shrink-0 place-items-center rounded-pill bg-sun"
+            >
+              <Art name="kindergarten" size={28} className="size-7 object-contain" />
+            </span>
+          )
         ) : (
           <ChildAvatar child={author ?? {}} size={36} />
         )}

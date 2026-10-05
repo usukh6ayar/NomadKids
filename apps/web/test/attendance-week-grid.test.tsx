@@ -52,6 +52,10 @@ const RECORD_A = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
 const TODAY = localDate();
 const MONTH_START = `${TODAY.slice(0, 7)}-01`;
+const MONTH_END = (() => {
+  const [year, month] = TODAY.slice(0, 7).split("-").map(Number);
+  return new Date(Date.UTC(year!, month!, 0)).toISOString().slice(0, 10);
+})();
 /** The Monday of the week today falls in — the register's own default span. */
 const MONDAY = (() => {
   const date = new Date(`${TODAY}T00:00:00.000Z`);
@@ -156,6 +160,21 @@ describe("the teacher's week register", () => {
     // Narrow enough that a week still fits a phone without scrolling sideways.
     const monday = within(table).getAllByRole("columnheader")[2]!;
     expect(monday.className).toContain("w-10");
+
+    // Mobile keeps the dates against the names instead of stretching a blank
+    // name column across every spare pixel.
+    expect(table.className).toContain("w-max");
+    expect(within(table).getByRole("columnheader", { name: "Хүүхэд" }).className).toContain("w-28");
+
+    const number = within(table).getByRole("columnheader", { name: "№" });
+    const child = within(table).getByRole("columnheader", { name: "Хүүхэд" });
+    expect(number.className).toContain("sticky");
+    expect(number.className).toContain("left-0");
+    expect(child.className).toContain("sticky");
+    expect(child.className).toContain("left-8");
+    expect(within(within(table).getAllByRole("row")[1]!).getAllByRole("cell")[0]).toHaveTextContent(
+      "1",
+    );
   });
 
   /*
@@ -319,14 +338,27 @@ describe("the teacher's week register", () => {
    * was twenty-two columns wide and a teacher scrolled sideways past three
    * weeks they had already filed to reach today.
    */
-  it("opens on the week the chosen day sits in", async () => {
+  it("loads the chosen week for phones and the whole month for wider screens", async () => {
     const api = stubRegister();
     renderWithProviders(<GroupAttendancePage />);
     await grid();
 
-    const call = api.calls.find((item) => item.url.includes("/attendance/range"));
-    expect(call?.url).toContain(`from=${MONDAY}`);
-    expect(call?.url).toContain(`to=${TODAY}`);
+    expect(
+      api.calls.some(
+        (item) =>
+          item.url.includes("/attendance/range") &&
+          item.url.includes(`from=${MONDAY}`) &&
+          item.url.includes(`to=${TODAY}`),
+      ),
+    ).toBe(true);
+    expect(
+      api.calls.some(
+        (item) =>
+          item.url.includes("/attendance/range") &&
+          item.url.includes(`from=${MONTH_START}`) &&
+          item.url.includes(`to=${MONTH_END}`),
+      ),
+    ).toBe(true);
 
     // Monday, whatever day the test runs on — and never after today.
     expect(new Date(`${MONDAY}T00:00:00.000Z`).getUTCDay()).toBe(1);

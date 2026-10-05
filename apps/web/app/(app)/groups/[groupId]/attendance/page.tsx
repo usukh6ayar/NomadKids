@@ -20,6 +20,7 @@ import {
   groupAttendanceRangeSchema,
   groupAttendanceRowSchema,
   type EsisAttendancePreview,
+  type GroupAttendanceRange,
   localDate,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
@@ -66,6 +67,25 @@ function mondayOf(iso: string): string {
   const weekday = date.getUTCDay();
   date.setUTCDate(date.getUTCDate() - (weekday === 0 ? 6 : weekday - 1));
   return date.toISOString().slice(0, 10);
+}
+
+function endOfMonth(iso: string): string {
+  const [year, month] = iso.slice(0, 7).split("-").map(Number);
+  return new Date(Date.UTC(year!, month!, 0)).toISOString().slice(0, 10);
+}
+
+function mergeRanges(
+  week: GroupAttendanceRange,
+  month: GroupAttendanceRange,
+): GroupAttendanceRange {
+  const monthRows = new Map(month.rows.map((row) => [row.enrollmentId, row]));
+  return {
+    days: [...new Set([...week.days, ...month.days])].sort(),
+    rows: week.rows.map((row) => {
+      const monthRow = monthRows.get(row.enrollmentId);
+      return { ...row, records: { ...monthRow?.records, ...row.records } };
+    }),
+  };
 }
 
 /**
@@ -177,6 +197,18 @@ function GroupAttendance() {
         groupAttendanceRangeSchema,
       ),
   });
+  const monthFrom = `${date.slice(0, 7)}-01`;
+  const monthTo = endOfMonth(date);
+  const monthRange = useQuery({
+    queryKey: qk.groupAttendanceRange(groupId, monthFrom, monthTo),
+    queryFn: () =>
+      get(
+        `/groups/${groupId}/attendance/range?from=${monthFrom}&to=${monthTo}`,
+        groupAttendanceRangeSchema,
+      ),
+  });
+  const responsiveRange =
+    range.data && monthRange.data ? mergeRanges(range.data, monthRange.data) : null;
   const rows = sheet.data ?? [];
   const savedComplete = rows.length > 0 && rows.every((row) => row.record);
 
@@ -457,11 +489,17 @@ function GroupAttendance() {
 
                 Only `date`'s column takes input; see `AttendanceWeekGrid`.
               */}
-              {range.isLoading ? <LoadingState rows={6} shape="register" /> : null}
-              {range.isError ? <ErrorState description={errorMessage(range.error)} /> : null}
-              {range.data ? (
+              {range.isLoading || monthRange.isLoading ? (
+                <LoadingState rows={6} shape="register" />
+              ) : null}
+              {range.isError || monthRange.isError ? (
+                <ErrorState description={errorMessage(range.error ?? monthRange.error)} />
+              ) : null}
+              {responsiveRange && range.data && monthRange.data ? (
                 <AttendanceWeekGrid
-                  data={range.data}
+                  data={responsiveRange}
+                  mobileDays={range.data.days}
+                  desktopDays={monthRange.data.days}
                   editableDay={editing ? date : null}
                   draft={draft}
                   disabled={save.isPending}

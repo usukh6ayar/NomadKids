@@ -265,9 +265,11 @@ function parseMenuMatrix(
       const date = isoDate(text(sheet.getRow(headerRow).getCell(column)));
       if (date) dates.set(column, date);
     }
-    // One date can occur in an ordinary table. Two or more dates in the same
-    // row identifies the horizontal weekly-plan layout without guessing.
-    if (dates.size < 2) continue;
+    // One date can occur in an ordinary table. Two or more *different* dates
+    // in the same row identify the horizontal weekly-plan layout. Requiring
+    // distinct values prevents a row such as `Сар | 10 | 10 | 10` from being
+    // mistaken for 10-р сарын 10 repeated across the menu.
+    if (dates.size < 2 || new Set(dates.values()).size < 2) continue;
 
     let previousKind: string | null = null;
     for (let rowNumber = headerRow + 1; rowNumber <= sheet.rowCount; rowNumber++) {
@@ -362,6 +364,10 @@ function parseMenuMatrixRotated(
 interface DateContext {
   /** The year for "09.14" / "9 сарын 14". */
   year: number;
+  /** The month for a bare day heading such as `5`, when the workbook names it. */
+  month: number;
+  /** Bare day numbers are accepted only when the workbook explicitly names a month. */
+  hasMonthContext: boolean;
   /** Monday of the week that "Даваа", "Мягмар" … name. */
   monday: Date;
 }
@@ -390,24 +396,64 @@ const WEEKDAY_INDEX: Record<string, number> = {
  */
 function dateContext(book: ExcelJS.Workbook): DateContext {
   let anchor: Date | null = null;
-  outer: for (const sheet of book.worksheets) {
+  let statedYear: number | null = null;
+  let statedMonth: number | null = null;
+  let statedWeek: number | null = null;
+
+  for (const sheet of book.worksheets) {
     for (let r = 1; r <= Math.min(sheet.rowCount, 40); r++) {
       const row = sheet.getRow(r);
       for (let c = 1; c <= Math.min(sheet.columnCount, 20); c++) {
         const raw = text(row.getCell(c));
         const found =
           fullDate(raw) ?? fullDate(raw.match(/\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/)?.[0] ?? "");
-        if (found) {
+        if (found && !anchor) {
           anchor = new Date(`${found}T00:00:00Z`);
-          break outer;
+        }
+
+        const normalized = raw.toLocaleLowerCase("mn-MN").replace(/\s+/g, " ").trim();
+        const writtenYear = /(?:^|\D)((?:19|20)\d{2})\s*(?:оны|он)?/.exec(normalized);
+        if (!statedYear && writtenYear) statedYear = Number(writtenYear[1]);
+
+        const writtenMonth = /(?:^|\D)(\d{1,2})(?:-р)?\s*сар(?:ын)?(?:\D|$)/.exec(normalized);
+        if (!statedMonth && writtenMonth) {
+          const month = Number(writtenMonth[1]);
+          if (month >= 1 && month <= 12) statedMonth = month;
+        }
+
+        const writtenWeek = /(?:^|\s)(i{1,3}|iv|v|\d{1,2})(?:-р)?\s*долоо хоног/i.exec(normalized);
+        if (!statedWeek && writtenWeek) {
+          const roman: Record<string, number> = { i: 1, ii: 2, iii: 3, iv: 4, v: 5 };
+          statedWeek = roman[writtenWeek[1]!.toLowerCase()] ?? Number(writtenWeek[1]);
+        }
+
+        const label = normalize(raw);
+        const adjacent = [text(row.getCell(c + 1)), text(sheet.getRow(r + 1).getCell(c))];
+        if (!statedYear && ["он", "жил", "year"].includes(label)) {
+          const value = adjacent.map(Number).find((number) => number >= 1900 && number <= 2100);
+          if (value) statedYear = value;
+        }
+        if (!statedMonth && ["сар", "month"].includes(label)) {
+          const value = adjacent.map(Number).find((number) => number >= 1 && number <= 12);
+          if (value) statedMonth = value;
         }
       }
     }
   }
-  const base = anchor ?? new Date();
+  const now = new Date();
+  const year = anchor?.getUTCFullYear() ?? statedYear ?? now.getUTCFullYear();
+  const month = anchor ? anchor.getUTCMonth() + 1 : (statedMonth ?? now.getUTCMonth() + 1);
+  const base = anchor ?? new Date(Date.UTC(year, month - 1, 1));
   const monday = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate()));
-  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
-  return { year: base.getUTCFullYear(), monday };
+
+  if (!anchor && statedMonth && statedWeek && statedWeek >= 1 && statedWeek <= 6) {
+    // First Monday *inside* the named month, then the requested week.
+    monday.setUTCDate(1 + ((8 - monday.getUTCDay()) % 7) + (statedWeek - 1) * 7);
+  } else {
+    monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
+  }
+
+  return { year, month, hasMonthContext: Boolean(anchor || statedMonth), monday };
 }
 
 function dateReader(ctx: DateContext) {
@@ -479,6 +525,14 @@ function isoDate(raw: string, ctx?: DateContext): string | null {
     return a > 12
       ? pad(String(ctx.year), short[2]!, short[1]!)
       : pad(String(ctx.year), String(a), String(b));
+  }
+
+  // A matrix may put only 5, 6, 7 … across its Өдөр/ГАРИГ row. It is safe
+  // only when another cell explicitly supplied the month; otherwise a calorie
+  // or portion count could silently become a calendar day.
+  const bareDay = /^(\d{1,2})(?:\s*(?:өдөр|өдрийн))?$/.exec(value);
+  if (bareDay && ctx.hasMonthContext) {
+    return pad(String(ctx.year), String(ctx.month), bareDay[1]!);
   }
 
   return null;

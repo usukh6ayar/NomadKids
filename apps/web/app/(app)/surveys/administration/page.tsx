@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { ChevronRight } from "lucide-react";
-import { SURVEY_KIND_LABEL } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
@@ -13,10 +11,10 @@ import { BackButton } from "@/components/ui/back-button";
 import { Pagination } from "@/components/ui/pagination";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { formatDate } from "@/lib/format";
-import { SURVEY_KIND_TEXT } from "@/components/survey/survey-hub-parts";
+import { TableShell, Td, Th } from "@/components/ui/table";
+import { SURVEY_CATEGORY_META } from "@/lib/survey-meta";
 import { cn } from "@/lib/utils";
 import {
-  ADMINISTRATION_AUTHOR,
   administrationSurveysSchema,
   useReadsAdministrationSurveys,
 } from "@/lib/administration-surveys";
@@ -55,7 +53,7 @@ function AdministrationSurveys() {
 
   return (
     <div className="flex flex-col gap-5">
-      <header className="flex items-center gap-3">
+      <header className="flex items-center gap-3 !bg-transparent !backdrop-blur-none">
         <BackButton href="/surveys/parents" />
         <h1 className="min-w-0 text-heading font-bold leading-heading text-ink sm:text-display">
           Удирдлагын судалгаа
@@ -73,57 +71,70 @@ function AdministrationSurveys() {
       ) : null}
 
       {/*
-        ★ The client's 2026-09-25 drawing: who asked, small and italic in the
-        corner, the date opposite, the title, a chevron, and the kind in its
-        own colour underneath — the families' hub's rows, with the author in
-        the corner they leave empty. An unread one keeps its "Шинэ", the same
-        signal the bell uses; nothing else is on the row.
+        ★ A table, the same columns as «Судалгаа» and «Санал асуулга» — client,
+        2026-10-04: "нөгөө хэсэгтэй адил хүснэгтэн болго". It replaces the
+        2026-09-25 card rows. Read-only, so no ⋯ column; an unread survey keeps
+        its «Шинэ», the same signal the bell uses.
       */}
-      <ul className="flex flex-col gap-3">
-        {surveys.data?.items.map((survey) => (
-          <li key={survey.id}>
-            <Link
-              href={`/surveys/administration/${survey.id}`}
-              className="group grid grid-cols-[1fr_auto] items-center gap-x-3 rounded-card border border-border-soft bg-surface px-3 py-2 shadow-sm transition-all hover:border-primary hover:shadow-md sm:px-4"
-            >
-              <span className="flex min-w-0 items-center gap-2">
-                <span className="truncate text-caption italic text-primary/70 sm:text-body">
-                  {ADMINISTRATION_AUTHOR}
-                </span>
-                {!survey.isRead ? (
-                  <span className="shrink-0 rounded-pill bg-danger px-2 text-caption font-bold leading-5 text-white">
-                    Шинэ
-                  </span>
-                ) : null}
-              </span>
-              <span className="text-body tabular-nums text-ink">
-                {formatDate(survey.publishedAt ?? survey.createdAt)}
-              </span>
-              <span
-                className={cn(
-                  "min-w-0 py-2 ps-4 text-lead leading-snug text-ink transition-colors group-hover:text-primary sm:ps-12",
-                  survey.isRead ? "font-semibold" : "font-bold",
-                )}
-              >
-                {survey.title}
-              </span>
-              <ChevronRight
-                size={20}
-                aria-hidden="true"
-                className="shrink-0 text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
-              />
-              <span
-                className={cn(
-                  "col-span-2 justify-self-end text-caption italic sm:text-body",
-                  SURVEY_KIND_TEXT[survey.kind],
-                )}
-              >
-                {SURVEY_KIND_LABEL[survey.kind]}
-              </span>
-            </Link>
-          </li>
-        ))}
-      </ul>
+      {surveys.data && surveys.data.items.length > 0 ? (
+        <TableShell caption="Удирдлагын судалгаа" minWidth="min-w-[860px]">
+          <thead>
+            <tr>
+              <Th>Гарчиг</Th>
+              <Th>Бүлэг</Th>
+              <Th>Ангилал</Th>
+              <Th>Судалгаа авсан</Th>
+              <Th numeric>Хариулт</Th>
+              <Th numeric>Хувь</Th>
+              <Th numeric>Огноо</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {surveys.data.items.map((survey) => {
+              const percent =
+                survey.expectedCount > 0
+                  ? Math.round((survey.respondedCount / survey.expectedCount) * 100)
+                  : 0;
+              return (
+                <tr key={survey.id}>
+                  <Td>
+                    <span className="flex items-center gap-2">
+                      <Link
+                        href={`/surveys/administration/${survey.id}`}
+                        className={cn(
+                          "text-ink hover:text-primary hover:underline",
+                          survey.isRead ? "font-medium" : "font-bold",
+                        )}
+                      >
+                        {survey.title}
+                      </Link>
+                      {!survey.isRead ? (
+                        <span className="shrink-0 rounded-pill bg-danger px-2 text-caption font-bold leading-5 text-white">
+                          Шинэ
+                        </span>
+                      ) : null}
+                    </span>
+                  </Td>
+                  <Td className="text-muted">
+                    {survey.group?.name ?? (survey.groupId ? "—" : "Бүх бүлэг")}
+                  </Td>
+                  <Td className="text-muted">{SURVEY_CATEGORY_META[survey.category].label}</Td>
+                  <Td className="whitespace-nowrap text-muted">Цэцэрлэгийн удирдлага</Td>
+                  <Td numeric className="text-muted">
+                    {survey.respondedCount} / {survey.expectedCount}
+                  </Td>
+                  <Td numeric className="font-medium text-ink">
+                    {percent}%
+                  </Td>
+                  <Td numeric className="text-muted">
+                    {formatDate(survey.closedAt ?? survey.publishedAt ?? survey.createdAt)}
+                  </Td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </TableShell>
+      ) : null}
 
       {surveys.data ? (
         <Pagination page={page} totalPages={surveys.data.totalPages} onPage={setPage} />

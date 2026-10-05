@@ -20,12 +20,13 @@ import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { useDebounced } from "@/lib/use-debounced";
 import { EsisRosterImportButton } from "@/components/esis/esis-roster-import";
+import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/field";
 import { RowMenu } from "@/components/ui/menu";
 import { Pagination } from "@/components/ui/pagination";
-import { SearchField } from "@/components/ui/search-field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { Td, Th } from "@/components/ui/table";
 import type { z } from "zod";
@@ -63,6 +64,7 @@ export function AdminRoster() {
   const search = useDebounced(typed.trim());
   const [groupId, setGroupId] = useState("");
   const [sex, setSex] = useState<"" | "MALE" | "FEMALE">("");
+  const [esisState, setEsisState] = useState<"" | "LINKED" | "UNLINKED">("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(20);
 
@@ -81,10 +83,27 @@ export function AdminRoster() {
       sex: sex || undefined,
       sort: "name",
       order: "asc",
-      page,
-      pageSize,
+      page: esisState ? 1 : page,
+      pageSize: esisState ? 100 : pageSize,
+      esisState: esisState || undefined,
     }),
-    queryFn: () => get(`/children?${filterQuery}&page=${page}&pageSize=${pageSize}`, listSchema),
+    queryFn: () =>
+      get(
+        `/children?${filterQuery}&page=${esisState ? 1 : page}&pageSize=${esisState ? 100 : pageSize}`,
+        listSchema,
+      ),
+  });
+
+  /*
+   * The register lookup returns an ESIS row, not our child id. This one bounded
+   * local roster lets that result say whether the child is already registered
+   * here, using the same name + birth-date match as the ministry roster screen.
+   */
+  const localMatches = useQuery({
+    queryKey: qk.children({ esisRegisterMatch: true, page: 1, pageSize: 100 }),
+    queryFn: () => get("/children?page=1&pageSize=100&sort=name&order=asc", listSchema),
+    enabled: Boolean(primaryKindergartenId),
+    staleTime: 60_000,
   });
 
   const [discountsPulled, setDiscountsPulled] = useState(false);
@@ -114,7 +133,36 @@ export function AdminRoster() {
       setPage(1);
     };
 
-  const data = roster.data;
+  const esisFiltered =
+    roster.data?.items.filter((child) =>
+      esisState === "LINKED"
+        ? child.esisLinked === true
+        : esisState === "UNLINKED"
+          ? child.esisLinked === false
+          : true,
+    ) ?? [];
+  const data = roster.data
+    ? esisState
+      ? {
+          ...roster.data,
+          items: esisFiltered.slice((page - 1) * pageSize, page * pageSize),
+          total: esisFiltered.length,
+          totalPages: Math.max(1, Math.ceil(esisFiltered.length / pageSize)),
+        }
+      : roster.data
+    : undefined;
+
+  const childForEsisRow = (row: Record<string, string | null>) => {
+    const name = `${row.lastName ?? ""} ${row.firstName ?? ""}`.trim().toLocaleLowerCase("mn-MN");
+    const birthday = (row.dateOfBirth ?? "").slice(0, 10);
+    if (!name || !birthday) return null;
+    const matches = (localMatches.data?.items ?? []).filter(
+      (child) =>
+        `${child.lastName} ${child.firstName}`.trim().toLocaleLowerCase("mn-MN") === name &&
+        child.dateOfBirth.slice(0, 10) === birthday,
+    );
+    return matches.length === 1 ? matches[0]! : null;
+  };
 
   return (
     <div className="flex flex-col gap-3">
@@ -161,7 +209,39 @@ export function AdminRoster() {
         }
       />
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[180px_160px_200px_minmax(0,1fr)]">
+      <EsisDataPanel
+        resource="studentByRegister"
+        title="ESIS-ээс регистрээр хайх"
+        description="Регистрийн дугаараар ESIS-ээс хайж, манай бүртгэлтэй тулгана"
+        registerSearchCompact
+        compactSearchValue={typed}
+        onCompactSearchChange={resetting(setTyped)}
+        hasLocalRegisterMatch={(register) =>
+          (localMatches.data?.items ?? []).some(
+            (child) => child.nationalId?.replace(/\s/g, "").toUpperCase() === register,
+          )
+        }
+        linkField="firstName"
+        liveHref={(row) => {
+          const child = childForEsisRow(row);
+          return child ? `/children/${child.id}/general` : null;
+        }}
+        rowActions={(row) => {
+          const child = childForEsisRow(row);
+          return child ? (
+            <Badge tone="mint">Манай системд бүртгэлтэй</Badge>
+          ) : (
+            <span className="flex flex-wrap items-center justify-end gap-2">
+              <Badge tone="sun">Манай системд бүртгэлгүй</Badge>
+              <Button asChild size="sm">
+                <Link href="/children/new">Суралцагчаар бүртгэх</Link>
+              </Button>
+            </span>
+          );
+        }}
+      />
+
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[170px_150px_190px_190px]">
         <Select
           aria-label="Бүлэг"
           value={groupId}
@@ -188,6 +268,17 @@ export function AdminRoster() {
           Enabling it before then would filter nothing while claiming to.
         */}
         <Select
+          aria-label="ESIS төлөв"
+          value={esisState}
+          onChange={(event) =>
+            resetting(setEsisState)(event.target.value as "" | "LINKED" | "UNLINKED")
+          }
+        >
+          <option value="">Бүх ESIS төлөв</option>
+          <option value="LINKED">ESIS-тэй холбогдсон</option>
+          <option value="UNLINKED">ESIS-тэй холбоогүй</option>
+        </Select>
+        <Select
           aria-label="Хөнгөлөлт"
           value=""
           disabled
@@ -197,12 +288,6 @@ export function AdminRoster() {
           <option value="WITH">Хөнгөлөлттэй</option>
           <option value="WITHOUT">Хөнгөлөлтгүй</option>
         </Select>
-        <SearchField
-          label="Нэр эсвэл регистрээр хайх"
-          placeholder="Нэр эсвэл регистрээр хайх..."
-          value={typed}
-          onChange={resetting(setTyped)}
-        />
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-caption text-muted">

@@ -9,6 +9,7 @@ import {
   ChatList,
   ChatRoom,
   chatRoomDisplayName,
+  chatRoomsFor,
   type ChatChrome,
 } from "@/components/chat/chat-widget";
 import { Button } from "@/components/ui/button";
@@ -180,7 +181,7 @@ export default function ChatPage() {
         description="Таны харьяалагдах бүлэг болон ажилтны чатуудаас сонгоно уу."
       >
         <div className="overflow-hidden rounded-card border border-border">
-          {rooms.data?.map((room) => (
+          {chatRoomsFor(rooms.data, roles).map((room) => (
             <button
               key={room.key}
               type="button"

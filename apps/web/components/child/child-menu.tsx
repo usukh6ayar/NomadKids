@@ -13,7 +13,6 @@ import {
   Utensils,
   UtensilsCrossed,
 } from "lucide-react";
-import Image from "next/image";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { z } from "zod";
 import { menuDaySchema, MEAL_KIND_LABEL, type MealKind, type MenuDish } from "@kinder/contracts";
@@ -325,9 +324,6 @@ export function ChildMenu({
 
             {!isStaff && !hasAnyDish ? (
               <EmptyState
-                icon={
-                  <Image src="/background/mascot-boy-orange.webp" alt="" width={96} height={96} />
-                }
                 title="Цэс оруулаагүй байна"
                 description="Цэс оруулсны дараа энд харагдана."
               />

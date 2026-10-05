@@ -95,19 +95,17 @@ function todayIso(): string {
     .slice(0, 10);
 }
 
-/** Monday of the week `date` falls in, as `YYYY-MM-DD`. */
-function mondayOf(date: Date): string {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  // getUTCDay: Sunday is 0, so Sunday belongs to the week that began six days ago.
-  const shift = (d.getUTCDay() + 6) % 7;
-  d.setUTCDate(d.getUTCDate() - shift);
-  return d.toISOString().slice(0, 10);
-}
-
 function addDays(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00.000Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+/** Monday of the week containing a plain ISO calendar date. */
+function mondayOfIso(iso: string): string {
+  const date = new Date(`${iso}T00:00:00.000Z`);
+  const shift = (date.getUTCDay() + 6) % 7;
+  return addDays(iso, -shift);
 }
 
 /** The first and last day of the calendar month `date` falls in — for the
@@ -390,7 +388,16 @@ function WeeklyMenu() {
     A kitchen plans *next* week — the whole point of the Excel round trip — so a
     screen fixed to this one could not do the job the import exists for.
   */
-  const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
+  const [weekStart, setWeekStart] = useState(() => {
+    /*
+      On Sunday the current Monday-first week is already over for a weekday
+      kitchen plan. Show the week beginning tomorrow, while the widened fetch
+      below still keeps Өнөөдөр available in its own tab. Without this, a menu
+      imported for Mon–Fri looked absent in “7 хоног” for the whole Sunday.
+    */
+    const day = new Date(`${today}T00:00:00.000Z`).getUTCDay();
+    return day === 0 ? tomorrow : mondayOfIso(today);
+  });
 
   /** "Хүснэгтээр" or "Жагсаалтаар" — the client's two views, while editing. */
   const [view, setView] = useState<"table" | "list">("table");
@@ -455,7 +462,7 @@ function WeeklyMenu() {
        * but the food the cook just entered must be visible at once.
        */
       queryClient.setQueryData<z.infer<typeof weekSchema>>(
-        qk.weeklyMenu(kindergartenId ?? "", from, to),
+        qk.weeklyMenu(kindergartenId ?? "", fetchFrom, fetchTo),
         (current) => {
           if (!current) return current;
           const index = current.findIndex((day) => day.date.slice(0, 10) === date);
@@ -467,7 +474,7 @@ function WeeklyMenu() {
         },
       );
       void queryClient.invalidateQueries({
-        queryKey: qk.weeklyMenu(kindergartenId ?? "", from, to),
+        queryKey: qk.weeklyMenu(kindergartenId ?? "", fetchFrom, fetchTo),
       });
       if (closeQuickAdd) setQuickAddDate(null);
     },
@@ -531,9 +538,7 @@ function WeeklyMenu() {
             toolbar does, rather than a second one — one import, one preview.
           */
           onImport: () => {
-            setEditing(true);
-            setView("table");
-            setImporting(true);
+            openImporter();
           },
           onPhotoRemoved: (kind, date) =>
             rewrite(date, kind, (rows) =>
@@ -558,6 +563,12 @@ function WeeklyMenu() {
   const [selectedOffset, setSelectedOffset] = useState(() => weekdayOffset(today));
   /** Whether the Excel panel is open — it is a step, not a permanent block. */
   const [importing, setImporting] = useState(false);
+  const [importRequest, setImportRequest] = useState(0);
+
+  function openImporter() {
+    setImportRequest((current) => current + 1);
+    setImporting(true);
+  }
 
   // The whole Mon–Fri range for "week" — the strip needs every day's
   // fill-state at once, not just the one currently open — versus a single
@@ -572,15 +583,27 @@ function WeeklyMenu() {
   */
   const from = weekDates[0]!;
   const to = weekDates[6]!;
+  /*
+    `FamilyMenu` always offers Өнөөдөр and Маргааш. On Sunday, tomorrow belongs
+    to the next Monday-first week, so fetching only `from..to` made a real
+    Monday menu look absent. Keep the displayed week unchanged, but widen the
+    API range just enough to cover those two day tabs as well.
+  */
+  const fetchDates = [from, to, today, tomorrow].sort();
+  const fetchFrom = fetchDates[0]!;
+  const fetchTo = fetchDates.at(-1)!;
   // The one day actually rendered below: the strip's selection in "week",
   // otherwise whichever of "today"/"tomorrow" is active.
   const activeDate = weekDates[selectedOffset]!;
 
   const week = useQuery({
     enabled: Boolean(kindergartenId),
-    queryKey: qk.weeklyMenu(kindergartenId ?? "", from, to),
+    queryKey: qk.weeklyMenu(kindergartenId ?? "", fetchFrom, fetchTo),
     queryFn: () =>
-      get(`/kindergartens/${kindergartenId}/menu/with-warnings?from=${from}&to=${to}`, weekSchema),
+      get(
+        `/kindergartens/${kindergartenId}/menu/with-warnings?from=${fetchFrom}&to=${fetchTo}`,
+        weekSchema,
+      ),
   });
 
   const recipes = useQuery({
@@ -591,7 +614,8 @@ function WeeklyMenu() {
 
   const byDate = new Map((week.data ?? []).map((day) => [day.date.slice(0, 10), day]));
   /** Every warning the week raises, each carrying the day it falls on. */
-  const weekWarnings = weekDates.flatMap((date) =>
+  const warningDates = [...new Set([...weekDates, today, tomorrow])];
+  const weekWarnings = warningDates.flatMap((date) =>
     (byDate.get(date)?.warnings ?? []).map((warning) => ({ ...warning, date })),
   );
 
@@ -873,7 +897,7 @@ function WeeklyMenu() {
                   variant="secondary"
                   size="sm"
                   className="border-mint bg-mint/30 text-mint-ink hover:bg-mint/50"
-                  onClick={() => setImporting((current) => !current)}
+                  onClick={openImporter}
                   aria-expanded={importing}
                 >
                   <FileSpreadsheet size={16} aria-hidden="true" />
@@ -929,7 +953,7 @@ function WeeklyMenu() {
                 variant="secondary"
                 size="sm"
                 className="border-mint bg-mint/30 text-mint-ink hover:bg-mint/50"
-                onClick={() => setImporting((current) => !current)}
+                onClick={openImporter}
                 aria-expanded={importing}
               >
                 <FileSpreadsheet size={16} aria-hidden="true" />
@@ -950,8 +974,26 @@ function WeeklyMenu() {
         </div>
       ) : null}
 
-      {kindergartenId && canEdit && editing && importing ? (
-        <MenuExcelImport kindergartenId={kindergartenId} />
+      {kindergartenId && canEdit && importing ? (
+        <MenuExcelImport
+          key={importRequest}
+          kindergartenId={kindergartenId}
+          autoOpen
+          onClose={() => setImporting(false)}
+          onImported={(firstDate) => {
+            /*
+              A kitchen commonly imports next week's plan. Keeping the page on
+              this week made a successful import look lost, even though the
+              rows had been committed. Move the single week picker to the
+              first imported date and close the completed import step.
+            */
+            setWeekStart(mondayOfIso(firstDate));
+            setSelectedOffset(weekdayOffset(firstDate));
+            setOpenDay(null);
+            setView("table");
+            setImporting(false);
+          }}
+        />
       ) : null}
 
       {week.isLoading ? <LoadingState rows={1} /> : null}

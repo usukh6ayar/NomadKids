@@ -91,6 +91,10 @@ export function ChildEnrollmentArchive({
 
   const { child, current, history } = archive.data!;
   const effectiveDateOfBirth = child.dateOfBirth ?? dateOfBirth;
+  // Families need one clear contact: the group's lead teacher. Assistants
+  // remain visible to staff on the same screen for internal coordination.
+  const visibleCurrentTeachers =
+    current?.teachers.filter((teacher) => isStaff || teacher.role === "LEAD") ?? [];
 
   /*
     ★ The same shape as the other tabs — 2026-10-01, at the client's request:
@@ -112,14 +116,14 @@ export function ChildEnrollmentArchive({
         )}
       </section>
 
-      {current && current.teachers.length > 0 ? (
+      {current && visibleCurrentTeachers.length > 0 ? (
         <section aria-labelledby="current-teachers-heading" className="flex flex-col gap-2">
           <SectionTitle id="current-teachers-heading" title="Багш" />
           <Table
             caption="Багшийн мэдээлэл"
             columns={["Нэр", "Үүрэг", "Мэргэжил", "Төгссөн сургууль", "Утас", "И-мэйл"]}
           >
-            {current.teachers.map((teacher) => (
+            {visibleCurrentTeachers.map((teacher) => (
               <tr key={teacher.id} className="border-t border-border-soft">
                 <td className="px-3 py-2 font-medium text-ink">{fullName(teacher)}</td>
                 <td className="whitespace-nowrap px-3 py-2">
@@ -170,6 +174,9 @@ export function ChildEnrollmentArchive({
                 effectiveDateOfBirth && entry.startedOn
                   ? Math.floor(ageInMonths(effectiveDateOfBirth, entry.startedOn) / 12)
                   : null;
+              const visibleTeachers = entry.teachers.filter(
+                (teacher) => isStaff || teacher.role === "LEAD",
+              );
               return (
                 <tr key={entry.id} className="border-t border-border-soft">
                   <td className="whitespace-nowrap px-3 py-2 font-medium text-ink">
@@ -187,8 +194,8 @@ export function ChildEnrollmentArchive({
                     )}
                   </td>
                   <td className="px-3 py-2">
-                    {entry.teachers.length > 0
-                      ? entry.teachers.map((teacher) => fullName(teacher)).join(", ")
+                    {visibleTeachers.length > 0
+                      ? visibleTeachers.map((teacher) => fullName(teacher)).join(", ")
                       : "—"}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 tabular-nums text-muted">

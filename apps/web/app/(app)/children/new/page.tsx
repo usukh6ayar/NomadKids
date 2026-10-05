@@ -392,8 +392,7 @@ function EsisStudentOutput({
               {template.row.lastName} {template.row.firstName}
             </p>
             <p className="mt-0.5 text-caption text-muted">
-              personId {template.row.personId} · studentGroupId {template.row.studentGroupId} ·
-              шинэчилсэн {template.syncedAt.slice(0, 16).replace("T", " ")}
+              Шинэчилсэн {template.syncedAt.slice(0, 16).replace("T", " ")}
             </p>
           </div>
         </div>

@@ -1,4 +1,5 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   renderWithProviders,
@@ -119,11 +120,26 @@ describe("who a notice may be addressed to", () => {
     expect(screen.getByText(/Тодорхой хүүхэд сонгох/)).toBeInTheDocument();
   });
 
-  it("moves a teacher off the everyone default without being asked", async () => {
+  /**
+   * ★ Client, 2026-10-04: "багш шинэ мэдээ оруулахад өөрийн бүлэг шууд
+   * сонгогдоно". `/groups` answers a teacher with their own groups only.
+   */
+  it("starts a teacher on their own group, ticked", async () => {
     const { read } = Picker({ roles: ["TEACHER"] });
 
-    await screen.findByLabelText("Дэлбээ бүлэг");
-    // `null` is "everyone"; the picker corrects itself to the named shape.
+    const own = await screen.findByLabelText("Дэлбээ бүлэг");
+    await waitFor(() => expect(own).toBeChecked());
+    expect(read()).toEqual({ groupIds: [GROUPS.items[0]!.id], childIds: [] });
+  });
+
+  it("leaves the group unticked once the teacher unticks it", async () => {
+    const { read } = Picker({ roles: ["TEACHER"] });
+
+    const own = await screen.findByLabelText("Дэлбээ бүлэг");
+    await waitFor(() => expect(own).toBeChecked());
+    await userEvent.click(own);
+
+    await waitFor(() => expect(own).not.toBeChecked());
     expect(read()).toEqual({ groupIds: [], childIds: [] });
   });
 

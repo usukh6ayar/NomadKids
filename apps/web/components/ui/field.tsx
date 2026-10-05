@@ -297,9 +297,9 @@ function SelectItem({ option }: { option: OptionEl }) {
       value={toRadixValue(valueOf(option))}
       disabled={option.props.disabled}
       className={cn(
-        "flex min-h-[44px] cursor-pointer select-none items-center justify-between gap-2",
-        "rounded-control px-3 py-2 text-body text-ink outline-none",
-        "data-[highlighted]:bg-canvas data-[state=checked]:font-medium",
+        "flex min-h-[48px] cursor-pointer select-none items-center justify-between gap-3 sm:min-h-[44px]",
+        "rounded-control px-3.5 py-2 text-body text-ink outline-none",
+        "data-[highlighted]:bg-primary-soft/50 data-[state=checked]:bg-primary-soft data-[state=checked]:font-semibold data-[state=checked]:text-primary",
         "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
       )}
     >
@@ -350,6 +350,7 @@ export function Select({
         aria-invalid={invalid || undefined}
         aria-label={ariaLabel}
         aria-describedby={ariaDescribedBy}
+        data-ui="select-trigger"
         className={cn(
           controlBase,
           "flex h-[48px] items-center justify-between gap-2 outline-none",
@@ -370,21 +371,27 @@ export function Select({
         <SelectPrimitive.Content
           position="popper"
           sideOffset={6}
+          collisionPadding={12}
+          data-ui="select-content"
           className={cn(
-            "z-[100] overflow-hidden rounded-row border border-border bg-surface py-1",
+            "z-[100] overflow-hidden rounded-card border border-border bg-surface py-1.5",
             // ★ Was a hand-rolled `shadow-[0_8px_28px_…]` — the exact thing
             // globals.css argues against, since it put a fourth elevation in
             // the product that no token knew about. `shadow-lg` is the popover
             // step and every raised surface now spells one of three names.
             "shadow-lg",
-            "w-[var(--radix-select-trigger-width)] max-h-[var(--radix-select-content-available-height)]",
+            "min-w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-1.5rem)]",
+            "max-h-[min(var(--radix-select-content-available-height),420px)]",
+            "data-[state=open]:animate-in data-[state=closed]:animate-out",
+            "data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0",
+            "data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95",
           )}
         >
           <SelectPrimitive.ScrollUpButton className="flex h-6 items-center justify-center text-muted">
             <ChevronDown size={14} className="rotate-180" aria-hidden />
           </SelectPrimitive.ScrollUpButton>
 
-          <SelectPrimitive.Viewport className="p-1">
+          <SelectPrimitive.Viewport className="p-1 sm:min-w-[var(--radix-select-trigger-width)]">
             {entries.map((entry, index) =>
               entry.kind === "option" ? (
                 <SelectItem key={keyFor(entry.option, index)} option={entry.option} />

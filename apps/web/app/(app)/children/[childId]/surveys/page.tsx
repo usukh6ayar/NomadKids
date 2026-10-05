@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
-import { Search, SlidersHorizontal } from "lucide-react";
+import { Search } from "lucide-react";
 import { z } from "zod";
 import { SURVEY_KIND_LABEL, surveySchema, type SurveyKind } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
@@ -11,7 +11,7 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { PageHeader } from "@/components/shell/app-shell";
 import { Button } from "@/components/ui/button";
-import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
+import { FilterButton, FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
 import { Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { cn } from "@/lib/utils";
@@ -146,24 +146,12 @@ export default function ChildSurveysPage() {
         <Search aria-hidden="true" />
       </Button>
 
-      <Button
-        type="button"
-        variant={filtersOpen ? "primary" : "secondary"}
-        size="icon"
-        aria-expanded={filtersOpen}
-        aria-controls="survey-filters"
-        aria-label="Шүүлтүүр"
-        className="relative shrink-0"
+      <FilterButton
+        expanded={filtersOpen}
+        controls="survey-filters"
+        count={activeFilters}
         onClick={() => setFiltersOpen(!filtersOpen)}
-      >
-        <SlidersHorizontal aria-hidden="true" />
-        {activeFilters > 0 ? (
-          <span className="absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-pill bg-primary px-1 text-compact font-bold text-white">
-            {activeFilters}
-            <span className="sr-only">шүүлтүүр идэвхтэй</span>
-          </span>
-        ) : null}
-      </Button>
+      />
     </div>
   );
 
