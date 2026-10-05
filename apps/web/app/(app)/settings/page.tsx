@@ -30,6 +30,7 @@ import { fullName, groupLabel } from "@/lib/format";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { PhotoBadgeButton } from "@/components/media/photo-badge-button";
+import { MyStaffRecords } from "@/components/staff/my-staff-records";
 import { ChildPhotoButton } from "@/components/child/child-photo-button";
 import {
   MOBILE_PHONE,
@@ -49,17 +50,23 @@ const profileSchema = userProfileSchema.extend({
  * signed-in person's account controls.
  */
 export default function SettingsPage() {
+  const { hasRole } = useSession();
   /*
     ★ One column — client, 2026-10-05: the photo and what has been filled in,
     the password, and «Мэдээлэл засах» with «Esis татах». It replaces the
     2026-09-27 tabs and side cards. Sign-out is the shell menu's, so it is not
     repeated here.
+
+    ★★ «Мэргэшлийн зэрэг, гэрчилгээ» stays for staff (client, 2026-09-22). It
+    lived in the old «Мэргэжлийн мэдээлэл» tab and went missing with the tabs
+    on 2026-10-05; `MyStaffRecords` draws nothing when the file is empty.
   */
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <PageHeader title="Хувийн тохиргоо" lede="Хувийн мэдээлэл болон нэвтрэх эрхээ удирдана." />
       <ProfileCard />
       <ChildPhotosCard />
+      {hasRole("TEACHER") || hasRole("ADMIN") ? <MyStaffRecords /> : null}
     </div>
   );
 }
