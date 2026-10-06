@@ -16,7 +16,6 @@ import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { useDebounced } from "@/lib/use-debounced";
-import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { ArchiveButton } from "@/components/ui/archive-button";
@@ -30,6 +29,7 @@ import { Pagination, ResultCount } from "@/components/ui/pagination";
 import { useToast } from "@/components/ui/toast";
 import { SearchField } from "@/components/ui/search-field";
 import { capitalize } from "@/lib/format";
+import { EsisIngredientImport } from "@/components/kitchen/esis-ingredient-import";
 
 const ingredientsSchema = paginated(ingredientSchema);
 
@@ -110,7 +110,7 @@ function Ingredients() {
                   onChange={setQuery}
                 />
               </div>
-              <Badge tone="peach">ESIS · NOT ENABLED</Badge>
+              <EsisIngredientImport kindergartenId={kindergartenId} />
               <Button size="sm" onClick={() => setCreating(true)}>
                 <Plus size={18} />
                 Орц нэмэх
@@ -173,29 +173,10 @@ function Ingredients() {
       ) : null}
 
       {/*
-        ★ The ministry's own raw-material reference, under the kindergarten's
-        store card — 2026-09-09, at the client's request ("тогоочид хамаарах
-        бусад API-уудыг дууд ашигла").
-
-        The group list first and the materials under it, because that is the
-        order they nest in: `materialGroup` names the бүлэг each material in
-        `material` belongs to. A cook checking what a material is called in
-        ESIS is doing it while looking at their own list of the same thing,
-        which is the argument for the panel being on this screen rather than
-        behind an integrations menu.
+        ★ No ESIS reference panels here — client, 2026-10-06: no ESIS field is
+        to show on the kitchen screens. Cards are written by hand; an
+        «ESIS-ээс сонгох» prefill waits until ESIS answers with real rows.
       */}
-      <EsisDataPanel
-        resource="foodMaterialGroups"
-        title="Түүхий эдийн бүлэг"
-        description="ESIS-ийн түүхий эдийн ангиллын лавлах"
-        autoRead
-      />
-      <EsisDataPanel
-        resource="foodMaterials"
-        title="Түүхий эд"
-        description="ESIS-ийн түүхий эдийн лавлах — хэмжих нэгж, бүлэг, илчлэг"
-        autoRead
-      />
 
       {creating && kindergartenId ? (
         <IngredientFormDialog
