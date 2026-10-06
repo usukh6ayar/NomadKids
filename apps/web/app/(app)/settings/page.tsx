@@ -6,7 +6,9 @@ import Link from "next/link";
 import { Database, IdCard, KeyRound, Pencil, UsersRound } from "lucide-react";
 import { z } from "zod";
 import {
+  enrollmentArchiveSchema,
   esisMyProfileSchema,
+  paginated,
   parentDashboardSchema,
   PASSWORD_RULES,
   phoneVerificationStartSchema,
@@ -66,6 +68,7 @@ export default function SettingsPage() {
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
       <PageHeader title="Хувийн тохиргоо" lede="Хувийн мэдээлэл болон нэвтрэх эрхээ удирдана." />
       <ProfileCard />
+      <CoTeachersCard />
       <ChildPhotosCard />
       {hasRole("TEACHER") || hasRole("ADMIN") ? <MyStaffRecords /> : null}
     </div>
@@ -426,6 +429,94 @@ function EditProfileDialog({
  * endpoint, and a teacher opening this page has no children of their own to
  * list here.
  */
+/** The family's words for each role, as on «Багш нар» (`enrollment-archive.tsx`). */
+const CO_TEACHER_ROLE: Record<string, string> = {
+  LEAD: "Бүлгийн багш",
+  ASSISTANT: "Багшийн туслах",
+};
+
+/**
+ * «Багшийн туслах» under a teacher's own card — client, 2026-10-06. The other
+ * teacher(s) of their group, read-only: each fills their own profile in their
+ * own settings, and this shows what the families see.
+ *
+ * ★ Read from a child's enrollment archive, which carries the group's current
+ * teachers with their profile — `GET /groups` names them and nothing more. One
+ * child of the group is enough; a group with no children shows nothing, since
+ * there is then no family to show anything to either.
+ */
+function CoTeachersCard() {
+  const { hasRole, session } = useSession();
+  const isTeacher = hasRole("TEACHER") && !hasRole("ADMIN");
+  const myId = session?.user.id;
+
+  const groups = useQuery({
+    queryKey: ["settings", "co-teachers", "groups"],
+    queryFn: () =>
+      get("/groups?page=1&pageSize=20", paginated(z.object({ id: z.string(), name: z.string() }))),
+    enabled: isTeacher,
+    staleTime: 5 * 60_000,
+  });
+  const groupId = groups.data?.items[0]?.id;
+
+  const firstChild = useQuery({
+    queryKey: ["settings", "co-teachers", "child", groupId ?? ""],
+    queryFn: () =>
+      get(
+        `/children?groupId=${groupId}&page=1&pageSize=1`,
+        paginated(z.object({ id: z.string() })),
+      ),
+    enabled: isTeacher && Boolean(groupId),
+    staleTime: 5 * 60_000,
+  });
+  const childId = firstChild.data?.items[0]?.id;
+
+  const archive = useQuery({
+    queryKey: qk.enrollmentArchive(childId ?? ""),
+    queryFn: () => get(`/children/${childId}/enrollment-archive`, enrollmentArchiveSchema),
+    enabled: isTeacher && Boolean(childId),
+    staleTime: 5 * 60_000,
+  });
+
+  const others = (archive.data?.current?.teachers ?? [])
+    .filter((teacher) => teacher.id !== myId)
+    .sort((a, b) => (a.role === b.role ? 0 : a.role === "ASSISTANT" ? -1 : 1));
+  if (!isTeacher || others.length === 0) return null;
+
+  return (
+    <section aria-label="Хамт ажилладаг багш">
+      <Card pad="roomy" className="flex flex-col gap-4">
+        {others.map((teacher) => (
+          <div key={teacher.id} className="flex flex-col gap-2">
+            <div className="flex items-center gap-3">
+              <ChildAvatar child={teacher} size={48} />
+              <div className="min-w-0">
+                <p className="text-caption font-medium text-primary">
+                  {CO_TEACHER_ROLE[teacher.role] ?? "Багш"}
+                </p>
+                <p className="truncate text-body font-semibold text-ink">{fullName(teacher)}</p>
+              </div>
+            </div>
+            <dl className="grid gap-x-6 gap-y-2 border-t border-border-soft pt-3 sm:grid-cols-2">
+              {[
+                ["Мэргэжил", teacher.specialization],
+                ["Төгссөн сургууль", teacher.education],
+                ["Утас", teacher.phone],
+                ["И-мэйл", teacher.email],
+              ].map(([label, value]) => (
+                <div key={label} className="min-w-0">
+                  <dt className="text-caption text-muted">{label}</dt>
+                  <dd className="truncate text-body text-ink">{value?.trim() || "—"}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ))}
+      </Card>
+    </section>
+  );
+}
+
 function ChildPhotosCard() {
   const { hasRole } = useSession();
   const isGuardian = hasRole("PARENT");

@@ -293,3 +293,83 @@ describe("an administrator's picture", () => {
     expect(await screen.findByLabelText("Профайл зураг солих")).toBeInTheDocument();
   });
 });
+
+/**
+ * «Багшийн туслах» under the teacher's own card — client, 2026-10-06. Read
+ * from a child's archive, which carries the group's teachers with a profile.
+ */
+describe("the co-teacher card", () => {
+  const GROUP = "55555555-5555-4555-8555-555555555555";
+  const ASSISTANT = {
+    id: "66666666-6666-4666-8666-666666666666",
+    lastName: "Дорж",
+    firstName: "Сараа",
+    role: "ASSISTANT",
+    specialization: "Багшийн туслах",
+    education: "МУБИС",
+    phone: "99112233",
+    email: null,
+    photoMediaFileId: null,
+  };
+
+  function stubTeacher(teachers: unknown[]) {
+    return stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/me/profile", body: PROFILE },
+      {
+        path: "/groups",
+        body: {
+          items: [{ id: GROUP, name: "Дэлбээ" }],
+          page: 1,
+          pageSize: 20,
+          total: 1,
+          totalPages: 1,
+        },
+      },
+      // Before `/children?…`: the stubs match by prefix.
+      {
+        path: `/children/${CHILD_ID}/enrollment-archive`,
+        body: {
+          child: { id: CHILD_ID, firstName: "Намуун", lastName: "Дорж" },
+          current: {
+            id: "77777777-7777-4777-8777-777777777777",
+            startedOn: "2026-09-01",
+            schoolYear: null,
+            kindergarten: {
+              id: KINDERGARTEN_ID,
+              name: "Нархан",
+              phone: null,
+              email: null,
+              description: null,
+            },
+            group: { id: GROUP, name: "Дэлбээ", schedule: null, rules: null },
+            teachers,
+          },
+          history: [],
+        },
+      },
+      {
+        path: "/children",
+        body: { items: [{ id: CHILD_ID }], page: 1, pageSize: 1, total: 1, totalPages: 1 },
+      },
+    ]);
+  }
+
+  it("shows the group's assistant, with what they filled in", async () => {
+    stubTeacher([ASSISTANT]);
+    renderWithProviders(<SettingsPage />);
+
+    const card = (await screen.findByText("Багшийн туслах", { selector: "p" })).closest("section")!;
+    expect(within(card).getByText("Дорж Сараа")).toBeInTheDocument();
+    expect(within(card).getByText("99112233")).toBeInTheDocument();
+    expect(within(card).getByText("МУБИС")).toBeInTheDocument();
+  });
+
+  it("draws nothing for a teacher who works alone", async () => {
+    stubTeacher([]);
+    renderWithProviders(<SettingsPage />);
+
+    await screen.findByText("Дорж Сараа", { selector: "p" });
+    expect(screen.queryByRole("region", { name: "Хамт ажилладаг багш" })).toBeNull();
+  });
+});
