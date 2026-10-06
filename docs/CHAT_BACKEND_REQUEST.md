@@ -1,5 +1,12 @@
 # Chat — backend request (2026-10-04)
 
+> **Done 2026-10-06**, both items. §1–4: `childScopeFor` in
+> `authz/chat-access.ts` narrows a private room's children to the reader's
+> groups. §5: `loadDirectPeers` no longer pairs guardians; an old key answers
+> 404. The lead-teacher rule from #176 also gained a fallback: a group with no
+> active lead pairs its families with whoever teaches it. Tests in
+> `apps/api/test/chat.test.ts`, «private rooms name a parent by their child».
+
 Two items. Neither needs a frontend change.
 
 | §   | What                                                                  | Kind             |

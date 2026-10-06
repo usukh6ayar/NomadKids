@@ -830,20 +830,81 @@ describe("private rooms name a parent by their child", () => {
     expect(direct.name).not.toContain(a.parentUser.firstName);
   });
 
-  it("lets two parents of one group write to each other, each named by their child", async () => {
+  /*
+   * ★ Reversed 2026-10-04 (client: "дангаар эцэг эхтэй хоорондоо
+   * харилцахгүй"). Two families of one group share the «Эцэг эхчүүд» room and
+   * nothing private; the key that used to work now answers 404 both ways.
+   */
+  it("gives two parents of one group no private room with each other", async () => {
     const { secondParent, second } = await families();
     const room = directRoom(a.parentUser.id, secondParent.id);
 
-    const mine = await authed(request(server()).get("/v1/chat/rooms"), parentA);
-    const theirs = await authed(request(server()).get("/v1/chat/rooms"), second);
-    expect(mine.body.find((r: { key: string }) => r.key === room)?.name).toBe("Д.Номингийн ээж");
-    expect(theirs.body.find((r: { key: string }) => r.key === room)?.name).toBe("Г.Батбаярын ээж");
+    for (const session of [parentA, second]) {
+      const rooms = await authed(request(server()).get("/v1/chat/rooms"), session);
+      expect(rooms.body.map((r: { key: string }) => r.key)).not.toContain(room);
+      expect(rooms.body.map((r: { key: string }) => r.key)).toContain(parentsRoom(a));
 
-    const sent = await authed(
-      request(server()).post(`/v1/chat/rooms/${room}/messages`),
-      second,
-    ).send({ body: "сайн уу" });
-    expect(sent.status).toBe(201);
+      await authed(request(server()).get(`/v1/chat/rooms/${room}/messages`), session).expect(404);
+      await authed(request(server()).post(`/v1/chat/rooms/${room}/messages`), session)
+        .send({ body: "сайн уу" })
+        .expect(404);
+    }
+
+    // The teacher is still theirs to write to.
+    const mine = await authed(request(server()).get("/v1/chat/rooms"), parentA);
+    expect(mine.body.map((r: { key: string }) => r.key)).toContain(
+      directRoom(a.parentUser.id, a.teacherUser.id),
+    );
+  });
+
+  /*
+   * ★ `docs/CHAT_BACKEND_REQUEST.md` §1. A private room has no group, and the
+   * children on a guardian's message used to be every child they have in the
+   * kindergarten — so the teacher learned the name of a sibling in a group
+   * they do not teach.
+   */
+  it("names only the reader's own pupil on a guardian's private message", async () => {
+    const otherGroup = await createGroup(a.kindergarten.id, a.schoolYear.id, "Нарс");
+    const sibling = await createChild(a.kindergarten.id, {
+      lastName: "Ганболд",
+      firstName: "Сараа",
+    });
+    await enrollChild(a.kindergarten.id, sibling.id, otherGroup.id, a.schoolYear.id);
+    await linkGuardian(a.kindergarten.id, sibling.id, a.parentUser.id);
+    const room = directRoom(a.parentUser.id, a.teacherUser.id);
+
+    await authed(request(server()).post(`/v1/chat/rooms/${room}/messages`), parentA)
+      .send({ body: "Сайн байна уу" })
+      .expect(201);
+
+    const res = await authed(request(server()).get(`/v1/chat/rooms/${room}/messages`), teacherA);
+    expect(res.status).toBe(200);
+    expect(res.body.items[0].author.children).toEqual([
+      expect.objectContaining({ id: a.child.id }),
+    ]);
+    expect(res.body.items[0].author.displayName).toBe("Г.Батбаярын ээж");
+    expect(JSON.stringify(res.body)).not.toContain("Сараа");
+  });
+
+  /*
+   * ★ The private room is the lead teacher's (#176), but a group with no lead
+   * at all falls back to whoever teaches it — production's only staffed group
+   * had one assistant and no lead on 2026-10-06.
+   */
+  it("gives the family a private room with the assistant when the group has no lead", async () => {
+    await db.groupTeacher.updateMany({
+      where: { groupId: a.group.id },
+      data: { role: "ASSISTANT" },
+    });
+    const room = directRoom(a.parentUser.id, a.teacherUser.id);
+
+    for (const session of [parentA, teacherA]) {
+      const rooms = await authed(request(server()).get("/v1/chat/rooms"), session);
+      expect(rooms.body.map((r: { key: string }) => r.key)).toContain(room);
+    }
+    await authed(request(server()).post(`/v1/chat/rooms/${room}/messages`), parentA)
+      .send({ body: "Сайн байна уу" })
+      .expect(201);
   });
 
   it("gives a parent of another group 404 on a parent-to-parent room", async () => {

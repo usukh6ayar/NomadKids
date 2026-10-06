@@ -27,9 +27,11 @@ const nutritionValue = z
   .optional();
 
 export const ingredientUnitSchema = z.enum(["GRAM", "MILLILITER", "PIECE"]);
+/** Every `MealKind`. `SNACK` («Шөл») was missing, so a soup's card failed on save. */
 export const mealKindSchema = z.enum([
   "BREAKFAST",
   "MID_MORNING_SNACK",
+  "SNACK",
   "LUNCH",
   "AFTERNOON_SNACK",
   "EXTRA",

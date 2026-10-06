@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import type { Actor } from "./actor";
 import { AuthzRepository } from "./authz.repository";
-import { resolveRoom, roomsFor, type Room, type RoomKey } from "./chat-access";
+import { childScopeFor, resolveRoom, roomsFor, type Room, type RoomKey } from "./chat-access";
 
 /**
  * Authorization for chat rooms — the third of the three access services,
@@ -43,5 +43,18 @@ export class ChatAccessService {
     const room = resolveRoom(actor, facts, key, names);
     if (!room) throw new NotFoundException();
     return room;
+  }
+
+  /**
+   * `assertMember`, plus the groups whose children this reader may see named
+   * on a guardian's message there — `childScopeFor`. One load of the facts
+   * for both, since a history page asks both questions.
+   */
+  async assertReader(actor: Actor, key: RoomKey): Promise<{ room: Room; childGroupIds: string[] }> {
+    const facts = await this.repo.loadChatAccessFacts(actor);
+    const names = await this.repo.loadKindergartenNames(actor);
+    const room = resolveRoom(actor, facts, key, names);
+    if (!room) throw new NotFoundException();
+    return { room, childGroupIds: childScopeFor(facts, room) };
   }
 }
