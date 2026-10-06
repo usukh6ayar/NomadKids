@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   CircleAlert,
   Info,
@@ -19,6 +20,7 @@ import {
 import { z } from "zod";
 import {
   adminUserSchema,
+  esisWriteRequestsPageSchema,
   groupListItemSchema,
   groupWithTeachersSchema,
   paginated,
@@ -30,6 +32,7 @@ import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
+import { useEsisLinked } from "@/lib/use-esis-linked";
 import { cn } from "@/lib/utils";
 import { fullName, groupLabel, shortName } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -48,6 +51,9 @@ import { RequireRole } from "@/components/shell/require-role";
 const groupsSchema = paginated(groupListItemSchema);
 const usersSchema = paginated(adminUserSchema);
 const yearsSchema = z.array(schoolYearSchema);
+
+/** The year picker's last row, which opens «Хичээлийн жил» rather than filtering. */
+const NEW_YEAR = "__new-school-year";
 
 /** `POST /kindergartens/:id/esis/sync-groups` — years, then groups, from ESIS. */
 const syncResultSchema = z.object({
@@ -151,6 +157,38 @@ function AdminGroups() {
     enabled: Boolean(primaryKindergartenId),
   });
   const currentYear = (years.data ?? []).find((y) => y.isCurrent) ?? years.data?.[0];
+
+  /*
+    ★ «+ Шинэ хичээлийн жил» at the foot of the year picker — client,
+    2026-10-06. «Хичээлийн жил» left the menu on 2026-09-28 because «ESIS
+    татах» brings the year, which leaves a kindergarten without ESIS no way
+    to make one once the setup guide is dismissed. So: always offered without
+    ESIS; with ESIS only while there is no year at all, as the way out when
+    the ministry has none to send. Inside the picker, so it takes no room.
+  */
+  const router = useRouter();
+  const esisLinked = useEsisLinked();
+  /*
+    ★ «ЭСИС рүү илгээлт» only once something has been sent — client,
+    2026-10-06. Empty, it was a heading over "nothing yet" on every visit, and
+    a kindergarten without ESIS never has anything to send. «ЭСИС-д бүртгүүлэх»
+    on a group is still where the first one starts. Same key and schema as
+    `EsisWriteQueue`, so the list below reads this from cache.
+  */
+  const esisWrites = useQuery({
+    queryKey: ["admin", "esis", primaryKindergartenId ?? "", "group-writes", 1],
+    queryFn: ({ signal }) =>
+      get(
+        `/kindergartens/${primaryKindergartenId}/esis/group-writes?page=1&pageSize=20`,
+        esisWriteRequestsPageSchema,
+        signal,
+      ),
+    enabled: Boolean(primaryKindergartenId && esisLinked),
+  });
+  const showEsisWrites = esisLinked === true && (esisWrites.data?.items.length ?? 0) > 0;
+
+  const offerNewYear =
+    years.isSuccess && esisLinked !== undefined && (!esisLinked || years.data.length === 0);
   // The current school year until the director picks another; "" is all years.
   const selectedYear = yearId ?? currentYear?.id ?? "";
 
@@ -215,20 +253,23 @@ function AdminGroups() {
         title="Анги, бүлэг"
         actions={
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={sync.isPending || !primaryKindergartenId}
-              aria-busy={sync.isPending}
-              onClick={() => sync.mutate()}
-            >
-              {sync.isPending ? (
-                <Loader2 size={16} className="animate-spin" aria-hidden />
-              ) : (
-                <RefreshCw size={16} aria-hidden />
-              )}
-              {sync.isPending ? "Татаж байна…" : "ESIS татах"}
-            </Button>
+            {/* Not without ESIS: there is nothing to pull, and the call fails. */}
+            {esisLinked === false ? null : (
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={sync.isPending || !primaryKindergartenId}
+                aria-busy={sync.isPending}
+                onClick={() => sync.mutate()}
+              >
+                {sync.isPending ? (
+                  <Loader2 size={16} className="animate-spin" aria-hidden />
+                ) : (
+                  <RefreshCw size={16} aria-hidden />
+                )}
+                {sync.isPending ? "Татаж байна…" : "ESIS татах"}
+              </Button>
+            )}
             <Button size="sm" onClick={() => setDialog({ kind: "create" })}>
               <Plus size={18} aria-hidden />
               Бүлэг нэмэх
@@ -236,6 +277,29 @@ function AdminGroups() {
           </div>
         }
       />
+
+      {/*
+        ★ The first thing a kindergarten without ESIS has to do, in plain sight
+        — client, 2026-10-06. Only while there is no year at all: nothing on
+        this screen works without one, and once it exists the line goes. Later
+        years come from the picker's «+ Шинэ хичээлийн жил».
+      */}
+      {esisLinked === false && years.isSuccess && years.data.length === 0 ? (
+        <div
+          role="status"
+          className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-card border border-sun-ink/20 bg-sun px-4 py-3"
+        >
+          <p className="text-body text-sun-ink">
+            Хичээлийн жил үүсгээгүй байна. Бүлэг нэмэхийн өмнө эхлээд жилээ үүсгэнэ үү.
+          </p>
+          <Button asChild size="sm">
+            <Link href="/admin/school-years">
+              <Plus size={18} aria-hidden />
+              Жил нэмэх
+            </Link>
+          </Button>
+        </div>
+      ) : null}
 
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[200px_170px_minmax(0,1fr)]">
         <Select
@@ -253,7 +317,13 @@ function AdminGroups() {
         <Select
           aria-label="Хичээлийн жил"
           value={selectedYear}
-          onChange={(event) => resetting(setYearId)(event.target.value)}
+          onChange={(event) => {
+            if (event.target.value === NEW_YEAR) {
+              router.push("/admin/school-years");
+              return;
+            }
+            resetting(setYearId)(event.target.value);
+          }}
         >
           <option value="">Бүх хичээлийн жил</option>
           {(years.data ?? []).map((y) => (
@@ -261,6 +331,7 @@ function AdminGroups() {
               {y.name}
             </option>
           ))}
+          {offerNewYear ? <option value={NEW_YEAR}>+ Шинэ хичээлийн жил</option> : null}
         </Select>
         <SearchField
           label="Бүлэг эсвэл багш хайх"
@@ -424,7 +495,7 @@ function AdminGroups() {
         teachers, «ЭСИС-д бүртгүүлэх»), so the queue that shows what was sent
         and what ESIS answered sits under the groups it is about.
       */}
-      {primaryKindergartenId ? (
+      {primaryKindergartenId && showEsisWrites ? (
         <section aria-labelledby="esis-writes-heading" className="mt-4 flex flex-col gap-2">
           <div>
             <h2 id="esis-writes-heading" className="text-title font-semibold text-ink">
@@ -827,7 +898,11 @@ function GroupFormDialog({
 
           {!editing && !schoolYearId ? (
             <p className="rounded-control bg-sun px-3 py-2 text-body text-sun-ink">
-              Хичээлийн жил үүсгээгүй байна. «Хичээлийн жил» хэсгээс эхэлнэ үү.
+              Хичээлийн жил үүсгээгүй байна.{" "}
+              {/* A link, not a pointer to a menu that no longer has the entry. */}
+              <Link href="/admin/school-years" className="font-semibold underline">
+                Хичээлийн жил үүсгэх →
+              </Link>
             </p>
           ) : null}
 

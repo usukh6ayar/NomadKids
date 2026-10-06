@@ -21,6 +21,7 @@ import { Donut } from "@/components/ui/chart/donut";
 import { Ring } from "@/components/ui/chart/ring";
 import { TONE_VAR, type Tone } from "@/components/ui/tone";
 import { EsisVsRegistered } from "./esis-vs-registered";
+import { useEsisLinked } from "@/lib/use-esis-linked";
 
 /**
  * The administrator's own dashboard — RFP §12.2, and the reference system's
@@ -77,6 +78,7 @@ import { EsisVsRegistered } from "./esis-vs-registered";
  * from data that does not exist is how a dashboard starts lying.
  */
 export function AdminOverview({ actions }: { actions?: ReactNode } = {}) {
+  const esisLinked = useEsisLinked();
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: qk.dashboard.admin(),
     queryFn: () => get("/dashboard/admin", adminDashboardSchema),
@@ -294,7 +296,9 @@ export function AdminOverview({ actions }: { actions?: ReactNode } = {}) {
           into ten numbers. `.nullish()` in the contract, so an older API that
           does not send the block simply does not draw the card.
         */}
-        {esis ? <EsisVsRegistered esis={esis} groupsTotal={counts.groups} /> : null}
+        {/* Not without ESIS — client, 2026-10-06: there is no ministry figure to
+            compare, and the "pull it from ESIS" line points at nothing. */}
+        {esis && esisLinked ? <EsisVsRegistered esis={esis} groupsTotal={counts.groups} /> : null}
 
         {/*
         ★ These two are paired because they are the same shape, not because

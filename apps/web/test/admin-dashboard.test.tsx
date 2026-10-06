@@ -60,10 +60,15 @@ const ADMIN_DASHBOARD: AdminDashboard = {
  * they render an error state for — enough for the figures above them, and
  * fewer stubs standing between the assertion and what it is about.
  */
-function renderAdminDashboard(dashboard = ADMIN_DASHBOARD) {
+function renderAdminDashboard(
+  dashboard = ADMIN_DASHBOARD,
+  esisInstitutionId: string | null = "42778",
+) {
   stubApi([
     { path: "/auth/me", body: sessionFor(["ADMIN"]) },
     { path: "/dashboard/admin", body: dashboard },
+    // Whether the kindergarten has ESIS — `useEsisLinked`.
+    { path: "/kindergartens/33333333-3333-4333-8333-333333333333", body: { esisInstitutionId } },
   ]);
 
   return renderWithProviders(<AdminPage />);
@@ -152,6 +157,14 @@ describe("ЭСИС-тэй тулгалт", () => {
    * ★★ An older API that does not send the block must not crash the screen —
    * `esis` is `.nullish()` in the contract for exactly that.
    */
+  /** Not without ESIS — client, 2026-10-06: nothing to compare, nowhere to pull from. */
+  it("draws nothing for a kindergarten without ESIS", async () => {
+    renderAdminDashboard(ADMIN_DASHBOARD, null);
+
+    await waitFor(() => expect(within(figures()).getByText("Нийт суралцагч")).toBeInTheDocument());
+    expect(screen.queryByText("ЭСИС-тэй тулгалт")).toBeNull();
+  });
+
   it("draws nothing when the API sends no ESIS block", async () => {
     renderAdminDashboard({ ...ADMIN_DASHBOARD, esis: null });
 
