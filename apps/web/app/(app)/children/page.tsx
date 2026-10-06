@@ -277,12 +277,6 @@ function StaffChildren() {
         }
       />
 
-      <EsisDataPanel
-        resource="studentByRegister"
-        title="РД-ээр сурагч хайх"
-        description="Сурагчийн мэдээллийг ESIS-ээс регистрийн дугаараар хайна"
-      />
-
       {/*
         ★ Director only, since 2026-09-22 — and this one is the reason the
         change is not cosmetic.
@@ -429,41 +423,6 @@ function StaffChildren() {
           autoRead
         />
       ) : null}
-      {/*
-        ★ The group roster, beside the whole one — 2026-09-09, at the client's
-        request ("тэр хүүхдүүд дээр бүлгийн суралцагчийн жагсаалт api-13").
-        It was on the attendance register; one home per service, and this is
-        the screen about children.
-      */}
-      <EsisDataPanel
-        resource="groupStudents"
-        title="Бүлгийн суралцагчийн жагсаалт"
-        description="ESIS-д нэг бүлэгт бүртгэлтэй хүүхдүүд"
-      />
-      {/*
-        ★ Суралцагчийн хөдөлгөөн — the last service in the catalog that had
-        never been drawn anywhere, placed 2026-09-09 ("Ашиглагдаагүй 7
-        ашигла").
-
-        ★★ No grant accompanies it. `studentMovements` has always been callable
-        by ADMIN, which resolves to every key; it simply had no screen. It
-        stays admin-only rather than joining the teacher's list: a transfer
-        register — who arrived, who left, when — is the director's question
-        about the institution, not a teacher's about their group. The panel
-        renders nothing for a role whose catalog omits the key, so a teacher
-        opening this screen sees the roster and no hole where a permission
-        failed.
-
-        `beginDate` is the one input, and the panel asks for it. That *is* the
-        question this service answers ("хөдөлгөөн хэзээнээс хойш"), so unlike
-        a product code it is a parameter the reader actually holds.
-      */}
-      <EsisDataPanel
-        resource="studentMovements"
-        title="Суралцагчийн хөдөлгөөн"
-        description="Тухайн өдрөөс хойшх элсэлт, шилжилт, гарсан бүртгэл"
-        actionLabel="Хөдөлгөөн татах"
-      />
     </div>
   );
 }
