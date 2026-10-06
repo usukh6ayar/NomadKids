@@ -17,6 +17,7 @@ import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Card } from "@/components/ui/card";
+import { Select } from "@/components/ui/field";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { TONE_VAR, type Tone } from "@/components/ui/tone";
 import { formatAge, fullName, shortName } from "@/lib/format";
@@ -327,18 +328,18 @@ export function GroupCoverage({
           <div className="flex min-w-max flex-1 items-center gap-2">
             <label className="shrink-0">
               <span className="sr-only">Тайлант сар</span>
-              <select
+              <Select
                 aria-label="Тайлант сар сонгох"
                 value={selected.key}
                 onChange={(event) => setSelectedMonth(event.target.value)}
-                className="h-10 min-w-[108px] rounded-control border border-border bg-surface px-2 text-caption font-semibold text-ink"
+                className="h-10 min-w-[108px] px-2 text-caption font-semibold"
               >
                 {months.map((month) => (
                   <option key={month.key} value={month.key}>
                     {month.label}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
 
             <div className="shrink-0 whitespace-nowrap rounded-control bg-sky px-3 py-2.5 text-caption text-sky-ink">
