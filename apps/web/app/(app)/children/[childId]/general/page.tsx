@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { FolderOpen } from "lucide-react";
 import { childDetailSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -174,10 +173,8 @@ function ChildActions({ childId, isStaff }: { childId: string; isStaff: boolean 
   if (!isStaff) return null;
   return (
     <Button asChild size="sm">
-      <Link href={`/children/${childId}/portfolio`}>
-        <FolderOpen size={18} aria-hidden="true" />
-        Цахим хувийн хавтас
-      </Link>
+      {/* No icon — client, 2026-10-06. */}
+      <Link href={`/children/${childId}/portfolio`}>Цахим хувийн хавтас</Link>
     </Button>
   );
 }
