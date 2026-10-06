@@ -1,5 +1,7 @@
 "use client";
 
+import { useBackHref } from "@/components/shell/app-shell";
+import { BackButton } from "@/components/ui/back-button";
 import { useQuery } from "@tanstack/react-query";
 import { MessageCircle, Plus, Users } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -58,6 +60,7 @@ const pageChrome: ChatChrome = {
  */
 export default function ChatPage() {
   const { roles } = useSession();
+  const backHref = useBackHref();
   const [roomKey, setRoomKey] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -130,6 +133,7 @@ export default function ChatPage() {
                 Шинэ чат
               </Button>
             }
+            back={backHref ? <BackButton href={backHref} /> : null}
             searchPlaceholder="Яриа хайх..."
             chrome={pageChrome}
           />
