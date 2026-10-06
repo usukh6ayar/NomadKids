@@ -18,9 +18,7 @@ const endpoint = (
   slug: `API-${apiId}`,
   method: "GET" as const,
   path:
-    key === "degreeRequest"
-      ? "/svc/api/zereg/get/request/:registerNum"
-      : `/svc/api/hub/v2/${key}`,
+    key === "degreeRequest" ? "/svc/api/zereg/get/request/:registerNum" : `/svc/api/hub/v2/${key}`,
   name: key,
   domain: "ROSTER" as const,
   usage: "Мэргэшлийн зэргийн хүсэлт",
@@ -109,7 +107,9 @@ describe("Мэргэшлийн зэрэг page", () => {
 
     renderWithProviders(<AdminQualificationsPage />);
 
-    expect(await screen.findByRole("heading", { name: "Хүсэлтийн шийдвэрлэлт" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Хүсэлтийн шийдвэрлэлт" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Хүсэлтийн түүх" })).toBeInTheDocument();
     expect(screen.getByText(/API 165 нь ESIS-д бодит хүсэлт хадгалдаг/)).toBeInTheDocument();
   });

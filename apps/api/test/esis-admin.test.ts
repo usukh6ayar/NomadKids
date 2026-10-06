@@ -801,8 +801,7 @@ describe("single-resource ESIS read", () => {
  * is then the allow-list for request ids sent to 167/170.
  */
 describe("teacher qualification reads are limited to the signed-in teacher", () => {
-  const url = (query: string) =>
-    `/v1/kindergartens/${a.kindergarten.id}/esis/resource?${query}`;
+  const url = (query: string) => `/v1/kindergartens/${a.kindergarten.id}/esis/resource?${query}`;
   const OWN_REGISTER = "УБ12345678";
   const OWN_REQUEST = "7788";
 
@@ -818,9 +817,7 @@ describe("teacher qualification reads are limited to the signed-in teacher", () 
     read.mockResolvedValueOnce({ data: [{ requestId: OWN_REQUEST }] });
 
     const res = await authed(
-      request(server()).get(
-        url("resource=degreeRequest&registerNum=%D0%90%D0%9011111111"),
-      ),
+      request(server()).get(url("resource=degreeRequest&registerNum=%D0%90%D0%9011111111")),
       teacherA,
     );
 
@@ -839,9 +836,7 @@ describe("teacher qualification reads are limited to the signed-in teacher", () 
       .mockResolvedValueOnce({ data: [{ requestId: OWN_REQUEST, status: "APPROVED" }] });
 
     const res = await authed(
-      request(server()).get(
-        url(`resource=degreeDecisions&requestId=${OWN_REQUEST}`),
-      ),
+      request(server()).get(url(`resource=degreeDecisions&requestId=${OWN_REQUEST}`)),
       teacherA,
     );
 
@@ -856,8 +851,11 @@ describe("teacher qualification reads are limited to the signed-in teacher", () 
     read.mockResolvedValueOnce({ data: [{ requestId: OWN_REQUEST }] });
 
     const res = await authed(
-      request(server()).get("/v1/kindergartens/" + a.kindergarten.id +
-        "/esis/resource?resource=degreeDecisions&requestId=9999"),
+      request(server()).get(
+        "/v1/kindergartens/" +
+          a.kindergarten.id +
+          "/esis/resource?resource=degreeDecisions&requestId=9999",
+      ),
       teacherA,
     );
 
@@ -876,10 +874,7 @@ describe("teacher qualification reads are limited to the signed-in teacher", () 
       data: { registerNumber: null },
     });
 
-    const res = await authed(
-      request(server()).get(url("resource=degreeRequest")),
-      teacherA,
-    );
+    const res = await authed(request(server()).get(url("resource=degreeRequest")), teacherA);
 
     expect(res.status).toBe(409);
     expect(res.body.detail).toContain("регистрийн дугаар бүртгэлгүй");

@@ -33,16 +33,9 @@ function MyQualifications() {
   const { primaryKindergartenId } = useSession();
   const query = new URLSearchParams({ resource: "degreeRequest" }).toString();
   const request = useQuery({
-    queryKey: qk.esisResource(
-      primaryKindergartenId ?? "none",
-      "degreeRequest",
-      query,
-    ),
+    queryKey: qk.esisResource(primaryKindergartenId ?? "none", "degreeRequest", query),
     queryFn: () =>
-      get(
-        `/kindergartens/${primaryKindergartenId}/esis/resource?${query}`,
-        esisResourceReadSchema,
-      ),
+      get(`/kindergartens/${primaryKindergartenId}/esis/resource?${query}`, esisResourceReadSchema),
     enabled: Boolean(primaryKindergartenId),
     retry: false,
     refetchOnWindowFocus: false,

@@ -794,7 +794,6 @@ export const ESIS_DISPOSITIONS: Readonly<Record<number, string>> = {
   100004874669776:
     "Яамны өөрийн олгосон жагсаалтад энэ мөрийн URL багана хоосон байна. " +
     "Зам нь мэдэгдэхгүй тул дуудах боломжгүй — яамнаас тодруулах зүйл.",
-
 };
 
 const BY_API_ID = new Map(ESIS_PORTAL_REQUESTS.map((request) => [request.apiId, request]));

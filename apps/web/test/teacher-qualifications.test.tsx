@@ -85,9 +85,7 @@ describe("teacher qualification page", () => {
       const reads = api.calls.filter((call) => call.url.startsWith(READ_PATH));
       expect(reads.some((call) => call.url === `${READ_PATH}?resource=degreeRequest`)).toBe(true);
       expect(
-        reads.some((call) =>
-          call.url.includes("resource=degreeDecisions&requestId=7788"),
-        ),
+        reads.some((call) => call.url.includes("resource=degreeDecisions&requestId=7788")),
       ).toBe(true);
       expect(reads.every((call) => !call.url.includes("registerNum="))).toBe(true);
     });
