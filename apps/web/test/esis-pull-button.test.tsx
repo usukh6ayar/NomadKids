@@ -125,7 +125,7 @@ const liveRead = (rows: Record<string, string | null>[]) => ({
 
 async function openDialog(resource: "organization" | "groupAttendance", name: RegExp) {
   renderWithProviders(<EsisPullButton resource={resource} />);
-  await userEvent.click(await screen.findByRole("button", { name: /ESIS-ээс татах/ }));
+  await userEvent.click(await screen.findByRole("button", { name: /ESIS татах/ }));
   const dialog = await screen.findByRole("dialog");
   expect(within(dialog).getByText(name)).toBeInTheDocument();
   return dialog;
@@ -242,7 +242,7 @@ describe("ESIS-ээс татах", () => {
      * API refuses a teacher whether or not the button was ever rendered.
      */
     await waitFor(() =>
-      expect(screen.queryByRole("button", { name: /ESIS-ээс татах/ })).not.toBeInTheDocument(),
+      expect(screen.queryByRole("button", { name: /ESIS татах/ })).not.toBeInTheDocument(),
     );
   });
 });

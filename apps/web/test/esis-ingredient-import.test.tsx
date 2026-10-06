@@ -119,7 +119,7 @@ describe("ESIS-ээс татах on the store list", () => {
 
     // The old «ESIS · NOT ENABLED» badge is gone.
     expect(screen.queryByText(/NOT ENABLED/)).toBeNull();
-    await user.click(await screen.findByRole("button", { name: "ESIS-ээс татах" }));
+    await user.click(await screen.findByRole("button", { name: "ESIS татах" }));
     const dialog = await screen.findByRole("dialog");
 
     const flour = await within(dialog).findByLabelText(/Бүхэл үрийн гурил/);
@@ -153,7 +153,7 @@ describe("ESIS-ээс татах on the store list", () => {
     renderWithProviders(<IngredientsPage />);
 
     expect(await screen.findByRole("button", { name: "Орц нэмэх" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "ESIS-ээс татах" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "ESIS татах" })).toBeNull();
   });
 });
 

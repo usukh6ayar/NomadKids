@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarCheck, Download, Send } from "lucide-react";
+import { CalendarCheck, Download } from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
 import { get, mutate } from "@/lib/api/browser";
@@ -245,10 +245,10 @@ export function EsisForms({
         <div className="ml-auto flex flex-wrap gap-2">
           <Button
             size="sm"
+            variant="secondary"
             disabled={!draft.data || submit.isPending}
             onClick={() => setConfirming(true)}
           >
-            <Send size={16} aria-hidden="true" />
             ESIS илгээх
           </Button>
           <Button size="sm" variant="secondary" disabled={!draft.data} onClick={exportCsv}>

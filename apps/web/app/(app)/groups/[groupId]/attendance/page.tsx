@@ -657,7 +657,7 @@ function GroupAttendance() {
                     ? "Илгээж байна…"
                     : submitEsis.data
                       ? "Дахин илгээх"
-                      : "ESIS рүү илгээх"}
+                      : "ESIS илгээх"}
                 </span>
               </Button>
             </div>

@@ -14,7 +14,6 @@ import {
   Info,
   MapPin,
   Phone,
-  RefreshCw,
   Save,
   UsersRound,
 } from "lucide-react";
@@ -39,6 +38,7 @@ import { EsisCurriculumChain } from "@/components/esis/esis-curriculum";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { SectionHeader } from "@/components/ui/card";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
+import { EsisButton } from "@/components/esis/esis-button";
 
 /**
  * The kindergarten's own details, for its director.
@@ -393,14 +393,11 @@ function MainDetails({ kindergartenId, data }: { kindergartenId: string; data: D
       }}
       actions={
         <>
-          <Button
-            type="button"
-            variant="secondary"
+          <EsisButton
+            pending={esis.isFetching}
+            disabled={!kindergartenId}
             onClick={() => void pullFromEsis()}
-            disabled={esis.isFetching || !kindergartenId}
-          >
-            <RefreshCw size={16} aria-hidden /> {esis.isFetching ? "Татаж байна…" : "ESIS татах"}
-          </Button>
+          />
           <SaveButton disabled={!dirty} pending={save.isPending} />
         </>
       }

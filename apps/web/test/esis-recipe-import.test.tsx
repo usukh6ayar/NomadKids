@@ -150,7 +150,7 @@ describe("ESIS-ээс татах on a new technology card", () => {
     renderWithProviders(<RecipesPage />);
 
     // Beside «Карт нэмэх», not inside it.
-    await user.click(await screen.findByRole("button", { name: "ESIS-ээс татах" }));
+    await user.click(await screen.findByRole("button", { name: "ESIS татах" }));
     const picker = await screen.findByRole("dialog", { name: "ESIS-ээс хоол татах" });
     await user.type(within(picker).getByLabelText("Хоолны нэрээр хайх"), "хуурга");
     expect(within(picker).queryByText("Банштай шөл")).toBeNull();
@@ -191,7 +191,7 @@ describe("ESIS-ээс татах on a new technology card", () => {
     renderWithProviders(<RecipesPage />);
 
     expect(await screen.findByRole("button", { name: "Карт нэмэх" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "ESIS-ээс татах" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "ESIS татах" })).toBeNull();
   });
 });
 

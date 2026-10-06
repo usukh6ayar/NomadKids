@@ -17,7 +17,6 @@ import {
   Phone,
   Plus,
   Power,
-  RefreshCw,
   Settings,
   UserRound,
   UsersRound,
@@ -53,6 +52,7 @@ import { Td, Th } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { StaffLinkDialog } from "@/components/admin/staff/staff-link-dialog";
 import { cn } from "@/lib/utils";
+import { EsisButton } from "@/components/esis/esis-button";
 
 const listSchema = paginated(adminUserSchema);
 const userDetailSchema = adminUserSchema.extend({
@@ -272,15 +272,11 @@ function StaffSection({
               <Download size={16} aria-hidden /> Excel
             </a>
           </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={!primaryKindergartenId || esisRefresh.isPending}
+          <EsisButton
+            pending={esisRefresh.isPending}
+            disabled={!primaryKindergartenId}
             onClick={() => esisRefresh.mutate()}
-          >
-            <RefreshCw size={16} aria-hidden />{" "}
-            {esisRefresh.isPending ? "Татаж байна…" : "ESIS татах"}
-          </Button>
+          />
           <Button size="sm" onClick={() => onInvite(teacher ? "TEACHER" : "COOK")}>
             <Plus size={16} aria-hidden /> {teacher ? "Багш нэмэх" : "Ажилтан нэмэх"}
           </Button>

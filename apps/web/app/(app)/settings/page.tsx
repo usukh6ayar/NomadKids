@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Database, IdCard, KeyRound, Pencil, UsersRound } from "lucide-react";
+import { IdCard, KeyRound, Pencil, UsersRound } from "lucide-react";
 import { z } from "zod";
 import {
   enrollmentArchiveSchema,
@@ -40,6 +40,7 @@ import {
   PhoneVerificationStep,
   usePhoneVerificationEnabled,
 } from "@/components/auth/phone-verification";
+import { EsisButton } from "@/components/esis/esis-button";
 
 const profileSchema = userProfileSchema.extend({
   specialization: z.string().nullish(),
@@ -361,16 +362,7 @@ function EditProfileDialog({
       {isStaff && primaryKindergartenId ? (
         <div className="flex items-center justify-between gap-3 rounded-control bg-sunken px-3 py-2">
           <p className="text-caption text-muted">ЭСИС-ээс нөхөөд, хадгалахаас өмнө шалгана.</p>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            disabled={esis.isFetching}
-            onClick={() => void fillFromEsis()}
-          >
-            <Database size={16} aria-hidden="true" />
-            {esis.isFetching ? "Татаж байна…" : "Esis татах"}
-          </Button>
+          <EsisButton pending={esis.isFetching} onClick={() => void fillFromEsis()} />
         </div>
       ) : null}
       <div className="grid gap-4 sm:grid-cols-2">

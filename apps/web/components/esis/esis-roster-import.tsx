@@ -2,11 +2,10 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { DownloadCloud } from "lucide-react";
+import { EsisButton } from "@/components/esis/esis-button";
 import { esisRosterImportSchema, type EsisRosterImport } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
-import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 
@@ -27,13 +26,7 @@ import { useToast } from "@/components/ui/toast";
  * a second press changes nothing the first did not — rather than a dialog
  * nobody reads twice.
  */
-export function EsisRosterImportButton({
-  kindergartenId,
-  label = "ESIS-ээс татах",
-}: {
-  kindergartenId: string;
-  label?: string;
-}) {
+export function EsisRosterImportButton({ kindergartenId }: { kindergartenId: string }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
@@ -84,12 +77,7 @@ export function EsisRosterImportButton({
     <ConfirmDialog
       open={confirming}
       onOpenChange={setConfirming}
-      trigger={
-        <Button variant="secondary" size="sm">
-          <DownloadCloud size={16} aria-hidden="true" />
-          {label}
-        </Button>
-      }
+      trigger={<EsisButton pending={run.isPending} />}
       title="ESIS-ээс бүлэг, хүүхэд татах"
       description="ESIS дээрх бүлгүүд болон тэдгээрт бүртгэлтэй хүүхдүүдийг энэ цэцэрлэгийн бүртгэлд үүсгэнэ. Гараар оруулсан хүүхдийг нэр, төрсөн огноогоор нь танина. Байгаа мэдээллийг шинэчилнэ, юу ч устгахгүй. Дахин татахад давхардахгүй."
       confirmLabel="Татах"

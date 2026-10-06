@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CloudUpload, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import {
   esisScopedCatalogSchema,
@@ -201,8 +201,7 @@ export function EsisFactsWriteButton({
   return (
     <>
       <Button size="sm" variant="secondary" onClick={start}>
-        <CloudUpload aria-hidden />
-        ЭСИС рүү илгээх
+        ESIS илгээх
       </Button>
 
       <FormDialog
@@ -353,8 +352,7 @@ export function EsisContactsWriteButton({
   return (
     <>
       <Button size="sm" variant="secondary" onClick={start}>
-        <CloudUpload aria-hidden />
-        ЭСИС рүү илгээх
+        ESIS илгээх
       </Button>
 
       <FormDialog

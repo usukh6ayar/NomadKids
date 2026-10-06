@@ -195,10 +195,7 @@ export function AdminRoster() {
             </Button>
             {/* ★ Was a link to the deleted `/admin/integrations/esis` — a 404. */}
             {primaryKindergartenId ? (
-              <EsisRosterImportButton
-                kindergartenId={primaryKindergartenId}
-                label="ESIS Суралцагч"
-              />
+              <EsisRosterImportButton kindergartenId={primaryKindergartenId} />
             ) : null}
             <Button asChild size="sm">
               <Link href="/children/new">

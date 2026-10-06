@@ -216,7 +216,7 @@ describe("Ерөнхий — ESIS folded into the cards", () => {
     const fold = screen.getByText("Өрхийн мэдээлэл").closest("details")!;
     await userEvent.setup().click(within(fold).getByText("Өрхийн мэдээлэл"));
     await waitFor(() =>
-      expect(within(fold).getAllByRole("button", { name: "ЭСИС рүү илгээх" })).toHaveLength(1),
+      expect(within(fold).getAllByRole("button", { name: "ESIS илгээх" })).toHaveLength(1),
     );
   });
 
@@ -235,9 +235,7 @@ describe("Ерөнхий — ESIS folded into the cards", () => {
     expect(within(living).getByText("2025-09-01")).toBeInTheDocument();
     expect(within(living).getByText("1,200,000 ₮")).toBeInTheDocument();
     expect(within(living).queryByText(/Дотуур байр/)).toBeNull();
-    expect(
-      await within(living).findByRole("button", { name: "ЭСИС рүү илгээх" }),
-    ).toBeInTheDocument();
+    expect(await within(living).findByRole("button", { name: "ESIS илгээх" })).toBeInTheDocument();
     expect(screen.queryByText("Өрх ба амьдрах орчин")).toBeNull();
   });
 
@@ -246,7 +244,7 @@ describe("Ерөнхий — ESIS folded into the cards", () => {
     const api = stub();
     render();
 
-    const button = await screen.findByRole("button", { name: /ЭСИС-ээс татах/ });
+    const button = await screen.findByRole("button", { name: /ESIS татах/ });
     const general = await screen.findByRole("region", { name: "Ерөнхий мэдээлэл" });
     await within(general).findByText("Боржигон");
     const before = api.calls.filter((call) => call.url.includes("/esis/resource")).length;
@@ -306,7 +304,7 @@ describe("Ерөнхий — ESIS folded into the cards", () => {
 
     await screen.findByRole("region", { name: "Ерөнхий мэдээлэл" });
     expect(screen.queryByText("Ургийн овог")).toBeNull();
-    expect(screen.queryByRole("button", { name: /ЭСИС-ээс татах/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /ESIS татах/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /ЭСИС-ийн бүх талбарыг харах/ })).toBeNull();
   });
 });

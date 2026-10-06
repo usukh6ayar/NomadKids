@@ -346,7 +346,7 @@ function EsisImportEntry({ kindergartenId }: { kindergartenId: string }) {
              * import screen wants to see the roster ESIS holds, not to be sent
              * to a settings page to find out whether they could have.
              */}
-            <EsisPullButton resource="students" label="Суралцагч татах" />
+            <EsisPullButton resource="students" />
             {/*
              * ★ The "ESIS удирдлага" link beside it is gone — 2026-09-14. It
              * pointed at `/admin/integrations/esis`, which moved to the

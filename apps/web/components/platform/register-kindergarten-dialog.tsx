@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Check, Download, Pencil, Plus, School } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Pencil, Plus, School } from "lucide-react";
 import { useState } from "react";
 import {
   createdKindergartenSchema,
@@ -19,6 +19,7 @@ import { FormError } from "@/components/ui/states";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
 import { cn } from "@/lib/utils";
 import { fullName } from "@/lib/format";
+import { EsisButton } from "@/components/esis/esis-button";
 
 /**
  * Registering a kindergarten — the platform operator's one creating act.
@@ -452,14 +453,11 @@ function EsisFlow(props: {
               )}
             </Field>
           </div>
-          <Button
-            type="button"
+          <EsisButton
+            pending={props.lookupPending}
+            disabled={props.institutionId.trim() === ""}
             onClick={props.onLookup}
-            disabled={props.institutionId.trim() === "" || props.lookupPending}
-          >
-            <Download size={17} aria-hidden />
-            {props.lookupPending ? "Татаж байна…" : "ESIS-ээс татах"}
-          </Button>
+          />
         </div>
 
         {props.lookupError ? (
