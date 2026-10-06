@@ -143,13 +143,10 @@ describe("ESIS administration authorization", () => {
      * ★★ **73 since 2026-09-18** — spec №3б wired the three group writes the
      * client asked for: 150, 152 and 162.
      *
-     * ★★★ **75 since 2026-09-22** — the two мэргэшлийн зэрэг reads, 167 and
-     * 170. The other two the client named are not here and each has its own
-     * reason in `ESIS_DISPOSITIONS`: 119 is refused by the live gateway and
-     * dropped at their instruction, 165 is a POST awaiting a body the
-     * login-gated developer portal has not yielded.
+     * ★★★ **76 since 2026-10-07** — qualification reads 119, 167 and 170 are
+     * wired. API 165 is a real POST awaiting its complete body contract.
      */
-    expect(first.body.endpoints).toHaveLength(75);
+    expect(first.body.endpoints).toHaveLength(76);
     // Every kindergarten, because the token and the grants are one account's.
     expect(second.status).toBe(200);
   });
@@ -344,7 +341,7 @@ describe("role-scoped ESIS catalog", () => {
       2026-09-22**, when the two мэргэшлийн зэрэг reads were wired
       (`degreeDecisions` 167, `degreeHistory` 170).
     */
-    expect(res.body.endpoints).toHaveLength(75);
+    expect(res.body.endpoints).toHaveLength(76);
   });
 
   /*
@@ -446,7 +443,7 @@ describe("role-scoped ESIS catalog", () => {
    * whole institution's appointments and releases — a director's question —
    * and lives on `/admin/users`, so it must not appear here.
    */
-  it("gives a teacher the twenty-eight their screens draw, and no others", async () => {
+  it("gives a teacher the thirty-one their screens draw, and no others", async () => {
     const res = await authed(request(server()).get(url(a.kindergarten.id)), teacherA);
 
     expect(res.status).toBe(200);
@@ -488,6 +485,9 @@ describe("role-scoped ESIS catalog", () => {
         "groupMeasurementsSave",
         "vaccineCatalog",
         "schoolAttendance",
+        "degreeRequest",
+        "degreeDecisions",
+        "degreeHistory",
       ].sort(),
     );
     /*
@@ -792,6 +792,98 @@ describe("single-resource ESIS read", () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ status: "FAILED", errorCode: "SCOPE_DENIED", count: 0 });
     expect(res.body.fields.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * A teacher's qualification page is identity-scoped, not a general lookup.
+ * API 119 gets the authenticated user's register from the database; its result
+ * is then the allow-list for request ids sent to 167/170.
+ */
+describe("teacher qualification reads are limited to the signed-in teacher", () => {
+  const url = (query: string) =>
+    `/v1/kindergartens/${a.kindergarten.id}/esis/resource?${query}`;
+  const OWN_REGISTER = "УБ12345678";
+  const OWN_REQUEST = "7788";
+
+  beforeEach(async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    await db.user.update({
+      where: { id: a.teacherUser.id },
+      data: { registerNumber: OWN_REGISTER },
+    });
+  });
+
+  it("gets API 119 with the account register and ignores a substituted register", async () => {
+    read.mockResolvedValueOnce({ data: [{ requestId: OWN_REQUEST }] });
+
+    const res = await authed(
+      request(server()).get(
+        url("resource=degreeRequest&registerNum=%D0%90%D0%9011111111"),
+      ),
+      teacherA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(read).toHaveBeenCalledWith(
+      "degreeRequest",
+      { registerNum: OWN_REGISTER },
+      institutionId,
+    );
+    expect(res.body.rows).toEqual([{ requestId: OWN_REQUEST }]);
+  });
+
+  it("lets the teacher read a request id returned for their own register", async () => {
+    read
+      .mockResolvedValueOnce({ data: [{ requestId: OWN_REQUEST }] })
+      .mockResolvedValueOnce({ data: [{ requestId: OWN_REQUEST, status: "APPROVED" }] });
+
+    const res = await authed(
+      request(server()).get(
+        url(`resource=degreeDecisions&requestId=${OWN_REQUEST}`),
+      ),
+      teacherA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(read.mock.calls).toEqual([
+      ["degreeRequest", { registerNum: OWN_REGISTER }, institutionId],
+      ["degreeDecisions", { requestId: OWN_REQUEST }, institutionId],
+    ]);
+  });
+
+  it("returns 404 before API 167 when the request id belongs to nobody proven as this teacher", async () => {
+    read.mockResolvedValueOnce({ data: [{ requestId: OWN_REQUEST }] });
+
+    const res = await authed(
+      request(server()).get("/v1/kindergartens/" + a.kindergarten.id +
+        "/esis/resource?resource=degreeDecisions&requestId=9999"),
+      teacherA,
+    );
+
+    expect(res.status).toBe(404);
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(read).toHaveBeenCalledWith(
+      "degreeRequest",
+      { registerNum: OWN_REGISTER },
+      institutionId,
+    );
+  });
+
+  it("does not call ESIS when the teacher account has no register number", async () => {
+    await db.user.update({
+      where: { id: a.teacherUser.id },
+      data: { registerNumber: null },
+    });
+
+    const res = await authed(
+      request(server()).get(url("resource=degreeRequest")),
+      teacherA,
+    );
+
+    expect(res.status).toBe(409);
+    expect(res.body.detail).toContain("регистрийн дугаар бүртгэлгүй");
+    expect(read).not.toHaveBeenCalled();
   });
 });
 

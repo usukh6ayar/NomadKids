@@ -30,11 +30,7 @@ describe("ESIS v2 endpoint registry", () => {
      * ★ 70 since 2026-09-17, was 67 since 2026-09-14 (which was 40). Plan
      * `2026-09-16-esis-sync-tiers.md` Task 9 closed three more:
      * `studentAwards` (85), `studentSearch` (…784) and
-     * `buildingByRegisterNumber` (186). Two of the six the task named stay
-     * unwired on purpose — `esis.requests.ts`'s `ESIS_DISPOSITIONS` carries
-     * 167 and 170 — and 119 was live-probed and refused (403 under the
-     * standard root), also recorded there rather than guessed into a path
-     * here.
+     * `buildingByRegisterNumber` (186).
      *
      * The export has **84** approved services. Fourteen still unwired are the
      * ones with an open question — a civil id we do not hold, an input that
@@ -49,19 +45,11 @@ describe("ESIS v2 endpoint registry", () => {
      * export to give them a path, and 129/131 file a school's income return,
      * which nothing in this product produces. See the spec's §1.
      *
-     * ★★★★ **75 since 2026-09-22** — the client named the four мэргэшлийн зэрэг
-     * services and the two **reads** are wired: 167 (шийдвэрлэлт) and 170
-     * (түүх), both live-probed to `203 Хүсэлтэд тохирох утга олдсонгүй`, which
-     * is access granted with an unknown id.
-     *
-     * Of the other two, 119 is **dropped at the client's instruction** — it
-     * answers `403` on the live gateway whatever the portal says — and 165 is a
-     * POST that would file a real application against a real teacher, so it
-     * waits on their decision and on a body the login-gated portal has not let
-     * us read. Both keep their row in `ESIS_DISPOSITIONS`; nine of the fourteen
-     * unwired remain.
+     * ★★★★ **76 since 2026-10-07** — API 119 joins the two qualification reads,
+     * turning a teacher register number into the `requestId` used by 167/170.
+     * API 165 remains unwired until its full write-body contract is supplied.
      */
-    expect(endpoints).toHaveLength(75);
+    expect(endpoints).toHaveLength(76);
     expect(new Set(withId.map((item) => item.apiId)).size).toBe(withId.length);
 
     /*
@@ -81,8 +69,27 @@ describe("ESIS v2 endpoint registry", () => {
      */
     const outsideHub = endpoints.filter((item) => !item.path.startsWith("/svc/api/hub/v2/"));
     expect(outsideHub.map((item) => item.path)).toEqual([
+      "/svc/api/zereg/get/request/:registerNum",
       "/svc/api/public/worker/info/:primaryNidNumber",
     ]);
+  });
+
+  it("normalises API 119's request id and keeps the published root", async () => {
+    const { service, request } = serviceFor({
+      SUCCESS_CODE: 200,
+      RESPONSE_MESSAGE: "SUCCESS",
+      RESULT: 7788,
+    });
+
+    const response = await service.read("degreeRequest", { registerNum: "УБ12345678" });
+
+    expect(response.data).toEqual([{ requestId: "7788" }]);
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "/svc/api/zereg/get/request/%D0%A3%D0%9112345678",
+        query: undefined,
+      }),
+    );
   });
 
   /*

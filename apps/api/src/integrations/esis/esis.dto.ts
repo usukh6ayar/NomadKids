@@ -94,6 +94,8 @@ export const ESIS_READ_PARAMS = {
    * see `REDACTED_READ_PARAMS`'s note on why.
    */
   registerNumber: z.string().trim().min(1).max(32).optional(),
+  /** A teacher's register number sent only to API 119; never persisted or audited. */
+  registerNum: z.string().trim().min(1).max(32).optional(),
   /*
    * ── Added 2026-09-22 ────────────────────────────────────────────────────
    *
@@ -103,11 +105,9 @@ export const ESIS_READ_PARAMS = {
    * like `personId` above and is **not** added to `REDACTED_READ_PARAMS`: an
    * audit row saying which request was read is the useful half of the record.
    *
-   * ★★ Shape-checked only. The ministry owns the format and nothing here has
-   * ever seen a real one: 119, the service that turns a register number into a
-   * request number, answers `403` on the live gateway. A pattern guessed from
-   * the service's name would refuse valid input the first time a real number
-   * arrives, which is the failure this file already avoids twice above.
+   * ★★ Shape-checked only. The ministry owns the format, so a numeric-only or
+   * UUID-like pattern guessed here could reject a valid request number returned
+   * by API 119.
    */
   requestId: z.string().trim().min(1).max(64).optional(),
 } as const;
