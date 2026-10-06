@@ -29,6 +29,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  NOTIFICATION_CATEGORY_LABEL,
   ROLE_LABEL,
   notificationSchema,
   paginated,
@@ -44,13 +45,14 @@ import { qk } from "@/lib/api/keys";
 import { useMyProfile } from "@/lib/use-my-profile";
 import { useLogout, useSession } from "@/lib/auth/session";
 import { setNavigationMenu } from "@/lib/nav-history";
-import { formatRelative, fullName, groupLabel, initials, shortName } from "@/lib/format";
+import { excerpt, formatRelative, fullName, groupLabel, initials, shortName } from "@/lib/format";
 import { BRAND } from "@/lib/vocabulary";
 import { BrandWordmark } from "@/components/ui/brand-wordmark";
 import { Art } from "@/components/ui/art";
 import { cn } from "@/lib/utils";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
 import { ChildAvatar } from "@/components/media/media-image";
+import { KindergartenLogoAvatar } from "@/components/media/kindergarten-logo";
 import { ChatWidget } from "@/components/chat/chat-widget";
 import { BackButton } from "@/components/ui/back-button";
 import {
@@ -812,12 +814,17 @@ function NotificationBellList({
                       unread ? "font-semibold" : "font-medium",
                     )}
                   >
-                    {notification.title}
+                    {/*
+                      ★ What it says, not when — client, 2026-10-06: the bell
+                      named a notice by "Өнөөдөр / … өмнө". Its title, or —
+                      since new notices have none (2026-09-25) — the start of
+                      its text, so no row is a blank bold line.
+                    */}
+                    {notification.title?.trim() ||
+                      excerpt(notification.body ?? "", 80) ||
+                      NOTIFICATION_CATEGORY_LABEL[notification.category]}
                   </span>
                   {unread ? <span className="sr-only">Уншаагүй</span> : null}
-                  <span className="mt-0.5 block text-caption text-muted">
-                    {formatRelative(notification.publishedAt ?? notification.createdAt)}
-                  </span>
                 </span>
               </Link>
             </li>
@@ -1227,7 +1234,17 @@ function WhoAmI({
             no photo, so this reads the profile the settings screen writes and
             invalidates; initials remain the answer when there is none.
           */}
-          {profile?.photoMediaFileId ? (
+          {/* An administrator wears the kindergarten's logo — 2026-10-06. */}
+          {isAdmin ? (
+            <KindergartenLogoAvatar
+              size={40}
+              fallback={
+                <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-primary-soft text-body font-bold text-primary">
+                  {initials(session?.user)}
+                </span>
+              }
+            />
+          ) : profile?.photoMediaFileId ? (
             <ChildAvatar child={profile} size={40} className="shrink-0" />
           ) : (
             <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-primary-soft text-body font-bold text-primary">
@@ -1280,7 +1297,16 @@ function WhoAmI({
             no photo, so this reads the profile the settings screen writes and
             invalidates; initials remain the answer when there is none.
           */}
-            {profile?.photoMediaFileId ? (
+            {isAdmin ? (
+              <KindergartenLogoAvatar
+                size={40}
+                fallback={
+                  <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-primary-soft text-body font-bold text-primary">
+                    {initials(session?.user)}
+                  </span>
+                }
+              />
+            ) : profile?.photoMediaFileId ? (
               <ChildAvatar child={profile} size={40} className="shrink-0" />
             ) : (
               <span className="grid size-10 shrink-0 place-items-center rounded-pill bg-primary-soft text-body font-bold text-primary">

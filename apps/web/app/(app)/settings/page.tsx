@@ -30,6 +30,7 @@ import { fullName, groupLabel } from "@/lib/format";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ChildAvatar } from "@/components/media/media-image";
 import { PhotoBadgeButton } from "@/components/media/photo-badge-button";
+import { KindergartenLogoAvatar } from "@/components/media/kindergarten-logo";
 import { MyStaffRecords } from "@/components/staff/my-staff-records";
 import { ChildPhotoButton } from "@/components/child/child-photo-button";
 import {
@@ -92,6 +93,7 @@ function ProfileCard() {
   if (isError) return <ErrorState description={errorMessage(error)} />;
 
   const role = session?.memberships?.[0]?.role;
+  const isAdministration = session?.memberships?.some((m) => m.role === "ADMIN") ?? false;
   const roleLabel = role ? ROLE_LABEL[role] : "Эцэг эх";
   const facts = [
     { label: "Утас", value: data?.phone },
@@ -113,14 +115,26 @@ function ProfileCard() {
             ★ The picture is the control — 2026-09-06, the client: "камерын
             зурагтай тэнд нь дардаг болгоё".
           */}
-          <span className="relative shrink-0">
-            <ChildAvatar child={data ?? {}} size={72} />
-            <PhotoBadgeButton
-              endpoint={`/users/${data?.id}/photo`}
-              label="Профайл зураг солих"
-              invalidateKeys={[qk.profile(), qk.session()]}
+          {/*
+            ★ An administrator has no photo of their own — client, 2026-10-06:
+            the kindergarten's logo stands for them everywhere, and it is
+            changed on «Цэцэрлэгийн мэдээлэл», not here.
+          */}
+          {isAdministration ? (
+            <KindergartenLogoAvatar
+              size={72}
+              fallback={<ChildAvatar child={data ?? {}} size={72} />}
             />
-          </span>
+          ) : (
+            <span className="relative shrink-0">
+              <ChildAvatar child={data ?? {}} size={72} />
+              <PhotoBadgeButton
+                endpoint={`/users/${data?.id}/photo`}
+                label="Профайл зураг солих"
+                invalidateKeys={[qk.profile(), qk.session()]}
+              />
+            </span>
+          )}
 
           <div className="flex min-w-[180px] flex-1 flex-col gap-1.5">
             <p className="truncate text-lead font-semibold text-ink">{fullName(data)}</p>

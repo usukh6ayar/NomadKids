@@ -1,12 +1,14 @@
 "use client";
 
+import { useIsPhone } from "@/lib/use-is-phone";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   CalendarRange,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   MailQuestion,
   Search,
@@ -67,6 +69,18 @@ function mondayOf(iso: string): string {
   const weekday = date.getUTCDay();
   date.setUTCDate(date.getUTCDate() - (weekday === 0 ? 6 : weekday - 1));
   return date.toISOString().slice(0, 10);
+}
+
+/** `iso` moved by `days`, as `YYYY-MM-DD`. */
+function addDays(iso: string, days: number): string {
+  const date = new Date(`${iso}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+/** `2026-09-30` → `9.30`: the phone's range label, short as a calendar writes it. */
+function shortDay(iso: string): string {
+  return `${Number(iso.slice(5, 7))}.${Number(iso.slice(8, 10))}`;
 }
 
 function endOfMonth(iso: string): string {
@@ -316,6 +330,31 @@ function GroupAttendance() {
     cancelEdit();
   }
 
+  /*
+    ★ On a phone, the last seven days — client, 2026-10-06: "утас дээр
+    сүүлийн 7 хоног", e.g. «9.30 – 10.6». Monday-to-today is two columns on a
+    Tuesday and nothing to compare against; a rolling week always is. Moved
+    with ‹ › a week at a time, never past today. The desktop keeps its two
+    date fields and its Monday start.
+  */
+  const isPhone = useIsPhone();
+  useEffect(() => {
+    if (isPhone) setFrom(addDays(date, -6));
+    // Only when the phone layout is first known — not on every `date` change,
+    // which the arrows below already set together with `from`.
+  }, [isPhone]);
+
+  function shiftWeek(direction: -1 | 1) {
+    const latest = today();
+    const end = direction === 1 ? addDays(date, 7) : addDays(date, -7);
+    const to = end > latest ? latest : end;
+    setFrom(addDays(to, -6));
+    setDate(to);
+    setDraftFrom(addDays(to, -6));
+    setDraftTo(to);
+    cancelEdit();
+  }
+
   const esisPreview = useQuery({
     queryKey: qk.groupAttendanceEsis(groupId, date),
     queryFn: () =>
@@ -401,7 +440,7 @@ function GroupAttendance() {
         and this one opened with a bare title, so the register was the one
         top-level screen whose only exit was the sidebar.
       */}
-      <PageHeader title="Ирц" backHref="/dashboard" />
+      <PageHeader title="Ирц" backHref="/dashboard" compact />
 
       <GroupSwitcher
         groups={switchable.data?.items ?? []}
@@ -432,8 +471,41 @@ function GroupAttendance() {
         on the screen. Two small controls on one line now, labels folded into
         `aria-label`, against the register below which is what the page is for.
       */}
+      {/*
+        Tight on a phone — client, 2026-10-06: "зай шахаад өг". Pulled up into
+        the band's gap under the title, and the grid pulled up under it, so the
+        three read as one block rather than three spaced sections.
+      */}
+      <div className="-my-5 flex items-center justify-center gap-0.5 sm:hidden">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-9"
+          aria-label="Өмнөх 7 хоног"
+          onClick={() => shiftWeek(-1)}
+        >
+          <ChevronLeft aria-hidden />
+        </Button>
+        <span className="min-w-[6.5rem] text-center text-body font-medium tabular-nums text-ink">
+          {shortDay(from)} – {shortDay(date)}
+        </span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-9"
+          aria-label="Дараагийн 7 хоног"
+          disabled={date >= today()}
+          onClick={() => shiftWeek(1)}
+        >
+          <ChevronRight aria-hidden />
+        </Button>
+      </div>
       <form
-        className="flex items-center gap-1.5"
+        // Tight on the desktop too — 2026-10-06: 4px to the title and the grid
+        // instead of the band's 24/32px.
+        className="hidden items-center gap-1.5 sm:-my-5 sm:flex lg:-my-7"
         onSubmit={(event) => {
           event.preventDefault();
           applyRange();

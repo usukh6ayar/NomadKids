@@ -251,3 +251,45 @@ describe("the profile card", () => {
     expect(screen.getByLabelText("Профайл зураг солих")).toBeInTheDocument();
   });
 });
+
+/**
+ * The administration wears the kindergarten's logo — client, 2026-10-06:
+ * «удирдлага зураг оруулах хэрэггүй, цэцэрлэгийн лого бүх зүйлд төлөөлнө».
+ */
+describe("an administrator's picture", () => {
+  const LOGO = "abababab-abab-4bab-8bab-abababababab";
+
+  function stubAdmin(logoMediaFileId: string | null) {
+    return stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: "/me/profile", body: PROFILE },
+      // After the longer paths: the stubs match by prefix.
+      { path: `/kindergartens/${KINDERGARTEN_ID}`, body: { logoMediaFileId } },
+    ]);
+  }
+
+  it("is the kindergarten's logo, with no photo control", async () => {
+    stubAdmin(LOGO);
+    renderWithProviders(<SettingsPage />);
+
+    const logo = await screen.findByRole("img", { name: "Цэцэрлэгийн лого" });
+    expect(logo.getAttribute("src")).toContain(LOGO);
+    expect(screen.queryByLabelText("Профайл зураг солих")).toBeNull();
+  });
+
+  it("falls back to initials until a logo is uploaded", async () => {
+    stubAdmin(null);
+    renderWithProviders(<SettingsPage />);
+
+    expect(await screen.findByText("Дорж Сараа")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "Цэцэрлэгийн лого" })).toBeNull();
+    expect(screen.queryByLabelText("Профайл зураг солих")).toBeNull();
+  });
+
+  it("leaves a teacher's own photo control alone", async () => {
+    stubSettings(["TEACHER"]);
+    renderWithProviders(<SettingsPage />);
+
+    expect(await screen.findByLabelText("Профайл зураг солих")).toBeInTheDocument();
+  });
+});

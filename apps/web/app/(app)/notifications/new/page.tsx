@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import {
@@ -15,19 +15,24 @@ import {
   audienceToTargets,
   type Audience,
 } from "@/components/notifications/audience-picker";
-import { mutate } from "@/lib/api/browser";
+import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Disclosure } from "@/components/ui/disclosure";
-import { Checkbox, Field, Select, Textarea } from "@/components/ui/field";
+import { Field, Select, Textarea } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
-import { ImagePlus, X } from "lucide-react";
+import { ChevronDown, ImagePlus, Pencil, Star, Users, X } from "lucide-react";
 import { ACCEPTED_TYPES, MAX_UPLOAD_BYTES } from "@/components/media/photo-upload";
 import { RequireRole } from "@/components/shell/require-role";
 import { cn } from "@/lib/utils";
+import { z } from "zod";
+import { fullName } from "@/lib/format";
+import { useMyProfile } from "@/lib/use-my-profile";
+import { BackButton } from "@/components/ui/back-button";
+import { PersonAvatar } from "@/components/media/media-image";
+import { KindergartenLogoAvatar } from "@/components/media/kindergarten-logo";
 import { shrinkIfTooLarge } from "@/lib/image-shrink";
 
 /** The ceiling, in the unit the copy states it in. */
@@ -72,6 +77,18 @@ function ComposeNotice() {
   const isTeacher = hasRole("TEACHER") && !hasRole("ADMIN");
   const fileInputId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /** «Засах» on a picture swaps it for another; this is which one. */
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+  const replacing = useRef<string | null>(null);
+  const audiencePanelId = useId();
+  const [audienceOpen, setAudienceOpen] = useState(false);
+  const profile = useMyProfile();
+  const kindergarten = useQuery({
+    queryKey: ["kindergarten", primaryKindergartenId ?? "", "name"],
+    queryFn: () => get(`/kindergartens/${primaryKindergartenId}`, z.object({ name: z.string() })),
+    enabled: Boolean(primaryKindergartenId) && !isTeacher,
+    staleTime: 5 * 60_000,
+  });
 
   /*
     ★ The category, and who the post is for — the client's 2026-08-30 request.
@@ -211,6 +228,24 @@ function ComposeNotice() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
+  async function replaceFile(picked: FileList | null) {
+    const target = replacing.current;
+    replacing.current = null;
+    const picked0 = picked?.[0];
+    if (replaceInputRef.current) replaceInputRef.current.value = "";
+    if (!target || !picked0) return;
+    setFileError(null);
+    const file = await shrinkIfTooLarge(picked0, MAX_UPLOAD_BYTES);
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setFileError(`"${file.name}" хэт том байна. Дээд хэмжээ ${MAX_UPLOAD_MB} MB.`);
+      return;
+    }
+    URL.revokeObjectURL(target);
+    setFiles((current) =>
+      current.map((f) => (f.url === target ? { file, url: URL.createObjectURL(file) } : f)),
+    );
+  }
+
   function removeFile(url: string) {
     URL.revokeObjectURL(url);
     setFiles((current) => current.filter((f) => f.url !== url));
@@ -222,6 +257,11 @@ function ComposeNotice() {
   }
 
   /** What the folded audience row says on its right — see the edit screen. */
+  /** Who the post is from: the teacher, or the kindergarten for the administration. */
+  const authorName = isTeacher
+    ? fullName(profile.data) || "Бүлгийн багш"
+    : (kindergarten.data?.name ?? "Цэцэрлэг");
+
   const audienceHint =
     audience === null
       ? "Бүх хүүхэд"
@@ -240,147 +280,202 @@ function ComposeNotice() {
     );
   }
 
+  /*
+    ★ The composer as a post, not a form — client, 2026-10-06, with a drawing:
+    a bar with ‹, «Мэдэгдэл нийтлэх» and «Болих»; who is posting, with two
+    pills under the name for who sees it and what kind it is; one large
+    borderless «Юу мэдэгдэх вэ?»; the pictures as large cards with Засах and
+    ×; a «Нийтлэлд нэмэх» row; and one full-width «Нийтлэх». Same fields, same
+    one-press create → upload → publish as before; only the shape changed.
+  */
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-0 [&_[data-ui=page-header]]:mb-2 [&_[data-ui=page-header]_h1]:text-title">
-      <PageHeader title="Шинэ мэдэгдэл" />
+    <div className="mx-auto flex w-full max-w-2xl flex-col">
+      <Card className="overflow-hidden p-0">
+        <header className="grid grid-cols-[auto_1fr_auto] items-center gap-2 border-b border-border-soft px-2 py-2 sm:px-3">
+          <BackButton href="/notifications" />
+          <h1 className="text-center text-lead font-semibold text-ink">Мэдэгдэл нийтлэх</h1>
+          <button
+            type="button"
+            onClick={() => router.back()}
+            disabled={busy}
+            className="min-h-11 rounded-control px-3 text-body text-muted transition-colors hover:text-ink disabled:opacity-50"
+          >
+            Болих
+          </button>
+        </header>
 
-      <Card className="overflow-hidden">
-        <form onSubmit={onSubmit} className="flex flex-col gap-3 p-3 sm:p-4" noValidate>
-          <FormError message={publishAll.isError ? errorMessage(publishAll.error) : null} />
+        <form onSubmit={onSubmit} className="flex flex-col" noValidate>
+          <div className="flex flex-col gap-4 p-4 sm:p-5">
+            <FormError message={publishAll.isError ? errorMessage(publishAll.error) : null} />
 
-          {/*
-            ★★ The edit screen's form, exactly — 2026-09-16, the client: "шинэ
-            мэдээ оруулахыг яг саяны засах хэсгийнх шиг болго".
+            {/* Who is posting — the kindergarten's logo for the administration. */}
+            <div className="flex items-start gap-3">
+              {isTeacher ? (
+                <PersonAvatar child={profile.data ?? {}} size={48} />
+              ) : (
+                <KindergartenLogoAvatar
+                  size={48}
+                  fallback={<PersonAvatar child={profile.data ?? {}} size={48} />}
+                />
+              )}
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                <p className="truncate text-lead font-semibold text-ink">{authorName}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    aria-expanded={audienceOpen}
+                    aria-controls={audiencePanelId}
+                    aria-label={`Хэнд харагдах: ${audienceHint}`}
+                    onClick={() => setAudienceOpen((open) => !open)}
+                    disabled={busy}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-control border border-border bg-surface px-3 text-caption text-ink transition-colors hover:border-primary/40"
+                  >
+                    <Users size={16} aria-hidden="true" className="text-muted" />
+                    {audienceHint}
+                    <ChevronDown size={16} aria-hidden="true" className="text-muted" />
+                  </button>
+                  <Select
+                    aria-label="Төрөл"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value as NotificationCategory)}
+                    disabled={busy}
+                    className="h-9 w-auto rounded-control px-3 text-caption"
+                  >
+                    {NOTIFICATION_CATEGORIES.map((value) => (
+                      <option key={value} value={value}>
+                        {NOTIFICATION_CATEGORY_LABEL[value]}
+                      </option>
+                    ))}
+                  </Select>
+                  {isTeacher ? null : (
+                    <button
+                      type="button"
+                      aria-pressed={isImportant}
+                      onClick={() => setIsImportant((value) => !value)}
+                      disabled={busy}
+                      className={cn(
+                        "inline-flex h-9 items-center gap-1.5 rounded-control border px-3 text-caption transition-colors",
+                        isImportant
+                          ? "border-peach-ink/30 bg-peach text-peach-ink"
+                          : "border-border bg-surface text-muted hover:text-ink",
+                      )}
+                    >
+                      <Star size={14} aria-hidden="true" />
+                      Чухал
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
 
-            Төрөл · Гарчиг · the note · the pictures · Хэнд харагдах beside
-            Чухал. The two screens differ in what they do — this one creates,
-            uploads and publishes in one press — and there is no reason for
-            them to differ in what they look like. Writing a notice and
-            correcting one an hour later should not be two layouts to learn.
-          */}
-          <Field label="Төрөл">
-            {({ id }) => (
-              <Select
-                id={id}
-                value={category}
-                onChange={(e) => setCategory(e.target.value as NotificationCategory)}
-                disabled={busy}
+            {audienceOpen ? (
+              <div
+                id={audiencePanelId}
+                className="rounded-card border border-border-soft bg-canvas p-3"
               >
-                {NOTIFICATION_CATEGORIES.map((value) => (
-                  <option key={value} value={value}>
-                    {NOTIFICATION_CATEGORY_LABEL[value]}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
+                <AudiencePicker
+                  value={audience}
+                  onChange={setAudience}
+                  disabled={busy}
+                  showSummary={false}
+                  legendHidden
+                  allowChildren={isTeacher}
+                />
+              </div>
+            ) : null}
 
-          {/*
-            No Гарчиг field — client, 2026-09-25: "Шинэ мэдэгдэл бичихэд
-            гарчиг хас". A notice's title has been optional since 2026-08-30;
-            a new one is written as its body alone.
-          */}
-          {/* The label is `sr-only` here too: printed, it named the obvious. */}
-          <Field label="Дэлгэрэнгүй" labelHidden error={errors.body} required>
-            {({ id, describedBy, invalid }) => (
-              <Textarea
-                id={id}
-                aria-describedby={describedBy}
-                invalid={invalid}
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                disabled={busy}
-                placeholder="Бичих"
-                className="min-h-[56px] py-2"
-              />
-            )}
-          </Field>
+            <Field label="Дэлгэрэнгүй" labelHidden error={errors.body} required>
+              {({ id, describedBy, invalid }) => (
+                <Textarea
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  disabled={busy}
+                  placeholder="Юу мэдэгдэх вэ?"
+                  className="min-h-[120px] border-0 bg-transparent px-0 text-title shadow-none placeholder:text-faint focus:bg-transparent"
+                />
+              )}
+            </Field>
 
-          {/* Photographs, chosen here and sent when the post is. */}
-          <div className="flex flex-col gap-1.5">
             <FormError message={fileError} />
-
             <input
               ref={fileInputRef}
               id={fileInputId}
               type="file"
               accept={ACCEPTED_TYPES}
               multiple
+              aria-label="Зураг нэмэх"
               className="sr-only"
               onChange={(e) => void addFiles(e.target.files)}
             />
+            <input
+              ref={replaceInputRef}
+              type="file"
+              accept={ACCEPTED_TYPES}
+              aria-label="Зураг солих"
+              className="sr-only"
+              onChange={(e) => void replaceFile(e.target.files)}
+            />
 
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-              {files.map(({ file, url }) => (
-                <div key={url} className="relative">
-                  {/*
-                    A plain `<img>`, not `next/image`: the source is a `blob:`
-                    URL for a file that has not left the browser, so there is
-                    nothing for the optimiser to fetch or resize.
-                  */}
-                  <img
-                    src={url}
-                    alt={file.name}
-                    className="aspect-square w-full rounded-control border border-border object-cover"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeFile(url)}
-                    aria-label={`"${file.name}" зургийг хасах`}
-                    disabled={busy}
-                    className="absolute right-1 top-1 grid size-7 place-items-center rounded-pill bg-ink/70 text-white transition-colors hover:bg-ink"
-                  >
-                    <X size={14} aria-hidden="true" />
-                  </button>
-                </div>
-              ))}
+            {files.length > 0 ? (
+              <ul className="flex flex-col gap-3">
+                {files.map(({ file, url }) => (
+                  <li key={url} className="relative overflow-hidden rounded-card bg-canvas">
+                    {/*
+                      A plain `<img>`, not `next/image`: the source is a `blob:`
+                      URL for a file that has not left the browser.
+                    */}
+                    <img src={url} alt={file.name} className="aspect-video w-full object-cover" />
+                    <div className="absolute right-3 top-3 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          replacing.current = url;
+                          replaceInputRef.current?.click();
+                        }}
+                        disabled={busy}
+                        aria-label={`"${file.name}" зургийг солих`}
+                        className="inline-flex h-10 items-center gap-1.5 rounded-control bg-ink/70 px-3 text-body text-white backdrop-blur transition-colors hover:bg-ink"
+                      >
+                        <Pencil size={16} aria-hidden="true" />
+                        Засах
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(url)}
+                        disabled={busy}
+                        aria-label={`"${file.name}" зургийг хасах`}
+                        className="grid size-10 place-items-center rounded-control bg-ink/70 text-white backdrop-blur transition-colors hover:bg-ink"
+                      >
+                        <X size={18} aria-hidden="true" />
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
 
-              {/* The add control is a tile in the same grid, named for a
-                  screen reader and drawn as one icon — the edit screen's. */}
-              <label
-                htmlFor={fileInputId}
-                aria-label="Зураг нэмэх"
-                className={cn(
-                  "grid aspect-square cursor-pointer place-items-center rounded-control",
-                  "border border-dashed border-border bg-canvas text-muted",
-                  "transition-colors hover:border-primary hover:bg-primary-soft/40 hover:text-primary",
-                  busy && "pointer-events-none opacity-60",
-                )}
-              >
-                <ImagePlus size={24} aria-hidden="true" />
-              </label>
+            <div className="flex items-center justify-between gap-3 rounded-card border border-border px-4 py-2">
+              <span className="text-body font-semibold text-ink">Нийтлэлд нэмэх</span>
+              <div className="flex items-center gap-1">
+                <label
+                  htmlFor={fileInputId}
+                  title="Зураг нэмэх"
+                  className={cn(
+                    "grid size-11 cursor-pointer place-items-center rounded-control text-mint-ink transition-colors hover:bg-canvas",
+                    busy && "pointer-events-none opacity-60",
+                  )}
+                >
+                  <ImagePlus size={22} aria-hidden="true" />
+                  <span className="sr-only">Зураг нэмэх</span>
+                </label>
+              </div>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-start gap-2">
-            <Disclosure
-              title="Хэнд харагдах"
-              hint={audienceHint}
-              compact
-              className="min-w-[220px] flex-1"
-            >
-              <AudiencePicker
-                value={audience}
-                onChange={setAudience}
-                disabled={busy}
-                showSummary={false}
-                legendHidden
-                allowChildren={isTeacher}
-              />
-            </Disclosure>
-
-            {isTeacher ? null : (
-              <Checkbox
-                label="Чухал"
-                checked={isImportant}
-                onChange={(e) => setIsImportant(e.target.checked)}
-                disabled={busy}
-                className="min-h-[60px] shrink-0 items-center rounded-card border border-border bg-surface px-3.5 py-0"
-              />
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-2.5 border-t border-border pt-3">
+          <div className="border-t border-border-soft p-4 sm:p-5">
             <Button type="submit" disabled={busy} className="w-full">
               {step === "saving"
                 ? "Хадгалж байна…"
@@ -390,21 +485,8 @@ function ComposeNotice() {
                     ? "Нийтэлж байна…"
                     : "Нийтлэх"}
             </Button>
-
-            <Button
-              type="button"
-              variant="secondary"
-              className="w-full"
-              onClick={() => router.back()}
-              disabled={busy}
-            >
-              Болих
-            </Button>
           </div>
 
-          {/* The one place the multi-request nature shows, and only while it
-              is happening — a teacher who added four photographs should know
-              why the button is busy for a few seconds. */}
           {busy ? (
             <p role="status" className="sr-only">
               {step === "uploading" ? "Зураг илгээж байна" : "Нийтэлж байна"}

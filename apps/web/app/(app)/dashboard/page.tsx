@@ -343,7 +343,9 @@ function TeacherDashboard() {
           "Хоолны бүртгэл" in the menu below.
         */}
         <QuickAction href="/menu" title="Хоолны цэс" art="food" />
-        <QuickAction href="/notifications/new" title="Мэдээ" art="notice" />
+        {/* The feed, as the floating bar's «Мэдээ» — client, 2026-10-06. Writing
+            one is the feed's own «+ Шинэ». */}
+        <QuickAction href="/notifications" title="Мэдээ" art="notice" />
         <QuickAction href="/surveys" title="Судалгаа" art="survey" />
         <QuickAction
           href={group ? `/groups/${group.id}/assessment` : "/children"}
