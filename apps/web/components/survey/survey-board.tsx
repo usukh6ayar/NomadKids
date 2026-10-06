@@ -12,7 +12,6 @@ import {
   Pencil,
   Plus,
   Search,
-  SlidersHorizontal,
   Trash2,
   UsersRound,
 } from "lucide-react";
@@ -24,10 +23,13 @@ import {
   personRefSchema,
   SURVEY_KIND_HINT,
   SURVEY_KIND_LABEL,
+  SURVEY_PERIOD_LABEL,
   surveyCategorySchema,
+  surveyPeriodSchema,
   surveySchema,
   type SurveyCategory,
   type SurveyKind,
+  type SurveyPeriod,
 } from "@kinder/contracts";
 
 const SURVEY_CATEGORIES = surveyCategorySchema.options;
@@ -52,7 +54,7 @@ import { CreateSurveyWizard } from "@/components/survey/create-survey-wizard";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
+import { FilterButton, FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
 import { Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { formatDate, shortName } from "@/lib/format";
@@ -63,36 +65,13 @@ import { FormDialog } from "@/components/ui/form-dialog";
 import { RowMenu } from "@/components/ui/menu";
 import { useToast } from "@/components/ui/toast";
 import { TERM_NUMBERS, termLabel, termNumberForDay } from "@/lib/terms";
-import { isSurveyOwner, staffSurveysSchema } from "@/lib/survey-access";
+import { isSurveyOwner, staffSurveysSchema, type StaffSurvey } from "@/lib/survey-access";
 import { cn } from "@/lib/utils";
 import { BackButton } from "@/components/ui/back-button";
 import { SearchField } from "@/components/ui/search-field";
 import { TableShell, Td, Th } from "@/components/ui/table";
 
 const groupsSchema = paginated(groupListItemSchema);
-
-const STATUS_LABEL: Record<string, string> = {
-  DRAFT: "Ноорог",
-  PUBLISHED: "Нийтэлсэн",
-  CLOSED: "Хаасан",
-};
-
-/**
- * The state as a coloured word — 2026-09-12.
- *
- * ★ It was a filled `Badge`, beside a second filled badge for the category and
- * a tinted icon tile: three blocks of colour on a card whose only actual signal
- * is a progress bar. The client's drawing keeps the word and drops the pill —
- * "хэт их өнгөтэй, онцгүй байна" — so the one thing left carrying colour is the
- * bar, which is the thing worth looking at.
- *
- * `-ink` tokens: they are text colours by definition, and these are text.
- */
-const STATUS_TEXT: Record<string, string> = {
-  DRAFT: "text-muted",
-  PUBLISHED: "text-mint-ink",
-  CLOSED: "text-sun-ink",
-};
 
 /**
  * One kind's whole screen — the client's 2026-09-10 drawing.
@@ -171,7 +150,7 @@ function GroupSurveysList({ groupId }: { groupId: string }) {
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
       {/* The teacher's hub header — back and title on one line, no lede (2026-09-25). */}
-      <header className="flex items-center gap-2 sm:gap-3">
+      <header className="flex items-center gap-2 !bg-transparent !backdrop-blur-none sm:gap-3">
         <BackButton href="/surveys/parents" />
         <h1 className="min-w-0 flex-1 truncate text-lead font-semibold leading-heading text-ink sm:text-title">
           {group?.name ?? "Бүлгийн судалгаа"}
@@ -265,6 +244,11 @@ function SurveysList({ kind }: { kind: SurveyKind }) {
   const [tab, setTab] = useState<TabKey>("active");
   const [category, setCategory] = useState<SurveyCategory | null>(null);
   /**
+   * Гарааны · Явцын · Үр дүнгийн үнэлгээ — moved here from the hub's
+   * «Сүүлийн үүсгэсэн», which went on 2026-10-04 at the client's request.
+   */
+  const [period, setPeriod] = useState<SurveyPeriod | null>(null);
+  /**
    * Client-side, like the notifications page's survey tab and for the same
    * reason: a kindergarten's surveys are a handful of rows already in memory,
    * so filtering them again on the server would be a request for data this
@@ -294,7 +278,7 @@ function SurveysList({ kind }: { kind: SurveyKind }) {
   );
   const term = search.trim().toLowerCase();
   /** How many narrowing choices are on — the number on the filter icon. */
-  const activeFilters = (category ? 1 : 0) + (from || to ? 1 : 0);
+  const activeFilters = (period ? 1 : 0) + (category ? 1 : 0) + (from || to ? 1 : 0);
 
   const statuses = TABS.find((t) => t.key === tab)!.statuses;
 
@@ -306,6 +290,7 @@ function SurveysList({ kind }: { kind: SurveyKind }) {
     const day = surveyDay(survey);
     return (
       statuses.includes(survey.status) &&
+      (!period || survey.period === period) &&
       (!category || survey.category === category) &&
       survey.kind === kind &&
       (!from || day >= from) &&
@@ -372,7 +357,7 @@ function SurveysList({ kind }: { kind: SurveyKind }) {
         that was made. `/surveys` is the href for the same reason the group
         board above uses it — it is where the card that opened this screen is.
       */}
-      <header className="flex items-start gap-3">
+      <header className="flex items-start gap-3 !bg-transparent !backdrop-blur-none">
         <BackButton href="/surveys/parents" />
         <div className="min-w-0 flex-1 pt-1">
           <h1 className="text-title font-semibold leading-heading text-ink">
@@ -415,24 +400,12 @@ function SurveysList({ kind }: { kind: SurveyKind }) {
             is most of a phone screen spent on a filter nobody has asked for
             yet. The count says when one is on.
           */}
-          <Button
-            type="button"
-            variant={filtersOpen ? "primary" : "secondary"}
-            size="icon"
-            aria-expanded={filtersOpen}
-            aria-controls="survey-filters"
-            aria-label="Шүүлтүүр"
-            className="relative shrink-0"
+          <FilterButton
+            expanded={filtersOpen}
+            controls="survey-filters"
+            count={activeFilters}
             onClick={() => setFiltersOpen(!filtersOpen)}
-          >
-            <SlidersHorizontal aria-hidden="true" />
-            {activeFilters > 0 ? (
-              <span className="absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-pill bg-primary px-1 text-compact font-bold text-white">
-                {activeFilters}
-                <span className="sr-only">шүүлтүүр идэвхтэй</span>
-              </span>
-            ) : null}
-          </Button>
+          />
         </div>
 
         <div
@@ -453,6 +426,17 @@ function SurveysList({ kind }: { kind: SurveyKind }) {
             and behave as two, which is the same mistake the class board's own
             filter note records avoiding.
           */}
+          <FilterChipRow label="Үнэлгээний төрлөөр шүүх" scroll>
+            <FilterChip active={period === null} onClick={() => setPeriod(null)}>
+              Бүх үнэлгээ
+            </FilterChip>
+            {surveyPeriodSchema.options.map((key) => (
+              <FilterChip key={key} active={period === key} onClick={() => setPeriod(key)}>
+                {SURVEY_PERIOD_LABEL[key]}
+              </FilterChip>
+            ))}
+          </FilterChipRow>
+
           <FilterChipRow label="Судалгааны ангиллаар шүүх" scroll>
             <FilterChip active={category === null} onClick={() => setCategory(null)}>
               Бүгд
@@ -674,20 +658,15 @@ function TabPill({
  * sets, which is what keeps the footers of a row on one line.
  */
 /** Surveys as rows — the list the cards used to be, 2026-09-25. */
-function SurveyTable({
-  surveys,
-  caption,
-}: {
-  surveys: z.infer<typeof surveySchema>[];
-  caption: string;
-}) {
+function SurveyTable({ surveys, caption }: { surveys: StaffSurvey[]; caption: string }) {
   return (
-    <TableShell caption={caption} minWidth="min-w-[760px]">
+    <TableShell caption={caption} minWidth="min-w-[860px]">
       <thead>
         <tr>
           <Th>Гарчиг</Th>
+          <Th>Бүлэг</Th>
           <Th>Ангилал</Th>
-          <Th>Төлөв</Th>
+          <Th>Судалгаа авсан</Th>
           <Th numeric>Хариулт</Th>
           <Th numeric>Хувь</Th>
           <Th numeric>Огноо</Th>
@@ -705,7 +684,7 @@ function SurveyTable({
   );
 }
 
-function SurveyCard({ survey }: { survey: z.infer<typeof surveySchema> }) {
+function SurveyCard({ survey }: { survey: StaffSurvey }) {
   const meta = SURVEY_CATEGORY_META[survey.category];
   /*
     ★ Nullish, and read as zero rather than hidden.
@@ -760,11 +739,15 @@ function SurveyCard({ survey }: { survey: z.infer<typeof surveySchema> }) {
           {survey.title}
         </Link>
       </Td>
+      {/* Which group it is for — client, 2026-10-04. No group is every group. */}
+      <Td className="text-muted">{survey.group?.name ?? (survey.groupId ? "—" : "Бүх бүлэг")}</Td>
       <Td className="text-muted">{meta.label}</Td>
-      <Td>
-        <span className={cn("font-medium", STATUS_TEXT[survey.status])}>
-          {STATUS_LABEL[survey.status]}
-        </span>
+      <Td className="whitespace-nowrap text-muted">
+        {survey.authorIsAdministration
+          ? "Цэцэрлэгийн удирдлага"
+          : survey.author
+            ? `Бүлгийн багш · ${shortName(survey.author)}`
+            : "—"}
       </Td>
       <Td numeric className="text-muted">
         {answered} / {expected}

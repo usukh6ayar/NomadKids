@@ -189,8 +189,13 @@ export class SurveysService {
       this.repo.participationCounts(kindergartenId),
     ]);
 
-    return surveys.map((survey) => ({
+    return surveys.map(({ createdBy, ...survey }) => ({
       ...survey,
+      author: createdBy
+        ? { id: createdBy.id, lastName: createdBy.lastName, firstName: createdBy.firstName }
+        : null,
+      authorIsAdministration:
+        createdBy?.memberships.some((membership) => membership.role === Role.ADMIN) ?? false,
       respondedCount: counts.responded.get(survey.id) ?? 0,
       expectedCount: expectedRespondents(survey, counts),
     }));

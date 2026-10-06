@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { surveySchema } from "@kinder/contracts";
+import { personRefSchema, surveySchema } from "@kinder/contracts";
 
 /**
  * Staff survey rows already carry the Prisma `createdById` scalar. The shared
@@ -8,6 +8,8 @@ import { surveySchema } from "@kinder/contracts";
  */
 export const staffSurveySchema = surveySchema.extend({
   createdById: z.string().uuid().nullish(),
+  author: personRefSchema.nullish(),
+  authorIsAdministration: z.boolean().default(false),
 });
 
 export const staffSurveysSchema = z.array(staffSurveySchema);

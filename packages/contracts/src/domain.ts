@@ -287,7 +287,7 @@ export const teacherRoleSchema = z.enum(["LEAD", "ASSISTANT"]);
 
 export const TEACHER_ROLE_LABEL: Record<z.infer<typeof teacherRoleSchema>, string> = {
   LEAD: "Ахлах багш",
-  ASSISTANT: "Туслах багш",
+  ASSISTANT: "Багшийн туслах",
 };
 
 /** What the archive says about a kindergarten the child attends or attended. */

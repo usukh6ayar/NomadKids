@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Image from "next/image";
 import { NotebookPen, Users } from "lucide-react";
 import type { TeacherDashboard } from "@kinder/contracts";
 import { ChildAvatar } from "@/components/media/media-image";
@@ -56,14 +55,6 @@ export function RecentObservations({
 
       {isEmpty ? (
         <EmptyState
-          /*
-            The `illustration` slot, not the `icon` one — `states.tsx` keeps
-            them apart because a 20px glyph is a hint and a drawing is the
-            first thing a reader sees. `mascot-robot` is what
-            `child-observations.tsx` already shows for this same empty
-            condition, so the feed and the child's own page agree.
-          */
-          illustration={<Image src="/background/mascot-robot.webp" alt="" width={96} height={96} />}
           title="Ажиглалт хараахан бичигдээгүй"
           description="Хүүхэд сонгоод эхний ажиглалтаа бичихэд энд харагдана."
           action={

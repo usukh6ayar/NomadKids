@@ -120,35 +120,15 @@ async function openPasswordForm(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("settings — changing a password", () => {
-  /*
-   * ★ Sign-out left the profile card on 2026-09-10, at the client's request
-   * that it sit at the very foot of this screen — see `SignOutCard`.
-   *
-   * The assertion is inverted rather than deleted: this is the only way out of
-   * the product, so "it is on this page, in its own card, and that card is not
-   * the profile" is the property worth pinning. A card that swallowed it again
-   * would otherwise pass unnoticed.
-   */
-  /*
-   * ★ Behind «Бусад тохиргоо» since 2026-09-27 — the client's redesign puts
-   * the page's secondary sections in tabs. The sidebar's foot carries its own
-   * «Системээс гарах», so this is no longer the only way out.
-   */
-  it("keeps sign-out under «Бусад тохиргоо», in a card of its own", async () => {
-    const user = userEvent.setup();
+  it("does not repeat sign-out inside personal settings", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       { path: "/me/profile", body: PROFILE },
     ]);
 
     renderWithProviders(<SettingsPage />);
-    await user.click(await screen.findByRole("tab", { name: /Бусад тохиргоо/ }));
-
-    const signOut = await screen.findByRole("button", { name: "Системээс гарах" });
-    const card = signOut.closest('[data-ui="card"]');
-    expect(card).toHaveTextContent("Системээс гарах");
-    // The profile card names the signed-in person; this one must not be it.
-    expect(card).not.toHaveTextContent("Ганбат Болд");
+    await screen.findByText("Ганбат Болд");
+    expect(screen.queryByRole("button", { name: "Системээс гарах" })).toBeNull();
   });
 
   /**

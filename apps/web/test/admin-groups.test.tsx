@@ -95,7 +95,16 @@ describe("the group list", () => {
       within(table)
         .getAllByRole("columnheader")
         .map((th) => th.textContent),
-    ).toEqual(["№", "Бүлгийн нэр", "Насны бүлэг", "Хөтөлбөр", "Бүлгийн багш", "Хүүхэд", "Үйлдэл"]);
+    ).toEqual([
+      "№",
+      "Бүлгийн нэр",
+      "Насны бүлэг",
+      "Хөтөлбөр",
+      "Бүлгийн багш",
+      "Багшийн туслах",
+      "Хүүхэд",
+      "Үйлдэл",
+    ]);
 
     const row = within(table).getByRole("row", { name: /Наран бүлэг/ });
     expect(within(row).getByRole("link", { name: "Наран бүлэг" })).toHaveAttribute(
@@ -105,6 +114,52 @@ describe("the group list", () => {
     expect(within(row).getByText("18")).toBeInTheDocument();
     // The list carries no teacher yet: a dash, never a guess.
     expect(within(row).getAllByRole("cell")[4]).toHaveTextContent(/^—$/);
+    expect(within(row).getAllByRole("cell")[5]).toHaveTextContent(/^—$/);
+  });
+
+  it("shows the lead and assistant in separate columns", async () => {
+    stubList([
+      group({
+        name: "Наран бүлэг",
+        teachers: [
+          {
+            id: "61616161-6161-4616-8616-616161616161",
+            role: "LEAD",
+            endedOn: null,
+            membership: {
+              id: "62626262-6262-4626-8626-626262626262",
+              user: {
+                id: "63636363-6363-4636-8636-636363636363",
+                lastName: "Дэлгэрмаа",
+                firstName: "Сувдаа",
+              },
+            },
+          },
+          {
+            id: "64646464-6464-4646-8646-646464646464",
+            role: "ASSISTANT",
+            endedOn: null,
+            membership: {
+              id: "65656565-6565-4656-8656-656565656565",
+              user: {
+                id: "66666666-6666-4666-8666-666666666666",
+                lastName: "Ариунаа",
+                firstName: "Золжаргал",
+              },
+            },
+          },
+        ],
+      }),
+    ]);
+    renderWithProviders(<AdminGroupsPage />);
+
+    const row = within(await screen.findByRole("table", { name: "Бүлгүүдийн жагсаалт" })).getByRole(
+      "row",
+      { name: /Наран бүлэг/ },
+    );
+    const cells = within(row).getAllByRole("cell");
+    expect(cells[4]).toHaveTextContent("Д.Сувдаа");
+    expect(cells[5]).toHaveTextContent("А.Золжаргал");
   });
 
   /*

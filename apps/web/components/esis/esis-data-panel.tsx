@@ -96,6 +96,10 @@ export function EsisDataPanel({
   actionLabel,
   detail,
   compact = false,
+  registerSearchCompact = false,
+  compactSearchValue,
+  onCompactSearchChange,
+  hasLocalRegisterMatch,
   className,
 }: {
   resource: EsisResourceKey;
@@ -212,6 +216,14 @@ export function EsisDataPanel({
    * the same question.
    */
   compact?: boolean;
+  /** A single quiet search row; results appear only after a register is submitted. */
+  registerSearchCompact?: boolean;
+  /** Controlled value when the compact ESIS lookup is also the local roster search. */
+  compactSearchValue?: string;
+  /** Keeps the kindergarten's own roster filtered while the reader types a name or register. */
+  onCompactSearchChange?: (value: string) => void;
+  /** Prevents a ministry lookup when this exact register already exists locally. */
+  hasLocalRegisterMatch?: (register: string) => boolean;
   /**
    * Extra classes for the panel's own `<section>`.
    *
@@ -321,7 +333,7 @@ export function EsisDataPanel({
   });
 
   if (!primaryKindergartenId) return null;
-  if (catalog.isPending) return <LoadingState rows={compact ? 1 : 3} />;
+  if (catalog.isPending) return <LoadingState rows={compact || registerSearchCompact ? 1 : 3} />;
   // 404 for a role with no ESIS services, and absent for one this role does not
   // hold — either way there is nothing honest to draw.
   if (!endpoint) return null;
@@ -406,8 +418,20 @@ export function EsisDataPanel({
 
   function submitRegisterSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const number = (entered.personRegNumber ?? "").trim().toUpperCase();
+    const number = (compactSearchValue ?? entered.personRegNumber ?? "").trim().toUpperCase();
     if (!number || read.isFetching) return;
+
+    if (registerSearchCompact && onCompactSearchChange) {
+      onCompactSearchChange(number);
+      // Names and partial terms belong to the kindergarten's own roster. Only
+      // a complete Mongolian register number may leave the product for ESIS.
+      const isRegister = /^[А-ЯЁӨҮ]{2}\d{8}$/u.test(number);
+      if (!isRegister || hasLocalRegisterMatch?.(number)) {
+        setSearchedRegister("");
+        return;
+      }
+    }
+
     if (number === searchedRegister) {
       void pull();
     } else {
@@ -415,6 +439,83 @@ export function EsisDataPanel({
       setSearchedRegister(number);
       if (!catalog.data?.canRead) void catalog.refetch();
     }
+  }
+
+  if (registerSearch && registerSearchCompact) {
+    const searchValue = compactSearchValue ?? entered.personRegNumber ?? "";
+    return (
+      <section aria-label={title ?? endpoint.name} className={cn("w-full", className)}>
+        <form
+          onSubmit={submitRegisterSearch}
+          role="search"
+          className="flex h-11 items-center rounded-field border border-border bg-surface shadow-sm transition-colors focus-within:border-faint"
+        >
+          <Field
+            label={onCompactSearchChange ? "Суралцагч хайх" : "ESIS-ээс регистрээр хайх"}
+            labelHidden
+            className="min-w-0 flex-1"
+          >
+            {({ id }) => (
+              <div className="relative">
+                <Search
+                  size={17}
+                  aria-hidden
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
+                />
+                <Input
+                  id={id}
+                  type="search"
+                  placeholder="Хайх"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  maxLength={32}
+                  value={searchValue}
+                  onChange={(event) => {
+                    const next = event.target.value.toUpperCase();
+                    setEntered((current) => ({
+                      ...current,
+                      personRegNumber: next,
+                    }));
+                    if (next.trim() !== searchedRegister) setSearchedRegister("");
+                    onCompactSearchChange?.(next);
+                  }}
+                  className="h-10 border-0 bg-transparent pl-10 pr-2 shadow-none focus:bg-transparent"
+                />
+              </div>
+            )}
+          </Field>
+        </form>
+
+        {searchedRegister ? (
+          <div className="mt-2 rounded-card border border-border bg-surface p-3 shadow-sm sm:p-4">
+            {read.isFetching && !read.data ? (
+              <LoadingState rows={1} />
+            ) : read.isError ? (
+              <p role="alert" className="text-body text-danger">
+                {errorMessage(read.error)}
+              </p>
+            ) : read.data?.status === "FAILED" || !catalog.data?.canRead ? (
+              <p role="alert" className="text-body text-danger">
+                ESIS-ээс хариу ирсэнгүй.
+              </p>
+            ) : rows.length === 0 ? (
+              <p className="text-body text-muted">
+                <strong className="font-semibold text-ink">ESIS-д бүртгэлгүй.</strong> Энэ
+                регистрээр суралцагч олдсонгүй.
+              </p>
+            ) : (
+              <EsisRowValues
+                columns={columns}
+                rows={rows}
+                rowActions={rowActions}
+                hrefs={liveHref ? rows.map(liveHref) : undefined}
+                linkField={linkField}
+              />
+            )}
+          </div>
+        ) : null}
+      </section>
+    );
   }
 
   /*
@@ -605,8 +706,8 @@ export function EsisDataPanel({
            */
           read.data?.status === "FAILED" || read.isError ? null : registerSearch ? (
             <EmptyState
-              title="Сурагч олдсонгүй"
-              description="Регистрийн дугаараа шалгаад дахин хайна уу."
+              title="ESIS-д бүртгэлгүй"
+              description="Энэ регистрээр ESIS-д суралцагч олдсонгүй. Регистрийн дугаараа шалгаад дахин хайна уу."
             />
           ) : (
             <EsisNoAnswer endpoint={endpoint} errorCode={null} variant="EMPTY" />

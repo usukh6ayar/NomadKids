@@ -6,6 +6,7 @@ import { createTestApp } from "./support/app";
 import { resetData, testDb } from "./support/db";
 import {
   authed,
+  assignTeacher,
   createChild,
   createGroup,
   createMembership,
@@ -176,6 +177,53 @@ describe("the room list", () => {
     expect(direct.groupId).toBeNull();
     // The teacher's name, not the parent's own.
     expect(direct.name).toContain(a.teacherUser.firstName);
+  });
+
+  it("keeps an assistant in the group chat but out of the family's private teacher chat", async () => {
+    const assistantUser = await createUser({
+      username: `assistant-${Date.now()}`,
+      lastName: "Ариунаа",
+      firstName: "Золжаргал",
+    });
+    const assistantMembership = await createMembership(
+      assistantUser.id,
+      a.kindergarten.id,
+      "TEACHER",
+    );
+    const assistantAssignment = await assignTeacher(
+      a.kindergarten.id,
+      a.group.id,
+      assistantMembership.id,
+    );
+    await db.groupTeacher.update({
+      where: { id: assistantAssignment.id },
+      data: { role: "ASSISTANT" },
+    });
+    const assistant = await login(app, assistantUser.username!);
+    const assistantDirect = directRoom(a.parentUser.id, assistantUser.id);
+
+    const parentRooms = await authed(request(server()).get("/v1/chat/rooms"), parentA);
+    expect(parentRooms.body.map((room: { key: string }) => room.key)).toContain(
+      directRoom(a.parentUser.id, a.teacherUser.id),
+    );
+    expect(parentRooms.body.map((room: { key: string }) => room.key)).not.toContain(
+      assistantDirect,
+    );
+
+    const assistantRooms = await authed(request(server()).get("/v1/chat/rooms"), assistant);
+    expect(assistantRooms.body.map((room: { key: string }) => room.key)).toContain(groupRoom(a));
+    expect(assistantRooms.body.map((room: { key: string }) => room.key)).not.toContain(
+      assistantDirect,
+    );
+
+    await authed(
+      request(server()).get(`/v1/chat/rooms/${assistantDirect}/messages`),
+      parentA,
+    ).expect(404);
+    await authed(
+      request(server()).get(`/v1/chat/rooms/${assistantDirect}/messages`),
+      assistant,
+    ).expect(404);
   });
 });
 

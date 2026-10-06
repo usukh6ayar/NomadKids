@@ -280,7 +280,10 @@ export class AuthzRepository {
               deletedAt: null,
               group: { deletedAt: null },
             },
-            select: { group: { select: { id: true, name: true, kindergartenId: true } } },
+            select: {
+              role: true,
+              group: { select: { id: true, name: true, kindergartenId: true } },
+            },
           }),
       this.prisma.guardianship.findMany({
         where: {
@@ -303,12 +306,17 @@ export class AuthzRepository {
     ]);
 
     const teachingGroups = teaching.map((row) => row.group);
+    const leadTeachingGroups = teaching
+      .filter((row) => row.role === "LEAD")
+      .map((row) => row.group);
     const guardianGroups = guarded.flatMap((row) => row.child.enrollments.map((e) => e.group));
 
     return {
       teachingGroups,
       guardianGroups,
-      directPeers: await this.loadDirectPeers(actor, teachingGroups, guardianGroups),
+      // Assistants remain members of the group's shared room, but a family's
+      // private "Бүлгийн багш" conversation belongs to the lead teacher only.
+      directPeers: await this.loadDirectPeers(actor, leadTeachingGroups, guardianGroups),
     };
   }
 
@@ -388,6 +396,7 @@ export class AuthzRepository {
         : this.prisma.groupTeacher.findMany({
             where: {
               groupId: { in: guardianGroupIds },
+              role: "LEAD",
               endedOn: null,
               deletedAt: null,
               membership: { deletedAt: null, isActive: true },

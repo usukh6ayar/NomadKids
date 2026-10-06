@@ -406,7 +406,7 @@ describe("өнөөдрийн ирц", () => {
     renderWithProviders(<AttendanceToday />);
 
     expect(await screen.findByText("Бүртгээгүй байна")).toBeInTheDocument();
-    expect(screen.getByText("3 хүүхэд бүртгэхийг хүлээж байна")).toBeInTheDocument();
+    expect(screen.queryByText(/бүртгэхийг хүлээж байна/)).toBeNull();
     /*
       The point of the case, and the part that has not moved: an unmarked
       register reports its own state and never "0%", which would be a claim
@@ -542,7 +542,7 @@ describe("хоолны цэс", () => {
   });
 
   /** Empty says who fills it in, not just that it is empty. */
-  it("says what to do when no menu has been filed", async () => {
+  it("says only that no menu has been filed", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       {
@@ -554,7 +554,7 @@ describe("хоолны цэс", () => {
     renderWithProviders(<TodayMenu />);
 
     expect(await screen.findByText("Өнөөдрийн цэс оруулаагүй")).toBeInTheDocument();
-    expect(screen.getByText(/долоо хоногийн цэсийг бөглөнө/)).toBeInTheDocument();
+    expect(screen.queryByText(/долоо хоногийн цэсийг бөглөнө/)).toBeNull();
   });
 
   /** A menu with no matching allergy shows the food and no alarm. */
@@ -900,14 +900,13 @@ describe("дүрслэл", () => {
   });
 
   /**
-   * ★★★ The menu's empty state stays horizontal and stays illustrated.
+   * ★★★ The menu's empty state is words only.
    *
-   * This section is full width, and a centred 96px mascot over two centred
-   * lines turned the most prominent card on the dashboard into a 280px void.
-   * The drawing survives; what it must not do is become the tallest thing on
-   * the screen for saying that nothing was filed.
+   * It carried a mascot until 2026-10-04, when the client asked that no
+   * drawing of a person stand where nothing has been entered: a parent read
+   * it as a photo of somebody.
    */
-  it("keeps the empty menu compact and illustrated", async () => {
+  it("draws no picture when no menu was entered", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       {
@@ -919,11 +918,7 @@ describe("дүрслэл", () => {
     const { container } = renderWithProviders(<TodayMenu />);
     await screen.findByText("Өнөөдрийн цэс оруулаагүй");
 
-    const mascot = container.querySelector('img[src*="mascot"]');
-    expect(mascot).not.toBeNull();
-    // 72px, not the product's 96px page-level mascot.
-    expect(mascot!.getAttribute("width")).toBe("72");
-    expect(mascot!.getAttribute("alt")).toBe("");
+    expect(container.querySelector("img")).toBeNull();
   });
 
   /**

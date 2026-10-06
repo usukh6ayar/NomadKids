@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Download, Plus, Upload } from "lucide-react";
@@ -25,6 +24,7 @@ import { useDebounced } from "@/lib/use-debounced";
 import { Donut } from "@/components/ui/chart/donut";
 import { Ring } from "@/components/ui/chart/ring";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { formatAge, fullName } from "@/lib/format";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
@@ -277,12 +277,6 @@ function StaffChildren() {
         }
       />
 
-      <EsisDataPanel
-        resource="studentByRegister"
-        title="РД-ээр сурагч хайх"
-        description="Сурагчийн мэдээллийг ESIS-ээс регистрийн дугаараар хайна"
-      />
-
       {/*
         ★ Director only, since 2026-09-22 — and this one is the reason the
         change is not cosmetic.
@@ -298,6 +292,35 @@ function StaffChildren() {
         the rows they can actually see.
       */}
       {isAdmin ? <RosterSummary /> : null}
+
+      <EsisDataPanel
+        resource="studentByRegister"
+        title="ESIS-ээс регистрээр хайх"
+        description="Регистрийн дугаараар ESIS-ээс хайж, манай бүртгэлтэй тулгана"
+        registerSearchCompact
+        compactSearchValue={typed}
+        onCompactSearchChange={setTyped}
+        hasLocalRegisterMatch={(register) =>
+          (data?.items ?? []).some(
+            (child) => child.nationalId?.replace(/\s/g, "").toUpperCase() === register,
+          )
+        }
+        liveHref={childHref}
+        linkField="firstName"
+        rowActions={(row) => {
+          const href = childHref(row);
+          return href ? (
+            <Badge tone="mint">Манай системд бүртгэлтэй</Badge>
+          ) : (
+            <span className="flex flex-wrap items-center justify-end gap-2">
+              <Badge tone="sun">Манай системд бүртгэлгүй</Badge>
+              <Button asChild size="sm">
+                <Link href="/children/new">Суралцагчаар бүртгэх</Link>
+              </Button>
+            </span>
+          );
+        }}
+      />
 
       {/*
         ★ The kindergarten's own roster, scoped by the API — 2026-09-22.
@@ -400,41 +423,6 @@ function StaffChildren() {
           autoRead
         />
       ) : null}
-      {/*
-        ★ The group roster, beside the whole one — 2026-09-09, at the client's
-        request ("тэр хүүхдүүд дээр бүлгийн суралцагчийн жагсаалт api-13").
-        It was on the attendance register; one home per service, and this is
-        the screen about children.
-      */}
-      <EsisDataPanel
-        resource="groupStudents"
-        title="Бүлгийн суралцагчийн жагсаалт"
-        description="ESIS-д нэг бүлэгт бүртгэлтэй хүүхдүүд"
-      />
-      {/*
-        ★ Суралцагчийн хөдөлгөөн — the last service in the catalog that had
-        never been drawn anywhere, placed 2026-09-09 ("Ашиглагдаагүй 7
-        ашигла").
-
-        ★★ No grant accompanies it. `studentMovements` has always been callable
-        by ADMIN, which resolves to every key; it simply had no screen. It
-        stays admin-only rather than joining the teacher's list: a transfer
-        register — who arrived, who left, when — is the director's question
-        about the institution, not a teacher's about their group. The panel
-        renders nothing for a role whose catalog omits the key, so a teacher
-        opening this screen sees the roster and no hole where a permission
-        failed.
-
-        `beginDate` is the one input, and the panel asks for it. That *is* the
-        question this service answers ("хөдөлгөөн хэзээнээс хойш"), so unlike
-        a product code it is a parameter the reader actually holds.
-      */}
-      <EsisDataPanel
-        resource="studentMovements"
-        title="Суралцагчийн хөдөлгөөн"
-        description="Тухайн өдрөөс хойшх элсэлт, шилжилт, гарсан бүртгэл"
-        actionLabel="Хөдөлгөөн татах"
-      />
     </div>
   );
 }
@@ -820,7 +808,6 @@ function MyChildren() {
 
       {data && data.length === 0 ? (
         <EmptyState
-          icon={<Image src="/background/mascot-family.webp" alt="" width={96} height={96} />}
           title="Хүүхэд холбогдоогүй байна"
           description="Танд холбогдсон хүүхэд байхгүй байна. Цэцэрлэгийн багштайгаа холбогдоно уу."
         />

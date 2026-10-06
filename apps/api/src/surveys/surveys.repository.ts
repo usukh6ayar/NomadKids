@@ -82,6 +82,17 @@ export class SurveysRepository {
       include: {
         questions: { orderBy: questionOrder },
         group: { select: { id: true, name: true } },
+        createdBy: {
+          select: {
+            id: true,
+            lastName: true,
+            firstName: true,
+            memberships: {
+              where: { kindergartenId, isActive: true, deletedAt: null },
+              select: { role: true },
+            },
+          },
+        },
       },
     });
   }

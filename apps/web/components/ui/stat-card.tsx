@@ -62,6 +62,7 @@ export function StatCard({
   trend,
   footer,
   chart,
+  plain = false,
   className,
 }: {
   label: string;
@@ -110,6 +111,8 @@ export function StatCard({
    * This closes it and says *how it divides*, so a card can carry both.
    */
   chart?: ReactNode;
+  /** White surface without the tone wash or decorative corner circle. */
+  plain?: boolean;
   className?: string;
 }) {
   const card = (
@@ -138,7 +141,7 @@ export function StatCard({
         // the label ~70px beside its art, and «Нийт суралцагч» broke inside a
         // word. Above `sm` the art leads the row again.
         "relative flex flex-col items-start gap-2 overflow-hidden sm:flex-row sm:gap-3",
-        TONE_WASH[tone],
+        plain ? "bg-surface" : TONE_WASH[tone],
         size === "wide" && "sm:col-span-2",
         // `h-full` only when linked: the `<Link>` wrapper becomes the grid
         // item, so without it the card no longer stretches to the row's height
@@ -146,6 +149,7 @@ export function StatCard({
         href && "h-full transition-shadow group-hover:shadow-md",
         className,
       )}
+      data-stat-style={plain ? "plain" : "tone"}
     >
       {/*
         ★ The art leads the card, rather than closing it.
@@ -165,13 +169,16 @@ export function StatCard({
         only: `aria-hidden`, behind the content, and never under text that has
         to be read (the figure sits left of it at every width).
       */}
-      <span
-        aria-hidden="true"
-        className={cn(
-          "pointer-events-none absolute -right-8 -top-8 size-28 rounded-pill opacity-70",
-          TONE_FILL[tone],
-        )}
-      />
+      {!plain ? (
+        <span
+          aria-hidden="true"
+          data-ui="stat-ornament"
+          className={cn(
+            "pointer-events-none absolute -right-8 -top-8 size-28 rounded-pill opacity-70",
+            TONE_FILL[tone],
+          )}
+        />
+      ) : null}
 
       {art ? (
         <span
@@ -192,7 +199,9 @@ export function StatCard({
       ) : null}
 
       <div className="relative flex min-w-0 flex-1 flex-col gap-1">
-        <p className={cn("text-body font-medium", TONE_INK[tone])}>{label}</p>
+        <p className={cn("text-body font-medium", plain ? "text-muted" : TONE_INK[tone])}>
+          {label}
+        </p>
 
         {/*
           `tabular-nums` so a figure that ticks upward does not shift the
@@ -218,7 +227,9 @@ export function StatCard({
           size, "2 нийт · 1 амжилтгүй", "идэвхтэй" — rather than a category the
           label already gave.
         */}
-        {unit ? <p className={cn("text-caption", TONE_INK[tone])}>{unit}</p> : null}
+        {unit ? (
+          <p className={cn("text-caption", plain ? "text-muted" : TONE_INK[tone])}>{unit}</p>
+        ) : null}
 
         {/*
           ★ The trend sits under a rule, so it reads as a second statement

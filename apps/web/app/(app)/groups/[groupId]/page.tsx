@@ -27,6 +27,7 @@ import { TableShell, Td, Th } from "@/components/ui/table";
 import { useSession } from "@/lib/auth/session";
 import { ChildRosterTable } from "@/components/child/admin-roster";
 import { Art } from "@/components/ui/art";
+import { GroupRosterCheck } from "@/components/admin/groups/group-roster-check";
 
 const childrenSchema = paginated(childSummarySchema);
 const staffSchema = paginated(adminUserSchema);
@@ -210,7 +211,7 @@ function GroupDetail() {
                   .map((assignment) => (
                     <tr key={assignment.id}>
                       <Td className="text-muted">
-                        {assignment.role === "LEAD" ? "Бүлгийн багш" : "Туслах багш"}
+                        {assignment.role === "LEAD" ? "Бүлгийн багш" : "Багшийн туслах"}
                       </Td>
                       <Td className="font-medium text-ink">
                         {assignment.membership?.user ? shortName(assignment.membership.user) : "—"}
@@ -244,7 +245,7 @@ function GroupDetail() {
                   </span>
                   {assignment.role ? (
                     <Badge tone={assignment.role === "LEAD" ? "sky" : "neutral"}>
-                      {assignment.role === "LEAD" ? "Үндсэн" : "Туслах"}
+                      {assignment.role === "LEAD" ? "Үндсэн" : "Багшийн туслах"}
                     </Badge>
                   ) : null}
                 </li>
@@ -263,6 +264,10 @@ function GroupDetail() {
           </Button>
         }
       />
+
+      {roster.data ? (
+        <GroupRosterCheck esisGroupId={data.esisGroupId} localCount={roster.data.total} />
+      ) : null}
 
       {roster.isLoading ? <LoadingState rows={4} /> : null}
       {roster.isError ? <ErrorState description={errorMessage(roster.error)} /> : null}

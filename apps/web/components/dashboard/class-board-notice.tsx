@@ -183,11 +183,7 @@ export function ClassBoardNotice({ notice }: { notice: TeacherDashboard["boardNo
           </div>
         </Link>
       ) : (
-        <BoardCardEmpty
-          icon={<Megaphone size={22} />}
-          title="Зарлал хараахан нийтлээгүй"
-          hint="Ангийн самбарт бичсэн зарлал эцэг эхийн утсанд харагдана."
-        />
+        <BoardCardEmpty icon={<Megaphone size={22} />} title="Зарлал хараахан нийтлээгүй" />
       )}
     </BoardCard>
   );

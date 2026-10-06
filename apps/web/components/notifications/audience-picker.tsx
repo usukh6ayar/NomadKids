@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
   MAX_PAGE_SIZE,
   childSummarySchema,
@@ -198,12 +198,32 @@ export function AudiencePicker({
 
     In an effect rather than in the callers' `useState`, so it also corrects a
     draft loaded from an existing notice that was addressed to everyone.
+
+    ★★ And it starts on the teacher's own group, ticked — client, 2026-10-04:
+    "багш шинэ мэдээ оруулахад өөрийн бүлэг шууд сонгогдоно". `/groups`
+    answers a teacher with only the groups they are assigned to, so every
+    group listed here is theirs.
+
+    Once, and only onto an empty choice: `prefilled` is what stops a teacher
+    who unticks their group from having it ticked straight back, and an edited
+    notice that already names somebody is never touched.
   */
   useEffect(() => {
     if (!sessionLoading && !canAddressEveryone && value === null) {
       onChange({ groupIds: [], childIds: [] });
     }
   }, [sessionLoading, canAddressEveryone, value, onChange]);
+
+  const prefilled = useRef(false);
+  const ownGroups = groups.data;
+  useEffect(() => {
+    if (prefilled.current || sessionLoading || canAddressEveryone || !ownGroups) return;
+    if (!value || value.groupIds.length > 0 || value.childIds.length > 0) return;
+    prefilled.current = true;
+    if (ownGroups.items.length > 0) {
+      onChange({ groupIds: ownGroups.items.map((group) => group.id), childIds: [] });
+    }
+  }, [sessionLoading, canAddressEveryone, value, onChange, ownGroups]);
   const groupIds = value?.groupIds ?? [];
   const childIds = value?.childIds ?? [];
 

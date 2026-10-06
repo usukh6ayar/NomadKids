@@ -125,15 +125,21 @@ describe("a survey card's menu", () => {
     const card = within((await screen.findByText(SURVEY.title)).closest("tr") as HTMLElement);
 
     expect(card.getByText("2026.09.02")).toBeInTheDocument();
-    expect(card.getByText("Нийтэлсэн")).toHaveClass("text-mint-ink");
+    // Who asked, in place of the state since 2026-10-04 — the tabs above say
+    // which state the list is showing.
+    expect(card.getByText("—")).toBeInTheDocument();
+    expect(card.queryByText("Нийтэлсэн")).not.toBeInTheDocument();
     expect(card.getByRole("link", { name: SURVEY.title })).toBeInTheDocument();
     expect(card.getByText("0 / 0")).toBeInTheDocument();
     expect(card.getByText("0%")).toBeInTheDocument();
     expect(card.getByText("Сэтгэл ханамжийн судалгаа")).toBeInTheDocument();
 
-    // …and nothing else. The audience and the question count were the two
-    // lines the drawing has no room for.
-    expect(card.queryByText("Бүх бүлэг")).not.toBeInTheDocument();
+    // The group came back as its own column on 2026-10-04, at the client's
+    // request — see the case below.
+    expect(card.getByText("Бүх бүлэг")).toBeInTheDocument();
+
+    // …and nothing else. The question count is the line the drawing has no
+    // room for.
     expect(card.queryByText(/асуулт$/)).not.toBeInTheDocument();
     // The category icon tile and the two badges stay gone.
     expect(card.queryByText("Судалгаа")).not.toBeInTheDocument();
@@ -148,7 +154,41 @@ describe("a survey card's menu", () => {
       within(table)
         .getAllByRole("columnheader")
         .map((th) => th.textContent),
-    ).toEqual(["Гарчиг", "Ангилал", "Төлөв", "Хариулт", "Хувь", "Огноо", "Үйлдэл"]);
+    ).toEqual([
+      "Гарчиг",
+      "Бүлэг",
+      "Ангилал",
+      "Судалгаа авсан",
+      "Хариулт",
+      "Хувь",
+      "Огноо",
+      "Үйлдэл",
+    ]);
+  });
+
+  /** Client, 2026-10-04 — which group a survey is for, after its title. */
+  it("names the group, and every group when there is none", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: `/kindergartens/${KINDERGARTEN_ID}/surveys`,
+        body: [
+          SURVEY,
+          {
+            ...OLD_POLL,
+            kind: "FORM",
+            groupId: "44444444-4444-4444-8444-444444444444",
+            group: { id: "44444444-4444-4444-8444-444444444444", name: "Дэлбээ бүлэг" },
+          },
+        ],
+      },
+    ]);
+    renderWithProviders(<SurveyBoard kind="FORM" />);
+
+    const everyone = (await screen.findByText(SURVEY.title)).closest("tr")!;
+    expect(within(everyone).getByText("Бүх бүлэг")).toBeInTheDocument();
+    const grouped = screen.getByText(OLD_POLL.title).closest("tr")!;
+    expect(within(grouped).getByText("Дэлбээ бүлэг")).toBeInTheDocument();
   });
 
   it("names who has not answered, before who has", async () => {
@@ -389,6 +429,38 @@ describe("the survey filters", () => {
       "grid-cols-2",
     );
     expect(within(panel).getByRole("group", { name: "Судалгааны ангиллаар шүүх" })).toBeVisible();
+  });
+
+  /**
+   * The wave filter moved here from the hub — client, 2026-10-04, when the
+   * hub's «Сүүлийн үүсгэсэн» went.
+   */
+  it("narrows the list by assessment wave", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: `/kindergartens/${KINDERGARTEN_ID}/surveys`,
+        body: [
+          { ...SURVEY, period: "BASELINE" },
+          { ...OLD_POLL, kind: "FORM", period: "ENDLINE" },
+        ],
+      },
+    ]);
+    renderWithProviders(<SurveyBoard kind="FORM" />);
+
+    expect(await screen.findByText(SURVEY.title)).toBeInTheDocument();
+    expect(screen.getByText(OLD_POLL.title)).toBeInTheDocument();
+
+    await openFilters(user);
+    const waves = screen.getByRole("group", { name: "Үнэлгээний төрлөөр шүүх" });
+    await user.click(within(waves).getByRole("button", { name: "Үр дүнгийн үнэлгээ" }));
+
+    expect(screen.queryByText(SURVEY.title)).not.toBeInTheDocument();
+    expect(screen.getByText(OLD_POLL.title)).toBeInTheDocument();
+
+    await user.click(within(waves).getByRole("button", { name: "Бүх үнэлгээ" }));
+    expect(screen.getByText(SURVEY.title)).toBeInTheDocument();
   });
 
   /*

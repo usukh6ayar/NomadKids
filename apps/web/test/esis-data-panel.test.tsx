@@ -1,5 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
@@ -360,6 +361,77 @@ describe("ESIS мэдээллийн панел", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
+  it("can render and submit the roster lookup as one minimal search row", async () => {
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: `${ESIS_PATH}/resource`,
+        body: {
+          resource: "studentByRegister",
+          source: "LIVE",
+          status: "SUCCEEDED",
+          errorCode: null,
+          count: 1,
+          durationMs: 12,
+          fields: studentFields,
+          rows: [{ firstName: "Батбаяр", personRegNumber: null }],
+          response: { SUCCESS_CODE: 200, RESPONSE_MESSAGE: "OK", RESULT: [] },
+        },
+      },
+      { path: CATALOG_PATH, body: catalog(true) },
+    ]);
+    renderWithProviders(
+      <EsisDataPanel
+        resource="studentByRegister"
+        title="ESIS-ээс регистрээр хайх"
+        registerSearchCompact
+      />,
+    );
+
+    const input = await screen.findByRole("searchbox", { name: "ESIS-ээс регистрээр хайх" });
+    expect(input).toHaveAttribute("placeholder", "Хайх");
+    expect(screen.queryByRole("heading", { name: "ESIS-ээс регистрээр хайх" })).toBeNull();
+    expect(screen.queryByText(/хайлтаа эхлүүлнэ/)).toBeNull();
+    expect(screen.queryByText("ESIS хайх")).toBeNull();
+    expect(screen.queryByRole("button", { name: "ESIS-ээс хайх" })).toBeNull();
+
+    await userEvent.type(input, "уб11223344{Enter}");
+
+    expect(await screen.findByText("Батбаяр")).toBeInTheDocument();
+    expect(calls.filter((call) => call.url.startsWith(`${ESIS_PATH}/resource`))).toHaveLength(1);
+  });
+
+  it("keeps names and an existing local register out of the ESIS lookup", async () => {
+    const { calls } = stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: CATALOG_PATH, body: catalog(true) },
+    ]);
+
+    function CombinedRosterSearch() {
+      const [value, setValue] = useState("");
+      return (
+        <EsisDataPanel
+          resource="studentByRegister"
+          registerSearchCompact
+          compactSearchValue={value}
+          onCompactSearchChange={setValue}
+          hasLocalRegisterMatch={(register) => register === "УБ11223344"}
+        />
+      );
+    }
+
+    renderWithProviders(<CombinedRosterSearch />);
+    const input = await screen.findByRole("searchbox", { name: "Суралцагч хайх" });
+
+    await userEvent.type(input, "Ану{Enter}");
+    expect(input).toHaveValue("АНУ");
+    expect(calls.filter((call) => call.url.startsWith(`${ESIS_PATH}/resource`))).toHaveLength(0);
+
+    await userEvent.clear(input);
+    await userEvent.type(input, "уб11223344{Enter}");
+    expect(calls.filter((call) => call.url.startsWith(`${ESIS_PATH}/resource`))).toHaveLength(0);
+  });
+
   it("does not claim there is no student when ESIS reading is unavailable", async () => {
     const { calls } = stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
@@ -511,13 +583,17 @@ describe("ESIS мэдээллийн панел", () => {
      * and it is measurable rather than a matter of taste. The card layout
      * repeated all five field names inside every card.
      */
-    expect(screen.getAllByText("Код")).toHaveLength(1);
     expect(screen.getAllByText("Хэмжих нэгж")).toHaveLength(1);
     expect(screen.getAllByText("Төрөл")).toHaveLength(1);
     expect(screen.getAllByText("Илчлэг")).toHaveLength(1);
+    expect(screen.getAllByText("Уураг")).toHaveLength(1);
+
+    // The ministry's product code is never drawn (client, 2026-10-04).
+    expect(screen.queryByText("Код")).not.toBeInTheDocument();
+    expect(screen.queryByText("5107")).not.toBeInTheDocument();
 
     // Still five columns and no more: the rest of the record is one press away.
-    expect(screen.queryByText("Уураг")).not.toBeInTheDocument();
+    expect(screen.queryByText("Өөх тос")).not.toBeInTheDocument();
     expect(screen.queryByText("Дараалал")).not.toBeInTheDocument();
   });
 
@@ -564,16 +640,18 @@ describe("ESIS мэдээллийн панел", () => {
 
     await screen.findByText("Гурилтай шөл");
     // Absent until asked for — it is one of the columns the table drops.
-    expect(screen.queryByText("Уураг")).toBeNull();
+    expect(screen.queryByText("Өөх тос")).toBeNull();
 
     await user.click(screen.getByText("Гурилтай шөл"));
 
     // The dropped fields, and this row's values for them.
-    expect(await screen.findByText("Уураг")).toBeInTheDocument();
+    expect(await screen.findByText("Өөх тос")).toBeInTheDocument();
     expect(screen.getByText("Дараалал")).toBeInTheDocument();
-    expect(screen.getByText("9.8")).toBeInTheDocument();
+    expect(screen.getByText("7.2")).toBeInTheDocument();
     // And not the other row's — one row opens, not the table.
-    expect(screen.queryByText("6.4")).toBeNull();
+    expect(screen.queryByText("5.1")).toBeNull();
+    // A code stays hidden behind the press too.
+    expect(screen.queryByText("5107")).toBeNull();
   });
 
   /*

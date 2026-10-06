@@ -74,7 +74,7 @@ export function GroupCard({
           {lead ? (
             <>
               <p className="text-caption text-muted">
-                {lead.role === "ASSISTANT" ? "Туслах багш" : "Үндсэн багш"}
+                {lead.role === "ASSISTANT" ? "Багшийн туслах" : "Үндсэн багш"}
               </p>
               <p className="mt-0.5 truncate text-body text-ink">
                 {shortName(lead.membership?.user)}

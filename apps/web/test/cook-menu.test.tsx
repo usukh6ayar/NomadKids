@@ -26,6 +26,18 @@ function todayIso(): string {
     .slice(0, 10);
 }
 
+/** The week the kitchen opens on. Sunday previews the plan beginning Monday. */
+function visibleWeekStartIso(): string {
+  const today = todayIso();
+  const date = new Date(`${today}T00:00:00.000Z`);
+  if (date.getUTCDay() === 0) {
+    date.setUTCDate(date.getUTCDate() + 1);
+  } else {
+    date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+  }
+  return date.toISOString().slice(0, 10);
+}
+
 /**
  * Opens the editing flow, and then the day form.
  *
@@ -96,28 +108,37 @@ function stubWeek(
     problems: [],
   },
 ) {
+  const today = todayIso();
+  const visibleWeekStart = visibleWeekStartIso();
+  const menuDay = (date: string) => ({
+    id: `44444444-4444-4444-8444-${date.replaceAll("-", "").padEnd(12, "0")}`,
+    date,
+    dishes: [{ name: "Тараг", allergenTags: [], kind: "BREAKFAST" }],
+    totalCalories: null,
+    status: "DRAFT",
+    warnings: [],
+  });
+
   return stubApi([
     { path: "/auth/me", body: sessionFor(roles) },
     {
-      path: `/kindergartens/${KG_ID}/menu/import`,
+      path: `/kindergartens/${KG_ID}/menu/import?dryRun=true`,
       method: "POST",
-      body: importResult,
+      body: { ...importResult, dryRun: true },
+      status: 201,
+    },
+    {
+      path: `/kindergartens/${KG_ID}/menu/import?dryRun=false`,
+      method: "POST",
+      body: { ...importResult, dryRun: false },
       status: 201,
     },
     {
       path: `/kindergartens/${KG_ID}/menu/with-warnings`,
       // One real day, so the table has a row to draw rather than its empty
       // state — `WeekTable` shows nothing at all for a week with no dishes.
-      body: [
-        {
-          id: "44444444-4444-4444-8444-444444444444",
-          date: todayIso(),
-          dishes: [{ name: "Тараг", allergenTags: [], kind: "BREAKFAST" }],
-          totalCalories: null,
-          status: "DRAFT",
-          warnings: [],
-        },
-      ],
+      body:
+        visibleWeekStart === today ? [menuDay(today)] : [menuDay(today), menuDay(visibleWeekStart)],
     },
     {
       path: `/kindergartens/${KG_ID}/menu/`,
@@ -521,6 +542,11 @@ describe("the menu as a spreadsheet", () => {
 
     await user.click(screen.getByRole("button", { name: "Оруулах" }));
     await waitFor(() => expect(calls.some((call) => call.url.includes("dryRun=false"))).toBe(true));
+    expect(
+      await screen.findByText(/2 өдрийн цэс орууллаа \(2026-03-02 – 2026-03-03\)/),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("2026.03.02 – 2026.03.08")).toBeInTheDocument();
+    expect(screen.queryByText("Excel-ээр оруулах")).not.toBeInTheDocument();
   });
 
   it("names the rows it could not read", async () => {

@@ -27,16 +27,41 @@ export function Disclosure({
   title,
   hint,
   disabled = false,
+  compact = false,
   className,
   children,
 }: {
   title: string;
   hint?: string;
   disabled?: boolean;
+  /**
+   * A quiet one-line setting rather than a section: no box, body-size muted
+   * text, the 44px tap floor rather than 60px. For a form where this is a
+   * secondary choice — client, 2026-10-04, the new notice's «Хэнд харагдах»:
+   * "анхаарал татахааргүй зай бага эзлэх болго".
+   */
+  compact?: boolean;
   /** For a caller that places this in a row rather than in a column. */
   className?: string;
   children: ReactNode;
 }) {
+  if (compact && !disabled) {
+    return (
+      <details className={cn("group", className)}>
+        <summary className="flex min-h-[44px] cursor-pointer list-none items-center gap-1.5 text-body text-muted [&::-webkit-details-marker]:hidden">
+          <ChevronRight
+            size={16}
+            aria-hidden="true"
+            className="shrink-0 transition-transform group-open:rotate-90"
+          />
+          <span>{title}</span>
+          {hint ? <span className="truncate text-ink">· {hint}</span> : null}
+        </summary>
+        <div className="pb-2 pt-1">{children}</div>
+      </details>
+    );
+  }
+
   if (disabled) {
     return (
       <Card pad="roomy" className={cn("flex items-center justify-between gap-3", className)}>

@@ -237,4 +237,61 @@ describe("the notice card's header", () => {
     const photo = await (await card()).findByRole("img", { name: /-ийн зураг$/ });
     expect(photo.getAttribute("src")).toContain(photoId);
   });
+
+  /*
+    ★ An administration post wears the kindergarten's own logo — client,
+    2026-10-04: "цэцэрлэг гэсний урд талын дугуйд цэцэрлэгийн лого".
+  */
+  it("puts the kindergarten's logo on an administration post", async () => {
+    const logoId = "abababab-abab-4bab-8bab-abababababab";
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/children/mine", body: [] },
+      { path: "/groups", body: GROUPS },
+      {
+        path: "/kindergartens/33333333-3333-4333-8333-333333333333",
+        body: { logoMediaFileId: logoId },
+      },
+      {
+        path: "/notifications",
+        body: {
+          items: [notice({ authorIsAdministration: true })],
+          page: 1,
+          pageSize: 25,
+          total: 1,
+          totalPages: 1,
+        },
+      },
+    ]);
+    const { container } = renderWithProviders(<NotificationsPage />);
+
+    await card();
+    await vi.waitFor(() => expect(container.querySelector(`img[src*="${logoId}"]`)).not.toBeNull());
+  });
+
+  it("keeps the drawing when the kindergarten has no logo", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/children/mine", body: [] },
+      { path: "/groups", body: GROUPS },
+      {
+        path: "/kindergartens/33333333-3333-4333-8333-333333333333",
+        body: { logoMediaFileId: null },
+      },
+      {
+        path: "/notifications",
+        body: {
+          items: [notice({ authorIsAdministration: true })],
+          page: 1,
+          pageSize: 25,
+          total: 1,
+          totalPages: 1,
+        },
+      },
+    ]);
+    const { container } = renderWithProviders(<NotificationsPage />);
+
+    await card();
+    expect(container.querySelector('img[src*="/media/"]')).toBeNull();
+  });
 });

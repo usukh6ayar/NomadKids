@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { createPortal } from "react-dom";
 // Aliased: an unqualified `KeyboardEvent` would shadow the DOM's inside this
 // module, and the two `addEventListener` calls below need the DOM one.
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -248,20 +250,73 @@ export function RowMenu({
 }) {
   const [open, setOpen] = useState(false);
   const [focusFirst, setFocusFirst] = useState(false);
+  const [position, setPosition] = useState<{ left: number; top: number; maxHeight: number } | null>(
+    null,
+  );
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open || !focusFirst) return;
-    root.current?.querySelector<HTMLElement>("[role='menuitem']")?.focus();
+    panel.current?.querySelector<HTMLElement>("[role='menuitem']")?.focus();
     setFocusFirst(false);
   }, [open, focusFirst]);
+
+  /*
+   * The menu is portalled out of tables and horizontal scrollers.
+   *
+   * A z-index cannot escape an ancestor's `overflow-x-auto`/`overflow-hidden`:
+   * the survey table therefore cut a five-item menu after its first rows. A
+   * fixed portal is positioned against the trigger and flips above it when
+   * there is not enough room below, so every action remains reachable at the
+   * end of a table and near the bottom of a phone screen.
+   */
+  useLayoutEffect(() => {
+    if (!open) {
+      setPosition(null);
+      return;
+    }
+
+    const place = () => {
+      const anchor = trigger.current;
+      const menu = panel.current;
+      if (!anchor || !menu) return;
+
+      const rect = anchor.getBoundingClientRect();
+      const gutter = 8;
+      const gap = 4;
+      const width = menu.offsetWidth || 232;
+      const height = menu.scrollHeight || menu.offsetHeight;
+      const below = window.innerHeight - rect.bottom - gap - gutter;
+      const above = rect.top - gap - gutter;
+      const openAbove = height > below && above > below;
+      const room = Math.max(120, openAbove ? above : below);
+      const maxLeft = Math.max(gutter, window.innerWidth - width - gutter);
+      const left = Math.max(gutter, Math.min(rect.right - width, maxLeft));
+      const visibleHeight = Math.min(height, room);
+      const top = openAbove
+        ? Math.max(gutter, rect.top - gap - visibleHeight)
+        : Math.min(rect.bottom + gap, window.innerHeight - gutter - visibleHeight);
+
+      setPosition({ left, top, maxHeight: room });
+    };
+
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, items.length]);
 
   useEffect(() => {
     if (!open) return;
 
     const onPointerDown = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (!root.current?.contains(target) && !panel.current?.contains(target)) setOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -281,7 +336,7 @@ export function RowMenu({
     // `HTMLElement`, not `HTMLButtonElement`: an entry is a button *or* a link
     // since `href` arrived, and the arrow keys have to walk both.
     const entries = Array.from(
-      root.current?.querySelectorAll<HTMLElement>("[role='menuitem']") ?? [],
+      panel.current?.querySelectorAll<HTMLElement>("[role='menuitem']") ?? [],
     );
     if (entries.length === 0) return;
 
@@ -318,65 +373,75 @@ export function RowMenu({
         {triggerIcon ?? <MoreHorizontal size={18} aria-hidden="true" />}
       </Button>
 
-      {open ? (
-        <div
-          role="menu"
-          aria-label={ariaLabel}
-          onKeyDown={onListKeyDown}
-          /*
-           * Anchored to the row's right edge. `z-30` clears the sidebar for the
-           * same reason `Menu`'s panel does; `bottom-full` is not used because
-           * a list row is rarely the last thing on the screen and a menu that
-           * flips direction is harder to predict than one that scrolls.
-           */
-          className="absolute right-0 z-30 mt-1 w-[232px] overflow-hidden rounded-row border border-border bg-surface py-1 text-left shadow-[0_8px_28px_rgba(15,23,42,.12)]"
-        >
-          {items.map((item) => {
-            const className = cn(
-              "flex min-h-[44px] w-full items-center gap-2.5 px-3 py-2 text-left text-body hover:bg-canvas focus:bg-canvas focus:outline-none",
-              item.tone === "danger" ? "text-danger" : "text-ink",
-              item.separated && "mt-1 border-t border-border-soft pt-2.5",
-            );
+      {open
+        ? createPortal(
+            <div
+              ref={panel}
+              role="menu"
+              aria-label={ariaLabel}
+              onKeyDown={onListKeyDown}
+              /*
+               * Anchored to the row's right edge. `z-30` clears the sidebar for the
+               * same reason `Menu`'s panel does; `bottom-full` is not used because
+               * a list row is rarely the last thing on the screen and a menu that
+               * flips direction is harder to predict than one that scrolls.
+               */
+              className="fixed z-[70] w-[min(232px,calc(100vw-16px))] overflow-x-hidden overflow-y-auto rounded-row border border-border bg-surface py-1 text-left shadow-[0_8px_28px_rgba(15,23,42,.12)]"
+              style={{
+                left: position?.left ?? 8,
+                top: position?.top ?? 8,
+                maxHeight: position?.maxHeight ?? "calc(100dvh - 16px)",
+                visibility: position ? "visible" : "hidden",
+              }}
+            >
+              {items.map((item) => {
+                const className = cn(
+                  "flex min-h-[44px] w-full items-center gap-2.5 px-3 py-2 text-left text-body hover:bg-canvas focus:bg-canvas focus:outline-none",
+                  item.tone === "danger" ? "text-danger" : "text-ink",
+                  item.separated && "mt-1 border-t border-border-soft pt-2.5",
+                );
 
-            const body = (
-              <>
-                {item.icon ? <span className="shrink-0 text-muted">{item.icon}</span> : null}
-                <span className="min-w-0">
-                  <span className="block truncate">{item.label}</span>
-                  {item.hint ? (
-                    <span className="block truncate text-caption text-muted">{item.hint}</span>
-                  ) : null}
-                </span>
-              </>
-            );
+                const body = (
+                  <>
+                    {item.icon ? <span className="shrink-0 text-muted">{item.icon}</span> : null}
+                    <span className="min-w-0">
+                      <span className="block truncate">{item.label}</span>
+                      {item.hint ? (
+                        <span className="block truncate text-caption text-muted">{item.hint}</span>
+                      ) : null}
+                    </span>
+                  </>
+                );
 
-            return item.href ? (
-              <Link
-                key={item.label}
-                role="menuitem"
-                href={item.href}
-                onClick={() => setOpen(false)}
-                className={className}
-              >
-                {body}
-              </Link>
-            ) : (
-              <button
-                key={item.label}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setOpen(false);
-                  item.onSelect?.();
-                }}
-                className={className}
-              >
-                {body}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
+                return item.href ? (
+                  <Link
+                    key={item.label}
+                    role="menuitem"
+                    href={item.href}
+                    onClick={() => setOpen(false)}
+                    className={className}
+                  >
+                    {body}
+                  </Link>
+                ) : (
+                  <button
+                    key={item.label}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setOpen(false);
+                      item.onSelect?.();
+                    }}
+                    className={className}
+                  >
+                    {body}
+                  </button>
+                );
+              })}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

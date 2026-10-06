@@ -4,6 +4,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  ChevronRight,
   CloudOff,
   Ellipsis,
   MessageCircle,
@@ -21,6 +22,7 @@ import { z } from "zod";
 import {
   chatMessageSchema,
   chatRoomSchema,
+  genitive,
   unreadCountSchema,
   type ChatRoom as ChatRoomData,
   type Role,
@@ -79,7 +81,31 @@ export function chatRoomDisplayName(
    * анги" for a teacher, and only GROUP rooms got a qualifier, so a teacher
    * saw three rooms with one name and no way to tell them apart.
    */
-  if (room.kind === "DIRECT") return room.name;
+  /*
+    ★ The child's name alone — client, 2026-10-04 and again 2026-10-05:
+    "Г.Батбаяр зүгээр дан нэрээрээ". Since #175 the API names a guardian's
+    room "Г.Батбаярын ээж" (two children: "…, Г.Сараагийн ээж"); this undoes
+    the genitive and drops the relation — see `guardianChildName`. A
+    teacher's room is a plain name and is left as it is.
+  */
+  if (room.kind === "DIRECT") {
+    /*
+      ★★ A family's private room with the teacher is «Бүлгийн багш» — client,
+      2026-10-04: a parent's chat is three rooms, «Багш, эцэг эхчүүд»,
+      «Эцэг эхчүүд» and «Бүлгийн багш». Qualified by the name only when a
+      family has two teachers to write to.
+    */
+    if (isParentOnly(roles) && !isGuardianPeer(room)) {
+      const teacherRooms = rooms.filter(
+        (candidate) => candidate.kind === "DIRECT" && !isGuardianPeer(candidate),
+      );
+      return teacherRooms.length > 1 ? `Бүлгийн багш · ${room.name}` : "Бүлгийн багш";
+    }
+    return room.name
+      .split(", ")
+      .map((part) => guardianChildName(part) ?? part)
+      .join(", ");
+  }
   const sameKind = rooms.filter((candidate) => candidate.kind === room.kind).length > 1;
   const qualifier = sameKind ? ` · ${room.name}` : "";
 
@@ -87,6 +113,79 @@ export function chatRoomDisplayName(
   if (roles.has("TEACHER")) return `Манай анги${qualifier}`;
   if (roles.has("PARENT")) return `Багш, эцэг эхчүүд${qualifier}`;
   return room.name;
+}
+
+/** A parent and nothing else — a teacher who is also a parent keeps the staff view. */
+function isParentOnly(roles: ReadonlySet<Role>): boolean {
+  return roles.has("PARENT") && !roles.has("TEACHER") && !roles.has("ADMIN");
+}
+
+/** The words `guardianChatName` puts after the child's genitive. */
+const GUARDIAN_RELATION = /^(.+) (ээж|аав|өвөө\/эмээ|ах\/эгч|асран хамгаалагч)$/;
+
+/**
+ * "Г.Батбаярын ээж" → "Г.Батбаяр"; `null` for anything that is not a
+ * guardian's chat name.
+ *
+ * ★ Not a guess at Mongolian morphology: every candidate is checked by running
+ * it back through the API's own `genitive()`, so a name is only ever returned
+ * when it reproduces the room's name exactly. The candidates cover each ending
+ * `genitive` can write — `+н`, `+гийн`, `+ийн` (with an э, и or ь dropped
+ * before it), `+ын` and the hyphenated `-ийн`.
+ */
+export function guardianChildName(part: string): string | null {
+  const match = GUARDIAN_RELATION.exec(part.trim());
+  if (!match) return null;
+  const inflected = match[1]!;
+  for (const ending of ["-ийн", "гийн", "ийн", "ын", "н"]) {
+    if (!inflected.endsWith(ending)) continue;
+    const stem = inflected.slice(0, -ending.length);
+    for (const candidate of [stem, `${stem}э`, `${stem}и`, `${stem}ь`]) {
+      if (candidate && genitive(candidate) === inflected) return candidate;
+    }
+  }
+  return null;
+}
+
+/**
+ * A private room whose other person is a guardian — the API names it after
+ * the child (`guardianChatName`), and a member of staff by their plain name.
+ */
+function isGuardianPeer(room: ChatRoomData): boolean {
+  return (
+    room.kind === "DIRECT" &&
+    room.name.split(", ").every((part) => guardianChildName(part) !== null)
+  );
+}
+
+const PARENT_ORDER: Record<ChatRoomData["kind"], number> = {
+  GROUP: 0,
+  PARENTS: 1,
+  DIRECT: 2,
+  STAFF: 3,
+};
+
+/**
+ * The rooms a list draws, in the order it draws them.
+ *
+ * ★ A parent sees three rooms, always in this order — client, 2026-10-04:
+ * «Багш, эцэг эхчүүд», «Эцэг эхчүүд» (no teacher), «Бүлгийн багш» (private).
+ * A guardian-to-guardian private room is not drawn: the client asked that
+ * parents not write to each other privately. That is a display rule only — the
+ * API still serves such a room until `docs/CHAT_BACKEND_REQUEST.md` §5 ships,
+ * and the API is where the rule belongs.
+ *
+ * Everyone else's rooms are returned as the API sorted them.
+ */
+export function chatRoomsFor(
+  rooms: readonly ChatRoomData[] | undefined,
+  roles: ReadonlySet<Role>,
+): ChatRoomData[] {
+  if (!rooms) return [];
+  if (!isParentOnly(roles)) return [...rooms];
+  return rooms
+    .filter((room) => !isGuardianPeer(room))
+    .sort((a, b) => PARENT_ORDER[a.kind] - PARENT_ORDER[b.kind]);
 }
 
 /**
@@ -274,13 +373,15 @@ export function ChatList({
   const { roles } = useSession();
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLocaleLowerCase("mn");
+  const shownRooms = useMemo(() => chatRoomsFor(rooms, roles), [roles, rooms]);
   const roomNames = useMemo(
-    () => new Map(rooms?.map((room) => [room.key, chatRoomDisplayName(room, roles, rooms)])),
-    [roles, rooms],
+    () =>
+      new Map(shownRooms.map((room) => [room.key, chatRoomDisplayName(room, roles, shownRooms)])),
+    [roles, shownRooms],
   );
   const visibleRooms = useMemo(
     () =>
-      rooms?.filter((room) => {
+      shownRooms.filter((room) => {
         if (!normalizedQuery) return true;
         return [
           roomNames.get(room.key),
@@ -291,8 +392,86 @@ export function ChatList({
           .filter(Boolean)
           .some((value) => value!.toLocaleLowerCase("mn").includes(normalizedQuery));
       }),
-    [normalizedQuery, roomNames, rooms],
+    [normalizedQuery, roomNames, shownRooms],
   );
+
+  /*
+    ★ A teacher's list in two tiers — client, 2026-10-04: «Манай анги» and
+    «Багш нар» are the general rooms and stay on top; the one-per-family
+    private rooms fold under «Эцэг эхчүүд». A private room with something
+    unread is drawn above the fold even while it is closed, so a message is
+    never hidden behind a press — and so is the room the page has open.
+
+    Only for a teacher, and only when not searching: a search is a request to
+    see every match, folded or not.
+  */
+  const [directsOpen, setDirectsOpen] = useState(false);
+  const tiered = roles.has("TEACHER") && !normalizedQuery;
+  const pinned = tiered
+    ? (visibleRooms ?? [])
+        .filter((room) => room.kind !== "DIRECT")
+        .sort((a, b) => PINNED_ORDER[a.kind] - PINNED_ORDER[b.kind])
+    : (visibleRooms ?? []);
+  const directs = tiered ? (visibleRooms ?? []).filter((room) => room.kind === "DIRECT") : [];
+  const surfaced = directsOpen
+    ? []
+    : directs.filter((room) => room.unreadCount > 0 || room.key === activeKey);
+  const directsUnread = directs.reduce((sum, room) => sum + room.unreadCount, 0);
+
+  function renderRoom(room: ChatRoomData) {
+    return (
+      <li key={room.key}>
+        <button
+          type="button"
+          onClick={() => onOpen(room.key)}
+          aria-current={room.key === activeKey ? "true" : undefined}
+          className={cn(
+            "relative flex min-h-[82px] w-full items-center gap-3 rounded-control px-3 py-3 text-left transition-colors hover:bg-canvas",
+            room.key === activeKey &&
+              "bg-primary-soft ring-1 ring-primary-soft hover:bg-primary-soft",
+          )}
+        >
+          {/* Initials, not an avatar: a room is a group of people and
+              there is no one face for it. */}
+          {/*
+            ★ `rounded-pill` since 2026-09-22 — the round room list the
+            client asked for. It also puts the room badge in the same
+            shape as `PersonAvatar`, which has always been a circle: the
+            list and the messages inside it now agree about what a
+            participant looks like.
+          */}
+          <span
+            aria-hidden="true"
+            className={cn(
+              "grid size-12 shrink-0 place-items-center rounded-pill text-lead font-bold",
+              room.kind === "GROUP" ? "bg-mint text-mint-ink" : "bg-primary-soft text-primary",
+            )}
+          >
+            {(roomNames.get(room.key) ?? room.name).slice(0, 1)}
+          </span>
+
+          <span className="min-w-0 flex-1">
+            <span className="flex items-baseline justify-between gap-2">
+              <span className="truncate text-body font-bold text-ink">
+                {roomNames.get(room.key) ?? room.name}
+              </span>
+              {room.lastMessage ? (
+                <span className="shrink-0 text-caption tabular-nums text-muted">
+                  {roomListTime(room.lastMessage.createdAt)}
+                </span>
+              ) : null}
+            </span>
+            <span className="mt-1 flex items-center justify-between gap-2">
+              <span className="truncate text-caption text-muted">
+                {roomPreview(room.lastMessage, `${room.memberCount} гишүүн`)}
+              </span>
+              {room.unreadCount > 0 ? <UnreadBadge count={room.unreadCount} /> : null}
+            </span>
+          </span>
+        </button>
+      </li>
+    );
+  }
 
   return (
     <>
@@ -349,7 +528,7 @@ export function ChatList({
             </button>
           </div>
         </div>
-      ) : !rooms || rooms.length === 0 ? (
+      ) : shownRooms.length === 0 ? (
         <p className="px-6 py-10 text-center text-body text-muted">
           Танд нээлттэй чат байхгүй байна.
         </p>
@@ -363,68 +542,49 @@ export function ChatList({
         </div>
       ) : (
         <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto bg-white p-2">
-          {visibleRooms?.map((room) => (
-            <li key={room.key}>
-              <button
-                type="button"
-                onClick={() => onOpen(room.key)}
-                aria-current={room.key === activeKey ? "true" : undefined}
-                className={cn(
-                  "relative flex min-h-[82px] w-full items-center gap-3 rounded-control px-3 py-3 text-left transition-colors hover:bg-canvas",
-                  room.key === activeKey &&
-                    "bg-primary-soft ring-1 ring-primary-soft hover:bg-primary-soft",
-                )}
-              >
-                {/* Initials, not an avatar: a room is a group of people and
-                    there is no one face for it. */}
-                {/*
-                  ★ `rounded-pill` since 2026-09-22 — the round room list the
-                  client asked for. It also puts the room badge in the same
-                  shape as `PersonAvatar`, which has always been a circle: the
-                  list and the messages inside it now agree about what a
-                  participant looks like.
-                */}
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "grid size-12 shrink-0 place-items-center rounded-pill text-lead font-bold",
-                    room.kind === "GROUP"
-                      ? "bg-mint text-mint-ink"
-                      : "bg-primary-soft text-primary",
-                  )}
+          {pinned.map(renderRoom)}
+          {directs.length > 0 ? (
+            <>
+              {surfaced.map(renderRoom)}
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setDirectsOpen((open) => !open)}
+                  aria-expanded={directsOpen}
+                  className="flex min-h-11 w-full items-center gap-2 rounded-control px-3 text-left text-body font-semibold text-muted transition-colors hover:bg-canvas hover:text-ink"
                 >
-                  {(roomNames.get(room.key) ?? room.name).slice(0, 1)}
-                </span>
-
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-baseline justify-between gap-2">
-                    <span className="truncate text-body font-bold text-ink">
-                      {roomNames.get(room.key) ?? room.name}
-                    </span>
-                    {room.lastMessage ? (
-                      <span className="shrink-0 text-caption tabular-nums text-muted">
-                        {roomListTime(room.lastMessage.createdAt)}
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="mt-1 flex items-center justify-between gap-2">
-                    <span className="truncate text-caption text-muted">
-                      {roomPreview(room.lastMessage, `${room.memberCount} гишүүн`)}
-                    </span>
-                    {room.unreadCount > 0 ? (
-                      <span className="flex min-w-[22px] shrink-0 items-center justify-center rounded-pill bg-primary px-1.5 text-caption font-bold leading-[22px] text-primary-ink">
-                        {room.unreadCount > 99 ? "99+" : room.unreadCount}
-                        <span className="sr-only"> шинэ мессеж</span>
-                      </span>
-                    ) : null}
-                  </span>
-                </span>
-              </button>
-            </li>
-          ))}
+                  <ChevronRight
+                    size={18}
+                    aria-hidden="true"
+                    className={cn("shrink-0 transition-transform", directsOpen && "rotate-90")}
+                  />
+                  <span className="flex-1">Эцэг эхчүүд ({directs.length})</span>
+                  {!directsOpen && directsUnread > 0 ? <UnreadBadge count={directsUnread} /> : null}
+                </button>
+              </li>
+              {directsOpen ? directs.map(renderRoom) : null}
+            </>
+          ) : null}
         </ul>
       )}
     </>
+  );
+}
+
+/** Pinned rooms on a teacher's list: their class first, then the staff room. */
+const PINNED_ORDER: Record<ChatRoomData["kind"], number> = {
+  GROUP: 0,
+  STAFF: 1,
+  PARENTS: 2,
+  DIRECT: 3,
+};
+
+function UnreadBadge({ count }: { count: number }) {
+  return (
+    <span className="flex min-w-[22px] shrink-0 items-center justify-center rounded-pill bg-primary px-1.5 text-caption font-bold leading-[22px] text-primary-ink">
+      {count > 99 ? "99+" : count}
+      <span className="sr-only"> шинэ мессеж</span>
+    </span>
   );
 }
 
@@ -711,7 +871,7 @@ export function ChatRoom({
         ) : (
           <ul className="mx-auto flex w-full max-w-[860px] flex-col gap-4">
             {visibleMessages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
+              <MessageBubble key={message.id} message={message} roomKind={room.kind} />
             ))}
           </ul>
         )}
@@ -869,7 +1029,13 @@ function ChatEmptyState() {
  * know who you are, and repeating it on every bubble is the noise that makes a
  * narrow panel unreadable.
  */
-function MessageBubble({ message }: { message: z.infer<typeof chatMessageSchema> }) {
+function MessageBubble({
+  message,
+  roomKind,
+}: {
+  message: z.infer<typeof chatMessageSchema>;
+  roomKind: ChatRoomData["kind"];
+}) {
   /*
     ★ 2026-09-09 — other people's messages carry their portrait.
 
@@ -891,11 +1057,24 @@ function MessageBubble({ message }: { message: z.infer<typeof chatMessageSchema>
     this room is about (a group room: that group's only); staff get none, and a
     family is shown the name without the photograph, which is not theirs to see.
   */
+  /*
+    ★★ The child's name alone, and a teacher as «Бүлгийн багш» — client,
+    2026-10-04: "Г.Батбаяр зүгээр дан нэрээрээ бай … багш чат бичихээр
+    бүлгийн багш гэж бичиг гарна". The staff room keeps people's names:
+    there everyone is staff, and a role tells nobody apart.
+
+    A message with no children outside the staff room is read as staff,
+    because the API attaches a guardian's children to every guardian message.
+    The one case that guess gets wrong is a family whose child has since left
+    the group; the API carries no author role to settle it.
+  */
   const children = message.author?.children ?? [];
   const speaker =
     children.length > 0
-      ? `${children.map((child) => shortName(child)).join(", ")} — эцэг эх`
-      : shortName(message.author);
+      ? children.map((child) => shortName(child)).join(", ")
+      : roomKind === "STAFF"
+        ? shortName(message.author)
+        : "Бүлгийн багш";
   const face = children[0] ?? message.author ?? {};
 
   return (

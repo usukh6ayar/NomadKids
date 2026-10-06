@@ -148,7 +148,7 @@ export function StaffDetailDrawer({
                       {groupLabel(group.name)}
                     </Link>
                     <span className="text-caption text-muted">
-                      {group.role === "ASSISTANT" ? "Туслах багш" : "Үндсэн багш"}
+                      {group.role === "ASSISTANT" ? "Багшийн туслах" : "Үндсэн багш"}
                     </span>
                   </li>
                 ))}

@@ -14,10 +14,8 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { RequireRole } from "@/components/shell/require-role";
 import { BackButton } from "@/components/ui/back-button";
-import { Art } from "@/components/ui/art";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/ui/states";
-import { AdministrationTag } from "@/components/survey/administration-tag";
 import { formatDate } from "@/lib/format";
 import {
   ADMINISTRATION_AUTHOR,
@@ -109,18 +107,11 @@ function AdministrationSurvey() {
       {header}
 
       <Card pad="roomy" className="flex flex-col gap-4">
+        {/* No icon and no «Цэцэрлэг» tag — client, 2026-10-04: the author line
+            already says who asked. */}
         <div className="flex items-start gap-3">
-          <span
-            aria-hidden="true"
-            className="grid size-12 shrink-0 place-items-center rounded-card bg-sun"
-          >
-            <Art name="kindergarten" size={36} className="size-9 object-contain" />
-          </span>
           <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <p className="flex flex-wrap items-center gap-2 text-caption font-semibold text-primary">
-              <AdministrationTag />
-              {ADMINISTRATION_AUTHOR}
-            </p>
+            <p className="text-caption font-semibold text-primary">{ADMINISTRATION_AUTHOR}</p>
             <h2 className="text-title font-bold leading-tight text-ink">{data.title}</h2>
             <p className="text-body tabular-nums text-muted">
               {[

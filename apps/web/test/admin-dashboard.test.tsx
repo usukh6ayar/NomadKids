@@ -194,6 +194,18 @@ describe("the administration dashboard", () => {
     }
   });
 
+  it("keeps the management figures white without decorative colour bubbles", async () => {
+    renderAdminDashboard();
+
+    await waitFor(() => expect(within(figures()).getByText("Нийт суралцагч")).toBeInTheDocument());
+    const cards = figures().querySelectorAll('[data-ui="card"]');
+    expect(cards).toHaveLength(6);
+    for (const card of cards) {
+      expect(card).toHaveAttribute("data-stat-style", "plain");
+      expect(card.querySelector('[data-ui="stat-ornament"]')).toBeNull();
+    }
+  });
+
   /*
    * ★ Every figure goes somewhere, as of 2026-09-09.
    *

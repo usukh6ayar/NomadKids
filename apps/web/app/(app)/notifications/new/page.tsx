@@ -60,7 +60,16 @@ export default function NewNotificationPage() {
 function ComposeNotice() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { primaryKindergartenId } = useSession();
+  const { primaryKindergartenId, hasRole } = useSession();
+  /**
+   * ★ A teacher always posts to their own group — client, 2026-10-04: "багш
+   * мэдээ оруулахад угаас бүлэгтээ л оруулах тул хэнд гэдэг бүлэг болон
+   * бүлгийн хүүхдээс сонгох оруул, чухал гэсэнг хас". So a teacher chooses
+   * between their group and named children in it (`/children` answers a
+   * teacher with their own groups' children only), and has no Чухал box.
+   * An administrator's form is unchanged.
+   */
+  const isTeacher = hasRole("TEACHER") && !hasRole("ADMIN");
   const fileInputId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -344,24 +353,31 @@ function ComposeNotice() {
           </div>
 
           <div className="flex flex-wrap items-start gap-2">
-            <Disclosure title="Хэнд харагдах" hint={audienceHint} className="min-w-[220px] flex-1">
+            <Disclosure
+              title="Хэнд харагдах"
+              hint={audienceHint}
+              compact
+              className="min-w-[220px] flex-1"
+            >
               <AudiencePicker
                 value={audience}
                 onChange={setAudience}
                 disabled={busy}
                 showSummary={false}
                 legendHidden
-                allowChildren={false}
+                allowChildren={isTeacher}
               />
             </Disclosure>
 
-            <Checkbox
-              label="Чухал"
-              checked={isImportant}
-              onChange={(e) => setIsImportant(e.target.checked)}
-              disabled={busy}
-              className="min-h-[60px] shrink-0 items-center rounded-card border border-border bg-surface px-3.5 py-0"
-            />
+            {isTeacher ? null : (
+              <Checkbox
+                label="Чухал"
+                checked={isImportant}
+                onChange={(e) => setIsImportant(e.target.checked)}
+                disabled={busy}
+                className="min-h-[60px] shrink-0 items-center rounded-card border border-border bg-surface px-3.5 py-0"
+              />
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-2.5 border-t border-border pt-3">

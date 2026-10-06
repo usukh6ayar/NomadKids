@@ -1,7 +1,6 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import Image from "next/image";
 import Link from "next/link";
 import { ChevronDown, Eye, EyeOff, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { type ReactNode, useState } from "react";
@@ -124,7 +123,6 @@ export function ChildObservations({ childId, isStaff }: { childId: string; isSta
   if (items.length === 0) {
     return (
       <EmptyState
-        icon={<Image src="/background/mascot-robot.webp" alt="" width={96} height={96} />}
         title={isStaff ? "Ажиглалт бичигдээгүй байна" : "Одоогоор мөч хуваалцаагүй байна"}
         description={
           isStaff

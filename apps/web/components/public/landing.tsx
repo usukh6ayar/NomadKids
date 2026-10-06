@@ -291,10 +291,10 @@ function LoginCard() {
       id="login-card"
       className="w-full max-w-[400px] scroll-mt-24 overflow-hidden rounded-card border border-white/80 bg-white/95 p-5 text-left shadow-[0_24px_70px_rgba(25,72,111,.16)] backdrop-blur-xl sm:p-6"
     >
-      <h2 className="text-title font-extrabold leading-tight tracking-tight text-[#2f6fd6]">
+      <h2 className="text-lead font-bold leading-tight tracking-tight text-[#2f6fd6]">
         Системд нэвтрэх
       </h2>
-      <p className="mt-0.5 text-caption leading-5 text-[#8a93a3]">
+      <p className="mt-0.5 text-caption leading-4 text-[#8a93a3]">
         Өөрийн эрхээр нэвтэрч, ажлаа үргэлжлүүлнэ үү.
       </p>
 

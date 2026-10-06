@@ -1,8 +1,8 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Upload } from "lucide-react";
-import { useRef, useState } from "react";
+import { Upload, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { mutate } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
@@ -39,7 +39,20 @@ type ImportResult = z.infer<typeof resultSchema>;
  * explicit ("тогооч гараар оруулахыг үлдээ"), and a spreadsheet has no column
  * for a dish photograph or a технологийн карт, both of which the editor sets.
  */
-export function MenuExcelImport({ kindergartenId }: { kindergartenId: string }) {
+export function MenuExcelImport({
+  kindergartenId,
+  onImported,
+  onClose,
+  autoOpen = false,
+}: {
+  kindergartenId: string;
+  /** Opens the week that was actually imported instead of leaving the cook
+   * looking at the previously selected (usually current) week. */
+  onImported?: (firstDate: string) => void;
+  onClose?: () => void;
+  /** Opens the operating-system file picker as soon as the compact panel mounts. */
+  autoOpen?: boolean;
+}) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
@@ -47,6 +60,17 @@ export function MenuExcelImport({ kindergartenId }: { kindergartenId: string }) 
   /** The picked file, held until the preview has been seen. */
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportResult | null>(null);
+
+  useEffect(() => {
+    if (autoOpen) input.current?.click();
+  }, [autoOpen]);
+
+  useEffect(() => {
+    const control = input.current;
+    if (!control || !onClose) return;
+    control.addEventListener("cancel", onClose);
+    return () => control.removeEventListener("cancel", onClose);
+  }, [onClose]);
 
   const run = useMutation({
     mutationFn: async ({ picked, write }: { picked: File; write: boolean }) => {
@@ -64,9 +88,26 @@ export function MenuExcelImport({ kindergartenId }: { kindergartenId: string }) 
         return;
       }
 
-      toast.success(`${result.days.length} өдрийн цэс орууллаа.`);
+      const importedDates = result.days.map((day) => day.date.slice(0, 10)).sort();
+      const firstDate = importedDates[0];
+      const lastDate = importedDates.at(-1);
+      if (!firstDate || result.dishCount === 0) {
+        setPreview(result);
+        toast.error(result.problems[0]?.message ?? "Оруулах цэс олдсонгүй.");
+        return;
+      }
+
+      toast.success(
+        firstDate === lastDate
+          ? `${firstDate}-ны цэс орууллаа.`
+          : `${result.days.length} өдрийн цэс орууллаа (${firstDate} – ${lastDate}).`,
+      );
       reset();
+      // The kitchen screen and the child's/family screen deliberately use
+      // different query shapes. Refresh both views after one shared import.
+      void queryClient.invalidateQueries({ queryKey: ["menu", "week", kindergartenId] });
       void queryClient.invalidateQueries({ queryKey: ["kindergarten", kindergartenId, "menu"] });
+      onImported?.(firstDate);
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -79,23 +120,14 @@ export function MenuExcelImport({ kindergartenId }: { kindergartenId: string }) 
   }
 
   return (
-    <Card pad="roomy" className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0">
-          <h2 className="text-body font-semibold text-ink">Excel-ээр оруулах</h2>
-          <p className="text-caption text-muted">
-            .xlsx хүснэгтийн огноо, хоолны нэр, төрөл, илчлэгийн баганыг таньж оруулна.
-          </p>
-        </div>
-
-        {/*
-          A label wrapping the input rather than a button that clicks a hidden
-          one — the file input is the control, and the second thing would have
-          to be kept focusable and keyboard-reachable for no gain.
-        */}
+    <Card className="flex flex-col gap-2.5 px-3.5 py-3">
+      <div className="flex min-w-0 items-center gap-2">
+        <h2 className="min-w-0 flex-1 truncate text-body font-semibold text-ink">
+          Excel-ээр оруулах
+        </h2>
         <label className="inline-flex min-h-[44px] cursor-pointer items-center gap-2 rounded-button border border-border bg-surface px-4 text-body font-medium text-ink transition-colors hover:bg-canvas focus-within:ring-2 focus-within:ring-primary">
           <Upload size={16} aria-hidden="true" />
-          Файл сонгох
+          {file ? "Солих" : "Файл сонгох"}
           <input
             ref={input}
             type="file"
@@ -110,46 +142,17 @@ export function MenuExcelImport({ kindergartenId }: { kindergartenId: string }) 
             }}
           />
         </label>
-      </div>
-
-      <div className="overflow-x-auto rounded-row border border-border bg-canvas">
-        <p className="px-3.5 pt-3 text-caption font-medium text-ink">
-          Жишээ загвар — эхний хүснэгтийн гарчигт “Огноо” болон “Хоолны нэр” заавал байна.
-        </p>
-        <table className="mt-2 min-w-[640px] border-collapse text-left text-caption">
-          <thead className="bg-surface text-muted">
-            <tr>
-              <th className="px-3 py-2 font-medium">Огноо</th>
-              <th className="px-3 py-2 font-medium">Хоолны төрөл</th>
-              <th className="px-3 py-2 font-medium">Хоолны нэр</th>
-              <th className="px-3 py-2 font-medium">Порц</th>
-              <th className="px-3 py-2 font-medium">Илчлэг (ккал)</th>
-            </tr>
-          </thead>
-          <tbody className="text-ink">
-            <tr className="border-t border-border">
-              <td className="px-3 py-2 tabular-nums">2026-09-21</td>
-              <td className="px-3 py-2">Өглөөний цай</td>
-              <td className="px-3 py-2">Сүүтэй будаа</td>
-              <td className="px-3 py-2">1</td>
-              <td className="px-3 py-2">210</td>
-            </tr>
-            <tr className="border-t border-border">
-              <td className="px-3 py-2 tabular-nums">2026-09-21</td>
-              <td className="px-3 py-2">Өдрийн хоол</td>
-              <td className="px-3 py-2">Ногоотой шөл</td>
-              <td className="px-3 py-2">1</td>
-              <td className="px-3 py-2">320</td>
-            </tr>
-          </tbody>
-        </table>
-        <p className="px-3.5 py-3 text-caption text-muted">
-          Огноог 2026-09-21, 21.09.2026 эсвэл 2026 оны 9 сарын 21 гэж бичиж болно. Төрөл, порц,
-          илчлэг нь хоосон байж болно.
-        </p>
+        {onClose ? (
+          <Button variant="ghost" size="icon" aria-label="Хаах" onClick={onClose}>
+            <X size={18} aria-hidden="true" />
+          </Button>
+        ) : null}
       </div>
 
       {file ? <p className="truncate text-caption text-muted">{file.name}</p> : null}
+      {run.isPending && !preview ? (
+        <p className="text-caption text-muted">Файлыг шалгаж байна…</p>
+      ) : null}
 
       {preview ? (
         <div className="flex flex-col gap-2 rounded-row border border-border bg-canvas px-3.5 py-3">
@@ -200,7 +203,14 @@ export function MenuExcelImport({ kindergartenId }: { kindergartenId: string }) 
             >
               {run.isPending ? "Оруулж байна…" : "Оруулах"}
             </Button>
-            <Button size="sm" variant="secondary" onClick={reset}>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                reset();
+                onClose?.();
+              }}
+            >
               Болих
             </Button>
           </div>

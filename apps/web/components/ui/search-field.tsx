@@ -44,7 +44,7 @@ export function SearchField({
   className?: string;
 }) {
   return (
-    <div className={`relative min-w-[200px] flex-1 ${className ?? ""}`}>
+    <div data-ui="search-field" className={`relative min-w-[200px] flex-1 ${className ?? ""}`}>
       <Search
         size={18}
         aria-hidden="true"

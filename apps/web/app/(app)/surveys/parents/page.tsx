@@ -23,10 +23,10 @@ import { useSession } from "@/lib/auth/session";
 import { RequireRole } from "@/components/shell/require-role";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { SearchField } from "@/components/ui/search-field";
-import { canManageSurvey, staffSurveysSchema } from "@/lib/survey-access";
+import { canManageSurvey, staffSurveysSchema, type StaffSurvey } from "@/lib/survey-access";
 import { cn } from "@/lib/utils";
 import { BackButton } from "@/components/ui/back-button";
-import { PeriodButtons } from "@/components/survey/period-buttons";
+import { PeriodFilter } from "@/components/survey/period-buttons";
 import {
   AdministrationSurveysCard,
   SchoolYearSelect,
@@ -152,21 +152,30 @@ function SurveysHub() {
   const surveysInYear = manageableSurveys.filter(
     (survey) => schoolYearStart(survey.createdAt) === schoolYear,
   );
-  const recent = surveysInYear.slice(0, 5);
-  const periodSurveys = period ? surveysInYear.filter((survey) => survey.period === period) : [];
   const groupTerm = groupSearch.trim().toLowerCase();
+  const matchesSearch = (survey: StaffSurvey) =>
+    !groupTerm ||
+    survey.title.toLowerCase().includes(groupTerm) ||
+    (survey.description ?? "").toLowerCase().includes(groupTerm);
+  const periodSurveys = period
+    ? surveysInYear.filter((survey) => survey.period === period && matchesSearch(survey))
+    : [];
   const visibleGroups = (groups.data?.items ?? []).filter((group) =>
     group.name.toLowerCase().includes(groupTerm),
   );
 
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
-      <header className="flex items-center gap-2 sm:gap-3">
+      <header className="flex items-center gap-2 !bg-transparent !backdrop-blur-none sm:gap-3">
         <BackButton href="/surveys" />
         <h1 className="min-w-0 flex-1 text-lead font-semibold leading-heading text-ink sm:text-title">
           {SURVEY_RESPONDENT_LABEL.GUARDIAN}
         </h1>
-        <SchoolYearSelect years={schoolYears} value={schoolYear} onChange={setSchoolYear} />
+        {/* Only where it narrows something: a teacher's landing is the two
+            cards since «Сүүлийн үүсгэсэн» went (2026-10-04). */}
+        {isAdmin || period ? (
+          <SchoolYearSelect years={schoolYears} value={schoolYear} onChange={setSchoolYear} />
+        ) : null}
       </header>
 
       {/*
@@ -214,13 +223,20 @@ function SurveysHub() {
         ))}
       </div>
 
-      <PeriodButtons selected={period} onSelect={selectPeriod} />
-
       {period ? (
         <section aria-labelledby="period-surveys" className="flex flex-col gap-2.5">
           <h2 id="period-surveys" className="text-lead font-semibold leading-heading text-ink">
             {SURVEY_PERIOD_LABEL[period]}
           </h2>
+          <div className="flex items-center gap-2">
+            <SearchField
+              label="Судалгаа хайх"
+              placeholder="Судалгаа хайх..."
+              value={groupSearch}
+              onChange={setGroupSearch}
+            />
+            <PeriodFilter selected={period} onSelect={selectPeriod} />
+          </div>
           {surveys.isLoading ? <LoadingState rows={3} /> : null}
           {surveys.isError ? <ErrorState description={errorMessage(surveys.error)} /> : null}
           {surveys.data && periodSurveys.length === 0 ? (
@@ -237,19 +253,24 @@ function SurveysHub() {
 
       <AdministrationSurveysCard />
 
-      {period ? null : isAdmin ? (
+      {/*
+        ★ No «Сүүлийн үүсгэсэн» for a teacher — client, 2026-10-04: every
+        survey is already one press away in «Судалгаа» or «Санал асуулга»,
+        and the wave filter that lived here moved into both.
+      */}
+      {period || !isAdmin ? null : (
         <section aria-labelledby="survey-groups" className="flex flex-col gap-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <h2 id="survey-groups" className="text-title font-bold leading-heading text-ink">
-              Бүлгүүд
-            </h2>
+          <h2 id="survey-groups" className="text-title font-bold leading-heading text-ink">
+            Бүлгүүд
+          </h2>
+          <div className="flex items-center gap-2">
             <SearchField
               label="Бүлгийн нэрээр хайх"
               placeholder="Бүлгийн нэрээр хайх..."
               value={groupSearch}
               onChange={setGroupSearch}
-              className="w-full flex-none sm:max-w-[320px]"
             />
+            <PeriodFilter selected={period} onSelect={selectPeriod} />
           </div>
 
           {groups.isLoading ? <LoadingState rows={4} /> : null}
@@ -295,26 +316,6 @@ function SurveysHub() {
               ))}
             </div>
           ) : null}
-        </section>
-      ) : (
-        <section aria-labelledby="recent-surveys" className="flex flex-col gap-2.5">
-          <h2 id="recent-surveys" className="text-title font-bold leading-heading text-ink">
-            Сүүлийн үүсгэсэн
-          </h2>
-
-          {surveys.isLoading ? <LoadingState rows={3} /> : null}
-          {surveys.isError ? <ErrorState description={errorMessage(surveys.error)} /> : null}
-
-          {surveys.data && recent.length === 0 ? (
-            <EmptyState
-              title="Хараахан юу ч үүсгээгүй байна"
-              description="Дээрх хоёрын аль нэгийг сонгон эхлүүлнэ үү."
-            />
-          ) : null}
-
-          {recent.map((survey) => (
-            <SurveyListRow key={survey.id} survey={survey} />
-          ))}
         </section>
       )}
     </div>

@@ -126,7 +126,7 @@ describe("a director's teacher surveys", () => {
 
     const delbee = await screen.findByRole("link", { name: /Дэлбээ.*1 судалгаа/ });
     expect(delbee).toHaveAttribute("href", `/surveys/teacher?group=${DELBEE}`);
-    expect(screen.queryByRole("button", { name: "Судалгаа үүсгэх" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Шинэ" })).toBeNull();
     expect(screen.queryByText(TEACHER_BASELINE.title)).toBeNull();
   });
 
@@ -144,21 +144,29 @@ describe("a director's teacher surveys", () => {
 
 describe("the teacher's surveys", () => {
   /*
-    The families' hub, drawn for the teacher — 2026-09-25. One create card and
-    no Асуулга: the API refuses a teacher poll, so that card would be a door
-    onto an error.
+    The families' «Судалгаа» board's order — client, 2026-10-04: «Бүлгийн
+    судалгаа» with «+ Шинэ» beside it, then search and the filter, then the
+    table. No create card, no «Сүүлийн үүсгэсэн», and still no Асуулга: the
+    API refuses a teacher poll.
   */
-  it("is laid out as the families' hub, with one card that starts a survey", async () => {
+  it("is laid out as the families' board, with + Шинэ beside Бүлгийн судалгаа", async () => {
+    const user = userEvent.setup();
     stub([TEACHER_BASELINE]);
     renderWithProviders(<TeacherSurveysPage />);
 
     const title = await screen.findByRole("heading", { name: "Багшийн судалгаа" });
     const header = title.closest("header")!;
     expect(within(header).getByRole("combobox", { name: "Хичээлийн жил" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Судалгаа үүсгэх" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Шинэ$/ })).toBeNull();
+
+    const section = screen.getByRole("heading", { name: "Бүлгийн судалгаа" }).closest("section")!;
+    expect(within(section).getByRole("searchbox", { name: "Судалгаа хайх" })).toBeInTheDocument();
+    expect(within(section).getByRole("button", { name: "Шүүлтүүр" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Судалгаа үүсгэх" })).toBeNull();
+    expect(screen.queryByText("Сүүлийн үүсгэсэн")).toBeNull();
     expect(screen.queryByRole("link", { name: /^Асуулга/ })).toBeNull();
-    expect(await screen.findByRole("heading", { name: "Сүүлийн үүсгэсэн" })).toBeInTheDocument();
+
+    await user.click(within(section).getByRole("button", { name: "Шинэ" }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
   /**
@@ -237,10 +245,28 @@ describe("the teacher's surveys", () => {
     stub([FAMILY_FORM, TEACHER_BASELINE]);
     renderWithProviders(<TeacherSurveysPage />);
 
-    const card = await screen.findByRole("link", { name: /А\/79 Гарааны үнэлгээ/ });
-    expect(card).toHaveAttribute("href", `/surveys/${TEACHER_BASELINE.id}`);
-    expect(within(card).getByText("Дууссан")).toBeInTheDocument();
-    expect(within(card).getByText(/12\/25 хүүхэд/)).toBeInTheDocument();
+    // A table row since 2026-10-04 — the families' «Судалгаа» columns, plus Төлөв.
+    const link = await screen.findByRole("link", { name: /А\/79 Гарааны үнэлгээ/ });
+    expect(link).toHaveAttribute("href", `/surveys/${TEACHER_BASELINE.id}`);
+    const row = link.closest("tr")!;
+    expect(within(row).getByText("Дууссан")).toBeInTheDocument();
+    expect(within(row).getByText("12 / 25")).toBeInTheDocument();
+    expect(within(row).getByText("48%")).toBeInTheDocument();
+    expect(
+      within(link.closest("table")!)
+        .getAllByRole("columnheader")
+        .map((th) => th.textContent),
+    ).toEqual([
+      "Гарчиг",
+      "Бүлэг",
+      "Ангилал",
+      "Судалгаа авсан",
+      "Төлөв",
+      "Хариулт",
+      "Хувь",
+      "Огноо",
+      "Үйлдэл",
+    ]);
     expect(screen.queryByText(FAMILY_FORM.title)).toBeNull();
   });
 
@@ -252,6 +278,7 @@ describe("the teacher's surveys", () => {
 
     expect(await screen.findByText(TEACHER_MIDLINE.title)).toBeInTheDocument();
     expect(screen.queryByText(TEACHER_BASELINE.title)).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Шүүлтүүр" }));
     expect(screen.getByRole("button", { name: "Явцын үнэлгээ" })).toHaveAttribute(
       "aria-pressed",
       "true",
