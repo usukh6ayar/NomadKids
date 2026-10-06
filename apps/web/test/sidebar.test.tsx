@@ -335,18 +335,13 @@ describe("navigation icons", () => {
     renderShell(["ACCOUNTANT"], "/finance/dashboard");
     const nav = await sidebar();
 
-    for (const name of [
-      "Самбар",
-      "Санхүү",
-      "Нэхэмжлэл",
-      "Ирц",
-      "Санхүүгийн аудит",
-      "Хувийн тохиргоо",
-    ]) {
+    for (const name of ["Самбар", "Санхүү", "Нэхэмжлэл", "Ирц", "Хувийн тохиргоо"]) {
       const link = within(nav).getAllByRole("link", { name })[0]!;
       expect(link.querySelector("img")).toBeNull();
       expect(link.querySelector("svg")).toHaveAttribute("stroke-width", "1.35");
     }
+    // Taken off the menu at the client's request, 2026-10-06.
+    expect(within(nav).queryByRole("link", { name: "Санхүүгийн аудит" })).toBeNull();
   });
 
   /** The cook's side menu in the same glyphs — client, 2026-10-02. */

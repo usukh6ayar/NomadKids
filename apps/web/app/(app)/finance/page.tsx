@@ -1,8 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Calculator, ScrollText } from "lucide-react";
-import Link from "next/link";
+import { Calculator } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { z } from "zod";
@@ -157,17 +156,8 @@ function Finance() {
 
   return (
     <div className="flex flex-col gap-5 lg:gap-6">
-      <PageHeader
-        title="Санхүү"
-        actions={
-          <Button asChild variant="secondary" size="sm">
-            <Link href="/finance/audit-log">
-              <ScrollText size={16} aria-hidden="true" />
-              Аудит
-            </Link>
-          </Button>
-        }
-      />
+      {/* No «Аудит» button since 2026-10-06 — see the accountant's menu in `layout.tsx`. */}
+      <PageHeader title="Санхүү" />
 
       <Tabs label="Санхүүгийн хэсэг">
         {TABS.map(([value, label]) => (
