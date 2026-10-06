@@ -231,3 +231,27 @@ export function resolveRoom(
 ): Room | null {
   return roomsFor(actor, facts, names).find((room) => room.key === key) ?? null;
 }
+
+/**
+ * The groups whose children may be named on a guardian's message in `room`.
+ *
+ * ★ A group or parents' room names the children of **that** group. A private
+ * room has no group (`groupId: null`), and reading every enrolment in the
+ * kindergarten there told a teacher the name of a guardian's other child in a
+ * group they do not teach (`docs/CHAT_BACKEND_REQUEST.md` §1). So a private
+ * room is narrowed to the groups the **reader** teaches or has a child in —
+ * the children they could already name.
+ *
+ * The staff room has no guardians in it, and names nobody.
+ */
+export function childScopeFor(facts: ChatAccessFacts, room: Room): string[] {
+  if (room.kind === "STAFF") return [];
+  if (room.groupId) return [room.groupId];
+  return [
+    ...new Set(
+      [...facts.teachingGroups, ...facts.guardianGroups]
+        .filter((group) => group.kindergartenId === room.kindergartenId)
+        .map((group) => group.id),
+    ),
+  ];
+}

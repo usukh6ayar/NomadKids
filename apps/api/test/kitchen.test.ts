@@ -325,6 +325,23 @@ describe("recipes", () => {
     expect(edited.body.status).toBe("DRAFT");
     expect(edited.body.approvedAt).toBeNull();
   });
+
+  // Every sitting the menu has, «Шөл» (`SNACK`) included — it was missing
+  // from this module's own copy of the list, so a soup's card failed on save.
+  it("accepts a soup's card", async () => {
+    const flour = await createIngredient(cookA, a.kindergarten.id);
+    const res = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/recipes`),
+      cookA,
+    ).send({
+      name: "Гурилтай шөл",
+      mealKind: "SNACK",
+      yieldPortions: 10,
+      ingredients: [{ ingredientId: flour.id, quantity: "500" }],
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.mealKind).toBe("SNACK");
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
