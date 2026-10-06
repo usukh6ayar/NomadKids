@@ -17,7 +17,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { z } from "zod";
 import {
   chatMessageSchema,
@@ -873,10 +873,30 @@ export function ChatRoom({
             </div>
           </div>
         ) : (
-          <ul className="mx-auto flex w-full max-w-[860px] flex-col gap-4">
-            {visibleMessages.map((message) => (
-              <MessageBubble key={message.id} message={message} roomKind={room.kind} />
-            ))}
+          <ul className="mx-auto flex w-full max-w-[860px] flex-col">
+            {visibleMessages.map((message, index) => {
+              const previous = visibleMessages[index - 1];
+              const next = visibleMessages[index + 1];
+              const gap = previous ? minutesBetween(previous, message) : Infinity;
+              return (
+                <Fragment key={message.id}>
+                  {gap >= TIME_BREAK_MINUTES ? (
+                    <li
+                      className="pb-1 pt-4 text-center text-caption tabular-nums text-faint first:pt-0"
+                      aria-hidden="true"
+                    >
+                      {timeBreakLabel(message.createdAt)}
+                    </li>
+                  ) : null}
+                  <MessageBubble
+                    message={message}
+                    roomKind={room.kind}
+                    startsRun={!sameRun(previous, message)}
+                    endsRun={!sameRun(message, next)}
+                  />
+                </Fragment>
+              );
+            })}
           </ul>
         )}
         <div ref={bottom} />
@@ -1036,10 +1056,25 @@ function ChatEmptyState() {
 function MessageBubble({
   message,
   roomKind,
+  startsRun = true,
+  endsRun = true,
 }: {
   message: z.infer<typeof chatMessageSchema>;
   roomKind: ChatRoomData["kind"];
+  /** First of one person's consecutive messages: it carries the name. */
+  startsRun?: boolean;
+  /** Last of them: it carries the face. */
+  endsRun?: boolean;
 }) {
+  /*
+    ★ Minimal — client, 2026-10-06: "цаг бүр жижиг анзаарахгүй … дарахаар
+    гардаг … орчин үеийн, зай бага". One person's consecutive messages are a
+    run: the name over the first, the face beside the last, tight spacing
+    inside it. The time is not printed under every bubble any more — a quiet
+    stamp marks a break of a quarter of an hour, and a press (or a hover)
+    shows a message's own time.
+  */
+  const [showTime, setShowTime] = useState(false);
   /*
     ★ 2026-09-09 — other people's messages carry their portrait.
 
@@ -1082,15 +1117,37 @@ function MessageBubble({
   const face = children[0] ?? message.author ?? {};
 
   return (
-    <li className={cn("flex flex-col", message.mine ? "items-end" : "items-start")}>
-      {!message.mine ? (
-        <span className="mb-0.5 px-1 text-caption font-medium text-muted">{speaker}</span>
+    <li
+      className={cn(
+        "flex flex-col",
+        message.mine ? "items-end" : "items-start",
+        startsRun ? "mt-2.5 first:mt-0" : "mt-0.5",
+      )}
+    >
+      {!message.mine && startsRun ? (
+        <span className="mb-0.5 ms-10 px-1 text-caption font-medium text-muted">{speaker}</span>
       ) : null}
       <div className={cn("flex max-w-[82%] items-end gap-2 sm:max-w-[72%]")}>
         {!message.mine ? (
-          <PersonAvatar child={face} size={32} className="mb-4 shrink-0 self-end" />
+          endsRun ? (
+            <PersonAvatar child={face} size={32} className="shrink-0 self-end" />
+          ) : (
+            <span aria-hidden="true" className="w-8 shrink-0" />
+          )
         ) : null}
         <div
+          role="button"
+          tabIndex={0}
+          aria-label={`${message.mine ? "Таны" : speaker} мессеж, ${timeOfDay(message.createdAt)}`}
+          aria-pressed={showTime}
+          title={timeOfDay(message.createdAt)}
+          onClick={() => setShowTime((open) => !open)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              setShowTime((open) => !open);
+            }
+          }}
           className={cn(
             /*
               ★ `rounded-bubble` since 2026-09-22 — the client asking for round
@@ -1102,7 +1159,7 @@ function MessageBubble({
               which side of the room a line came from. Rounding all four would
               make the two speakers' bubbles differ only by colour.
             */
-            "min-w-0 rounded-bubble px-4 py-3 shadow-[0_2px_8px_rgba(28,65,103,.05)]",
+            "min-w-0 cursor-default rounded-bubble px-3.5 py-2 outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
             message.mine
               ? "rounded-br-md bg-primary text-primary-ink"
               : "rounded-bl-md border border-border bg-white text-ink",
@@ -1165,15 +1222,17 @@ function MessageBubble({
           ) : null}
         </div>
       </div>
-      <span
-        className={cn(
-          "mt-0.5 text-caption tabular-nums text-faint",
-          // Line the clock up under the bubble, not under the avatar.
-          message.mine ? "px-1" : "px-1 ms-10",
-        )}
-      >
-        {timeOfDay(message.createdAt)}
-      </span>
+      {showTime ? (
+        <span
+          className={cn(
+            "mt-0.5 text-caption tabular-nums text-faint",
+            // Line the clock up under the bubble, not under the avatar.
+            message.mine ? "px-1" : "px-1 ms-10",
+          )}
+        >
+          {timeOfDay(message.createdAt)}
+        </span>
+      ) : null}
     </li>
   );
 }
@@ -1240,6 +1299,37 @@ export function roomPreview(
 }
 
 /** `10:32` — a chat shows the clock, not a date. */
+/** A quiet time stamp goes between messages this far apart. */
+const TIME_BREAK_MINUTES = 15;
+/** Consecutive messages from one person this close together are one run. */
+const RUN_MINUTES = 5;
+
+type ChatMessageData = z.infer<typeof chatMessageSchema>;
+
+function minutesBetween(a: ChatMessageData, b: ChatMessageData): number {
+  return Math.abs(new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) / 60_000;
+}
+
+function sameRun(a: ChatMessageData | undefined, b: ChatMessageData | undefined): boolean {
+  if (!a || !b) return false;
+  const sameSpeaker = a.mine === b.mine && (a.mine || a.author?.id === b.author?.id);
+  return sameSpeaker && minutesBetween(a, b) < RUN_MINUTES;
+}
+
+/** «14:32» today, «Өчигдөр 14:32», else «10.04 14:32». */
+function timeBreakLabel(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  const time = timeOfDay(iso);
+  if (date.toDateString() === today.toDateString()) return time;
+  if (date.toDateString() === yesterday.toDateString()) return `Өчигдөр ${time}`;
+  const day = `${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}`;
+  return `${day} ${time}`;
+}
+
 function timeOfDay(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";

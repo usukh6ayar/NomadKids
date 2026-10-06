@@ -1,7 +1,14 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
+import {
+  ROUTER,
+  renderWithProviders,
+  selectOption,
+  sessionFor,
+  setSearchParams,
+  stubApi,
+} from "./support/render";
 import AdminGroupsPage from "@/app/(app)/admin/groups/page";
 
 /**
@@ -383,10 +390,138 @@ describe("ЭСИС рүү илгээлт", () => {
         body: { items: [group()], page: 1, pageSize: 100, total: 1, totalPages: 1 },
       },
       { path: `/kindergartens/${KG}/school-years`, body: [] },
+      // After the longer paths: the stubs match by prefix.
+      { path: `/kindergartens/${KG}`, body: { esisInstitutionId: "42778" } },
     ]);
     renderWithProviders(<AdminGroupsPage />);
 
     const section = await screen.findByRole("region", { name: "ЭСИС рүү илгээлт" });
     expect(await within(section).findByText("Хүлээгдэж байна")).toBeInTheDocument();
+  });
+
+  /** Only once something was sent, and never without ESIS — client, 2026-10-06. */
+  function stubQueue(writes: unknown[], esisInstitutionId: string | null) {
+    return stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: `/kindergartens/${KG}/esis/group-writes`,
+        body: { items: writes, page: 1, pageSize: 20, total: writes.length, totalPages: 1 },
+      },
+      {
+        path: "/groups",
+        body: { items: [group()], page: 1, pageSize: 100, total: 1, totalPages: 1 },
+      },
+      { path: `/kindergartens/${KG}/school-years`, body: [] },
+      { path: `/kindergartens/${KG}`, body: { esisInstitutionId } },
+    ]);
+  }
+
+  it("is not drawn while nothing has been sent", async () => {
+    const api = stubQueue([], "42778");
+    renderWithProviders(<AdminGroupsPage />);
+
+    await screen.findByRole("table", { name: "Бүлгүүдийн жагсаалт" });
+    await waitFor(() =>
+      expect(api.calls.some((c) => c.url.includes("/esis/group-writes"))).toBe(true),
+    );
+    expect(screen.queryByRole("region", { name: "ЭСИС рүү илгээлт" })).toBeNull();
+  });
+
+  it("is not drawn, nor asked for, without ESIS", async () => {
+    const api = stubQueue([], null);
+    renderWithProviders(<AdminGroupsPage />);
+
+    await screen.findByRole("table", { name: "Бүлгүүдийн жагсаалт" });
+    await waitFor(() =>
+      expect(
+        api.calls.some(
+          (c) => c.url === `/v1/kindergartens/${KG}` || c.url.endsWith(`/kindergartens/${KG}`),
+        ),
+      ).toBe(true),
+    );
+    expect(screen.queryByRole("region", { name: "ЭСИС рүү илгээлт" })).toBeNull();
+    expect(api.calls.some((c) => c.url.includes("/esis/group-writes"))).toBe(false);
+  });
+});
+
+/**
+ * «+ Шинэ хичээлийн жил» at the foot of the year picker — client, 2026-10-06.
+ * Always without ESIS; with ESIS only while there is no year at all.
+ */
+describe("making a school year from the group list", () => {
+  const YEARS = [{ id: YEAR, name: "2026-2027", isCurrent: true, kindergartenId: KG }];
+
+  function stubYears(years: unknown[], esisInstitutionId: string | null) {
+    return stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: "/groups", body: { items: [], page: 1, pageSize: 100, total: 0, totalPages: 1 } },
+      // Before the kindergarten itself: the stubs match by prefix.
+      { path: `/kindergartens/${KG}/school-years`, body: years },
+      { path: `/kindergartens/${KG}`, body: { esisInstitutionId } },
+    ]);
+  }
+
+  it("offers it to a kindergarten without ESIS, and opens Хичээлийн жил", async () => {
+    const user = userEvent.setup();
+    stubYears(YEARS, null);
+    renderWithProviders(<AdminGroupsPage />);
+
+    await selectOption(user, "Хичээлийн жил", "+ Шинэ хичээлийн жил");
+
+    expect(ROUTER.push).toHaveBeenCalledWith("/admin/school-years");
+  });
+
+  it("keeps it out of an ESIS kindergarten's picker once a year exists", async () => {
+    const user = userEvent.setup();
+    stubYears(YEARS, "42778");
+    renderWithProviders(<AdminGroupsPage />);
+
+    await user.click(await screen.findByLabelText("Хичээлийн жил"));
+    expect(await screen.findByRole("option", { name: "2026-2027" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "+ Шинэ хичээлийн жил" })).toBeNull();
+  });
+
+  /** The plain-sight line, and no «ESIS татах», without ESIS — client, 2026-10-06. */
+  it("tells a kindergarten without ESIS and without a year to make one first", async () => {
+    stubYears([], null);
+    renderWithProviders(<AdminGroupsPage />);
+
+    const line = (await screen.findByText(/Бүлэг нэмэхийн өмнө эхлээд жилээ/)).closest(
+      "[role='status']",
+    ) as HTMLElement;
+    expect(line).toHaveTextContent("Хичээлийн жил үүсгээгүй байна");
+    expect(within(line).getByRole("link", { name: /Жил нэмэх/ })).toHaveAttribute(
+      "href",
+      "/admin/school-years",
+    );
+    expect(screen.queryByRole("button", { name: /ESIS татах/ })).toBeNull();
+  });
+
+  it("draws no such line once a year exists", async () => {
+    stubYears(YEARS, null);
+    renderWithProviders(<AdminGroupsPage />);
+
+    await screen.findByRole("button", { name: /Бүлэг нэмэх/ });
+    await waitFor(() =>
+      expect(screen.queryByText("Хичээлийн жил үүсгээгүй байна.", { exact: false })).toBeNull(),
+    );
+  });
+
+  it("keeps «ESIS татах», and no line, for an ESIS kindergarten", async () => {
+    stubYears([], "42778");
+    renderWithProviders(<AdminGroupsPage />);
+
+    expect(await screen.findByRole("button", { name: /ESIS татах/ })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Жил нэмэх/ })).toBeNull();
+  });
+
+  it("offers it to an ESIS kindergarten that has no year yet", async () => {
+    const user = userEvent.setup();
+    stubYears([], "42778");
+    renderWithProviders(<AdminGroupsPage />);
+
+    await selectOption(user, "Хичээлийн жил", "+ Шинэ хичээлийн жил");
+
+    expect(ROUTER.push).toHaveBeenCalledWith("/admin/school-years");
   });
 });

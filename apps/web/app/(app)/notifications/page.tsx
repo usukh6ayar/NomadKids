@@ -19,6 +19,7 @@ import {
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { mediaUrl } from "@/lib/api/client";
+import { useKindergartenLogo } from "@/components/media/kindergarten-logo";
 import { useSwitchableGroups } from "@/components/shell/group-switcher";
 import { useBackHref } from "@/components/shell/app-shell";
 import { BackButton } from "@/components/ui/back-button";
@@ -902,7 +903,7 @@ function NotificationRow({
     The feed's author carries no photo, so the reader's own comes from their
     profile; anybody else's post keeps its initials until the API sends one.
   */
-  const { session, primaryKindergartenId } = useSession();
+  const { session } = useSession();
   const { data: myProfile } = useMyProfile();
   /*
     ★ The kindergarten's own logo on an administration post — client,
@@ -911,17 +912,8 @@ function NotificationRow({
     may read `/kindergartens/:id`, and the logo is served through
     `/media/:id` by membership. No logo yet keeps the drawing.
   */
-  const { data: kindergarten } = useQuery({
-    queryKey: ["kindergarten", primaryKindergartenId ?? "", "logo"],
-    queryFn: () =>
-      get(
-        `/kindergartens/${primaryKindergartenId}`,
-        z.object({ logoMediaFileId: z.string().nullish() }),
-      ),
-    enabled: notification.authorIsAdministration && Boolean(primaryKindergartenId),
-    staleTime: 5 * 60_000,
-  });
-  const logoMediaFileId = kindergarten?.logoMediaFileId ?? null;
+  const kindergartenLogo = useKindergartenLogo();
+  const logoMediaFileId = notification.authorIsAdministration ? kindergartenLogo : null;
   const author =
     notification.author && notification.author.id === session?.user.id
       ? {

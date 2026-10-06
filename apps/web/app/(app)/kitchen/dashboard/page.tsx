@@ -1,17 +1,9 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import {
-  AlertTriangle,
-  ArrowRight,
-  CheckCircle2,
-  ClipboardList,
-  HeartPulse,
-  Package,
-  UtensilsCrossed,
-} from "lucide-react";
+import { ArrowRight, Package, UtensilsCrossed } from "lucide-react";
 import { z } from "zod";
 import {
   MEAL_KIND_LABEL,
@@ -22,6 +14,8 @@ import {
   type CookDashboard,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
+import { TodayAttendance } from "@/components/kitchen/today-attendance";
+import { mediaUrl } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
@@ -136,232 +130,63 @@ function KitchenDashboard() {
 
   const data = board.data;
   const dishes = menu.data?.[0]?.dishes ?? [];
-  const lowStock = (stock.data ?? []).filter((level) => level.low);
 
   return (
     <div className="page-band">
       {header}
 
-      <TodayFigures data={data} lowStock={lowStock.length} />
+      <div className="flex flex-col gap-2">
+        <TodayAttendance data={data} />
+        <GroupPortions groups={data.groups} />
+      </div>
 
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <TodayMenu dishes={dishes} loading={menu.isPending} />
         <StockPanel levels={stock.data ?? []} loading={stock.isPending} />
       </div>
-
-      <GroupPortions groups={data.groups} />
     </div>
   );
 }
 
 /**
- * The four figures the morning turns on.
- *
- * ★ The attendance card carries its own warning rather than a separate banner:
- * "18 of 20 groups have said" is the same fact as "2 have not", and a cook
- * reading the first wants the second in the same breath.
- */
-function TodayFigures({ data, lowStock }: { data: CookDashboard; lowStock: number }) {
-  const { attendanceToday, groups, meals } = data;
-  const percent =
-    attendanceToday.expected > 0
-      ? Math.round((attendanceToday.present / attendanceToday.expected) * 100)
-      : 0;
-
-  const withRegister = groups.filter((group) => group.recorded > 0).length;
-  const missing = groups.filter((group) => group.recorded === 0);
-
-  const byKind = new Map(meals.byKind.map((row) => [row.kind, row.portions]));
-
-  /*
-    Every alert is a fact this payload already carries — nothing here is
-    computed from a guess, and a kitchen with nothing outstanding gets no list
-    rather than a reassuring sentence.
-  */
-  const alerts = [
-    missing.length > 0 ? `${missing.length} бүлэг ирцээ оруулаагүй байна` : null,
-    lowStock > 0 ? `${lowStock} төрлийн орцын нөөц бага` : null,
-    data.pendingFoodOrders > 0
-      ? `${data.pendingFoodOrders} хүнсний захиалга хүлээгдэж байна`
-      : null,
-    meals.allergyChildren > 0 ? `Харшилтай ${meals.allergyChildren} хүүхэд` : null,
-  ].filter((line): line is string => Boolean(line));
-
-  return (
-    <section aria-label="Өнөөдрийн дүн" className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-      <Card pad="compact" className="flex flex-col gap-2">
-        <span className="flex items-center gap-2">
-          <Chip tone="mint">
-            <ClipboardList size={18} aria-hidden="true" />
-          </Chip>
-          <span className="text-caption font-medium text-muted">Өнөөдөр хоолох хүүхэд</span>
-        </span>
-
-        <span className="flex items-baseline gap-1.5">
-          <span className="text-figure font-bold tabular-nums leading-none text-ink">
-            {attendanceToday.present}
-          </span>
-          <span className="text-body tabular-nums text-muted">/ {attendanceToday.expected}</span>
-        </span>
-
-        <span aria-hidden="true" className="h-1.5 overflow-hidden rounded-pill bg-track">
-          <span
-            className="block h-full rounded-pill bg-mint-ink"
-            style={{ width: `${Math.min(100, percent)}%` }}
-          />
-        </span>
-
-        <span className="text-caption text-muted">
-          {groups.length} бүлгээс {withRegister} бүлгийн ирц бүртгэгдсэн
-        </span>
-
-        {missing.length > 0 ? (
-          <span className="flex items-start gap-1.5 rounded-row bg-sun/30 px-2.5 py-1.5 text-caption text-ink">
-            <AlertTriangle size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-sun-ink" />
-            {missing.length} бүлэг ирцээ оруулаагүй байна
-          </span>
-        ) : null}
-      </Card>
-
-      <Card pad="compact" className="flex flex-col gap-2">
-        <span className="flex items-center gap-2">
-          <Chip tone="sky">
-            <UtensilsCrossed size={18} aria-hidden="true" />
-          </Chip>
-          <span className="text-caption font-medium text-muted">Тараасан порц</span>
-        </span>
-
-        <span className="flex items-baseline gap-1.5">
-          <span className="text-figure font-bold tabular-nums leading-none text-ink">
-            {meals.served}
-          </span>
-          <span className="text-body text-muted">порц</span>
-        </span>
-
-        {/*
-          ★ The register's own figure, and it says so. A portion count taken
-          from the roster would be what the kitchen *plans*; this is what was
-          recorded as served, and before a teacher fills the register in it is
-          honestly zero rather than optimistically the roster.
-        */}
-        <span className="text-caption text-muted">
-          {mealKindSchema.options
-            .filter((kind) => (byKind.get(kind) ?? 0) > 0)
-            .map((kind) => `${MEAL_KIND_LABEL[kind]} ${byKind.get(kind)}`)
-            .join(" · ") || "Хоолны бүртгэл хараахан хийгдээгүй"}
-        </span>
-      </Card>
-
-      <Card pad="compact" className="flex flex-col gap-2">
-        <span className="flex items-center gap-2">
-          <Chip tone="peach">
-            <HeartPulse size={18} aria-hidden="true" />
-          </Chip>
-          <span className="text-caption font-medium text-muted">Тусгай хоол</span>
-        </span>
-
-        <dl className="flex flex-col gap-1 text-caption">
-          <Row label="Харшилтай" value={meals.allergyChildren} />
-          <Row label="Тусгай хоол" value={meals.special} />
-          <Row label="Хоолноос чөлөөлсөн" value={meals.excused} />
-        </dl>
-
-        <Link
-          href="/kitchen/attendance"
-          className="inline-flex items-center gap-1 text-caption font-medium text-primary hover:underline"
-        >
-          Жагсаалт харах
-          <ArrowRight size={14} aria-hidden="true" />
-        </Link>
-      </Card>
-
-      <Card pad="compact" className="flex flex-col gap-2">
-        <span className="flex items-center gap-2">
-          <Chip tone="sun">
-            <AlertTriangle size={18} aria-hidden="true" />
-          </Chip>
-          <span className="text-caption font-medium text-muted">Анхаарах зүйлс</span>
-        </span>
-
-        {alerts.length === 0 ? (
-          <span className="flex items-center gap-1.5 text-caption text-mint-ink">
-            <CheckCircle2 size={14} aria-hidden="true" />
-            Бэлтгэл бүрэн
-          </span>
-        ) : (
-          <ul className="flex flex-col gap-1">
-            {alerts.map((line) => (
-              <li key={line} className="flex items-start gap-1.5 text-caption text-ink">
-                <span
-                  aria-hidden="true"
-                  className="mt-1.5 size-1.5 shrink-0 rounded-pill bg-sun-ink"
-                />
-                {line}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
-    </section>
-  );
-}
-
-function Row({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-muted">{label}</dt>
-      <dd className="font-semibold tabular-nums text-ink">{value}</dd>
-    </div>
-  );
-}
-
-function Chip({ tone, children }: { tone: "mint" | "sky" | "peach" | "sun"; children: ReactNode }) {
-  const tones = {
-    mint: "bg-mint text-mint-ink",
-    sky: "bg-sky text-sky-ink",
-    peach: "bg-peach text-peach-ink",
-    sun: "bg-sun text-sun-ink",
-  } as const;
-
-  return (
-    <span
-      aria-hidden="true"
-      className={cn("grid size-9 shrink-0 place-items-center rounded-card", tones[tone])}
-    >
-      {children}
-    </span>
-  );
-}
-
-/**
- * Today's menu, one card per sitting.
+ * Today's menu, one card per sitting, each led by a photograph of its dish.
  *
  * ★ Read from the menu screen's own endpoint rather than copied onto the
  * dashboard payload: the cook writes it on `/menu` and reads it here, and two
  * sources for one day's dishes is how a board comes to show yesterday's soup.
+ *
+ * ★★ Pictures and no clock — client, 2026-10-06 ("хоолны цэс зурагтай
+ * аятайхан", "цаггүй"). The photo is the first one the sitting's dishes carry
+ * (the cook attaches it on `/menu`). A sitting with none gets a plate on a
+ * tint, never a stock picture: an image of food nobody cooked is a menu that
+ * lies, the same reason no stand-in faces are drawn elsewhere.
  */
 function TodayMenu({
   dishes,
   loading,
 }: {
-  dishes: { name: string; kind?: string | null; time?: string | null }[];
+  dishes: { name: string; kind?: string | null; photoMediaFileId?: string | null }[];
   loading: boolean;
 }) {
   const sittings = mealKindSchema.options
-    .map((kind) => ({
-      kind,
-      label: MEAL_KIND_LABEL[kind],
-      rows: dishes.filter((dish) => dish.kind === kind),
-    }))
+    .map((kind) => {
+      const rows = dishes.filter((dish) => dish.kind === kind);
+      return {
+        kind,
+        label: MEAL_KIND_LABEL[kind] ?? kind,
+        rows,
+        photo: rows.find((dish) => dish.photoMediaFileId)?.photoMediaFileId ?? null,
+      };
+    })
     .filter((sitting) => sitting.rows.length > 0);
 
   return (
-    <section aria-labelledby="today-menu" className="flex flex-col gap-2.5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="today-menu" className="text-body font-semibold text-ink">
+    <section aria-labelledby="today-menu" className="flex min-w-0 flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <h2 id="today-menu" className="text-caption font-semibold text-muted">
           Өнөөдрийн цэс
         </h2>
-        <Button size="sm" variant="secondary" asChild>
+        <Button size="sm" variant="ghost" asChild>
           <Link href="/menu">
             Цэс засах
             <ArrowRight size={15} aria-hidden="true" />
@@ -379,30 +204,63 @@ function TodayMenu({
       ) : null}
 
       {sittings.length > 0 ? (
-        <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+        /*
+          A phone scrolls the sittings sideways, a card and a bit at a time;
+          from `sm` they sit in a grid.
+        */
+        <ul className="-mx-4 flex snap-x snap-mandatory gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 xl:grid-cols-4">
           {sittings.map((sitting) => (
-            <Card key={sitting.kind} pad="compact" className="flex flex-col gap-1.5">
-              <span className="flex items-baseline justify-between gap-2">
-                <span className="text-body font-semibold text-ink">{sitting.label}</span>
-                {sitting.rows[0]?.time ? (
-                  <span className="text-caption tabular-nums text-muted">
-                    {sitting.rows[0].time}
+            <li
+              key={sitting.kind}
+              aria-label={sitting.label}
+              className="w-[42%] shrink-0 snap-start sm:w-auto"
+            >
+              <Card pad="none" className="flex h-full flex-col overflow-hidden">
+                <DishPhoto mediaId={sitting.photo} alt={sitting.rows[0]?.name ?? sitting.label} />
+                <div className="flex flex-col gap-0.5 px-2 py-1.5">
+                  <span className="text-caption font-semibold leading-tight text-muted">
+                    {sitting.label}
                   </span>
-                ) : null}
-              </span>
-
-              <ul className="flex flex-col gap-0.5">
-                {sitting.rows.map((dish, index) => (
-                  <li key={`${dish.name}-${index}`} className="text-caption text-ink">
-                    · {dish.name}
-                  </li>
-                ))}
-              </ul>
-            </Card>
+                  <ul className="flex flex-col">
+                    {sitting.rows.map((dish, index) => (
+                      <li
+                        key={`${dish.name}-${index}`}
+                        className="truncate text-caption font-medium leading-snug text-ink"
+                      >
+                        {dish.name}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </Card>
+            </li>
           ))}
-        </div>
+        </ul>
       ) : null}
     </section>
+  );
+}
+
+/** The sitting's photograph, or a plate on a tint when the cook attached none. */
+function DishPhoto({ mediaId, alt }: { mediaId: string | null; alt: string }) {
+  const [failed, setFailed] = useState(false);
+
+  if (!mediaId || failed) {
+    return (
+      <div className="flex aspect-[16/10] w-full items-center justify-center bg-peach text-peach-ink">
+        <UtensilsCrossed size={20} aria-hidden="true" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={mediaUrl(mediaId)}
+      alt={alt}
+      loading="lazy"
+      className="aspect-[16/10] w-full object-cover"
+      onError={() => setFailed(true)}
+    />
   );
 }
 
@@ -475,6 +333,9 @@ function StockPanel({
  * stop. A group whose register is empty shows a dash rather than a zero,
  * because "nobody came" and "nobody said" are different mornings.
  */
+/** The groups' table, one tight line a group. */
+const CELL = "px-2.5 py-1.5 text-caption";
+
 function GroupPortions({ groups }: { groups: CookDashboard["groups"] }) {
   if (groups.length === 0) return null;
 
@@ -487,58 +348,65 @@ function GroupPortions({ groups }: { groups: CookDashboard["groups"] }) {
   );
 
   return (
-    <section aria-labelledby="group-portions" className="flex flex-col gap-2.5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="group-portions" className="text-body font-semibold text-ink">
-          Бүлгүүдийн хоолны тоо
+    <section aria-labelledby="group-portions" className="flex flex-col gap-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 id="group-portions" className="text-caption font-semibold text-muted">
+          Бүлгүүдийн ирц
         </h2>
         <span className="text-caption tabular-nums text-muted">{groups.length} бүлэг</span>
       </div>
 
-      <TableShell caption="Бүлгүүдийн хоолны тоо" stacked minWidth="min-w-0">
+      {/*
+        Not stacked, on purpose — client, 2026-10-06: "бүр жижиг цэгцтэй".
+        Four short columns fit a phone, and a stacked table turns each group
+        into a card of its own. «Хоолох» was dropped: it printed the same
+        number as «Ирсэн» on every row.
+      */}
+      <TableShell caption="Бүлгүүдийн ирц" minWidth="min-w-0">
         <thead>
           <tr>
-            <Th>Бүлгийн нэр</Th>
-            <Th numeric>Нийт хүүхэд</Th>
-            <Th numeric>Өнөөдөр ирсэн</Th>
-            <Th numeric>Хоолох</Th>
-            <Th>Төлөв</Th>
+            <Th className={CELL}>Бүлэг</Th>
+            <Th className={CELL} numeric>
+              Нийт
+            </Th>
+            <Th className={CELL} numeric>
+              Ирсэн
+            </Th>
+            <Th className={CELL}>Төлөв</Th>
           </tr>
         </thead>
         <tbody>
           {groups.map((group) => (
             <tr key={group.groupId}>
-              <Td data-label="Бүлгийн нэр">{group.name}</Td>
-              <Td data-label="Нийт хүүхэд" numeric>
+              <Td className={CELL}>{group.name}</Td>
+              <Td className={CELL} numeric>
                 {group.enrolled}
               </Td>
-              <Td data-label="Өнөөдөр ирсэн" numeric>
+              <Td className={CELL} numeric>
                 {group.recorded === 0 ? "—" : group.present}
               </Td>
-              <Td data-label="Хоолох" numeric>
-                {group.recorded === 0 ? "—" : group.present}
-              </Td>
-              <Td data-label="Төлөв">
-                <Badge tone={group.recorded === 0 ? "sun" : "mint"}>
+              <Td className={CELL}>
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1",
+                    group.recorded === 0 ? "text-sun-ink" : "text-mint-ink",
+                  )}
+                >
+                  <span aria-hidden="true" className="size-1.5 rounded-pill bg-current" />
                   {group.recorded === 0 ? "Ирц дутуу" : "Бэлэн"}
-                </Badge>
+                </span>
               </Td>
             </tr>
           ))}
-          <tr>
-            <Td data-label="Бүлгийн нэр">
-              <strong>Нийт</strong>
+          <tr className="font-semibold">
+            <Td className={CELL}>Нийт</Td>
+            <Td className={CELL} numeric>
+              {totals.enrolled}
             </Td>
-            <Td data-label="Нийт хүүхэд" numeric>
-              <strong>{totals.enrolled}</strong>
+            <Td className={CELL} numeric>
+              {totals.present}
             </Td>
-            <Td data-label="Өнөөдөр ирсэн" numeric>
-              <strong>{totals.present}</strong>
-            </Td>
-            <Td data-label="Хоолох" numeric>
-              <strong>{totals.present}</strong>
-            </Td>
-            <Td data-label="Төлөв">—</Td>
+            <Td className={CELL} />
           </tr>
         </tbody>
       </TableShell>

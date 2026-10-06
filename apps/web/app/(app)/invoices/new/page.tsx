@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { z } from "zod";
 import {
   INVOICE_LINE_TYPE_LABEL,
@@ -17,16 +17,16 @@ import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
-import { formatDate, fullName } from "@/lib/format";
+import { fullName } from "@/lib/format";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
-import { Card, SectionHeader } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
-import { MonthSelect } from "@/components/ui/month-select";
-import { ChildAvatar } from "@/components/media/media-image";
+import { YearMonthSelect } from "@/components/ui/year-month-select";
 import { FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
 
 const rosterSchema = paginated(childSummarySchema);
 const groupsSchema = paginated(groupListItemSchema);
@@ -45,6 +45,15 @@ interface DraftLine {
 function emptyLine(type: InvoiceLineType = "TUITION"): DraftLine {
   return { key: crypto.randomUUID(), type, description: "", quantity: "1", unitAmount: "" };
 }
+
+/**
+ * A cell of the lines table — client, 2026-10-06 ("дахиад л илүү цэвэрхэн"):
+ * no box and no grey fill at rest, so the lines read as a printed table; the
+ * border comes back under the pointer and while typing, so it is still
+ * plainly a field.
+ */
+const CELL_INPUT =
+  "h-9 border-transparent bg-transparent px-1.5 hover:border-border focus:border-primary focus:bg-surface";
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -68,9 +77,9 @@ function money(value: number): string {
  *
  * The dialog asked for six amounts in a fixed grid and showed nothing back. An
  * invoice is a document somebody is about to send to a family, and the thing
- * that makes it checkable before it is sent is seeing it: the form on the left
- * and the invoice it is building on the right, which is the client's own
- * drawing.
+ * that makes it checkable before it is sent is seeing it. Since 2026-10-06 the
+ * form *is* that document — e-Tax's shape, lines and totals on one card — and
+ * the separate preview column of the 2026-09-17 drawing is gone.
  *
  * ★★ What the drawing has and this deliberately does not, each because the
  * data behind it does not exist yet rather than because it was missed:
@@ -85,8 +94,8 @@ function money(value: number): string {
  *  - **Хавсралт.** Invoices have no media relation.
  *  - **И-мэйл / SMS илгээх.** Neither transport exists; SMS is Phase IV
  *    (CLAUDE.md §7). What *does* happen on save is an in-app notice to the
- *    child's guardians, which the panel below states plainly rather than
- *    offering as a choice nothing would honour.
+ *    child's guardians, which is not offered as a choice because nothing
+ *    would honour turning it off.
  *  - **Банкны данс, НӨАТ.** No kindergarten bank fields, and no VAT anywhere
  *    in the finance module.
  */
@@ -120,6 +129,7 @@ function NewInvoice() {
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()]);
   const [discount, setDiscount] = useState("");
   const [note, setNote] = useState("");
+  const [noteOpen, setNoteOpen] = useState(false);
 
   /*
     ★ The group comes first, and the roster is asked for narrowed — 2026-09-17,
@@ -147,8 +157,6 @@ function NewInvoice() {
         rosterSchema,
       ),
   });
-
-  const child = (roster.data?.items ?? []).find((row) => row.id === childId);
 
   /*
     ★ The line's own arithmetic happens here and only the product is sent.
@@ -216,247 +224,215 @@ function NewInvoice() {
 
   if (!kindergartenId) return <LoadingState rows={4} />;
 
+  /** One line's field, written once for the three inputs a line has. */
+  const setLine = (key: string, patch: Partial<DraftLine>) =>
+    setLines((current) => current.map((row) => (row.key === key ? { ...row, ...patch } : row)));
+
   return (
-    <div className="page-band">
-      <PageHeader
-        backHref="/invoices"
-        title="Нэхэмжлэх шинээр үүсгэх"
-        lede="Эцэг эхэд илгээх төлбөрийн нэхэмжлэхийг энд үүсгэнэ."
-      />
+    <div className="flex flex-col gap-3">
+      <PageHeader backHref="/invoices" title="Шинэ нэхэмжлэх" />
 
-      <form onSubmit={onSubmit} className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-        <div className="flex flex-col gap-4">
-          <Card pad="roomy" className="flex flex-col gap-3">
-            <SectionHeader title="1. Ерөнхий мэдээлэл" as="h2" />
+      {/*
+        ★ One document, the way e-Tax / e-barimt writes an invoice — client,
+        2026-10-06 ("минимал … олон нуршсан зүйлгүй … etax mta дээр
+        нэхэмжлэл үүсгэдэг шиг"). Who pays and when, the lines as a table with
+        each line's amount beside it, the totals under the table, and the
+        two buttons at the foot.
 
-            <FormError message={create.isError ? errorMessage(create.error) : null} />
+        What went, and why it is not missed: the lede; the "1. 2. 3." section
+        cards; «Нэхэмжлэхийн дугаар» and «Огноо», both fixed fields nobody
+        could type in (the number is issued on save, the date is today); the
+        0/2000 counter; and «Урьдчилан харах», which restated every field —
+        the totals block under the lines is the part of it that was read.
+        The note opens on «+ Тайлбар нэмэх».
+      */}
+      <form onSubmit={onSubmit}>
+        <Card pad="roomy" className="flex flex-col gap-4">
+          <FormError message={create.isError ? errorMessage(create.error) : null} />
 
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Field label="Нэхэмжлэхийн дугаар">
-                {({ id }) => (
-                  <Input
-                    id={id}
-                    value="Хадгалахад автоматаар"
-                    readOnly
-                    disabled
-                    className="text-muted"
-                  />
-                )}
-              </Field>
-
-              <Field label="Огноо">
-                {({ id }) => <Input id={id} value={formatDate(today())} readOnly disabled />}
-              </Field>
-
-              <Field label="Төлбөрийн хугацаа" error={errors.dueDate} required>
-                {({ id, invalid }) => (
-                  <Input
-                    id={id}
-                    type="date"
-                    value={dueDate}
-                    invalid={invalid}
-                    min={today()}
-                    onChange={(event) => setDueDate(event.target.value)}
-                    disabled={busy}
-                  />
-                )}
-              </Field>
-            </div>
-
-            {/*
-              ★ Бүлэг, then Суралцагч — the client's order, 2026-09-17. On a
-              roster of fifty the class is what a person knows first, and
-              choosing it turns a fifty-name list into a dozen.
-
-              Changing the group clears the child: the one selected may not be
-              in the new class, and an invoice raised against a name nobody
-              checked is the mistake this ordering exists to prevent.
-            */}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Бүлэг">
-                {({ id }) => (
-                  <Select
-                    id={id}
-                    value={groupId}
-                    onChange={(event) => {
-                      setGroupId(event.target.value);
-                      setChildId("");
-                    }}
-                    disabled={busy || groups.isPending}
-                  >
-                    <option value="">Бүх бүлэг</option>
-                    {(groups.data?.items ?? []).map((group) => (
-                      <option key={group.id} value={group.id}>
-                        {group.name}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </Field>
-
-              <Field label="Суралцагч" error={errors.childId} required>
-                {({ id }) => (
-                  <Select
-                    id={id}
-                    value={childId}
-                    onChange={(event) => setChildId(event.target.value)}
-                    disabled={busy || roster.isPending}
-                  >
-                    <option value="">Суралцагч сонгоно уу</option>
-                    {(roster.data?.items ?? []).map((row) => (
-                      <option key={row.id} value={row.id}>
-                        {fullName(row)}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </Field>
-            </div>
-
-            {child ? (
-              <div className="flex items-center gap-3 rounded-card border border-border-soft bg-canvas px-3.5 py-3">
-                <ChildAvatar child={child} size={44} />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-body font-semibold text-ink">
-                    {fullName(child)}
-                  </span>
-                  <span className="block truncate text-caption text-muted">
-                    {child.enrollments?.find((row) => row.group)?.group?.name ?? "Бүлэггүй"}
-                  </span>
-                </span>
-              </div>
-            ) : null}
-          </Card>
-
-          <Card pad="roomy" className="flex flex-col gap-3">
-            <SectionHeader title="2. Төлбөрийн мэдээлэл" as="h2" />
-
-            <Field label="Сар" className="sm:max-w-[220px]">
+          {/*
+            ★ Бүлэг, then Суралцагч — the client's order, 2026-09-17: the class
+            narrows fifty names to a dozen. Changing the group clears the
+            child, who may not be in the new class.
+          */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Бүлэг">
               {({ id }) => (
-                <MonthSelect id={id} value={month} onValueChange={setMonth} disabled={busy} />
+                <Select
+                  id={id}
+                  value={groupId}
+                  onChange={(event) => {
+                    setGroupId(event.target.value);
+                    setChildId("");
+                  }}
+                  disabled={busy || groups.isPending}
+                >
+                  <option value="">Бүх бүлэг</option>
+                  {(groups.data?.items ?? []).map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </Select>
               )}
             </Field>
 
-            <div className="flex flex-col gap-2">
-              {priced.map((line, index) => (
-                <div
-                  key={line.key}
-                  className="grid items-end gap-2 rounded-card border border-border-soft p-2.5 sm:grid-cols-[minmax(0,1.4fr)_70px_minmax(0,1fr)_auto]"
-                >
-                  <Field label={index === 0 ? "Төрөл" : ""}>
-                    {({ id }) => (
-                      <Select
-                        id={id}
-                        aria-label="Төлбөрийн төрөл"
-                        value={line.type}
-                        disabled={busy}
-                        onChange={(event) =>
-                          setLines((current) =>
-                            current.map((row) =>
-                              row.key === line.key
-                                ? { ...row, type: event.target.value as InvoiceLineType }
-                                : row,
-                            ),
-                          )
-                        }
-                      >
-                        {LINE_TYPES.map((type) => (
-                          <option key={type} value={type}>
-                            {INVOICE_LINE_TYPE_LABEL[type]}
-                          </option>
-                        ))}
-                      </Select>
-                    )}
-                  </Field>
-
-                  <Field label={index === 0 ? "Тоо" : ""}>
-                    {({ id }) => (
-                      <Input
-                        id={id}
-                        aria-label="Тоо хэмжээ"
-                        inputMode="numeric"
-                        value={line.quantity}
-                        disabled={busy}
-                        onChange={(event) =>
-                          setLines((current) =>
-                            current.map((row) =>
-                              row.key === line.key ? { ...row, quantity: event.target.value } : row,
-                            ),
-                          )
-                        }
-                      />
-                    )}
-                  </Field>
-
-                  <Field label={index === 0 ? "Нэгж үнэ (₮)" : ""}>
-                    {({ id }) => (
-                      <Input
-                        id={id}
-                        aria-label="Нэгж үнэ"
-                        inputMode="numeric"
-                        value={line.unitAmount}
-                        disabled={busy}
-                        onChange={(event) =>
-                          setLines((current) =>
-                            current.map((row) =>
-                              row.key === line.key
-                                ? { ...row, unitAmount: event.target.value }
-                                : row,
-                            ),
-                          )
-                        }
-                      />
-                    )}
-                  </Field>
-
-                  <div className="flex items-center gap-2 pb-0.5">
-                    <span className="min-w-[90px] text-end text-body font-semibold tabular-nums text-ink">
-                      {money(line.amount)}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Мөр хасах"
-                      disabled={busy || priced.length === 1}
-                      onClick={() =>
-                        setLines((current) => current.filter((row) => row.key !== line.key))
-                      }
-                    >
-                      <Trash2 size={16} aria-hidden="true" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-
-              <Button
-                type="button"
-                variant="secondary"
-                className="self-start"
-                disabled={busy}
-                onClick={() => setLines((current) => [...current, emptyLine("MEAL")])}
-              >
-                <Plus size={16} aria-hidden="true" />
-                Мөр нэмэх
-              </Button>
-            </div>
-
-            <Field label="Хөнгөлөлт (₮)" className="sm:max-w-[220px]">
+            <Field label="Суралцагч" error={errors.childId} required>
               {({ id }) => (
+                <Select
+                  id={id}
+                  value={childId}
+                  onChange={(event) => setChildId(event.target.value)}
+                  disabled={busy || roster.isPending}
+                >
+                  <option value="">Суралцагч сонгоно уу</option>
+                  {(roster.data?.items ?? []).map((row) => (
+                    <option key={row.id} value={row.id}>
+                      {fullName(row)}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+
+            <Field label="Сар">
+              {() => <YearMonthSelect value={month} onValueChange={setMonth} />}
+            </Field>
+
+            <Field label="Төлбөрийн хугацаа" error={errors.dueDate} required>
+              {({ id, invalid }) => (
                 <Input
                   id={id}
-                  inputMode="numeric"
-                  value={discount}
+                  type="date"
+                  value={dueDate}
+                  invalid={invalid}
+                  min={today()}
+                  onChange={(event) => setDueDate(event.target.value)}
                   disabled={busy}
-                  onChange={(event) => setDiscount(event.target.value)}
                 />
               )}
             </Field>
-          </Card>
+          </div>
 
-          <Card pad="roomy" className="flex flex-col gap-3">
-            <SectionHeader title="3. Нэмэлт мэдээлэл" as="h2" />
+          <section aria-label="Төлбөрийн мөрүүд" className="flex flex-col gap-1.5">
+            <div
+              aria-hidden="true"
+              className="hidden grid-cols-[minmax(0,1fr)_72px_120px_110px_36px] gap-2 border-b border-border-soft pb-1.5 text-caption text-muted sm:grid"
+            >
+              <span>Төрөл</span>
+              <span className="text-end">Тоо</span>
+              <span className="text-end">Нэгж үнэ</span>
+              <span className="text-end">Дүн</span>
+              <span />
+            </div>
 
+            {priced.map((line) => (
+              <div
+                key={line.key}
+                className="group grid grid-cols-[72px_minmax(0,1fr)_auto_36px] items-center gap-2 border-b border-border-soft py-0.5 sm:grid-cols-[minmax(0,1fr)_72px_120px_110px_36px]"
+              >
+                <div className="col-span-4 sm:col-span-1">
+                  <Select
+                    aria-label="Төлбөрийн төрөл"
+                    value={line.type}
+                    disabled={busy}
+                    onChange={(event) =>
+                      setLine(line.key, { type: event.target.value as InvoiceLineType })
+                    }
+                    className={CELL_INPUT}
+                  >
+                    {LINE_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {INVOICE_LINE_TYPE_LABEL[type]}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <Input
+                  aria-label="Тоо хэмжээ"
+                  inputMode="numeric"
+                  value={line.quantity}
+                  disabled={busy}
+                  onChange={(event) => setLine(line.key, { quantity: event.target.value })}
+                  className={cn(CELL_INPUT, "text-end tabular-nums")}
+                />
+                <Input
+                  aria-label="Нэгж үнэ"
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={line.unitAmount}
+                  disabled={busy}
+                  onChange={(event) => setLine(line.key, { unitAmount: event.target.value })}
+                  className={cn(CELL_INPUT, "text-end tabular-nums")}
+                />
+                <span className="text-end text-body font-semibold tabular-nums text-ink">
+                  {money(line.amount)}
+                </span>
+                {/*
+                  Shown on a phone, where there is no hover; from `sm` it
+                  appears with the row under the pointer or the keyboard.
+                */}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Мөр хасах"
+                  disabled={busy || priced.length === 1}
+                  onClick={() =>
+                    setLines((current) => current.filter((row) => row.key !== line.key))
+                  }
+                  className="text-faint hover:text-ink focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 disabled:sm:opacity-0"
+                >
+                  <X size={16} aria-hidden="true" />
+                </Button>
+              </div>
+            ))}
+
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setLines((current) => [...current, emptyLine("MEAL")])}
+              className="inline-flex min-h-[40px] items-center gap-1.5 self-start text-body font-medium text-primary hover:text-primary-strong disabled:opacity-50"
+            >
+              <Plus size={16} aria-hidden="true" />
+              Мөр нэмэх
+            </button>
+          </section>
+
+          {/*
+            The totals, as the invoice prints them — lines, less the discount,
+            the same way `invoice-math.ts` totals it on the server.
+          */}
+          <dl className="ml-auto flex w-full max-w-[320px] flex-col gap-1.5 text-body">
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-muted">Дүн</dt>
+              <dd className="tabular-nums text-ink">{money(subtotal)}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <dt>
+                <label htmlFor="invoice-discount" className="text-muted">
+                  Хөнгөлөлт
+                </label>
+              </dt>
+              <dd>
+                <Input
+                  id="invoice-discount"
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={discount}
+                  disabled={busy}
+                  onChange={(event) => setDiscount(event.target.value)}
+                  className={cn(CELL_INPUT, "w-[120px] text-end tabular-nums")}
+                />
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-3 border-t border-border pt-1.5">
+              <dt className="font-semibold text-ink">Нийт</dt>
+              <dd className="text-lead font-bold tabular-nums text-ink">{money(total)}</dd>
+            </div>
+          </dl>
+
+          {noteOpen ? (
             <Field label="Тайлбар" error={errors.note}>
               {({ id }) => (
                 <Textarea
@@ -464,98 +440,38 @@ function NewInvoice() {
                   value={note}
                   maxLength={2000}
                   disabled={busy}
-                  placeholder="2026 оны 9-р сарын сургалт, хоолны төлбөр."
-                  className="min-h-[80px]"
+                  placeholder={`${monthLabel}ын сургалт, хоолны төлбөр.`}
+                  className="min-h-[72px]"
                   onChange={(event) => setNote(event.target.value)}
+                  autoFocus
                 />
               )}
             </Field>
-            <p className="text-end text-caption tabular-nums text-muted">{note.length}/2000</p>
-          </Card>
-        </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setNoteOpen(true)}
+              className="inline-flex min-h-[40px] items-center gap-1.5 self-start text-body text-muted hover:text-ink"
+            >
+              <Plus size={16} aria-hidden="true" />
+              Тайлбар нэмэх
+            </button>
+          )}
 
-        {/*
-          ★ The invoice as it will be — the drawing's right-hand column.
-
-          Built from the same state the form holds, so it cannot disagree with
-          what is about to be sent, and totalled the same way `invoice-math.ts`
-          totals it on the server: lines, less the discount.
-        */}
-        <div className="flex flex-col gap-4">
-          <Card pad="roomy" className="flex flex-col gap-3">
-            <div className="flex items-start justify-between gap-3">
-              <SectionHeader title="Урьдчилан харах" as="h2" />
-              <span className="shrink-0 text-caption font-semibold text-muted">НЭХЭМЖЛЭХ</span>
-            </div>
-
-            <dl className="flex flex-col gap-1 text-caption">
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">Огноо</dt>
-                <dd className="tabular-nums text-ink">{formatDate(today())}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">Төлөх хугацаа</dt>
-                <dd className="tabular-nums text-ink">{dueDate ? formatDate(dueDate) : "—"}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">Суралцагч</dt>
-                <dd className="truncate text-ink">{child ? fullName(child) : "—"}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">Сар</dt>
-                <dd className="text-ink">{monthLabel}</dd>
-              </div>
-            </dl>
-
-            <ul className="flex flex-col gap-1 border-t border-border-soft pt-2.5">
-              {priced.map((line) => (
-                <li
-                  key={line.key}
-                  className="flex items-baseline justify-between gap-3 text-caption"
-                >
-                  <span className="min-w-0 truncate text-ink">
-                    {INVOICE_LINE_TYPE_LABEL[line.type]}
-                    {Number(line.quantity) > 1 ? (
-                      <span className="text-muted"> · {line.quantity} ш</span>
-                    ) : null}
-                  </span>
-                  <span className="shrink-0 tabular-nums text-ink">{money(line.amount)}</span>
-                </li>
-              ))}
-            </ul>
-
-            <dl className="flex flex-col gap-1 border-t border-border-soft pt-2.5 text-caption">
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">Дүн</dt>
-                <dd className="tabular-nums text-ink">{money(subtotal)}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">Хөнгөлөлт</dt>
-                <dd className="tabular-nums text-ink">
-                  {money(Number.isFinite(discountValue) ? discountValue : 0)}
-                </dd>
-              </div>
-              <div className="flex justify-between gap-3 border-t border-border-soft pt-1.5">
-                <dt className="font-semibold text-ink">Нийт дүн</dt>
-                <dd className="text-lead font-bold tabular-nums text-primary">{money(total)}</dd>
-              </div>
-            </dl>
-          </Card>
-
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" disabled={!ready || busy}>
-              {busy ? "Үүсгэж байна…" : "Нэхэмжлэх үүсгэх"}
-            </Button>
+          <div className="flex flex-wrap justify-end gap-2 border-t border-border-soft pt-3">
             <Button
               type="button"
               variant="secondary"
               disabled={busy}
               onClick={() => router.push("/invoices")}
             >
-              Цуцлах
+              Болих
+            </Button>
+            <Button type="submit" disabled={!ready || busy}>
+              {busy ? "Үүсгэж байна…" : "Нэхэмжлэх үүсгэх"}
             </Button>
           </div>
-        </div>
+        </Card>
       </form>
     </div>
   );

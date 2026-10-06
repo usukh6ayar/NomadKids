@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
 import AdminSchoolYearsPage from "@/app/(app)/admin/school-years/page";
@@ -167,5 +168,95 @@ describe("the local years are visible", () => {
     renderWithProviders(<AdminSchoolYearsPage />);
 
     expect(await screen.findByText("Хичээлийн жил үүсгээгүй байна")).toBeInTheDocument();
+  });
+});
+
+/**
+ * Засах — client, 2026-10-06: a year typed wrong has to be fixable. There is
+ * no delete; the API has none.
+ */
+describe("засах", () => {
+  function stubWithPatch() {
+    return stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: YEARS_PATH, body: [current, older] },
+      { path: `/school-years/${OLDER}`, method: "PATCH", body: { ...older, name: "2025-2026 он" } },
+    ]);
+  }
+
+  const patchBody = (api: ReturnType<typeof stubApi>) => {
+    const call = api.calls.find((c) => c.method === "PATCH");
+    return (call?.body as Record<string, unknown> | undefined) ?? null;
+  };
+
+  it("edits a year's name and dates from its ⋯, prefilled", async () => {
+    const user = userEvent.setup();
+    const api = stubWithPatch();
+    renderWithProviders(<AdminSchoolYearsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "2025-2026 үйлдэл" }));
+    await user.click(await screen.findByRole("menuitem", { name: /Засах/ }));
+
+    const name = await screen.findByLabelText(/Нэр/);
+    expect(name).toHaveValue("2025-2026");
+    expect(screen.getByLabelText(/Эхлэх/)).toHaveValue("2025-09-01");
+    await user.clear(name);
+    await user.type(name, "2025-2026 он");
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+
+    await waitFor(() => expect(patchBody(api)).not.toBeNull());
+    // Not made current unless ticked — and never sent as `false`.
+    expect(patchBody(api)).toEqual({
+      name: "2025-2026 он",
+      startsOn: "2025-09-01",
+      endsOn: "2026-06-01",
+    });
+  });
+
+  it("sends isCurrent only as true, when ticked", async () => {
+    const user = userEvent.setup();
+    const api = stubWithPatch();
+    renderWithProviders(<AdminSchoolYearsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "2025-2026 үйлдэл" }));
+    await user.click(await screen.findByRole("menuitem", { name: /Засах/ }));
+    await user.click(await screen.findByLabelText(/Одоогийн жил болгох/));
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+
+    await waitFor(() => expect(patchBody(api)?.isCurrent).toBe(true));
+  });
+
+  it("offers no current-year box on the year that already is", async () => {
+    const user = userEvent.setup();
+    stubWithPatch();
+    renderWithProviders(<AdminSchoolYearsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "2026-2027 үйлдэл" }));
+    await user.click(await screen.findByRole("menuitem", { name: /Засах/ }));
+
+    await screen.findByLabelText(/Нэр/);
+    expect(screen.queryByLabelText(/Одоогийн жил болгох/)).toBeNull();
+  });
+});
+
+/**
+ * The ministry's year panel only with ESIS — client, 2026-10-06: without it
+ * the panel was always empty and read as if years would arrive by themselves.
+ */
+describe("ESIS-гүй цэцэрлэг", () => {
+  it("draws no ESIS year panel, and keeps «Жил нэмэх»", async () => {
+    const api = stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: YEARS_PATH, body: [current] },
+      // After the longer path: the stubs match by prefix.
+      { path: `/kindergartens/${KG}`, body: { esisInstitutionId: null } },
+    ]);
+    renderWithProviders(<AdminSchoolYearsPage />);
+
+    expect(await screen.findByRole("button", { name: /Жил нэмэх/ })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(api.calls.some((c) => c.url.endsWith(`/kindergartens/${KG}`))).toBe(true),
+    );
+    expect(screen.queryByText("Нээсэн ба хаасан огноо, идэвхтэй жил")).toBeNull();
   });
 });

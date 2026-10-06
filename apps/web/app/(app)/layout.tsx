@@ -1191,14 +1191,14 @@ function supportNav(isCook: boolean): NavItem[] {
         {
           href: "/invoices",
           label: "Нэхэмжлэл",
-          icon: artIcon("accountingInvoice", 20),
+          icon: <RailGlyph icon={ReceiptText} />,
           barIcon: <FileText {...pillIconProps} />,
         },
         {
           // «Ирц» since 2026-10-01 — «Ирцийн дэлгэрэнгүй» was removed.
           href: "/attendance/daily",
           label: "Ирц",
-          icon: artIcon("accountingAttendanceDetails", 20),
+          icon: <RailGlyph icon={IdCardLanyard} />,
           barIcon: <IdCardLanyard {...pillIconProps} />,
         },
         {
@@ -1289,7 +1289,7 @@ function supportSections(isCook: boolean): NavSection[] {
              * back the moment they saw the two together.
              */
             navEntry("Санхүү", "/finance"),
-            navEntry("Нэхэмжлэл", "/invoices", "accountingInvoice"),
+            navEntry("Нэхэмжлэл", "/invoices"),
             // «Төлбөрийн тайлан» is a tab of «Санхүү» since 2026-10-01.
             /*
              * ★ The raw grid the figure above is computed from — child by
@@ -1303,8 +1303,13 @@ function supportSections(isCook: boolean): NavSection[] {
              * client's request, its child-by-day grid being «Ирц»'s «Сараар»
              * and «Жилээр». Same roles (ADMIN, ACCOUNTANT) on both screens.
              */
-            navEntry("Ирц", "/attendance/daily", "accountingAttendanceDetails"),
-            navEntry("Санхүүгийн аудит", "/finance/audit-log", "accountingAudit"),
+            navEntry("Ирц", "/attendance/daily"),
+            /*
+             * «Санхүүгийн аудит» left the menu on 2026-10-06 at the client's
+             * request ("хэрэггүй юм шиг"). нэмэлт.md §14's log is still written
+             * on every change; `/finance/audit-log` still renders it for anyone
+             * who opens the address.
+             */
           ],
     },
     {

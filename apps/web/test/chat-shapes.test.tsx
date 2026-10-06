@@ -1,4 +1,5 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -104,5 +105,75 @@ describe("чат — дугуй хэлбэр", () => {
   it("defines the bubble radius in globals.css", () => {
     const css = readFileSync(join(__dirname, "..", "app", "globals.css"), "utf8");
     expect(css).toMatch(/--radius-bubble:\s*\d+px;/);
+  });
+});
+
+/**
+ * Minimal — client, 2026-10-06: no clock under every bubble, one name per run
+ * of messages, a quiet stamp between breaks, and a press shows a time.
+ */
+describe("чат — минимал", () => {
+  const AUTHOR = { id: "44444444-4444-4444-8444-444444444444", lastName: "Бат", firstName: "Ану" };
+  // Today at local noon, so the stamp reads as a bare time on any run date.
+  const at = (minute: number) => {
+    const date = new Date();
+    date.setHours(12, minute, 0, 0);
+    return date.toISOString();
+  };
+  const msg = (id: string, body: string, minute: number) => ({
+    id: `33333333-3333-4333-8333-0000000000${id}`,
+    roomKey: ROOM.key,
+    body,
+    createdAt: at(minute),
+    author: AUTHOR,
+    mine: false,
+    media: [],
+  });
+
+  function stubMessages(items: unknown[]) {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      // Newest first, as the API sends them.
+      { path: MESSAGES_PATH, body: { items: [...items].reverse(), nextCursor: null } },
+    ]);
+  }
+
+  it("names a run of messages once and prints no clock under each", async () => {
+    stubMessages([
+      msg("01", "Сайн уу", 0),
+      msg("02", "Маргааш ирнэ", 1),
+      msg("03", "Баярлалаа", 2),
+    ]);
+    renderWithProviders(<ChatRoom room={ROOM} onBack={() => {}} chrome={chrome} />);
+
+    await screen.findByText("Баярлалаа");
+    // One stamp for the run, none per bubble.
+    const stamp = new Date(at(0));
+    const hhmm = `${String(stamp.getHours()).padStart(2, "0")}:${String(stamp.getMinutes()).padStart(2, "0")}`;
+    expect(screen.getAllByText(hhmm)).toHaveLength(1);
+    expect(screen.getAllByText("Бүлгийн багш")).toHaveLength(1);
+  });
+
+  it("stamps a break of a quarter of an hour", async () => {
+    stubMessages([msg("01", "Өглөө", 0), msg("02", "Үдээс хойш", 40)]);
+    renderWithProviders(<ChatRoom room={ROOM} onBack={() => {}} chrome={chrome} />);
+
+    await screen.findByText("Үдээс хойш");
+    // Two runs, so two names — and two stamps.
+    expect(screen.getAllByText("Бүлгийн багш")).toHaveLength(2);
+  });
+
+  it("shows a message's own time when it is pressed", async () => {
+    const user = userEvent.setup();
+    stubMessages([msg("01", "Сайн уу", 0), msg("02", "Маргааш ирнэ", 3)]);
+    renderWithProviders(<ChatRoom room={ROOM} onBack={() => {}} chrome={chrome} />);
+
+    const bubble = (await screen.findByText("Маргааш ирнэ")).closest("[role='button']")!;
+    const second = new Date(at(3));
+    const hhmm = `${String(second.getHours()).padStart(2, "0")}:${String(second.getMinutes()).padStart(2, "0")}`;
+    expect(screen.queryByText(hhmm)).toBeNull();
+
+    await user.click(bubble);
+    expect(within(bubble.closest("li")!).getByText(hhmm)).toBeInTheDocument();
   });
 });

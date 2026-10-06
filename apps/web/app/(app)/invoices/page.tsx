@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Clock, Download, FileText, Plus } from "lucide-react";
+import { Download, Plus, SlidersHorizontal } from "lucide-react";
 import {
   INVOICE_LINE_TYPE_LABEL,
   groupListItemSchema,
@@ -19,37 +19,23 @@ import { downloadUrl } from "@/lib/api/client";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
-import { formatDate, fullName } from "@/lib/format";
-import { cn } from "@/lib/utils";
+import { fullName } from "@/lib/format";
 import { useDebounced } from "@/lib/use-debounced";
-import { ChildAvatar } from "@/components/media/media-image";
-import { FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
 import { SearchField } from "@/components/ui/search-field";
 import { TableShell, Td, Th } from "@/components/ui/table";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/field";
-import { MonthSelect } from "@/components/ui/month-select";
+import { YearMonthSelect } from "@/components/ui/year-month-select";
 import { Pagination, ResultCount } from "@/components/ui/pagination";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
+import { cn } from "@/lib/utils";
 
 const listSchema = paginated(invoiceSummarySchema);
 const groupsSchema = paginated(groupListItemSchema);
 
 const LINE_TYPES: InvoiceLineType[] = ["TUITION", "MEAL", "CLUB", "BUS", "EXTRA", "OTHER"];
-
-type Tone = "neutral" | "mint" | "sky" | "sun" | "peach" | "primary" | "danger";
-
-const STATUS_TONE: Record<InvoiceStatus, Tone> = {
-  UNPAID: "neutral",
-  PARTIALLY_PAID: "peach",
-  PAID: "mint",
-  OVERDUE: "danger",
-  REFUNDED: "sky",
-};
 
 /** `"126900.00"` → `"126 900₮"` — same formatting `/finance` uses, repeated rather than imported across route boundaries. */
 function money(value: string | null): string {
@@ -86,7 +72,8 @@ function Invoices() {
   const [lineType, setLineType] = useState<InvoiceLineType | "">("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const pageSize = 25;
 
   const term = useDebounced(search.trim());
   const filters = {
@@ -151,22 +138,21 @@ function Invoices() {
   });
 
   const figures = summary.data;
-  const unpaid = figures
-    ? figures.byStatus.UNPAID.count + figures.byStatus.PARTIALLY_PAID.count
-    : 0;
+  /*
+    What families still owe this month: unpaid, part-paid and overdue alike.
+    Summed in cents, so «Үлдэгдэл» is never a float's idea of a sum.
+  */
   const unpaidAmount = figures
-    ? Number(figures.byStatus.UNPAID.outstanding) +
-      Number(figures.byStatus.PARTIALLY_PAID.outstanding)
+    ? (["UNPAID", "PARTIALLY_PAID", "OVERDUE"] as const).reduce(
+        (cents, key) => cents + Math.round(Number(figures.byStatus[key].outstanding) * 100),
+        0,
+      ) / 100
     : 0;
-  const share = (count: number) =>
-    figures && figures.total > 0 ? Math.round((count / figures.total) * 100) : 0;
 
   /*
-    ★ The tabs are the same four states the tiles count, and pressing one sets
-    the list's filter. "Төлөгдөөгүй" covers `UNPAID` and `PARTIALLY_PAID` on
-    the tiles; the tab filters on `UNPAID` alone, because the API's filter is
-    one status and a tab that silently meant two would not match the figure
-    above it. Partially paid keeps its own tab.
+    ★ The tabs are the month's statuses with their counts, and pressing one sets
+    the list's filter. «Төлөгдөөгүй» filters on `UNPAID` alone, because the
+    API's filter is one status; partially paid keeps its own tab.
   */
   const tabs: { key: InvoiceStatus | ""; label: string; count: number }[] = [
     { key: "", label: "Бүгд", count: figures?.total ?? 0 },
@@ -180,30 +166,31 @@ function Invoices() {
     { key: "OVERDUE", label: "Хугацаа хэтэрсэн", count: figures?.byStatus.OVERDUE.count ?? 0 },
   ];
 
+  const activeFilters = (groupId ? 1 : 0) + (lineType ? 1 : 0);
+
   return (
-    <div className="page-band">
+    <div className="flex flex-col gap-3">
+      {/*
+        ★ Minimal — client, 2026-10-06 ("маш минимал цэгцтэй … хэт олон
+        сонголт"). What went: the lede, the four figure tiles (the status
+        chips carry the same counts; the money is one quiet line), the
+        «Хуудсанд» size picker (25 a page), and three columns — Бүлэг now sits
+        under the child's name, Төлбөрийн төрөл and Үүсгэсэн are on the
+        invoice itself. Бүлэг and Төлбөрийн төрөл filters fold behind
+        «Шүүлтүүр»; the export is an icon.
+      */}
       <PageHeader
         title="Нэхэмжлэл"
-        lede="Эцэг эхийн сургалтын төлбөр, хоолны төлбөрийн нэхэмжлэл үүсгэх, удирдах"
         actions={
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <MonthSelect
-              aria-label="Сар"
+            <YearMonthSelect
               value={month}
               onValueChange={(value) => {
                 setMonth(value);
                 setPage(1);
               }}
-              className="w-[170px]"
             />
-            {/*
-              ★ A page, not a dialog — 2026-09-17, the client's second drawing.
-              An invoice is a document about to be sent to a family; it is
-              checked before it is sent, and a modal with six amount boxes
-              showed nothing back. `/invoices/new` puts the form beside a live
-              preview of what will be created.
-            */}
-            <Button asChild>
+            <Button asChild size="sm">
               <Link href="/invoices/new">
                 <Plus size={16} aria-hidden="true" />
                 Нэхэмжлэл үүсгэх
@@ -213,64 +200,85 @@ function Invoices() {
         }
       />
 
-      {/* ★ Four figures over the month, each with its money under the count. */}
-      <section aria-label="Сарын дүн" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <InvoiceStat
-          label="Нийт нэхэмжлэл"
-          value={figures?.total ?? 0}
-          amount={money(figures?.billed ?? "0")}
-          tone="sky"
-          icon={<FileText size={20} aria-hidden="true" />}
-        />
-        <InvoiceStat
-          label="Төлөгдсөн"
-          value={figures?.byStatus.PAID.count ?? 0}
-          percent={share(figures?.byStatus.PAID.count ?? 0)}
-          amount={money(figures?.byStatus.PAID.billed ?? "0")}
-          tone="mint"
-          icon={<CheckCircle2 size={20} aria-hidden="true" />}
-        />
-        <InvoiceStat
-          label="Төлөгдөөгүй"
-          value={unpaid}
-          percent={share(unpaid)}
-          amount={money(unpaidAmount.toFixed(2))}
-          tone="sun"
-          icon={<Clock size={20} aria-hidden="true" />}
-        />
-        <InvoiceStat
-          label="Хугацаа хэтэрсэн"
-          value={figures?.byStatus.OVERDUE.count ?? 0}
-          percent={share(figures?.byStatus.OVERDUE.count ?? 0)}
-          amount={money(figures?.byStatus.OVERDUE.outstanding ?? "0")}
-          tone="peach"
-          icon={<AlertTriangle size={20} aria-hidden="true" />}
-        />
-      </section>
-
-      <div className="flex flex-col gap-3">
-        <FilterChipRow label="Төлөвөөр шүүх" scroll>
-          {tabs.map((tab) => (
-            <FilterChip
+      {/*
+        ★ Text tabs, not boxed chips — client, 2026-10-06: the five boxes "хэт
+        анхаарал татаад байна". The chosen status is ink with a line under it,
+        the rest are grey words; the count is a quiet number. A phone scrolls
+        the row sideways rather than wrapping it onto two lines.
+      */}
+      <div
+        role="tablist"
+        aria-label="Төлөвөөр шүүх"
+        className="-mx-4 flex gap-5 overflow-x-auto border-b border-border-soft px-4 sm:mx-0 sm:px-0"
+      >
+        {tabs.map((tab) => {
+          const active = status === tab.key;
+          return (
+            <button
               key={tab.key || "all"}
-              active={status === tab.key}
+              type="button"
+              role="tab"
+              aria-selected={active}
               onClick={() => {
                 setStatus(tab.key);
                 setPage(1);
               }}
+              className={cn(
+                "-mb-px min-h-[40px] shrink-0 whitespace-nowrap border-b-2 text-body transition-colors",
+                active
+                  ? "border-ink font-semibold text-ink"
+                  : "border-transparent text-muted hover:text-ink",
+              )}
             >
-              {tab.label} ({tab.count})
-            </FilterChip>
-          ))}
-        </FilterChipRow>
+              {tab.label}
+              <span className="ml-1.5 text-caption tabular-nums text-faint">{tab.count}</span>
+            </button>
+          );
+        })}
+      </div>
 
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <SearchField
+            label="Хүүхдийн нэр, нэхэмжлэх дугаараар хайх"
+            placeholder="Нэр, нэхэмжлэх №"
+            value={search}
+            onChange={(value) => {
+              setSearch(value);
+              setPage(1);
+            }}
+          />
+        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          aria-expanded={filtersOpen}
+          aria-controls="invoice-filters"
+          onClick={() => setFiltersOpen((open) => !open)}
+        >
+          <SlidersHorizontal size={16} aria-hidden="true" />
+          <span className="hidden sm:inline">Шүүлтүүр</span>
+          {activeFilters > 0 ? <span className="tabular-nums">({activeFilters})</span> : null}
+        </Button>
         {/*
-          ★ Бүлэг and Төлбөрийн төрөл are the design's other two filters —
-          2026-09-17. Both are the API's (`groupId`, `lineType`), not a filter
-          over the page on screen: a register that narrowed only the 25 rows
-          loaded would disagree with the counts above it.
+          A link, not a fetch — the browser downloads it with the session it
+          already has. It carries the screen's own filters, so the file is
+          what is on screen.
         */}
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <Button variant="secondary" size="sm" asChild>
+          <a
+            href={downloadUrl(`/kindergartens/${kindergartenId}/invoices/export?${queryString}`)}
+            aria-label="Excel татах"
+            title="Excel татах"
+          >
+            <Download size={16} aria-hidden="true" />
+          </a>
+        </Button>
+      </div>
+
+      {filtersOpen ? (
+        <div id="invoice-filters" className="grid gap-2 sm:grid-cols-2">
           <Select
             aria-label="Бүлгээр шүүх"
             value={groupId}
@@ -286,7 +294,6 @@ function Invoices() {
               </option>
             ))}
           </Select>
-
           <Select
             aria-label="Төлбөрийн төрлөөр шүүх"
             value={lineType}
@@ -302,62 +309,49 @@ function Invoices() {
               </option>
             ))}
           </Select>
-
-          <SearchField
-            label="Хүүхдийн нэр, нэхэмжлэх дугаараар хайх"
-            placeholder="Хүүхдийн нэр, нэхэмжлэх №-аар хайх…"
-            value={search}
-            onChange={(value) => {
-              setSearch(value);
-              setPage(1);
-            }}
-          />
-
-          {/*
-            ★ A link, not a fetch — the browser downloads it with the session
-            cookie it already has, and fetching would buffer a spreadsheet in
-            memory only to hand it straight back. It carries the screen's own
-            filters, so the file is what is on screen.
-          */}
-          <Button variant="secondary" asChild className="justify-center">
-            <a
-              href={downloadUrl(`/kindergartens/${kindergartenId}/invoices/export?${queryString}`)}
-            >
-              <Download size={16} aria-hidden="true" />
-              Экспорт
-            </a>
-          </Button>
         </div>
-      </div>
+      ) : null}
+
+      {figures ? (
+        <p className="text-caption text-muted">
+          Нийт <span className="font-semibold tabular-nums text-ink">{money(figures.billed)}</span>
+          {" · "}
+          Үлдэгдэл{" "}
+          <span className="font-semibold tabular-nums text-ink">
+            {money(unpaidAmount.toFixed(2))}
+          </span>
+        </p>
+      ) : null}
 
       {invoices.isLoading ? <LoadingState rows={5} /> : null}
       {invoices.isError ? <ErrorState description={errorMessage(invoices.error)} /> : null}
 
       {invoices.data && invoices.data.items.length === 0 ? (
-        <EmptyState
-          title="Нэхэмжлэл алга"
-          description="Энэ сар, төлөвт тохирох нэхэмжлэл байхгүй байна. Дээрх товчоор шинээр үүсгэнэ үү."
-        />
+        /*
+          ★ The title alone — client, 2026-10-06, the sentence under it taken
+          off. «Нэхэмжлэл үүсгэх» is in the header right above, which is the
+          next step the sentence used to spell out (CLAUDE.md §5).
+        */
+        <EmptyState title="Нэхэмжлэл алга" />
       ) : null}
 
       {invoices.data && invoices.data.items.length > 0 ? (
         <>
-          <TableShell caption="Нэхэмжлэлийн жагсаалт" stacked minWidth="min-w-0">
+          <TableShell caption="Нэхэмжлэлийн жагсаалт" minWidth="min-w-0">
             <thead>
               <tr>
-                <Th>Нэхэмжлэх №</Th>
-                <Th>Хүүхэд</Th>
-                <Th>Бүлэг</Th>
-                <Th>Төлбөрийн төрөл</Th>
-                <Th numeric>Дүн</Th>
-                <Th>Үүсгэсэн</Th>
-                <Th>Төлөв</Th>
+                <Th className={CELL}>№</Th>
+                <Th className={CELL}>Хүүхэд</Th>
+                <Th className={CELL} numeric>
+                  Дүн
+                </Th>
+                <Th className={CELL}>Төлөв</Th>
               </tr>
             </thead>
             <tbody>
               {invoices.data.items.map((invoice) => (
                 <tr key={invoice.id} className="hover:bg-canvas">
-                  <Td data-label="Нэхэмжлэх №">
+                  <Td className={CELL}>
                     <Link
                       href={`/invoices/${invoice.id}`}
                       className="font-medium tabular-nums text-primary hover:underline"
@@ -365,22 +359,25 @@ function Invoices() {
                       {invoice.number ?? "—"}
                     </Link>
                   </Td>
-                  <Td data-label="Хүүхэд">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <ChildAvatar child={invoice.child} size={28} />
-                      <span className="truncate">{fullName(invoice.child)}</span>
-                    </span>
+                  <Td className={CELL}>
+                    <span className="block truncate text-ink">{fullName(invoice.child)}</span>
+                    {invoice.child.group?.name ? (
+                      <span className="block truncate text-muted">{invoice.child.group.name}</span>
+                    ) : null}
                   </Td>
-                  <Td data-label="Бүлэг">{invoice.child.group?.name ?? "—"}</Td>
-                  <Td data-label="Төлбөрийн төрөл">{chargeLabel(invoice)}</Td>
-                  <Td data-label="Дүн" numeric>
+                  <Td className={cn(CELL, "font-medium text-ink")} numeric>
                     {money(invoice.totalDue)}
                   </Td>
-                  <Td data-label="Үүсгэсэн">{formatDate(invoice.createdAt)}</Td>
-                  <Td data-label="Төлөв">
-                    <Badge tone={STATUS_TONE[invoice.status]}>
+                  <Td className={CELL}>
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1.5 whitespace-nowrap",
+                        STATUS_TEXT[invoice.status],
+                      )}
+                    >
+                      <span aria-hidden="true" className="size-1.5 rounded-pill bg-current" />
                       {INVOICE_STATUS_LABEL[invoice.status]}
-                    </Badge>
+                    </span>
                   </Td>
                 </tr>
               ))}
@@ -389,102 +386,26 @@ function Invoices() {
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <ResultCount total={invoices.data.total} noun="нэхэмжлэл" />
-            <label className="flex items-center gap-2 text-caption text-muted">
-              Хуудсанд
-              <Select
-                aria-label="Хуудсанд харуулах тоо"
-                value={String(pageSize)}
-                onChange={(event) => {
-                  setPageSize(Number(event.target.value));
-                  setPage(1);
-                }}
-                className="w-[90px]"
-              >
-                {[25, 50, 100].map((size) => (
-                  <option key={size} value={size}>
-                    {size}
-                  </option>
-                ))}
-              </Select>
-            </label>
+            <Pagination
+              page={invoices.data.page}
+              totalPages={invoices.data.totalPages}
+              onPage={setPage}
+            />
           </div>
-
-          <Pagination
-            page={invoices.data.page}
-            totalPages={invoices.data.totalPages}
-            onPage={setPage}
-          />
         </>
       ) : null}
     </div>
   );
 }
 
-/**
- * What this invoice is for, from the amounts it carries.
- *
- * ★ Derived, not stored. `нэмэлт.md` §7 bills six line types and an invoice
- * usually carries two — tuition and meals — so a single "type" column is a
- * summary rather than a field. The list payload deliberately omits the line
- * items (they are the detail screen's), and the three amount columns it does
- * carry answer the question the column asks.
- */
-function chargeLabel(invoice: { baseAmount: string; mealAmount: string; extraAmount: string }) {
-  const parts: string[] = [];
-  if (Number(invoice.baseAmount) > 0) parts.push(INVOICE_LINE_TYPE_LABEL.TUITION);
-  if (Number(invoice.mealAmount) > 0) parts.push(INVOICE_LINE_TYPE_LABEL.MEAL);
-  if (Number(invoice.extraAmount) > 0) parts.push("Нэмэлт");
-  return parts.length > 0 ? parts.join(" · ") : "—";
-}
+/** The register's rows, one tight line each. */
+const CELL = "px-2.5 py-2 text-caption";
 
-/**
- * One of the month's four figures — the client's 2026-09-17 design.
- *
- * ★ White card, colour on the chip. The drawing tints each box; four pastel
- * panels across the head of a register is a band of paint over the table that
- * is the screen's actual work, and the chip carries the same meaning.
- */
-function InvoiceStat({
-  label,
-  value,
-  percent,
-  amount,
-  tone,
-  icon,
-}: {
-  label: string;
-  value: number;
-  percent?: number;
-  amount: string;
-  tone: "sky" | "mint" | "sun" | "peach";
-  icon: ReactNode;
-}) {
-  const chips = {
-    sky: "bg-sky text-sky-ink",
-    mint: "bg-mint text-mint-ink",
-    sun: "bg-sun text-sun-ink",
-    peach: "bg-peach text-peach-ink",
-  } as const;
-
-  return (
-    <Card pad="compact" className="flex items-start gap-3">
-      <span
-        aria-hidden="true"
-        className={cn("grid size-10 shrink-0 place-items-center rounded-card", chips[tone])}
-      >
-        {icon}
-      </span>
-
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-caption font-medium text-muted">{label}</span>
-        <span className="mt-0.5 flex items-baseline gap-1.5">
-          <span className="text-title font-bold tabular-nums leading-none text-ink">{value}</span>
-          {percent !== undefined ? (
-            <span className="text-caption tabular-nums text-muted">({percent}%)</span>
-          ) : null}
-        </span>
-        <span className="mt-1 block truncate text-caption tabular-nums text-muted">{amount}</span>
-      </span>
-    </Card>
-  );
-}
+/** A status as coloured text with a dot — the badge's meaning without its box. */
+const STATUS_TEXT: Record<InvoiceStatus, string> = {
+  UNPAID: "text-muted",
+  PARTIALLY_PAID: "text-peach-ink",
+  PAID: "text-mint-ink",
+  OVERDUE: "text-danger",
+  REFUNDED: "text-sky-ink",
+};

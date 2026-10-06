@@ -81,7 +81,7 @@ describe("the teacher dashboard's quick actions", () => {
       ["Ирц", "/attendance", "icon-attendance-3d.png"],
       ["Суралцагч", "/children", "icon-children-3d.png"],
       ["Хоолны цэс", "/menu", "icon-food-3d.png"],
-      ["Мэдээ", "/notifications/new", "icon-notice-3d.png"],
+      ["Мэдээ", "/notifications", "icon-notice-3d.png"],
       ["Судалгаа", "/surveys", "icon-survey-3d.png"],
       ["Явцын үнэлгээ", "/assessment", "icon-progress-3d.png"],
       ["Тайлан", "/reports", "icon-report-3d.png"],
