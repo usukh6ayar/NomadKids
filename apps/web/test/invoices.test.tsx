@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -121,7 +121,42 @@ describe("creating an invoice", () => {
 
     renderWithProviders(<NewInvoicePage />, { selectedChild: false });
 
-    expect(await screen.findByText("1. Ерөнхий мэдээлэл")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Шинэ нэхэмжлэх" })).toBeInTheDocument();
+  });
+
+  /**
+   * ★ Client, 2026-10-06: one document, the way e-Tax writes an invoice — no
+   * numbered sections, no fixed number or date fields, no separate preview,
+   * the note behind «+ Тайлбар нэмэх», and the totals under the lines.
+   */
+  it("is one minimal document: lines, totals, and the note on request", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ACCOUNTANT"]) },
+      {
+        path: `/kindergartens/${KG_ID}/children/finance-roster`,
+        method: "GET",
+        body: { items: [], page: 1, pageSize: 100, total: 0, totalPages: 0 },
+      },
+    ]);
+    renderWithProviders(<NewInvoicePage />, { selectedChild: false });
+
+    await screen.findByRole("heading", { name: "Шинэ нэхэмжлэх" });
+    for (const gone of ["1. Ерөнхий мэдээлэл", "Урьдчилан харах", "Нэхэмжлэхийн дугаар"]) {
+      expect(screen.queryByText(gone)).toBeNull();
+    }
+    expect(screen.queryByText(/\/2000/)).toBeNull();
+
+    // Cells read as a printed table: no box, no fill, until hovered or typed in.
+    expect(screen.getByLabelText("Нэгж үнэ")).toHaveClass("border-transparent", "bg-transparent");
+    await user.type(screen.getByLabelText("Нэгж үнэ"), "150000");
+    await user.type(screen.getByLabelText("Хөнгөлөлт"), "10000");
+    const totals = screen.getByText("Нийт").closest("dl")!;
+    expect(within(totals).getByText("140 000₮")).toBeInTheDocument();
+
+    expect(screen.queryByLabelText("Тайлбар")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Тайлбар нэмэх" }));
+    expect(screen.getByLabelText("Тайлбар")).toBeInTheDocument();
   });
 
   /** A form with nothing priced cannot be submitted — there is no invoice in it. */

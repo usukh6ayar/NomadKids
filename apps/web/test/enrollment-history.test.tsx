@@ -143,33 +143,51 @@ describe("суралцсан түүх", () => {
     ★ 2026-10-01: the same shape as the other tabs — the current kindergarten
     as rows, then tables for its teachers and the earlier placements. No folds.
   */
-  it("opens on the current kindergarten, with its facts and its teachers", async () => {
+  /*
+   * The family's view — client, 2026-10-06: the kindergarten first, then the
+   * group, then the group's teachers with their faces, the assistant included.
+   */
+  it("opens on the kindergarten, then the group, then both teachers", async () => {
     stubArchive();
     renderWithProviders(<ChildEnrollmentArchive childId={CHILD} />);
 
-    const current = await screen.findByRole("region", { name: "Одоогийн сурч байгаа цэцэрлэг" });
-    expect(within(current).getByText("Бяцхан нүүдэлчид цэцэрлэг")).toBeInTheDocument();
-    expect(within(current).getByText("Дэлбээ бүлэг · Ахлах бүлэг · 18 хүүхэд")).toBeInTheDocument();
-    expect(within(current).getByText("120 хүүхэд")).toBeInTheDocument();
-    expect(within(current).getByText("6 бүлэг")).toBeInTheDocument();
-    expect(within(current).getByText("Баянгол дүүрэг, 3-р хороо")).toBeInTheDocument();
-    expect(within(current).getByText("2026.09.01")).toBeInTheDocument();
-    expect(current.querySelector("details")).toBeNull();
+    const kindergarten = await screen.findByRole("region", {
+      name: "Бяцхан нүүдэлчид цэцэрлэг",
+    });
+    expect(within(kindergarten).getByText("Баянгол дүүрэг, 3-р хороо")).toBeInTheDocument();
+    // Every fact the staff card has — 2026-10-06, "мэдээллүүд маш дутуу".
+    expect(within(kindergarten).getByText("120 хүүхэд")).toBeInTheDocument();
+    expect(within(kindergarten).getByText("6 бүлэг")).toBeInTheDocument();
 
-    const teachers = screen.getByRole("region", { name: "Багш" });
-    const row = within(teachers).getByRole("cell", { name: "Дэлгэрмаа Сувдаа" }).closest("tr")!;
-    expect(within(row).getByText("СӨБ-ийн багш")).toBeInTheDocument();
-    expect(within(row).getByText("МУБИС")).toBeInTheDocument();
-    expect(within(row).getByRole("link", { name: "99001234" })).toHaveAttribute(
-      "href",
-      "tel:99001234",
-    );
-    expect(within(row).getByRole("link", { name: "suvdaa@nomadkids.mn" })).toHaveAttribute(
+    const group = screen.getByRole("region", { name: "Дэлбээ бүлэг" });
+    expect(within(group).getByText("Ахлах бүлэг")).toBeInTheDocument();
+    expect(within(group).getByText("18 хүүхэд")).toBeInTheDocument();
+    expect(within(group).getByText("2026.09.01")).toBeInTheDocument();
+    // No picture on the group — 2026-10-06.
+    expect(group.querySelector("svg, img")).toBeNull();
+
+    // The kindergarten comes before the group, and the group before the teachers.
+    const teachers = screen.getByRole("region", { name: "Багш нар" });
+    expect(
+      kindergarten.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(group.compareDocumentPosition(teachers) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    const lead = within(teachers).getByText("Дэлгэрмаа Сувдаа").closest("li")!;
+    expect(within(lead).getByText("Бүлгийн багш")).toBeInTheDocument();
+    expect(within(lead).getByText("СӨБ-ийн багш")).toBeInTheDocument();
+    expect(within(lead).getByText("МУБИС")).toBeInTheDocument();
+    expect(within(lead).getByRole("link", { name: "suvdaa@nomadkids.mn" })).toHaveAttribute(
       "href",
       "mailto:suvdaa@nomadkids.mn",
     );
-    expect(within(teachers).queryByText("Дорж Сараа")).toBeNull();
-    expect(within(teachers).queryByText("Багшийн туслах")).toBeNull();
+    expect(within(lead).getByRole("link", { name: /99001234/ })).toHaveAttribute(
+      "href",
+      "tel:99001234",
+    );
+
+    const assistant = within(teachers).getByText("Дорж Сараа").closest("li")!;
+    expect(within(assistant).getByText("Багшийн туслах")).toBeInTheDocument();
   });
 
   it("lists the past placements in a table, with the age the child was", async () => {

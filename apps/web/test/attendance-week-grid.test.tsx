@@ -713,3 +713,82 @@ describe("weekends", () => {
     expect(within(table).getAllByRole("combobox")).toHaveLength(1);
   });
 });
+
+/**
+ * On a phone, the last seven days — client, 2026-10-06: «9.30 – 10.6», moved a
+ * week at a time with ‹ ›, never past today. The desktop is unchanged.
+ */
+describe("утсан дээрх 7 хоног", () => {
+  const original = window.matchMedia;
+  const shift = (iso: string, days: number) => {
+    const date = new Date(`${iso}T00:00:00.000Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
+  };
+  const short = (iso: string) => `${Number(iso.slice(5, 7))}.${Number(iso.slice(8, 10))}`;
+  const rangeCalls = (api: ReturnType<typeof stubApi>) =>
+    api.calls.filter((call) => call.url.includes("/attendance/range")).map((call) => call.url);
+
+  function asPhone(phone: boolean) {
+    window.matchMedia = ((query: string) => ({
+      matches: phone && query.includes("max-width"),
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+  }
+
+  afterAll(() => {
+    window.matchMedia = original;
+  });
+
+  it("opens on the last seven days, labelled as a calendar writes them", async () => {
+    asPhone(true);
+    const api = stubRegister();
+    renderWithProviders(<GroupAttendancePage />);
+
+    const from = shift(TODAY, -6);
+    expect(await screen.findByText(`${short(from)} – ${short(TODAY)}`)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(rangeCalls(api).some((url) => url.includes(`from=${from}&to=${TODAY}`))).toBe(true),
+    );
+    // No forward step past today.
+    expect(screen.getByRole("button", { name: "Дараагийн 7 хоног" })).toBeDisabled();
+  });
+
+  it("steps back a week with ‹, and forward again to today", async () => {
+    const user = userEvent.setup();
+    asPhone(true);
+    stubRegister();
+    renderWithProviders(<GroupAttendancePage />);
+
+    await screen.findByText(`${short(shift(TODAY, -6))} – ${short(TODAY)}`);
+    await user.click(screen.getByRole("button", { name: "Өмнөх 7 хоног" }));
+    expect(
+      await screen.findByText(`${short(shift(TODAY, -13))} – ${short(shift(TODAY, -7))}`),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Дараагийн 7 хоног" }));
+    expect(
+      await screen.findByText(`${short(shift(TODAY, -6))} – ${short(TODAY)}`),
+    ).toBeInTheDocument();
+  });
+
+  it("leaves the desktop on its Monday start", async () => {
+    asPhone(false);
+    const api = stubRegister();
+    renderWithProviders(<GroupAttendancePage />);
+
+    const day = new Date(`${TODAY}T00:00:00.000Z`).getUTCDay();
+    const monday = shift(TODAY, -(day === 0 ? 6 : day - 1));
+    await waitFor(() =>
+      expect(rangeCalls(api).some((url) => url.includes(`from=${monday}&to=${TODAY}`))).toBe(true),
+    );
+    // Which control shows is CSS (`sm:hidden`), which jsdom does not apply;
+    // the range the desktop asks for is the behaviour that differs.
+  });
+});

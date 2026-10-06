@@ -251,3 +251,125 @@ describe("the profile card", () => {
     expect(screen.getByLabelText("Профайл зураг солих")).toBeInTheDocument();
   });
 });
+
+/**
+ * The administration wears the kindergarten's logo — client, 2026-10-06:
+ * «удирдлага зураг оруулах хэрэггүй, цэцэрлэгийн лого бүх зүйлд төлөөлнө».
+ */
+describe("an administrator's picture", () => {
+  const LOGO = "abababab-abab-4bab-8bab-abababababab";
+
+  function stubAdmin(logoMediaFileId: string | null) {
+    return stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: "/me/profile", body: PROFILE },
+      // After the longer paths: the stubs match by prefix.
+      { path: `/kindergartens/${KINDERGARTEN_ID}`, body: { logoMediaFileId } },
+    ]);
+  }
+
+  it("is the kindergarten's logo, with no photo control", async () => {
+    stubAdmin(LOGO);
+    renderWithProviders(<SettingsPage />);
+
+    const logo = await screen.findByRole("img", { name: "Цэцэрлэгийн лого" });
+    expect(logo.getAttribute("src")).toContain(LOGO);
+    expect(screen.queryByLabelText("Профайл зураг солих")).toBeNull();
+  });
+
+  it("falls back to initials until a logo is uploaded", async () => {
+    stubAdmin(null);
+    renderWithProviders(<SettingsPage />);
+
+    expect(await screen.findByText("Дорж Сараа")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: "Цэцэрлэгийн лого" })).toBeNull();
+    expect(screen.queryByLabelText("Профайл зураг солих")).toBeNull();
+  });
+
+  it("leaves a teacher's own photo control alone", async () => {
+    stubSettings(["TEACHER"]);
+    renderWithProviders(<SettingsPage />);
+
+    expect(await screen.findByLabelText("Профайл зураг солих")).toBeInTheDocument();
+  });
+});
+
+/**
+ * «Багшийн туслах» under the teacher's own card — client, 2026-10-06. Read
+ * from a child's archive, which carries the group's teachers with a profile.
+ */
+describe("the co-teacher card", () => {
+  const GROUP = "55555555-5555-4555-8555-555555555555";
+  const ASSISTANT = {
+    id: "66666666-6666-4666-8666-666666666666",
+    lastName: "Дорж",
+    firstName: "Сараа",
+    role: "ASSISTANT",
+    specialization: "Багшийн туслах",
+    education: "МУБИС",
+    phone: "99112233",
+    email: null,
+    photoMediaFileId: null,
+  };
+
+  function stubTeacher(teachers: unknown[]) {
+    return stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/me/profile", body: PROFILE },
+      {
+        path: "/groups",
+        body: {
+          items: [{ id: GROUP, name: "Дэлбээ" }],
+          page: 1,
+          pageSize: 20,
+          total: 1,
+          totalPages: 1,
+        },
+      },
+      // Before `/children?…`: the stubs match by prefix.
+      {
+        path: `/children/${CHILD_ID}/enrollment-archive`,
+        body: {
+          child: { id: CHILD_ID, firstName: "Намуун", lastName: "Дорж" },
+          current: {
+            id: "77777777-7777-4777-8777-777777777777",
+            startedOn: "2026-09-01",
+            schoolYear: null,
+            kindergarten: {
+              id: KINDERGARTEN_ID,
+              name: "Нархан",
+              phone: null,
+              email: null,
+              description: null,
+            },
+            group: { id: GROUP, name: "Дэлбээ", schedule: null, rules: null },
+            teachers,
+          },
+          history: [],
+        },
+      },
+      {
+        path: "/children",
+        body: { items: [{ id: CHILD_ID }], page: 1, pageSize: 1, total: 1, totalPages: 1 },
+      },
+    ]);
+  }
+
+  it("shows the group's assistant, with what they filled in", async () => {
+    stubTeacher([ASSISTANT]);
+    renderWithProviders(<SettingsPage />);
+
+    const card = (await screen.findByText("Багшийн туслах", { selector: "p" })).closest("section")!;
+    expect(within(card).getByText("Дорж Сараа")).toBeInTheDocument();
+    expect(within(card).getByText("99112233")).toBeInTheDocument();
+    expect(within(card).getByText("МУБИС")).toBeInTheDocument();
+  });
+
+  it("draws nothing for a teacher who works alone", async () => {
+    stubTeacher([]);
+    renderWithProviders(<SettingsPage />);
+
+    await screen.findByText("Дорж Сараа", { selector: "p" });
+    expect(screen.queryByRole("region", { name: "Хамт ажилладаг багш" })).toBeNull();
+  });
+});

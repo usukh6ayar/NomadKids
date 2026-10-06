@@ -1,37 +1,21 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ClipboardList, Users, UtensilsCrossed } from "lucide-react";
-import type { ReactNode } from "react";
-import { z } from "zod";
-import {
-  cookDashboardSchema,
-  MEAL_KIND_LABEL,
-  mealKindSchema,
-  mealServingSchema,
-  type MealServing,
-} from "@kinder/contracts";
-import { get, mutate } from "@/lib/api/browser";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { Users } from "lucide-react";
+import { cookDashboardSchema, type CookDashboard } from "@kinder/contracts";
+import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
-import { useSession } from "@/lib/auth/session";
 import { cn } from "@/lib/utils";
 import { formatDate, todayLocal } from "@/lib/format";
-import {
-  ATTENDANCE_STATUS_BG,
-  ATTENDANCE_STATUS_LABEL,
-  ATTENDANCE_STATUS_ORDER,
-} from "@/lib/attendance-meta";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { useToast } from "@/components/ui/toast";
-
-const mealServingsSchema = z.array(mealServingSchema);
-const MEAL_KINDS = mealKindSchema.options;
+import { SearchField } from "@/components/ui/search-field";
+import { TableShell, Td, Th } from "@/components/ui/table";
+import { TodayAttendance } from "@/components/kitchen/today-attendance";
 
 /**
  * "Ирц" — the sidebar row above "Тайлан" (`app/(app)/layout.tsx`).
@@ -45,9 +29,9 @@ const MEAL_KINDS = mealKindSchema.options;
  * ★★ Same `GET /dashboard/cook` response as the dashboard tile. Both are
  * counts only — no child's name reaches either screen (`dashboard.service.ts`).
  *
- * ★★★ Тараалт, added 2026-09-05, is the other half of the same job: this
- * screen already says how many to portion for; each group's row now also
- * says whether that portion has actually gone out, per sitting.
+ * ★★★ Тараалт (added 2026-09-05) was taken off on 2026-10-06 at the client's
+ * request: nothing else read it — not the board, not a report — so it was a
+ * checklist the cook did not use. The rows it wrote stay in `MealServing`.
  */
 export default function KitchenAttendancePage() {
   return (
@@ -58,22 +42,11 @@ export default function KitchenAttendancePage() {
 }
 
 function KitchenAttendance() {
-  const { primaryKindergartenId } = useSession();
   const today = todayLocal();
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: qk.dashboard.cook(),
     queryFn: () => get("/dashboard/cook", cookDashboardSchema),
-  });
-
-  const servings = useQuery({
-    enabled: Boolean(primaryKindergartenId),
-    queryKey: qk.kitchen.mealServings(primaryKindergartenId ?? "", today),
-    queryFn: () =>
-      get(
-        `/kindergartens/${primaryKindergartenId}/meal-servings?date=${today}`,
-        mealServingsSchema,
-      ),
   });
 
   const header = <PageHeader title="Ирц" />;
@@ -103,28 +76,12 @@ function KitchenAttendance() {
     );
   }
 
-  const { attendanceToday, attendanceByGroup, groups, meals } = data;
-  const percent =
-    attendanceToday.expected > 0
-      ? Math.round((attendanceToday.present / attendanceToday.expected) * 100)
-      : 0;
-  const withRegister = groups.filter((group) => group.recorded > 0).length;
-  const servedGroups = new Set((servings.data ?? []).map((row) => row.groupId)).size;
+  const { attendanceToday, attendanceByGroup, groups } = data;
 
   return (
     <div className="page-band">
-      {/*
-        ★ The board's own header and cards — 2026-09-17, the client: "тогооч
-        ирц хэсгийн самбар дээрх шиг ижил ойлгомжтой болго."
-
-        It opened on a ring and two lines of prose, which is a different visual
-        language from the board the cook has just come from — and the ring's
-        percentage is the least useful number here: a kitchen portions to a
-        count, not a rate.
-      */}
       <PageHeader
         title="Ирц"
-        lede="Өнөөдөр хэдэн хүүхэд хооллохыг бүлгээр харах, тараалтаа бүртгэх"
         actions={
           <span className="inline-flex min-h-11 items-center rounded-pill bg-canvas px-4 text-body font-medium tabular-nums text-ink">
             {formatDate(today)}
@@ -140,232 +97,151 @@ function KitchenAttendance() {
         />
       ) : (
         <>
-          <section aria-label="Өнөөдрийн дүн" className="grid gap-3 sm:grid-cols-3">
-            <KitchenStat
-              tone="mint"
-              icon={<Users size={18} aria-hidden="true" />}
-              label="Өнөөдөр хоолох хүүхэд"
-              value={`${attendanceToday.present}`}
-              detail={`${attendanceToday.expected} хүүхдээс · ${percent}%`}
-              percent={percent}
-            />
-            <KitchenStat
-              tone="sky"
-              icon={<ClipboardList size={18} aria-hidden="true" />}
-              label="Ирц бүртгэсэн бүлэг"
-              value={`${withRegister} / ${groups.length}`}
-              detail={
-                withRegister === groups.length
-                  ? "Бүх бүлэг бүртгэсэн"
-                  : `${groups.length - withRegister} бүлэг дутуу`
-              }
-              percent={groups.length > 0 ? Math.round((withRegister / groups.length) * 100) : 0}
-            />
-            <KitchenStat
-              tone="sun"
-              icon={<UtensilsCrossed size={18} aria-hidden="true" />}
-              label="Тараалт бүртгэсэн бүлэг"
-              value={`${servedGroups} / ${groups.length}`}
-              detail={
-                meals.served > 0 ? `${meals.served} порц бүртгэгдсэн` : "Тараалт бүртгээгүй байна"
-              }
-              percent={groups.length > 0 ? Math.round((servedGroups / groups.length) * 100) : 0}
-            />
-          </section>
-
           {/*
-            ★ Every active group, not only the ones with a register.
-
-            The list used to drop a group that had recorded nothing, so the two
-            groups a cook is waiting on were invisible — the one thing this
-            screen is opened to find out. A group with no register shows a dash
-            and a "Ирц дутуу" badge, exactly as the board's table does.
+            ★ Today, made plain — client, 2026-10-06 ("өнөөдрөөр ойлгомжтой
+            хий"). The board's attendance card, then one table: a group a
+            line, each status in its own column, the day's total at the foot.
+            The three large tiles and the per-group chips it replaces said the
+            same numbers in three shapes. Today only: the client said the
+            cook does not need a month ("тогооч сараар харах хэрэггүй").
           */}
-          <Card pad="none" className="divide-y divide-border-soft">
-            {groups.map((group) => {
-              const counts =
-                attendanceByGroup.find((row) => row.groupId === group.groupId)?.counts ?? {};
-
-              return (
-                <div key={group.groupId} className="flex flex-col gap-2.5 px-4 py-3">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <span className="flex min-w-0 items-baseline gap-2">
-                      <span className="truncate text-body font-semibold text-ink">
-                        {group.name}
-                      </span>
-                      <span className="shrink-0 text-caption tabular-nums text-muted">
-                        {group.recorded === 0 ? "—" : group.present} / {group.enrolled}
-                      </span>
-                    </span>
-
-                    {group.recorded === 0 ? (
-                      <Badge tone="sun">Ирц дутуу</Badge>
-                    ) : (
-                      <ul className="flex flex-wrap gap-1.5">
-                        {ATTENDANCE_STATUS_ORDER.filter((status) => (counts[status] ?? 0) > 0).map(
-                          (status) => (
-                            <li
-                              key={status}
-                              className="flex items-center gap-1.5 rounded-pill border border-border bg-surface px-2.5 py-1 text-caption text-muted"
-                            >
-                              <span
-                                aria-hidden="true"
-                                className={`size-2 rounded-pill ${ATTENDANCE_STATUS_BG[status]}`}
-                              />
-                              {ATTENDANCE_STATUS_LABEL[status] ?? status}
-                              <span className="font-semibold tabular-nums text-ink">
-                                {counts[status]}
-                              </span>
-                            </li>
-                          ),
-                        )}
-                      </ul>
-                    )}
-                  </div>
-
-                  {primaryKindergartenId && servings.data ? (
-                    <MealServingRow
-                      kindergartenId={primaryKindergartenId}
-                      groupId={group.groupId}
-                      date={today}
-                      servings={servings.data}
-                    />
-                  ) : null}
-                </div>
-              );
-            })}
-          </Card>
+          <div className="flex flex-col gap-2">
+            <TodayAttendance data={data} />
+            <GroupAttendanceTable groups={groups} byGroup={attendanceByGroup} />
+          </div>
         </>
       )}
     </div>
   );
 }
 
-/**
- * One of the three figures, in the board's own card — icon chip, count, a line
- * of detail and a rule under it.
- */
-function KitchenStat({
-  tone,
-  icon,
-  label,
-  value,
-  detail,
-  percent,
-}: {
-  tone: "mint" | "sky" | "sun";
-  icon: ReactNode;
-  label: string;
-  value: string;
-  detail: string;
-  percent: number;
-}) {
-  const chips = {
-    mint: "bg-mint text-mint-ink",
-    sky: "bg-sky text-sky-ink",
-    sun: "bg-sun text-sun-ink",
-  } as const;
-  const bars = { mint: "bg-mint-ink", sky: "bg-sky-ink", sun: "bg-sun-ink" } as const;
+/** The groups' table, one tight line a group. */
+const CELL = "px-2.5 py-1.5 text-caption";
 
-  return (
-    <Card pad="compact" className="flex flex-col gap-2">
-      <span className="flex items-center gap-2">
-        <span
-          aria-hidden="true"
-          className={cn("grid size-9 shrink-0 place-items-center rounded-card", chips[tone])}
-        >
-          {icon}
-        </span>
-        <span className="min-w-0 truncate text-caption font-medium text-muted">{label}</span>
-      </span>
-
-      <span className="text-figure font-bold tabular-nums leading-none text-ink">{value}</span>
-
-      <span aria-hidden="true" className="h-1.5 overflow-hidden rounded-pill bg-track">
-        <span
-          className={cn("block h-full rounded-pill", bars[tone])}
-          style={{ width: `${Math.min(100, percent)}%` }}
-        />
-      </span>
-
-      <span className="text-caption text-muted">{detail}</span>
-    </Card>
-  );
-}
+/** The statuses a register records, in the order the teacher's sheet uses. */
+const STATUS_COLUMNS = [
+  { key: "SICK", label: "Өвчтэй" },
+  { key: "EXCUSED", label: "Чөлөөтэй" },
+  { key: "ABSENT", label: "Тасалсан" },
+] as const;
 
 /**
- * Тараалт — one group's row of sitting chips, from Өглөөний хоол through
- * Их үдийн цай. Tapping an unmarked chip records it; tapping a marked one
- * undoes it — a cook fixing a mis-tap, or the food not actually being out yet.
- *
- * ★ Every possible sitting is offered, not just the ones today's menu plans.
- * The menu is kindergarten-wide while this is per group, and narrowing the
- * set would need cross-referencing the two — a real feature, just not this
- * one; nothing here stops a kitchen from marking a sitting it always serves.
+ * Today per group: on the roll, here, each kind of absence, and how many the
+ * register has not answered for. «Ирсэн» counts `HALF_DAY` too, the way
+ * `/dashboard/cook` does — a child there for half the day eats.
  */
-function MealServingRow({
-  kindergartenId,
-  groupId,
-  date,
-  servings,
+function GroupAttendanceTable({
+  groups,
+  byGroup,
 }: {
-  kindergartenId: string;
-  groupId: string;
-  date: string;
-  servings: MealServing[];
+  groups: CookDashboard["groups"];
+  byGroup: CookDashboard["attendanceByGroup"];
 }) {
-  const toast = useToast();
-  const queryClient = useQueryClient();
-  const queryKey = qk.kitchen.mealServings(kindergartenId, date);
-
-  const mark = useMutation({
-    mutationFn: (kind: string) =>
-      mutate(`/kindergartens/${kindergartenId}/meal-servings`, mealServingSchema, {
-        method: "POST",
-        body: { groupId, date, kind },
-      }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey }),
-    onError: (err) => toast.error(errorMessage(err)),
-  });
-
-  const unmark = useMutation({
-    mutationFn: (id: string) => mutate(`/meal-servings/${id}`, z.unknown(), { method: "DELETE" }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey }),
-    onError: (err) => toast.error(errorMessage(err)),
-  });
-
-  const byKind = new Map(
-    servings.filter((s) => s.groupId === groupId).map((s) => [s.kind, s] as const),
-  );
+  const [query, setQuery] = useState("");
+  const term = query.trim().toLocaleLowerCase("mn");
+  const rows = groups
+    .filter((group) => !term || group.name.toLocaleLowerCase("mn").includes(term))
+    .map((group) => {
+      const counts = byGroup.find((row) => row.groupId === group.groupId)?.counts ?? {};
+      return {
+        ...group,
+        counts,
+        missing: Math.max(0, group.enrolled - group.recorded),
+      };
+    });
+  const sum = (pick: (row: (typeof rows)[number]) => number) =>
+    rows.reduce((total, row) => total + pick(row), 0);
+  const blank = (row: (typeof rows)[number], value: number) => (row.recorded === 0 ? "—" : value);
 
   return (
-    <ul className="flex flex-wrap gap-1.5">
-      {MEAL_KINDS.map((kind) => {
-        const serving = byKind.get(kind);
-        const pending =
-          (mark.isPending && mark.variables === kind) ||
-          (unmark.isPending && serving && unmark.variables === serving.id);
+    <section aria-labelledby="group-attendance" className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="group-attendance" className="text-caption font-semibold text-muted">
+          Бүлгүүдийн өнөөдрийн ирц
+          <span className="ml-2 font-normal tabular-nums">
+            {term ? `${rows.length} / ${groups.length}` : groups.length} бүлэг
+          </span>
+        </h2>
+        {/*
+          ★ Client, 2026-10-06: «бүлгийн ирц дээр хайх». The total row adds up
+          what the search leaves, so a cook who narrows to two groups reads
+          those two groups' total.
+        */}
+        <div className="w-full sm:w-[220px]">
+          <SearchField
+            label="Бүлгийн нэрээр хайх"
+            placeholder="Бүлэг хайх"
+            value={query}
+            onChange={setQuery}
+          />
+        </div>
+      </div>
 
-        return (
-          <li key={kind}>
-            <button
-              type="button"
-              disabled={Boolean(pending)}
-              aria-pressed={Boolean(serving)}
-              onClick={() => (serving ? unmark.mutate(serving.id) : mark.mutate(kind))}
-              className={cn(
-                "flex min-h-[32px] items-center gap-1.5 rounded-pill border px-2.5 py-1 text-caption font-medium transition-colors disabled:opacity-50",
-                serving
-                  ? "border-primary bg-primary-soft text-primary"
-                  : "border-border bg-surface text-muted hover:bg-canvas",
-              )}
-            >
-              {serving ? <Check size={14} aria-hidden="true" /> : null}
-              {MEAL_KIND_LABEL[kind]}
-            </button>
-          </li>
-        );
-      })}
-    </ul>
+      {rows.length === 0 ? (
+        <p className="rounded-control bg-canvas px-3 py-2 text-caption text-muted">
+          «{query.trim()}» нэртэй бүлэг олдсонгүй.
+        </p>
+      ) : (
+        <TableShell caption="Бүлгүүдийн өнөөдрийн ирц">
+          <thead>
+            <tr>
+              <Th className={CELL}>Бүлэг</Th>
+              <Th className={CELL} numeric>
+                Нийт
+              </Th>
+              <Th className={CELL} numeric>
+                Ирсэн
+              </Th>
+              {STATUS_COLUMNS.map((column) => (
+                <Th key={column.key} className={CELL} numeric>
+                  {column.label}
+                </Th>
+              ))}
+              <Th className={CELL} numeric>
+                Бүртгээгүй
+              </Th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.groupId}>
+                <Td className={cn(CELL, "font-medium")}>{row.name}</Td>
+                <Td className={CELL} numeric>
+                  {row.enrolled}
+                </Td>
+                <Td className={cn(CELL, "font-semibold text-mint-ink")} numeric>
+                  {blank(row, row.present)}
+                </Td>
+                {STATUS_COLUMNS.map((column) => (
+                  <Td key={column.key} className={CELL} numeric>
+                    {blank(row, row.counts[column.key] ?? 0)}
+                  </Td>
+                ))}
+                <Td className={cn(CELL, row.missing > 0 && "font-semibold text-sun-ink")} numeric>
+                  {row.missing}
+                </Td>
+              </tr>
+            ))}
+            <tr className="bg-sunken font-semibold">
+              <Td className={CELL}>Нийт</Td>
+              <Td className={CELL} numeric>
+                {sum((row) => row.enrolled)}
+              </Td>
+              <Td className={cn(CELL, "text-mint-ink")} numeric>
+                {sum((row) => row.present)}
+              </Td>
+              {STATUS_COLUMNS.map((column) => (
+                <Td key={column.key} className={CELL} numeric>
+                  {sum((row) => row.counts[column.key] ?? 0)}
+                </Td>
+              ))}
+              <Td className={CELL} numeric>
+                {sum((row) => row.missing)}
+              </Td>
+            </tr>
+          </tbody>
+        </TableShell>
+      )}
+    </section>
   );
 }

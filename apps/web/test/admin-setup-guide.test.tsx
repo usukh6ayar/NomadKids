@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AdminDashboard } from "@kinder/contracts";
@@ -49,12 +49,43 @@ const year = {
   isCurrent: true,
 };
 
-function stub({ years, groups, staff }: { years: unknown[]; groups: number; staff: number }) {
+function stub({
+  years,
+  groups,
+  staff,
+  esis = null,
+}: {
+  years: unknown[];
+  groups: number;
+  staff: number;
+  esis?: string | null;
+}) {
   stubApi([
     { path: "/auth/me", body: sessionFor(["ADMIN"]) },
     { path: "/dashboard/admin", body: overview(groups, staff) },
     { path: `/kindergartens/${KG}/school-years`, body: years },
+    // After the longer path: the stubs match by prefix.
+    { path: `/kindergartens/${KG}`, body: { esisInstitutionId: esis } },
   ]);
+}
+
+/** The step titles, in the order the dialog draws them — one per step's `<li>`. */
+function stepTitles(): string[] {
+  const titles = [
+    "Хичээлийн жил үүсгэх",
+    "Хичээлийн жил",
+    "Бүлэг татах",
+    "Бүлэг нэмэх",
+    "Багш, ажилтан бүртгэх",
+    "Багш, ажилтан урих",
+  ];
+  return (
+    within(screen.getByRole("dialog"))
+      .getAllByRole("listitem")
+      // A step's number comes first in its <li>; the longer title is listed first.
+      .map((item) => titles.find((title) => item.textContent?.includes(title)))
+      .filter((title): title is string => Boolean(title))
+  );
 }
 
 describe("удирдлагын тохиргооны заавар", () => {
@@ -70,7 +101,30 @@ describe("удирдлагын тохиргооны заавар", () => {
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("Хичээлийн жил үүсгэх")).toBeInTheDocument();
     expect(screen.getByText("Бүлэг нэмэх")).toBeInTheDocument();
-    expect(screen.getByText("Багш, ажилтан бүртгэх")).toBeInTheDocument();
+    expect(screen.getByText("Багш, ажилтан урих")).toBeInTheDocument();
+  });
+
+  /*
+   * ★ Two orders — client, 2026-10-06. Without ESIS a group needs its teacher
+   * at creation, so staff come before groups, and staff cannot register
+   * themselves (that checks the ESIS roster).
+   */
+  it("puts staff before groups, and offers no self-registration, without ESIS", async () => {
+    stub({ years: [], groups: 0, staff: 0 });
+    renderWithProviders(<AdminSetupGuide />);
+
+    await screen.findByRole("dialog");
+    expect(stepTitles()).toEqual(["Хичээлийн жил үүсгэх", "Багш, ажилтан урих", "Бүлэг нэмэх"]);
+    expect(screen.queryByText(/ESIS дугаараар өөрөө бүртгүүлнэ/)).toBeNull();
+  });
+
+  it("keeps the ESIS order, with «ESIS татах», for a kindergarten with ESIS", async () => {
+    stub({ years: [], groups: 0, staff: 0, esis: "42778" });
+    renderWithProviders(<AdminSetupGuide />);
+
+    await screen.findByRole("dialog");
+    expect(stepTitles()).toEqual(["Хичээлийн жил", "Бүлэг татах", "Багш, ажилтан бүртгэх"]);
+    expect(screen.getByText(/ESIS дугаараар өөрөө бүртгүүлнэ/)).toBeInTheDocument();
   });
 
   /*

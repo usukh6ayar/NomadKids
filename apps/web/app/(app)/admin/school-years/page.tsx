@@ -2,25 +2,28 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import { MoreVertical, Pencil, Plus } from "lucide-react";
 import { z } from "zod";
 import { schoolYearSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
+import { useEsisLinked } from "@/lib/use-esis-linked";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataList, DataRow } from "@/components/ui/data-list";
 import { Checkbox, Field, Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
+import { RowMenu } from "@/components/ui/menu";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
 const listSchema = z.array(schoolYearSchema);
+type SchoolYear = z.infer<typeof schoolYearSchema>;
 const createdYearSchema = z.object({ id: z.string() });
 
 /**
@@ -110,6 +113,8 @@ export default function AdminSchoolYearsPage() {
 function AdminSchoolYears() {
   const { primaryKindergartenId } = useSession();
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<SchoolYear | null>(null);
+  const esisLinked = useEsisLinked();
 
   const years = useQuery({
     queryKey: qk.adminSchoolYears(primaryKindergartenId ?? ""),
@@ -165,6 +170,25 @@ function AdminSchoolYears() {
                  */
                 state: year.isCurrent ? <Badge tone="mint">Одоогийн</Badge> : null,
               }}
+              actions={
+                /*
+                 * ★ Засах — client, 2026-10-06: a year typed wrong has to be
+                 * fixable. It went with the local list on 2026-09-08 while
+                 * `PATCH /school-years/:id` stayed. There is no delete: the API
+                 * has none, and a deleted year's name could never be used again.
+                 */
+                <RowMenu
+                  ariaLabel={`${year.name} үйлдэл`}
+                  triggerIcon={<MoreVertical size={18} aria-hidden="true" />}
+                  items={[
+                    {
+                      label: "Засах",
+                      icon: <Pencil size={16} aria-hidden="true" />,
+                      onSelect: () => setEditing(year),
+                    },
+                  ]}
+                />
+              }
             />
           ))}
         </DataList>
@@ -180,39 +204,85 @@ function AdminSchoolYears() {
         works — nothing in this product calls it any more. "Жил нэмэх" still
         writes a local year, and the rest of the product still reads it.
       */}
-      <EsisDataPanel
-        resource="academicYearStatuses"
-        title="Хичээлийн жил"
-        description="Нээсэн ба хаасан огноо, идэвхтэй жил"
-      />
+      {/* Not without ESIS — client, 2026-10-06: an always-empty ministry panel
+          read as if years would arrive by themselves. «Жил нэмэх» above is
+          how a kindergarten without ESIS makes one. */}
+      {esisLinked ? (
+        <EsisDataPanel
+          resource="academicYearStatuses"
+          title="Хичээлийн жил"
+          description="Нээсэн ба хаасан огноо, идэвхтэй жил"
+        />
+      ) : null}
 
       {creating && primaryKindergartenId ? (
-        <CreateYearDialog
+        <YearDialog
           kindergartenId={primaryKindergartenId}
           onClose={() => setCreating(false)}
           hasAny={items.length > 0}
+        />
+      ) : null}
+      {editing && primaryKindergartenId ? (
+        <YearDialog
+          kindergartenId={primaryKindergartenId}
+          year={editing}
+          onClose={() => setEditing(null)}
+          hasAny
         />
       ) : null}
     </div>
   );
 }
 
-function CreateYearDialog({
+/**
+ * Нэмэх and Засах — one form. `year` present is an edit.
+ *
+ * An edit sends `PATCH /school-years/:id` with the name and dates, and
+ * `isCurrent: true` only when the box was ticked on a year that is not already
+ * current — never `false`, for the reason the screen's docblock gives. It
+ * creates no terms: the year's terms already exist, and `/admin/terms`
+ * corrects their dates.
+ */
+function YearDialog({
   kindergartenId,
   onClose,
   hasAny,
+  year,
 }: {
   kindergartenId: string;
   onClose: () => void;
   hasAny: boolean;
+  year?: SchoolYear;
 }) {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [name, setName] = useState("");
-  const [startsOn, setStartsOn] = useState("");
-  const [endsOn, setEndsOn] = useState("");
+  const editing = Boolean(year);
+  const [name, setName] = useState(year?.name ?? "");
+  const [startsOn, setStartsOn] = useState(year?.startsOn?.slice(0, 10) ?? "");
+  const [endsOn, setEndsOn] = useState(year?.endsOn?.slice(0, 10) ?? "");
   // The first year a kindergarten creates is almost certainly the one it is in.
-  const [isCurrent, setIsCurrent] = useState(!hasAny);
+  const [isCurrent, setIsCurrent] = useState(year ? Boolean(year.isCurrent) : !hasAny);
+
+  const update = useMutation({
+    mutationFn: () =>
+      mutate(`/school-years/${year!.id}`, z.unknown(), {
+        method: "PATCH",
+        body: {
+          name,
+          startsOn,
+          endsOn,
+          ...(isCurrent && !year!.isCurrent ? { isCurrent: true } : {}),
+        },
+      }),
+    onSuccess: () => {
+      toast.success("Хичээлийн жил шинэчлэгдлээ.");
+      void queryClient.invalidateQueries({ queryKey: YEARS_KEY });
+      void queryClient.invalidateQueries({ queryKey: ["admin", "groups"] });
+      void queryClient.invalidateQueries({ queryKey: qk.dashboard.admin() });
+      onClose();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
 
   const create = useMutation({
     mutationFn: () =>
@@ -249,7 +319,8 @@ function CreateYearDialog({
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  const errors = fieldErrors(create.error);
+  const save = editing ? update : create;
+  const errors = fieldErrors(save.error);
 
   const backdrop = useBackdropDismiss(onClose);
 
@@ -257,7 +328,7 @@ function CreateYearDialog({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Хичээлийн жил нэмэх"
+      aria-label={editing ? "Хичээлийн жил засах" : "Хичээлийн жил нэмэх"}
       {...backdrop}
       className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4"
     >
@@ -265,14 +336,16 @@ function CreateYearDialog({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (!create.isPending) create.mutate();
+            if (!save.isPending) save.mutate();
           }}
           className="flex flex-col gap-4"
           noValidate
         >
-          <h2 className="text-title font-semibold text-ink">Хичээлийн жил нэмэх</h2>
+          <h2 className="text-title font-semibold text-ink">
+            {editing ? "Хичээлийн жил засах" : "Хичээлийн жил нэмэх"}
+          </h2>
 
-          <FormError message={create.isError ? errorMessage(create.error) : null} />
+          <FormError message={save.isError ? errorMessage(save.error) : null} />
 
           <Field label="Нэр" error={errors.name} hint="Жишээ: 2026-2027" required>
             {({ id, describedBy, invalid }) => (
@@ -315,16 +388,25 @@ function CreateYearDialog({
             </Field>
           </div>
 
-          <Checkbox
-            label="Одоогийн жил болгох"
-            description="Самбар, үнэлгээ, тайлан энэ жилийг уншина."
-            checked={isCurrent}
-            onChange={(e) => setIsCurrent(e.target.checked)}
-          />
+          {/* Already current: nothing to tick — the flag only ever moves *to* a year. */}
+          {year?.isCurrent ? null : (
+            <Checkbox
+              label="Одоогийн жил болгох"
+              description="Самбар, үнэлгээ, тайлан энэ жилийг уншина."
+              checked={isCurrent}
+              onChange={(e) => setIsCurrent(e.target.checked)}
+            />
+          )}
 
           <div className="flex flex-wrap gap-2 border-t border-border pt-4">
-            <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? "Үүсгэж байна…" : "Үүсгэх"}
+            <Button type="submit" disabled={save.isPending}>
+              {save.isPending
+                ? editing
+                  ? "Хадгалж байна…"
+                  : "Үүсгэж байна…"
+                : editing
+                  ? "Хадгалах"
+                  : "Үүсгэх"}
             </Button>
             <Button type="button" variant="ghost" onClick={onClose}>
               Болих

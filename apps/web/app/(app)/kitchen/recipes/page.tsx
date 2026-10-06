@@ -15,7 +15,6 @@ import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
-import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +27,7 @@ import { useToast } from "@/components/ui/toast";
 import { SearchField } from "@/components/ui/search-field";
 import { useDebounced } from "@/lib/use-debounced";
 import { RecipeLinesEditor, type RecipeLineDraft } from "@/components/kitchen/recipe-lines-editor";
+import { EsisRecipeImport, type EsisRecipeFill } from "@/components/kitchen/esis-recipe-import";
 import { capitalize } from "@/lib/format";
 
 const recipesSchema = paginated(recipeSummarySchema);
@@ -57,6 +57,7 @@ function Recipes() {
   const kindergartenId = session?.memberships?.[0]?.kindergartenId ?? null;
   const [status, setStatus] = useState<"" | "DRAFT" | "APPROVED">("");
   const [creating, setCreating] = useState(false);
+  const [prefill, setPrefill] = useState<EsisRecipeFill | null>(null);
   const [query, setQuery] = useState("");
   const q = useDebounced(query);
 
@@ -100,7 +101,20 @@ function Recipes() {
                   onChange={setQuery}
                 />
               </div>
-              <Button size="sm" onClick={() => setCreating(true)}>
+              <EsisRecipeImport
+                kindergartenId={kindergartenId}
+                onFill={(fill) => {
+                  setPrefill(fill);
+                  setCreating(true);
+                }}
+              />
+              <Button
+                size="sm"
+                onClick={() => {
+                  setPrefill(null);
+                  setCreating(true);
+                }}
+              >
                 <Plus size={18} />
                 Карт нэмэх
               </Button>
@@ -180,41 +194,20 @@ function Recipes() {
       ) : null}
 
       {/*
-        ★ The ministry's finished-dish reference, under the cards written
-        against it — 2026-09-09, at the client's request ("бэлэн бүтээгдэхүүн").
-
-        A technology card names a product; `cook/product` is the list those
-        names come from, with the portion's calories and macros beside each. On
-        the screen that writes the cards is where a cook checks one.
+        ★ No ESIS reference panels here — client, 2026-10-06: no ESIS field is
+        to show on the kitchen screens. Cards are written by hand; an
+        «ESIS-ээс сонгох» prefill waits until ESIS answers with real rows.
       */}
-      <EsisDataPanel
-        resource="foodProductTypes"
-        title="Бүтээгдэхүүний төрөл"
-        description="ESIS-ийн хоолны ангиллын лавлах — шөл, хоол, ундаа"
-        autoRead
-      />
-      {/*
-        ★★ The row opens into its иж бүрдэл — 2026-09-09.
-
-        `foodKit` and `foodKitProducts` both key on `:productId`, and neither
-        has a panel of its own for the reason `esis.catalog.ts` records: a box
-        asking a cook for a ministry product code is not a feature. Pressing
-        "Цуйван" here supplies the id from the row that was pressed, so the two
-        detail services are reached the only way they are usable.
-      */}
-      <EsisDataPanel
-        resource="foodProducts"
-        title="Бэлэн бүтээгдэхүүн"
-        description="ESIS-ийн хоол, бүтээгдэхүүний лавлах — мөр дээр дарж дэлгэрэнгүйг харна"
-        autoRead
-        detail={{
-          resources: ["foodKit", "foodKitProducts"],
-          param: { name: "productId", from: "productId" },
-        }}
-      />
 
       {creating && kindergartenId ? (
-        <CreateRecipeDialog kindergartenId={kindergartenId} onClose={() => setCreating(false)} />
+        <CreateRecipeDialog
+          kindergartenId={kindergartenId}
+          initial={prefill}
+          onClose={() => {
+            setCreating(false);
+            setPrefill(null);
+          }}
+        />
       ) : null}
     </div>
   );
@@ -264,24 +257,31 @@ function ApproveButton({ recipeId, name }: { recipeId: string; name: string }) {
 
 function CreateRecipeDialog({
   kindergartenId,
+  initial,
   onClose,
 }: {
   kindergartenId: string;
+  /** A dish picked with «ESIS-ээс татах» — the form opens filled from it. */
+  initial?: EsisRecipeFill | null;
   onClose: () => void;
 }) {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [name, setName] = useState("");
-  const [mealKind, setMealKind] = useState("");
+  const [name, setName] = useState(initial?.name ?? "");
+  const [mealKind, setMealKind] = useState<string>(initial?.mealKind ?? "");
   const [yieldPortions, setYieldPortions] = useState("10");
   const [instructions, setInstructions] = useState("");
-  const [lines, setLines] = useState<RecipeLineDraft[]>([]);
+  const [lines, setLines] = useState<RecipeLineDraft[]>(initial?.lines ?? []);
+  const pulled = initial?.ingredients ?? [];
+  const skipped = initial?.skipped ?? [];
 
   const ingredients = useQuery({
     queryKey: qk.kitchen.ingredients(kindergartenId, { all: true }),
     queryFn: () =>
       get(`/kindergartens/${kindergartenId}/ingredients?page=1&pageSize=100`, ingredientsSchema),
   });
+  const loaded = ingredients.data?.items ?? [];
+  const choices = [...loaded, ...pulled.filter((item) => !loaded.some((l) => l.id === item.id))];
 
   const validLines = lines.filter((l) => l.ingredientId && l.quantity.trim());
 
@@ -353,6 +353,14 @@ function CreateRecipeDialog({
           }
         />
 
+        {skipped.length > 0 ? (
+          <ul className="flex flex-col gap-1 rounded-control bg-sun p-3 text-caption text-sun-ink">
+            {skipped.map((line, index) => (
+              <li key={index}>{line}</li>
+            ))}
+          </ul>
+        ) : null}
+
         <Field label="Хоолны нэр" error={errors.name} required>
           {({ id, describedBy, invalid }) => (
             <Input
@@ -404,11 +412,7 @@ function CreateRecipeDialog({
             ingredients.isLoading ? (
               <LoadingState rows={1} />
             ) : (
-              <RecipeLinesEditor
-                lines={lines}
-                onChange={setLines}
-                ingredients={ingredients.data?.items ?? []}
-              />
+              <RecipeLinesEditor lines={lines} onChange={setLines} ingredients={choices} />
             )
           }
         </Field>

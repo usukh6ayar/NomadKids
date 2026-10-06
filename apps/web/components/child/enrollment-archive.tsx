@@ -1,5 +1,7 @@
 "use client";
 
+import { PersonAvatar } from "@/components/media/media-image";
+import { KindergartenLogoAvatar } from "@/components/media/kindergarten-logo";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -105,18 +107,22 @@ export function ChildEnrollmentArchive({
   */
   return (
     <div className="flex flex-col gap-5">
-      <section aria-labelledby="current-placement-heading" className="flex flex-col gap-2">
-        <SectionTitle id="current-placement-heading" title="Одоогийн сурч байгаа цэцэрлэг" />
-        {current ? (
-          <CurrentPlacementCard current={current} />
-        ) : (
-          <p className="text-body text-muted">
-            Энэ хүүхэд одоогоор ямар ч бүлэгт идэвхтэй бүртгэлгүй байна.
-          </p>
-        )}
-      </section>
+      {!isStaff && current ? <FamilyCurrentView current={current} /> : null}
 
-      {current && visibleCurrentTeachers.length > 0 ? (
+      {isStaff || !current ? (
+        <section aria-labelledby="current-placement-heading" className="flex flex-col gap-2">
+          <SectionTitle id="current-placement-heading" title="Одоогийн сурч байгаа цэцэрлэг" />
+          {current ? (
+            <CurrentPlacementCard current={current} />
+          ) : (
+            <p className="text-body text-muted">
+              Энэ хүүхэд одоогоор ямар ч бүлэгт идэвхтэй бүртгэлгүй байна.
+            </p>
+          )}
+        </section>
+      ) : null}
+
+      {isStaff && current && visibleCurrentTeachers.length > 0 ? (
         <section aria-labelledby="current-teachers-heading" className="flex flex-col gap-2">
           <SectionTitle id="current-teachers-heading" title="Багш" />
           <Table
@@ -213,6 +219,214 @@ export function ChildEnrollmentArchive({
       </section>
 
       {isStaff ? <EsisMovements child={{ ...child, nationalId }} /> : null}
+    </div>
+  );
+}
+
+/** What a family calls each teacher — the drawing's words, not the contract's «Ахлах багш». */
+const FAMILY_TEACHER_ROLE: Record<string, string> = {
+  LEAD: "Бүлгийн багш",
+  ASSISTANT: "Багшийн туслах",
+};
+
+/**
+ * «Цэцэрлэг», then «Бүлэг», then the group's teachers with their faces — the
+ * family's view, client 2026-10-06: "эхлээд цэцэрлэг дараа нь бүлэг дараа нь
+ * бүлгийн багш туслах багш гээд зурагнууд нь харагддаг арай орчин үеийн".
+ *
+ * ★ The assistant is shown again. A family had been shown the lead teacher
+ * alone; the client names both. Staff keep the full tables above.
+ *
+ * Every picture here is a tenant image (`KINDERGARTEN_LOGO`, `USER_PHOTO`) the
+ * family may already read, through `/media/:id`.
+ */
+function FamilyCurrentView({ current }: { current: Current }) {
+  const esis = current.esis ?? null;
+  const kindergartenName = esis?.organization.name ?? current.kindergarten.name;
+  const address = esis?.organization.address ?? current.kindergarten.address;
+  const groupName = esis?.group?.name ?? current.group?.name ?? "—";
+  const teachers = [...current.teachers].sort((a, b) =>
+    a.role === b.role ? 0 : a.role === "LEAD" ? -1 : 1,
+  );
+
+  /*
+    ★ Every fact the staff card has — client, 2026-10-06: "мэдээллүүд маш
+    дутуу". Only what is filled is drawn, so a kindergarten that never entered
+    its capacity shows no «Хүчин чадал —» row.
+  */
+  const kindergartenFacts: { label: string; value: ReactNode }[] = [];
+  if (address) kindergartenFacts.push({ label: "Хаяг", value: address });
+  if (current.kindergarten.phone) {
+    kindergartenFacts.push({
+      label: "Утас",
+      value: (
+        <a href={`tel:${current.kindergarten.phone}`} className="text-primary hover:underline">
+          {current.kindergarten.phone}
+        </a>
+      ),
+    });
+  }
+  if (current.kindergarten.email) {
+    kindergartenFacts.push({
+      label: "И-мэйл",
+      value: (
+        <a
+          href={`mailto:${current.kindergarten.email}`}
+          className="break-all text-primary hover:underline"
+        >
+          {current.kindergarten.email}
+        </a>
+      ),
+    });
+  }
+  kindergartenFacts.push({
+    label: "Байгууллагын төрөл",
+    value: esis?.organization.institutionTypeName || "Цэцэрлэг",
+  });
+  if (current.kindergarten.capacity) {
+    kindergartenFacts.push({
+      label: "Хүчин чадал",
+      value: `${current.kindergarten.capacity} хүүхэд`,
+    });
+  }
+  if (current.kindergarten.groupCount) {
+    kindergartenFacts.push({
+      label: "Нийт бүлэг",
+      value: `${current.kindergarten.groupCount} бүлэг`,
+    });
+  }
+
+  const groupFacts: { label: string; value: ReactNode }[] = [];
+  if (current.group?.ageBand) {
+    groupFacts.push({
+      label: "Нас",
+      value: AGE_BAND_LABEL[current.group.ageBand] ?? current.group.ageBand,
+    });
+  }
+  if (current.group?.childCount) {
+    groupFacts.push({ label: "Хүүхдийн тоо", value: `${current.group.childCount} хүүхэд` });
+  }
+  groupFacts.push({
+    label: "Хичээлийн жил",
+    value: current.schoolYear?.name ?? esis?.group?.academicYear ?? "—",
+  });
+  if (esis?.group?.academicLevelName) {
+    groupFacts.push({
+      label: "Түвшин",
+      value: (
+        <>
+          {esis.group.academicLevelName}
+          <EsisTag />
+        </>
+      ),
+    });
+  }
+  groupFacts.push({ label: "Бүлэгт орсон огноо", value: formatDate(current.startedOn) });
+
+  return (
+    <div className="flex flex-col gap-4">
+      <section aria-labelledby="family-kindergarten-heading">
+        <Card className="flex flex-col gap-3 p-4">
+          <div className="flex items-center gap-4">
+            <KindergartenLogoAvatar
+              size={64}
+              fallback={
+                <span
+                  aria-hidden="true"
+                  className="grid size-16 shrink-0 place-items-center rounded-pill bg-primary-soft text-title font-bold text-primary"
+                >
+                  {kindergartenName.slice(0, 1)}
+                </span>
+              }
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-caption font-medium text-muted">Цэцэрлэг</p>
+              <h2 id="family-kindergarten-heading" className="text-title font-semibold text-ink">
+                {kindergartenName}
+              </h2>
+            </div>
+          </div>
+          <dl>
+            {kindergartenFacts.map((fact, index) => (
+              <Fact
+                key={fact.label}
+                label={fact.label}
+                last={index === kindergartenFacts.length - 1}
+              >
+                {fact.value}
+              </Fact>
+            ))}
+          </dl>
+        </Card>
+      </section>
+
+      <section aria-labelledby="family-group-heading">
+        <Card className="flex flex-col gap-2 p-4">
+          <div>
+            <p className="text-caption font-medium text-muted">Бүлэг</p>
+            <h2 id="family-group-heading" className="text-title font-semibold text-ink">
+              {groupName}
+            </h2>
+          </div>
+          <dl>
+            {groupFacts.map((fact, index) => (
+              <Fact key={fact.label} label={fact.label} last={index === groupFacts.length - 1}>
+                {fact.value}
+              </Fact>
+            ))}
+          </dl>
+        </Card>
+      </section>
+
+      {teachers.length > 0 ? (
+        <section aria-labelledby="family-teachers-heading" className="flex flex-col gap-2">
+          <h2 id="family-teachers-heading" className="text-lead font-semibold text-ink">
+            Багш нар
+          </h2>
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {teachers.map((teacher) => (
+              <li key={teacher.id}>
+                <Card className="flex h-full flex-col gap-2 p-4">
+                  <div className="flex items-center gap-3">
+                    <PersonAvatar child={teacher} size={56} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-caption font-medium text-primary">
+                        {FAMILY_TEACHER_ROLE[teacher.role] ?? "Багш"}
+                      </p>
+                      <p className="text-body font-semibold text-ink">{fullName(teacher)}</p>
+                    </div>
+                  </div>
+                  <dl>
+                    <Fact label="Мэргэжил">{teacher.specialization || "—"}</Fact>
+                    <Fact label="Төгссөн сургууль">{teacher.education || "—"}</Fact>
+                    <Fact label="Утас">
+                      {teacher.phone ? (
+                        <a href={`tel:${teacher.phone}`} className="text-primary hover:underline">
+                          {teacher.phone}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </Fact>
+                    <Fact label="И-мэйл" last>
+                      {teacher.email ? (
+                        <a
+                          href={`mailto:${teacher.email}`}
+                          className="break-all text-primary hover:underline"
+                        >
+                          {teacher.email}
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </Fact>
+                  </dl>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </div>
   );
 }

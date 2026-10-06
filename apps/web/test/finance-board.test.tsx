@@ -59,10 +59,53 @@ describe("the accountant's board", () => {
       state's pending transfer took the fourth place: it is money, and a count
       of children was the one tile here that was not.
     */
-    expect(await screen.findByText("Энэ сарын нийт орлого")).toBeInTheDocument();
+    expect(await screen.findByText("Нийт орлого")).toBeInTheDocument();
     expect(screen.getByText("Улсаас хүлээгдэж буй")).toBeInTheDocument();
     expect(screen.getByText("Төлөгдөөгүй төлбөр")).toBeInTheDocument();
     expect(screen.getByText("Хоолны зардал")).toBeInTheDocument();
+  });
+
+  /**
+   * ★ Client, 2026-10-06 — the minimal board: the month is the header's only
+   * control, the four figures share one card with no icons, and each alert is
+   * a white row with a coloured dot instead of a tinted card.
+   */
+  it("is minimal: one figures card without icons, plain alert rows, the month alone", async () => {
+    stub(
+      board({
+        alerts: [
+          {
+            key: "overdue",
+            tone: "warn",
+            title: "Хугацаа хэтэрсэн төлбөр",
+            detail: "3 нэхэмжлэл",
+            href: "/invoices",
+          },
+          {
+            key: "info",
+            tone: "info",
+            title: "Санхүүжилт тооцоогүй",
+            detail: "10-р сар",
+            href: "/finance",
+          },
+        ],
+      }),
+    );
+    renderWithProviders(<FinanceDashboardPage />);
+
+    const figures = (await screen.findByText("Нийт орлого")).closest("dl")!;
+    expect(within(figures).getAllByRole("term")).toHaveLength(4);
+    expect(figures.querySelector("svg")).toBeNull();
+
+    expect(screen.queryByRole("link", { name: "Санхүүжилт" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Нэхэмжлэл" })).toBeNull();
+    expect(screen.getByLabelText("Сар")).toBeInTheDocument();
+
+    const alerts = screen.getByRole("heading", { name: "Анхаарах зүйлс" }).closest("section")!;
+    for (const row of within(alerts).getAllByRole("link")) {
+      expect(row.className).not.toMatch(/\bbg-(peach|sky)\b/);
+      expect(row.querySelector(".rounded-pill")).not.toBeNull();
+    }
   });
 
   it("formats every amount rather than printing the raw decimal", async () => {
@@ -127,7 +170,7 @@ describe("the accountant's board", () => {
     stub();
     renderWithProviders(<FinanceDashboardPage />);
 
-    await screen.findByText("Энэ сарын нийт орлого");
+    await screen.findByText("Нийт орлого");
     expect(screen.queryByText("Анхаарах зүйлс")).not.toBeInTheDocument();
     expect(screen.queryByText(/Анхаарах зүйл алга/)).not.toBeInTheDocument();
   });

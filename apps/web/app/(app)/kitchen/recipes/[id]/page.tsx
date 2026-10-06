@@ -18,7 +18,6 @@ import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { formatTugrug } from "@/lib/funding-meta";
-import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { ArchiveButton } from "@/components/ui/archive-button";
@@ -169,21 +168,10 @@ function RecipeDetail() {
       ) : null}
 
       {/*
-        ★ The ministry's orc list, under this card's own — 2026-09-09.
-
-        `cook/productMaterials` is what a технологийн карт is written against:
-        each finished product's raw materials with a gross and a net weight.
-        The screen holding the kindergarten's version of that list is where a
-        cook compares the two, which is the same argument every other panel
-        placement makes — one home per service, and the home is the screen
-        already asking the question.
+        ★ No ESIS reference panels here — client, 2026-10-06: no ESIS field is
+        to show on the kitchen screens. Cards are written by hand; an
+        «ESIS-ээс сонгох» prefill waits until ESIS answers with real rows.
       */}
-      <EsisDataPanel
-        resource="foodProductMaterials"
-        title="Бүтээгдэхүүний орц"
-        description="ESIS-ийн орцын лавлах — бохир жин, цэвэр жин, хэмжих нэгж"
-        autoRead
-      />
 
       {editing && kindergartenId ? (
         <EditRecipeDialog

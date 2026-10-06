@@ -9,6 +9,7 @@ import { adminDashboardSchema, schoolYearSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
+import { useEsisLinked } from "@/lib/use-esis-linked";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ModalOverlay } from "@/components/ui/modal-overlay";
@@ -32,9 +33,10 @@ const yearsSchema = z.array(schoolYearSchema);
  * ★★ **The order is a dependency, not a preference.** A group belongs to a
  * school year — `@@unique([schoolYearId, name])` — and `/admin/groups` answers
  * 409 naming this screen when no current year exists (the ESIS roster import
- * does the same). A teacher is then assigned *to* a group. So the three steps
- * are the only order in which they can be done, and saying so is most of the
- * guide's value.
+ * does the same). Then the order splits on ESIS: «ESIS татах» makes groups
+ * with no teacher, so a teacher is assigned *to* one afterwards; by hand, a
+ * group needs its teacher at creation, so staff come first. Saying which order
+ * applies here is most of the guide's value — see `steps` below.
  *
  * ★★★ **It opens itself only while something is unfinished.**
  *
@@ -89,36 +91,83 @@ export function AdminSetupGuide() {
     setDismissed(window.localStorage.getItem(storageKey) === "done");
   }, [storageKey]);
 
-  const ready = overview.isSuccess && years.isSuccess;
-  const steps = [
-    {
-      title: "Хичээлийн жил үүсгэх",
-      body: "Бүлэг, ирц, үнэлгээ бүгд хичээлийн жилд харьяалагдана. Тиймээс эхний алхам нь энэ — жилгүйгээр бүлэг үүсгэх боломжгүй.",
-      href: "/admin/school-years",
-      action: "Хичээлийн жил",
-      art: "adminSchoolYear" as const,
-      short: "Хичээлийн жил",
-      done: (years.data?.length ?? 0) > 0,
-    },
-    {
-      title: "Бүлэг нэмэх",
-      body: "Бүлэг тус бүрд нас, хөтөлбөрийн төрөл, ирцийн хэлбэрийг заана. ESIS-ээс бүлэг, хүүхдийг нэг товчоор татаж болно.",
-      href: "/admin/groups",
-      action: "Бүлгүүд",
-      art: "group" as const,
-      short: "Бүлэг",
-      done: (overview.data?.counts.groups ?? 0) > 0,
-    },
-    {
-      title: "Багш, ажилтан бүртгэх",
-      body: "Ажилтан цэцэрлэгийн ESIS дугаараар өөрөө бүртгүүлнэ, эсвэл та урина. Дараа нь бүлэг рүү үндсэн багш, багшийн туслахаар хуваарилна.",
-      href: "/admin/users",
-      action: "Багш, ажилтан",
-      art: "teacher" as const,
-      short: "Багш",
-      done: (overview.data?.counts.staff ?? 0) > 0,
-    },
-  ];
+  /*
+   * ★ Two orders, by whether the kindergarten has ESIS — client, 2026-10-06.
+   *
+   * With ESIS, «ESIS татах» brings the school year and the groups together, and
+   * staff can register themselves with the kindergarten's ESIS number. Without
+   * it (a private kindergarten) none of that exists: the year is made by hand,
+   * staff can only be invited — `/staff-register` checks the ESIS roster — and
+   * a group cannot be created without its teacher («Бүлгийн багш» is required
+   * on «Бүлэг нэмэх»), so staff come before groups. Only this guide differs;
+   * the screens it points at are the same for both.
+   */
+  const esisLinked = useEsisLinked();
+  const ready = overview.isSuccess && years.isSuccess && esisLinked !== undefined;
+
+  const yearDone = (years.data?.length ?? 0) > 0;
+  const groupsDone = (overview.data?.counts.groups ?? 0) > 0;
+  const staffDone = (overview.data?.counts.staff ?? 0) > 0;
+
+  const steps = esisLinked
+    ? [
+        {
+          title: "Хичээлийн жил",
+          body: "Бүлгүүд хэсгийн «ESIS татах» товч хичээлийн жилийг бүлэгтэй хамт автоматаар үүсгэнэ. Бүлэг, ирц, үнэлгээ бүгд хичээлийн жилд харьяалагдана.",
+          href: "/admin/groups",
+          action: "Бүлгүүд",
+          art: "adminSchoolYear" as const,
+          short: "Хичээлийн жил",
+          done: yearDone,
+        },
+        {
+          title: "Бүлэг татах",
+          body: "«ESIS татах»-аар бүлэг, хүүхдийг нэг товчоор татна. Бүлэг тус бүрд нас, хөтөлбөрийн төрөл, ирцийн хэлбэрийг заана.",
+          href: "/admin/groups",
+          action: "Бүлгүүд",
+          art: "group" as const,
+          short: "Бүлэг",
+          done: groupsDone,
+        },
+        {
+          title: "Багш, ажилтан бүртгэх",
+          body: "Ажилтан цэцэрлэгийн ESIS дугаараар өөрөө бүртгүүлнэ, эсвэл та урина. Дараа нь бүлэг рүү үндсэн багш, багшийн туслахаар хуваарилна.",
+          href: "/admin/users",
+          action: "Багш, ажилтан",
+          art: "teacher" as const,
+          short: "Багш",
+          done: staffDone,
+        },
+      ]
+    : [
+        {
+          title: "Хичээлийн жил үүсгэх",
+          body: "«Жил нэмэх»-ээр хичээлийн жилээ үүсгэнэ. Бүлэг, ирц, үнэлгээ бүгд хичээлийн жилд харьяалагдана.",
+          href: "/admin/school-years",
+          action: "Хичээлийн жил",
+          art: "adminSchoolYear" as const,
+          short: "Хичээлийн жил",
+          done: yearDone,
+        },
+        {
+          title: "Багш, ажилтан урих",
+          body: "«Хэрэглэгч нэмэх»-ээр багш, ажилтнаа урина. Урилга хүлээн авсан хүн нууц үгээ өөрөө үүсгэнэ. Бүлэг үүсгэхэд бүлгийн багш хэрэгтэй тул бүлгээс өмнө урина.",
+          href: "/admin/users",
+          action: "Багш, ажилтан",
+          art: "teacher" as const,
+          short: "Багш",
+          done: staffDone,
+        },
+        {
+          title: "Бүлэг нэмэх",
+          body: "«Бүлэг нэмэх»-ээр бүлгээ үүсгэж, нас, хөтөлбөрийн төрөл болон бүлгийн багшийг сонгоно. Дараа нь туслах багшийг хуваарилна.",
+          href: "/admin/groups",
+          action: "Бүлгүүд",
+          art: "group" as const,
+          short: "Бүлэг",
+          done: groupsDone,
+        },
+      ];
 
   const remaining = steps.filter((step) => !step.done).length;
 
