@@ -1,7 +1,14 @@
 "use client";
 
-import { type SurveyQuestion, type surveySchema } from "@kinder/contracts";
+import {
+  SURVEY_CATEGORY_LABEL,
+  SURVEY_PERIOD_LABEL,
+  type SurveyQuestion,
+  type surveySchema,
+} from "@kinder/contracts";
 import type { z } from "zod";
+import { formatDate } from "@/lib/format";
+import { stars } from "@/lib/stars";
 
 type Survey = z.infer<typeof surveySchema>;
 
@@ -27,39 +34,94 @@ export function FamilyAnswers({ survey }: { survey: Survey }) {
     return <p className="text-body text-muted">Асуулт алга.</p>;
   }
 
+  /*
+    ★ Question and answer told apart — client, 2026-10-06 ("асуулт хариулт
+    мэдэгдэхгүй байна"). Each question is numbered and in ink; the answer
+    sits under it on a tinted block, so the eye never has to guess which line
+    is which. No «Таны хариулт» label — taken off the same day; the tint says
+    it.
+  */
   return (
-    <dl className="flex flex-col gap-3">
-      {survey.questions.map((question, index) => (
-        <div key={question.id} className="flex flex-col gap-1">
-          <dt className="text-caption leading-snug text-muted">
-            {index + 1}. {question.prompt}
-          </dt>
-          <dd className="text-body leading-snug text-ink">
-            {answerText(question, byQuestion.get(question.id))}
-          </dd>
-        </div>
-      ))}
-    </dl>
+    <ol className="flex flex-col gap-3">
+      {survey.questions.map((question, index) => {
+        const value = byQuestion.get(question.id);
+        const text = answerText(question, value);
+        const blank = text === "Хариулаагүй";
+        return (
+          <li key={question.id} className="flex flex-col gap-1.5">
+            <p className="flex gap-2 text-body font-semibold leading-snug text-ink">
+              <span className="shrink-0 text-muted tabular-nums">{index + 1}.</span>
+              <span>{question.prompt}</span>
+            </p>
+            <div className="ml-6 rounded-control bg-canvas px-3 py-2">
+              <p className={blank ? "text-body text-faint" : "text-body text-ink"}>{text}</p>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
 /**
- * One answer as a sentence fragment.
+ * What the survey is — its subject, who it went to, when it ran — above the
+ * answers. Client, 2026-10-06: "судалгаа хэн хэзээ авсан ямар чиглэлийн
+ * судалгаа болох мэдэгдэх".
  *
- * ★ A rating reads "4 / 5" rather than a word.
- *
- * The teacher's analysis screen names the bands ("Маш сайн") because it is
- * comparing distributions; a family reading their own answer back wants the
- * thing they actually chose. Keeping the score here also keeps this screen out
- * of a vocabulary it would then have to stay in step with — the kind of
- * hand-copied list CLAUDE.md §7 records going wrong in four places at once.
+ * ★ "Хэн" is the audience, not the author: the survey payload carries no
+ * creator (`Survey.createdById` exists but is not sent to a family), so the
+ * card names the group it went to, or the whole kindergarten.
  */
+export function SurveyFacts({ survey }: { survey: Survey }) {
+  const facts: { label: string; value: string }[] = [
+    { label: "Чиглэл", value: SURVEY_CATEGORY_LABEL[survey.category] ?? "—" },
+    {
+      label: "Хамрах хүрээ",
+      value: survey.group?.name ? `${survey.group.name} бүлэг` : "Бүх цэцэрлэг",
+    },
+    ...(survey.period || survey.term
+      ? [
+          {
+            label: "Үе шат",
+            value: [survey.term?.name, survey.period ? SURVEY_PERIOD_LABEL[survey.period] : null]
+              .filter(Boolean)
+              .join(" · "),
+          },
+        ]
+      : []),
+    { label: "Эхэлсэн", value: formatDate(survey.publishedAt ?? survey.createdAt) },
+    ...(survey.closedAt || survey.closesAt
+      ? [
+          {
+            label: survey.closedAt ? "Дууссан" : "Дуусах",
+            value: formatDate(survey.closedAt ?? survey.closesAt),
+          },
+        ]
+      : []),
+  ];
+  const about = survey.purpose?.trim() || survey.description?.trim();
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-caption">
+        {facts.map((fact) => (
+          <div key={fact.label} className="contents">
+            <dt className="text-muted">{fact.label}</dt>
+            <dd className="text-ink">{fact.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {about ? <p className="text-caption leading-snug text-muted">{about}</p> : null}
+    </div>
+  );
+}
+
 function answerText(question: SurveyQuestion, value: unknown): string {
   if (value === null || value === undefined || value === "") return "Хариулаагүй";
   if (Array.isArray(value))
     return value.length === 0 ? "Хариулаагүй" : value.map(String).join(", ");
 
-  if (question.type === "RATING") return `${String(value)} / 5`;
+  if (question.type === "RATING") return stars(value);
   if (question.type === "YES_NO") return value === true || value === "true" ? "Тийм" : "Үгүй";
 
   /* MATRIX answers with a score per indicator — "Хэл яриа: 4" a line each. */

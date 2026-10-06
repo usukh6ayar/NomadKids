@@ -484,7 +484,7 @@ function SurveysList({ kind }: { kind: SurveyKind }) {
           role="tablist"
           aria-label="Судалгааны төлөв"
           data-ui="communication-tabs"
-          className="grid grid-cols-3 gap-1 rounded-card bg-sunken p-1 sm:w-[420px]"
+          className="flex gap-5 border-b border-border-soft"
         >
           {TABS.map((t) => (
             <TabPill
@@ -612,22 +612,21 @@ function TabPill({
       role="tab"
       aria-selected={active}
       onClick={onClick}
+      /*
+        ★ Quiet text tabs — client, 2026-10-06 ("анхаарал татахгүй болго"):
+        no grey track, no white pill, no coloured count bubble. The chosen
+        state is ink with a line under it, the count a faint number — the
+        same tabs as «Нэхэмжлэл» and the family's «Миний судалгаанууд».
+      */
       className={cn(
-        "flex min-h-[48px] items-center justify-center rounded-control border px-3 text-body font-semibold transition-all",
+        "-mb-px flex min-h-[40px] items-center whitespace-nowrap border-b-2 text-body transition-colors",
         active
-          ? "border-border bg-surface text-primary shadow-sm"
-          : "border-transparent text-muted hover:bg-surface/70 hover:text-ink",
+          ? "border-ink font-semibold text-ink"
+          : "border-transparent text-muted hover:text-ink",
       )}
     >
       {children}
-      <span
-        className={cn(
-          "ml-2 inline-flex min-w-6 items-center justify-center rounded-pill px-1.5 text-caption font-bold tabular-nums",
-          active ? "bg-primary-soft text-primary" : "bg-canvas text-faint",
-        )}
-      >
-        {count}
-      </span>
+      <span className="ml-1.5 text-caption tabular-nums text-faint">{count}</span>
     </button>
   );
 }

@@ -98,6 +98,12 @@ describe("communications redesign", () => {
     const tabs = await screen.findByRole("tablist", { name: "Судалгааны төлөв" });
     const toolbar = tabs.closest('[data-ui="communications-toolbar"]');
 
+    // ★ Quiet text tabs (2026-10-06): no grey track, no coloured count bubble.
+    expect(tabs.className).not.toMatch(/\bbg-sunken\b/);
+    for (const tab of within(tabs).getAllByRole("tab")) {
+      expect(tab.querySelector(".rounded-pill")).toBeNull();
+    }
+
     expect(toolbar).not.toBeNull();
     expect(
       within(toolbar as HTMLElement).getByRole("searchbox", { name: "Судалгаа хайх" }),

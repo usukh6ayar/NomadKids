@@ -357,6 +357,18 @@ function questionAnchor(questionId: string): string {
   return `survey-question-${questionId}`;
 }
 
+/**
+ * A quiet text tab — ink and an underline when chosen, a grey word otherwise.
+ * The «Бөглөсөн / Бөглөөгүй» split uses it (client, 2026-10-06); the page's
+ * own section tabs keep `tabClass`.
+ */
+export function quietTabClass(active: boolean): string {
+  return cn(
+    "-mb-px min-h-[40px] whitespace-nowrap border-b-2 text-body transition-colors",
+    active ? "border-ink font-semibold text-ink" : "border-transparent text-muted hover:text-ink",
+  );
+}
+
 function tabClass(active: boolean): string {
   return cn(
     "min-h-11 rounded-card px-3 text-body font-semibold transition-colors",
@@ -804,10 +816,11 @@ function ResponseRoster({
 
   return (
     <div className="flex flex-col gap-3">
+      {/* Quiet text tabs — client, 2026-10-06 ("анхаарал татахааргүй"). */}
       <div
         role="tablist"
         aria-label="Бөглөлтийн байдал"
-        className="grid grid-cols-2 gap-1 rounded-card bg-sunken p-1"
+        className="flex gap-5 border-b border-border-soft"
       >
         {(
           [
@@ -821,9 +834,10 @@ function ResponseRoster({
             type="button"
             aria-selected={side === entry.key}
             onClick={() => setSide(entry.key)}
-            className={tabClass(side === entry.key)}
+            className={quietTabClass(side === entry.key)}
           >
-            {entry.label} ({entry.count})
+            {entry.label}
+            <span className="ml-1.5 text-caption tabular-nums text-faint">{entry.count}</span>
           </button>
         ))}
       </div>

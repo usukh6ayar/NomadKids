@@ -407,7 +407,7 @@ describe("ерөнхий дүн", () => {
     const preview = await screen.findByRole("heading", { name: "Асуулгын харагдац" });
     const card = preview.closest<HTMLElement>("[aria-labelledby='survey-preview-title']")!;
     expect(within(card).getByText(RATING.prompt, { exact: false })).toBeInTheDocument();
-    expect(within(card).getByText("Үнэлгээ (1–5)")).toBeInTheDocument();
+    expect(within(card).getByText("Од (1–5)")).toBeInTheDocument();
     expect(within(card).getByText(YES_NO.prompt, { exact: false })).toBeInTheDocument();
     expect(within(card).getByText("Тийм")).toBeInTheDocument();
     expect(within(card).getByText("Үгүй")).toBeInTheDocument();
@@ -847,11 +847,15 @@ describe("хүүхэд бүрийн хариулт", () => {
 
     // Two replied, one has not — the counts come off /participation, which is
     // the only place the second half of this tab exists.
-    expect(await screen.findByRole("tab", { name: "Бөглөсөн (2)" })).toHaveAttribute(
+    expect(await screen.findByRole("tab", { name: "Бөглөсөн 2" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    expect(screen.getByRole("tab", { name: "Бөглөөгүй (1)" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Бөглөөгүй 1" })).toBeInTheDocument();
+    // ★ Quiet text tabs (2026-10-06): no filled pill, no grey track.
+    const strip = screen.getByRole("tablist", { name: "Бөглөлтийн байдал" });
+    expect(strip.className).not.toMatch(/\bbg-sunken\b/);
+    expect(screen.getByRole("tab", { name: "Бөглөсөн 2" }).className).not.toMatch(/\bbg-primary\b/);
 
     // Бөглөсөн opens first, sorted by name rather than by when they submitted.
     const names = screen
@@ -903,7 +907,7 @@ describe("хүүхэд бүрийн хариулт", () => {
     renderWithProviders(<SurveyDetailPage />);
 
     await openTab(user, "Хариулт");
-    await user.click(await screen.findByRole("tab", { name: "Бөглөөгүй (1)" }));
+    await user.click(await screen.findByRole("tab", { name: "Бөглөөгүй 1" }));
 
     // A pending row goes to the child — the next thing a teacher does with this
     // list is find the family's number.

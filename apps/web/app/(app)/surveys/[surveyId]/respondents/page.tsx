@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { shortName, fullName } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { quietTabClass } from "@/components/survey/survey-results-view";
 
 /**
  * Хариулсан хүүхдүүд — who has replied, and who has not.
@@ -149,7 +150,11 @@ export default function SurveyRespondentsPage() {
 
       {data && !data.anonymous ? (
         <>
-          <div role="tablist" aria-label="Бөглөлтийн байдал" className="grid grid-cols-3 gap-2">
+          <div
+            role="tablist"
+            aria-label="Бөглөлтийн байдал"
+            className="flex gap-5 border-b border-border-soft"
+          >
             {tabs.map((entry) => (
               <button
                 key={entry.key}
@@ -157,14 +162,10 @@ export default function SurveyRespondentsPage() {
                 type="button"
                 aria-selected={tab === entry.key}
                 onClick={() => setTab(entry.key)}
-                className={cn(
-                  "min-h-11 rounded-card px-2 text-body font-semibold transition-colors",
-                  tab === entry.key
-                    ? "bg-primary text-primary-contrast"
-                    : "bg-canvas text-muted hover:text-ink",
-                )}
+                className={quietTabClass(tab === entry.key)}
               >
-                {entry.label} ({entry.count})
+                {entry.label}
+                <span className="ml-1.5 text-caption tabular-nums text-faint">{entry.count}</span>
               </button>
             ))}
           </div>

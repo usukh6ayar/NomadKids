@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight } from "lucide-react";
-import { SURVEY_KIND_LABEL, pollTallySchema, type surveySchema } from "@kinder/contracts";
+import { Check, ChevronRight } from "lucide-react";
+import { pollTallySchema, type surveySchema } from "@kinder/contracts";
 import type { z } from "zod";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { Card } from "@/components/ui/card";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { stars } from "@/lib/stars";
 
 type Survey = z.infer<typeof surveySchema>;
 
@@ -54,7 +55,7 @@ export function surveyDate(survey: Survey): string {
 export function FamilySurveyCard({
   childId,
   survey,
-  ageThen,
+  ageThen: _ageThen,
 }: {
   childId: string;
   survey: Survey;
@@ -67,16 +68,11 @@ export function FamilySurveyCard({
   const stateLabel = answered ? "Хариулсан" : answerable ? "Хариулаагүй" : "Хаагдсан";
 
   /*
-    One grey line of facts, in the order a parent scans them: which kind it is,
-    how many questions, when it ran, and how old they were. The age is the same
-    number the filter offers, so a chip and a row cannot disagree.
+    ★ The date alone beside the title — client, 2026-10-06, with a drawing.
+    Kind, question count and age used to share that line; the page's filter
+    still narrows by kind and age, and the answers under the row say what the
+    survey asked.
   */
-  const facts = [
-    SURVEY_KIND_LABEL[survey.kind],
-    survey.questions.length > 0 ? `${survey.questions.length} асуулт` : null,
-    formatDate(surveyDate(survey)),
-    ageThen === null || ageThen === undefined ? null : `${ageThen} нас`,
-  ].filter(Boolean);
 
   return (
     <Card
@@ -101,15 +97,31 @@ export function FamilySurveyCard({
         )}
       >
         <span className="min-w-0 flex-1">
-          <span className="block font-semibold leading-snug text-ink">{survey.title}</span>
-          <span className="mt-1 block text-caption text-muted">{facts.join(" · ")}</span>
+          {/* The date above the title — client, 2026-10-06 ("эсрэгээрээ"). */}
+          <span className="block text-caption tabular-nums text-muted">
+            {formatDate(surveyDate(survey))}
+          </span>
+          <span className="mt-0.5 block text-lead font-bold leading-snug text-ink">
+            {survey.title}
+          </span>
         </span>
 
-        <span className={cn("shrink-0 text-caption font-semibold", STATE_TEXT[state])}>
-          {stateLabel}
-        </span>
+        {/* Answered is a green tick, as drawn; the other two states stay words. */}
+        {answered ? (
+          <span
+            role="img"
+            aria-label={stateLabel}
+            className="grid size-7 shrink-0 place-items-center rounded-pill bg-mint-solid text-white"
+          >
+            <Check size={16} strokeWidth={3} aria-hidden="true" />
+          </span>
+        ) : (
+          <span className={cn("shrink-0 text-caption font-semibold", STATE_TEXT[state])}>
+            {stateLabel}
+          </span>
+        )}
 
-        <ChevronRight size={18} aria-hidden="true" className="shrink-0 text-faint" />
+        <ChevronRight size={20} aria-hidden="true" className="shrink-0 text-muted" />
       </Link>
 
       {/*
@@ -128,7 +140,7 @@ export function FamilySurveyCard({
         is reading it.
       */}
       {answered ? (
-        <div className="border-t border-border-soft px-4 py-2.5">
+        <div className="px-3 pb-3">
           {survey.kind === "POLL" ? (
             <CompactShares childId={childId} survey={survey} />
           ) : (
@@ -180,43 +192,46 @@ function CompactShares({ childId, survey }: { childId: string; survey: Survey })
         return (
           <div key={question.questionId} className="flex flex-col gap-1">
             {data.questions.length > 1 ? (
-              <p className="truncate text-caption text-muted">{question.prompt}</p>
+              <p className="truncate px-1 text-caption text-muted">{question.prompt}</p>
             ) : null}
 
-            {question.options.map((option) => {
-              const percent = total === 0 ? 0 : Math.round((option.count / total) * 100);
-              const mine = Array.isArray(question.myAnswer)
-                ? question.myAnswer.includes(option.label)
-                : question.myAnswer === option.label;
+            <ol className={ANSWER_TABLE}>
+              {question.options.map((option, index) => {
+                const percent = total === 0 ? 0 : Math.round((option.count / total) * 100);
+                const mine = Array.isArray(question.myAnswer)
+                  ? question.myAnswer.includes(option.label)
+                  : question.myAnswer === option.label;
 
-              return (
-                <div key={option.label} className="flex items-center gap-2">
-                  <span
-                    className={cn(
-                      "min-w-0 flex-1 truncate text-caption",
-                      mine ? "font-semibold text-primary" : "text-muted",
-                    )}
-                  >
-                    {option.label}
-                    {mine ? " · таны сонголт" : ""}
-                  </span>
-
-                  <span
-                    aria-hidden="true"
-                    className="h-1 w-16 overflow-hidden rounded-pill bg-track sm:w-24"
-                  >
+                return (
+                  <li key={option.label} className="flex items-center gap-2.5 px-2.5 py-2">
+                    <LineNumber>{index + 1}</LineNumber>
                     <span
-                      className={cn("block h-full rounded-pill", mine ? "bg-primary" : "bg-border")}
-                      style={{ width: `${percent}%` }}
-                    />
-                  </span>
+                      className={cn(
+                        "min-w-0 flex-1 truncate text-caption text-ink",
+                        mine && "font-semibold",
+                      )}
+                    >
+                      {option.label}
+                      {mine ? " · таны сонголт" : ""}
+                    </span>
 
-                  <span className="w-9 shrink-0 text-end text-caption tabular-nums text-muted">
-                    {percent}%
-                  </span>
-                </div>
-              );
-            })}
+                    <span
+                      aria-hidden="true"
+                      className="h-2 w-20 shrink-0 overflow-hidden rounded-pill bg-track sm:w-40"
+                    >
+                      <span
+                        className="block h-full rounded-pill bg-gradient-to-r from-sky-solid to-teal-ink/60"
+                        style={{ width: `${percent}%` }}
+                      />
+                    </span>
+
+                    <span className="w-10 shrink-0 text-end text-caption font-semibold tabular-nums text-ink">
+                      {percent}%
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
           </div>
         );
       })}
@@ -238,11 +253,17 @@ function CompactAnswers({ survey }: { survey: Survey }) {
   }
 
   return (
-    <dl className="flex flex-col gap-1">
-      {survey.questions.map((question) => (
-        <div key={question.id} className="flex items-baseline gap-2">
-          <dt className="min-w-0 flex-1 truncate text-caption text-muted">{question.prompt}</dt>
-          <dd className="shrink-0 text-caption font-medium text-ink">
+    <dl className={ANSWER_TABLE}>
+      {survey.questions.map((question, index) => (
+        <div
+          key={question.id}
+          className="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,38%)] items-center"
+        >
+          <span className="py-2 pl-2.5">
+            <LineNumber>{index + 1}</LineNumber>
+          </span>
+          <dt className="px-2.5 py-2 text-caption leading-snug text-ink">{question.prompt}</dt>
+          <dd className="self-stretch border-l border-border-soft px-3 py-2 text-caption leading-snug text-ink">
             {shortAnswer(question.type, byQuestion.get(question.id))}
           </dd>
         </div>
@@ -251,11 +272,30 @@ function CompactAnswers({ survey }: { survey: Survey }) {
   );
 }
 
+/**
+ * The answers as a small bordered table, a numbered line each — client,
+ * 2026-10-06, with a drawing: the question, a rule, and what was said.
+ */
+const ANSWER_TABLE =
+  "flex flex-col divide-y divide-border-soft overflow-hidden rounded-control border border-border-soft bg-surface";
+
+/** A line's number on a soft disc. */
+function LineNumber({ children }: { children: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="grid size-6 shrink-0 place-items-center rounded-pill bg-canvas text-caption font-semibold tabular-nums text-ink"
+    >
+      {children}
+    </span>
+  );
+}
+
 /** The same rendering `FamilyAnswers` does, kept to one short line. */
 function shortAnswer(type: string, value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
   if (Array.isArray(value)) return value.length === 0 ? "—" : value.map(String).join(", ");
-  if (type === "RATING") return `${String(value)} / 5`;
+  if (type === "RATING") return stars(value);
   if (type === "YES_NO") return value === true || value === "true" ? "Тийм" : "Үгүй";
   if (typeof value === "object") {
     return Object.entries(value as Record<string, unknown>)

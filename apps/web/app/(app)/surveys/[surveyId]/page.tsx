@@ -29,7 +29,6 @@ import {
   ArrowDown,
   ArrowUp,
   ChevronRight,
-  ClipboardList,
   Copy,
   Download,
   Eye,
@@ -227,7 +226,8 @@ function SurveyDetail() {
       {/*
         ★ The card as the client drew it — 2026-09-12, second pass.
 
-        Three rows: the icon and the title with the clone period beside it; the
+        Three rows: the title with the clone period beside it (no icon before
+        it since 2026-10-06); the
         date and the state under it; then the audience on the left of a row of
         round controls. What moved from the first attempt is that the controls
         left the top — they are what you do *after* reading the card, so they
@@ -235,14 +235,8 @@ function SurveyDetail() {
         for a list of twenty surveys rather than for the one on screen.
       */}
       <Card pad="roomy" className="flex flex-col gap-4">
+        {/* No icon before the title — client, 2026-10-06. */}
         <div className="flex items-start gap-3">
-          <span
-            aria-hidden="true"
-            className="grid size-12 shrink-0 place-items-center rounded-card text-cornflower-ink"
-          >
-            <ClipboardList size={22} />
-          </span>
-
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <h2 className="text-title font-bold leading-tight text-ink">{data.title}</h2>
 
