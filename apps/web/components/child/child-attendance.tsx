@@ -18,14 +18,12 @@ import { attendanceRecordSchema, attendanceRequestSchema } from "@kinder/contrac
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, SectionHeader } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
-import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { AttendanceCalendar } from "@/components/child/attendance-calendar";
-import { formatDate, formatMonthLabel, todayLocal } from "@/lib/format";
-import { mediaUrl } from "@/lib/api/client";
+import { formatDate, todayLocal } from "@/lib/format";
 import {
   ATTENDANCE_COMPANION_ICON as COMPANION_ICON,
   ATTENDANCE_COMPANION_LABEL as COMPANION_LABEL,
@@ -37,6 +35,7 @@ import {
 } from "@/lib/attendance-meta";
 import { cn } from "@/lib/utils";
 import { useBackdropDismiss } from "@/components/ui/modal-overlay";
+import { GuardianHandover } from "@/components/child/guardian-handover";
 
 const recordsSchema = z.array(attendanceRecordSchema);
 const requestsSchema = z.array(attendanceRequestSchema);
@@ -60,18 +59,6 @@ function toLocalTime(iso: string): string {
 function toIso(today: string, time: string): string {
   return new Date(`${today}T${time}:00`).toISOString();
 }
-
-const REVIEW_LABEL: Record<string, string> = {
-  PENDING: "Хүлээгдэж буй",
-  APPROVED: "Зөвшөөрсөн",
-  REJECTED: "Татгалзсан",
-};
-
-const REVIEW_TONE: Record<string, "sun" | "mint" | "danger"> = {
-  PENDING: "sun",
-  APPROVED: "mint",
-  REJECTED: "danger",
-};
 
 /** `YYYY-MM` for the current month, in the viewer's own timezone. */
 function currentMonth(): string {
@@ -197,8 +184,12 @@ function LastRegistration({ record }: { record: AttendanceRecord | undefined }) 
  * there is no line that holds both side by side. Stacking them keeps every
  * label whole, which truncating to "Чөлөө х…" would not.
  */
-const STACKED =
-  "h-auto min-h-[56px] flex-col gap-1 px-1 text-caption leading-tight sm:h-[44px] sm:flex-row sm:gap-2 sm:text-body";
+/*
+  ★ Words only — client, 2026-10-06: the arrow and page glyphs are gone, and a
+  ✓ before the word says the step is done. With no glyph to stack over the
+  label, the three are ordinary one-line buttons at every width.
+*/
+const STACKED = "h-[48px] gap-1 px-1 text-compact sm:h-[44px] sm:text-body";
 
 export function ChildAttendance({
   childId,
@@ -230,231 +221,88 @@ export function ChildAttendance({
         />
       )}
 
-      {/*
-        ★ A calendar, not the flat "Энэ сарын ирц" list this tab used to end
-        with. Same data (`AttendanceCalendar` reads the identical
-        `GET .../attendance?month=` this list did), just the grid shape the
-        parent asked this screen to match instead of a column of date rows —
-        see the "Гараас гарт" screenshot's own "Ирцийн хуанли" card, which is
-        this exact component already shipped on `/overview`. One component,
-        two screens, rather than the month rendered two different ways.
-      */}
-      <AttendanceCalendar childId={childId} />
-
-      {!isStaff ? (
-        <section aria-labelledby="attendance-requests-heading">
-          <SectionHeader
-            id="attendance-requests-heading"
-            title="Хүсэлтийн түүх"
-            lede="Багшид мэдэгдсэн ирц, гаралт болон чөлөөний хүсэлтүүд"
-          />
-
-          {requests.isPending ? <LoadingState rows={2} /> : null}
-          {requests.isError ? <ErrorState description={errorMessage(requests.error)} /> : null}
-
-          {requests.data && requests.data.length === 0 ? (
-            <EmptyState
-              title="Хүсэлт алга"
-              description="Хүүхэд чөлөөтэй байх өдрөө урьдчилан мэдэгдэхийг хүсвэл энд бичнэ үү."
-            />
-          ) : null}
-
-          {requests.data && requests.data.length > 0 ? (
-            <RequestHistoryTable requests={requests.data} />
-          ) : null}
-        </section>
-      ) : null}
+      {isStaff ? (
+        /*
+          ★ A calendar, not the flat "Энэ сарын ирц" list this tab used to end
+          with — same data, the grid shape `/overview` already ships.
+        */
+        <AttendanceCalendar childId={childId} />
+      ) : (
+        <GuardianAttendanceTabs childId={childId} requests={requests} />
+      )}
     </div>
   );
 }
 
-type HistoryRow = {
-  key: string;
-  /** `YYYY-MM-DD` of the first day — what the table sorts on. */
-  date: string;
-  /** "11" or "12–13" — the day column, the month being the group's heading. */
-  days: string;
-  arrived: string | null;
-  left: string | null;
-  /** Set only on a leave request: "Чөлөөтэй · Эмчид үзүүлнэ". */
-  leave: string | null;
-  reviewStatus: string;
-  attachment: { id: string; originalName: string } | null;
-};
-
-/** "11", or "12–13" / "30 – 10 сарын 2" when a leave spans days. */
-function dayRange(from: string, to: string): string {
-  const a = localCalendarDate(from);
-  const b = localCalendarDate(to);
-  if (from.slice(0, 10) === to.slice(0, 10)) return String(a.getDate());
-  if (a.getMonth() === b.getMonth()) return `${a.getDate()}–${b.getDate()}`;
-  return `${a.getDate()} – ${b.getMonth() + 1} сарын ${b.getDate()}`;
-}
+const GUARDIAN_TABS = [
+  { key: "handover", label: "Гараас гарт" },
+  { key: "summary", label: "Ирцийн нэгтгэл" },
+  { key: "calendar", label: "Календар" },
+] as const;
 
 /**
- * One row per day, grouped under the month it falls in.
- *
- * ★ A table, not a card each — 2026-09-12, at the client's instruction: "ирцийн
- * хамгийн доор байгаа хүсэлтийн түүхийг сар болон өдрөөр харахад хялбар
- * минимал болгоод өг, жнь 9 сарын 11 ирсэн явсан нэг хүснэгтэд харагд."
- *
- * The arrival and the pickup of one day are two separate `AttendanceRequest`
- * rows — that is what the API stores, and it is right, because they are sent
- * hours apart. Rendered one card each they read as two unrelated events, and a
- * week of them is fourteen cards to scroll. Here they collapse onto the day
- * they belong to: one line, "ирсэн" in one column and "явсан" in the next.
- *
- * ★★ A leave request keeps its own line and spans those two columns. It is not
- * a time of day, it is a range of days, and it is the only row in this table
- * whose review status the family is actually waiting on.
+ * ★ One of three at a time — client, 2026-10-07: «Гараас гарт», then
+ * «Ирцийн нэгтгэл», then «Календар», chosen rather than stacked. Quiet text
+ * tabs like «Нэхэмжлэх»'s; each tab names its panel, so the panels draw no
+ * section header (and no accent bar) of their own.
  */
-function RequestHistoryTable({
+function GuardianAttendanceTabs({
+  childId,
   requests,
 }: {
-  requests: z.infer<typeof attendanceRequestSchema>[];
+  childId: string;
+  requests: { data?: z.infer<typeof attendanceRequestSchema>[]; isError: boolean; error: unknown };
 }) {
-  const byDay = new Map<string, HistoryRow>();
-  const rows: HistoryRow[] = [];
-
-  for (const req of requests) {
-    const from = req.dateFrom.slice(0, 10);
-
-    if (req.requestedStatus === "PRESENT") {
-      let row = byDay.get(from);
-      if (!row) {
-        row = {
-          key: from,
-          date: from,
-          days: dayRange(from, req.dateTo),
-          arrived: null,
-          left: null,
-          leave: null,
-          reviewStatus: req.reviewStatus,
-          attachment: null,
-        };
-        byDay.set(from, row);
-        rows.push(row);
-      }
-      if (req.arrivedWith) {
-        row.arrived = `${req.arrivedAt ? toLocalTime(req.arrivedAt) : "—"} · ${companionDisplay(req.arrivedWith, req.arrivedWithName)}`;
-      }
-      if (req.pickedUpWith) {
-        row.left = `${req.pickedUpAt ? toLocalTime(req.pickedUpAt) : "—"} · ${companionDisplay(req.pickedUpWith, req.pickedUpWithName)}`;
-      }
-      // A rejected half must not make the whole day look rejected; a pending
-      // one is worth showing, so the "worst" status on the day wins.
-      if (req.reviewStatus === "PENDING") row.reviewStatus = "PENDING";
-      continue;
-    }
-
-    rows.push({
-      key: req.id,
-      date: from,
-      days: dayRange(from, req.dateTo),
-      arrived: null,
-      left: null,
-      leave: `${STATUS_LABEL[req.requestedStatus]}${req.reason ? ` · ${req.reason}` : ""}`,
-      reviewStatus: req.reviewStatus,
-      attachment: req.attachment ?? null,
-    });
-  }
-
-  rows.sort((a, b) => b.date.localeCompare(a.date) || a.key.localeCompare(b.key));
-
-  /** Newest month first, the rows inside it already in order. */
-  const months: { month: string; rows: HistoryRow[] }[] = [];
-  for (const row of rows) {
-    const month = row.date.slice(0, 7);
-    const last = months[months.length - 1];
-    if (last?.month === month) last.rows.push(row);
-    else months.push({ month, rows: [row] });
-  }
+  const [tab, setTab] = useState<(typeof GUARDIAN_TABS)[number]["key"]>("handover");
+  const id = useId();
 
   return (
-    <Card className="overflow-x-auto">
-      <table className="w-full min-w-[340px] border-collapse text-body">
-        <thead>
-          <tr className="border-b border-border text-caption text-muted">
-            <th scope="col" className="px-3 py-2 text-left font-medium">
-              Өдөр
-            </th>
-            <th scope="col" className="px-3 py-2 text-left font-medium">
-              Ирсэн
-            </th>
-            <th scope="col" className="px-3 py-2 text-left font-medium">
-              Явсан
-            </th>
-            <th scope="col" className="px-3 py-2 text-right font-medium">
-              Төлөв
-            </th>
-          </tr>
-        </thead>
-        {months.map((group) => (
-          <tbody key={group.month}>
-            <tr className="bg-sunken">
-              {/*
-                The month is a heading over its own days rather than a repeated
-                column — twenty rows of "2026 оны 9-р сар" is the noise the
-                client asked to be rid of.
-              */}
-              <th
-                scope="colgroup"
-                colSpan={4}
-                className="px-3 py-1.5 text-left text-caption font-semibold text-muted"
-              >
-                {formatMonthLabel(group.month)}
-              </th>
-            </tr>
-            {group.rows.map((row) => (
-              <tr key={row.key} className="border-b border-border last:border-0 align-top">
-                <th scope="row" className="px-3 py-2.5 text-left font-medium tabular-nums text-ink">
-                  {row.days}
-                </th>
+    <div className="flex flex-col gap-4">
+      <div
+        role="tablist"
+        aria-label="Ирцийн хэсэг"
+        className="-mx-4 flex gap-5 overflow-x-auto border-b border-border-soft px-4 sm:mx-0 sm:px-0"
+      >
+        {GUARDIAN_TABS.map((item) => {
+          const active = tab === item.key;
+          return (
+            <button
+              key={item.key}
+              id={`${id}-${item.key}-tab`}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              aria-controls={`${id}-${item.key}-panel`}
+              onClick={() => setTab(item.key)}
+              className={cn(
+                "-mb-px min-h-[40px] shrink-0 whitespace-nowrap border-b-2 text-body transition-colors",
+                active
+                  ? "border-ink font-semibold text-ink"
+                  : "border-transparent text-muted hover:text-ink",
+              )}
+            >
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
 
-                {row.leave ? (
-                  <td colSpan={2} className="px-3 py-2.5 text-muted">
-                    {row.leave}
-                    {row.attachment ? (
-                      <a
-                        href={mediaUrl(row.attachment.id)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-1 flex items-center gap-1.5 text-caption font-medium text-primary hover:underline"
-                      >
-                        <Paperclip size={14} aria-hidden="true" />
-                        {row.attachment.originalName}
-                      </a>
-                    ) : null}
-                  </td>
-                ) : (
-                  <>
-                    <td className="px-3 py-2.5 tabular-nums text-muted">{row.arrived ?? "—"}</td>
-                    <td className="px-3 py-2.5 tabular-nums text-muted">{row.left ?? "—"}</td>
-                  </>
-                )}
-
-                <td className="px-3 py-2.5 text-right">
-                  {/*
-                    ★ An arrival carries no decision any more, so it shows the
-                    plain fact instead of a verdict — the teacher does not
-                    approve one ("багшаар баталгаажиж зөвшөөрөгдөхгүй"), and a
-                    green "Зөвшөөрсөн" badge against something nobody reviewed
-                    would say the opposite.
-                  */}
-                  {row.leave ? (
-                    <Badge tone={REVIEW_TONE[row.reviewStatus]}>
-                      {REVIEW_LABEL[row.reviewStatus]}
-                    </Badge>
-                  ) : (
-                    <span className="text-caption text-muted">Мэдэгдсэн</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        ))}
-      </table>
-    </Card>
+      <div
+        role="tabpanel"
+        id={`${id}-${tab}-panel`}
+        aria-label={GUARDIAN_TABS.find((item) => item.key === tab)!.label}
+      >
+        {tab === "handover" ? (
+          requests.isError ? (
+            <ErrorState description={errorMessage(requests.error)} />
+          ) : (
+            <GuardianHandover childId={childId} requests={requests.data ?? []} />
+          )
+        ) : (
+          <AttendanceCalendar childId={childId} view={tab} />
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -492,6 +340,14 @@ function GuardianTodayAttendance({
   const arrivalSent = Boolean(todayRecord?.arrivedWith || todayRequests.some((r) => r.arrivedWith));
   const pickupSent = Boolean(
     todayRecord?.pickedUpWith || todayRequests.some((r) => r.pickedUpWith),
+  );
+  /* A leave request covering today and not turned down — «✓ Чөлөө хүсэх». */
+  const leaveSent = requests.some(
+    (request) =>
+      request.requestedStatus !== "PRESENT" &&
+      request.dateFrom.slice(0, 10) <= today &&
+      request.dateTo.slice(0, 10) >= today &&
+      request.reviewStatus !== "REJECTED",
   );
   const pendingArrival = todayRequests.find((r) => r.arrivedWith);
   const pendingPickup = todayRequests.find((r) => r.pickedUpWith);
@@ -539,7 +395,7 @@ function GuardianTodayAttendance({
         <div className="mt-4 grid grid-cols-3 gap-2">
           {closed || arrivalSent || requestsPending ? (
             <Button disabled block className={cn(STACKED, !closed && "bg-mint text-mint-ink")}>
-              {arrivalSent && !closed ? <Check size={17} /> : <LogIn size={17} />}
+              {arrivalSent && !closed ? <Check size={17} aria-hidden="true" /> : null}
               Ирлээ
             </Button>
           ) : (
@@ -549,7 +405,6 @@ function GuardianTodayAttendance({
               mode="arrival"
               trigger={
                 <Button block className={cn(STACKED, "bg-mint text-mint-ink hover:bg-mint/80")}>
-                  <LogIn size={17} />
                   Ирлээ
                 </Button>
               }
@@ -558,7 +413,7 @@ function GuardianTodayAttendance({
 
           {closed || pickupSent || requestsPending || !arrivalSent ? (
             <Button disabled block className={STACKED}>
-              {pickupSent && !closed ? <Check size={17} /> : <LogOut size={17} />}
+              {pickupSent && !closed ? <Check size={17} aria-hidden="true" /> : null}
               Явлаа
             </Button>
           ) : (
@@ -568,7 +423,6 @@ function GuardianTodayAttendance({
               mode="pickup"
               trigger={
                 <Button block className={STACKED}>
-                  <LogOut size={17} />
                   Явлаа
                 </Button>
               }
@@ -577,7 +431,6 @@ function GuardianTodayAttendance({
 
           {closed ? (
             <Button disabled block variant="secondary" className={STACKED}>
-              <FileText size={17} />
               Чөлөө хүсэх
             </Button>
           ) : (
@@ -585,7 +438,7 @@ function GuardianTodayAttendance({
               childId={childId}
               trigger={
                 <Button block variant="secondary" className={STACKED}>
-                  <FileText size={17} />
+                  {leaveSent ? <Check size={17} aria-hidden="true" /> : null}
                   Чөлөө хүсэх
                 </Button>
               }

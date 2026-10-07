@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Handshake,
   MailQuestion,
   Search,
 } from "lucide-react";
@@ -50,6 +51,7 @@ import {
 import { useSession } from "@/lib/auth/session";
 import { fullName } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { HandoverPanel } from "@/components/attendance/handover-panel";
 
 const daySheetSchema = z.array(groupAttendanceRowSchema);
 
@@ -607,7 +609,12 @@ function GroupAttendance() {
             one addition, and only while there is a draft to abandon.
           */}
           {rows.length > 0 ? (
-            <div className="flex items-center justify-end gap-2">
+            /*
+              A hairline under the register's own buttons — client, 2026-10-06:
+              «Засах · Ирц бүртгэх · ESIS илгээх» belong to the grid above, and
+              read apart from what follows.
+            */
+            <div className="flex items-center justify-end gap-2 border-b border-border-soft pb-4">
               {editing ? (
                 <Button
                   variant="secondary"
@@ -748,7 +755,7 @@ function RegisterPanels({
   month: string;
   pendingRequests: number;
 }) {
-  const [open, setOpen] = useState<"journal" | "requests" | null>(null);
+  const [open, setOpen] = useState<"journal" | "requests" | "handover" | null>(null);
   const panelId = "register-panel";
 
   const doors = [
@@ -759,6 +766,8 @@ function RegisterPanels({
       count: pendingRequests,
       icon: MailQuestion,
     },
+    // ★ Beside «Чөлөөний хүсэлт» — client, 2026-10-06. See `HandoverPanel`.
+    { key: "handover" as const, label: "Гараас гарт", count: 0, icon: Handshake },
   ];
 
   return (
@@ -821,6 +830,7 @@ function RegisterPanels({
       <div id={panelId} hidden={open === null}>
         {open === "journal" ? <TeacherJournal groupId={groupId} initialMonth={month} /> : null}
         {open === "requests" ? <AttendanceRequestQueue heading="Эцэг эхийн мэдэгдэл" /> : null}
+        {open === "handover" ? <HandoverPanel groupId={groupId} /> : null}
       </div>
     </section>
   );
