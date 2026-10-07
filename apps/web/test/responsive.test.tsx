@@ -160,7 +160,8 @@ describe("horizontal overflow", () => {
     const start = CHILDREN_PAGE.indexOf("actions={");
     const actions = CHILDREN_PAGE.slice(start, start + 2000);
     // The container that holds the count, Excel, Импорт and the primary action.
-    expect(actions).toMatch(/className="flex flex-wrap items-center justify-end gap-2/);
+    // `gap-1` on a phone since 2026-10-06, so the four actions share a line.
+    expect(actions).toMatch(/className="flex flex-wrap items-center justify-end gap-[12]/);
   });
 });
 

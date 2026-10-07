@@ -34,6 +34,8 @@ import { useSelectedChild } from "@/lib/selected-child";
 import { MY_CHILDREN } from "@/lib/vocabulary";
 import { z } from "zod";
 import { ChildPhotoButton } from "@/components/child/child-photo-button";
+import { GroupGuardianInvitations } from "@/components/child/group-guardian-invitations";
+import { useMyGroup } from "@/components/dashboard/use-my-group";
 
 const listSchema = paginated(childSummarySchema);
 const ownSchema = z.array(childSummarySchema);
@@ -105,8 +107,19 @@ export default function ChildrenPage() {
  */
 const ROSTER_SIZE = 100;
 
+/**
+ * A header button sized to the phone's line — client, 2026-10-06: «яг
+ * таарсан». 13px type (15px from `sm`), a 6px inset and a 12px icon — measured
+ * in a 390px browser at 348px for the four against a 358px line — and
+ * `flex-auto` so they share the whole width: they fill the row exactly rather
+ * than sitting small at its end.
+ */
+const PHONE_COMPACT =
+  "max-sm:h-10 max-sm:flex-auto max-sm:gap-1 max-sm:px-1.5 max-sm:text-compact max-sm:[&_svg]:size-3";
+
 function StaffChildren() {
   const { primaryKindergartenId, hasRole } = useSession();
+  const { group: myGroup } = useMyGroup({ enabled: true });
   const searchParams = useSearchParams();
   const urlQuery = searchParams.get("q") ?? "";
 
@@ -224,20 +237,19 @@ function StaffChildren() {
       <PageHeader
         title="Суралцагч"
         backHref="/dashboard"
+        actionsFullOnPhone
         actions={
           /*
-            ★ `flex-wrap`, and `gap-2` until there is room for `gap-3`.
+            ★ One line on a phone — client, 2026-10-06: «Excel · Импорт ·
+            Бүлгээр урих · Хүүхэд» side by side, filling the line exactly (13px
+            against 15px, `PHONE_COMPACT`). From `sm` the buttons are their
+            usual size.
 
-            Four controls — the count and three buttons — do not fit one line at
-            390px, and this row was the widest thing on the page. Wrapping is
-            the honest answer: every action stays visible and tappable, and the
-            primary "Хүүхэд бүртгэх" is last so it lands on the second line
-            rather than being the one that falls off the edge.
-
-            `justify-end` matches the header's own alignment, so on a desktop —
-            where all four still share a line — nothing moves.
+            ★★ `flex-wrap` stays as the guard it always was: at 390px this row
+            once pushed the page to 469px wide. Sized as it is the row fits one
+            line; should it ever not, it wraps rather than hanging off the edge.
           */
-          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-1 max-sm:w-full sm:gap-3">
             {/*
               No role check: guardians never reach this component — the page
               routes them to `MyChildren`, which has nothing to register.
@@ -252,7 +264,7 @@ function StaffChildren() {
             */}
             {primaryKindergartenId ? (
               <>
-                <Button asChild size="sm" variant="secondary">
+                <Button asChild size="sm" variant="secondary" className={PHONE_COMPACT}>
                   <a
                     href={downloadUrl(
                       `/kindergartens/${primaryKindergartenId}/children/export${exportQuery}`,
@@ -261,16 +273,29 @@ function StaffChildren() {
                     <Download size={16} aria-hidden /> Excel
                   </a>
                 </Button>
-                <Button asChild size="sm" variant="secondary">
+                <Button asChild size="sm" variant="secondary" className={PHONE_COMPACT}>
                   <Link href="/children/import">
                     <Upload size={16} aria-hidden /> Импорт
                   </Link>
                 </Button>
               </>
             ) : null}
-            <Button asChild size="sm">
+            {/*
+              ★ «Бүлгээр урих» before «Хүүхэд бүртгэх» — client, 2026-10-06:
+              one invitation for every child in the teacher's group who has
+              no parent account yet, the same sheet the group's page opens.
+            */}
+            {myGroup ? (
+              <GroupGuardianInvitations
+                groupId={myGroup.id}
+                groupName={myGroup.name}
+                label="Бүлгээр урих"
+                className={PHONE_COMPACT}
+              />
+            ) : null}
+            <Button asChild size="sm" className={PHONE_COMPACT}>
               <Link href="/children/new">
-                <Plus size={16} aria-hidden /> Хүүхэд бүртгэх
+                <Plus size={16} aria-hidden /> Хүүхэд
               </Link>
             </Button>
           </div>
