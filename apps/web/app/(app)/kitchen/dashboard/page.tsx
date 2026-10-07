@@ -108,7 +108,7 @@ function KitchenDashboard() {
 }
 
 /** The groups' table, one tight line a group. */
-const CELL = "px-2.5 py-1.5 text-caption";
+const CELL = "px-3 py-2.5 text-body";
 
 function GroupPortions({ groups }: { groups: CookDashboard["groups"] }) {
   if (groups.length === 0) return null;
@@ -124,10 +124,10 @@ function GroupPortions({ groups }: { groups: CookDashboard["groups"] }) {
   return (
     <section aria-labelledby="group-portions" className="flex flex-col gap-1.5">
       <div className="flex items-baseline justify-between gap-2">
-        <h2 id="group-portions" className="text-caption font-semibold text-muted">
+        <h2 id="group-portions" className="text-lead font-semibold text-ink">
           Бүлгүүдийн ирц
         </h2>
-        <span className="text-caption tabular-nums text-muted">{groups.length} бүлэг</span>
+        <span className="text-body tabular-nums text-muted">{groups.length} бүлэг</span>
       </div>
 
       {/*
@@ -166,7 +166,7 @@ function GroupPortions({ groups }: { groups: CookDashboard["groups"] }) {
                     group.recorded === 0 ? "text-sun-ink" : "text-mint-ink",
                   )}
                 >
-                  <span aria-hidden="true" className="size-1.5 rounded-pill bg-current" />
+                  <span aria-hidden="true" className="size-2 rounded-pill bg-current" />
                   {group.recorded === 0 ? "Ирц дутуу" : "Бэлэн"}
                 </span>
               </Td>

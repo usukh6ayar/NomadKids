@@ -36,24 +36,24 @@ export function TodayAttendance({ data }: { data: CookDashboard }) {
         <Ring percent={percent} tone="mint" />
 
         <span className="flex min-w-0 flex-1 flex-col gap-1">
-          <h2 id="today-attendance" className="text-caption font-semibold text-muted">
+          <h2 id="today-attendance" className="text-lead font-semibold text-ink">
             Өнөөдрийн ирц
           </h2>
           <span className="flex items-baseline gap-1">
-            <span className="text-title font-bold tabular-nums leading-none text-ink">
+            <span className="text-heading font-bold tabular-nums leading-none text-ink">
               {attendanceToday.present}
             </span>
-            <span className="text-caption tabular-nums text-muted">
+            <span className="text-body tabular-nums text-muted">
               / {attendanceToday.expected} хүүхэд
             </span>
           </span>
-          <span className="flex flex-wrap items-center gap-1.5 text-caption">
-            <span className="rounded-pill bg-mint px-2 py-0.5 font-semibold tabular-nums text-mint-ink">
+          <span className="flex flex-wrap items-center gap-1.5 text-body">
+            <span className="rounded-pill bg-mint px-2.5 py-0.5 font-semibold tabular-nums text-mint-ink">
               {withRegister}/{groups.length} бүлэг
             </span>
             {missing.length > 0 ? (
-              <span className="inline-flex items-center gap-1 rounded-pill bg-sun px-2 py-0.5 font-semibold tabular-nums text-sun-ink">
-                <AlertTriangle size={12} aria-hidden="true" className="shrink-0" />
+              <span className="inline-flex items-center gap-1 rounded-pill bg-sun px-2.5 py-0.5 font-semibold tabular-nums text-sun-ink">
+                <AlertTriangle size={14} aria-hidden="true" className="shrink-0" />
                 {missing.length} дутуу
               </span>
             ) : null}

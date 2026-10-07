@@ -257,8 +257,8 @@ describe("the teacher's surveys", () => {
         .getAllByRole("columnheader")
         .map((th) => th.textContent),
     ).toEqual([
+      // No Бүлэг — a teacher surveys their own group, 2026-10-07.
       "Гарчиг",
-      "Бүлэг",
       "Ангилал",
       "Судалгаа авсан",
       "Төлөв",

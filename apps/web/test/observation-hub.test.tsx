@@ -274,11 +274,12 @@ function openHub(type: string) {
 }
 
 describe("the record hub", () => {
-  it("names the child, their age and their group", async () => {
+  // «Б.Ану» alone — no age, no group, no avatar — 2026-10-07.
+  it("names the child short, with nothing beside it but «Хүүхэд солих»", async () => {
     openHub("daily");
 
-    expect(await screen.findByText("Батжаргал Ану")).toBeInTheDocument();
-    expect(screen.getByText(/Од бүлэг/)).toBeInTheDocument();
+    expect(await screen.findByText("Б.Ану")).toBeInTheDocument();
+    expect(screen.queryByText(/Од бүлэг/)).not.toBeInTheDocument();
   });
 
   /**
@@ -318,7 +319,7 @@ describe("the record hub", () => {
     const user = userEvent.setup();
     openHub("daily");
 
-    await user.click(await screen.findByRole("button", { name: /Солих/ }));
+    await user.click(await screen.findByRole("button", { name: "Хүүхэд солих" }));
 
     const picker = await screen.findByRole("dialog", { name: "Хүүхдээ сонгох" });
     expect(within(picker).getByRole("radio", { name: /Болд-Эрдэнэ/ })).toBeInTheDocument();
@@ -648,7 +649,7 @@ describe("the record hub", () => {
     expect(screen.getByRole("menuitem", { name: "Устгах" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("menuitem", { name: "Засах" }));
-    expect(await screen.findByRole("dialog", { name: "Тэмдэглэл засах" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Ажиглалт засах" })).toBeInTheDocument();
   });
 
   /**
@@ -668,10 +669,11 @@ describe("the record hub", () => {
     await user.click(within(list).getAllByRole("button", { name: "Тэмдэглэлийн үйлдэл" })[0]!);
     await user.click(screen.getByRole("menuitem", { name: "Засах" }));
 
-    const dialog = await screen.findByRole("dialog", { name: "Тэмдэглэл засах" });
+    const dialog = await screen.findByRole("dialog", { name: "Ажиглалт засах" });
     expect(within(dialog).getByLabelText("Огноо")).toHaveValue("2026-09-15");
     expect(within(dialog).getByLabelText("Цаг")).toHaveValue("09:30");
-    expect(within(dialog).getByLabelText("Тэмдэглэлийн төрөл")).toHaveTextContent("Ажиглалт");
+    // The kind is the dialog's title now, not a picker — 2026-10-07.
+    expect(within(dialog).queryByLabelText("Тэмдэглэлийн төрөл")).not.toBeInTheDocument();
     expect(within(dialog).getByLabelText("Үйл ажиллагааны төрөл")).toHaveTextContent(
       "Өглөөний дасгал",
     );
@@ -683,7 +685,8 @@ describe("the record hub", () => {
     expect(within(dialog).getByLabelText("Тэмдэглэл")).toHaveValue(
       "2026-09-15 өдөр бичсэн ажиглалт",
     );
-    expect(within(dialog).getByRole("checkbox", { name: "Эцэг эх харах боломжтой" })).toBeChecked();
+    expect(within(dialog).getByRole("checkbox", { name: "Эцэг эх харах" })).toBeChecked();
+    expect(within(dialog).queryByLabelText(/PDF-д оруулах/)).not.toBeInTheDocument();
   });
 
   /** And saves them: the strand and the kind go back with the text. */
@@ -697,7 +700,7 @@ describe("the record hub", () => {
     await user.click(within(list).getAllByRole("button", { name: "Тэмдэглэлийн үйлдэл" })[0]!);
     await user.click(screen.getByRole("menuitem", { name: "Засах" }));
 
-    const dialog = await screen.findByRole("dialog", { name: "Тэмдэглэл засах" });
+    const dialog = await screen.findByRole("dialog", { name: "Ажиглалт засах" });
     await user.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
 
     await waitFor(() => expect(calls.some((c) => c.method === "PATCH")).toBe(true));
@@ -744,7 +747,9 @@ describe("the record hub", () => {
   it("puts Буцах, the kind and the school year on one row", async () => {
     openHub("daily");
 
-    const header = await screen.findByRole("banner");
+    // A plain row since 2026-10-07 — the theme paints a <header> white.
+    const header = (await screen.findByRole("heading", { level: 1, name: "Ажиглалт" }))
+      .parentElement!;
     expect(within(header).getByRole("link", { name: "Буцах" })).toBeInTheDocument();
     expect(within(header).getByRole("heading", { level: 1, name: "Ажиглалт" })).toBeInTheDocument();
     // The picker waits on the terms request, which names the school years.

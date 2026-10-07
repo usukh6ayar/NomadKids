@@ -36,9 +36,9 @@ import { MediaThumb } from "@/components/media/media-image";
 import { ObservationRow } from "@/components/observations/observation-row";
 import { ObservationPhotos } from "@/components/observations/observation-photos";
 import { DAILY_ACTIVITIES } from "@/components/assessment/group-coverage";
-import { PORTFOLIO } from "@/lib/vocabulary";
 import { excerpt, formatDate, formatLongDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { KIND_LOOK, PICK, PICK_FIELD } from "@/lib/observation-look";
 
 const observationsSchema = paginated(observationSchema);
 const termsSchema = z.array(termSchema);
@@ -887,12 +887,12 @@ function DetailFact({ label, value }: { label: string; value: ReactNode }) {
 export function EditObservationDialog({
   childId,
   observation,
-  terms,
   onClose,
 }: {
   childId: string;
   observation: Observation;
-  terms: z.infer<typeof termsSchema>;
+  /** Unused since the Улирал picker went, 2026-10-07; callers still pass it. */
+  terms?: z.infer<typeof termsSchema>;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
@@ -902,7 +902,8 @@ export function EditObservationDialog({
 
   const [observedOn, setObservedOn] = useState(observation.observedOn.slice(0, 10));
   const [observedTime, setObservedTime] = useState(observation.observedTime?.slice(0, 5) ?? "");
-  const [typeId, setTypeId] = useState(observation.type?.id ?? "");
+  // The kind is fixed by where the note was opened from — no picker since 2026-10-07.
+  const [typeId] = useState(observation.type?.id ?? "");
   const [activityName, setActivityName] = useState(observation.activityName ?? "");
   const [domainId, setDomainId] = useState(observation.domains[0]?.domain.id ?? "");
   const [indicatorLevel, setIndicatorLevel] = useState(
@@ -911,7 +912,8 @@ export function EditObservationDialog({
   const [indicatorId, setIndicatorId] = useState(observation.indicator?.id ?? "");
   const [situation, setSituation] = useState(observationText(observation));
   const [visibleToParents, setVisibleToParents] = useState(observation.visibleToParents);
-  const [includeInReport, setIncludeInReport] = useState(observation.includeInReport ?? true);
+  // No «PDF-д оруулах» on the form since 2026-10-07; the note keeps its own.
+  const includeInReport = observation.includeInReport ?? true;
   /* The fragments the old five-box form left behind — see ★★★ above. */
   const wasSplit = Boolean(
     observation.childDid ||
@@ -928,6 +930,7 @@ export function EditObservationDialog({
   });
   const selectedTypeCode =
     (types.data ?? []).find((type) => type.id === typeId)?.code ?? observation.type?.code;
+  const look = selectedTypeCode ? KIND_LOOK[selectedTypeCode] : undefined;
 
   const config = useQuery({
     queryKey: qk.assessmentConfig(primaryKindergartenId ?? ""),
@@ -1010,93 +1013,73 @@ export function EditObservationDialog({
     <FormDialog
       open
       onOpenChange={(open) => !open && onClose()}
-      title="Тэмдэглэл засах"
+      /*
+        ★ The compose page's design — 2026-10-07, the client: «засах» still
+        opened the old form. Its kind's name and colour, small round pickers,
+        I–IV on one track, no Улирал / Тэмдэглэлийн төрөл / PDF-д оруулах.
+      */
+      title={(isStaff && look?.edit) || "Тэмдэглэл засах"}
       busy={update.isPending}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose} disabled={update.isPending}>
+          <Button size="sm" variant="secondary" onClick={onClose} disabled={update.isPending}>
             Болих
           </Button>
-          <Button onClick={() => update.mutate()} disabled={update.isPending || !situation.trim()}>
+          <Button
+            size="sm"
+            className={isStaff ? look?.fill : undefined}
+            onClick={() => update.mutate()}
+            disabled={update.isPending || !situation.trim()}
+          >
             {update.isPending ? "Хадгалж байна…" : "Хадгалах"}
           </Button>
         </>
       }
     >
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3">
         <FormError message={update.isError ? errorMessage(update.error) : null} />
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Огноо" error={errors.observedOn}>
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Огноо" error={errors.observedOn} className={PICK_FIELD}>
             {({ id }) => (
               <Input
                 id={id}
                 type="date"
+                className={PICK}
                 max={todayIso()}
                 value={observedOn}
                 onChange={(event) => setObservedOn(event.target.value)}
               />
             )}
           </Field>
-          <Field label="Улирал">
-            {({ id }) => (
-              <Select
-                id={id}
-                value={String(termNumberForDay(observedOn, terms))}
-                onChange={(event) =>
-                  setObservedOn(
-                    firstAvailableDateForTerm(Number(event.target.value), todayIso(), terms),
-                  )
-                }
-              >
-                <option value="1">1-р улирал</option>
-                <option value="2">2-р улирал</option>
-                <option value="3">3-р улирал</option>
-              </Select>
-            )}
-          </Field>
+          {isStaff ? (
+            <Field label="Цаг" error={errors.observedTime} className={PICK_FIELD}>
+              {({ id }) => (
+                <Input
+                  id={id}
+                  type="time"
+                  className={PICK}
+                  value={observedTime}
+                  onChange={(event) => setObservedTime(event.target.value)}
+                />
+              )}
+            </Field>
+          ) : null}
         </div>
 
         {isStaff ? (
           <>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Цаг" error={errors.observedTime}>
-                {({ id }) => (
-                  <Input
-                    id={id}
-                    type="time"
-                    value={observedTime}
-                    onChange={(event) => setObservedTime(event.target.value)}
-                  />
-                )}
-              </Field>
-              <Field label="Тэмдэглэлийн төрөл" error={errors.typeId}>
-                {({ id }) => (
-                  <Select
-                    id={id}
-                    value={typeId}
-                    onChange={(event) => setTypeId(event.target.value)}
-                  >
-                    <option value="">Сонгоно уу</option>
-                    {(types.data ?? []).map((type) => (
-                      <option key={type.id} value={type.id}>
-                        {type.name}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </Field>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2">
               <Field
                 label={selectedTypeCode === "artwork" ? "Төрөл" : "Үйл ажиллагааны төрөл"}
                 error={errors.activityName}
                 required={selectedTypeCode === "artwork"}
+                className={PICK_FIELD}
               >
                 {({ id }) => (
                   <Select
                     id={id}
+                    className={PICK}
                     value={activityName}
                     onChange={(event) => setActivityName(event.target.value)}
                   >
@@ -1111,10 +1094,11 @@ export function EditObservationDialog({
                   </Select>
                 )}
               </Field>
-              <Field label="Сургалтын чиглэл" error={errors.domainIds}>
+              <Field label="Сургалтын чиглэл" error={errors.domainIds} className={PICK_FIELD}>
                 {({ id }) => (
                   <Select
                     id={id}
+                    className={PICK}
                     value={domainId}
                     onChange={(event) => {
                       setDomainId(event.target.value);
@@ -1135,8 +1119,12 @@ export function EditObservationDialog({
             </div>
 
             <fieldset>
-              <legend className="mb-1.5 text-body font-medium text-ink">Түвшин</legend>
-              <div role="radiogroup" aria-label="Түвшин" className="grid grid-cols-4 gap-1.5">
+              <legend className="mb-1 text-caption font-medium text-muted">Түвшин</legend>
+              <div
+                role="radiogroup"
+                aria-label="Түвшин"
+                className="grid grid-cols-4 gap-0.5 rounded-pill bg-canvas p-0.5"
+              >
                 {([1, 2, 3, 4] as const).map((level) => {
                   const chosen = String(level) === indicatorLevel;
 
@@ -1146,15 +1134,16 @@ export function EditObservationDialog({
                       type="button"
                       role="radio"
                       aria-checked={chosen}
+                      aria-label={`${romanLevel(level)} түвшин`}
                       onClick={() => setIndicatorLevel(String(level))}
                       className={cn(
-                        "grid min-h-[44px] place-items-center rounded-control border text-body font-semibold transition-colors",
+                        "grid min-h-10 place-items-center rounded-pill text-compact font-semibold transition-colors",
                         chosen
-                          ? "border-primary bg-primary-soft text-primary"
-                          : "border-border bg-surface text-muted hover:bg-canvas",
+                          ? cn("shadow-sm", look?.fill ?? "bg-primary text-primary-ink")
+                          : "text-muted hover:text-ink",
                       )}
                     >
-                      {romanLevel(level)} түвшин
+                      {romanLevel(level)}
                     </button>
                   );
                 })}
@@ -1162,11 +1151,14 @@ export function EditObservationDialog({
             </fieldset>
 
             {domainId ? (
-              <Field label="СҮД код" error={errors.indicatorId}>
+              <Field label="СҮД код" error={errors.indicatorId} className={PICK_FIELD}>
                 {({ id }) => (
                   <Select
                     id={id}
-                    className="[&>span:first-child]:min-w-0 [&>span:first-child]:truncate [&>span:first-child]:text-left"
+                    className={cn(
+                      PICK,
+                      "[&>span:first-child]:min-w-0 [&>span:first-child]:truncate [&>span:first-child]:text-left",
+                    )}
                     value={indicatorId}
                     onChange={(event) => setIndicatorId(event.target.value)}
                     disabled={indicators.isLoading}
@@ -1190,7 +1182,8 @@ export function EditObservationDialog({
               id={id}
               aria-describedby={describedBy}
               invalid={invalid}
-              rows={4}
+              rows={2}
+              className="min-h-[60px] py-2"
               value={situation}
               onChange={(event) => setSituation(event.target.value)}
             />
@@ -1198,18 +1191,12 @@ export function EditObservationDialog({
         </Field>
 
         {isStaff ? (
-          <div className="grid grid-cols-2 gap-2">
-            <Checkbox
-              label="Эцэг эх харах боломжтой"
-              checked={visibleToParents}
-              onChange={(event) => setVisibleToParents(event.target.checked)}
-            />
-            <Checkbox
-              label={`${PORTFOLIO}ны PDF-д оруулах`}
-              checked={includeInReport}
-              onChange={(event) => setIncludeInReport(event.target.checked)}
-            />
-          </div>
+          <Checkbox
+            label="Эцэг эх харах"
+            className="[&_span]:font-normal [&_span]:text-muted"
+            checked={visibleToParents}
+            onChange={(event) => setVisibleToParents(event.target.checked)}
+          />
         ) : null}
 
         {/* The photographs already on the note, and the way to add another. */}
@@ -1277,22 +1264,4 @@ function todayIso(): string {
   const now = new Date();
   const offset = now.getTimezoneOffset();
   return new Date(now.getTime() - offset * 60_000).toISOString().slice(0, 10);
-}
-
-function firstAvailableDateForTerm(
-  term: number,
-  today: string,
-  terms: z.infer<typeof termsSchema>,
-): string {
-  const configured = terms.find((candidate) => candidate.number === term && candidate.startsOn);
-  if (configured?.startsOn) return configured.startsOn > today ? today : configured.startsOn;
-
-  const schoolYear = Number(today.slice(0, 4)) - (Number(today.slice(5, 7)) < 9 ? 1 : 0);
-  const candidate =
-    term === 1
-      ? `${schoolYear}-09-01`
-      : term === 2
-        ? `${schoolYear + 1}-01-01`
-        : `${schoolYear + 1}-04-01`;
-  return candidate > today ? today : candidate;
 }

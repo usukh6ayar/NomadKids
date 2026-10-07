@@ -950,7 +950,7 @@ export function MenuDishEditor({
       {footer}
 
       {chrome === "full" ? (
-        <div className="flex gap-2">
+        <div className="flex justify-end gap-2">
           <Button type="submit" size="sm" disabled={saving}>
             {saving ? "Хадгалж байна…" : "Хадгалах"}
           </Button>
@@ -986,11 +986,17 @@ export function MenuDishEditor({
 
           <div className="flex flex-wrap gap-2">
             {onCancel ? (
-              <Button type="button" variant="secondary" onClick={onCancel} disabled={saving}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={onCancel}
+                disabled={saving}
+              >
                 Цуцлах
               </Button>
             ) : null}
-            <Button type="submit" disabled={saving}>
+            <Button type="submit" size="sm" disabled={saving}>
               <Check size={16} aria-hidden="true" />
               {saving ? "Хадгалж байна…" : "Хадгалах"}
             </Button>

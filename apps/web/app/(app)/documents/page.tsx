@@ -771,11 +771,11 @@ function PublishForm({
           )}
         </Field>
 
-        <div className="flex gap-2">
-          <Button type="submit" disabled={save.isPending || !file}>
+        <div className="flex justify-end gap-2">
+          <Button type="submit" size="sm" disabled={save.isPending || !file}>
             {save.isPending ? "Илгээж байна…" : "Нийтлэх"}
           </Button>
-          <Button variant="secondary" onClick={onDone}>
+          <Button variant="secondary" size="sm" onClick={onDone}>
             Цуцлах
           </Button>
         </div>

@@ -98,7 +98,13 @@ function stubRegister({
     {
       path: `/groups/${GROUP}/attendance/summary`,
       method: "GET",
-      body: { month: TODAY.slice(0, 7), totals: {}, days: [], children: [], roster: 2 },
+      body: {
+        month: TODAY.slice(0, 7),
+        totals: { PRESENT: 0, HALF_DAY: 0, EXCUSED: 0, SICK: 0, ABSENT: 0, OTHER: 0 },
+        days: [],
+        children: [],
+        roster: 2,
+      },
     },
     { path: `/groups/${GROUP}/attendance`, method: "PUT", body: [] },
     { path: `/groups/${GROUP}/attendance`, method: "GET", body: daySheet },
@@ -387,6 +393,29 @@ describe("the register's panels", () => {
     expect(door("Чөлөөний хүсэлт")).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("button", { name: /Esis ирц/ })).toBeNull();
     expect(screen.queryByLabelText("Сар")).not.toBeInTheDocument();
+  });
+
+  /*
+   * ★ «Өнөөдөр» · «Сар» opens with the journal only — client, 2026-10-07.
+   * «Чөлөөний хүсэлт» and «Гараас гарт» draw no chart.
+   */
+  it("shows the day-and-month chart under «Ирцийн дэлгэрэнгүй» and nowhere else", async () => {
+    const user = userEvent.setup();
+    stubRegister();
+    renderWithProviders(<GroupAttendancePage />);
+    await grid();
+
+    expect(screen.queryByRole("tab", { name: "Сар" })).toBeNull();
+
+    await user.click(door("Чөлөөний хүсэлт"));
+    expect(screen.queryByRole("tab", { name: "Сар" })).toBeNull();
+
+    await user.click(door("Гараас гарт"));
+    expect(screen.queryByRole("tab", { name: "Сар" })).toBeNull();
+
+    await user.click(door("Ирцийн дэлгэрэнгүй"));
+    expect(await screen.findByRole("tab", { name: "Өнөөдөр" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Сар" })).toBeInTheDocument();
   });
 
   it("opens the journal as the same grid, read-only, over a whole month", async () => {

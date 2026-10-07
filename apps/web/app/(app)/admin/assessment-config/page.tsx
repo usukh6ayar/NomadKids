@@ -483,7 +483,7 @@ function ConfigForm({
         ))}
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex justify-end gap-2">
         <Button type="submit" size="sm" disabled={save.isPending}>
           {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
         </Button>

@@ -1,4 +1,5 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, stubApi } from "./support/render";
 import QualificationsPage from "@/app/(app)/qualifications/page";
@@ -103,5 +104,92 @@ describe("teacher qualification page", () => {
     renderWithProviders(<QualificationsPage />);
 
     expect(await screen.findByText("Мэргэшлийн зэргийн хүсэлт алга")).toBeInTheDocument();
+  });
+});
+
+/*
+ * ★ «Миний хүсэлт» and «Шинэ хүсэлт» — 2026-10-07, ready for the API the
+ * backend is being asked for: GET and POST /me/qualification-requests.
+ */
+describe("the teacher's own requests", () => {
+  const MINE = "/me/qualification-requests";
+  const mineRow = (id: string, degree: string, status: string) => ({
+    id,
+    person: { firstName: "Сувдаа", lastName: "Дорж" },
+    position: "Бүлгийн багш",
+    degree,
+    status,
+    submittedAt: "2026-10-07T00:00:00.000Z",
+    isMine: true,
+  });
+
+  function stubMine(items: unknown[] | null, post?: { status: number; body: unknown }) {
+    return stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: CATALOG_PATH, body: catalog },
+      { path: READ_PATH, body: response("degreeRequest", []) },
+      ...(post ? [{ path: MINE, method: "POST", status: post.status, body: post.body }] : []),
+      items === null
+        ? { path: MINE, status: 404, body: { title: "Not found", status: 404 } }
+        : {
+            path: MINE,
+            body: { items, page: 1, pageSize: 100, total: items.length, totalPages: 1 },
+          },
+    ]);
+  }
+
+  it("lists them by degree, open first, with the verdict beside each", async () => {
+    stubMine([mineRow("a", "Заах аргач", "IN_REVIEW"), mineRow("b", "Тэргүүлэх", "APPROVED")]);
+    renderWithProviders(<QualificationsPage />);
+
+    const open = await screen.findByRole("region", { name: "Явцад" });
+    expect(within(open).getByText("Заах аргач")).toBeInTheDocument();
+    expect(within(open).getByText("Хянаж буй")).toBeInTheDocument();
+    const done = screen.getByRole("region", { name: "Шийдвэрлэгдсэн" });
+    expect(within(done).getByText("Тэргүүлэх")).toBeInTheDocument();
+    expect(within(done).getByText("Шийдвэрлэсэн")).toBeInTheDocument();
+  });
+
+  it("sends a new request and reads the list again", async () => {
+    const user = userEvent.setup();
+    const api = stubMine([], { status: 201, body: mineRow("c", "Заах аргач", "NEW") });
+    renderWithProviders(<QualificationsPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Шинэ хүсэлт/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Шинэ хүсэлт" });
+    await user.type(within(dialog).getByLabelText(/Ажилласан жил/), "6");
+    await user.type(within(dialog).getByLabelText("Тайлбар"), "Ахлах багшаар 2 жил");
+    await user.click(within(dialog).getByRole("button", { name: "Илгээх" }));
+
+    await waitFor(() =>
+      expect(api.calls.find((call) => call.method === "POST" && call.url === MINE)?.body).toEqual({
+        degree: "Заах аргач",
+        position: "Бүлгийн багш",
+        yearsOfService: 6,
+        note: "Ахлах багшаар 2 жил",
+      }),
+    );
+    expect(await screen.findByText("Хүсэлт илгээгдлээ.")).toBeInTheDocument();
+  });
+
+  it("says the server is not ready while the endpoint answers 404", async () => {
+    const user = userEvent.setup();
+    stubMine(null, { status: 404, body: { title: "Not found", status: 404 } });
+    renderWithProviders(<QualificationsPage />);
+
+    expect(
+      await screen.findByText("Хүсэлтийн сервер холболт хараахан бэлэн болоогүй байна."),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Шинэ хүсэлт/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Шинэ хүсэлт" });
+    await user.type(within(dialog).getByLabelText(/Ажилласан жил/), "3");
+    await user.click(within(dialog).getByRole("button", { name: "Илгээх" }));
+
+    // The dialog stays open with what was typed; a toast names the cause.
+    expect(
+      await screen.findAllByText("Хүсэлтийн сервер холболт хараахан бэлэн болоогүй байна."),
+    ).toHaveLength(2);
+    expect(screen.getByRole("dialog", { name: "Шинэ хүсэлт" })).toBeInTheDocument();
   });
 });

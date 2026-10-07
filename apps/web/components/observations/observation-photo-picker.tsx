@@ -110,9 +110,7 @@ export function ObservationPhotoPicker({
         >
           <ImagePlus size={18} aria-hidden="true" />
           <span className="mt-0.5 truncate">Зураг</span>
-          <span className="tabular-nums">
-            {files.length}/{MAX_OBSERVATION_PHOTOS}
-          </span>
+          {/* No «0/5» here — 2026-10-07, the client. The limit still holds. */}
           {full ? null : (
             <input
               type="file"

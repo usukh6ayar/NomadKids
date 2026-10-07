@@ -23,7 +23,7 @@ import { WeeklyAttendance } from "@/components/dashboard/weekly-attendance";
 import { AssessmentProgress } from "@/components/dashboard/assessment-progress";
 import { DashboardChatPreview } from "@/components/dashboard/dashboard-chat-preview";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
-import { ArrowRight, ChevronDown } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 
 /**
  * "What needs my attention today."
@@ -433,38 +433,21 @@ function QuickAction({ href, title, art }: { href: string; title: string; art: A
       <span aria-hidden="true" className="grid size-10 shrink-0 place-items-center sm:size-14">
         <Art name={art} size={42} className="size-9 object-contain sm:size-[42px]" />
       </span>
-      {/*
-        `pr-4` on a phone, with a smaller corner arrow: the 32px arrow sat on
-        "Суралцагч", and reserving its full width broke the word in two
-        (2026-09-29). The title keeps whole words.
-      */}
-      <span className="min-w-0 flex-1 pr-4 sm:pr-0">
+      <span className="min-w-0 flex-1">
         <span className="block text-body font-bold leading-heading text-ink sm:text-lead sm:font-semibold">
           {title}
         </span>
       </span>
       {/*
-        ★ The arrow — reworked 2026-09-19, the client: "арай аятайхан".
-
-        It was a white disc with its own shadow, floating on top of the card at
-        rest and flipping to solid blue the instant the pointer arrived. Two
-        problems in one: a second raised surface competing with the card it
-        sits on, and a colour change with no movement, which reads as a state
-        rather than as an invitation.
-
-        Now it rests as a soft tint that belongs to the card, fills on hover,
-        and the arrow itself steps to the right — the motion is what says
-        "this goes somewhere", and the tint is what keeps it quiet until then.
-        `motion-reduce` drops the step and keeps the colour, so the hover is
-        still legible without the movement.
+        ★ A plain «›», centred on the right — 2026-10-07, the client: thin and
+        grey, there without asking to be looked at.
       */}
-      <span className="absolute right-2 top-2 grid size-6 shrink-0 place-items-center rounded-pill bg-primary-soft text-primary transition-colors duration-150 group-hover:bg-primary group-hover:text-primary-ink sm:static sm:size-9">
-        <ArrowRight
-          size={17}
-          aria-hidden="true"
-          className="size-3.5 transition-transform duration-150 group-hover:translate-x-px motion-reduce:transform-none sm:size-[17px]"
-        />
-      </span>
+      <ChevronRight
+        size={20}
+        strokeWidth={1.75}
+        aria-hidden="true"
+        className="shrink-0 text-faint/50 transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transform-none"
+      />
     </Link>
   );
 }

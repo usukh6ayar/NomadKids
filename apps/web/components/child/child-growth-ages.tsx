@@ -331,12 +331,13 @@ function AgeSection({
 
             {otherNote ? <NoteBlock label={otherNoteLabel} text={otherNote} tone="other" /> : null}
 
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={save.isPending}>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button type="submit" size="sm" disabled={save.isPending}>
                 {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
               </Button>
               <Button
                 variant="secondary"
+                size="sm"
                 onClick={() => {
                   setEditing(false);
                   save.reset();

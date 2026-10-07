@@ -413,21 +413,8 @@ body:has([data-app-theme]) nav a[aria-current="page"] {
   background-color: var(--color-sunken);
 }
 
-[data-app-theme] main [data-ui="section-header"] > div:first-child::before {
-  content: "";
-  width: 4px;
-  height: 28px;
-  flex: none;
-  border-radius: var(--radius-pill);
-  background: var(--workspace-accent-secondary);
-}
-
-[data-app-theme="teacher"]
-  main[data-layout="content"]
-  [data-ui="section-header"]
-  > div:first-child::before {
-  background: linear-gradient(180deg, var(--color-primary), var(--workspace-accent-secondary));
-}
+/* No coloured bar before a section heading — removed 2026-10-07, the
+ * client: "гарчигнуудын урд байгаа ногоон зураас бүгдийг авч хая". */
 
 [data-app-theme] main [data-ui="field"] > label {
   color: var(--color-ink);

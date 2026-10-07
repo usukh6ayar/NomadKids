@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarDays, PenLine, Plus, Users } from "lucide-react";
+import { CalendarDays, PenLine, Plus } from "lucide-react";
 import {
   MAX_PAGE_SIZE,
   ARTWORK_TYPES,
@@ -24,7 +24,6 @@ import { Field, Input, Select } from "@/components/ui/field";
 import { SearchField } from "@/components/ui/search-field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { BackButton } from "@/components/ui/back-button";
-import { ChildAvatar } from "@/components/media/media-image";
 import { Button } from "@/components/ui/button";
 import { FilterButton } from "@/components/ui/filter-chip";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
@@ -37,7 +36,7 @@ import {
 import { ChildPickerDialog } from "./child-picker-dialog";
 import { ArchiveTab, WrittenReports } from "@/components/assessment/report-archive";
 import { ChildArtwork } from "./child-artwork";
-import { formatAge, fullName, capitalize } from "@/lib/format";
+import { shortName } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const observationsSchema = paginated(observationSchema);
@@ -413,7 +412,6 @@ export function ObservationHub({
   };
 
   const data = child.data!;
-  const group = capitalize(data.enrollments?.find((row) => row.group)?.group?.name);
 
   return (
     <div className="flex flex-col gap-3">
@@ -434,7 +432,9 @@ export function ObservationHub({
         box around a title that needs no box, and its padding pushed the
         child's own card a row further down the first screen.
       */}
-      <header className="flex items-center gap-2">
+      {/* A <div>: the teacher theme paints every <header> white, and this row
+          sits on the page — 2026-10-07, the client: "тунгалаг болго". */}
+      <div className="flex items-center gap-2">
         {/*
           ★ Nothing painted behind the row — the client, 2026-09-14: "энэний
           ард цагаан арилгаад өг, тунгалаг бай." The arrow and the year sit on
@@ -470,7 +470,7 @@ export function ObservationHub({
             </Select>
           </div>
         ) : null}
-      </header>
+      </div>
 
       {/*
         ★ The child is named at the top of every screen in this flow, with the
@@ -481,20 +481,17 @@ export function ObservationHub({
         back to the group to re-enter is three presses for what Солих does in
         one.
       */}
-      <Card pad="compact" className="flex items-center gap-3">
-        <ChildAvatar child={data} size={44} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-body font-semibold leading-snug text-ink">{fullName(data)}</p>
-          <p className="truncate text-caption text-muted">
-            {formatAge(data.dateOfBirth)}
-            {group ? ` · ${group}` : ""}
-          </p>
-        </div>
-        <Button size="sm" variant="secondary" onClick={() => setPicking(true)}>
-          <Users size={15} aria-hidden="true" />
-          Солих
-        </Button>
-      </Card>
+      {/* «Б.Ану» and «Хүүхэд солих», on the page with no panel — 2026-10-07. */}
+      <div className="flex items-center justify-between gap-2">
+        <p className="min-w-0 truncate text-lead font-semibold text-ink">{shortName(data)}</p>
+        <button
+          type="button"
+          onClick={() => setPicking(true)}
+          className="inline-flex min-h-11 shrink-0 items-center px-1 text-caption font-medium text-primary hover:underline"
+        >
+          Хүүхэд солих
+        </button>
+      </div>
 
       {/*
         ★★ The three kinds, on the child's own screen — 2026-09-17, the client:

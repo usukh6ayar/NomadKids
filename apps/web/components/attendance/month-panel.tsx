@@ -15,7 +15,7 @@ import { groupAttendanceSummarySchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { Donut, type DonutSegment } from "@/components/ui/chart/donut";
-import { TONE_GLYPH, TONE_SURFACE, TONE_VAR, type Tone } from "@/components/ui/tone";
+import { TONE_GLYPH, TONE_VAR, type Tone } from "@/components/ui/tone";
 import { Skeleton } from "@/components/ui/states";
 import type { RegisterCount } from "@/components/register/register-progress";
 import { cn } from "@/lib/utils";
@@ -158,26 +158,21 @@ function StatTile({
   );
 }
 
-/** The one-line verdict under each chart. */
-function Verdict({
-  tone,
-  icon,
-  title,
-  note,
-}: {
-  tone: Tone;
-  icon: React.ReactNode;
-  title: string;
-  note?: string;
-}) {
+/**
+ * The one-line verdict under each chart.
+ *
+ * ★ Plain text on the card, no tinted panel — 2026-10-07, the client: the
+ * yellow box drew the eye away from the chart it only sums up.
+ */
+function Verdict({ icon, title, note }: { icon: React.ReactNode; title: string; note?: string }) {
   return (
-    <div className={cn("flex items-center gap-3 rounded-card px-4 py-3", TONE_SURFACE[tone])}>
+    <div className="flex items-center gap-2.5 px-1 text-muted">
       <span className="shrink-0" aria-hidden="true">
         {icon}
       </span>
       <div className="min-w-0">
-        <p className="text-body font-semibold">{title}</p>
-        {note ? <p className="text-caption opacity-80">{note}</p> : null}
+        <p className="text-body">{title}</p>
+        {note ? <p className="text-caption">{note}</p> : null}
       </div>
     </div>
   );
@@ -483,8 +478,7 @@ export function AttendanceMonthPanel({
           </div>
 
           <Verdict
-            tone={dayPercent >= 85 ? "mint" : dayPercent >= 70 ? "sun" : "peach"}
-            icon={<CheckCircle2 size={22} />}
+            icon={<CheckCircle2 size={18} />}
             title={
               dayPercent >= 85
                 ? "Өнөөдрийн ирц сайн байна!"
@@ -628,8 +622,7 @@ export function AttendanceMonthPanel({
             invented here.
           */}
           <Verdict
-            tone="sky"
-            icon={<BarChart3 size={22} />}
+            icon={<BarChart3 size={18} />}
             title="Энэ сард ирц тогтвортой, сайн байна."
             note={deltaNote(monthPercent, previousPercent, "month") ?? undefined}
           />

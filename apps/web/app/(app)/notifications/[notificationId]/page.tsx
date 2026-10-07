@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { BackButton } from "@/components/ui/back-button";
 import { useParams } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import { notificationSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
@@ -17,6 +17,7 @@ import { Card } from "@/components/ui/card";
 import { ArchiveButton } from "@/components/ui/archive-button";
 import { LikeButton } from "@/components/notifications/like-button";
 import { MediaThumb } from "@/components/media/media-image";
+import { PostPhotoViewer } from "@/components/notifications/post-photo-viewer";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { formatLongDate, fullName } from "@/lib/format";
 
@@ -33,6 +34,7 @@ export default function NotificationDetailPage() {
   const queryClient = useQueryClient();
   const { hasRole } = useSession();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
+  const [viewing, setViewing] = useState<number | null>(null);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: qk.notification(id),
@@ -132,21 +134,37 @@ export default function NotificationDetailPage() {
 
         {notification.media.length > 0 ? (
           <ul className="mt-5 grid gap-2 sm:grid-cols-2">
-            {notification.media.map((photo) => (
+            {notification.media.map((photo, index) => (
               <li key={photo.id} className={notification.media.length === 1 ? "sm:col-span-2" : ""}>
-                <MediaThumb
-                  mediaId={photo.id}
-                  caption={photo.caption}
-                  // Full size here, unlike the feed: this is the screen someone
-                  // opened to look at the picture.
-                  className="aspect-auto max-h-[70vh] w-full object-contain"
-                />
+                <button
+                  type="button"
+                  aria-label={`Зургийг томоор харах (${index + 1} / ${notification.media.length})`}
+                  onClick={() => setViewing(index)}
+                  className="block w-full"
+                >
+                  <MediaThumb
+                    mediaId={photo.id}
+                    caption={photo.caption}
+                    // Full size here, unlike the feed: this is the screen someone
+                    // opened to look at the picture.
+                    className="aspect-auto max-h-[70vh] w-full object-contain"
+                  />
+                </button>
                 {photo.caption ? (
                   <p className="mt-1 text-caption text-muted">{photo.caption}</p>
                 ) : null}
               </li>
             ))}
           </ul>
+        ) : null}
+
+        {viewing !== null ? (
+          <PostPhotoViewer
+            photos={notification.media}
+            index={viewing}
+            onIndex={setViewing}
+            onClose={() => setViewing(null)}
+          />
         ) : null}
 
         {/*

@@ -40,7 +40,7 @@ import { CreateSurveyWizard } from "@/components/survey/create-survey-wizard";
 import { canManageSurvey, staffSurveysSchema, type StaffSurvey } from "@/lib/survey-access";
 import { TableShell, Td, Th } from "@/components/ui/table";
 import { SURVEY_CATEGORY_META } from "@/lib/survey-meta";
-import { formatDate, shortName } from "@/lib/format";
+import { formatDate, formatDayMonth, shortName } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const groupsSchema = paginated(groupListItemSchema);
@@ -237,11 +237,15 @@ function TeacherSurveys() {
               so a draft would otherwise look like a published survey.
             */}
             {visible.length > 0 ? (
-              <TableShell caption="Багшийн судалгаа" minWidth="min-w-[960px]">
+              /*
+                ★ No Бүлэг column — 2026-10-07, the client: a teacher surveys
+                their own group. The title gets the room; Судалгаа авсан and
+                Огноо are squeezed to a name and a day.
+              */
+              <TableShell caption="Багшийн судалгаа" minWidth="min-w-[760px]">
                 <thead>
                   <tr>
-                    <Th>Гарчиг</Th>
-                    <Th>Бүлэг</Th>
+                    <Th className="min-w-[16rem]">Гарчиг</Th>
                     <Th>Ангилал</Th>
                     <Th>Судалгаа авсан</Th>
                     <Th>Төлөв</Th>
@@ -330,10 +334,9 @@ function TeacherSurveyRow({ survey }: { survey: StaffSurvey }) {
           {survey.title}
         </Link>
       </Td>
-      <Td className="text-muted">{survey.group?.name ?? (survey.groupId ? "—" : "Бүх бүлэг")}</Td>
       <Td className="text-muted">{SURVEY_CATEGORY_META[survey.category].label}</Td>
-      <Td className="whitespace-nowrap text-muted">
-        {survey.author ? `Бүлгийн багш · ${shortName(survey.author)}` : "Бүлгийн багш"}
+      <Td className="whitespace-nowrap text-caption text-muted">
+        {survey.author ? shortName(survey.author) : "Бүлгийн багш"}
       </Td>
       <Td>
         <span
@@ -351,8 +354,10 @@ function TeacherSurveyRow({ survey }: { survey: StaffSurvey }) {
       <Td numeric className="font-medium text-ink">
         {survey.status === "DRAFT" ? "—" : `${percent}%`}
       </Td>
-      <Td numeric className="text-muted">
-        {formatDate(survey.closedAt ?? survey.publishedAt ?? survey.createdAt)}
+      <Td numeric className="whitespace-nowrap text-caption text-muted">
+        <span title={formatDate(survey.closedAt ?? survey.publishedAt ?? survey.createdAt)}>
+          {formatDayMonth(survey.closedAt ?? survey.publishedAt ?? survey.createdAt)}
+        </span>
       </Td>
       <Td className="w-12 text-right">
         <RowMenu
