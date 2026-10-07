@@ -142,7 +142,7 @@ describe("recording an observation", () => {
    * this checkbox ever shipped pre-checked, every private note would be
    * published to families by default — and nobody would notice until one was.
    */
-  it("leaves 'эцэг эх харах боломжтой' unchecked by default", async () => {
+  it("leaves «Эцэг эх харах» unchecked by default", async () => {
     setParams({ childId: CHILD_ID });
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
@@ -152,7 +152,7 @@ describe("recording an observation", () => {
 
     renderWithProviders(<NewObservationPage />);
 
-    const checkbox = await screen.findByLabelText(/Эцэг эх харах боломжтой/);
+    const checkbox = await screen.findByLabelText("Эцэг эх харах");
     expect(checkbox).not.toBeChecked();
   });
 
@@ -191,7 +191,7 @@ describe("recording an observation", () => {
       would be missing a required field and the API would 400.
     */
     await user.type(await screen.findByLabelText("Тэмдэглэл"), "Тоглоомын талбайд");
-    await user.click(screen.getByLabelText(/Эцэг эх харах боломжтой/));
+    await user.click(screen.getByLabelText("Эцэг эх харах"));
     await user.click(screen.getByRole("button", { name: "Хадгалах" }));
 
     /*
@@ -244,7 +244,7 @@ describe("recording an observation", () => {
     await screen.findByLabelText("Тэмдэглэл");
 
     // The teacher's controls are simply not rendered.
-    expect(screen.queryByLabelText(/Эцэг эх харах боломжтой/)).toBeNull();
+    expect(screen.queryByLabelText(/Эцэг эх харах/)).toBeNull();
     expect(screen.queryByLabelText("СҮД код")).toBeNull();
 
     await user.type(screen.getByLabelText("Тэмдэглэл"), "Гэртээ ном уншлаа");

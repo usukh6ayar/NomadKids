@@ -2,7 +2,6 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { Users } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
@@ -20,19 +19,18 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { BackButton } from "@/components/ui/back-button";
-import { ChildAvatar } from "@/components/media/media-image";
 import { ChildPickerDialog } from "@/components/child/child-picker-dialog";
 import { DAILY_ACTIVITIES } from "@/components/assessment/group-coverage";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import { PORTFOLIO } from "@/lib/vocabulary";
 import { Card } from "@/components/ui/card";
 import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ObservationPhotoPicker } from "@/components/observations/observation-photo-picker";
 import { uploadChildPhotos } from "@/components/media/photo-upload";
-import { ageInYears, formatAge, fullName, todayLocal, capitalize } from "@/lib/format";
+import { ageInYears, shortName, todayLocal } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { KIND_LOOK, PICK, PICK_FIELD } from "@/lib/observation-look";
 import { readDraft, useDraftAutosave } from "@/lib/use-form-draft";
 
 const typesSchema = z.array(observationTypeSchema);
@@ -254,6 +252,7 @@ function NewObservationForm() {
     requestedActivityName ?? draft?.activityName ?? "",
   );
   const typeCode = (types.data ?? []).find((row) => row.id === typeId)?.code;
+  const look = typeCode ? KIND_LOOK[typeCode] : undefined;
 
   useEffect(() => {
     if (!requestedActivityName) return;
@@ -360,7 +359,8 @@ function NewObservationForm() {
 
   const [situation, setSituation] = useState(draft?.situation ?? "");
   const [visibleToParents, setVisibleToParents] = useState(draft?.visibleToParents ?? false);
-  const [includeInReport, setIncludeInReport] = useState(draft?.includeInReport ?? true);
+  // No «PDF-д оруулах» control since 2026-10-07: every note goes in.
+  const includeInReport = true;
 
   /*
    * ★ Only the text is persisted, plus the two visibility choices.
@@ -472,7 +472,6 @@ function NewObservationForm() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
-  const childGroup = capitalize(child.data?.enrollments?.find((row) => row.group)?.group?.name);
   /*
     ★ The age fills the level in, once, and only while the teacher has not.
 
@@ -604,7 +603,12 @@ function NewObservationForm() {
       database form. Below that breakpoint nothing changes.
     */
     <div className="page-band mx-auto w-full max-w-3xl py-2">
-      <header className="flex items-center gap-3">
+      {/*
+        ★ A <div>, not a <header> — 2026-10-07, the client: the title sits on
+        the page with nothing behind it, and the teacher theme paints every
+        <header> white.
+      */}
+      <div className="flex items-center gap-3">
         {/*
           ★ A bare Буцах, not "Ганболдын Батбаяр луу буцах" — 2026-09-11, at the
           client's instruction.
@@ -620,365 +624,311 @@ function NewObservationForm() {
             {fromProgress
               ? "Шинэ бүтээл нэмэх"
               : isStaff
-                ? "Ажиглалт шинээр бичих"
+                ? (look?.title ?? "Ажиглалт шинээр бичих")
                 : "Гэрийн мөч хуваалцах"}
           </h1>
           {!isStaff ? (
             <p className="mt-1.5 text-body text-muted">Таны бичсэнийг багш хянаад хавтаст нэмнэ.</p>
           ) : null}
         </div>
-      </header>
+      </div>
 
       {/*
-        ★ The child, named with their age and group and a way to change them —
-        the client's 2026-09-11 design.
-
-        The link above the title already carries the name, but it is a way
-        *back*; this is a statement of who the note is about, which is the one
-        thing a teacher must not get wrong on this screen. Солих is beside it
-        because writing notes is done down a roster, and the commonest next
-        action after finishing one child is the same form for the next.
+        ★ One white box from the child to Хадгалах — 2026-10-07, the client:
+        "арын хэсэг бүхэлдээ нэг цагаан хайрцаг". The pieces inside carry no
+        panels of their own.
       */}
-      {isStaff && child.data ? (
-        <Card pad="compact" className="flex items-center gap-3">
-          <ChildAvatar child={child.data} size={44} />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-body font-semibold leading-snug text-ink">
-              {fullName(child.data)}
-            </p>
-            <p className="truncate text-caption text-muted">
-              {formatAge(child.data.dateOfBirth)}
-              {childGroup ? ` · ${childGroup}` : ""}
-            </p>
-          </div>
-          <Button type="button" size="sm" variant="secondary" onClick={() => setSwitching(true)}>
-            <Users size={15} aria-hidden="true" />
-            Солих
-          </Button>
-        </Card>
-      ) : null}
-
-      {switching ? (
-        <ChildPickerDialog
-          layout="table"
-          selectedId={childId}
-          onClose={() => setSwitching(false)}
-          onSelect={(next) => {
-            /*
-              The draft belongs to the child it was written about — switching
-              carries the type across and nothing else, because a sentence
-              about one child is not a sentence about another.
-            */
-            if (next !== childId) {
-              router.push(`/children/${next}/observations/new?typeId=${typeId}`);
-            }
-          }}
-        />
-      ) : null}
-
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (save.isPending) return;
-          if (fromProgress && photos.length === 0) {
-            setPhotoError("Бүтээлийн зураг нэмнэ үү.");
-            return;
-          }
-          save.mutate();
-        }}
-        className="flex flex-col gap-3"
-        noValidate
-      >
-        <FormError
-          message={
-            save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
-          }
-        />
-
+      <Card pad="compact" className="flex flex-col gap-3">
         {/*
-          ★ The restore is announced, not silent.
+          ★ The child, named with their age and group and a way to change them —
+          the client's 2026-09-11 design.
 
-          Text appearing in a form nobody remembers filling is indistinguishable
-          from the wrong child's record having opened — the one thing this
-          screen must never look like. `role="status"` so it is read out rather
-          than only seen, and it names what happened rather than congratulating
-          anyone.
+          The link above the title already carries the name, but it is a way
+          *back*; this is a statement of who the note is about, which is the one
+          thing a teacher must not get wrong on this screen. Солих is beside it
+          because writing notes is done down a roster, and the commonest next
+          action after finishing one child is the same form for the next.
         */}
-        {draft ? (
-          <p role="status" className="text-body text-muted">
-            Хадгалаагүй ноорог сэргээгдлээ.
-          </p>
+        {isStaff && child.data ? (
+          /* «Б.Ану», and «Хүүхэд солих» in the top-right corner — 2026-10-07. */
+          <div className="flex items-center justify-between gap-2">
+            <p className="min-w-0 truncate text-lead font-semibold text-ink">
+              {shortName(child.data)}
+            </p>
+            <button
+              type="button"
+              onClick={() => setSwitching(true)}
+              className="inline-flex min-h-11 shrink-0 items-center px-1 text-caption font-medium text-primary hover:underline"
+            >
+              Хүүхэд солих
+            </button>
+          </div>
         ) : null}
 
-        <Card pad="compact" className="flex flex-col gap-3">
-          <div className={fromProgress ? "" : "grid grid-cols-2 gap-2.5"}>
-            <Field label="Огноо" error={errors.observedOn} required>
-              {({ id, describedBy, invalid }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  type="date"
-                  value={observedOn}
-                  max={todayLocal()}
-                  onChange={(e) => setObservedOn(e.target.value)}
-                  required
-                />
-              )}
-            </Field>
+        {switching ? (
+          <ChildPickerDialog
+            layout="table"
+            selectedId={childId}
+            onClose={() => setSwitching(false)}
+            onSelect={(next) => {
+              /*
+                The draft belongs to the child it was written about — switching
+                carries the type across and nothing else, because a sentence
+                about one child is not a sentence about another.
+              */
+              if (next !== childId) {
+                router.push(`/children/${next}/observations/new?typeId=${typeId}`);
+              }
+            }}
+          />
+        ) : null}
 
-            {/*
-              ★ Optional, and left empty by default — the client's "Цаг".
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (save.isPending) return;
+            if (fromProgress && photos.length === 0) {
+              setPhotoError("Бүтээлийн зураг нэмнэ үү.");
+              return;
+            }
+            save.mutate();
+          }}
+          className="flex flex-col gap-3"
+          noValidate
+        >
+          <FormError
+            message={
+              save.isError && Object.keys(errors).length === 0 ? errorMessage(save.error) : null
+            }
+          />
 
-              A note filed without one happened that day and no more precisely,
-              which is the truth for most of them. Prefilling the current time
-              would record when the note was typed up rather than when the
-              moment happened, and a teacher writing up yesterday's morning
-              would have to notice and correct it.
-            */}
-            {isStaff && !fromProgress ? (
-              <Field label="Цаг" error={errors.observedTime}>
+          <div className="flex flex-col gap-2">
+            <div className={fromProgress ? "" : "grid grid-cols-2 gap-2"}>
+              <Field label="Огноо" error={errors.observedOn} required className={PICK_FIELD}>
                 {({ id, describedBy, invalid }) => (
                   <Input
                     id={id}
                     aria-describedby={describedBy}
                     invalid={invalid}
-                    type="time"
-                    value={observedTime}
-                    onChange={(e) => setObservedTime(e.target.value)}
+                    className={PICK}
+                    type="date"
+                    value={observedOn}
+                    max={todayLocal()}
+                    onChange={(e) => setObservedOn(e.target.value)}
+                    required
                   />
                 )}
               </Field>
-            ) : null}
-          </div>
-
-          {isStaff ? (
-            <div className={fromProgress ? "" : "grid grid-cols-2 gap-2.5"}>
-              {/*
-                ★ A list, not a free-text box — 2026-09-11, the client's design.
-
-                `Observation.activityName` is a `String?` and stays one: the
-                thirteen stages of the day are what a teacher picks from, and
-                typing them produced "Өглөөний цай", "өглөөний цай" and
-                "Өглөөний цай " as three activities on the coverage screen. The
-                same reference list `group-coverage.tsx` groups by, so the
-                breakdown and the form cannot disagree about what an activity
-                is called.
-              */}
-              <Field
-                label={typeCode === "artwork" ? "Төрөл" : "Үйл ажиллагааны төрөл"}
-                error={errors.activityName}
-                required={typeCode === "artwork"}
-              >
-                {({ id, describedBy, invalid }) => (
-                  <Select
-                    id={id}
-                    aria-describedby={describedBy}
-                    invalid={invalid}
-                    value={activityName}
-                    onChange={(e) => setActivityName(e.target.value)}
-                  >
-                    <option value="">Сонгоно уу</option>
-                    {(typeCode === "artwork" ? ARTWORK_TYPES : DAILY_ACTIVITIES).map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </Field>
 
               {/*
-                ★ The development strand, which this form never asked for.
+                ★ Optional, and left empty by default — the client's "Цаг".
 
-                `domainIds` has been on `createObservationSchema` since it was
-                written and only the review screen ever set it — so every note
-                a teacher filed arrived untagged, and "Сургалтын чиглэлийн
-                хамралт" counted almost nothing. One strand per note rather
-                than the array's ten: the client's design has one select, and a
-                note about one moment is about one thing.
+                A note filed without one happened that day and no more precisely,
+                which is the truth for most of them. Prefilling the current time
+                would record when the note was typed up rather than when the
+                moment happened, and a teacher writing up yesterday's morning
+                would have to notice and correct it.
               */}
-              {!fromProgress ? (
-                <Field label="Сургалтын чиглэл" error={errors.domainIds}>
+              {isStaff && !fromProgress ? (
+                <Field label="Цаг" error={errors.observedTime} className={PICK_FIELD}>
+                  {({ id, describedBy, invalid }) => (
+                    <Input
+                      id={id}
+                      aria-describedby={describedBy}
+                      invalid={invalid}
+                      className={PICK}
+                      type="time"
+                      value={observedTime}
+                      onChange={(e) => setObservedTime(e.target.value)}
+                    />
+                  )}
+                </Field>
+              ) : null}
+            </div>
+
+            {isStaff ? (
+              <div className={fromProgress ? "" : "grid grid-cols-2 gap-2"}>
+                {/*
+                  ★ A list, not a free-text box — 2026-09-11, the client's design.
+
+                  `Observation.activityName` is a `String?` and stays one: the
+                  thirteen stages of the day are what a teacher picks from, and
+                  typing them produced "Өглөөний цай", "өглөөний цай" and
+                  "Өглөөний цай " as three activities on the coverage screen. The
+                  same reference list `group-coverage.tsx` groups by, so the
+                  breakdown and the form cannot disagree about what an activity
+                  is called.
+                */}
+                <Field
+                  label={typeCode === "artwork" ? "Төрөл" : "Үйл ажиллагааны төрөл"}
+                  error={errors.activityName}
+                  required={typeCode === "artwork"}
+                  className={PICK_FIELD}
+                >
                   {({ id, describedBy, invalid }) => (
                     <Select
                       id={id}
                       aria-describedby={describedBy}
                       invalid={invalid}
-                      value={domainId}
-                      onChange={(e) => {
-                        setDomainId(e.target.value);
-                        // The codes belong to the strand, so changing it leaves
-                        // the old one naming an indicator from somewhere else.
-                        setIndicatorId("");
-                      }}
+                      className={PICK}
+                      value={activityName}
+                      onChange={(e) => setActivityName(e.target.value)}
                     >
                       <option value="">Сонгоно уу</option>
-                      {strandOptions.map((domain) => (
-                        <option key={domain.id} value={domain.id}>
-                          {domain.name}
+                      {(typeCode === "artwork" ? ARTWORK_TYPES : DAILY_ACTIVITIES).map((name) => (
+                        <option key={name} value={name}>
+                          {name}
                         </option>
                       ))}
                     </Select>
                   )}
                 </Field>
-              ) : null}
-            </div>
-          ) : null}
 
-          {/*
-            ★ Four cards, not a select — the client's 2026-09-11 design.
+                {/*
+                  ★ The development strand, which this form never asked for.
 
-            The four levels are not interchangeable options: they are a scale,
-            and choosing one means judging where a child sits on it. A select
-            shows one at a time and hides the thing being judged against; four
-            cards side by side put the whole scale in front of the teacher,
-            which is what makes the choice a judgement rather than a guess.
-
-            ★★ Between the strand and the code, and always drawn.
-
-            The client's order, revised twice on 2026-09-11: the level goes
-            after Сургалтын чиглэл and before СҮД код ("түвшин сургалтын
-            чиглэлийн дараа байна"). It arrives already chosen from the child's
-            age (2→I, 3→II, 4→III, 5→IV) and stops suggesting the moment a
-            teacher touches it. Sitting above the code is what lets each code
-            read out what it means at that level, and be dropped when it says
-            nothing there at all.
-          */}
-          {isStaff && !fromProgress ? (
-            <fieldset>
-              <legend className="mb-1.5 text-body font-medium text-ink">Түвшин</legend>
-
-              <div role="radiogroup" aria-label="Түвшин" className="grid grid-cols-4 gap-1.5">
-                {LEVELS.map((level) => {
-                  const chosen = String(level) === indicatorLevel;
-
-                  return (
-                    <button
-                      key={level}
-                      type="button"
-                      role="radio"
-                      aria-checked={chosen}
-                      onClick={() => {
-                        setIndicatorLevel(String(level));
-                        setLevelTouched(true);
-                      }}
-                      className={cn(
-                        "grid min-h-[44px] place-items-center rounded-control border text-body font-semibold transition-colors",
-                        chosen
-                          ? "border-primary bg-primary-soft text-primary"
-                          : "border-border bg-surface text-muted hover:bg-canvas",
-                      )}
-                    >
-                      {LEVEL_NAME[level]} түвшин
-                    </button>
-                  );
-                })}
+                  `domainIds` has been on `createObservationSchema` since it was
+                  written and only the review screen ever set it — so every note
+                  a teacher filed arrived untagged, and "Сургалтын чиглэлийн
+                  хамралт" counted almost nothing. One strand per note rather
+                  than the array's ten: the client's design has one select, and a
+                  note about one moment is about one thing.
+                */}
+                {!fromProgress ? (
+                  <Field label="Сургалтын чиглэл" error={errors.domainIds} className={PICK_FIELD}>
+                    {({ id, describedBy, invalid }) => (
+                      <Select
+                        id={id}
+                        aria-describedby={describedBy}
+                        invalid={invalid}
+                        className={PICK}
+                        value={domainId}
+                        onChange={(e) => {
+                          setDomainId(e.target.value);
+                          // The codes belong to the strand, so changing it leaves
+                          // the old one naming an indicator from somewhere else.
+                          setIndicatorId("");
+                        }}
+                      >
+                        <option value="">Сонгоно уу</option>
+                        {strandOptions.map((domain) => (
+                          <option key={domain.id} value={domain.id}>
+                            {domain.name}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </Field>
+                ) : null}
               </div>
-            </fieldset>
-          ) : null}
+            ) : null}
 
-          {/*
-            ★ СҮД — the curriculum indicator this note evidences.
+            {/*
+              ★ Four cards, not a select — the client's 2026-09-11 design.
 
-            Drawn only once a strand is chosen, because the codes belong to the
-            strand: an empty picker above an unanswered question is a control
-            that asks for something the screen has not made possible yet.
+              The four levels are not interchangeable options: they are a scale,
+              and choosing one means judging where a child sits on it. A select
+              shows one at a time and hides the thing being judged against; four
+              cards side by side put the whole scale in front of the teacher,
+              which is what makes the choice a judgement rather than a guess.
 
-            ★★ Each option carries the code *and* what it says, in full —
-            2026-09-11, "сүд кодуудын арын бичвэр текст бүрэн бичээд оруулаад
-            өг".
+              ★★ Between the strand and the code, and always drawn.
 
-            The codes are the client's own notation and nobody memorises
-            seventy-one of them, so a list of bare codes is a control a teacher
-            cannot answer. The descriptor was a tinted paragraph *below* the
-            select, which meant reading it only after guessing — the text has to
-            be on the options themselves to be any use in choosing between them.
-            Which text depends on the level, chosen just above.
-          */}
-          {isStaff && domainId && !fromProgress ? (
-            <Field label="СҮД код" error={errors.indicatorId}>
-              {({ id, describedBy, invalid }) => (
-                <Select
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  // The trigger truncates what the popup shows in full: an
-                  // option is a paragraph, and a 48px control cannot hold one
-                  // without pushing the chevron off the row.
-                  className="[&>span:first-child]:min-w-0 [&>span:first-child]:truncate [&>span:first-child]:text-left"
-                  value={indicatorId}
-                  onChange={(e) => setIndicatorId(e.target.value)}
-                  disabled={indicators.isLoading}
+              The client's order, revised twice on 2026-09-11: the level goes
+              after Сургалтын чиглэл and before СҮД код ("түвшин сургалтын
+              чиглэлийн дараа байна"). It arrives already chosen from the child's
+              age (2→I, 3→II, 4→III, 5→IV) and stops suggesting the moment a
+              teacher touches it. Sitting above the code is what lets each code
+              read out what it means at that level, and be dropped when it says
+              nothing there at all.
+            */}
+            {isStaff && !fromProgress ? (
+              <fieldset>
+                <legend className="mb-1 text-caption font-medium text-muted">Түвшин</legend>
+
+                <div
+                  role="radiogroup"
+                  aria-label="Түвшин"
+                  className="grid grid-cols-4 gap-0.5 rounded-pill bg-canvas p-0.5"
                 >
-                  <option value="">Сонгоно уу</option>
-                  {levelCodes.map((row) => (
-                    <option key={row.id} value={row.id}>
-                      {`${row.code} — ${row.text}`}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
-          ) : null}
-        </Card>
+                  {LEVELS.map((level) => {
+                    const chosen = String(level) === indicatorLevel;
 
-        {!isStaff || fromProgress ? (
-          <ObservationPhotoPicker
-            files={photos}
-            onChange={(next) => {
-              setPhotos(next);
-              if (next.length > 0) setPhotoError("");
-            }}
-            disabled={save.isPending}
-          />
-        ) : null}
+                    return (
+                      <button
+                        key={level}
+                        type="button"
+                        role="radio"
+                        aria-checked={chosen}
+                        onClick={() => {
+                          setIndicatorLevel(String(level));
+                          setLevelTouched(true);
+                        }}
+                        aria-label={`${LEVEL_NAME[level]} түвшин`}
+                        className={cn(
+                          "grid min-h-10 place-items-center rounded-pill text-compact font-semibold transition-colors",
+                          chosen
+                            ? cn("shadow-sm", look?.fill ?? "bg-primary text-primary-ink")
+                            : "text-muted hover:text-ink",
+                        )}
+                      >
+                        {LEVEL_NAME[level]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            ) : null}
 
-        {/*
-          ★ One box called Тэмдэглэл — 2026-09-11, at the client's request.
+            {/*
+              ★ СҮД — the curriculum indicator this note evidences.
 
-          This was a "Юу болсон бэ?" section holding three textareas —
-          Ажиглагдсан байдал, Хүүхэд юу хийсэн бэ?, Хүүхдийн хэлсэн үг — and
-          below it a "Багшийн дүгнэлт" section holding two more, Тайлбар and
-          Дараагийн алхам. Five boxes and two headings to file one moment, and
-          the client's answer was to delete all of it and keep the writing:
-          "энэ 2 арилаад зүгээр тэмдэглэл болго".
+              Drawn only once a strand is chosen, because the codes belong to the
+              strand: an empty picker above an unanswered question is a control
+              that asks for something the screen has not made possible yet.
 
-          `situation` is what stays, so every note already written keeps its
-          text where the list and the PDF already look for it. The other four
-          columns are untouched and still render wherever a note is read — the
-          form stops asking for them, it does not erase them.
-        */}
-        <Card pad="compact">
-          <Field
-            label={fromProgress ? "Тайлбар" : "Тэмдэглэл"}
-            error={errors.situation}
-            hint={`${situation.length}/1000`}
-          >
-            {({ id, describedBy, invalid }) => (
-              <Textarea
-                id={id}
-                aria-describedby={describedBy}
-                invalid={invalid}
-                value={situation}
-                onChange={(e) => setSituation(e.target.value)}
-                rows={4}
-              />
-            )}
-          </Field>
-        </Card>
+              ★★ Each option carries the code *and* what it says, in full —
+              2026-09-11, "сүд кодуудын арын бичвэр текст бүрэн бичээд оруулаад
+              өг".
 
-        {/*
-          ★ Two checkboxes in one compact card — 2026-09-11, "хэн харахыг зай
-          бага эзлэхээр болго".
+              The codes are the client's own notation and nobody memorises
+              seventy-one of them, so a list of bare codes is a control a teacher
+              cannot answer. The descriptor was a tinted paragraph *below* the
+              select, which meant reading it only after guessing — the text has to
+              be on the options themselves to be any use in choosing between them.
+              Which text depends on the level, chosen just above.
+            */}
+            {isStaff && domainId && !fromProgress ? (
+              <Field label="СҮД код" error={errors.indicatorId} className={PICK_FIELD}>
+                {({ id, describedBy, invalid }) => (
+                  <Select
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    // The trigger truncates what the popup shows in full: an
+                    // option is a paragraph, and a small control cannot hold one
+                    // without pushing the chevron off the row.
+                    className={cn(
+                      PICK,
+                      "[&>span:first-child]:min-w-0 [&>span:first-child]:truncate [&>span:first-child]:text-left",
+                    )}
+                    value={indicatorId}
+                    onChange={(e) => setIndicatorId(e.target.value)}
+                    disabled={indicators.isLoading}
+                  >
+                    <option value="">Сонгоно уу</option>
+                    {levelCodes.map((row) => (
+                      <option key={row.id} value={row.id}>
+                        {`${row.code} — ${row.text}`}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            ) : null}
+          </div>
 
-          The "Хэн харах вэ?" heading and the second checkbox's description were
-          three lines of chrome around two taps, at the bottom of a phone screen
-          the teacher is trying to get to the end of. The labels already say
-          what each one does.
-        */}
-        {isStaff && !fromProgress ? (
-          <Card className="grid grid-cols-3 gap-2 px-3 py-3">
+          {!isStaff || fromProgress ? (
             <ObservationPhotoPicker
               files={photos}
               onChange={(next) => {
@@ -986,56 +936,105 @@ function NewObservationForm() {
                 if (next.length > 0) setPhotoError("");
               }}
               disabled={save.isPending}
-              compact
             />
-            {/*
-              ★ Unchecked by default, matching the API's own default. A
-              teacher's working note is private until they deliberately share
-              it; a checkbox that starts on would publish notes nobody meant to
-              publish.
-            */}
-            <Checkbox
-              label="Эцэг эх харах боломжтой"
-              className="min-w-0 flex-col items-center justify-center gap-1 px-1 text-center [&>span]:text-caption"
-              checked={visibleToParents}
-              onChange={(e) => setVisibleToParents(e.target.checked)}
-            />
-            <Checkbox
-              label={`${PORTFOLIO}ны PDF-д оруулах`}
-              className="min-w-0 flex-col items-center justify-center gap-1 px-1 text-center [&>span]:text-caption"
-              checked={includeInReport}
-              onChange={(e) => setIncludeInReport(e.target.checked)}
-            />
-          </Card>
-        ) : null}
+          ) : null}
 
-        {photoError ? (
-          <p role="alert" className="text-caption text-danger">
-            {photoError}
-          </p>
-        ) : null}
+          {/*
+            ★ One box called Тэмдэглэл — 2026-09-11, at the client's request.
 
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" size="lg" disabled={save.isPending}>
-              {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
-            </Button>
-            <Button asChild variant="secondary" size="lg">
-              <Link href={listHref}>Цуцлах</Link>
-            </Button>
+            This was a "Юу болсон бэ?" section holding three textareas —
+            Ажиглагдсан байдал, Хүүхэд юу хийсэн бэ?, Хүүхдийн хэлсэн үг — and
+            below it a "Багшийн дүгнэлт" section holding two more, Тайлбар and
+            Дараагийн алхам. Five boxes and two headings to file one moment, and
+            the client's answer was to delete all of it and keep the writing:
+            "энэ 2 арилаад зүгээр тэмдэглэл болго".
+
+            `situation` is what stays, so every note already written keeps its
+            text where the list and the PDF already look for it. The other four
+            columns are untouched and still render wherever a note is read — the
+            form stops asking for them, it does not erase them.
+          */}
+          <div>
+            <Field
+              label={fromProgress ? "Тайлбар" : "Тэмдэглэл"}
+              error={errors.situation}
+              hint={`${situation.length}/1000`}
+            >
+              {({ id, describedBy, invalid }) => (
+                <Textarea
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  value={situation}
+                  onChange={(e) => setSituation(e.target.value)}
+                  rows={2}
+                  // Tighter than the field's default — 2026-10-07, the client.
+                  className="min-h-[60px] py-2"
+                />
+              )}
+            </Field>
           </div>
 
           {/*
-            ★ The autosave says so, quietly and permanently.
+            ★ Two checkboxes in one compact card — 2026-09-11, "хэн харахыг зай
+            бага эзлэхээр болго".
 
-            "Цуцлах" is a link away from a page holding unsaved paragraphs, and
-            the guarantee that makes pressing it safe is invisible otherwise.
-            One faint line beside the button is what turns the draft from a
-            mechanism into something the teacher can rely on.
+            The "Хэн харах вэ?" heading and the second checkbox's description were
+            three lines of chrome around two taps, at the bottom of a phone screen
+            the teacher is trying to get to the end of. The labels already say
+            what each one does.
           */}
-          <p className="text-caption text-faint">Бичсэн зүйл ноорогт автоматаар хадгалагдана.</p>
-        </div>
-      </form>
+          {isStaff && !fromProgress ? (
+            <div className="grid grid-cols-2 gap-2">
+              <ObservationPhotoPicker
+                files={photos}
+                onChange={(next) => {
+                  setPhotos(next);
+                  if (next.length > 0) setPhotoError("");
+                }}
+                disabled={save.isPending}
+                compact
+              />
+              {/*
+                ★ Unchecked by default, matching the API's own default. A
+                teacher's working note is private until they deliberately share
+                it; a checkbox that starts on would publish notes nobody meant to
+                publish.
+              */}
+              {/* «Эцэг эх харах», quiet — 2026-10-07, the client. */}
+              <Checkbox
+                label="Эцэг эх харах"
+                className="min-w-0 flex-col items-center justify-center gap-1 px-1 text-center [&>span]:text-caption [&_span]:font-normal [&_span]:text-muted"
+                checked={visibleToParents}
+                onChange={(e) => setVisibleToParents(e.target.checked)}
+              />
+            </div>
+          ) : null}
+
+          {photoError ? (
+            <p role="alert" className="text-caption text-danger">
+              {photoError}
+            </p>
+          ) : null}
+
+          <div className="flex flex-col gap-2">
+            {/* Small, on the right — 2026-10-07, the client. */}
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="submit"
+                size="sm"
+                disabled={save.isPending}
+                className={isStaff ? look?.fill : undefined}
+              >
+                {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+              </Button>
+              <Button asChild variant="secondary" size="sm">
+                <Link href={listHref}>Цуцлах</Link>
+              </Button>
+            </div>
+          </div>
+        </form>
+      </Card>
     </div>
   );
 }

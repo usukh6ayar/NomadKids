@@ -191,28 +191,27 @@ describe("Шинэ ажиглалт — ноорог", () => {
     },
   );
 
-  it(
-    "says the draft was restored rather than filling the form silently",
-    { timeout: TIMEOUT },
-    async () => {
-      const user = userEvent.setup();
-      stubApi(routes());
+  it("restores the draft quietly — no notice — 2026-10-07", { timeout: TIMEOUT }, async () => {
+    const user = userEvent.setup();
+    stubApi(routes());
 
-      const first = renderWithProviders(<NewObservationPage />);
-      await user.type(await screen.findByLabelText("Тэмдэглэл"), "Бөмбөг өнхрүүлэв");
-      await waitFor(() =>
-        expect(
-          window.localStorage.getItem(`nomadkids:observation-draft:staff:${CHILD}`),
-        ).toBeTruthy(),
-      );
-      first.unmount();
+    const first = renderWithProviders(<NewObservationPage />);
+    await user.type(await screen.findByLabelText("Тэмдэглэл"), "Бөмбөг өнхрүүлэв");
+    await waitFor(() =>
+      expect(
+        window.localStorage.getItem(`nomadkids:observation-draft:staff:${CHILD}`),
+      ).toBeTruthy(),
+    );
+    first.unmount();
 
-      stubApi(routes());
-      renderWithProviders(<NewObservationPage />);
+    stubApi(routes());
+    renderWithProviders(<NewObservationPage />);
 
-      expect(await screen.findByText("Хадгалаагүй ноорог сэргээгдлээ.")).toBeInTheDocument();
-    },
-  );
+    // The client asked for the «Хадгалаагүй ноорог сэргээгдлээ.» line to go;
+    // the text coming back is the whole of the restore now.
+    expect(await screen.findByLabelText("Тэмдэглэл")).toHaveValue("Бөмбөг өнхрүүлэв");
+    expect(screen.queryByText("Хадгалаагүй ноорог сэргээгдлээ.")).not.toBeInTheDocument();
+  });
 
   it("does not announce a restore on a form opened fresh", async () => {
     stubApi(routes());
@@ -640,7 +639,11 @@ describe("Шинэ ажиглалт — the form's shape", () => {
     expect(dateGrid).toHaveClass("grid-cols-2");
     const activityGrid = screen.getByLabelText("Үйл ажиллагааны төрөл").closest("div.grid");
     expect(activityGrid).toHaveClass("grid-cols-2");
-    expect(screen.getByText("Зураг").closest("div.grid")).toHaveClass("grid-cols-3");
+    // Зураг and «Эцэг эх харах» — «PDF-д оруулах» and the autosave line are
+    // gone, 2026-10-07.
+    expect(screen.getByText("Зураг").closest("div.grid")).toHaveClass("grid-cols-2");
+    expect(screen.queryByLabelText(/PDF-д оруулах/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ноорогт автоматаар хадгалагдана/)).not.toBeInTheDocument();
   });
 
   it("names the child the note is about, with a way to change them", async () => {
@@ -648,11 +651,11 @@ describe("Шинэ ажиглалт — the form's shape", () => {
     stubNewObservation();
     renderWithProviders(<NewObservationPage />);
 
-    // The name is on the back-link too; the card is the statement of who the
-    // note is about, and it carries the age and group the link does not.
-    expect(await screen.findByText("5 нас")).toBeInTheDocument();
+    // «Б.Сараа» and Солих beside it, no age or group — 2026-10-07.
+    expect(await screen.findByText("Б.Сараа")).toBeInTheDocument();
+    expect(screen.queryByText("5 нас")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /Солих/ }));
+    await user.click(screen.getByRole("button", { name: "Хүүхэд солих" }));
     expect(await screen.findByRole("dialog", { name: "Хүүхдээ сонгох" })).toBeInTheDocument();
   });
 
@@ -710,7 +713,9 @@ describe("Шинэ ажиглалт — the form's shape", () => {
     await screen.findByRole("radiogroup", { name: "Түвшин" });
     const cards = within(levelCards()).getAllByRole("radio");
     expect(cards).toHaveLength(4);
-    expect(cards.map((card) => card.textContent)).toEqual([
+    // The numeral on the button, the full name for a screen reader — 2026-10-07.
+    expect(cards.map((card) => card.textContent)).toEqual(["I", "II", "III", "IV"]);
+    expect(cards.map((card) => card.getAttribute("aria-label"))).toEqual([
       "I түвшин",
       "II түвшин",
       "III түвшин",
@@ -958,7 +963,8 @@ describe("Шинэ ажиглалт — зураг", () => {
     renderWithProviders(<NewObservationPage />);
 
     await user.upload(await screen.findByLabelText("Нэмэх"), [photo("a.png"), photo("b.png")]);
-    expect(await screen.findByText("2/5")).toBeInTheDocument();
+    // No «2/5» on the form since 2026-10-07 — count the picked thumbnails.
+    expect(await screen.findAllByRole("button", { name: / — хасах$/ })).toHaveLength(2);
 
     await user.click(screen.getByRole("button", { name: "Хадгалах" }));
 
@@ -973,6 +979,19 @@ describe("Шинэ ажиглалт — зураг", () => {
     expect(form.get("observationId")).toBe(SAVED.id);
     expect(form.get("purpose")).toBe("OBSERVATION");
     expect((form.getAll("file") as File[]).map((f) => f.name)).toEqual(["a.png", "b.png"]);
+  });
+
+  /*
+   * ★ Each kind under its own name and colour — 2026-10-07: «Ярилцлага
+   * шинээр бичих» opened as «Ажиглалт шинээр бичих».
+   */
+  it("names a Бүтээл by its kind and paints Хадгалах in its orange", async () => {
+    setSearchParams(`typeId=${ARTWORK_TYPE}`);
+    stubApi(savingRoutes());
+    renderWithProviders(<NewObservationPage />);
+
+    expect(await screen.findByRole("heading", { name: "Бүтээл шинээр нэмэх" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Хадгалах" })).toHaveClass("bg-peach-bright");
   });
 
   it("tags a Бүтээл photo so it appears in the progress timeline", async () => {
@@ -1080,7 +1099,8 @@ describe("Шинэ ажиглалт — зураг", () => {
     await user.upload(await screen.findByLabelText("Нэмэх"), [photo("a.png"), photo("b.png")]);
 
     await user.click(screen.getByRole("button", { name: "a.png — хасах" }));
-    expect(await screen.findByText("1/5")).toBeInTheDocument();
+    // No «1/5» on the form since 2026-10-07 — count the picked thumbnails.
+    expect(await screen.findAllByRole("button", { name: / — хасах$/ })).toHaveLength(1);
 
     await user.click(screen.getByRole("button", { name: "Хадгалах" }));
 
@@ -1109,7 +1129,8 @@ describe("Шинэ ажиглалт — зураг", () => {
       ["a", "b", "c", "d", "e", "f"].map((name) => photo(`${name}.png`)),
     );
 
-    expect(await screen.findByText("5/5")).toBeInTheDocument();
+    // No «5/5» on the form since 2026-10-07 — count the picked thumbnails.
+    expect(await screen.findAllByRole("button", { name: / — хасах$/ })).toHaveLength(5);
     expect(await screen.findByText("Хамгийн олондоо 5 зураг хавсаргана.")).toBeInTheDocument();
     // Full, so there is nothing left to press.
     expect(screen.queryByLabelText("Нэмэх")).not.toBeInTheDocument();
