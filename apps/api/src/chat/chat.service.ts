@@ -119,7 +119,7 @@ export class ChatService {
     roomKey: string,
     before?: string,
   ): Promise<{ items: ChatMessage[]; nextCursor: string | null }> {
-    const room = await this.access.assertMember(actor, roomKey);
+    const { room, childGroupIds } = await this.access.assertReader(actor, roomKey);
 
     const rows = await this.repo.listMessages(roomKey, {
       before: before ? new Date(before) : undefined,
@@ -131,7 +131,7 @@ export class ChatService {
     const hasMore = rows.length > PAGE_SIZE;
     const page = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
 
-    const childrenByAuthor = await this.authorChildren(actor, room, page);
+    const childrenByAuthor = await this.authorChildren(actor, room, childGroupIds, page);
 
     return {
       items: page.map((row) => ({
@@ -261,10 +261,15 @@ export class ChatService {
    * `/media/:id` answers another family 404 for it (`canAccessChild`), so
    * sending it to a parent would only draw a broken image; they get the name.
    * The staff room has no guardians in it and costs no query.
+   *
+   * ★★ `childGroupIds` is the reader's, from `ChatAccessService.assertReader`:
+   * in a private room it is what keeps a guardian's other child, in a group
+   * the reader has nothing to do with, off the message.
    */
   private async authorChildren(
     actor: Actor,
-    room: { kind: string; kindergartenId: string; groupId: string | null },
+    room: { kind: string; kindergartenId: string },
+    childGroupIds: string[],
     rows: { authorId: string | null }[],
   ) {
     const byAuthor = new Map<
@@ -286,7 +291,7 @@ export class ChatService {
     ];
     const links = await this.repo.guardianChildren(authorIds, {
       kindergartenId: room.kindergartenId,
-      groupId: room.groupId,
+      groupIds: childGroupIds,
     });
     const isStaff =
       hasRoleIn(actor, Role.TEACHER, room.kindergartenId) ||

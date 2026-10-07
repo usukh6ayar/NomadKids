@@ -280,10 +280,7 @@ export class AuthzRepository {
               deletedAt: null,
               group: { deletedAt: null },
             },
-            select: {
-              role: true,
-              group: { select: { id: true, name: true, kindergartenId: true } },
-            },
+            select: { group: { select: { id: true, name: true, kindergartenId: true } } },
           }),
       this.prisma.guardianship.findMany({
         where: {
@@ -306,17 +303,12 @@ export class AuthzRepository {
     ]);
 
     const teachingGroups = teaching.map((row) => row.group);
-    const leadTeachingGroups = teaching
-      .filter((row) => row.role === "LEAD")
-      .map((row) => row.group);
     const guardianGroups = guarded.flatMap((row) => row.child.enrollments.map((e) => e.group));
 
     return {
       teachingGroups,
       guardianGroups,
-      // Assistants remain members of the group's shared room, but a family's
-      // private "Бүлгийн багш" conversation belongs to the lead teacher only.
-      directPeers: await this.loadDirectPeers(actor, leadTeachingGroups, guardianGroups),
+      directPeers: await this.loadDirectPeers(actor, teachingGroups, guardianGroups),
     };
   }
 
@@ -339,6 +331,18 @@ export class AuthzRepository {
    * their own child's teachers and to nobody else's — the client's answer when
    * asked, and the narrower of the two readings. Widening it later is a change
    * to this method and to nothing else.
+   *
+   * ★★★★ **The group's lead teacher, not every teacher** (client, 2026-10-04:
+   * a parent's private room is «Бүлгийн багш»). Assistants stay in the group
+   * room. A group with **no** active lead falls back to whoever teaches it —
+   * on 2026-10-06 the only staffed group in production had one assistant and
+   * no lead, and a lead-only rule would have closed every family's private
+   * room there without anyone deciding to.
+   *
+   * ★★★★★ **No guardian ↔ guardian rooms** (client, 2026-10-04: "дангаар
+   * эцэг эхтэй хоорондоо харилцахгүй"), reversing 2026-09-30. Families talk to
+   * each other in the «Эцэг эхчүүд» room. An old `direct:<guardian>:<guardian>`
+   * key now resolves to nothing and answers 404; its rows stay (§3.2).
    */
   private async loadDirectPeers(
     actor: Actor,
@@ -390,19 +394,26 @@ export class AuthzRepository {
             take: 2000,
           });
 
-    const [teachersOfMyChildren, guardiansOfMyPupils, fellowGuardians] = await Promise.all([
-      guardianGroupIds.length === 0
+    /*
+     * ★ Every active teacher of every group either side could pair through,
+     * in one query, so the "private contact" choice below is made once from
+     * the same rows for the guardian side and the teacher side — which is what
+     * keeps the pairing symmetric.
+     */
+    const contactGroupIds = [...new Set([...teachingGroupIds, ...guardianGroupIds])];
+    const [groupTeachers, guardiansOfPupils] = await Promise.all([
+      contactGroupIds.length === 0
         ? Promise.resolve([])
         : this.prisma.groupTeacher.findMany({
             where: {
-              groupId: { in: guardianGroupIds },
-              role: "LEAD",
+              groupId: { in: contactGroupIds },
               endedOn: null,
               deletedAt: null,
               membership: { deletedAt: null, isActive: true },
             },
             select: {
               groupId: true,
+              role: true,
               membership: {
                 select: {
                   user: { select: { id: true, lastName: true, firstName: true } },
@@ -411,15 +422,28 @@ export class AuthzRepository {
             },
           }),
       guardiansIn(teachingGroupIds),
-      /*
-       * ★★ Parent ↔ parent, 2026-09-30: "эцэг эхчүүд хоорондоо … хувь чат
-       * бичиж болно". The other guardians of the actor's children's groups —
-       * the same people already in that group's «эцэг эхчүүд» room, so this
-       * reveals nobody new. Symmetric: B guards a child in G exactly when A
-       * does, so each finds the other.
-       */
-      guardiansIn(guardianGroupIds),
     ]);
+
+    const hasLead = new Set(
+      groupTeachers.filter((row) => row.role === "LEAD").map((row) => row.groupId),
+    );
+    const contacts = groupTeachers.filter(
+      (row) => row.role === "LEAD" || !hasLead.has(row.groupId),
+    );
+    const guardianGroupSet = new Set(guardianGroupIds);
+    const teachersOfMyChildren = contacts.filter((row) => guardianGroupSet.has(row.groupId));
+    const myContactGroups = new Set(
+      contacts.filter((row) => row.membership.user.id === actor.userId).map((row) => row.groupId),
+    );
+    const guardiansOfMyPupils = guardiansOfPupils
+      .map((row) => ({
+        ...row,
+        child: {
+          ...row.child,
+          enrollments: row.child.enrollments.filter((e) => myContactGroups.has(e.groupId)),
+        },
+      }))
+      .filter((row) => row.child.enrollments.length > 0);
 
     const peers = new Map<string, { userId: string; name: string; kindergartenId: string }>();
     const add = (userId: string, name: string, groupId: string | undefined) => {
@@ -444,7 +468,7 @@ export class AuthzRepository {
      * Сарнай; they know Батбаяр's mother. `guardianChatName` does the
      * genitive and says why it can be trusted with a name.
      */
-    for (const row of [...guardiansOfMyPupils, ...fellowGuardians]) {
+    for (const row of guardiansOfMyPupils) {
       add(
         row.guardian.id,
         guardianChatName(row.child, row.relation),

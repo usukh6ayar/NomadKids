@@ -44,14 +44,15 @@ export class ChatRepository {
    * ★ Scoped to the room: a group or parents' room names only the children
    * actively enrolled in **that** group, so a family with two children in two
    * groups is named by the right one in each. A direct room is scoped to the
-   * kindergarten. One query for a whole page of messages (§3.4); bounded by
-   * the page's authors.
+   * groups the reader shares with the author — `childScopeFor` decides which,
+   * and an empty list names nobody. One query for a whole page of messages
+   * (§3.4); bounded by the page's authors.
    */
   async guardianChildren(
     authorIds: string[],
-    scope: { kindergartenId: string; groupId: string | null },
+    scope: { kindergartenId: string; groupIds: string[] },
   ) {
-    if (authorIds.length === 0) return [];
+    if (authorIds.length === 0 || scope.groupIds.length === 0) return [];
     return this.prisma.guardianship.findMany({
       where: {
         deletedAt: null,
@@ -63,7 +64,7 @@ export class ChatRepository {
             some: {
               status: "ACTIVE",
               deletedAt: null,
-              ...(scope.groupId ? { groupId: scope.groupId } : {}),
+              groupId: { in: scope.groupIds },
             },
           },
         },
