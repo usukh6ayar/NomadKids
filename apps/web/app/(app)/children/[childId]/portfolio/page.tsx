@@ -152,7 +152,8 @@ function PortfolioHubNav({ childId }: { childId: string }) {
     },
     {
       href: `/children/${childId}/portfolio/growth`,
-      label: "Хөгжил",
+      // «Явцын үнэлгээ», for a family and a teacher alike — client, 2026-10-07.
+      label: "Явцын үнэлгээ",
       art: "portfolioDevelopment",
     },
     // This portfolio-specific route starts with age cards and keeps the

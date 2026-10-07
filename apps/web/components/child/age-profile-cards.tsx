@@ -3,7 +3,34 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState, type ChangeEvent, type ReactNode } from "react";
-import { ChevronRight, MoreVertical, Pencil, Plus, X } from "lucide-react";
+import {
+  Bike,
+  BookOpen,
+  Brain,
+  Candy,
+  CircleCheck,
+  HeartHandshake,
+  House,
+  MessageCircleHeart,
+  PencilLine,
+  Smile,
+  Users,
+  ChevronRight,
+  MoreVertical,
+  Music,
+  Palette,
+  Pencil,
+  Plus,
+  Shirt,
+  Soup,
+  Sparkles,
+  Star,
+  ToyBrick,
+  Tv,
+  Volleyball,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { ageProfileSchema, type AgeProfile, type FamilyMemory } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -22,6 +49,7 @@ import {
   FAVORITE_FIELDS,
   ageSectionCompletion,
   familyLearningCategories,
+  familyStatement,
   kindergartenSkillCategories,
   type PortfolioAge,
 } from "@/lib/age-development";
@@ -196,13 +224,79 @@ function DialogActions({
   );
 }
 
-function ValuesList({ rows }: { rows: { label: string; value: string }[] }) {
+/**
+ * A line icon per question, each its own colour — client, 2026-10-07: the
+ * emoji went for "өнгө өнгийн зураасан icon", then the same on all five
+ * cards, in the read view and before each heading of the editors.
+ */
+const ROW_ICON: Record<string, { Icon: LucideIcon; tone: string }> = {
+  Тоглоом: { Icon: ToyBrick, tone: "text-rose-500" },
+  Дуу: { Icon: Music, tone: "text-violet-500" },
+  Хувцас: { Icon: Shirt, tone: "text-sky-500" },
+  Үлгэр: { Icon: Sparkles, tone: "text-amber-500" },
+  "Хүүхэлдэйн кино / кино": { Icon: Tv, tone: "text-indigo-500" },
+  Амттан: { Icon: Candy, tone: "text-pink-500" },
+  Өнгө: { Icon: Palette, tone: "text-orange-500" },
+  Ном: { Icon: BookOpen, tone: "text-emerald-500" },
+  "Хийх дуртай зүйл": { Icon: Volleyball, tone: "text-cyan-500" },
+  Хоол: { Icon: Soup, tone: "text-teal-500" },
+  "Танин мэдэхүй": { Icon: Brain, tone: "text-violet-500" },
+  Нийгэмшихүй: { Icon: HeartHandshake, tone: "text-pink-500" },
+  "Бие бялдар": { Icon: Bike, tone: "text-emerald-500" },
+  "Сонгосон чадвар": { Icon: CircleCheck, tone: "text-sky-500" },
+  "Өөр сурсан зүйл": { Icon: PencilLine, tone: "text-orange-500" },
+  "Өөр сурсан зүйл нэмэх": { Icon: PencilLine, tone: "text-orange-500" },
+  "Сонгосон ажиглалт": { Icon: Smile, tone: "text-amber-500" },
+  "Ам бүлийн тоо": { Icon: Users, tone: "text-indigo-500" },
+  "Миний гэр бүл": { Icon: House, tone: "text-orange-500" },
+};
+
+/** «Миний 3 насны зан араншин» changes with the age, so it is matched by shape. */
+const CHARACTER_NOTE_ICON = { Icon: MessageCircleHeart, tone: "text-rose-500" };
+
+/**
+ * Every card's answers as a quiet two-column table — client, 2026-10-07, after the
+ * dotted-leader version read as "муухай": the question in grey on the left
+ * with its own coloured line icon, the answer in blue on the right, one hairline
+ * between rows and nothing else.
+ */
+function RowIcon({ label }: { label: string }) {
+  const { Icon, tone } =
+    ROW_ICON[label] ??
+    (/насны зан араншин$/.test(label) ? CHARACTER_NOTE_ICON : { Icon: Star, tone: "text-primary" });
+  return <Icon size={18} strokeWidth={2} aria-hidden="true" className={cn("shrink-0", tone)} />;
+}
+
+function AnswersTable({
+  rows,
+  roomyAnswers = false,
+}: {
+  rows: { label: string; value: string }[];
+  /**
+   * A narrower question column, so a long answer starts further left and has
+   * more room — client, 2026-10-07, for «Миний цэцэрлэгтээ сурсан зүйлс».
+   */
+  roomyAnswers?: boolean;
+}) {
   return (
-    <dl className="grid gap-3 sm:grid-cols-2">
+    <dl className="divide-y divide-border-soft overflow-hidden rounded-row border border-border-soft">
       {rows.map((row) => (
-        <div key={row.label} className="rounded-row bg-sunken px-3 py-2.5">
-          <dt className="text-caption text-muted">{row.label}</dt>
-          <dd className="mt-0.5 whitespace-pre-wrap text-body text-ink">{row.value}</dd>
+        <div
+          key={row.label}
+          className={cn(
+            "grid items-center gap-3 px-3.5 py-3 odd:bg-sunken/60",
+            roomyAnswers
+              ? "grid-cols-[minmax(0,0.75fr)_minmax(0,1.6fr)]"
+              : "grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]",
+          )}
+        >
+          <dt className="flex min-w-0 items-center gap-2 text-caption text-muted sm:text-body">
+            <RowIcon label={row.label} />
+            {row.label}
+          </dt>
+          <dd className="min-w-0 whitespace-pre-wrap text-body font-medium text-primary">
+            {row.value}
+          </dd>
         </div>
       ))}
     </dl>
@@ -250,7 +344,7 @@ export function FavoritesCard({
           setOpen(true);
         }}
       >
-        <ValuesList rows={rows} />
+        <AnswersTable rows={rows} />
       </ProfileCard>
       <FormDialog
         open={open}
@@ -282,7 +376,7 @@ export function FavoritesCard({
           */}
           <div className="grid grid-cols-2 gap-x-3 gap-y-4">
             {FAVORITE_FIELDS.map(({ key, label }) => (
-              <Field key={key} label={label} error={errors[key]}>
+              <Field key={key} label={label} icon={<RowIcon label={label} />} error={errors[key]}>
                 {({ id, describedBy, invalid }) => (
                   <Input
                     id={id}
@@ -313,6 +407,39 @@ function customSkillsByCategory(values: string[], labels: string[]) {
     else if (labels[0]) grouped[labels[0]]!.push(value);
   }
   return grouped;
+}
+
+/**
+ * «Миний гэр бүлээсээ суралцсан зүйлс», read — client, 2026-10-07: every
+ * ticked statement on its own row behind a star, no «Сонгосон чадвар»
+ * heading over them. A note the family wrote follows as its own row.
+ */
+function StarredAnswers({ selected, other }: { selected: string[]; other: string }) {
+  return (
+    <div className="flex flex-col gap-3">
+      {selected.length > 0 ? (
+        <ul
+          aria-label="Сонгосон чадварууд"
+          className="divide-y divide-border-soft overflow-hidden rounded-row border border-border-soft"
+        >
+          {selected.map((item) => (
+            <li
+              key={item}
+              className="flex items-start gap-2.5 px-3.5 py-3 text-body font-medium text-primary odd:bg-sunken/60"
+            >
+              <Star
+                size={18}
+                aria-hidden="true"
+                className="mt-0.5 shrink-0 fill-amber-400 text-amber-400"
+              />
+              <span className="min-w-0">{familyStatement(item)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {other.trim() ? <AnswersTable rows={[{ label: "Өөр сурсан зүйл", value: other }]} /> : null}
+    </div>
+  );
 }
 
 function SkillsSectionCard({
@@ -396,7 +523,11 @@ function SkillsSectionCard({
           setOpen(true);
         }}
       >
-        <ValuesList rows={rows} />
+        {customEntries ? (
+          <AnswersTable rows={rows} roomyAnswers />
+        ) : (
+          <StarredAnswers selected={storedSelected} other={storedOther} />
+        )}
       </ProfileCard>
       <FormDialog
         open={open}
@@ -441,7 +572,8 @@ function SkillsSectionCard({
           {customEntries
             ? categories.map((category) => (
                 <fieldset key={category.id} className="rounded-row border border-border p-3.5">
-                  <legend className="px-1 text-body font-semibold text-ink">
+                  <legend className="flex items-center gap-1.5 px-1 text-body font-semibold text-ink">
+                    <RowIcon label={category.label} />
                     {category.label}
                   </legend>
                   <Button
@@ -496,14 +628,15 @@ function SkillsSectionCard({
               ))
             : categories.map((category) => (
                 <fieldset key={category.id} className="rounded-row border border-border p-3.5">
-                  <legend className="px-1 text-body font-semibold text-ink">
+                  <legend className="flex items-center gap-1.5 px-1 text-body font-semibold text-ink">
+                    <RowIcon label={category.label} />
                     {category.label}
                   </legend>
                   <div className="mt-1 grid gap-x-4 sm:grid-cols-2">
                     {category.options.map((option) => (
                       <Checkbox
                         key={option}
-                        label={option}
+                        label={familyStatement(option)}
                         checked={selected.includes(option)}
                         onChange={() =>
                           setSelected((current) =>
@@ -518,7 +651,11 @@ function SkillsSectionCard({
                 </fieldset>
               ))}
           {!customEntries ? (
-            <Field label="Өөр сурсан зүйл нэмэх" error={errors[otherKey]}>
+            <Field
+              label="Өөр сурсан зүйл нэмэх"
+              icon={<RowIcon label="Өөр сурсан зүйл нэмэх" />}
+              error={errors[otherKey]}
+            >
               {({ id, describedBy, invalid }) => (
                 <Textarea
                   id={id}
@@ -642,7 +779,7 @@ export function CharacterCard({
           setOpen(true);
         }}
       >
-        <ValuesList rows={rows} />
+        <AnswersTable rows={rows} />
         <p className="mt-4 text-caption leading-relaxed text-muted">
           Сонголтууд нь тухайн үеийн эцэг эхийн ажиглалт бөгөөд оноо, онош эсвэл хүүхдийн тогтмол
           шошго биш.
@@ -700,7 +837,11 @@ export function CharacterCard({
               ))}
             </div>
           </fieldset>
-          <Field label={`Миний ${age} насны зан араншин`} error={errors.characterObservation}>
+          <Field
+            label={`Миний ${age} насны зан араншин`}
+            icon={<RowIcon label={`Миний ${age} насны зан араншин`} />}
+            error={errors.characterObservation}
+          >
             {({ id, describedBy, invalid }) => (
               <Textarea
                 id={id}
@@ -845,7 +986,7 @@ export function FamilyCard({
           setOpen(true);
         }}
       >
-        <ValuesList rows={rows} />
+        <AnswersTable rows={rows} />
       </ProfileCard>
 
       <FormDialog
@@ -871,7 +1012,11 @@ export function FamilyCard({
         >
           <FormError message={save.isError ? errorMessage(save.error) : null} />
 
-          <Field label="Ам бүлийн тоо" error={errors.familySize}>
+          <Field
+            label="Ам бүлийн тоо"
+            icon={<RowIcon label="Ам бүлийн тоо" />}
+            error={errors.familySize}
+          >
             {({ id, describedBy, invalid }) => (
               <Select
                 id={id}
@@ -892,7 +1037,11 @@ export function FamilyCard({
             )}
           </Field>
 
-          <Field label="Миний гэр бүл" error={errors.familyDescription}>
+          <Field
+            label="Миний гэр бүл"
+            icon={<RowIcon label="Миний гэр бүл" />}
+            error={errors.familyDescription}
+          >
             {({ id, describedBy, invalid }) => (
               <>
                 <Textarea

@@ -11,6 +11,7 @@ import { BackButton } from "@/components/ui/back-button";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { FAVORITE_FIELDS, type PortfolioAge } from "@/lib/age-development";
 import { PORTFOLIO_AGES } from "@/lib/portfolio-ages";
+import { cn } from "@/lib/utils";
 
 const ageProfilesSchema = z.array(ageProfileSchema);
 
@@ -19,12 +20,14 @@ const ageProfilesSchema = z.array(ageProfileSchema);
  * age's own record, side by side, read-only (editing happens on each age's
  * own page — `portfolio/growth/age/[age]/page.tsx`).
  *
- * ★ The five parent age-development sections are rows in one horizontal
- * table, with ages 2–5 as columns. Empty ages say so explicitly and the view
- * never assigns a score or rank.
- *
- * Every questionnaire prompt is its own row so the same answer can be scanned
- * straight across ages. Growth, WHO references and birthday notes deliberately
+ * ★ A card per section, a question at a time, its four ages as equal tiles
+ * beneath it — client, 2026-10-07: the horizontal table read as "ойлгомжгүй
+ * арзгар" on a phone, where it scrolled sideways and its rows grew to
+ * whichever answer was longest. Two tiles a row on a phone, four from `sm`,
+ * so the same question still reads straight across the ages. A list answer
+ * (chosen skills, traits, family members) is chips, not a comma run. Empty
+ * ages say so explicitly and the view never assigns a score or rank.
+ * Growth, WHO references and birthday notes deliberately
  * live outside this focused view.
  */
 export default function GrowthComparePage() {
@@ -67,7 +70,7 @@ export default function GrowthComparePage() {
         <div className="min-w-0">
           <h1 className="text-heading font-semibold text-ink">2-5 насны мэдээлэл</h1>
           <p className="mt-1 text-body text-muted">
-            {data.firstName}-ийн нас насны мэдээллийг хажуу тийш гүйлгэн харьцуулна уу.
+            {data.firstName}-ийн нас насны мэдээллийг асуулт бүрээр харьцуулна уу.
           </p>
         </div>
       </header>
@@ -80,7 +83,9 @@ export default function GrowthComparePage() {
 type CompareQuestion = {
   id: string;
   label: string;
-  answer: (profile: AgeProfile, age: PortfolioAge) => string | null | undefined;
+  /** A list renders as chips — or as lines when `lines` is set; a string as text. */
+  lines?: boolean;
+  answer: (profile: AgeProfile, age: PortfolioAge) => string | string[] | null | undefined;
 };
 
 type CompareSection = {
@@ -97,8 +102,13 @@ function joined(values: (string | null | undefined)[]): string | null {
   return answer || null;
 }
 
-function joinedNotes(notes: Record<string, string>): string | null {
-  return joined(Object.values(notes));
+function listed(values: (string | null | undefined)[]): string[] {
+  return values.map((value) => value?.trim() ?? "").filter(Boolean);
+}
+
+/** One note per line — joined with ", " they read «оролцсон., Цэцэрлэгт …». */
+function noteLines(notes: Record<string, string>): string[] {
+  return listed(Object.values(notes));
 }
 
 const AGE_COMPARE_SECTIONS: CompareSection[] = [
@@ -118,12 +128,13 @@ const AGE_COMPARE_SECTIONS: CompareSection[] = [
       {
         id: "kindergartenSkills",
         label: "Сонгосон чадварууд",
-        answer: (profile) => joined(profile.kindergartenSkills),
+        answer: (profile) => listed(profile.kindergartenSkills),
       },
       {
         id: "kindergartenSkillNotes",
         label: "Нэмэлт тайлбар",
-        answer: (profile) => joinedNotes(profile.kindergartenSkillNotes),
+        lines: true,
+        answer: (profile) => noteLines(profile.kindergartenSkillNotes),
       },
       {
         id: "kindergartenOtherSkill",
@@ -139,12 +150,13 @@ const AGE_COMPARE_SECTIONS: CompareSection[] = [
       {
         id: "familyLearningSkills",
         label: "Сонгосон чадварууд",
-        answer: (profile) => joined(profile.familyLearningSkills),
+        answer: (profile) => listed(profile.familyLearningSkills),
       },
       {
         id: "familyLearningNotes",
         label: "Нэмэлт тайлбар",
-        answer: (profile) => joinedNotes(profile.familyLearningNotes),
+        lines: true,
+        answer: (profile) => noteLines(profile.familyLearningNotes),
       },
       {
         id: "familyLearningOther",
@@ -160,7 +172,7 @@ const AGE_COMPARE_SECTIONS: CompareSection[] = [
       {
         id: "characterTraits",
         label: "Зан араншингийн ажиглалт",
-        answer: (profile) => joined(profile.characterTraits),
+        answer: (profile) => listed(profile.characterTraits),
       },
       {
         id: "characterObservation",
@@ -181,7 +193,7 @@ const AGE_COMPARE_SECTIONS: CompareSection[] = [
       {
         id: "familyMemberTypes",
         label: "Гэр бүлийн гишүүд",
-        answer: (profile) => joined(profile.familyMemberTypes),
+        answer: (profile) => listed(profile.familyMemberTypes),
       },
       {
         id: "familyDescription",
@@ -196,96 +208,117 @@ const AGE_COMPARE_SECTIONS: CompareSection[] = [
          */
         id: "familyMemories",
         label: "Гэр бүлийн дурсамж",
-        answer: (profile) => joined(profile.familyMemories.map((memory) => memory.title)),
+        answer: (profile) => listed(profile.familyMemories.map((memory) => memory.title)),
       },
     ],
   },
 ];
 
+/** The age stepper's own colours, so «3 нас» is the same green everywhere. */
+const AGE_CHIP: Record<PortfolioAge, string> = {
+  2: "bg-sky text-sky-ink",
+  3: "bg-mint text-mint-ink",
+  4: "bg-sun text-sun-ink",
+  5: "bg-pink text-pink-ink",
+};
+
+const TEXT = "whitespace-pre-line text-compact leading-snug text-ink sm:text-body";
+
+function Answer({ value, lines }: { value: string | string[]; lines?: boolean }) {
+  if (Array.isArray(value) && lines) {
+    return (
+      <ul className="flex flex-col gap-1.5">
+        {value.map((item) => (
+          <li key={item} className={TEXT}>
+            {item}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  if (Array.isArray(value)) {
+    return (
+      <ul className="flex flex-wrap gap-1.5">
+        {value.map((item) => (
+          <li
+            key={item}
+            className="rounded-pill border border-border bg-surface px-2.5 py-0.5 text-caption text-ink"
+          >
+            {item}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  return <p className={TEXT}>{value}</p>;
+}
+
 function AgeDevelopmentComparison({ profiles }: { profiles: AgeProfile[] }) {
   const profileFor = (age: PortfolioAge) => profiles.find((profile) => profile.age === age);
 
   return (
-    <section aria-labelledby="age-information-table-heading">
-      <h2 id="age-information-table-heading" className="sr-only">
-        2-5 насны мэдээллийн хүснэгт
-      </h2>
-      <div className="overflow-x-auto rounded-card border border-border bg-surface shadow-sm">
-        <table
-          aria-label="2-5 насны мэдээллийн хэвтээ харьцуулалт"
-          className="w-full min-w-280 table-fixed border-collapse text-body"
+    <div className="flex flex-col gap-4">
+      {AGE_COMPARE_SECTIONS.map((section) => (
+        <section
+          key={section.id}
+          aria-labelledby={`compare-${section.id}`}
+          className="overflow-hidden rounded-card border border-border bg-surface shadow-sm"
         >
-          <colgroup>
-            <col className="w-56" />
-            {PORTFOLIO_AGES.map((age) => (
-              <col key={age} className="w-64" />
-            ))}
-          </colgroup>
-          <thead>
-            <tr className="border-b-2 border-border bg-sunken">
-              <th
-                scope="col"
-                className="sticky left-0 z-10 bg-sunken px-4 py-3 text-left font-semibold text-ink"
-              >
-                Сэдэв
-              </th>
-              {PORTFOLIO_AGES.map((age) => (
-                <th
-                  key={age}
-                  scope="col"
-                  className="border-l border-border px-4 py-3 text-left font-semibold text-primary"
-                >
-                  {age} нас
-                </th>
-              ))}
-            </tr>
-          </thead>
-          {AGE_COMPARE_SECTIONS.map((section) => (
-            <tbody key={section.id}>
-              <tr className="border-y border-border bg-primary-soft/60">
-                <th
-                  scope="rowgroup"
-                  colSpan={5}
-                  className="px-4 py-2.5 text-left font-semibold text-primary"
-                >
-                  {section.title}
-                </th>
-              </tr>
-              {section.questions.map((question) => (
-                <tr key={question.id} className="border-b border-border last:border-0">
-                  <th
-                    scope="row"
-                    className="sticky left-0 z-10 bg-surface px-4 py-3 text-left align-top font-medium text-ink"
-                  >
-                    {question.label}
-                  </th>
+          <h2
+            id={`compare-${section.id}`}
+            className="bg-primary-soft/60 px-4 py-3 text-lead font-semibold text-primary"
+          >
+            {section.title}
+          </h2>
+          <div className="flex flex-col divide-y divide-border-soft">
+            {section.questions.map((question) => (
+              <div key={question.id} role="group" aria-label={question.label} className="p-4">
+                <h3 className="mb-2.5 text-body font-semibold text-ink">{question.label}</h3>
+                <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {PORTFOLIO_AGES.map((age) => {
                     const profile = profileFor(age);
-                    const answer = profile ? question.answer(profile, age)?.trim() : null;
+                    const raw = profile ? question.answer(profile, age) : null;
+                    const value = Array.isArray(raw)
+                      ? raw.length > 0
+                        ? raw
+                        : null
+                      : raw?.trim() || null;
 
                     return (
-                      <td
+                      <div
                         key={age}
-                        className={
-                          answer
-                            ? "border-l border-border px-4 py-3 align-top text-ink"
-                            : "border-l border-border px-4 py-3 text-center align-middle text-muted"
-                        }
+                        className="flex min-w-0 flex-col gap-2 rounded-row bg-sunken p-3"
                       >
-                        {answer || <span aria-label="Мэдээлэлгүй">—</span>}
-                      </td>
+                        <dt
+                          className={cn(
+                            "self-start rounded-pill px-2.5 py-0.5 text-caption font-semibold",
+                            AGE_CHIP[age],
+                          )}
+                        >
+                          {age} нас
+                        </dt>
+                        <dd className="min-w-0 break-words">
+                          {value ? (
+                            <Answer value={value} lines={question.lines} />
+                          ) : (
+                            <span aria-label="Мэдээлэлгүй" className="text-body text-faint">
+                              —
+                            </span>
+                          )}
+                        </dd>
+                      </div>
                     );
                   })}
-                </tr>
-              ))}
-            </tbody>
-          ))}
-        </table>
-      </div>
-      <p className="mt-2 text-caption leading-relaxed text-muted">
+                </dl>
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
+      <p className="text-caption leading-relaxed text-muted">
         Энд зөвхөн нэг хүүхдийн нас насны ажиглалтыг харуулна. Оноо, зэрэглэл гаргахгүй бөгөөд бусад
         хүүхэдтэй харьцуулахгүй.
       </p>
-    </section>
+    </div>
   );
 }

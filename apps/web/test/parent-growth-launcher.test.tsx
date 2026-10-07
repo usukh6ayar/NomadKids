@@ -45,9 +45,9 @@ describe("parent growth launcher copy", () => {
 
     renderWithProviders(<ParentGrowthLauncher child={child} />);
 
-    expect(
-      screen.getByRole("heading", { level: 1, name: "Хүүхдийн явцын үнэлгээ" }),
-    ).toBeInTheDocument();
+    // The page header says «Явцын үнэлгээ»; no second title under it.
+    expect(screen.queryByText("Хүүхдийн явцын үнэлгээ")).not.toBeInTheDocument();
+    expect(document.querySelector('[data-ui="section-header"]')).toBeNull();
     expect(screen.queryByText("Б")).not.toBeInTheDocument();
     expect(screen.queryByText("БИ ЦЭЦЭРЛЭГТЭЭ")).not.toBeInTheDocument();
     expect(screen.queryByText("Батбаяр-ийн өхөөрдөм ахиц")).not.toBeInTheDocument();
@@ -122,6 +122,10 @@ describe("parent growth launcher copy", () => {
 
     expect(await screen.findByRole("button", { name: "Тэмдэглэлийн үйлдэл" })).toBeInTheDocument();
     expect(screen.queryByText("Тэмдэглэл ороогүй")).not.toBeInTheDocument();
+    // No photo, no stand-in drawing: the note is its words.
+    const card = screen.getByRole("listitem");
+    expect(card).toHaveTextContent("Өсэн бичвэртэй тэмдэглэл");
+    expect(card.querySelector("img")).toBeNull();
   });
 
   it("shows each tab's own past notes — Ажиглалт, Ярилцлага, Бүтээл don't mix", async () => {
