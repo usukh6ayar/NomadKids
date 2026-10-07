@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { BRAND } from "@/lib/vocabulary";
+import { BRAND_LATIN } from "@/lib/vocabulary";
 
 /**
  * The web app manifest — what Android and Chrome read when someone adds the
@@ -19,11 +19,16 @@ import { BRAND } from "@/lib/vocabulary";
  *
  * The icons are opaque. A transparent PNG here is composited onto black by
  * some launchers, which turns the two faces into a floating sticker.
+ *
+ * ★★★ **The installed name is `NomadKids`, not `Бяцхан нүүдэлчид`** — the
+ * client's decision, 2026-10-07: the Latin name is the product's primary name
+ * and the one that belongs under the icon. `layout.tsx`'s `appleWebApp.title`
+ * says the same thing for iOS, which reads that rather than this file.
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: BRAND,
-    short_name: BRAND,
+    name: BRAND_LATIN,
+    short_name: BRAND_LATIN,
     description: "Цэцэрлэгийн хүүхдийн хөгжлийн цахим бүртгэл.",
     lang: "mn",
     dir: "ltr",
