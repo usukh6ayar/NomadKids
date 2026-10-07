@@ -14,7 +14,7 @@ import { useMyGroup } from "@/components/dashboard/use-my-group";
 import { GroupSwitcher, useSwitchableGroups } from "@/components/shell/group-switcher";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Select } from "@/components/ui/field";
-import { MonthSelect } from "@/components/ui/month-select";
+import { YearMonthSelect } from "@/components/ui/year-month-select";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { BarRow } from "@/components/ui/chart/bar-row";
 import { ColumnChart } from "@/components/ui/chart/columns";
@@ -67,7 +67,7 @@ const TABS = [
   { key: "attendance", label: "Ирцийн тайлан" },
   { key: "assessment", label: "Явцын үнэлгээ" },
   { key: "surveys", label: "Судалгааны тайлан" },
-  { key: "observations", label: "Ажиглалтын тайлан" },
+  { key: "observations", label: "Ажиглалт, ярилцлага, бүтээл" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -236,11 +236,8 @@ function Reports() {
         </div>
 
         {period === "month" ? (
-          <Field label="Сар" className="w-full sm:w-56">
-            {({ id }) => (
-              <MonthSelect id={id} max={currentMonth()} value={month} onValueChange={setMonth} />
-            )}
-          </Field>
+          /* «Он» and «Сар» side by side on one line — client, 2026-10-06. */
+          <YearMonthSelect max={currentMonth()} value={month} onValueChange={setMonth} />
         ) : null}
 
         {period === "term" ? (
@@ -392,7 +389,7 @@ function ReportBody({
           </ReportMetricCard>
 
           <ReportMetricCard
-            label="Ажиглалт нэмсэн"
+            label="Ажиглалт"
             value={String(observations.total)}
             footer={`${observations.children} хүүхдэд`}
             tone="sun"
