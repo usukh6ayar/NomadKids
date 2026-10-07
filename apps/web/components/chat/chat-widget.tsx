@@ -483,7 +483,6 @@ export function ChatList({
           {back}
           <div className="min-w-0 flex-1">
             <Title className="text-title font-extrabold tracking-tight text-ink">Чатууд</Title>
-            <p className="mt-0.5 text-caption text-muted">Яриагаа сонгож үргэлжлүүлээрэй</p>
           </div>
           {action}
           {Close ? (
