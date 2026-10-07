@@ -60,7 +60,8 @@ export function InviteGuardianDialog({
   );
 }
 
-function InviteDialog({
+/** The invitation sheet itself, opened by whoever owns `open` — a row menu, say. */
+export function InviteDialog({
   childId,
   childName,
   onClose,

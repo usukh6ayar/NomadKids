@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 export function Field({
   label,
   labelHidden = false,
+  icon,
   error,
   hint,
   required,
@@ -51,6 +52,8 @@ export function Field({
    * where the printed word is noise rather than information.
    */
   labelHidden?: boolean;
+  /** Drawn before the label's words; decoration, so it should be `aria-hidden`. */
+  icon?: ReactNode;
   error?: string | null;
   hint?: string;
   required?: boolean;
@@ -69,8 +72,13 @@ export function Field({
     <div data-ui="field" className={cn("flex flex-col gap-1.5", className)}>
       <LabelPrimitive.Root
         htmlFor={id}
-        className={cn("text-body font-medium text-ink", labelHidden && "sr-only")}
+        className={cn(
+          "text-body font-medium text-ink",
+          icon && "flex items-center gap-1.5",
+          labelHidden && "sr-only",
+        )}
       >
+        {icon}
         {label}
         {required ? (
           <span className="text-danger" aria-hidden="true">

@@ -88,6 +88,25 @@ export const AGE_SECTION_TITLES = [
   "Гэр бүл",
 ] as const;
 
+/**
+ * A family question as a plain statement — client, 2026-10-07: no «Таны
+ * хүүхэд», no «… уу?». «Таны хүүхэд өдөр тутам … нэрлэж чаддаг уу?» reads
+ * «Өдөр тутам … нэрлэж чаддаг».
+ *
+ * ★ Display only. The question text is what `familyLearningSkills` stores,
+ * so rewriting `AGE_FAMILY_OPTIONS` would untick every answer already saved;
+ * the stored string stays the identity and this is how it is shown.
+ */
+export function familyStatement(question: string): string {
+  const plain = question
+    .trim()
+    .replace(/^Таны хүүхэд\s+/u, "")
+    .replace(/\s+(уу|үү|юу|юү)\?$/u, "")
+    .replace(/\?$/u, "")
+    .trim();
+  return plain.charAt(0).toLocaleUpperCase("mn") + plain.slice(1);
+}
+
 export function hasText(value: string | null | undefined): boolean {
   return Boolean(value?.trim());
 }

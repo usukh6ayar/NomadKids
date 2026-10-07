@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState, type ReactNode } from "react";
-import { UsersRound } from "lucide-react";
 import { z } from "zod";
 import { groupReportSchema, termSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
@@ -14,7 +13,7 @@ import { useMyGroup } from "@/components/dashboard/use-my-group";
 import { GroupSwitcher, useSwitchableGroups } from "@/components/shell/group-switcher";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Select } from "@/components/ui/field";
-import { MonthSelect } from "@/components/ui/month-select";
+import { YearMonthSelect } from "@/components/ui/year-month-select";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { BarRow } from "@/components/ui/chart/bar-row";
 import { ColumnChart } from "@/components/ui/chart/columns";
@@ -67,7 +66,7 @@ const TABS = [
   { key: "attendance", label: "Ирцийн тайлан" },
   { key: "assessment", label: "Явцын үнэлгээ" },
   { key: "surveys", label: "Судалгааны тайлан" },
-  { key: "observations", label: "Ажиглалтын тайлан" },
+  { key: "observations", label: "Ажиглалт, ярилцлага, бүтээл" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -162,7 +161,6 @@ function Reports() {
         </h1>
       </div>
       <span className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-pill bg-sky px-3 text-caption font-semibold text-sky-ink sm:px-4 sm:text-body">
-        <UsersRound aria-hidden="true" className="size-5" />
         {selectedGroupName}
       </span>
     </div>
@@ -199,6 +197,9 @@ function Reports() {
       {/*
         ★ Сар · Улирал · Жил — the client's three, 2026-09-12.
 
+        On a phone the three take the first row and the period picker with
+        its dates the next — client, 2026-10-07.
+
         One range drives every figure below, which is why the selector is one
         control rather than a period picker per tab: a report where the
         attendance covers September and the surveys cover the year is four
@@ -208,7 +209,7 @@ function Reports() {
         <div
           role="radiogroup"
           aria-label="Хугацаа"
-          className="grid min-w-0 flex-1 grid-cols-3 gap-1 rounded-control bg-canvas p-1 sm:max-w-md"
+          className="grid min-w-0 flex-1 basis-full grid-cols-3 gap-1 rounded-control bg-canvas p-1 sm:max-w-md sm:basis-0"
         >
           {(
             [
@@ -236,11 +237,8 @@ function Reports() {
         </div>
 
         {period === "month" ? (
-          <Field label="Сар" className="w-full sm:w-56">
-            {({ id }) => (
-              <MonthSelect id={id} max={currentMonth()} value={month} onValueChange={setMonth} />
-            )}
-          </Field>
+          /* «Он» and «Сар» side by side on one line — client, 2026-10-06. */
+          <YearMonthSelect max={currentMonth()} value={month} onValueChange={setMonth} />
         ) : null}
 
         {period === "term" ? (
@@ -392,7 +390,7 @@ function ReportBody({
           </ReportMetricCard>
 
           <ReportMetricCard
-            label="Ажиглалт нэмсэн"
+            label="Ажиглалт"
             value={String(observations.total)}
             footer={`${observations.children} хүүхдэд`}
             tone="sun"

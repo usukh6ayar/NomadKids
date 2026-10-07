@@ -7,11 +7,9 @@ import { useRouter } from "next/navigation";
 import {
   CircleAlert,
   Info,
-  Loader2,
   MoreHorizontal,
   Pencil,
   Plus,
-  RefreshCw,
   Trash2,
   UserPlus,
   UsersRound,
@@ -47,6 +45,7 @@ import { SearchField } from "@/components/ui/search-field";
 import { PageHeader } from "@/components/shell/app-shell";
 import { EsisWriteQueue } from "@/components/esis/esis-write-queue";
 import { RequireRole } from "@/components/shell/require-role";
+import { EsisButton } from "@/components/esis/esis-button";
 
 const groupsSchema = paginated(groupListItemSchema);
 const usersSchema = paginated(adminUserSchema);
@@ -255,20 +254,11 @@ function AdminGroups() {
           <div className="flex flex-wrap items-center justify-end gap-2">
             {/* Not without ESIS: there is nothing to pull, and the call fails. */}
             {esisLinked === false ? null : (
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={sync.isPending || !primaryKindergartenId}
-                aria-busy={sync.isPending}
+              <EsisButton
+                pending={sync.isPending}
+                disabled={!primaryKindergartenId}
                 onClick={() => sync.mutate()}
-              >
-                {sync.isPending ? (
-                  <Loader2 size={16} className="animate-spin" aria-hidden />
-                ) : (
-                  <RefreshCw size={16} aria-hidden />
-                )}
-                {sync.isPending ? "Татаж байна…" : "ESIS татах"}
-              </Button>
+              />
             )}
             <Button size="sm" onClick={() => setDialog({ kind: "create" })}>
               <Plus size={18} aria-hidden />

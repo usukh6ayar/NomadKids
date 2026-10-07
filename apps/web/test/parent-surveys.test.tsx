@@ -102,6 +102,15 @@ function stub(surveys: Record<string, unknown>[] = [ANSWERED, OPEN_POLL]) {
   ]);
 }
 
+/** Both answered — for the cases that filter within one tab. */
+const ANSWERED_POLL = { ...OPEN_POLL, respondedByMe: true };
+
+/** Opens «Дууссан», where an answered survey lives since 2026-10-06. */
+async function openDone(user = userEvent.setup()) {
+  await user.click(await screen.findByRole("tab", { name: /^Дууссан/ }));
+  return user;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   setParams({ childId: CHILD });
@@ -118,16 +127,37 @@ describe("эцэг эхийн судалгааны жагсаалт", () => {
   it("★ draws a minimal row — no category badge, no icon tile", async () => {
     stub();
     renderWithProviders(<ChildSurveysPage />);
+    await openDone();
 
     const row = (await screen.findByText(ANSWERED.title)).closest("li")!;
 
-    expect(within(row).getByText("Хариулсан")).toBeInTheDocument();
+    // ★ Client, 2026-10-06 (a drawing): answered is a green tick, and the
+    // line under the title is the date alone.
+    expect(within(row).getByRole("img", { name: "Хариулсан" })).toBeInTheDocument();
     // The category is gone from the row entirely — it was a badge and a tile.
     expect(within(row).queryByText("Сэтгэл ханамжийн судалгаа")).not.toBeInTheDocument();
     expect(row.querySelector("img")).toBeNull();
-    // One grey line of facts, the kind and the question count among them.
-    expect(row).toHaveTextContent("Судалгаа");
-    expect(row).toHaveTextContent("2 асуулт");
+    expect(row).not.toHaveTextContent("2 асуулт");
+    // The date sits above the title (2026-10-06, "эсрэгээрээ").
+    const link = within(row).getAllByRole("link")[0]!;
+    expect(link.textContent).toMatch(new RegExp(`^2025\\.10\\.01${ANSWERED.title}`));
+  });
+
+  /** Client, 2026-10-06: the answers as a numbered table — question │ answer. */
+  it("lays an answered questionnaire out as a numbered question │ answer table", async () => {
+    stub();
+    renderWithProviders(<ChildSurveysPage />);
+    await openDone();
+
+    const row = (await screen.findByText(ANSWERED.title)).closest("li")!;
+    const lines = within(row)
+      .getAllByRole("term")
+      .map((term) => term.parentElement!);
+
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toHaveTextContent(/^1Хүүхдийн зохицолдолд сэтгэл хангалуун уу\?★★★★☆$/);
+    // Unanswered still has its line, with a dash.
+    expect(lines[1]).toHaveTextContent(/^2Нэмэлт санал—$/);
   });
 
   /**
@@ -148,6 +178,7 @@ describe("эцэг эхийн судалгааны жагсаалт", () => {
       "href",
       `/children/${CHILD}/surveys/${OPEN_POLL.id}`,
     );
+    await openDone();
     expect(screen.getByRole("link", { name: new RegExp(ANSWERED.title) })).toHaveAttribute(
       "href",
       `/children/${CHILD}/surveys/${ANSWERED.id}`,
@@ -165,6 +196,7 @@ describe("эцэг эхийн судалгааны жагсаалт", () => {
   it("shows an answered survey's answer without a press", async () => {
     stub();
     renderWithProviders(<ChildSurveysPage />);
+    await openDone();
 
     await screen.findByText(ANSWERED.title);
 
@@ -172,7 +204,7 @@ describe("эцэг эхийн судалгааны жагсаалт", () => {
     expect(document.getElementById(`survey-answers-${ANSWERED.id}`)).toBeNull();
 
     // The rating they chose, on the card, with no interaction at all.
-    expect(screen.getByText("4 / 5")).toBeInTheDocument();
+    expect(screen.getByText("★★★★☆")).toBeInTheDocument();
     // And the question it answers, in one line rather than a stacked panel.
     expect(screen.getByText(RATING_Q.prompt)).toBeInTheDocument();
   });
@@ -188,6 +220,8 @@ describe("эцэг эхийн судалгааны жагсаалт", () => {
     const { calls } = stub();
     renderWithProviders(<ChildSurveysPage />);
 
+    await screen.findByText(OPEN_POLL.title);
+    await openDone();
     await screen.findByText(ANSWERED.title);
     expect(calls.some((call) => call.url.includes("/tally"))).toBe(false);
   });
@@ -207,13 +241,20 @@ describe("хариулсан судалгааны хуудас", () => {
     stub();
     renderWithProviders(<SurveyDetailPage />);
 
-    expect(await screen.findByText(`1. ${RATING_Q.prompt}`)).toBeInTheDocument();
-    // The score they chose, not the teacher's band word.
-    expect(screen.getByText("4 / 5")).toBeInTheDocument();
+    const answers = within(await screen.findByRole("list"));
+    const items = answers.getAllByRole("listitem");
+    // ★ 2026-10-06: the question numbered in ink, the answer under it on its
+    // own block — no «Асуулт ба таны хариулт» heading, no «Таны хариулт» label.
+    expect(screen.queryByText(/Таны хариулт/)).toBeNull();
+    expect(items[0]).toHaveTextContent(`1.${RATING_Q.prompt}★★★★☆`);
     // Every question, including the one they skipped — a questionnaire read
     // back with its blanks dropped is a different questionnaire.
-    expect(screen.getByText(`2. ${TEXT_Q.prompt}`)).toBeInTheDocument();
-    expect(screen.getByText("Хариулаагүй")).toBeInTheDocument();
+    expect(items[1]).toHaveTextContent(`2.${TEXT_Q.prompt}Хариулаагүй`);
+
+    // What the survey is: its subject, its audience, when it ran.
+    expect(screen.getByText("Чиглэл").nextSibling).toHaveTextContent("Сэтгэл ханамжийн судалгаа");
+    expect(screen.getByText("Хамрах хүрээ").nextSibling).toHaveTextContent("Бүх цэцэрлэг");
+    expect(screen.getByText("Эхэлсэн").nextSibling).toHaveTextContent("2025.10.01");
     // And no form to fill in again.
     expect(screen.queryByRole("button", { name: "Илгээх" })).toBeNull();
   });
@@ -226,7 +267,7 @@ describe("хайлт ба шүүлтүүр", () => {
     stub();
     renderWithProviders(<ChildSurveysPage />);
 
-    await screen.findByText(ANSWERED.title);
+    await screen.findByText(OPEN_POLL.title);
     expect(screen.getByLabelText("Судалгааны нэрээр хайх")).not.toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "Хайх" }));
@@ -234,9 +275,9 @@ describe("хайлт ба шүүлтүүр", () => {
   });
 
   it("narrows the list by what was typed", async () => {
-    const user = userEvent.setup();
-    stub();
+    stub([ANSWERED, ANSWERED_POLL]);
     renderWithProviders(<ChildSurveysPage />);
+    const user = await openDone();
 
     await screen.findByText(ANSWERED.title);
     await user.click(screen.getByRole("button", { name: "Хайх" }));
@@ -247,9 +288,9 @@ describe("хайлт ба шүүлтүүр", () => {
   });
 
   it("narrows the list by kind", async () => {
-    const user = userEvent.setup();
-    stub();
+    stub([ANSWERED, ANSWERED_POLL]);
     renderWithProviders(<ChildSurveysPage />);
+    const user = await openDone();
 
     await screen.findByText(ANSWERED.title);
     await user.click(screen.getByRole("button", { name: "Шүүлтүүр" }));
@@ -269,9 +310,9 @@ describe("хайлт ба шүүлтүүр", () => {
     2026-09-01, at 5. Only the ages the list actually contains become chips.
   */
   it("★ narrows the list by the age the child was when it ran", async () => {
-    const user = userEvent.setup();
-    stub();
+    stub([ANSWERED, ANSWERED_POLL]);
     renderWithProviders(<ChildSurveysPage />);
+    const user = await openDone();
 
     await screen.findByText(ANSWERED.title);
     await user.click(screen.getByRole("button", { name: "Шүүлтүүр" }));
@@ -292,7 +333,7 @@ describe("хайлт ба шүүлтүүр", () => {
     stub();
     renderWithProviders(<ChildSurveysPage />);
 
-    await screen.findByText(ANSWERED.title);
+    await screen.findByText(OPEN_POLL.title);
     await user.click(screen.getByRole("button", { name: "Хайх" }));
     await user.type(screen.getByLabelText("Судалгааны нэрээр хайх"), "байхгүй");
 
@@ -309,10 +350,51 @@ describe("хайлт ба шүүлтүүр", () => {
     ]);
     renderWithProviders(<ChildSurveysPage />);
 
+    await openDone(user);
     await screen.findByText(ANSWERED.title);
     await user.click(screen.getByRole("button", { name: "Шүүлтүүр" }));
 
     expect(screen.queryByRole("group", { name: "Насаар шүүх" })).not.toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Төрлөөр шүүх" })).toBeInTheDocument();
+  });
+});
+
+/**
+ * ★ Two states — client, 2026-10-06: «Идэвхтэй» is what is still being
+ * collected and not yet answered; «Дууссан» is what was answered, and
+ * anything closed, which can no longer be answered.
+ */
+describe("идэвхтэй ба дууссан", () => {
+  it("opens on Идэвхтэй and keeps the answered ones under Дууссан", async () => {
+    const CLOSED = {
+      ...OPEN_POLL,
+      id: "44444444-4444-4444-8444-444444444444",
+      title: "Хаагдсан санал асуулга",
+      status: "CLOSED",
+    };
+    stub([ANSWERED, OPEN_POLL, CLOSED]);
+    renderWithProviders(<ChildSurveysPage />);
+
+    expect(await screen.findByRole("tab", { name: "Идэвхтэй 1" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("tab", { name: "Дууссан 2" })).toBeInTheDocument();
+    expect(screen.getByText(OPEN_POLL.title)).toBeInTheDocument();
+    expect(screen.queryByText(ANSWERED.title)).toBeNull();
+    expect(screen.queryByText(CLOSED.title)).toBeNull();
+
+    await openDone();
+    expect(screen.getByText(ANSWERED.title)).toBeInTheDocument();
+    expect(screen.getByText(CLOSED.title)).toBeInTheDocument();
+    expect(screen.queryByText(OPEN_POLL.title)).toBeNull();
+  });
+
+  it("says there is nothing to fill in when every survey is answered", async () => {
+    stub([ANSWERED]);
+    renderWithProviders(<ChildSurveysPage />);
+
+    expect(await screen.findByText("Шинэ судалгаа байхгүй")).toBeInTheDocument();
+    expect(screen.queryByText(/Бөглөсөн судалгаа «Дууссан»-д/)).toBeNull();
   });
 });

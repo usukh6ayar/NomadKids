@@ -5,6 +5,7 @@ import { ROUTER, renderWithProviders, setPathname } from "./support/render";
 import { BackButton } from "@/components/ui/back-button";
 import {
   backTarget,
+  noteFallbackNavigation,
   recordNavigation,
   resetNavigationHistory,
   setNavigationMenu,
@@ -122,6 +123,21 @@ describe("‹ — the section trail", () => {
     resetNavigationHistory();
     setNavigationMenu(MENU);
     recordNavigation("/dashboard");
+  });
+
+  /*
+    Client, 2026-10-07: a refresh on the folder, ‹ to the child, ‹ again —
+    and it went back into the folder instead of on to «Суралцагч».
+  */
+  it("treats a ‹ that followed its href as a step up, not a step forward", () => {
+    resetNavigationHistory();
+    setNavigationMenu(MENU);
+    recordNavigation("/children/c1/portfolio"); // opened cold
+    noteFallbackNavigation("/children/c1/general"); // ‹ follows its href
+    recordNavigation("/children/c1/general");
+
+    // Nothing known above the child's page: its own ‹ follows its href, /children.
+    expect(backTarget()).toBeNull();
   });
 
   it("goes home from a page the floating bar opened", () => {

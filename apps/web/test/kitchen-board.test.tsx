@@ -110,17 +110,15 @@ describe("the cook's board", () => {
       "section",
     )!;
     expect(within(card).getByText("43")).toBeInTheDocument();
-    expect(within(card).getByText("/ 46 хүүхэд ирсэн")).toBeInTheDocument();
+    expect(within(card).getByText("/ 46 хүүхэд")).toBeInTheDocument();
     expect(within(card).getByText("93%")).toBeInTheDocument();
 
     const table = screen.getByRole("heading", { name: "Бүлгүүдийн ирц" });
     expect(card.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(
-      table.compareDocumentPosition(screen.getByRole("heading", { name: "Өнөөдрийн цэс" })) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
 
     for (const gone of [
+      "Өнөөдрийн цэс",
+      "Хүнсний нөөц",
       "Өнөөдөр хоолох хүүхэд",
       "Тараасан порц",
       "Тусгай хоол",
@@ -134,8 +132,8 @@ describe("the cook's board", () => {
     stub();
     renderWithProviders(<KitchenDashboardPage />);
 
-    expect(await screen.findByText("2 бүлгээс 1 бүлгийн ирц бүртгэгдсэн")).toBeInTheDocument();
-    expect(screen.getByText("1 бүлэг ирцээ оруулаагүй байна")).toBeInTheDocument();
+    expect(await screen.findByText("1/2 бүлэг")).toBeInTheDocument();
+    expect(screen.getByText("1 дутуу")).toBeInTheDocument();
   });
 
   /** A group with no register shows a dash: "nobody came" is not "nobody said". */
@@ -146,41 +144,6 @@ describe("the cook's board", () => {
     const row = (await screen.findByText("Солонго")).closest("tr")!;
     expect(within(row).getAllByText("—").length).toBeGreaterThan(0);
     expect(within(row).getByText("Ирц дутуу")).toBeInTheDocument();
-  });
-
-  it("shows today's menu by sitting", async () => {
-    stub();
-    renderWithProviders(<KitchenDashboardPage />);
-
-    expect(await screen.findByText(/Сүүтэй овъёосны каш/)).toBeInTheDocument();
-    expect(screen.getByText("Өглөөний хоол")).toBeInTheDocument();
-  });
-
-  /**
-   * ★ Client, 2026-10-06: the menu with pictures, and no clock. A sitting
-   * whose dishes carry no photo gets a plate on a tint, not a stand-in image.
-   */
-  it("leads each sitting with its dish's photo, and prints no time", async () => {
-    stub();
-    renderWithProviders(<KitchenDashboardPage />);
-
-    const breakfast = await screen.findByRole("listitem", { name: "Өглөөний хоол" });
-    const photo = within(breakfast).getByRole("img", { name: "Сүүтэй овъёосны каш" });
-    expect(photo.getAttribute("src")).toContain("/media/77777777-7777-4777-8777-777777777777");
-
-    const soup = screen.getByRole("listitem", { name: "Шөл" });
-    expect(within(soup).queryByRole("img")).toBeNull();
-    expect(screen.queryByText("08:00")).toBeNull();
-    expect(screen.queryByText("12:30")).toBeNull();
-  });
-
-  it("flags the ingredients that are low and leaves the rest alone", async () => {
-    stub();
-    renderWithProviders(<KitchenDashboardPage />);
-
-    await screen.findByText("Хүнсний нөөц");
-    const low = (await screen.findByText("Сонгино")).closest("div")!;
-    expect(within(low.parentElement as HTMLElement).getByText("Нөөц бага")).toBeInTheDocument();
   });
 
   it("raises no warning once every group has filled its register in", async () => {
@@ -200,7 +163,7 @@ describe("the cook's board", () => {
     ]);
     renderWithProviders(<KitchenDashboardPage />);
 
-    expect(await screen.findByText("1 бүлгээс 1 бүлгийн ирц бүртгэгдсэн")).toBeInTheDocument();
-    expect(screen.queryByText(/ирцээ оруулаагүй/)).toBeNull();
+    expect(await screen.findByText("1/1 бүлэг")).toBeInTheDocument();
+    expect(screen.queryByText(/дутуу/)).toBeNull();
   });
 });

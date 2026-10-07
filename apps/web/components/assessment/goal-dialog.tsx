@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Minus, Pencil, Plus, X } from "lucide-react";
+import { Minus, Plus, X } from "lucide-react";
 import { z } from "zod";
 import { mutate } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
+import { RowMenu } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
 import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 
@@ -94,15 +95,10 @@ export function GoalDialog({
 
   return (
     <>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        aria-label="Сарын зорилго засах"
-        onClick={() => setOpen(true)}
-      >
-        <Pencil size={17} aria-hidden="true" />
-      </Button>
+      <RowMenu
+        ariaLabel="Сарын зорилгын үйлдэл"
+        items={[{ label: "Засах", onSelect: () => setOpen(true) }]}
+      />
 
       {open ? (
         <div

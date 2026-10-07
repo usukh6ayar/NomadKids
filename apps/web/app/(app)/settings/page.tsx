@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Database, IdCard, KeyRound, Pencil, UsersRound } from "lucide-react";
+import { KeyRound, Pencil } from "lucide-react";
 import { z } from "zod";
 import {
   enrollmentArchiveSchema,
@@ -22,7 +22,6 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Input, PasswordInput } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
@@ -40,6 +39,8 @@ import {
   PhoneVerificationStep,
   usePhoneVerificationEnabled,
 } from "@/components/auth/phone-verification";
+import { EsisButton } from "@/components/esis/esis-button";
+import { FactRow } from "@/components/ui/fact-row";
 
 const profileSchema = userProfileSchema.extend({
   specialization: z.string().nullish(),
@@ -98,9 +99,12 @@ function ProfileCard() {
   const role = session?.memberships?.[0]?.role;
   const isAdministration = session?.memberships?.some((m) => m.role === "ADMIN") ?? false;
   const roleLabel = role ? ROLE_LABEL[role] : "Эцэг эх";
-  const facts = [
-    { label: "Утас", value: data?.phone },
-    { label: "И-мэйл", value: data?.email },
+  /*
+    ★ Every line, with «—» where it is empty — client, 2026-10-06 ("эцэг эх
+    дээр харагддаг шиг"). It used to drop an empty line, so a teacher never
+    saw that «Мэргэшлийн зэрэг» was there to fill in.
+  */
+  const facts: { label: string; value: string | null | undefined }[] = [
     ...(role === "TEACHER" || role === "ADMIN"
       ? [
           { label: "Мэргэжил", value: data?.specialization },
@@ -108,7 +112,9 @@ function ProfileCard() {
           { label: "Төгссөн сургууль", value: data?.education },
         ]
       : []),
-  ].filter((fact): fact is { label: string; value: string } => Boolean(fact.value?.trim()));
+    { label: "Утас", value: data?.phone },
+    { label: "И-мэйл", value: data?.email },
+  ];
 
   return (
     <section aria-label="Хувийн мэдээлэл">
@@ -139,18 +145,12 @@ function ProfileCard() {
             </span>
           )}
 
-          <div className="flex min-w-[180px] flex-1 flex-col gap-1.5">
+          {/* The role (and group) over the name, as on the family's card. */}
+          <div className="flex min-w-[160px] flex-1 flex-col gap-0.5">
+            <p className="text-caption font-medium text-primary">
+              {[roleLabel, group ? groupLabel(group.name) : null].filter(Boolean).join(" · ")}
+            </p>
             <p className="truncate text-lead font-semibold text-ink">{fullName(data)}</p>
-            <div className="flex flex-wrap gap-2">
-              {group ? (
-                <Badge tone="primary">
-                  <UsersRound size={14} aria-hidden="true" /> {groupLabel(group.name)}
-                </Badge>
-              ) : null}
-              <Badge tone="neutral">
-                <IdCard size={14} aria-hidden="true" /> {roleLabel}
-              </Badge>
-            </div>
           </div>
 
           <Button
@@ -163,16 +163,13 @@ function ProfileCard() {
             Мэдээлэл засах
           </Button>
         </div>
-        {facts.length > 0 ? (
-          <dl className="grid gap-x-6 gap-y-2 border-t border-border-soft pt-3 sm:grid-cols-2">
-            {facts.map((fact) => (
-              <div key={fact.label} className="min-w-0">
-                <dt className="text-caption text-muted">{fact.label}</dt>
-                <dd className="truncate text-body text-ink">{fact.value}</dd>
-              </div>
-            ))}
-          </dl>
-        ) : null}
+        <dl className="border-t border-border-soft">
+          {facts.map((fact, index) => (
+            <FactRow key={fact.label} label={fact.label} last={index === facts.length - 1}>
+              {fact.value?.trim() || "—"}
+            </FactRow>
+          ))}
+        </dl>
         <PasswordSection />
       </Card>
 
@@ -361,16 +358,7 @@ function EditProfileDialog({
       {isStaff && primaryKindergartenId ? (
         <div className="flex items-center justify-between gap-3 rounded-control bg-sunken px-3 py-2">
           <p className="text-caption text-muted">ЭСИС-ээс нөхөөд, хадгалахаас өмнө шалгана.</p>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            disabled={esis.isFetching}
-            onClick={() => void fillFromEsis()}
-          >
-            <Database size={16} aria-hidden="true" />
-            {esis.isFetching ? "Татаж байна…" : "Esis татах"}
-          </Button>
+          <EsisButton pending={esis.isFetching} onClick={() => void fillFromEsis()} />
         </div>
       ) : null}
       <div className="grid gap-4 sm:grid-cols-2">
@@ -489,7 +477,7 @@ function CoTeachersCard() {
         {others.map((teacher) => (
           <div key={teacher.id} className="flex flex-col gap-2">
             <div className="flex items-center gap-3">
-              <ChildAvatar child={teacher} size={48} />
+              <ChildAvatar child={teacher} size={56} />
               <div className="min-w-0">
                 <p className="text-caption font-medium text-primary">
                   {CO_TEACHER_ROLE[teacher.role] ?? "Багш"}
@@ -497,17 +485,18 @@ function CoTeachersCard() {
                 <p className="truncate text-body font-semibold text-ink">{fullName(teacher)}</p>
               </div>
             </div>
-            <dl className="grid gap-x-6 gap-y-2 border-t border-border-soft pt-3 sm:grid-cols-2">
-              {[
-                ["Мэргэжил", teacher.specialization],
-                ["Төгссөн сургууль", teacher.education],
-                ["Утас", teacher.phone],
-                ["И-мэйл", teacher.email],
-              ].map(([label, value]) => (
-                <div key={label} className="min-w-0">
-                  <dt className="text-caption text-muted">{label}</dt>
-                  <dd className="truncate text-body text-ink">{value?.trim() || "—"}</dd>
-                </div>
+            <dl>
+              {(
+                [
+                  ["Мэргэжил", teacher.specialization],
+                  ["Төгссөн сургууль", teacher.education],
+                  ["Утас", teacher.phone],
+                  ["И-мэйл", teacher.email],
+                ] as const
+              ).map(([label, value], index, rows) => (
+                <FactRow key={label} label={label} last={index === rows.length - 1}>
+                  {value?.trim() || "—"}
+                </FactRow>
               ))}
             </dl>
           </div>
@@ -612,12 +601,7 @@ function PasswordSection() {
         field of the profile above it.
       */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-body font-medium text-ink">Нэвтрэх нууц үг</p>
-          <p className="text-caption text-muted">
-            Солисны дараа бусад төхөөрөмжөөс автоматаар гарна.
-          </p>
-        </div>
+        <p className="text-body font-medium text-ink">Нэвтрэх нууц үг</p>
 
         {open ? (
           <Button type="button" variant="ghost" size="sm" onClick={close}>

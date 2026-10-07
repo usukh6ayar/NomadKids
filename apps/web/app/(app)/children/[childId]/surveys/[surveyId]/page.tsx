@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { CheckCircle2 } from "lucide-react";
 import { z } from "zod";
 import { surveySchema, type SurveyAnswerValue } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
@@ -13,7 +14,7 @@ import { useToast } from "@/components/ui/toast";
 import { Card } from "@/components/ui/card";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { PollAnswer } from "@/components/survey/poll-answer";
-import { FamilyAnswers } from "@/components/survey/family-answers";
+import { FamilyAnswers, SurveyFacts } from "@/components/survey/family-answers";
 import { SurveyAnswerForm } from "@/components/survey/survey-answer-form";
 
 const activeSurveysSchema = z.array(surveySchema);
@@ -165,7 +166,13 @@ export default function SurveyResponsePage() {
       <div className="flex flex-col gap-4 py-2">
         <PageHeader backHref={`/children/${childId}/surveys`} title={survey.title} />
         <Card className="flex flex-col gap-3 px-4 py-4">
-          <p className="text-caption font-semibold text-mint-ink">Хариулсан</p>
+          <span className="inline-flex items-center gap-1.5 text-caption font-semibold text-mint-ink">
+            <CheckCircle2 size={16} aria-hidden="true" />
+            Хариулсан
+          </span>
+          <SurveyFacts survey={survey} />
+        </Card>
+        <Card className="px-4 py-4">
           <FamilyAnswers survey={survey} />
         </Card>
       </div>

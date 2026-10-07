@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CloudDownload } from "lucide-react";
 import { useState } from "react";
 import {
   esisScopedCatalogSchema,
@@ -26,6 +25,7 @@ import { Field, Input } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { LoadingState } from "@/components/ui/states";
 import { TableShell, Td, Th } from "@/components/ui/table";
+import { EsisButton } from "@/components/esis/esis-button";
 
 /**
  * "ESIS-ээс татах" — one button, on every screen ESIS data lands on.
@@ -44,16 +44,10 @@ import { TableShell, Td, Th } from "@/components/ui/table";
 export function EsisPullButton({
   resource,
   params,
-  label = "ESIS-ээс татах",
-  size = "sm",
-  variant = "secondary",
 }: {
   resource: EsisResourceKey;
   /** Path values the service needs — a group, a date, a product. */
   params?: Record<string, string | undefined>;
-  label?: string;
-  size?: "sm" | "md";
-  variant?: "primary" | "secondary" | "ghost";
 }) {
   const { primaryKindergartenId, hasRole } = useSession();
   const [open, setOpen] = useState(false);
@@ -68,10 +62,7 @@ export function EsisPullButton({
 
   return (
     <>
-      <Button size={size} variant={variant} onClick={() => setOpen(true)}>
-        <CloudDownload aria-hidden />
-        {label}
-      </Button>
+      <EsisButton onClick={() => setOpen(true)} />
       {open ? (
         <EsisPullDialog
           kindergartenId={primaryKindergartenId}

@@ -160,8 +160,8 @@ describe("the teacher's report", () => {
     stub();
     renderWithProviders(<ReportsPage />);
 
-    await user.click(await screen.findByRole("tab", { name: "Ажиглалтын тайлан" }));
-    const panel = screen.getByRole("tabpanel", { name: "Ажиглалтын тайлан" });
+    await user.click(await screen.findByRole("tab", { name: "Ажиглалт, ярилцлага, бүтээл" }));
+    const panel = screen.getByRole("tabpanel", { name: "Ажиглалт, ярилцлага, бүтээл" });
 
     expect(within(panel).getByText("Өдөр тутмын ажиглалт")).toBeInTheDocument();
     expect(within(panel).getByText("Ярилцлага")).toBeInTheDocument();

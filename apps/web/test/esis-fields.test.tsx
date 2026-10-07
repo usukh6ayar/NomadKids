@@ -325,9 +325,7 @@ describe("ESIS гаралтын талбарууд", () => {
     // two would break on the next layout change without protecting anything.
     expect(within(details).getAllByText("institutionId").length).toBeGreaterThan(0);
     expect(within(details).getByText("regionName")).toBeInTheDocument();
-    expect(
-      within(details).queryByRole("button", { name: /ESIS-ээс татах/ }),
-    ).not.toBeInTheDocument();
+    expect(within(details).queryByRole("button", { name: /ESIS татах/ })).not.toBeInTheDocument();
   });
 
   /*

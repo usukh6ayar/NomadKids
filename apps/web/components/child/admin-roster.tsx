@@ -31,6 +31,8 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { Td, Th } from "@/components/ui/table";
 import type { z } from "zod";
 import { useRouter } from "next/navigation";
+import { InviteDialog } from "@/components/child/invite-guardian-dialog";
+import { DeleteChildDialog } from "@/components/child/delete-child-dialog";
 
 const listSchema = paginated(childSummarySchema);
 const groupsSchema = paginated(groupListItemSchema);
@@ -195,10 +197,7 @@ export function AdminRoster() {
             </Button>
             {/* ★ Was a link to the deleted `/admin/integrations/esis` — a 404. */}
             {primaryKindergartenId ? (
-              <EsisRosterImportButton
-                kindergartenId={primaryKindergartenId}
-                label="ESIS Суралцагч"
-              />
+              <EsisRosterImportButton kindergartenId={primaryKindergartenId} />
             ) : null}
             <Button asChild size="sm">
               <Link href="/children/new">
@@ -399,6 +398,9 @@ export function StudentRosterTable({
   discounts?: ReadonlyMap<string, FoodDiscountStatus>;
 }) {
   const router = useRouter();
+  const isAdmin = useSession().hasRole("ADMIN");
+  const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(null);
+  const [inviting, setInviting] = useState<{ id: string; name: string } | null>(null);
   return (
     <div className="overflow-x-auto rounded-card border border-border bg-surface">
       <table className="w-full min-w-[640px] border-collapse text-body">
@@ -478,6 +480,35 @@ export function StudentRosterTable({
                         label: "Бүртгэлийн түүх",
                         onSelect: () => router.push(`/children/${child.id}/enrollment-archive`),
                       },
+                      /*
+                        ★ «Урих» from the row — client, 2026-10-06: a teacher
+                        invites a child's parent without opening the child.
+                      */
+                      ...(forTeacher
+                        ? [
+                            {
+                              label: "Урих",
+                              onSelect: () =>
+                                setInviting({
+                                  id: child.id,
+                                  name: `${child.lastName ?? ""} ${child.firstName}`.trim(),
+                                }),
+                            },
+                          ]
+                        : []),
+                      ...(isAdmin
+                        ? [
+                            {
+                              label: "Устгах",
+                              tone: "danger" as const,
+                              onSelect: () =>
+                                setDeleting({
+                                  id: child.id,
+                                  name: `${child.lastName ?? ""} ${child.firstName}`.trim(),
+                                }),
+                            },
+                          ]
+                        : []),
                     ]}
                   />
                 </Td>
@@ -486,6 +517,14 @@ export function StudentRosterTable({
           })}
         </tbody>
       </table>
+      <DeleteChildDialog child={deleting} onClose={() => setDeleting(null)} />
+      {inviting ? (
+        <InviteDialog
+          childId={inviting.id}
+          childName={inviting.name}
+          onClose={() => setInviting(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -511,6 +550,8 @@ export function ChildRosterTable({
   discounts?: ReadonlyMap<string, FoodDiscountStatus>;
 }) {
   const router = useRouter();
+  const isAdmin = useSession().hasRole("ADMIN");
+  const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(null);
   return (
     <div className="rounded-card border border-border bg-surface">
       <table className="w-full border-collapse text-body">
@@ -575,6 +616,19 @@ export function ChildRosterTable({
                       label: "Бүртгэлийн түүх",
                       onSelect: () => router.push(`/children/${child.id}/enrollment-archive`),
                     },
+                    ...(isAdmin
+                      ? [
+                          {
+                            label: "Устгах",
+                            tone: "danger" as const,
+                            onSelect: () =>
+                              setDeleting({
+                                id: child.id,
+                                name: `${child.lastName ?? ""} ${child.firstName}`.trim(),
+                              }),
+                          },
+                        ]
+                      : []),
                   ]}
                 />
               </Td>
@@ -582,6 +636,7 @@ export function ChildRosterTable({
           ))}
         </tbody>
       </table>
+      <DeleteChildDialog child={deleting} onClose={() => setDeleting(null)} />
     </div>
   );
 }

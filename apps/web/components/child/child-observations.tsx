@@ -321,7 +321,8 @@ export function SharedMomentsTeaser({
   childId: string;
   categoryCode: ParentCategoryCode;
   title: string;
-  onAdd: () => void;
+  /** Omitted, there is no «+» — a teacher reading the family's page. */
+  onAdd?: () => void;
   composer?: ReactNode;
 }) {
   const { primaryKindergartenId } = useSession();
@@ -349,11 +350,18 @@ export function SharedMomentsTeaser({
         still names the section for a screen reader and the add button's
         accessible name.
       */}
-      <div className="mb-2.5 flex justify-end">
-        <Button size="icon" className="rounded-pill" aria-label={`${title} нэмэх`} onClick={onAdd}>
-          <Plus aria-hidden="true" />
-        </Button>
-      </div>
+      {onAdd ? (
+        <div className="mb-2.5 flex justify-end">
+          <Button
+            size="icon"
+            className="rounded-pill"
+            aria-label={`${title} нэмэх`}
+            onClick={onAdd}
+          >
+            <Plus aria-hidden="true" />
+          </Button>
+        </div>
+      ) : null}
 
       {composer ? <div className="mb-4">{composer}</div> : null}
 
@@ -453,6 +461,9 @@ function MomentsFeed({
                 <MomentCard
                   observation={observation}
                   canManage={canManage}
+                  // No stand-in drawing for a note without a photo — client,
+                  // 2026-10-07: such a note reads as its words alone.
+                  showPlaceholderArt={false}
                   onOpen={() => setDetail(observation)}
                   onEdit={() => setEditing(observation)}
                   onDelete={() => setDeleting(observation)}

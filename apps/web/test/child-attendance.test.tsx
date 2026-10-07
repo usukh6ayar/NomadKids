@@ -78,6 +78,28 @@ describe("хүүхдийн ирцийн шинэ бүтэц", () => {
 
   afterEach(() => vi.useRealTimers());
 
+  /** Client, 2026-10-06: no glyphs; a ✓ before a word once that step is done. */
+  it("marks a done step with a ✓ before its word", async () => {
+    stubApi([
+      { path: `/children/${CHILD}/attendance/summary`, body: {} },
+      {
+        path: `/children/${CHILD}/attendance-requests`,
+        method: "GET",
+        body: [{ ...requestWithAttachment(), dateFrom: "2026-09-07", dateTo: "2026-09-07" }],
+      },
+      { path: `/children/${CHILD}/attendance`, body: [record()] },
+    ]);
+    renderWithProviders(<ChildAttendance childId={CHILD} isStaff={false} childName="Батбаяр" />);
+
+    const check = (name: RegExp) =>
+      screen.getByRole("button", { name }).querySelector("svg.lucide-check");
+    await screen.findByRole("button", { name: /Ирлээ/ });
+    // Arrived (the record has a drop-off), not yet collected, leave asked for today.
+    expect(check(/Ирлээ/)).not.toBeNull();
+    expect(check(/Явлаа/)).toBeNull();
+    expect(check(/Чөлөө хүсэх/)).not.toBeNull();
+  });
+
   it("shows today's actions, the real summary, chart and colour calendar", async () => {
     stubAttendance();
     renderWithProviders(<ChildAttendance childId={CHILD} isStaff={false} childName="Батбаяр" />);
@@ -95,12 +117,32 @@ describe("хүүхдийн ирцийн шинэ бүтэц", () => {
     expect(screen.getByText(/Батбаяр ээжтэйгээ .* цэцэрлэгтээ ирлээ\./)).toBeInTheDocument();
     expect(screen.queryByText("Сүүлийн бүртгэл")).not.toBeInTheDocument();
 
-    const summary = await screen.findByRole("region", { name: "Ирцийн нэгтгэл" });
+    // Three tabs, «Гараас гарт» first and open.
+    const tabs = screen.getAllByRole("tab").map((tab) => tab.textContent);
+    expect(tabs).toEqual(["Гараас гарт", "Ирцийн нэгтгэл", "Календар"]);
+    expect(screen.getByRole("tab", { name: "Гараас гарт" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "Ирцийн нэгтгэл" }));
+    const summary = screen.getByRole("tabpanel", { name: "Ирцийн нэгтгэл" });
     for (const label of ["Ирсэн", "Тасалсан", "Чөлөөтэй", "Өвчтэй"]) {
-      expect(within(summary).getAllByText(label).length).toBeGreaterThan(0);
+      expect((await within(summary).findAllByText(label)).length).toBeGreaterThan(0);
     }
     expect(within(summary).getByRole("img", { name: /Ирсэн 3 өдөр/ })).toBeInTheDocument();
-    expect(within(summary).getByRole("img", { name: /7 — Ирсэн/ })).toBeInTheDocument();
+    // Only the chosen one is on screen.
+    expect(within(summary).queryByRole("img", { name: /7 — Ирсэн/ })).toBeNull();
+    expect(screen.queryByRole("table")).toBeNull();
+
+    await user.click(screen.getByRole("tab", { name: "Календар" }));
+    const calendar = screen.getByRole("tabpanel", { name: "Календар" });
+    // Open, not folded behind a toggle.
+    expect(await within(calendar).findByRole("img", { name: /7 — Ирсэн/ })).toBeVisible();
+    expect(within(calendar).queryByRole("button", { name: /Календарь/ })).toBeNull();
+    // The tab names the panel; no section header (and its accent bar) inside.
+    expect(document.querySelector('[data-ui="section-header"]')).toBeNull();
   });
 
   it("submits leave dates, type, explanation and the selected medical document", async () => {
@@ -150,10 +192,11 @@ describe("хүүхдийн ирцийн шинэ бүтэц", () => {
     expect(row.className).toContain("grid-cols-3");
     expect(row.className).not.toContain("sm:grid-cols-3");
 
-    // Every label stays whole — the glyph stacks over it rather than the text
-    // truncating.
+    // ★ Words only since 2026-10-06 — no glyph on any of the three; a ✓
+    // appears before a word only once that step is done.
     for (const label of [/Ирлээ/, /Явлаа/, /Чөлөө хүсэх/]) {
-      expect(screen.getByRole("button", { name: label }).className).toContain("flex-col");
+      const glyphs = [...screen.getByRole("button", { name: label }).querySelectorAll("svg")];
+      expect(glyphs.every((svg) => svg.classList.contains("lucide-check"))).toBe(true);
     }
   });
 });
@@ -290,7 +333,12 @@ describe("эцэг эхийн өнөөдрийн ирц", () => {
     expect(within(dialog).queryByText(/эмээ-тай/)).not.toBeInTheDocument();
   });
 
-  it("★ one table row per day — the arrival and the pickup side by side", async () => {
+  /**
+   * ★ «Гараас гарт», not «Хүсэлтийн түүх» — client, 2026-10-06: the week a
+   * line a day, arrival and pickup with their companions, and a day off by its
+   * name. Monday 7 September is "today" here.
+   */
+  it("★ «Гараас гарт»: a line a day, the arrival and the pickup side by side", async () => {
     stubEmptyDay([
       presentRequest(ARRIVAL, "arrival"),
       presentRequest(PICKUP, "pickup"),
@@ -298,19 +346,31 @@ describe("эцэг эхийн өнөөдрийн ирц", () => {
     ]);
     renderWithProviders(<ChildAttendance childId={CHILD} isStaff={false} childName="Б.Бат" />);
 
-    const history = await screen.findByRole("region", { name: "Хүсэлтийн түүх" });
-    const table = within(history).getByRole("table");
+    const section = await screen.findByRole("tabpanel", { name: "Гараас гарт" });
+    expect(screen.queryByRole("region", { name: "Хүсэлтийн түүх" })).toBeNull();
+    const rows = within(within(section).getByRole("table")).getAllByRole("row").slice(1);
+    // Monday to Friday.
+    expect(rows).toHaveLength(5);
 
-    // The month heads its own days rather than repeating in every row.
-    expect(within(table).getByText("2026 оны 9-р сар")).toBeInTheDocument();
+    // The 7th: the family's own drop-off and pickup, two requests on one line.
+    expect(rows[0]).toHaveTextContent(/Да 9\.7.*Ээж.*Аав/);
+    // The 8th and 9th: the sick leave they asked for, still awaiting the teacher.
+    expect(rows[1]).toHaveTextContent("Өвчтэй · хүлээгдэж буй");
+    expect(rows[2]).toHaveTextContent("Өвчтэй · хүлээгдэж буй");
+    // Still to come.
+    expect(rows[4]).toHaveTextContent("—");
+  });
 
-    const day = within(table).getByRole("rowheader", { name: "7" }).closest("tr")!;
-    expect(within(day).getByText(/Ээж/)).toBeInTheDocument();
-    expect(within(day).getByText(/Аав/)).toBeInTheDocument();
+  it("names a recorded day off «Чөлөө»", async () => {
+    stubApi([
+      { path: `/children/${CHILD}/attendance/summary`, body: {} },
+      { path: `/children/${CHILD}/attendance-requests`, method: "GET", body: [] },
+      { path: `/children/${CHILD}/attendance`, body: [{ ...record(), status: "EXCUSED" }] },
+    ]);
+    renderWithProviders(<ChildAttendance childId={CHILD} isStaff={false} childName="Б.Бат" />);
 
-    // The leave request keeps its own row, spanning 8–9, and the verdict.
-    const leave = within(table).getByRole("rowheader", { name: "8–9" }).closest("tr")!;
-    expect(within(leave).getByText(/Өвчтэй · Халуурсан\./)).toBeInTheDocument();
-    expect(within(leave).getByText("Хүлээгдэж буй")).toBeInTheDocument();
+    const section = await screen.findByRole("tabpanel", { name: "Гараас гарт" });
+    const first = (await within(section).findAllByRole("row"))[1]!;
+    expect(first).toHaveTextContent(/Да 9\.7\s*Чөлөө$/);
   });
 });

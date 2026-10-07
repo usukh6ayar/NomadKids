@@ -51,7 +51,7 @@ describe("the cook's attendance, today", () => {
     const card = (await screen.findByRole("heading", { name: "Өнөөдрийн ирц" })).closest(
       "section",
     )!;
-    expect(within(card).getByText("/ 46 хүүхэд ирсэн")).toBeInTheDocument();
+    expect(within(card).getByText("/ 46 хүүхэд")).toBeInTheDocument();
 
     const table = screen.getByRole("table", { name: "Бүлгүүдийн өнөөдрийн ирц" });
     const cells = (name: string) =>

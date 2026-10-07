@@ -3,11 +3,11 @@
 import type { ReactNode } from "react";
 import { HeartPulse } from "lucide-react";
 import { CHILD_STATUS_LABEL, SEX_LABEL, type ChildDetail } from "@kinder/contracts";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { ChildAvatar } from "@/components/media/media-image";
 import { ChildPhotoButton } from "@/components/child/child-photo-button";
 import { formatAge, formatDate, fullName } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 /**
  * How each standing is tinted.
@@ -18,11 +18,12 @@ import { formatAge, formatDate, fullName } from "@/lib/format";
  * roster should carry. Only `INACTIVE` is grey, because only that one means
  * the record is no longer live.
  */
-const STATUS_TONE: Record<string, "mint" | "sky" | "sun" | "neutral"> = {
-  ACTIVE: "mint",
-  TEMPORARY: "sky",
-  ON_LEAVE: "sun",
-  INACTIVE: "neutral",
+/** The status as coloured text with a dot — the badge's meaning without its box. */
+const STATUS_INK: Record<string, string> = {
+  ACTIVE: "text-mint-ink",
+  TEMPORARY: "text-sky-ink",
+  ON_LEAVE: "text-sun-ink",
+  INACTIVE: "text-muted",
 };
 
 /**
@@ -90,6 +91,9 @@ export function ChildHeroProfile({
   // a child who has left still has a most-recent enrollment.
   const current = child.enrollments?.find((e) => e.status === "ACTIVE") ?? child.enrollments?.[0];
   const hasHealthNote = showHealthAlert && Boolean(child.healthNotes);
+  const unusualStatus = (child.status ?? "ACTIVE") !== "ACTIVE";
+  /* The line under the name, only when it has something to say. */
+  const showStatusLine = unusualStatus || Boolean(child.isForeign) || hasHealthNote;
 
   const facts = [
     formatAge(child.dateOfBirth),
@@ -98,8 +102,20 @@ export function ChildHeroProfile({
   ].filter(Boolean);
 
   return (
-    <Card pad="roomy">
-      <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center">
+    <Card pad="roomy" className="relative">
+      {/* The school year in the top-right corner — client, 2026-10-06. */}
+      {current?.schoolYear?.name ? (
+        <p className="absolute right-4 top-3 text-caption tabular-nums text-muted sm:right-6 sm:top-4">
+          {current.schoolYear.name} он
+        </p>
+      ) : null}
+
+      {/*
+        ★ Cleaner — client, 2026-10-06. The portrait sits beside the name on a
+        phone too, and the status and health note are coloured words with a
+        dot rather than filled badges.
+      */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
         {/*
           `relative`, so the camera badge can hang off the avatar's corner —
           see `ChildPhotoButton`. The wrapper is what carries the positioning
@@ -125,7 +141,13 @@ export function ChildHeroProfile({
           frame — and a decoration that people report as a bug is not doing the
           job it was added for. Size alone carries the billing now.
         */}
-        <div className="relative shrink-0">
+        {/*
+          ★ `self-start w-fit` — client, 2026-10-06: on a phone the wrapper
+          stretched to the card's width, so the camera badge, which hangs off
+          its bottom-right corner, ran to the right edge of the card instead
+          of sitting on the portrait.
+        */}
+        <div className="relative w-fit shrink-0 self-center">
           <ChildAvatar child={child} size={88} />
           {canEditPhoto ? (
             <ChildPhotoButton childId={child.id} childName={fullName(child)} />
@@ -133,13 +155,14 @@ export function ChildHeroProfile({
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <div className="flex flex-col gap-1">
             {/*
               `break-words`, not `truncate`. A Mongolian full name is long and
               this is the one place it must be readable in full — the header
               whose entire job is to say which child you are looking at.
             */}
-            <h1 className="min-w-0 break-words text-heading font-semibold tracking-[-.01em] text-ink sm:text-display">
+            {/* `pe-24`: room for the school year in the card's corner. */}
+            <h1 className="min-w-0 break-words pe-24 text-title font-semibold tracking-[-.01em] text-ink sm:text-heading">
               {fullName(child)}
             </h1>
 
@@ -152,39 +175,58 @@ export function ChildHeroProfile({
               "Архивласан" — the same grey badge for a child coming back on
               Monday and a child who moved to another city.
             */}
-            <Badge tone={STATUS_TONE[child.status ?? "ACTIVE"] ?? "neutral"}>
-              {CHILD_STATUS_LABEL[child.status ?? "ACTIVE"] ?? CHILD_STATUS_LABEL.ACTIVE}
-            </Badge>
+            {showStatusLine ? (
+              <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-caption font-medium">
+                {/*
+                «Суралцаж байгаа» is not said — client, 2026-10-06: it is the
+                ordinary state. Away, temporary or left still is, because
+                each changes what a teacher does with the child.
+              */}
+                {unusualStatus ? (
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1.5",
+                      STATUS_INK[child.status ?? "ACTIVE"] ?? "text-muted",
+                    )}
+                  >
+                    <span aria-hidden="true" className="size-1.5 rounded-pill bg-current" />
+                    {CHILD_STATUS_LABEL[child.status ?? "ACTIVE"] ?? CHILD_STATUS_LABEL.ACTIVE}
+                  </span>
+                ) : null}
 
-            {/*
+                {/*
               ★ Гадаад иргэн, beside the status rather than buried in a field.
               It changes which identifier the record carries — a foreign child
               has no регистр and never will — so it belongs where somebody sees
               it before they go looking for one.
             */}
-            {child.isForeign ? (
-              <Badge tone="sky">Гадаад иргэн{child.foreignId ? ` · ${child.foreignId}` : ""}</Badge>
-            ) : null}
+                {child.isForeign ? (
+                  <span className="text-sky-ink">
+                    Гадаад иргэн{child.foreignId ? ` · ${child.foreignId}` : ""}
+                  </span>
+                ) : null}
 
-            {hasHealthNote ? (
-              <Badge tone="peach">
-                <HeartPulse size={13} aria-hidden="true" />
-                Эрүүл мэндийн тэмдэглэлтэй
-              </Badge>
+                {hasHealthNote ? (
+                  <span className="inline-flex items-center gap-1 text-peach-ink">
+                    <HeartPulse size={13} aria-hidden="true" />
+                    Эрүүл мэндийн тэмдэглэлтэй
+                  </span>
+                ) : null}
+              </p>
             ) : null}
           </div>
 
           {facts.length > 0 ? (
-            <p className="mt-1 text-body text-muted">{facts.join(" · ")}</p>
+            <p className="mt-1.5 text-body text-muted">{facts.join(" · ")}</p>
           ) : null}
 
-          <p className="mt-0.5 text-caption text-muted">
-            Төрсөн: {formatDate(child.dateOfBirth)}
-            {current?.schoolYear?.name ? ` · ${current.schoolYear.name}` : ""}
-          </p>
+          <p className="text-caption text-muted">Төрсөн: {formatDate(child.dateOfBirth)}</p>
         </div>
 
-        {actions ? <div className="flex w-full flex-wrap gap-2 sm:w-auto">{actions}</div> : null}
+        {/* Pushed to the right edge — client, 2026-10-06. */}
+        {actions ? (
+          <div className="ml-auto flex w-full flex-wrap justify-end gap-2 sm:w-auto">{actions}</div>
+        ) : null}
       </div>
     </Card>
   );

@@ -3,17 +3,7 @@
 import { useIsFetching, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Query } from "@tanstack/react-query";
 import Link from "next/link";
-import {
-  House,
-  Pencil,
-  Phone,
-  RefreshCw,
-  School,
-  TriangleAlert,
-  User,
-  UserPlus,
-  Users,
-} from "lucide-react";
+import { House, Pencil, Phone, School, TriangleAlert, User, UserPlus, Users } from "lucide-react";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
 import { z } from "zod";
@@ -42,6 +32,7 @@ import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { excerpt, formatAge, formatDate, fullName, capitalize } from "@/lib/format";
+import { EsisButton } from "@/components/esis/esis-button";
 
 const AGE_BAND_LABEL: Record<string, string> = {
   NURSERY: "Бага бүлэг",
@@ -359,19 +350,13 @@ function EsisPullAll({ childId, nationalId }: { childId: string; nationalId?: st
   const fetching = useIsFetching({ predicate }) > 0;
 
   return (
-    <Button
-      type="button"
-      variant="secondary"
-      size="sm"
-      disabled={fetching}
+    <EsisButton
+      pending={fetching}
       onClick={async () => {
         await queryClient.refetchQueries({ predicate });
         toast.success("ЭСИС-ийн мэдээлэл шинэчлэгдлээ.");
       }}
-    >
-      <RefreshCw size={16} aria-hidden="true" className={fetching ? "animate-spin" : undefined} />
-      {fetching ? "Татаж байна…" : "ЭСИС-ээс татах"}
-    </Button>
+    />
   );
 }
 

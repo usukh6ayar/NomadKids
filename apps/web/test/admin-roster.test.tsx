@@ -108,7 +108,7 @@ describe("the director's roster", () => {
     // Reads ESIS's discounts on press — never on open, it is an audited ministry read.
     expect(screen.getByRole("button", { name: /ESIS Хөнгөлөлттэй/ })).toBeEnabled();
     // A real import (`roster-import`), not a link — the hub it linked to is gone.
-    expect(screen.getByRole("button", { name: /ESIS Суралцагч/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /ESIS татах/ })).toBeEnabled();
     expect(screen.getByRole("link", { name: /^Суралцагч$/ })).toHaveAttribute(
       "href",
       "/children/new",

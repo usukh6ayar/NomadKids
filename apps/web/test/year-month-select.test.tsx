@@ -36,4 +36,26 @@ describe("YearMonthSelect", () => {
     render(<Harness initial="2001-01" />);
     expect(screen.getByLabelText("Он")).toHaveTextContent("2001");
   });
+
+  it("offers no year or month past max", async () => {
+    const user = userEvent.setup();
+    function Capped() {
+      const [value, setValue] = useState("2026-10");
+      return (
+        <>
+          <YearMonthSelect value={value} onValueChange={setValue} max="2026-10" />
+          <output>{value}</output>
+        </>
+      );
+    }
+    render(<Capped />);
+
+    await user.click(screen.getByLabelText("Он"));
+    expect(screen.queryByRole("option", { name: "2027" })).toBeNull();
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByLabelText("Сар"));
+    expect(screen.getByRole("option", { name: "10-р сар" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "11-р сар" })).toBeNull();
+  });
 });

@@ -12,7 +12,6 @@ import {
   ChevronUp,
   Copy,
   Eye,
-  GripVertical,
   Plus,
   Trash2,
   X,
@@ -41,6 +40,7 @@ import {
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { A79_LEVELS, a79Questions } from "@/lib/a79-assessment";
+import { PARENT_SURVEY_TEMPLATES } from "@/lib/parent-survey-templates";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
@@ -91,53 +91,19 @@ interface DraftQuestion {
 
 type SurveyTemplate = {
   title: string;
-  category: SurveyCategory;
+  /** Set by a template that decides it (А/79); a family template does not. */
+  category?: SurveyCategory;
   questions: DraftQuestion[];
   /** The wave a template belongs to, when it has one. */
   period?: SurveyPeriod;
 };
 
-const SURVEY_TEMPLATES: Record<string, SurveyTemplate> = {
-  satisfaction: {
-    title: "Эцэг эхийн сэтгэл ханамжийн судалгаа",
-    category: "SATISFACTION",
-    questions: [
-      {
-        type: "RATING",
-        prompt: "Цэцэрлэгийн орчин, цэвэр байдалд хэр сэтгэл хангалуун байна вэ?",
-        options: [],
-      },
-      {
-        type: "RATING",
-        prompt: "Багштай харилцах боломжид хэр сэтгэл хангалуун байна вэ?",
-        options: [],
-      },
-      { type: "TEXT", prompt: "Санал, хүсэлтээ бичнэ үү.", options: [] },
-    ],
-  },
-  development: {
-    title: "Хөгжлийн үнэлгээний судалгаа",
-    category: "COGNITIVE_DEVELOPMENT",
-    questions: [
-      { type: "RATING", prompt: "Хүүхэд шинэ зүйл сурахдаа хэр идэвхтэй байна вэ?", options: [] },
-      { type: "RATING", prompt: "Үе тэнгийнхэнтэйгээ хэр сайн харилцаж байна вэ?", options: [] },
-      { type: "TEXT", prompt: "Сүүлийн үед гарсан ахиц дэвшлийг бичнэ үү.", options: [] },
-    ],
-  },
-  meals: {
-    title: "Хоолны чанарын судалгаа",
-    category: "OTHER",
-    questions: [
-      { type: "RATING", prompt: "Хоолны амт, чанарт хэр сэтгэл хангалуун байна вэ?", options: [] },
-      {
-        type: "SINGLE_CHOICE",
-        prompt: "Хүүхэд хоолоо хэр идэвхтэй иддэг вэ?",
-        options: ["Сайн", "Дунд", "Муу"],
-      },
-      { type: "TEXT", prompt: "Хоолтой холбоотой санал, хүсэлтээ бичнэ үү.", options: [] },
-    ],
-  },
-};
+/**
+ * The families' templates are the client's nine questionnaires since
+ * 2026-10-06 — `lib/parent-survey-templates.ts`. The three that were here
+ * (сэтгэл ханамж, хөгжил, хоол) were taken off at their request.
+ */
+const SURVEY_TEMPLATES: Record<string, SurveyTemplate> = PARENT_SURVEY_TEMPLATES;
 
 /**
  * А/79 — the ministry's four-level development assessment, ready for a
@@ -474,23 +440,43 @@ export function CreateSurveyWizard({
         value: `a79-${level.key}`,
         label: `А/79 хөгжлийн үнэлгээ — ${level.key} түвшин (${level.criteria.length} шалгуур)`,
       }))
-    : [
-        { value: "satisfaction", label: "Эцэг эхийн сэтгэл ханамж" },
-        { value: "development", label: "Хүүхдийн хөгжил" },
-        { value: "meals", label: "Хоолны чанар" },
-      ];
+    : Object.entries(PARENT_SURVEY_TEMPLATES).map(([value, template]) => ({
+        value,
+        label: template.label,
+      }));
 
   const applyTemplate = (key: string) => {
     const template = SURVEY_TEMPLATES[key] ?? A79_TEMPLATES[key];
     if (!template) return;
     setTitle(template.title);
-    setCategory(template.category);
+    /*
+      ★ A family template leaves Ангилал and the period alone — client,
+      2026-10-06: "багш өөрөө загвараа сонгоод төрлөө сонгоно". It fills the
+      title, the purpose and the questions; what kind of survey it is stays
+      the teacher's choice. А/79 still sets its own, being one assessment.
+    */
+    if (template.category) setCategory(template.category);
     if (template.period) setPeriod(template.period);
     setQuestions(cloneQuestions(template.questions));
     setPreviewing(false);
   };
 
-  const backdrop = useBackdropDismiss(onClose);
+  /*
+    ★ × is "I am done with this one" — client, 2026-10-06: a template chosen,
+    the sheet closed with ×, and the next «Шинэ судалгаа» opened on the same
+    template. Any close — ×, the backdrop, Escape — drops the draft; it is
+    kept only for the accident it exists for, a refresh mid-sentence.
+  */
+  const discardAndClose = () => {
+    try {
+      window.localStorage.removeItem(draftStorageKey);
+    } catch {
+      // Storage unavailable: there is no draft to drop.
+    }
+    onClose();
+  };
+
+  const backdrop = useBackdropDismiss(discardAndClose);
 
   return (
     <div
@@ -500,12 +486,12 @@ export function CreateSurveyWizard({
       {...backdrop}
       className="fixed inset-0 z-50 grid items-end overflow-y-auto bg-ink/50 p-0 sm:place-items-center sm:p-4"
     >
-      <div className="max-h-[calc(100dvh-0.5rem)] w-full max-w-[680px] overflow-y-auto rounded-t-card border border-border bg-surface p-4 shadow-lg sm:max-h-[calc(100vh-2rem)] sm:rounded-card sm:p-5">
-        <div className="mb-3 flex items-center gap-2">
-          <h2 className="min-w-0 flex-1 text-title font-semibold leading-heading text-ink">
+      <div className="max-h-[calc(100dvh-0.5rem)] w-full max-w-[680px] overflow-y-auto rounded-t-card border border-border bg-surface p-3.5 shadow-lg sm:max-h-[calc(100vh-2rem)] sm:rounded-card sm:p-4">
+        <div className="mb-2 flex items-center gap-2">
+          <h2 className="min-w-0 flex-1 text-lead font-semibold leading-heading text-ink">
             {heading}
           </h2>
-          <Button variant="ghost" size="icon" aria-label="Хаах" onClick={onClose}>
+          <Button variant="ghost" size="icon" aria-label="Хаах" onClick={discardAndClose}>
             <X size={18} aria-hidden="true" />
           </Button>
         </div>
@@ -528,50 +514,92 @@ export function CreateSurveyWizard({
               message={create.isError ? localizedCreateError || errorMessage(create.error) : null}
             />
 
-            <div className="flex flex-col gap-3.5">
-              {!isPoll ? (
-                <div className="rounded-card border border-border bg-canvas p-3">
-                  <label
-                    htmlFor="survey-template"
-                    className="mb-1.5 block text-body font-medium text-ink"
-                  >
-                    Бэлэн загвараас эхлэх
-                  </label>
-                  <Select
-                    id="survey-template"
-                    defaultValue=""
-                    onChange={(event) => {
-                      applyTemplate(event.target.value);
-                      event.target.value = "";
-                    }}
-                  >
-                    <option value="">Загвар сонгох…</option>
-                    {templateOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Select>
-                  <p className="mt-1.5 text-caption text-muted">
-                    Загварыг сонгосны дараа бүх асуултыг чөлөөтэй засаж болно.
-                  </p>
-                </div>
-              ) : null}
+            {/*
+              ★ Tight — client, 2026-10-06: «Бэлэн загвар» no longer takes a
+              boxed panel at the head of every new survey, the period, the
+              title, the audience and the category are small and unlabelled
+              (their names are inside them, and on them for a screen reader),
+              and the questions get the room.
+            */}
+            <div className="flex flex-col gap-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Ангилал above the title — client, 2026-10-06. */}
+                <label htmlFor="survey-category" className="sr-only">
+                  Ангилал
+                </label>
+                <Select
+                  id="survey-category"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as SurveyCategory)}
+                  className={cn(SMALL, "w-auto min-w-[150px] flex-1 sm:flex-none")}
+                >
+                  {SURVEY_CATEGORIES.map((value) => (
+                    <option key={value} value={value}>
+                      {SURVEY_CATEGORY_LABEL[value]}
+                    </option>
+                  ))}
+                </Select>
 
-              <div>
-                <Field label="Гарчиг" error={errors.title} required>
-                  {({ id, describedBy, invalid }) => (
-                    <Input
-                      id={id}
-                      aria-describedby={describedBy}
-                      invalid={invalid}
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      autoFocus
-                    />
-                  )}
-                </Field>
+                {!isPoll ? (
+                  <>
+                    <label htmlFor="survey-template" className="sr-only">
+                      Бэлэн загвараас эхлэх
+                    </label>
+                    <Select
+                      id="survey-template"
+                      defaultValue=""
+                      onChange={(event) => {
+                        applyTemplate(event.target.value);
+                        event.target.value = "";
+                      }}
+                      className={cn(SMALL, "w-auto min-w-[150px] flex-1 sm:flex-none")}
+                    >
+                      <option value="">Загвар сонгох…</option>
+                      {templateOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </Select>
+                  </>
+                ) : null}
+
+                <label htmlFor="survey-period" className="sr-only">
+                  Үнэлгээний төрөл
+                </label>
+                <Select
+                  id="survey-period"
+                  value={period ?? "OTHER"}
+                  onChange={(event) =>
+                    setPeriod(
+                      event.target.value === "OTHER" ? null : (event.target.value as SurveyPeriod),
+                    )
+                  }
+                  className={cn(SMALL, "w-auto min-w-[140px] flex-1 sm:flex-none")}
+                >
+                  {SURVEY_PERIODS.map((value) => (
+                    <option key={value} value={value}>
+                      {SURVEY_PERIOD_LABEL[value]}
+                    </option>
+                  ))}
+                  <option value="OTHER">{SURVEY_PERIOD_OTHER_LABEL}</option>
+                </Select>
               </div>
+
+              <Field label="Гарчиг" labelHidden error={errors.title} required>
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    value={title}
+                    placeholder="Судалгааны гарчиг"
+                    onChange={(e) => setTitle(e.target.value)}
+                    className="h-10"
+                    autoFocus
+                  />
+                )}
+              </Field>
 
               {isPoll ? (
                 <fieldset>
@@ -612,61 +640,9 @@ export function CreateSurveyWizard({
                 groups={groups.data?.items ?? []}
                 groupId={groupId}
                 onGroup={setGroupId}
-                category={category}
-                onCategory={setCategory}
-                opensOn={opensOn}
-                onOpensOn={setOpensOn}
-                closesOn={closesOn}
-                onClosesOn={setClosesOn}
-                showDates={showSettings}
               />
 
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-body font-semibold text-ink">Асуултууд</p>
-                  <p className="text-caption text-muted">Ноорог автоматаар хадгалагдана.</p>
-                </div>
-
-                <div className="w-[160px] max-w-[55vw] shrink-0">
-                  <label htmlFor="survey-period" className="sr-only">
-                    Үнэлгээний төрөл
-                  </label>
-                  <Select
-                    id="survey-period"
-                    value={period ?? "OTHER"}
-                    onChange={(event) =>
-                      setPeriod(
-                        event.target.value === "OTHER"
-                          ? null
-                          : (event.target.value as SurveyPeriod),
-                      )
-                    }
-                    className="h-10"
-                  >
-                    {SURVEY_PERIODS.map((value) => (
-                      <option key={value} value={value}>
-                        {SURVEY_PERIOD_LABEL[value]}
-                      </option>
-                    ))}
-                    <option value="OTHER">{SURVEY_PERIOD_OTHER_LABEL}</option>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="flex justify-end">
-                {questions.length > 0 ? (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    aria-expanded={previewing}
-                    onClick={() => setPreviewing((current) => !current)}
-                  >
-                    <Eye size={16} aria-hidden="true" />
-                    Урьдчилан харах
-                  </Button>
-                ) : null}
-              </div>
+              <p className="pt-1 text-body font-semibold text-ink">Асуултууд</p>
 
               <QuestionBuilder
                 questions={questions}
@@ -679,36 +655,47 @@ export function CreateSurveyWizard({
                 <SurveyDraftPreview title={title} questions={questions} />
               ) : null}
 
-              <button
-                type="button"
-                aria-expanded={showSettings}
-                onClick={() => setShowSettings((current) => !current)}
-                className="flex min-h-11 items-center rounded-control border border-border px-3 text-body font-medium text-ink"
-              >
-                Нэмэлт тохиргоо
-                {showSettings ? (
-                  <ChevronUp size={17} aria-hidden="true" className="ms-auto text-muted" />
-                ) : (
-                  <ChevronDown size={17} aria-hidden="true" className="ms-auto text-muted" />
-                )}
-              </button>
-
-              {showSettings ? (
-                <div className="grid gap-x-4 rounded-card bg-canvas px-3 sm:grid-cols-2">
-                  {isTeacher ? null : (
-                    <>
-                      <Switch
-                        label="Хариулт нуух"
-                        checked={isAnonymous}
-                        onChange={(e) => setIsAnonymous(e.target.checked)}
-                      />
-                      <Switch
-                        label="Олон удаа хариулах"
-                        checked={allowMultipleResponses}
-                        onChange={(e) => setAllowMultipleResponses(e.target.checked)}
-                      />
-                    </>
+              {/*
+                ★ «Нэмэлт тохиргоо» — client, 2026-10-06: it opened onto
+                nothing beside it (the dates appeared up by the audience), and
+                on a teacher's own survey there is next to nothing in it. Gone
+                there; elsewhere the dates now open inside it, under the
+                button that showed them.
+              */}
+              {isTeacher ? null : (
+                <button
+                  type="button"
+                  aria-expanded={showSettings}
+                  onClick={() => setShowSettings((current) => !current)}
+                  className="flex min-h-9 items-center gap-1 self-start text-caption font-medium text-muted hover:text-ink"
+                >
+                  Нэмэлт тохиргоо
+                  {showSettings ? (
+                    <ChevronUp size={15} aria-hidden="true" />
+                  ) : (
+                    <ChevronDown size={15} aria-hidden="true" />
                   )}
+                </button>
+              )}
+
+              {showSettings && !isTeacher ? (
+                <div className="grid gap-x-4 rounded-card bg-canvas px-3 sm:grid-cols-2">
+                  <SurveyDates
+                    opensOn={opensOn}
+                    onOpensOn={setOpensOn}
+                    closesOn={closesOn}
+                    onClosesOn={setClosesOn}
+                  />
+                  <Switch
+                    label="Хариулт нуух"
+                    checked={isAnonymous}
+                    onChange={(e) => setIsAnonymous(e.target.checked)}
+                  />
+                  <Switch
+                    label="Олон удаа хариулах"
+                    checked={allowMultipleResponses}
+                    onChange={(e) => setAllowMultipleResponses(e.target.checked)}
+                  />
                   {questions.length > 1 ? (
                     <Switch
                       label="Асуултын дарааллыг холих"
@@ -720,7 +707,20 @@ export function CreateSurveyWizard({
               ) : null}
             </div>
 
-            <div className="mt-4 flex justify-end gap-2 border-t border-border pt-3.5">
+            <div className="mt-3 flex items-center justify-end gap-2 border-t border-border pt-3">
+              {questions.length > 0 ? (
+                <Button
+                  type="button"
+                  variant={previewing ? "secondary" : "ghost"}
+                  size="icon"
+                  aria-label="Урьдчилан харах"
+                  title="Урьдчилан харах"
+                  aria-pressed={previewing}
+                  onClick={() => setPreviewing((current) => !current)}
+                >
+                  <Eye size={18} aria-hidden="true" />
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 variant="secondary"
@@ -741,93 +741,81 @@ export function CreateSurveyWizard({
 }
 
 /** Audience and dates, kept compact on the single creation screen. */
+/**
+ * A question card's own tools — client, 2026-10-06: the glyph small and faint
+ * (13px), the press target still 40px so a thumb lands on it. The negative
+ * margin keeps the bigger target from making the row taller.
+ */
+const TOOL = "-my-1 size-10 text-faint hover:text-ink";
+
+/** A compact picker — 36px and caption type — for the form's secondary fields. */
+const SMALL = "h-9 px-2.5 text-caption";
+
 function Audience({
   canAddressEveryone,
   groups,
   groupId,
   onGroup,
-  category,
-  onCategory,
-  opensOn,
-  onOpensOn,
-  closesOn,
-  onClosesOn,
-  showDates,
 }: {
   canAddressEveryone: boolean;
   groups: { id: string; name: string }[];
   groupId: string;
   onGroup: (next: string) => void;
-  category: SurveyCategory;
-  onCategory: (next: SurveyCategory) => void;
+}) {
+  if (!canAddressEveryone) return null;
+  return (
+    <Field label="Хэнд" labelHidden>
+      {({ id }) => (
+        <Select id={id} value={groupId} onChange={(e) => onGroup(e.target.value)} className={SMALL}>
+          <option value="">Бүх бүлэг</option>
+          {groups.map((group) => (
+            <option key={group.id} value={group.id}>
+              {groupLabel(group.name)}
+            </option>
+          ))}
+        </Select>
+      )}
+    </Field>
+  );
+}
+
+/** Opening and closing days, inside «Нэмэлт тохиргоо». */
+function SurveyDates({
+  opensOn,
+  onOpensOn,
+  closesOn,
+  onClosesOn,
+}: {
   opensOn: string;
   onOpensOn: (next: string) => void;
   closesOn: string;
   onClosesOn: (next: string) => void;
-  showDates: boolean;
 }) {
   return (
-    <>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {canAddressEveryone ? (
-          <Field label="Хэнд">
-            {({ id }) => (
-              <Select id={id} value={groupId} onChange={(e) => onGroup(e.target.value)}>
-                <option value="">Бүх бүлэг</option>
-                {groups.map((group) => (
-                  <option key={group.id} value={group.id}>
-                    {groupLabel(group.name)}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
-        ) : null}
-
-        <Field label="Ангилал">
-          {({ id }) => (
-            <Select
-              id={id}
-              value={category}
-              onChange={(e) => onCategory(e.target.value as SurveyCategory)}
-            >
-              {SURVEY_CATEGORIES.map((value) => (
-                <option key={value} value={value}>
-                  {SURVEY_CATEGORY_LABEL[value]}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
-      </div>
-
-      {showDates ? (
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Эхлэх огноо" hint="Хоосон бол нийтэлмэгц эхэлнэ.">
-            {({ id }) => (
-              <Input
-                id={id}
-                type="date"
-                value={opensOn}
-                max={closesOn || undefined}
-                onChange={(e) => onOpensOn(e.target.value)}
-              />
-            )}
-          </Field>
-          <Field label="Дуусах огноо" hint="Хоосон бол гараар хаах хүртэл нээлттэй.">
-            {({ id }) => (
-              <Input
-                id={id}
-                type="date"
-                value={closesOn}
-                min={opensOn || undefined}
-                onChange={(e) => onClosesOn(e.target.value)}
-              />
-            )}
-          </Field>
-        </div>
-      ) : null}
-    </>
+    <div className="grid grid-cols-2 gap-3 py-2 sm:col-span-2">
+      <Field label="Эхлэх огноо" hint="Хоосон бол нийтэлмэгц эхэлнэ.">
+        {({ id }) => (
+          <Input
+            id={id}
+            type="date"
+            value={opensOn}
+            max={closesOn || undefined}
+            onChange={(e) => onOpensOn(e.target.value)}
+          />
+        )}
+      </Field>
+      <Field label="Дуусах огноо" hint="Хоосон бол гараар хаах хүртэл нээлттэй.">
+        {({ id }) => (
+          <Input
+            id={id}
+            type="date"
+            value={closesOn}
+            min={opensOn || undefined}
+            onChange={(e) => onClosesOn(e.target.value)}
+          />
+        )}
+      </Field>
+    </div>
   );
 }
 
@@ -864,171 +852,201 @@ function QuestionBuilder({
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      {questions.map((question, index) => (
-        <div key={index} className="flex flex-col gap-2.5 rounded-card border border-border p-3">
-          <div className="flex items-center gap-2">
-            <span
-              aria-hidden="true"
-              className="grid size-6 shrink-0 place-items-center rounded-pill bg-primary-soft text-caption font-semibold tabular-nums text-primary"
-            >
-              {index + 1}
-            </span>
-            <p className="flex-1 text-body font-medium text-ink">Асуулт</p>
-            {questions.length > 1 ? (
-              <>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`${index + 1}-р асуултыг дээш зөөх`}
-                  disabled={index === 0}
-                  onClick={() => move(index, -1)}
-                >
-                  <ArrowUp size={15} aria-hidden="true" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={`${index + 1}-р асуултыг доош зөөх`}
-                  disabled={index === questions.length - 1}
-                  onClick={() => move(index, 1)}
-                >
-                  <ArrowDown size={15} aria-hidden="true" />
-                </Button>
-              </>
-            ) : null}
-            {allowMany ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={`${index + 1}-р асуултыг хувилах`}
-                onClick={() => {
-                  const duplicate = { ...question, options: [...question.options] };
-                  onChange([
-                    ...questions.slice(0, index + 1),
-                    duplicate,
-                    ...questions.slice(index + 1),
-                  ]);
-                }}
+    <div className="flex flex-col gap-2">
+      {/*
+        ★ Modern and tight — client, 2026-10-06 ("дахиад зайг хас загварыг
+        орчин үеийн болго"). A card is a soft panel, not a box: the number and
+        the question share the first line, the answer type and the card's own
+        tools share the second, and choices are marked ○ or □ the way a parent
+        will see them, each on a borderless line.
+      */}
+      {questions.map((question, index) => {
+        const many = question.type === "CHECKBOX";
+        return (
+          <div key={index} className="flex flex-col gap-1.5 rounded-card bg-canvas p-2.5">
+            <div className="flex items-center gap-2">
+              <span
+                aria-hidden="true"
+                className="grid size-6 shrink-0 place-items-center rounded-pill bg-primary-soft text-caption font-semibold tabular-nums text-primary"
               >
-                <Copy size={15} aria-hidden="true" />
-              </Button>
-            ) : null}
-            {questions.length > 1 ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={`${index + 1}-р асуултыг хасах`}
-                onClick={() => onChange(questions.filter((_, i) => i !== index))}
-              >
-                <Trash2 size={16} aria-hidden="true" className="text-danger" />
-              </Button>
-            ) : null}
-          </div>
-
-          <Field label={`${index + 1}-р асуултын текст`} required>
-            {({ id }) => (
+                {index + 1}
+              </span>
               <Input
-                id={id}
+                aria-label={`${index + 1}-р асуултын текст`}
+                aria-required="true"
                 value={question.prompt}
                 onChange={(e) => update(index, { prompt: e.target.value })}
                 placeholder="Асуултаа оруулна уу."
+                className="h-10 border-transparent bg-surface font-medium"
               />
-            )}
-          </Field>
+            </div>
 
-          {fixedType ? null : (
-            <Field label="Хариултын хэлбэр">
-              {({ id }) => (
-                <Select
-                  id={id}
-                  value={question.type}
-                  onChange={(e) => {
-                    const type = e.target.value as SurveyQuestionType;
-                    update(index, {
-                      type,
-                      // Options belong to the type: keeping a choice list on a
-                      // question that became free text would send the API a
-                      // field it rejects.
-                      options: hasOptionList(type)
-                        ? question.options.length > 0
-                          ? question.options
-                          : ["", ""]
-                        : [],
-                    });
+            <div className="flex items-center gap-1 ps-8">
+              {fixedType ? (
+                <span className="flex-1" />
+              ) : (
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <label
+                    htmlFor={`question-type-${index}`}
+                    className="shrink-0 text-caption text-muted"
+                  >
+                    Хариултын хэлбэр
+                  </label>
+                  <div className="min-w-0 max-w-[200px] flex-1">
+                    <Select
+                      id={`question-type-${index}`}
+                      value={question.type}
+                      className={cn(SMALL, "border-transparent bg-surface")}
+                      onChange={(e) => {
+                        const type = e.target.value as SurveyQuestionType;
+                        update(index, {
+                          type,
+                          // Options belong to the type: keeping a choice list on a
+                          // question that became free text would send the API a
+                          // field it rejects.
+                          options: hasOptionList(type)
+                            ? question.options.length > 0
+                              ? question.options
+                              : ["", ""]
+                            : [],
+                        });
+                      }}
+                    >
+                      {WIZARD_QUESTION_TYPES.map((type) => (
+                        <option key={type} value={type}>
+                          {SURVEY_QUESTION_TYPE_LABEL[type]}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                </div>
+              )}
+
+              {questions.length > 1 ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className={TOOL}
+                    aria-label={`${index + 1}-р асуултыг дээш зөөх`}
+                    disabled={index === 0}
+                    onClick={() => move(index, -1)}
+                  >
+                    <ArrowUp size={13} aria-hidden="true" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className={TOOL}
+                    aria-label={`${index + 1}-р асуултыг доош зөөх`}
+                    disabled={index === questions.length - 1}
+                    onClick={() => move(index, 1)}
+                  >
+                    <ArrowDown size={13} aria-hidden="true" />
+                  </Button>
+                </>
+              ) : null}
+              {allowMany ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className={TOOL}
+                  aria-label={`${index + 1}-р асуултыг хувилах`}
+                  onClick={() => {
+                    const duplicate = { ...question, options: [...question.options] };
+                    onChange([
+                      ...questions.slice(0, index + 1),
+                      duplicate,
+                      ...questions.slice(index + 1),
+                    ]);
                   }}
                 >
-                  {WIZARD_QUESTION_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {SURVEY_QUESTION_TYPE_LABEL[type]}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
-          )}
+                  <Copy size={13} aria-hidden="true" />
+                </Button>
+              ) : null}
+              {questions.length > 1 ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className={cn(TOOL, "hover:text-danger")}
+                  aria-label={`${index + 1}-р асуултыг хасах`}
+                  onClick={() => onChange(questions.filter((_, i) => i !== index))}
+                >
+                  <Trash2 size={13} aria-hidden="true" />
+                </Button>
+              ) : null}
+            </div>
 
-          {hasOptionList(question.type) ? (
-            <fieldset className="flex flex-col gap-2">
-              <legend className="mb-1 text-body font-medium text-ink">Сонголтууд</legend>
-              {question.options.map((option, optionIndex) => (
-                <div key={optionIndex} className="flex items-center gap-2">
-                  <GripVertical size={16} aria-hidden="true" className="shrink-0 text-faint" />
-                  <Input
-                    aria-label={`${optionIndex + 1}-р сонголт`}
-                    value={option}
-                    onChange={(e) =>
-                      update(index, {
-                        options: question.options.map((o, i) =>
-                          i === optionIndex ? e.target.value : o,
-                        ),
-                      })
-                    }
-                    placeholder={`Сонголт ${optionIndex + 1}`}
-                  />
-                  {/* Never below two: one choice is not a question. */}
-                  {question.options.length > 2 ? (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`${optionIndex + 1}-р сонголтыг хасах`}
-                      onClick={() =>
+            {hasOptionList(question.type) ? (
+              <fieldset className="flex flex-col ps-8">
+                <legend className="sr-only">Сонголтууд</legend>
+                {question.options.map((option, optionIndex) => (
+                  <div key={optionIndex} className="group flex items-center gap-2">
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "size-4 shrink-0 border-2 border-faint",
+                        many ? "rounded" : "rounded-pill",
+                      )}
+                    />
+                    <Input
+                      className="h-9 border-transparent bg-transparent px-1.5 hover:border-border focus:border-primary focus:bg-surface"
+                      aria-label={`${optionIndex + 1}-р сонголт`}
+                      value={option}
+                      onChange={(e) =>
                         update(index, {
-                          options: question.options.filter((_, i) => i !== optionIndex),
+                          options: question.options.map((o, i) =>
+                            i === optionIndex ? e.target.value : o,
+                          ),
                         })
                       }
-                    >
-                      <Trash2 size={16} aria-hidden="true" className="text-danger" />
-                    </Button>
-                  ) : null}
-                </div>
-              ))}
-              <Button
-                variant="ghost"
-                className="self-start"
-                onClick={() => update(index, { options: [...question.options, ""] })}
-              >
-                <Plus size={16} aria-hidden="true" />
-                Сонголт нэмэх
-              </Button>
-            </fieldset>
-          ) : null}
-        </div>
-      ))}
+                      placeholder={`Сонголт ${optionIndex + 1}`}
+                    />
+                    {/* Never below two: one choice is not a question. */}
+                    {question.options.length > 2 ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn(TOOL, "hover:text-danger")}
+                        aria-label={`${optionIndex + 1}-р сонголтыг хасах`}
+                        onClick={() =>
+                          update(index, {
+                            options: question.options.filter((_, i) => i !== optionIndex),
+                          })
+                        }
+                      >
+                        <X size={13} aria-hidden="true" />
+                      </Button>
+                    ) : null}
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => update(index, { options: [...question.options, ""] })}
+                  className="inline-flex min-h-9 items-center gap-1.5 self-start text-caption font-medium text-primary hover:text-primary-strong"
+                >
+                  <Plus size={15} aria-hidden="true" />
+                  Сонголт нэмэх
+                </button>
+              </fieldset>
+            ) : null}
+          </div>
+        );
+      })}
 
       {allowMany ? (
-        <Button
-          variant="secondary"
-          className="self-start"
+        <button
+          type="button"
           onClick={() => onChange([...questions, emptyQuestion(fixedType ?? "SINGLE_CHOICE")])}
+          className="flex min-h-10 items-center justify-center gap-1.5 rounded-card border border-dashed border-border text-body font-medium text-primary hover:border-primary hover:bg-primary-soft"
         >
           <Plus size={16} aria-hidden="true" />
           Асуулт нэмэх
-        </Button>
+        </button>
       ) : null}
     </div>
   );

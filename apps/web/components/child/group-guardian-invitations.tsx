@@ -36,9 +36,15 @@ import { fullName, groupLabel } from "@/lib/format";
 export function GroupGuardianInvitations({
   groupId,
   groupName,
+  label = "Бүх эцэг эхийг урих",
+  className,
 }: {
   groupId: string;
   groupName: string;
+  /** The button's words — «Бүлгээр урих» on the teacher's «Суралцагч» (2026-10-06). */
+  label?: string;
+  /** Extra classes for the trigger button. */
+  className?: string;
 }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -60,9 +66,9 @@ export function GroupGuardianInvitations({
 
   return (
     <>
-      <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
+      <Button variant="secondary" size="sm" className={className} onClick={() => setOpen(true)}>
         <UsersRound size={18} aria-hidden />
-        Бүх эцэг эхийг урих
+        {label}
       </Button>
 
       {open ? (

@@ -37,6 +37,23 @@ let cameFrom: string | null = null;
 /** Set by a ‹ just before it navigates, so the effect walks back rather than forward. */
 let steppingBackTo: string | null = null;
 
+/**
+ * Set by a ‹ that follows its own `href` because the trail did not know —
+ * the page was opened cold. That step goes *up*, so it must not be recorded
+ * as a step forward.
+ *
+ * ★ Client, 2026-10-07: after a refresh on «Цахим хувийн хавтас», ‹ went to
+ * the child's page and the child's ‹ then went straight back to the folder,
+ * never to «Суралцагч». The fallback had been appended to the trail like a
+ * link, so the folder became the step before it.
+ */
+let fallingBackTo: string | null = null;
+
+/** Called by ‹ just before it follows its `href`. */
+export function noteFallbackNavigation(href: string) {
+  fallingBackTo = href.split(/[?#]/)[0] ?? href;
+}
+
 /** This workspace's home and the destinations its menu names — `AppShell` sets them. */
 let home: string | null = null;
 let menu: ReadonlySet<string> = new Set();
@@ -56,6 +73,7 @@ export function resetNavigationHistory() {
   lastPath = null;
   cameFrom = null;
   steppingBackTo = null;
+  fallingBackTo = null;
   home = null;
   menu = new Set();
 }
@@ -81,6 +99,17 @@ export function recordNavigation(path: string) {
   if (path === lastPath) return;
   const previous = lastPath;
   lastPath = path;
+
+  // A ‹ that followed its `href`: the reader went up, and nothing above is
+  // known — the next ‹ follows that page's own `href` in turn.
+  if (fallingBackTo === path) {
+    fallingBackTo = null;
+    steppingBackTo = null;
+    cameFrom = null;
+    trail = [path];
+    return;
+  }
+  fallingBackTo = null;
 
   if (steppingBackTo === path) {
     steppingBackTo = null;
@@ -137,6 +166,7 @@ export function useGoBack(fallback: string) {
   return () => {
     const target = backTarget();
     if (!target) {
+      noteFallbackNavigation(fallback);
       router.push(fallback);
       return;
     }

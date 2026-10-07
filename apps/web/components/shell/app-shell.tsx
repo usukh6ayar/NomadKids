@@ -356,6 +356,7 @@ export function PageHeader({
   actions,
   search = false,
   compact = false,
+  actionsFullOnPhone = false,
   meta,
   lede,
   backHref,
@@ -369,6 +370,12 @@ export function PageHeader({
   search?: boolean;
   /** Uses phone-friendly title spacing while retaining the desktop hierarchy. */
   compact?: boolean;
+  /**
+   * On a phone, give the actions a full line of their own so they can share
+   * its width exactly — the teacher's «Суралцагч» (2026-10-06). From `sm` the
+   * row is as usual.
+   */
+  actionsFullOnPhone?: boolean;
   /**
    * A visual identity for the screen — an `IconChip`, usually.
    *
@@ -489,6 +496,7 @@ export function PageHeader({
             compact
               ? "basis-full justify-start sm:basis-auto sm:justify-end"
               : "justify-start sm:justify-end",
+            actionsFullOnPhone && "max-sm:basis-full",
           )}
         >
           {actions}

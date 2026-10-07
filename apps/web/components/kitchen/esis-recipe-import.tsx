@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download } from "lucide-react";
 import { useState } from "react";
 import { ingredientSchema, type EsisRow, type Ingredient, type MealKind } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
@@ -22,6 +21,7 @@ import {
   sameName,
   useEsisFoodAccess,
 } from "@/components/kitchen/esis-food";
+import { EsisButton } from "@/components/esis/esis-button";
 
 export { esisUnit } from "@/components/kitchen/esis-food";
 
@@ -89,10 +89,7 @@ export function EsisRecipeImport({
 
   return (
     <>
-      <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
-        <Download size={16} aria-hidden="true" />
-        ESIS-ээс татах
-      </Button>
+      <EsisButton onClick={() => setOpen(true)} />
       {open ? (
         <PickDialog
           kindergartenId={kindergartenId}

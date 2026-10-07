@@ -1297,10 +1297,15 @@ export const surveyQuestionTypeSchema = z.enum([
 export type SurveyQuestionType = z.infer<typeof surveyQuestionTypeSchema>;
 
 /** Mongolian labels — CLAUDE.md §5. The composer and the answering form share them. */
+/**
+ * ★ «Од (1–5)» and «Бичих» — client, 2026-10-06. A rating is answered with
+ * five stars and read back as ★★★★☆; the value stored is still 1–5, so
+ * averages, reports and exports are unchanged.
+ */
 export const SURVEY_QUESTION_TYPE_LABEL: Record<SurveyQuestionType, string> = {
-  RATING: "Үнэлгээ (1–5)",
+  RATING: "Од (1–5)",
   YES_NO: "Тийм/Үгүй",
-  TEXT: "Чөлөөт бичвэр",
+  TEXT: "Бичих",
   SINGLE_CHOICE: "Нэг сонголт",
   CHECKBOX: "Олон сонголт",
   MATRIX: "Матриц (олон үзүүлэлт)",

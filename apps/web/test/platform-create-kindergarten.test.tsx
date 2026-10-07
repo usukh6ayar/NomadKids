@@ -96,7 +96,7 @@ async function openDialog() {
 
 async function lookupInstitution(dialog: ReturnType<typeof within>) {
   await userEvent.type(dialog.getByLabelText(/^ESIS байгууллагын ID/), "42778");
-  await userEvent.click(dialog.getByRole("button", { name: "ESIS-ээс татах" }));
+  await userEvent.click(dialog.getByRole("button", { name: "ESIS татах" }));
 }
 
 /** Step 1 → step 2, the director chooser. */

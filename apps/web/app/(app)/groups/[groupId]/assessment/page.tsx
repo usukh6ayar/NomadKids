@@ -20,11 +20,10 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { useSwitchableGroups } from "@/components/shell/group-switcher";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
-import { RowMenu } from "@/components/ui/menu";
 import { ChildPickerDialog } from "@/components/child/child-picker-dialog";
 import { useToast } from "@/components/ui/toast";
 import Link from "next/link";
-import { Plus, Printer, Users } from "lucide-react";
+import { Plus, Printer } from "lucide-react";
 import {
   MAX_PAGE_SIZE,
   childSummarySchema,
@@ -349,14 +348,9 @@ function GroupAssessment() {
         records fixing in its own three branches.
       */}
       {/*
-        ★ The overflow menu carries what the screen does *to* the whole group —
-        2026-09-10, the ⋮ on the client's design.
-
-        Both entries were reachable before and both are one press from here
-        now: the term report is the document this register feeds, and the
-        printable sheet is what a director asks for. Neither belongs among the
-        controls that change what is on screen, which is what a header menu is
-        for.
+        ★ Beside the title: + and a print icon — 2026-10-07, the client. The ⋮
+        menu (Хэвлэх, Бүлгийн мэдээлэл) it replaces had one entry left worth a
+        press, so that entry is the button.
       */}
       <PageHeader
         title="Явцын үнэлгээ"
@@ -367,21 +361,17 @@ function GroupAssessment() {
               groupId={groupId}
               notesPerChildTarget={group.data?.monthlyNotesPerChildGoal ?? null}
             />
-            <RowMenu
-              ariaLabel="Явцын үнэлгээний үйлдэл"
-              items={[
-                {
-                  label: "Хэвлэх",
-                  icon: <Printer size={16} />,
-                  onSelect: () => window.print(),
-                },
-                {
-                  label: "Бүлгийн мэдээлэл",
-                  icon: <Users size={16} />,
-                  onSelect: () => router.push(`/groups/${groupId}`),
-                },
-              ]}
-            />
+            {/* ★ A print icon in place of the ⋮ menu — 2026-10-07, the client. */}
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              aria-label="Хэвлэх"
+              title="Хэвлэх"
+              onClick={() => window.print()}
+            >
+              <Printer size={18} aria-hidden="true" />
+            </Button>
           </div>
         }
       />

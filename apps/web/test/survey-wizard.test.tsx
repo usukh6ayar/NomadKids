@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   renderWithProviders,
+  selectOption,
   sessionFor,
   setParams,
   setSearchParams,
@@ -10,6 +11,7 @@ import {
 } from "./support/render";
 import { CreateSurveyWizard } from "@/components/survey/create-survey-wizard";
 import { A79_LEVELS, a79Questions } from "@/lib/a79-assessment";
+import { PARENT_SURVEY_TEMPLATES } from "@/lib/parent-survey-templates";
 
 const KINDERGARTEN_ID = "33333333-3333-4333-8333-333333333333";
 const GROUP_ID = "44444444-4444-4444-8444-444444444444";
@@ -185,28 +187,207 @@ describe("single-page survey creation", () => {
     open(["TEACHER"]);
 
     await user.click(await screen.findByLabelText("Бэлэн загвараас эхлэх"));
-    await user.click(screen.getByRole("option", { name: "Эцэг эхийн сэтгэл ханамж" }));
+    await user.click(screen.getByRole("option", { name: "Эцэг эхийн оролцоо" }));
 
-    expect(screen.getByLabelText(/Гарчиг/)).toHaveValue("Эцэг эхийн сэтгэл ханамжийн судалгаа");
-    expect(screen.getAllByLabelText(/асуултын текст/)).toHaveLength(3);
+    expect(screen.getByLabelText(/Гарчиг/)).toHaveValue("Эцэг эхийн оролцооны судалгаа");
+    expect(screen.getAllByLabelText(/асуултын текст/)).toHaveLength(12);
 
     await user.click(screen.getByRole("button", { name: "Урьдчилан харах" }));
     expect(
-      screen.getByText("Эцэг эхийн сэтгэл ханамжийн судалгаа", { selector: "p" }),
+      screen.getByText("Эцэг эхийн оролцооны судалгаа", { selector: "p" }),
     ).toBeInTheDocument();
     expect(screen.getAllByText("1").length).toBeGreaterThan(0);
+  });
+
+  /**
+   * ★ Client, 2026-10-06: the builder squeezed — template and period are two
+   * small pickers on one line, the title, audience and category carry their
+   * names inside them, no «Ноорог автоматаар хадгалагдана», no visible
+   * «1-р асуултын текст», «Хариултын хэлбэр» on one line with its picker,
+   * and «Урьдчилан харах» is an eye at the foot.
+   */
+  it("is compact: small pickers, no extra captions, the preview an eye at the foot", async () => {
+    const user = userEvent.setup();
+    open(["TEACHER"]);
+    if (!screen.queryByLabelText(/асуултын текст/)) {
+      await user.click(await screen.findByRole("button", { name: "Асуулт нэмэх" }));
+    }
+
+    const template = await screen.findByLabelText("Бэлэн загвараас эхлэх");
+    const period = screen.getByRole("combobox", { name: "Үнэлгээний төрөл" });
+    expect(template.parentElement).toBe(period.parentElement);
+    // Ангилал sits on that line too, above the title (2026-10-06).
+    const category = screen.getByRole("combobox", { name: "Ангилал" });
+    expect(category.parentElement).toBe(period.parentElement);
+    expect(
+      category.compareDocumentPosition(screen.getByLabelText(/Гарчиг/)) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.queryByText(/Загварыг сонгосны дараа/)).toBeNull();
+    expect(screen.queryByText("Ноорог автоматаар хадгалагдана.")).toBeNull();
+
+    // The labels are there for a screen reader, not on screen.
+    expect(screen.getByText("Гарчиг", { selector: "label" })).toHaveClass("sr-only");
+    expect(screen.queryByText("1-р асуултын текст")).toBeNull();
+    expect(screen.getByLabelText("1-р асуултын текст")).toBeInTheDocument();
+
+    // «Хариултын хэлбэр» shares a line with its picker.
+    const typeLabel = screen.getByText("Хариултын хэлбэр");
+    expect(typeLabel.parentElement).toContainElement(screen.getByLabelText("Хариултын хэлбэр"));
+
+    // A card's tools: a small glyph on a 40px press target (2026-10-06).
+    const copy = screen.getByRole("button", { name: "1-р асуултыг хувилах" });
+    expect(copy).toHaveClass("size-10");
+    expect(copy.querySelector("svg")).toHaveAttribute("width", "13");
+
+    // The preview is an icon in the footer, beside «Үүсгэх».
+    const eye = screen.getByRole("button", { name: "Урьдчилан харах" });
+    expect(eye).not.toHaveTextContent("Урьдчилан харах");
+    expect(eye.parentElement).toContainElement(screen.getByRole("button", { name: "Үүсгэх" }));
+    // Right beside «Ноорог болгох» (2026-10-06).
+    expect(eye.nextElementSibling).toBe(screen.getByRole("button", { name: "Ноорог болгох" }));
+  });
+
+  /**
+   * ★ Client, 2026-10-06: a template chosen, the sheet closed with ×, and the
+   * next «Шинэ судалгаа» opened on the same template. × drops the draft.
+   */
+  it("starts afresh after ×, rather than reopening on the last template", async () => {
+    const user = userEvent.setup();
+    stubWizard(["TEACHER"]);
+    const onClose = vi.fn();
+    const first = renderWithProviders(
+      <CreateSurveyWizard kindergartenId={KINDERGARTEN_ID} kind="FORM" onClose={onClose} />,
+    );
+
+    await user.click(await screen.findByLabelText("Бэлэн загвараас эхлэх"));
+    await user.click(screen.getByRole("option", { name: "Эцэг эхийн оролцоо" }));
+    expect(screen.getAllByLabelText(/асуултын текст/)).toHaveLength(12);
+
+    await user.click(screen.getByRole("button", { name: "Хаах" }));
+    expect(onClose).toHaveBeenCalled();
+    first.unmount();
+
+    renderWithProviders(
+      <CreateSurveyWizard kindergartenId={KINDERGARTEN_ID} kind="FORM" onClose={() => {}} />,
+    );
+    expect(await screen.findByLabelText(/Гарчиг/)).toHaveValue("");
+    expect(screen.queryAllByLabelText(/асуултын текст/)).toHaveLength(0);
+  });
+
+  it("starts afresh after Escape too, not only after ×", async () => {
+    const user = userEvent.setup();
+    stubWizard(["TEACHER"]);
+    const first = renderWithProviders(
+      <CreateSurveyWizard kindergartenId={KINDERGARTEN_ID} kind="FORM" onClose={() => {}} />,
+    );
+
+    await user.click(await screen.findByLabelText("Бэлэн загвараас эхлэх"));
+    await user.click(screen.getByRole("option", { name: "Эцэг эхийн оролцоо" }));
+    expect(screen.getAllByLabelText(/асуултын текст/)).toHaveLength(12);
+
+    await user.keyboard("{Escape}");
+    first.unmount();
+
+    renderWithProviders(
+      <CreateSurveyWizard kindergartenId={KINDERGARTEN_ID} kind="FORM" onClose={() => {}} />,
+    );
+    expect(await screen.findByLabelText(/Гарчиг/)).toHaveValue("");
+    expect(screen.queryAllByLabelText(/асуултын текст/)).toHaveLength(0);
+  });
+
+  /** Client, 2026-10-06: a teacher's own survey has no «Нэмэлт тохиргоо». */
+  it("offers no «Нэмэлт тохиргоо» on a teacher's own survey", async () => {
+    stubWizard(["TEACHER"]);
+    renderWithProviders(
+      <CreateSurveyWizard
+        kindergartenId={KINDERGARTEN_ID}
+        kind="FORM"
+        respondent="TEACHER"
+        onClose={() => {}}
+      />,
+    );
+
+    await screen.findByLabelText(/Гарчиг/);
+    expect(screen.queryByRole("button", { name: /Нэмэлт тохиргоо/ })).toBeNull();
+  });
+
+  /**
+   * ★ Client, 2026-10-06: the three earlier family templates are gone; the
+   * nine questionnaires from their workbook take their place.
+   */
+  it("offers the client's nine questionnaires and nothing else", async () => {
+    const user = userEvent.setup();
+    open(["TEACHER"]);
+
+    await user.click(await screen.findByLabelText("Бэлэн загвараас эхлэх"));
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Загвар сонгох…",
+      "Сэтгэл ханамж",
+      "Хүүхдийн хөгжил",
+      "Шинээр элсэгч",
+      "Эрүүл мэнд хоол",
+      "Эцэг эхийн оролцоо",
+      "Сургалтын хэрэгцээ",
+      "Харилцаа мэдээлэл",
+      "Сургалтын үр дүн",
+      "Хэрэгцээ санал",
+    ]);
+  });
+
+  it("sends no purpose, and leaves the teacher's Ангилал alone", async () => {
+    const user = userEvent.setup();
+    const api = open(["TEACHER"]);
+
+    // The teacher picks the kind of survey; the template does not change it.
+    await selectOption(user, "Ангилал", "Сэтгэл ханамжийн судалгаа");
+    await user.click(await screen.findByLabelText("Бэлэн загвараас эхлэх"));
+    await user.click(screen.getByRole("option", { name: "Эцэг эхийн оролцоо" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Үүсгэх" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "Үүсгэх" }));
+
+    await waitFor(() =>
+      expect(findCall(api, "POST", `/kindergartens/${KINDERGARTEN_ID}/surveys`)).toBeDefined(),
+    );
+    expect(findCall(api, "POST", `/kindergartens/${KINDERGARTEN_ID}/surveys`)!.body).toMatchObject({
+      title: "Эцэг эхийн оролцооны судалгаа",
+      category: "SATISFACTION",
+      // The workbook's «Зорилго» lines were taken off (2026-10-06).
+      purpose: null,
+    });
+  });
+
+  it("maps the workbook's answer shapes", () => {
+    const engagement = PARENT_SURVEY_TEMPLATES.engagement!;
+    // «1–5» is stars, «Тийм / Магадгүй / Үгүй» one choice, «бичих» free text.
+    expect(engagement.questions[0]!.type).toBe("RATING");
+    expect(engagement.questions[4]).toMatchObject({
+      type: "SINGLE_CHOICE",
+      options: ["Тийм", "Магадгүй", "Үгүй"],
+    });
+    expect(engagement.questions[7]!.type).toBe("TEXT");
+    // A four-step scale is one choice among its words.
+    expect(PARENT_SURVEY_TEMPLATES.satisfaction!.questions[0]!.options).toEqual([
+      "Огт санал нийлэхгүй",
+      "Санал нийлнэ",
+      "Сайн",
+      "Маш сайн",
+    ]);
+    expect(
+      Object.values(PARENT_SURVEY_TEMPLATES).reduce((sum, t) => sum + t.questions.length, 0),
+    ).toBe(142);
   });
 
   it("duplicates and reorders question cards without leaving the page", async () => {
     const user = userEvent.setup();
     open(["TEACHER"]);
     await user.click(await screen.findByLabelText("Бэлэн загвараас эхлэх"));
-    await user.click(screen.getByRole("option", { name: "Хүүхдийн хөгжил" }));
+    await user.click(screen.getByRole("option", { name: "Эцэг эхийн оролцоо" }));
 
     await user.click(screen.getByRole("button", { name: "1-р асуултыг хувилах" }));
-    expect(screen.getAllByLabelText(/асуултын текст/)).toHaveLength(4);
+    expect(screen.getAllByLabelText(/асуултын текст/)).toHaveLength(13);
     await user.click(screen.getByRole("button", { name: "2-р асуултыг доош зөөх" }));
-    expect(screen.getAllByLabelText(/асуултын текст/)).toHaveLength(4);
+    expect(screen.getAllByLabelText(/асуултын текст/)).toHaveLength(13);
   });
 
   it("keeps dates and advanced switches out of the main flow", async () => {

@@ -75,6 +75,7 @@ export default function ChildSurveysPage() {
   const [search, setSearch] = useState("");
   const [age, setAge] = useState<number | null>(null);
   const [kind, setKind] = useState<SurveyKind | null>(null);
+  const [tab, setTab] = useState<"active" | "done">("active");
   /** Which answered survey is showing its answers. One at a time. */
 
   const surveys = useQuery({
@@ -110,8 +111,22 @@ export default function ChildSurveysPage() {
     [rows],
   );
 
+  /*
+    ★ Two states — client, 2026-10-06: «Идэвхтэй» is what is still being
+    collected and this family has not answered; «Дууссан» is what they have
+    answered, and anything closed — a closed survey cannot be answered, so it
+    has no place on a list of things still to do.
+  */
+  const isDone = (survey: (typeof rows)[number]["survey"]) =>
+    Boolean(survey.respondedByMe) || survey.status === "CLOSED";
+  const counts = {
+    active: rows.filter(({ survey }) => !isDone(survey)).length,
+    done: rows.filter(({ survey }) => isDone(survey)).length,
+  };
+
   const needle = search.trim().toLocaleLowerCase("mn-MN");
   const visible = rows.filter(({ survey, ageThen }) => {
+    if (isDone(survey) !== (tab === "done")) return false;
     if (kind && survey.kind !== kind) return false;
     if (age !== null && ageThen !== age) return false;
     if (!needle) return true;
@@ -228,10 +243,50 @@ export default function ChildSurveysPage() {
     );
   }
 
+  const tabs = (
+    <div
+      role="tablist"
+      aria-label="Судалгааны төлөв"
+      className="flex gap-5 border-b border-border-soft"
+    >
+      {(
+        [
+          { key: "active", label: "Идэвхтэй" },
+          { key: "done", label: "Дууссан" },
+        ] as const
+      ).map((option) => {
+        const active = tab === option.key;
+        return (
+          <button
+            key={option.key}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => setTab(option.key)}
+            className={cn(
+              "-mb-px min-h-[40px] whitespace-nowrap border-b-2 text-body transition-colors",
+              active
+                ? "border-ink font-semibold text-ink"
+                : "border-transparent text-muted hover:text-ink",
+            )}
+          >
+            {option.label}
+            <span className="ml-1.5 text-caption tabular-nums text-faint">
+              {counts[option.key]}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const filtered = Boolean(needle || kind || age !== null);
+
   return (
     <div className="flex flex-col gap-4 py-2">
       {header}
       {controls}
+      {rows.length > 0 ? tabs : null}
 
       {rows.length === 0 ? (
         <EmptyState
@@ -239,10 +294,19 @@ export default function ChildSurveysPage() {
           description="Цэцэрлэгээс судалгаа явуулахад энд харагдана."
         />
       ) : visible.length === 0 ? (
-        <EmptyState
-          title="Хайлтад тохирох судалгаа алга"
-          description="Хайлтын үг эсвэл шүүлтүүрээ өөрчилж үзээрэй."
-        />
+        filtered ? (
+          <EmptyState
+            title="Хайлтад тохирох судалгаа алга"
+            description="Хайлтын үг эсвэл шүүлтүүрээ өөрчилж үзээрэй."
+          />
+        ) : tab === "active" ? (
+          <EmptyState title="Шинэ судалгаа байхгүй" />
+        ) : (
+          <EmptyState
+            title="Дууссан судалгаа алга"
+            description="Бөглөсөн судалгаа тань энд хадгалагдана."
+          />
+        )
       ) : (
         <ul className="flex flex-col gap-2">
           {visible.map(({ survey, ageThen }) => (

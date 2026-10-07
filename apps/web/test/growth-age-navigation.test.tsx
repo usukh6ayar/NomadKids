@@ -5,6 +5,7 @@ import { renderWithProviders, sessionFor, setParams, stubApi } from "./support/r
 import AgeProfilePage from "@/app/(app)/children/[childId]/portfolio/growth/age/[age]/page";
 import AgeFolderLandingPage from "@/app/(app)/children/[childId]/portfolio/growth/age/page";
 import GrowthComparePage from "@/app/(app)/children/[childId]/portfolio/growth/compare/page";
+import { familyStatement } from "@/lib/age-development";
 
 const CHILD_ID = "44444444-4444-4444-8444-444444444444";
 
@@ -273,12 +274,8 @@ describe("growth age navigation and editing", () => {
     expect(await screen.findByRole("heading", { name: "2-5 насны мэдээлэл" })).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Насны хуудсууд" })).not.toBeInTheDocument();
     expect(screen.queryByText("ХӨГЖЛИЙН ХАРЬЦУУЛАЛТ")).not.toBeInTheDocument();
-    const table = screen.getByRole("table", {
-      name: "2-5 насны мэдээллийн хэвтээ харьцуулалт",
-    });
-    for (const age of [2, 3, 4, 5]) {
-      expect(within(table).getByRole("columnheader", { name: `${age} нас` })).toBeInTheDocument();
-    }
+    // Cards, not a sideways table.
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
     for (const title of [
       "Миний дуртай бүх зүйлс",
       "Миний цэцэрлэгтээ сурсан зүйлс",
@@ -286,16 +283,25 @@ describe("growth age navigation and editing", () => {
       "Миний зан араншин",
       "Миний гэр бүл",
     ]) {
-      expect(within(table).getByRole("rowheader", { name: title })).toBeInTheDocument();
+      expect(screen.getByRole("region", { name: title })).toBeInTheDocument();
     }
 
-    const favourites = within(table).getByRole("rowheader", { name: "Тоглоом" }).closest("tr")!;
+    // One question, its four ages in order, empty ones a dash.
+    const favourites = screen.getByRole("group", { name: "Тоглоом" });
+    expect(
+      within(favourites)
+        .getAllByRole("term")
+        .map((term) => term.textContent),
+    ).toEqual(["2 нас", "3 нас", "4 нас", "5 нас"]);
     expect(within(favourites).getByText("Шоо")).toBeInTheDocument();
     expect(within(favourites).getAllByLabelText("Мэдээлэлгүй")).toHaveLength(3);
     expect(within(favourites).getAllByText("—")).toHaveLength(3);
     expect(screen.queryByText(/Мэдээлэл оруулаагүй|Мэдээлэл ор/)).not.toBeInTheDocument();
-    expect(within(table).getByRole("rowheader", { name: "Дуу" })).toBeInTheDocument();
-    expect(within(table).getByRole("rowheader", { name: "Хоол" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Дуу" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Хоол" })).toBeInTheDocument();
+    // A chosen list is chips, not a comma run.
+    const traits = screen.getByRole("group", { name: "Зан араншингийн ажиглалт" });
+    expect(within(traits).getByRole("listitem")).toHaveTextContent("Тайван");
     expect(screen.queryByRole("heading", { name: "Өндөр - Жингийн ахиц" })).not.toBeInTheDocument();
     expect(screen.queryByText(/ДЭМБ/)).not.toBeInTheDocument();
     expect(
@@ -366,9 +372,10 @@ describe("the skills editors", () => {
       expect(within(dialog).getByRole("group", { name: domain })).toBeInTheDocument();
     }
     expect(within(dialog).getAllByRole("checkbox")).toHaveLength(9);
+    // A plain statement, no «… уу?» — client, 2026-10-07.
     expect(
       within(dialog).getByRole("checkbox", {
-        name: "Энгийн 2–3 алхамтай зааврыг ойлгож, дарааллын дагуу биелүүлэхийг оролддог уу?",
+        name: "Энгийн 2–3 алхамтай зааврыг ойлгож, дарааллын дагуу биелүүлэхийг оролддог",
       }),
     ).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Өөр сурсан зүйл нэмэх")).toBeInTheDocument();
@@ -385,6 +392,50 @@ describe("the skills editors", () => {
   });
 });
 
+describe("family learning as statements", () => {
+  it("states each question plainly", () => {
+    expect(
+      familyStatement(
+        "Таны хүүхэд өдөр тутам харж хэрэглэдэг танил зүйл, хүмүүсээ нэрлэж чаддаг уу?",
+      ),
+    ).toBe("Өдөр тутам харж хэрэглэдэг танил зүйл, хүмүүсээ нэрлэж чаддаг");
+    expect(familyStatement("Том хүний дэмжлэгтэйгээр гараа угаах үйлдлийг хийдэг үү?")).toBe(
+      "Том хүний дэмжлэгтэйгээр гараа угаах үйлдлийг хийдэг",
+    );
+    expect(familyStatement("Шүдээ том хүний дэмжлэгтэйгээр угаах дадалтай болж байна уу?")).toBe(
+      "Шүдээ том хүний дэмжлэгтэйгээр угаах дадалтай болж байна",
+    );
+  });
+
+  it("lists each ticked statement on its own starred row, under no heading", async () => {
+    const user = userEvent.setup();
+    stubAgeProfile({
+      profile: {
+        age: 3,
+        familyLearningSkills: [
+          "Өөрийн нэр, насаа хэлж чаддаг уу?",
+          "Хувцасныхаа товчийг тайлах, товчлохыг оролддог уу?",
+        ],
+      },
+    });
+    renderWithProviders(<AgeProfilePage />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Миний гэр бүлээсээ суралцсан зүйлс дэлгэрэнгүй" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Миний гэр бүлээсээ суралцсан зүйлс",
+    });
+    const items = within(dialog).getAllByRole("listitem");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Өөрийн нэр, насаа хэлж чаддаг",
+      "Хувцасныхаа товчийг тайлах, товчлохыг оролддог",
+    ]);
+    expect(items[0]!.querySelector("svg")).toHaveClass("lucide-star");
+    expect(within(dialog).queryByText("Сонгосон чадвар")).not.toBeInTheDocument();
+  });
+});
+
 /** "Миний дуртай бүх зүйлс" — client, 2026-09-24: two answers to a row. */
 describe("the favourites editor", () => {
   it("lays its fields out two to a row", async () => {
@@ -397,6 +448,78 @@ describe("the favourites editor", () => {
     const toy = within(dialog).getByRole("textbox", { name: "Тоглоом" });
 
     expect(toy.closest("div.grid")).toHaveClass("grid-cols-2");
+    // The same coloured icon as the read view, before the word.
+    const label = within(dialog).getByText("Тоглоом", { selector: "label" });
+    expect(label.firstElementChild).toHaveClass("lucide-toy-brick", "text-rose-500");
+  });
+
+  it("reads as a quiet two-column table, the answer in blue", async () => {
+    const user = userEvent.setup();
+    stubAgeProfile({ profile: { age: 3, favoriteToy: "Хүүхэлдэй" } });
+    renderWithProviders(<AgeProfilePage />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Миний дуртай бүх зүйлс дэлгэрэнгүй" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Миний дуртай бүх зүйлс" });
+    const answer = within(dialog).getByRole("definition");
+    expect(answer).toHaveTextContent("Хүүхэлдэй");
+    expect(answer).toHaveClass("text-primary");
+    // The question and its answer share one row; the picture is decoration.
+    const row = answer.parentElement!;
+    expect(row).toHaveClass("grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]");
+    const term = within(row).getByRole("term");
+    expect(term).toHaveTextContent(/^Тоглоом$/);
+    // A coloured line icon, not an emoji; decoration only.
+    const icon = term.querySelector("svg")!;
+    expect(icon).toHaveClass("lucide-toy-brick", "text-rose-500");
+    expect(icon).toHaveAttribute("aria-hidden", "true");
+  });
+});
+
+/** The other four cards read and edit like the favourites — client, 2026-10-07. */
+describe("the other cards' coloured icons", () => {
+  it("lays the family's answers out as the same table, each with its icon", async () => {
+    const user = userEvent.setup();
+    stubAgeProfile({
+      profile: { age: 3, familySize: 4, familyDescription: "Аав, ээж, ах бид дөрөв." },
+    });
+    renderWithProviders(<AgeProfilePage />);
+
+    await user.click(await screen.findByRole("button", { name: "Миний гэр бүл дэлгэрэнгүй" }));
+    const dialog = await screen.findByRole("dialog", { name: "Миний гэр бүл" });
+    const terms = within(dialog).getAllByRole("term");
+    expect(terms.map((term) => term.textContent)).toEqual(["Ам бүлийн тоо", "Миний гэр бүл"]);
+    expect(terms[0]!.querySelector("svg")).toHaveClass("lucide-users", "text-indigo-500");
+    expect(terms[1]!.querySelector("svg")).toHaveClass("lucide-house");
+    for (const answer of within(dialog).getAllByRole("definition")) {
+      expect(answer).toHaveClass("text-primary");
+    }
+  });
+
+  it("gives «Миний цэцэрлэгтээ сурсан зүйлс» answers the wider column", async () => {
+    const user = userEvent.setup();
+    stubAgeProfile({ profile: { age: 3, kindergartenSkills: ["Танин мэдэхүй: Тоо тоолдог"] } });
+    renderWithProviders(<AgeProfilePage />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Миний цэцэрлэгтээ сурсан зүйлс дэлгэрэнгүй" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Миний цэцэрлэгтээ сурсан зүйлс" });
+    const row = within(dialog).getByText("Тоо тоолдог").parentElement!;
+    expect(row).toHaveClass("grid-cols-[minmax(0,0.75fr)_minmax(0,1.6fr)]");
+  });
+
+  it("puts an icon before each heading of the skills editor", async () => {
+    const user = userEvent.setup();
+    stubAgeProfile();
+    renderWithProviders(<AgeProfilePage />);
+
+    await openEditor(user, "Миний цэцэрлэгтээ сурсан зүйлс");
+    const dialog = await screen.findByRole("dialog", { name: "Миний цэцэрлэгтээ сурсан зүйлс" });
+    const legend = within(dialog).getByText("Танин мэдэхүй", { selector: "legend" });
+    expect(legend.querySelector("svg")).toHaveClass("lucide-brain", "text-violet-500");
+    expect(legend.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
   });
 });
 

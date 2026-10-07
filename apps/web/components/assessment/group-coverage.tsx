@@ -303,60 +303,69 @@ export function GroupCoverage({
     <section aria-label="Үнэлгээний сарын тойм" className="flex flex-col gap-4">
       <section aria-label="Энэ сарын зорилт">
         <h2 className="sr-only">Энэ сарын зорилт</h2>
-        <Card pad="compact" className="flex items-center gap-2 overflow-x-auto">
-          <div className="flex shrink-0 items-center gap-2">
-            <div
-              role="img"
-              aria-label={`Сарын зорилгын биелэлт ${percent}%`}
-              className="grid size-14 shrink-0 place-items-center rounded-pill"
-              style={{
-                background: `conic-gradient(var(--color-primary) ${percent}%, var(--color-track) 0)`,
-              }}
-            >
-              <div className="grid size-10 place-items-center rounded-pill bg-surface text-caption font-bold tabular-nums text-ink">
-                {percent}%
+        {/*
+          ★ The ⋯ sits outside the scrolling strip — 2026-10-07, the client:
+          on a phone the strip scrolls sideways and the edit control at its
+          end was off screen.
+        */}
+        <Card pad="compact" className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+            <div className="flex shrink-0 items-center gap-2">
+              <div
+                role="img"
+                aria-label={`Сарын зорилгын биелэлт ${percent}%`}
+                className="grid size-14 shrink-0 place-items-center rounded-pill"
+                style={{
+                  background: `conic-gradient(var(--color-primary) ${percent}%, var(--color-track) 0)`,
+                }}
+              >
+                <div className="grid size-10 place-items-center rounded-pill bg-surface text-caption font-bold tabular-nums text-ink">
+                  {percent}%
+                </div>
+              </div>
+              <div className="whitespace-nowrap text-left">
+                <strong className="block text-body font-bold tabular-nums text-ink">
+                  {goalCompleted} / {target ?? enrolled}
+                </strong>
+                <span className="text-caption text-muted">хүүхэд</span>
               </div>
             </div>
-            <div className="whitespace-nowrap text-left">
-              <strong className="block text-body font-bold tabular-nums text-ink">
-                {goalCompleted} / {target ?? enrolled}
-              </strong>
-              <span className="text-caption text-muted">хүүхэд</span>
+
+            <div className="flex min-w-max flex-1 items-center gap-2">
+              <label className="shrink-0">
+                <span className="sr-only">Тайлант сар</span>
+                <Select
+                  aria-label="Тайлант сар сонгох"
+                  value={selected.key}
+                  onChange={(event) => setSelectedMonth(event.target.value)}
+                  className="h-10 min-w-[108px] px-2 text-caption font-semibold"
+                >
+                  {months.map((month) => (
+                    <option key={month.key} value={month.key}>
+                      {month.label}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+
+              <div className="shrink-0 whitespace-nowrap rounded-control bg-sky px-3 py-2.5 text-caption text-sky-ink">
+                <strong>{target ?? enrolled} хүүхэд</strong>
+                <span className="mx-2 text-muted">·</span>
+                тус бүр <strong>{notesPerChildTarget ?? "—"} тэмдэглэл</strong>
+              </div>
             </div>
           </div>
 
-          <div className="flex min-w-max flex-1 items-center gap-2">
-            <label className="shrink-0">
-              <span className="sr-only">Тайлант сар</span>
-              <Select
-                aria-label="Тайлант сар сонгох"
-                value={selected.key}
-                onChange={(event) => setSelectedMonth(event.target.value)}
-                className="h-10 min-w-[108px] px-2 text-caption font-semibold"
-              >
-                {months.map((month) => (
-                  <option key={month.key} value={month.key}>
-                    {month.label}
-                  </option>
-                ))}
-              </Select>
-            </label>
-
-            <div className="shrink-0 whitespace-nowrap rounded-control bg-sky px-3 py-2.5 text-caption text-sky-ink">
-              <strong>{target ?? enrolled} хүүхэд</strong>
-              <span className="mx-2 text-muted">·</span>
-              тус бүр <strong>{notesPerChildTarget ?? "—"} тэмдэглэл</strong>
-            </div>
-
-            {canSetGoal ? (
+          {canSetGoal ? (
+            <div className="shrink-0">
               <GoalDialog
                 groupId={groupId}
                 current={target}
                 currentNotesPerChild={notesPerChildTarget}
                 maxChildren={enrolled}
               />
-            ) : null}
-          </div>
+            </div>
+          ) : null}
         </Card>
       </section>
 
@@ -488,17 +497,26 @@ function ChildCoverage({
         />
       </div>
 
+      {/*
+        ★ Fits a phone without sideways scrolling — 2026-10-07, the client:
+        "утсан дээр бүрэн харагддаг болгоод шах". The 560px floor and the
+        16px cell padding apply from `sm` up only.
+      */}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[560px] border-collapse text-body">
+        <table className="w-full border-collapse text-compact sm:min-w-[560px] sm:text-body">
           <caption className="sr-only">Хүүхдийн хамрагдалт</caption>
           <thead className="bg-sunken">
             <tr>
-              <th className="w-14 px-4 py-3 text-left text-caption font-semibold text-muted">№</th>
-              <th className="px-4 py-3 text-left text-caption font-semibold text-muted">
+              <th className="w-8 px-2 py-2 sm:w-14 sm:px-4 sm:py-3 text-left text-caption font-semibold text-muted">
+                №
+              </th>
+              <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-caption font-semibold text-muted">
                 Овог, нэр
               </th>
-              <th className="px-4 py-3 text-left text-caption font-semibold text-muted">Нас</th>
-              <th className="px-4 py-3 text-right text-caption font-semibold text-muted">
+              <th className="px-2 py-2 sm:px-4 sm:py-3 text-left text-caption font-semibold text-muted">
+                Нас
+              </th>
+              <th className="px-2 py-2 sm:px-4 sm:py-3 text-right text-caption font-semibold text-muted">
                 Тэмдэглэл
               </th>
             </tr>
@@ -506,21 +524,21 @@ function ChildCoverage({
           <tbody>
             {rows.map(({ child, count, met: isMet }, index) => (
               <tr key={child.id} className="border-t border-border-soft hover:bg-canvas">
-                <td className="px-4 py-3 tabular-nums text-muted">{index + 1}</td>
-                <td className="px-4 py-3">
+                <td className="px-2 py-2 sm:px-4 sm:py-3 tabular-nums text-muted">{index + 1}</td>
+                <td className="px-2 py-2 sm:px-4 sm:py-3">
                   <Link
                     href={`/children/${child.id}/observations?type=daily`}
-                    className="flex items-center gap-2.5 font-semibold text-ink hover:text-primary"
+                    className="flex items-center gap-2.5 font-semibold leading-snug text-ink hover:text-primary"
                   >
                     {shortName(child)}
                   </Link>
                 </td>
-                <td className="whitespace-nowrap px-4 py-3 text-muted">
+                <td className="whitespace-nowrap px-2 py-2 sm:px-4 sm:py-3 text-muted">
                   {formatAge(child.dateOfBirth)}
                 </td>
                 <td
                   className={cn(
-                    "whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums",
+                    "whitespace-nowrap px-2 py-2 sm:px-4 sm:py-3 text-right font-semibold tabular-nums",
                     isMet ? "text-mint-ink" : count > 0 ? "text-sun-ink" : "text-muted",
                   )}
                 >

@@ -9,13 +9,15 @@ import {
   stubApi,
 } from "./support/render";
 import GrowthPage from "@/app/(app)/children/[childId]/portfolio/growth/page";
+import { ChildGrowthAges } from "@/components/child/child-growth-ages";
 import PortfolioPage from "@/app/(app)/children/[childId]/portfolio/page";
 
 const CHILD_ID = "44444444-4444-4444-8444-444444444444";
 
 /**
- * The portfolio's age sections — now "Насны онцлог", the "Хөгжил" page's
- * default tab (`portfolio/growth/page.tsx`).
+ * The portfolio's age sections — `ChildGrowthAges`, which was the staff
+ * «Хөгжил» page's «Насны онцлог» tab until 2026-10-07, when that page became
+ * the family's «Явцын үнэлгээ» for everybody. Its own tests render it directly.
  *
  * ★ Two requirements pulling against each other, which is why both are pinned.
  *
@@ -92,7 +94,7 @@ describe("portfolio launcher", () => {
     const nav = await screen.findByRole("navigation", { name: "Цахим хавтасны хэсгүүд" });
     const expected = [
       ["Миний тухай", "icon-portfolio-about-me-3d"],
-      ["Хөгжил", "icon-portfolio-development-3d"],
+      ["Явцын үнэлгээ", "icon-portfolio-development-3d"],
       ["Зургийн цомог", "icon-portfolio-gallery-3d"],
       ["Насны харьцуулалт", "icon-portfolio-age-comparison-3d"],
     ] as const;
@@ -159,7 +161,7 @@ describe("portfolio age sections", () => {
   it("renders a section for every age 2–5 whatever the child's age (RFP §4.3)", async () => {
     stubGrowth(bornYearsAgo(2));
 
-    renderWithProviders(<GrowthPage />);
+    renderWithProviders(<ChildGrowthAges childId={CHILD_ID} isGuardian={false} currentAge={2} />);
 
     await waitFor(() => expect(ageDisclosure(2)).toBeInTheDocument());
     for (const age of [2, 3, 4, 5]) {
@@ -172,7 +174,7 @@ describe("portfolio age sections", () => {
   it("opens the years the child has lived and closes the rest", async () => {
     stubGrowth(bornYearsAgo(3));
 
-    renderWithProviders(<GrowthPage />);
+    renderWithProviders(<ChildGrowthAges childId={CHILD_ID} isGuardian={false} currentAge={3} />);
 
     await waitFor(() => expect(ageDisclosure(2)).toBeInTheDocument());
 
@@ -187,7 +189,7 @@ describe("portfolio age sections", () => {
     // and collapsing writing that exists would hide real content.
     stubGrowth(bornYearsAgo(2), [{ age: 5, favoriteColour: null, favoriteFood: "Бууз" }]);
 
-    renderWithProviders(<GrowthPage />);
+    renderWithProviders(<ChildGrowthAges childId={CHILD_ID} isGuardian={false} currentAge={2} />);
 
     await waitFor(() => expect(ageDisclosure(5)).toBeInTheDocument());
     // The age-profiles fetch that decides "filled" settles after the section
@@ -201,7 +203,7 @@ describe("portfolio age sections", () => {
   it("does not offer an edit control for a year that is still closed", async () => {
     stubGrowth(bornYearsAgo(2));
 
-    renderWithProviders(<GrowthPage />);
+    renderWithProviders(<ChildGrowthAges childId={CHILD_ID} isGuardian={false} currentAge={2} />);
     await waitFor(() => expect(ageDisclosure(2)).toBeInTheDocument());
 
     // The nine "Засах" buttons were the substance of the finding. The control
@@ -229,7 +231,7 @@ describe("portfolio age sections", () => {
   it("marks the filled year with an icon the accessible name also states", async () => {
     stubGrowth(bornYearsAgo(3), [{ age: 2, favoriteFood: "Бууз" }]);
 
-    renderWithProviders(<GrowthPage />);
+    renderWithProviders(<ChildGrowthAges childId={CHILD_ID} isGuardian={false} currentAge={3} />);
 
     const row = await screen.findByRole("navigation", { name: /Насны хэсгүүд/ });
     const link = (age: number) =>
@@ -251,13 +253,53 @@ describe("portfolio age sections", () => {
     const user = userEvent.setup();
     stubGrowth(bornYearsAgo(2));
 
-    renderWithProviders(<GrowthPage />);
+    renderWithProviders(<ChildGrowthAges childId={CHILD_ID} isGuardian={false} currentAge={2} />);
     await waitFor(() => expect(ageDisclosure(2)).toBeInTheDocument());
 
     const summary = ageDisclosure(4).querySelector("summary")!;
     await user.click(summary);
 
     await waitFor(() => expect(ageDisclosure(4).open).toBe(true));
+  });
+});
+
+describe("«Явцын үнэлгээ» for a teacher", () => {
+  it("is the family's page, read-only — client, 2026-10-07", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: `/children/${CHILD_ID}/observations`,
+        body: { items: [], page: 1, pageSize: 100, total: 0, totalPages: 0 },
+      },
+      { path: "/kindergartens/33333333-3333-4333-8333-333333333333/terms", body: [] },
+      {
+        path: `/children/${CHILD_ID}`,
+        body: {
+          id: CHILD_ID,
+          lastName: "Ганболд",
+          firstName: "Батбаяр",
+          sex: "MALE",
+          dateOfBirth: bornYearsAgo(3),
+          status: "ACTIVE",
+          photoMediaFileId: null,
+          enrollments: [],
+          guardianships: [],
+          kindergarten: { id: "33333333-3333-4333-8333-333333333333", name: "Цэцэрлэг" },
+          healthNotes: null,
+        },
+      },
+    ]);
+
+    renderWithProviders(<GrowthPage />);
+
+    expect(await screen.findByRole("heading", { name: "Явцын үнэлгээ" })).toBeInTheDocument();
+    for (const label of ["Ажиглалт", "Ярилцлага", "Бүтээл"]) {
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+    }
+    expect(screen.getByRole("button", { name: "Багшийн тэмдэглэл" })).toBeInTheDocument();
+    // No staff tabs, and no family quick-share «+».
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ажиглалт нэмэх" })).not.toBeInTheDocument();
   });
 });
 
@@ -279,7 +321,7 @@ describe("RFP §4.3 completeness", () => {
     const user = userEvent.setup();
     stubGrowth(bornYearsAgo(3));
 
-    renderWithProviders(<GrowthPage />);
+    renderWithProviders(<ChildGrowthAges childId={CHILD_ID} isGuardian={false} currentAge={3} />);
     await waitFor(() => expect(ageDisclosure(3)).toBeInTheDocument());
 
     const panel = ageDisclosure(3);
@@ -301,7 +343,7 @@ describe("RFP §4.3 completeness", () => {
       { age: 3, favoriteStory: "Алтан загасны үлгэр", learningInterest: "Тоо тоолох" },
     ]);
 
-    renderWithProviders(<GrowthPage />);
+    renderWithProviders(<ChildGrowthAges childId={CHILD_ID} isGuardian={false} currentAge={3} />);
 
     await waitFor(() => expect(ageDisclosure(3)).toBeInTheDocument());
     // Same reason as the two tests above: the stored value only appears once

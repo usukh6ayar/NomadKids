@@ -212,7 +212,9 @@ describe("the assessment summary", () => {
     stubStats(null);
     summary();
 
-    expect(await screen.findByRole("button", { name: "Сарын зорилго засах" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Сарын зорилгын үйлдэл" }),
+    ).toBeInTheDocument();
   });
 
   /**
@@ -229,7 +231,8 @@ describe("the assessment summary", () => {
     summary();
 
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Сарын зорилго засах" }));
+    await user.click(await screen.findByRole("button", { name: "Сарын зорилгын үйлдэл" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Засах" }));
     const dialog = screen.getByRole("dialog", { name: "Зорилго засах" });
     expect(within(dialog).getByLabelText("Зорилтот хүүхдийн тоо")).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Нэг хүүхдэд бичих тэмдэглэлийн тоо")).toBeInTheDocument();
@@ -252,7 +255,8 @@ describe("the assessment summary", () => {
     const api = stubStats(5);
     summary();
 
-    await user.click(await screen.findByRole("button", { name: "Сарын зорилго засах" }));
+    await user.click(await screen.findByRole("button", { name: "Сарын зорилгын үйлдэл" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Засах" }));
     await user.click(screen.getByRole("button", { name: /Зорилтот хүүхдийн тоо — нэмэх/ }));
     await user.click(screen.getByRole("button", { name: "Хадгалах" }));
 
@@ -275,7 +279,8 @@ describe("the assessment summary", () => {
     summary();
 
     expect(await screen.findByText(/тус бүр/)).toHaveTextContent("тус бүр 2 тэмдэглэл");
-    await user.click(screen.getByRole("button", { name: "Сарын зорилго засах" }));
+    await user.click(screen.getByRole("button", { name: "Сарын зорилгын үйлдэл" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Засах" }));
     await user.click(
       screen.getByRole("button", { name: /Нэг хүүхдэд бичих тэмдэглэлийн тоо — нэмэх/ }),
     );

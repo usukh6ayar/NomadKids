@@ -133,7 +133,7 @@ beforeEach(() => {
 });
 
 async function sendThenCheck(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole("button", { name: "ESIS рүү илгээх" }));
+  await user.click(await screen.findByRole("button", { name: "ESIS илгээх" }));
   await screen.findByText(/Илгээсэн \d\d:\d\d/);
   await user.click(screen.getByRole("button", { name: "ESIS-ээс шалгах" }));
 }

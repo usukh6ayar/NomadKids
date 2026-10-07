@@ -47,11 +47,25 @@ function monthKey(year: number, month0: number): string {
  * plain muted cell rather than borrowing the ABSENT colour for silence. Only
  * a real `ABSENT` record — recorded by staff — gets the danger tone.
  */
-export function AttendanceCalendar({ childId }: { childId: string }) {
+export function AttendanceCalendar({
+  childId,
+  view,
+}: {
+  childId: string;
+  /**
+   * One half on its own — the family's attendance tabs, client, 2026-10-07:
+   * «Ирцийн нэгтгэл» is the figures and the chart, «Календар» the day grid,
+   * open. The tab names the panel, so no section header is drawn. Omitted,
+   * both halves render under their header, as before.
+   */
+  view?: "summary" | "calendar";
+}) {
   const now = new Date();
   const [month, setMonth] = useState(() => monthKey(now.getFullYear(), now.getMonth()));
   /** Whether the day grid is unfolded — closed by default; see its own note. */
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const showSummary = view !== "calendar";
+  const showGrid = view === "calendar" || calendarOpen;
 
   const records = useQuery({
     queryKey: qk.attendance(childId, month),
@@ -136,12 +150,14 @@ export function AttendanceCalendar({ childId }: { childId: string }) {
   const maxCount = Math.max(1, ...summaryItems.map((item) => item.value));
 
   return (
-    <section aria-labelledby="attendance-calendar-heading">
-      <SectionHeader
-        id="attendance-calendar-heading"
-        title="Ирцийн нэгтгэл"
-        lede="Сарын төлөв болон календарийн бүртгэл"
-      />
+    <section aria-labelledby={view ? undefined : "attendance-calendar-heading"}>
+      {view ? null : (
+        <SectionHeader
+          id="attendance-calendar-heading"
+          title="Ирцийн нэгтгэл"
+          lede="Сарын төлөв болон календарийн бүртгэл"
+        />
+      )}
 
       {/*
         ★ The control row is its own full-width line — 2026-09-12, after two
@@ -203,47 +219,54 @@ export function AttendanceCalendar({ childId }: { childId: string }) {
 
         {!records.isLoading && !records.isError && !summary.isLoading && !summary.isError ? (
           <>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {summaryItems.map((item) => (
-                <div key={item.key} className="rounded-row bg-sunken px-3 py-3">
-                  <span className="flex items-center gap-1.5 text-caption text-muted">
-                    <span className={cn("size-2 rounded-pill", item.dot)} aria-hidden="true" />
-                    {item.label}
-                  </span>
-                  <strong className="mt-1 block text-title font-semibold text-ink">
-                    {item.value} <span className="text-caption font-normal text-muted">өдөр</span>
-                  </strong>
+            {showSummary ? (
+              <>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {summaryItems.map((item) => (
+                    <div key={item.key} className="rounded-row bg-sunken px-3 py-3">
+                      <span className="flex items-center gap-1.5 text-caption text-muted">
+                        <span className={cn("size-2 rounded-pill", item.dot)} aria-hidden="true" />
+                        {item.label}
+                      </span>
+                      <strong className="mt-1 block text-title font-semibold text-ink">
+                        {item.value}{" "}
+                        <span className="text-caption font-normal text-muted">өдөр</span>
+                      </strong>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
 
-            <div
-              className="grid h-36 grid-cols-4 items-end gap-3 rounded-row bg-sunken px-4 pb-3 pt-5"
-              role="img"
-              aria-label={summaryItems.map((item) => `${item.label} ${item.value} өдөр`).join(", ")}
-            >
-              {summaryItems.map((item) => (
                 <div
-                  key={item.key}
-                  className="flex h-full flex-col items-center justify-end gap-1.5"
+                  className="grid h-36 grid-cols-4 items-end gap-3 rounded-row bg-sunken px-4 pb-3 pt-5"
+                  role="img"
+                  aria-label={summaryItems
+                    .map((item) => `${item.label} ${item.value} өдөр`)
+                    .join(", ")}
                 >
-                  <span className="text-caption font-semibold text-ink">{item.value}</span>
-                  <span
-                    className={cn(
-                      "w-full max-w-12 rounded-t-control transition-[height]",
-                      item.bar,
-                    )}
-                    style={{
-                      height: `${Math.max(item.value === 0 ? 4 : 16, (item.value / maxCount) * 76)}px`,
-                    }}
-                    aria-hidden="true"
-                  />
-                  <span className="text-center text-caption leading-tight text-muted">
-                    {item.label}
-                  </span>
+                  {summaryItems.map((item) => (
+                    <div
+                      key={item.key}
+                      className="flex h-full flex-col items-center justify-end gap-1.5"
+                    >
+                      <span className="text-caption font-semibold text-ink">{item.value}</span>
+                      <span
+                        className={cn(
+                          "w-full max-w-12 rounded-t-control transition-[height]",
+                          item.bar,
+                        )}
+                        style={{
+                          height: `${Math.max(item.value === 0 ? 4 : 16, (item.value / maxCount) * 76)}px`,
+                        }}
+                        aria-hidden="true"
+                      />
+                      <span className="text-center text-caption leading-tight text-muted">
+                        {item.label}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            ) : null}
 
             {/*
               ★ The calendar folds — 2026-09-12, at the client's request:
@@ -255,78 +278,87 @@ export function AttendanceCalendar({ childId }: { childId: string }) {
               question you go looking for. Closed by default, so the summary and
               the day's actions sit together on one phone screen.
             */}
-            <div className="border-t border-border pt-4">
-              <button
-                type="button"
-                aria-expanded={calendarOpen}
-                aria-controls="attendance-calendar-grid"
-                onClick={() => setCalendarOpen((open) => !open)}
-                className="flex min-h-[44px] w-full items-center justify-between gap-2 rounded-control text-left font-semibold text-ink transition-colors hover:text-primary"
-              >
-                Календарь
-                <ChevronDown
-                  size={18}
-                  aria-hidden="true"
-                  className={cn(
-                    "shrink-0 text-muted transition-transform",
-                    calendarOpen && "rotate-180",
-                  )}
-                />
-              </button>
+            {view === "summary" ? null : (
+              <div className={cn(!view && "border-t border-border pt-4")}>
+                {view ? null : (
+                  <button
+                    type="button"
+                    aria-expanded={calendarOpen}
+                    aria-controls="attendance-calendar-grid"
+                    onClick={() => setCalendarOpen((open) => !open)}
+                    className="flex min-h-[44px] w-full items-center justify-between gap-2 rounded-control text-left font-semibold text-ink transition-colors hover:text-primary"
+                  >
+                    Календарь
+                    <ChevronDown
+                      size={18}
+                      aria-hidden="true"
+                      className={cn(
+                        "shrink-0 text-muted transition-transform",
+                        calendarOpen && "rotate-180",
+                      )}
+                    />
+                  </button>
+                )}
 
-              {/*
+                {/*
                 ★ Rendered away, not `hidden` — the trap CLAUDE.md records: the
                 `hidden` attribute is `display: none` at the lowest specificity
                 and `grid` from the class list beats it, so the grid would have
                 stayed on screen with the chevron claiming it was folded.
               */}
-              <div
-                id="attendance-calendar-grid"
-                className={cn("mt-3 grid-cols-7 gap-1", calendarOpen ? "grid" : "hidden")}
-              >
-                {WEEKDAYS.map((w) => (
-                  <span key={w} className="text-center text-caption font-semibold text-muted">
-                    {w}
+                <div
+                  id="attendance-calendar-grid"
+                  className={cn("grid-cols-7 gap-1", !view && "mt-3", showGrid ? "grid" : "hidden")}
+                >
+                  {WEEKDAYS.map((w) => (
+                    <span key={w} className="text-center text-caption font-semibold text-muted">
+                      {w}
+                    </span>
+                  ))}
+                  {cells.map((cell, i) => {
+                    if (!cell) return <span key={`empty-${i}`} aria-hidden="true" />;
+                    const record = byDate.get(cell.dateKey);
+                    const isToday = cell.dateKey === todayKey;
+                    const label = record
+                      ? `${cell.day} — ${ATTENDANCE_STATUS_LABEL[record.status]}${record.note ? `, ${record.note}` : ""}`
+                      : `${cell.day} — тэмдэглэгдээгүй`;
+
+                    return (
+                      <span
+                        key={cell.dateKey}
+                        role="img"
+                        aria-label={label}
+                        title={label}
+                        className={cn(
+                          "flex aspect-square items-center justify-center rounded-control text-caption font-medium",
+                          record ? STATUS_CELL[record.status] : "bg-canvas text-muted",
+                          isToday && "ring-2 ring-primary ring-offset-1 ring-offset-surface",
+                        )}
+                      >
+                        {cell.day}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {view === "summary" ? null : (
+              <div className="flex flex-wrap gap-x-4 gap-y-2 border-t border-border pt-4">
+                {summaryItems.map((item) => (
+                  <span
+                    key={item.key}
+                    className="flex items-center gap-1.5 text-caption text-muted"
+                  >
+                    <span
+                      className={cn("size-2.5 shrink-0 rounded-pill", item.dot)}
+                      aria-hidden="true"
+                    />
+                    {item.label}
                   </span>
                 ))}
-                {cells.map((cell, i) => {
-                  if (!cell) return <span key={`empty-${i}`} aria-hidden="true" />;
-                  const record = byDate.get(cell.dateKey);
-                  const isToday = cell.dateKey === todayKey;
-                  const label = record
-                    ? `${cell.day} — ${ATTENDANCE_STATUS_LABEL[record.status]}${record.note ? `, ${record.note}` : ""}`
-                    : `${cell.day} — тэмдэглэгдээгүй`;
-
-                  return (
-                    <span
-                      key={cell.dateKey}
-                      role="img"
-                      aria-label={label}
-                      title={label}
-                      className={cn(
-                        "flex aspect-square items-center justify-center rounded-control text-caption font-medium",
-                        record ? STATUS_CELL[record.status] : "bg-canvas text-muted",
-                        isToday && "ring-2 ring-primary ring-offset-1 ring-offset-surface",
-                      )}
-                    >
-                      {cell.day}
-                    </span>
-                  );
-                })}
               </div>
-            </div>
-
-            <div className="flex flex-wrap gap-x-4 gap-y-2 border-t border-border pt-4">
-              {summaryItems.map((item) => (
-                <span key={item.key} className="flex items-center gap-1.5 text-caption text-muted">
-                  <span
-                    className={cn("size-2.5 shrink-0 rounded-pill", item.dot)}
-                    aria-hidden="true"
-                  />
-                  {item.label}
-                </span>
-              ))}
-            </div>
+            )}
           </>
         ) : null}
       </Card>

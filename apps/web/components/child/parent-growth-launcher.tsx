@@ -8,7 +8,7 @@ import { mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
-import { Card, SectionHeader } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
@@ -91,19 +91,28 @@ const CARD_TONE_FOR_BUCKET: Record<GradientTone, Tone> = {
  * screen that could create or edit one is gone; a future pass gets to decide
  * where it resurfaces rather than this one guessing.
  */
-export function ParentGrowthLauncher({ child }: { child: ChildDetail }) {
+export function ParentGrowthLauncher({
+  child,
+  readOnly = false,
+}: {
+  child: ChildDetail;
+  /** Staff see the family's page without its «+» — see `growth/page.tsx`. */
+  readOnly?: boolean;
+}) {
   const [activeBucket, setActiveBucket] = useState<BucketKey>("observation");
   const [composerOpen, setComposerOpen] = useState(false);
   const bucket = BUCKETS.find((item) => item.key === activeBucket)!;
 
   return (
     <div className="flex flex-col gap-6">
-      <SectionHeader
-        as="h1"
-        title="Хүүхдийн явцын үнэлгээ"
-        lede="Хүүхдийн хөгжилд гарч буй ахиц дэвшлийг багш, эцэг эх хамтран тэмдэглэнэ"
-        className="mb-0"
-      />
+      {/*
+        ★ No second title, no accent bar — client, 2026-10-07: the page header
+        already says «Явцын үнэлгээ», so «Хүүхдийн явцын үнэлгээ» under it went.
+        The lede stays as a plain line.
+      */}
+      <p className="text-body text-muted">
+        Хүүхдийн хөгжилд гарч буй ахиц дэвшлийг багш, эцэг эх хамтран тэмдэглэнэ
+      </p>
 
       <div className="grid grid-cols-3 gap-2.5">
         {BUCKETS.map((bucket) => (
@@ -123,7 +132,7 @@ export function ParentGrowthLauncher({ child }: { child: ChildDetail }) {
         childId={child.id}
         categoryCode={CATEGORY_CODE[activeBucket]}
         title={bucket.label}
-        onAdd={() => setComposerOpen(true)}
+        onAdd={readOnly ? undefined : () => setComposerOpen(true)}
         composer={
           composerOpen ? (
             <QuickShareForm

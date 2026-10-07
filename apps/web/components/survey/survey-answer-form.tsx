@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Checkbox, Field, Textarea } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { cn } from "@/lib/utils";
+import { Star } from "lucide-react";
 
 /**
  * A questionnaire, filled in — one card per question and a submit button.
@@ -52,24 +53,32 @@ export function SurveyAnswerForm({
           <p className="font-medium text-ink">{question.prompt}</p>
 
           {question.type === "RATING" ? (
-            <div role="radiogroup" aria-label={question.prompt} className="flex gap-2">
+            /*
+              ★ Five stars, not five numbered boxes — client, 2026-10-06.
+              Pressing the fourth fills one to four; the value sent is still
+              the number, so nothing downstream changes.
+            */
+            <div role="radiogroup" aria-label={question.prompt} className="flex gap-1">
               {[1, 2, 3, 4, 5].map((value) => {
-                const selected = answers[question.id] === value;
+                const chosen =
+                  typeof answers[question.id] === "number" ? (answers[question.id] as number) : 0;
+                const lit = value <= chosen;
                 return (
                   <button
                     key={value}
                     type="button"
                     role="radio"
-                    aria-checked={selected}
+                    aria-checked={chosen === value}
+                    aria-label={`${value} од`}
                     onClick={() => onAnswers((a) => ({ ...a, [question.id]: value }))}
-                    className={cn(
-                      "min-h-11 min-w-11 rounded-control border px-3 text-body font-medium transition-colors",
-                      selected
-                        ? "border-primary bg-primary text-primary-ink"
-                        : "border-border bg-surface text-muted hover:bg-canvas hover:text-ink",
-                    )}
+                    className="grid size-11 place-items-center rounded-control transition-transform hover:scale-110"
                   >
-                    {value}
+                    <Star
+                      size={30}
+                      strokeWidth={1.6}
+                      aria-hidden="true"
+                      className={cn(lit ? "fill-sun text-sun-ink" : "fill-transparent text-faint")}
+                    />
                   </button>
                 );
               })}

@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download } from "lucide-react";
 import { useState } from "react";
 import { INGREDIENT_UNIT_LABEL, ingredientSchema } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
@@ -19,6 +18,7 @@ import {
   sameName,
   useEsisFoodAccess,
 } from "@/components/kitchen/esis-food";
+import { EsisButton } from "@/components/esis/esis-button";
 
 /**
  * «ESIS-ээс татах» beside «Орц нэмэх» — client, 2026-10-06. It replaces the
@@ -40,10 +40,7 @@ export function EsisIngredientImport({ kindergartenId }: { kindergartenId: strin
 
   return (
     <>
-      <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
-        <Download size={16} aria-hidden="true" />
-        ESIS-ээс татах
-      </Button>
+      <EsisButton onClick={() => setOpen(true)} />
       {open ? (
         <ImportDialog kindergartenId={kindergartenId} onClose={() => setOpen(false)} />
       ) : null}
