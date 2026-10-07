@@ -17,7 +17,7 @@
  *
  * What it builds: a kindergarten with enough shape to *look at*. Every screen
  * in this product renders an empty state until there are rows, and an empty
- * state is not something a client can evaluate. So: two groups, ten children
+ * state is not something a client can evaluate. So: four groups, 48 children
  * with guardians, observations in every review state, a term's assessments,
  * announcements — and then the Phase II/III modules, which are the reason this
  * file exists rather than the original 500-line script: attendance, meals and
@@ -110,9 +110,12 @@ export interface DemoSeedSummary {
 /** The accounts the summary tells the reader to sign in with. */
 export const DEMO_ACCOUNTS = [
   { username: "zahiral", role: "ADMIN", note: "Захирал — бүх модуль" },
-  { username: "bagsh1", role: "TEACHER", note: "Багш — Дунд бүлэг" },
-  { username: "bagsh2", role: "TEACHER", note: "Багш — Ахлах бүлэг" },
-  { username: "etseg1", role: "PARENT", note: "Эцэг эх — хоёр хүүхэдтэй" },
+  { username: "bagsh1", role: "TEACHER", note: "Багш — Бөмбөлөг (бага) бүлэг" },
+  { username: "bagsh2", role: "TEACHER", note: "Багш — Дэлбээ (дунд) бүлэг" },
+  { username: "bagsh3", role: "TEACHER", note: "Багш — Наран (ахлах) бүлэг" },
+  { username: "bagsh4", role: "TEACHER", note: "Багш — Солонго (бэлтгэл) бүлэг" },
+  { username: "tuslah1", role: "TEACHER", note: "Туслах багш — Бөмбөлөг бүлэг (tuslah1–4)" },
+  { username: "etseg1", role: "PARENT", note: "Эцэг эх — хоёр хүүхэдтэй (etseg2…)" },
   /*
    * ★ Added 2026-09-02. Both roles shipped after this file was written — COOK
    * with the kitchen module, ACCOUNTANT with the finance one — and neither got
@@ -176,19 +179,213 @@ const firstOfMonth = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTC
 // The people and the children
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Ten children, with names and birthdays that spread across the age bands. */
-const CHILDREN = [
-  { lastName: "Ганболд", firstName: "Батбаяр", sex: "MALE", dob: "2021-04-12" },
-  { lastName: "Дорж", firstName: "Намуун", sex: "FEMALE", dob: "2021-06-30" },
-  { lastName: "Энхбат", firstName: "Тэмүүлэн", sex: "MALE", dob: "2021-09-02" },
-  { lastName: "Мөнхбаяр", firstName: "Сарнай", sex: "FEMALE", dob: "2021-11-19" },
-  { lastName: "Батжаргал", firstName: "Ану", sex: "FEMALE", dob: "2022-01-25" },
-  { lastName: "Сүхбаатар", firstName: "Чингис", sex: "MALE", dob: "2020-03-08" },
-  { lastName: "Пүрэвдорж", firstName: "Оюунаа", sex: "FEMALE", dob: "2020-05-14" },
-  { lastName: "Алтанзул", firstName: "Мандах", sex: "MALE", dob: "2020-08-21" },
-  { lastName: "Нэргүй", firstName: "Хулан", sex: "FEMALE", dob: "2020-10-05" },
-  { lastName: "Цэрэндорж", firstName: "Билгүүн", sex: "MALE", dob: "2020-12-30" },
+/**
+ * Four groups, one per ESIS academic level (`AGE_BAND_BY_LEVEL`, 15–18), each
+ * with a lead and an assistant teacher — the shape of a real roster, so a
+ * walkthrough shows the group switcher, the per-group register and a teacher
+ * who cannot see the next room's children.
+ *
+ * ★ Grown from two groups and ten children on 2026-10-07 for a recorded
+ * tutorial: two rooms of five read as a toy, and every list, filter and
+ * pagination control only shows its real behaviour at a realistic size.
+ *
+ * `ageAtStart` is the age a child in the band has reached by the first day of
+ * the school year, so birthdays stay right whichever year the seed runs in.
+ */
+const GROUPS = [
+  {
+    name: "Бөмбөлөг бүлэг",
+    ageBand: "NURSERY",
+    ageAtStart: 2,
+    size: 11,
+    lead: { username: "bagsh1", lastName: "Дэлгэрмаа", firstName: "Сувдаа" },
+    assistant: { username: "tuslah1", lastName: "Батцэцэг", firstName: "Наранцэцэг" },
+  },
+  {
+    name: "Дэлбээ бүлэг",
+    ageBand: "JUNIOR",
+    ageAtStart: 3,
+    size: 12,
+    lead: { username: "bagsh2", lastName: "Ариунаа", firstName: "Золжаргал" },
+    assistant: { username: "tuslah2", lastName: "Отгонбаяр", firstName: "Энхтуяа" },
+  },
+  {
+    name: "Наран бүлэг",
+    ageBand: "MIDDLE",
+    ageAtStart: 4,
+    size: 13,
+    lead: { username: "bagsh3", lastName: "Гантулга", firstName: "Мөнхцэцэг" },
+    assistant: { username: "tuslah3", lastName: "Бямбасүрэн", firstName: "Солонго" },
+  },
+  {
+    name: "Солонго бүлэг",
+    ageBand: "SENIOR",
+    ageAtStart: 5,
+    size: 12,
+    lead: { username: "bagsh4", lastName: "Жаргалсайхан", firstName: "Уранчимэг" },
+    assistant: { username: "tuslah4", lastName: "Даваадорж", firstName: "Оюунгэрэл" },
+  },
 ] as const;
+
+/**
+ * The first ten children keep the names this file has always used, so the
+ * `childIndex`-keyed seeds below (the allergy on index 4, the incidents, the
+ * attendance requests) still land on the same people.
+ */
+const NAMED_CHILDREN = [
+  { lastName: "Ганболд", firstName: "Батбаяр", sex: "MALE" },
+  // Ганболд, as above: the two share a parent account, so they share an овог.
+  { lastName: "Ганболд", firstName: "Намуун", sex: "FEMALE" },
+  { lastName: "Энхбат", firstName: "Тэмүүлэн", sex: "MALE" },
+  { lastName: "Мөнхбаяр", firstName: "Сарнай", sex: "FEMALE" },
+  { lastName: "Батжаргал", firstName: "Ану", sex: "FEMALE" },
+  { lastName: "Сүхбаатар", firstName: "Чингис", sex: "MALE" },
+  { lastName: "Пүрэвдорж", firstName: "Оюунаа", sex: "FEMALE" },
+  { lastName: "Алтанзул", firstName: "Мандах", sex: "MALE" },
+  { lastName: "Нэргүй", firstName: "Хулан", sex: "FEMALE" },
+  { lastName: "Цэрэндорж", firstName: "Билгүүн", sex: "MALE" },
+] as const;
+
+const LAST_NAMES = [
+  "Ганбаатар",
+  "Баярсайхан",
+  "Отгонбаяр",
+  "Эрдэнэбат",
+  "Цогтбаяр",
+  "Лхагвадорж",
+  "Батмөнх",
+  "Даваасүрэн",
+  "Бямбадорж",
+  "Ууганбаяр",
+  "Төмөрбаатар",
+  "Наранбаатар",
+  "Гантулга",
+  "Мөнхжаргал",
+  "Энхтайван",
+  "Болдбаатар",
+  "Хүрэлбаатар",
+  "Сэргэлэн",
+  "Түмэнжаргал",
+  "Дашдондог",
+  "Чулуунбат",
+  "Амарсанаа",
+  "Батболд",
+] as const;
+
+const MALE_NAMES = [
+  "Тэнгис",
+  "Ганзориг",
+  "Төгөлдөр",
+  "Эрхэс",
+  "Анар",
+  "Тэмүжин",
+  "Мөнх-Оргил",
+  "Сод-Эрдэнэ",
+  "Бат-Үйл",
+  "Ананд",
+  "Тэлмүүн",
+  "Хангай",
+  "Од-Эрдэнэ",
+  "Мөнхтулга",
+  "Энхтөр",
+  "Сүндэр",
+  "Түвшин",
+  "Хүслэн",
+  "Ирмүүн",
+  "Мишээл",
+] as const;
+
+const FEMALE_NAMES = [
+  "Номин",
+  "Ивээл",
+  "Энэрэл",
+  "Анужин",
+  "Хонгорзул",
+  "Номуун",
+  "Мичид",
+  "Есүй",
+  "Мөнхжин",
+  "Үүрцэцэг",
+  "Гэгээ",
+  "Цэлмэг",
+  "Нандин",
+  "Ундрал",
+  "Ариунзаяа",
+  "Сондор",
+  "Хэрлэн",
+  "Тэргэл",
+  "Саруул",
+  "Минжин",
+] as const;
+
+/** Letter pairs of the kind a register number opens with. */
+const REGISTER_PREFIXES = ["УБ", "УП", "ЧЕ", "ТА", "УЕ", "ЧА", "УЮ", "ЧУ", "ХЕ", "ОЮ"] as const;
+
+/**
+ * A register number in the national format — two letters, the birth date as
+ * YYMMDD with twenty added to the month for a 2000s birth, then two digits
+ * whose first is odd for a boy and even for a girl. `children.dto.ts` accepts
+ * exactly this shape, so the edit form saves these unchanged.
+ */
+function demoRegisterNumber(dob: Date, sex: "MALE" | "FEMALE", k: number): string {
+  const year = dob.getUTCFullYear();
+  const yy = String(year % 100).padStart(2, "0");
+  const mm = String(dob.getUTCMonth() + 1 + (year >= 2000 ? 20 : 0)).padStart(2, "0");
+  const dd = String(dob.getUTCDate()).padStart(2, "0");
+  const sexDigit = (k % 5) * 2 + (sex === "MALE" ? 1 : 0);
+  return `${REGISTER_PREFIXES[k % REGISTER_PREFIXES.length]}${yy}${mm}${dd}${sexDigit}${(k * 7) % 10}`;
+}
+
+/** A guardian's own овог — never the same word as their given name. */
+function guardianLastName(parentIndex: number, givenName: string): string {
+  // The extra term breaks the cycle: children 23 apart share an овог, and
+  // without it their two unrelated guardians would share a full name too.
+  const offset = parentIndex * 5 + Math.floor(parentIndex / LAST_NAMES.length);
+  const pick = (n: number) => LAST_NAMES[(offset + n) % LAST_NAMES.length]!;
+  return pick(3) === givenName ? pick(5) : pick(3);
+}
+
+/** Every child, in group order: the named ten first, then generated ones. */
+function demoChildren(yearStart: Date) {
+  const out: {
+    lastName: string;
+    firstName: string;
+    sex: "MALE" | "FEMALE";
+    dob: Date;
+    nationalId: string;
+    groupIndex: number;
+  }[] = [];
+  let male = 0;
+  let female = 0;
+
+  for (const [groupIndex, group] of GROUPS.entries()) {
+    for (let i = 0; i < group.size; i += 1) {
+      const k = out.length;
+      const named = NAMED_CHILDREN[k];
+      const sex = named?.sex ?? (k % 2 === 0 ? "MALE" : "FEMALE");
+      const firstName =
+        named?.firstName ??
+        (sex === "MALE"
+          ? MALE_NAMES[male++ % MALE_NAMES.length]!
+          : FEMALE_NAMES[female++ % FEMALE_NAMES.length]!);
+      const lastName = named?.lastName ?? LAST_NAMES[(k * 7) % LAST_NAMES.length]!;
+
+      // Spread across the twelve months before the band's cut-off.
+      const cutOff = addMonths(yearStart, -12 * group.ageAtStart);
+      const dob = addDays(cutOff, -(10 + ((k * 29) % 340)));
+
+      out.push({
+        lastName,
+        firstName,
+        sex,
+        dob,
+        nationalId: demoRegisterNumber(dob, sex, k),
+        groupIndex,
+      });
+    }
+  }
+  return out;
+}
 
 /**
  * Observations, written to exercise the states the screens actually branch on:
@@ -373,7 +570,9 @@ export async function seedDemoKindergarten(
         username,
         lastName: input.lastName,
         firstName: input.firstName,
-        email: input.email ?? null,
+        // Suffixed like the username: `User.email` is unique too, so a second
+        // seeded kindergarten would otherwise collide on `bagsh1@…`.
+        email: input.email ? input.email.replace("@", `${suffix}@`) : null,
         phone: input.phone ?? null,
         passwordHash,
       },
@@ -463,23 +662,20 @@ export async function seedDemoKindergarten(
     ),
   );
 
+  /*
+   * ★ Named the way a kindergarten names a group, not after its age band.
+   *
+   * These were "Дунд бүлэг" (JUNIOR) and "Ахлах бүлэг" (MIDDLE) — each
+   * group's name was character-for-character the label of its own band, so
+   * every screen that shows both showed the same two words twice: the
+   * admin list printed them one column apart and it read as a bug.
+   *
+   * Real kindergartens name groups after flowers, animals or the sun; the
+   * band is a separate fact about the same group, which is the distinction
+   * a demo has to show for the two fields to look like two fields.
+   */
   const groups = await Promise.all(
-    [
-      /*
-       * ★ Named the way a kindergarten names a group, not after its age band.
-       *
-       * These were "Дунд бүлэг" (JUNIOR) and "Ахлах бүлэг" (MIDDLE) — each
-       * group's name was character-for-character the label of its own band, so
-       * every screen that shows both showed the same two words twice: the
-       * admin list printed them one column apart and it read as a bug.
-       *
-       * Real kindergartens name groups after flowers, animals or the sun; the
-       * band is a separate fact about the same group, which is the distinction
-       * a demo has to show for the two fields to look like two fields.
-       */
-      { name: "Дэлбээ бүлэг", ageBand: "JUNIOR" as const },
-      { name: "Наран бүлэг", ageBand: "MIDDLE" as const },
-    ].map((g) =>
+    GROUPS.map((g) =>
       prisma.group.create({
         data: { kindergartenId: kg.id, schoolYearId: year.id, name: g.name, ageBand: g.ageBand },
       }),
@@ -492,18 +688,6 @@ export async function seedDemoKindergarten(
     lastName: "Батсайхан",
     firstName: "Оюунчимэг",
     email: "zahiral@nomadkids.mn",
-  });
-  const teacherA = await makeUser({
-    username: "bagsh1",
-    lastName: "Дэлгэрмаа",
-    firstName: "Сувдаа",
-    email: "bagsh1@nomadkids.mn",
-  });
-  const teacherB = await makeUser({
-    username: "bagsh2",
-    lastName: "Ариунаа",
-    firstName: "Золжаргал",
-    email: "bagsh2@nomadkids.mn",
   });
   const cook = await makeUser({
     username: "togooch",
@@ -518,15 +702,9 @@ export async function seedDemoKindergarten(
     email: "nyagtlan@nomadkids.mn",
   });
 
-  const memberships = await Promise.all([
+  await Promise.all([
     prisma.membership.create({
       data: { userId: admin.id, kindergartenId: kg.id, role: "ADMIN" },
-    }),
-    prisma.membership.create({
-      data: { userId: teacherA.id, kindergartenId: kg.id, role: "TEACHER" },
-    }),
-    prisma.membership.create({
-      data: { userId: teacherB.id, kindergartenId: kg.id, role: "TEACHER" },
     }),
     /*
      * ★ One role each, deliberately. The interesting thing about both is what
@@ -543,43 +721,52 @@ export async function seedDemoKindergarten(
     }),
   ]);
 
-  await Promise.all([
-    prisma.groupTeacher.create({
-      data: {
-        kindergartenId: kg.id,
-        groupId: groups[0]!.id,
-        membershipId: memberships[1]!.id,
-        role: "LEAD",
-      },
-    }),
-    prisma.groupTeacher.create({
-      data: {
-        kindergartenId: kg.id,
-        groupId: groups[1]!.id,
-        membershipId: memberships[2]!.id,
-        role: "LEAD",
-      },
-    }),
-  ]);
+  /** Each group's lead teacher — who records, observes and assesses for it. */
+  const leads: { id: string }[] = [];
+  for (const [index, spec] of GROUPS.entries()) {
+    for (const [role, person] of [
+      ["LEAD", spec.lead],
+      ["ASSISTANT", spec.assistant],
+    ] as const) {
+      const user = await makeUser({ ...person, email: `${person.username}@nomadkids.mn` });
+      const membership = await prisma.membership.create({
+        data: { userId: user.id, kindergartenId: kg.id, role: "TEACHER" },
+      });
+      await prisma.groupTeacher.create({
+        data: {
+          kindergartenId: kg.id,
+          groupId: groups[index]!.id,
+          membershipId: membership.id,
+          role,
+          startedOn: yearStart,
+        },
+      });
+      if (role === "LEAD") leads.push(user);
+    }
+  }
+  const teacherA = leads[0]!;
 
   console.log("Creating children…");
   const children: {
     child: { id: string; lastName: string; firstName: string };
     enrollment: { id: string };
     group: { id: string };
+    groupIndex: number;
+    lead: { id: string };
     parent: { id: string };
   }[] = [];
 
-  for (const [index, c] of CHILDREN.entries()) {
-    const group = groups[index < 5 ? 0 : 1]!;
+  for (const [index, c] of demoChildren(yearStart).entries()) {
+    const group = groups[c.groupIndex]!;
 
     const child = await prisma.child.create({
       data: {
         kindergartenId: kg.id,
         lastName: c.lastName,
         firstName: c.firstName,
+        nationalId: c.nationalId,
         sex: c.sex,
-        dateOfBirth: day(c.dob),
+        dateOfBirth: c.dob,
         healthNotes: index === 4 ? "Самар агуулсан хоол өгөхгүй. Харшлын бүртгэл харна уу." : null,
       },
     });
@@ -596,11 +783,15 @@ export async function seedDemoKindergarten(
 
     // One guardian each. The first two children share a parent account, which
     // is the case the parent shell's child switcher exists for.
+    //
+    // A child's овог is a parent's given name, so the guardian is named from
+    // it — "Эцэг 3" read as a placeholder on every screen that names one.
     const parentIndex = index < 2 ? 0 : index;
+    const relation = index % 2 === 0 ? "MOTHER" : "FATHER";
     const parent = await makeUser({
       username: `etseg${parentIndex + 1}`,
-      lastName: c.lastName,
-      firstName: `Эцэг ${parentIndex + 1}`,
+      lastName: guardianLastName(parentIndex, c.lastName),
+      firstName: c.lastName,
       phone: `+9769900${String(parentIndex + 1).padStart(4, "0")}`,
     });
 
@@ -617,18 +808,34 @@ export async function seedDemoKindergarten(
         kindergartenId: kg.id,
         childId: child.id,
         guardianUserId: parent.id,
-        relation: index % 2 === 0 ? "MOTHER" : "FATHER",
+        relation,
         isPrimary: true,
       },
     });
 
-    children.push({ child, enrollment, group, parent });
+    children.push({
+      child,
+      enrollment,
+      group,
+      groupIndex: c.groupIndex,
+      lead: leads[c.groupIndex]!,
+      parent,
+    });
   }
 
   console.log("Creating observations…");
   let observationCount = 0;
-  for (const { child, enrollment } of children.slice(0, 6)) {
-    for (const seed of OBSERVATION_SEEDS) {
+  /*
+   * The first six children get every review state; the rest get two approved,
+   * parent-visible notes each from their own group's lead, so no portfolio a
+   * walkthrough opens is empty and no teacher's group looks unworked.
+   */
+  for (const [childIndex, { child, enrollment, lead }] of children.entries()) {
+    const seeds =
+      childIndex < 6
+        ? OBSERVATION_SEEDS
+        : OBSERVATION_SEEDS.slice(childIndex % 2, (childIndex % 2) + 2);
+    for (const seed of seeds) {
       const type = typeByCode.get(seed.typeCode);
       if (!type) continue;
 
@@ -639,7 +846,7 @@ export async function seedDemoKindergarten(
           enrollmentId: enrollment.id,
           typeId: type.id,
           source: "source" in seed ? seed.source : "TEACHER",
-          observedOn: addDays(today, -seed.daysAgo),
+          observedOn: addDays(today, -seed.daysAgo - (childIndex < 6 ? 0 : childIndex % 9)),
           activityName: "activityName" in seed ? seed.activityName : null,
           situation: seed.situation,
           childDid: seed.childDid,
@@ -648,7 +855,7 @@ export async function seedDemoKindergarten(
           nextSteps: "nextSteps" in seed ? seed.nextSteps : null,
           visibleToParents: seed.visibleToParents,
           reviewStatus: seed.reviewStatus,
-          authorId: seed.reviewStatus === "PENDING" ? null : teacherA.id,
+          authorId: seed.reviewStatus === "PENDING" ? null : lead.id,
         },
       });
 
@@ -671,7 +878,7 @@ export async function seedDemoKindergarten(
   console.log("Creating assessments…");
   let assessmentCount = 0;
   const firstTerm = terms[0]!;
-  for (const [childIndex, { child, enrollment }] of children.entries()) {
+  for (const [childIndex, { child, enrollment, lead }] of children.entries()) {
     for (const [domainIndex, domain] of domains.entries()) {
       // A spread of levels rather than a single value, so the assessment grid
       // and the term report show more than one colour.
@@ -686,7 +893,7 @@ export async function seedDemoKindergarten(
           termId: firstTerm.id,
           levelId: level.id,
           visibleToParents: true,
-          assessedById: teacherA.id,
+          assessedById: lead.id,
         },
       });
       assessmentCount += 1;
@@ -814,7 +1021,7 @@ export async function seedDemoKindergarten(
               : status === "OTHER"
                 ? "Эмнэлгийн үзлэгт явсан — өдрийн хагасаас хойш ирээгүй."
                 : null,
-          recordedById: childIndex < 5 ? teacherA.id : teacherB.id,
+          recordedById: children[childIndex]!.lead.id,
         },
       });
       attendanceCount += 1;
@@ -877,7 +1084,7 @@ export async function seedDemoKindergarten(
         requestedStatus: r.requestedStatus,
         reason: r.reason,
         reviewStatus: r.reviewStatus,
-        reviewedById: r.reviewStatus === "PENDING" ? null : teacherA.id,
+        reviewedById: r.reviewStatus === "PENDING" ? null : entry.lead.id,
         reviewedAt: r.reviewStatus === "PENDING" ? null : addDays(today, -4),
       },
     });
@@ -972,7 +1179,7 @@ export async function seedDemoKindergarten(
               : status === "SPECIAL"
                 ? "Харшлын улмаас тусгай хоол."
                 : null,
-            recordedById: childIndex < 5 ? teacherA.id : teacherB.id,
+            recordedById: children[childIndex]!.lead.id,
           },
         });
         mealRecordCount += 1;
@@ -1099,8 +1306,11 @@ export async function seedDemoKindergarten(
   console.log("Creating growth measurements…");
   let growthCount = 0;
   for (const [childIndex, { child }] of children.entries()) {
-    const baseHeight = 92 + (childIndex % 5) * 3;
-    const baseWeight = 13.5 + (childIndex % 5) * 1.2;
+    // Started from the band's typical size, so a бэлтгэл child is not charted
+    // at a бага child's height.
+    const band = children[childIndex]!.groupIndex;
+    const baseHeight = [84, 92, 99, 106][band]! + (childIndex % 5) * 2;
+    const baseWeight = [11.5, 13.5, 15.2, 17][band]! + (childIndex % 5) * 0.8;
 
     for (let step = 5; step >= 0; step -= 1) {
       const measuredOn = addDays(addMonths(today, -2 * step), -(childIndex % 5));
@@ -1112,7 +1322,7 @@ export async function seedDemoKindergarten(
           heightCm: (baseHeight + (5 - step) * 1.4).toFixed(1),
           weightKg: (baseWeight + (5 - step) * 0.55).toFixed(2),
           note: step === 0 ? "Улирлын үзлэг." : null,
-          recordedById: teacherA.id,
+          recordedById: children[childIndex]!.lead.id,
         },
       });
       growthCount += 1;
@@ -1219,7 +1429,7 @@ export async function seedDemoKindergarten(
         reaction: a.reaction,
         treatment: a.treatment,
         notedOn: addMonths(today, -8),
-        recordedById: teacherA.id,
+        recordedById: children[a.childIndex]!.lead.id,
       },
     });
   }
@@ -1284,7 +1494,7 @@ export async function seedDemoKindergarten(
           doseLabel: v.doseLabel,
           administeredOn: addMonths(today, -v.monthsAgo),
           provider: v.provider,
-          recordedById: teacherA.id,
+          recordedById: entry.lead.id,
         },
       });
       vaccinationCount += 1;
@@ -1355,7 +1565,7 @@ export async function seedDemoKindergarten(
           isImportant: i.isHighPriority,
           status: "PUBLISHED",
           publishedAt: occurredAt,
-          authorId: teacherA.id,
+          authorId: entry.lead.id,
         },
       });
       await prisma.notificationTarget.create({
@@ -1380,7 +1590,7 @@ export async function seedDemoKindergarten(
         firstAid: i.firstAid,
         followUp: i.followUp,
         isHighPriority: i.isHighPriority,
-        recordedById: teacherA.id,
+        recordedById: entry.lead.id,
         reportedAt: i.reported ? occurredAt : null,
         notificationId,
       },
