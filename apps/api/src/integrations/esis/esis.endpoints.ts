@@ -139,25 +139,28 @@ export const ESIS_ENDPOINTS = {
     method: "GET",
     path: "/svc/api/hub/v2/school/staff",
   }),
+  /**
+   * Turns a teacher's register number into the request id used by 167 and 170.
+   *
+   * This service deliberately keeps the published `/svc/api/zereg/` root. It
+   * is the only approved service outside `/svc/api/hub/v2/`, so normalising it
+   * to the common root would call a different URL than the ministry supplied.
+   */
+  degreeRequest: endpoint({
+    apiId: 119,
+    slug: "ZEREG-119",
+    method: "GET",
+    path: "/svc/api/zereg/get/request/:registerNum",
+  }),
   /*
-   * Мэргэшлийн зэргийн хүсэлт — the two reads, wired 2026-09-22 at the client's
-   * instruction to use these services.
+   * Мэргэшлийн зэргийн хүсэлтийн хоёр дэлгэрэнгүй уншлага. API 119-өөс авсан
+   * `requestId`-г эдгээрт дамжуулна.
    *
-   * ★ **Both live-probed before being written** (`scripts/esis-degree-probe.ts`).
-   * Each answers `203 {"RESPONSE_MESSAGE":"Хүсэлтэд тохирох утга
-   * олдсонгүй.","RESULT":""}` for an unknown `requestId` — access granted, id
-   * not found. That is what separates them from 119, which answers `403` and is
-   * dropped: the client, 2026-09-22, "ene ni ajillahgui gsen ug orhi
-   * ashiglahgui".
-   *
-   * ★★ **No hand-written row schema, and that is deliberate.** Neither has ever
-   * been seen with a populated `RESULT`, because nothing in this product can
-   * produce a `requestId` yet. `esisDiscoveredSchema` passes through whatever
-   * the ministry sends, so the field names come off the wire the first time a
-   * real request is read rather than out of documentation this token cannot
-   * reach — the developer portal is behind a login. That is the
-   * eleven-of-thirty-six-readers-were-fiction failure, avoided by not writing
-   * the list at all.
+   * ★ **No hand-written row schema, and that is deliberate.** Neither has yet
+   * been seen with a populated `RESULT`. `esisDiscoveredSchema` passes through
+   * whatever the ministry sends, so the field names come off the wire the first
+   * time a real request is read instead of being guessed from a login-gated
+   * developer portal.
    *
    * ★★★ 170 carries `institutionId` **in the path as well as the query**, which
    * is how the ministry publishes it. `getList` fills the path copy; the query

@@ -7,11 +7,9 @@ import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 /**
  * Мэргэшлийн зэргийн хүсэлт — the two reads, 2026-09-22.
  *
- * ★ The client named four services. Two are wired and tested here; the other two
- * are not, for reasons the code records and these cases deliberately do **not**
- * assert, because a test cannot prove a live gateway's grant: 119 answers `403`
- * and was dropped at the client's instruction, and 165 is a POST that files a
- * real application against a real teacher.
+ * ★ API 119 obtains the `requestId` on the dedicated qualification page. These
+ * cases pin the two follow-up reads, 167 and 170. API 165 remains outside this
+ * read-only panel because it files a real application against a real teacher.
  *
  * ★★ What is worth pinning in the browser is small and specific: the panel asks
  * for a request number instead of calling with a guessed one, and it sends that

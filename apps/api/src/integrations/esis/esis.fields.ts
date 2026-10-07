@@ -313,13 +313,11 @@ const ESIS_FIELD_CATALOG: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
     keep("actionDate", "Үйлдлийн огноо"),
   ],
   /*
-   * Мэргэшлийн зэргийн хүсэлт — **the anchor and nothing else**, 2026-09-22.
+   * Мэргэшлийн зэргийн хүсэлт — API 119-ийн тогтвортой гаралт нь `requestId`.
    *
-   * ★ Neither service has ever answered with a populated `RESULT`: nothing in
-   * this product can produce a `requestId` yet (119 is refused, 165 uncalled),
-   * and the developer portal that documents the fields is behind a login this
-   * token has no way past. So there is no list to copy and no response to read
-   * one off.
+   * ★ 167/170-ийн populated `RESULT`-ийн талбарууд одоогоор баталгаажаагүй,
+   * харин developer portal нэвтрэлт шаарддаг. Тиймээс хариуны талбаруудыг
+   * таамаглан хатуу жагсаагаагүй.
    *
    * ★★ One declared field, following the six per-child reads above — they
    * answered `203` for every child and each declares only the id it is keyed
@@ -339,6 +337,7 @@ const ESIS_FIELD_CATALOG: Record<keyof typeof ESIS_ENDPOINTS, EsisField[]> = {
    * this reason: a reading order over field names nobody has seen would be the
    * same invention one layer up.
    */
+  degreeRequest: [keep("requestId", "Хүсэлтийн дугаар")],
   degreeDecisions: [keep("requestId", "Хүсэлтийн дугаар")],
   degreeHistory: [keep("requestId", "Хүсэлтийн дугаар")],
   teachers: [
@@ -1469,11 +1468,13 @@ export const ESIS_FIELD_SOURCE: Record<keyof typeof ESIS_ENDPOINTS, EsisFieldSou
    * off the first real record — `ADAPTER` is the honest badge for a list that
    * does not exist yet."
    *
-   * These two answer the same 203 for every `requestId` available, so they are
-   * the same situation and take the same badge. `LIVE` would claim a real
-   * response has been read; `PORTAL` would claim the ministry documented a list
-   * we have seen.
+   * The degree resources take the same badge. API 119 has a small adapter that
+   * normalises scalar/object `RESULT` values to `requestId`; 167/170 discover
+   * their columns from the first populated response. `LIVE` would claim a real
+   * populated response has been read; `PORTAL` would claim a documented field
+   * list we have seen.
    */
+  degreeRequest: "ADAPTER",
   degreeDecisions: "ADAPTER",
   degreeHistory: "ADAPTER",
   teachers: "PORTAL",

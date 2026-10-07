@@ -916,6 +916,255 @@ export class DashboardRepository {
     }));
   }
 
+  /**
+   * Today's register per group, with whether each group has sent it — the
+   * board's «Өнөөдөр, бүлгээр».
+   *
+   * ★ Four queries for every group, never one per group (§3.4): the roster
+   * with its size, the day's rows grouped by enrolment and status, the
+   * enrolment → group map for those rows, and the day's submissions. Bounded at
+   * 50 groups, like `groupRosterSizes`.
+   *
+   * The roster and the rows use `attendanceToday`'s filters exactly, so the
+   * per-group figures sum to the kindergarten-wide ones beside them.
+   */
+  async attendanceTodayByGroup(kindergartenIds: string[], date: Date) {
+    if (kindergartenIds.length === 0) return [];
+
+    const groups = await this.prisma.group.findMany({
+      where: { kindergartenId: { in: kindergartenIds }, deletedAt: null, status: "ACTIVE" },
+      select: {
+        id: true,
+        name: true,
+        _count: { select: { enrollments: { where: { status: "ACTIVE", deletedAt: null } } } },
+      },
+      orderBy: { name: "asc" },
+      take: 50,
+    });
+    if (groups.length === 0) return [];
+
+    const groupIds = groups.map((g) => g.id);
+
+    const [rows, submissions] = await Promise.all([
+      this.prisma.attendance.groupBy({
+        by: ["enrollmentId", "status"],
+        where: {
+          date,
+          deletedAt: null,
+          enrollment: { groupId: { in: groupIds }, status: "ACTIVE", deletedAt: null },
+        },
+        _count: { _all: true },
+      }),
+      this.prisma.attendanceSubmission.findMany({
+        where: {
+          kindergartenId: { in: kindergartenIds },
+          groupId: { in: groupIds },
+          date,
+          deletedAt: null,
+        },
+        select: { groupId: true },
+      }),
+    ]);
+
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: { id: { in: [...new Set(rows.map((r) => r.enrollmentId))] } },
+      select: { id: true, groupId: true },
+    });
+    const groupOf = new Map(enrollments.map((e) => [e.id, e.groupId]));
+    const submitted = new Set(submissions.map((s) => s.groupId));
+
+    const tally = new Map<string, { present: number; recorded: number }>();
+    for (const row of rows) {
+      const groupId = groupOf.get(row.enrollmentId);
+      if (!groupId) continue;
+      const acc = tally.get(groupId) ?? { present: 0, recorded: 0 };
+      acc.recorded += row._count._all;
+      if (row.status === "PRESENT" || row.status === "HALF_DAY") acc.present += row._count._all;
+      tally.set(groupId, acc);
+    }
+
+    return groups.map((g) => {
+      const { present, recorded } = tally.get(g.id) ?? { present: 0, recorded: 0 };
+      return {
+        groupId: g.id,
+        name: g.name,
+        expected: g._count.enrollments,
+        present,
+        absent: recorded - present,
+        recorded,
+        submitted: submitted.has(g.id),
+      };
+    });
+  }
+
+  /**
+   * The raw material for the board's seven-day trend, over `from`–`to`.
+   *
+   * ★ Three queries for the whole span, never one per day: the calendar's
+   * exceptions, the rows by day and status, and every enrolment that
+   * overlapped the span. The service picks the school days and counts each
+   * day's roster in memory — the enrolments are one row per child, a few
+   * hundred at most, capped below.
+   *
+   * ★★ Past days count enrolments by their dates, not by today's status: a
+   * child who left last week was on the roster on the days they attended.
+   */
+  async attendanceHistory(kindergartenIds: string[], from: Date, to: Date) {
+    if (kindergartenIds.length === 0) return { calendar: [], byDay: [], enrollments: [] };
+
+    const inKindergarten = { kindergartenId: { in: kindergartenIds }, deletedAt: null };
+
+    const [calendar, byDay, enrollments] = await Promise.all([
+      this.prisma.calendarDay.findMany({
+        where: {
+          kindergartenId: { in: kindergartenIds },
+          deletedAt: null,
+          date: { gte: from, lte: to },
+        },
+        select: { date: true, isWorkingDay: true },
+      }),
+      this.prisma.attendance.groupBy({
+        by: ["date", "status"],
+        where: {
+          date: { gte: from, lte: to },
+          deletedAt: null,
+          enrollment: { deletedAt: null, group: inKindergarten },
+        },
+        _count: { _all: true },
+      }),
+      this.prisma.enrollment.findMany({
+        where: {
+          deletedAt: null,
+          group: inKindergarten,
+          startedOn: { lte: to },
+          OR: [{ endedOn: null }, { endedOn: { gt: from } }],
+        },
+        select: { startedOn: true, endedOn: true },
+        take: 5000,
+      }),
+    ]);
+
+    return { calendar, byDay, enrollments };
+  }
+
+  /**
+   * Attendance requests still waiting for review, across the kindergarten.
+   *
+   * The same filter as the teachers' review queue
+   * (`AttendanceRepository.listPendingForGroups`), widened from a teacher's
+   * groups to the administrator's kindergartens.
+   */
+  async pendingAttendanceRequests(kindergartenIds: string[]): Promise<number> {
+    if (kindergartenIds.length === 0) return 0;
+
+    return this.prisma.attendanceRequest.count({
+      where: {
+        kindergartenId: { in: kindergartenIds },
+        deletedAt: null,
+        reviewStatus: "PENDING",
+        enrollment: { deletedAt: null },
+      },
+    });
+  }
+
+  /**
+   * The board's short feed — four kinds of audit row, newest first.
+   *
+   * ★ Matched on what the services actually write, not on a taxonomy invented
+   * here: a child is `Child`/`CREATE` (`ChildrenService.create`), a notice
+   * going out is `Notification`/`UPDATE` with `published: true`
+   * (`NotificationsService.publish` — `CREATE` is only ever a draft), a menu is
+   * `MenuDay`/`UPDATE` with `approved: true`, and a payment is
+   * `Payment`/`CREATE`. Anything else stays in `recentAuditEntries`.
+   */
+  async recentBoardEvents(kindergartenIds: string[], take = 5) {
+    if (kindergartenIds.length === 0) return [];
+
+    return this.prisma.auditLog.findMany({
+      where: {
+        kindergartenId: { in: kindergartenIds },
+        OR: [
+          { objectType: "Child", action: "CREATE" },
+          {
+            objectType: "Notification",
+            action: "UPDATE",
+            metadata: { path: ["published"], equals: true },
+          },
+          {
+            objectType: "MenuDay",
+            action: "UPDATE",
+            metadata: { path: ["approved"], equals: true },
+          },
+          { objectType: "Payment", action: "CREATE" },
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+      take,
+      select: {
+        id: true,
+        objectType: true,
+        actorLabel: true,
+        createdAt: true,
+        actor: AUDIT_ACTOR_SELECT,
+      },
+    });
+  }
+
+  /**
+   * Published notices about something still to come — an event, an activity
+   * or an outing whose dates have not passed.
+   *
+   * ★ Notices addressed to a single child are left out. They are a family's
+   * business — an incident notice is one — and a board every administrator
+   * opens is not where their title belongs.
+   */
+  async upcomingNotices(kindergartenIds: string[], today: Date, take = 4) {
+    if (kindergartenIds.length === 0) return [];
+
+    return this.prisma.notification.findMany({
+      where: {
+        kindergartenId: { in: kindergartenIds },
+        deletedAt: null,
+        status: "PUBLISHED",
+        category: { in: ["EVENT", "ACTIVITY", "OUTING"] },
+        targets: { none: { childId: { not: null }, deletedAt: null } },
+        OR: [{ startsOn: { gte: today } }, { startsOn: { lte: today }, endsOn: { gte: today } }],
+      },
+      orderBy: { startsOn: "asc" },
+      take,
+      select: {
+        id: true,
+        title: true,
+        body: true,
+        category: true,
+        startsOn: true,
+        endsOn: true,
+        targets: {
+          where: { deletedAt: null, groupId: { not: null } },
+          select: { group: { select: { name: true } } },
+          take: 3,
+        },
+      },
+    });
+  }
+
+  /** The newest published notices — the board's fallback when nothing is upcoming. */
+  async latestNotices(kindergartenIds: string[], take = 3) {
+    if (kindergartenIds.length === 0) return [];
+
+    return this.prisma.notification.findMany({
+      where: {
+        kindergartenId: { in: kindergartenIds },
+        deletedAt: null,
+        status: "PUBLISHED",
+        targets: { none: { childId: { not: null }, deletedAt: null } },
+      },
+      orderBy: { publishedAt: "desc" },
+      take,
+      select: { id: true, title: true, body: true, category: true, publishedAt: true },
+    });
+  }
+
   // ── Cook ─────────────────────────────────────────────────────────────────
 
   /**

@@ -123,14 +123,19 @@ const META: Record<EsisEndpointKey, EsisEndpointMeta> = {
    * (its own note asks for that) and teaching the web filter a new group, for
    * two services that read one id each.
    *
-   * ★★ `previewable: false` on both — the operator's dry run calls every
-   * previewable service with no parameters, and these need a `requestId` the
-   * dry run cannot invent.
+   * ★★ `previewable: false` — the operator's dry run calls services with no
+   * parameters, while 119 needs `registerNum` and 167/170 need a `requestId`.
    */
   degreeDecisions: {
     name: "Мэргэшлийн зэргийн хүсэлтийн шийдвэрлэлт",
     domain: "ROSTER",
     usage: "Хүсэлтийн дугаараар шийдвэрлэлтийн төлөв",
+    previewable: false,
+  },
+  degreeRequest: {
+    name: "Мэргэшлийн зэргийн хүсэлтийн дугаар авах",
+    domain: "ROSTER",
+    usage: "Багшийн регистрийн дугаараар хүсэлтийн дугаар авах",
     previewable: false,
   },
   degreeHistory: {
@@ -739,6 +744,9 @@ function targetModel(key: EsisEndpointKey): string {
   }
   if (key === "studentMovements") return "Enrollment";
   if (key === "teachers" || key === "staff") return "User / Membership";
+  if (key === "degreeRequest" || key === "degreeDecisions" || key === "degreeHistory") {
+    return "StaffRecord / ESIS qualification request";
+  }
   if (key === "groupAttendance" || key === "saveAttendanceV3") return "Attendance";
   if (key === "foodProducts") return "Recipe ESIS reference (DISPLAY_ONLY)";
 
@@ -974,6 +982,14 @@ const ROLE_SERVICES: Partial<Record<Role, readonly EsisEndpointKey[]>> = {
     "groupMeasurementsSave",
     /* Ирцийн өдрийн нэгдсэн дүн — the teacher's own day sheet, verified. */
     "schoolAttendance",
+    /*
+     * The signed-in teacher's own qualification request. API 119 is resolved
+     * from `User.registerNumber` by `EsisAdminService`; 167/170 are admitted
+     * only after their `requestId` is proven to belong to that register.
+     */
+    "degreeRequest",
+    "degreeDecisions",
+    "degreeHistory",
   ],
   /*
    * The cook's seven — every `cook/*` read in the catalog.
