@@ -25,6 +25,7 @@ import { useBackHref } from "@/components/shell/app-shell";
 import { BackButton } from "@/components/ui/back-button";
 import { RowMenu } from "@/components/ui/menu";
 import { SavePostPhoto } from "@/components/notifications/save-post-photo";
+import { PostPhotoViewer } from "@/components/notifications/post-photo-viewer";
 import { LikeButton } from "@/components/notifications/like-button";
 import { ChildAvatar, MediaThumb } from "@/components/media/media-image";
 import { useSession } from "@/lib/auth/session";
@@ -896,6 +897,7 @@ function NotificationRow({
   const router = useRouter();
   const toast = useToast();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [viewing, setViewing] = useState<number | null>(null);
   const isUnread = notification.reads.length === 0;
   /*
     ★ The reader's own post shows their photograph — 2026-09-25, the client: a
@@ -1289,7 +1291,7 @@ function NotificationRow({
             notification.media.length === 1 ? "grid-cols-1" : "grid-cols-2",
           )}
         >
-          {notification.media.slice(0, 4).map((photo) => (
+          {notification.media.slice(0, 4).map((photo, index) => (
             /*
               ★ "Хадгалах" on each photograph — RFP §2.3, at the client's
               request. A teacher posts the morning's pictures and a parent
@@ -1298,17 +1300,42 @@ function NotificationRow({
               row at the same key. Guardians only: staff already own the album.
             */
             <div key={photo.id} className="relative">
-              <MediaThumb
-                mediaId={photo.id}
-                caption={photo.caption}
-                className={notification.media.length === 1 ? "aspect-[16/9]" : "aspect-square"}
-              />
+              {/* Opens the set large — client, 2026-10-07, "facebook шиг". */}
+              <button
+                type="button"
+                aria-label={`Зургийг томоор харах (${index + 1} / ${notification.media.length})`}
+                onClick={() => setViewing(index)}
+                className="relative block w-full"
+              >
+                <MediaThumb
+                  mediaId={photo.id}
+                  caption={photo.caption}
+                  className={notification.media.length === 1 ? "aspect-[16/9]" : "aspect-square"}
+                />
+                {index === 3 && notification.media.length > 4 ? (
+                  <span
+                    aria-hidden="true"
+                    className="absolute inset-0 grid place-items-center rounded-control bg-ink/50 text-heading font-bold text-white"
+                  >
+                    +{notification.media.length - 4}
+                  </span>
+                ) : null}
+              </button>
               {savableChildren ? (
                 <SavePostPhoto mediaId={photo.id} children={savableChildren} />
               ) : null}
             </div>
           ))}
         </div>
+      ) : null}
+
+      {viewing !== null ? (
+        <PostPhotoViewer
+          photos={notification.media}
+          index={viewing}
+          onIndex={setViewing}
+          onClose={() => setViewing(null)}
+        />
       ) : null}
 
       {/*
