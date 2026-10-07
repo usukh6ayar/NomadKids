@@ -66,7 +66,9 @@ export const metadata: Metadata = {
    */
   title: { default: `${BRAND} — ${BRAND_LATIN}`, template: `%s | ${BRAND} · ${BRAND_LATIN}` },
   description: DESCRIPTION,
-  applicationName: BRAND,
+  // The installed app's name — the same one `manifest.ts` gives, for the same
+  // reason (the client, 2026-10-07: NomadKids is the primary name).
+  applicationName: BRAND_LATIN,
   /*
    * ★★ Canonical. Without it `https://nomadkids.mn/` and any variant a link
    * arrives as — a trailing `?fbclid=…`, `www.`, a trailing slash — are
@@ -90,7 +92,7 @@ export const metadata: Metadata = {
   },
   // The iOS home-screen name. Without it Safari uses the <title>, which is the
   // full brand and is truncated to about eleven characters under the icon.
-  appleWebApp: { capable: true, title: BRAND, statusBarStyle: "default" },
+  appleWebApp: { capable: true, title: BRAND_LATIN, statusBarStyle: "default" },
   /*
    * Google Search Console ownership — 2026-09-10.
    *

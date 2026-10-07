@@ -53,6 +53,11 @@ export const BRAND = "Бяцхан нүүдэлчид";
  * (CLAUDE.md §5); this belongs in `<title>`, the description and the
  * structured data's `alternateName`, which is where a search engine reads and
  * a teacher does not.
+ *
+ * ★★ And under the home-screen icon — 2026-10-07, the client's call: NomadKids
+ * is the primary name, so it is what an installed app is called
+ * (`app/manifest.ts`, `appleWebApp.title` in `app/layout.tsx`). Inside the app
+ * every screen is still Mongolian.
  */
 export const BRAND_LATIN = "NomadKids";
 
