@@ -22,6 +22,7 @@ import { ErrorState, LoadingState } from "@/components/ui/states";
 import { formatDate, fullName } from "@/lib/format";
 import { useSession } from "@/lib/auth/session";
 import { useEsisRows } from "@/components/esis/use-esis-rows";
+import { FactRow } from "@/components/ui/fact-row";
 
 type Current = NonNullable<EnrollmentArchive["current"]>;
 type Past = EnrollmentArchive["history"][number];
@@ -348,13 +349,13 @@ function FamilyCurrentView({ current }: { current: Current }) {
           </div>
           <dl>
             {kindergartenFacts.map((fact, index) => (
-              <Fact
+              <FactRow
                 key={fact.label}
                 label={fact.label}
                 last={index === kindergartenFacts.length - 1}
               >
                 {fact.value}
-              </Fact>
+              </FactRow>
             ))}
           </dl>
         </Card>
@@ -370,9 +371,9 @@ function FamilyCurrentView({ current }: { current: Current }) {
           </div>
           <dl>
             {groupFacts.map((fact, index) => (
-              <Fact key={fact.label} label={fact.label} last={index === groupFacts.length - 1}>
+              <FactRow key={fact.label} label={fact.label} last={index === groupFacts.length - 1}>
                 {fact.value}
-              </Fact>
+              </FactRow>
             ))}
           </dl>
         </Card>
@@ -397,9 +398,9 @@ function FamilyCurrentView({ current }: { current: Current }) {
                     </div>
                   </div>
                   <dl>
-                    <Fact label="Мэргэжил">{teacher.specialization || "—"}</Fact>
-                    <Fact label="Төгссөн сургууль">{teacher.education || "—"}</Fact>
-                    <Fact label="Утас">
+                    <FactRow label="Мэргэжил">{teacher.specialization || "—"}</FactRow>
+                    <FactRow label="Төгссөн сургууль">{teacher.education || "—"}</FactRow>
+                    <FactRow label="Утас">
                       {teacher.phone ? (
                         <a href={`tel:${teacher.phone}`} className="text-primary hover:underline">
                           {teacher.phone}
@@ -407,8 +408,8 @@ function FamilyCurrentView({ current }: { current: Current }) {
                       ) : (
                         "—"
                       )}
-                    </Fact>
-                    <Fact label="И-мэйл" last>
+                    </FactRow>
+                    <FactRow label="И-мэйл" last>
                       {teacher.email ? (
                         <a
                           href={`mailto:${teacher.email}`}
@@ -419,7 +420,7 @@ function FamilyCurrentView({ current }: { current: Current }) {
                       ) : (
                         "—"
                       )}
-                    </Fact>
+                    </FactRow>
                   </dl>
                 </Card>
               </li>
@@ -464,28 +465,6 @@ function Table({
         </thead>
         <tbody>{children}</tbody>
       </table>
-    </div>
-  );
-}
-
-/** A label and its value, as the Ерөнхий tab draws them. */
-function Fact({
-  label,
-  children,
-  last = false,
-}: {
-  label: string;
-  children: ReactNode;
-  last?: boolean;
-}) {
-  return (
-    <div
-      className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-center gap-3 py-2 ${
-        last ? "" : "border-b border-border-soft"
-      }`}
-    >
-      <dt className="text-body text-muted">{label}</dt>
-      <dd className="min-w-0 break-words text-body font-medium text-ink">{children}</dd>
     </div>
   );
 }
@@ -560,9 +539,9 @@ function CurrentPlacementCard({ current }: { current: Current }) {
     <Card pad="compact">
       <dl>
         {facts.map((fact, index) => (
-          <Fact key={fact.label} label={fact.label} last={index === facts.length - 1}>
+          <FactRow key={fact.label} label={fact.label} last={index === facts.length - 1}>
             {fact.value}
-          </Fact>
+          </FactRow>
         ))}
       </dl>
     </Card>

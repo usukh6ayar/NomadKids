@@ -92,6 +92,31 @@ describe("the child photo card in settings", () => {
     expect(screen.queryByText(/Not Found/)).not.toBeInTheDocument();
   });
 
+  /**
+   * ★ Client, 2026-10-06: the teacher's own card reads like the family's
+   * «Багш нар» card — every line as «label | value», «—» where empty (so
+   * «Мэргэшлийн зэрэг» shows even before it is filled), and no «Солисны
+   * дараа бусад төхөөрөмжөөс автоматаар гарна.».
+   */
+  it("lays a teacher's profile out as label | value lines, empty ones as —", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/me/profile",
+        body: { ...PROFILE, phone: "99000002", specialization: "Багш" },
+      },
+      { path: "/groups", body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 } },
+    ]);
+    renderWithProviders(<SettingsPage />);
+
+    const grade = await screen.findByText("Мэргэшлийн зэрэг");
+    expect(grade.tagName).toBe("DT");
+    expect(grade.nextElementSibling).toHaveTextContent("—");
+    expect(screen.getByText("Мэргэжил").nextElementSibling).toHaveTextContent("Багш");
+    expect(screen.getByText("Утас").nextElementSibling).toHaveTextContent("99000002");
+    expect(screen.queryByText(/Солисны дараа/)).toBeNull();
+  });
+
   it("keeps an administrator's professional fields inside the edit dialog", async () => {
     const user = userEvent.setup();
     stubApi([
