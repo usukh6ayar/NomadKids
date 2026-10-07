@@ -427,12 +427,13 @@ export function ChildAboutMe({
             onChange={(code) => setForm((f) => ({ ...f, zodiacCode: code }))}
           />
 
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" disabled={save.isPending}>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="submit" size="sm" disabled={save.isPending}>
               {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
             </Button>
             <Button
               variant="secondary"
+              size="sm"
               onClick={() => {
                 onEditingChange(false);
                 save.reset();

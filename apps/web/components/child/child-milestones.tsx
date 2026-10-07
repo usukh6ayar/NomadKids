@@ -288,11 +288,11 @@ function MilestoneForm({ childId, onDone }: { childId: string; onDone: () => voi
           )}
         </Field>
 
-        <div className="flex gap-2">
-          <Button type="submit" disabled={save.isPending}>
+        <div className="flex justify-end gap-2">
+          <Button type="submit" size="sm" disabled={save.isPending}>
             {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
           </Button>
-          <Button variant="secondary" onClick={onDone}>
+          <Button variant="secondary" size="sm" onClick={onDone}>
             Цуцлах
           </Button>
         </div>
