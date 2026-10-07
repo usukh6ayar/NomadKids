@@ -3,7 +3,7 @@
 import { useIsPhone } from "@/lib/use-is-phone";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   CalendarRange,
@@ -700,29 +700,27 @@ function GroupAttendance() {
         accountant's hundred-row register — none of these three is a list
         somebody searches by name, so the trade lands the other way here.
       */}
+      {/*
+        ★ The month — «Өнөөдөр» and «Сар» — opens with «Ирцийн дэлгэрэнгүй»
+        only, 2026-10-07, the client: «Чөлөөний хүсэлт» and «Гараас гарт»
+        draw no chart. It used to sit at the foot of the register whichever
+        door was open.
+      */}
       <RegisterPanels
         groupId={groupId}
         month={date.slice(0, 7)}
         pendingRequests={pendingRequests}
+        monthReport={
+          <Card pad="roomy">
+            <AttendanceMonthPanel
+              groupId={groupId}
+              month={date.slice(0, 7)}
+              date={date}
+              progress={{ recorded, total: rows.length, breakdown }}
+            />
+          </Card>
+        }
       />
-
-      {/*
-        ★ The month, at the foot of the register rather than beside the date.
-
-        It sat in the header card's right half, above the sheet it summarises —
-        so the first thing on the screen a teacher opens to fill in today was a
-        chart about days already done. The client's own layout puts it last,
-        which is also the reading order: fill the day in, then see what the
-        month adds up to.
-      */}
-      <Card pad="roomy">
-        <AttendanceMonthPanel
-          groupId={groupId}
-          month={date.slice(0, 7)}
-          date={date}
-          progress={{ recorded, total: rows.length, breakdown }}
-        />
-      </Card>
     </div>
   );
 }
@@ -750,10 +748,13 @@ function RegisterPanels({
   groupId,
   month,
   pendingRequests,
+  monthReport,
 }: {
   groupId: string;
   month: string;
   pendingRequests: number;
+  /** «Өнөөдөр» · «Сар» — drawn under the journal, and with no other door. */
+  monthReport: ReactNode;
 }) {
   const [open, setOpen] = useState<"journal" | "requests" | "handover" | null>(null);
   const panelId = "register-panel";
@@ -828,7 +829,12 @@ function RegisterPanels({
       </div>
 
       <div id={panelId} hidden={open === null}>
-        {open === "journal" ? <TeacherJournal groupId={groupId} initialMonth={month} /> : null}
+        {open === "journal" ? (
+          <div className="flex flex-col gap-4">
+            <TeacherJournal groupId={groupId} initialMonth={month} />
+            {monthReport}
+          </div>
+        ) : null}
         {open === "requests" ? <AttendanceRequestQueue heading="Эцэг эхийн мэдэгдэл" /> : null}
         {open === "handover" ? <HandoverPanel groupId={groupId} /> : null}
       </div>
