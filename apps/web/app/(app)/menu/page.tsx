@@ -8,13 +8,9 @@ import {
   ChevronLeft,
   ChevronRight,
   FileSpreadsheet,
-  List,
   ArrowLeft,
-  MoreHorizontal,
   PackageMinus,
-  PencilLine,
   Plus,
-  Table2,
 } from "lucide-react";
 import { useRef, useState, type MutableRefObject } from "react";
 import { z } from "zod";
@@ -28,7 +24,6 @@ import {
   type MenuDish,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
-import { downloadUrl } from "@/lib/api/client";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
@@ -39,7 +34,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
-import { Menu, RowMenu, type MenuItem } from "@/components/ui/menu";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { FamilyMenu, WeekTable, type MenuRowActions } from "@/components/child/family-menu";
@@ -52,7 +46,7 @@ import {
   type RecipeOption,
 } from "@/components/menu/menu-dish-editor";
 import { useEsisFoodProducts } from "@/components/esis/use-esis-food-products";
-import { formatDate, formatLongDate, formatMonthLabel, capitalize } from "@/lib/format";
+import { formatDate, formatLongDate, capitalize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const weekSchema = z.array(menuDayWithWarningsSchema);
@@ -106,14 +100,6 @@ function mondayOfIso(iso: string): string {
   const date = new Date(`${iso}T00:00:00.000Z`);
   const shift = (date.getUTCDay() + 6) % 7;
   return addDays(iso, -shift);
-}
-
-/** The first and last day of the calendar month `date` falls in — for the
- * "Сараар" export, always this month rather than whatever week is open. */
-function monthRange(date: Date): { from: string; to: string } {
-  const first = new Date(Date.UTC(date.getFullYear(), date.getMonth(), 1));
-  const last = new Date(Date.UTC(date.getFullYear(), date.getMonth() + 1, 0));
-  return { from: first.toISOString().slice(0, 10), to: last.toISOString().slice(0, 10) };
 }
 
 const WEEKDAY_BY_INDEX = ["Ням", "Даваа", "Мягмар", "Лхагва", "Пүрэв", "Баасан", "Бямба"];
@@ -619,46 +605,6 @@ function WeeklyMenu() {
     (byDate.get(date)?.warnings ?? []).map((warning) => ({ ...warning, date })),
   );
 
-  const weekEnd = weekDates[6]!;
-  const month = monthRange(new Date());
-
-  /*
-   * ★ One icon button, not three text ones — client request, 2026-09-05.
-   *
-   * The Өмнөх/Энэ долоо хоног/Дараах row that used to sit here duplicated the
-   * tri-toggle below it (both moved between "today"/"this week") without
-   * adding a destination of its own once "7 хоног" already means *this*
-   * week — it was removed rather than kept for a "previous week" case
-   * nothing else on the screen offers. This slot is Excel instead: the three
-   * ranges from a fixed period each, not from whatever `quickView` happens to
-   * be showing, same reasoning `menu-workbook.ts`'s doc comment gives.
-   */
-  const exportItems: MenuItem[] = kindergartenId
-    ? [
-        {
-          href: downloadUrl(
-            `/kindergartens/${kindergartenId}/menu/export?from=${today}&to=${today}`,
-          ),
-          label: "Өдрөөр",
-          hint: formatDate(today),
-        },
-        {
-          href: downloadUrl(
-            `/kindergartens/${kindergartenId}/menu/export?from=${weekStart}&to=${weekEnd}`,
-          ),
-          label: "7 хоногоор",
-          hint: `${formatDate(weekStart)} – ${formatDate(weekEnd)}`,
-        },
-        {
-          href: downloadUrl(
-            `/kindergartens/${kindergartenId}/menu/export?from=${month.from}&to=${month.to}`,
-          ),
-          label: "Сараар",
-          hint: formatMonthLabel(month.from.slice(0, 7)),
-        },
-      ]
-    : [];
-
   return (
     <div className="flex flex-col gap-4 lg:gap-5">
       {/*
@@ -690,32 +636,9 @@ function WeeklyMenu() {
               : undefined
         }
         actions={
-          !editing ? (
-            kindergartenId ? (
-              <RowMenu
-                ariaLabel="Хоолны цэсний үйлдэл"
-                triggerIcon={<MoreHorizontal size={18} aria-hidden="true" />}
-                items={[
-                  ...(canEdit
-                    ? [
-                        {
-                          label: "Цэс засах",
-                          icon: <PencilLine size={16} aria-hidden="true" />,
-                          hint: "Excel-ээр оруулах, өдрийн дэлгэрэнгүй маягт",
-                          onSelect: () => setEditing(true),
-                        },
-                      ]
-                    : []),
-                  ...exportItems.map((item, index) => ({
-                    label: `Excel — ${item.label}`,
-                    hint: item.hint,
-                    href: item.href,
-                    separated: index === 0,
-                  })),
-                ]}
-              />
-            ) : null
-          ) : openDay !== null ? (
+          /* No ⋯ beside the title — 2026-10-07, the client: Өнөөдөр, Маргааш
+             and 7 хоног already carry editing and Excel оруулах. */
+          !editing ? undefined : openDay !== null ? (
             /*
               ★ The day's pager, in the header — the client's drawing puts
               `‹ 2026.09.11 ›` at the top right of the day screen, not inside
@@ -844,93 +767,6 @@ function WeeklyMenu() {
             into the header's ⋮ beside the downloads.
           */}
         </>
-      ) : null}
-
-      {editing && openDay === null ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => {
-              setEditing(false);
-              setView("table");
-            }}
-          >
-            <ArrowLeft size={16} aria-hidden="true" />
-            Буцах
-          </Button>
-
-          <div
-            role="radiogroup"
-            aria-label="Харагдац"
-            className="flex items-center gap-1 rounded-control bg-canvas p-1"
-          >
-            {(
-              [
-                ["table", "Хүснэгтээр", <Table2 key="t" size={16} aria-hidden="true" />],
-                ["list", "Жагсаалтаар", <List key="l" size={16} aria-hidden="true" />],
-              ] as const
-            ).map(([value, label, icon]) => (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={view === value}
-                onClick={() => setView(value)}
-                className={cn(
-                  "inline-flex min-h-[40px] items-center gap-2 rounded-control px-3 text-body font-medium transition-colors",
-                  view === value
-                    ? "bg-primary text-primary-ink shadow-sm"
-                    : "text-muted hover:bg-surface hover:text-ink",
-                )}
-              >
-                {icon}
-                {label}
-              </button>
-            ))}
-          </div>
-
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            {kindergartenId && canEdit ? (
-              <>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="border-mint bg-mint/30 text-mint-ink hover:bg-mint/50"
-                  onClick={openImporter}
-                  aria-expanded={importing}
-                >
-                  <FileSpreadsheet size={16} aria-hidden="true" />
-                  Excel оруулах
-                </Button>
-
-                {/*
-                Нэмэх opens the day's form — the list view *is* the form, so
-                this switches to it rather than opening a dialog that would then
-                have to ask which day.
-              */}
-                <Button size="sm" onClick={() => setView("list")}>
-                  <Plus size={16} aria-hidden="true" />
-                  Нэмэх
-                </Button>
-              </>
-            ) : null}
-
-            {kindergartenId ? (
-              <Menu
-                variant="secondary"
-                ariaLabel="Excel татах"
-                items={exportItems}
-                label={
-                  <>
-                    <MoreHorizontal size={18} aria-hidden="true" />
-                    <span className="sr-only">Excel татах</span>
-                  </>
-                }
-              />
-            ) : null}
-          </div>
-        </div>
       ) : null}
 
       {/*
