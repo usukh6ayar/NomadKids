@@ -53,7 +53,8 @@ describe("Удирдлагын судалгаа", () => {
       within(table)
         .getAllByRole("columnheader")
         .map((th) => th.textContent),
-    ).toEqual(["Гарчиг", "Бүлэг", "Ангилал", "Судалгаа авсан", "Хариулт", "Хувь", "Огноо"]);
+      // No Бүлэг column since 2026-10-07.
+    ).toEqual(["Гарчиг", "Ангилал", "Судалгаа авсан", "Хариулт", "Хувь", "Огноо"]);
 
     const row = within(table).getByText(SURVEY.title).closest("tr")!;
     expect(within(row).getByRole("link", { name: SURVEY.title })).toHaveAttribute(
@@ -61,10 +62,11 @@ describe("Удирдлагын судалгаа", () => {
       `/surveys/administration/${SURVEY.id}`,
     );
     expect(within(row).getByText("Шинэ")).toBeInTheDocument();
-    expect(within(row).getByText("Бүх бүлэг")).toBeInTheDocument();
+    expect(within(row).queryByText("Бүх бүлэг")).not.toBeInTheDocument();
     expect(within(row).getByText("12 / 48")).toBeInTheDocument();
     expect(within(row).getByText("25%")).toBeInTheDocument();
-    expect(within(row).getByText("2026.09.02")).toBeInTheDocument();
+    // The day alone, the full date on hover.
+    expect(within(row).getByText("9/02")).toHaveAttribute("title", "2026.09.02");
   });
 
   it("drops Шинэ once the survey has been opened", async () => {

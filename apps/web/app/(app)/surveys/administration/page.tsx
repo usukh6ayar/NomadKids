@@ -10,7 +10,7 @@ import { RequireRole } from "@/components/shell/require-role";
 import { BackButton } from "@/components/ui/back-button";
 import { Pagination } from "@/components/ui/pagination";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatDayMonth } from "@/lib/format";
 import { TableShell, Td, Th } from "@/components/ui/table";
 import { SURVEY_CATEGORY_META } from "@/lib/survey-meta";
 import { cn } from "@/lib/utils";
@@ -77,11 +77,14 @@ function AdministrationSurveys() {
         its «Шинэ», the same signal the bell uses.
       */}
       {surveys.data && surveys.data.items.length > 0 ? (
-        <TableShell caption="Удирдлагын судалгаа" minWidth="min-w-[860px]">
+        /*
+          ★ No Бүлэг column, and the title gets the room — 2026-10-07, the
+          client, as on «Бүлгийн судалгаа» above it.
+        */
+        <TableShell caption="Удирдлагын судалгаа" minWidth="min-w-[700px]">
           <thead>
             <tr>
-              <Th>Гарчиг</Th>
-              <Th>Бүлэг</Th>
+              <Th className="min-w-[16rem]">Гарчиг</Th>
               <Th>Ангилал</Th>
               <Th>Судалгаа авсан</Th>
               <Th numeric>Хариулт</Th>
@@ -115,19 +118,20 @@ function AdministrationSurveys() {
                       ) : null}
                     </span>
                   </Td>
-                  <Td className="text-muted">
-                    {survey.group?.name ?? (survey.groupId ? "—" : "Бүх бүлэг")}
-                  </Td>
                   <Td className="text-muted">{SURVEY_CATEGORY_META[survey.category].label}</Td>
-                  <Td className="whitespace-nowrap text-muted">Цэцэрлэгийн удирдлага</Td>
+                  <Td className="whitespace-nowrap text-caption text-muted">Удирдлага</Td>
                   <Td numeric className="text-muted">
                     {survey.respondedCount} / {survey.expectedCount}
                   </Td>
                   <Td numeric className="font-medium text-ink">
                     {percent}%
                   </Td>
-                  <Td numeric className="text-muted">
-                    {formatDate(survey.closedAt ?? survey.publishedAt ?? survey.createdAt)}
+                  <Td numeric className="whitespace-nowrap text-caption text-muted">
+                    <span
+                      title={formatDate(survey.closedAt ?? survey.publishedAt ?? survey.createdAt)}
+                    >
+                      {formatDayMonth(survey.closedAt ?? survey.publishedAt ?? survey.createdAt)}
+                    </span>
                   </Td>
                 </tr>
               );
