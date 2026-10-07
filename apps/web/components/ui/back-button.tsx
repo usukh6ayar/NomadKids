@@ -3,7 +3,7 @@
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { canGoBack, useGoBack } from "@/lib/nav-history";
+import { canGoBack, noteFallbackNavigation, useGoBack } from "@/lib/nav-history";
 import { cn } from "@/lib/utils";
 
 /**
@@ -86,8 +86,12 @@ export function BackButton({
           ) {
             return;
           }
-          // Nothing behind this page load: let the anchor do what it says.
-          if (!canGoBack()) return;
+          // Nothing behind this page load: let the anchor do what it says —
+          // as a step up, not a step forward (see `noteFallbackNavigation`).
+          if (!canGoBack()) {
+            noteFallbackNavigation(href);
+            return;
+          }
           event.preventDefault();
           goBack();
         }}
