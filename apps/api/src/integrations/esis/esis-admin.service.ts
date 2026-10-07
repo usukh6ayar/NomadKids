@@ -1104,6 +1104,77 @@ export class EsisAdminService {
   }
 
   /**
+   * Resolves and protects a teacher's own qualification request.
+   *
+   * A teacher never supplies a register number: it comes from their account.
+   * For the two request-id reads, API 119 is also the ownership check. This is
+   * intentionally server-side; hiding an input in the browser would still let
+   * a caller substitute another teacher's `requestId` by hand.
+   *
+   * Administrators keep the existing directory workflow. An ADMIN+TEACHER
+   * opening the personal page with no register gets their own register filled,
+   * while their administrator page may still explicitly search another staff
+   * member as before.
+   */
+  private async resolveQualificationParams(
+    actor: Actor,
+    kindergartenId: string,
+    resource: EsisReadableKey,
+    params: Record<string, string>,
+    institutionId: string | number,
+  ) {
+    if (!QUALIFICATION_RESOURCES.has(resource)) return;
+
+    const isTeacher = hasRoleIn(actor, Role.TEACHER, kindergartenId);
+    const isAdmin = hasRoleIn(actor, Role.ADMIN, kindergartenId);
+    if (!isTeacher || (isAdmin && Object.values(params).some(Boolean))) return;
+
+    const identity = await this.repo.findUserEsisIdentity(actor.userId);
+    const registerNum = normalizeRegisterNumber(identity?.registerNumber);
+    if (!registerNum) {
+      throw new ConflictException(
+        "Таны регистрийн дугаар бүртгэлгүй байна. Хувийн мэдээллээ захирлаар баталгаажуулсны дараа дахин оролдоно уу.",
+      );
+    }
+
+    if (resource === "degreeRequest") {
+      params.registerNum = registerNum;
+      return;
+    }
+
+    let response: Awaited<ReturnType<EsisService["read"]>>;
+    try {
+      response = await this.esis.read("degreeRequest", { registerNum }, institutionId);
+    } catch (error) {
+      throw esisUserError(error, "мэргэшлийн зэргийн хүсэлт");
+    }
+
+    const ownedRequestIds = new Set(
+      response.data
+        .map((row) => String((row as { requestId?: unknown }).requestId ?? "").trim())
+        .filter(Boolean),
+    );
+    const requested = params.requestId?.trim();
+
+    if (requested) {
+      if (!ownedRequestIds.has(requested)) throw new NotFoundException();
+      params.requestId = requested;
+      return;
+    }
+
+    if (ownedRequestIds.size === 1) {
+      params.requestId = [...ownedRequestIds][0]!;
+      return;
+    }
+
+    if (ownedRequestIds.size === 0) {
+      throw new NotFoundException("Таны мэргэшлийн зэргийн хүсэлт олдсонгүй.");
+    }
+
+    throw new ConflictException("Харах хүсэлтийн дугаарыг сонгоно уу.");
+  }
+
+  /**
    * The signed-in person's ESIS id: the linked one, else the one stored
    * roster row their register number — or, failing that, their name —
    * points at. Two candidates is no answer; a guess would show one teacher
@@ -1173,6 +1244,13 @@ export class EsisAdminService {
       Object.entries(dto.params ?? {}).filter(([, value]) => value !== undefined),
     ) as Record<string, string>;
     await this.resolvePersonId(actor, kindergartenId, dto.resource, params, dto.childId);
+    await this.resolveQualificationParams(
+      actor,
+      kindergartenId,
+      dto.resource,
+      params,
+      institutionId,
+    );
     const missing = esisReaderParams(dto.resource).filter((name) => !params[name]);
     if (missing.length > 0) {
       throw new ConflictException(`Дараах утга дутуу байна: ${missing.join(", ")}`);
@@ -1559,6 +1637,7 @@ const REDACTED_READ_PARAMS = new Set([
   "primaryNidNumber",
   "civilId",
   "registerNumber",
+  "registerNum",
 ]);
 
 /**
@@ -1628,6 +1707,13 @@ const TEACHER_PERSON_RESOURCES: ReadonlySet<string> = new Set([
   "teacherAcademicOrg",
   "teacherProfile",
   "teacherCheck",
+]);
+
+/** The three read-only services on the teacher's own qualification page. */
+const QUALIFICATION_RESOURCES: ReadonlySet<string> = new Set([
+  "degreeRequest",
+  "degreeDecisions",
+  "degreeHistory",
 ]);
 
 function normalizeIdentity(value: string): string {

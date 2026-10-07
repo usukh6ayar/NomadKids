@@ -287,6 +287,42 @@ describe("dashboards cost a constant number of queries", () => {
 
     expectConstant("parent home feed", await measure(1), await measure(25), 24);
   });
+
+  /** The administrator's board — per group today, and the seven-day trend. */
+  it("the admin board's attendance does not query per child or per day", async () => {
+    async function measure(children: number): Promise<number> {
+      await resetData();
+      const s = await scenarioWithChildren(children);
+      const enrollments = await db.enrollment.findMany({ where: { groupId: s.group.id } });
+      const today = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
+      for (const day of [0, 1, 2]) {
+        const date = new Date(today);
+        date.setUTCDate(date.getUTCDate() - day);
+        for (const e of enrollments) {
+          await db.attendance.create({
+            data: {
+              kindergartenId: s.kindergarten.id,
+              enrollmentId: e.id,
+              childId: e.childId,
+              date,
+              status: "PRESENT",
+            },
+          });
+        }
+      }
+      const kindergartenIds = [s.kindergarten.id];
+      const from = new Date(today);
+      from.setUTCDate(from.getUTCDate() - 21);
+
+      return countQueries(async (prisma) => {
+        const repo = new DashboardRepository(prisma);
+        await repo.attendanceTodayByGroup(kindergartenIds, today);
+        await repo.attendanceHistory(kindergartenIds, from, today);
+      });
+    }
+
+    expectConstant("admin board attendance", await measure(1), await measure(25), 24);
+  });
 });
 
 describe("report generation costs a constant number of queries", () => {

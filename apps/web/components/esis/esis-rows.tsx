@@ -395,7 +395,8 @@ const TECHNICAL_ID = /^(institutionId|personId|student[A-Za-z]*Id)$/;
 const HIDDEN_KEY =
   /(Id|ID|_ID|Code|RegNumber|^registerNumber|^SERIAL_NUMBER|^OBJECT_VERSION_NUMBER|^orderNum)$/;
 const HIDDEN_LABEL = /(код|дугаар|\bID)$/i;
-const READABLE_KEY = /^(measureCode|phoneNumber|floorNumber)$/;
+/* `requestId` is an actionable number: APIs 167/170 cannot be used without it. */
+const READABLE_KEY = /^(measureCode|phoneNumber|floorNumber|requestId)$/;
 
 function withoutCodes(columns: EsisField[]): EsisField[] {
   return columns.filter(

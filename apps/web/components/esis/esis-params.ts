@@ -25,6 +25,7 @@ export const ESIS_PARAM_LABEL: Record<string, string> = {
    * `personRegNumber` it needs no special handling — see `isPersonalParam`.
    */
   requestId: "Хүсэлтийн дугаар",
+  registerNum: "РД (регистрийн дугаар)",
   programOfStudyId: "ESIS хөтөлбөрийн дугаар",
   programStageId: "ESIS үе шатны дугаар",
   programPlanId: "ESIS төлөвлөгөөний дугаар",
@@ -52,7 +53,8 @@ export const ESIS_DEMO_PARAM: Record<string, string> = {
 };
 
 /** Whether a parameter is a personal identifier rather than an ESIS id. */
-export const isPersonalParam = (name: string) => name === "personRegNumber";
+export const isPersonalParam = (name: string) =>
+  name === "personRegNumber" || name === "registerNum";
 
 /**
  * How a service's portal id reads on screen.

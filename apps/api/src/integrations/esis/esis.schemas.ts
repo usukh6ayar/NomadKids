@@ -112,6 +112,37 @@ export function esisListParser<T>(row: z.ZodType<T>): (body: unknown) => T[] {
   return (body) => (body === null || body === undefined ? [] : envelope.parse(body).RESULT);
 }
 
+/** The one value API 119 supplies to the downstream qualification reads. */
+export const esisDegreeRequestSchema = z.object({ requestId: identifier });
+
+/**
+ * API 119 may return its single request number as a row, an object, or a scalar
+ * `RESULT`. Normalise those wire shapes into the row list used by the shared
+ * ESIS resource endpoint. Empty-result handling matches `esisListParser`.
+ */
+export function esisDegreeRequestParser(body: unknown): Record<string, unknown>[] {
+  if (body === null || body === undefined) return [];
+
+  const envelope = z
+    .object({
+      SUCCESS_CODE: z.number(),
+      RESPONSE_MESSAGE: z.string(),
+      RESULT: z.unknown().optional(),
+    })
+    .parse(body);
+  const result = envelope.RESULT;
+  if (result === null || result === undefined || result === "") return [];
+
+  const values = Array.isArray(result) ? result : [result];
+  return values.map((value) => {
+    const row =
+      typeof value === "object" && value !== null && !Array.isArray(value)
+        ? value
+        : { requestId: value };
+    return esisDegreeRequestSchema.parse(row);
+  });
+}
+
 /**
  * Fields destroyed at the parse boundary, permanently, for any caller.
  *

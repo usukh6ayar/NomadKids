@@ -208,6 +208,7 @@ describe("navigation icons", () => {
       "Суралцагч",
       "Анги бүлэг",
       "Багш, ажилтан",
+      "Мэргэшлийн зэрэг",
       "Байгууллага",
       "Явцын үнэлгээ",
       "Ирц",
@@ -321,7 +322,15 @@ describe("navigation icons", () => {
     renderShell(["TEACHER"]);
     const nav = await sidebar();
 
-    for (const name of ["Самбар", "Суралцагч", "Ирц", "Хоолны цэс", "Судалгаа", "Чат"]) {
+    for (const name of [
+      "Самбар",
+      "Суралцагч",
+      "Ирц",
+      "Хоолны цэс",
+      "Судалгаа",
+      "Чат",
+      "Мэргэшлийн зэрэг",
+    ]) {
       const link = within(nav).getByRole("link", { name });
       expect(link).toHaveClass("text-compact");
       expect(link.querySelector("img")).toBeNull();
@@ -426,6 +435,7 @@ describe("role-based navigation", () => {
       "Мэдээ",
       "Чат",
       "Баримт бичгийн сан",
+      "Мэргэшлийн зэрэг",
     ]);
     expect(within(nav).queryByRole("link", { name: "Аюулгүй байдал" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Удирдлага" })).not.toBeInTheDocument();
@@ -461,15 +471,16 @@ describe("role-based navigation", () => {
     expect(within(nav).getByRole("link", { name: "Чат" })).toHaveAttribute("href", "/chat");
   });
 
-  it("puts the four management directories directly under Самбар", async () => {
+  it("puts the management directories directly under Самбар", async () => {
     renderShell(["ADMIN"]);
     const nav = await sections();
 
     const links = within(nav).getAllByRole("link");
-    expect(links.slice(0, 4).map((link) => link.textContent)).toEqual([
+    expect(links.slice(0, 5).map((link) => link.textContent)).toEqual([
       "Суралцагч",
       "Анги бүлэг",
       "Багш, ажилтан",
+      "Мэргэшлийн зэрэг",
       "Байгууллага",
     ]);
   });
@@ -499,6 +510,10 @@ describe("role-based navigation", () => {
         `${label} is visible to a teacher`,
       ).not.toBeInTheDocument();
     }
+    expect(within(nav).getByRole("link", { name: "Мэргэшлийн зэрэг" })).toHaveAttribute(
+      "href",
+      "/qualifications",
+    );
   });
 
   /** The headings the staff menu groups the product by, per the 2026-08-29 drawing. */
@@ -557,6 +572,7 @@ describe("role-based navigation", () => {
       ["Суралцагч", "/children"],
       ["Анги бүлэг", "/admin/groups"],
       ["Багш, ажилтан", "/admin/users"],
+      ["Мэргэшлийн зэрэг", "/admin/qualifications"],
       ["Байгууллага", "/admin/kindergarten"],
       ["Санхүү", "/finance"],
     ] as const) {

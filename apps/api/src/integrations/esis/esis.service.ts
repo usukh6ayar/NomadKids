@@ -14,6 +14,7 @@ import {
   esisCheckParser,
   esisContactsParser,
   esisDiscoveredSchema,
+  esisDegreeRequestParser,
   esisStudentAllergyUploadSchema,
   esisStudentProhibitedFoodUploadSchema,
   esisStudentDisabilityUploadSchema,
@@ -120,6 +121,13 @@ export const ESIS_READERS = {
   },
   teachers: { endpoint: ESIS_ENDPOINTS.teachers, schema: esisTeacherSchema },
   staff: { endpoint: ESIS_ENDPOINTS.staff, schema: esisStaffSchema },
+  degreeRequest: {
+    endpoint: ESIS_ENDPOINTS.degreeRequest,
+    schema: esisDiscoveredSchema,
+    params: ["registerNum"],
+    institution: false,
+    parse: esisDegreeRequestParser,
+  },
   /*
    * Мэргэшлийн зэрэг — `esisDiscoveredSchema` on both, for the reason
    * `esis.endpoints.ts` gives at length: neither has ever answered with a

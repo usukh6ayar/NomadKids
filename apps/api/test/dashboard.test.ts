@@ -736,6 +736,235 @@ describe("admin dashboard — kindergarten-wide figures", () => {
     const res = await request(server()).get("/v1/dashboard/admin").set("Cookie", teacherA.cookies);
     expect(res.status).toBe(404);
   });
+
+  /**
+   * The board's Phase 1a figures, 2026-10-06. Read-only aggregates over tables
+   * that already exist; what each test pins is the rule a figure carries.
+   */
+  describe("board", () => {
+    const daysBack = (n: number) => {
+      const day = new Date(today);
+      day.setUTCDate(day.getUTCDate() - n);
+      return day;
+    };
+    const iso = (day: Date) => day.toISOString().slice(0, 10);
+
+    async function submit(groupId = a.group.id, kindergartenId = a.kindergarten.id) {
+      await db.attendanceSubmission.create({
+        data: {
+          kindergartenId,
+          groupId,
+          date: today,
+          submittedById: a.adminUser.id,
+          childCount: 1,
+        },
+      });
+    }
+
+    it("counts today's register per group and says whether it was sent", async () => {
+      await mark("PRESENT");
+
+      let group = (await adminDashboard()).attendanceTodayByGroup.find(
+        (g: { groupId: string }) => g.groupId === a.group.id,
+      );
+      expect(group).toMatchObject({ present: 1, absent: 0, recorded: 1, submitted: false });
+      expect(group.expected).toBeGreaterThanOrEqual(1);
+
+      // Sent is the submission, not a full register.
+      await submit();
+      group = (await adminDashboard()).attendanceTodayByGroup.find(
+        (g: { groupId: string }) => g.groupId === a.group.id,
+      );
+      expect(group.submitted).toBe(true);
+    });
+
+    it("★ never shows another kindergarten's group or its submission", async () => {
+      await submit(b.group.id, b.kindergarten.id);
+
+      const groups = (await adminDashboard()).attendanceTodayByGroup;
+      expect(groups.some((g: { groupId: string }) => g.groupId === b.group.id)).toBe(false);
+      expect(groups.every((g: { submitted: boolean }) => !g.submitted)).toBe(true);
+    });
+
+    it("trends completed school days only — never today", async () => {
+      await mark("PRESENT"); // today: must not appear
+      await mark("PRESENT", daysBack(1)); // recorded, so a school day whatever the week says
+
+      const trend: { date: string; present: number; expected: number; recorded: number }[] = (
+        await adminDashboard()
+      ).attendanceTrend;
+
+      expect(trend.length).toBeLessThanOrEqual(7);
+      expect(trend.every((day) => day.date < localDate())).toBe(true);
+      expect(trend.at(-1)).toMatchObject({ date: iso(daysBack(1)), present: 1, recorded: 1 });
+      expect(trend.at(-1)!.expected).toBeGreaterThanOrEqual(1);
+    });
+
+    it("leaves out a day the calendar marks as a holiday", async () => {
+      // The most recent weekday before today, unrecorded.
+      let back = 1;
+      while ([0, 6].includes(daysBack(back).getUTCDay())) back += 1;
+      const holiday = daysBack(back);
+      await db.calendarDay.create({
+        data: {
+          kindergartenId: a.kindergarten.id,
+          date: holiday,
+          name: "Нийтийн амралт",
+          isWorkingDay: false,
+        },
+      });
+
+      const trend: { date: string }[] = (await adminDashboard()).attendanceTrend;
+      expect(trend.map((day) => day.date)).not.toContain(iso(holiday));
+    });
+
+    it("says whether today is a school day by the kindergarten's own calendar", async () => {
+      const day = (isWorkingDay: boolean) =>
+        db.calendarDay.upsert({
+          where: { kindergartenId_date: { kindergartenId: a.kindergarten.id, date: today } },
+          create: {
+            kindergartenId: a.kindergarten.id,
+            date: today,
+            name: "Тусгай өдөр",
+            isWorkingDay,
+          },
+          update: { isWorkingDay },
+        });
+
+      await day(false);
+      expect((await adminDashboard()).schoolDayToday).toBe(false);
+
+      await day(true);
+      expect((await adminDashboard()).schoolDayToday).toBe(true);
+    });
+
+    it("counts overdue invoices by what is left on them, and only this kindergarten's", async () => {
+      const invoice = (kindergartenId: string, childId: string, month: string, status = "UNPAID") =>
+        db.invoice.create({
+          data: {
+            kindergartenId,
+            childId,
+            month: new Date(`${month}-01T00:00:00.000Z`),
+            totalDue: "150000",
+            balance: "150000",
+            dueDate: daysBack(10),
+            status: status as "UNPAID" | "PAID",
+          },
+        });
+
+      await invoice(a.kindergarten.id, a.child.id, "2026-01");
+      await invoice(a.kindergarten.id, a.child.id, "2026-02", "PAID");
+      await invoice(b.kindergarten.id, b.child.id, "2026-01");
+
+      expect((await adminDashboard()).finance).toEqual({
+        overdueCount: 1,
+        overdueBalance: "150000.00",
+      });
+    });
+
+    it("counts pending attendance requests in its own kindergarten only", async () => {
+      const request = (s: Scenario, reviewStatus: "PENDING" | "APPROVED") =>
+        db.attendanceRequest.create({
+          data: {
+            kindergartenId: s.kindergarten.id,
+            childId: s.child.id,
+            enrollmentId: s.enrollment.id,
+            requestedById: s.parentUser.id,
+            dateFrom: today,
+            dateTo: today,
+            requestedStatus: "SICK",
+            reviewStatus,
+          },
+        });
+
+      await request(a, "PENDING");
+      await request(a, "APPROVED");
+      await request(b, "PENDING");
+
+      expect((await adminDashboard()).pendingRequests).toBe(1);
+    });
+
+    it("feeds four kinds of event, never the raw log", async () => {
+      const entry = (data: {
+        kindergartenId?: string;
+        action: "CREATE" | "UPDATE" | "LOGIN";
+        objectType?: string;
+        metadata?: object;
+      }) =>
+        db.auditLog.create({
+          data: {
+            kindergartenId: a.kindergarten.id,
+            actorUserId: a.adminUser.id,
+            ...data,
+          },
+        });
+
+      await entry({ action: "CREATE", objectType: "Child" });
+      await entry({ action: "UPDATE", objectType: "Notification", metadata: { published: true } });
+      // A draft saved, a sign-in and another kindergarten's child: not news.
+      await entry({ action: "UPDATE", objectType: "Notification", metadata: {} });
+      await entry({ action: "LOGIN" });
+      await entry({ kindergartenId: b.kindergarten.id, action: "CREATE", objectType: "Child" });
+
+      const recent: { kind: string; actorLabel: string | null }[] = (await adminDashboard()).recent;
+      expect(recent.map((event) => event.kind).sort()).toEqual(["CHILD_CREATED", "NEWS_PUBLISHED"]);
+      expect(recent[0]!.actorLabel).toBeTruthy();
+    });
+
+    it("lists upcoming events from published, group-wide notices only", async () => {
+      const notice = async (data: {
+        title: string;
+        category: "EVENT" | "INFORMATION";
+        status?: "PUBLISHED" | "DRAFT";
+        startsOn?: Date;
+        childTarget?: boolean;
+      }) => {
+        const row = await db.notification.create({
+          data: {
+            kindergartenId: a.kindergarten.id,
+            title: data.title,
+            body: `${data.title} — дэлгэрэнгүй`,
+            category: data.category,
+            status: data.status ?? "PUBLISHED",
+            publishedAt: data.status === "DRAFT" ? null : new Date(),
+            startsOn: data.startsOn ?? null,
+          },
+        });
+        await db.notificationTarget.create({
+          data: {
+            kindergartenId: a.kindergarten.id,
+            notificationId: row.id,
+            ...(data.childTarget ? { childId: a.child.id } : { groupId: a.group.id }),
+          },
+        });
+      };
+      const tomorrow = daysBack(-1);
+
+      await notice({ title: "Намрын өдөрлөг", category: "EVENT", startsOn: tomorrow });
+      await notice({ title: "Ноорог", category: "EVENT", startsOn: tomorrow, status: "DRAFT" });
+      await notice({ title: "Хувийн", category: "EVENT", startsOn: tomorrow, childTarget: true });
+      await notice({ title: "Өнгөрсөн", category: "EVENT", startsOn: daysBack(3) });
+      await notice({ title: "Мэдээлэл", category: "INFORMATION", startsOn: tomorrow });
+
+      const body = await adminDashboard();
+      expect(body.upcoming.map((n: { title: string }) => n.title)).toEqual(["Намрын өдөрлөг"]);
+      expect(body.upcoming[0]).toMatchObject({ startsOn: iso(tomorrow), groups: [a.group.name] });
+      // The fallback is every published group-wide notice, newest first — never the child's.
+      const latest = body.latestNews.map((n: { title: string }) => n.title);
+      expect(latest).not.toContain("Хувийн");
+      expect(latest).not.toContain("Ноорог");
+    });
+
+    it("answers with empty figures for a kindergarten with nothing in it yet", async () => {
+      const body = await adminDashboard();
+
+      expect(body.finance).toEqual({ overdueCount: 0, overdueBalance: "0.00" });
+      expect(body.pendingRequests).toBe(0);
+      expect(body.recent).toEqual([]);
+      expect(body.upcoming).toEqual([]);
+      expect(body.latestNews).toEqual([]);
+    });
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
