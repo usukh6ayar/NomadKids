@@ -1,5 +1,8 @@
 import { localDate } from "@kinder/contracts";
 import { Injectable } from "@nestjs/common";
+import Decimal from "decimal.js";
+import { workingDays } from "../attendance/attendance.service";
+import { FinanceDashboardRepository } from "../invoices/finance-dashboard.repository";
 import { AuthzRepository } from "../authz/authz.repository";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import { Role } from "../domain/enums";
@@ -38,6 +41,7 @@ export class DashboardService {
     private readonly repo: DashboardRepository,
     private readonly authz: AuthzRepository,
     private readonly tenants: TenantAccessService,
+    private readonly finance: FinanceDashboardRepository,
   ) {}
 
   /**
@@ -210,6 +214,13 @@ export class DashboardService {
       attendanceByGroup,
       domains,
       esis,
+      todayByGroup,
+      history,
+      overdue,
+      pendingRequests,
+      boardEvents,
+      upcoming,
+      latestNews,
     ] = await Promise.all([
       this.repo.kindergartenCounts(kindergartenIds),
       term ? this.repo.assessmentCoverage(kindergartenIds, term.id) : Promise.resolve([]),
@@ -221,10 +232,22 @@ export class DashboardService {
       this.repo.attendanceByGroup(kindergartenIds, monthAgo, today),
       term ? this.repo.domainAveragesByGroup(kindergartenIds, term.id) : Promise.resolve([]),
       this.repo.esisCounts(kindergartenIds),
+      // The board's Phase 1a figures — read-only, from tables that exist.
+      this.repo.attendanceTodayByGroup(kindergartenIds, today),
+      // Through today: the trend stops at yesterday, but today's calendar
+      // entry and rows are what say whether today is a school day at all.
+      this.repo.attendanceHistory(kindergartenIds, addDays(today, -TREND_WINDOW_DAYS), today),
+      this.overdue(kindergartenIds),
+      this.repo.pendingAttendanceRequests(kindergartenIds),
+      this.repo.recentBoardEvents(kindergartenIds),
+      this.repo.upcomingNotices(kindergartenIds, today),
+      this.repo.latestNotices(kindergartenIds),
     ]);
 
     return {
-      currentTerm: term ? { id: term.id, number: term.number, name: term.name } : null,
+      currentTerm: term
+        ? { id: term.id, number: term.number, name: term.name, schoolYear: term.schoolYear }
+        : null,
       counts,
       assessmentCoverage: coverage,
       recentActivity: recentActivity.map(withActorLabel),
@@ -250,7 +273,57 @@ export class DashboardService {
        * would let the two disagree for as long as one was in flight.
        */
       esis,
+      attendanceTodayByGroup: todayByGroup,
+      attendanceTrend: trendFrom(history, TREND_DAYS),
+      schoolDayToday: isSchoolDay(history, toDateOnly(today)),
+      finance: overdue,
+      pendingRequests,
+      recent: boardEvents.map((event) => ({
+        id: event.id,
+        kind: BOARD_EVENT_KIND[event.objectType ?? ""] ?? "CHILD_CREATED",
+        actorLabel: withActorLabel(event).actorLabel,
+        createdAt: event.createdAt.toISOString(),
+      })),
+      upcoming: upcoming
+        .filter((notice) => notice.startsOn !== null)
+        .map((notice) => ({
+          id: notice.id,
+          title: notice.title,
+          summary: summarise(notice.body),
+          category: notice.category,
+          startsOn: toDateOnly(notice.startsOn!),
+          endsOn: notice.endsOn ? toDateOnly(notice.endsOn) : null,
+          groups: notice.targets.flatMap((target) => (target.group ? [target.group.name] : [])),
+        })),
+      latestNews: latestNews.map((notice) => ({
+        id: notice.id,
+        title: notice.title,
+        summary: summarise(notice.body),
+        category: notice.category,
+        publishedAt: notice.publishedAt?.toISOString() ?? null,
+      })),
     };
+  }
+
+  /**
+   * Overdue invoices across the administrator's kindergartens, by the finance
+   * board's own rule — one call per kindergarten (an administrator holds one or
+   * two), summed with `decimal.js` so the money never passes through a float.
+   */
+  private async overdue(kindergartenIds: string[]) {
+    const now = new Date();
+    const perKindergarten = await Promise.all(
+      kindergartenIds.map((id) => this.finance.overdue(id, now)),
+    );
+
+    let count = 0;
+    let balance = new Decimal(0);
+    for (const row of perKindergarten) {
+      count += row.count;
+      balance = balance.add(new Decimal(row.amount.toString()));
+    }
+
+    return { overdueCount: count, overdueBalance: balance.toFixed(2) };
   }
 
   /**
@@ -440,4 +513,95 @@ export class DashboardService {
 /** The first of the month five months back — six columns including this one. */
 function sixMonthsAgo(from: Date): Date {
   return new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() - 5, 1));
+}
+
+/** How far back the trend looks for its school days — three weeks covers a week's holiday. */
+const TREND_WINDOW_DAYS = 21;
+/** How many completed school days the board's trend shows. */
+const TREND_DAYS = 7;
+
+/** Which board event an audit row is — `recentBoardEvents` only returns these four. */
+const BOARD_EVENT_KIND: Record<
+  string,
+  "CHILD_CREATED" | "NEWS_PUBLISHED" | "MENU_APPROVED" | "PAYMENT_RECORDED"
+> = {
+  Child: "CHILD_CREATED",
+  Notification: "NEWS_PUBLISHED",
+  MenuDay: "MENU_APPROVED",
+  Payment: "PAYMENT_RECORDED",
+};
+
+function addDays(day: Date, days: number): Date {
+  const next = new Date(day);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function toDateOnly(day: Date): string {
+  return day.toISOString().slice(0, 10);
+}
+
+/** A notice's first line of text, for a one-line row. */
+function summarise(body: string): string {
+  const text = body.replace(/\s+/g, " ").trim();
+  return text.length > 120 ? `${text.slice(0, 119)}…` : text;
+}
+
+/** Whether `day` is a school day by the register's rule — see `trendFrom`. */
+function isSchoolDay(
+  history: {
+    calendar: { date: Date; isWorkingDay: boolean }[];
+    byDay: { date: Date }[];
+  },
+  day: string,
+): boolean {
+  const recorded = new Set(history.byDay.map((row) => toDateOnly(row.date)));
+  return workingDays([day], history.calendar, recorded).length === 1;
+}
+
+/**
+ * The last `count` completed school days, with each day's head count against
+ * that day's roster.
+ *
+ * ★ School days by the register's own rule, `workingDays` — the calendar's
+ * exceptions, else Monday to Friday, and any day somebody recorded — so the
+ * board and the register agree on which days there were.
+ *
+ * ★★ `expected` is never below `recorded`: a child recorded on a day their
+ * enrolment dates do not cover (a register filled in before the transfer was
+ * dated) is still a child who was counted, and a ratio over 100% would be a
+ * bug report, not a figure.
+ */
+function trendFrom(
+  history: {
+    calendar: { date: Date; isWorkingDay: boolean }[];
+    byDay: { date: Date; status: string; _count: { _all: number } }[];
+    enrollments: { startedOn: Date; endedOn: Date | null }[];
+  },
+  count: number,
+) {
+  const perDay = new Map<string, { present: number; recorded: number }>();
+  for (const row of history.byDay) {
+    const key = toDateOnly(row.date);
+    const acc = perDay.get(key) ?? { present: 0, recorded: 0 };
+    acc.recorded += row._count._all;
+    if (row.status === "PRESENT" || row.status === "HALF_DAY") acc.present += row._count._all;
+    perDay.set(key, acc);
+  }
+
+  const span: string[] = [];
+  const today = new Date(`${localDate()}T00:00:00.000Z`);
+  for (let back = TREND_WINDOW_DAYS; back >= 1; back -= 1)
+    span.push(toDateOnly(addDays(today, -back)));
+
+  const days = workingDays(span, history.calendar, new Set(perDay.keys())).slice(-count);
+
+  return days.map((date) => {
+    const day = new Date(`${date}T00:00:00.000Z`);
+    const enrolled = history.enrollments.filter(
+      (e) => e.startedOn <= day && (e.endedOn === null || e.endedOn > day),
+    ).length;
+    const { present, recorded } = perDay.get(date) ?? { present: 0, recorded: 0 };
+    return { date, present, expected: Math.max(enrolled, recorded), recorded };
+  });
 }

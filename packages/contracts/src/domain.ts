@@ -3426,7 +3426,15 @@ export const parentDashboardSchema = z.object({
 export type ParentDashboard = z.infer<typeof parentDashboardSchema>;
 
 export const adminDashboardSchema = z.object({
-  currentTerm: z.object({ id: uuidSchema, number: z.number(), name: z.string() }).nullable(),
+  currentTerm: z
+    .object({
+      id: uuidSchema,
+      number: z.number(),
+      name: z.string(),
+      /** The school year the term belongs to — the board's «2026–2027 оны хичээлийн жил». */
+      schoolYear: z.object({ id: uuidSchema, name: z.string() }).nullish(),
+    })
+    .nullable(),
   counts: z.object({
     children: z.number(),
     groups: z.number(),
@@ -3594,6 +3602,112 @@ export const adminDashboardSchema = z.object({
       averageByDomain: z.record(z.string(), z.number()),
     }),
   ),
+  /*
+   * ★ The board's Phase 1a fields, 2026-10-06. Every one is `.nullish()`:
+   * the screen hides what an older API does not send rather than failing to
+   * parse, and nothing here is stored — each is read from tables that already
+   * exist.
+   */
+  /**
+   * Today's register per group, with whether the group has sent it.
+   *
+   * ★ `submitted` is an `AttendanceSubmission` row for the day — the teacher
+   * pressing Илгээх — not "every child has a row". A register can be complete
+   * and unsent, and the board says «Явагдаж байна» until it is sent.
+   */
+  attendanceTodayByGroup: z
+    .array(
+      z.object({
+        groupId: uuidSchema,
+        name: z.string(),
+        /** Active enrolments — the roster. */
+        expected: z.number(),
+        /** `PRESENT` + `HALF_DAY`. */
+        present: z.number(),
+        /** Every other recorded status. */
+        absent: z.number(),
+        recorded: z.number(),
+        submitted: z.boolean(),
+      }),
+    )
+    .nullish(),
+  /**
+   * The last seven **completed** school days, oldest first.
+   *
+   * ★ Today is never in it — an unfinished day beside finished ones reads as a
+   * collapse. School days are the register's own rule (`workingDays`): the
+   * kindergarten's calendar exceptions, else Monday to Friday, and any day
+   * somebody actually recorded.
+   */
+  attendanceTrend: z
+    .array(
+      z.object({
+        date: z.string(),
+        present: z.number(),
+        expected: z.number(),
+        /** Rows written that day. Zero is a register nobody took — not a day nobody came. */
+        recorded: z.number(),
+      }),
+    )
+    .nullish(),
+  /**
+   * Whether today is a school day by the register's own rule. On a holiday or
+   * a weekend nobody owes a register, so the board shows no group as waiting.
+   */
+  schoolDayToday: z.boolean().nullish(),
+  /**
+   * Overdue invoices, by the finance board's own rule
+   * (`FinanceDashboardRepository.overdue`): past the due day, not settled, a
+   * part-paid one counted for what is left. Money as a decimal string.
+   */
+  finance: z.object({ overdueCount: z.number(), overdueBalance: z.string() }).nullish(),
+  /** Attendance requests from families still waiting for a teacher's review. */
+  pendingRequests: z.number().nullish(),
+  /**
+   * A short feed of what happened, from the audit log — four kinds only.
+   *
+   * ★ Curated, never the raw log: a sign-in or a field edit is not news on a
+   * director's board. `recentActivity` above stays the unfiltered list.
+   */
+  recent: z
+    .array(
+      z.object({
+        id: uuidSchema,
+        kind: z.enum(["CHILD_CREATED", "NEWS_PUBLISHED", "MENU_APPROVED", "PAYMENT_RECORDED"]),
+        actorLabel: z.string().nullish(),
+        createdAt: z.string(),
+      }),
+    )
+    .nullish(),
+  /**
+   * Published notices about an event, an activity or an outing that has not
+   * ended yet — at most four. Dates only: a notice carries no time of day.
+   */
+  upcoming: z
+    .array(
+      z.object({
+        id: uuidSchema,
+        title: z.string().nullish(),
+        summary: z.string(),
+        category: z.string(),
+        startsOn: z.string(),
+        endsOn: z.string().nullish(),
+        groups: z.array(z.string()),
+      }),
+    )
+    .nullish(),
+  /** The three most recently published notices — the board's fallback for `upcoming`. */
+  latestNews: z
+    .array(
+      z.object({
+        id: uuidSchema,
+        title: z.string().nullish(),
+        summary: z.string(),
+        category: z.string(),
+        publishedAt: z.string().nullish(),
+      }),
+    )
+    .nullish(),
 });
 export type AdminDashboard = z.infer<typeof adminDashboardSchema>;
 
@@ -3969,6 +4083,7 @@ export const esisResourceKeySchema = z.enum([
    * because that is what they are about; `EsisDomain` puts them in `ROSTER` for
    * the same reason.
    */
+  "degreeRequest",
   "degreeDecisions",
   "degreeHistory",
   "groupAttendance",

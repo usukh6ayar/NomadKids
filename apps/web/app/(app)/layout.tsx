@@ -49,6 +49,7 @@ import {
   type LucideIcon,
   Database,
   KeyRound,
+  Award,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
@@ -361,6 +362,8 @@ const ROUTE_ICON: Record<string, LucideIcon> = {
 
   /* Administration screens without supplied feature artwork. */
   "/admin/users": UserCog,
+  "/admin/qualifications": Award,
+  "/qualifications": Award,
   "/admin/staff-code": KeyRound,
   "/admin/school-years": CalendarRange,
   "/admin/terms": CalendarDays,
@@ -565,6 +568,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
           entry("Суралцагч", "/children"),
           entry("Анги бүлэг", "/admin/groups"),
           entry("Багш, ажилтан", "/admin/users", "adminUsersPermissions"),
+          entry("Мэргэшлийн зэрэг", "/admin/qualifications"),
           entry("Байгууллага", "/admin/kindergarten"),
         ],
       },
@@ -1024,6 +1028,11 @@ function teacherSections(groupId: string | null): NavSection[] {
           href: "/documents",
           icon: <RailGlyph icon={Briefcase} />,
         },
+        {
+          label: "Мэргэшлийн зэрэг",
+          href: "/qualifications",
+          icon: <RailGlyph icon={Award} />,
+        },
       ],
     },
   ];
@@ -1039,6 +1048,7 @@ const ADMIN_RAIL_ICON: Record<string, LucideIcon> = {
   "/children": BookOpen,
   "/admin/groups": UsersRound,
   "/admin/users": UserCog,
+  "/admin/qualifications": Award,
   "/admin/kindergarten": Building2,
   "/attendance/daily": IdCardLanyard,
   "/admin/assessment": ChartNoAxesColumnIncreasing,

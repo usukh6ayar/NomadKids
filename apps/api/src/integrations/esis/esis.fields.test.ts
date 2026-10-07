@@ -18,6 +18,7 @@ import {
   ESIS_DESTROYED_FIELDS,
   ESIS_IDENTIFIER_FIELDS,
   esisDiscoveredSchema,
+  esisDegreeRequestSchema,
   esisStudentCheckSchema,
   esisStudentContactSchema,
 } from "./esis.schemas";
@@ -47,6 +48,7 @@ const PARSED_BY_OVERRIDE: Partial<Record<EsisReadableKey, z.ZodObject<z.ZodRawSh
   studentCheck: esisStudentCheckSchema,
   teacherCheck: esisStudentCheckSchema,
   studentContacts: esisStudentContactSchema,
+  degreeRequest: esisDegreeRequestSchema,
 };
 
 /**
@@ -240,6 +242,7 @@ describe("ESIS field catalog", () => {
        * declared here, so a screen cannot supply one institution in the path and
        * another in the query.
        */
+      degreeRequest: ["registerNum"],
       degreeDecisions: ["requestId"],
       degreeHistory: ["requestId"],
       groupAttendance: ["studentGroupId", "dayDate"],
@@ -485,12 +488,11 @@ describe("ESIS field catalog", () => {
         "buildingByRegisterNumber",
         /*
          * ── Added 2026-09-22 ────────────────────────────────────────────
-         * The two мэргэшлийн зэрэг reads, and the same position again: both
-         * answer `203 Хүсэлтэд тохирох утга олдсонгүй` for every `requestId`
-         * this product can supply, because nothing here can produce one yet
-         * (119 is refused, 165 uncalled). Nothing is declared and
-         * `esisFieldsFor` will read their columns off the first real record.
+         * The qualification resources. API 119 has only the stable `requestId`
+         * anchor; 167/170 discover their remaining columns from the first real
+         * populated record.
          */
+        "degreeRequest",
         "degreeDecisions",
         "degreeHistory",
       ].sort(),

@@ -747,11 +747,9 @@ export const ESIS_PORTAL_REQUESTS: readonly EsisPortalRequest[] = [
  * gap. This is what a matrix generator joins by `apiId`, the same way
  * `WIRED_API_IDS` is — a reason, not a second copy of the grant itself.
  *
- * 167 and 170 are the degree-request decisions and history reads: this
- * product has no teacher-qualification module, so there is no screen either
- * would feed. 119 is the one live-probed and still refused — see
- * `buildingByRegisterNumber`'s sibling note in `esis.endpoints.ts` for what
- * 186 needed instead, and the reasoning below for why 119 came out differently.
+ * Degree reads 119, 167 and 170 are wired into the dedicated qualification
+ * page. API 165 remains here because it is a real write whose full request body
+ * has not been supplied; sending a guessed body could create a ministry record.
  */
 export const ESIS_DISPOSITIONS: Readonly<Record<number, string>> = {
   /*
@@ -796,60 +794,6 @@ export const ESIS_DISPOSITIONS: Readonly<Record<number, string>> = {
   100004874669776:
     "Яамны өөрийн олгосон жагсаалтад энэ мөрийн URL багана хоосон байна. " +
     "Зам нь мэдэгдэхгүй тул дуудах боломжгүй — яамнаас тодруулах зүйл.",
-
-  /*
-   * ★ **167 and 170 left this map on 2026-09-22.** They are wired now, and a
-   * disposition is by definition the reason an *unwired* grant is uncalled —
-   * `esis.requests.test.ts` asserts exactly that, which is how the contradiction
-   * would have been caught had it been left. Both were live-probed first
-   * (`scripts/esis-degree-probe.ts`): each answers `203 «Хүсэлтэд тохирох утга
-   * олдсонгүй»` for an unknown `requestId`, which is access granted rather than
-   * 119's `403`. See `esis.endpoints.ts` for why neither declares a field list.
-   */
-  /*
-   * ★ Live-probed 2026-09-17, plan Task 9 Step 2. The export's own stated root
-   * (`/svc/api/zereg/get/request/:registerNum`) answers `404 Зам олдсонгүй` —
-   * the same shape a nonsense path returns, so that root does not exist on
-   * this host. The standard `/svc/api/hub/v2/` root, with the same final
-   * path segment, answers `403 Энэ API-д хандах эрх байхгүй` — the shape a
-   * *real, recognised* route gives an unauthorised token (proven by
-   * disambiguation: every neighbouring path under that segment, and the same
-   * path over POST, all answer the 404 instead). So a route is registered at
-   * `/svc/api/hub/v2/zereg/get/request/:registerNum` and this token is
-   * refused it, despite the portal listing 119 as APPROVED — a discrepancy
-   * between the grant register and the live gateway, not a grammar this
-   * client cannot express. Nothing was guessed into `esisPath` to work around
-   * a 403; the standard grammar already reaches a real route and still fails
-   * on access.
-   *
-   * ★★ **Re-probed 2026-09-22 and unchanged**, with one detail worth keeping
-   * because it nearly read as good news. Without `institutionId` the hub root
-   * answers `400 {"message":"institutionId дутуу байна"}`, which looks like a
-   * route that is open and merely mis-called. Supplying `institutionId` turns
-   * that into the same `403` as before: the parameter check runs **ahead of**
-   * the access check, so a 400 here says nothing about the grant. Anyone
-   * re-probing this should send `institutionId` or they will read the 400 as
-   * progress, as this pass briefly did.
-   */
-  /*
-   * ★★★★ **And kept it, 2026-10-01:** the ministry's degree-request window
-   * has not opened yet, which explains the 403 better than a missing grant
-   * does, and the client asked for the qualification services to stay even
-   * while they answer nothing. The reason below says so first.
-   *
-   * ★★★ **The client dropped it, 2026-09-22:** "ene ni ajillahgui gsen ug orhi
-   * ashiglahgui". So this row is no longer "blocked pending БМТТ" — it is a
-   * decision, and the reason records both halves: the gateway refuses it, and
-   * nobody is waiting for that to change.
-   */
-  119:
-    "ХАДГАЛСАН, ХУГАЦАА НЭЭГДЭЭГҮЙ (2026-10-01): яамны мэргэшлийн зэргийн хүсэлтийн " +
-    "хугацаа хараахан нээгдээгүй — захиалагч ажиллахгүй ч хасахгүй байлгахыг хүссэн. " +
-    "Стандарт /svc/api/hub/v2/zereg/get/request/:registerNum замаар " +
-    "амьд шалгахад тухайн зам БОДИТ хэмээн танигдсан ч токен 403 « Энэ API-д " +
-    "хандах эрх байхгүй» гэж буцаав — экспортод бичсэн /svc/api/zereg/ язгуур " +
-    "нь 404 (Зам олдсонгүй) буцаадаг тул зам биш. Портал дээр 119 " +
-    "APPROVED ч, live gateway дээрх эрх нээгдээгүй тул холбосонгүй.",
 };
 
 const BY_API_ID = new Map(ESIS_PORTAL_REQUESTS.map((request) => [request.apiId, request]));

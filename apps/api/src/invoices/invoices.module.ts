@@ -55,6 +55,8 @@ import { InvoicesService } from "./invoices.service";
     FinanceBoardService,
     FinanceReportPdfService,
   ],
-  exports: [InvoicesService, InvoicesRepository],
+  // `FinanceDashboardRepository` so the administrator's board counts overdue
+  // invoices by the finance board's own rule rather than a second copy of it.
+  exports: [InvoicesService, InvoicesRepository, FinanceDashboardRepository],
 })
 export class InvoicesModule {}
