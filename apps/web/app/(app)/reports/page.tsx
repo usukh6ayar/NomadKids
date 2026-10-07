@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState, type ReactNode } from "react";
-import { UsersRound } from "lucide-react";
 import { z } from "zod";
 import { groupReportSchema, termSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
@@ -162,7 +161,6 @@ function Reports() {
         </h1>
       </div>
       <span className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-pill bg-sky px-3 text-caption font-semibold text-sky-ink sm:px-4 sm:text-body">
-        <UsersRound aria-hidden="true" className="size-5" />
         {selectedGroupName}
       </span>
     </div>
@@ -199,6 +197,9 @@ function Reports() {
       {/*
         ★ Сар · Улирал · Жил — the client's three, 2026-09-12.
 
+        On a phone the three take the first row and the period picker with
+        its dates the next — client, 2026-10-07.
+
         One range drives every figure below, which is why the selector is one
         control rather than a period picker per tab: a report where the
         attendance covers September and the surveys cover the year is four
@@ -208,7 +209,7 @@ function Reports() {
         <div
           role="radiogroup"
           aria-label="Хугацаа"
-          className="grid min-w-0 flex-1 grid-cols-3 gap-1 rounded-control bg-canvas p-1 sm:max-w-md"
+          className="grid min-w-0 flex-1 basis-full grid-cols-3 gap-1 rounded-control bg-canvas p-1 sm:max-w-md sm:basis-0"
         >
           {(
             [

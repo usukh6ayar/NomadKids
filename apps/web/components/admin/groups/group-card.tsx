@@ -5,7 +5,7 @@ import { ChevronRight, TriangleAlert, UserPlus } from "lucide-react";
 import { ATTENDANCE_FORM_LABEL, PROGRAM_KIND_LABEL, type GroupListItem } from "@kinder/contracts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { GROUP_STRIPE, GroupBadge, groupTone } from "@/components/ui/group-badge";
+import { GROUP_STRIPE, groupTone } from "@/components/ui/group-badge";
 import { shortName, groupLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -48,7 +48,6 @@ export function GroupCard({
         className="group/card flex flex-1 flex-col gap-3 p-4 outline-none focus-visible:rounded-card focus-visible:ring-2 focus-visible:ring-primary"
       >
         <div className="flex items-start justify-between gap-2">
-          <GroupBadge name={group.name} ageBand={group.ageBand} />
           <div className="min-w-0 flex-1">
             <h3 className="truncate text-lead font-semibold text-ink">{groupLabel(group.name)}</h3>
             <p className="mt-0.5 text-body text-muted">
