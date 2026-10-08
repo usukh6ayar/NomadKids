@@ -7,7 +7,10 @@ import { z } from "zod";
 import { groupReportSchema, termSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
-import { A79GroupSummaryPanel } from "@/components/assessment/a79-group-summary";
+import {
+  A79GroupSummaryPanel,
+  A79KindergartenSummaryPanel,
+} from "@/components/assessment/a79-group-summary";
 import { useSession } from "@/lib/auth/session";
 import { RequireRole } from "@/components/shell/require-role";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
@@ -288,7 +291,15 @@ function Reports() {
       {report.isLoading ? <LoadingState rows={4} /> : null}
       {report.isError ? <ErrorState description={errorMessage(report.error)} /> : null}
 
-      {report.data ? <ReportBody report={report.data} tab={tab} onTab={setTab} /> : null}
+      {report.data ? (
+        <ReportBody
+          report={report.data}
+          tab={tab}
+          onTab={setTab}
+          director={director}
+          groups={items}
+        />
+      ) : null}
     </div>
   );
 }
@@ -297,10 +308,14 @@ function ReportBody({
   report,
   tab,
   onTab,
+  director,
+  groups,
 }: {
   report: z.infer<typeof groupReportSchema>;
   tab: TabKey;
   onTab: (next: TabKey) => void;
+  director: boolean;
+  groups: { id: string; name: string }[];
 }) {
   const { attendance, assessment, observations, surveys, children } = report;
 
@@ -451,12 +466,31 @@ function ReportBody({
       <div role="tabpanel" aria-label={TABS.find((entry) => entry.key === tab)!.label}>
         {tab === "summary" || tab === "attendance" ? <AttendancePanel report={report} /> : null}
         {tab === "summary" || tab === "assessment" ? <AssessmentPanel report={report} /> : null}
-        {tab === "summary" || tab === "results" ? (
+        {/* The summary remains scoped to the selected group like every card
+            above it. Only the director's dedicated results tab widens to the
+            whole kindergarten — otherwise one page would silently mix two
+            populations in adjacent figures. */}
+        {tab === "summary" ? (
           <A79GroupSummaryPanel
             groupId={report.group.id}
             from={report.range.from}
             to={report.range.to}
           />
+        ) : null}
+        {tab === "results" ? (
+          director ? (
+            <A79KindergartenSummaryPanel
+              groups={groups}
+              from={report.range.from}
+              to={report.range.to}
+            />
+          ) : (
+            <A79GroupSummaryPanel
+              groupId={report.group.id}
+              from={report.range.from}
+              to={report.range.to}
+            />
+          )
         ) : null}
         {tab === "summary" || tab === "observations" ? <ObservationPanel report={report} /> : null}
         {tab === "summary" || tab === "surveys" ? <SurveyPanel report={report} /> : null}

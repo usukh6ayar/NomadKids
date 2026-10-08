@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { MAX_PAGE_SIZE, childSummarySchema, paginated } from "@kinder/contracts";
 import { DemoBanner } from "@/components/feedback/feedback-parts";
@@ -69,25 +69,7 @@ export function useA79GroupSummary(groupId: string, range?: { from: string; to: 
 
   const data: A79GroupSummary | undefined = demo
     ? roster.data
-      ? {
-          children: roster.data.items.map((child) => {
-            const level = a79LevelForAge(ageInYears(child.dateOfBirth));
-            const score = a79Score(a79DemoProgress(child.id, level));
-            return {
-              childId: child.id,
-              firstName: child.firstName,
-              lastName: child.lastName,
-              level,
-              achieved: score.achieved,
-              total: score.total,
-              byDomain: score.byDomain.map(({ domain, achieved, total }) => ({
-                domain,
-                achieved,
-                total,
-              })),
-            };
-          }),
-        }
+      ? a79DemoSummary(roster.data.items)
       : undefined
     : summary.data;
 
@@ -96,6 +78,30 @@ export function useA79GroupSummary(groupId: string, range?: { from: string; to: 
     demo,
     isLoading: summary.isLoading || (demo && roster.isLoading),
     error: summary.isError && !demo ? summary.error : demo && roster.isError ? roster.error : null,
+  };
+}
+
+function a79DemoSummary(
+  children: { id: string; firstName: string; lastName: string; dateOfBirth?: string | null }[],
+): A79GroupSummary {
+  return {
+    children: children.map((child) => {
+      const level = a79LevelForAge(ageInYears(child.dateOfBirth));
+      const score = a79Score(a79DemoProgress(child.id, level));
+      return {
+        childId: child.id,
+        firstName: child.firstName,
+        lastName: child.lastName,
+        level,
+        achieved: score.achieved,
+        total: score.total,
+        byDomain: score.byDomain.map(({ domain, achieved, total }) => ({
+          domain,
+          achieved,
+          total,
+        })),
+      };
+    }),
   };
 }
 
@@ -150,70 +156,246 @@ function SummaryBody({ groupId, data }: { groupId: string; data: A79GroupSummary
   }
 
   const rows = a79ChildRows(data);
+  return (
+    <>
+      <A79SummaryChart
+        rows={rows}
+        averageLabel="Бүлгийн дундаж"
+        description={`Бүлгийн дундаж, ${rows.length} хүүхэд. Хүүхдийн хувь бол өөрийн түвшний шалгуурын хэдийг бие даан илрүүлсэн нь.`}
+      />
+
+      <A79ChildrenTable groupId={groupId} rows={rows} />
+    </>
+  );
+}
+
+function domainAverage(rows: A79ChildRow[], domain: A79Domain): number {
+  if (rows.length === 0) return 0;
+  return Math.round(rows.reduce((sum, row) => sum + (row.domain[domain] ?? 0), 0) / rows.length);
+}
+
+function A79SummaryChart({
+  rows,
+  averageLabel,
+  description,
+  title,
+}: {
+  rows: A79ChildRow[];
+  averageLabel: string;
+  description: string;
+  title?: string;
+}) {
   const average = Math.round(rows.reduce((sum, row) => sum + row.percent, 0) / rows.length);
   const bands = (["MASTERED", "PROGRESSING", "DEVELOPING"] as const).map((band) => ({
     band,
     count: rows.filter((row) => a79Band(row.percent) === band).length,
   }));
-  const domainAverage = (domain: A79Domain) =>
-    Math.round(rows.reduce((sum, row) => sum + (row.domain[domain] ?? 0), 0) / rows.length);
+
+  return (
+    <Card pad="roomy" className="flex flex-col gap-4">
+      {title ? <h3 className="text-lead font-semibold text-ink">{title}</h3> : null}
+      <div className="flex flex-wrap items-center gap-4">
+        <Ring
+          percent={average}
+          size="lg"
+          fadeTo="var(--color-violet-chart)"
+          label={`${averageLabel}: ${average}%`}
+        />
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <p className="text-body text-ink">{description}</p>
+          <ul aria-label="Хүүхдийн тоо, бүсээр" className="flex flex-wrap gap-2">
+            {bands.map(({ band, count }) => (
+              <li key={band}>
+                <Badge tone={BAND_TONE[band]}>
+                  {A79_BAND_LABEL[band]} · {count}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      <ul aria-label="Хэсгийн дундаж" className="flex flex-col gap-2">
+        {DOMAINS.map((domain) => {
+          const value = domainAverage(rows, domain);
+          return (
+            <li key={domain} className="grid grid-cols-[6rem_1fr_3rem] items-center gap-3">
+              <span className="text-body text-ink">{domain}</span>
+              <span
+                role="progressbar"
+                aria-label={`${domain}: ${value}%`}
+                aria-valuenow={value}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                className="h-2 overflow-hidden rounded-pill bg-track"
+              >
+                <span
+                  className="block h-full rounded-pill"
+                  style={{ width: `${value}%`, background: A79_DOMAIN_FILL[domain] }}
+                />
+              </span>
+              <span className="text-right text-caption font-semibold tabular-nums text-ink">
+                {value}%
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
+  );
+}
+
+export interface A79ReportGroup {
+  id: string;
+  name: string;
+}
+
+/**
+ * The director's А/79 view — one kindergarten chart, then one comparable row
+ * per group. The aggregate is weighted by children rather than averaging the
+ * groups, so a five-child group does not count as much as a twenty-child one.
+ */
+export function A79KindergartenSummaryPanel({
+  groups,
+  from,
+  to,
+}: {
+  groups: A79ReportGroup[];
+  from: string;
+  to: string;
+}) {
+  const summaries = useQueries({
+    queries: groups.map((group) => ({
+      queryKey: ["group", group.id, "a79-summary", from, to],
+      queryFn: () =>
+        get(`/groups/${group.id}/a79-summary?from=${from}&to=${to}`, a79GroupSummarySchema),
+      retry: false,
+    })),
+  });
+  const demoGroups = summaries.map((query) => query.isError && isNotFound(query.error));
+  const rosters = useQueries({
+    queries: groups.map((group, index) => ({
+      queryKey: qk.children({ groupId: group.id, page: 1, pageSize: MAX_PAGE_SIZE }),
+      queryFn: () =>
+        get(`/children?groupId=${group.id}&page=1&pageSize=${MAX_PAGE_SIZE}`, childrenPageSchema),
+      enabled: demoGroups[index],
+      staleTime: 60_000,
+    })),
+  });
+
+  const error =
+    summaries.find((query) => query.isError && !isNotFound(query.error))?.error ??
+    rosters.find((query, index) => demoGroups[index] && query.isError)?.error;
+  const isLoading =
+    summaries.some((query) => query.isLoading) ||
+    rosters.some((query, index) => demoGroups[index] && query.isLoading);
+  const data = groups.flatMap((group, index) => {
+    const summary =
+      summaries[index]?.data ??
+      (demoGroups[index] && rosters[index]?.data
+        ? a79DemoSummary(rosters[index].data.items)
+        : undefined);
+    return summary ? [{ group, summary }] : [];
+  });
+
+  return (
+    <section className="mt-3 flex flex-col gap-3">
+      <SectionHeader title="Үр дүнгийн үнэлгээ" as="h2" />
+      {demoGroups.some(Boolean) ? <DemoBanner>{A79_DEMO_NOTE}</DemoBanner> : null}
+      {isLoading ? <LoadingState rows={3} /> : null}
+      {error ? <ErrorState description={errorMessage(error)} /> : null}
+      {!isLoading && !error && groups.length === 0 ? (
+        <EmptyState title="Бүлэг бүртгэгдээгүй байна" />
+      ) : null}
+      {!isLoading && !error && data.length === groups.length && data.length > 0 ? (
+        <KindergartenSummaryBody groups={data} />
+      ) : null}
+    </section>
+  );
+}
+
+function KindergartenSummaryBody({
+  groups,
+}: {
+  groups: { group: A79ReportGroup; summary: A79GroupSummary }[];
+}) {
+  const groupRows = groups.map(({ group, summary }) => {
+    const children = a79ChildRows(summary);
+    const percent = children.length
+      ? Math.round(children.reduce((sum, row) => sum + row.percent, 0) / children.length)
+      : null;
+    return { group, children, percent };
+  });
+  const children = groupRows.flatMap((row) => row.children);
+
+  if (children.length === 0) {
+    return (
+      <EmptyState
+        title="Цэцэрлэгт хүүхдийн үр дүн алга"
+        description="Хүүхдийн үнэлгээ бүртгэгдсэний дараа бүлгийн үзүүлэлтүүд энд харагдана."
+      />
+    );
+  }
 
   return (
     <>
-      <Card pad="roomy" className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center gap-4">
-          <Ring
-            percent={average}
-            size="lg"
-            fadeTo="var(--color-violet-chart)"
-            label={`Бүлгийн дундаж: ${average}%`}
-          />
-          <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <p className="text-body text-ink">
-              Бүлгийн дундаж, {rows.length} хүүхэд. Хүүхдийн хувь бол өөрийн түвшний шалгуурын
-              хэдийг бие даан илрүүлсэн нь.
-            </p>
-            <ul aria-label="Хүүхдийн тоо, бүсээр" className="flex flex-wrap gap-2">
-              {bands.map(({ band, count }) => (
-                <li key={band}>
-                  <Badge tone={BAND_TONE[band]}>
-                    {A79_BAND_LABEL[band]} · {count}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
+      <A79SummaryChart
+        rows={children}
+        averageLabel="Цэцэрлэгийн дундаж"
+        title="Цэцэрлэгийн нэгтгэл график"
+        description={`Цэцэрлэгийн дундаж, ${children.length} хүүхэд · ${groups.length} бүлэг. Бүлгийн хэмжээнээс үл хамааран хүүхэд бүр ижил жинтэй тооцогдоно.`}
+      />
 
-        <ul aria-label="Хэсгийн дундаж" className="flex flex-col gap-2">
-          {DOMAINS.map((domain) => {
-            const value = domainAverage(domain);
+      <TableShell caption="Бүлэг бүрийн үзүүлэлт" minWidth="min-w-[720px]">
+        <thead>
+          <tr>
+            <Th className="w-10">№</Th>
+            <Th>Бүлэг</Th>
+            <Th numeric>Хүүхэд</Th>
+            {DOMAINS.map((domain) => (
+              <Th key={domain} numeric>
+                {domain}
+              </Th>
+            ))}
+            <Th numeric>Нийт</Th>
+            <Th>Үр дүн</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {groupRows.map((row, index) => {
+            const band = row.percent === null ? null : a79Band(row.percent);
             return (
-              <li key={domain} className="grid grid-cols-[6rem_1fr_3rem] items-center gap-3">
-                <span className="text-body text-ink">{domain}</span>
-                <span
-                  role="progressbar"
-                  aria-label={`${domain}: ${value}%`}
-                  aria-valuenow={value}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  className="h-2 overflow-hidden rounded-pill bg-track"
-                >
-                  <span
-                    className="block h-full rounded-pill"
-                    style={{ width: `${value}%`, background: A79_DOMAIN_FILL[domain] }}
-                  />
-                </span>
-                <span className="text-right text-caption font-semibold tabular-nums text-ink">
-                  {value}%
-                </span>
-              </li>
+              <tr key={row.group.id}>
+                <Td className="tabular-nums text-muted">{index + 1}</Td>
+                <Td>
+                  <Link
+                    href={`/groups/${row.group.id}/results`}
+                    className="font-medium text-primary hover:underline"
+                  >
+                    {row.group.name}
+                  </Link>
+                </Td>
+                <Td numeric>{row.children.length}</Td>
+                {DOMAINS.map((domain) => (
+                  <Td key={domain} numeric>
+                    {row.children.length ? `${domainAverage(row.children, domain)}%` : "—"}
+                  </Td>
+                ))}
+                <Td numeric className="font-semibold text-ink">
+                  {row.percent === null ? "—" : `${row.percent}%`}
+                </Td>
+                <Td>
+                  {band ? (
+                    <Badge tone={BAND_TONE[band]}>{A79_BAND_LABEL[band]}</Badge>
+                  ) : (
+                    <Badge tone="neutral">Мэдээлэл алга</Badge>
+                  )}
+                </Td>
+              </tr>
             );
           })}
-        </ul>
-      </Card>
-
-      <A79ChildrenTable groupId={groupId} rows={rows} />
+        </tbody>
+      </TableShell>
     </>
   );
 }

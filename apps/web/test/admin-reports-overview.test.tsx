@@ -1,4 +1,5 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GroupReport } from "@kinder/contracts";
 import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
@@ -94,9 +95,60 @@ const SECOND_REPORT = report(
   },
 );
 
+const FIRST_A79 = {
+  children: [
+    {
+      childId: "77777777-7777-4777-8777-777777777771",
+      firstName: "Ану",
+      lastName: "Батжаргал",
+      level: "III",
+      achieved: 37,
+      total: 46,
+      byDomain: [
+        { domain: "Мэдлэг", achieved: 8, total: 10 },
+        { domain: "Чадвар", achieved: 20, total: 25 },
+        { domain: "Төлөвшил", achieved: 9, total: 11 },
+      ],
+    },
+    {
+      childId: "77777777-7777-4777-8777-777777777772",
+      firstName: "Тэмүүлэн",
+      lastName: "Дорж",
+      level: "III",
+      achieved: 23,
+      total: 46,
+      byDomain: [
+        { domain: "Мэдлэг", achieved: 5, total: 10 },
+        { domain: "Чадвар", achieved: 12, total: 25 },
+        { domain: "Төлөвшил", achieved: 6, total: 11 },
+      ],
+    },
+  ],
+};
+
+const SECOND_A79 = {
+  children: [
+    {
+      childId: "77777777-7777-4777-8777-777777777773",
+      firstName: "Сарнай",
+      lastName: "Эрдэнэ",
+      level: "II",
+      achieved: 9,
+      total: 46,
+      byDomain: [
+        { domain: "Мэдлэг", achieved: 2, total: 10 },
+        { domain: "Чадвар", achieved: 5, total: 25 },
+        { domain: "Төлөвшил", achieved: 2, total: 11 },
+      ],
+    },
+  ],
+};
+
 function renderAdminReport() {
   const api = stubApi([
     { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+    { path: `/groups/${FIRST_GROUP}/a79-summary`, body: FIRST_A79 },
+    { path: `/groups/${SECOND_GROUP}/a79-summary`, body: SECOND_A79 },
     { path: `/groups/${FIRST_GROUP}/report`, body: FIRST_REPORT },
     { path: `/groups/${SECOND_GROUP}/report`, body: SECOND_REPORT },
     {
@@ -159,5 +211,49 @@ describe("the administrator report", () => {
     expect(api.calls.some((call) => call.url.startsWith(`/groups/${SECOND_GROUP}/report`))).toBe(
       true,
     );
+  });
+
+  it("shows the kindergarten result chart with every group's indicators below", async () => {
+    const user = userEvent.setup();
+    const api = renderAdminReport();
+
+    await user.click(await screen.findByRole("tab", { name: "Үр дүнгийн үнэлгээ" }));
+    const panel = screen.getByRole("tabpanel", { name: "Үр дүнгийн үнэлгээ" });
+
+    expect(
+      within(panel).getByRole("heading", { name: "Цэцэрлэгийн нэгтгэл график" }),
+    ).toBeInTheDocument();
+    // Child-weighted: (80 + 50 + 20) / 3 = 50%, not the two group averages' 43%.
+    expect(within(panel).getByRole("img", { name: "Цэцэрлэгийн дундаж: 50%" })).toBeInTheDocument();
+    expect(within(panel).getByText("Хангалттай · 1")).toBeInTheDocument();
+    expect(within(panel).getByText("Ахиж байна · 1")).toBeInTheDocument();
+    expect(within(panel).getByText("Хөгжиж байна · 1")).toBeInTheDocument();
+
+    const table = within(panel).getByRole("table", { name: "Бүлэг бүрийн үзүүлэлт" });
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((cell) => cell.textContent),
+    ).toEqual(["№", "Бүлэг", "Хүүхэд", "Мэдлэг", "Чадвар", "Төлөвшил", "Нийт", "Үр дүн"]);
+
+    const first = within(table).getByRole("link", { name: "Дэлбээ" });
+    expect(first).toHaveAttribute("href", `/groups/${FIRST_GROUP}/results`);
+    expect(
+      within(first.closest("tr")!)
+        .getAllByRole("cell")
+        .map((cell) => cell.textContent),
+    ).toEqual(["1", "Дэлбээ", "2", "65%", "64%", "69%", "65%", "Ахиж байна"]);
+
+    const second = within(table).getByRole("link", { name: "Нархан" });
+    expect(second).toHaveAttribute("href", `/groups/${SECOND_GROUP}/results`);
+    expect(second.closest("tr")).toHaveTextContent("20%");
+
+    for (const id of [FIRST_GROUP, SECOND_GROUP]) {
+      expect(
+        api.calls.some(
+          (call) => call.url === `/groups/${id}/a79-summary?from=2026-09-01&to=2026-09-30`,
+        ),
+      ).toBe(true);
+    }
   });
 });
