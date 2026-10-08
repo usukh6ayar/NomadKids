@@ -1796,9 +1796,11 @@ describe("teacher dashboard", () => {
       "teacher-reading-with-children.png",
     );
 
-    for (const action of ["Ирц", "Мэдээ", "Судалгаа", "Явцын үнэлгээ"]) {
+    // The dashboard's own buttons, not the side menu — «Үнэлгээ» is both.
+    const quick = await screen.findByTestId("teacher-quick-actions");
+    for (const action of ["Ирц", "Мэдээ", "Судалгаа", "Үнэлгээ"]) {
       expect(
-        await screen.findByRole("link", { name: new RegExp(`^${action}`) }),
+        await within(quick).findByRole("link", { name: new RegExp(`^${action}`) }),
       ).toBeInTheDocument();
     }
 
@@ -1806,9 +1808,9 @@ describe("teacher dashboard", () => {
       ["Ирц", "icon-attendance-3d"],
       ["Мэдээ", "icon-notice-3d"],
       ["Судалгаа", "icon-survey-3d"],
-      ["Явцын үнэлгээ", "icon-progress-3d"],
+      ["Үнэлгээ", "icon-progress-3d"],
     ] as const) {
-      const link = await screen.findByRole("link", { name: new RegExp(`^${action}`) });
+      const link = await within(quick).findByRole("link", { name: new RegExp(`^${action}`) });
       const icon = link.querySelector("img");
       expect(icon, `${action} must use the supplied transparent icon`).not.toBeNull();
       expect(icon!.getAttribute("src")).toContain(asset);

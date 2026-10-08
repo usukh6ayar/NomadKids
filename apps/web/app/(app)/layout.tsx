@@ -50,6 +50,7 @@ import {
   Database,
   KeyRound,
   Award,
+  MessageSquareText,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
@@ -452,7 +453,7 @@ function staffNav(isAdmin: boolean, groupId: string | null): NavItem[] {
     },
     {
       href: assessmentHref,
-      label: "Явцын үнэлгээ",
+      label: "Үнэлгээ",
       icon: artIcon("progress", 20),
       barIcon: <ChartNoAxesColumnIncreasing {...pillIconProps} />,
     },
@@ -576,7 +577,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         title: "Сургалт, үйл ажиллагаа",
         entries: [
           entry("Ирц", "/attendance/daily", "attendance"),
-          entry("Явцын үнэлгээ", "/admin/assessment", "progress"),
+          entry("Үнэлгээ", "/admin/assessment", "progress"),
           entry("Судалгаа", "/surveys", "survey"),
           entry("Мэдээ", "/notifications", "notice"),
           entry("Чат", "/chat", "chat"),
@@ -717,7 +718,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          */
         ...adminEntry("Бүлгүүд", "/admin/groups"),
         {
-          label: "Явцын үнэлгээ",
+          label: "Үнэлгээ",
           href: isAdmin ? "/admin/assessment" : scoped("assessment"),
           icon: artIcon("progress", 18),
         },
@@ -1010,7 +1011,7 @@ function teacherSections(groupId: string | null): NavSection[] {
         { label: "Ирц", href: scoped("attendance"), icon: <RailGlyph icon={IdCardLanyard} /> },
         { label: "Хоолны цэс", href: "/menu", icon: <RailGlyph icon={Utensils} /> },
         {
-          label: "Явцын үнэлгээ",
+          label: "Үнэлгээ",
           href: scoped("assessment"),
           icon: <RailGlyph icon={ChartNoAxesColumnIncreasing} />,
         },
@@ -1491,6 +1492,11 @@ function parentSections(
           label: "Багштай холбогдох",
           href: "/chat",
           icon: artIcon("navParentChat", 20),
+        },
+        {
+          label: "Санал хүсэлт",
+          href: "/feedback",
+          icon: <MessageSquareText {...iconProps} />,
         },
         {
           label: "Үйлчилгээний эрх",

@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GroupReport } from "@kinder/contracts";
 import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
@@ -95,7 +95,7 @@ const SECOND_REPORT = report(
 );
 
 function renderAdminReport() {
-  stubApi([
+  const api = stubApi([
     { path: "/auth/me", body: sessionFor(["ADMIN"]) },
     { path: `/groups/${FIRST_GROUP}/report`, body: FIRST_REPORT },
     { path: `/groups/${SECOND_GROUP}/report`, body: SECOND_REPORT },
@@ -126,7 +126,8 @@ function renderAdminReport() {
     },
   ]);
 
-  return renderWithProviders(<ReportsPage />);
+  renderWithProviders(<ReportsPage />);
+  return api;
 }
 
 beforeEach(() => {
@@ -135,47 +136,28 @@ beforeEach(() => {
 });
 
 describe("the administrator report", () => {
-  it("shows a kindergarten-wide summary instead of a group picker", async () => {
+  /*
+    ★ The same screen a teacher sees — client, 2026-10-08: the kindergarten-wide
+    overview was taken away ("буцаагаад багшийнх шиг болгоод өг").
+  */
+  it("is the teacher's report, with a group picker", async () => {
     renderAdminReport();
 
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "Цэцэрлэгийн нэгдсэн тайлан" }),
-    ).toBeInTheDocument();
-    const summary = await screen.findByRole("region", { name: "Тайлангийн товч үзүүлэлт" });
-
-    for (const label of ["Нийт хүүхэд", "Нийт бүлэг", "Ирц", "Явцын үнэлгээ", "Судалгааны явц"]) {
-      expect(within(summary).getByText(label)).toBeInTheDocument();
-    }
-    expect(within(summary).getByText("49")).toBeInTheDocument();
-    expect(within(summary).getByText("2")).toBeInTheDocument();
-    expect(within(summary).getByText("91%")).toBeInTheDocument();
-    expect(within(summary).getByText("90%")).toBeInTheDocument();
-    expect(within(summary).getByText("67%")).toBeInTheDocument();
-    expect(screen.queryByRole("navigation", { name: "Бүлэг сонгох" })).toBeNull();
+    expect(await screen.findByRole("heading", { level: 1, name: "Тайлан" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Цэцэрлэгийн нэгдсэн тайлан" })).toBeNull();
+    expect(screen.getByRole("radiogroup", { name: "Хугацаа" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Нэгтгэл" })).toBeInTheDocument();
+    expect(screen.getAllByText("Дэлбээ").length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: /Нархан/ })).toBeInTheDocument();
   });
 
-  it("keeps only the two group-comparison charts below the summary", async () => {
-    renderAdminReport();
+  it("opens the group named in the address", async () => {
+    setSearchParams(`group=${SECOND_GROUP}`);
+    const api = renderAdminReport();
 
-    expect(
-      await screen.findByRole("heading", { name: "Бүлгүүдийн харьцуулалт" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Ирцийн хувь (бүлэг тус бүр)" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Явцын үнэлгээний гүйцэтгэл" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Дэлбээ бүлгийн ирц: 95%")).toBeInTheDocument();
-    expect(screen.getByLabelText("Нархан бүлгийн явцын үнэлгээ: 80%")).toBeInTheDocument();
-    expect(screen.queryByRole("table", { name: "Бүлгүүдийн нэгдсэн тайлан" })).toBeNull();
-    expect(screen.queryByRole("heading", { name: "Сарын онцлох үзүүлэлт" })).toBeNull();
-    expect(screen.queryByRole("heading", { name: "Анхаарах зүйл" })).toBeNull();
-  });
-
-  it("uses a single month selector", async () => {
-    renderAdminReport();
-
-    await screen.findByRole("heading", { name: "Цэцэрлэгийн нэгдсэн тайлан" });
-    expect(screen.getByLabelText("Тайлангийн сар")).toBeInTheDocument();
-    expect(screen.queryByRole("radiogroup", { name: "Тайлангийн хугацаа" })).toBeNull();
+    await screen.findByRole("tab", { name: "Нэгтгэл" });
+    expect(api.calls.some((call) => call.url.startsWith(`/groups/${SECOND_GROUP}/report`))).toBe(
+      true,
+    );
   });
 });

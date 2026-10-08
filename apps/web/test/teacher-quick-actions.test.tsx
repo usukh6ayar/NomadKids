@@ -83,7 +83,7 @@ describe("the teacher dashboard's quick actions", () => {
       ["Хоолны цэс", "/menu", "icon-food-3d.png"],
       ["Мэдээ", "/notifications", "icon-notice-3d.png"],
       ["Судалгаа", "/surveys", "icon-survey-3d.png"],
-      ["Явцын үнэлгээ", "/assessment", "icon-progress-3d.png"],
+      ["Үнэлгээ", "/assessment", "icon-progress-3d.png"],
       ["Тайлан", "/reports", "icon-report-3d.png"],
       ["Баримт бичгийн сан", "/documents", "icon-documents-3d.png"],
     ] as const;

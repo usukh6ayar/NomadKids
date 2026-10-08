@@ -31,6 +31,7 @@ export function Ring({
   size = "md",
   muted = false,
   tone,
+  fadeTo,
   label,
   children,
   className,
@@ -51,6 +52,12 @@ export function Ring({
    * clears it against both white and `--color-track`.
    */
   tone?: Tone;
+  /**
+   * A second colour the arc melts into towards its end — a CSS colour, read
+   * from a token (`var(--color-…)`). Added for the А/79 result ring,
+   * 2026-10-08.
+   */
+  fadeTo?: string;
   /** An accessible name. Omit when the figure is already on screen as text. */
   label?: string;
   /** What sits in the hole. Defaults to the percentage. */
@@ -71,7 +78,9 @@ export function Ring({
       style={{
         background: muted
           ? "var(--color-track)"
-          : `conic-gradient(${fill} 0 ${value}%, var(--color-track) ${value}% 100%)`,
+          : fadeTo
+            ? `conic-gradient(${fill} 0%, ${fadeTo} ${value}%, var(--color-track) ${value}% 100%)`
+            : `conic-gradient(${fill} 0 ${value}%, var(--color-track) ${value}% 100%)`,
       }}
     >
       <span className={cn("grid place-items-center rounded-pill bg-surface", SIZE[size].inner)}>

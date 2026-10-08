@@ -223,6 +223,33 @@ function SurveysHub() {
         ))}
       </div>
 
+      {/*
+        ★ Санал хүсэлт — 2026-10-08, the client: "Эцэг эхээс авах судалгаа
+        гэсний доор товч нэм". The administration's inbox, so ADMIN only.
+      */}
+      {isAdmin ? (
+        <Link
+          href="/surveys/feedback"
+          className="group flex min-h-[60px] items-center gap-3 rounded-card border border-border-soft bg-surface px-4 py-2.5 shadow-sm transition-all hover:border-primary hover:shadow-md sm:px-5"
+        >
+          {/* An open letter — 2026-10-08, the client's picture. */}
+          <Art name="feedbackInbox" size={40} className="size-10 shrink-0 object-contain" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-lead font-semibold text-ink group-hover:text-primary">
+              Санал хүсэлт
+            </span>
+            <span className="block text-caption text-muted">
+              Эцэг эхчүүдээс ирсэн санал, гомдол
+            </span>
+          </span>
+          <ChevronRight
+            size={20}
+            aria-hidden="true"
+            className="shrink-0 text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
+          />
+        </Link>
+      ) : null}
+
       {period ? (
         <section aria-labelledby="period-surveys" className="flex flex-col gap-2.5">
           <h2 id="period-surveys" className="text-lead font-semibold leading-heading text-ink">

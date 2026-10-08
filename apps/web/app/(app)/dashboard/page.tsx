@@ -349,7 +349,7 @@ function TeacherDashboard() {
         <QuickAction href="/surveys" title="Судалгаа" art="survey" />
         <QuickAction
           href={group ? `/groups/${group.id}/assessment` : "/children"}
-          title="Явцын үнэлгээ"
+          title="Үнэлгээ"
           art="progress"
         />
         <QuickAction href="/reports" title="Тайлан" art="report" />
@@ -360,7 +360,7 @@ function TeacherDashboard() {
         <div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-[1.05fr_1.1fr_1fr_1.35fr]">
           <AttendanceToday />
           <WeeklyAttendance />
-          <MonthBirthdays birthdays={birthdaysThisMonth} />
+          <MonthBirthdays birthdays={birthdaysThisMonth} groupId={group?.id} />
           <AssessmentProgress
             progress={termProgress}
             href={group ? `/groups/${group.id}/assessment` : "/children"}

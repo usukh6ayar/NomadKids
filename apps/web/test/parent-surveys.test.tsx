@@ -398,3 +398,40 @@ describe("идэвхтэй ба дууссан", () => {
     expect(screen.queryByText(/Бөглөсөн судалгаа «Дууссан»-д/)).toBeNull();
   });
 });
+
+/*
+ * ★ Санал хүсэлт floats above the chat on this page — 2026-10-08, the client:
+ * "Миний судалгаанууд хэсэг рүү ороход чаттай адилхан загвараар чатны яг дээр
+ * гарч ирэх". A guardian's box to the administration, so a guardian's only.
+ */
+describe("санал хүсэлтийн товч", () => {
+  it("opens the feedback form for a guardian", async () => {
+    const user = userEvent.setup();
+    stub();
+    renderWithProviders(<ChildSurveysPage />);
+
+    const trigger = await screen.findByRole("button", { name: "Санал хүсэлт" });
+    // The client's sealed letter on a yellow disc, 2026-10-08.
+    expect(trigger.querySelector("img")?.getAttribute("src")).toContain("icon-feedback-write-3d");
+    await user.click(trigger);
+    const panel = await screen.findByRole("dialog", { name: "Санал хүсэлт" });
+    // The form waits behind «+ Санал хүсэлт» — the list of answers comes first.
+    expect(within(panel).queryByLabelText(/Санал, хүсэлт/)).toBeNull();
+    await user.click(within(panel).getByRole("button", { name: "Санал хүсэлт" }));
+    expect(within(panel).getByLabelText(/Санал, хүсэлт/)).toBeInTheDocument();
+    expect(within(panel).getByLabelText(/Нэрээ нууж илгээх/)).toBeInTheDocument();
+  });
+
+  it("is not offered to staff reading the same list", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: `/children/${CHILD}/surveys`, body: [ANSWERED, OPEN_POLL] },
+      { path: `/children/${CHILD}`, body: CHILD_DETAIL },
+    ]);
+    renderWithProviders(<ChildSurveysPage />);
+
+    // Wait for the list, so the session has settled before asserting an absence.
+    await screen.findByRole("tab", { name: /^Идэвхтэй/ });
+    expect(screen.queryByRole("button", { name: "Санал хүсэлт" })).toBeNull();
+  });
+});

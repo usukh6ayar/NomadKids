@@ -7,6 +7,7 @@ import { z } from "zod";
 import { groupReportSchema, termSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
+import { A79GroupSummaryPanel } from "@/components/assessment/a79-group-summary";
 import { useSession } from "@/lib/auth/session";
 import { RequireRole } from "@/components/shell/require-role";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
@@ -22,7 +23,6 @@ import { Art, type ArtName } from "@/components/ui/art";
 import { ATTENDANCE_STATUS_CHART_TONE, ATTENDANCE_STATUS_LABEL } from "@/lib/attendance-meta";
 import { formatDayMonth, capitalize } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { AdminReportsOverview } from "@/components/admin/admin-reports-overview";
 import { BackButton } from "@/components/ui/back-button";
 
 const termsSchema = z.array(termSchema);
@@ -54,9 +54,13 @@ export default function ReportsPage() {
   );
 }
 
+/*
+  ★ A director sees the teacher's report, with the group picker — client,
+  2026-10-08: the kindergarten-wide overview that replaced it here was "муухай",
+  "буцаагаад багшийнх шиг болгоод өг".
+*/
 function ReportsForRole() {
-  const { hasRole } = useSession();
-  return hasRole("ADMIN") ? <AdminReportsOverview /> : <Reports />;
+  return <Reports />;
 }
 
 type Period = "month" | "term" | "year";
@@ -65,6 +69,8 @@ const TABS = [
   { key: "summary", label: "Нэгтгэл" },
   { key: "attendance", label: "Ирцийн тайлан" },
   { key: "assessment", label: "Явцын үнэлгээ" },
+  // The group's А/79 result — client, 2026-10-08.
+  { key: "results", label: "Үр дүнгийн үнэлгээ" },
   { key: "surveys", label: "Судалгааны тайлан" },
   { key: "observations", label: "Ажиглалт, ярилцлага, бүтээл" },
 ] as const;
@@ -99,8 +105,15 @@ function yearRange(): { from: string; to: string } {
 }
 
 function Reports() {
-  const { group } = useMyGroup();
-  const { primaryKindergartenId } = useSession();
+  const { primaryKindergartenId, hasRole } = useSession();
+  /*
+    ★ A director's "own group" is only the first of all of them — `GET
+    /groups` lists every group to an ADMIN — so it would pin the report to that
+    one and the picker below would go nowhere. A director picks.
+  */
+  const director = hasRole("ADMIN");
+  const { group: ownGroup } = useMyGroup({ enabled: !director });
+  const group = director ? null : ownGroup;
   const searchParams = useSearchParams();
 
   /*
@@ -438,6 +451,13 @@ function ReportBody({
       <div role="tabpanel" aria-label={TABS.find((entry) => entry.key === tab)!.label}>
         {tab === "summary" || tab === "attendance" ? <AttendancePanel report={report} /> : null}
         {tab === "summary" || tab === "assessment" ? <AssessmentPanel report={report} /> : null}
+        {tab === "summary" || tab === "results" ? (
+          <A79GroupSummaryPanel
+            groupId={report.group.id}
+            from={report.range.from}
+            to={report.range.to}
+          />
+        ) : null}
         {tab === "summary" || tab === "observations" ? <ObservationPanel report={report} /> : null}
         {tab === "summary" || tab === "surveys" ? <SurveyPanel report={report} /> : null}
       </div>
