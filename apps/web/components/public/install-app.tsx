@@ -7,12 +7,11 @@ import {
   EllipsisVertical,
   LockKeyhole,
   Share,
-  Smartphone,
   SquarePlus,
   X,
 } from "lucide-react";
 import Image from "next/image";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ModalOverlay } from "@/components/ui/modal-overlay";
 import { useInstallApp } from "@/lib/install-app";
 import { BRAND_LATIN } from "@/lib/vocabulary";
@@ -25,35 +24,89 @@ import { cn } from "@/lib/utils";
  * ★ Hidden once the site is already running from the home screen: offering to
  * install the thing you are using is noise.
  */
+/**
+ * ★ Redrawn 2026-10-08 to the client's picture: a white card, the phone drawn
+ * on the left, one line and a light chevron — no subtitle, no tint.
+ *
+ * ★★ Shown on a phone only, on the first visit only, and never once the app
+ * runs from the home screen — the client: "зөвхөн утаснаас анх удаа орохоор
+ * харагдана, х дараад арилгаж болно, татаад оруулсан үед харагдахгүй".
+ *
+ * "The first visit" is the first sighting plus `FIRST_VISIT_MS`, written to
+ * this browser's storage: a timestamp rather than a "seen" flag, so the
+ * render that marks it — and React's development double-run of effects —
+ * still shows it. × records a dismissal, and after that it never returns.
+ */
+const SEEN_KEY = "nomadkids:install-card:first-seen";
+const DISMISSED_KEY = "nomadkids:install-card:dismissed";
+const FIRST_VISIT_MS = 30 * 60_000;
+
+function firstVisitStill(now = Date.now()): boolean {
+  try {
+    if (window.localStorage.getItem(DISMISSED_KEY)) return false;
+    const seen = Number(window.localStorage.getItem(SEEN_KEY));
+    if (!seen) {
+      window.localStorage.setItem(SEEN_KEY, String(now));
+      return true;
+    }
+    return now - seen < FIRST_VISIT_MS;
+  } catch {
+    // Storage refused (a private window): show it, and let × hide it for now.
+    return true;
+  }
+}
+
 export function InstallAppCard({ className }: { className?: string }) {
   const install = useInstallApp();
   const [open, setOpen] = useState(false);
+  const [offered, setOffered] = useState(false);
 
-  if (install.ready && install.installed) return null;
+  useEffect(() => {
+    if (!install.ready || install.installed || install.platform === "other") return;
+    setOffered(firstVisitStill());
+  }, [install.ready, install.installed, install.platform]);
+
+  if (!offered || install.installed) return null;
+
+  function dismiss() {
+    setOffered(false);
+    try {
+      window.localStorage.setItem(DISMISSED_KEY, "1");
+    } catch {
+      // Hidden for this visit only.
+    }
+  }
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className={cn(
-          "flex w-full items-center gap-4 rounded-card bg-[#eef0ff] px-5 py-4 text-left shadow-sm ring-1 ring-[#dfe3ff] transition hover:bg-[#e6e9ff] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3f86ef]",
-          className,
-        )}
-      >
-        <span className="grid size-12 shrink-0 place-items-center rounded-control bg-gradient-to-b from-[#3f86ef] to-[#5a58c4] text-white shadow-sm">
-          <Smartphone className="size-6" aria-hidden />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-title font-extrabold leading-tight text-[#102f5d]">
+      <div className={cn("relative w-full", className)}>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex w-full items-center gap-4 rounded-card bg-white py-3 pl-5 pr-4 text-left shadow-[0_8px_28px_rgba(16,47,93,.12)] transition hover:shadow-[0_10px_32px_rgba(16,47,93,.16)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#3f86ef]"
+        >
+          <Image
+            src="/icons/install-phone.png"
+            alt=""
+            width={28}
+            height={54}
+            unoptimized
+            className="h-[54px] w-auto shrink-0"
+          />
+          <span className="min-w-0 flex-1 text-lead font-medium leading-tight text-[#1d3461]">
             {BRAND_LATIN}-ийг утсандаа суулгах
           </span>
-          <span className="mt-0.5 block text-compact text-[#5b63c8]">
-            Апп дэлгүүрээс татах шаардлагагүй
-          </span>
-        </span>
-        <ChevronRight className="size-5 shrink-0 text-[#102f5d]" aria-hidden />
-      </button>
+          <ChevronRight className="size-6 shrink-0 text-slate-300" strokeWidth={1.5} aria-hidden />
+        </button>
+        <button
+          type="button"
+          onClick={dismiss}
+          aria-label="Суулгах санал хаах"
+          className="absolute -right-2 -top-2 grid size-8 place-items-center rounded-pill bg-white text-slate-400 shadow-sm ring-1 ring-slate-200 hover:text-[#1d3461]"
+        >
+          <X className="size-4" aria-hidden />
+        </button>
+      </div>
       {open ? <InstallAppDialog install={install} onClose={() => setOpen(false)} /> : null}
     </>
   );

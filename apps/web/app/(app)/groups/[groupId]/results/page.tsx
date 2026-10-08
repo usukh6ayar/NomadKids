@@ -4,12 +4,11 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import {
   A79ChildrenTable,
-  A79_DEMO_NOTE,
+  A79NotReady,
   a79ChildRows,
   useA79GroupSummary,
 } from "@/components/assessment/a79-group-summary";
 import { AssessmentSwitch } from "@/components/assessment/assessment-switch";
-import { DemoBanner } from "@/components/feedback/feedback-parts";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { SearchField } from "@/components/ui/search-field";
@@ -36,7 +35,7 @@ export default function GroupResultsPage() {
 function GroupResults() {
   const { groupId } = useParams<{ groupId: string }>();
   const [query, setQuery] = useState("");
-  const { data, demo, isLoading, error } = useA79GroupSummary(groupId);
+  const { data, notReady, isLoading, error } = useA79GroupSummary(groupId);
 
   const needle = query.trim().toLowerCase();
   const rows = data
@@ -48,7 +47,7 @@ function GroupResults() {
       <PageHeader title="Үр дүнгийн үнэлгээ" backHref="/dashboard" />
       <AssessmentSwitch groupId={groupId} active="results" />
 
-      {demo ? <DemoBanner>{A79_DEMO_NOTE}</DemoBanner> : null}
+      {notReady ? <A79NotReady /> : null}
       {isLoading ? <LoadingState rows={6} /> : null}
       {error ? <ErrorState description={errorMessage(error)} /> : null}
 

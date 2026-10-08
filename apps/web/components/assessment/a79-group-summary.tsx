@@ -2,31 +2,24 @@
 
 import { useQueries, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { MAX_PAGE_SIZE, childSummarySchema, paginated } from "@kinder/contracts";
-import { DemoBanner } from "@/components/feedback/feedback-parts";
 import { Badge } from "@/components/ui/badge";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Ring } from "@/components/ui/chart/ring";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { TableShell, Td, Th } from "@/components/ui/table";
 import { get } from "@/lib/api/browser";
-import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
 import type { A79Domain } from "@/lib/a79-assessment";
 import {
   A79_BAND_LABEL,
   A79_DOMAIN_FILL,
   a79Band,
-  a79DemoProgress,
   a79GroupSummarySchema,
-  a79LevelForAge,
-  a79Score,
   type A79Band,
   type A79GroupSummary,
 } from "@/lib/a79-progress";
-import { ageInYears, shortName } from "@/lib/format";
+import { shortName } from "@/lib/format";
 
-const childrenPageSchema = paginated(childSummarySchema);
 const DOMAINS: A79Domain[] = ["Мэдлэг", "Чадвар", "Төлөвшил"];
 const BAND_TONE: Record<A79Band, "mint" | "sun" | "peach"> = {
   MASTERED: "mint",
@@ -41,14 +34,18 @@ const pct = (achieved: number, total: number) =>
  * «Үр дүнгийн үнэлгээ» on Тайлан — the group's А/79 result in one place
  * (client, 2026-10-08): the group's share of criteria met, how many children
  * sit in each band, each part's average, and a row per child that opens their
- * own result. `GET /groups/:id/a79-summary` (`lib/a79-progress.ts`); sample
- * rows from the roster under a banner while that answers 404.
+ * own result. `GET /groups/:id/a79-summary` (`lib/a79-progress.ts`).
  */
 /**
- * The group's А/79 result — the endpoint, or sample rows from the roster
- * while it answers 404. Shared by Тайлан's tab and the «Үр дүнгийн үнэлгээ»
+ * The group's А/79 result. Shared by Тайлан's tab and the «Үр дүнгийн үнэлгээ»
  * list, so the two cannot disagree. No range means the server's default (the
  * current school year).
+ *
+ * ★ A 404 is `notReady`, and draws `A79NotReady` — never sample figures.
+ * Until 2026-10-08 it drew invented percentages beside the group's real
+ * children under a yellow "sample" banner; the client asked for the banner to
+ * go, and the figures could not stay without it — a director reading «А.Төгс
+ * 63%» has no way to know nobody ever assessed А.Төгс.
  */
 export function useA79GroupSummary(groupId: string, range?: { from: string; to: string }) {
   const query = range ? `?from=${range.from}&to=${range.to}` : "";
@@ -58,55 +55,25 @@ export function useA79GroupSummary(groupId: string, range?: { from: string; to: 
     enabled: Boolean(groupId),
     retry: false,
   });
-  const demo = summary.isError && isNotFound(summary.error);
-  const roster = useQuery({
-    queryKey: qk.children({ groupId, page: 1, pageSize: MAX_PAGE_SIZE }),
-    queryFn: () =>
-      get(`/children?groupId=${groupId}&page=1&pageSize=${MAX_PAGE_SIZE}`, childrenPageSchema),
-    enabled: demo,
-    staleTime: 60_000,
-  });
-
-  const data: A79GroupSummary | undefined = demo
-    ? roster.data
-      ? a79DemoSummary(roster.data.items)
-      : undefined
-    : summary.data;
+  const notReady = summary.isError && isNotFound(summary.error);
 
   return {
-    data,
-    demo,
-    isLoading: summary.isLoading || (demo && roster.isLoading),
-    error: summary.isError && !demo ? summary.error : demo && roster.isError ? roster.error : null,
+    data: summary.data,
+    notReady,
+    isLoading: summary.isLoading,
+    error: summary.isError && !notReady ? summary.error : null,
   };
 }
 
-function a79DemoSummary(
-  children: { id: string; firstName: string; lastName: string; dateOfBirth?: string | null }[],
-): A79GroupSummary {
-  return {
-    children: children.map((child) => {
-      const level = a79LevelForAge(ageInYears(child.dateOfBirth));
-      const score = a79Score(a79DemoProgress(child.id, level));
-      return {
-        childId: child.id,
-        firstName: child.firstName,
-        lastName: child.lastName,
-        level,
-        achieved: score.achieved,
-        total: score.total,
-        byDomain: score.byDomain.map(({ domain, achieved, total }) => ({
-          domain,
-          achieved,
-          total,
-        })),
-      };
-    }),
-  };
+/** What a group, a child or the kindergarten shows while there is no result. */
+export function A79NotReady() {
+  return (
+    <EmptyState
+      title="Үр дүн хараахан гараагүй байна"
+      description="Ажиглалтыг А/79-ийн шалгуурт холбосны дараа хүүхдийн үр дүн энд харагдана."
+    />
+  );
 }
-
-export const A79_DEMO_NOTE =
-  "Жишээ үр дүн харагдаж байна. Сервер холбогдоход ажиглалтаас тооцсон жинхэнэ үр дүн энд гарна.";
 
 export type A79ChildRow = A79GroupSummary["children"][number] & {
   percent: number;
@@ -152,12 +119,12 @@ export function A79GroupSummaryPanel({
   from: string;
   to: string;
 }) {
-  const { data, demo, isLoading, error } = useA79GroupSummary(groupId, { from, to });
+  const { data, notReady, isLoading, error } = useA79GroupSummary(groupId, { from, to });
 
   return (
     <section className="mt-3 flex flex-col gap-3">
       <SectionHeader title="Үр дүнгийн үнэлгээ" as="h2" />
-      {demo ? <DemoBanner>{A79_DEMO_NOTE}</DemoBanner> : null}
+      {notReady ? <A79NotReady /> : null}
       {isLoading ? <LoadingState rows={3} /> : null}
       {error ? <ErrorState description={errorMessage(error)} /> : null}
       {data ? <SummaryBody groupId={groupId} data={data} /> : null}
@@ -292,38 +259,22 @@ export function A79KindergartenSummaryPanel({
       retry: false,
     })),
   });
-  const demoGroups = summaries.map((query) => query.isError && isNotFound(query.error));
-  const rosters = useQueries({
-    queries: groups.map((group, index) => ({
-      queryKey: qk.children({ groupId: group.id, page: 1, pageSize: MAX_PAGE_SIZE }),
-      queryFn: () =>
-        get(`/children?groupId=${group.id}&page=1&pageSize=${MAX_PAGE_SIZE}`, childrenPageSchema),
-      enabled: demoGroups[index],
-      staleTime: 60_000,
-    })),
-  });
-
-  const error =
-    summaries.find((query) => query.isError && !isNotFound(query.error))?.error ??
-    rosters.find((query, index) => demoGroups[index] && query.isError)?.error;
-  const isLoading =
-    summaries.some((query) => query.isLoading) ||
-    rosters.some((query, index) => demoGroups[index] && query.isLoading);
+  // One group without a result leaves the kindergarten's figure without it
+  // too, so any 404 draws the not-ready state for the whole panel.
+  const notReady = summaries.some((query) => query.isError && isNotFound(query.error));
+  const error = summaries.find((query) => query.isError && !isNotFound(query.error))?.error;
+  const isLoading = summaries.some((query) => query.isLoading);
   const data = groups.flatMap((group, index) => {
-    const summary =
-      summaries[index]?.data ??
-      (demoGroups[index] && rosters[index]?.data
-        ? a79DemoSummary(rosters[index].data.items)
-        : undefined);
+    const summary = summaries[index]?.data;
     return summary ? [{ group, summary }] : [];
   });
 
   return (
     <section className="mt-3 flex flex-col gap-3">
       <SectionHeader title="Үр дүнгийн үнэлгээ" as="h2" />
-      {demoGroups.some(Boolean) ? <DemoBanner>{A79_DEMO_NOTE}</DemoBanner> : null}
       {isLoading ? <LoadingState rows={3} /> : null}
       {error ? <ErrorState description={errorMessage(error)} /> : null}
+      {!isLoading && !error && notReady ? <A79NotReady /> : null}
       {!isLoading && !error && groups.length === 0 ? (
         <EmptyState title="Бүлэг бүртгэгдээгүй байна" />
       ) : null}

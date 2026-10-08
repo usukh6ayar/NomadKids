@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -191,6 +192,103 @@ describe("signing in", () => {
     );
   });
 
+  /*
+    ★ ☰ above the login card — 2026-10-08, the client: the six links behind
+    three lines, on a phone as on a desktop.
+  */
+  it("opens a menu of six above the login card", async () => {
+    const user = userEvent.setup();
+    stubApi([{ path: "/auth/me", body: sessionFor([]) }]);
+    renderWithProviders(<LoginPage />);
+
+    const hero = screen.getByTestId("login-hero");
+    await user.click(within(hero).getByRole("button", { name: "Цэс нээх" }));
+    const menu = within(hero).getByRole("navigation", { name: "Нэвтрэх хэсгийн цэс" });
+    expect(
+      within(menu)
+        .getAllByRole("link")
+        .map((link) => [link.textContent, link.getAttribute("href")]),
+    ).toEqual([
+      ["Байгууллагын бүртгэл", "/register"],
+      ["Үнийн санал", "/pricing"],
+      ["Түгээмэл асуулт", "/faq"],
+      ["Нууцлалын бодлого", "/privacy"],
+      ["Үйлчилгээний нөхцөл", "/terms"],
+    ]);
+
+    // «Холбоо барих» opens a small window with the phone, e-mail and Facebook.
+    await user.click(within(menu).getByRole("button", { name: "Холбоо барих" }));
+    const dialog = screen.getByRole("dialog", { name: "Холбоо барих" });
+    expect(within(dialog).getByRole("link", { name: /7213 4888/ })).toHaveAttribute(
+      "href",
+      "tel:+97672134888",
+    );
+    expect(within(dialog).getByRole("link", { name: /nomadkidsmn@gmail\.com/ })).toHaveAttribute(
+      "href",
+      "mailto:nomadkidsmn@gmail.com",
+    );
+    expect(within(dialog).getByRole("link", { name: /Facebook хуудас/ })).toHaveAttribute(
+      "target",
+      "_blank",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Хаах" }));
+    expect(screen.queryByRole("dialog", { name: "Холбоо барих" })).toBeNull();
+
+    // «Холбоо барих» lands on the footer's phone, e-mail and Facebook.
+    const contact = document.getElementById("contact")!;
+    expect(within(contact).getByRole("link", { name: "7213 4888" })).toHaveAttribute(
+      "href",
+      "tel:+97672134888",
+    );
+    expect(within(contact).getByRole("link", { name: "nomadkidsmn@gmail.com" })).toHaveAttribute(
+      "href",
+      "mailto:nomadkidsmn@gmail.com",
+    );
+    expect(within(contact).getByRole("link", { name: "Facebook" })).toHaveAttribute(
+      "href",
+      "https://www.facebook.com/",
+    );
+
+    // Escape closes the menu itself.
+    await user.click(within(hero).getByRole("button", { name: "Цэс нээх" }));
+    expect(
+      within(hero).getByRole("navigation", { name: "Нэвтрэх хэсгийн цэс" }),
+    ).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(within(hero).queryByRole("navigation", { name: "Нэвтрэх хэсгийн цэс" })).toBeNull();
+  });
+
+  /*
+    ★ «Боловсролын яамны системтэй холбогдсон» — 2026-10-08, the client: a
+    badge in the hero's corner whose window says how to ask to be connected.
+  */
+  it("explains how to request the ESIS connection from the hero's badge", async () => {
+    const user = userEvent.setup();
+    stubApi([{ path: "/auth/me", body: sessionFor([]) }]);
+    renderWithProviders(<LoginPage />);
+
+    const hero = screen.getByTestId("login-hero");
+    const badge = within(hero).getByRole("button", { name: /ESIS-тэй холбогдох/ });
+    // «Боловсролын яам» small above it, no icon — 2026-10-08, the client.
+    expect(badge).toHaveTextContent("Боловсролын яамESIS-тэй холбогдох");
+    expect(badge.querySelector("svg")).toBeNull();
+    await user.click(badge);
+    const dialog = screen.getByRole("dialog", { name: "ESIS-тэй холбогдох" });
+    expect(within(dialog).getAllByRole("listitem")).toHaveLength(4);
+    expect(within(dialog).getByText("Холболтын хүсэлт гаргана")).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: /7213 4888/ })).toHaveAttribute(
+      "href",
+      "tel:+97672134888",
+    );
+    expect(
+      within(dialog)
+        .getByRole("link", { name: /Мэйл бичих/ })
+        .getAttribute("href"),
+    ).toContain(encodeURIComponent("ESIS холболтын хүсэлт"));
+    await user.click(within(dialog).getByRole("button", { name: "Хаах" }));
+    expect(screen.queryByRole("dialog", { name: "ESIS-тэй холбогдох" })).toBeNull();
+  });
+
   /** The client's drawing, 2026-10-02: their wording in, the old taglines out. */
   it("names the product as drawn and drops the old taglines", () => {
     stubApi([{ path: "/auth/me", body: sessionFor([]) }]);
@@ -204,10 +302,8 @@ describe("signing in", () => {
     expect(
       within(hero).getByText("Өөрийн эрхээр нэвтэрч, ажлаа үргэлжлүүлнэ үү."),
     ).toBeInTheDocument();
-    expect(within(hero).getByRole("link", { name: "Байгууллагын бүртгэл" })).toHaveAttribute(
-      "href",
-      "/register",
-    );
+    // «Байгууллагын бүртгэл» sits in the ☰ menu above the card since 2026-10-08.
+    expect(within(hero).getByRole("button", { name: "Цэс нээх" })).toBeInTheDocument();
     for (const gone of [
       /жаргалтай мөч бүр/,
       /нэг орчинд холбосон/,
