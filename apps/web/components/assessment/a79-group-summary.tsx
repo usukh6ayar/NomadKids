@@ -90,6 +90,26 @@ export function a79ChildRows(data: A79GroupSummary): A79ChildRow[] {
   }));
 }
 
+/**
+ * A group's averages — each part and the whole, over its children's own
+ * percentages, as the group's result page shows them. `null` with no children.
+ */
+export function a79GroupAverages(
+  rows: A79ChildRow[],
+): { total: number; byDomain: Record<A79Domain, number> } | null {
+  if (rows.length === 0) return null;
+  const mean = (values: number[]) =>
+    Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+  return {
+    total: mean(rows.map((row) => row.percent)),
+    byDomain: {
+      Мэдлэг: mean(rows.map((row) => row.domain.Мэдлэг ?? 0)),
+      Чадвар: mean(rows.map((row) => row.domain.Чадвар ?? 0)),
+      Төлөвшил: mean(rows.map((row) => row.domain.Төлөвшил ?? 0)),
+    },
+  };
+}
+
 export function A79GroupSummaryPanel({
   groupId,
   from,

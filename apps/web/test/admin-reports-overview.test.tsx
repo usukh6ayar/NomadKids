@@ -2,7 +2,14 @@ import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GroupReport } from "@kinder/contracts";
-import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
+import {
+  ROUTER,
+  renderWithProviders,
+  selectOption,
+  sessionFor,
+  setSearchParams,
+  stubApi,
+} from "./support/render";
 import ReportsPage from "@/app/(app)/reports/page";
 
 const KG = "33333333-3333-4333-8333-333333333333";
@@ -206,7 +213,10 @@ describe("the administrator report", () => {
     expect(screen.getByRole("radiogroup", { name: "Хугацаа" })).toBeInTheDocument();
     expect(await screen.findByRole("tab", { name: "Нэгтгэл" })).toBeInTheDocument();
     expect(screen.getAllByText("Дэлбээ").length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: /Нархан/ })).toBeInTheDocument();
+    // The group is a dropdown after the dates — 2026-10-08, the client.
+    const user = userEvent.setup();
+    await selectOption(user, "Бүлэг", "Нархан");
+    expect(ROUTER.push).toHaveBeenCalledWith(`/reports?group=${SECOND_GROUP}`);
   });
 
   it("opens the group named in the address", async () => {

@@ -56,7 +56,8 @@ export function SearchField({
         placeholder={placeholder ?? label}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="pl-11"
+        // Quiet — shorter, a soft hairline, no shadow (client, 2026-10-08).
+        className="h-10 border-border-soft pl-11 shadow-none"
       />
     </div>
   );

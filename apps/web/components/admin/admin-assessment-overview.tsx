@@ -3,6 +3,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { adminDashboardSchema, type AdminDashboard } from "@kinder/contracts";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { AssessmentSwitch } from "@/components/assessment/assessment-switch";
+import {
+  A79NotReady,
+  a79ChildRows,
+  a79GroupAverages,
+  useA79GroupSummary,
+} from "@/components/assessment/a79-group-summary";
+import { Badge } from "@/components/ui/badge";
+import { A79_BAND_LABEL, a79Band } from "@/lib/a79-progress";
 import { PageHeader } from "@/components/shell/app-shell";
 import { Button } from "@/components/ui/button";
 import { SectionHeader } from "@/components/ui/card";
@@ -19,13 +29,31 @@ function coveragePercent(group: Pick<Coverage, "children" | "assessed">) {
   return Math.min(100, Math.round((group.assessed / group.children) * 100));
 }
 
+/*
+  ★ «Явцын үнэлгээ» · «Үр дүнгийн үнэлгээ» for the director too — 2026-10-08,
+  the client: "удирдлага үнэлгээ дээр явцын ба үр дүнгийнх бас харагдана".
+  The same switch a teacher has on their group, here across the groups: the
+  progress table as it was, and the groups each opening their А/79 result.
+  In the address (`?view=results`), as the teacher's two are two routes.
+*/
+const SWITCH_HREFS = { progress: "/admin/assessment", results: "/admin/assessment?view=results" };
+
 export function AdminAssessmentOverview() {
+  const view = useSearchParams().get("view") === "results" ? "results" : "progress";
   const dashboard = useQuery({
     queryKey: qk.dashboard.admin(),
     queryFn: () => get("/dashboard/admin", adminDashboardSchema),
   });
 
-  const header = <PageHeader title="Явцын үнэлгээ" />;
+  const header = (
+    <>
+      <PageHeader title="Үнэлгээ" />
+      {/* Pulled up under the title — 2026-10-08, the client: "зайг дээш шах". */}
+      <div className="-mt-2 mb-3">
+        <AssessmentSwitch active={view} hrefs={SWITCH_HREFS} />
+      </div>
+    </>
+  );
 
   if (dashboard.isLoading) {
     return (
@@ -55,6 +83,25 @@ export function AdminAssessmentOverview() {
   const data = dashboard.data!;
   const coverage = data.assessmentCoverage;
 
+  if (view === "results") {
+    return (
+      <>
+        {header}
+        {/* No «Бүлгүүд» heading: the table says what it is, and the space went. */}
+        <section aria-label="Бүлгүүд">
+          {coverage.length === 0 ? (
+            <EmptyState
+              title="Бүлэг бүртгэгдээгүй байна"
+              description="Бүлэг нэмсний дараа үр дүнгийн үнэлгээ энд харагдана."
+            />
+          ) : (
+            <ResultsTable coverage={coverage} />
+          )}
+        </section>
+      </>
+    );
+  }
+
   /*
     ★ One table, and nothing else — client, 2026-09-25: "аль болох хүснэгтэн
     минимал албан харагдуул", then the summary table, the lede, the legend
@@ -64,15 +111,19 @@ export function AdminAssessmentOverview() {
   return (
     <>
       <PageHeader
-        title="Явцын үнэлгээ"
+        title="Үнэлгээ"
         actions={
           <span className="text-body text-muted">
             {data.currentTerm?.name ?? "Улирал тохируулаагүй"}
           </span>
         }
       />
+      {/* Pulled up under the title — 2026-10-08, the client: "зайг дээш шах". */}
+      <div className="-mt-2 mb-3">
+        <AssessmentSwitch active="progress" hrefs={SWITCH_HREFS} />
+      </div>
 
-      <div className="flex flex-col gap-6 lg:gap-8">
+      <div className="flex flex-col gap-4">
         <section aria-labelledby="assessment-groups-heading">
           <SectionHeader id="assessment-groups-heading" title="Бүлгүүдийн харьцуулалт" />
 
@@ -127,5 +178,73 @@ export function AdminAssessmentOverview() {
         </section>
       </div>
     </>
+  );
+}
+
+const BAND_TONE = { MASTERED: "mint", PROGRESSING: "sun", DEVELOPING: "peach" } as const;
+
+/**
+ * One group's А/79 averages — Мэдлэг · Чадвар · Төлөвшил · Нийт, the client's
+ * 2026-10-08 ask. Each row reads its group's summary through the hook the
+ * group's own result page uses, so the two show the same figures and share
+ * the cache. One request a group: a kindergarten-wide endpoint would make it
+ * one in all, and is the backend's to add.
+ */
+function ResultRow({ index, group }: { index: number; group: Coverage }) {
+  const { data } = useA79GroupSummary(group.groupId);
+  const averages = data ? a79GroupAverages(a79ChildRows(data)) : null;
+  const cell = (value: number | undefined) => (value === undefined ? "—" : `${value}%`);
+  const band = averages ? a79Band(averages.total) : null;
+  return (
+    <tr>
+      <Td className="tabular-nums text-muted">{index + 1}</Td>
+      <Td>
+        <Link
+          href={`/groups/${group.groupId}/results`}
+          className="font-medium text-ink hover:text-primary hover:underline"
+        >
+          {group.name}
+        </Link>
+      </Td>
+      <Td numeric>{group.children}</Td>
+      <Td numeric>{cell(averages?.byDomain.Мэдлэг)}</Td>
+      <Td numeric>{cell(averages?.byDomain.Чадвар)}</Td>
+      <Td numeric>{cell(averages?.byDomain.Төлөвшил)}</Td>
+      <Td numeric className="font-semibold text-ink">
+        {cell(averages?.total)}
+      </Td>
+      <Td>{band ? <Badge tone={BAND_TONE[band]}>{A79_BAND_LABEL[band]}</Badge> : null}</Td>
+    </tr>
+  );
+}
+
+/**
+ * The groups' А/79 table, or `A79NotReady` in its place while the endpoint
+ * answers 404 — never sample figures (`a79-group-summary.tsx` says why). The
+ * first group stands for all: the endpoint is there for every group or none.
+ */
+function ResultsTable({ coverage }: { coverage: Coverage[] }) {
+  const { notReady } = useA79GroupSummary(coverage[0]!.groupId);
+  if (notReady) return <A79NotReady />;
+  return (
+    <TableShell caption="Бүлгүүдийн үр дүнгийн үнэлгээ" minWidth="min-w-[640px]">
+      <thead>
+        <tr>
+          <Th className="w-12">№</Th>
+          <Th>Бүлэг</Th>
+          <Th numeric>Хүүхэд</Th>
+          <Th numeric>Мэдлэг</Th>
+          <Th numeric>Чадвар</Th>
+          <Th numeric>Төлөвшил</Th>
+          <Th numeric>Нийт</Th>
+          <Th>Үр дүн</Th>
+        </tr>
+      </thead>
+      <tbody>
+        {coverage.map((group, index) => (
+          <ResultRow key={group.groupId} index={index} group={group} />
+        ))}
+      </tbody>
+    </TableShell>
   );
 }
