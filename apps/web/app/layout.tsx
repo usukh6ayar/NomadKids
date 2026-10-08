@@ -47,6 +47,14 @@ const DESCRIPTION =
   "NomadKids (Бяцхан нүүдэлчид) — цэцэрлэгийн хүүхдийн хөгжлийн цахим бүртгэл. " +
   "Багш, эцэг эх, удирдлагад зориулсан ажиглалт, явцын үнэлгээ, ирц, цэс, тайлан.";
 
+/*
+ * ★ What a shared link says under its title — 2026-10-08, the client. Messenger
+ * and Facebook read `og:description`, not the description above, and the
+ * client wants the card to greet the five roles rather than describe the
+ * product. Google keeps `DESCRIPTION`, which is the text a search matches.
+ */
+const SHARE_DESCRIPTION = "Багш | Эцэг эх | Удирдлага | Нягтлан | Тогооч ТАВТАЙ МОРИЛ";
+
 /**
  * ★ The icons are **not** declared in `metadata.icons`. `app/favicon.ico`,
  * `app/icon.png` and `app/apple-icon.png` are file conventions: Next reads
@@ -81,14 +89,14 @@ export const metadata: Metadata = {
     locale: "mn_MN",
     siteName: `${BRAND} · ${BRAND_LATIN}`,
     title: `${BRAND} — ${BRAND_LATIN}`,
-    description: DESCRIPTION,
+    description: SHARE_DESCRIPTION,
   },
   // No `twitter.images`: with `summary_large_image` and no image of its own,
   // the card falls back to the OpenGraph one, which is the same picture.
   twitter: {
     card: "summary_large_image",
     title: `${BRAND} — ${BRAND_LATIN}`,
-    description: DESCRIPTION,
+    description: SHARE_DESCRIPTION,
   },
   // The iOS home-screen name. Without it Safari uses the <title>, which is the
   // full brand and is truncated to about eleven characters under the icon.

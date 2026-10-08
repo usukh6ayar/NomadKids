@@ -52,9 +52,13 @@ export default function robots(): MetadataRoute.Robots {
           // a credential.
           "/invitation/",
           "/reset-password",
-          // Next's internals and the API proxy — no content, and fetching them
-          // is pure waste.
-          "/_next/",
+          /*
+           * The API proxy — no content. ★ Not `/_next/` — 2026-10-08. That is
+           * where every page's JS and CSS live, and Google renders a page with
+           * them before indexing it. `/` is a client-rendered page, so with
+           * them blocked Googlebot saw an empty shell and had nothing to rank
+           * for "NomadKids".
+           */
           "/api/",
         ],
       },
