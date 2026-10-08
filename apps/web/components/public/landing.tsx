@@ -28,6 +28,7 @@ import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { BRAND_LATIN } from "@/lib/vocabulary";
 import { BrandWordmark } from "@/components/ui/brand-wordmark";
+import { InstallAppCard } from "@/components/public/install-app";
 
 const navigationItems = [
   { label: "Эхлэл", href: "#home" },
@@ -200,6 +201,7 @@ function HeroBrand() {
           Цахимжуулах цогц шийдэл
         </p>
       </div>
+      <InstallAppCard className="mt-6 max-w-[420px]" />
     </div>
   );
 }
