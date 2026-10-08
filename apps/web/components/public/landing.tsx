@@ -8,7 +8,9 @@ import {
   BookOpenCheck,
   Heart,
   LockKeyhole,
+  Mail,
   Menu,
+  Phone,
   Sparkles,
   UserRound,
   Users,
@@ -18,7 +20,7 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, PasswordInput } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
@@ -27,6 +29,9 @@ import { rememberCsrfToken } from "@/lib/api/csrf";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { BRAND_LATIN } from "@/lib/vocabulary";
+import { CONTACT } from "@/lib/contact";
+import { ModalOverlay } from "@/components/ui/modal-overlay";
+import { FacebookIcon } from "@/components/ui/facebook-icon";
 import { BrandWordmark } from "@/components/ui/brand-wordmark";
 import { InstallAppCard } from "@/components/public/install-app";
 
@@ -38,25 +43,49 @@ const navigationItems = [
   { label: "Түгээмэл асуулт", href: "#faq" },
 ] as const;
 
+/**
+ * The menu above the login card — 2026-10-08, the client: "нэвтрэх хэсгийн
+ * дээр 3 зураас … Байгууллагын бүртгэл, Үнийн санал, Түгээмэл асуулт,
+ * Нууцлалын бодлого, Үйлчилгээний нөхцөл, Холбоо барих".
+ *
+ * ★ «Үнийн санал» is `/pricing`; «Холбоо барих» opens a small window with
+ * the phone, e-mail and Facebook (`lib/contact.ts`) — 2026-10-08, the client.
+ */
+const loginMenuItems = [
+  { label: "Байгууллагын бүртгэл", href: "/register" },
+  // The price sheet's own page since 2026-10-08.
+  { label: "Үнийн санал", href: "/pricing" },
+  { label: "Түгээмэл асуулт", href: "/faq" },
+  { label: "Нууцлалын бодлого", href: "/privacy" },
+  { label: "Үйлчилгээний нөхцөл", href: "/terms" },
+  // Opens `ContactDialog` rather than going anywhere.
+  { label: "Холбоо барих", href: null },
+] as const;
+
+/**
+ * ★ In the preschool curriculum's own words (СӨБ: суралцагч, цахим хувийн
+ * хавтас, явцын ба үр дүнгийн үнэлгээ, сургалтын 7 чиглэл, А/79 шалгуур) and
+ * only what the system does — 2026-10-08, the client.
+ */
 const featureItems = [
   {
     icon: BookOpenCheck,
-    title: "Өдөр тутмын мэдээлэл",
-    copy: "Хүүхдийн ирц, хоол, үйл ажиллагаа, суралцах явцыг эцэг эхтэй нэг дороос хуваалцана.",
+    title: "Хөгжлийн явцын мэдээлэл",
+    copy: "Суралцагчийн ажиглалт, ярилцлага, бүтээл, ирц, хоолыг цахим хувийн хавтсаар эцэг эхтэй хуваалцана.",
     tone: "bg-[#eaf6ff]",
     iconTone: "bg-[#d7efff] text-[#1686f5]",
   },
   {
     icon: Zap,
-    title: "Багшийн хурдан бүртгэл",
-    copy: "Өдөр тутмын ажлыг цөөн даралтаар хөтөлж, багшийн цагийг хүүхдэд зориулах боломж бүрдүүлнэ.",
+    title: "Хялбар явцын үнэлгээ",
+    copy: "Багш сургалтын 7 чиглэлээр тэмдэглэлээ хөтөлж, А/79 шалгууртай цөөн даралтаар холбоно.",
     tone: "bg-[#eafaf2]",
     iconTone: "bg-[#d8f5e6] text-[#26ad70]",
   },
   {
     icon: BarChart3,
-    title: "Цэцэрлэгийн удирдлага",
-    copy: "Бүх үйл ажиллагаа, тайлан, төлбөр, мэдээллийг нэгтгэн бодит өгөгдөлд суурилан удирдана.",
+    title: "Үр дүнд суурилсан удирдлага",
+    copy: "Явцын ба үр дүнгийн үнэлгээ, ирц, санхүүжилтийн нэгдсэн тайлангаар цэцэрлэгээ удирдана.",
     tone: "bg-[#fff3e9]",
     iconTone: "bg-[#ffe5d0] text-[#f37d35]",
   },
@@ -210,18 +239,33 @@ function SectionHeading({
   eyebrow,
   title,
   copy,
+  compact = false,
 }: {
   eyebrow: string;
   title: string;
   copy: string;
+  /** Smaller type — the «Яагаад» section since 2026-10-08 ("жижиг бич"). */
+  compact?: boolean;
 }) {
   return (
     <div className="mx-auto max-w-3xl text-center">
       <p className="text-caption font-bold uppercase text-[#1686f5]">{eyebrow}</p>
-      <h2 className="mt-2 text-heading font-extrabold leading-tight text-[#102f5d] sm:text-display">
+      <h2
+        className={
+          compact
+            ? "mt-2 text-lead font-extrabold leading-tight text-[#102f5d] sm:text-title"
+            : "mt-2 text-heading font-extrabold leading-tight text-[#102f5d] sm:text-display"
+        }
+      >
         {title}
       </h2>
-      <p className="mx-auto mt-3 max-w-2xl text-body leading-6 text-slate-500 sm:text-lead">
+      <p
+        className={
+          compact
+            ? "mx-auto mt-2 max-w-2xl text-caption leading-5 text-slate-500 sm:text-body"
+            : "mx-auto mt-3 max-w-2xl text-body leading-6 text-slate-500 sm:text-lead"
+        }
+      >
         {copy}
       </p>
     </div>
@@ -452,12 +496,16 @@ export function PublicLanding() {
             ))}
           </nav>
 
-          <a
-            href="#login-card"
-            className="hidden min-h-11 items-center rounded-control bg-[#4585e6] px-6 text-body font-bold text-white shadow-sm transition-colors hover:bg-[#3a78d8] lg:inline-flex"
-          >
-            Нэвтрэх
-          </a>
+          {/* «Нэвтрэх», then ☰ in the corner — 2026-10-08. */}
+          <div className="hidden items-center gap-2 lg:flex">
+            <a
+              href="#login-card"
+              className="hidden min-h-11 items-center rounded-control bg-[#4585e6] px-6 text-body font-bold text-white shadow-sm transition-colors hover:bg-[#3a78d8] lg:inline-flex"
+            >
+              Нэвтрэх
+            </a>
+            <LoginMenu />
+          </div>
 
           <button
             type="button"
@@ -501,23 +549,26 @@ export function PublicLanding() {
       <section
         id="home"
         data-testid="login-hero"
-        className="relative isolate min-h-dvh bg-[#f1f9ff] bg-[url('/background/login-mobile.png')] bg-cover bg-top bg-no-repeat px-5 pb-[45vw] pt-8 sm:px-8 lg:min-h-[calc(100dvh-70px)] lg:bg-[url('/background/login-desktop.png')] lg:px-[7vw] lg:pb-8 lg:pt-10"
+        className="relative isolate min-h-dvh bg-[#f1f9ff] bg-[url('/background/login-mobile.png')] bg-cover bg-top bg-no-repeat px-5 pb-[45vw] pt-20 sm:px-8 lg:min-h-[calc(100dvh-70px)] lg:bg-[url('/background/login-desktop.png')] lg:px-[7vw] lg:pb-8 lg:pt-20"
       >
+        {/*
+          ☰ in the screen's top-right corner — 2026-10-08, the client: "бүр
+          баруун дээд буланд". On a phone the page header is hidden, so it sits
+          here; on a desktop it is the header's last item instead.
+        */}
+        <div className="absolute right-2 top-2 z-20 lg:hidden">
+          <LoginMenu />
+        </div>
+        {/* «Боловсролын яамны системтэй холбогдсон» — 2026-10-08, the client. */}
+        <div className="absolute left-3 top-3 z-20">
+          <EsisBadge />
+        </div>
         <div className="relative mx-auto grid w-full max-w-[1320px] items-start gap-y-7 lg:grid-cols-[minmax(380px,420px)_minmax(0,1fr)] lg:gap-x-[7vw]">
           <div className="order-1 flex justify-center lg:order-2 lg:pt-4">
             <HeroBrand />
           </div>
 
           <div className="order-2 mx-auto w-full max-w-[400px] lg:order-1 lg:mx-0">
-            {/* Above the card's right edge, as drawn — 2026-10-02. */}
-            <div className="flex justify-end">
-              <Link
-                href="/register"
-                className="inline-flex min-h-11 items-center text-body font-bold text-[#3f86ef] hover:underline"
-              >
-                Байгууллагын бүртгэл
-              </Link>
-            </div>
             <LoginCard />
           </div>
         </div>
@@ -534,12 +585,17 @@ export function PublicLanding() {
             const Icon = item.icon;
             return (
               <article key={item.title} className={`rounded-control p-6 ${item.tone}`}>
-                <span
-                  className={`grid size-12 place-items-center rounded-control ${item.iconTone}`}
-                >
-                  <Icon className="size-6" aria-hidden="true" />
-                </span>
-                <h3 className="mt-5 text-lead font-extrabold text-[#173e70]">{item.title}</h3>
+                {/* The icon on the title's row — 2026-10-08, the client. */}
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`grid size-12 shrink-0 place-items-center rounded-control ${item.iconTone}`}
+                  >
+                    <Icon className="size-6" aria-hidden="true" />
+                  </span>
+                  <h3 className="text-lead font-extrabold leading-tight text-[#173e70]">
+                    {item.title}
+                  </h3>
+                </div>
                 <p className="mt-2 text-body leading-6 text-slate-600">{item.copy}</p>
               </article>
             );
@@ -589,8 +645,10 @@ export function PublicLanding() {
       <section id="benefits" className="bg-[#fbfdff] px-5 py-16 sm:px-8 sm:py-20">
         <SectionHeading
           eyebrow={`Яагаад ${BRAND_LATIN}`}
-          title="Хүүхэд бүрийн гэрэлт ирээдүйн төлөө"
-          copy="Өдөр тутмын жижиг алхмууд том үр дүнд хүргэнэ."
+          // The client's wording, small — 2026-10-08.
+          title="Хүүхдийн хөгжилд хүн бүрийн оролцоо чухал"
+          copy="Хүүхэд, багшид ээлтэй, аюулгүй цахим сувагт тавтай морил"
+          compact
         />
         <div className="mx-auto mt-9 grid max-w-[1050px] gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {benefitItems.map((item) => {
@@ -675,14 +733,291 @@ export function PublicLanding() {
             <Link href="/faq">Түгээмэл асуулт</Link>
             <Link href="/privacy">Нууцлалын бодлого</Link>
             <Link href="/terms">Үйлчилгээний нөхцөл</Link>
-            <a href="mailto:Nomadkidsmn@gmail.com">Холбоо барих</a>
           </nav>
         </div>
+        {/* Холбоо барих — 2026-10-08, the client. */}
+        <address className="mx-auto mt-6 flex max-w-[1180px] flex-wrap items-center justify-center gap-x-6 gap-y-2 text-caption not-italic text-slate-600 md:justify-start">
+          <span className="font-semibold text-[#173e70]">Холбоо барих</span>
+          <a
+            href={CONTACT.phoneHref}
+            className="inline-flex min-h-10 items-center gap-1.5 hover:text-[#1686f5]"
+          >
+            <Phone className="size-4" aria-hidden /> {CONTACT.phone}
+          </a>
+          <a
+            href={CONTACT.emailHref}
+            className="inline-flex min-h-10 items-center gap-1.5 hover:text-[#1686f5]"
+          >
+            <Mail className="size-4" aria-hidden /> {CONTACT.email}
+          </a>
+          <a
+            href={CONTACT.facebook}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-10 items-center gap-1.5 hover:text-[#1686f5]"
+          >
+            <FacebookIcon className="size-4" /> Facebook
+          </a>
+        </address>
         <div className="mx-auto mt-7 flex max-w-[1180px] flex-col items-center justify-between gap-2 border-t border-[#edf2f7] pt-5 text-caption text-slate-400 sm:flex-row">
           <span>© 2026 {BRAND_LATIN}. Бүх эрх хуулиар хамгаалагдсан.</span>
           <span>Хүүхэд бүрийн гэрэлт ирээдүйн төлөө.</span>
         </div>
       </footer>
     </main>
+  );
+}
+
+/**
+ * ☰ above the login card, opening `loginMenuItems`. On every width: the
+ * page's own header is desktop-only, so on a phone this is the one menu.
+ * Closes on a choice, on Escape and on a press outside it.
+ */
+function LoginMenu() {
+  const [open, setOpen] = useState(false);
+  const [contact, setContact] = useState(false);
+  const wrapper = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    const onPress = (event: PointerEvent) => {
+      if (!wrapper.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPress);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPress);
+    };
+  }, [open]);
+
+  return (
+    <div ref={wrapper} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-label={open ? "Цэс хаах" : "Цэс нээх"}
+        aria-expanded={open}
+        aria-controls="login-menu"
+        className="grid size-11 place-items-center rounded-control text-[#3f86ef] transition-colors hover:bg-white/70"
+      >
+        {open ? (
+          <X className="size-6" aria-hidden="true" />
+        ) : (
+          <Menu className="size-6" aria-hidden="true" />
+        )}
+      </button>
+      {open ? (
+        <nav
+          id="login-menu"
+          aria-label="Нэвтрэх хэсгийн цэс"
+          className="absolute right-0 top-12 z-20 flex w-60 flex-col rounded-control border border-[#e5edf7] bg-white p-1.5 text-body font-semibold text-[#173e70] shadow-lg"
+        >
+          {loginMenuItems.map(({ label, href }) =>
+            href === null ? (
+              <button
+                key={label}
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  setContact(true);
+                }}
+                className="rounded-control px-3.5 py-2.5 text-left hover:bg-[#edf6ff] hover:text-[#1686f5]"
+              >
+                {label}
+              </button>
+            ) : href.startsWith("/") ? (
+              <Link
+                key={label}
+                href={href}
+                onClick={() => setOpen(false)}
+                className="rounded-control px-3.5 py-2.5 hover:bg-[#edf6ff] hover:text-[#1686f5]"
+              >
+                {label}
+              </Link>
+            ) : (
+              <a
+                key={label}
+                href={href}
+                onClick={() => setOpen(false)}
+                className="rounded-control px-3.5 py-2.5 hover:bg-[#edf6ff] hover:text-[#1686f5]"
+              >
+                {label}
+              </a>
+            ),
+          )}
+        </nav>
+      ) : null}
+      {contact ? <ContactDialog onClose={() => setContact(false)} /> : null}
+    </div>
+  );
+}
+
+/**
+ * Холбоо барих in a small window — 2026-10-08, the client: "3 зураасны холбоо
+ * барих дээр дарахаар жижиг цонх дээр холбоо барих хэсгүүд гарч болох уу".
+ * Escape, × and a press on the backdrop close it (`ModalOverlay`).
+ */
+function ContactDialog({ onClose }: { onClose: () => void }) {
+  const rows = [
+    {
+      icon: <Phone className="size-5" aria-hidden />,
+      label: "Утас",
+      value: CONTACT.phone,
+      href: CONTACT.phoneHref,
+    },
+    {
+      icon: <Mail className="size-5" aria-hidden />,
+      label: "Мэйл",
+      value: CONTACT.email,
+      href: CONTACT.emailHref,
+    },
+    {
+      icon: <FacebookIcon className="size-5" />,
+      label: "Facebook",
+      value: "Facebook хуудас",
+      href: CONTACT.facebook,
+      external: true,
+    },
+  ];
+  return (
+    <ModalOverlay label="Холбоо барих" onClose={onClose}>
+      <div className="relative w-full max-w-[340px] rounded-card bg-white p-5 text-left shadow-xl">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Хаах"
+          className="absolute right-2 top-2 grid size-10 place-items-center rounded-pill text-slate-500 hover:bg-slate-100 hover:text-[#173e70]"
+        >
+          <X className="size-5" aria-hidden />
+        </button>
+        <h2 className="text-lead font-extrabold text-[#102f5d]">Холбоо барих</h2>
+        <ul className="mt-3 flex flex-col gap-1">
+          {rows.map((row) => (
+            <li key={row.label}>
+              <a
+                href={row.href}
+                {...(row.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                className="flex min-h-12 items-center gap-3 rounded-control px-2 hover:bg-[#edf6ff]"
+              >
+                <span className="grid size-9 shrink-0 place-items-center rounded-pill bg-[#edf6ff] text-[#3f86ef]">
+                  {row.icon}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-caption text-slate-500">{row.label}</span>
+                  <span className="block truncate text-body font-semibold text-[#173e70]">
+                    {row.value}
+                  </span>
+                </span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </ModalOverlay>
+  );
+}
+
+/**
+ * ESIS-тэй холбогдсон — the badge in the hero's top-left corner, and how a
+ * kindergarten asks to be connected — 2026-10-08, the client.
+ *
+ * ★ The steps are how the connection really works (`docs/ESIS_COMPLIANCE.md`):
+ * one platform-wide ESIS permission serves every kindergarten, and the
+ * platform team links each to its ESIS institution number and runs a test
+ * pull before groups and children are pulled from ESIS. Nothing a director
+ * can switch on alone, so the window ends in the phone and e-mail.
+ */
+function EsisBadge() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      {/*
+        «ESIS-тэй холбогдох», «Боловсролын яам» barely there above it, and no
+        icon — 2026-10-08, the client.
+      */}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex flex-col rounded-control bg-white/80 px-3 py-1.5 text-left leading-tight shadow-sm ring-1 ring-[#dbe8fb] backdrop-blur hover:bg-white"
+      >
+        <span className="text-compact text-slate-400">Боловсролын яам</span>
+        <span className="text-caption font-bold text-[#1d4fa8]">ESIS-тэй холбогдох</span>
+      </button>
+      {open ? <EsisDialog onClose={() => setOpen(false)} /> : null}
+    </>
+  );
+}
+
+const ESIS_STEPS = [
+  {
+    title: "Байгууллагаа бүртгүүлнэ",
+    text: "«Байгууллагын бүртгэл»-ээр гэрээний хүсэлт илгээнэ.",
+  },
+  {
+    title: "ESIS-ийн дугаараа бэлдэнэ",
+    text: "ESIS дахь цэцэрлэгийнхээ байгууллагын дугаарыг тодруулна.",
+  },
+  {
+    title: "Холболтын хүсэлт гаргана",
+    text: "Доорх утас эсвэл мэйлээр холбогдож, дугаараа илгээнэ.",
+  },
+  {
+    title: "Бид холбоод шалгана",
+    text: "Туршилтын татан авалт хийсний дараа бүлэг, суралцагчаа ESIS-ээс татна.",
+  },
+] as const;
+
+function EsisDialog({ onClose }: { onClose: () => void }) {
+  return (
+    <ModalOverlay label="ESIS-тэй холбогдох" onClose={onClose}>
+      <div className="relative w-full max-w-[380px] rounded-card bg-white p-5 text-left shadow-xl">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Хаах"
+          className="absolute right-2 top-2 grid size-10 place-items-center rounded-pill text-slate-500 hover:bg-slate-100 hover:text-[#173e70]"
+        >
+          <X className="size-5" aria-hidden />
+        </button>
+        <h2 className="pr-8 text-lead font-extrabold leading-tight text-[#102f5d]">
+          ESIS-тэй холбогдох
+        </h2>
+        <p className="mt-2 text-caption leading-5 text-slate-600">
+          {BRAND_LATIN} нь Боловсролын яамны ESIS системтэй холбогдсон. Холболт хийлгэвэл
+          цэцэрлэгийн бүлэг, суралцагчийн мэдээллийг ESIS-ээс татна.
+        </p>
+        <ol className="mt-3 flex flex-col gap-2">
+          {ESIS_STEPS.map((step, index) => (
+            <li key={step.title} className="flex gap-2.5">
+              <span className="grid size-6 shrink-0 place-items-center rounded-pill bg-[#3f86ef] text-compact font-bold text-white">
+                {index + 1}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-body font-semibold text-[#173e70]">{step.title}</span>
+                <span className="block text-caption text-slate-500">{step.text}</span>
+              </span>
+            </li>
+          ))}
+        </ol>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <a
+            href={CONTACT.phoneHref}
+            className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-pill bg-[#3f86ef] px-3 text-body font-bold text-white hover:bg-[#2f76df]"
+          >
+            <Phone className="size-4" aria-hidden /> {CONTACT.phone}
+          </a>
+          <a
+            href={`${CONTACT.emailHref}?subject=${encodeURIComponent("ESIS холболтын хүсэлт")}`}
+            className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-pill bg-[#edf6ff] px-3 text-body font-bold text-[#1d4fa8] hover:bg-[#e0eefe]"
+          >
+            <Mail className="size-4" aria-hidden /> Мэйл бичих
+          </a>
+        </div>
+      </div>
+    </ModalOverlay>
   );
 }

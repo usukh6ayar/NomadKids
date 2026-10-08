@@ -21,7 +21,11 @@ function asUserAgent(ua: string) {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  window.localStorage.clear();
 });
+
+const DESKTOP =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/129.0 Safari/537.36";
 
 describe("install card", () => {
   it("tells platforms apart, including an iPad that calls itself a Mac", () => {
@@ -70,6 +74,52 @@ describe("install card", () => {
     );
     render(<InstallAppCard />);
 
+    await act(async () => {});
+    expect(screen.queryByRole("button", { name: /утсандаа суулгах/ })).toBeNull();
+  });
+
+  /*
+    ★ 2026-10-08, the client: a phone only, the first visit only, × to put it
+    away, and never once installed (the test above).
+  */
+  it("is not offered on a computer", async () => {
+    asUserAgent(DESKTOP);
+    render(<InstallAppCard />);
+
+    await act(async () => {});
+    expect(screen.queryByRole("button", { name: /утсандаа суулгах/ })).toBeNull();
+  });
+
+  it("goes for good when × is pressed", async () => {
+    asUserAgent(IPHONE);
+    const first = render(<InstallAppCard />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Суулгах санал хаах" }));
+    expect(screen.queryByRole("button", { name: /утсандаа суулгах/ })).toBeNull();
+
+    first.unmount();
+    render(<InstallAppCard />);
+    await act(async () => {});
+    expect(screen.queryByRole("button", { name: /утсандаа суулгах/ })).toBeNull();
+  });
+
+  it("shows on the first visit only", async () => {
+    asUserAgent(IPHONE);
+    const first = render(<InstallAppCard />);
+    expect(await screen.findByRole("button", { name: /утсандаа суулгах/ })).toBeInTheDocument();
+    first.unmount();
+
+    // The same visit: still offered.
+    const again = render(<InstallAppCard />);
+    expect(await screen.findByRole("button", { name: /утсандаа суулгах/ })).toBeInTheDocument();
+    again.unmount();
+
+    // A later visit: not.
+    window.localStorage.setItem(
+      "nomadkids:install-card:first-seen",
+      String(Date.now() - 2 * 60 * 60_000),
+    );
+    render(<InstallAppCard />);
     await act(async () => {});
     expect(screen.queryByRole("button", { name: /утсандаа суулгах/ })).toBeNull();
   });
