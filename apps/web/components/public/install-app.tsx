@@ -2,10 +2,10 @@
 
 import {
   Apple,
-  ChevronDown,
   ChevronRight,
   Download,
   EllipsisVertical,
+  LockKeyhole,
   Share,
   Smartphone,
   SquarePlus,
@@ -13,9 +13,8 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { useState, type ReactNode } from "react";
-import { Button } from "@/components/ui/button";
 import { ModalOverlay } from "@/components/ui/modal-overlay";
-import { useInstallApp, type InstallPlatform } from "@/lib/install-app";
+import { useInstallApp } from "@/lib/install-app";
 import { BRAND_LATIN } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
 
@@ -60,6 +59,73 @@ export function InstallAppCard({ className }: { className?: string }) {
   );
 }
 
+type Guide = "ios" | "android";
+
+interface Step {
+  text: ReactNode;
+  /** A small likeness of what to tap, so the step can be matched to the screen. */
+  visual: ReactNode;
+}
+
+const STEPS: Record<Guide, Step[]> = {
+  ios: [
+    { text: <>Safari-д сайтаа нээнэ</>, visual: <AddressBar /> },
+    {
+      text: <>Доод талын «Хуваалцах» товчийг дарна</>,
+      visual: (
+        <Target>
+          <Share className="size-5 text-[#2f7cf6]" aria-hidden />
+        </Target>
+      ),
+    },
+    {
+      text: <>Энэ мөрийг сонгоно</>,
+      visual: (
+        <Target wide>
+          <SquarePlus className="size-4" aria-hidden />
+          <span>Add to Home Screen</span>
+        </Target>
+      ),
+    },
+    {
+      text: <>Баруун дээд «Add» дарна</>,
+      visual: (
+        <Target>
+          <span className="font-bold text-[#2f7cf6]">Add</span>
+        </Target>
+      ),
+    },
+  ],
+  android: [
+    { text: <>Chrome-д сайтаа нээнэ</>, visual: <AddressBar /> },
+    {
+      text: <>Баруун дээд буланд цэсийг дарна</>,
+      visual: (
+        <Target>
+          <EllipsisVertical className="size-5 text-ink" aria-hidden />
+        </Target>
+      ),
+    },
+    {
+      text: <>Энэ мөрийг сонгоно</>,
+      visual: (
+        <Target wide>
+          <Download className="size-4" aria-hidden />
+          <span>Install app</span>
+        </Target>
+      ),
+    },
+    {
+      text: <>«Install» дарна</>,
+      visual: (
+        <span className="rounded-pill bg-[#1a5fd6] px-4 py-1.5 text-compact font-bold text-white ring-2 ring-[#ef4444] ring-offset-2">
+          Install
+        </span>
+      ),
+    },
+  ],
+};
+
 function InstallAppDialog({
   install,
   onClose,
@@ -67,10 +133,8 @@ function InstallAppDialog({
   install: ReturnType<typeof useInstallApp>;
   onClose: () => void;
 }) {
-  // The phone in hand opens first; a desktop visitor chooses.
-  const [expanded, setExpanded] = useState<InstallPlatform | null>(
-    install.platform === "other" ? null : install.platform,
-  );
+  // The phone in hand first; a desktop visitor starts on iPhone and can switch.
+  const [guide, setGuide] = useState<Guide>(install.platform === "android" ? "android" : "ios");
   const [installing, setInstalling] = useState(false);
 
   async function installNow() {
@@ -86,18 +150,18 @@ function InstallAppDialog({
     <ModalOverlay label={`${BRAND_LATIN}-ийг утсандаа суулгах`} onClose={onClose}>
       {/* `text-left`: the card sits inside the hero, whose `text-center` would
           otherwise reach the steps through the overlay. */}
-      <div className="relative w-full max-w-[420px] rounded-card bg-white p-6 text-left shadow-xl">
+      <div className="relative w-full max-w-[440px] overflow-hidden rounded-card bg-white text-left shadow-xl">
         <button
           type="button"
           onClick={onClose}
           aria-label="Хаах"
-          className="absolute right-3 top-3 grid size-11 place-items-center rounded-pill text-ink hover:bg-slate-100"
+          className="absolute right-3 top-3 z-10 grid size-11 place-items-center rounded-pill text-ink hover:bg-white/70"
         >
           <X className="size-6" aria-hidden />
         </button>
 
-        <div className="flex flex-col items-center text-center">
-          <span className="grid size-24 place-items-center overflow-hidden rounded-card bg-[#e7f1fd] shadow-sm">
+        <div className="flex flex-col items-center bg-gradient-to-b from-[#e7f1fd] to-white px-6 pb-4 pt-7 text-center">
+          <span className="grid size-24 place-items-center overflow-hidden rounded-card bg-white shadow-lg ring-1 ring-white">
             <Image
               src="/icons/pwa-192.png"
               alt=""
@@ -111,125 +175,141 @@ function InstallAppDialog({
           <h2 className="mt-4 text-heading font-extrabold leading-tight text-[#102f5d]">
             {BRAND_LATIN}-ийг утсандаа суулгах
           </h2>
-          <p className="mt-2 text-body leading-6 text-slate-500">
-            Сайтаа утасныхаа үндсэн дэлгэцэд байрлуулаад нэг товшилтоор нэвтэрч байгаарай.
+          <p className="mt-1.5 text-body leading-6 text-slate-500">
+            Утасныхаа үндсэн дэлгэцэд байрлуулаад нэг товшилтоор нэвтэрч байгаарай.
           </p>
         </div>
 
-        {install.canPrompt ? (
-          <Button block className="mt-5" onClick={installNow} disabled={installing}>
-            <Download className="size-5" aria-hidden />
-            Одоо суулгах
-          </Button>
-        ) : null}
+        <div className="px-5 pb-6">
+          <div
+            role="tablist"
+            aria-label="Утасны төрөл"
+            className="grid grid-cols-2 gap-1 rounded-pill bg-slate-100 p-1"
+          >
+            <GuideTab
+              selected={guide === "ios"}
+              onSelect={() => setGuide("ios")}
+              icon={<Apple className="size-5" aria-hidden />}
+              label="iPhone"
+            />
+            <GuideTab
+              selected={guide === "android"}
+              onSelect={() => setGuide("android")}
+              icon={
+                <Image
+                  src="/icons/brand-android.png"
+                  alt=""
+                  width={20}
+                  height={20}
+                  unoptimized
+                  className="size-5"
+                />
+              }
+              label="Android"
+            />
+          </div>
 
-        <div className="mt-5 space-y-3">
-          <PlatformGuide
-            id="ios"
-            icon={<Apple className="size-7" aria-hidden />}
-            title="iPhone (iOS)"
-            browser="Safari"
-            open={expanded === "ios"}
-            onToggle={() => setExpanded(expanded === "ios" ? null : "ios")}
-            steps={[
-              <>Safari-д nomadkids.mn сайтыг нээнэ</>,
-              <>
-                Доод талын <Share className="inline size-4 align-[-2px]" aria-label="Хуваалцах" />{" "}
-                «Хуваалцах» товчийг дарна
-              </>,
-              <>
-                <SquarePlus className="inline size-4 align-[-2px]" aria-hidden /> «Add to Home
-                Screen» сонгоно
-              </>,
-              <>«Add» дарна — үндсэн дэлгэц дээр {BRAND_LATIN} гарна</>,
-            ]}
-          />
-          <PlatformGuide
-            id="android"
-            icon={<AndroidMark className="size-7" />}
-            title="Android"
-            browser="Chrome"
-            open={expanded === "android"}
-            onToggle={() => setExpanded(expanded === "android" ? null : "android")}
-            steps={[
-              <>Chrome-д nomadkids.mn сайтыг нээнэ</>,
-              <>
-                Баруун дээд буланд{" "}
-                <EllipsisVertical className="inline size-4 align-[-2px]" aria-label="Цэс" /> цэсийг
-                дарна
-              </>,
-              <>«Install app» эсвэл «Add to Home screen» сонгоно</>,
-              <>«Install» дарна — үндсэн дэлгэц дээр {BRAND_LATIN} гарна</>,
-            ]}
-          />
+          {guide === "android" && install.canPrompt ? (
+            <button
+              type="button"
+              onClick={installNow}
+              disabled={installing}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-pill bg-gradient-to-r from-[#1f45a6] to-[#7a4fe0] px-5 py-3.5 text-lead font-bold text-white shadow-md transition hover:brightness-110 disabled:opacity-60"
+            >
+              <Download className="size-5" aria-hidden />
+              Одоо суулгах
+            </button>
+          ) : null}
+
+          <ol
+            role="tabpanel"
+            aria-label={guide === "ios" ? "iPhone" : "Android"}
+            className="mt-4 space-y-2.5"
+          >
+            {STEPS[guide].map((step, index) => (
+              <li
+                key={index}
+                className="flex items-center gap-3 rounded-row bg-slate-50 px-3 py-3 ring-1 ring-slate-100"
+              >
+                <span className="grid size-8 shrink-0 place-items-center rounded-pill bg-gradient-to-b from-[#3f86ef] to-[#5a58c4] text-compact font-extrabold text-white shadow-sm">
+                  {index + 1}
+                </span>
+                <span className="min-w-0 flex-1 text-body font-semibold leading-snug text-[#102f5d]">
+                  {step.text}
+                </span>
+                <span className="flex shrink-0 justify-end">{step.visual}</span>
+              </li>
+            ))}
+          </ol>
+
+          <div className="mt-3 flex items-center gap-3 rounded-row bg-[#ecfdf3] px-3 py-3 ring-1 ring-[#c9f2d8]">
+            <span className="size-11 shrink-0 overflow-hidden rounded-control shadow-sm">
+              <Image
+                src="/icons/pwa-192.png"
+                alt=""
+                width={44}
+                height={44}
+                unoptimized
+                className="size-full"
+              />
+            </span>
+            <span className="text-body font-semibold leading-snug text-[#14532d]">
+              Болоо! Үндсэн дэлгэц дээр {BRAND_LATIN} гарч ирнэ.
+            </span>
+          </div>
         </div>
       </div>
     </ModalOverlay>
   );
 }
 
-function PlatformGuide({
-  id,
+function GuideTab({
+  selected,
+  onSelect,
   icon,
-  title,
-  browser,
-  open,
-  onToggle,
-  steps,
+  label,
 }: {
-  id: InstallPlatform;
+  selected: boolean;
+  onSelect: () => void;
   icon: ReactNode;
-  title: string;
-  browser: string;
-  open: boolean;
-  onToggle: () => void;
-  steps: ReactNode[];
+  label: string;
 }) {
-  const panelId = `install-steps-${id}`;
   return (
-    <div className="rounded-row bg-slate-50 ring-1 ring-slate-100">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        aria-controls={panelId}
-        className="flex min-h-16 w-full items-center gap-4 px-4 py-3 text-left"
-      >
-        <span className={cn("shrink-0", id === "android" ? "text-[#3ddc84]" : "text-ink")}>
-          {icon}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-title font-bold text-[#102f5d]">{title}</span>
-          <span className="block text-compact text-[#3f86ef]">
-            {open ? `${browser}-аар суулгах заавар` : "Суулгах заавар харах"}
-          </span>
-        </span>
-        <ChevronDown
-          className={cn("size-5 shrink-0 text-[#102f5d] transition", open && "rotate-180")}
-          aria-hidden
-        />
-      </button>
-      {open ? (
-        <ol id={panelId} className="space-y-2.5 px-4 pb-4">
-          {steps.map((step, index) => (
-            <li key={index} className="flex items-start gap-3 text-body text-ink">
-              <span className="grid size-6 shrink-0 place-items-center rounded-pill bg-[#3f86ef] text-caption font-bold text-white">
-                {index + 1}
-              </span>
-              <span className="pt-0.5">{step}</span>
-            </li>
-          ))}
-        </ol>
-      ) : null}
-    </div>
+    <button
+      type="button"
+      role="tab"
+      aria-selected={selected}
+      onClick={onSelect}
+      className={cn(
+        "flex min-h-11 items-center justify-center gap-2 rounded-pill text-body font-bold transition",
+        selected ? "bg-white text-[#102f5d] shadow-sm" : "text-slate-500 hover:text-[#102f5d]",
+      )}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }
 
-/** The Android robot's head — lucide carries no brand marks. */
-function AndroidMark({ className }: { className?: string }) {
+/** What to look for, ringed in red — as the client's drawing does. */
+function Target({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
-      <path d="M17.6 9.48l1.84-3.18a.38.38 0 0 0-.66-.38l-1.86 3.22a11.4 11.4 0 0 0-9.84 0L5.22 5.92a.38.38 0 0 0-.66.38L6.4 9.48A10.8 10.8 0 0 0 1 18h22a10.8 10.8 0 0 0-5.4-8.52zM7 15.25a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5zm10 0a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5z" />
-    </svg>
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-check bg-white text-caption font-semibold text-ink shadow-sm ring-2 ring-[#ef4444]",
+        wide ? "px-2.5 py-1.5" : "size-9 justify-center",
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function AddressBar() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-pill bg-white px-2.5 py-1.5 text-caption font-semibold text-ink shadow-sm ring-1 ring-slate-200">
+      <LockKeyhole className="size-3" aria-hidden />
+      nomadkids.mn
+    </span>
   );
 }

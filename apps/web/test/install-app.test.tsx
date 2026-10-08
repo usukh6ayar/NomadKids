@@ -37,11 +37,8 @@ describe("install card", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: /утсандаа суулгах/ }));
 
-    expect(screen.getByRole("button", { name: /iPhone \(iOS\)/ })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
-    expect(screen.getByText(/Add to Home/)).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /iPhone/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Add to Home Screen")).toBeInTheDocument();
     // No install API on iOS, so no button pretending there is one.
     expect(screen.queryByRole("button", { name: "Одоо суулгах" })).toBeNull();
   });
