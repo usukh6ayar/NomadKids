@@ -9,6 +9,7 @@ import {
   canContributeMediaForChild,
   canRecordForChild,
   canViewChildFinance,
+  isGuardianOf,
   type ChildAccessFacts,
 } from "./child-access";
 
@@ -75,6 +76,23 @@ export class ChildAccessService {
         "Энэ хүүхдийн мэдээллийг үзэхийн тулд энэ хичээлийн жилийн хандалтын төлбөрийг төлнө үү.",
       );
     }
+  }
+
+  /**
+   * Throws 404 unless the actor is this child's own guardian — and 402 if the
+   * portal fee is due, exactly as reading the child would.
+   *
+   * ★ Narrower than `assertCanAccess`, which also admits the child's teacher
+   * and the kindergarten's admin. Some things only a family may do on a
+   * child's behalf — writing to the administration as that child's parent
+   * (`FeedbackService.create`) is one — and a person who is PARENT somewhere
+   * and ADMIN here must not pass by holding the wrong role in the right place.
+   */
+  async assertIsGuardian(actor: Actor, childId: string): Promise<ChildAccessFacts> {
+    const facts = await this.repo.loadChildAccessFacts(actor, childId);
+    if (!facts || !isGuardianOf(actor, facts)) throw new NotFoundException();
+    await this.assertFeePaid(actor, facts);
+    return facts;
   }
 
   /**

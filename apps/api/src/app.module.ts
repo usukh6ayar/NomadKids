@@ -7,6 +7,7 @@ import { GrowthModule } from "./growth/growth.module";
 import { HealthRecordsModule } from "./health-records/health-records.module";
 import { StaffModule } from "./staff/staff.module";
 import { IncidentsModule } from "./incidents/incidents.module";
+import { FeedbackModule } from "./feedback/feedback.module";
 import { KitchenModule } from "./kitchen/kitchen.module";
 import { ArtworkModule } from "./artwork/artwork.module";
 import { DocumentsModule } from "./documents/documents.module";
@@ -77,6 +78,7 @@ import { UsersModule } from "./users/users.module";
     StaffModule,
     MethodUnionsModule,
     IncidentsModule,
+    FeedbackModule,
     ArtworkModule,
     DocumentsModule,
     ConsentModule,
