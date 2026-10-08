@@ -210,7 +210,7 @@ describe("navigation icons", () => {
       "Багш, ажилтан",
       "Мэргэшлийн зэрэг",
       "Байгууллага",
-      "Явцын үнэлгээ",
+      "Үнэлгээ",
       "Ирц",
       "Хоолны цэс",
       "Судалгаа",
@@ -429,7 +429,7 @@ describe("role-based navigation", () => {
       "Суралцагч",
       "Ирц",
       "Хоолны цэс",
-      "Явцын үнэлгээ",
+      "Үнэлгээ",
       "Судалгаа",
       "Тайлан",
       "Мэдээ",
@@ -537,7 +537,7 @@ describe("role-based navigation", () => {
     const nav = await sidebar();
 
     // Хүүхдийн хөгжил ба үнэлгээ
-    expect(within(nav).getByRole("link", { name: "Явцын үнэлгээ" })).toHaveAttribute(
+    expect(within(nav).getByRole("link", { name: "Үнэлгээ" })).toHaveAttribute(
       "href",
       "/admin/assessment",
     );

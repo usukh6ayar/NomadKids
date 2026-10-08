@@ -154,7 +154,7 @@ describe("төрсөн өдөр", () => {
   ];
 
   it("lists the month's children with the day, not a countdown", () => {
-    render(<MonthBirthdays birthdays={birthdays} />);
+    renderWithProviders(<MonthBirthdays birthdays={birthdays} />);
 
     expect(screen.getByText("8/01")).toBeInTheDocument();
     expect(screen.getByText("8/07")).toBeInTheDocument();
@@ -177,8 +177,41 @@ describe("төрсөн өдөр", () => {
    * on the tile's own footprint, not the product's centred 96px mascot, which
    * would make the card with nothing in it the tallest of the three.
    */
+  /*
+    ★ A girl's cake pink, a boy's blue — 2026-10-08, the client. The sex comes
+    from the group's roster; a child it does not cover keeps the neutral cake.
+  */
+  it("colours each cake by the child's sex", async () => {
+    stubApi([
+      {
+        path: "/children",
+        body: {
+          items: [
+            { ...birthdays[0], sex: "FEMALE", kindergartenId: GROUP.id },
+            { ...birthdays[1], sex: "MALE", kindergartenId: GROUP.id },
+          ],
+          page: 1,
+          pageSize: 100,
+          total: 2,
+          totalPages: 1,
+        },
+      },
+    ]);
+    const { container } = renderWithProviders(
+      <MonthBirthdays birthdays={birthdays} groupId={GROUP.id} />,
+    );
+
+    await vi.waitFor(() =>
+      expect(container.querySelector('[data-sex="FEMALE"]')).toHaveClass(
+        "bg-pink",
+        "text-pink-ink",
+      ),
+    );
+    expect(container.querySelector('[data-sex="MALE"]')).toHaveClass("bg-sky", "text-sky-ink");
+  });
+
   it("says the month is empty instead of vanishing", () => {
-    render(<MonthBirthdays birthdays={[]} />);
+    renderWithProviders(<MonthBirthdays birthdays={[]} />);
 
     expect(screen.getByText("Төрсөн өдөрийн булан")).toBeInTheDocument();
     expect(screen.getByText("Энэ сард төрсөн өдөр алга")).toBeInTheDocument();
@@ -598,7 +631,7 @@ describe("хураангуй хайрцгууд", () => {
   }));
 
   it("shows three birthdays and counts the rest rather than growing", () => {
-    render(<MonthBirthdays birthdays={manyBirthdays} />);
+    renderWithProviders(<MonthBirthdays birthdays={manyBirthdays} />);
 
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
     // The full count is still reported, so nothing is hidden — only folded.
@@ -930,7 +963,7 @@ describe("дүрслэл", () => {
    * birthday is a link carrying its own date.
    */
   it("gives each birthday its own row with a date", () => {
-    render(
+    renderWithProviders(
       <MonthBirthdays
         birthdays={[
           {

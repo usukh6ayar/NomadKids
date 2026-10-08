@@ -176,6 +176,19 @@ describe("the survey hub", () => {
     expect(screen.queryByText(FORM.title)).toBeNull();
   });
 
+  it("offers management its feedback inbox, under the client's open letter", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: `/kindergartens/${KINDERGARTEN_ID}/surveys`, body: [] },
+      { path: "/groups", body: GROUP_PAGE },
+    ]);
+    renderWithProviders(<SurveysHubPage />);
+
+    const inbox = await screen.findByRole("link", { name: /Санал хүсэлт/ });
+    expect(inbox).toHaveAttribute("href", "/surveys/feedback");
+    expect(inbox.querySelector("img")?.getAttribute("src")).toContain("icon-feedback-inbox-3d");
+  });
+
   it("shows management a searchable group launcher", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },

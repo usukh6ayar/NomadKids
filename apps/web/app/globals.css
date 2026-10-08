@@ -297,6 +297,15 @@
   --color-teal-chart: #1ba39a;
   --color-pink-chart: #ec5183;
   /*
+   * ★ The А/79 result screen — 2026-10-08, the client: the ring "цэнхэр нил
+   * ягаан ууссан өнгө" (blue melting into violet), and the three parts in
+   * yellow, red and green. `sun-chart` is a mustard by design (see above), so
+   * the yellow here is a brighter one for a bar, never for text.
+   */
+  --color-violet-chart: #8b5cf6;
+  --color-yellow-chart: #f5b800;
+  --color-red-chart: #e5484d;
+  /*
    * ★ The brand blue, for graphics — 2026-09-25, the client: "график
    * үзүүлэлтүүдийн өнгө хэт бараан байна арай зөөлөн орчин үеийн болго".
    * A ring or a column drawn without a tone took `--color-primary` (6.7:1),
@@ -681,6 +690,29 @@ body {
  */
 html {
   overflow-x: hidden;
+}
+
+/*
+ * ★ Date and time fields shrink to their box — 2026-10-08, the client on a
+ * phone: Огноо and Цаг side by side overlapped each other.
+ *
+ * iOS Safari draws these as native controls with a minimum width of their
+ * own, wider than half a 375px screen, and ignores `width: 100%` below it.
+ * Dropping the native appearance lets them size like any other input; the
+ * value is left-aligned because the native one centres it.
+ */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"],
+input[type="month"],
+input[type="week"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+}
+
+input::-webkit-date-and-time-value {
+  text-align: left;
 }
 
 /*

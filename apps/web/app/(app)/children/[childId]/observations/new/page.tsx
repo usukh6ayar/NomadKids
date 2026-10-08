@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
+import { Plus, X } from "lucide-react";
 import { z } from "zod";
 import {
   assessmentConfigSchema,
@@ -16,7 +17,7 @@ import {
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
-import { errorMessage, fieldErrors } from "@/lib/api/errors";
+import { errorMessage, fieldErrors, isNotFound } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { BackButton } from "@/components/ui/back-button";
 import { ChildPickerDialog } from "@/components/child/child-picker-dialog";
@@ -29,9 +30,25 @@ import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { ObservationPhotoPicker } from "@/components/observations/observation-photo-picker";
 import { uploadChildPhotos } from "@/components/media/photo-upload";
 import { ageInYears, shortName, todayLocal } from "@/lib/format";
+import {
+  conversationToText,
+  qaQuestions,
+  textToConversation,
+  type Conversation,
+  type QaPair,
+} from "@/lib/conversation-qa";
 import { cn } from "@/lib/utils";
 import { KIND_LOOK, PICK, PICK_FIELD } from "@/lib/observation-look";
 import { readDraft, useDraftAutosave } from "@/lib/use-form-draft";
+import { A79LinksField } from "@/components/assessment/a79-links";
+import {
+  A79_LEVEL_KEYS,
+  A79_NOT_READY,
+  a79LevelForAge,
+  a79LinkSchema,
+  observationA79LinksSchema,
+  type A79Link,
+} from "@/lib/a79-progress";
 
 const typesSchema = z.array(observationTypeSchema);
 
@@ -87,6 +104,8 @@ interface ObservationDraft {
    */
   indicatorLevel: string;
   situation: string;
+  /** The А/79 links as JSON — the draft holds flat strings only. */
+  a79: string;
   visibleToParents: boolean;
   includeInReport: boolean;
   [key: string]: string | boolean;
@@ -297,22 +316,11 @@ function NewObservationForm() {
   }, [domainId, typeId, types.data, config.data]);
 
   /*
-    ★ And it is the only strand Бүтээл offers — the client, 2026-09-14:
-    "бүтээл дээр зөвхөн зураг урлал чиглэл байх."
-
-    Stricter than the preselection above, which the note beside it called
-    "offered, not enforced": a list that preselects one answer and offers six
-    invites the other five, and an artwork note filed under Математик is a note
-    the Бүтээл screen will not show its author again. A kindergarten with no
-    `creative` strand keeps the whole list rather than an empty one.
+    ★ Every strand, Бүтээл included — the client, 2026-10-08. Бүтээл was held to
+    Зураг, урлал alone from 2026-09-14; it still arrives preselected there (the
+    effect above), but a teacher may now file it under any strand.
   */
-  const strandOptions = useMemo(() => {
-    const domains = config.data?.domains ?? [];
-    const code = (types.data ?? []).find((row) => row.id === typeId)?.code;
-    if (code !== "artwork") return domains;
-    const creative = domains.filter((domain) => domain.code === "creative");
-    return creative.length > 0 ? creative : domains;
-  }, [config.data, types.data, typeId]);
+  const strandOptions = config.data?.domains ?? [];
   /** Which СҮД indicator this note evidences, and the level judged. */
   const [indicatorId, setIndicatorId] = useState(draft?.indicatorId ?? "");
   const [indicatorLevel, setIndicatorLevel] = useState(draft?.indicatorLevel ?? "");
@@ -331,6 +339,14 @@ function NewObservationForm() {
    * which cannot hold a `File`: a restored draft brings back every word and no
    * pictures, which is the honest half rather than a crash.
    */
+  /** А/79 criteria this note evidences — 2026-10-08, `lib/a79-progress.ts`. */
+  const [a79Links, setA79Links] = useState<A79Link[]>(() => {
+    try {
+      return z.array(a79LinkSchema).parse(JSON.parse(draft?.a79 || "[]"));
+    } catch {
+      return [];
+    }
+  });
   const [photos, setPhotos] = useState<File[]>([]);
   const [photoError, setPhotoError] = useState("");
   /**
@@ -358,6 +374,14 @@ function NewObservationForm() {
   });
 
   const [situation, setSituation] = useState(draft?.situation ?? "");
+  /**
+   * «Ярилцлага» as Асуулт / Хариулт pairs — 2026-10-08, the client. Written
+   * into the note's text on save (`lib/conversation-qa.ts`), and read back
+   * from it, which is how a draft restores them.
+   */
+  const [talk, setTalk] = useState<Conversation>(() => textToConversation(draft?.situation ?? ""));
+  const isConversation = isStaff && !fromProgress && typeCode === "conversation";
+  const noteText = isConversation ? conversationToText(talk) : situation;
   const [visibleToParents, setVisibleToParents] = useState(draft?.visibleToParents ?? false);
   // No «PDF-д оруулах» control since 2026-10-07: every note goes in.
   const includeInReport = true;
@@ -378,7 +402,8 @@ function NewObservationForm() {
     domainId,
     indicatorId,
     indicatorLevel,
-    situation,
+    situation: noteText,
+    a79: JSON.stringify(a79Links),
     visibleToParents,
     includeInReport,
   });
@@ -420,13 +445,32 @@ function NewObservationForm() {
           */
           ...(indicatorId ? { indicatorId } : {}),
           ...(indicatorId && indicatorLevel ? { indicatorLevel: Number(indicatorLevel) } : {}),
-          situation: optional(situation),
+          situation: optional(noteText),
           visibleToParents,
           includeInReport,
         },
       });
     },
     onSuccess: async (observation) => {
+      /*
+        ★ The А/79 links go after the note, as the photographs do: they need its
+        id, and a link that failed must not cost the teacher the note.
+      */
+      if (isStaff && a79Links.length > 0) {
+        try {
+          await mutate(`/observations/${observation.id}/a79-links`, observationA79LinksSchema, {
+            method: "PUT",
+            body: {
+              links: a79Links.map((link) => ({
+                ...link,
+                note: link.note?.trim() ? link.note.trim() : null,
+              })),
+            },
+          });
+        } catch (error: unknown) {
+          toast.error(isNotFound(error) ? A79_NOT_READY : errorMessage(error));
+        }
+      }
       /*
         ★ After the note, never before: `POST /children/:id/media` needs an
         observation to attach to.
@@ -752,7 +796,7 @@ function NewObservationForm() {
                   ★ A list, not a free-text box — 2026-09-11, the client's design.
 
                   `Observation.activityName` is a `String?` and stays one: the
-                  thirteen stages of the day are what a teacher picks from, and
+                  fourteen stages of the day are what a teacher picks from, and
                   typing them produced "Өглөөний цай", "өглөөний цай" and
                   "Өглөөний цай " as three activities on the coverage screen. The
                   same reference list `group-coverage.tsx` groups by, so the
@@ -954,26 +998,30 @@ function NewObservationForm() {
             columns are untouched and still render wherever a note is read — the
             form stops asking for them, it does not erase them.
           */}
-          <div>
-            <Field
-              label={fromProgress ? "Тайлбар" : "Тэмдэглэл"}
-              error={errors.situation}
-              hint={`${situation.length}/1000`}
-            >
-              {({ id, describedBy, invalid }) => (
-                <Textarea
-                  id={id}
-                  aria-describedby={describedBy}
-                  invalid={invalid}
-                  value={situation}
-                  onChange={(e) => setSituation(e.target.value)}
-                  rows={2}
-                  // Tighter than the field's default — 2026-10-07, the client.
-                  className="min-h-[60px] py-2"
-                />
-              )}
-            </Field>
-          </div>
+          {isConversation ? (
+            <ConversationFields value={talk} onChange={setTalk} error={errors.situation} />
+          ) : (
+            <div>
+              <Field
+                label={fromProgress ? "Тайлбар" : "Тэмдэглэл"}
+                error={errors.situation}
+                hint={`${situation.length}/1000`}
+              >
+                {({ id, describedBy, invalid }) => (
+                  <Textarea
+                    id={id}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    value={situation}
+                    onChange={(e) => setSituation(e.target.value)}
+                    rows={2}
+                    // Tighter than the field's default — 2026-10-07, the client.
+                    className="min-h-[60px] py-2"
+                  />
+                )}
+              </Field>
+            </div>
+          )}
 
           {/*
             ★ Two checkboxes in one compact card — 2026-09-11, "хэн харахыг зай
@@ -1011,6 +1059,20 @@ function NewObservationForm() {
             </div>
           ) : null}
 
+          {isStaff && !fromProgress ? (
+            <A79LinksField
+              links={a79Links}
+              onChange={setA79Links}
+              defaultLevel={
+                indicatorLevel
+                  ? A79_LEVEL_KEYS[Number(indicatorLevel) - 1]!
+                  : a79LevelForAge(ageInYears(child.data?.dateOfBirth))
+              }
+              // On a conversation, the teacher's questions — 2026-10-08, the client.
+              text={isConversation ? qaQuestions(talk.pairs, talk.title) : situation}
+            />
+          ) : null}
+
           {photoError ? (
             <p role="alert" className="text-caption text-danger">
               {photoError}
@@ -1035,6 +1097,107 @@ function NewObservationForm() {
           </div>
         </form>
       </Card>
+    </div>
+  );
+}
+
+/**
+ * Асуулт / Хариулт, one pair a card, «＋ Асуулт нэмэх» for the next —
+ * 2026-10-08, the client: a conversation is questions and answers, not a
+ * paragraph. The first pair cannot be removed; the form always has one.
+ */
+function ConversationFields({
+  value,
+  onChange: onConversation,
+  error,
+}: {
+  value: Conversation;
+  onChange: (next: Conversation) => void;
+  error?: string;
+}) {
+  const { pairs } = value;
+  const onChange = (next: QaPair[]) => onConversation({ ...value, pairs: next });
+  const length = conversationToText(value).length;
+  const update = (index: number, patch: Partial<QaPair>) =>
+    onChange(pairs.map((pair, i) => (i === index ? { ...pair, ...patch } : pair)));
+
+  return (
+    <div className="flex flex-col gap-2">
+      {/* A title above the questions — 2026-10-08, the client. */}
+      <Field label="Гарчиг">
+        {({ id }) => (
+          <Input
+            id={id}
+            value={value.title}
+            maxLength={120}
+            placeholder="Жишээ нь: Миний гэр бүл"
+            onChange={(e) => onConversation({ ...value, title: e.target.value })}
+          />
+        )}
+      </Field>
+      {pairs.map((pair, index) => (
+        <div
+          key={index}
+          role="group"
+          aria-label={`Асуулт, хариулт ${index + 1}`}
+          className="flex flex-col gap-1.5 rounded-row border border-border-soft bg-surface p-2.5"
+        >
+          <div className="flex items-start gap-2">
+            <Field label={`Асуулт ${index + 1}`} className="min-w-0 flex-1">
+              {({ id }) => (
+                <Textarea
+                  id={id}
+                  rows={1}
+                  value={pair.q}
+                  onChange={(e) => update(index, { q: e.target.value })}
+                  className="min-h-[44px] py-2"
+                />
+              )}
+            </Field>
+            {index > 0 ? (
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label={`Асуулт ${index + 1}-ийг хасах`}
+                onClick={() => onChange(pairs.filter((_, i) => i !== index))}
+                className="mt-6"
+              >
+                <X size={16} aria-hidden="true" />
+              </Button>
+            ) : null}
+          </div>
+          <Field label={`Хариулт ${index + 1}`}>
+            {({ id }) => (
+              <Textarea
+                id={id}
+                rows={1}
+                value={pair.a}
+                onChange={(e) => update(index, { a: e.target.value })}
+                className="min-h-[44px] py-2"
+              />
+            )}
+          </Field>
+        </div>
+      ))}
+      <div className="flex items-center justify-between gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          onClick={() => onChange([...pairs, { q: "", a: "" }])}
+        >
+          <Plus size={16} aria-hidden="true" /> Асуулт нэмэх
+        </Button>
+        <span className={cn("text-caption", length > 1000 ? "text-danger" : "text-muted")}>
+          {length}/1000
+        </span>
+      </div>
+      {error ? (
+        <p role="alert" className="text-caption text-danger">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -8,7 +8,6 @@ import { CalendarDays, PenLine, Plus } from "lucide-react";
 import {
   MAX_PAGE_SIZE,
   ARTWORK_TYPES,
-  assessmentConfigSchema,
   childDetailSchema,
   observationSchema,
   paginated,
@@ -195,20 +194,6 @@ export function ObservationHub({
       get(`/children/${childId}/observations?page=1&pageSize=${MAX_PAGE_SIZE}`, observationsSchema),
   });
 
-  /*
-    The kindergarten's strands, for the one rule the filter needs from them:
-    which id is Зураг, урлал. `assessment-config` is readable by every member
-    and every other screen in this flow asks for it, so this normally reads a
-    warm cache rather than a request.
-  */
-  const config = useQuery({
-    queryKey: qk.assessmentConfig(primaryKindergartenId ?? ""),
-    queryFn: () =>
-      get(`/kindergartens/${primaryKindergartenId}/assessment-config`, assessmentConfigSchema),
-    enabled: Boolean(primaryKindergartenId),
-    staleTime: 5 * 60_000,
-  });
-
   const terms = useQuery({
     queryKey: qk.terms(primaryKindergartenId ?? ""),
     queryFn: () => get(`/kindergartens/${primaryKindergartenId}/terms`, termsSchema),
@@ -267,34 +252,17 @@ export function ObservationHub({
     archive === "parent" ? row.source === "PARENT" : row.source !== "PARENT",
   );
 
-  const creativeDomainId = (config.data?.domains ?? []).find(
-    (domain) => domain.code === "creative",
-  )?.id;
-
   /*
-    The strands and the kinds that are actually on file, for the filter.
+    The strands that are actually on file, for the filter.
 
-    ★ Бүтээл offers Зураг, урлал and nothing else — the client, 2026-09-14:
-    "бүтээл дээр зөвхөн зураг урлал чиглэл байх", which is the filter's half of
-    the rule the compose form already applies when it files an artwork note
-    under `creative` (see `observations/new`). A strand list that offers six
-    answers the record cannot hold is six ways to empty the list.
-
-    Matched on the strand's `code`, never its name: an administrator may rename
-    a strand (§2.3) and the code is the part that does not move.
+    ★ Every strand for Бүтээл too — the client, 2026-10-08, matching the
+    compose form, which no longer holds an artwork note to Зураг, урлал.
   */
   const domainOptions = [
     ...new Map(
       everyRecord.flatMap((row) => row.domains.map((entry) => [entry.domain.id, entry.domain])),
     ).values(),
-  ].filter(
-    (domain) =>
-      typeCode !== "artwork" ||
-      // Until the config arrives nothing is hidden: a filter that empties
-      // itself for a render is worse than one that narrows a beat late.
-      !creativeDomainId ||
-      domain.id === creativeDomainId,
-  );
+  ];
   const typeOptions = [
     ...new Map(
       everyRecord

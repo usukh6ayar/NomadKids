@@ -69,7 +69,7 @@ export function Field({
     [error ? errorId : null, hint ? hintId : null].filter(Boolean).join(" ") || undefined;
 
   return (
-    <div data-ui="field" className={cn("flex flex-col gap-1.5", className)}>
+    <div data-ui="field" className={cn("flex min-w-0 flex-col gap-1.5", className)}>
       <LabelPrimitive.Root
         htmlFor={id}
         className={cn(
@@ -128,7 +128,7 @@ export function Field({
  * looks pre-filled when it is empty.
  */
 const controlBase =
-  "w-full rounded-field border bg-sunken px-3.5 text-ink placeholder:text-faint " +
+  "w-full min-w-0 rounded-field border bg-sunken px-3.5 text-ink placeholder:text-faint " +
   "transition-colors duration-150 focus:bg-surface " +
   "disabled:cursor-not-allowed disabled:opacity-60 disabled:bg-border-soft";
 

@@ -27,7 +27,7 @@ export type CoverageKind = "types" | "domains" | "activities" | "months";
  * The three panels used to sit side by side under the summary, which on a
  * phone is most of a scroll before the register itself. They are pages now;
  * what they draw is unchanged, because it was already the client's design —
- * the seven strands, the thirteen daily activities, the three kinds of note.
+ * the seven strands, the fourteen daily activities, the three kinds of note.
  *
  * ★★ They share the summary's query key, so arriving is a render rather than a
  * request and a count here cannot disagree with the one just pressed.
