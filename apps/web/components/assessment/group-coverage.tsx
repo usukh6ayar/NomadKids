@@ -36,18 +36,19 @@ const DEVELOPMENT_DOMAINS = [
 ] as const;
 export const DAILY_ACTIVITIES = [
   "Өглөөний хүлээн авалт",
-  "Тоглоомын цаг",
   "Өглөөний дасгал",
-  "Өглөөний цай",
-  "Сургалт, үйл ажиллагаа",
-  "Ариун цэвэр, дадал хэвшил",
+  "Тойргийн цаг",
+  "Цай",
+  "Чиглүүлэгтэй тоглоом, үйл ажиллагаа",
+  "Чөлөөт тоглоом",
+  "Хооллолт",
   "Зугаалгын цаг",
-  "Өдрийн хоол",
-  "Өдрийн унтлага",
-  "Үдийн цай",
-  "Ганцаарчилсан сургалт",
-  "Хөгжөөн баясгах үйл ажиллагаа",
-  "Таралт",
+  "Унталтын цаг",
+  "Номын цаг",
+  "Төвийн цаг",
+  "Хөгжөөн баясах ажил",
+  "Өөртөө үйлчлэх ажил",
+  "Ганцаарчилсан үйл ажиллагаа",
 ] as const;
 
 const DOMAIN_ALIASES: Record<string, readonly string[]> = {
@@ -132,7 +133,7 @@ function fixedRows(
  *
  * They share one query key, so opening a breakdown is a render rather than a
  * request and a count on it cannot disagree with the one the teacher just
- * pressed. The reference lists — the client's seven strands and thirteen daily
+ * pressed. The reference lists — the client's seven strands and fourteen daily
  * activities — are applied here, so a row sitting at zero appears on every
  * screen that shows it.
  */

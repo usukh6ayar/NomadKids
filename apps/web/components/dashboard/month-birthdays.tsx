@@ -1,6 +1,17 @@
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Cake } from "lucide-react";
-import type { TeacherDashboard } from "@kinder/contracts";
+import {
+  MAX_PAGE_SIZE,
+  childSummarySchema,
+  paginated,
+  type TeacherDashboard,
+} from "@kinder/contracts";
+import { get } from "@/lib/api/browser";
+import { qk } from "@/lib/api/keys";
+import { cn } from "@/lib/utils";
 import { BoardCard, BoardCardEmpty } from "./board-card";
 import { formatDayMonth, capitalize } from "@/lib/format";
 
@@ -35,11 +46,46 @@ import { formatDayMonth, capitalize } from "@/lib/format";
  * were shown here until 2026-08-28 and went with the layout change — see the
  * note on the row below.
  */
+const childrenPageSchema = paginated(childSummarySchema);
+
+/**
+ * A girl's cake pink, a boy's blue — 2026-10-08, the client: "хүйсээс
+ * хамаараад ягаан цэнхэр". The same pink and blue the roster's sex split uses
+ * (`globals.css`, `--color-pink`).
+ */
+const CAKE_LOOK = {
+  FEMALE: "bg-pink text-pink-ink",
+  MALE: "bg-sky text-sky-ink",
+} as const;
+
+function cakeLook(sex: "MALE" | "FEMALE" | null | undefined) {
+  return sex ? CAKE_LOOK[sex] : "text-peach-ink";
+}
+
 export function MonthBirthdays({
   birthdays,
+  groupId,
 }: {
   birthdays: TeacherDashboard["birthdaysThisMonth"];
+  /**
+   * The teacher's group, whose roster says who is a girl and who a boy.
+   *
+   * ★ Read from the roster because the dashboard's birthday rows do not carry
+   * `sex`, and the API is not this change's to touch. The key is the one
+   * every register uses, so on most visits this is a cached read. A child the
+   * roster does not cover keeps the neutral cake.
+   */
+  groupId?: string | null;
 }) {
+  const roster = useQuery({
+    queryKey: qk.children({ groupId, page: 1, pageSize: MAX_PAGE_SIZE }),
+    queryFn: () =>
+      get(`/children?groupId=${groupId}&page=1&pageSize=${MAX_PAGE_SIZE}`, childrenPageSchema),
+    enabled: Boolean(groupId) && birthdays.length > 0,
+    staleTime: 60_000,
+  });
+  const sexById = new Map((roster.data?.items ?? []).map((child) => [child.id, child.sex]));
+
   /*
    * ★ An empty month renders, where it used to return `null` — and that
    * reverses a decision this file argued for on 2026-08-28.
@@ -130,7 +176,11 @@ export function MonthBirthdays({
               */}
               <span
                 aria-hidden="true"
-                className="grid size-9 shrink-0 place-items-center rounded-pill text-peach-ink"
+                data-sex={sexById.get(child.id) ?? undefined}
+                className={cn(
+                  "grid size-9 shrink-0 place-items-center rounded-pill",
+                  cakeLook(sexById.get(child.id)),
+                )}
               >
                 <Cake size={16} />
               </span>

@@ -9,6 +9,7 @@ import { SURVEY_KIND_LABEL, surveySchema, type SurveyKind } from "@kinder/contra
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
+import { useSession } from "@/lib/auth/session";
 import { PageHeader } from "@/components/shell/app-shell";
 import { Button } from "@/components/ui/button";
 import { FilterButton, FilterChip, FilterChipRow } from "@/components/ui/filter-chip";
@@ -16,6 +17,7 @@ import { Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { cn } from "@/lib/utils";
 import { FamilySurveyCard, surveyDate } from "@/components/survey/family-survey-card";
+import { FeedbackWidget } from "@/components/feedback/feedback-widget";
 
 const activeSurveysSchema = z.array(surveySchema);
 
@@ -69,6 +71,8 @@ const childBirthSchema = z.object({ dateOfBirth: z.string().nullish() });
 export default function ChildSurveysPage() {
   const params = useParams<{ childId: string }>();
   const childId = params.childId;
+  const { hasRole } = useSession();
+  const isParent = hasRole("PARENT");
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -139,6 +143,8 @@ export default function ChildSurveysPage() {
 
   const header = (
     <div className="flex items-end gap-2">
+      {/* Fixed to the screen's corner, above the chat — see the widget. */}
+      {isParent ? <FeedbackWidget /> : null}
       <div className="min-w-0 flex-1">
         <PageHeader title="Миний судалгаанууд" />
       </div>

@@ -1,4 +1,5 @@
 import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GroupReport } from "@kinder/contracts";
 import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
@@ -94,9 +95,60 @@ const SECOND_REPORT = report(
   },
 );
 
+const FIRST_A79 = {
+  children: [
+    {
+      childId: "77777777-7777-4777-8777-777777777771",
+      firstName: "Ану",
+      lastName: "Батжаргал",
+      level: "III",
+      achieved: 37,
+      total: 46,
+      byDomain: [
+        { domain: "Мэдлэг", achieved: 8, total: 10 },
+        { domain: "Чадвар", achieved: 20, total: 25 },
+        { domain: "Төлөвшил", achieved: 9, total: 11 },
+      ],
+    },
+    {
+      childId: "77777777-7777-4777-8777-777777777772",
+      firstName: "Тэмүүлэн",
+      lastName: "Дорж",
+      level: "III",
+      achieved: 23,
+      total: 46,
+      byDomain: [
+        { domain: "Мэдлэг", achieved: 5, total: 10 },
+        { domain: "Чадвар", achieved: 12, total: 25 },
+        { domain: "Төлөвшил", achieved: 6, total: 11 },
+      ],
+    },
+  ],
+};
+
+const SECOND_A79 = {
+  children: [
+    {
+      childId: "77777777-7777-4777-8777-777777777773",
+      firstName: "Сарнай",
+      lastName: "Эрдэнэ",
+      level: "II",
+      achieved: 9,
+      total: 46,
+      byDomain: [
+        { domain: "Мэдлэг", achieved: 2, total: 10 },
+        { domain: "Чадвар", achieved: 5, total: 25 },
+        { domain: "Төлөвшил", achieved: 2, total: 11 },
+      ],
+    },
+  ],
+};
+
 function renderAdminReport() {
-  stubApi([
+  const api = stubApi([
     { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+    { path: `/groups/${FIRST_GROUP}/a79-summary`, body: FIRST_A79 },
+    { path: `/groups/${SECOND_GROUP}/a79-summary`, body: SECOND_A79 },
     { path: `/groups/${FIRST_GROUP}/report`, body: FIRST_REPORT },
     { path: `/groups/${SECOND_GROUP}/report`, body: SECOND_REPORT },
     {
@@ -126,7 +178,8 @@ function renderAdminReport() {
     },
   ]);
 
-  return renderWithProviders(<ReportsPage />);
+  renderWithProviders(<ReportsPage />);
+  return api;
 }
 
 beforeEach(() => {
@@ -135,47 +188,72 @@ beforeEach(() => {
 });
 
 describe("the administrator report", () => {
-  it("shows a kindergarten-wide summary instead of a group picker", async () => {
+  /*
+    ★ The same screen a teacher sees — client, 2026-10-08: the kindergarten-wide
+    overview was taken away ("буцаагаад багшийнх шиг болгоод өг").
+  */
+  it("is the teacher's report, with a group picker", async () => {
     renderAdminReport();
 
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "Цэцэрлэгийн нэгдсэн тайлан" }),
-    ).toBeInTheDocument();
-    const summary = await screen.findByRole("region", { name: "Тайлангийн товч үзүүлэлт" });
+    expect(await screen.findByRole("heading", { level: 1, name: "Тайлан" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Цэцэрлэгийн нэгдсэн тайлан" })).toBeNull();
+    expect(screen.getByRole("radiogroup", { name: "Хугацаа" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Нэгтгэл" })).toBeInTheDocument();
+    expect(screen.getAllByText("Дэлбээ").length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: /Нархан/ })).toBeInTheDocument();
+  });
 
-    for (const label of ["Нийт хүүхэд", "Нийт бүлэг", "Ирц", "Явцын үнэлгээ", "Судалгааны явц"]) {
-      expect(within(summary).getByText(label)).toBeInTheDocument();
+  it("opens the group named in the address", async () => {
+    setSearchParams(`group=${SECOND_GROUP}`);
+    const api = renderAdminReport();
+
+    await screen.findByRole("tab", { name: "Нэгтгэл" });
+    expect(api.calls.some((call) => call.url.startsWith(`/groups/${SECOND_GROUP}/report`))).toBe(
+      true,
+    );
+  });
+
+  it("shows the kindergarten result chart with every group's indicators below", async () => {
+    const user = userEvent.setup();
+    const api = renderAdminReport();
+
+    await user.click(await screen.findByRole("tab", { name: "Үр дүнгийн үнэлгээ" }));
+    const panel = screen.getByRole("tabpanel", { name: "Үр дүнгийн үнэлгээ" });
+
+    expect(
+      within(panel).getByRole("heading", { name: "Цэцэрлэгийн нэгтгэл график" }),
+    ).toBeInTheDocument();
+    // Child-weighted: (80 + 50 + 20) / 3 = 50%, not the two group averages' 43%.
+    expect(within(panel).getByRole("img", { name: "Цэцэрлэгийн дундаж: 50%" })).toBeInTheDocument();
+    expect(within(panel).getByText("Хангалттай · 1")).toBeInTheDocument();
+    expect(within(panel).getByText("Ахиж байна · 1")).toBeInTheDocument();
+    expect(within(panel).getByText("Хөгжиж байна · 1")).toBeInTheDocument();
+
+    const table = within(panel).getByRole("table", { name: "Бүлэг бүрийн үзүүлэлт" });
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((cell) => cell.textContent),
+    ).toEqual(["№", "Бүлэг", "Хүүхэд", "Мэдлэг", "Чадвар", "Төлөвшил", "Нийт", "Үр дүн"]);
+
+    const first = within(table).getByRole("link", { name: "Дэлбээ" });
+    expect(first).toHaveAttribute("href", `/groups/${FIRST_GROUP}/results`);
+    expect(
+      within(first.closest("tr")!)
+        .getAllByRole("cell")
+        .map((cell) => cell.textContent),
+    ).toEqual(["1", "Дэлбээ", "2", "65%", "64%", "69%", "65%", "Ахиж байна"]);
+
+    const second = within(table).getByRole("link", { name: "Нархан" });
+    expect(second).toHaveAttribute("href", `/groups/${SECOND_GROUP}/results`);
+    expect(second.closest("tr")).toHaveTextContent("20%");
+
+    for (const id of [FIRST_GROUP, SECOND_GROUP]) {
+      expect(
+        api.calls.some(
+          (call) => call.url === `/groups/${id}/a79-summary?from=2026-09-01&to=2026-09-30`,
+        ),
+      ).toBe(true);
     }
-    expect(within(summary).getByText("49")).toBeInTheDocument();
-    expect(within(summary).getByText("2")).toBeInTheDocument();
-    expect(within(summary).getByText("91%")).toBeInTheDocument();
-    expect(within(summary).getByText("90%")).toBeInTheDocument();
-    expect(within(summary).getByText("67%")).toBeInTheDocument();
-    expect(screen.queryByRole("navigation", { name: "Бүлэг сонгох" })).toBeNull();
-  });
-
-  it("keeps only the two group-comparison charts below the summary", async () => {
-    renderAdminReport();
-
-    expect(
-      await screen.findByRole("heading", { name: "Бүлгүүдийн харьцуулалт" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Ирцийн хувь (бүлэг тус бүр)" }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Явцын үнэлгээний гүйцэтгэл" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Дэлбээ бүлгийн ирц: 95%")).toBeInTheDocument();
-    expect(screen.getByLabelText("Нархан бүлгийн явцын үнэлгээ: 80%")).toBeInTheDocument();
-    expect(screen.queryByRole("table", { name: "Бүлгүүдийн нэгдсэн тайлан" })).toBeNull();
-    expect(screen.queryByRole("heading", { name: "Сарын онцлох үзүүлэлт" })).toBeNull();
-    expect(screen.queryByRole("heading", { name: "Анхаарах зүйл" })).toBeNull();
-  });
-
-  it("uses a single month selector", async () => {
-    renderAdminReport();
-
-    await screen.findByRole("heading", { name: "Цэцэрлэгийн нэгдсэн тайлан" });
-    expect(screen.getByLabelText("Тайлангийн сар")).toBeInTheDocument();
-    expect(screen.queryByRole("radiogroup", { name: "Тайлангийн хугацаа" })).toBeNull();
   });
 });

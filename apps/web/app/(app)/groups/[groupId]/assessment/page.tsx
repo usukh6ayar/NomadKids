@@ -36,6 +36,8 @@ import {
 const childrenPageSchema = paginated(childSummarySchema);
 import { Card, SectionHeader } from "@/components/ui/card";
 import { GroupCoverage } from "@/components/assessment/group-coverage";
+import { AssessmentSwitch } from "@/components/assessment/assessment-switch";
+import { LowNotesReminder } from "@/components/assessment/low-notes-reminder";
 import { RegisterProgress } from "@/components/register/register-progress";
 import { RegisterSaveBar } from "@/components/register/save-bar";
 import { TONE_SURFACE, type Tone } from "@/components/ui/tone";
@@ -375,6 +377,11 @@ function GroupAssessment() {
           </div>
         }
       />
+
+      <AssessmentSwitch groupId={groupId} active="progress" />
+
+      {/* Children behind on notes this month — 2026-10-08, the client. */}
+      <LowNotesReminder groupId={groupId} />
 
       {/*
         ★ The client's 2026-08-31 top strip: pick a child, then start a record.

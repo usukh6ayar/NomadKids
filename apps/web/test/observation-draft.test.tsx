@@ -387,7 +387,9 @@ describe("Шинэ ажиглалт — the form's own fields", () => {
 
     // The same reference list the coverage breakdown groups by, so the form
     // and the panel cannot disagree about what an activity is called.
-    expect(await screen.findByRole("option", { name: "Өглөөний цай" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("option", { name: "Ганцаарчилсан үйл ажиллагаа" }),
+    ).toBeInTheDocument();
   });
 
   it("tags the note with one development strand", async () => {
@@ -1174,6 +1176,19 @@ describe("Бүтээл — сургалтын чиглэл автоматаар"
 
     const strand = await screen.findByLabelText("Сургалтын чиглэл");
     await waitFor(() => expect(strand).toHaveTextContent("Зураг, урлал"));
+  });
+
+  /* ★ Preselected, not enforced — the client, 2026-10-08: every strand. */
+  it("★ offers Бүтээл every strand, not only Зураг, урлал", async () => {
+    const user = userEvent.setup();
+    setSearchParams(`typeId=${ARTWORK_TYPE}`);
+    stubNewObservation();
+    renderWithProviders(<NewObservationPage />);
+
+    const strand = await screen.findByLabelText("Сургалтын чиглэл");
+    await waitFor(() => expect(strand).toHaveTextContent("Зураг, урлал"));
+    await user.click(strand);
+    expect(await screen.findByRole("option", { name: "Танин мэдэхүй" })).toBeInTheDocument();
   });
 
   /* Only Бүтээл. Every other kind is still the teacher's own answer. */

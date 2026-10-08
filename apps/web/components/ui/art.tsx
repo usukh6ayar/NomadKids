@@ -73,6 +73,10 @@ const SOURCE = {
   conversation: "/icons/icon-conversation-3d.png",
   dashboard: "/icons/icon-dashboard-3d.png",
   documents: "/icons/icon-documents-3d.png",
+  /** Санал хүсэлт — the administration's inbox (an open letter), 2026-10-08. */
+  feedbackInbox: "/icons/icon-feedback-inbox-3d.png",
+  /** Санал хүсэлт — a family's round «write» button (a sealed letter), 2026-10-08. */
+  feedbackWrite: "/icons/icon-feedback-write-3d.png",
   finance: "/icons/icon-finance-payment-3d.png",
   food: "/icons/icon-food-3d.png",
   group: "/icons/icon-group-3d.png",

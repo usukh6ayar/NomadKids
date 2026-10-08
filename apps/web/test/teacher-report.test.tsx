@@ -72,8 +72,13 @@ const REPORT = {
   },
 };
 
-function stub(report: Record<string, unknown> = REPORT) {
+function stub(
+  report: Record<string, unknown> = REPORT,
+  /** Matched first — `stubApi` takes the first route whose path is a prefix. */
+  extra: { path: string; body: unknown }[] = [],
+) {
   return stubApi([
+    ...extra,
     { path: "/auth/me", body: sessionFor(["TEACHER"]) },
     { path: `/groups/${GROUP_ID}/report`, body: report },
     { path: "/groups", body: GROUPS },
@@ -153,6 +158,57 @@ describe("the teacher's report", () => {
     await waitFor(() =>
       expect(calls.some((call) => /from=\d{4}-09-01&to=\d{4}-08-31/.test(call.url))).toBe(true),
     );
+  });
+
+  /*
+    ★ «Үр дүнгийн үнэлгээ», right after «Явцын үнэлгээ» — client, 2026-10-08:
+    the group's А/79 result, a row per child that opens their own.
+  */
+  it("adds the group's А/79 result after «Явцын үнэлгээ»", async () => {
+    const user = userEvent.setup();
+    const child = (id: string, first: string, achieved: number) => ({
+      childId: id,
+      firstName: first,
+      lastName: "Батжаргал",
+      level: "III",
+      achieved,
+      total: 46,
+      byDomain: [
+        { domain: "Мэдлэг", achieved: Math.min(achieved, 12), total: 12 },
+        { domain: "Чадвар", achieved: Math.max(0, achieved - 12), total: 27 },
+        { domain: "Төлөвшил", achieved: 0, total: 7 },
+      ],
+    });
+    stub(REPORT, [
+      {
+        path: `/groups/${GROUP_ID}/a79-summary`,
+        body: {
+          children: [
+            child("c1111111-1111-4111-8111-111111111111", "Ану", 37),
+            child("c2222222-2222-4222-8222-222222222222", "Сарнай", 20),
+          ],
+        },
+      },
+    ]);
+    renderWithProviders(<ReportsPage />);
+
+    const tabs = (await screen.findAllByRole("tab")).map((tab) => tab.textContent);
+    expect(tabs.indexOf("Үр дүнгийн үнэлгээ")).toBe(tabs.indexOf("Явцын үнэлгээ") + 1);
+
+    await user.click(screen.getByRole("tab", { name: "Үр дүнгийн үнэлгээ" }));
+    const panel = screen.getByRole("tabpanel", { name: "Үр дүнгийн үнэлгээ" });
+    // 80% and 43% → a group average of 62%, one child in each of two bands.
+    expect(
+      await within(panel).findByRole("img", { name: "Бүлгийн дундаж: 62%" }),
+    ).toBeInTheDocument();
+    expect(within(panel).getByText("Хангалттай · 1")).toBeInTheDocument();
+    expect(within(panel).getByText("Хөгжиж байна · 1")).toBeInTheDocument();
+    const anu = within(panel).getByRole("link", { name: "Б.Ану" });
+    expect(anu).toHaveAttribute(
+      "href",
+      `/groups/${GROUP_ID}/results/c1111111-1111-4111-8111-111111111111`,
+    );
+    expect(anu.closest("tr")).toHaveTextContent("80%");
   });
 
   it("breaks the notes down by kind", async () => {

@@ -124,7 +124,7 @@ const ITEMS = [
   observation("c2222222-2222-4222-8222-222222222222", DAILY, "daily", "2026-10-02"),
   observation("c3333333-3333-4333-8333-333333333333", DAILY, "daily", "2026-12-10"),
   observation("c4444444-4444-4444-8444-444444444444", CONVERSATION, "conversation", "2026-09-20"),
-  // Filed under Зураг, урлал, which is the only strand Бүтээл offers.
+  // Filed under Зураг, урлал, which Бүтээл preselects.
   {
     ...observation("c6666666-6666-4666-8666-666666666666", ARTWORK, "artwork", "2026-09-22"),
     activityName: "Наамал",
@@ -446,27 +446,6 @@ describe("the record hub", () => {
     expect(create).toHaveClass("bg-peach-bright");
     expect(screen.getByRole("searchbox", { name: "Бүтээлээс хайх" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Сургалтын чиглэл" })).not.toBeInTheDocument();
-  });
-
-  /**
-   * ★ Бүтээл offers Зураг, урлал and nothing else — the client, 2026-09-14:
-   * "бүтээл дээр зөвхөн зураг урлал чиглэл байх."
-   *
-   * The filter's half of the rule the compose form already applies when it
-   * files an artwork note under `creative`. Matched on the strand's code: an
-   * administrator may rename a strand (§2.3) and the code does not move.
-   */
-  it("offers Бүтээл only the Зураг, урлал strand", async () => {
-    const user = userEvent.setup();
-    openHub("artwork");
-
-    await user.click(await screen.findByRole("button", { name: "Шүүлтүүр" }));
-    const dialog = await screen.findByRole("dialog", { name: "Шүүлтүүр" });
-    await user.click(within(dialog).getByLabelText("Сургалтын чиглэл"));
-
-    expect(await screen.findByRole("option", { name: "Зураг, урлал" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "Хэл яриа" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "Математик" })).not.toBeInTheDocument();
   });
 
   it("filters artwork by the fixed artwork types instead of observation kinds", async () => {

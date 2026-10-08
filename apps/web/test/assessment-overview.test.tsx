@@ -19,7 +19,7 @@ import AssessmentPage from "@/app/(app)/groups/[groupId]/assessment/page";
  * ★ This restructures work that already existed rather than adding any.
  *
  * `group-coverage.tsx` already drew the client's design: the seven strands,
- * the thirteen daily activities, the three kinds of note, and a monthly goal.
+ * the fourteen daily activities, the three kinds of note, and a monthly goal.
  * What the client asked for was that each breakdown be a *screen* — and the
  * goal turned out to be stored in `localStorage`, which is the defect these
  * tests are really guarding.
@@ -59,7 +59,7 @@ const STATS = {
   ],
   byActivity: [
     { name: "Өглөөний дасгал", count: 5 },
-    { name: "Тоглоомын цаг", count: 2 },
+    { name: "Чөлөөт тоглоом", count: 2 },
   ],
   byMonth: [
     { month: "2025-09", count: 8, childrenCount: 6 },
@@ -360,7 +360,7 @@ describe("a breakdown screen", () => {
     await user.click(await screen.findByRole("button", { name: /Үлдсэн/ }));
 
     expect(screen.queryByText("Өглөөний дасгал")).not.toBeInTheDocument();
-    expect(screen.getByText("Өдрийн хоол")).toBeInTheDocument();
+    expect(screen.getByText("Хооллолт")).toBeInTheDocument();
   });
 
   /**
