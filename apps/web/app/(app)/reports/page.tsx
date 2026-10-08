@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState, type ReactNode } from "react";
 import { z } from "zod";
 import { groupReportSchema, termSchema } from "@kinder/contracts";
@@ -14,7 +14,7 @@ import {
 import { useSession } from "@/lib/auth/session";
 import { RequireRole } from "@/components/shell/require-role";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
-import { GroupSwitcher, useSwitchableGroups } from "@/components/shell/group-switcher";
+import { useSwitchableGroups } from "@/components/shell/group-switcher";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Field, Select } from "@/components/ui/field";
 import { YearMonthSelect } from "@/components/ui/year-month-select";
@@ -118,6 +118,7 @@ function Reports() {
   const { group: ownGroup } = useMyGroup({ enabled: !director });
   const group = director ? null : ownGroup;
   const searchParams = useSearchParams();
+  const router = useRouter();
 
   /*
     ★ A director gets a group picker instead of a dead end — 2026-09-09.
@@ -208,8 +209,6 @@ function Reports() {
     <div className="page-band mx-auto w-full max-w-6xl">
       {header}
 
-      <GroupSwitcher groups={items} activeGroupId={groupId} href={(id) => `/reports?group=${id}`} />
-
       {/*
         ★ Сар · Улирал · Жил — the client's three, 2026-09-12.
 
@@ -285,6 +284,30 @@ function Reports() {
           <p className="pb-1 text-caption text-muted">
             {formatDayMonth(range.from)} – {formatDayMonth(range.to)}
           </p>
+        ) : null}
+
+        {/*
+          ★ The group, after the dates — 2026-10-08, the client: a director's
+          group choice sits behind «10/01 – 10/31», not as a row of links above
+          the card. Still in the address (`?group=`), so Back walks the groups
+          somebody looked at — the reason `GroupSwitcher` was links.
+        */}
+        {items.length > 1 ? (
+          <Field label="Бүлэг" className="w-full sm:w-48">
+            {({ id }) => (
+              <Select
+                id={id}
+                value={groupId}
+                onChange={(event) => router.push(`/reports?group=${event.target.value}`)}
+              >
+                {items.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
         ) : null}
       </div>
 

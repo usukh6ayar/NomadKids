@@ -9,13 +9,24 @@ import { cn } from "@/lib/utils";
 export function AssessmentSwitch({
   groupId,
   active,
+  hrefs,
 }: {
-  groupId: string;
+  groupId?: string;
   active: "progress" | "results";
+  /** Where each side lives when it is not a group's — the director's overview. */
+  hrefs?: { progress: string; results: string };
 }) {
   const items = [
-    { key: "progress", label: "Явцын үнэлгээ", href: `/groups/${groupId}/assessment` },
-    { key: "results", label: "Үр дүнгийн үнэлгээ", href: `/groups/${groupId}/results` },
+    {
+      key: "progress",
+      label: "Явцын үнэлгээ",
+      href: hrefs?.progress ?? `/groups/${groupId}/assessment`,
+    },
+    {
+      key: "results",
+      label: "Үр дүнгийн үнэлгээ",
+      href: hrefs?.results ?? `/groups/${groupId}/results`,
+    },
   ] as const;
   return (
     <nav
