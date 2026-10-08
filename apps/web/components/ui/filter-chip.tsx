@@ -20,18 +20,20 @@ export function FilterButton({
   return (
     <Button
       type="button"
-      variant={expanded ? "primary" : "secondary"}
+      // Quiet until opened, and only tinted then — 2026-10-08, the client:
+      // filters "минимал анзаарагдахааргүй цэвэр".
+      variant={expanded ? "secondary" : "ghost"}
       size="icon"
       aria-expanded={expanded}
       aria-controls={controls}
       aria-label="Шүүлтүүр"
       data-ui="filter-button"
-      className={cn("relative shrink-0", className)}
+      className={cn("relative shrink-0", !expanded && "text-muted", className)}
       onClick={onClick}
     >
       <SlidersHorizontal aria-hidden="true" />
       {count > 0 ? (
-        <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-pill border-2 border-surface bg-danger px-1 text-compact font-bold leading-none text-white shadow-sm">
+        <span className="absolute -right-0.5 -top-0.5 grid min-h-4 min-w-4 place-items-center rounded-pill bg-primary px-1 text-compact font-semibold leading-none text-primary-ink">
           {count}
           <span className="sr-only">шүүлтүүр идэвхтэй</span>
         </span>
@@ -79,10 +81,13 @@ export function FilterChip({
       onClick={onClick}
       data-ui="filter-chip"
       className={cn(
-        "min-h-[44px] shrink-0 whitespace-nowrap rounded-pill border px-4 text-body font-medium shadow-sm transition-all duration-150 active:translate-y-px active:shadow-none",
+        // ★ Quiet — 2026-10-08, the client: every filter "минимал
+        // анзаарагдахааргүй цэвэр". No border, no shadow, no solid fill: the
+        // chosen chip is a soft tint and weight, the rest plain grey text.
+        "min-h-[40px] shrink-0 whitespace-nowrap rounded-pill px-3 text-caption transition-colors",
         active
-          ? "border-primary bg-primary text-primary-ink"
-          : "border-border bg-surface text-muted hover:border-primary hover:bg-primary-soft/30 hover:text-ink",
+          ? "bg-primary-soft font-semibold text-primary"
+          : "font-medium text-muted hover:bg-canvas hover:text-ink",
       )}
     >
       {children}
