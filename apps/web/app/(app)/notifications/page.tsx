@@ -31,7 +31,7 @@ import { ChildAvatar, MediaThumb } from "@/components/media/media-image";
 import { useSession } from "@/lib/auth/session";
 import { useMyProfile } from "@/lib/use-my-profile";
 import { useSelectedChildIfAny } from "@/lib/selected-child";
-import { CalendarRange, PenLine, MoreVertical, Search, Pencil, Trash2 } from "lucide-react";
+import { CalendarRange, MoreVertical, Search, Pencil, Trash2 } from "lucide-react";
 import { Art } from "@/components/ui/art";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
@@ -252,9 +252,44 @@ export default function NotificationsPage() {
     (n) => !importantOnly || n.isImportant,
   );
 
+  /*
+    ★ Other groups' boards, for a teacher — 2026-10-08, the client: "багш
+    мэдээ хэсэгт өөрийн болон бусад бүлгийг харах боломжтой болго".
+
+    `GET /groups` gives a teacher only the groups they teach, but the feed
+    gives them every published notice in the kindergarten
+    (`NotificationsService.audienceFilter` scopes staff by kindergarten), and
+    each notice names the group it is for. So the other groups are the ones
+    the notices name, offered under «Бусад бүлэг».
+  */
+  /*
+    A teacher lands on their own board, which names no other group — so the
+    newest notices across the kindergarten are read once, quietly, to fill
+    «Бусад бүлэг» before the teacher has had to open «Бүх бүлэг». One bounded
+    page (CLAUDE.md §3.4), names only.
+  */
+  const discovery = useQuery({
+    queryKey: ["notifications", "group-discovery"],
+    queryFn: () => get("/notifications?page=1&pageSize=50", listSchema),
+    enabled: isStaff && !isAdmin,
+    staleTime: 5 * 60_000,
+  });
+  // Derived, not remembered in state: the read above already names them.
+  const seenGroups = new Map(
+    [...(data?.pages ?? []), ...(discovery.data ? [discovery.data] : [])]
+      .flatMap((page) => page.items)
+      .flatMap((n) => n.targets ?? [])
+      .flatMap((target) => (target.group ? [[target.group.id, target.group.name] as const] : [])),
+  );
+  const ownGroups = boardGroups.data?.items ?? [];
+  const otherGroups = [...seenGroups]
+    .filter(([id]) => !ownGroups.some((group) => group.id === id))
+    .map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name, "mn"));
+
   /** The board's own name — the group's, or the kindergarten's whole board. */
   const boardName = groupId
-    ? (boardGroups.data?.items.find((g) => g.id === groupId)?.name ?? "Бүлгийн самбар")
+    ? (ownGroups.find((g) => g.id === groupId)?.name ?? seenGroups.get(groupId) ?? "Бүлгийн самбар")
     : "Бүх бүлгийн самбар";
 
   /**
@@ -347,7 +382,7 @@ export default function NotificationsPage() {
                 onChange={(e) => setSearchInput(e.target.value)}
                 placeholder={tab === "news" ? "Мэдээнээс хайх" : "Судалгаанаас хайх"}
                 aria-label={tab === "news" ? "Мэдээнээс хайх" : "Судалгаанаас хайх"}
-                className="rounded-control border-border bg-white pl-11 shadow-sm focus:bg-white"
+                className="h-10 rounded-control border-border-soft bg-surface pl-11 shadow-none"
               />
             </div>
 
@@ -368,15 +403,6 @@ export default function NotificationsPage() {
                 count={activeFilters}
                 onClick={() => setFiltersOpen(!filtersOpen)}
               />
-            ) : null}
-
-            {isStaff && tab === "news" ? (
-              <Button asChild className="w-full sm:ml-auto sm:w-auto">
-                <Link href="/notifications/new">
-                  <PenLine size={18} aria-hidden="true" />
-                  Шинэ мэдээ
-                </Link>
-              </Button>
             ) : null}
           </div>
 
@@ -404,35 +430,64 @@ export default function NotificationsPage() {
                 itself is unchanged, only the "everything" escape hatch is
                 administrator-only.
               */}
-              {isStaff && (boardGroups.data?.items.length ?? 0) > 1 ? (
-                /*
-                  ★★ A select, at any size — 2026-09-17, the client: "шинэ
-                  мэдээний доор байгаа бүлгүүд дропдаун харагд".
-
-                  It was a chip row, which is the right control for the two or
-                  three groups a teacher has and the wrong one at twenty: a
-                  horizontal scroller whose chosen chip can sit off the edge,
-                  where finding Хангай бүлэг means dragging through the
-                  alphabet. This first shipped with a "more than six" threshold
-                  and that was the mistake — the screen a director was looking
-                  at had four, so nothing changed for them. One control at
-                  every size, naming the current board without being opened.
-                */
-                <label className="flex flex-col gap-1">
-                  <span className="text-caption font-medium text-muted">Бүлгийн самбар</span>
-                  <Select
-                    value={groupId}
-                    onChange={(event) => setGroupId(event.target.value)}
-                    className="sm:max-w-[320px]"
-                  >
-                    {isAdmin ? <option value="">Бүх бүлэг</option> : null}
-                    {(boardGroups.data?.items ?? []).map((group) => (
-                      <option key={group.id} value={group.id}>
-                        {group.name}
-                      </option>
-                    ))}
-                  </Select>
-                </label>
+              {/*
+                ★★★ «Бүх бүлэг» and the other groups are a teacher's too again —
+                2026-10-08, the client, reversing the 2026-09-10 note above:
+                "багш мэдээ хэсэгт өөрийн болон бусад бүлгийг харах боломжтой
+                болго, шүүлтүүр хэсгээр тохируулж болно". A teacher still lands
+                on their own group; the rest is one choice away.
+              */}
+              {/*
+                ★ The group and «Шинэ мэдээ» on one row, on a phone too —
+                2026-10-08, the client: "шинэ мэдээ нэг эгнээнд оруул утсан дээр
+                энэ 2 нэг эгнээ харагдана". The button lost its pen icon the
+                same day.
+              */}
+              {isStaff ? (
+                <div className="flex items-center justify-between gap-2">
+                  {isStaff && (isAdmin ? ownGroups.length > 1 : ownGroups.length > 0) ? (
+                    <label className="min-w-0">
+                      {/* No visible word — 2026-10-08, the client: "Бүлгийн самбар-үг хас". Kept
+                        for a screen reader: the select says which group, not what it chooses. */}
+                      <span className="sr-only">Бүлгийн самбар</span>
+                      <Select
+                        value={groupId}
+                        onChange={(event) => setGroupId(event.target.value)}
+                        // Quiet — 2026-10-08, the client: "анзаарагдахгүй болго".
+                        className="h-9 w-auto max-w-[220px] border-transparent bg-transparent px-2 text-caption text-muted shadow-none"
+                      >
+                        <option value="">Бүх бүлэг</option>
+                        {isAdmin
+                          ? ownGroups.map((group) => (
+                              <option key={group.id} value={group.id}>
+                                {group.name}
+                              </option>
+                            ))
+                          : [
+                              <optgroup key="own" label="Миний бүлэг">
+                                {ownGroups.map((group) => (
+                                  <option key={group.id} value={group.id}>
+                                    {group.name}
+                                  </option>
+                                ))}
+                              </optgroup>,
+                              otherGroups.length > 0 ? (
+                                <optgroup key="other" label="Бусад бүлэг">
+                                  {otherGroups.map((group) => (
+                                    <option key={group.id} value={group.id}>
+                                      {group.name}
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              ) : null,
+                            ]}
+                      </Select>
+                    </label>
+                  ) : null}
+                  <Button asChild size="sm" className="ml-auto shrink-0">
+                    <Link href="/notifications/new">Шинэ мэдээ</Link>
+                  </Button>
+                </div>
               ) : null}
 
               {/*

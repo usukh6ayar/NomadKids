@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  selectOption,
   renderWithProviders,
   sessionFor,
   setParams,
@@ -134,12 +135,71 @@ describe("the news filter button", () => {
 });
 
 describe("whose board a teacher sees", () => {
-  it("gives a teacher no all-groups escape hatch", async () => {
+  /*
+    ★ One row, on a phone too: the quiet group choice and «Шинэ мэдээ», which
+    has no icon — 2026-10-08, the client.
+  */
+  it("puts the group choice and Шинэ мэдээ on one row, the button without an icon", async () => {
     stubBoard(["TEACHER"]);
     renderWithProviders(<NotificationsPage />);
 
-    await screen.findByText("Дэлбээ бүлэг");
-    expect(screen.queryByText("Бүх бүлэг")).not.toBeInTheDocument();
+    const button = await screen.findByRole("link", { name: "Шинэ мэдээ" });
+    expect(button.querySelector("svg")).toBeNull();
+    const select = await screen.findByLabelText("Бүлгийн самбар");
+    expect(select.closest("label")!.parentElement).toBe(button.parentElement);
+  });
+
+  /*
+    ★ Reversed 2026-10-08, the client: "багш мэдээ хэсэгт өөрийн болон бусад
+    бүлгийг харах боломжтой болго". A teacher still lands on their own group;
+    «Бүх бүлэг» and the other groups the notices name are one choice away.
+  */
+  it("offers a teacher Бүх бүлэг, and the other groups the notices name", async () => {
+    const user = userEvent.setup();
+    const GROUP_C = "66666666-6666-4666-8666-666666666666";
+    const notice = (id: string, group: { id: string; name: string }) => ({
+      id,
+      title: `${group.name}-ийн мэдээ`,
+      body: "Маргааш",
+      reads: [],
+      targets: [{ groupId: group.id, group }],
+    });
+    const api = stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/children/mine", body: [] },
+      // A teacher's own groups only — `GET /groups` gives them nothing else.
+      { path: "/groups", body: { ...GROUPS, items: [GROUPS.items[0]], total: 1 } },
+      {
+        path: "/notifications",
+        body: {
+          items: [
+            notice("cccccccc-cccc-4ccc-8ccc-000000000001", { id: GROUP_A, name: "Дэлбээ бүлэг" }),
+            notice("cccccccc-cccc-4ccc-8ccc-000000000002", { id: GROUP_C, name: "Хонгор бүлэг" }),
+          ],
+          page: 1,
+          pageSize: 25,
+          total: 2,
+          totalPages: 1,
+        },
+      },
+    ]);
+    renderWithProviders(<NotificationsPage />);
+
+    await screen.findByText("Хонгор бүлэг-ийн мэдээ");
+    // The other groups' names come from one bounded read across the kindergarten.
+    expect(api.calls.some((call) => call.url === "/notifications?page=1&pageSize=50")).toBe(true);
+    await selectOption(user, "Бүлгийн самбар", "Хонгор бүлэг");
+    await waitFor(() =>
+      expect(api.calls.some((call) => call.url.includes(`groupId=${GROUP_C}`))).toBe(true),
+    );
+    await selectOption(user, "Бүлгийн самбар", "Бүх бүлэг");
+    await waitFor(() =>
+      expect(
+        api.calls.some(
+          (call) => call.url.startsWith("/notifications?") && !call.url.includes("groupId"),
+        ),
+      ).toBe(true),
+    );
   });
 
   it("lands a teacher on their own group rather than an unfiltered feed", async () => {
