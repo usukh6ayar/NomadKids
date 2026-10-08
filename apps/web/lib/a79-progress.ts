@@ -191,52 +191,6 @@ export function a79Score(progress: A79Progress): A79Score {
 }
 
 /**
- * Sample evidence for one child, shown under a banner while the endpoint is
- * missing — the same arrangement as `lib/feedback-demo.ts`. Seeded by the
- * child's id so the screen does not change between visits.
- */
-export function a79DemoProgress(childId: string, level: A79LevelKey): A79Progress {
-  let seed = [...childId].reduce((sum, ch) => (sum * 31 + ch.charCodeAt(0)) >>> 0, 7);
-  const next = () => {
-    seed = (seed * 1103515245 + 12345) >>> 0;
-    return seed / 2 ** 32;
-  };
-  const kinds = ["Ажиглалт", "Ярилцлага", "Бүтээл"];
-  const notes = [
-    "Багшийн асуултад бие даан хариулав.",
-    "Сануулсны дараа зөв гүйцэтгэв.",
-    "Эхлүүлж өгөхөд үргэлжлүүлэв.",
-    "Найзуудтайгаа тоглох үеэр ажиглагдав.",
-  ];
-  // Earlier notes sit lower on the scale, the way a skill grows.
-  const ladder: A79Status[] = ["DEVELOPING", "SUPPORTED", "INDEPENDENT"];
-  const total = a79Level(level).criteria.length;
-  const criteria: A79Progress["criteria"] = [];
-  for (let number = 1; number <= total; number++) {
-    const roll = next();
-    if (roll < 0.15) continue;
-    const status: A79Status =
-      roll < 0.75 ? "INDEPENDENT" : roll < 0.88 ? "SUPPORTED" : "DEVELOPING";
-    const top = ladder.indexOf(status);
-    const count = 1 + Math.floor(next() * 3);
-    const evidence: A79Evidence[] = [];
-    let day = 28;
-    for (let k = 0; k < count; k++) {
-      day = Math.max(1, day - 1 - Math.floor(next() * 8));
-      evidence.push({
-        observationId: `demo-${number}-${k}`,
-        observedOn: `2026-09-${String(day).padStart(2, "0")}`,
-        status: ladder[Math.max(0, top - k)]!,
-        typeName: kinds[Math.floor(next() * kinds.length)],
-        note: notes[Math.floor(next() * notes.length)],
-      });
-    }
-    criteria.push({ number, status, evidence });
-  }
-  return { level, criteria };
-}
-
-/**
  * One child's А/79 result as a spreadsheet — «Excel» beside the level picker,
  * 2026-10-08, the client. CSV with a byte-order mark, as every other «Excel»
  * button in the product writes (`yearly-attendance.tsx`): Excel opens it with

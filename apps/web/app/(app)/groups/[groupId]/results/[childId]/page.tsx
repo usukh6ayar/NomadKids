@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { childDetailSchema, observationSchema, type Observation } from "@kinder/contracts";
 import { ObservationDetailDialog } from "@/components/child/child-observations";
 import { useToast } from "@/components/ui/toast";
-import { DemoBanner } from "@/components/feedback/feedback-parts";
+import { A79NotReady } from "@/components/assessment/a79-group-summary";
 import { ChildAvatar } from "@/components/media/media-image";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
@@ -30,7 +30,6 @@ import {
   A79_STATUS_LABEL,
   a79Band,
   a79Csv,
-  a79DemoProgress,
   a79Level,
   a79LevelForAge,
   a79ProgressSchema,
@@ -62,8 +61,8 @@ const STATUS_CELL: Record<A79Status, string> = {
  * One child's А/79 result — the client's design, 2026-10-08: the share of the
  * level's criteria shown «Бие даан», by part, and every criterion with its
  * latest evidence. Read from `GET /children/:id/a79-progress`
- * (`lib/a79-progress.ts`); while that answers 404, sample evidence under a
- * banner, as «Санал хүсэлт» does.
+ * (`lib/a79-progress.ts`); a 404 draws `A79NotReady`, never sample evidence
+ * (`a79-group-summary.tsx` says why).
  */
 export default function ChildResultPage() {
   return (
@@ -89,8 +88,8 @@ function ChildResult() {
     enabled: child.isSuccess,
     retry: false,
   });
-  const demo = progress.isError && isNotFound(progress.error);
-  const data: A79Progress | undefined = demo ? a79DemoProgress(childId, level) : progress.data;
+  const notReady = progress.isError && isNotFound(progress.error);
+  const data: A79Progress | undefined = progress.data;
 
   return (
     <div className="flex flex-col gap-4">
@@ -140,30 +139,18 @@ function ChildResult() {
         </div>
       ) : null}
 
-      {demo ? (
-        <DemoBanner>
-          Жишээ үр дүн харагдаж байна. Сервер холбогдоход ажиглалтаас тооцсон жинхэнэ үр дүн энд
-          гарна.
-        </DemoBanner>
-      ) : null}
+      {notReady ? <A79NotReady /> : null}
       {progress.isLoading ? <LoadingState rows={4} /> : null}
-      {progress.isError && !demo ? <ErrorState description={errorMessage(progress.error)} /> : null}
+      {progress.isError && !notReady ? (
+        <ErrorState description={errorMessage(progress.error)} />
+      ) : null}
 
-      {data ? <ResultBody progress={data} childId={childId} demo={demo} /> : null}
+      {data ? <ResultBody progress={data} childId={childId} /> : null}
     </div>
   );
 }
 
-function ResultBody({
-  progress,
-  childId,
-  demo,
-}: {
-  progress: A79Progress;
-  childId: string;
-  /** Sample evidence has no note behind it; it opens as drawn from itself. */
-  demo: boolean;
-}) {
+function ResultBody({ progress, childId }: { progress: A79Progress; childId: string }) {
   const toast = useToast();
   const [opening, setOpening] = useState<A79Evidence | null>(null);
   /*
@@ -175,7 +162,7 @@ function ResultBody({
     queryKey: [...qk.child(childId), "observation", opening?.observationId],
     queryFn: () =>
       get(`/children/${childId}/observations/${opening!.observationId}`, observationSchema),
-    enabled: Boolean(opening) && !demo,
+    enabled: Boolean(opening),
     retry: false,
   });
   useEffect(() => {
@@ -184,11 +171,7 @@ function ResultBody({
       setOpening(null);
     }
   }, [note.isError, note.error, toast]);
-  const shown: Observation | null = !opening
-    ? null
-    : demo
-      ? demoObservation(opening)
-      : (note.data ?? null);
+  const shown: Observation | null = opening ? (note.data ?? null) : null;
 
   const score = a79Score(progress);
   const band = a79Band(score.percent);
@@ -396,39 +379,6 @@ function ResultBody({
       />
     </>
   );
-}
-
-/**
- * A sample piece of evidence as the note it stands for — demo mode only.
- *
- * ★ Filled in like a real note (an activity, «PDF-д орно», the note itself),
- * so the enlarged view previews what a teacher will see once the endpoint
- * answers — 2026-10-08, the client asked whether it shows in full. With real
- * data the whole note is fetched by id and nothing here is used.
- */
-const DEMO_ACTIVITIES = ["Чөлөөт тоглоом", "Тойргийн цаг", "Чиглүүлэгтэй тоглоом, үйл ажиллагаа"];
-
-function demoObservation(evidence: A79Evidence): Observation {
-  const pick = [...evidence.observationId].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
-  return {
-    id: evidence.observationId,
-    observedOn: evidence.observedOn,
-    source: "TEACHER",
-    reviewStatus: "APPROVED",
-    visibleToParents: pick % 2 === 0,
-    includeInReport: true,
-    activityName: DEMO_ACTIVITIES[pick % DEMO_ACTIVITIES.length],
-    situation: [
-      evidence.note,
-      `Чадварын илрэл: ${A79_STATUS_LABEL[evidence.status]}.`,
-      "Жишээ тэмдэглэл — сервер холбогдоход багшийн бичсэн жинхэнэ тэмдэглэл энд гарна.",
-    ]
-      .filter(Boolean)
-      .join("\n\n"),
-    type: evidence.typeName ? { id: evidence.observationId, name: evidence.typeName } : null,
-    domains: [],
-    media: [],
-  };
 }
 
 function downloadCsv(

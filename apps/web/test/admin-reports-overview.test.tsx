@@ -144,11 +144,17 @@ const SECOND_A79 = {
   ],
 };
 
-function renderAdminReport() {
+const NOT_FOUND = { status: 404, body: { title: "Not found", status: 404 } };
+
+function renderAdminReport({ a79NotReady = false } = {}) {
   const api = stubApi([
     { path: "/auth/me", body: sessionFor(["ADMIN"]) },
-    { path: `/groups/${FIRST_GROUP}/a79-summary`, body: FIRST_A79 },
-    { path: `/groups/${SECOND_GROUP}/a79-summary`, body: SECOND_A79 },
+    a79NotReady
+      ? { path: `/groups/${FIRST_GROUP}/a79-summary`, ...NOT_FOUND }
+      : { path: `/groups/${FIRST_GROUP}/a79-summary`, body: FIRST_A79 },
+    a79NotReady
+      ? { path: `/groups/${SECOND_GROUP}/a79-summary`, ...NOT_FOUND }
+      : { path: `/groups/${SECOND_GROUP}/a79-summary`, body: SECOND_A79 },
     { path: `/groups/${FIRST_GROUP}/report`, body: FIRST_REPORT },
     { path: `/groups/${SECOND_GROUP}/report`, body: SECOND_REPORT },
     {
@@ -255,5 +261,19 @@ describe("the administrator report", () => {
         ),
       ).toBe(true);
     }
+  });
+
+  // ★ No invented figures while the endpoint answers 404 — 2026-10-08.
+  it("says there is no result yet, and draws no chart, while the groups' endpoint answers 404", async () => {
+    const user = userEvent.setup();
+    renderAdminReport({ a79NotReady: true });
+
+    await user.click(await screen.findByRole("tab", { name: "Үр дүнгийн үнэлгээ" }));
+    const panel = screen.getByRole("tabpanel", { name: "Үр дүнгийн үнэлгээ" });
+
+    expect(await within(panel).findByText("Үр дүн хараахан гараагүй байна")).toBeInTheDocument();
+    expect(within(panel).queryByText(/Жишээ/)).toBeNull();
+    expect(within(panel).queryByRole("table")).toBeNull();
+    expect(within(panel).queryByRole("img")).toBeNull();
   });
 });
