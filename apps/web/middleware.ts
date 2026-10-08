@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { hostPolicy } from "@/lib/canonical-host";
 
 /**
  * Per-request CSP nonce.
@@ -41,6 +42,13 @@ function originOf(value: string | undefined): string | undefined {
 }
 
 export function middleware(request: NextRequest) {
+  // The Vercel copy of the site — `lib/canonical-host.ts` has the why.
+  const policy = hostPolicy(request.nextUrl, {
+    VERCEL: process.env.VERCEL,
+    VERCEL_ENV: process.env.VERCEL_ENV,
+  });
+  if (policy.kind === "redirect") return NextResponse.redirect(policy.location, 308);
+
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isProduction = process.env.NODE_ENV === "production";
   const apiOrigin = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
@@ -114,6 +122,7 @@ export function middleware(request: NextRequest) {
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set("content-security-policy", csp);
+  if (policy.kind === "noindex") response.headers.set("x-robots-tag", "noindex");
 
   return response;
 }

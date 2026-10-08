@@ -23,10 +23,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   return [
     { url: `${origin}/`, changeFrequency: "monthly", priority: 1 },
-    // The one page a person who searched for the product actually wants: it
-    // names the system, says who it is for, and is where an invited parent
-    // lands.
-    { url: `${origin}/login`, changeFrequency: "monthly", priority: 0.8 },
+    /*
+     * ★ No `/login` — 2026-10-08. It canonicalises to `/` (`login/layout.tsx`),
+     * and a sitemap lists canonical URLs only. Listing it asked Google to index
+     * a page that, in the same breath, says it is a copy of `/`; Search Console
+     * reported it under "Alternate page with proper canonical tag".
+     */
     { url: `${origin}/faq`, changeFrequency: "monthly", priority: 0.6 },
     { url: `${origin}/privacy`, changeFrequency: "yearly", priority: 0.3 },
     { url: `${origin}/terms`, changeFrequency: "yearly", priority: 0.3 },
