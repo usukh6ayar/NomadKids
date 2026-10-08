@@ -387,7 +387,9 @@ describe("Шинэ ажиглалт — the form's own fields", () => {
 
     // The same reference list the coverage breakdown groups by, so the form
     // and the panel cannot disagree about what an activity is called.
-    expect(await screen.findByRole("option", { name: "Ганцаарчилсан үйл ажиллагаа" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("option", { name: "Ганцаарчилсан үйл ажиллагаа" }),
+    ).toBeInTheDocument();
   });
 
   it("tags the note with one development strand", async () => {
