@@ -84,4 +84,18 @@ describe("public page metadata", () => {
       }
     }
   });
+
+  /**
+   * Google renders a page with its JS and CSS before indexing it, and those
+   * live under `/_next/`. Blocking them left `/` an empty shell to Googlebot.
+   */
+  it("lets crawlers fetch the scripts and styles a page renders with", () => {
+    const rules = robots().rules;
+    const disallowed = (Array.isArray(rules) ? rules : [rules]).flatMap((rule) =>
+      [rule.disallow ?? []].flat(),
+    );
+    expect(disallowed.some((prefix) => "/_next/static/chunks/app.js".startsWith(prefix))).toBe(
+      false,
+    );
+  });
 });
