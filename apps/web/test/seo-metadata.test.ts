@@ -50,7 +50,7 @@ describe("public page metadata", () => {
    */
   it("lists only canonical URLs in the sitemap", () => {
     const paths = sitemap().map(({ url }) => new URL(url).pathname);
-    expect(paths).toEqual(["/", "/faq", "/privacy", "/terms"]);
+    expect(paths).toEqual(["/", "/faq", "/pricing", "/privacy", "/terms"]);
   });
 
   /**
