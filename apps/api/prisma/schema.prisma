@@ -520,6 +520,9 @@ model User {
   chatReads              ChatRead[]                @relation("ChatReader")
   esisSyncRuns           EsisSyncRun[]             @relation("EsisSyncInitiator")
   esisWritesPrepared     EsisWriteRequest[]        @relation("EsisWritePreparer")
+  feedbackAuthored       Feedback[]                @relation("FeedbackAuthor")
+  feedbackAcknowledged   Feedback[]                @relation("FeedbackAcknowledger")
+  feedbackReplied        Feedback[]                @relation("FeedbackReplier")
   esisWritesApproved     EsisWriteRequest[]        @relation("EsisWriteApprover")
 
   @@index([deletedAt])
@@ -830,6 +833,7 @@ model Kindergarten {
   esisSyncRuns           EsisSyncRun[]
   esisWriteRequests      EsisWriteRequest[]
   esisStaffRoster        EsisStaffRoster[]
+  feedback               Feedback[]
   esisReference          EsisReference[]
   methodUnions           MethodUnion[]
   methodUnionMembers     MethodUnionMember[]
@@ -1149,6 +1153,7 @@ model Group {
   documents              Document[]              @relation("DocumentGroup")
   mealServings           MealServing[]
   esisWriteRequests      EsisWriteRequest[]
+  feedback               Feedback[]
 
   @@unique([schoolYearId, name])
   @@index([kindergartenId, status])
@@ -1300,6 +1305,7 @@ model Child {
   safetyIncidents     SafetyIncident[]
   artworkComparisons  ArtworkComparison[]
   accessSubscriptions AccessSubscription[]
+  feedback            Feedback[]
   consents            ConsentRecord[]
   mealRecords         MealRecord[]
   fundingCalculations FundingCalculation[]
@@ -4996,4 +5002,82 @@ model MethodUnionMember {
   @@unique([unionId, membershipId])
   @@index([membershipId])
   @@map("method_union_members")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Санал хүсэлт — a family's feedback to the administration
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum FeedbackCategory {
+  FOOD
+  TEACHING
+  HYGIENE
+  SAFETY
+  FACILITY
+  PAYMENT
+  OTHER
+}
+
+/// Forward only: NEW → ACKNOWLEDGED → ANSWERED.
+enum FeedbackStatus {
+  NEW
+  ACKNOWLEDGED
+  ANSWERED
+}
+
+/// As the family states it when writing — not `Guardianship.relation`.
+enum FeedbackRelation {
+  MOTHER
+  FATHER
+  GUARDIAN
+}
+
+/// A suggestion or complaint from a family, and the administration's reply.
+///
+/// ★ `authorUserId` is kept even when `anonymous` — the family follows their
+/// own item and the daily limit needs a sender. Anonymous means anonymous *to
+/// the administration*: `FeedbackService` redacts the author, the child and
+/// the group from the admin's copy, and the group filter excludes it.
+///
+/// ★★ Two deletions, one per side, and no `deletedAt`. A family removing an
+/// item from their list must not withdraw it from the inbox, and the inbox
+/// clearing one must not take the reply away from the family. The row itself
+/// is never deleted (CLAUDE.md §3.2).
+model Feedback {
+  id             String            @id @default(uuid()) @db.Uuid
+  kindergartenId String            @db.Uuid
+  childId        String            @db.Uuid
+  authorUserId   String            @db.Uuid
+  /// The child's group when it was sent. A later transfer does not move it.
+  groupId        String?           @db.Uuid
+  category       FeedbackCategory
+  body           String
+  anonymous      Boolean           @default(false)
+  /// Null whenever `anonymous` is true.
+  relation       FeedbackRelation?
+  status         FeedbackStatus    @default(NEW)
+
+  acknowledgedAt   DateTime?
+  acknowledgedById String?   @db.Uuid
+  replyBody        String?
+  repliedAt        DateTime?
+  repliedById      String?   @db.Uuid
+
+  authorDeletedAt DateTime?
+  adminDeletedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  kindergarten   Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  child          Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  author         User         @relation("FeedbackAuthor", fields: [authorUserId], references: [id], onDelete: Cascade)
+  group          Group?       @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  acknowledgedBy User?        @relation("FeedbackAcknowledger", fields: [acknowledgedById], references: [id], onDelete: SetNull)
+  repliedBy      User?        @relation("FeedbackReplier", fields: [repliedById], references: [id], onDelete: SetNull)
+
+  @@index([kindergartenId, adminDeletedAt, createdAt(sort: Desc)])
+  @@index([authorUserId, authorDeletedAt, createdAt(sort: Desc)])
+  @@index([childId])
+  @@map("feedback")
 }

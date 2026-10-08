@@ -30,6 +30,7 @@ z.config(mongolianErrorMap());
 export * from "./birth-facts";
 export * from "./curriculum";
 export * from "./domain";
+export * from "./feedback";
 export * from "./ids";
 export * from "./local-date";
 export * from "./mn-locale";

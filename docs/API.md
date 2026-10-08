@@ -305,6 +305,32 @@ like every other list.
 
 ---
 
+## 5.1d Feedback — санал хүсэлт
+
+| Method | Route                                                 | Role   | Ownership | Response                                           |
+| ------ | ----------------------------------------------------- | ------ | --------- | -------------------------------------------------- |
+| GET    | `/me/feedback`                                        | parent | own       | paginated, newest first                            |
+| POST   | `/me/feedback`                                        | parent | guardian  | 201, the item. 10 per person per day, then 429     |
+| DELETE | `/me/feedback/:feedbackId`                            | parent | own       | 204, off the family's list only                    |
+| GET    | `/kindergartens/:id/feedback`                         | admin  | kg        | paginated inbox; `?status&category&groupId`        |
+| POST   | `/kindergartens/:id/feedback/:feedbackId/acknowledge` | admin  | kg        | 200, the item. Again returns the current state     |
+| POST   | `/kindergartens/:id/feedback/:feedbackId/reply`       | admin  | kg        | 200, the item, ANSWERED. 409 if anonymous/answered |
+| DELETE | `/kindergartens/:id/feedback/:feedbackId`             | admin  | kg        | 204, out of the inbox only                         |
+
+Shapes are `@kinder/contracts` `feedback.ts`. No teacher route: a family will
+not complain about a teacher that teacher can read.
+
+★ **Anonymous means anonymous to the administration.** The server keeps the
+author. The admin's copy carries `author`, `childName`, `relation`, `groupId`,
+`groupName` and `teacherName` as null, a `groupId` filter never returns an
+anonymous item, and audit rows for one carry no `childId`, nor the family's
+`actorUserId` when the family removes it.
+
+★★ **The kindergarten and group come from the child's enrollment**, never the
+request, and the group is a snapshot. Only the child's own guardian may write
+(`ChildAccessService.assertIsGuardian`), and an unpaid portal fee is 402 as on
+every other parent page.
+
 ## 5.2 Growth — RFP §7
 
 | Method | Route                        | Role | Ownership             | Request                          | Response                |
