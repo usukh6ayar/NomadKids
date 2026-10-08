@@ -72,10 +72,12 @@ const DOMAINS = [
   },
 ];
 
-function renderPage() {
+function renderPage({ a79 = { body: { children: [] } } as object } = {}) {
   stubApi([
     { path: "/auth/me", body: sessionFor(["ADMIN"]) },
     { path: "/dashboard/admin", body: DASHBOARD },
+    { path: `/groups/${GROUP_ONE}/a79-summary`, ...a79 },
+    { path: `/groups/${GROUP_TWO}/a79-summary`, ...a79 },
     {
       path: "/kindergartens/33333333-3333-4333-8333-333333333333/development-domains",
       body: DOMAINS,
@@ -234,5 +236,15 @@ describe("the administrator assessment overview", () => {
     // A group with no children yet shows dashes, not a 0% it did not earn.
     const empty = within(table).getByRole("link", { name: "Солонго" }).closest("tr")!;
     await waitFor(() => expect(within(empty).getAllByRole("cell")[6]).toHaveTextContent("—"));
+  });
+
+  // ★ No invented figures while the endpoint answers 404 — 2026-10-08.
+  it("says there is no result yet, and draws no table, while the endpoint answers 404", async () => {
+    setSearchParams("view=results");
+    renderPage({ a79: { status: 404, body: { title: "Not found", status: 404 } } });
+
+    expect(await screen.findByText("Үр дүн хараахан гараагүй байна")).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Бүлгүүдийн үр дүнгийн үнэлгээ" })).toBeNull();
+    expect(screen.queryByText(/Жишээ/)).toBeNull();
   });
 });

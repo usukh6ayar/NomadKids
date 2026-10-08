@@ -6,12 +6,11 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AssessmentSwitch } from "@/components/assessment/assessment-switch";
 import {
-  A79_DEMO_NOTE,
+  A79NotReady,
   a79ChildRows,
   a79GroupAverages,
   useA79GroupSummary,
 } from "@/components/assessment/a79-group-summary";
-import { DemoBanner } from "@/components/feedback/feedback-parts";
 import { Badge } from "@/components/ui/badge";
 import { A79_BAND_LABEL, a79Band } from "@/lib/a79-progress";
 import { PageHeader } from "@/components/shell/app-shell";
@@ -90,32 +89,13 @@ export function AdminAssessmentOverview() {
         {header}
         {/* No «Бүлгүүд» heading: the table says what it is, and the space went. */}
         <section aria-label="Бүлгүүд">
-          <ResultsDemoNote firstGroupId={coverage[0]?.groupId} />
           {coverage.length === 0 ? (
             <EmptyState
               title="Бүлэг бүртгэгдээгүй байна"
               description="Бүлэг нэмсний дараа үр дүнгийн үнэлгээ энд харагдана."
             />
           ) : (
-            <TableShell caption="Бүлгүүдийн үр дүнгийн үнэлгээ" minWidth="min-w-[640px]">
-              <thead>
-                <tr>
-                  <Th className="w-12">№</Th>
-                  <Th>Бүлэг</Th>
-                  <Th numeric>Хүүхэд</Th>
-                  <Th numeric>Мэдлэг</Th>
-                  <Th numeric>Чадвар</Th>
-                  <Th numeric>Төлөвшил</Th>
-                  <Th numeric>Нийт</Th>
-                  <Th>Үр дүн</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {coverage.map((group, index) => (
-                  <ResultRow key={group.groupId} index={index} group={group} />
-                ))}
-              </tbody>
-            </TableShell>
+            <ResultsTable coverage={coverage} />
           )}
         </section>
       </>
@@ -238,12 +218,33 @@ function ResultRow({ index, group }: { index: number; group: Coverage }) {
   );
 }
 
-/** Said once above the table while the figures are samples. */
-function ResultsDemoNote({ firstGroupId }: { firstGroupId?: string }) {
-  const { demo } = useA79GroupSummary(firstGroupId ?? "");
-  return demo ? (
-    <div className="mb-3">
-      <DemoBanner>{A79_DEMO_NOTE}</DemoBanner>
-    </div>
-  ) : null;
+/**
+ * The groups' А/79 table, or `A79NotReady` in its place while the endpoint
+ * answers 404 — never sample figures (`a79-group-summary.tsx` says why). The
+ * first group stands for all: the endpoint is there for every group or none.
+ */
+function ResultsTable({ coverage }: { coverage: Coverage[] }) {
+  const { notReady } = useA79GroupSummary(coverage[0]!.groupId);
+  if (notReady) return <A79NotReady />;
+  return (
+    <TableShell caption="Бүлгүүдийн үр дүнгийн үнэлгээ" minWidth="min-w-[640px]">
+      <thead>
+        <tr>
+          <Th className="w-12">№</Th>
+          <Th>Бүлэг</Th>
+          <Th numeric>Хүүхэд</Th>
+          <Th numeric>Мэдлэг</Th>
+          <Th numeric>Чадвар</Th>
+          <Th numeric>Төлөвшил</Th>
+          <Th numeric>Нийт</Th>
+          <Th>Үр дүн</Th>
+        </tr>
+      </thead>
+      <tbody>
+        {coverage.map((group, index) => (
+          <ResultRow key={group.groupId} index={index} group={group} />
+        ))}
+      </tbody>
+    </TableShell>
+  );
 }
