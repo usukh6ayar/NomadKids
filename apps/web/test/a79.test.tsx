@@ -303,20 +303,24 @@ describe("«Үр дүнгийн үнэлгээ»", () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       {
-        path: "/children",
+        path: `/groups/${GROUP}/a79-summary`,
         body: {
-          items: [{ ...CHILD_DETAIL, kindergartenId: KG }],
-          page: 1,
-          pageSize: 100,
-          total: 1,
-          totalPages: 1,
+          children: [
+            {
+              childId: CHILD,
+              firstName: "Батбаяр",
+              lastName: "Ганболд",
+              level: "I",
+              achieved: 0,
+              total: 37,
+              byDomain: [],
+            },
+          ],
         },
       },
     ]);
     renderWithProviders(<GroupResultsPage />);
 
-    // No endpoint yet: sample results from the roster, under a banner.
-    expect(await screen.findByText(/Жишээ үр дүн харагдаж байна/)).toBeInTheDocument();
     const link = await screen.findByRole("link", { name: "Г.Батбаяр" });
     const row = link.closest("tr")!;
     expect(within(row).getByText("I")).toBeInTheDocument();
@@ -464,7 +468,13 @@ describe("«Үр дүнгийн үнэлгээ»", () => {
     expect(screen.queryByText(/Жишээ үр дүн/)).toBeNull();
   });
 
-  it("shows sample results under a banner while the endpoint answers 404", async () => {
+  /*
+   * ★ No invented figures while the endpoint answers 404 — 2026-10-08. They
+   * used to sit beside real children's names under a "sample" banner; with
+   * the banner gone at the client's request, nothing would have said they
+   * were made up.
+   */
+  it("says there is no result yet, and draws no figures, while the child's endpoint answers 404", async () => {
     setParams({ groupId: GROUP, childId: CHILD });
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
@@ -477,16 +487,40 @@ describe("«Үр дүнгийн үнэлгээ»", () => {
     ]);
     renderWithProviders(<ChildResultPage />);
 
-    expect(await screen.findByText(/Жишээ үр дүн харагдаж байна/)).toBeInTheDocument();
-    expect(screen.getByText(/37 шалгуураас/)).toBeInTheDocument();
+    expect(await screen.findByText("Үр дүн хараахан гараагүй байна")).toBeInTheDocument();
+    expect(screen.queryByText(/Жишээ/)).toBeNull();
+    expect(screen.queryByText(/[Сс]ервер/)).toBeNull();
+    expect(screen.queryByText(/шалгуураас/)).toBeNull();
+    expect(screen.queryByRole("table")).toBeNull();
+  });
 
-    // A sample note opens filled in, as a real one will — client, 2026-10-08.
-    const user = userEvent.setup();
-    await user.click(screen.getAllByRole("button", { name: / — нээх$/ })[0]!);
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText("Үйл ажиллагааны төрөл")).toBeInTheDocument();
-    expect(within(dialog).getByText("PDF-д орно")).toBeInTheDocument();
-    expect(within(dialog).getByText(/Чадварын илрэл:/)).toBeInTheDocument();
+  it("says there is no result yet, and lists no child, while the group's endpoint answers 404", async () => {
+    setParams({ groupId: GROUP });
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: `/groups/${GROUP}/a79-summary`,
+        status: 404,
+        body: { title: "Not found", status: 404 },
+      },
+      {
+        path: "/children",
+        body: {
+          items: [{ ...CHILD_DETAIL, kindergartenId: KG }],
+          page: 1,
+          pageSize: 100,
+          total: 1,
+          totalPages: 1,
+        },
+      },
+    ]);
+    renderWithProviders(<GroupResultsPage />);
+
+    expect(await screen.findByText("Үр дүн хараахан гараагүй байна")).toBeInTheDocument();
+    expect(screen.queryByText(/Жишээ/)).toBeNull();
+    expect(screen.queryByText(/[Сс]ервер/)).toBeNull();
+    expect(screen.queryByRole("link", { name: "Г.Батбаяр" })).toBeNull();
+    expect(screen.queryByRole("table")).toBeNull();
   });
 
   it("narrows the tables to one part, and back to all", async () => {
@@ -494,11 +528,7 @@ describe("«Үр дүнгийн үнэлгээ»", () => {
     setParams({ groupId: GROUP, childId: CHILD });
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
-      {
-        path: `/children/${CHILD}/a79-progress`,
-        status: 404,
-        body: { title: "Not found", status: 404 },
-      },
+      { path: `/children/${CHILD}/a79-progress`, body: { level: "I", criteria: [] } },
       { path: `/children/${CHILD}`, body: CHILD_DETAIL },
     ]);
     renderWithProviders(<ChildResultPage />);
