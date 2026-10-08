@@ -45,6 +45,15 @@ describe("public page metadata", () => {
   });
 
   /**
+   * A sitemap lists canonical URLs. `/login` is not one (above), so listing it
+   * contradicts its own `<link rel="canonical">`.
+   */
+  it("lists only canonical URLs in the sitemap", () => {
+    const paths = sitemap().map(({ url }) => new URL(url).pathname);
+    expect(paths).toEqual(["/", "/faq", "/privacy", "/terms"]);
+  });
+
+  /**
    * The root's `title.template` appends `| ${BRAND} · NomadKids`, so a page
    * that spells the brand in its own title prints it twice — inside the ~60
    * characters a result line has. All three did.
