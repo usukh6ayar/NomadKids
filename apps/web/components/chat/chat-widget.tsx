@@ -11,6 +11,7 @@ import {
   MessageSquare,
   Paperclip,
   Search,
+  Clapperboard,
   Send,
   SmilePlus,
   RotateCcw,
@@ -30,6 +31,11 @@ import {
 import { get, mutate } from "@/lib/api/browser";
 import { mediaUrl } from "@/lib/api/client";
 import { MAX_CHAT_IMAGES } from "@/lib/chat-media";
+import {
+  CHAT_MEDIA_RETENTION_DAYS,
+  CHAT_VIDEO_MAX_BYTES,
+  CHAT_VIDEO_MAX_SECONDS,
+} from "@kinder/contracts";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
@@ -681,11 +687,43 @@ export function ChatRoom({
    * server nothing and leaves no orphan behind — see the mutation below.
    */
   const [pending, setPending] = useState<File[]>([]);
+  /**
+   * One video at a time, never mixed with photographs — it goes to its own
+   * route (`/videos`), which writes to disk rather than memory on the server.
+   */
+  const [pendingVideo, setPendingVideo] = useState<File | null>(null);
+  const [attachError, setAttachError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
+  /** Refuses here what the server would refuse after a 100 MB upload. */
+  async function chooseVideo(file: File) {
+    setAttachError(null);
+    if (file.size > CHAT_VIDEO_MAX_BYTES) {
+      setAttachError(`Видео хэт том байна. Дээд хэмжээ ${CHAT_VIDEO_MAX_BYTES / 1024 / 1024} MB`);
+      return;
+    }
+    const seconds = await videoSeconds(file);
+    if (seconds !== null && seconds > CHAT_VIDEO_MAX_SECONDS + 0.5) {
+      setAttachError(`Видео ${CHAT_VIDEO_MAX_SECONDS / 60} минутаас урт байна`);
+      return;
+    }
+    setPending([]);
+    setPendingVideo(file);
+  }
+
   const send = useMutation({
-    mutationFn: ({ body, files }: { body: string; files: File[] }) => {
+    mutationFn: ({ body, files, video }: { body: string; files: File[]; video: File | null }) => {
       const path = `/chat/rooms/${encodeURIComponent(room.key)}/messages`;
+
+      if (video) {
+        const form = new FormData();
+        if (body) form.append("body", body);
+        form.append("video", video);
+        return mutate(`/chat/rooms/${encodeURIComponent(room.key)}/videos`, chatMessageSchema, {
+          method: "POST",
+          body: form,
+        });
+      }
 
       if (files.length === 0) {
         return mutate(path, chatMessageSchema, { method: "POST", body: { body } });
@@ -699,6 +737,7 @@ export function ChatRoom({
     onSuccess: () => {
       setDraft("");
       setPending([]);
+      setPendingVideo(null);
       void queryClient.invalidateQueries({ queryKey: qk.chatMessages(room.key) });
       void queryClient.invalidateQueries({ queryKey: qk.chatRooms() });
     },
@@ -927,6 +966,30 @@ export function ChatRoom({
           ★ Object URLs, revoked when the strip unmounts — a room left open all
           day would otherwise hold every picture anybody previewed in memory.
         */}
+        {pendingVideo ? (
+          <div className="mx-auto mb-2 flex w-full max-w-[940px] items-center gap-2 rounded-control border border-border bg-canvas px-3 py-2 text-body">
+            <Clapperboard size={18} aria-hidden="true" className="shrink-0 text-muted" />
+            <span className="min-w-0 flex-1 truncate">{pendingVideo.name}</span>
+            <button
+              type="button"
+              onClick={() => setPendingVideo(null)}
+              aria-label="Видеог хасах"
+              className="grid size-9 place-items-center rounded-control text-muted hover:bg-surface hover:text-ink"
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
+          </div>
+        ) : null}
+        {attachError ? (
+          <p role="alert" className="mx-auto mb-2 w-full max-w-[940px] text-caption text-danger">
+            {attachError}
+          </p>
+        ) : null}
+        {send.isPending && pendingVideo ? (
+          <p className="mx-auto mb-2 w-full max-w-[940px] text-caption text-muted">
+            Видео илгээж байна…
+          </p>
+        ) : null}
         {pending.length > 0 ? (
           <ul className="mx-auto mb-2 flex w-full max-w-[940px] flex-wrap gap-2">
             {pending.map((file, index) => (
@@ -946,19 +1009,27 @@ export function ChatRoom({
             // Either one is enough now — a photograph may travel with nothing
             // typed, which is what `sendChatMessageSchema`'s optional `body`
             // and `ChatService.send`'s own check are there for.
-            if ((body || pending.length > 0) && !send.isPending)
-              send.mutate({ body, files: pending });
+            if ((body || pending.length > 0 || pendingVideo) && !send.isPending)
+              send.mutate({ body, files: pending, video: pendingVideo });
           }}
           className="mx-auto flex w-full max-w-[940px] items-center gap-2"
         >
           <input
             ref={fileInput}
             type="file"
-            accept="image/jpeg,image/png,image/webp"
+            accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm,video/3gpp"
             multiple
             hidden
             onChange={(event) => {
               const chosen = Array.from(event.target.files ?? []);
+              const video = chosen.find((file) => file.type.startsWith("video/"));
+              if (video) {
+                void chooseVideo(video);
+                event.target.value = "";
+                return;
+              }
+              setAttachError(null);
+              setPendingVideo(null);
               // Silently keeping only the first four would be worse than
               // saying so — the person watched themselves pick six.
               setPending((current) => [...current, ...chosen].slice(0, MAX_CHAT_IMAGES));
@@ -970,11 +1041,11 @@ export function ChatRoom({
             type="button"
             onClick={() => fileInput.current?.click()}
             disabled={pending.length >= MAX_CHAT_IMAGES || send.isPending}
-            aria-label="Зураг хавсаргах"
+            aria-label="Зураг, видео хавсаргах"
             title={
               pending.length >= MAX_CHAT_IMAGES
                 ? `Нэг мессежид ${MAX_CHAT_IMAGES} зураг хүртэл`
-                : "Зураг хавсаргах"
+                : `Зураг эсвэл видео (${CHAT_VIDEO_MAX_SECONDS / 60} минут хүртэл) хавсаргах`
             }
             className="grid size-12 shrink-0 place-items-center rounded-control border border-border text-muted transition-colors hover:bg-canvas hover:text-ink disabled:text-faint"
           >
@@ -1106,10 +1177,17 @@ function MessageBubble({
     The one case that guess gets wrong is a family whose child has since left
     the group; the API carries no author role to settle it.
   */
+  /*
+    ★★★ «Г.Батбаярын ээж» again — the user, 2026-10-09: "chat bichinguut
+    huuhdiin zurag baih. tegeed ternii eej ntr gesen nickname tei baih". The
+    API has sent `displayName` since #175; the bubble now uses it, with the
+    child's name alone as the fallback for an older payload. The face stays
+    the child's, and stays staff-only (the API sends no photo id to families).
+  */
   const children = message.author?.children ?? [];
   const speaker =
     children.length > 0
-      ? children.map((child) => shortName(child)).join(", ")
+      ? message.author?.displayName || children.map((child) => shortName(child)).join(", ")
       : roomKind === "STAFF"
         ? shortName(message.author)
         : "Бүлгийн багш";
@@ -1180,10 +1258,15 @@ function MessageBubble({
                 message.body ? "mb-2" : "",
               )}
             >
-              {message.media.map((image) => (
-                <li key={image.id} className="min-w-0">
-                  <a href={mediaUrl(image.id)} target="_blank" rel="noopener noreferrer">
-                    {/*
+              {message.media.map((image) =>
+                image.mimeType.startsWith("video/") ? (
+                  <li key={image.id} className="min-w-0">
+                    <ChatVideo media={image} />
+                  </li>
+                ) : (
+                  <li key={image.id} className="min-w-0">
+                    <a href={mediaUrl(image.id)} target="_blank" rel="noopener noreferrer">
+                      {/*
                       A plain `<img>`, deliberately — the same reasoning
                       `media-image.tsx` sets out at the top of the file:
                       `next/image` would cache the object behind a public
@@ -1192,29 +1275,41 @@ function MessageBubble({
                       the `SameSite=Lax` cookie rides along with the image
                       request itself.
                     */}
-                    <img
-                      src={mediaUrl(image.id)}
-                      width={image.width ?? undefined}
-                      height={image.height ?? undefined}
-                      /*
+                      <img
+                        src={mediaUrl(image.id)}
+                        width={image.width ?? undefined}
+                        height={image.height ?? undefined}
+                        /*
                         ★ Whose photograph and when, not "зураг". A screen
                         reader user cannot be told what is in the picture, but
                         who sent it and at what time is knowable and is the
                         part that makes a room followable.
                       */
-                      alt={`${message.mine ? "Таны" : fullName(message.author)} илгээсэн зураг · ${timeOfDay(message.createdAt)}`}
-                      loading="lazy"
-                      className={cn(
-                        "w-full rounded-control bg-canvas object-cover",
-                        message.media.length === 1
-                          ? "max-h-[320px] object-contain"
-                          : "aspect-square",
-                      )}
-                    />
-                  </a>
-                </li>
-              ))}
+                        alt={`${message.mine ? "Таны" : fullName(message.author)} илгээсэн зураг · ${timeOfDay(message.createdAt)}`}
+                        loading="lazy"
+                        className={cn(
+                          "w-full rounded-control bg-canvas object-cover",
+                          message.media.length === 1
+                            ? "max-h-[320px] object-contain"
+                            : "aspect-square",
+                        )}
+                      />
+                    </a>
+                  </li>
+                ),
+              )}
             </ul>
+          ) : null}
+          {message.expiredMedia > 0 ? (
+            <p
+              className={cn(
+                "text-caption italic",
+                message.mine ? "text-primary-ink/80" : "text-muted",
+                message.body ? "mb-1" : "",
+              )}
+            >
+              Зураг, видео {CHAT_MEDIA_RETENTION_DAYS} хоногийн дараа устсан
+            </p>
           ) : null}
           {message.body ? (
             <p className="whitespace-pre-wrap break-words text-body">{message.body}</p>
@@ -1233,6 +1328,61 @@ function MessageBubble({
         </span>
       ) : null}
     </li>
+  );
+}
+
+/** A video's length from its own metadata, or null when the browser cannot read it. */
+function videoSeconds(file: File): Promise<number | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    const done = (value: number | null) => {
+      URL.revokeObjectURL(url);
+      resolve(value);
+    };
+    video.preload = "metadata";
+    video.onloadedmetadata = () => done(Number.isFinite(video.duration) ? video.duration : null);
+    video.onerror = () => done(null);
+    video.src = url;
+  });
+}
+
+/**
+ * A chat video: a player once the server has transcoded it, a line of text
+ * before. The room refetches every ten seconds, so `PROCESSING` turns into a
+ * player without anyone reloading.
+ *
+ * ★ `src` is `/media/:id`, the authorising endpoint (§1.4) — the same rule as
+ * the photographs, and the reason the CSP carries `media-src`.
+ */
+function ChatVideo({ media }: { media: ChatMessageData["media"][number] }) {
+  if (media.status === "PROCESSING") {
+    return (
+      <p className="flex items-center gap-2 rounded-control bg-canvas px-3 py-6 text-caption text-muted">
+        <Clapperboard size={16} aria-hidden="true" />
+        Видеог бэлдэж байна…
+      </p>
+    );
+  }
+  if (media.status === "FAILED") {
+    return (
+      <p className="rounded-control bg-canvas px-3 py-6 text-caption text-muted">
+        Видеог боловсруулж чадсангүй
+      </p>
+    );
+  }
+  return (
+    <video
+      src={mediaUrl(media.id)}
+      controls
+      playsInline
+      preload="metadata"
+      width={media.width ?? undefined}
+      height={media.height ?? undefined}
+      className="max-h-[360px] w-full rounded-control bg-black"
+    >
+      <track kind="captions" />
+    </video>
   );
 }
 

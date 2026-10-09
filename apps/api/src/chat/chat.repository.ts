@@ -34,8 +34,24 @@ export class ChatRepository {
   private readonly mediaSelect = {
     where: { deletedAt: null },
     orderBy: { order: "asc" },
-    select: { id: true, width: true, height: true },
+    select: {
+      id: true,
+      width: true,
+      height: true,
+      mimeType: true,
+      status: true,
+      durationSec: true,
+    },
   } as const;
+
+  /**
+   * How many of a message's attachments have expired — the bubble says
+   * "removed after seven days" rather than silently showing less than was
+   * sent. A count in the same query, so a page stays one round trip (§3.4).
+   */
+  private readonly expiredCount = {
+    select: { media: { where: { status: "EXPIRED" as const } } },
+  };
 
   /**
    * The children a room's guardian authors are there for — «эцэг эхийн
@@ -174,6 +190,7 @@ export class ChatRepository {
         authorId: true,
         author: { select: { id: true, lastName: true, firstName: true, photoMediaFileId: true } },
         media: this.mediaSelect,
+        _count: this.expiredCount,
       },
     });
   }
@@ -203,6 +220,8 @@ export class ChatRepository {
       sizeBytes: number;
       width: number | null;
       height: number | null;
+      /** `PROCESSING` for a raw video waiting for the transcoder. */
+      status?: "READY" | "PROCESSING";
     }[];
   }) {
     const { room, authorId, body, media = [] } = input;
@@ -226,6 +245,7 @@ export class ChatRepository {
             sizeBytes: file.sizeBytes,
             width: file.width,
             height: file.height,
+            status: file.status ?? "READY",
             uploadedById: authorId,
           })),
         },
@@ -238,7 +258,111 @@ export class ChatRepository {
         authorId: true,
         author: { select: { id: true, lastName: true, firstName: true, photoMediaFileId: true } },
         media: this.mediaSelect,
+        _count: this.expiredCount,
       },
+    });
+  }
+
+  // ── Video ──────────────────────────────────────────────────────────────────
+
+  /**
+   * Bytes of chat video currently held, across the deployment — the budget
+   * `CHAT_VIDEO_STORAGE_BUDGET_MB` is checked against. Deliberately not tenant
+   * scoped: the disk is shared, so the ceiling is too. An aggregate, never rows.
+   */
+  async liveVideoBytes(): Promise<number> {
+    const result = await this.prisma.mediaFile.aggregate({
+      where: {
+        purpose: "CHAT_MESSAGE",
+        deletedAt: null,
+        status: { in: ["READY", "PROCESSING"] },
+        mimeType: { startsWith: "video/" },
+      },
+      _sum: { sizeBytes: true },
+    });
+    return result._sum.sizeBytes ?? 0;
+  }
+
+  /** A raw video for the transcoder, only while it is still waiting. */
+  async findPendingVideo(mediaId: string) {
+    return this.prisma.mediaFile.findFirst({
+      where: { id: mediaId, purpose: "CHAT_MESSAGE", status: "PROCESSING", deletedAt: null },
+      select: { id: true, storageKey: true, originalName: true },
+    });
+  }
+
+  /**
+   * The transcoded file replaces the raw one on the same row. `status` in the
+   * filter, so a row the sweep expired in the meantime is left alone and the
+   * caller learns it from the count.
+   */
+  async finishVideo(
+    mediaId: string,
+    data: {
+      storageKey: string;
+      originalName: string;
+      sizeBytes: number;
+      width: number;
+      height: number;
+      durationSec: number;
+    },
+  ): Promise<boolean> {
+    const result = await this.prisma.mediaFile.updateMany({
+      where: { id: mediaId, status: "PROCESSING", deletedAt: null },
+      data: { ...data, mimeType: "video/mp4", status: "READY" },
+    });
+    return result.count === 1;
+  }
+
+  async failVideo(mediaId: string): Promise<void> {
+    await this.prisma.mediaFile.updateMany({
+      where: { id: mediaId, status: "PROCESSING" },
+      data: { status: "FAILED", sizeBytes: 0 },
+    });
+  }
+
+  // ── Retention ──────────────────────────────────────────────────────────────
+
+  /**
+   * Chat attachments past their life, oldest first, in bounded batches (§3.4).
+   * A video stuck in `PROCESSING` that long is collected with the rest.
+   */
+  async expiredMedia(createdBefore: Date, take: number) {
+    return this.prisma.mediaFile.findMany({
+      where: {
+        purpose: "CHAT_MESSAGE",
+        deletedAt: null,
+        createdAt: { lt: createdBefore },
+      },
+      orderBy: { createdAt: "asc" },
+      take,
+      select: { id: true, storageKey: true },
+    });
+  }
+
+  /**
+   * Soft, per §3.2 — the row stays with `EXPIRED`, which is what lets the
+   * bubble say a photograph used to be there. Only the object is removed.
+   */
+  async markExpired(ids: string[], at: Date): Promise<void> {
+    if (ids.length === 0) return;
+    await this.prisma.mediaFile.updateMany({
+      where: { id: { in: ids } },
+      data: { status: "EXPIRED", deletedAt: at },
+    });
+  }
+
+  /** Raw uploads the transcoder never finished — a crash, or a lost job. */
+  async stuckVideos(createdBefore: Date, take: number) {
+    return this.prisma.mediaFile.findMany({
+      where: {
+        purpose: "CHAT_MESSAGE",
+        status: "PROCESSING",
+        deletedAt: null,
+        createdAt: { lt: createdBefore },
+      },
+      take,
+      select: { id: true, storageKey: true },
     });
   }
 

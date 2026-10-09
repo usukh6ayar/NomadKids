@@ -1,5 +1,13 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
-import { guardianChatName, type ChatMessage, type ChatRoom } from "@kinder/contracts";
+import { BadRequestException, HttpException, Injectable } from "@nestjs/common";
+import {
+  CHAT_VIDEO_MAX_BYTES,
+  guardianChatName,
+  type ChatMedia,
+  type ChatMessage,
+  type ChatRoom,
+} from "@kinder/contracts";
+import { rm } from "node:fs/promises";
+import { loadEnv } from "../config/env";
 import { hasRoleIn, type Actor } from "../authz/actor";
 import { Role } from "../domain/enums";
 import { ChatAccessService } from "../authz/chat-access.service";
@@ -13,6 +21,8 @@ import {
   sanitiseFilename,
   validateImageUpload,
 } from "../media/upload-validation";
+import { detectVideoType, readHeader } from "./chat-video";
+import { ChatVideoQueue } from "./chat-video.queue";
 import { ChatRepository } from "./chat.repository";
 
 /** One page of history. 30 fills a phone screen twice over. */
@@ -22,6 +32,29 @@ const PAGE_SIZE = 30;
 export interface ChatUpload {
   buffer: Buffer;
   originalname: string;
+}
+
+/** A video as multer's disk storage hands it over — on disk, never in memory. */
+export interface ChatVideoUpload {
+  path: string;
+  size: number;
+  originalname: string;
+}
+
+/**
+ * A stored attachment as the client sees it. `EXPIRED` and `ARCHIVED` rows are
+ * soft-deleted and never reach here; anything else unexpected reads as failed.
+ */
+function toChatMedia(row: {
+  id: string;
+  width: number | null;
+  height: number | null;
+  mimeType: string;
+  status: string;
+  durationSec: number | null;
+}): ChatMedia {
+  const status = row.status === "READY" || row.status === "PROCESSING" ? row.status : "FAILED";
+  return { ...row, status };
 }
 
 /**
@@ -38,10 +71,13 @@ export interface ChatUpload {
  */
 @Injectable()
 export class ChatService {
+  private readonly env = loadEnv();
+
   constructor(
     private readonly access: ChatAccessService,
     private readonly repo: ChatRepository,
     private readonly storage: StorageService,
+    private readonly videoQueue: ChatVideoQueue,
   ) {}
 
   /**
@@ -147,7 +183,8 @@ export class ChatService {
             }
           : row.author,
         mine: row.authorId === actor.userId,
-        media: row.media,
+        media: row.media.map(toChatMedia),
+        expiredMedia: row._count.media,
       })),
       nextCursor: hasMore ? page[page.length - 1]!.createdAt.toISOString() : null,
     };
@@ -250,8 +287,92 @@ export class ChatService {
       // Your own message: the screen never names you, so no children are looked up.
       author: row.author ? { ...row.author, children: [] } : row.author,
       mine: true,
-      media: row.media,
+      media: row.media.map(toChatMedia),
+      expiredMedia: row._count.media,
     };
+  }
+
+  /**
+   * Send a message carrying one video — the user, 2026-10-09.
+   *
+   * ★ The order is the photograph route's, with the encode moved off the
+   * request (§6): room first, then the bytes are sniffed from the file's
+   * CONTENT (§1.6), then the raw upload goes to storage, then the row is
+   * written `PROCESSING`, and only after that commit is the job enqueued
+   * (§3.5). The raw object is never served — `/media/:id` answers 404 until
+   * the transcoder has replaced it.
+   *
+   * ★★ The temporary file is removed whatever happens, including a 404: multer
+   * wrote it before anything here ran.
+   */
+  async sendVideo(
+    actor: Actor,
+    roomKey: string,
+    body: string | undefined,
+    file: ChatVideoUpload | undefined,
+  ): Promise<ChatMessage> {
+    try {
+      const room = await this.access.assertMember(actor, roomKey);
+      if (!file) throw new BadRequestException("Видео сонгоно уу");
+      if (file.size === 0) throw new BadRequestException("Файл хоосон байна");
+      if (file.size > CHAT_VIDEO_MAX_BYTES) {
+        throw new BadRequestException(
+          `Видео хэт том байна. Дээд хэмжээ ${CHAT_VIDEO_MAX_BYTES / 1024 / 1024} MB`,
+        );
+      }
+
+      const mimeType = detectVideoType(await readHeader(file.path));
+      if (!mimeType) {
+        throw new BadRequestException("Зөвхөн MP4, MOV, WebM, 3GP видео оруулах боломжтой");
+      }
+
+      const budget = this.env.CHAT_VIDEO_STORAGE_BUDGET_MB * 1024 * 1024;
+      if ((await this.repo.liveVideoBytes()) + file.size > budget) {
+        // 507 Insufficient Storage — the disk, not the request, is the problem.
+        throw new HttpException(
+          "Видео хадгалах багтаамж түр дүүрсэн байна. Хуучин видеонууд 7 хоногийн дараа " +
+            "автоматаар устдаг тул хэдэн өдрийн дараа дахин оролдоно уу.",
+          507,
+        );
+      }
+
+      const storageKey = this.storage.buildKindergartenKey(room.kindergartenId, "chat");
+      await this.storage.putFile(storageKey, file.path, mimeType);
+
+      const row = await this.repo.createMessage({
+        room,
+        authorId: actor.userId,
+        body: body?.trim() ?? "",
+        media: [
+          {
+            storageKey,
+            originalName: sanitiseFilename(file.originalname),
+            mimeType,
+            sizeBytes: file.size,
+            width: null,
+            height: null,
+            status: "PROCESSING",
+          },
+        ],
+      });
+
+      // After the commit — the worker must find the row it is handed (§3.5).
+      await this.videoQueue.enqueue(row.media[0]!.id);
+      await this.repo.markRead({ userId: actor.userId, room, at: row.createdAt });
+
+      return {
+        id: row.id,
+        roomKey: row.roomKey,
+        body: row.body,
+        createdAt: row.createdAt.toISOString(),
+        author: row.author ? { ...row.author, children: [] } : row.author,
+        mine: true,
+        media: row.media.map(toChatMedia),
+        expiredMedia: 0,
+      };
+    } finally {
+      if (file) await rm(file.path, { force: true });
+    }
   }
 
   /**

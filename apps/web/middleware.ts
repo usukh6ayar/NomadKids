@@ -103,6 +103,9 @@ export function middleware(request: NextRequest) {
     "style-src 'self' 'unsafe-inline'",
     // `blob:` covers a locally previewed upload before it is sent.
     `img-src 'self' data: blob: ${apiOrigin}${storageOrigin ? ` ${storageOrigin}` : ""}`,
+    // Chat video — `/media/:id` on the API redirects to the storage origin.
+    // Without this `default-src 'self'` blocks every `<video>`.
+    `media-src 'self' blob: ${apiOrigin}${storageOrigin ? ` ${storageOrigin}` : ""}`,
     "font-src 'self' data:",
     `connect-src 'self' ${apiOrigin}${isProduction ? "" : " ws: http://localhost:*"}`,
     "frame-ancestors 'none'",

@@ -226,6 +226,8 @@ jobs:
           # blank pages.
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends poppler-utils
+          # ffmpeg/ffprobe — the chat video transcoder, as in the Dockerfile.
+          command -v ffmpeg >/dev/null || sudo apt-get install -y --no-install-recommends ffmpeg
 
           pnpm --filter @kinder/api exec puppeteer browsers install chrome
           sudo mkdir -p /usr/share/fonts/truetype/kinder

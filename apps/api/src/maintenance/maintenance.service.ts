@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { ChatMediaRetentionService } from "../chat/chat-media-retention.service";
 import { ReportRetentionService } from "../reports/report-retention.service";
 import { MaintenanceRepository } from "./maintenance.repository";
 
@@ -41,6 +42,7 @@ export class MaintenanceService {
   constructor(
     private readonly repo: MaintenanceRepository,
     private readonly reportRetention: ReportRetentionService,
+    private readonly chatMedia: ChatMediaRetentionService,
   ) {}
 
   async runCleanup(now = new Date()): Promise<CleanupResult> {
@@ -63,6 +65,9 @@ export class MaintenanceService {
       notifications: await this.repo.retireNotifications(
         new Date(now.getTime() - RETENTION.notifications),
       ),
+      // ★ Chat photographs and videos live seven days — the object goes, the
+      // message and its text stay.
+      chatMedia: (await this.chatMedia.sweep(now)).expired,
     };
 
     this.logger.log(
@@ -70,7 +75,7 @@ export class MaintenanceService {
         `${result.authTokens} auth tokens, ${result.sessions} sessions, ` +
         `${result.phoneVerifications} phone verifications, ` +
         `${result.reportFiles} report files, ${result.reportsRequeued} jobs requeued, ` +
-        `${result.notifications} notices retired`,
+        `${result.notifications} notices retired, ${result.chatMedia} chat attachments expired`,
     );
     return result;
   }
@@ -85,4 +90,6 @@ export interface CleanupResult {
   reportsRequeued: number;
   /** Notices soft-deleted a week after publication. */
   notifications: number;
+  /** Chat photographs and videos whose seven days are up. */
+  chatMedia: number;
 }
