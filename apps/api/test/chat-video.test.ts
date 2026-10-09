@@ -12,7 +12,19 @@ import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
 import { StorageService } from "../src/storage/storage.service";
 import { createTestApp } from "./support/app";
 import { resetData, testDb } from "./support/db";
-import { authed, createScenario, login, type AuthSession, type Scenario } from "./support/fixtures";
+import {
+  authed,
+  createChild,
+  createGroup,
+  createMembership,
+  createScenario,
+  createUser,
+  enrollChild,
+  linkGuardian,
+  login,
+  type AuthSession,
+  type Scenario,
+} from "./support/fixtures";
 
 /**
  * Chat video and the seven-day life of chat attachments — the user,
@@ -94,6 +106,7 @@ describe.skipIf(!hasFfmpeg)("chat video", () => {
     expect(res.status).toBe(201);
     expect(res.body.media).toEqual([expect.objectContaining({ status: "PROCESSING" })]);
     const mediaId = res.body.media[0].id as string;
+    const rawKey = (await db.mediaFile.findUniqueOrThrow({ where: { id: mediaId } })).storageKey;
 
     // The phone's original, location and all, is never served.
     await authed(request(server()).get(`/v1/media/${mediaId}`), parentA).expect(404);
@@ -108,21 +121,55 @@ describe.skipIf(!hasFfmpeg)("chat video", () => {
 
     const asParent = await authed(request(server()).get(`/v1/media/${mediaId}`), parentA);
     expect(asParent.status).toBe(302);
+    // The phone's original is deleted, not merely unserved.
+    await expect(app.get(StorageService).get(rawKey)).rejects.toThrow();
   });
+});
+
+/**
+ * §4.1 on the video route. No ffmpeg needed: the room is decided before the
+ * bytes are looked at, so the twelve bytes of an MP4 header are enough.
+ */
+describe("a chat video's room", () => {
+  const mp4Header = Buffer.concat([
+    Buffer.from([0, 0, 0, 0x18]),
+    Buffer.from("ftypisom", "latin1"),
+    Buffer.alloc(64),
+  ]);
+
+  async function readyVideo(): Promise<string> {
+    const res = await sendVideo(teacherA, groupRoom(a), mp4Header, "a.mp4");
+    expect(res.status).toBe(201);
+    const id = res.body.media[0].id as string;
+    // As if transcoded — so a 404 below is the room's answer, not the status's.
+    await db.mediaFile.update({ where: { id }, data: { status: "READY" } });
+    return id;
+  }
 
   it("teacher from another kindergarten gets 404 sending to the room", async () => {
-    const res = await sendVideo(teacherB, groupRoom(a), phoneVideo);
+    const res = await sendVideo(teacherB, groupRoom(a), mp4Header, "a.mp4");
     expect(res.status).toBe(404);
     expect(await db.mediaFile.count({ where: { purpose: "CHAT_MESSAGE" } })).toBe(0);
   });
 
+  it("guardian from another group of the same kindergarten gets 404 sending to it", async () => {
+    const otherGroup = await createGroup(a.kindergarten.id, a.schoolYear.id, "Бусад");
+    const child = await createChild(a.kindergarten.id, { firstName: "Хөрш" });
+    await enrollChild(a.kindergarten.id, child.id, otherGroup.id, a.schoolYear.id);
+    const guardian = await createUser();
+    await createMembership(guardian.id, a.kindergarten.id, "PARENT");
+    await linkGuardian(a.kindergarten.id, child.id, guardian.id);
+
+    const res = await sendVideo(await login(app, guardian.username), groupRoom(a), mp4Header);
+    expect(res.status).toBe(404);
+  });
+
   it("guardian of another child and a user of another kindergarten get 404 on the video", async () => {
-    const res = await sendVideo(teacherA, groupRoom(a), phoneVideo);
-    const mediaId = res.body.media[0].id as string;
-    await app.get(ChatVideoProcessor).run(mediaId);
+    const mediaId = await readyVideo();
 
     await authed(request(server()).get(`/v1/media/${mediaId}`), parentB).expect(404);
     await authed(request(server()).get(`/v1/media/${mediaId}`), teacherB).expect(404);
+    await authed(request(server()).get(`/v1/media/${mediaId}`), parentA).expect(302);
   });
 });
 
