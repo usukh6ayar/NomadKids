@@ -1,5 +1,4 @@
 pnpm-lock.yaml
-docs/spikes/
 .next/
 dist/
 apps/api/src/generated/
