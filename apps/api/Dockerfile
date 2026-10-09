@@ -80,6 +80,9 @@ FROM node:22-slim AS runtime
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       chromium \
+      # Chat video — `src/chat/chat-video.ts` transcodes every upload to
+      # 720p H.264 in the reports-worker container.
+      ffmpeg \
       ca-certificates \
       # Prisma's query engine links against libssl — see the build stage.
       openssl \

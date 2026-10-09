@@ -8,6 +8,10 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { randomUUID } from "node:crypto";
+import { createReadStream, createWriteStream } from "node:fs";
+import { stat } from "node:fs/promises";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { loadEnv, type Env } from "../config/env";
 
 /**
@@ -102,6 +106,42 @@ export class StorageService {
         "Файл хадгалах сан руу холбогдож чадсангүй. Түр хүлээгээд дахин оролдоно уу.",
       );
     }
+  }
+
+  /**
+   * Stores a file from disk without reading it into memory — a chat video is
+   * up to 100 MB, and the API container is 512 MB. Same error contract as
+   * `put`.
+   */
+  async putFile(key: string, path: string, contentType: string): Promise<void> {
+    try {
+      const { size } = await stat(path);
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.env.STORAGE_BUCKET,
+          Key: key,
+          Body: createReadStream(path),
+          ContentLength: size,
+          ContentType: contentType,
+        }),
+      );
+    } catch (error) {
+      this.logger.error(
+        `Storage PUT failed for ${key} at ${this.env.STORAGE_ENDPOINT}: ${(error as Error).message}`,
+      );
+      throw new ServiceUnavailableException(
+        "Файл хадгалах сан руу холбогдож чадсангүй. Түр хүлээгээд дахин оролдоно уу.",
+      );
+    }
+  }
+
+  /** Streams an object to a file on disk — the transcoder's input. */
+  async getToFile(key: string, path: string): Promise<void> {
+    const result = await this.client.send(
+      new GetObjectCommand({ Bucket: this.env.STORAGE_BUCKET, Key: key }),
+    );
+    if (!result.Body) throw new Error(`Storage object has no body`);
+    await pipeline(result.Body as Readable, createWriteStream(path));
   }
 
   /**

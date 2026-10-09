@@ -265,6 +265,17 @@ export const envSchema = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((v) => v === "true"),
+
+  /**
+   * The most chat video, in megabytes, the deployment keeps at once.
+   *
+   * ★ Sized to the VPS: 80 GB, about 40 GB free on 2026-10-09. Chat video lives
+   * seven days, so this is a week of it — 15 GB is some four hundred
+   * three-minute videos at the transcoder's worst case, and far more of the
+   * ordinary short ones. Past it a new upload is refused with a sentence
+   * rather than filling the disk Postgres also lives on.
+   */
+  CHAT_VIDEO_STORAGE_BUDGET_MB: z.coerce.number().int().min(0).default(15_000),
 });
 
 export type Env = z.infer<typeof envSchema>;

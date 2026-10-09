@@ -20,7 +20,8 @@ const chrome: ChatChrome = {
  *
  * ★ The client asked for images and video, then withdrew video the same day:
  * "бичлэг ороохыг болиулъя. зураг оруулдаг байхад болно. зураг ни гэхдээ бага
- * хэмжээтэй."
+ * хэмжээтэй." Video came back on 2026-10-09 at the user's request — the last
+ * test below.
  *
  * These cover the browser's half of that. The API's half — that a photograph
  * is authorised by the **room** and not by the tenant, so a guardian from
@@ -210,5 +211,64 @@ describe("чат — зураг", () => {
     // The dimensions travel so the bubble reserves space and the room does not
     // jump as photographs load.
     expect(images[0]).toHaveAttribute("width", "1280");
+  });
+
+  /*
+   * Chat video and the seven-day life of attachments — the user, 2026-10-09.
+   * A transcoded video plays from the authorising endpoint; one still being
+   * transcoded says so; an expired attachment leaves a line, not a gap.
+   */
+  it("plays a ready video, holds a processing one, and marks an expired attachment", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+      {
+        path: MESSAGES_PATH,
+        body: {
+          items: [
+            message({
+              id: "33333333-3333-4333-8333-000000000001",
+              body: "бүжиг",
+              media: [
+                {
+                  id: "77777777-7777-4777-8777-777777777777",
+                  width: 1280,
+                  height: 720,
+                  mimeType: "video/mp4",
+                  status: "READY",
+                  durationSec: 12,
+                },
+              ],
+            }),
+            message({
+              id: "33333333-3333-4333-8333-000000000002",
+              body: "",
+              media: [
+                {
+                  id: "88888888-8888-4888-8888-888888888888",
+                  width: null,
+                  height: null,
+                  mimeType: "video/quicktime",
+                  status: "PROCESSING",
+                },
+              ],
+            }),
+            message({
+              id: "33333333-3333-4333-8333-000000000003",
+              body: "өчигдөр",
+              expiredMedia: 2,
+            }),
+          ],
+          nextCursor: null,
+        },
+      },
+    ]);
+    const { container } = renderWithProviders(<ChatRoom room={ROOM} chrome={chrome} />);
+
+    await screen.findByText("бүжиг");
+    const videos = container.querySelectorAll("video");
+    expect(videos).toHaveLength(1);
+    expect(videos[0]).toHaveAttribute("src", expect.stringContaining("/media/77777777"));
+    expect(screen.getByText("Видеог бэлдэж байна…")).toBeInTheDocument();
+    expect(screen.getByText("Зураг, видео 7 хоногийн дараа устсан")).toBeInTheDocument();
   });
 });

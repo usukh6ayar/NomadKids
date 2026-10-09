@@ -287,6 +287,13 @@ enum MediaAttribution {
 enum MediaStatus {
   READY
   ARCHIVED
+  /// A chat video whose raw upload is waiting for the transcoder.
+  PROCESSING
+  /// A chat video the transcoder refused — too long, or not a video at all.
+  FAILED
+  /// A chat attachment past its seven days: the object is gone, the row stays
+  /// so the bubble can say what used to be there.
+  EXPIRED
 }
 
 enum NotificationStatus {
@@ -4205,6 +4212,8 @@ model MediaFile {
   sizeBytes    Int
   width        Int?
   height       Int?
+  /// Seconds, for a chat video. NULL for every image.
+  durationSec  Int?
   checksum     String?
 
   status  MediaStatus @default(READY)

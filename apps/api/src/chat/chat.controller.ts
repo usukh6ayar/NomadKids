@@ -7,19 +7,25 @@ import {
   Param,
   Post,
   Query,
+  UploadedFile,
   UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from "@nestjs/common";
-import { FilesInterceptor } from "@nestjs/platform-express";
+import { FileInterceptor, FilesInterceptor } from "@nestjs/platform-express";
+import { tmpdir } from "node:os";
 import { RateLimit, RateLimitGuard } from "../common/rate-limit/rate-limit.guard";
-import { sendChatMessageSchema, type SendChatMessageDto } from "@kinder/contracts";
+import {
+  CHAT_VIDEO_MAX_BYTES,
+  sendChatMessageSchema,
+  type SendChatMessageDto,
+} from "@kinder/contracts";
 import { z } from "zod";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
 import type { Actor } from "../authz/actor";
 import { CHAT_MAX_UPLOAD_BYTES, MAX_CHAT_IMAGES } from "../media/upload-validation";
-import { ChatService, type ChatUpload } from "./chat.service";
+import { ChatService, type ChatUpload, type ChatVideoUpload } from "./chat.service";
 
 /**
  * A room key in a URL path.
@@ -132,6 +138,35 @@ export class ChatController {
     @UploadedFiles() images: ChatUpload[] | undefined,
   ) {
     return this.service.send(actor, params.roomKey, body.body, images ?? []);
+  }
+
+  /**
+   * A message carrying one video, with optional text.
+   *
+   * ★ Its own route because its own storage: multer writes the upload to a
+   * temporary file instead of holding up to 100 MB in a 512 MB container's
+   * memory, which is what the photograph route does with its 5 MB files.
+   * `ChatService.sendVideo` authorises the room first and removes the file
+   * whatever the outcome.
+   *
+   * ★★ A tighter rate limit than text: each one is up to 100 MB in and a
+   * transcode out.
+   */
+  @Post("rooms/:roomKey/videos")
+  @RateLimit({ limit: 30, windowMs: 60 * 60 * 1000, byUser: true })
+  @UseInterceptors(
+    FileInterceptor("video", {
+      dest: tmpdir(),
+      limits: { fileSize: CHAT_VIDEO_MAX_BYTES, files: 1 },
+    }),
+  )
+  async sendVideo(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(roomParamSchema)) params: { roomKey: string },
+    @Body(new ZodValidationPipe(sendChatMessageSchema)) body: SendChatMessageDto,
+    @UploadedFile() video: ChatVideoUpload | undefined,
+  ) {
+    return this.service.sendVideo(actor, params.roomKey, body.body, video);
   }
 
   /** Moves this reader's cursor to now. No body — the time is the server's. */

@@ -102,7 +102,7 @@ $COMPOSE run --rm --entrypoint /bin/sh \
   -v "$MEDIA_DIR:/backup" \
   storage-init -c "
     mc alias set local http://storage:9000 \"\$STORAGE_ACCESS_KEY_ID\" \"\$STORAGE_SECRET_ACCESS_KEY\" >/dev/null &&
-    mc mirror --overwrite local/\"\$STORAGE_BUCKET\" /backup
+    mc mirror --overwrite --exclude \"chat/*\" local/\"\$STORAGE_BUCKET\" /backup
   " > /dev/null
 
 log "storage ok — $(du -sh "$MEDIA_DIR" | cut -f1)"
@@ -112,6 +112,10 @@ log "storage ok — $(du -sh "$MEDIA_DIR" | cut -f1)"
 # Only the dumps are pruned. The media mirror is cumulative on purpose: it is a
 # copy of what exists now, and deleting from it would delete the only remaining
 # copy of a photograph somebody removed by mistake.
+#
+# ★ Chat attachments (`chat/`) are excluded from the mirror: they live seven
+# days by design (2026-10-09), and a cumulative copy would keep every expired
+# video on this same disk for ever.
 log "pruning dumps older than ${KEEP_DAYS} days…"
 find "$DEST" -maxdepth 1 -name 'db-*.dump' -type f -mtime "+$KEEP_DAYS" -print -delete || true
 

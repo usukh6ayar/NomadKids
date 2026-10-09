@@ -583,6 +583,11 @@ export class MediaService {
       // Throws 404 for a room the actor is not in.
       await this.chatAccess.assertMember(actor, media.chatMessage.roomKey);
 
+      // A video still being transcoded is the phone's raw original, location
+      // metadata and all — never served. Checked after the room, so the
+      // status cannot tell an outsider anything.
+      if (media.status !== "READY") throw new NotFoundException();
+
       await this.audit.append({
         action: "DOWNLOAD",
         kindergartenId: media.kindergartenId,

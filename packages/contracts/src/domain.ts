@@ -5042,6 +5042,18 @@ export const chatMediaSchema = z.object({
   id: uuidSchema,
   width: z.number().nullable(),
   height: z.number().nullable(),
+  /**
+   * `video/mp4` for a video, an image type otherwise. Defaulted so a client
+   * written before video parses a photograph unchanged.
+   */
+  mimeType: z.string().default("image/jpeg"),
+  /**
+   * A video is `PROCESSING` until the transcoder has made it small enough to
+   * play on a phone, and `FAILED` if it could not. A photograph is always
+   * `READY` — it is re-encoded inside the request.
+   */
+  status: z.enum(["READY", "PROCESSING", "FAILED"]).default("READY"),
+  durationSec: z.number().int().nullish(),
 });
 export type ChatMedia = z.infer<typeof chatMediaSchema>;
 
@@ -5060,8 +5072,32 @@ export const chatMessageSchema = z.object({
    * parses a message unchanged.
    */
   media: z.array(chatMediaSchema).default([]),
+  /**
+   * How many attachments this message carried that have since expired — chat
+   * photographs and videos are kept `CHAT_MEDIA_RETENTION_DAYS`, then removed.
+   * The bubble says so instead of silently showing less than was sent.
+   */
+  expiredMedia: z.number().int().default(0),
 });
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
+
+/**
+ * Chat attachments are ephemeral — the user, 2026-10-09: "video zurag chataar
+ * ywuulwal 7 honog bolood ustdag". The nightly cleanup removes the object and
+ * marks the row `EXPIRED`; the message and its text stay.
+ */
+export const CHAT_MEDIA_RETENTION_DAYS = 7;
+
+/**
+ * A chat video, before and after the transcoder.
+ *
+ * ★ The raw ceiling is what a phone records in about a minute and a half at
+ * 1080p; the transcoder brings it down to ≤720p H.264 at about 1.5 Mbit/s,
+ * so three minutes lands near 35 MB at worst and usually far less. Shared so
+ * the composer can refuse a file before uploading 100 MB to be told no.
+ */
+export const CHAT_VIDEO_MAX_BYTES = 100 * 1024 * 1024;
+export const CHAT_VIDEO_MAX_SECONDS = 180;
 
 /**
  * Bodies are bounded: a chat message is not a document.

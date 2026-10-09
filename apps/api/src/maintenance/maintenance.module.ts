@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { ChatModule } from "../chat/chat.module";
 import { ReportsModule } from "../reports/reports.module";
 import { MaintenanceRepository } from "./maintenance.repository";
 import { MaintenanceScheduler } from "./maintenance.scheduler";
@@ -9,7 +10,7 @@ import { MaintenanceService } from "./maintenance.service";
  * reports know nothing about maintenance — so there is no cycle to break.
  */
 @Module({
-  imports: [ReportsModule],
+  imports: [ReportsModule, ChatModule],
   providers: [MaintenanceService, MaintenanceRepository, MaintenanceScheduler],
   exports: [MaintenanceService],
 })

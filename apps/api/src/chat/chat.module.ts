@@ -1,4 +1,8 @@
 import { Module } from "@nestjs/common";
+import { ChatMediaRetentionService } from "./chat-media-retention.service";
+import { ChatVideoProcessor } from "./chat-video.processor";
+import { ChatVideoQueue } from "./chat-video.queue";
+import { ChatVideoWorker } from "./chat-video.worker";
 import { ChatController } from "./chat.controller";
 import { ChatRepository } from "./chat.repository";
 import { ChatService } from "./chat.service";
@@ -13,7 +17,14 @@ import { ChatService } from "./chat.service";
  */
 @Module({
   controllers: [ChatController],
-  providers: [ChatService, ChatRepository],
-  exports: [ChatService],
+  providers: [
+    ChatService,
+    ChatRepository,
+    ChatVideoQueue,
+    ChatVideoProcessor,
+    ChatVideoWorker,
+    ChatMediaRetentionService,
+  ],
+  exports: [ChatService, ChatMediaRetentionService],
 })
 export class ChatModule {}

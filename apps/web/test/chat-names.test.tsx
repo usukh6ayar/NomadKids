@@ -203,9 +203,10 @@ describe("a parent's three rooms", () => {
 });
 
 /**
- * A family by the child's name alone, a teacher as «Бүлгийн багш» — client,
- * 2026-10-04: "Г.Батбаяр зүгээр дан нэрээрээ бай … багш чат бичихээр бүлгийн
- * багш гэж бичиг гарна".
+ * A teacher as «Бүлгийн багш» — client, 2026-10-04: "багш чат бичихээр бүлгийн
+ * багш гэж бичиг гарна". A family's message as «Г.Батбаярын ээж» — the user,
+ * 2026-10-09, replacing the child's name alone; private room titles still drop
+ * the relation.
  */
 describe("who is speaking", () => {
   it("drops the relation from a private room's name", () => {
@@ -234,7 +235,7 @@ describe("who is speaking", () => {
     media: [],
   });
 
-  it("names a family by the child and a teacher as Бүлгийн багш", async () => {
+  it("names a family «Г.Батбаярын ээж» and a teacher as Бүлгийн багш", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["PARENT"]) },
       {
@@ -247,6 +248,7 @@ describe("who is speaking", () => {
                 id: "bbbbbbbb-bbbb-4bbb-8bbb-000000000001",
                 lastName: "Ганболд",
                 firstName: "Сарнай",
+                displayName: "Г.Батбаярын ээж",
                 children: [
                   {
                     id: "cccccccc-cccc-4ccc-8ccc-000000000001",
@@ -271,7 +273,8 @@ describe("who is speaking", () => {
     renderWithProviders(<ChatRoom room={GROUP_ROOM} chrome={chrome} />);
 
     await screen.findByText("Маргааш ирнэ");
-    expect(screen.getByText("Г.Батбаяр")).toBeInTheDocument();
+    // The user, 2026-10-09: "ternii eej ntr gesen nickname tei baih".
+    expect(screen.getByText("Г.Батбаярын ээж")).toBeInTheDocument();
     expect(screen.getByText("Бүлгийн багш")).toBeInTheDocument();
     expect(screen.queryByText(/эцэг эх$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Сарнай/)).not.toBeInTheDocument();

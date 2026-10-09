@@ -551,7 +551,14 @@ describe("chat photographs", () => {
     expect(res.status).toBe(200);
     expect(res.body.items[0].body).toBe("өнөөдрийн хичээл");
     expect(res.body.items[0].media).toEqual([
-      { id: mediaId, width: expect.any(Number), height: expect.any(Number) },
+      {
+        id: mediaId,
+        width: expect.any(Number),
+        height: expect.any(Number),
+        mimeType: "image/jpeg",
+        status: "READY",
+        durationSec: null,
+      },
     ]);
   });
 
