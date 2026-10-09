@@ -98,7 +98,9 @@ line in `.env.example`.
 ### 1.6 Never trust a file's extension
 
 Detect the real MIME type from **content**. A `.jpg` can be an executable. Strip
-EXIF from every uploaded image.
+EXIF from every uploaded image, and metadata from every video — a phone's `.mov`
+carries the GPS of where it was recorded. A raw video upload is never served:
+`/media/:id` answers 404 until the transcoder has replaced it.
 
 ### 1.7 404, never 403, for child data
 
@@ -287,7 +289,8 @@ as a defect until shown otherwise.
 
 ## 6. Slow work goes to a queue
 
-BullMQ, never inside a request: PDF generation (~2.5 s), image processing,
+BullMQ, never inside a request: PDF generation (~2.5 s), chat video
+transcoding (`chat/chat-video.*`, ffmpeg in the same image), image processing,
 bulk notifications, cleanup sweeps.
 
 The `reports-worker` container (2 GB) runs the slow work. It needs Chromium and
@@ -338,6 +341,15 @@ the gateway.
 ★ **Chat** has **no AI in it** — the client said so three times. It is a group
 message board: membership derived per request, 404 for a room you are not in,
 `kindergartenId` on every row, soft delete, paginated history.
+
+★ **Chat attachments live seven days** (the user, 2026-10-09). Photos (≤4, 1280px)
+and one video per message (≤100 MB in, ≤3 min, transcoded to ≤720p H.264) are
+removed by the nightly cleanup after `CHAT_MEDIA_RETENTION_DAYS`: the object goes,
+the row stays `EXPIRED`, and the message says so. Live chat video is capped by
+`CHAT_VIDEO_STORAGE_BUDGET_MB` (15 GB, sized to the VPS disk); `scripts/backup.sh`
+excludes `chat/` from its media mirror. A guardian's message is labelled
+«Г.Батбаярын ээж» (`author.displayName`) with the child's face — and the face is
+staff-only: families see initials.
 
 ★ **Phone proof through verify.mn** (2026-10-01) is **inbound** — the person
 texts a code _from_ their phone — for password reset, a guardian's phone on an

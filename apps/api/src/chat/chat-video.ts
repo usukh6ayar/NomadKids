@@ -27,7 +27,17 @@ export type RawVideoType = "video/mp4" | "video/quicktime" | "video/webm" | "vid
  * Brands an ISO-BMFF file carries that are **images**, not video — HEIC and
  * AVIF share the `ftyp` box with MP4, so `ftyp` alone is not "a video".
  */
-const IMAGE_BRANDS = new Set(["heic", "heix", "hevc", "heim", "heis", "mif1", "msf1", "avif", "avis"]);
+const IMAGE_BRANDS = new Set([
+  "heic",
+  "heix",
+  "hevc",
+  "heim",
+  "heis",
+  "mif1",
+  "msf1",
+  "avif",
+  "avis",
+]);
 
 /**
  * The real container type, from the first bytes of the file — §1.6.
@@ -103,7 +113,11 @@ export async function probeVideo(path: string): Promise<VideoProbe | null> {
     const duration = Number(parsed.format?.duration);
     if (!stream?.width || !stream.height || !Number.isFinite(duration)) return null;
     // Rounded, not ceiled: AAC priming makes a one-second clip 1.02 s long.
-    return { durationSec: Math.max(1, Math.round(duration)), width: stream.width, height: stream.height };
+    return {
+      durationSec: Math.max(1, Math.round(duration)),
+      width: stream.width,
+      height: stream.height,
+    };
   } catch {
     return null;
   }

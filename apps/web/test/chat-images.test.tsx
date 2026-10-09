@@ -18,10 +18,10 @@ const chrome: ChatChrome = {
 /**
  * Chat photographs — 2026-09-09.
  *
- * ★ The client asked for images and video, then withdrew video the same day —
- * and video came back on 2026-10-09 at the user's request (the last test):
+ * ★ The client asked for images and video, then withdrew video the same day:
  * "бичлэг ороохыг болиулъя. зураг оруулдаг байхад болно. зураг ни гэхдээ бага
- * хэмжээтэй."
+ * хэмжээтэй." Video came back on 2026-10-09 at the user's request — the last
+ * test below.
  *
  * These cover the browser's half of that. The API's half — that a photograph
  * is authorised by the **room** and not by the tenant, so a guardian from
