@@ -8,13 +8,29 @@ Kindergarten child-development digital portfolio system.
 Code that violates a rule does not get written. If a rule blocks the task, do
 not work around it — **stop and ask.**
 
-**Required reading:**
+A rule the codebase contradicts teaches everyone to stop reading the file. When
+the client moves a line, the line moves here — it is never quietly ignored.
 
-- `docs/reference/Project_Info.md` — the client's RFP, in Mongolian. Final authority.
-- `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/API.md`, `docs/SECURITY.md`
-- `docs/reference/ROADMAP-django.md` — phase scope
+### Where the documents live
 
-Precedence on conflict: RFP > docs/ > CLAUDE.md > existing code.
+The design documents are **not in this repository**. They live beside it, in
+`../nomadkids_md/` (git history keeps the old `docs/` tree too). Code comments
+that cite `docs/X.md §N` mean the same file there.
+
+| File                                                             | What it answers                                            |
+| ---------------------------------------------------------------- | ---------------------------------------------------------- |
+| `rfp/Project_Info.md`                                            | The client's RFP, in Mongolian. **Final authority.**       |
+| `rfp/нэмэлт.md`                                                  | The client's finance and funding addendum (2026-08-25)     |
+| `rfp/legal/`                                                     | Ministry regulations and the ESIS token guide              |
+| `architecture/SECURITY.md`                                       | Auth, cookies, RBAC, media — and the 108 acceptance cases  |
+| `architecture/ARCHITECTURE.md`, `DATABASE.md`, `API.md`          | Topology, tables, every route with its ownership rule      |
+| `ops/VPS_DEPLOYMENT.md`, `ops/PROD_RECOVERY.md`                  | Deploying, backups, restore                                |
+| `esis/ESIS_TRIAL_STATE.md`                                       | **Read before any ESIS work** — what the live service does |
+| `esis/ESIS_REQUEST.md`, `ESIS_HANDBOOK.md`, `ESIS_COMPLIANCE.md` | Field lists, endpoints, the ministry's requirements        |
+| `finance/FINANCE_MODULE.md`, `finance/QPAY_INTEGRATION.md`       | The finance module and the portal-fee gateway              |
+| `manuals/`                                                       | Mongolian manuals for operators, directors and users       |
+
+Precedence on conflict: **RFP > nomadkids_md > CLAUDE.md > existing code.**
 
 **Language:** documentation, code, comments, identifiers and commit messages in
 **English**. All user-facing UI text in **Mongolian**.
@@ -24,9 +40,8 @@ Precedence on conflict: RFP > docs/ > CLAUDE.md > existing code.
 `../ByatshanNuudelchid` is the source of truth for **business rules, domain
 concepts, authorization requirements, validation rules, PDF content and
 terminology**. It is _not_ the source of truth for architecture, models,
-templates or services. Do not port its structure. It contains Phase 2 concepts,
-redundant fields and historical workarounds — see `docs/MIGRATION_PLAN.md` for
-what was deliberately dropped.
+templates or services. Do not port its structure — it contains Phase 2
+concepts, redundant fields and historical workarounds.
 
 ---
 
@@ -45,7 +60,7 @@ const child = await this.prisma.child.findUnique({ where: { id } });
 if (child.kindergartenId !== actor.kindergartenId) throw new ForbiddenException();
 ```
 
-If the logic exists in two places, the web app and the future mobile client
+If the logic exists in two places, the web app and a future mobile client
 answer differently.
 
 ### 1.2 Resolve the kindergarten from enrollment history
@@ -64,12 +79,16 @@ teacher's assignment would not take effect until their token expired.
 ### 1.4 Files are never directly reachable
 
 ```
-GET /media/:id → canAccessChild() → 302 to a 5-minute presigned R2 URL
+GET /media/:id → authorization → 302 to a 5-minute presigned URL
 ```
 
 Private bucket. `storageKey` is a random UUID path, never derived from a name or
 id. The real filename lives only in `originalName`, for display. No public
-bucket, no public custom domain, no `<img src="https://r2...">`.
+bucket, no public custom domain, no `<img src="https://storage...">`.
+
+A chat attachment is authorised by **room membership** (`ChatAccessService`),
+never by the tenant — a tenant-wide rule would let a group-A parent read group
+B's photographs.
 
 ### 1.5 No secrets in source
 
@@ -83,16 +102,15 @@ EXIF from every uploaded image.
 
 ### 1.7 404, never 403, for child data
 
-An unauthorized child, observation, media file or report returns **404**. A 403
-confirms the record exists.
+An unauthorized child, observation, media file, report or chat room returns
+**404**. A 403 confirms the record exists.
 
-★ **One exception, added 2026-09-01: 402 for the portal access fee.** It is
-shown only to a guardian who has _already passed_ `canAccessChild` for that
-child — someone who knows the child exists — and a 404 there would hide the one
-fact that lets them act. Authorization runs first, so a stranger still gets 404
-and the status cannot become an oracle. `authz/portal-access.ts`,
-`docs/SECURITY.md` §5.4. **Do not add a second exception without the same
-argument.**
+★ **One exception: 402 for the portal access fee** (2026-09-01). It is shown
+only to a guardian who has _already passed_ `canAccessChild` for that child —
+someone who knows the child exists — and a 404 there would hide the one fact
+that lets them act. Authorization runs first, so a stranger still gets 404 and
+the status cannot become an oracle. `authz/portal-access.ts`. **Do not add a
+second exception without the same argument.**
 
 ---
 
@@ -111,27 +129,22 @@ authz        ★ the ONLY place that decides who may reach what
 
 Enforced by an ESLint `no-restricted-imports` rule that fails CI.
 
-**Why this matters more than it looks.** Prisma has no soft-delete manager and no
-tenant scoping. `prisma.child.findMany()` returns deleted rows and every
-kindergarten's rows unless the call site remembers both filters. One forgotten
-filter is a cross-tenant leak. Repositories carry a base filter
-(`deletedAt: null` + tenant scope) that methods extend, never replace.
+Prisma has no soft-delete manager and no tenant scoping.
+`prisma.child.findMany()` returns deleted rows and every kindergarten's rows
+unless the call site remembers both filters. One forgotten filter is a
+cross-tenant leak. Repositories carry a base filter (`deletedAt: null` + tenant
+scope) that methods extend, never replace.
 
-★ **`Prisma.Decimal` is covered by this rule too.** It is re-exported from the
-generated client, so importing it for the number type opens the query surface
-to whatever file did so. Money outside a repository uses **`decimal.js`**
-directly — the same library Prisma's decimal is built on, so values cross the
-boundary unchanged. `invoices/invoice-math.ts` is the worked example. The rule
-caught this being got wrong on 2026-08-31, which is the argument for keeping it
-mechanical: it cannot tell "I only wanted the number type" from "I am about to
-run a query", and should not have to.
+★ **`Prisma.Decimal` is covered by this rule too** — it is re-exported from the
+generated client. Money outside a repository uses **`decimal.js`** directly
+(the library Prisma's decimal is built on). `invoices/invoice-math.ts` is the
+worked example. Never JavaScript floats for money.
 
 ### 2.3 Configuration belongs in the database, not in code
 
 Anything an administrator can edit is a **table**, not a TypeScript enum:
-`DevelopmentDomain`, `AssessmentLevel`, `ObservationType`.
-
-System-level values (roles, record states, job states) may be enums.
+`DevelopmentDomain`, `AssessmentLevel`, `ObservationType`. System-level values
+(roles, record states, job states) may be enums.
 
 ### 2.4 Every authenticated fetch is `cache: "no-store"`
 
@@ -150,31 +163,23 @@ isolation.
 
 ### 3.2 No hard deletes
 
-Set `deletedAt`. `AuditLog` is the single exception: append-only, never updated,
-never deleted — its repository exposes only `append()`.
+Set `deletedAt`. **Who** deleted it lives in `AuditLog` (`actorUserId` against a
+`DELETE` action), never in a `deletedById` column — an append-only row cannot be
+overwritten by the next writer. `AuditLog` itself is append-only, never updated,
+never deleted; its repository exposes only `append()`.
 
-**Who deleted it lives in `AuditLog`, not in a column.** This rule asked for a
-`deletedById` beside `deletedAt` until 2026-08-25, and no table ever carried
-one — the instruction and the schema had disagreed from the beginning, which
-was found while scoping `Attendance` (`docs/ATTENDANCE_PLAN.md` §4). `AuditLog`
-already records `actorUserId` against a `DELETE` action and an `objectId`, and
-it is the better home: a column can be overwritten by the next writer, an
-append-only row cannot. A mandatory rule that nothing obeys stops being read,
-so the rule moved to match the design rather than the reverse.
-
-★ Then five tables shipped the column anyway — `Attendance`,
-`AttendanceRequest`, `MenuDay`, `Survey`, `SurveyResponse` — the same day the
-rule was written, on a branch that predated it. Nothing ever wrote to them:
-`grep deletedById apps/api/src` returns one comment and no assignment. They are
-dropped in `20260825170000_drop_vestigial_deleted_by`, which is safe precisely
-_because_ nothing wrote them — every value was NULL. The alternative, wiring six
-services to fill a column `AuditLog` already answers better, is the version of
-this rule that was deleted for being unread.
+★ **Finance is stricter** (`нэмэлт.md` §14): a confirmed financial transaction is
+never deleted at all. A payment is voided with a **reversing row**
+(`Payment.reversalOfId`, `InvoicesRepository.voidPayment()`), and a reversal
+cannot itself be voided. Every financial `audit.append()` that overwrites or
+removes something records the `before` value.
 
 ### 3.3 Review migrations by hand
 
-After `prisma migrate dev`, **read** the generated SQL. Check for accidental
-`DROP COLUMN` or any data-losing operation.
+Read the generated SQL. Check for accidental `DROP COLUMN` or any data-losing
+operation. **Locally, apply with `prisma migrate deploy`, never `migrate dev`** —
+the local history has diverged and `migrate dev` offers a RESET. Create new
+migrations with `prisma migrate diff` or `migrate dev --create-only`.
 
 ### 3.4 N+1 queries are forbidden
 
@@ -221,8 +226,9 @@ expect(res.status).toBe(404);
 expect(await canAccessChild(user, otherChild)).toBe(false);
 ```
 
-`docs/SECURITY.md` §6 lists **108 acceptance cases** extracted from the reference
-suite. That is the integration suite's specification.
+`SECURITY.md` §6 lists **108 acceptance cases** — the integration suite's
+specification. Beyond those, write the tests that carry a rule (about one case
+per rule); do not pin every 400/409 a validator can emit.
 
 ### 4.2 Never claim a feature works without running the tests
 
@@ -231,131 +237,36 @@ Run them, show the output. If they fail, say so immediately.
 ### 4.3 PDF tests assert on extracted text
 
 A generator returning 1 MB of blank pages passes every "did it produce a file"
-check. See `docs/PDF_SPIKE.md` §4.
+check.
 
 ### 4.4 A full-suite failure that passes alone is not automatically noise
 
-Three times on 2026-09-02 a test failed in `pnpm --filter api test` and passed
-when its file was run alone: `catalog.test.ts` (two authorization cases),
-`query-counts.test.ts` (an N+1 guard) and `children.test.ts` (cross-kindergarten
-isolation — the most serious kind there is).
+Both suites have failed tests in a full run that pass alone — eight instances
+between 2026-09-02 and 2026-09-28, across `catalog`, `query-counts`, `children`
+(api) and `admin-users`, `funding-register`, `flows`, `password-policy`,
+`invoices`, `admin-reports-overview` (web). Most were **5000 ms timeouts**, and
+the failing set changes between runs of the same tree. **The cause is not
+known.** It points at the full-run environment, not at any one test's logic.
 
-**The cause is not known.** What is ruled out, with evidence, so nobody repeats
-the search:
+Ruled out, with evidence: file parallelism (`fileParallelism: false`), the login
+rate limiter (per-file app; high-login files call `RateLimitService.resetAll()`
+in `beforeEach`), the report worker and scheduler (off in `test/setup.ts`),
+leaked connections (every file closes its app), `resetData` missing a table.
 
-| Hypothesis                            | Why not                                                                                                                                    |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Test files run in parallel            | `vitest.config.mts` sets `fileParallelism: false`                                                                                          |
-| Login rate limiter exhausted          | `createTestApp` compiles a fresh module per file, so the limiter is per-file — it cannot produce a failure that only appears in a full run |
-| Report worker / maintenance scheduler | Both gated on `REPORTS_WORKER_ENABLED`, which `test/setup.ts` sets to `"false"`                                                            |
-| Leaked apps holding connections       | All 46 files call `app.close()` in `afterAll`; Postgres `max_connections` is 100 and the suite sits near 8                                 |
-| `resetData` missing a table           | Verified by truncating and counting rows in all 65 tables — none survive                                                                   |
+**Ruled in — and the first thing to check:**
 
-★ It **is** real, and one instance had a real cause: `attendance-register.test.ts`
-did 21 tests × 5 logins against a 60-per-15-minutes limit and got 429s that read
-as register defects. `RateLimitService.resetAll()` in `beforeEach` fixes that
-class, and every high-login file already does it.
+- **Never run the api and web suites at the same time**, nor two api runs
+  (they share the test database), nor beside a busy `pnpm dev`. That starves
+  Postgres and CPU and produces `beforeEach` hook timeouts — including a
+  cross-kindergarten "leak" in `children.test.ts` that is not one.
+- A killed api run can leave `kinder_test` poisoned (failures that move around
+  and name `system-config.ts`) — recreate it rather than bisect.
+- The api suite takes ~21 minutes. Run it in the background with
+  `--reporter=verbose` written to a file **before** grepping.
 
-★★ **Do not treat the rest as flake and move on.** A cross-kindergarten
-isolation failure is the one result in this suite that must never be waved
-through: the code is right by construction there — `visible` is the first term
-of the `AND`, so a group filter narrows it and cannot widen it — but "the code
-looks right" is what everybody says before a leak. If it recurs, capture the
-full reporter output rather than the summary line, which is where this
-investigation stalled.
-
-★★★ **The web suite did it once too, on 2026-09-02**, which is worth recording
-because it widens the picture: `admin-users.test.tsx > "reports how many
-accounts the filter matched"` failed in `pnpm --filter web test` and passed
-alone. It then passed **four consecutive full runs** and has not recurred, and
-the reporter output was not captured — so this is a data point, not a
-diagnosis. What it rules out is the tempting explanation that this is a
-database-fixture problem specific to the api suite: the web suite has no
-database, no shared Nest app and no rate limiter. Whatever it is, it is not
-those. Capture the full output if it happens again.
-
-★★★★ **It happened again on 2026-09-03, and again in the web suite:**
-`funding-register.test.tsx > "prices the same children on the funding tab"`
-failed in `pnpm --filter web test` and passed alone (12/12). It then passed
-**four consecutive full runs**.
-
-The full reporter output was **not** captured — the run was filtered to the
-summary lines, which is the exact mistake the paragraph above warns about, so
-this is a third data point and still not a diagnosis. What is now recorded:
-the failure took **1313 ms**, so it was not a timeout, and it is a _third_
-distinct web file (`admin-users`, now `funding-register`), which weakens
-"one bad test" and strengthens "something about the full-run environment".
-
-Both web occurrences are in files that render a **table of money** filtered by
-a control. If it recurs, run the full suite with `--reporter=verbose` writing
-to a file _before_ grepping, so the assertion survives.
-
-★★★★★ **2026-09-08 — the output was finally captured**, and it kills the
-"table of money" theory. `pnpm --filter web test` failed **three** tests across
-three files in one run:
-
-| Test                                                           | How it failed            |
-| -------------------------------------------------------------- | ------------------------ |
-| `admin-users > "reports how many accounts the filter matched"` | element never appeared   |
-| `flows > "shows the server's message on a bad password…"`      | **timed out at 5000 ms** |
-| `password-policy > "refuses a password with no upper case…"`   | **timed out at 5000 ms** |
-
-All three passed together in isolation (81/81), `admin-users` passed 23/23
-three consecutive times alone, and the **next full run passed 559/559**.
-
-What this adds: two of the three were **timeouts**, which ★★★★ had ruled out
-for its own instance — so the failure mode is not one assertion going wrong, it
-is _work not finishing in time_. `password-policy`'s case is the sharpest
-evidence available: that test asserts the API is **never called** and needs no
-network at all, so nothing about fixtures, money or filters explains it. It
-points at the full-run environment — scheduler pressure, module-graph
-contention — rather than at any test's own logic.
-
-★ **A related cause is now ruled _in_:** running the api and web suites
-**concurrently** reproduces this shape on demand — `beforeEach` hook timeouts
-and `prisma.$executeRawUnsafe()` errors, including a cross-kindergarten
-isolation failure in `children.test.ts` that looks exactly like the leak this
-section warns must never be waved through. It is not one: it is Postgres and
-CPU starvation. **Never run the two suites at the same time**, and before
-blaming this section, check what else was running. Run serially and both are
-clean — api 1885/0, web 559/0.
-
-★★★★★★ **2026-09-22 — a sixth instance, and the cleanest data point yet.**
-`invoices.test.tsx > "sends only the lines that were priced…"` **timed out at
-5000 ms** in `pnpm --filter web test`. Alone it passes in **774 ms** — six
-times inside the budget it missed. The suite then passed **twice
-consecutively**, 1107/1107 both times, with no change in between.
-
-What this adds to ★★★★★:
-
-- **A fifth distinct web file.** `admin-users`, `funding-register`, `flows`,
-  `password-policy` and now `invoices` — the "one bad test" theory is finished.
-- **It is a timeout again**, which is the shape ★★★★★ identified: work not
-  finishing, not an assertion going wrong. Four of the six instances now are.
-- **Nothing was running beside it.** ★'s concurrency cause is ruled out for
-  this one: no api suite, no `pnpm dev`, one vitest process.
-- **The margin is the evidence.** 774 ms against a 5000 ms budget means the
-  full-run environment cost this test _at least_ 6× — that is not a slow
-  machine, it is a stall.
-
-★ **What it cost to establish**, so nobody re-spends it: three full runs, about
-nine minutes, to turn one red line into "known flake". That is the price of
-this section staying undiagnosed, and it is worth paying — the alternative is
-shipping through a red suite, which is how the one failure that matters gets
-waved through.
-
-Still not a diagnosis. But the next person can skip "it is the money tables".
-
-★★★★★★★ **2026-09-28 — two consecutive full runs, two different failure sets,
-nothing else running** (`pgrep` empty). Run 1: 14 failures in four files not
-touched by the change under test — `finance-dashboard`, `funding-register`,
-`invoices`, `survey-wizard` — five of them 5000 ms timeouts and seven
-`Not implemented: navigation`. The four files alone: 54/54. Run 2, unchanged
-code: one failure, `admin-reports-overview > "keeps only the two
-group-comparison charts…"`, a heading that never appeared; alone 3/3 three
-times. Verbose logs were captured this time. What it adds: the failing set is
-not stable between runs of the same tree, which fits ★★★★★'s "full-run
-environment" reading and argues against any one file's logic.
+★★ **A cross-kindergarten isolation failure must never be waved through.** If it
+recurs with nothing else running, capture the full reporter output and treat it
+as a defect until shown otherwise.
 
 ---
 
@@ -366,192 +277,121 @@ environment" reading and argues against any one file's logic.
 - Confirm before delete, toast after save, loading state over ~300 ms
 - Every field has a `<label>`, every image an `alt`
 - **Mobile-first.** It works on a phone before it works anywhere else
-- Empty states say what to do next
+- Empty states say what to do next — and never show sample figures in their place
+- Restyle through the token layer (`globals.css` `@theme` + shared primitives)
+- Web redesigns and new screens come from the client's frontend developer's
+  PRs. Backend, contracts, migrations and deploy are ours; write web code only
+  when the user asks for that specific change
 
 ---
 
 ## 6. Slow work goes to a queue
 
-BullMQ, never inside a request: PDF generation (~2.5 s), image processing, bulk
-notifications, cleanup sweeps.
+BullMQ, never inside a request: PDF generation (~2.5 s), image processing,
+bulk notifications, cleanup sweeps.
 
-The report worker needs Chromium, ≥ 1 GB RAM, and **Cyrillic fonts installed
-system-wide**. It cannot run on Vercel.
+The `reports-worker` container (2 GB) runs the slow work. It needs Chromium and
+**Cyrillic fonts installed system-wide** — without them a PDF renders blank with
+no error. The `api` containers set `REPORTS_WORKER_ENABLED=false`.
 
 ---
 
 ## 7. Scope
 
-**Scope runs through RFP Phase III.** Changed 2026-08-25 by the client, in
-writing, after the Phase 1 MVP was delivered and accepted
-(`PHASE_1_ACCEPTANCE.md`: 14 PASS, 1 blocked).
+**Scope runs through RFP Phase III** (client, in writing, 2026-08-25), plus
+what the client added since. Phase 1 was delivered and accepted (14 PASS,
+1 blocked).
 
-This rule used to say "MVP = Phase 1 only" and list attendance, meals, surveys,
-health, allergies, medication, Excel and growth percentiles as forbidden. All of
-them are now in scope, and three had already landed before the rule was
-updated — which is the reason it is being updated rather than quietly ignored.
-A mandatory rule that the codebase contradicts teaches everyone to stop reading
-the file.
-
-**In scope** — RFP §20 Phase II and Phase III, plus the appended modules:
-
-attendance · meals and the weekly menu · surveys and their analytics ·
-growth measurements and charts · milestones · allergies · medication ·
+**In scope and built:** attendance · meals and the weekly menu · surveys and
+analytics · growth and charts · milestones · allergies · medication ·
 vaccination · safety incidents · document library · artwork comparison ·
-annual, group and batch reports · Excel import and export · photo consent
+annual, group and batch reports · Excel import/export · photo consent ·
+chat (2026-08-29) · the ESIS integration.
 
-★ **The client added a second document on 2026-08-25: `нэмэлт.md`**, a finance
-and funding module — state funding rules and monthly reconciliation, food-cost
-calculation, parent invoices, online payment, an accountant role, a financial
-dashboard, financial audit trails and nine financial reports.
+**The finance module (`нэмэлт.md`):**
 
-That contradicts the line below, which had payments, invoices, QPay and the
-accountant role as Phase IV. **It is now requested work**, so the line moves —
-same reason §7 moved the first time: a rule the codebase is about to contradict
-teaches everyone to stop reading the file.
+| §                                   | State                                                                                                                           |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| §1 sixth attendance status `OTHER`  | done                                                                                                                            |
+| §2 meal register, §12 dish fields   | done                                                                                                                            |
+| §3 meal cost                        | **partial** — ESIS api 128 food discounts read live, stored nowhere; three states incl. `UNASSESSED`; per-child split not built |
+| §4–§6 state funding, rules, monthly | done — the rule table ships **empty**; no tariff is hard-coded                                                                  |
+| §7 invoices                         | done, incl. `generate-month`                                                                                                    |
+| §8 online payment                   | QPay charges **only the portal access fee** — see below                                                                         |
+| §9 dashboard, §10 child finance tab | done — a guardian's payload omits `funding` entirely                                                                            |
+| §11 allergy cross-check             | done                                                                                                                            |
+| §13 accountant role                 | done, `Role.ACCOUNTANT`                                                                                                         |
+| §14 financial audit log             | done — reversal rows, before/after values                                                                                       |
+| §15 external-ID history             | **not started**                                                                                                                 |
+| §16 the reports                     | done — `FINANCE_REPORT` jobs carry **no `childId`**                                                                             |
 
-What has been built from `нэмэлт.md` so far, and what has not. **Updated
-2026-08-31** — the previous version of this list said "§3–§10, §13, §14, §16 —
-the finance module proper — not started", and by then §4, §5 and §6 had shipped.
-The list is corrected rather than left standing for the reason this whole
-section keeps repeating: a rule the codebase contradicts stops being read.
+★ **QPay** (client, 2026-09-01): "QPay-ийг зөвхөн эцэг эхчүүдээс энэхүү
+website-ийг ашиглах эрхийг нээхийн тулд мөнгө авна. Өөр зүйлд QPay
+ашиглахгүй". `AccessSubscription` is one child × one school year, priced by
+`ACCESS_FEE_AMOUNT` (**"0" turns the gate off** and is the default). One
+merchant serves every kindergarten, so credentials and price are deployment
+settings. **No `Payment` row is written for a fee** — it is the platform
+operator's revenue, not the kindergarten's. Tuition and meal invoices are
+settled in cash or by transfer, recorded by the accountant, never through
+the gateway.
 
-- §1's sixth attendance status (`OTHER`) — **done**, it had been dropped.
-  ★ It was called done on 2026-08-25 and was half true until 2026-09-02: the
-  Prisma enum had it, `ATTENDANCE_STATUS_LABEL` named it, the funding register
-  filtered on it — but `attendanceStatusSchema` and `recordAttendanceSchema`
-  both stopped at five, so the "Бусад" button the teacher's day sheet has been
-  drawing all along failed on save. A status list written out by hand in four
-  places is how that happens
-- §2 the meal register, §12's dish fields — **done**
-- §11 the allergy cross-check — **done** (it was already RFP Module 2)
-- §13 the accountant role — **done**, `Role.ACCOUNTANT`
-- §4, §5, §6 state funding, the rules engine, the monthly calculation —
-  **done**: `FundingRule`, `FundingCalculation`, `settle()`, the monthly
-  register and its Excel export, `/admin/funding` and `/finance`. The rule
-  table ships **empty**, by §4's own instruction that no tariff is hard-coded
-- §3 meal cost — **partial**, and the half that was missing now has a source.
-  `dependsOnMeals` weights a funding rule; what nothing could answer was _which
-  children the state pays for_, so a split by source had no input. ESIS api 128
-  (`cook/levelHood/students`) is the ministry's own answer and is wired as
-  `GET …/funding/food-discounts` — `funding/food-discount.ts`, read live and
-  **stored nowhere**, because eligibility changes without telling us and a
-  stored copy would be quietly wrong.
-  ★ Its answer has **three** states, not two: 65 rows came back against a
-  roster of 83, so eighteen children are `UNASSESSED` — not assessed rather
-  than not eligible. Pricing those as "no discount" would bill a family for
-  something the state may be about to pay. The per-child cost split itself is
-  still to build
-- §7 invoices — **done**: `Invoice`, `InvoiceLineItem`, `Payment`, a
-  hand-written invoice, the carried balance, and `POST
-…/invoices/generate-month` which bills a whole month from the `PARENT`
-  tariffs × the month's attendance and meal days
-- §8 online payment — **built, then narrowed**. ★★ **QPay now charges one
-  thing: the portal access fee** (client, 2026-09-01 — "QPay-ийг зөвхөн эцэг
-  эхчүүдээс энэхүү website-ийг ашиглах эрхийг нээхийн тулд мөнгө авна. Өөр
-  зүйлд QPay ашиглахгүй"). A family's tuition and meal invoices are still
-  raised and still settled — cash or transfer, recorded by the accountant —
-  but never through the gateway.
+★ **Chat** has **no AI in it** — the client said so three times. It is a group
+message board: membership derived per request, 404 for a room you are not in,
+`kindergartenId` on every row, soft delete, paginated history.
 
-  `AccessSubscription` is one child × one school year, priced per deployment
-  (`ACCESS_FEE_AMOUNT`, **"0" turns the gate off** and is the default).
-  `QpayInvoice` points at it. **No `Payment` row is written** for a fee: it is
-  the platform operator's revenue, and a kindergarten's ledger must not carry
-  income its accountant will never find on their own statement.
+★ **Phone proof through verify.mn** (2026-10-01) is **inbound** — the person
+texts a code _from_ their phone — for password reset, a guardian's phone on an
+invitation, and changing one's own phone. Off unless `VERIFY_MN_API_KEY` is
+set. Never show an SMS price in the UI.
 
-  ★ **This is the one place the product answers 402 instead of 404.** §1.7's
-  rule protects against confirming a record exists; an unpaid guardian already
-  knows their child exists, and a 404 would hide the one fact that lets them
-  fix it. Authorization still runs **first**, so a stranger gets 404 and the
-  402 can never become an oracle — `authz/portal-access.ts`,
-  `test/portal-access.test.ts`.
+**Still out — RFP Phase IV.** Say which phase it belongs to and ask:
 
-  **One merchant serves every kindergarten** (client, 2026-08-31), so the
-  credentials and the price are deployment settings, not columns. A pending
-  attempt is a `QpayInvoice`, **not** a settled fact — a QR nobody has scanned
-  is not money that moved
-
-★ **§7 and §8 were built twice.** `main` and `origin/main` diverged at
-`878a3a2` and each wrote the whole module into the same paths; the merge on
-2026-09-01 kept `origin/main`'s, because that code was already live and its
-migrations were already in the production database — not because the design
-was better. Both were sound. The reasoning, the two defects fixed on the way in
-(JavaScript floats for money; a `/v2` doubled into the QPay base URL) and what
-was lost (a line no longer points at the `FundingRule` that produced it, and no
-longer carries `quantity × unitAmount`) are in `docs/FINANCE_MODULE.md` §1.
-
-- §9 the financial dashboard — **done**: `/kindergartens/:id/invoices/dashboard`
-  and the panel at the head of `/finance`. Nine figures, none of them stored —
-  every one aggregated on read from the calculations, invoices and payments
-- §10 the child finance tab — **done**: `/children/:id/finance`. **A guardian's
-  payload omits `funding` entirely** — the state's payments to the kindergarten
-  are its revenue, not the family's debt
-- §16 the nine reports — **done**: a screen at the foot of `/finance`, Excel
-  inline, and PDF on BullMQ as a `FINANCE_REPORT` job. Eight keys, not nine —
-  "Ирц–санхүүжилтийн тулгалт" is the monthly register, which shipped with §6 and
-  already exports. ★ A `FINANCE_REPORT` job carries **no `childId`**, which is
-  what keeps every `canAccessChild`-gated report route from ever serving one
-- §14 the financial audit log — **done**.
-  ★ **The reversal rule is built**, which this line said it was not until
-  2026-09-11. `Payment.reversalOfId`, `InvoicesRepository.voidPayment()` — it
-  sets `voidedAt` on the original and inserts a reversing row rather than
-  touching the amount — and it refuses to void a reversal, because voiding a
-  reversal is not a thing this schema can express. The dashboard counts the
-  void, since the reversal is what cancels it, and `finance-reports` reads
-  `reversalOfId`. That is §14's "Залруулга эсвэл reversal transaction
-  ашиглана", and the ★ below §16 already treats it as the rule.
-  ★★ **`Өмнөх утга → Шинэ утга` is done too, 2026-09-26.** This line said
-  two of fourteen `audit.append()` calls carried a `before`; by then five of
-  fifteen did, and the four that still overwrote or removed something without
-  one — an invoice edit, an invoice removal, a funding rule removal and a
-  month's recalculation — now record what was there. A creation carries no
-  `before`, because nothing was. `/finance/audit-log` shows the pair as a
-  table in Mongolian rather than the JSON it printed.
-- §15 the external-ID history — **not started**
-
-★ §14 asks that a confirmed financial transaction is **never deleted** —
-"Залруулга эсвэл reversal transaction ашиглана". That is stricter than §3.2's
-soft delete and overrides it here: a confirmed payment gets a **reversing row**,
-not a `deletedAt`. §3.2 stays the rule everywhere else.
-
-★★ **Chat moved into scope on 2026-08-29, at the client's explicit request.**
-
-It was listed below as Phase IV, and the rule above worked exactly as written:
-the request was raised against §7, the phase was named, the client was asked,
-and they answered "build it fully". This line moves rather than being quietly
-ignored — the third time §7 has moved and for the same reason each time, which
-is stated a few paragraphs up: a mandatory rule the codebase contradicts stops
-being read.
-
-What that costs is worth writing down, because "chat" is one word and a
-fortnight of work: a message model, an authorization path of its own, a
-paginated history endpoint, an unread cursor per person per room, and a
-realtime story. It is being built against the same rules as everything else —
-membership derived per request (§1.3), 404 for a room you are not in (§1.7),
-`kindergartenId` on every row (§3.1), soft delete (§3.2), no unbounded list
-(§3.4). **There is no AI in it**, which the client stated three times: it is a
-group message board, not an assistant.
-
-★★★ **Phone proof through verify.mn moved into scope on 2026-10-01**, at the
-user's request, for three flows: password reset by phone, a guardian's phone on
-an invitation, and changing one's own phone. It is **inbound** — the person
-texts a code _from_ their phone; nothing is sent to it — which is why it is not
-the "SMS мэдэгдэл" below, and that stays Phase IV. Off unless
-`VERIFY_MN_API_KEY` is set. `docs/SECURITY.md` §2.1.
-
-**Still out** — RFP §20 Phase IV, minus what `нэмэлт.md` and the 2026-08-29
-request pulled forward. Say which phase it belongs to and ask:
-
-native mobile apps · SMS · push notification · QR pick-up ·
+native mobile apps · outbound SMS · push notification · QR pick-up ·
 electronic signature · multi-language · AI observation suggestions ·
 voice-to-text
 
-Pulling work forward silently is still how a three-week delivery becomes six.
-The difference is that the client has now asked for this much, explicitly.
+Pulling work forward silently is how a three-week delivery becomes six.
 
 ---
 
-## 8. Common mistakes
+## 8. Production
+
+**Production is the Datacom VPS, `202.131.1.111`**, running
+`docker-compose.prod.yml`: web, api, reports-worker, Postgres (`db`), Redis,
+MinIO (`storage`), Caddy. Cloudflare is DNS only. Vercel and Railway still
+build from `main` and **serve nothing** — their status says nothing about
+`nomadkids.mn`.
+
+**A merge to `main` deploys nothing.** To deploy:
+
+```bash
+ssh root@202.131.1.111
+cd /opt/nomadkids
+sudo -u deploy git pull --ff-only origin main      # git as deploy, never root
+nohup setsid docker compose -f docker-compose.prod.yml up -d --build [service] \
+  > /tmp/deploy.log 2>&1 < /dev/null &
+```
+
+- The api entrypoint runs `prisma migrate deploy`; rebuild `api` **and**
+  `reports-worker` when the api or a migration changed (Chromium image, 20+ min).
+  Web-only changes rebuild `web` alone.
+- Watch `/tmp/deploy.log` and `docker compose ps`, never
+  `pgrep -f "…up -d --build"` — it matches its own shell.
+- `.env` is a symlink to `.env.production`. `up -d --build` does not re-read
+  `env_file`: a changed variable needs `--force-recreate`.
+- Take a `pg_dump` to `/root/backups/` before any manual prod DB write, and ask
+  before anything destructive (DROP, deleting rows, stopping the stack).
+- Backups: `scripts/backup.sh` from root's cron at 02:15, offsite to
+  `BACKUP_REMOTE` (R2 via rclone).
+
+Locally nothing runs in Docker: Postgres 5432, Redis 6379, MinIO 9010 run
+natively. `NEXT_PUBLIC_MEDIA_URL` must match MinIO's port or CSP blocks every
+photo. Rebuild `packages/contracts` after a schema change — a stale `dist`
+silently strips new fields.
+
+---
+
+## 9. Common mistakes
 
 | Mistake                                        | Correct                                      |
 | ---------------------------------------------- | -------------------------------------------- |
@@ -564,6 +404,8 @@ The difference is that the client has now asked for this much, explicitly.
 | Roles baked into the JWT                       | Re-read `Membership` per request             |
 | Generating a PDF in a request                  | BullMQ + `ReportJob`                         |
 | Development domains as a TS enum               | The `DevelopmentDomain` table                |
-| Serving R2 objects by direct URL               | `/media/:id` + presigned URL after the check |
+| Serving storage objects by direct URL          | `/media/:id` + presigned URL after the check |
 | Authenticated fetch without `no-store`         | Always `cache: "no-store"`                   |
+| `prisma migrate dev` on the local database     | `prisma migrate deploy`                      |
+| Running api and web suites together            | One suite at a time                          |
 | Saying "done" without running tests            | Run them, show the output                    |
