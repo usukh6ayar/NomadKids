@@ -3,152 +3,35 @@
 Kindergarten child-development digital portfolio system.
 Next.js · NestJS · Prisma · PostgreSQL · MinIO (S3-compatible).
 
-> **Status: deployed. Phase I–III and the finance module are live on the
-> Datacom VPS; the ESIS integration is in trial against the ministry's
-> production register.**
->
-> ★ This banner used to say "nothing is deployed". The cutover happened on
-> **2026-09-10** — all three domains resolve to the VPS, nightly backups run
-> from cron, and a restore drill has succeeded. See "Production" below.
->
-> Earlier verification still stands and is worth reading before changing
-> anything: 121 live security probes against the production image, a
-> Mongolian-Cyrillic PDF generated and text-extracted from **inside** it, and
-> password reset exercised end to end against a real SMTP server —
-> [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) and
-> [docs/PHASE_1_ACCEPTANCE.md](docs/PHASE_1_ACCEPTANCE.md).
->
-> **Still outstanding:** real-device QA
-> ([docs/FINAL_DEVICE_QA.md](docs/FINAL_DEVICE_QA.md)), and `BACKUP_REMOTE` is
-> unset — the nightly backup lives on the same disk as the data.
+**Live since 2026-09-10** on one Datacom VPS (`202.131.1.111`): web
+`https://nomadkids.mn`, API `https://api.nomadkids.mn`, media
+`https://media.nomadkids.mn`, all behind Caddy. Cloudflare is DNS only.
+
+Teachers record observations and developmental assessments; parents see their
+own child's portfolio, progress and photographs; administrators manage
+kindergartens, groups, staff and configuration. Scope runs through RFP Phase III
+plus the finance module, chat and the ESIS integration — [`CLAUDE.md`](CLAUDE.md)
+§7 is the authority.
+
+**Read [`CLAUDE.md`](CLAUDE.md) before writing code.** Its rules are mandatory.
 
 ## Quick start
 
 ```bash
 pnpm install
-docker compose up -d                              # postgres · redis · minio
-cp .env.example .env                              # then fill in the two secrets
+cp .env.example .env                              # then fill in the secrets
 pnpm --filter @kinder/contracts build
 pnpm --filter @kinder/api prisma:generate
-pnpm --filter @kinder/api prisma:migrate          # create the schema
+pnpm --filter @kinder/api prisma:deploy           # apply migrations
 pnpm --filter @kinder/api seed                    # system configuration
-pnpm --filter @kinder/api seed:demo               # optional: data to look at
 pnpm --filter @kinder/api test:db:setup           # ★ the tests' own database
 pnpm dev                                          # web :3000 · api :3001
 ```
 
-`seed:demo` prints the accounts it creates. Sign in with `bagsh1`, `zahiral` or
-`etseg1` — password `demo-password-123`.
+`pnpm verify` runs typecheck, lint and tests. CI also runs `pnpm format:check`.
 
-`pnpm verify` runs typecheck, lint and tests — the same three checks as CI.
-
-> **★ `test:db:setup` is not optional on a development machine.**
->
-> The integration suite runs against a real Postgres and `TRUNCATE`s every table
-> between cases. Without `TEST_DATABASE_URL` it does that to `DATABASE_URL` —
-> so `pnpm test` silently deletes everything `seed:demo` just created, and the
-> only symptom is an empty kindergarten the next time you open the app. The
-> command creates `kinder_test` and migrates it; `test/setup.ts` then points the
-> suite there and warns loudly when it cannot.
->
-> CI leaves the variable unset on purpose: its `DATABASE_URL` is already a
-> throwaway service container.
-
-> Host ports are offset by one (Postgres 5434, Redis 6380, MinIO 9002/9003) so
-> this project and the Django reference system can run at the same time.
-> Comparing the two side by side is exactly what the reference is kept for.
-
-## Production
-
-**Live since 2026-09-10 on one Datacom VPS — `202.131.1.111`.**
-
-| Role  | Origin                       | Served by                           |
-| ----- | ---------------------------- | ----------------------------------- |
-| Web   | `https://nomadkids.mn`       | Caddy → `web` container             |
-| API   | `https://api.nomadkids.mn`   | Caddy → `api` containers            |
-| Media | `https://media.nomadkids.mn` | MinIO                               |
-| DNS   | —                            | Cloudflare (DNS only, grey-clouded) |
-
-Postgres, Redis, MinIO and the report worker run in the same
-`docker-compose.prod.yml`. Data stays in Mongolia; the earlier approval for
-residency outside it (2026-08-19) no longer applies.
-
-★ **Vercel and Railway still build from `main` and serve nothing** — kept
-briefly as the rollback. A green deploy on either says nothing about what
-`nomadkids.mn` is serving. Merging to `main` deploys nothing; see
-[docs/VPS_DEPLOYMENT.md](docs/VPS_DEPLOYMENT.md) §3.4 and
-[docs/OPERATOR_MANUAL.md](docs/OPERATOR_MANUAL.md) §7.
-
-One registrable domain, so the origins are **same-site** — which is what lets
-authentication use `SameSite=Lax` HttpOnly cookies and keep the browser's own
-CSRF protection. **No token is ever stored in `localStorage`.**
-
-The reasoning behind the topology that outlived the platform change — domains,
-cookies, the worker's memory floor, storage — is in
-[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
-
----
-
-## What this is
-
-A digital portfolio for Mongolian kindergartens: teachers record observations
-and developmental assessments about children; parents see their own child's
-portfolio, progress and photographs; administrators manage kindergartens,
-groups, staff and configuration. Reports are generated as A4 PDFs in Mongolian.
-
-Scope now runs through **RFP Phase III** plus the client's finance module
-(`нэмэлт.md`) and chat: attendance, meals and the weekly menu, surveys, growth,
-health, the kitchen, state funding, invoices and the ESIS integration are all
-built. Native mobile, SMS, push, QR pick-up and AI stay out —
-[`CLAUDE.md`](CLAUDE.md) §7 is the authority and records when each line moved.
-
----
-
-## Documents
-
-| Document                                           | What it answers                                                                              |
-| -------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)       | Stack, topology, layering, repository layout, risks                                          |
-| [docs/DATABASE.md](docs/DATABASE.md)               | 28 tables — purpose, relationships, indexes, authorization boundary                          |
-| [docs/API.md](docs/API.md)                         | Every REST route with its role and ownership rule                                            |
-| [docs/SECURITY.md](docs/SECURITY.md)               | Auth, cookies, CSRF, RBAC, IDOR, media, audit — and the 108-case acceptance matrix           |
-| [docs/UI_UX_MAP.md](docs/UI_UX_MAP.md)             | 24 Next.js routes, one screen = one job                                                      |
-| [docs/MIGRATION_PLAN.md](docs/MIGRATION_PLAN.md)   | What was kept, transformed and dropped from the Django system                                |
-| [docs/PDF_SPIKE.md](docs/PDF_SPIKE.md)             | **Executed.** Puppeteer benchmarked; the blank-report failure and its fix                    |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)           | Domains, services, environment, backups, pre-launch checks                                   |
-| [docs/OPERATOR_MANUAL.md](docs/OPERATOR_MANUAL.md) | **Mongolian.** Running the platform: superadmins, registering a kindergarten, creating users |
-
-**Start with [ARCHITECTURE.md](docs/ARCHITECTURE.md), then
-[SECURITY.md](docs/SECURITY.md).**
-
----
-
-## The reference system
-
-`../ByatshanNuudelchid` is a working Django implementation of this product —
-25,601 lines, 751 tests, Phase 1 substantially complete. It is kept as the
-**behavioural specification**: business rules, domain concepts, authorization
-requirements, validation, PDF content and Mongolian terminology.
-
-Its _architecture_ is not carried forward. See
-[MIGRATION_PLAN.md](docs/MIGRATION_PLAN.md).
-
-Copies of its requirement documents live in [`docs/reference/`](docs/reference/),
-including the client's RFP (`Project_Info.md`).
-
----
-
-## The one thing to know before writing code
-
-Prisma has no equivalent of Django's soft-delete manager or tenant scoping. A
-query that forgets `deletedAt: null` returns deleted records; one that forgets
-the tenant filter returns **another kindergarten's children**.
-
-The structural answer is in [CLAUDE.md](CLAUDE.md) §2.2: `PrismaClient` is
-importable only from `*.repository.ts`, enforced by lint. Read that before the
-first query is written.
-
----
+★ `test:db:setup` is not optional: the integration suite `TRUNCATE`s every table
+between cases, and without `TEST_DATABASE_URL` it does that to `DATABASE_URL`.
 
 ## Layout
 
@@ -156,28 +39,8 @@ first query is written.
 apps/web/           Next.js App Router — three shells: (teacher) (parent) (admin)
 apps/api/           NestJS + Prisma — controller → service → repository → authz
 packages/contracts/ shared Zod schemas and types, built before either app
-docs/               design documents, plans and the client's reference material
-docs/spikes/pdf/    executed PDF spike: scripts, Dockerfile, generated output
+scripts/            VPS backup, preflight and ESIS probe scripts
 ```
-
----
-
-## The PDF spike, in one line
-
-Puppeteer + Chromium renders the Mongolian report correctly — 19 pages, 2.5 s,
-775 MB RSS — **but produces a completely blank PDF, with no error, if the
-container has no system fonts.** The fix is two lines in a Dockerfile and a
-boot-time assertion: [docs/PDF_SPIKE.md](docs/PDF_SPIKE.md).
-
-To reproduce:
-
-```bash
-cd docs/spikes/pdf
-npm install
-node run-puppeteer.mjs && node verify.mjs out/puppeteer-warm-1.pdf
-```
-
----
 
 ## Language
 
