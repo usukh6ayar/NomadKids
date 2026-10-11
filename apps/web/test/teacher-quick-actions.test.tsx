@@ -116,10 +116,7 @@ describe("the teacher dashboard's quick actions", () => {
       "href",
       "/documents",
     );
-    expect(band.getByRole("link", { name: /Дуу, шүлэг/ })).toHaveAttribute(
-      "href",
-      "/songs-poems",
-    );
+    expect(band.getByRole("link", { name: /Дуу, шүлэг/ })).toHaveAttribute("href", "/songs-poems");
     expect(band.getByRole("link", { name: /Суралцагч/ })).toHaveAttribute("href", "/children");
   });
 
@@ -162,10 +159,7 @@ describe("the teacher dashboard's quick actions", () => {
       "href",
       "/documents",
     );
-    expect(band.getByRole("link", { name: /Дуу, шүлэг/ })).toHaveAttribute(
-      "href",
-      "/songs-poems",
-    );
+    expect(band.getByRole("link", { name: /Дуу, шүлэг/ })).toHaveAttribute("href", "/songs-poems");
   });
 
   /*

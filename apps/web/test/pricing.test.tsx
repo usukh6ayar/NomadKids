@@ -27,9 +27,9 @@ describe("the current school-year prices", () => {
 
     expect(kindergartenTermPrice(3)).toBe(6_000);
     expect(kindergartenYearlyPrice(3)).toBe(102_000);
-    expect(
-      yearlySavingAmount(kindergartenStandardYearPrice(3), kindergartenYearlyPrice(3)),
-    ).toBe(6_000);
+    expect(yearlySavingAmount(kindergartenStandardYearPrice(3), kindergartenYearlyPrice(3))).toBe(
+      6_000,
+    );
     expect(savingPercent(CHILD_STANDARD_TERM_PRICE, CHILD_CURRENT_TERM_PRICE)).toBe(44.4);
     expect(savingPercent(CHILD_STANDARD_YEAR_PRICE, CHILD_CURRENT_YEAR_PRICE)).toBe(18.5);
     expect(

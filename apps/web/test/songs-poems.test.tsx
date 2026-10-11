@@ -43,8 +43,9 @@ describe("the monthly songs and poems library", () => {
     const septemberBook = screen.getByRole("button", { name: "9-р сар хавтас, 2 материал" });
     expect(septemberBook.querySelector("svg")).toBeNull();
     expect(within(septemberBook).getByText("2 материал")).not.toHaveClass("bg-white/70");
-    expect(screen.getByRole("button", { name: "9-р сар хавтас — үйлдэл" }).parentElement).not
-      .toHaveClass("bg-white/75");
+    expect(
+      screen.getByRole("button", { name: "9-р сар хавтас — үйлдэл" }).parentElement,
+    ).not.toHaveClass("bg-white/75");
 
     await user.click(screen.getByRole("button", { name: "9-р сар хавтас — үйлдэл" }));
     await user.click(screen.getByRole("menuitem", { name: "Засах" }));

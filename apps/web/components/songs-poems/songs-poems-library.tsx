@@ -12,14 +12,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from "react";
+import { useEffect, useId, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -394,7 +387,12 @@ function ResourceCard({
         !resource.fileType?.startsWith("audio/") &&
         !resource.fileType?.startsWith("image/") ? (
           <Button asChild variant="secondary" size="sm" block className="mt-auto">
-            <a href={resource.fileUrl} target="_blank" rel="noreferrer" download={resource.fileName}>
+            <a
+              href={resource.fileUrl}
+              target="_blank"
+              rel="noreferrer"
+              download={resource.fileName}
+            >
               <FileDown aria-hidden="true" />
               Файл нээх
             </a>
@@ -402,7 +400,9 @@ function ResourceCard({
         ) : null}
 
         <div className="mt-auto flex items-center justify-between gap-2 border-t border-border-soft pt-3 text-caption text-muted">
-          <span className="truncate">{resource.fileName ?? resource.coverFileName ?? "Тайлбар"}</span>
+          <span className="truncate">
+            {resource.fileName ?? resource.coverFileName ?? "Тайлбар"}
+          </span>
           <span className="shrink-0">{resource.updatedAt}</span>
         </div>
       </div>
@@ -486,7 +486,12 @@ function ResourceFormDialog({
       busy={saving}
       footer={
         <>
-          <Button variant="secondary" size="sm" onClick={() => onOpenChange(false)} disabled={saving}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
             Болих
           </Button>
           <Button type="submit" form={formId} size="sm" disabled={saving}>

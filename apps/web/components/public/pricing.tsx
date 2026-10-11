@@ -140,8 +140,7 @@ function PlanCard({
   onApply: () => void;
 }) {
   const look = LOOK[plan.key];
-  const termAmount =
-    plan.key === "kindergarten" ? kindergartenTermPrice(groupCount) : plan.perTerm;
+  const termAmount = plan.key === "kindergarten" ? kindergartenTermPrice(groupCount) : plan.perTerm;
   const yearlyAmount =
     plan.key === "kindergarten" ? kindergartenYearlyPrice(groupCount) : plan.perYear;
   return (

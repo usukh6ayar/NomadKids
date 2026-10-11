@@ -86,11 +86,7 @@ export function kindergartenYearlyPrice(groups: number): number {
 }
 
 export function kindergartenStandardYearPrice(groups: number): number {
-  return (
-    Math.max(1, Math.trunc(groups)) *
-    KINDERGARTEN_MONTHLY_PER_GROUP *
-    MONTHS_IN_SCHOOL_YEAR
-  );
+  return Math.max(1, Math.trunc(groups)) * KINDERGARTEN_MONTHLY_PER_GROUP * MONTHS_IN_SCHOOL_YEAR;
 }
 
 export function kindergartenPrice(groups: number, period: BillingPeriod): number {
