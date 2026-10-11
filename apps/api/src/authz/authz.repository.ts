@@ -47,6 +47,7 @@ export class AuthzRepository {
       select: {
         id: true,
         kindergartenId: true,
+        kindergarten: { select: { kind: true } },
         enrollments: {
           where: { deletedAt: null },
           select: { groupId: true, kindergartenId: true },
@@ -63,6 +64,7 @@ export class AuthzRepository {
     return {
       childId: child.id,
       childKindergartenId: child.kindergartenId,
+      childKindergartenKind: child.kindergarten.kind,
       enrollments: child.enrollments,
       guardianships: child.guardianships,
       actorActiveTeachingGroupIds: await this.loadActiveTeachingGroupIds(actor),
@@ -506,12 +508,32 @@ export class AuthzRepository {
     });
   }
 
-  async loadOwnKindergartens(actor: Actor): Promise<{ id: string; name: string }[]> {
+  /**
+   * Whether this user is a viewing guardian of a child **now** in this group —
+   * the active, open enrollment (CLAUDE.md §1.2), never `Child.kindergartenId`.
+   */
+  async isGuardianOfChildInGroup(userId: string, groupId: string): Promise<boolean> {
+    const child = await this.prisma.child.findFirst({
+      where: {
+        deletedAt: null,
+        guardianships: { some: { guardianUserId: userId, canView: true, deletedAt: null } },
+        enrollments: {
+          some: { groupId, status: "ACTIVE", endedOn: null, deletedAt: null },
+        },
+      },
+      select: { id: true },
+    });
+    return child !== null;
+  }
+
+  async loadOwnKindergartens(
+    actor: Actor,
+  ): Promise<{ id: string; name: string; kind: "CONTRACTED" | "SOLO_TEACHER" }[]> {
     const ids = [...new Set(actor.memberships.map((m) => m.kindergartenId))];
     if (ids.length === 0) return [];
     return this.prisma.kindergarten.findMany({
       where: { id: { in: ids }, deletedAt: null },
-      select: { id: true, name: true },
+      select: { id: true, name: true, kind: true },
       orderBy: { name: "asc" },
     });
   }

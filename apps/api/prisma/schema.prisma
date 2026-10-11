@@ -85,6 +85,11 @@ enum EsisSyncStatus {
   FAILED
 }
 
+enum KindergartenKind {
+  CONTRACTED
+  SOLO_TEACHER
+}
+
 enum AgeBand {
   NURSERY // Бага бүлэг
   JUNIOR // Дунд бүлэг
@@ -737,7 +742,17 @@ model Kindergarten {
   /// start a preview only when this value matches the deployment credential's
   /// institution id, preventing one tenant from reading another tenant's
   /// roster through a shared integration token.
-  esisInstitutionId String?   @unique
+  /// ★ CONTRACTED is a kindergarten under contract; SOLO_TEACHER is one
+  /// teacher's own workspace (#195, the user 2026-10-11): signed up alone,
+  /// no ESIS code, one group, no staff but them — parents only. The teacher
+  /// holds ADMIN and TEACHER here, so every route works unchanged and the
+  /// solo rules are guards on top. Merged into a contracted kindergarten by
+  /// the operator later, nothing lost.
+  kind              KindergartenKind @default(CONTRACTED)
+  /// The kindergarten a solo teacher says they work at, as typed at sign-up —
+  /// what the operator matches on when that kindergarten signs.
+  soloWorkplaceName String?
+  esisInstitutionId String?          @unique
   esisMappedAt      DateTime?
 
   /// ★ `staffRegistrationCodeHash` and `staffRegistrationCodeSetAt` were here
@@ -847,6 +862,8 @@ model Kindergarten {
   groupRoutines          GroupRoutine[]
   clubs                  Club[]
   clubRequests           ClubRequest[]
+  songPoems              SongPoem[]
+  songPoemMonths         SongPoemMonth[]
   esisReference          EsisReference[]
   methodUnions           MethodUnion[]
   methodUnionMembers     MethodUnionMember[]
@@ -1169,6 +1186,8 @@ model Group {
   feedback               Feedback[]
   routine                GroupRoutine?
   clubs                  Club[]
+  songPoems              SongPoem[]
+  songPoemMonths         SongPoemMonth[]
 
   @@unique([schoolYearId, name])
   @@index([kindergartenId, status])
@@ -5339,4 +5358,70 @@ model MaterialPurchase {
   @@unique([materialId, userId])
   @@index([userId, status])
   @@map("material_purchases")
+}
+
+enum SongPoemType {
+  SONG
+  POEM
+  FOLKLORE
+  FAIRY_TALE
+}
+
+/// Дуу, шүлэг — what a group learns month by month: songs, poems, folklore,
+/// tales (#195, 2026-10-11). The group's teacher keeps it; the group's
+/// families read it.
+///
+/// ★ Files live on the row, not in `MediaFile`: they belong to a group rather
+/// than a child, and `/media/:id` authorizes by child. The keys are random
+/// and the bucket private; `SongsPoemsService` serves each after its own check
+/// (CLAUDE.md §1.4).
+model SongPoem {
+  id             String       @id @default(uuid()) @db.Uuid
+  kindergartenId String       @db.Uuid
+  groupId        String       @db.Uuid
+  /// "09" … "05" — the school year's months.
+  month          String
+  type           SongPoemType
+  title          String
+  description    String       @default("")
+
+  coverKey      String? @unique
+  coverMimeType String?
+  coverName     String?
+  fileKey       String? @unique
+  fileMimeType  String?
+  fileName      String?
+  fileSize      Int?
+
+  createdById String?   @db.Uuid
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  group        Group        @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@index([groupId, deletedAt, month])
+  @@index([kindergartenId])
+  @@map("song_poems")
+}
+
+/// A group's own name for a month's book («10-р сар · Алтан намар»), when the
+/// teacher changed it. No `deletedAt`: a settings row, overwritten in place;
+/// the defaults live in the web app.
+model SongPoemMonth {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  groupId        String   @db.Uuid
+  month          String
+  label          String
+  subtitle       String
+  updatedAt      DateTime @updatedAt
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  group        Group        @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@unique([groupId, month])
+  @@index([kindergartenId])
+  @@map("song_poem_months")
 }

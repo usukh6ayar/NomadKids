@@ -139,6 +139,36 @@ describe("/children — ESIS roster", () => {
    * be renamed and the children would still be on screen — the thing the
    * client objected to is a child's name, so that is what the test reads.
    */
+  /*
+   * ★ A solo teacher's roster (2026-10-11) says which families have paid —
+   * there an unpaid child is inactive. Nothing is shown when the API sends no
+   * `portalFee`, which is every contracted kindergarten.
+   */
+  it("shows a solo teacher who has paid and who has not", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/children",
+        body: {
+          ...localChildren,
+          items: [{ ...localChildren.items[0]!, portalFee: "UNPAID" }],
+        },
+      },
+    ]);
+    renderWithProviders(<ChildrenPage />);
+
+    expect(await screen.findByText("Г.Батбаяр")).toBeInTheDocument();
+    expect(screen.getByText("Төлбөр төлөгдөөгүй")).toBeInTheDocument();
+  });
+
+  it("shows no fee badge where the API sends none", async () => {
+    stubRoster(["TEACHER"]);
+    renderWithProviders(<ChildrenPage />);
+
+    expect(await screen.findByText("Г.Батбаяр")).toBeInTheDocument();
+    expect(screen.queryByText(/Төлбөр төлөгдөөгүй|Төлөгдсөн/)).toBeNull();
+  });
+
   it("a teacher is not shown the institution's ESIS roster", async () => {
     stubRoster(["TEACHER"]);
     renderWithProviders(<ChildrenPage />);

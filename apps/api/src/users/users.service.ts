@@ -14,6 +14,7 @@ import { TenantAccessService } from "../authz/tenant-access.service";
 import type { Actor } from "../authz/actor";
 import { paginate, type PageParams } from "../common/pagination";
 import { PhoneVerificationService } from "../phone-verification/phone-verification.service";
+import { SoloRulesService } from "../solo-teachers/solo-rules.service";
 import { UsersRepository } from "./users.repository";
 import type {
   AddMembershipDto,
@@ -85,6 +86,7 @@ export class UsersService {
     private readonly auth: AuthRepository,
     private readonly audit: AuditRepository,
     private readonly phones: PhoneVerificationService,
+    private readonly solo: SoloRulesService,
   ) {}
 
   async list(actor: Actor, query: ListUsersQuery) {
@@ -292,6 +294,9 @@ export class UsersService {
     dto: CreateUserDto,
     options: { extraMetadata?: Record<string, unknown>; esisPersonId?: string } = {},
   ) {
+    // A solo teacher's workspace takes parents only (the user, 2026-10-11).
+    await this.solo.assertRoleAllowed(kindergartenId, dto.role);
+
     // Checked explicitly so a collision is a readable 409 rather than a raw
     // unique-constraint error surfacing as a 500.
     if (await this.repo.findByUsername(dto.username)) {
@@ -438,6 +443,7 @@ export class UsersService {
 
   async addMembership(actor: Actor, userId: string, dto: AddMembershipDto) {
     this.tenants.assertAdmin(actor, dto.kindergartenId);
+    await this.solo.assertRoleAllowed(dto.kindergartenId, dto.role);
 
     const existing = await this.repo.findMembershipFor(userId, dto.kindergartenId, dto.role);
     if (existing) {
@@ -496,6 +502,7 @@ export class UsersService {
     );
     if (!membership) throw new NotFoundException();
 
+    await this.solo.assertRoleAllowed(membership.kindergartenId, dto.role);
     if (!ASSIGNABLE_ROLES.includes(dto.role as (typeof ASSIGNABLE_ROLES)[number])) {
       throw new BadRequestException("Энэ эрхийг олгох боломжгүй");
     }

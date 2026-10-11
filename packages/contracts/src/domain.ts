@@ -237,6 +237,12 @@ export const sessionSchema = z.object({
   memberships: z.array(membershipSchema),
   /** The names of the kindergartens in `memberships` — the desktop top bar. */
   kindergartens: z.array(namedRefSchema).default([]),
+  /**
+   * The actor's kindergartens that are a solo teacher's own workspace (kind
+   * SOLO_TEACHER) — where the menu hides what has no meaning without a
+   * kindergarten: ESIS, finance, kitchen, staff.
+   */
+  soloKindergartenIds: z.array(z.string()).default([]),
   csrfToken: z.string().nullish(),
 });
 export type Session = z.infer<typeof sessionSchema>;
@@ -494,6 +500,12 @@ export const childSummarySchema = z.object({
    * is the kindergarten's to fill in, not theirs.
    */
   profile: childProfileCompletionSchema.optional(),
+  /**
+   * A solo teacher's roster only (2026-10-11): whether the family has paid the
+   * access fee — until then the child is inactive for the teacher. `null` for
+   * a contracted kindergarten's child and when no fee is configured.
+   */
+  portalFee: z.enum(["PAID", "UNPAID"]).nullish(),
 });
 export type ChildSummary = z.infer<typeof childSummarySchema>;
 
