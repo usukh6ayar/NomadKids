@@ -18,6 +18,7 @@ import {
   type Scenario,
 } from "./support/fixtures";
 import { uniq } from "./support/db";
+import { WEB_ROUTINE_TEMPLATE } from "./support/routine-template";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
 
 /**
@@ -172,6 +173,19 @@ describe("PUT routine items and plan", () => {
     expect((await put(teacherA, groupUrl(a.group.id, "/routine/plan"), { plan })).status).toBe(200);
     const read = await get(adminA, groupUrl(a.group.id, "/routine"));
     expect(read.body.plan).toEqual(plan);
+  });
+
+  it("the web's own template saves as it is — all seven areas, by name", async () => {
+    const items = await put(teacherA, groupUrl(a.group.id, "/routine/items"), {
+      items: WEB_ROUTINE_TEMPLATE.items,
+    });
+    expect(items.status).toBe(200);
+    const plan = await put(teacherA, groupUrl(a.group.id, "/routine/plan"), {
+      plan: WEB_ROUTINE_TEMPLATE.plan,
+    });
+    expect(plan.status).toBe(200);
+    expect(plan.body.items).toHaveLength(WEB_ROUTINE_TEMPLATE.items.length);
+    expect(plan.body.plan).toHaveLength(7);
   });
 
   it("an area the kindergarten does not have is refused", async () => {
