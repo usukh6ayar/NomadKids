@@ -190,14 +190,19 @@ describe("the preview", () => {
     expect(kg.mergedIntoId).toBeNull();
   });
 
-  it("names the same child already on the target's roll, and changes nothing", async () => {
+  it("refuses a solo child matching two of the target's children until the operator decides", async () => {
     await createChild(target.kindergarten.id, { firstName: "Тэмүүлэн", nationalId: "УБ21041299" });
+    await createChild(target.kindergarten.id, { firstName: "Тэмүүлэн" });
     const res = await preview(operator, { targetKindergartenId: target.kindergarten.id });
-    expect(res.body).toMatchObject({ ok: false, refusal: { kind: "duplicates" } });
-    expect(res.body.refusal.children).toHaveLength(1);
-    expect((await merge(operator, { targetKindergartenId: target.kindergarten.id })).status).toBe(
-      409,
-    );
+    expect(res.body).toMatchObject({ ok: false, refusal: { kind: "ambiguous" } });
+  });
+
+  it("refuses a group that is not the target's", async () => {
+    const res = await preview(operator, {
+      targetKindergartenId: target.kindergarten.id,
+      targetGroupId: solo.groupId,
+    });
+    expect(res.body).toMatchObject({ ok: false, refusal: { kind: "badGroup" } });
   });
 
   it("refuses configuration a director owns", async () => {
@@ -298,5 +303,110 @@ describe("the merge", () => {
     expect((await merge(operator, { targetKindergartenId: other.kindergarten.id })).status).toBe(
       404,
     );
+  });
+});
+
+/**
+ * D3b — one child, one record (the user, 2026-10-11): the same child already on
+ * the target's roll gets the solo record's rows; the solo record is archived.
+ */
+describe("the same child on both rolls", () => {
+  async function targetTwin() {
+    const twin = await createChild(target.kindergarten.id, {
+      firstName: "Тэмүүлэн",
+      nationalId: "УБ21041299",
+    });
+    await enrollChild(target.kindergarten.id, twin.id, target.group.id, target.schoolYear.id);
+    // Both records hold a profile: only one can be the child's.
+    await db.childProfile.create({
+      data: { kindergartenId: solo.kindergartenId, childId: solo.childId },
+    });
+    await db.childProfile.create({
+      data: { kindergartenId: target.kindergarten.id, childId: twin.id },
+    });
+    // The target's own fee row for the year, not yet paid.
+    await db.accessSubscription.create({
+      data: {
+        kindergartenId: target.kindergarten.id,
+        childId: twin.id,
+        schoolYearId: target.schoolYear.id,
+        amount: "27000.00",
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      },
+    });
+    return twin;
+  }
+
+  it("attaches the solo child's family and paid fee to the target's record, keeping what would clash", async () => {
+    const twin = await targetTwin();
+
+    const res = await merge(operator, { targetKindergartenId: target.kindergarten.id });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.childrenAttached).toEqual([
+      expect.objectContaining({ soloChildId: solo.childId, targetChildId: twin.id }),
+    ]);
+    // One profile and one active enrollment per child: the solo ones stay archived.
+    expect(res.body.kept).toMatchObject({
+      "child_profiles.childId": 1,
+      "enrollments.childId": 1,
+    });
+
+    // The family now reaches the target's record of their child.
+    const parent = await login(app, solo.parentUsername);
+    expect((await authed(request(server()).get(`/v1/children/${twin.id}`), parent)).status).toBe(
+      200,
+    );
+    // The fee they paid follows the child.
+    const fee = await db.accessSubscription.findFirstOrThrow({
+      where: { childId: twin.id, schoolYearId: target.schoolYear.id },
+    });
+    expect(fee.status).toBe("ACTIVE");
+    // The solo record is archived, not deleted.
+    const archived = await db.child.findUniqueOrThrow({ where: { id: solo.childId } });
+    expect(archived.deletedAt).not.toBeNull();
+    expect(await db.childProfile.count({ where: { childId: solo.childId } })).toBe(1);
+  });
+
+  it("leaves a pair separate when the operator says they are different children", async () => {
+    const twin = await targetTwin();
+    const res = await merge(operator, {
+      targetKindergartenId: target.kindergarten.id,
+      keepSeparate: [solo.childId],
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.childrenAttached).toEqual([]);
+    const child = await db.child.findUniqueOrThrow({ where: { id: solo.childId } });
+    expect(child).toMatchObject({ kindergartenId: target.kindergarten.id, deletedAt: null });
+    expect(twin.id).not.toBe(solo.childId);
+  });
+});
+
+describe("into an existing group", () => {
+  it("enrols the children there, assigns the teacher once, and archives the solo group", async () => {
+    const res = await merge(operator, {
+      targetKindergartenId: target.kindergarten.id,
+      targetGroupId: target.group.id,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.intoExistingGroup).toBe(true);
+
+    const enrollment = await db.enrollment.findFirstOrThrow({ where: { childId: solo.childId } });
+    expect(enrollment.groupId).toBe(target.group.id);
+    const assignments = await db.groupTeacher.findMany({
+      where: {
+        groupId: target.group.id,
+        deletedAt: null,
+        membership: { userId: solo.teacherUserId },
+      },
+    });
+    expect(assignments).toHaveLength(1);
+    const group = await db.group.findUniqueOrThrow({ where: { id: solo.groupId } });
+    expect(group.deletedAt).not.toBeNull();
+
+    // The teacher reaches the child in their new group.
+    const teacher = await login(app, TEACHER_PHONE, PASSWORD);
+    expect(
+      (await authed(request(server()).get(`/v1/children/${solo.childId}`), teacher)).status,
+    ).toBe(200);
   });
 });

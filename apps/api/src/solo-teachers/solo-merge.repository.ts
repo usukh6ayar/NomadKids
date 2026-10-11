@@ -15,12 +15,28 @@ export interface MergeResult {
   membershipsJoined: number;
   adminsDropped: number;
   groupsRenamed: { from: string; to: string }[];
+  /** D3b — solo children attached to the target's record of the same child. */
+  childrenAttached: { soloChildId: string; targetChildId: string; name: string }[];
+  /** Rows left on an archived solo record because the target's would break a rule. */
+  kept: Record<string, number>;
+  intoExistingGroup: boolean;
+}
+
+export interface MergeOptions {
+  preview: boolean;
+  groupNameFor: (name: string) => string;
+  /** D3b — an existing group of the target's current year to merge into. */
+  targetGroupId?: string;
+  /** D3b — solo children *not* to attach to their matched target child. */
+  keepSeparate?: string[];
 }
 
 /** Why a merge stopped — everything rolled back. */
 export type MergeRefusal =
   | { kind: "blocked"; tables: Record<string, number> }
   | { kind: "duplicates"; children: { soloChildId: string; targetChildId: string; name: string }[] }
+  | { kind: "ambiguous"; children: { soloChildId: string; name: string }[] }
+  | { kind: "badGroup" }
   | { kind: "conflict"; constraint: string }
   | { kind: "noSchoolYear" }
   | { kind: "notMergeable" };
@@ -76,6 +92,20 @@ export class SoloMergeRepository {
     return rows;
   }
 
+  /** The target's live groups of its current year, for the operator's picker. */
+  targetGroups(targetId: string) {
+    return this.prisma.group.findMany({
+      where: {
+        kindergartenId: targetId,
+        deletedAt: null,
+        schoolYear: { isCurrent: true, deletedAt: null },
+      },
+      orderBy: { name: "asc" },
+      take: 200,
+      select: { id: true, name: true },
+    });
+  }
+
   listWorkspaces(skip: number, take: number) {
     const where = { kind: "SOLO_TEACHER" as const, deletedAt: null };
     return Promise.all([
@@ -99,16 +129,63 @@ export class SoloMergeRepository {
     ]);
   }
 
+  /**
+   * The paid state follows the child. If the solo record's fee for the year is
+   * paid and the target record's row is not, the target's row takes it; the
+   * solo row stays (as history) on the archived record. The before values are
+   * in the merge's audit metadata via `kept`/`moved`.
+   */
+  private async carryPaidFee(tx: Tx, soloChildId: string, targetChildId: string, yearId: string) {
+    const paid = await tx.accessSubscription.findFirst({
+      where: { childId: soloChildId, schoolYearId: yearId, status: "ACTIVE", deletedAt: null },
+      select: { amount: true, paidAt: true, expiresAt: true },
+    });
+    if (!paid) return;
+    await tx.accessSubscription.updateMany({
+      where: { childId: targetChildId, schoolYearId: yearId, status: { not: "ACTIVE" } },
+      data: {
+        status: "ACTIVE",
+        amount: paid.amount,
+        paidAt: paid.paidAt,
+        expiresAt: paid.expiresAt,
+      },
+    });
+  }
+
+  /** A teacher already assigned to the target group is not assigned twice. */
+  private async dropRepeatedAssignments(
+    tx: Tx,
+    soloGroupId: string,
+    targetGroupId: string,
+    now: Date,
+  ) {
+    const repeated = await tx.groupTeacher.findMany({
+      where: { groupId: soloGroupId, deletedAt: null },
+      select: { id: true, membershipId: true },
+    });
+    for (const row of repeated) {
+      const already = await tx.groupTeacher.findFirst({
+        where: {
+          groupId: targetGroupId,
+          membershipId: row.membershipId,
+          endedOn: null,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      if (already)
+        await tx.groupTeacher.update({ where: { id: row.id }, data: { deletedAt: now } });
+    }
+  }
+
   /** The merge, or — with `preview` — the same work rolled back, answering its counts. */
-  async merge(
-    soloId: string,
-    targetId: string,
-    options: { preview: boolean; groupNameFor: (name: string) => string },
-  ): Promise<MergeResult> {
-    const [toKindergarten, toYear, toMembership] = await Promise.all([
+  async merge(soloId: string, targetId: string, options: MergeOptions): Promise<MergeResult> {
+    const [toKindergarten, toYear, toMembership, toChild, toGroup] = await Promise.all([
       this.foreignKeysInto("kindergartens"),
       this.foreignKeysInto("school_years"),
       this.foreignKeysInto("memberships"),
+      this.foreignKeysInto("children"),
+      this.foreignKeysInto("groups"),
     ]);
 
     // A table no class names is a table the merge would silently skip.
@@ -160,8 +237,8 @@ export class SoloMergeRepository {
           throw new MergeRefused({ kind: "blocked", tables: blocked });
         }
 
-        // 2. The same child already on the target's roll (D3b attaches them).
-        const duplicates = await tx.$queryRawUnsafe<
+        // 2. The same child already on the target's roll — attached in step 5b.
+        const matches = await tx.$queryRawUnsafe<
           { soloChildId: string; targetChildId: string; name: string }[]
         >(
           `SELECT s.id AS "soloChildId", t.id AS "targetChildId",
@@ -176,8 +253,36 @@ export class SoloMergeRepository {
           soloId,
           targetId,
         );
-        if (duplicates.length > 0) {
-          throw new MergeRefused({ kind: "duplicates", children: duplicates });
+        const separate = new Set(options.keepSeparate ?? []);
+        const bySolo = new Map<string, typeof matches>();
+        for (const m of matches) {
+          if (separate.has(m.soloChildId)) continue;
+          bySolo.set(m.soloChildId, [...(bySolo.get(m.soloChildId) ?? []), m]);
+        }
+        // One solo child, two target children: the operator decides first.
+        const ambiguous = [...bySolo.values()].filter((list) => list.length > 1);
+        if (ambiguous.length > 0) {
+          throw new MergeRefused({
+            kind: "ambiguous",
+            children: ambiguous.map((list) => ({
+              soloChildId: list[0]!.soloChildId,
+              name: list[0]!.name,
+            })),
+          });
+        }
+        const pairs = [...bySolo.values()].map((list) => list[0]!);
+
+        if (options.targetGroupId) {
+          const group = await tx.group.findFirst({
+            where: {
+              id: options.targetGroupId,
+              kindergartenId: targetId,
+              schoolYearId: targetYear.id,
+              deletedAt: null,
+            },
+            select: { id: true },
+          });
+          if (!group) throw new MergeRefused({ kind: "badGroup" });
         }
 
         const result: MergeResult = {
@@ -186,6 +291,39 @@ export class SoloMergeRepository {
           membershipsJoined: 0,
           adminsDropped: 0,
           groupsRenamed: [],
+          childrenAttached: pairs,
+          kept: {},
+          intoExistingGroup: Boolean(options.targetGroupId),
+        };
+
+        /**
+         * Re-points one foreign key from `from` to `to` row by row, each in a
+         * savepoint: a row that would break a unique index (a second profile,
+         * a second active enrollment…) is rolled back alone and stays where it
+         * was — on a record about to be archived, never deleted.
+         */
+        const repoint = async (fk: ForeignKey, from: string, to: string) => {
+          const rows = await tx.$queryRawUnsafe<{ ctid: string }[]>(
+            `SELECT ctid::text AS ctid FROM "${fk.table}" WHERE "${fk.column}" = $1::uuid`,
+            from,
+          );
+          const key = `${fk.table}.${fk.column}`;
+          for (const row of rows) {
+            await exec("SAVEPOINT solo_merge_row");
+            try {
+              await exec(
+                `UPDATE "${fk.table}" SET "${fk.column}" = $1::uuid WHERE ctid = $2::tid`,
+                to,
+                row.ctid,
+              );
+              await exec("RELEASE SAVEPOINT solo_merge_row");
+              result.moved[key] = (result.moved[key] ?? 0) + 1;
+            } catch (error) {
+              if (!uniqueViolation(error)) throw error;
+              await exec("ROLLBACK TO SAVEPOINT solo_merge_row");
+              result.kept[key] = (result.kept[key] ?? 0) + 1;
+            }
+          }
         };
 
         // 3. Groups whose name is taken in the target's year get the operator's name.
@@ -268,6 +406,33 @@ export class SoloMergeRepository {
           result.membershipsJoined += 1;
         }
 
+        // 5b. One child, one record: each matched solo child's rows join the
+        //     target child; the solo record is archived (the user, 2026-10-11).
+        for (const pair of pairs) {
+          await this.carryPaidFee(tx, pair.soloChildId, pair.targetChildId, targetYear.id);
+          for (const fk of toChild) {
+            if (fk.table === "audit_logs") continue; // append-only: history stays put
+            await repoint(fk, pair.soloChildId, pair.targetChildId);
+          }
+          await tx.child.update({ where: { id: pair.soloChildId }, data: { deletedAt: now } });
+        }
+
+        // 5c. Into an existing group: its rows join that group; the solo group is archived.
+        if (options.targetGroupId) {
+          const soloGroups = await tx.group.findMany({
+            where: { kindergartenId: soloId },
+            select: { id: true },
+          });
+          for (const group of soloGroups) {
+            await this.dropRepeatedAssignments(tx, group.id, options.targetGroupId, now);
+            for (const fk of toGroup) {
+              if (fk.table.startsWith("esis_")) continue;
+              await repoint(fk, group.id, options.targetGroupId);
+            }
+            await tx.group.update({ where: { id: group.id }, data: { deletedAt: now } });
+          }
+        }
+
         // 6. Every MOVE table, re-parented.
         const moveKeys = toKindergarten.filter((f) => classify(f.table) === "MOVE");
         for (const fk of moveKeys) {
@@ -312,6 +477,8 @@ export class SoloMergeRepository {
     }
   }
 }
+
+type Tx = Parameters<Parameters<PrismaService["$transaction"]>[0]>[0];
 
 /** The constraint a unique violation names, from Postgres's 23505 — or `null`. */
 function uniqueViolation(error: unknown): string | null {

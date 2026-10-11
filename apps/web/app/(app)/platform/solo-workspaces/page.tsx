@@ -16,7 +16,7 @@ import { PlatformPageHeading } from "@/components/platform/platform-page-heading
 import { RequireSuperAdmin } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Field, Input, Select } from "@/components/ui/field";
+import { Checkbox, Field, Input, Select } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
@@ -100,7 +100,15 @@ function MergeDialog({ workspace, onClose }: { workspace: SoloWorkspace; onClose
   const queryClient = useQueryClient();
   const [targetId, setTargetId] = useState("");
   const [groupName, setGroupName] = useState("");
+  /** D3b — "" moves the teacher's group in as a group of its own. */
+  const [targetGroupId, setTargetGroupId] = useState("");
+  /** D3b — matched children the operator says are different children. */
+  const [keepSeparate, setKeepSeparate] = useState<string[]>([]);
+  /** Every match any preview has shown, so a child kept separate can be ticked back. */
+  const [matched, setMatched] = useState<Record<string, string>>({});
   const [preview, setPreview] = useState<SoloMergePreview | null>(null);
+  /** A change since the last preview: «Нэгтгэх» waits for a fresh one. */
+  const [stale, setStale] = useState(false);
 
   const kindergartens = useQuery({
     queryKey: ["platform", "kindergartens", "merge-targets"],
@@ -110,6 +118,8 @@ function MergeDialog({ workspace, onClose }: { workspace: SoloWorkspace; onClose
   const body = () => ({
     targetKindergartenId: targetId,
     ...(groupName.trim() ? { groupName: groupName.trim() } : {}),
+    ...(targetGroupId ? { targetGroupId } : {}),
+    ...(keepSeparate.length > 0 ? { keepSeparate } : {}),
   });
 
   const runPreview = useMutation({
@@ -118,7 +128,16 @@ function MergeDialog({ workspace, onClose }: { workspace: SoloWorkspace; onClose
         method: "POST",
         body: body(),
       }),
-    onSuccess: setPreview,
+    onSuccess: (next) => {
+      setPreview(next);
+      setStale(false);
+      if (next.ok) {
+        setMatched((seen) => ({
+          ...seen,
+          ...Object.fromEntries(next.result.childrenAttached.map((c) => [c.soloChildId, c.name])),
+        }));
+      }
+    },
   });
 
   const runMerge = useMutation({
@@ -135,7 +154,8 @@ function MergeDialog({ workspace, onClose }: { workspace: SoloWorkspace; onClose
   });
 
   const busy = runPreview.isPending || runMerge.isPending;
-  const ready = preview?.ok === true;
+  const ready = preview?.ok === true && !stale;
+  const changed = () => setStale(true);
 
   return (
     <FormDialog
@@ -181,6 +201,9 @@ function MergeDialog({ workspace, onClose }: { workspace: SoloWorkspace; onClose
               value={targetId}
               onChange={(event) => {
                 setTargetId(event.target.value);
+                setTargetGroupId("");
+                setKeepSeparate([]);
+                setMatched({});
                 setPreview(null);
               }}
             >
@@ -194,21 +217,73 @@ function MergeDialog({ workspace, onClose }: { workspace: SoloWorkspace; onClose
           )}
         </Field>
 
-        <Field label="Бүлгийн нэр (давхцвал)">
-          {({ id }) => (
-            <Input
-              id={id}
-              value={groupName}
-              placeholder="Хоосон бол «… (бие даасан)»"
-              onChange={(event) => {
-                setGroupName(event.target.value);
-                setPreview(null);
-              }}
-            />
-          )}
-        </Field>
+        {preview && preview.targetGroups.length > 0 ? (
+          <Field label="Бүлэг">
+            {({ id }) => (
+              <Select
+                id={id}
+                value={targetGroupId || "__new"}
+                onChange={(event) => {
+                  setTargetGroupId(event.target.value === "__new" ? "" : event.target.value);
+                  changed();
+                }}
+              >
+                <option value="__new">Шинэ бүлэг болж орно</option>
+                {preview.targetGroups.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name} бүлэгт нэгтгэх
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        ) : null}
 
-        {preview ? <PreviewView preview={preview} /> : null}
+        {!targetGroupId ? (
+          <Field label="Бүлгийн нэр (давхцвал)">
+            {({ id }) => (
+              <Input
+                id={id}
+                value={groupName}
+                placeholder="Хоосон бол «… (бие даасан)»"
+                onChange={(event) => {
+                  setGroupName(event.target.value);
+                  changed();
+                }}
+              />
+            )}
+          </Field>
+        ) : null}
+
+        {Object.keys(matched).length > 0 ? (
+          <fieldset className="flex flex-col gap-1">
+            <legend className="mb-1 text-caption font-semibold text-ink">
+              Цэцэрлэгт аль хэдийн бүртгэлтэй хүүхэд — бичлэгийг нь нэгтгэнэ
+            </legend>
+            {Object.entries(matched).map(([soloChildId, name]) => (
+              <Checkbox
+                key={soloChildId}
+                label={`${name} — тусад нь үлдээх`}
+                checked={keepSeparate.includes(soloChildId)}
+                onChange={(event) => {
+                  setKeepSeparate((current) =>
+                    event.target.checked
+                      ? [...current, soloChildId]
+                      : current.filter((id) => id !== soloChildId),
+                  );
+                  changed();
+                }}
+              />
+            ))}
+          </fieldset>
+        ) : null}
+
+        {stale ? (
+          <p className="text-caption text-muted">
+            Өөрчлөлт орсон тул дахин «Урьдчилан харах» дарна уу.
+          </p>
+        ) : null}
+        {preview && !stale ? <PreviewView preview={preview} /> : null}
       </div>
     </FormDialog>
   );
@@ -230,14 +305,18 @@ function PreviewView({ preview }: { preview: SoloMergePreview }) {
     const refusal = preview.refusal;
     const message =
       refusal.kind === "duplicates"
-        ? `Цэцэрлэгт ижил хүүхэд аль хэдийн бүртгэлтэй: ${refusal.children.map((c) => c.name).join(", ")}. Эдгээрийг нэгтгэх боломж дараагийн шатанд нэмэгдэнэ.`
+        ? `Цэцэрлэгт ижил хүүхэд аль хэдийн бүртгэлтэй: ${refusal.children.map((c) => c.name).join(", ")}.`
         : refusal.kind === "blocked"
           ? `Багшийн орчинд нэгтгэх боломжгүй өгөгдөл байна: ${Object.keys(refusal.tables).join(", ")}.`
-          : refusal.kind === "noSchoolYear"
-            ? "Цэцэрлэгт идэвхтэй хичээлийн жил алга."
-            : refusal.kind === "conflict"
-              ? `Давхардал гарна (${refusal.constraint}).`
-              : "Нэгтгэх боломжгүй.";
+          : refusal.kind === "ambiguous"
+            ? `Нэг хүүхэд цэцэрлэгийн хэд хэдэн хүүхэдтэй таарч байна: ${refusal.children.map((c) => c.name).join(", ")}. Тэдгээрийг тусад нь үлдээж болно.`
+            : refusal.kind === "badGroup"
+              ? "Сонгосон бүлэг тухайн цэцэрлэгийн одоогийн хичээлийн жилд алга."
+              : refusal.kind === "noSchoolYear"
+                ? "Цэцэрлэгт идэвхтэй хичээлийн жил алга."
+                : refusal.kind === "conflict"
+                  ? `Давхардал гарна (${refusal.constraint}).`
+                  : "Нэгтгэх боломжгүй.";
     return <FormError message={message} />;
   }
 
@@ -253,11 +332,27 @@ function PreviewView({ preview }: { preview: SoloMergePreview }) {
           </li>
         ))}
       </ul>
-      {result.groupsRenamed.map((g) => (
-        <p key={g.from} className="mt-2 text-caption text-muted">
-          «{g.from}» бүлэг «{g.to}» нэртэй болно.
+      {result.intoExistingGroup
+        ? null
+        : result.groupsRenamed.map((g) => (
+            <p key={g.from} className="mt-2 text-caption text-muted">
+              «{g.from}» бүлэг «{g.to}» нэртэй болно.
+            </p>
+          ))}
+      {result.childrenAttached.length > 0 ? (
+        <p className="mt-2 text-caption text-muted">
+          Цэцэрлэгийн бичлэгт нэгтгэгдэх хүүхэд: {result.childrenAttached.length}.
         </p>
-      ))}
+      ) : null}
+      {Object.keys(result.kept).length > 0 ? (
+        <p className="mt-2 text-caption text-muted">
+          Давхардах тул архивт үлдэх мөр:{" "}
+          {Object.entries(result.kept)
+            .map(([key, count]) => `${key.split(".")[0]} ${count}`)
+            .join(", ")}
+          . Юу ч устахгүй.
+        </p>
+      ) : null}
       <p className="mt-2 text-caption text-muted">
         Багшийн эрхлэгчийн эрх хасагдаж, тухайн цэцэрлэгт багш болно.
       </p>
