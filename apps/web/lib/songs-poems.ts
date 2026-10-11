@@ -1,4 +1,8 @@
-import { useSyncExternalStore } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { songPoemLibrarySchema, songPoemSchema, type SongPoem } from "@kinder/contracts";
+import { z } from "zod";
+import { get, mutate } from "@/lib/api/browser";
+import { downloadUrl } from "@/lib/api/client";
 
 export type SchoolMonthKey = "09" | "10" | "11" | "12" | "01" | "02" | "03" | "04" | "05";
 
@@ -88,6 +92,7 @@ export const SCHOOL_MONTHS: readonly SchoolMonth[] = [
 
 export type SongPoemType = "song" | "poem" | "folklore" | "fairy_tale";
 
+/** One item as the screens show it — files as full URLs, the date as «2026.10.11». */
 export type SongPoemResource = {
   id: string;
   month: SchoolMonthKey;
@@ -102,145 +107,116 @@ export type SongPoemResource = {
   updatedAt: string;
 };
 
-export type SongPoemDraft = Omit<SongPoemResource, "id" | "updatedAt">;
+/** What the teacher's form sends: the text, and whichever files were chosen. */
+export type SongPoemDraft = {
+  month: SchoolMonthKey;
+  type: SongPoemType;
+  title: string;
+  description: string;
+  cover: File | null;
+  file: File | null;
+};
 
-const DEMO_RESOURCES: SongPoemResource[] = [
-  {
-    id: "demo-morning-greeting",
-    month: "09",
-    type: "song",
-    title: "Өглөөний мэнд",
-    description: "Өглөөний тойргоор хамтран дуулж, найзуудтайгаа мэндчилнэ.",
-    coverUrl: "/icons/area-music.png",
-    updatedAt: "2026.09.12",
-  },
-  {
-    id: "demo-my-family",
-    month: "09",
-    type: "poem",
-    title: "Миний гэр бүл",
-    description: "Гэр бүлийнхээ тухай энгийн өгүүлбэрээр ярьж, шүлгийг хөдөлгөөнтэй уншина.",
-    updatedAt: "2026.09.24",
-  },
-  {
-    id: "demo-golden-autumn",
-    month: "10",
-    type: "song",
-    title: "Алтан намар",
-    description: "Навчны өнгө, намрын салхийг хөдөлгөөнөөр дүрслэн дуулна.",
-    coverUrl: "/icons/area-music.png",
-    updatedAt: "2026.10.08",
-  },
-  {
-    id: "demo-snow",
-    month: "12",
-    type: "poem",
-    title: "Анхны цас",
-    description: "Цасны ширхэг, өвлийн байгалийг дүрсэлсэн богино шүлэг.",
-    updatedAt: "2026.12.03",
-  },
-  {
-    id: "demo-spring",
-    month: "03",
-    type: "song",
-    title: "Хавар ирлээ",
-    description: "Шувууд, ургамал, дулаан нарыг хэмнэлтэй хөдөлгөөнөөр илэрхийлнэ.",
-    coverUrl: "/icons/area-music.png",
-    updatedAt: "2027.03.11",
-  },
-  {
-    id: "demo-graduation",
-    month: "05",
-    type: "poem",
-    title: "Баяртай, цэцэрлэг минь",
-    description: "Цэцэрлэгийн дурсамж, багш найзууддаа зориулсан төгсөлтийн шүлэг.",
-    updatedAt: "2027.05.18",
-  },
-];
+/**
+ * Whose library — a teacher's group, or the family's child (the server finds
+ * the child's group from the enrollment).
+ */
+export type SongPoemSource = { group: string } | { child: string };
 
-let schoolMonths: SchoolMonth[] = SCHOOL_MONTHS.map((item) => ({ ...item }));
-let resources: SongPoemResource[] = DEMO_RESOURCES.map((item) => ({ ...item }));
-const monthListeners = new Set<() => void>();
-const listeners = new Set<() => void>();
-
-function emitMonths() {
-  for (const listener of monthListeners) listener();
+function basePath(source: SongPoemSource): string {
+  return "group" in source
+    ? `/groups/${source.group}/songs-poems`
+    : `/children/${source.child}/songs-poems`;
 }
 
-function subscribeMonths(listener: () => void) {
-  monthListeners.add(listener);
-  return () => {
-    monthListeners.delete(listener);
+/**
+ * A cover or a file: the API answers its own path (`/songs-poems/:id/cover`),
+ * which checks the reader and redirects to a five-minute presigned URL
+ * (CLAUDE.md §1.4); the page needs the API origin in front of it.
+ */
+function apiUrl(path: string | null): string | undefined {
+  return path ? downloadUrl(path) : undefined;
+}
+
+function toResource(item: SongPoem): SongPoemResource {
+  return {
+    id: item.id,
+    month: item.month,
+    type: item.type,
+    title: item.title,
+    description: item.description,
+    coverUrl: apiUrl(item.coverUrl),
+    coverFileName: item.coverFileName ?? undefined,
+    fileUrl: apiUrl(item.fileUrl),
+    fileName: item.fileName ?? undefined,
+    fileType: item.fileType ?? undefined,
+    updatedAt: item.updatedAt.slice(0, 10).replaceAll("-", "."),
   };
 }
 
-function monthSnapshot() {
-  return schoolMonths;
+function toForm(draft: SongPoemDraft): FormData {
+  const form = new FormData();
+  form.set("month", draft.month);
+  form.set("type", draft.type);
+  form.set("title", draft.title);
+  form.set("description", draft.description);
+  if (draft.cover) form.set("cover", draft.cover);
+  if (draft.file) form.set("file", draft.file);
+  return form;
 }
 
-export function useSchoolMonths() {
-  return useSyncExternalStore(subscribeMonths, monthSnapshot, monthSnapshot);
-}
+/**
+ * The library, from the server: the nine month books (the group's own names
+ * where the teacher changed them) and their items.
+ *
+ * ★ Since 2026-10-11 nothing is kept in the browser: what a teacher adds is in
+ * the database and reaches every family of the group.
+ */
+export function useSongPoemLibrary(source: SongPoemSource | null) {
+  const queryClient = useQueryClient();
+  const path = source ? basePath(source) : null;
+  const key = ["songs-poems", path] as const;
 
-export function updateSchoolMonth(
-  key: SchoolMonthKey,
-  values: Pick<SchoolMonth, "label" | "subtitle">,
-) {
-  schoolMonths = schoolMonths.map((month) =>
-    month.key === key ? { ...month, label: values.label, subtitle: values.subtitle } : month,
-  );
-  emitMonths();
-}
+  const query = useQuery({
+    queryKey: key,
+    queryFn: () => get(path!, songPoemLibrarySchema),
+    enabled: path !== null,
+  });
 
-function emit() {
-  for (const listener of listeners) listener();
-}
+  const overrides = new Map((query.data?.months ?? []).map((m) => [m.month, m]));
+  const months: SchoolMonth[] = SCHOOL_MONTHS.map((month) => {
+    const own = overrides.get(month.key);
+    return own ? { ...month, label: own.label, subtitle: own.subtitle } : { ...month };
+  });
+  const resources = (query.data?.items ?? []).map(toResource);
+  const refresh = () => queryClient.invalidateQueries({ queryKey: key });
 
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
+  const groupPath = source && "group" in source ? basePath(source) : null;
+  const actions = groupPath
+    ? {
+        saveMonth: async (
+          month: SchoolMonthKey,
+          values: Pick<SchoolMonth, "label" | "subtitle">,
+        ) => {
+          await mutate(`${groupPath}/months/${month}`, z.unknown(), {
+            method: "PUT",
+            body: values,
+          });
+          await refresh();
+        },
+        save: async (draft: SongPoemDraft, id?: string) => {
+          await mutate(id ? `${groupPath}/${id}` : groupPath, songPoemSchema, {
+            method: id ? "PUT" : "POST",
+            body: toForm(draft),
+          });
+          await refresh();
+        },
+        remove: async (id: string) => {
+          await mutate(`${groupPath}/${id}`, z.unknown(), { method: "DELETE" });
+          await refresh();
+        },
+      }
+    : null;
 
-function snapshot() {
-  return resources;
-}
-
-export function useSongPoemResources() {
-  return useSyncExternalStore(subscribe, snapshot, snapshot);
-}
-
-export function createSongPoemResource(draft: SongPoemDraft) {
-  const id =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `song-poem-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  resources = [
-    ...resources,
-    { ...draft, id, updatedAt: new Date().toISOString().slice(0, 10).replaceAll("-", ".") },
-  ];
-  emit();
-}
-
-export function updateSongPoemResource(id: string, draft: SongPoemDraft) {
-  resources = resources.map((item) =>
-    item.id === id
-      ? { ...item, ...draft, updatedAt: new Date().toISOString().slice(0, 10).replaceAll("-", ".") }
-      : item,
-  );
-  emit();
-}
-
-export function removeSongPoemResource(id: string) {
-  resources = resources.filter((item) => item.id !== id);
-  emit();
-}
-
-/** Restores deterministic fixtures for isolated component tests. */
-export function resetSongPoemResources() {
-  schoolMonths = SCHOOL_MONTHS.map((item) => ({ ...item }));
-  resources = DEMO_RESOURCES.map((item) => ({ ...item }));
-  emitMonths();
-  emit();
+  return { months, resources, isLoading: query.isLoading, error: query.error, actions };
 }
