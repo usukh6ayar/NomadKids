@@ -530,6 +530,7 @@ model User {
   feedbackAuthored       Feedback[]                @relation("FeedbackAuthor")
   feedbackAcknowledged   Feedback[]                @relation("FeedbackAcknowledger")
   feedbackReplied        Feedback[]                @relation("FeedbackReplier")
+  clubRequestsMade       ClubRequest[]             @relation("ClubRequester")
   esisWritesApproved     EsisWriteRequest[]        @relation("EsisWriteApprover")
 
   @@index([deletedAt])
@@ -841,6 +842,9 @@ model Kindergarten {
   esisWriteRequests      EsisWriteRequest[]
   esisStaffRoster        EsisStaffRoster[]
   feedback               Feedback[]
+  groupRoutines          GroupRoutine[]
+  clubs                  Club[]
+  clubRequests           ClubRequest[]
   esisReference          EsisReference[]
   methodUnions           MethodUnion[]
   methodUnionMembers     MethodUnionMember[]
@@ -1161,6 +1165,8 @@ model Group {
   mealServings           MealServing[]
   esisWriteRequests      EsisWriteRequest[]
   feedback               Feedback[]
+  routine                GroupRoutine?
+  clubs                  Club[]
 
   @@unique([schoolYearId, name])
   @@index([kindergartenId, status])
@@ -1313,6 +1319,7 @@ model Child {
   artworkComparisons  ArtworkComparison[]
   accessSubscriptions AccessSubscription[]
   feedback            Feedback[]
+  clubRequests        ClubRequest[]
   consents            ConsentRecord[]
   mealRecords         MealRecord[]
   fundingCalculations FundingCalculation[]
@@ -5089,4 +5096,98 @@ model Feedback {
   @@index([authorUserId, authorDeletedAt, createdAt(sort: Desc)])
   @@index([childId])
   @@map("feedback")
+}
+
+/// Өдрийн дэглэм and the learning-area plan of one group (client, 2026-10-09):
+/// the same every weekday, one per group.
+///
+/// ★ `items` and `plan` are JSON because the teacher saves each as a whole
+/// list (`PUT …/routine/items`, `PUT …/routine/plan`) and nothing queries
+/// inside them; the shapes are `routineItemSchema[]` and `areaPlanSchema[]` in
+/// `@kinder/contracts`, validated on the way in and capped there.
+///
+/// ★★ No `deletedAt`: nothing deletes a routine. It is the group's one
+/// settings row, created on the first save; emptying it is a save of `[]`.
+model GroupRoutine {
+  id             String   @id @default(uuid()) @db.Uuid
+  kindergartenId String   @db.Uuid
+  groupId        String   @unique @db.Uuid
+  items          Json     @default("[]")
+  plan           Json     @default("[]")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  group        Group        @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@index([kindergartenId])
+  @@map("group_routines")
+}
+
+/// Дугуйлан — a group's after-hours club, kept by the group's teacher.
+model Club {
+  id             String    @id @default(uuid()) @db.Uuid
+  kindergartenId String    @db.Uuid
+  groupId        String    @db.Uuid
+  name           String
+  /// Who leads it, as text: often someone from outside with no account.
+  teacherName    String
+  room           String?
+  /// Monday 1 … Friday 5.
+  days           Int[]
+  /// `HH:MM`.
+  startTime      String
+  endTime        String
+  /// `DevelopmentDomain` names, checked on write.
+  areas          String[]
+  goal           String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  kindergarten Kindergarten  @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  group        Group         @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  requests     ClubRequest[]
+
+  @@index([groupId, deletedAt])
+  @@index([kindergartenId])
+  @@map("clubs")
+}
+
+enum ClubRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// A family asking for their child to join a club; the group's teacher decides.
+///
+/// ★ One live request per child per club: the migration adds a **partial**
+/// unique index on (`clubId`, `childId`) where `status` is PENDING or
+/// APPROVED, which Prisma cannot express. A rejected request does not block
+/// asking again. `schema.test.ts` pins it.
+///
+/// ★★ No `deletedAt`: nothing deletes a request. It moves PENDING → APPROVED
+/// or REJECTED once, and the decider is in `AuditLog` as well as here.
+model ClubRequest {
+  id                String            @id @default(uuid()) @db.Uuid
+  kindergartenId    String            @db.Uuid
+  clubId            String            @db.Uuid
+  childId           String            @db.Uuid
+  requestedByUserId String            @db.Uuid
+  status            ClubRequestStatus @default(PENDING)
+  decidedAt         DateTime?
+  decidedByUserId   String?           @db.Uuid
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  club         Club         @relation(fields: [clubId], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  requestedBy  User         @relation("ClubRequester", fields: [requestedByUserId], references: [id], onDelete: Cascade)
+
+  @@index([clubId, status])
+  @@index([childId])
+  @@index([kindergartenId])
+  @@map("club_requests")
 }

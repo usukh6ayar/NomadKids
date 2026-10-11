@@ -585,3 +585,50 @@ describe("platform operator flag", () => {
     expect(user.isSuperAdmin).toBe(true);
   });
 });
+
+describe("club requests — one live request per child per club", () => {
+  async function makeClubAndChild() {
+    const { kg, group } = await makeKindergarten();
+    const child = await makeChild(kg.id);
+    const parent = await db.user.create({
+      data: { username: uniq("parent"), passwordHash: "x", lastName: "Овог", firstName: "Нэр" },
+    });
+    const club = await db.club.create({
+      data: {
+        kindergartenId: kg.id,
+        groupId: group.id,
+        name: "Хөгжим",
+        teacherName: "Д.Энхжаргал",
+        days: [1],
+        startTime: "15:00",
+        endTime: "15:30",
+        areas: ["Хөгжим"],
+      },
+    });
+    const request = (status: "PENDING" | "APPROVED" | "REJECTED" = "PENDING") =>
+      db.clubRequest.create({
+        data: {
+          kindergartenId: kg.id,
+          clubId: club.id,
+          childId: child.id,
+          requestedByUserId: parent.id,
+          status,
+        },
+      });
+    return { request };
+  }
+
+  it("refuses a second pending or approved request", async () => {
+    const { request } = await makeClubAndChild();
+    await request("PENDING");
+    await expect(request("PENDING")).rejects.toThrow();
+    await expect(request("APPROVED")).rejects.toThrow();
+  });
+
+  it("lets a family ask again after a rejection", async () => {
+    const { request } = await makeClubAndChild();
+    await request("REJECTED");
+    await request("REJECTED");
+    await expect(request("PENDING")).resolves.toBeTruthy();
+  });
+});

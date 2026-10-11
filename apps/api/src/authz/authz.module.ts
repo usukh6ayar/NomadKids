@@ -2,6 +2,7 @@ import { Global, Module } from "@nestjs/common";
 import { AuthzRepository } from "./authz.repository";
 import { ChatAccessService } from "./chat-access.service";
 import { ChildAccessService } from "./child-access.service";
+import { GroupAccessService } from "./group-access.service";
 import { PlatformAccessService } from "./platform-access.service";
 import { TenantAccessService } from "./tenant-access.service";
 
@@ -16,6 +17,7 @@ import { TenantAccessService } from "./tenant-access.service";
     AuthzRepository,
     ChatAccessService,
     ChildAccessService,
+    GroupAccessService,
     TenantAccessService,
     PlatformAccessService,
   ],
@@ -23,6 +25,7 @@ import { TenantAccessService } from "./tenant-access.service";
     AuthzRepository,
     ChatAccessService,
     ChildAccessService,
+    GroupAccessService,
     TenantAccessService,
     PlatformAccessService,
   ],
