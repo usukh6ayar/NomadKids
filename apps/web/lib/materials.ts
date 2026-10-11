@@ -94,69 +94,10 @@ export type Material = z.infer<typeof materialSchema>;
 export const materialListSchema = paginated(materialSchema);
 export const ownedMaterialsSchema = z.array(materialSchema);
 
-export const MATERIALS_NOT_READY =
-  "Сургалтын хэрэглэгдэхүүний дэлгүүр удахгүй нээгдэнэ. Одоохондоо худалдан авах боломжгүй.";
-
 /** «12,000₮». */
 export function materialPrice(price: number): string {
   return price === 0 ? "Үнэгүй" : `${price.toLocaleString("en-US")}₮`;
 }
-
-/** Sample catalog, shown under a banner while the endpoint is missing. */
-export const DEMO_MATERIALS: Material[] = [
-  {
-    id: "demo-m1",
-    title: "Тоо 1–5: тоолж, харьцуулъя",
-    description: "Тоо тоолох, их бага харьцуулах 12 слайд, дасгалын хуудастай.",
-    area: "Математик",
-    level: "II",
-    fileType: "PPT",
-    price: 12_000,
-    pages: 12,
-    previewUrls: [],
-    contents: ["1–5 хүртэл тоолох", "Их, бага харьцуулах", "Дасгалын хуудас"],
-    owned: false,
-  },
-  {
-    id: "demo-m2",
-    title: "Миний гэр бүл — ярилцлагын зурагт карт",
-    description: "Тойргийн цагт ашиглах 20 зурагт карт, асуултын санаатай.",
-    area: "Хэл яриа",
-    level: "III",
-    fileType: "PDF",
-    price: 8_000,
-    pages: 20,
-    previewUrls: [],
-    contents: ["Гэр бүлийн гишүүдийн карт", "Тойргийн цагийн асуултууд"],
-    owned: false,
-  },
-  {
-    id: "demo-m3",
-    title: "Улирлын өөрчлөлт: намар",
-    description: "Байгалийн ажиглалтын үзүүлэн, гадаа хийх даалгавартай.",
-    area: "Байгаль, нийгмийн орчин",
-    level: "IV",
-    fileType: "PPT",
-    price: 15_000,
-    pages: 16,
-    previewUrls: [],
-    contents: ["Намрын шинж", "Гадаа ажиглалтын даалгавар", "Зурж тэмдэглэх хуудас"],
-    owned: false,
-  },
-  {
-    id: "demo-m4",
-    title: "Хэмнэл мэдэрье — хөгжмийн тоглоомууд",
-    description: "Алга таших, хөдөлгөөнт хэмнэлийн 10 тоглоом.",
-    area: "Хөгжим",
-    level: "I",
-    fileType: "PDF",
-    price: 6_000,
-    pages: 10,
-    previewUrls: [],
-    contents: ["Алга ташилтын тоглоомууд", "Хөдөлгөөнт хэмнэл"],
-    owned: false,
-  },
-];
 
 /** How many pages the server renders as samples. */
 export const AUTO_PREVIEW_PAGES = 3;

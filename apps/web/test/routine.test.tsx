@@ -73,8 +73,12 @@ describe("the routine as a table", () => {
 });
 
 describe("a teacher's routine", () => {
-  it("starts from the curriculum template while the endpoint is missing, and edits it locally", async () => {
-    const user = userEvent.setup();
+  /*
+   * ★ 2026-10-11: the API answers this route, so a 404 means the reader may not
+   * see this group's routine (CLAUDE.md §1.7). The page says so — it no longer
+   * shows the curriculum template in its place as if it were the group's.
+   */
+  it("shows a 404 as an error, with no sample routine in its place", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       {
@@ -86,16 +90,9 @@ describe("a teacher's routine", () => {
     ]);
     renderWithProviders(<GroupRoutinePage />);
 
-    expect(await screen.findByText(/Жишээ загвар харагдаж байна/)).toBeInTheDocument();
-    expect(screen.getByText("Тойргийн цаг")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Нэмэх" }));
-    const dialog = screen.getByRole("dialog", { name: "Үйл ажиллагаа нэмэх" });
-    await user.type(within(dialog).getByLabelText(/Үйл ажиллагааны нэр/), "Хөгжмийн цаг");
-    await user.click(within(dialog).getByRole("button", { name: "Хөгжим" }));
-    await user.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
-
-    expect(await screen.findByText("Хөгжмийн цаг")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByText(/Жишээ загвар/)).toBeNull();
+    expect(screen.queryByText("Тойргийн цаг")).toBeNull();
   });
 
   it("saves the whole routine to the API after an edit", async () => {
