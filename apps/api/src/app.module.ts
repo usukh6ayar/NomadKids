@@ -9,6 +9,7 @@ import { StaffModule } from "./staff/staff.module";
 import { IncidentsModule } from "./incidents/incidents.module";
 import { FeedbackModule } from "./feedback/feedback.module";
 import { RoutineModule } from "./routine/routine.module";
+import { SongsPoemsModule } from "./songs-poems/songs-poems.module";
 import { KitchenModule } from "./kitchen/kitchen.module";
 import { ArtworkModule } from "./artwork/artwork.module";
 import { DocumentsModule } from "./documents/documents.module";
@@ -81,6 +82,7 @@ import { UsersModule } from "./users/users.module";
     IncidentsModule,
     FeedbackModule,
     RoutineModule,
+    SongsPoemsModule,
     ArtworkModule,
     DocumentsModule,
     ConsentModule,

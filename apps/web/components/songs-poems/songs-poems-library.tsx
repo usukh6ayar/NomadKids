@@ -20,20 +20,17 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { RowMenu } from "@/components/ui/menu";
-import { FormError } from "@/components/ui/states";
+import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
+import { errorMessage } from "@/lib/api/errors";
 import { cn } from "@/lib/utils";
 import {
-  createSongPoemResource,
-  removeSongPoemResource,
-  updateSchoolMonth,
-  updateSongPoemResource,
-  useSchoolMonths,
-  useSongPoemResources,
+  useSongPoemLibrary,
   type SchoolMonth,
   type SchoolMonthKey,
   type SongPoemDraft,
   type SongPoemResource,
+  type SongPoemSource,
   type SongPoemType,
 } from "@/lib/songs-poems";
 
@@ -49,9 +46,15 @@ const RESOURCE_TYPES: Record<
   fairy_tale: { label: "Үлгэр", tone: "sky" },
 };
 
-export function SongsPoemsLibrary({ mode }: { mode: "teacher" | "parent" }) {
-  const months = useSchoolMonths();
-  const resources = useSongPoemResources();
+export function SongsPoemsLibrary({
+  mode,
+  source,
+}: {
+  mode: "teacher" | "parent";
+  /** `null` while the page is still working out which group or child. */
+  source: SongPoemSource | null;
+}) {
+  const { months, resources, isLoading, error, actions } = useSongPoemLibrary(source);
   const toast = useToast();
   const [month, setMonth] = useState<SchoolMonthKey | null>(null);
   const [editing, setEditing] = useState<SongPoemResource | "new" | null>(null);
@@ -64,17 +67,13 @@ export function SongsPoemsLibrary({ mode }: { mode: "teacher" | "parent" }) {
     [month, resources],
   );
 
+  if (isLoading) return <LoadingState rows={3} shape="cards" />;
+  if (error) return <ErrorState description={errorMessage(error)} />;
+
   if (!selectedMonth) {
     return (
       <>
         <section aria-label="Сарын хавтас" className="flex flex-col gap-4">
-          {mode === "teacher" ? (
-            <Card tone="sky" pad="compact" className="text-body leading-relaxed text-muted">
-              Энэ нь фронт-эндийн туршилтын сан. Оруулсан зураг, файл энэ браузерын сессэд түр
-              хадгалагдана; backend холбогдоход бүлгийн эцэг эхэд байнгын байдлаар хүрнэ.
-            </Card>
-          ) : null}
-
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
             {months.map((item) => (
               <MonthBook
@@ -89,13 +88,13 @@ export function SongsPoemsLibrary({ mode }: { mode: "teacher" | "parent" }) {
           </div>
         </section>
 
-        {mode === "teacher" && editingMonth ? (
+        {actions && editingMonth ? (
           <MonthBookFormDialog
             open
             month={editingMonth}
             onOpenChange={(open) => !open && setEditingMonth(null)}
-            onSaved={({ label, subtitle }) => {
-              updateSchoolMonth(editingMonth.key, { label, subtitle });
+            onSaved={async ({ label, subtitle }) => {
+              await actions.saveMonth(editingMonth.key, { label, subtitle });
               toast.success("Номын хавтас шинэчлэгдлээ.");
               setEditingMonth(null);
             }}
@@ -153,26 +152,25 @@ export function SongsPoemsLibrary({ mode }: { mode: "teacher" | "parent" }) {
         </div>
       )}
 
-      {mode === "teacher" && editing ? (
+      {actions && editing ? (
         <ResourceFormDialog
           open
           month={selectedMonth.key}
           resource={editing === "new" ? null : editing}
           onOpenChange={(open) => !open && setEditing(null)}
-          onSaved={(draft) => {
-            if (editing === "new") {
-              createSongPoemResource(draft);
-              toast.success("Дуу, шүлэг сарын хавтаст нэмэгдлээ.");
-            } else {
-              updateSongPoemResource(editing.id, draft);
-              toast.success("Дуу, шүлгийн мэдээлэл шинэчлэгдлээ.");
-            }
+          onSaved={async (draft) => {
+            await actions.save(draft, editing === "new" ? undefined : editing.id);
+            toast.success(
+              editing === "new"
+                ? "Дуу, шүлэг сарын хавтаст нэмэгдлээ."
+                : "Дуу, шүлгийн мэдээлэл шинэчлэгдлээ.",
+            );
             setEditing(null);
           }}
         />
       ) : null}
 
-      {mode === "teacher" && removing ? (
+      {actions && removing ? (
         <ConfirmDialog
           open
           onOpenChange={(open) => !open && setRemoving(null)}
@@ -180,9 +178,13 @@ export function SongsPoemsLibrary({ mode }: { mode: "teacher" | "parent" }) {
           description={`«${removing.title}» материалыг ${selectedMonth.label}-ын хавтсаас устгана.`}
           confirmLabel="Устгах"
           tone="danger"
-          onConfirm={() => {
-            removeSongPoemResource(removing.id);
-            toast.success("Материал устгагдлаа.");
+          onConfirm={async () => {
+            try {
+              await actions.remove(removing.id);
+              toast.success("Материал устгагдлаа.");
+            } catch (cause) {
+              toast.error(errorMessage(cause));
+            }
             setRemoving(null);
           }}
         />
@@ -245,7 +247,7 @@ function MonthBookFormDialog({
   open: boolean;
   month: SchoolMonth;
   onOpenChange: (open: boolean) => void;
-  onSaved: (values: Pick<SchoolMonth, "label" | "subtitle">) => void;
+  onSaved: (values: Pick<SchoolMonth, "label" | "subtitle">) => Promise<void>;
 }) {
   const formId = useId();
   const [label, setLabel] = useState(month.label);
@@ -265,7 +267,9 @@ function MonthBookFormDialog({
     const cleanSubtitle = subtitle.trim();
     if (!cleanLabel) return setProblem("Сарын нэрийг оруулна уу.");
     if (!cleanSubtitle) return setProblem("Гарчгийг оруулна уу.");
-    onSaved({ label: cleanLabel, subtitle: cleanSubtitle });
+    onSaved({ label: cleanLabel, subtitle: cleanSubtitle }).catch((cause) =>
+      setProblem(errorMessage(cause)),
+    );
   };
 
   return (
@@ -421,7 +425,7 @@ function ResourceFormDialog({
   month: SchoolMonthKey;
   resource: SongPoemResource | null;
   onOpenChange: (open: boolean) => void;
-  onSaved: (draft: SongPoemDraft) => void;
+  onSaved: (draft: SongPoemDraft) => Promise<void>;
 }) {
   const formId = useId();
   const [title, setTitle] = useState("");
@@ -458,21 +462,17 @@ function ResourceFormDialog({
     setSaving(true);
     setProblem(null);
     try {
-      const coverUrl = cover ? await fileDataUrl(cover) : resource?.coverUrl;
-      const fileUrl = attachment ? await fileDataUrl(attachment) : resource?.fileUrl;
-      onSaved({
+      // A file not chosen again is kept by the server.
+      await onSaved({
         month,
         title: cleanTitle,
         type,
         description: cleanDescription,
-        coverUrl,
-        coverFileName: cover?.name ?? resource?.coverFileName,
-        fileUrl,
-        fileName: attachment?.name ?? resource?.fileName,
-        fileType: attachment?.type || resource?.fileType,
+        cover,
+        file: attachment,
       });
-    } catch {
-      setProblem("Файлыг уншиж чадсангүй. Өөр файл сонгож дахин оролдоно уу.");
+    } catch (cause) {
+      setProblem(errorMessage(cause));
     } finally {
       setSaving(false);
     }
@@ -609,13 +609,4 @@ function UploadField({
       )}
     </Field>
   );
-}
-
-function fileDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(reader.error);
-    reader.onload = () => resolve(String(reader.result));
-    reader.readAsDataURL(file);
-  });
 }
