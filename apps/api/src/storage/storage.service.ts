@@ -59,6 +59,14 @@ export class StorageService {
     return `children/${childId}/${randomUUID()}`;
   }
 
+  /**
+   * Platform-owned objects — a teaching material and its sample pages, which
+   * belong to no kindergarten. Random like every key; never a name or an id.
+   */
+  buildPlatformKey(prefix: string): string {
+    return `platform/${prefix}/${randomUUID()}`;
+  }
+
   /** Kindergarten-level output, such as a generated report. */
   buildKindergartenKey(kindergartenId: string, prefix = "reports"): string {
     return `${prefix}/${kindergartenId}/${randomUUID()}`;

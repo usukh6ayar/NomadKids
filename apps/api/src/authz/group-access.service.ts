@@ -49,6 +49,22 @@ export class GroupAccessService {
     throw new NotFoundException();
   }
 
+  /**
+   * What a group shares with its families — the staff who may read the group,
+   * or a guardian of a child in it now. Used for things addressed to the whole
+   * group (the songs-and-poems library), never for one child's record.
+   *
+   * ★ No fee gate here: the portal fee is per child, and the routes that list
+   * a group's content for a family go through `ChildAccessService` first.
+   */
+  async assertCanReadGroupContent(actor: Actor, groupId: string): Promise<AccessibleGroup> {
+    const group = await this.findForMember(actor, groupId);
+    if (this.tenants.isAdmin(actor, group.kindergartenId)) return group;
+    if (await this.teaches(actor, groupId)) return group;
+    if (await this.repo.isGuardianOfChildInGroup(actor.userId, groupId)) return group;
+    throw new NotFoundException();
+  }
+
   private async findForMember(actor: Actor, groupId: string): Promise<AccessibleGroup> {
     const group = await this.repo.findGroupInKindergartens(
       groupId,
