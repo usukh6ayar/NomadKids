@@ -21,6 +21,7 @@ import type {
   UpdateKindergartenDto,
   UpdateSchoolYearDto,
 } from "./tenants.dto";
+import { SoloRulesService } from "../solo-teachers/solo-rules.service";
 
 /**
  * Business rules for kindergartens, school years, groups and assignments.
@@ -36,6 +37,7 @@ export class TenantsService {
     private readonly tenants: TenantAccessService,
     private readonly authz: AuthzRepository,
     private readonly audit: AuditRepository,
+    private readonly solo: SoloRulesService,
   ) {}
 
   /** The actor's full membership scope — what any read may see. */
@@ -237,6 +239,8 @@ export class TenantsService {
 
   async createGroup(actor: Actor, kindergartenId: string, dto: CreateGroupDto) {
     this.tenants.assertAdmin(actor, kindergartenId);
+    // A solo teacher works with one group (the user, 2026-10-11).
+    await this.solo.assertCanAddGroup(kindergartenId);
 
     // The school year must belong to the same kindergarten. Without this check
     // an admin could attach a group to another kindergarten's year by id.

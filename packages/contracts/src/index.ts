@@ -41,5 +41,6 @@ export * from "./password";
 export * from "./phone-verification";
 export * from "./working-days";
 export * from "./problem";
+export * from "./solo-teacher";
 export * from "./routine";
 export * from "./songs-poems";

@@ -85,6 +85,11 @@ enum EsisSyncStatus {
   FAILED
 }
 
+enum KindergartenKind {
+  CONTRACTED
+  SOLO_TEACHER
+}
+
 enum AgeBand {
   NURSERY // Бага бүлэг
   JUNIOR // Дунд бүлэг
@@ -737,7 +742,17 @@ model Kindergarten {
   /// start a preview only when this value matches the deployment credential's
   /// institution id, preventing one tenant from reading another tenant's
   /// roster through a shared integration token.
-  esisInstitutionId String?   @unique
+  /// ★ CONTRACTED is a kindergarten under contract; SOLO_TEACHER is one
+  /// teacher's own workspace (#195, the user 2026-10-11): signed up alone,
+  /// no ESIS code, one group, no staff but them — parents only. The teacher
+  /// holds ADMIN and TEACHER here, so every route works unchanged and the
+  /// solo rules are guards on top. Merged into a contracted kindergarten by
+  /// the operator later, nothing lost.
+  kind              KindergartenKind @default(CONTRACTED)
+  /// The kindergarten a solo teacher says they work at, as typed at sign-up —
+  /// what the operator matches on when that kindergarten signs.
+  soloWorkplaceName String?
+  esisInstitutionId String?          @unique
   esisMappedAt      DateTime?
 
   /// ★ `staffRegistrationCodeHash` and `staffRegistrationCodeSetAt` were here
