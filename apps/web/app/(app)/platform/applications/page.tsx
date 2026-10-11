@@ -10,6 +10,7 @@ import {
   applicationApprovalSchema,
   kindergartenApplicationSchema,
   paginated,
+  type BillingPeriod,
   type KindergartenApplication,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
@@ -20,11 +21,12 @@ import { InvitationHandover } from "@/components/admin/invitation-handover";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Field, Input, Textarea } from "@/components/ui/field";
+import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { formatDate } from "@/lib/format";
+import { KINDERGARTEN_MONTHLY_PER_GROUP, kindergartenPrice } from "@/lib/pricing";
 
 const listSchema = paginated(kindergartenApplicationSchema);
 
@@ -145,7 +147,7 @@ function ApplicationCard({
               </Badge>
             </p>
             <p className="mt-1 text-caption text-muted">
-              РД {application.registrationNumber} · {application.childCount} хүүхэд ·{" "}
+              РД {application.registrationNumber} · {pricingBase(application)} ·{" "}
               {formatDate(application.createdAt)}
             </p>
           </div>
@@ -162,7 +164,7 @@ function ApplicationCard({
         <Detail label="Эрхлэгч" value={application.directorName} />
         <Detail label="Утас" value={application.phone} />
         <Detail label="И-мэйл" value={application.email} />
-        <Detail label="Хаяг" value={application.address} />
+        {application.address ? <Detail label="Хаяг" value={application.address} /> : null}
       </dl>
 
       {application.note ? <p className="text-body text-muted">{application.note}</p> : null}
@@ -218,6 +220,20 @@ async function openContractPdf(contractId: string): Promise<void> {
   window.open(url, "_blank", "noopener");
 }
 
+const PERIOD_LABEL: Record<BillingPeriod, string> = { term: "улирлаар", year: "жилээр" };
+
+/**
+ * «6 бүлэг · жилээр» — since #195 an application is priced per group; one
+ * made before carries a child count instead, and says so.
+ */
+function pricingBase(application: KindergartenApplication): string {
+  if (application.groupCount !== null) {
+    const period = application.billingPeriod ? ` · ${PERIOD_LABEL[application.billingPeriod]}` : "";
+    return `${application.groupCount} бүлэг${period}`;
+  }
+  return application.childCount !== null ? `${application.childCount} хүүхэд` : "—";
+}
+
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex gap-2">
@@ -247,8 +263,29 @@ function ReviewDialog({
 
   const thisYear = new Date().getUTCFullYear();
   const [adminUsername, setAdminUsername] = useState("");
-  const [annualFee, setAnnualFee] = useState("300000");
-  const [perChildMonthlyFee, setPerChildMonthlyFee] = useState("1500");
+  /*
+    ★ Pre-filled from the application and the price sheet (`lib/pricing.ts`),
+    then the operator's to confirm or change: the contract freezes whatever is
+    sent. An application from before #195 has no groups, so that field starts
+    empty and must be filled.
+  */
+  const [groupCount, setGroupCount] = useState(
+    application.groupCount !== null ? String(application.groupCount) : "",
+  );
+  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>(
+    application.billingPeriod ?? "year",
+  );
+  const [perGroupMonthlyFee, setPerGroupMonthlyFee] = useState(
+    String(KINDERGARTEN_MONTHLY_PER_GROUP),
+  );
+  /** `null` until typed: follows the groups and the period from the price sheet. */
+  const [periodFeeTyped, setPeriodFeeTyped] = useState<string | null>(null);
+  const groups = Number(groupCount);
+  const periodFee =
+    periodFeeTyped ??
+    (Number.isInteger(groups) && groups > 0
+      ? String(kindergartenPrice(groups, billingPeriod))
+      : "");
   const [startsOn, setStartsOn] = useState(`${thisYear}-09-01`);
   const [endsOn, setEndsOn] = useState(`${thisYear + 1}-05-31`);
   const [reviewNote, setReviewNote] = useState("");
@@ -262,8 +299,10 @@ function ReviewDialog({
         method: "POST",
         body: {
           adminUsername: adminUsername.trim(),
-          annualFee,
-          perChildMonthlyFee,
+          groupCount: groups,
+          billingPeriod,
+          perGroupMonthlyFee,
+          periodFee,
           startsOn,
           endsOn,
           ...(reviewNote.trim() ? { reviewNote: reviewNote.trim() } : {}),
@@ -407,26 +446,52 @@ function ReviewDialog({
         </Field>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="Суурь хураамж (жилд)" error={errors.annualFee} required>
+          <Field label="Бүлгийн тоо" error={errors.groupCount} required>
             {({ id, invalid }) => (
               <Input
                 id={id}
                 invalid={invalid}
                 inputMode="numeric"
-                value={annualFee}
-                onChange={(event) => setAnnualFee(event.target.value)}
+                value={groupCount}
+                onChange={(event) => setGroupCount(event.target.value)}
               />
             )}
           </Field>
 
-          <Field label="Хүүхэд/сар" error={errors.perChildMonthlyFee} required>
+          <Field label="Төлбөрийн хугацаа" error={errors.billingPeriod} required>
+            {({ id, invalid }) => (
+              <Select
+                id={id}
+                invalid={invalid}
+                value={billingPeriod}
+                onChange={(event) => setBillingPeriod(event.target.value as BillingPeriod)}
+              >
+                <option value="term">Улирал</option>
+                <option value="year">Хичээлийн жил</option>
+              </Select>
+            )}
+          </Field>
+
+          <Field label="Бүлэг/сар" error={errors.perGroupMonthlyFee} required>
             {({ id, invalid }) => (
               <Input
                 id={id}
                 invalid={invalid}
                 inputMode="numeric"
-                value={perChildMonthlyFee}
-                onChange={(event) => setPerChildMonthlyFee(event.target.value)}
+                value={perGroupMonthlyFee}
+                onChange={(event) => setPerGroupMonthlyFee(event.target.value)}
+              />
+            )}
+          </Field>
+
+          <Field label="Нийт төлбөр" error={errors.periodFee} required>
+            {({ id, invalid }) => (
+              <Input
+                id={id}
+                invalid={invalid}
+                inputMode="numeric"
+                value={periodFee}
+                onChange={(event) => setPeriodFeeTyped(event.target.value)}
               />
             )}
           </Field>

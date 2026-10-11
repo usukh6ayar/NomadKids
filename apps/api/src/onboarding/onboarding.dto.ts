@@ -1,3 +1,4 @@
+import { billingPeriodSchema } from "@kinder/contracts";
 import { z } from "zod";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Огноо YYYY-MM-DD хэлбэртэй байна");
@@ -10,6 +11,9 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Огноо YYYY-MM-DD �
  * contract's figures are the last place in the product where a rounding error
  * would be discovered late and by a lawyer.
  */
+/** A ceiling on the groups one application can name — far above any real kindergarten. */
+const GROUPS_MAX = 500;
+
 const money = z.string().regex(/^\d{1,10}(\.\d{1,2})?$/, "Дүн 1234 эсвэл 1234.50 хэлбэртэй байна");
 
 /**
@@ -20,9 +24,13 @@ const money = z.string().regex(/^\d{1,10}(\.\d{1,2})?$/, "Дүн 1234 эсвэл
  * megabyte into the database; `.max()` on all of them is the cheapest possible
  * defence and the one most often left out.
  *
- * ★★ It asks **nothing about a child**. `childCount` is a number used to price
+ * ★★ It asks **nothing about a child**. `groupCount` is a number used to price
  * the contract, never a roster. A form filled in by a stranger over a public
  * connection should carry as little as it can.
+ *
+ * ★ Since #195 (2026-10-11) the price is per group, so the form sends
+ * `groupCount` and `billingPeriod` and no longer asks for the address or the
+ * number of children. `address` stays accepted, optional.
  *
  * ★ `registrationNumber` is seven digits — Mongolia's organisational
  * registration number — and `phone` eight. Loose strings here would let the
@@ -36,14 +44,15 @@ export const submitApplicationSchema = z
       .string()
       .trim()
       .regex(/^\d{7}$/, "Регистрийн дугаар 7 оронтой байна"),
-    address: z.string().trim().min(4).max(500),
+    address: z.string().trim().min(4).max(500).optional(),
     directorName: z.string().trim().min(2).max(200),
     phone: z
       .string()
       .trim()
       .regex(/^\d{8}$/, "Утасны дугаар 8 оронтой байна"),
     email: z.string().trim().email("И-мэйл хаяг буруу байна").max(200),
-    childCount: z.number().int().min(1).max(5000),
+    groupCount: z.number().int().min(1).max(GROUPS_MAX),
+    billingPeriod: billingPeriodSchema,
     note: z.string().trim().max(1000).optional(),
   })
   .strict();
@@ -81,8 +90,16 @@ export const approveApplicationSchema = z
       .min(3, "Нэвтрэх нэр дор хаяж 3 тэмдэгт байх ёстой")
       .max(64)
       .regex(/^[a-zA-Z0-9._-]+$/, "Нэвтрэх нэр латин үсэг, тоо, . _ - агуулна"),
-    annualFee: money,
-    perChildMonthlyFee: money,
+    /**
+     * ★ Confirmed by the operator rather than copied silently: the application
+     * carries both, but one made before 2026-10-11 carries neither, and a
+     * contract must not be issued with its pricing base guessed.
+     */
+    groupCount: z.number().int().min(1).max(GROUPS_MAX),
+    billingPeriod: billingPeriodSchema,
+    perGroupMonthlyFee: money,
+    /** The amount for the whole period, as agreed — not derived here. */
+    periodFee: money,
     startsOn: isoDate,
     endsOn: isoDate,
     reviewNote: z.string().trim().max(1000).optional(),

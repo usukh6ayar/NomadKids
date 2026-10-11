@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "../generated/prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import type { BillingPeriod } from "../generated/prisma/enums";
 
 /**
  * Applications and contracts — CLAUDE.md §2.2's only Prisma layer for them.
@@ -38,6 +39,8 @@ export class OnboardingRepository {
     phone: true,
     email: true,
     childCount: true,
+    groupCount: true,
+    billingPeriod: true,
     note: true,
     status: true,
     reviewedAt: true,
@@ -50,11 +53,12 @@ export class OnboardingRepository {
   async createApplication(data: {
     kindergartenName: string;
     registrationNumber: string;
-    address: string;
+    address: string | null;
     directorName: string;
     phone: string;
     email: string;
-    childCount: number;
+    groupCount: number;
+    billingPeriod: BillingPeriod;
     note: string | null;
   }) {
     return this.prisma.kindergartenApplication.create({
@@ -133,7 +137,7 @@ export class OnboardingRepository {
     reviewedById: string;
     reviewNote: string | null;
     kindergartenName: string;
-    kindergartenAddress: string;
+    kindergartenAddress: string | null;
     kindergartenPhone: string;
     kindergartenEmail: string;
     admin: {
@@ -146,9 +150,10 @@ export class OnboardingRepository {
       invitationExpiresAt: Date;
     };
     number: string;
-    childCount: number;
-    annualFee: string;
-    perChildMonthlyFee: string;
+    groupCount: number;
+    billingPeriod: BillingPeriod;
+    perGroupMonthlyFee: string;
+    periodFee: string;
     startsOn: Date;
     endsOn: Date;
   }) {
@@ -205,9 +210,10 @@ export class OnboardingRepository {
           applicationId: params.applicationId,
           kindergartenId: kindergarten.id,
           number: params.number,
-          childCount: params.childCount,
-          annualFee: params.annualFee,
-          perChildMonthlyFee: params.perChildMonthlyFee,
+          groupCount: params.groupCount,
+          billingPeriod: params.billingPeriod,
+          perGroupMonthlyFee: params.perGroupMonthlyFee,
+          periodFee: params.periodFee,
           startsOn: params.startsOn,
           endsOn: params.endsOn,
         },

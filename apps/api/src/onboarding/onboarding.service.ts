@@ -13,8 +13,10 @@ import { UsersRepository } from "../users/users.repository";
 import type {
   ApplicationApproval,
   ApplicationReceipt,
+  BillingPeriod,
   KindergartenApplication,
 } from "@kinder/contracts";
+import type { BillingPeriod as DbBillingPeriod } from "../domain/enums";
 import type { Actor } from "../authz/actor";
 import { PlatformAccessService } from "../authz/platform-access.service";
 import { AuditRepository } from "../audit/audit.repository";
@@ -22,6 +24,7 @@ import { ReportsQueue } from "../reports/reports.queue";
 import { ReportsRepository } from "../reports/reports.repository";
 import { OnboardingRepository } from "./onboarding.repository";
 import { contractNumberPrefix, nextContractNumber } from "./contract-number";
+import { paginate } from "../common/pagination";
 import type {
   ApproveApplicationDto,
   ListApplicationsQuery,
@@ -87,11 +90,12 @@ export class OnboardingService {
     const created = await this.repo.createApplication({
       kindergartenName: dto.kindergartenName,
       registrationNumber: dto.registrationNumber,
-      address: dto.address,
+      address: dto.address ?? null,
       directorName: dto.directorName,
       phone: dto.phone,
       email: dto.email,
-      childCount: dto.childCount,
+      groupCount: dto.groupCount,
+      billingPeriod: toDbPeriod(dto.billingPeriod),
       note: dto.note ?? null,
     });
 
@@ -106,7 +110,11 @@ export class OnboardingService {
       objectType: "KindergartenApplication",
       objectId: created.id,
       actorLabel: `Нээлттэй маягт — ${dto.kindergartenName}`,
-      metadata: { registrationNumber: dto.registrationNumber, childCount: dto.childCount },
+      metadata: {
+        registrationNumber: dto.registrationNumber,
+        groupCount: dto.groupCount,
+        billingPeriod: dto.billingPeriod,
+      },
     });
 
     return created;
@@ -155,12 +163,10 @@ export class OnboardingService {
     this.platform.assertSuperAdmin(actor);
     const { items, total } = await this.repo.listApplications(query);
 
-    return {
-      items: items.map(toApplication),
-      total,
-      page: query.page,
-      pageSize: query.pageSize,
-    };
+    // ★ `paginate`, not a hand-built object: the hand-built one left out
+    // `totalPages`, and the operator's page — which parses the shared
+    // `paginated()` schema — showed «Алдаа гарлаа» instead of the queue.
+    return paginate(items.map(toApplication), total, query);
   }
 
   async get(actor: Actor, id: string): Promise<KindergartenApplication> {
@@ -239,9 +245,10 @@ export class OnboardingService {
         invitationExpiresAt: new Date(Date.now() + INVITATION_TTL_MS),
       },
       number,
-      childCount: application.childCount,
-      annualFee: dto.annualFee,
-      perChildMonthlyFee: dto.perChildMonthlyFee,
+      groupCount: dto.groupCount,
+      billingPeriod: toDbPeriod(dto.billingPeriod),
+      perGroupMonthlyFee: dto.perGroupMonthlyFee,
+      periodFee: dto.periodFee,
       startsOn: new Date(`${dto.startsOn}T00:00:00.000Z`),
       endsOn: new Date(`${dto.endsOn}T00:00:00.000Z`),
     });
@@ -265,8 +272,10 @@ export class OnboardingService {
         previous: "PENDING",
         next: "APPROVED",
         contractNumber: contract.number,
-        annualFee: dto.annualFee,
-        perChildMonthlyFee: dto.perChildMonthlyFee,
+        groupCount: dto.groupCount,
+        billingPeriod: dto.billingPeriod,
+        perGroupMonthlyFee: dto.perGroupMonthlyFee,
+        periodFee: dto.periodFee,
       },
     });
 
@@ -333,11 +342,13 @@ function toApplication(row: {
   id: string;
   kindergartenName: string;
   registrationNumber: string;
-  address: string;
+  address: string | null;
   directorName: string;
   phone: string;
   email: string;
-  childCount: number;
+  childCount: number | null;
+  groupCount: number | null;
+  billingPeriod: DbBillingPeriod | null;
   note: string | null;
   status: string;
   reviewedAt: Date | null;
@@ -361,6 +372,8 @@ function toApplication(row: {
     phone: row.phone,
     email: row.email,
     childCount: row.childCount,
+    groupCount: row.groupCount,
+    billingPeriod: row.billingPeriod ? fromDbPeriod(row.billingPeriod) : null,
     note: row.note,
     status: row.status as KindergartenApplication["status"],
     reviewedAt: row.reviewedAt?.toISOString() ?? null,
@@ -377,4 +390,13 @@ function toApplication(row: {
         }
       : null,
   };
+}
+
+/** `term` on the wire, `TERM` in the table. */
+function toDbPeriod(period: BillingPeriod): DbBillingPeriod {
+  return period === "year" ? "YEAR" : "TERM";
+}
+
+function fromDbPeriod(period: DbBillingPeriod): BillingPeriod {
+  return period === "YEAR" ? "year" : "term";
 }

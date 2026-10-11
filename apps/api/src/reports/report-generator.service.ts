@@ -17,7 +17,7 @@ import {
 } from "./annual-report-template";
 import { reportAudience, type ReportJobParams } from "./report-params";
 import { financeReportChrome, renderFinanceReportHtml } from "./finance-report-template";
-import { contractChrome, renderContractHtml } from "./contract-template";
+import { contractChrome, renderContractHtml, type ContractTerms } from "./contract-template";
 import { FinanceReportsService } from "../invoices/finance-reports.service";
 
 /** How long a generated file stays downloadable before the sweep removes it. */
@@ -383,11 +383,7 @@ export class ReportGeneratorService {
         directorName: contract.application.directorName,
         phone: contract.application.phone,
         email: contract.application.email,
-        childCount: contract.childCount,
-        // ★ `.toString()`, never `Number()` — the decimal crosses as a string,
-        // which is the whole reason the column is `Decimal` (§2.2).
-        annualFee: contract.annualFee.toString(),
-        perChildMonthlyFee: contract.perChildMonthlyFee.toString(),
+        terms: contractTerms(contract),
         startsOn: contract.startsOn,
         endsOn: contract.endsOn,
         generatedAt: new Date(),
@@ -578,4 +574,41 @@ function levelChange(levels: (AnnualLevel | null)[]): number | null {
   const assessed = levels.filter((level): level is AnnualLevel => level !== null);
   if (assessed.length < 2) return null;
   return assessed[assessed.length - 1]!.value - assessed[0]!.value;
+}
+
+/**
+ * Which generation of pricing a contract row holds (see `ContractTerms`).
+ *
+ * ★ `.toString()`, never `Number()` — the decimal crosses as a string, which is
+ * the whole reason the columns are `Decimal` (§2.2). A row with neither set
+ * of figures is a defect, and a contract printed without its price is worse
+ * than a failed job.
+ */
+function contractTerms(c: {
+  childCount: number | null;
+  annualFee: { toString(): string } | null;
+  perChildMonthlyFee: { toString(): string } | null;
+  groupCount: number | null;
+  billingPeriod: "TERM" | "YEAR" | null;
+  perGroupMonthlyFee: { toString(): string } | null;
+  periodFee: { toString(): string } | null;
+}): ContractTerms {
+  if (c.groupCount !== null && c.billingPeriod && c.perGroupMonthlyFee && c.periodFee) {
+    return {
+      kind: "perGroup",
+      groupCount: c.groupCount,
+      billingPeriod: c.billingPeriod,
+      perGroupMonthlyFee: c.perGroupMonthlyFee.toString(),
+      periodFee: c.periodFee.toString(),
+    };
+  }
+  if (c.childCount !== null && c.annualFee && c.perChildMonthlyFee) {
+    return {
+      kind: "perChild",
+      childCount: c.childCount,
+      annualFee: c.annualFee.toString(),
+      perChildMonthlyFee: c.perChildMonthlyFee.toString(),
+    };
+  }
+  throw new Error("Contract has no pricing terms");
 }
