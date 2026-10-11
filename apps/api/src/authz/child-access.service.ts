@@ -67,13 +67,23 @@ export class ChildAccessService {
     return facts;
   }
 
-  private async assertFeePaid(actor: Actor, facts: ChildAccessFacts): Promise<void> {
+  private async assertFeePaid(
+    actor: Actor,
+    facts: ChildAccessFacts,
+    options: { gateSoloStaff?: boolean } = {},
+  ): Promise<void> {
     if (!this.feeConfigured) return;
 
     const active = await this.repo.loadPortalAccessActive(facts.childId, new Date());
-    if (isPortalAccessBlocked(actor, facts, { required: true, active })) {
+    const blocked = isPortalAccessBlocked(actor, facts, { required: true, active }, options);
+    if (blocked === "guardian") {
       throw new PaymentRequiredException(
         "Энэ хүүхдийн мэдээллийг үзэхийн тулд энэ хичээлийн жилийн хандалтын төлбөрийг төлнө үү.",
+      );
+    }
+    if (blocked === "soloStaff") {
+      throw new PaymentRequiredException(
+        "Энэ хүүхдийн эцэг эх хандалтын төлбөрөө төлөөгүй байна. Төлбөр төлөгдсөний дараа хүүхдийн бүртгэл, ажиглалт нээгдэнэ.",
       );
     }
   }
@@ -108,6 +118,19 @@ export class ChildAccessService {
     const facts = await this.repo.loadChildAccessFacts(actor, childId);
     if (!facts || !canRecordForChild(actor, facts)) throw new NotFoundException();
     await this.assertFeePaid(actor, facts);
+    return facts;
+  }
+
+  /**
+   * Throws 404 unless the actor may write about this child — and, unlike
+   * `assertCanRecord`, does **not** stop a solo teacher whose family has not
+   * paid yet: inviting that family is how the fee ever gets paid (the user,
+   * 2026-10-11). A guardian is still gated as on every other route.
+   */
+  async assertCanInviteGuardian(actor: Actor, childId: string): Promise<ChildAccessFacts> {
+    const facts = await this.repo.loadChildAccessFacts(actor, childId);
+    if (!facts || !canRecordForChild(actor, facts)) throw new NotFoundException();
+    await this.assertFeePaid(actor, facts, { gateSoloStaff: false });
     return facts;
   }
 

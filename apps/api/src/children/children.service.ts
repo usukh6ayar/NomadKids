@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { AuditRepository } from "../audit/audit.repository";
 import { AuthzRepository } from "../authz/authz.repository";
+import { loadEnv } from "../config/env";
 import { ChildAccessService } from "../authz/child-access.service";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import type { Actor } from "../authz/actor";
@@ -56,6 +57,9 @@ export class ChildrenService {
     private readonly esis: EsisService,
   ) {}
 
+  /** "0" means no fee anywhere — read once, like `ChildAccessService`. */
+  private readonly feeConfigured = loadEnv().ACCESS_FEE_AMOUNT !== "0";
+
   /**
    * The children this actor may see.
    *
@@ -73,7 +77,25 @@ export class ChildrenService {
       order: query.order,
     });
 
-    return paginate(items, total, page);
+    /*
+      ★ «Төлөгдсөн / Төлөгдөөгүй» on a solo teacher's roster (the user,
+      2026-10-11): there a child is inactive until the family pays, so the
+      teacher has to see who has. `null` everywhere else, and when no fee is
+      configured at all.
+    */
+    const fee = this.feeConfigured
+      ? await this.repo.soloPortalFeeStates(
+          items.map((c) => c.id),
+          new Date(),
+        )
+      : new Map<string, boolean>();
+    const withFee = items.map((child) => {
+      const paid = fee.get(child.id);
+      const portalFee = paid === undefined ? null : paid ? ("PAID" as const) : ("UNPAID" as const);
+      return { ...child, portalFee };
+    });
+
+    return paginate(withFee, total, page);
   }
 
   /**
@@ -349,7 +371,7 @@ export class ChildrenService {
    * child is exactly the decision this endpoint is not allowed to make.
    */
   async inviteGuardian(actor: Actor, childId: string, dto: InviteGuardianDto) {
-    const facts = await this.childAccess.assertCanRecord(actor, childId);
+    const facts = await this.childAccess.assertCanInviteGuardian(actor, childId);
 
     const created = await this.users.createPlaceholderGuardianAccount(
       actor,

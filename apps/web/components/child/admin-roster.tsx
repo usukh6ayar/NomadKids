@@ -445,6 +445,19 @@ export function StudentRosterTable({
                   >
                     {shortName(child)}
                   </Link>
+                  {/*
+                    A solo teacher's roster (2026-10-11): the child is inactive
+                    until the family pays, so say who has. Absent elsewhere.
+                  */}
+                  {child.portalFee === "UNPAID" ? (
+                    <Badge tone="sun" className="ml-2">
+                      Төлбөр төлөгдөөгүй
+                    </Badge>
+                  ) : child.portalFee === "PAID" ? (
+                    <Badge tone="mint" className="ml-2">
+                      Төлөгдсөн
+                    </Badge>
+                  ) : null}
                 </Td>
                 <Td className="py-1.5 tabular-nums text-muted">{register}</Td>
                 <Td className="py-1.5 text-muted">{(child.sex && SEX_LABEL[child.sex]) || "—"}</Td>

@@ -59,6 +59,7 @@ function facts(overrides: Partial<ChildAccessFacts> = {}): ChildAccessFacts {
   return {
     childId: "child-1",
     childKindergartenId: KG_A,
+    childKindergartenKind: "CONTRACTED",
     enrollments: [{ groupId: GROUP_1, kindergartenId: KG_A }],
     guardianships: [],
     actorActiveTeachingGroupIds: [],

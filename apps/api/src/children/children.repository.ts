@@ -700,6 +700,28 @@ export class ChildrenRepository {
   }
 
   /** The kindergarten's name, for the exported file's provenance sheet. */
+  /**
+   * The portal-fee state of each of these children that belongs to a solo
+   * teacher's workspace — one query for a page of the roster (§3.4). Children
+   * of a contracted kindergarten are left out: their staff are never gated, so
+   * the badge would only be noise.
+   */
+  async soloPortalFeeStates(childIds: string[], asOf: Date): Promise<Map<string, boolean>> {
+    if (childIds.length === 0) return new Map();
+    const rows = await this.prisma.child.findMany({
+      where: { id: { in: childIds }, kindergarten: { kind: "SOLO_TEACHER" } },
+      select: {
+        id: true,
+        accessSubscriptions: {
+          where: { deletedAt: null, status: "ACTIVE", expiresAt: { gte: asOf } },
+          select: { id: true },
+          take: 1,
+        },
+      },
+    });
+    return new Map(rows.map((r) => [r.id, r.accessSubscriptions.length > 0]));
+  }
+
   async kindergartenName(kindergartenId: string) {
     const row = await this.prisma.kindergarten.findFirst({
       where: { id: kindergartenId, deletedAt: null },

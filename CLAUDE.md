@@ -114,6 +114,13 @@ that lets them act. Authorization runs first, so a stranger still gets 404 and
 the status cannot become an oracle. `authz/portal-access.ts`. **Do not add a
 second exception without the same argument.**
 
+The same 402 now also reaches **the staff of a solo teacher's workspace**
+(`Kindergarten.kind = SOLO_TEACHER`, the user 2026-10-11): no contract pays
+there, so an unpaid child is inactive for the teacher too. The argument holds —
+they have passed `canAccessChild` first. Inviting the family
+(`assertCanInviteGuardian`) and the roster stay open; a contracted
+kindergarten's staff are never gated.
+
 ---
 
 ## 2. Architecture rules
