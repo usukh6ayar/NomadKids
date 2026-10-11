@@ -2144,7 +2144,7 @@ function BottomBar({
 }) {
   const pathname = usePathname();
 
-  // One tab lit, resolved across the bar's own five — see `activeHrefIn`. The
+  // One tab lit, resolved across the bar's own entries — see `activeHrefIn`. The
   // bar and the sidebar carry different sets, so each answers for itself.
   const activeHref = activeHrefIn(
     pathname,
@@ -2262,6 +2262,10 @@ function PillBottomBar({
   hideOnDesktop: boolean;
   testId?: string;
 }) {
+  // A guardian now has seven direct tabs. Narrow only that longer bar so all
+  // icons stay inside a 320px phone; the five-item teacher bar keeps 44px wells.
+  const compact = nav.length > 6;
+
   return (
     <nav
       data-print-hide
@@ -2273,14 +2277,20 @@ function PillBottomBar({
         hideOnDesktop && "lg:hidden",
       )}
     >
-      <div className="pointer-events-auto mx-auto flex max-w-[520px] items-center justify-between gap-1 rounded-pill bg-surface px-2 py-1 shadow-[0_6px_24px_-6px_rgb(37_99_235_/_0.28)]">
+      <div
+        className={cn(
+          "pointer-events-auto mx-auto flex max-w-[520px] items-center justify-between gap-1 rounded-pill bg-surface py-1 shadow-[0_6px_24px_-6px_rgb(37_99_235_/_0.28)]",
+          compact ? "px-1.5" : "px-2",
+        )}
+      >
         {nav.map((item) => {
           const active = Boolean(item.href) && item.href === activeHref;
           const content = (
             <>
               <span
                 className={cn(
-                  "relative grid h-9 w-11 place-items-center rounded-card transition-colors duration-150 [&_svg]:size-5",
+                  "relative grid h-9 place-items-center rounded-card transition-colors duration-150 [&_svg]:size-5",
+                  compact ? "w-9" : "w-11",
                   active ? "bg-primary-soft text-primary" : "text-muted",
                 )}
               >

@@ -43,7 +43,9 @@ describe("the organisation registration window", () => {
     expect(screen.queryByLabelText(/Хүүхдийн тоо/)).toBeNull();
     await user.type(screen.getByLabelText(/Цэцэрлэгийн нэр/), "Нарлаг");
     await user.type(screen.getByLabelText(/Регистрийн дугаар/), "1234567");
-    await user.type(screen.getByLabelText(/Бүлгийн тоо/), "6");
+    const groupCount = screen.getByRole("spinbutton", { name: /Бүлгийн тоо/ });
+    await user.clear(groupCount);
+    await user.type(groupCount, "6");
     await user.type(screen.getByLabelText(/Эрхлэгчийн нэр/), "Сараа");
     await user.type(screen.getByLabelText(/^Утас/), "99112233");
     await user.type(screen.getByLabelText(/^И-мэйл/), "narlag@example.mn");
@@ -57,6 +59,7 @@ describe("the organisation registration window", () => {
         phone: "99112233",
         email: "narlag@example.mn",
         groupCount: 6,
+        billingPeriod: "term",
       }),
     );
     expect(await screen.findByText("Хүсэлт хүлээн авлаа")).toBeInTheDocument();

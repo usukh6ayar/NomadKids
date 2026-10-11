@@ -304,9 +304,8 @@ function TeacherDashboard() {
       {header}
 
       {/*
-        ★ Eight tiles — four on 2026-09-10, then Тайлан and Баримт бичгийн сан
-        the same day, then Хүүхдүүд and Хоол ба цэс, each at the client's
-        request.
+        ★ Ten tiles — the existing daily-work doors, Өдрийн дэглэм, and the
+        teacher-only Дуу, шүлэг library requested after Баримт бичгийн сан.
 
         None of these destinations is new. Every one of them is already a row
         in `staffSections`, and this band takes its label, its href and its
@@ -314,15 +313,12 @@ function TeacherDashboard() {
         door is how a teacher ends up believing there are two screens.
 
         The column count follows the tile count so neither row is a remainder:
-        four gave two rows of two, six went to `xl:grid-cols-3`, and eight goes
-        back to four. The phone's `grid-cols-2` divides all three evenly, which
-        is why it never had to change.
+        ten uses five columns on a wide screen and two on a phone.
 
-        The order is the reading, not the history — the first row is what a
-        teacher opens before lunch (Ирц · Хүүхдүүд · Хоол ба цэс · Мэдээ), the
-        second what they open on a schedule.
+        The order is the reading, not the history: daily work comes first and
+        reports and reusable resources follow it.
       */}
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4" data-testid="teacher-quick-actions">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5" data-testid="teacher-quick-actions">
         <QuickAction
           href={group ? `/groups/${group.id}/attendance` : "/attendance"}
           title="Ирц"
@@ -343,6 +339,12 @@ function TeacherDashboard() {
           "Хоолны бүртгэл" in the menu below.
         */}
         <QuickAction href="/menu" title="Хоолны цэс" art="food" />
+        {/* Beside «Хоолны цэс» — 2026-10-09, the client. */}
+        <QuickAction
+          href={group ? `/groups/${group.id}/routine` : "/dashboard"}
+          title="Өдрийн дэглэм"
+          art="adminCurriculum"
+        />
         {/* The feed, as the floating bar's «Мэдээ» — client, 2026-10-06. Writing
             one is the feed's own «+ Шинэ». */}
         <QuickAction href="/notifications" title="Мэдээ" art="notice" />
@@ -354,6 +356,7 @@ function TeacherDashboard() {
         />
         <QuickAction href="/reports" title="Тайлан" art="report" />
         <QuickAction href="/documents" title="Баримт бичгийн сан" art="documents" />
+        <QuickAction href="/songs-poems" title="Дуу, шүлэг" art="songsPoems" />
       </div>
 
       <DesktopCollapsible title="Самбарын үзүүлэлтүүд">

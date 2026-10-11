@@ -1,7 +1,9 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { TeachingMaterials } from "@/components/materials/teaching-materials";
+import { cn } from "@/lib/utils";
 import { Bookmark, BookmarkCheck, FileText, Pencil, Search, Trash2, Upload } from "lucide-react";
 import { z } from "zod";
 import {
@@ -48,12 +50,62 @@ const categoriesSchema = z.array(z.string());
 export default function DocumentsPage() {
   return (
     <RequireRole roles={["TEACHER", "ADMIN"]}>
-      <DocumentLibrary />
+      <DocumentsHome />
     </RequireRole>
   );
 }
 
-function DocumentLibrary() {
+/**
+ * ★ «Сургалтын хэрэглэгдэхүүн» beside the library — for a teacher only
+ * (client, 2026-10-09: "зөвхөн багш"). A director sees the library alone.
+ */
+function DocumentsHome() {
+  const { hasRole } = useSession();
+  const teacher = hasRole("TEACHER");
+  const [tab, setTab] = useState<"docs" | "materials">("docs");
+
+  const switcher = teacher ? (
+    <div
+      role="tablist"
+      aria-label="Баримт бичгийн сангийн хэсэг"
+      className="grid w-full max-w-md grid-cols-2 gap-1 rounded-control bg-canvas p-1"
+    >
+      {(
+        [
+          ["docs", "Баримт бичиг"],
+          ["materials", "Сургалтын хэрэглэгдэхүүн"],
+        ] as const
+      ).map(([key, label]) => (
+        <button
+          key={key}
+          type="button"
+          role="tab"
+          aria-selected={tab === key}
+          onClick={() => setTab(key)}
+          className={cn(
+            "min-h-[40px] rounded-control px-2 text-caption font-semibold transition-colors sm:text-body",
+            tab === key ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink",
+          )}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
+  if (teacher && tab === "materials") {
+    return (
+      <div className="flex flex-col gap-4">
+        <PageHeader title="Баримт бичгийн сан" backHref="/dashboard" />
+        {switcher}
+        <TeachingMaterials />
+      </div>
+    );
+  }
+  return <DocumentLibrary switcher={switcher} />;
+}
+
+function DocumentLibrary({ switcher }: { switcher?: ReactNode }) {
   const { primaryKindergartenId } = useSession();
   const kindergartenId = primaryKindergartenId ?? "";
 
@@ -107,6 +159,8 @@ function DocumentLibrary() {
           ) : null
         }
       />
+
+      {switcher}
 
       {adding ? (
         <PublishForm

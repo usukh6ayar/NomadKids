@@ -125,7 +125,8 @@ export function AccessPayDialog({
   );
 }
 
-function QpayProgress({
+/** The QR, the amount and the state of one attempt — shared with any QPay purchase. */
+export function QpayProgress({
   attempt,
   pending,
   onRetry,

@@ -5,11 +5,12 @@ import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./sup
 import DashboardPage from "@/app/(app)/dashboard/page";
 
 /**
- * The teacher dashboard's tile band — the eight doors under the greeting.
+ * The teacher dashboard's tile band — the ten doors under the greeting.
  *
- * ★ Eight since 2026-09-10, all at the client's request and all in one day:
+ * ★ The original eight arrived in 2026-09-10 at the client's request:
  * Ирц · Мэдээ · Судалгаа · Явцын үнэлгээ, then Тайлан and Баримт бичгийн сан,
- * then Хүүхдүүд and Хоолны цэс.
+ * then Хүүхдүүд and Хоолны цэс. Өдрийн дэглэм and Дуу, шүлэг now complete
+ * the same teacher-only shortcut band.
  *
  * Every destination already existed and was already in the sidebar. What this
  * file is really guarding is the pair of things that made them worth adding
@@ -72,7 +73,7 @@ async function tiles() {
 }
 
 describe("the teacher dashboard's quick actions", () => {
-  it("offers all eight doors in order, each with its own drawing", async () => {
+  it("offers all ten doors in order, each with its own drawing", async () => {
     stubDashboard();
     renderWithProviders(<DashboardPage />);
     const band = await tiles();
@@ -81,11 +82,14 @@ describe("the teacher dashboard's quick actions", () => {
       ["Ирц", "/attendance", "icon-attendance-3d.png"],
       ["Суралцагч", "/children", "icon-children-3d.png"],
       ["Хоолны цэс", "/menu", "icon-food-3d.png"],
+      // Beside «Хоолны цэс» — 2026-10-09.
+      ["Өдрийн дэглэм", "/routine", "icon-admin-curriculum-3d.png"],
       ["Мэдээ", "/notifications", "icon-notice-3d.png"],
       ["Судалгаа", "/surveys", "icon-survey-3d.png"],
       ["Үнэлгээ", "/assessment", "icon-progress-3d.png"],
       ["Тайлан", "/reports", "icon-report-3d.png"],
       ["Баримт бичгийн сан", "/documents", "icon-documents-3d.png"],
+      ["Дуу, шүлэг", "/songs-poems", "area-music.png"],
     ] as const;
 
     const links = band.getAllByRole("link");
@@ -111,6 +115,10 @@ describe("the teacher dashboard's quick actions", () => {
     expect(band.getByRole("link", { name: /Баримт бичгийн сан/ })).toHaveAttribute(
       "href",
       "/documents",
+    );
+    expect(band.getByRole("link", { name: /Дуу, шүлэг/ })).toHaveAttribute(
+      "href",
+      "/songs-poems",
     );
     expect(band.getByRole("link", { name: /Суралцагч/ })).toHaveAttribute("href", "/children");
   });
@@ -153,6 +161,10 @@ describe("the teacher dashboard's quick actions", () => {
     expect(band.getByRole("link", { name: /Баримт бичгийн сан/ })).toHaveAttribute(
       "href",
       "/documents",
+    );
+    expect(band.getByRole("link", { name: /Дуу, шүлэг/ })).toHaveAttribute(
+      "href",
+      "/songs-poems",
     );
   });
 

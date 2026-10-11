@@ -51,6 +51,8 @@ import {
   KeyRound,
   Award,
   MessageSquareText,
+  CalendarClock,
+  Music2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
@@ -577,6 +579,8 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         title: "Сургалт, үйл ажиллагаа",
         entries: [
           entry("Ирц", "/attendance/daily", "attendance"),
+          // Every group's routine, as the teachers keep it — 2026-10-09.
+          entry("Өдрийн дэглэм", "/admin/routine", "adminCurriculum"),
           entry("Үнэлгээ", "/admin/assessment", "progress"),
           entry("Судалгаа", "/surveys", "survey"),
           entry("Мэдээ", "/notifications", "notice"),
@@ -1010,6 +1014,12 @@ function teacherSections(groupId: string | null): NavSection[] {
         { label: "Суралцагч", href: "/children", icon: <RailGlyph icon={BookOpen} /> },
         { label: "Ирц", href: scoped("attendance"), icon: <RailGlyph icon={IdCardLanyard} /> },
         { label: "Хоолны цэс", href: "/menu", icon: <RailGlyph icon={Utensils} /> },
+        // Under «Хоолны цэс», as the client asked — 2026-10-09.
+        {
+          label: "Өдрийн дэглэм",
+          href: scoped("routine"),
+          icon: <RailGlyph icon={CalendarClock} />,
+        },
         {
           label: "Үнэлгээ",
           href: scoped("assessment"),
@@ -1028,6 +1038,11 @@ function teacherSections(groupId: string | null): NavSection[] {
           label: "Баримт бичгийн сан",
           href: "/documents",
           icon: <RailGlyph icon={Briefcase} />,
+        },
+        {
+          label: "Дуу, шүлэг",
+          href: "/songs-poems",
+          icon: <RailGlyph icon={Music2} />,
         },
         {
           label: "Мэргэшлийн зэрэг",
@@ -1352,6 +1367,12 @@ function platformNav(): NavItem[] {
       and this is the one addition the client asked for.
     */
     { href: "/platform/revenue", label: "Санхүү", icon: artIcon("finance", 20) },
+    // What the teachers' shop sells — 2026-10-09.
+    {
+      href: "/platform/materials",
+      label: "Сургалтын хэрэглэгдэхүүн",
+      icon: artIcon("adminCurriculum", 20),
+    },
     /*
       ★ The onboarding queue — `docs/CONTRACT_ONBOARDING.md` step 3. It sits
       below the money because approving an application is occasional work and
@@ -1411,7 +1432,7 @@ function parentNav(
 
     `icon` is what the menu draws: the illustrated set the client delivered.
     `barIcon` is what the floating phone bar draws: a plain glyph, because the
-    bar is a row of five small circles and a two-tone illustration inside a
+    bar is a compact row of small circles and a two-tone illustration inside a
     44px disc reads as a smudge. The bar asked for "хар зурган, бичиггүй" in
     as many words.
   */
@@ -1440,6 +1461,19 @@ function parentNav(
       label: "Хоол",
       icon: artIcon("navFood", 20),
       barIcon: <UtensilsCrossed {...barIconProps} />,
+    },
+    // After «Хоол» — 2026-10-09, the client: the group's routine and clubs.
+    {
+      href: activeId ? `/children/${activeId}/routine` : "/children",
+      label: "Дэглэм",
+      icon: artIcon("adminCurriculum", 20),
+      barIcon: <CalendarClock {...barIconProps} />,
+    },
+    {
+      href: activeId ? `/children/${activeId}/songs-poems` : "/children",
+      label: "Дуу, шүлэг",
+      icon: artIcon("songsPoems", 20),
+      barIcon: <Music2 {...barIconProps} />,
     },
     {
       href: "/settings",
@@ -1481,6 +1515,17 @@ function parentSections(
           label: "Цэцэрлэгийн мэдээлэл",
           href: selected ? `${childBase}/enrollment-archive` : childBase,
           icon: artIcon("navParentKindergarten", 20),
+        },
+        // Their child's group routine and clubs — 2026-10-09.
+        {
+          label: "Өдрийн дэглэм",
+          href: selected ? `${childBase}/routine` : childBase,
+          icon: artIcon("adminCurriculum", 20),
+        },
+        {
+          label: "Дуу, шүлэг",
+          href: selected ? `${childBase}/songs-poems` : childBase,
+          icon: artIcon("songsPoems", 20),
         },
         {
           label: "Мэдээ",
