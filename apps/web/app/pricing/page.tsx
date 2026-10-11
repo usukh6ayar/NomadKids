@@ -7,7 +7,7 @@ import { BRAND } from "@/lib/vocabulary";
 // `app/faq/page.tsx`.
 export const metadata: Metadata = {
   title: "Үнийн санал",
-  description: `${BRAND} — хүүхэд, багш, цэцэрлэгийн багцын улирлын болон хөнгөлөлттэй жилийн үнэ.`,
+  description: `${BRAND} — хүүхэд, багш, цэцэрлэгийн багцын улирлын болон жилийн үнэ.`,
   alternates: { canonical: "/pricing" },
 };
 

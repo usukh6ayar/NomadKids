@@ -15,6 +15,7 @@ import {
   KINDERGARTEN_CURRENT_TERM_PER_GROUP,
   KINDERGARTEN_CURRENT_YEAR_PER_GROUP,
   KINDERGARTEN_MONTHLY_PER_GROUP,
+  TERM_DISCOUNTED,
   kindergartenPrice,
   kindergartenStandardYearPrice,
   kindergartenTermPrice,
@@ -126,6 +127,7 @@ function RegisterForm({
   const termPrice = kindergartenTermPrice(groupCount);
   const yearlyPrice = kindergartenYearlyPrice(groupCount);
   const quotedAmount = kindergartenPrice(groupCount, billingPeriod);
+  const yearlySaving = savingPercent(kindergartenStandardYearPrice(groupCount), yearlyPrice);
 
   const submit = useMutation({
     mutationFn: () =>
@@ -285,8 +287,8 @@ function RegisterForm({
             onChange={(event) => setBillingPeriod(event.target.value as BillingPeriod)}
             className={COMPACT}
           >
-            <option value="term">Улирлаар — 11 сар хүртэл</option>
-            <option value="year">Жилээр — энэ улирлын хөнгөлөлт шингэсэн</option>
+            <option value="term">Улирлаар</option>
+            <option value="year">Жилээр</option>
           </Select>
         )}
       </Field>
@@ -314,15 +316,16 @@ function RegisterForm({
             </span>
           </p>
         </div>
-        {billingPeriod === "year" ? (
+        {billingPeriod === "year" && yearlySaving > 0 ? (
           <p className="mt-1 text-caption font-semibold text-[#9f174c]">
-            Жилийн хэмнэлт: {savingPercent(kindergartenStandardYearPrice(groupCount), yearlyPrice)}%
+            Жилийн хэмнэлт: {yearlySaving}%
           </p>
-        ) : (
+        ) : null}
+        {billingPeriod === "term" && TERM_DISCOUNTED ? (
           <p className="mt-1 text-caption font-semibold text-[#9f174c]">
-            1-р улирал талдаа орсон тул 11 сар хүртэл {tugrik(termPrice)}.
+            Улирлын хөнгөлөлттэй үнэ: {tugrik(termPrice)}.
           </p>
-        )}
+        ) : null}
       </div>
 
       <Field label="Эрхлэгчийн нэр" error={errors.directorName} required>

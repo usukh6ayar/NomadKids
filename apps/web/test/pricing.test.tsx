@@ -19,37 +19,38 @@ import {
 } from "@/lib/pricing";
 
 describe("the current school-year prices", () => {
-  it("carries the mid-term discount into the yearly price", () => {
-    expect(CHILD_CURRENT_TERM_PRICE).toBe(5_000);
-    expect(CHILD_CURRENT_YEAR_PRICE).toBe(22_000);
-    expect(KINDERGARTEN_CURRENT_TERM_PER_GROUP).toBe(2_000);
-    expect(KINDERGARTEN_CURRENT_YEAR_PER_GROUP).toBe(34_000);
+  /*
+   * ★ The first-term discount ended on 2026-10-11 (the user): a term is three
+   * months and a year nine, at 3,000₮ a child and 4,000₮ a group a month.
+   */
+  it("charges the standard price — a term three months, a year nine", () => {
+    expect(CHILD_CURRENT_TERM_PRICE).toBe(9_000);
+    expect(CHILD_CURRENT_YEAR_PRICE).toBe(27_000);
+    expect(KINDERGARTEN_CURRENT_TERM_PER_GROUP).toBe(12_000);
+    expect(KINDERGARTEN_CURRENT_YEAR_PER_GROUP).toBe(36_000);
 
-    expect(kindergartenTermPrice(3)).toBe(6_000);
-    expect(kindergartenYearlyPrice(3)).toBe(102_000);
+    expect(kindergartenTermPrice(3)).toBe(36_000);
+    expect(kindergartenYearlyPrice(3)).toBe(108_000);
     expect(yearlySavingAmount(kindergartenStandardYearPrice(3), kindergartenYearlyPrice(3))).toBe(
-      6_000,
+      0,
     );
-    expect(savingPercent(CHILD_STANDARD_TERM_PRICE, CHILD_CURRENT_TERM_PRICE)).toBe(44.4);
-    expect(savingPercent(CHILD_STANDARD_YEAR_PRICE, CHILD_CURRENT_YEAR_PRICE)).toBe(18.5);
+    expect(savingPercent(CHILD_STANDARD_TERM_PRICE, CHILD_CURRENT_TERM_PRICE)).toBe(0);
+    expect(savingPercent(CHILD_STANDARD_YEAR_PRICE, CHILD_CURRENT_YEAR_PRICE)).toBe(0);
     expect(
       savingPercent(KINDERGARTEN_STANDARD_TERM_PER_GROUP, KINDERGARTEN_CURRENT_TERM_PER_GROUP),
-    ).toBe(83.3);
-    expect(
-      savingPercent(kindergartenStandardYearPrice(1), KINDERGARTEN_CURRENT_YEAR_PER_GROUP),
-    ).toBe(5.6);
+    ).toBe(0);
   });
 });
 
 describe("the pricing page", () => {
-  it("shows the current term and discounted yearly prices", () => {
+  it("shows the term and year prices, with no discount left on the page", () => {
     render(<PricingContent />);
 
     const child = within(screen.getByRole("article", { name: "Хүүхэд" }));
     expect(child.getByText("Суурь үнэ: сар бүр 3,000₮")).toBeInTheDocument();
-    expect(child.getByText("9,000₮")).toHaveClass("line-through");
-    expect(child.getByText("5,000₮")).toBeInTheDocument();
-    expect(child.getByText("22,000₮")).toBeInTheDocument();
+    expect(child.getByText("9,000₮")).not.toHaveClass("line-through");
+    expect(child.getByText("27,000₮")).toBeInTheDocument();
+    expect(child.queryByText("5,000₮")).toBeNull();
     expect(child.queryByText("44.4% хэмнэлт")).toBeNull();
     expect(child.queryByText("18.5% хэмнэлт")).toBeNull();
     expect(child.queryByText("Улирлаар 44.4%, жилээр 18.5% хэмнэнэ.")).toBeNull();
@@ -61,10 +62,10 @@ describe("the pricing page", () => {
 
     const kindergarten = within(screen.getByRole("article", { name: "Цэцэрлэг" }));
     expect(kindergarten.getByText("1 бүлэг сарын 4,000₮")).toBeInTheDocument();
-    expect(kindergarten.getByText("11 сар хүртэл 2,000₮")).toBeInTheDocument();
-    expect(kindergarten.getByText("4,000₮")).toHaveClass("line-through");
-    expect(kindergarten.getByText("2,000₮")).toBeInTheDocument();
-    expect(kindergarten.getByText("34,000₮")).toBeInTheDocument();
+    expect(kindergarten.queryByText(/11 сар хүртэл/)).toBeNull();
+    expect(kindergarten.getByText("12,000₮")).not.toHaveClass("line-through");
+    expect(kindergarten.getByText("36,000₮")).toBeInTheDocument();
+    expect(document.querySelector(".line-through")).toBeNull();
     expect(kindergarten.queryByText("83.3% хэмнэлт")).toBeNull();
     expect(kindergarten.queryByText("5.6% хэмнэлт")).toBeNull();
     expect(
@@ -87,12 +88,12 @@ describe("the pricing page", () => {
     expect(screen.getByRole("dialog", { name: "Багшийн гэрээ" })).toBeInTheDocument();
   });
 
-  it("switches the billing period between term and discounted year", async () => {
+  it("switches the billing period between term and year", async () => {
     const user = userEvent.setup();
     render(<PricingContent />);
 
     const term = screen.getByRole("radio", { name: "Улирлаар" });
-    const year = screen.getByRole("radio", { name: "Жилээр — хямд" });
+    const year = screen.getByRole("radio", { name: "Жилээр" });
     expect(term).toHaveAttribute("aria-checked", "true");
     await user.click(year);
     expect(year).toHaveAttribute("aria-checked", "true");
@@ -109,9 +110,8 @@ describe("the pricing page", () => {
 
     await user.click(kindergarten.getByRole("button", { name: "Бүлгийн тоо нэмэх" }));
     expect(kindergarten.getByLabelText("Сонгосон бүлгийн тоо")).toHaveTextContent("2");
-    expect(kindergarten.getAllByText("4,000₮").length).toBeGreaterThan(0);
-    expect(kindergarten.getByText("8,000₮")).toHaveClass("line-through");
-    expect(kindergarten.getByText("68,000₮")).toBeInTheDocument();
+    expect(kindergarten.getByText("24,000₮")).toBeInTheDocument();
+    expect(kindergarten.getByText("72,000₮")).toBeInTheDocument();
     expect(kindergarten.queryByText("83.3% хэмнэлт")).toBeNull();
     expect(kindergarten.queryByText("5.6% хэмнэлт")).toBeNull();
 
@@ -125,15 +125,14 @@ describe("the pricing page", () => {
 
     const kindergarten = within(screen.getByRole("article", { name: "Цэцэрлэг" }));
     await user.click(kindergarten.getByRole("button", { name: "Бүлгийн тоо нэмэх" }));
-    await user.click(screen.getByRole("radio", { name: "Жилээр — хямд" }));
+    await user.click(screen.getByRole("radio", { name: "Жилээр" }));
     await user.click(kindergarten.getByRole("button", { name: /Гэрээ байгуулах/ }));
 
     const dialog = within(screen.getByRole("dialog", { name: "Байгууллагын бүртгэл" }));
     expect(dialog.getByRole("spinbutton", { name: /Бүлгийн тоо/ })).toHaveValue(2);
-    expect(dialog.getByRole("combobox", { name: /Төлбөрийн хугацаа/ })).toHaveTextContent(
-      "Жилээр — энэ улирлын хөнгөлөлт шингэсэн",
-    );
-    expect(dialog.getByText("68,000₮")).toBeInTheDocument();
+    expect(dialog.getByRole("combobox", { name: /Төлбөрийн хугацаа/ })).toHaveTextContent("Жилээр");
+    expect(dialog.getByText("72,000₮")).toBeInTheDocument();
+    expect(dialog.queryByText(/хэмнэлт|хөнгөлөлт/)).toBeNull();
   });
 
   it("seats the children on the kindergarten card", () => {
