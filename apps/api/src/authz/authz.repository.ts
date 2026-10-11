@@ -494,6 +494,18 @@ export class AuthzRepository {
    * on purpose: it exists to disambiguate chat rooms, where one kindergarten
    * needs no name. The top bar needs the name precisely when there is one.
    */
+  /** A live group, but only inside the kindergartens given — the tenant half of `GroupAccessService`. */
+  async findGroupInKindergartens(
+    groupId: string,
+    kindergartenIds: string[],
+  ): Promise<{ id: string; kindergartenId: string; name: string } | null> {
+    if (kindergartenIds.length === 0) return null;
+    return this.prisma.group.findFirst({
+      where: { id: groupId, deletedAt: null, kindergartenId: { in: kindergartenIds } },
+      select: { id: true, kindergartenId: true, name: true },
+    });
+  }
+
   async loadOwnKindergartens(actor: Actor): Promise<{ id: string; name: string }[]> {
     const ids = [...new Set(actor.memberships.map((m) => m.kindergartenId))];
     if (ids.length === 0) return [];

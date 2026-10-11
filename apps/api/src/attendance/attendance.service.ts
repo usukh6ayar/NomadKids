@@ -8,6 +8,7 @@ import {
 import { AuditRepository } from "../audit/audit.repository";
 import { AuthzRepository } from "../authz/authz.repository";
 import { ChildAccessService } from "../authz/child-access.service";
+import { GroupAccessService } from "../authz/group-access.service";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import { isGuardianOf } from "../authz/child-access";
 import type { Actor } from "../authz/actor";
@@ -86,6 +87,7 @@ export class AttendanceService {
     private readonly repo: AttendanceRepository,
     private readonly childAccess: ChildAccessService,
     private readonly tenants: TenantAccessService,
+    private readonly groups: GroupAccessService,
     private readonly authz: AuthzRepository,
     private readonly audit: AuditRepository,
     private readonly esis: EsisService,
@@ -748,7 +750,7 @@ export class AttendanceService {
    * actually assigned to teach.
    */
   async groupDaySheet(actor: Actor, groupId: string, dateIso: string) {
-    await this.assertCanReadGroup(actor, groupId);
+    await this.groups.assertCanReadGroup(actor, groupId);
 
     const date = new Date(`${dateIso}T00:00:00.000Z`);
     const { enrollments, records } = await this.repo.groupDaySheet(groupId, date);
@@ -778,7 +780,7 @@ export class AttendanceService {
    * disagrees renders as empty rather than as an error.
    */
   async groupRangeSheet(actor: Actor, groupId: string, fromIso: string, toIso: string) {
-    await this.assertCanReadGroup(actor, groupId);
+    await this.groups.assertCanReadGroup(actor, groupId);
 
     const from = new Date(`${fromIso}T00:00:00.000Z`);
     const to = new Date(`${toIso}T00:00:00.000Z`);
@@ -879,7 +881,7 @@ export class AttendanceService {
 
   /** Builds the exact ESIS attendance input for one group-day. */
   async groupEsisAttendancePreview(actor: Actor, groupId: string, dateIso: string) {
-    await this.assertCanReadGroup(actor, groupId);
+    await this.groups.assertCanReadGroup(actor, groupId);
     const group = await this.repo.findGroup(groupId, this.tenants.memberKindergartenIds(actor));
     if (!group) throw new NotFoundException();
 
@@ -1250,7 +1252,7 @@ export class AttendanceService {
    * against and falls out here rather than being checked for separately.
    */
   async recordGroupAttendance(actor: Actor, groupId: string, dto: RecordGroupAttendanceDto) {
-    await this.assertCanReadGroup(actor, groupId);
+    await this.groups.assertCanReadGroup(actor, groupId);
 
     const date = new Date(`${dto.date}T00:00:00.000Z`);
     if (isFutureDate(date)) {
@@ -1601,7 +1603,7 @@ export class AttendanceService {
    * in with zeroes would read as a day everybody missed.
    */
   async groupMonthSummary(actor: Actor, groupId: string, month: string) {
-    await this.assertCanReadGroup(actor, groupId);
+    await this.groups.assertCanReadGroup(actor, groupId);
 
     const { from, to } = monthRange(month);
     const { byDate, byStatus, byEnrollment, roster } = await this.repo.groupMonthSummary(
@@ -1648,27 +1650,6 @@ export class AttendanceService {
         }))
         .sort((a, b) => a.child.lastName.localeCompare(b.child.lastName, "mn")),
     };
-  }
-
-  /**
-   * Who may read one group's register.
-   *
-   * ★ Named once and shared by the day sheet and the month summary.
-   *
-   * Membership in the kindergarten is not enough: a teacher may only reach a
-   * group they are actually assigned to teach, and an administrator may reach
-   * any group in their own kindergarten. Two copies of that rule is how the
-   * new endpoint would end up answering it more generously than the old one —
-   * CLAUDE.md §1.1, and 404 rather than 403 throughout per §1.7.
-   */
-  private async assertCanReadGroup(actor: Actor, groupId: string): Promise<void> {
-    const group = await this.repo.findGroup(groupId, this.tenants.memberKindergartenIds(actor));
-    if (!group) throw new NotFoundException();
-
-    if (!this.tenants.isAdmin(actor, group.kindergartenId)) {
-      const assigned = await this.authz.loadActiveTeachingGroupIds(actor);
-      if (!assigned.includes(groupId)) throw new NotFoundException();
-    }
   }
 }
 

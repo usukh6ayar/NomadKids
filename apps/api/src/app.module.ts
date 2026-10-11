@@ -8,6 +8,7 @@ import { HealthRecordsModule } from "./health-records/health-records.module";
 import { StaffModule } from "./staff/staff.module";
 import { IncidentsModule } from "./incidents/incidents.module";
 import { FeedbackModule } from "./feedback/feedback.module";
+import { RoutineModule } from "./routine/routine.module";
 import { KitchenModule } from "./kitchen/kitchen.module";
 import { ArtworkModule } from "./artwork/artwork.module";
 import { DocumentsModule } from "./documents/documents.module";
@@ -79,6 +80,7 @@ import { UsersModule } from "./users/users.module";
     MethodUnionsModule,
     IncidentsModule,
     FeedbackModule,
+    RoutineModule,
     ArtworkModule,
     DocumentsModule,
     ConsentModule,
