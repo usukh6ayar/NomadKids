@@ -139,7 +139,8 @@ describe("reconciling a teaching-material payment", () => {
     expect(first?.status).toBe("PAID");
     expect(second?.status).toBe("PAID");
     expect(h.repo.markMaterialPurchasePaid).toHaveBeenCalledTimes(1);
-    expect(h.repo.markMaterialPurchasePaid).toHaveBeenCalledWith("mp-1", expect.any(Date));
+    // The invoice's amount (195000.00 in the fake row), not the material's price now.
+    expect(h.repo.markMaterialPurchasePaid).toHaveBeenCalledWith("mp-1", expect.any(Date), 195000);
     expect(h.markPaid).not.toHaveBeenCalled();
   });
 });

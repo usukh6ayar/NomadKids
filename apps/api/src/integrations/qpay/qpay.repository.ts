@@ -49,11 +49,19 @@ export class QpayRepository {
   /**
    * UNPAID → PAID on the purchase, once — the material twin of
    * `AccessService.markPaid`'s claim. `false` means another call already did.
+   *
+   * ★ `amount` is what QPay charged — the invoice's, whole tugrik. A QR drawn
+   * before the operator changed the price and paid after must record the
+   * price it was paid at, not the new one.
    */
-  async markMaterialPurchasePaid(materialPurchaseId: string, paidAt: Date): Promise<boolean> {
+  async markMaterialPurchasePaid(
+    materialPurchaseId: string,
+    paidAt: Date,
+    amount: number,
+  ): Promise<boolean> {
     const result = await this.prisma.materialPurchase.updateMany({
       where: { id: materialPurchaseId, status: "UNPAID" },
-      data: { status: "PAID", paidAt },
+      data: { status: "PAID", paidAt, amount },
     });
     return result.count > 0;
   }

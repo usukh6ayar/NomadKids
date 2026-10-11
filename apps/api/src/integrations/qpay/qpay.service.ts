@@ -280,7 +280,9 @@ export class QpayService {
     if (row.subscriptionId) {
       await this.access.markPaid(row.subscriptionId, now);
     } else if (row.materialPurchaseId) {
-      await this.repo.markMaterialPurchasePaid(row.materialPurchaseId, now);
+      // Whole tugrik, parsed from the decimal's own string — never a float.
+      const paid = Number.parseInt(row.amount.toFixed(0), 10);
+      await this.repo.markMaterialPurchasePaid(row.materialPurchaseId, now, paid);
     }
 
     await this.audit.append({
