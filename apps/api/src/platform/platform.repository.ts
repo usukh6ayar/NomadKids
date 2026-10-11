@@ -132,6 +132,8 @@ export class PlatformRepository {
     const { skip, take } = toSkipTake(page);
     const where = {
       deletedAt: null,
+      // Solo teachers' workspaces have their own page (`/platform/solo-workspaces`).
+      kind: "CONTRACTED" as const,
       ...(filters.isActive !== undefined ? { isActive: filters.isActive } : {}),
       ...(searchWhere(filters.q, ["name"]) ?? {}),
     };
