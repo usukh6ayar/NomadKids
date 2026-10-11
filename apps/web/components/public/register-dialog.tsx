@@ -1,16 +1,29 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { CheckCircle2, X } from "lucide-react";
+import { CheckCircle2, Minus, Plus, X } from "lucide-react";
 import Image from "next/image";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { applicationReceiptSchema } from "@kinder/contracts";
 import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/field";
+import { Field, Input, Select } from "@/components/ui/field";
 import { ModalOverlay } from "@/components/ui/modal-overlay";
 import { FormError } from "@/components/ui/states";
 import { mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
+import {
+  KINDERGARTEN_CURRENT_TERM_PER_GROUP,
+  KINDERGARTEN_CURRENT_YEAR_PER_GROUP,
+  KINDERGARTEN_MONTHLY_PER_GROUP,
+  kindergartenPrice,
+  kindergartenStandardYearPrice,
+  kindergartenTermPrice,
+  kindergartenYearlyPrice,
+  savingPercent,
+  tugrik,
+  type BillingPeriod,
+} from "@/lib/pricing";
+import { cn } from "@/lib/utils";
 
 /**
  * Байгууллагын бүртгэл in a window over the home page — 2026-10-08, the
@@ -26,17 +39,32 @@ import { errorMessage, fieldErrors } from "@/lib/api/errors";
  *
  *   POST /applications
  *     { kindergartenName, registrationNumber, directorName, phone, email,
- *       groupCount: int ≥ 1 }
+ *       groupCount: int ≥ 1, billingPeriod }
+ *
+ * The client displays the quote, but never sends a trusted price. The backend
+ * must calculate the payable amount again from groupCount and billingPeriod.
  *
  * Today `onboarding.dto.ts` still requires `address` and `childCount`, so the
  * API refuses this with a 400 until it changes. That refusal is caught below
  * and said plainly, rather than shown as a field error on fields that are no
  * longer on the form.
  */
-export function RegisterDialog({ onClose }: { onClose: () => void }) {
+export function RegisterDialog({
+  onClose,
+  initialGroupCount = 1,
+  initialBillingPeriod = "term",
+}: {
+  onClose: () => void;
+  initialGroupCount?: number;
+  initialBillingPeriod?: BillingPeriod;
+}) {
   return (
     <PublicDialogFrame label="Байгууллагын бүртгэл" onClose={onClose}>
-      <RegisterForm onClose={onClose} />
+      <RegisterForm
+        onClose={onClose}
+        initialGroupCount={initialGroupCount}
+        initialBillingPeriod={initialBillingPeriod}
+      />
     </PublicDialogFrame>
   );
 }
@@ -76,15 +104,28 @@ export function PublicDialogFrame({
 export const COMPACT_INPUT = "h-11";
 const COMPACT = COMPACT_INPUT;
 
-function RegisterForm({ onClose }: { onClose: () => void }) {
+function RegisterForm({
+  onClose,
+  initialGroupCount,
+  initialBillingPeriod,
+}: {
+  onClose: () => void;
+  initialGroupCount: number;
+  initialBillingPeriod: BillingPeriod;
+}) {
   const [form, setForm] = useState({
     kindergartenName: "",
     registrationNumber: "",
     directorName: "",
     phone: "",
     email: "",
-    groupCount: "",
+    groupCount: String(Math.max(1, Math.trunc(initialGroupCount))),
   });
+  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>(initialBillingPeriod);
+  const groupCount = Math.max(1, Math.trunc(Number(form.groupCount) || 1));
+  const termPrice = kindergartenTermPrice(groupCount);
+  const yearlyPrice = kindergartenYearlyPrice(groupCount);
+  const quotedAmount = kindergartenPrice(groupCount, billingPeriod);
 
   const submit = useMutation({
     mutationFn: () =>
@@ -96,7 +137,8 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
           directorName: form.directorName.trim(),
           phone: form.phone.trim(),
           email: form.email.trim(),
-          groupCount: Number(form.groupCount),
+          groupCount,
+          billingPeriod,
         },
       }),
   });
@@ -116,6 +158,10 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
   function onSubmit(event: FormEvent) {
     event.preventDefault();
     if (!submit.isPending) submit.mutate();
+  }
+
+  function changeGroupCount(next: number) {
+    setForm((current) => ({ ...current, groupCount: String(Math.max(1, Math.trunc(next))) }));
   }
 
   if (submit.isSuccess) {
@@ -178,7 +224,7 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
         )}
       </Field>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Регистрийн дугаар" error={errors.registrationNumber} required>
           {({ id, describedBy, invalid }) => (
             <Input
@@ -196,19 +242,87 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
 
         <Field label="Бүлгийн тоо" error={errors.groupCount} required>
           {({ id, describedBy, invalid }) => (
-            <Input
-              id={id}
-              aria-describedby={describedBy}
-              invalid={invalid}
-              type="number"
-              inputMode="numeric"
-              min={1}
-              value={form.groupCount}
-              onChange={set("groupCount")}
-              className={COMPACT}
-            />
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                aria-label="Бүлгийн тоо хасах"
+                disabled={groupCount <= 1}
+                onClick={() => changeGroupCount(groupCount - 1)}
+                className="grid size-11 shrink-0 place-items-center rounded-pill bg-[#fff1e3] text-[#c2410c] disabled:opacity-40"
+              >
+                <Minus className="size-4" aria-hidden />
+              </button>
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                type="number"
+                inputMode="numeric"
+                min={1}
+                value={form.groupCount}
+                onChange={set("groupCount")}
+                className={cn(COMPACT, "px-1 text-center font-bold tabular-nums")}
+              />
+              <button
+                type="button"
+                aria-label="Бүлгийн тоо нэмэх"
+                onClick={() => changeGroupCount(groupCount + 1)}
+                className="grid size-11 shrink-0 place-items-center rounded-pill bg-[#fff1e3] text-[#c2410c]"
+              >
+                <Plus className="size-4" aria-hidden />
+              </button>
+            </div>
           )}
         </Field>
+      </div>
+
+      <Field label="Төлбөрийн хугацаа" required>
+        {({ id, describedBy }) => (
+          <Select
+            id={id}
+            aria-describedby={describedBy}
+            value={billingPeriod}
+            onChange={(event) => setBillingPeriod(event.target.value as BillingPeriod)}
+            className={COMPACT}
+          >
+            <option value="term">Улирлаар — 11 сар хүртэл</option>
+            <option value="year">Жилээр — энэ улирлын хөнгөлөлт шингэсэн</option>
+          </Select>
+        )}
+      </Field>
+
+      <div
+        aria-live="polite"
+        className="rounded-row bg-[#fff6ec] px-3 py-2.5 ring-1 ring-[#f5d8b9]"
+      >
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className="text-caption font-semibold text-slate-600">Тооцоолсон төлбөр</p>
+            <p className="text-caption text-slate-500">
+              {billingPeriod === "year"
+                ? groupCount + " бүлэг × " + tugrik(KINDERGARTEN_CURRENT_YEAR_PER_GROUP)
+                : groupCount + " бүлэг × " + tugrik(KINDERGARTEN_CURRENT_TERM_PER_GROUP)}
+            </p>
+            <p className="text-compact text-slate-500">
+              Суурь үнэ: 1 бүлэг сарын {tugrik(KINDERGARTEN_MONTHLY_PER_GROUP)}
+            </p>
+          </div>
+          <p className="text-title font-extrabold tabular-nums text-[#c2410c]">
+            {tugrik(quotedAmount)}
+            <span className="ml-1 text-caption font-medium text-slate-500">
+              / {billingPeriod === "year" ? "жил" : "улирал"}
+            </span>
+          </p>
+        </div>
+        {billingPeriod === "year" ? (
+          <p className="mt-1 text-caption font-semibold text-[#9f174c]">
+            Жилийн хэмнэлт: {savingPercent(kindergartenStandardYearPrice(groupCount), yearlyPrice)}%
+          </p>
+        ) : (
+          <p className="mt-1 text-caption font-semibold text-[#9f174c]">
+            1-р улирал талдаа орсон тул 11 сар хүртэл {tugrik(termPrice)}.
+          </p>
+        )}
       </div>
 
       <Field label="Эрхлэгчийн нэр" error={errors.directorName} required>
@@ -224,7 +338,7 @@ function RegisterForm({ onClose }: { onClose: () => void }) {
         )}
       </Field>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Утас" error={errors.phone} required>
           {({ id, describedBy, invalid }) => (
             <Input

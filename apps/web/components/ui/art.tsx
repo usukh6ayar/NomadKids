@@ -73,6 +73,7 @@ const SOURCE = {
   conversation: "/icons/icon-conversation-3d.png",
   dashboard: "/icons/icon-dashboard-3d.png",
   documents: "/icons/icon-documents-3d.png",
+  songsPoems: "/icons/area-music.png",
   /** Санал хүсэлт — the administration's inbox (an open letter), 2026-10-08. */
   feedbackInbox: "/icons/icon-feedback-inbox-3d.png",
   /** Санал хүсэлт — a family's round «write» button (a sealed letter), 2026-10-08. */

@@ -429,16 +429,25 @@ describe("role-based navigation", () => {
       "Суралцагч",
       "Ирц",
       "Хоолны цэс",
+      "Өдрийн дэглэм",
       "Үнэлгээ",
       "Судалгаа",
       "Тайлан",
       "Мэдээ",
       "Чат",
       "Баримт бичгийн сан",
+      "Дуу, шүлэг",
       "Мэргэшлийн зэрэг",
     ]);
     expect(within(nav).queryByRole("link", { name: "Аюулгүй байдал" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("link", { name: "Удирдлага" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the songs and poems entry teacher-only until administration is built", async () => {
+    renderShell(["ADMIN"]);
+    const nav = await sections();
+
+    expect(within(nav).queryByRole("link", { name: "Дуу, шүлэг" })).not.toBeInTheDocument();
   });
 
   /**
@@ -785,6 +794,8 @@ describe("role-based navigation", () => {
       "Нүүр",
       "Хүүхдийн мэдээлэл",
       "Цэцэрлэгийн мэдээлэл",
+      "Өдрийн дэглэм",
+      "Дуу, шүлэг",
       "Мэдээ",
       "Багштай холбогдох",
       "Үйлчилгээний эрх",
@@ -1023,7 +1034,7 @@ describe("mobile navigation", () => {
 
     const bar = await waitFor(() => screen.getByRole("navigation", { name: "Доод цэс" }));
 
-    for (const label of ["Нүүр", "Мэдээ", "Зураг", "Хоол"]) {
+    for (const label of ["Нүүр", "Мэдээ", "Зураг", "Хоол", "Дэглэм", "Дуу, шүлэг"]) {
       const link = within(bar).getByRole("link", { name: label });
       // A glyph, not one of the menu's illustrations. ★ 2026-10-01, at the
       // client's instruction: icons only — the name is kept for screen
@@ -1036,6 +1047,12 @@ describe("mobile navigation", () => {
     // The menu beside it keeps the illustrated set, untouched.
     const nav = screen.getByTestId("nav-sections");
     expect(within(nav).getByText("Цэцэрлэгийн мэдээлэл")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(bar).getByRole("link", { name: "Дуу, шүлэг" })).toHaveAttribute(
+        "href",
+        `/children/${OWN_CHILD.id}/songs-poems`,
+      ),
+    );
   });
 
   // A pale blue square inside the bar, not a raised disc — client, 2026-09-25.

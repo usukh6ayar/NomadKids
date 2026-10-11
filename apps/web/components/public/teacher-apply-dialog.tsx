@@ -7,7 +7,7 @@ import { useState, type FormEvent } from "react";
 import { z } from "zod";
 import { COMPACT_INPUT, PublicDialogFrame } from "@/components/public/register-dialog";
 import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/field";
+import { Field, Input, Select } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors, isNotFound } from "@/lib/api/errors";
@@ -20,7 +20,8 @@ import { CONTACT } from "@/lib/contact";
  * ★ The contract the backend is asked for — nothing answers it yet:
  *
  *   POST /teacher-applications
- *     { fullName, phone (8 digits), email, kindergartenName? }
+ *     { fullName, phone (8 digits), email, propertyType, location,
+ *       kindergartenName }
  *     → { id, status }
  *
  * While it answers 404 the form says so and gives the phone and e-mail, so a
@@ -29,7 +30,14 @@ import { CONTACT } from "@/lib/contact";
 const receiptSchema = z.object({ id: z.string(), status: z.string() });
 
 export function TeacherApplyDialog({ onClose }: { onClose: () => void }) {
-  const [form, setForm] = useState({ fullName: "", phone: "", email: "", kindergartenName: "" });
+  const [form, setForm] = useState({
+    fullName: "",
+    phone: "",
+    email: "",
+    propertyType: "Төрийн бус",
+    location: "",
+    kindergartenName: "",
+  });
 
   const submit = useMutation({
     mutationFn: () =>
@@ -39,9 +47,9 @@ export function TeacherApplyDialog({ onClose }: { onClose: () => void }) {
           fullName: form.fullName.trim(),
           phone: form.phone.trim(),
           email: form.email.trim(),
-          ...(form.kindergartenName.trim()
-            ? { kindergartenName: form.kindergartenName.trim() }
-            : {}),
+          propertyType: form.propertyType,
+          location: form.location,
+          kindergartenName: form.kindergartenName.trim(),
         },
       }),
   });
@@ -86,7 +94,7 @@ export function TeacherApplyDialog({ onClose }: { onClose: () => void }) {
               <h2 className="text-lead font-extrabold leading-tight text-[#102f5d]">
                 Багшийн гэрээ
               </h2>
-              <p className="text-caption text-slate-500">Дангаар ашиглах багц</p>
+              <p className="text-caption text-slate-500">Дангаар ашиглах үнэгүй багц</p>
             </div>
           </div>
 
@@ -114,7 +122,7 @@ export function TeacherApplyDialog({ onClose }: { onClose: () => void }) {
             )}
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Утас" error={errors.phone} required>
               {({ id, describedBy, invalid }) => (
                 <Input
@@ -145,13 +153,80 @@ export function TeacherApplyDialog({ onClose }: { onClose: () => void }) {
             </Field>
           </div>
 
-          <Field label="Ажилладаг цэцэрлэг" error={errors.kindergartenName}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Өмчийн хэлбэр" error={errors.propertyType} required>
+              {({ id, describedBy, invalid }) => (
+                <Select
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  value={form.propertyType}
+                  onChange={set("propertyType")}
+                  className={COMPACT_INPUT}
+                >
+                  <option value="Төрийн бус">Төрийн бус</option>
+                  <option value="Төрийн">Төрийн</option>
+                </Select>
+              )}
+            </Field>
+
+            <Field label="Аймаг / дүүрэг" error={errors.location} required>
+              {({ id, describedBy, invalid }) => (
+                <Select
+                  id={id}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  value={form.location}
+                  onChange={set("location")}
+                  className={COMPACT_INPUT}
+                >
+                  <option value="">Сонгоно уу</option>
+                  <optgroup label="Улаанбаатар">
+                    <option value="Багануур дүүрэг">Багануур</option>
+                    <option value="Багахангай дүүрэг">Багахангай</option>
+                    <option value="Баянгол дүүрэг">Баянгол</option>
+                    <option value="Баянзүрх дүүрэг">Баянзүрх</option>
+                    <option value="Налайх дүүрэг">Налайх</option>
+                    <option value="Сонгинохайрхан дүүрэг">Сонгинохайрхан</option>
+                    <option value="Сүхбаатар дүүрэг">Сүхбаатар</option>
+                    <option value="Хан-Уул дүүрэг">Хан-Уул</option>
+                    <option value="Чингэлтэй дүүрэг">Чингэлтэй</option>
+                  </optgroup>
+                  <optgroup label="Орон нутаг">
+                    <option value="Архангай аймаг">Архангай</option>
+                    <option value="Баян-Өлгий аймаг">Баян-Өлгий</option>
+                    <option value="Баянхонгор аймаг">Баянхонгор</option>
+                    <option value="Булган аймаг">Булган</option>
+                    <option value="Говь-Алтай аймаг">Говь-Алтай</option>
+                    <option value="Говьсүмбэр аймаг">Говьсүмбэр</option>
+                    <option value="Дархан-Уул аймаг">Дархан-Уул</option>
+                    <option value="Дорноговь аймаг">Дорноговь</option>
+                    <option value="Дорнод аймаг">Дорнод</option>
+                    <option value="Дундговь аймаг">Дундговь</option>
+                    <option value="Завхан аймаг">Завхан</option>
+                    <option value="Орхон аймаг">Орхон</option>
+                    <option value="Өвөрхангай аймаг">Өвөрхангай</option>
+                    <option value="Өмнөговь аймаг">Өмнөговь</option>
+                    <option value="Сүхбаатар аймаг">Сүхбаатар</option>
+                    <option value="Сэлэнгэ аймаг">Сэлэнгэ</option>
+                    <option value="Төв аймаг">Төв</option>
+                    <option value="Увс аймаг">Увс</option>
+                    <option value="Ховд аймаг">Ховд</option>
+                    <option value="Хөвсгөл аймаг">Хөвсгөл</option>
+                    <option value="Хэнтий аймаг">Хэнтий</option>
+                  </optgroup>
+                </Select>
+              )}
+            </Field>
+          </div>
+
+          <Field label="Цэцэрлэгийн нэр" error={errors.kindergartenName} required>
             {({ id, describedBy, invalid }) => (
               <Input
                 id={id}
                 aria-describedby={describedBy}
                 invalid={invalid}
-                placeholder="Заавал биш"
+                placeholder="Жишээ: Нарлаг цэцэрлэг"
                 value={form.kindergartenName}
                 onChange={set("kindergartenName")}
                 className={COMPACT_INPUT}
