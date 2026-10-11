@@ -1,5 +1,8 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
+import { SoloMergeController } from "./solo-merge.controller";
+import { SoloMergeRepository } from "./solo-merge.repository";
+import { SoloMergeService } from "./solo-merge.service";
 import { SoloTeachersController } from "./solo-teachers.controller";
 import { SoloTeachersRepository } from "./solo-teachers.repository";
 import { SoloTeachersService } from "./solo-teachers.service";
@@ -7,7 +10,7 @@ import { SoloTeachersService } from "./solo-teachers.service";
 /** A solo teacher's sign-up. `AuthModule` for `PasswordService` and `TokenService`. */
 @Module({
   imports: [AuthModule],
-  controllers: [SoloTeachersController],
-  providers: [SoloTeachersService, SoloTeachersRepository],
+  controllers: [SoloTeachersController, SoloMergeController],
+  providers: [SoloTeachersService, SoloTeachersRepository, SoloMergeService, SoloMergeRepository],
 })
 export class SoloTeachersModule {}
