@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { paginated } from "@kinder/contracts";
+import { downloadUrl } from "@/lib/api/client";
 
 /**
  * Сургалтын хэрэглэгдэхүүн — ready-made lesson presentations NomadKids makes
@@ -54,6 +55,14 @@ export type MaterialLevel = (typeof MATERIAL_LEVELS)[number];
 
 export const MATERIAL_FILE_TYPES = ["PDF", "PPT"] as const;
 
+/**
+ * A sample page as an `<img src>`. The API answers its own path
+ * (`/materials/:id/previews/0`, which checks the reader and redirects to a
+ * five-minute presigned URL — CLAUDE.md §1.4); the page needs the API origin
+ * in front of it, as `mediaUrl` puts it in front of `/media/:id`.
+ */
+const picture = z.string().transform((path) => (path.startsWith("/") ? downloadUrl(path) : path));
+
 export const materialSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -65,7 +74,7 @@ export const materialSchema = z.object({
   /** Whole tugrik. */
   price: z.number().int().nonnegative(),
   /** A preview picture, served through `/media/:id` like every image. */
-  previewUrl: z.string().nullish(),
+  previewUrl: picture.nullish(),
   /**
    * ★ Sample pages to look at before buying — 2026-10-09, the client: "багш
    * авах зүйлээ ямархуу гэдгийг ерөнхий харж болно". Reduced pictures the
@@ -73,7 +82,7 @@ export const materialSchema = z.object({
    * is a PDF anyone can save. The first is the card's cover when there is no
    * `previewUrl`. Watermarking them is the server's job.
    */
-  previewUrls: z.array(z.string()).default([]),
+  previewUrls: z.array(picture).default([]),
   /** «Агуулга» — what is inside, a line each. */
   contents: z.array(z.string()).default([]),
   pages: z.number().int().nullish(),

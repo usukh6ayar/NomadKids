@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, selectOption, sessionFor, stubApi } from "./support/render";
 import DocumentsPage from "@/app/(app)/documents/page";
+import { downloadUrl } from "@/lib/api/client";
 import { MATERIALS_NOT_READY } from "@/lib/materials";
 
 /*
@@ -190,7 +191,11 @@ describe("the teaching materials tab", () => {
         path: "/materials",
         body: page([
           material("m1", {
-            previewUrls: ["/media/p1", "/media/p2", "/media/p3"],
+            previewUrls: [
+              "/materials/m1/previews/0",
+              "/materials/m1/previews/1",
+              "/materials/m1/previews/2",
+            ],
             contents: ["1–5 хүртэл тоолох", "Их, бага харьцуулах"],
             pages: 12,
           }),
@@ -206,13 +211,14 @@ describe("the teaching materials tab", () => {
 
     expect(within(dialog).getByRole("img", { name: /жишээ хуудас 1$/ })).toHaveAttribute(
       "src",
-      "/media/p1",
+      // The API's own path, behind the API origin — never a bucket URL.
+      downloadUrl("/materials/m1/previews/0"),
     );
     expect(within(dialog).getByText("1 / 3")).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "Дараагийн хуудас" }));
     expect(within(dialog).getByRole("img", { name: /жишээ хуудас 2$/ })).toHaveAttribute(
       "src",
-      "/media/p2",
+      downloadUrl("/materials/m1/previews/1"),
     );
     expect(within(dialog).getByText("Их, бага харьцуулах")).toBeInTheDocument();
     expect(within(dialog).getByText("12,000₮")).toBeInTheDocument();

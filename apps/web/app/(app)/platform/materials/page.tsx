@@ -247,11 +247,13 @@ function MaterialDialog({
   /** Up to six sample pages; the first is the shop card's cover. */
   const [previews, setPreviews] = useState<File[]>([]);
   /**
-   * ★ Phase 2: let the server draw the sample pages from the file itself —
-   * on for a new upload, since it needs nothing from the operator.
+   * ★ Phase 2: let the server draw the sample pages from the file itself.
+   * Off by default until the server can (2026-10-11): it needs poppler and
+   * LibreOffice in the worker image, and with it on the operator's own
+   * pictures are not sent — a new material would have no sample pages.
    */
   const [autoPreview, setAutoPreview] = useState(
-    material ? material.previewStatus !== "MANUAL" : true,
+    material ? material.previewStatus !== "MANUAL" : false,
   );
   const [contents, setContents] = useState((material?.contents ?? []).join("\n"));
   const [problem, setProblem] = useState("");
