@@ -4,7 +4,7 @@ import type { Prisma } from "../../generated/prisma/client";
 
 /**
  * Persistence for `QpayInvoice` — one payment attempt against one
- * `AccessSubscription`.
+ * `AccessSubscription` or, since 2026-10-11, one `MaterialPurchase`.
  *
  * CLAUDE.md §2.2: the only file in this directory that may import
  * `PrismaClient`. `QpayService` calls this; it never touches Prisma itself.
@@ -36,6 +36,26 @@ export class QpayRepository {
       where: { subscriptionId },
       orderBy: { createdAt: "desc" },
     });
+  }
+
+  /** The latest attempt to pay for one teacher's purchase of one material. */
+  async findLatestForMaterialPurchase(materialPurchaseId: string) {
+    return this.prisma.qpayInvoice.findFirst({
+      where: { materialPurchaseId },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  /**
+   * UNPAID → PAID on the purchase, once — the material twin of
+   * `AccessService.markPaid`'s claim. `false` means another call already did.
+   */
+  async markMaterialPurchasePaid(materialPurchaseId: string, paidAt: Date): Promise<boolean> {
+    const result = await this.prisma.materialPurchase.updateMany({
+      where: { id: materialPurchaseId, status: "UNPAID" },
+      data: { status: "PAID", paidAt },
+    });
+    return result.count > 0;
   }
 
   /** `where: status: "PENDING"` guards this the same way `claimForPayment` guards itself. */

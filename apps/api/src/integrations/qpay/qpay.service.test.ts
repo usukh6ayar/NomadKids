@@ -63,6 +63,8 @@ function harness(rowOverrides: Partial<Record<string, unknown>> = {}) {
      * Postgres serialising two concurrent `UPDATE … WHERE status =
      * 'PENDING'` statements against the same row.
      */
+    findLatestForMaterialPurchase: vi.fn(async () => row),
+    markMaterialPurchasePaid: vi.fn(async () => true),
     claimForPayment: vi.fn(async (_id: string, paidAt: Date) => {
       if (row.status !== "PENDING") return false;
       claims += 1;
@@ -121,6 +123,26 @@ function harness(rowOverrides: Partial<Record<string, unknown>> = {}) {
 }
 
 const actor = { userId: "guardian-1" } as never;
+
+describe("reconciling a teaching-material payment", () => {
+  /**
+   * ★ Since 2026-10-11 an attempt pays for a subscription **or** a material
+   * purchase. A material's PAID must credit the purchase and never open a
+   * family's portal access.
+   */
+  it("marks the purchase paid, once, and leaves the access fee alone", async () => {
+    const h = harness({ subscriptionId: null, kindergartenId: null, materialPurchaseId: "mp-1" });
+
+    const first = await h.service.statusForMaterialPurchase("mp-1");
+    const second = await h.service.statusForMaterialPurchase("mp-1");
+
+    expect(first?.status).toBe("PAID");
+    expect(second?.status).toBe("PAID");
+    expect(h.repo.markMaterialPurchasePaid).toHaveBeenCalledTimes(1);
+    expect(h.repo.markMaterialPurchasePaid).toHaveBeenCalledWith("mp-1", expect.any(Date));
+    expect(h.markPaid).not.toHaveBeenCalled();
+  });
+});
 
 describe("reconciling a payment", () => {
   it("opens access exactly once when QPay confirms PAID", async () => {

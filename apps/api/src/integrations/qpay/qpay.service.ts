@@ -21,8 +21,9 @@ const QPAY_INVOICE_TTL_MS = 30 * 60 * 1000;
 const GENERIC_FAILURE_MESSAGE = "QPay-тай холбогдоход алдаа гарлаа. Дараа дахин оролдоно уу.";
 
 /**
- * Paying the portal access fee through QPay — the only thing this gateway is
- * used for (client, 2026-09-01).
+ * Paying through QPay: the portal access fee (client, 2026-09-01) and, since
+ * 2026-10-11, a teaching material (client, 2026-10-09 — CLAUDE.md §7). Nothing
+ * a kindergarten bills a family ever goes through here.
  *
  * ★ Three entry points, one shared `reconcile()`.
  *
@@ -129,6 +130,76 @@ export class QpayService {
     return row;
   }
 
+  /**
+   * Draws a QR for one teacher's purchase of one material, or hands back one
+   * still in flight.
+   *
+   * ★ No authorization here: `MaterialsService` has already decided the
+   * actor may buy this (a teacher, a material on sale) and owns `purchase`.
+   * The amount is the purchase's, re-read from the material by the caller.
+   */
+  async createForMaterialPurchase(
+    actor: Actor,
+    purchase: { id: string; amount: number; title: string },
+  ) {
+    if (!this.isConfigured) {
+      throw new BadRequestException("QPay холболт тохируулагдаагүй байна.");
+    }
+
+    const amount = `${purchase.amount}.00`;
+    const now = new Date();
+    const latest = await this.repo.findLatestForMaterialPurchase(purchase.id);
+    if (
+      latest &&
+      latest.status === "PENDING" &&
+      latest.expiresAt &&
+      latest.expiresAt > now &&
+      latest.amount.toFixed(2) === amount
+    ) {
+      return latest;
+    }
+
+    const senderInvoiceNo = randomUUID();
+    let created;
+    try {
+      created = await this.client.createInvoice({
+        senderInvoiceNo,
+        amount,
+        description: `NomadKids — ${purchase.title}`.slice(0, 120),
+      });
+    } catch (cause) {
+      throw this.toHttpError(cause, "createInvoice");
+    }
+
+    const row = await this.repo.create({
+      kindergartenId: null,
+      materialPurchaseId: purchase.id,
+      amount,
+      qpayInvoiceId: created.invoice_id,
+      senderInvoiceNo,
+      qrText: created.qr_text ?? null,
+      qrImage: created.qr_image ?? null,
+      createdById: actor.userId,
+      expiresAt: new Date(now.getTime() + QPAY_INVOICE_TTL_MS),
+    });
+
+    await this.audit.append({
+      action: "CREATE",
+      actorUserId: actor.userId,
+      objectType: "QpayInvoice",
+      objectId: row.id,
+      metadata: { materialPurchaseId: purchase.id, amount },
+    });
+
+    return row;
+  }
+
+  /** The latest attempt for a purchase, reconciled — `null` when none was drawn. */
+  async statusForMaterialPurchase(purchaseId: string) {
+    const row = await this.repo.findLatestForMaterialPurchase(purchaseId);
+    return row ? this.reconcile(row) : null;
+  }
+
   async status(actor: Actor, childId: string) {
     const subscription = await this.access.ensureForChild(actor, childId);
 
@@ -201,8 +272,16 @@ export class QpayService {
     // ★ No `Payment` row. An access fee is the platform operator's revenue,
     // not a kindergarten's — putting it in the ledger §14 audits would mix the
     // operator's income into a kindergarten's books, where an accountant
-    // reconciling against their own bank statement would never find it.
-    await this.access.markPaid(row.subscriptionId, now);
+    // reconciling against their own bank statement would never find it. A
+    // material sale is the platform's too, and follows the same rule.
+    //
+    // ★★ Exactly one target per row (a CHECK in the database), so exactly
+    // one branch runs.
+    if (row.subscriptionId) {
+      await this.access.markPaid(row.subscriptionId, now);
+    } else if (row.materialPurchaseId) {
+      await this.repo.markMaterialPurchasePaid(row.materialPurchaseId, now);
+    }
 
     await this.audit.append({
       action: "UPDATE",
@@ -212,7 +291,11 @@ export class QpayService {
       objectType: "QpayInvoice",
       objectId: row.id,
       metadata: {
-        after: { subscriptionId: row.subscriptionId, amount: row.amount.toFixed(2) },
+        after: {
+          subscriptionId: row.subscriptionId,
+          materialPurchaseId: row.materialPurchaseId,
+          amount: row.amount.toFixed(2),
+        },
         qpayInvoiceId: row.qpayInvoiceId,
         qpayPaymentId: paidRow.payment_id,
       },
