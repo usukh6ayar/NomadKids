@@ -106,6 +106,19 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   useNavigationHistory();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
   /*
+    ★ A solo teacher's own workspace (2026-10-11): they hold ADMIN there only so
+    every route works without a director, and their menu is the teacher's —
+    ESIS, finance, kitchen and staff have no meaning without a kindergarten.
+    Their director rights stay; only the menu changes. Someone who administers
+    a contracted kindergarten as well keeps the director's menu.
+  */
+  const soloIds = new Set(session?.soloKindergartenIds ?? []);
+  const adminKindergartens = (session?.memberships ?? [])
+    .filter((m) => m.role === "ADMIN")
+    .map((m) => m.kindergartenId);
+  const onlySoloAdmin =
+    adminKindergartens.length > 0 && adminKindergartens.every((id) => soloIds.has(id));
+  /*
     ★ Neither of these is `isStaff`, and the shell has to say so before the
     parent branch does.
 
@@ -195,7 +208,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     <SelectedChildProvider myChildIds={myChildren.data?.map((child) => child.id)}>
       <AuthenticatedShell
         isStaff={isStaff}
-        isAdmin={hasRole("ADMIN")}
+        isAdmin={hasRole("ADMIN") && !onlySoloAdmin}
         groupId={groupId}
         myChildren={myChildren.data}
       >

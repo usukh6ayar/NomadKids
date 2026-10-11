@@ -1,17 +1,16 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { CheckCircle2 } from "lucide-react";
+import { teacherSignupResultSchema } from "@kinder/contracts";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { z } from "zod";
 import { COMPACT_INPUT, PublicDialogFrame } from "@/components/public/register-dialog";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { mutate } from "@/lib/api/browser";
-import { errorMessage, fieldErrors, isNotFound } from "@/lib/api/errors";
-import { CONTACT } from "@/lib/contact";
+import { errorMessage, fieldErrors } from "@/lib/api/errors";
 
 /**
  * «Багш» → «Гэрээ байгуулах» — a window like the organisation's, 2026-10-08,
@@ -27,7 +26,6 @@ import { CONTACT } from "@/lib/contact";
  * While it answers 404 the form says so and gives the phone and e-mail, so a
  * teacher who wants the plan still has a way to ask for it.
  */
-const receiptSchema = z.object({ id: z.string(), status: z.string() });
 
 export function TeacherApplyDialog({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState({
@@ -39,9 +37,15 @@ export function TeacherApplyDialog({ onClose }: { onClose: () => void }) {
     kindergartenName: "",
   });
 
+  const router = useRouter();
+  /*
+    ★ The workspace exists the moment this answers (the user, 2026-10-11: no
+    approval) — the answer is a one-time invitation token, and the password is
+    set on `/invitation/[token]`, exactly as staff self-registration does.
+  */
   const submit = useMutation({
     mutationFn: () =>
-      mutate("/teacher-applications", receiptSchema, {
+      mutate("/teacher-applications", teacherSignupResultSchema, {
         method: "POST",
         body: {
           fullName: form.fullName.trim(),
@@ -52,10 +56,10 @@ export function TeacherApplyDialog({ onClose }: { onClose: () => void }) {
           kindergartenName: form.kindergartenName.trim(),
         },
       }),
+    onSuccess: (result) => router.replace(`/invitation/${result.invitationToken}`),
   });
 
   const errors = fieldErrors(submit.error);
-  const notReady = submit.isError && isNotFound(submit.error);
 
   function set(key: keyof typeof form) {
     return (event: { target: { value: string } }) =>
@@ -70,16 +74,9 @@ export function TeacherApplyDialog({ onClose }: { onClose: () => void }) {
   return (
     <PublicDialogFrame label="Багшийн гэрээ" onClose={onClose}>
       {submit.isSuccess ? (
-        <div className="flex flex-col items-center gap-2 py-4 text-center">
-          <CheckCircle2 className="size-10 text-mint-ink" aria-hidden />
-          <h2 className="text-lead font-extrabold text-[#102f5d]">Хүсэлт хүлээн авлаа</h2>
-          <p className="text-body text-slate-600">
-            <strong>{form.email}</strong> хаягаар удахгүй холбогдоно.
-          </p>
-          <Button size="sm" variant="secondary" className="mt-2" onClick={onClose}>
-            Хаах
-          </Button>
-        </div>
+        <p className="py-6 text-center text-body text-slate-600" aria-live="polite">
+          Нууц үг тохируулах хуудас руу шилжиж байна…
+        </p>
       ) : (
         <form className="flex flex-col gap-3" noValidate onSubmit={onSubmit}>
           <div className="flex items-center gap-3 pr-8">
@@ -100,11 +97,7 @@ export function TeacherApplyDialog({ onClose }: { onClose: () => void }) {
 
           <FormError
             message={
-              notReady
-                ? `Багшийн бүртгэл удахгүй нээгдэнэ. Одоохондоо ${CONTACT.phone} утсаар эсвэл ${CONTACT.email} хаягаар холбогдоно уу.`
-                : submit.isError && Object.keys(errors).length === 0
-                  ? errorMessage(submit.error)
-                  : null
+              submit.isError && Object.keys(errors).length === 0 ? errorMessage(submit.error) : null
             }
           />
 

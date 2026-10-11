@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
 import { PhoneVerificationModule } from "../phone-verification/phone-verification.module";
+import { SoloRulesModule } from "../solo-teachers/solo-rules.module";
 import { UsersController } from "./users.controller";
 import { UsersRepository } from "./users.repository";
 import { UsersService } from "./users.service";
@@ -9,7 +10,8 @@ import { UsersService } from "./users.service";
   // AuthModule supplies PasswordService, TokenService and AuthRepository —
   // creating a user issues an invitation token, which is auth machinery.
   // PhoneVerificationModule: changing one's own phone consumes a verify.mn proof.
-  imports: [AuthModule, PhoneVerificationModule],
+  // SoloRulesModule: a solo teacher's workspace takes parents only.
+  imports: [AuthModule, PhoneVerificationModule, SoloRulesModule],
   controllers: [UsersController],
   providers: [UsersService, UsersRepository],
   exports: [UsersService, UsersRepository],

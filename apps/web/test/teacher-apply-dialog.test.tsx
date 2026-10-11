@@ -1,13 +1,13 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { renderWithProviders, stubApi } from "./support/render";
+import { ROUTER, renderWithProviders, stubApi } from "./support/render";
 import { TeacherApplyDialog } from "@/components/public/teacher-apply-dialog";
 
 /*
- * ★ «Багшийн гэрээ» — 2026-10-08, the client. `POST /teacher-applications`
- * is the contract the backend is asked for; until it exists the window says
- * so and gives the phone and e-mail.
+ * ★ «Багшийн гэрээ» — 2026-10-08, the client. Since 2026-10-11 the sign-up
+ * creates the teacher's own workspace at once and answers an invitation
+ * token; the window goes to `/invitation/[token]` to set the password.
  */
 afterEach(() => vi.unstubAllGlobals());
 
@@ -22,14 +22,15 @@ async function fill(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("the teacher's contract window", () => {
-  it("sends the teacher's ownership, location and kindergarten", async () => {
+  it("sends the teacher's ownership, location and kindergarten, then sets the password", async () => {
     const user = userEvent.setup();
+    ROUTER.replace.mockClear();
     const api = stubApi([
       {
         path: "/teacher-applications",
         method: "POST",
         status: 201,
-        body: { id: "t1", status: "PENDING" },
+        body: { invitationToken: "tok-123" },
       },
     ]);
     renderWithProviders(<TeacherApplyDialog onClose={() => {}} />);
@@ -45,7 +46,7 @@ describe("the teacher's contract window", () => {
         kindergartenName: "Нарлаг",
       }),
     );
-    expect(await screen.findByText("Хүсэлт хүлээн авлаа")).toBeInTheDocument();
+    await waitFor(() => expect(ROUTER.replace).toHaveBeenCalledWith("/invitation/tok-123"));
   });
 
   it("defaults the ownership to private and provides the location picker", () => {
@@ -56,14 +57,24 @@ describe("the teacher's contract window", () => {
     expect(screen.getByLabelText(/Цэцэрлэгийн нэр/)).toBeInTheDocument();
   });
 
-  it("gives the phone and e-mail while the endpoint is missing", async () => {
+  it("says plainly when the phone is already in use", async () => {
     const user = userEvent.setup();
-    stubApi([]);
+    stubApi([
+      {
+        path: "/teacher-applications",
+        method: "POST",
+        status: 409,
+        body: {
+          type: "about:blank",
+          title: "Conflict",
+          status: 409,
+          detail: "Энэ утасны дугаар аль хэдийн бүртгэлтэй байна",
+        },
+      },
+    ]);
     renderWithProviders(<TeacherApplyDialog onClose={() => {}} />);
     await fill(user);
 
-    expect(
-      await screen.findByText(/Багшийн бүртгэл удахгүй нээгдэнэ\. Одоохондоо 7213 4888/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/аль хэдийн бүртгэ/)).toBeInTheDocument();
   });
 });

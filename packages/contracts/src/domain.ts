@@ -237,6 +237,12 @@ export const sessionSchema = z.object({
   memberships: z.array(membershipSchema),
   /** The names of the kindergartens in `memberships` — the desktop top bar. */
   kindergartens: z.array(namedRefSchema).default([]),
+  /**
+   * The actor's kindergartens that are a solo teacher's own workspace (kind
+   * SOLO_TEACHER) — where the menu hides what has no meaning without a
+   * kindergarten: ESIS, finance, kitchen, staff.
+   */
+  soloKindergartenIds: z.array(z.string()).default([]),
   csrfToken: z.string().nullish(),
 });
 export type Session = z.infer<typeof sessionSchema>;

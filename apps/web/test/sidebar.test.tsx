@@ -502,6 +502,35 @@ describe("role-based navigation", () => {
    * (`TenantAccessService.assertAdmin`). One `queryByRole` per destination,
    * because a single spot-check would have passed while six others leaked.
    */
+  /*
+   * ★ A solo teacher's own workspace (2026-10-11): ADMIN there only so every
+   * route works without a director — the menu is the teacher's.
+   */
+  it("gives a solo teacher the teacher's menu, not the director's", async () => {
+    setPathname("/dashboard");
+    const session = sessionFor(["ADMIN", "TEACHER"]);
+    stubApi([
+      {
+        path: "/auth/me",
+        body: { ...session, soloKindergartenIds: ["33333333-3333-4333-8333-333333333333"] },
+      },
+      { path: "/groups", body: GROUPS },
+      { path: "/children/mine", body: [] },
+      { path: "/notifications/unread-count", body: { count: 0 } },
+    ]);
+    renderWithProviders(
+      <AppLayout>
+        <p>содержимое</p>
+      </AppLayout>,
+    );
+    const nav = await sidebar();
+
+    for (const label of ["Төлбөрийн тайлан", "Байгууллага", "Багш, ажилтан"]) {
+      expect(within(nav).queryByRole("link", { name: label }), label).not.toBeInTheDocument();
+    }
+    expect(within(nav).getByRole("link", { name: "Дуу, шүлэг" })).toBeInTheDocument();
+  });
+
   it("hides every administration destination from a teacher", async () => {
     renderShell(["TEACHER"]);
     const nav = await sidebar();

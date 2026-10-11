@@ -506,12 +506,14 @@ export class AuthzRepository {
     });
   }
 
-  async loadOwnKindergartens(actor: Actor): Promise<{ id: string; name: string }[]> {
+  async loadOwnKindergartens(
+    actor: Actor,
+  ): Promise<{ id: string; name: string; kind: "CONTRACTED" | "SOLO_TEACHER" }[]> {
     const ids = [...new Set(actor.memberships.map((m) => m.kindergartenId))];
     if (ids.length === 0) return [];
     return this.prisma.kindergarten.findMany({
       where: { id: { in: ids }, deletedAt: null },
-      select: { id: true, name: true },
+      select: { id: true, name: true, kind: true },
       orderBy: { name: "asc" },
     });
   }
