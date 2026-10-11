@@ -50,6 +50,16 @@ export const soloMergeInputSchema = z
     targetKindergartenId: z.string().uuid(),
     /** The group's name in the target, when its own is taken there. */
     groupName: z.string().trim().min(1).max(100).optional(),
+    /**
+     * D3b — merge into this existing group of the target's current year rather
+     * than moving the teacher's group in beside it.
+     */
+    targetGroupId: z.string().uuid().optional(),
+    /**
+     * D3b — solo children the operator says are *not* the matched target
+     * child: they move as children of their own instead of being attached.
+     */
+    keepSeparate: z.array(z.string().uuid()).max(500).optional(),
   })
   .strict();
 export type SoloMergeInput = z.infer<typeof soloMergeInputSchema>;
@@ -60,6 +70,21 @@ export const soloMergeResultSchema = z.object({
   membershipsJoined: z.number().int(),
   adminsDropped: z.number().int(),
   groupsRenamed: z.array(z.object({ from: z.string(), to: z.string() })),
+  /**
+   * D3b — solo children attached to the target's own record of the same child
+   * (one child, one record; the user 2026-10-11).
+   */
+  childrenAttached: z.array(
+    z.object({ soloChildId: z.string(), targetChildId: z.string(), name: z.string() }),
+  ),
+  /**
+   * Rows that could not join the target's record without breaking a rule
+   * (a second profile, a second active enrollment…) — kept on the archived
+   * solo record, never deleted. Per `table.column`.
+   */
+  kept: z.record(z.string(), z.number()),
+  /** Whether the target group was an existing one (D3b) rather than the moved group. */
+  intoExistingGroup: z.boolean(),
 });
 export type SoloMergeResult = z.infer<typeof soloMergeResultSchema>;
 
@@ -71,6 +96,12 @@ export const soloMergeRefusalSchema = z.discriminatedUnion("kind", [
       z.object({ soloChildId: z.string(), targetChildId: z.string(), name: z.string() }),
     ),
   }),
+  /** A solo child matching more than one target child — the operator decides first. */
+  z.object({
+    kind: z.literal("ambiguous"),
+    children: z.array(z.object({ soloChildId: z.string(), name: z.string() })),
+  }),
+  z.object({ kind: z.literal("badGroup") }),
   z.object({ kind: z.literal("conflict"), constraint: z.string() }),
   z.object({ kind: z.literal("noSchoolYear") }),
   z.object({ kind: z.literal("notMergeable") }),
@@ -78,8 +109,19 @@ export const soloMergeRefusalSchema = z.discriminatedUnion("kind", [
 export type SoloMergeRefusal = z.infer<typeof soloMergeRefusalSchema>;
 
 /** What the preview answers: the counts, or why the merge would stop. */
+/** The target's groups of its current year — what «into an existing group» picks from (D3b). */
+const targetGroupsSchema = z.array(z.object({ id: z.string(), name: z.string() }));
+
 export const soloMergePreviewSchema = z.union([
-  z.object({ ok: z.literal(true), result: soloMergeResultSchema }),
-  z.object({ ok: z.literal(false), refusal: soloMergeRefusalSchema }),
+  z.object({
+    ok: z.literal(true),
+    result: soloMergeResultSchema,
+    targetGroups: targetGroupsSchema,
+  }),
+  z.object({
+    ok: z.literal(false),
+    refusal: soloMergeRefusalSchema,
+    targetGroups: targetGroupsSchema,
+  }),
 ]);
 export type SoloMergePreview = z.infer<typeof soloMergePreviewSchema>;

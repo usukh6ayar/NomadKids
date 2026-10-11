@@ -47,14 +47,19 @@ export class SoloMergeService {
   /** The merge run and rolled back: its exact counts, or why it would stop. */
   async preview(actor: Actor, soloId: string, input: SoloMergeInput): Promise<SoloMergePreview> {
     this.platform.assertSuperAdmin(actor);
+    const targetGroups = await this.repo.targetGroups(input.targetKindergartenId);
     try {
       const result = await this.repo.merge(soloId, input.targetKindergartenId, {
         preview: true,
         groupNameFor: groupName(input),
+        targetGroupId: input.targetGroupId,
+        keepSeparate: input.keepSeparate,
       });
-      return { ok: true, result };
+      return { ok: true, result, targetGroups };
     } catch (error) {
-      if (error instanceof MergeRefused) return { ok: false, refusal: error.refusal };
+      if (error instanceof MergeRefused) {
+        return { ok: false, refusal: error.refusal, targetGroups };
+      }
       throw error;
     }
   }
@@ -66,6 +71,8 @@ export class SoloMergeService {
       result = await this.repo.merge(soloId, input.targetKindergartenId, {
         preview: false,
         groupNameFor: groupName(input),
+        targetGroupId: input.targetGroupId,
+        keepSeparate: input.keepSeparate,
       });
     } catch (error) {
       if (error instanceof MergeRefused) {
@@ -102,6 +109,10 @@ function refusalSentence(refusal: SoloMergeRefusal): string {
       return `Цэцэрлэгт ижил хүүхэд аль хэдийн бүртгэлтэй байна: ${refusal.children.map((c) => c.name).join(", ")}.`;
     case "conflict":
       return `Нэгтгэхэд давхардал гарлаа (${refusal.constraint}). Юу ч өөрчлөгдөөгүй.`;
+    case "ambiguous":
+      return `Нэг хүүхэд цэцэрлэгийн хэд хэдэн хүүхэдтэй таарч байна: ${refusal.children.map((c) => c.name).join(", ")}. Тусад нь үлдээх эсэхийг сонгоно уу.`;
+    case "badGroup":
+      return "Сонгосон бүлэг тухайн цэцэрлэгийн одоогийн хичээлийн жилд алга.";
     case "noSchoolYear":
       return "Цэцэрлэгт идэвхтэй хичээлийн жил алга.";
     default:

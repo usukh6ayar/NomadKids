@@ -50,7 +50,13 @@ const RESULT = {
   membershipsJoined: 0,
   adminsDropped: 1,
   groupsRenamed: [{ from: "Миний бүлэг", to: "Миний бүлэг (бие даасан)" }],
+  childrenAttached: [],
+  kept: {},
+  intoExistingGroup: false,
 };
+
+const GROUP_ID = "99999999-9999-4999-8999-999999999999";
+const TARGET_GROUPS = [{ id: GROUP_ID, name: "Нарлаг бүлэг" }];
 
 function stub(previewBody: unknown) {
   return stubApi([
@@ -69,7 +75,7 @@ function stub(previewBody: unknown) {
 describe("the operator's solo workspaces", () => {
   it("previews the merge, then merges into the chosen kindergarten", async () => {
     const user = userEvent.setup();
-    const api = stub({ ok: true, result: RESULT });
+    const api = stub({ ok: true, result: RESULT, targetGroups: TARGET_GROUPS });
     renderWithProviders(<SoloWorkspacesPage />);
 
     expect(await screen.findByText(/Ажилладаг: Нарлаг цэцэрлэг · 4 хүүхэд/)).toBeInTheDocument();
@@ -93,14 +99,12 @@ describe("the operator's solo workspaces", () => {
     );
   });
 
-  it("says which children are already on the kindergarten's roll, and keeps «Нэгтгэх» off", async () => {
+  it("names a child matching two of the kindergarten's children, and keeps «Нэгтгэх» off", async () => {
     const user = userEvent.setup();
     stub({
       ok: false,
-      refusal: {
-        kind: "duplicates",
-        children: [{ soloChildId: SOLO_ID, targetChildId: TARGET_ID, name: "Дорж Тэмүүлэн" }],
-      },
+      refusal: { kind: "ambiguous", children: [{ soloChildId: SOLO_ID, name: "Дорж Тэмүүлэн" }] },
+      targetGroups: TARGET_GROUPS,
     });
     renderWithProviders(<SoloWorkspacesPage />);
 
@@ -111,5 +115,42 @@ describe("the operator's solo workspaces", () => {
 
     expect(await within(dialog).findByText(/Дорж Тэмүүлэн/)).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Нэгтгэх" })).toBeDisabled();
+  });
+
+  it("merges into a chosen group, leaving a matched child separate, only after a fresh preview", async () => {
+    const user = userEvent.setup();
+    const api = stub({
+      ok: true,
+      result: {
+        ...RESULT,
+        childrenAttached: [
+          { soloChildId: SOLO_ID, targetChildId: TARGET_ID, name: "Дорж Тэмүүлэн" },
+        ],
+      },
+      targetGroups: TARGET_GROUPS,
+    });
+    renderWithProviders(<SoloWorkspacesPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Цэцэрлэгт нэгтгэх" }));
+    const dialog = await screen.findByRole("dialog");
+    await selectOption(user, /Цэцэрлэг/, "Нарлаг цэцэрлэг");
+    await user.click(within(dialog).getByRole("button", { name: "Урьдчилан харах" }));
+    expect(await within(dialog).findByText(/бичлэгт нэгтгэгдэх хүүхэд: 1/)).toBeInTheDocument();
+
+    await selectOption(user, /^Бүлэг/, "Нарлаг бүлэг бүлэгт нэгтгэх");
+    await user.click(within(dialog).getByLabelText(/Дорж Тэмүүлэн — тусад нь үлдээх/));
+    const merge = within(dialog).getByRole("button", { name: "Нэгтгэх" });
+    expect(merge).toBeDisabled();
+
+    await user.click(within(dialog).getByRole("button", { name: "Урьдчилан харах" }));
+    await waitFor(() => expect(merge).toBeEnabled());
+    await user.click(merge);
+    await waitFor(() =>
+      expect(api.calls.find((c) => c.url.endsWith("/merge"))?.body).toEqual({
+        targetKindergartenId: TARGET_ID,
+        targetGroupId: GROUP_ID,
+        keepSeparate: [SOLO_ID],
+      }),
+    );
   });
 });
