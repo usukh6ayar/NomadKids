@@ -320,7 +320,7 @@ chat (2026-08-29) · the ESIS integration.
 | §3 meal cost                        | **partial** — ESIS api 128 food discounts read live, stored nowhere; three states incl. `UNASSESSED`; per-child split not built |
 | §4–§6 state funding, rules, monthly | done — the rule table ships **empty**; no tariff is hard-coded                                                                  |
 | §7 invoices                         | done, incl. `generate-month`                                                                                                    |
-| §8 online payment                   | QPay charges **only the portal access fee** — see below                                                                         |
+| §8 online payment                   | QPay charges the portal access fee and teaching materials — **never** tuition or meals; see below                               |
 | §9 dashboard, §10 child finance tab | done — a guardian's payload omits `funding` entirely                                                                            |
 | §11 allergy cross-check             | done                                                                                                                            |
 | §13 accountant role                 | done, `Role.ACCOUNTANT`                                                                                                         |
@@ -337,6 +337,12 @@ settings. **No `Payment` row is written for a fee** — it is the platform
 operator's revenue, not the kindergarten's. Tuition and meal invoices are
 settled in cash or by transfer, recorded by the accountant, never through
 the gateway.
+
+★ **The line moved once** (client, 2026-10-09, confirmed by the user
+2026-10-11): a teacher may also buy a **teaching material** from the platform's
+library through QPay (`/materials/:id/qpay`, #195). Like the fee, it is the
+platform operator's revenue — no `Payment` row. Nothing a kindergarten bills
+a family goes through QPay.
 
 ★ **Chat** has **no AI in it** — the client said so three times. It is a group
 message board: membership derived per request, 404 for a room you are not in,
