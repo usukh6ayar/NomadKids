@@ -33,11 +33,9 @@ function GroupRoutine() {
     queryFn: () => get(`/groups/${groupId}`, groupSchema),
   });
   const name = group.data?.name ?? "";
-  const { routine, demo, isLoading, error, actions } = useRoutine(
-    `/groups/${groupId}/routine`,
-    { id: groupId, name },
-    { group: groupId },
-  );
+  const { routine, isLoading, error, actions } = useRoutine(`/groups/${groupId}/routine`, {
+    group: groupId,
+  });
   const mode = hasRole("TEACHER") ? "teacher" : "admin";
 
   return (
@@ -50,12 +48,7 @@ function GroupRoutine() {
       {isLoading ? <LoadingState rows={6} /> : null}
       {error ? <ErrorState description={errorMessage(error)} /> : null}
       {routine ? (
-        <RoutineView
-          routine={routine}
-          mode={mode}
-          demo={demo}
-          actions={mode === "teacher" ? actions : {}}
-        />
+        <RoutineView routine={routine} mode={mode} actions={mode === "teacher" ? actions : {}} />
       ) : null}
     </div>
   );
