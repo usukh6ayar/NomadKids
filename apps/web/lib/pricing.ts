@@ -7,9 +7,9 @@ export interface Plan {
   key: PlanKey;
   name: string;
   audience?: string;
-  /** Одоогийн 1-р улирлын хөнгөлөлттэй үнэ. */
+  /** The price of a term now. */
   perTerm: number;
-  /** Энэ улирлын хөнгөлөлтийг шингээсэн хичээлийн жилийн үнэ. */
+  /** The price of the school year now. */
   perYear: number;
   features: string[];
 }
@@ -20,16 +20,26 @@ export const MONTHS_IN_SCHOOL_YEAR = 9;
 export const CHILD_MONTHLY_PRICE = 3_000;
 export const CHILD_STANDARD_TERM_PRICE = CHILD_MONTHLY_PRICE * 3;
 export const CHILD_STANDARD_YEAR_PRICE = CHILD_MONTHLY_PRICE * MONTHS_IN_SCHOOL_YEAR;
-export const CHILD_CURRENT_TERM_PRICE = 5_000;
-/** 9–5 сарын хичээлийн жилийн хөнгөлөлттэй нийт дүн. */
-export const CHILD_CURRENT_YEAR_PRICE = 22_000;
+/**
+ * ★ The prices charged now. The first-term discount (5,000₮ / 22,000₮ for a
+ * child, 2,000₮ / 34,000₮ a group) ended on 2026-10-11 — the user: "шууд
+ * одооноос", the year being the monthly price × 9. A future discount is a
+ * lower figure here; the screens show the struck-through price and the saving
+ * only while one is lower than the standard.
+ */
+export const CHILD_CURRENT_TERM_PRICE = CHILD_STANDARD_TERM_PRICE;
+export const CHILD_CURRENT_YEAR_PRICE = CHILD_STANDARD_YEAR_PRICE;
 
 export const KINDERGARTEN_MONTHLY_PER_GROUP = 4_000;
 export const KINDERGARTEN_STANDARD_TERM_PER_GROUP = KINDERGARTEN_MONTHLY_PER_GROUP * 3;
-/** 1-р улирал талдаа орсон тул 11 сар хүртэл нэг бүлгийн төлөх дүн. */
-export const KINDERGARTEN_CURRENT_TERM_PER_GROUP = 2_000;
-/** 9–5 сарын хичээлийн жилийн хөнгөлөлттэй нэг бүлгийн нийт дүн. */
-export const KINDERGARTEN_CURRENT_YEAR_PER_GROUP = 34_000;
+export const KINDERGARTEN_STANDARD_YEAR_PER_GROUP =
+  KINDERGARTEN_MONTHLY_PER_GROUP * MONTHS_IN_SCHOOL_YEAR;
+export const KINDERGARTEN_CURRENT_TERM_PER_GROUP = KINDERGARTEN_STANDARD_TERM_PER_GROUP;
+export const KINDERGARTEN_CURRENT_YEAR_PER_GROUP = KINDERGARTEN_STANDARD_YEAR_PER_GROUP;
+
+/** Whether a term is sold below its standard price now — what the discount lines hang on. */
+export const TERM_DISCOUNTED =
+  KINDERGARTEN_CURRENT_TERM_PER_GROUP < KINDERGARTEN_STANDARD_TERM_PER_GROUP;
 
 export const PLANS: Plan[] = [
   {

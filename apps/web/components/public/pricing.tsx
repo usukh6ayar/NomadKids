@@ -10,6 +10,7 @@ import {
   KINDERGARTEN_CURRENT_TERM_PER_GROUP,
   KINDERGARTEN_MONTHLY_PER_GROUP,
   PLANS,
+  TERM_DISCOUNTED,
   kindergartenTermPrice,
   kindergartenYearlyPrice,
   tugrik,
@@ -78,7 +79,7 @@ export function PricingContent() {
           {(
             [
               ["term", "Улирлаар"],
-              ["year", "Жилээр — хямд"],
+              ["year", "Жилээр"],
             ] as const
           ).map(([value, label]) => (
             <button
@@ -182,12 +183,13 @@ function PlanCard({
         <div className="grid grid-cols-2 gap-2">
           <PriceBox
             amount={termAmount}
-            was={
+            was={standardTermIfHigher(
               plan.key === "child"
                 ? CHILD_STANDARD_TERM_PRICE
-                : groupCount * KINDERGARTEN_MONTHLY_PER_GROUP
-            }
-            unit={plan.key === "kindergarten" ? "/ 1-р улирал · нийт" : "/ 1-р улирал"}
+                : groupCount * KINDERGARTEN_MONTHLY_PER_GROUP * 3,
+              termAmount,
+            )}
+            unit={plan.key === "kindergarten" ? "/ улирал · нийт" : "/ улирал"}
             selected={period === "term"}
             textClass={look.text}
             ringClass={look.ring}
@@ -228,6 +230,11 @@ function PlanCard({
   );
 }
 
+/** The struck-through price — only while the price now is below it. */
+function standardTermIfHigher(standard: number, now: number): number | undefined {
+  return standard > now ? standard : undefined;
+}
+
 function GroupCounter({ count, onChange }: { count: number; onChange: (count: number) => void }) {
   return (
     <div className="rounded-row bg-white p-3 ring-1 ring-[#f3d4b4]">
@@ -237,9 +244,11 @@ function GroupCounter({ count, onChange }: { count: number; onChange: (count: nu
           <p className="text-caption text-slate-500">
             1 бүлэг сарын {tugrik(KINDERGARTEN_MONTHLY_PER_GROUP)}
           </p>
-          <p className="text-compact font-semibold text-[#c2410c]">
-            11 сар хүртэл {tugrik(KINDERGARTEN_CURRENT_TERM_PER_GROUP)}
-          </p>
+          {TERM_DISCOUNTED ? (
+            <p className="text-compact font-semibold text-[#c2410c]">
+              Улирлын хөнгөлөлттэй үнэ {tugrik(KINDERGARTEN_CURRENT_TERM_PER_GROUP)}
+            </p>
+          ) : null}
         </div>
         <div className="flex items-center gap-1.5" aria-label="Бүлгийн тоо сонгох">
           <button
