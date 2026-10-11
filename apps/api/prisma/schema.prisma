@@ -4715,19 +4715,32 @@ enum ContractStatus {
 ///
 /// ★ It asks for **nothing about a child**. An onboarding form is filled in by
 /// a stranger over a public connection; the least it can carry, the better.
-/// `childCount` is a number for pricing the contract, not a roster.
+/// `groupCount` is a number for pricing the contract, not a roster.
+/// The period a kindergarten pays for — a term, or the school year (#195).
+enum BillingPeriod {
+  TERM
+  YEAR
+}
+
 model KindergartenApplication {
   id String @id @default(uuid()) @db.Uuid
 
   /// The "Байгууллагын мэдээлэл" form, field for field.
   kindergartenName   String
   registrationNumber String
-  address            String
+  /// No longer asked since #195 (2026-10-11); kept for earlier applications.
+  address            String?
   directorName       String
   phone              String
   email              String
-  /// Children the kindergarten reports having — the contract's pricing base.
-  childCount         Int
+  /// Children the kindergarten reported — the pricing base until 2026-10-11.
+  /// NULL on applications made since; kept for the ones before.
+  childCount         Int?
+  /// ★ Groups — the pricing base since 2026-10-11 (4,000₮ a group a month,
+  /// the user, from the client's price sheet). NULL only on older rows.
+  groupCount         Int?
+  /// What the kindergarten asked to pay for: a term or the school year.
+  billingPeriod      BillingPeriod?
 
   note String?
 
@@ -4784,9 +4797,20 @@ model Contract {
   status ContractStatus @default(PENDING_SIGNATURE)
 
   /// Frozen terms — see the note above.
-  childCount         Int
-  annualFee          Decimal @db.Decimal(12, 2)
-  perChildMonthlyFee Decimal @db.Decimal(12, 2)
+  ///
+  /// ★ Two generations, and a row is one or the other. Per child (until
+  /// 2026-10-11): `childCount`, `annualFee`, `perChildMonthlyFee`. Per group
+  /// (since): `groupCount`, `billingPeriod`, `perGroupMonthlyFee`,
+  /// `periodFee`. Old contracts keep their own figures and print them; a
+  /// signed paper is never re-priced.
+  childCount         Int?
+  annualFee          Decimal?       @db.Decimal(12, 2)
+  perChildMonthlyFee Decimal?       @db.Decimal(12, 2)
+  groupCount         Int?
+  billingPeriod      BillingPeriod?
+  perGroupMonthlyFee Decimal?       @db.Decimal(12, 2)
+  /// The amount for the whole `billingPeriod`, as the operator agreed it.
+  periodFee          Decimal?       @db.Decimal(12, 2)
 
   startsOn DateTime @db.Date
   endsOn   DateTime @db.Date

@@ -1,5 +1,6 @@
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
+import { kindergartenApplicationSchema, paginated } from "@kinder/contracts";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestApp } from "./support/app";
 import { resetData, testDb } from "./support/db";
@@ -46,20 +47,23 @@ const server = () => app.getHttpServer();
 const YEAR = new Date().getUTCFullYear();
 const NUM = (n: number) => `NK-${YEAR}-${String(n).padStart(6, "0")}`;
 
+/** Exactly the body `register-dialog.tsx` sends since #195 — no address, no child count. */
 const FORM = {
   kindergartenName: "Аз жаргал цэцэрлэг",
   registrationNumber: "9012345",
-  address: "Улаанбаатар, Сүхбаатар дүүрэг, 1-р хороо",
   directorName: "Дорж Сараа",
   phone: "99112233",
   email: "azjargal@example.mn",
-  childCount: 120,
+  groupCount: 6,
+  billingPeriod: "year",
 };
 
 const TERMS = {
   adminUsername: "azjargal-admin",
-  annualFee: "300000",
-  perChildMonthlyFee: "1500",
+  groupCount: 6,
+  billingPeriod: "year",
+  perGroupMonthlyFee: "4000",
+  periodFee: "204000",
   startsOn: "2026-09-01",
   endsOn: "2027-05-31",
 };
@@ -143,7 +147,8 @@ describe("POST /applications", () => {
       { registrationNumber: "12" },
       { phone: "9911" },
       { email: "not-an-email" },
-      { childCount: 0 },
+      { groupCount: 0 },
+      { billingPeriod: "month" },
     ]) {
       const res = await request(server())
         .post("/v1/applications")
@@ -207,6 +212,9 @@ describe("the review queue", () => {
     expect(res.status).toBe(200);
     expect(res.body.total).toBe(1);
     expect(res.body.items[0].kindergartenName).toBe(FORM.kindergartenName);
+    // ★ What the operator's page parses — it once lacked `totalPages`, and the
+    // page showed an error instead of the queue.
+    expect(paginated(kindergartenApplicationSchema).safeParse(res.body).success).toBe(true);
   });
 });
 
@@ -270,10 +278,65 @@ describe("approval", () => {
       .expect(200);
 
     const contract = await db.contract.findFirst({ where: { applicationId: id } });
-    expect(contract?.annualFee.toString()).toBe("300000");
-    expect(contract?.perChildMonthlyFee.toString()).toBe("1500");
-    expect(contract?.childCount).toBe(FORM.childCount);
+    expect(contract?.groupCount).toBe(6);
+    expect(contract?.billingPeriod).toBe("YEAR");
+    expect(contract?.perGroupMonthlyFee?.toString()).toBe("4000");
+    expect(contract?.periodFee?.toString()).toBe("204000");
+    expect(contract?.childCount).toBeNull();
     expect(contract?.status).toBe("PENDING_SIGNATURE");
+  });
+
+  it("stores the form's groups and period, and shows them to the operator", async () => {
+    const id = await apply();
+    const row = await db.kindergartenApplication.findUniqueOrThrow({ where: { id } });
+    expect(row).toMatchObject({ groupCount: 6, billingPeriod: "YEAR", address: null });
+
+    const res = await authed(request(server()).get(`/v1/platform/applications/${id}`), operator);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ groupCount: 6, billingPeriod: "year", childCount: null });
+  });
+
+  /**
+   * ★ An application made before 2026-10-11 has a child count and no groups.
+   * It must still be readable and approvable — the operator states the groups
+   * — and the contract it produces is a per-group one.
+   */
+  it("approves an application from before the per-group price", async () => {
+    const legacy = await db.kindergartenApplication.create({
+      data: {
+        kindergartenName: "Хуучин цэцэрлэг",
+        registrationNumber: "9099999",
+        address: "Дархан",
+        directorName: "Бат Сүх",
+        phone: "99001122",
+        email: "huuchin@example.mn",
+        childCount: 80,
+      },
+    });
+
+    const read = await authed(
+      request(server()).get(`/v1/platform/applications/${legacy.id}`),
+      operator,
+    );
+    expect(read.body).toMatchObject({ childCount: 80, groupCount: null, billingPeriod: null });
+
+    await authed(request(server()).post(`/v1/platform/applications/${legacy.id}/approve`), operator)
+      .send({ ...TERMS, adminUsername: "huuchin-admin", groupCount: 3, billingPeriod: "term" })
+      .expect(200);
+    const contract = await db.contract.findFirstOrThrow({ where: { applicationId: legacy.id } });
+    expect(contract).toMatchObject({ groupCount: 3, billingPeriod: "TERM" });
+  });
+
+  it("refuses an approval without the per-group terms", async () => {
+    const id = await apply();
+    const { perGroupMonthlyFee: _fee, ...missing } = TERMS;
+    await authed(request(server()).post(`/v1/platform/applications/${id}/approve`), operator)
+      .send(missing)
+      .expect(400);
+    // The old per-child terms are no longer accepted.
+    await authed(request(server()).post(`/v1/platform/applications/${id}/approve`), operator)
+      .send({ ...missing, annualFee: "300000", perChildMonthlyFee: "1500" })
+      .expect(400);
   });
 
   /**

@@ -157,6 +157,10 @@ export class ReportsRepository {
         childCount: true,
         annualFee: true,
         perChildMonthlyFee: true,
+        groupCount: true,
+        billingPeriod: true,
+        perGroupMonthlyFee: true,
+        periodFee: true,
         startsOn: true,
         endsOn: true,
         application: {

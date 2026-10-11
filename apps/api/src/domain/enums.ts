@@ -23,6 +23,7 @@ export {
   AttendanceStatus,
   AuditAction,
   AuthTokenPurpose,
+  BillingPeriod,
   ChildStatus,
   ConsentKind,
   EnrollmentStatus,

@@ -26,17 +26,50 @@ export interface ContractData {
   version: number;
   kindergartenName: string;
   registrationNumber: string;
-  address: string;
+  /** Not asked since #195; printed only when the application had one. */
+  address: string | null;
   directorName: string;
   phone: string;
   email: string;
-  childCount: number;
-  /** Decimal strings. Never numbers — see `money` below. */
-  annualFee: string;
-  perChildMonthlyFee: string;
+  /** The frozen figures, in whichever generation the contract was made. */
+  terms: ContractTerms;
   startsOn: Date;
   endsOn: Date;
   generatedAt: Date;
+}
+
+/**
+ * ★ Two generations of pricing (2026-10-11). A contract made since #195 is
+ * priced per group; one made before, per child. Each prints its own rows — a
+ * signed paper re-rendered must say what was signed. Money as decimal
+ * **strings**, never numbers — see `money` below.
+ */
+export type ContractTerms =
+  | {
+      kind: "perGroup";
+      groupCount: number;
+      billingPeriod: "TERM" | "YEAR";
+      perGroupMonthlyFee: string;
+      periodFee: string;
+    }
+  | { kind: "perChild"; childCount: number; annualFee: string; perChildMonthlyFee: string };
+
+const PERIOD_LABEL = { TERM: "Улирал", YEAR: "Хичээлийн жил" } as const;
+
+function termRows(terms: ContractTerms): string {
+  if (terms.kind === "perGroup") {
+    return [
+      row("Бүлгийн тоо", String(terms.groupCount)),
+      row("Төлбөрийн хугацаа", PERIOD_LABEL[terms.billingPeriod]),
+      row("Бүлэг/сар", money(terms.perGroupMonthlyFee)),
+      row("Нийт төлбөр", money(terms.periodFee)),
+    ].join("\n    ");
+  }
+  return [
+    row("Хүүхдийн тоо", String(terms.childCount)),
+    row("Суурь хураамж (жилд)", money(terms.annualFee)),
+    row("Хүүхэд/сар", money(terms.perChildMonthlyFee)),
+  ].join("\n    ");
 }
 
 /**
@@ -85,14 +118,12 @@ ol.clauses { margin: 0; padding-left: 6mm; font-size: 10pt; line-height: 1.6; }
   <table class="terms">
     ${row("Байгууллагын нэр", data.kindergartenName)}
     ${row("Регистрийн дугаар", data.registrationNumber)}
-    ${row("Хаяг", data.address)}
+    ${data.address ? row("Хаяг", data.address) : ""}
     ${row("Эрхлэгчийн нэр", data.directorName)}
     ${row("Утас", data.phone)}
     ${row("И-мэйл", data.email)}
-    ${row("Хүүхдийн тоо", String(data.childCount))}
     ${row("Хугацаа", `${formatDate(data.startsOn)} — ${formatDate(data.endsOn)}`)}
-    ${row("Суурь хураамж (жилд)", money(data.annualFee))}
-    ${row("Хүүхэд/сар", money(data.perChildMonthlyFee))}
+    ${termRows(data.terms)}
   </table>
 
   <h2 class="clause">Гэрээний нөхцөл</h2>

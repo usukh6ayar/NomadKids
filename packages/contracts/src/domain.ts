@@ -6038,16 +6038,32 @@ export const applicationReceiptSchema = z.object({
 });
 export type ApplicationReceipt = z.infer<typeof applicationReceiptSchema>;
 
-/** One application, as the platform operator reviews it. */
+/**
+ * What a kindergarten pays for — a term or the school year (#195). Lower case
+ * on the wire, as the web's `lib/pricing.ts` names it.
+ */
+export const BILLING_PERIODS = ["term", "year"] as const;
+export const billingPeriodSchema = z.enum(BILLING_PERIODS);
+export type BillingPeriod = z.infer<typeof billingPeriodSchema>;
+
+/**
+ * One application, as the platform operator reviews it.
+ *
+ * ★ Two generations (2026-10-11): an application made since #195 carries
+ * `groupCount` and `billingPeriod` and no `address`/`childCount`; one made
+ * before carries the reverse. Hence every one of the four is nullable.
+ */
 export const kindergartenApplicationSchema = z.object({
   id: uuidSchema,
   kindergartenName: z.string(),
   registrationNumber: z.string(),
-  address: z.string(),
+  address: z.string().nullable(),
   directorName: z.string(),
   phone: z.string(),
   email: z.string(),
-  childCount: z.number(),
+  childCount: z.number().nullable(),
+  groupCount: z.number().int().nullable(),
+  billingPeriod: billingPeriodSchema.nullable(),
   note: z.string().nullable(),
   status: kindergartenApplicationStatusSchema,
   reviewedAt: z.string().nullable(),
