@@ -7,7 +7,6 @@ import { useEffect, useId, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Download, FileText, Presentation, X } from "lucide-react";
 import { qpayInvoiceAttemptSchema } from "@kinder/contracts";
 import { QpayProgress } from "@/components/child/access-pay-dialog";
-import { DemoBanner } from "@/components/feedback/feedback-parts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/field";
@@ -19,8 +18,6 @@ import { get, mutate } from "@/lib/api/browser";
 import { downloadUrl } from "@/lib/api/client";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
 import {
-  DEMO_MATERIALS,
-  MATERIALS_NOT_READY,
   MATERIAL_LEVELS,
   materialListSchema,
   materialPrice,
@@ -188,24 +185,18 @@ function Store({ onOwned }: { onOwned: () => void }) {
     queryFn: () => get(`/materials?${params}`, materialListSchema),
     retry: false,
   });
-  const demo = catalog.isError && isNotFound(catalog.error);
-  const buy = (material: Material) =>
-    demo ? toast.error(MATERIALS_NOT_READY) : setBuying(material);
-  const items = demo
-    ? DEMO_MATERIALS.filter((m) => matches(m, filters))
-    : (catalog.data?.items ?? []);
+  // ★ No sample catalog on a 404 any more (2026-10-11): the API answers, so a
+  // 404 means the route is not this person's — the error is shown as it is.
+  const buy = (material: Material) => setBuying(material);
+  const items = catalog.data?.items ?? [];
 
   return (
     <section aria-label="Дэлгүүр" className="flex flex-col gap-3">
-      {demo ? (
-        <DemoBanner>Жишээ хэрэглэгдэхүүн харагдаж байна. Дэлгүүр удахгүй нээгдэнэ.</DemoBanner>
-      ) : null}
-
       <MaterialsToolbar filters={filters} onChange={setFilters} />
 
       {catalog.isLoading ? <LoadingState rows={4} shape="cards" /> : null}
-      {catalog.isError && !demo ? <ErrorState description={errorMessage(catalog.error)} /> : null}
-      {!catalog.isLoading && items.length === 0 && (demo || catalog.data) ? (
+      {catalog.isError ? <ErrorState description={errorMessage(catalog.error)} /> : null}
+      {!catalog.isLoading && items.length === 0 && catalog.data ? (
         <EmptyState
           title="Хэрэглэгдэхүүн олдсонгүй"
           description="Өөр үгээр хайх эсвэл шүүлтүүрээ өөрчилж үзээрэй."
@@ -448,15 +439,7 @@ function BuyDialog({
             </Dialog.Close>
           </div>
 
-          <FormError
-            message={
-              create.isError
-                ? isNotFound(create.error)
-                  ? MATERIALS_NOT_READY
-                  : errorMessage(create.error)
-                : null
-            }
-          />
+          <FormError message={create.isError ? errorMessage(create.error) : null} />
           {create.isError ? null : (
             <QpayProgress
               attempt={attempt}

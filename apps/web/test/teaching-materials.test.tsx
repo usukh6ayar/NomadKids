@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, selectOption, sessionFor, stubApi } from "./support/render";
 import DocumentsPage from "@/app/(app)/documents/page";
 import { downloadUrl } from "@/lib/api/client";
-import { MATERIALS_NOT_READY } from "@/lib/materials";
 
 /*
  * ★ Сургалтын хэрэглэгдэхүүн — 2026-10-09, the client: lessons NomadKids
@@ -58,25 +57,42 @@ describe("the teaching materials tab", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows a sample shop while the endpoint is missing, filters it, and sells nothing", async () => {
+  /*
+   * ★ 2026-10-11: the shop is live, so a 404 means it is not this reader's —
+   * the error is shown, never a sample catalog in its place.
+   */
+  it("shows a 404 as an error, with no sample catalog", async () => {
     const user = userEvent.setup();
     stubApi([{ path: "/auth/me", body: sessionFor(["TEACHER"]) }]);
     renderWithProviders(<DocumentsPage />);
     await openStore(user);
 
-    expect(await screen.findByText(/Жишээ хэрэглэгдэхүүн харагдаж байна/)).toBeInTheDocument();
-    expect(screen.getAllByRole("article")).toHaveLength(4);
-    // Search, and ⚙ for сургалтын чиглэл and түвшин — 2026-10-09.
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.queryAllByRole("article")).toHaveLength(0);
+    expect(screen.queryByText(/Жишээ хэрэглэгдэхүүн/)).toBeNull();
+  });
+
+  it("asks the server to search and filter", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/me/materials", body: [] },
+      { path: "/materials", body: page([material("m1")]) },
+    ]);
+    renderWithProviders(<DocumentsPage />);
+    await openStore(user);
+    await screen.findAllByRole("article");
+
     await user.type(screen.getByRole("searchbox", { name: "Хэрэглэгдэхүүн хайх" }), "намар");
-    expect(screen.getAllByRole("article")).toHaveLength(1);
-    await user.clear(screen.getByRole("searchbox", { name: "Хэрэглэгдэхүүн хайх" }));
     await user.click(screen.getByRole("button", { name: "Шүүлтүүр" }));
     await selectOption(user, "Сургалтын чиглэлээр шүүх", "Хөгжим");
-    expect(screen.getAllByRole("article")).toHaveLength(1);
 
-    await user.click(screen.getByRole("button", { name: "Худалдаж авах" }));
-    expect(await screen.findByText(MATERIALS_NOT_READY)).toBeInTheDocument();
-    expect(screen.queryByRole("dialog")).toBeNull();
+    await vi.waitFor(() => {
+      const last = api.calls.filter((c) => c.url.startsWith("/materials?")).at(-1)?.url ?? "";
+      const params = new URLSearchParams(last.split("?")[1]);
+      expect(params.get("q")).toBe("намар");
+      expect(params.get("area")).toBe("Хөгжим");
+    });
   });
 
   it("buys a material through QPay and says so once it is paid", async () => {

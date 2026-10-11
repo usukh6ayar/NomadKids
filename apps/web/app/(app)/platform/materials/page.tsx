@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MoreVertical, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
-import { DemoBanner } from "@/components/feedback/feedback-parts";
 import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
 import { RequireSuperAdmin } from "@/components/shell/require-role";
 import { Art } from "@/components/ui/art";
@@ -21,7 +20,6 @@ import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors, isNotFound } from "@/lib/api/errors";
 import {
   AUTO_PREVIEW_PAGES,
-  DEMO_MATERIALS,
   PREVIEW_STATUS_LABEL,
   type PreviewStatus,
   MATERIAL_LEVELS,
@@ -54,7 +52,6 @@ const PREVIEW_TONE: Record<PreviewStatus, "neutral" | "sun" | "mint" | "danger">
   READY: "mint",
   FAILED: "danger",
 };
-const NOT_READY = "Хэрэглэгдэхүүний сервер хараахан бэлэн болоогүй тул хадгалагдсангүй.";
 
 function PlatformMaterials() {
   const toast = useToast();
@@ -69,15 +66,9 @@ function PlatformMaterials() {
     refetchInterval: (query) =>
       query.state.data?.some((m) => m.previewStatus === "PENDING") ? 5000 : false,
   });
-  const demo = list.isError && isNotFound(list.error);
-  const items: PlatformMaterial[] = demo
-    ? DEMO_MATERIALS.map(({ owned: _owned, ...m }) => ({
-        ...m,
-        published: true,
-        sales: 0,
-        previewStatus: "MANUAL" as const,
-      }))
-    : (list.data ?? []);
+  // ★ No sample catalog on a 404 any more (2026-10-11): the API answers, so an
+  // error is shown as the error it is.
+  const items: PlatformMaterial[] = list.data ?? [];
 
   const regenerate = useMutation({
     mutationFn: (id: string) =>
@@ -86,7 +77,7 @@ function PlatformMaterials() {
       toast.success("Жишээ хуудсыг дахин үүсгэж байна.");
       void queryClient.invalidateQueries({ queryKey: KEY });
     },
-    onError: (error) => toast.error(isNotFound(error) ? NOT_READY : errorMessage(error)),
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   const remove = useMutation({
@@ -97,7 +88,7 @@ function PlatformMaterials() {
       setRemoving(null);
       void queryClient.invalidateQueries({ queryKey: KEY });
     },
-    onError: (error) => toast.error(isNotFound(error) ? NOT_READY : errorMessage(error)),
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   return (
@@ -113,13 +104,8 @@ function PlatformMaterials() {
         }
       />
 
-      {demo ? (
-        <DemoBanner>
-          Жишээ жагсаалт харагдаж байна. Сервер холбогдоход жинхэнэ каталог гарна.
-        </DemoBanner>
-      ) : null}
       {list.isLoading ? <LoadingState rows={5} /> : null}
-      {list.isError && !demo ? <ErrorState description={errorMessage(list.error)} /> : null}
+      {list.isError ? <ErrorState description={errorMessage(list.error)} /> : null}
       {list.data && items.length === 0 ? (
         <EmptyState
           title="Хэрэглэгдэхүүн нэмээгүй байна"
@@ -173,7 +159,7 @@ function PlatformMaterials() {
                         label: "Жишээ хуудас дахин үүсгэх",
                         icon: <RefreshCw size={16} />,
                         hint: `Эхний ${AUTO_PREVIEW_PAGES} хуудаснаас`,
-                        onSelect: () => (demo ? toast.error(NOT_READY) : regenerate.mutate(m.id)),
+                        onSelect: () => regenerate.mutate(m.id),
                       },
                       {
                         label: "Устгах",
@@ -193,7 +179,6 @@ function PlatformMaterials() {
       {editing ? (
         <MaterialDialog
           material={editing === "new" ? null : editing}
-          demo={demo}
           onClose={() => setEditing(null)}
           onSaved={() => {
             setEditing(null);
@@ -213,11 +198,6 @@ function PlatformMaterials() {
         pending={remove.isPending}
         onConfirm={() => {
           if (!removing) return;
-          if (demo) {
-            toast.error(NOT_READY);
-            setRemoving(null);
-            return;
-          }
           remove.mutate(removing.id);
         }}
       />
@@ -227,12 +207,10 @@ function PlatformMaterials() {
 
 function MaterialDialog({
   material,
-  demo,
   onClose,
   onSaved,
 }: {
   material: PlatformMaterial | null;
-  demo: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -286,8 +264,9 @@ function MaterialDialog({
       toast.success("Хэрэглэгдэхүүн хадгалагдлаа.");
       onSaved();
     },
+    // A field's own error sits under the field; anything else is said once.
     onError: (error) => {
-      if (isNotFound(error)) toast.error(NOT_READY);
+      if (Object.keys(fieldErrors(error)).length === 0) toast.error(errorMessage(error));
     },
   });
   const errors = fieldErrors(save.error);
@@ -299,10 +278,6 @@ function MaterialDialog({
     if (file && !fileTypeOf(file.name)) return setProblem("Зөвхөн PDF, PPT, PPTX файл оруулна.");
     if (previews.length > 6) return setProblem("Урьдчилан харах зураг 6 хүртэл байна.");
     setProblem("");
-    if (demo) {
-      toast.error(NOT_READY);
-      return;
-    }
     save.mutate();
   }
 

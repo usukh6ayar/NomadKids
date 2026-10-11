@@ -31,7 +31,6 @@ import {
   Utensils,
   type LucideProps,
 } from "lucide-react";
-import { DemoBanner } from "@/components/feedback/feedback-parts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -90,26 +89,15 @@ const TABS: { key: Tab; label: string }[] = [
 export function RoutineView({
   routine,
   mode,
-  demo,
   actions,
 }: {
   routine: Routine;
   mode: RoutineMode;
-  /** Sample data while the endpoint is missing — said once, above the tabs. */
-  demo: boolean;
   actions: RoutineActions;
 }) {
   const [tab, setTab] = useState<Tab>("daily");
   return (
     <div className="flex flex-col gap-4">
-      {demo ? (
-        <DemoBanner>
-          {mode === "teacher"
-            ? "Жишээ загвар харагдаж байна. Сервер холбогдох хүртэл засвар хадгалагдахгүй."
-            : "Жишээ загвар харагдаж байна. Багш дэглэмээ оруулсны дараа энд гарна."}
-        </DemoBanner>
-      ) : null}
-
       <div
         role="tablist"
         aria-label="Өдрийн дэглэмийн хэсэг"

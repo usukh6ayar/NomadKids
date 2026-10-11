@@ -133,9 +133,6 @@ export const routineSchema = z.object({
 });
 export type Routine = z.infer<typeof routineSchema>;
 
-export const ROUTINE_NOT_READY =
-  "Өдрийн дэглэмийн сервер хараахан бэлэн болоогүй тул өөрчлөлт хадгалагдсангүй.";
-
 /**
  * ★ The general template «манайхаас өгнө» — the 2026 curriculum's daily
  * activities (the same fourteen names the assessment screens count, see
@@ -368,39 +365,4 @@ export function parseRoutineTable(text: string): { items: RoutineItem[]; skipped
     else skipped++;
   }
   return { items: sortRoutine(items), skipped };
-}
-
-/** Sample clubs and requests for the screens while the endpoint is missing. */
-export function demoRoutine(group: { id: string; name: string }): Routine {
-  return {
-    group,
-    items: ROUTINE_TEMPLATE,
-    plan: PLAN_TEMPLATE,
-    clubs: [
-      {
-        id: "demo-club-1",
-        name: "Бяцхан хөгжимчин",
-        teacherName: "Д.Энхжаргал",
-        room: "Хөгжмийн өрөө",
-        days: [1, 3],
-        start: "15:00",
-        end: "15:35",
-        areas: ["Хөгжим"],
-        goal: "Хэмнэлд тохируулан хөдөлж, дуу аялж сурах.",
-      },
-      {
-        id: "demo-club-2",
-        name: "Хөдөлгөөнтэй хүүхдүүд",
-        teacherName: "С.Бат",
-        room: "Спорт заал",
-        days: [3, 5],
-        start: "16:10",
-        end: "16:40",
-        areas: ["Хөдөлгөөн, эрүүл мэнд"],
-        goal: "Тэнцвэр, эв дүй, багаар ажиллах чадвараа хөгжүүлэх.",
-      },
-    ],
-    requests: [],
-    updatedAt: null,
-  };
 }

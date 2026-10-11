@@ -24,20 +24,16 @@ export default function ChildRoutinePage() {
 
 function ChildRoutine() {
   const { childId } = useParams<{ childId: string }>();
-  const { routine, demo, isLoading, error, actions } = useRoutine(
-    `/children/${childId}/routine`,
-    { id: "", name: "" },
-    { child: childId },
-  );
+  const { routine, isLoading, error, actions } = useRoutine(`/children/${childId}/routine`, {
+    child: childId,
+  });
 
   return (
     <div className="flex flex-col gap-4">
       <PageHeader title="Өдрийн дэглэм" backHref="/home" lede={routine?.group.name || undefined} />
       {isLoading ? <LoadingState rows={6} /> : null}
       {error ? <ErrorState description={errorMessage(error)} /> : null}
-      {routine ? (
-        <RoutineView routine={routine} mode="parent" demo={demo} actions={actions} />
-      ) : null}
+      {routine ? <RoutineView routine={routine} mode="parent" actions={actions} /> : null}
     </div>
   );
 }
