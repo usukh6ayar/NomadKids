@@ -632,3 +632,24 @@ describe("club requests — one live request per child per club", () => {
     await expect(request("PENDING")).resolves.toBeTruthy();
   });
 });
+
+describe("QPay attempts — exactly one thing paid for", () => {
+  it("refuses an attempt for nothing, and one for both a subscription and a material", async () => {
+    const insert = (subscriptionId: string | null, materialPurchaseId: string | null) =>
+      db.$executeRawUnsafe(
+        `INSERT INTO "qpay_invoices" ("id", "subscriptionId", "materialPurchaseId", "amount",
+           "qpayInvoiceId", "senderInvoiceNo", "updatedAt")
+         VALUES (gen_random_uuid(), $1::uuid, $2::uuid, 1000, $3, $4, now())`,
+        subscriptionId,
+        materialPurchaseId,
+        uniq("qi"),
+        uniq("sn"),
+      );
+
+    await expect(insert(null, null)).rejects.toThrow(/qpay_invoices_one_target_check/);
+    // Two random ids fail the CHECK before any foreign key is looked at.
+    await expect(
+      insert("11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"),
+    ).rejects.toThrow(/qpay_invoices_one_target_check/);
+  });
+});
