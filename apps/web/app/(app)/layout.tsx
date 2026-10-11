@@ -1398,6 +1398,12 @@ function platformNav(): NavItem[] {
       label: "Байгууллагын хүсэлт",
       icon: artIcon("kindergarten", 20),
     },
+    // Solo teachers' workspaces, and their merge into a kindergarten (D3, 2026-10-11).
+    {
+      href: "/platform/solo-workspaces",
+      label: "Бие даасан багш",
+      icon: artIcon("teacher", 20),
+    },
     { href: "/settings", label: "Хувийн тохиргоо", icon: <Settings {...iconProps} /> },
   ];
 }

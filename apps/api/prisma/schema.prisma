@@ -752,6 +752,11 @@ model Kindergarten {
   /// The kindergarten a solo teacher says they work at, as typed at sign-up —
   /// what the operator matches on when that kindergarten signs.
   soloWorkplaceName String?
+  /// A solo workspace merged into a contracted kindergarten by the operator
+  /// (D3): where its rows went, and when. The row itself stays, soft-deleted —
+  /// the audit log and the archived school year still point at it.
+  mergedIntoId      String?          @db.Uuid
+  mergedAt          DateTime?
   esisInstitutionId String?          @unique
   esisMappedAt      DateTime?
 
