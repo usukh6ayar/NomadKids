@@ -108,7 +108,12 @@ describe("the platform's teaching materials", () => {
   /*
     ★ Phase 2 — the server draws the sample pages from the file (2026-10-09).
   */
-  it("asks the server to draw the sample pages by default, with no pictures sent", async () => {
+  /*
+   * ★ 2026-10-11: the server cannot draw sample pages yet (Phase 2 — poppler
+   * and LibreOffice are not in the image), so a new material asks for the
+   * operator's own pictures by default and sends them.
+   */
+  it("asks for the operator's own sample pages by default, and sends them", async () => {
     const user = userEvent.setup();
     const api = stubApi([
       { path: "/auth/me", body: operator() },
@@ -119,8 +124,7 @@ describe("the platform's teaching materials", () => {
 
     await user.click(await screen.findByRole("button", { name: "Нэмэх" }));
     const dialog = screen.getByRole("dialog", { name: "Хэрэглэгдэхүүн нэмэх" });
-    expect(within(dialog).getByRole("radio", { name: /Автоматаар үүсгэх/ })).toBeChecked();
-    expect(within(dialog).queryByLabelText(/Урьдчилан харах хуудас/)).toBeNull();
+    expect(within(dialog).getByRole("radio", { name: /Зургаа өөрөө оруулах/ })).toBeChecked();
     await user.type(within(dialog).getByLabelText(/^Нэр/), "Намар");
     await selectOption(user, /Сургалтын чиглэл/, "Байгаль, нийгмийн орчин");
     await user.type(within(dialog).getByLabelText(/Үнэ/), "15000");
@@ -130,12 +134,16 @@ describe("the platform's teaching materials", () => {
         type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       }),
     );
+    await user.upload(
+      within(dialog).getByLabelText(/Урьдчилан харах хуудас/),
+      new File(["p"], "page1.png", { type: "image/png" }),
+    );
     await user.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
 
     await waitFor(() => {
       const form = api.calls.find((c) => c.method === "POST")?.body as FormData;
-      expect(form.get("autoPreview")).toBe("true");
-      expect(form.getAll("previews")).toEqual([]);
+      expect(form.get("autoPreview")).toBe("false");
+      expect(form.getAll("previews")).toHaveLength(1);
     });
   });
 
