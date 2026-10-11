@@ -522,6 +522,8 @@ model User {
   mealsRecorded          MealRecord[]              @relation("MealRecordedBy")
   paymentsRecorded       Payment[]                 @relation("PaymentRecordedBy")
   qpayInvoicesInitiated  QpayInvoice[]             @relation("QpayInvoiceInitiatedBy")
+  materialPurchases      MaterialPurchase[]
+  materialsCreated       TeachingMaterial[]        @relation("TeachingMaterialCreator")
   applicationsReviewed   KindergartenApplication[] @relation("ApplicationReviewer")
   chatMessages           ChatMessage[]             @relation("ChatAuthor")
   chatReads              ChatRead[]                @relation("ChatReader")
@@ -2633,8 +2635,10 @@ model Payment {
 /// `status` moves to `EXPIRED`/`CANCELLED` in place rather than the row
 /// disappearing.
 model QpayInvoice {
-  id             String  @id @default(uuid()) @db.Uuid
-  kindergartenId String  @db.Uuid
+  id                 String  @id @default(uuid()) @db.Uuid
+  /// NULL for a teaching-material purchase — the platform's sale to a person,
+  /// in no kindergarten's books.
+  kindergartenId     String? @db.Uuid
   /// ★ Points at an `AccessSubscription`, not a kindergarten `Invoice`.
   ///
   /// Repointed 2026-09-01 on the client's instruction: "QPay-ийг зөвхөн эцэг
@@ -2642,8 +2646,14 @@ model QpayInvoice {
   /// зүйлд QPay ашиглахгүй." A family's tuition and meal bills are still
   /// invoiced and still settled — by cash or transfer, recorded by the
   /// accountant — but never through this gateway.
-  subscriptionId String  @db.Uuid
-  amount         Decimal @db.Decimal(12, 2)
+  ///
+  /// ★★ Widened 2026-10-11 (client, 2026-10-09; CLAUDE.md §7): QPay may also
+  /// sell a teaching material. An attempt pays for **exactly one** of
+  /// `subscriptionId` or `materialPurchaseId` — a hand-written CHECK in
+  /// `20261011110000_teaching_materials`, pinned by `schema.test.ts`.
+  subscriptionId     String? @db.Uuid
+  materialPurchaseId String? @db.Uuid
+  amount             Decimal @db.Decimal(12, 2)
 
   /// QPay's own id for this invoice — what the callback and the check API
   /// both key on.
@@ -2667,11 +2677,13 @@ model QpayInvoice {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  kindergarten Kindergarten       @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  subscription AccessSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
-  createdBy    User?              @relation("QpayInvoiceInitiatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  kindergarten     Kindergarten?       @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  subscription     AccessSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+  materialPurchase MaterialPurchase?   @relation(fields: [materialPurchaseId], references: [id], onDelete: Restrict)
+  createdBy        User?               @relation("QpayInvoiceInitiatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@index([subscriptionId])
+  @@index([materialPurchaseId])
   @@index([kindergartenId, status])
   @@map("qpay_invoices")
 }
@@ -5214,4 +5226,117 @@ model ClubRequest {
   @@index([childId])
   @@index([kindergartenId])
   @@map("club_requests")
+}
+
+enum MaterialFileType {
+  PDF
+  PPT
+}
+
+enum MaterialLevel {
+  I
+  II
+  III
+  IV
+}
+
+/// Who drew a material's sample pages. Only MANUAL until the server can render
+/// them (the contract's Phase 2 — poppler/LibreOffice are not in the image).
+enum MaterialPreviewStatus {
+  MANUAL
+  PENDING
+  READY
+  FAILED
+}
+
+enum MaterialPurchaseStatus {
+  UNPAID
+  PAID
+}
+
+/// Сургалтын хэрэглэгдэхүүн — a ready-made lesson NomadKids sells to teachers,
+/// one at a time, through QPay (client, 2026-10-09).
+///
+/// ★ No `kindergartenId`, on purpose: the platform owns the catalog and a
+/// purchase belongs to the teacher's user, following them if they move. For
+/// the same reason the file is not a `MediaFile` (which is tenant-scoped): the
+/// object key lives here and `MaterialsService` serves it after its own check —
+/// private bucket, random key, 302 to a presigned URL (CLAUDE.md §1.4).
+model TeachingMaterial {
+  id            String                @id @default(uuid()) @db.Uuid
+  title         String
+  description   String?
+  /// A system `DevelopmentDomain` name (`kindergartenId IS NULL`), checked on write.
+  area          String
+  level         MaterialLevel?
+  fileType      MaterialFileType
+  /// Whole tugrik. An integer is exact, and a material is never priced in möngö.
+  price         Int
+  /// «Агуулга», a line each.
+  contents      String[]
+  pages         Int?
+  published     Boolean               @default(true)
+  previewStatus MaterialPreviewStatus @default(MANUAL)
+
+  storageKey   String @unique
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+
+  createdById String?   @db.Uuid
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  /// Off the shop. Whoever bought it keeps it.
+  deletedAt   DateTime?
+
+  createdBy User?                     @relation("TeachingMaterialCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  previews  TeachingMaterialPreview[]
+  purchases MaterialPurchase[]
+
+  @@index([published, deletedAt, area])
+  @@map("teaching_materials")
+}
+
+/// A sample page — a reduced picture the operator uploads, never the file.
+/// Replaced as a set when new ones are uploaded: the old rows get `deletedAt`
+/// (CLAUDE.md §3.2) and their objects are removed from the bucket.
+model TeachingMaterialPreview {
+  id         String    @id @default(uuid()) @db.Uuid
+  materialId String    @db.Uuid
+  order      Int
+  storageKey String    @unique
+  mimeType   String
+  createdAt  DateTime  @default(now())
+  deletedAt  DateTime?
+
+  material TeachingMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@index([materialId, deletedAt, order])
+  @@map("teaching_material_previews")
+}
+
+/// One teacher's purchase of one material. Created UNPAID when they first ask
+/// to pay, PAID once QPay confirms (or at once when the price is 0).
+///
+/// ★ No `Payment` row ever: the sale is the platform's revenue, in no
+/// kindergarten's ledger — the access fee's rule (CLAUDE.md §7).
+model MaterialPurchase {
+  id         String                 @id @default(uuid()) @db.Uuid
+  materialId String                 @db.Uuid
+  userId     String                 @db.Uuid
+  status     MaterialPurchaseStatus @default(UNPAID)
+  /// Whole tugrik, as charged. Re-read from the material whenever a new QR is
+  /// drawn, so a price change reaches a purchase nobody has paid yet.
+  amount     Int
+  paidAt     DateTime?
+  createdAt  DateTime               @default(now())
+  updatedAt  DateTime               @updatedAt
+
+  material     TeachingMaterial @relation(fields: [materialId], references: [id], onDelete: Restrict)
+  user         User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  qpayInvoices QpayInvoice[]
+
+  @@unique([materialId, userId])
+  @@index([userId, status])
+  @@map("material_purchases")
 }

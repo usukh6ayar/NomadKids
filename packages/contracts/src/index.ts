@@ -32,6 +32,7 @@ export * from "./curriculum";
 export * from "./domain";
 export * from "./feedback";
 export * from "./ids";
+export * from "./materials";
 export * from "./local-date";
 export * from "./mn-locale";
 export * from "./mn-genitive";
