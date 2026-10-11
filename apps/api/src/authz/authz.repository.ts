@@ -47,6 +47,7 @@ export class AuthzRepository {
       select: {
         id: true,
         kindergartenId: true,
+        kindergarten: { select: { kind: true } },
         enrollments: {
           where: { deletedAt: null },
           select: { groupId: true, kindergartenId: true },
@@ -63,6 +64,7 @@ export class AuthzRepository {
     return {
       childId: child.id,
       childKindergartenId: child.kindergartenId,
+      childKindergartenKind: child.kindergarten.kind,
       enrollments: child.enrollments,
       guardianships: child.guardianships,
       actorActiveTeachingGroupIds: await this.loadActiveTeachingGroupIds(actor),

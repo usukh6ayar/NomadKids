@@ -115,6 +115,38 @@ describe("what the layout intercepts", () => {
     expect(screen.queryByText("Хүүхдийн хуудас")).not.toBeInTheDocument();
   });
 
+  /*
+   * ★ A solo teacher's workspace (2026-10-11): an unpaid child is 402 for the
+   * teacher too. They are told the family has not paid — and offered no pay
+   * button, because teachers never pay.
+   */
+  it("tells a solo teacher the family has not paid, without a pay button", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN", "TEACHER"]) },
+      {
+        path: `/children/${CHILD_ID}/access`,
+        body: {
+          required: true,
+          active: false,
+          amount: "27000.00",
+          subscription: null,
+        },
+      },
+      {
+        path: `/children/${CHILD_ID}`,
+        method: "GET",
+        status: 402,
+        body: problem(402, "Энэ хүүхдийн эцэг эх хандалтын төлбөрөө төлөөгүй байна."),
+      },
+    ]);
+
+    renderLayout();
+
+    expect(await screen.findByText("Төлбөр төлөгдөөгүй")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "QPay-ээр төлөх" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Хүүхдийн хуудас")).not.toBeInTheDocument();
+  });
+
   it("lets a 404 through to the page rather than swallowing it", async () => {
     // ★ The asymmetry worth pinning. A 404 has nothing actionable to offer, and
     // only the page knows whether "no such child" should read as an empty

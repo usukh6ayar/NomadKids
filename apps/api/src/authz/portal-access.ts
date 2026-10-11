@@ -20,10 +20,18 @@ import { isGuardianOf, type ChildAccessFacts } from "./child-access";
  * exception type from everything around it, so that nobody can widen it by
  * accident into the paths where 404 is load-bearing.
  *
- * ★★ Staff are never gated. A teacher, an admin or an accountant is doing the
- * kindergarten's work, not consuming a family's subscription — locking a
- * teacher out of their own register because a parent has not paid would break
- * the kindergarten to punish a family.
+ * ★★ Staff of a contracted kindergarten are never gated. A teacher, an admin
+ * or an accountant is doing the kindergarten's work, not consuming a family's
+ * subscription — locking a teacher out of their own register because a parent
+ * has not paid would break the kindergarten to punish a family.
+ *
+ * ★★★ **Except in a solo teacher's own workspace** (the user, 2026-10-11).
+ * There is no kindergarten paying a contract: the family's fee is the whole
+ * of what pays for that teacher's use, so a child is inactive — every action
+ * the teacher would take for them — until it is paid. The 402 argument is
+ * unchanged: authorization has already run, the teacher already knows the
+ * child, a stranger still gets 404. Registering the child, inviting the
+ * family and seeing who has paid are not behind this gate.
  */
 export class PaymentRequiredException extends ForbiddenException {
   constructor(message: string) {
@@ -46,7 +54,9 @@ export interface PortalAccessFact {
 }
 
 /**
- * Whether this actor must pay before reading this child.
+ * Whom the unpaid fee stops from reaching this child: `"guardian"` (their own
+ * family must pay), `"soloStaff"` (a solo teacher, whose family has not paid —
+ * ★★★ above), or `null`.
  *
  * Pure, and separate from `canAccessChild` on purpose: "may this person see
  * this child at all" and "has this family paid" are different questions with
@@ -58,9 +68,12 @@ export function isPortalAccessBlocked(
   actor: Actor,
   facts: ChildAccessFacts,
   access: PortalAccessFact,
-): boolean {
-  if (!access.required) return false;
-  if (access.active) return false;
-  // Staff pass regardless — see ★★ above.
-  return isGuardianOf(actor, facts);
+  options: { gateSoloStaff?: boolean } = {},
+): "guardian" | "soloStaff" | null {
+  if (!access.required) return null;
+  if (access.active) return null;
+  if (isGuardianOf(actor, facts)) return "guardian";
+  // Contracted staff pass regardless — ★★; a solo workspace's do not — ★★★.
+  const gateSolo = options.gateSoloStaff ?? true;
+  return gateSolo && facts.childKindergartenKind === "SOLO_TEACHER" ? "soloStaff" : null;
 }

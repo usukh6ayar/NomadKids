@@ -21,6 +21,12 @@ export interface ChildAccessFacts {
    * child has no enrollments at all — see `childKindergartenIds`.
    */
   readonly childKindergartenId: string;
+  /**
+   * The kind of the child's current kindergarten — only the portal-fee gate
+   * reads it (a solo teacher's workspace gates its staff too; see
+   * `portal-access.ts`). Never an input to *who may reach* the child.
+   */
+  readonly childKindergartenKind: "CONTRACTED" | "SOLO_TEACHER";
   /** Every enrollment ever, including ended ones. Order irrelevant. */
   readonly enrollments: readonly EnrollmentFact[];
   /** Guardianships that are not soft-deleted. `canView` may be false. */

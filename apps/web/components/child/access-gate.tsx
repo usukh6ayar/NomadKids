@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { accessStatusSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
+import { useSession } from "@/lib/auth/session";
 import { qk } from "@/lib/api/keys";
 import { money } from "@/components/finance/money";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ import { AccessPayDialog } from "@/components/child/access-pay-dialog";
  * already asked for.
  */
 export function AccessGate({ childId }: { childId: string }) {
+  const { hasRole } = useSession();
   const status = useQuery({
     queryKey: qk.childAccess(childId),
     queryFn: () => get(`/children/${childId}/access`, accessStatusSchema),
@@ -41,6 +43,26 @@ export function AccessGate({ childId }: { childId: string }) {
 
   const amount = status.data.amount;
   const year = status.data.subscription?.schoolYear.name;
+
+  /*
+    ★ A solo teacher meets this too (2026-10-11): in their own workspace a child
+    is inactive until the family pays. They are told so — and are not offered
+    the pay button, because teachers never pay.
+  */
+  if (hasRole("TEACHER") || hasRole("ADMIN")) {
+    return (
+      <Card className="mx-auto mt-6 flex max-w-md flex-col gap-2 p-6 text-center">
+        <h2 className="text-title text-ink">Төлбөр төлөгдөөгүй</h2>
+        <p className="text-body text-muted">
+          Энэ хүүхдийн эцэг эх{year ? ` ${year} оны хичээлийн жилийн` : ""} хандалтын төлбөрөө
+          төлөөгүй байна. Төлбөр төлөгдсөний дараа хүүхдийн бүртгэл, ажиглалт нээгдэнэ.
+        </p>
+        <p className="text-caption text-muted">
+          Эцэг эхийг урьж амжаагүй бол «Суралцагч» хэсгээс урина уу.
+        </p>
+      </Card>
+    );
+  }
 
   return (
     <Card className="mx-auto mt-6 flex max-w-md flex-col gap-4 p-6 text-center">
