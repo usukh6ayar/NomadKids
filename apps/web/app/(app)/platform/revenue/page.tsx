@@ -127,6 +127,9 @@ function PlatformRevenue() {
             The operator's own income — paid portal access fees — was on no
             screen at all. It leads now, because it is the only figure on this
             page a partner's percentage is taken from.
+
+            ★ Two sources since 2026-10-12: access fees and teaching-material
+            sales (the user's decision). Their sum is what is divided.
           */}
           <Card
             pad="roomy"
@@ -139,15 +142,23 @@ function PlatformRevenue() {
             >
               <WalletCards size={22} />
             </span>
-            <p className="text-body font-bold text-mint-ink">
-              Платформын орлого — хандалтын төлбөр
-            </p>
+            <p className="text-body font-bold text-mint-ink">Платформын орлого</p>
             <p className="mt-1 text-display font-extrabold tabular-nums text-ink">
-              {money(revenue.data.platform.accessFees)}
+              {money(revenue.data.platform.total)}
             </p>
-            <p className="text-caption text-muted">
-              {revenue.data.platform.accessPayments} төлөлт · хуваарилалт үүнээс бодогдоно
-            </p>
+            <p className="text-caption text-muted">Хуваарилалт үүнээс бодогдоно</p>
+            <dl className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <IncomeSource
+                label="Хандалтын төлбөр"
+                value={revenue.data.platform.accessFees}
+                count={`${revenue.data.platform.accessPayments} төлөлт`}
+              />
+              <IncomeSource
+                label="Материалын борлуулалт"
+                value={revenue.data.platform.materialSales}
+                count={`${revenue.data.platform.materialPayments} худалдан авалт`}
+              />
+            </dl>
           </Card>
 
           {/*
@@ -175,6 +186,19 @@ function PlatformRevenue() {
       {distribution.data ? <Distribution data={distribution.data} /> : null}
 
       <Partners month={month} />
+    </div>
+  );
+}
+
+/** One of the platform's incomes, under the headline total. */
+function IncomeSource({ label, value, count }: { label: string; value: string; count: string }) {
+  return (
+    <div className="rounded-row bg-white/70 px-3 py-2">
+      <dt className="text-caption font-semibold text-muted">{label}</dt>
+      <dd className="flex flex-wrap items-baseline justify-between gap-x-2">
+        <span className="text-lead font-bold tabular-nums text-ink">{money(value)}</span>
+        <span className="text-caption text-muted">{count}</span>
+      </dd>
     </div>
   );
 }
@@ -213,7 +237,8 @@ function IncomeByKindergarten({
       {rows.length === 0 ? (
         <Card pad="roomy">
           <p className="text-body text-muted">
-            Энэ сард хандалтын төлбөр төлөгдөөгүй, сарын тооцоо ч хийгдээгүй байна.
+            Энэ сард хандалтын төлбөр төлөгдөөгүй, сарын тооцоо ч хийгдээгүй байна. Материалын
+            борлуулалт цэцэрлэгт хамаарахгүй тул энд гарахгүй.
           </p>
         </Card>
       ) : (
@@ -276,7 +301,7 @@ function Distribution({ data }: { data: z.infer<typeof revenueDistributionSchema
       <SectionHeader
         id="distribution-heading"
         title="Хуваарилалт"
-        lede="Хандалтын төлбөрийн орлогоос, тохирсон хувиар."
+        lede="Хандалтын төлбөр ба материалын борлуулалтын нийт орлогоос, тохирсон хувиар."
       />
 
       <Card pad="roomy" className="flex flex-col gap-3">

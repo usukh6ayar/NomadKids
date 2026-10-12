@@ -5207,6 +5207,15 @@ export const platformRevenueSchema = z.object({
     accessFees: z.string(),
     /** How many fees were paid. */
     accessPayments: z.number(),
+    /**
+     * Paid teaching-material sales (the user, 2026-10-12). A purchase belongs
+     * to the teacher's user, not to a kindergarten, so this has no
+     * per-kindergarten column. A free material is not a sale.
+     */
+    materialSales: z.string(),
+    materialPayments: z.number(),
+    /** `accessFees + materialSales` — the platform's whole income. */
+    total: z.string(),
   }),
 });
 export type PlatformRevenue = z.infer<typeof platformRevenueSchema>;
@@ -5244,10 +5253,15 @@ export type RevenuePartner = z.infer<typeof revenuePartnerSchema>;
  */
 export const revenueDistributionSchema = z.object({
   month: z.string(),
-  /** Paid portal access fees for the month — the sum being divided. */
+  /** Paid portal access fees for the month. */
   accessFees: z.string(),
   /** How many payments made it up, so the figure can be checked against QPay. */
   accessPayments: z.number(),
+  /** Paid teaching-material sales — divided too (the user, 2026-10-12). */
+  materialSales: z.string(),
+  materialPayments: z.number(),
+  /** `accessFees + materialSales` — the sum being divided. */
+  total: z.string(),
   allocatedPercent: z.string(),
   unallocated: z.string(),
   shares: z

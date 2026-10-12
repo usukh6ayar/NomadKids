@@ -96,6 +96,39 @@ async function payAccessFee(
   });
 }
 
+/**
+ * A teacher's purchase of a teaching material — the platform's **other** own
+ * income (client, 2026-10-09; CLAUDE.md §7). It belongs to the teacher's user,
+ * not to any kindergarten, so it never appears under a kindergarten's row.
+ */
+async function sellMaterial(
+  buyer: { id: string },
+  amount: number,
+  { status = "PAID" as "PAID" | "UNPAID", paidAt = new Date(Date.UTC(2026, 7, 20)) } = {},
+) {
+  const material = await db.teachingMaterial.create({
+    data: {
+      title: `Материал ${amount}`,
+      area: "Хэл яриа",
+      fileType: "PDF",
+      price: amount,
+      storageKey: `platform/materials/${crypto.randomUUID()}`,
+      originalName: "lesson.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 1000,
+    },
+  });
+  return db.materialPurchase.create({
+    data: {
+      materialId: material.id,
+      userId: buyer.id,
+      amount,
+      status,
+      paidAt: status === "PAID" ? paidAt : null,
+    },
+  });
+}
+
 beforeAll(async () => {
   app = await createTestApp();
 }, 60_000);
@@ -243,6 +276,64 @@ describe("GET /platform/revenue", () => {
     expect(res.body.state.received).toBe("0.00");
     expect(res.body.platform.accessFees).toBe("0.00");
     expect(res.body.platform.accessPayments).toBe(0);
+    expect(res.body.platform.materialSales).toBe("0.00");
+    expect(res.body.platform.total).toBe("0.00");
+  });
+
+  /*
+    ★ Material sales are the platform's income too (the user, 2026-10-12). A
+    purchase belongs to the teacher, not their kindergarten, so it is one
+    platform-wide line and never a kindergarten's.
+  */
+  it("adds paid material sales to the platform's income, under no kindergarten", async () => {
+    await payAccessFee(a, "15000");
+    await sellMaterial(a.teacherUser, 5000);
+    await sellMaterial(b.teacherUser, 3000);
+
+    const res = await authed(
+      request(server()).get(`/v1/platform/revenue?month=${MONTH}`),
+      operator,
+    );
+
+    expect(res.body.platform.accessFees).toBe("15000.00");
+    expect(res.body.platform.materialSales).toBe("8000.00");
+    expect(res.body.platform.materialPayments).toBe(2);
+    expect(res.body.platform.total).toBe("23000.00");
+    // Only kindergarten a paid us an access fee; a material sale adds no row.
+    expect(res.body.kindergartens).toHaveLength(1);
+    expect(JSON.stringify(res.body)).not.toContain(a.teacherUser.id);
+  });
+
+  it("counts neither an unpaid purchase nor a free material as a sale", async () => {
+    await sellMaterial(a.teacherUser, 5000, { status: "UNPAID" });
+    await sellMaterial(a.teacherUser, 0);
+
+    const res = await authed(
+      request(server()).get(`/v1/platform/revenue?month=${MONTH}`),
+      operator,
+    );
+
+    expect(res.body.platform.materialSales).toBe("0.00");
+    expect(res.body.platform.materialPayments).toBe(0);
+  });
+
+  /*
+    ★ The month runs to its last instant. It used to end at midnight *starting*
+    the last day, so money paid on the 31st belonged to no month at all.
+  */
+  it("counts money paid on the last day of the month in that month", async () => {
+    await payAccessFee(a, "7000", new Date(Date.UTC(2026, 7, 31, 10)));
+    await sellMaterial(a.teacherUser, 2000, { paidAt: new Date(Date.UTC(2026, 7, 31, 23, 30)) });
+    // The first instant of September is September's.
+    await payAccessFee(b, "9000", new Date(Date.UTC(2026, 8, 1)));
+
+    const res = await authed(
+      request(server()).get(`/v1/platform/revenue?month=${MONTH}`),
+      operator,
+    );
+
+    expect(res.body.platform.accessFees).toBe("7000.00");
+    expect(res.body.platform.materialSales).toBe("2000.00");
   });
 
   it("refuses a malformed month", async () => {
@@ -384,6 +475,25 @@ describe("GET /platform/revenue/distribution", () => {
       "400000.00",
     );
     expect(res.body.unallocated).toBe("0.00");
+  });
+
+  /** Both of the platform's incomes are divided (the user, 2026-10-12). */
+  it("divides material sales together with access fees", async () => {
+    await payAccessFee(a, "60000");
+    await sellMaterial(a.teacherUser, 40000);
+    await share("Ганбат", "50");
+
+    const res = await authed(
+      request(server()).get(`/v1/platform/revenue/distribution?month=${MONTH}`),
+      operator,
+    );
+
+    expect(res.body.accessFees).toBe("60000.00");
+    expect(res.body.materialSales).toBe("40000.00");
+    expect(res.body.materialPayments).toBe(1);
+    expect(res.body.total).toBe("100000.00");
+    expect(res.body.shares[0].amount).toBe("50000.00");
+    expect(res.body.unallocated).toBe("50000.00");
   });
 
   /**

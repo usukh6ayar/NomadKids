@@ -11,13 +11,21 @@ import { AuditRepository } from "../audit/audit.repository";
 import { PlatformRevenueRepository } from "./platform-revenue.repository";
 import type { CreatePartnerDto, UpdatePartnerDto } from "./platform-revenue.dto";
 
-/** `2026-08` → the first of that month, and the last day, both as dates. */
-function monthBounds(month: string): { first: Date; last: Date } {
+/**
+ * `2026-08` → the first of that month, its last day (a date, for the shares in
+ * force), and the first instant of the next month.
+ *
+ * ★ A payment is counted `gte first, lt next`. It was `lte last` until
+ * 2026-10-12, and `last` is midnight *starting* the last day — so money paid
+ * on the 31st belonged to no month at all.
+ */
+function monthBounds(month: string): { first: Date; last: Date; next: Date } {
   const [year, mon] = month.split("-").map(Number);
   return {
     first: new Date(Date.UTC(year!, mon! - 1, 1)),
     // Day 0 of the next month is the last day of this one.
     last: new Date(Date.UTC(year!, mon!, 0)),
+    next: new Date(Date.UTC(year!, mon!, 1)),
   };
 }
 
@@ -61,10 +69,11 @@ export class PlatformRevenueService {
   async monthRevenue(actor: Actor, month: string): Promise<PlatformRevenue> {
     this.platform.assertSuperAdmin(actor);
 
-    const { first, last } = monthBounds(month);
-    const [rows, fees] = await Promise.all([
+    const { first, next } = monthBounds(month);
+    const [rows, fees, materials] = await Promise.all([
       this.repo.monthByKindergarten(first),
-      this.repo.accessFeesByKindergarten(first, last),
+      this.repo.accessFeesByKindergarten(first, next),
+      this.repo.materialSales(first, next),
     ]);
 
     const feeById = new Map(fees.map((row) => [row.kindergartenId, row]));
@@ -107,6 +116,9 @@ export class PlatformRevenueService {
           a.name.localeCompare(b.name),
       );
 
+    const accessFees = sumMoney(fees.map((r) => r.accessFees));
+    const materialSales = parseMoney(materials.materialSales);
+
     return {
       month,
       kindergartens,
@@ -116,8 +128,11 @@ export class PlatformRevenueService {
         received: formatMoney(sumMoney(rows.map((r) => r.received))),
       },
       platform: {
-        accessFees: formatMoney(sumMoney(fees.map((r) => r.accessFees))),
+        accessFees: formatMoney(accessFees),
         accessPayments: fees.reduce((sum, row) => sum + row.accessPayments, 0),
+        materialSales: formatMoney(materialSales),
+        materialPayments: materials.materialPayments,
+        total: formatMoney(accessFees + materialSales),
       },
     };
   }
@@ -125,7 +140,8 @@ export class PlatformRevenueService {
   /**
    * The month's income, divided by the shares in force.
    *
-   * ★ From **paid access fees** — the platform's own income, and the only
+   * ★ From the platform's own income — **paid access fees and teaching-material
+   * sales** (the second since 2026-10-12, the user's decision) — the only
    * money on this screen a share can honestly be taken from. Until 2026-09-02
    * it divided `FundingCalculation.receivedAmount`, which is the state's
    * transfer to a kindergarten.
@@ -142,8 +158,8 @@ export class PlatformRevenueService {
   async distribution(actor: Actor, month: string): Promise<RevenueDistribution> {
     this.platform.assertSuperAdmin(actor);
 
-    const { first, last } = monthBounds(month);
-    const [fees, partners] = await Promise.all([
+    const { first, last, next } = monthBounds(month);
+    const [fees, materials, partners] = await Promise.all([
       /*
        * ★★★ Access fees, **not** `monthByKindergarten`.
        *
@@ -152,19 +168,22 @@ export class PlatformRevenueService {
        * partners until 2026-09-02. It was a share of income the platform never
        * received, while its actual income was on no screen at all.
        */
-      this.repo.accessFeesByKindergarten(first, last),
+      this.repo.accessFeesByKindergarten(first, next),
+      this.repo.materialSales(first, next),
       this.repo.partnersInForce(last),
     ]);
 
     const accessFees = sumMoney(fees.map((row) => row.accessFees));
     const accessPayments = fees.reduce((sum, row) => sum + row.accessPayments, 0);
+    const materialSales = parseMoney(materials.materialSales);
+    const total = accessFees + materialSales;
     const allocated = sumMoney(partners.map((p) => p.sharePercent));
 
     const shares = partners.map((partner) => ({
       partnerId: partner.id,
       name: partner.name,
       sharePercent: partner.sharePercent,
-      amount: formatMoney(percentOf(accessFees, partner.sharePercent)),
+      amount: formatMoney(percentOf(total, partner.sharePercent)),
     }));
 
     /*
@@ -179,8 +198,11 @@ export class PlatformRevenueService {
       month,
       accessFees: formatMoney(accessFees),
       accessPayments,
+      materialSales: formatMoney(materialSales),
+      materialPayments: materials.materialPayments,
+      total: formatMoney(total),
       allocatedPercent: formatPercent(allocated),
-      unallocated: formatMoney(accessFees - paidOut),
+      unallocated: formatMoney(total - paidOut),
       shares,
     };
   }
