@@ -418,7 +418,7 @@ function MainDetails({ kindergartenId, data }: { kindergartenId: string; data: D
           {text("propertyType", "Өмчийн хэлбэр")}
           {text("institutionType", "Хэв шинж")}
           {text("shortName", "Товч нэр", { maxLength: 100 })}
-          {text("responsibleUnit", "Хариуцалагч нэгж")}
+          {text("responsibleUnit", "Хариуцагч нэгж")}
           <div className="flex flex-col gap-1.5">
             <span className="text-body font-medium text-ink">Лого оруулах</span>
             <div className="flex flex-wrap items-center gap-3">

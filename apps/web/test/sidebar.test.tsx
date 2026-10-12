@@ -804,7 +804,8 @@ describe("role-based navigation", () => {
     renderShell(["PARENT"], "/home");
     const nav = await sidebar();
 
-    expect(within(nav).queryByText("Санхүү")).not.toBeInTheDocument();
+    // «Санхүү» is built now — the child's invoices — and has its own row since
+    // 2026-10-12, so it is no longer on this list.
     expect(within(nav).queryByText("Чат")).not.toBeInTheDocument();
     expect(within(nav).queryByText("удахгүй")).not.toBeInTheDocument();
   });
@@ -827,6 +828,7 @@ describe("role-based navigation", () => {
       "Дуу, шүлэг",
       "Мэдээ",
       "Багштай холбогдох",
+      "Санхүү",
       "Үйлчилгээний эрх",
       "Тусламж",
     ]) {
@@ -834,7 +836,16 @@ describe("role-based navigation", () => {
     }
 
     expect(within(nav).getByText("3")).toBeInTheDocument();
-    expect(within(nav).getByText("Жилийн")).toBeInTheDocument();
+    // Two payments, two rows (2026-10-12): the kindergarten's invoices, and the
+    // fee for using NomadKids — which used to open the invoices.
+    expect(within(nav).getByRole("link", { name: "Санхүү" })).toHaveAttribute(
+      "href",
+      `/children/${OWN_CHILD.id}/finance`,
+    );
+    expect(within(nav).getByRole("link", { name: "Үйлчилгээний эрх" })).toHaveAttribute(
+      "href",
+      `/children/${OWN_CHILD.id}/access`,
+    );
     expect(within(nav).getByRole("link", { name: "Нүүр" })).toHaveAttribute("aria-current", "page");
     expect(within(nav).getByRole("link", { name: "Хүүхдийн мэдээлэл" })).toHaveAttribute(
       "href",

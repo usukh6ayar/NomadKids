@@ -84,11 +84,11 @@ export function FormDialog({
           aria-describedby={description ? descriptionId : undefined}
           data-ui="form-dialog"
           className={cn(
-            "fixed inset-x-0 bottom-0 z-50 flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-y-auto rounded-b-none rounded-t-card border border-border bg-surface p-4 shadow-lg",
-            "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:slide-in-from-bottom-4 data-[state=closed]:slide-out-to-bottom-4",
-            "sm:left-1/2 sm:top-1/2 sm:bottom-auto sm:w-[calc(100vw-2rem)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-card sm:p-5",
-            "sm:data-[state=open]:fade-in-0 sm:data-[state=open]:zoom-in-95 sm:data-[state=closed]:fade-out-0 sm:data-[state=closed]:zoom-out-95",
-            size === "wide" ? "sm:max-w-[1040px]" : "sm:max-w-[480px]",
+            // ★ Centred at every width since 2026-10-12 (the user: every
+            // window opens in the middle, not from the bottom of a phone).
+            "fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-y-auto rounded-card border border-border bg-surface p-4 shadow-lg sm:p-5",
+            "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
+            size === "wide" ? "max-w-[1040px]" : "max-w-[480px]",
           )}
         >
           <div className="mb-4 flex items-start justify-between gap-3">

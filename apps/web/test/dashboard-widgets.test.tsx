@@ -213,7 +213,7 @@ describe("төрсөн өдөр", () => {
   it("says the month is empty instead of vanishing", () => {
     renderWithProviders(<MonthBirthdays birthdays={[]} />);
 
-    expect(screen.getByText("Төрсөн өдөрийн булан")).toBeInTheDocument();
+    expect(screen.getByText("Төрсөн өдрийн булан")).toBeInTheDocument();
     expect(screen.getByText("Энэ сард төрсөн өдөр алга")).toBeInTheDocument();
     // Compact: no illustration, and no list where there are no children.
     expect(screen.queryByRole("img")).toBeNull();

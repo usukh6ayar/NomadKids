@@ -69,7 +69,7 @@ describe("the pricing page", () => {
     expect(kindergarten.queryByText("83.3% хэмнэлт")).toBeNull();
     expect(kindergarten.queryByText("5.6% хэмнэлт")).toBeNull();
     expect(
-      kindergarten.getByText("Тогооч, санхүү, удирдлагад зориулсан нэгдсэн тайлан"),
+      kindergarten.getByText("ESIS-тэй холболт: Суралцагч, ажилтны бүртгэл, мэргэшлийн зэрэг"),
     ).toBeInTheDocument();
   });
 
@@ -85,7 +85,7 @@ describe("the pricing page", () => {
     await user.click(within(organisation).getByRole("button", { name: "Хаах" }));
 
     await user.click(plan("Багш").getByRole("button", { name: /Бүртгүүлэх/ }));
-    expect(screen.getByRole("dialog", { name: "Багшийн гэрээ" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Багш, ажилтан" })).toBeInTheDocument();
   });
 
   it("switches the billing period between term and year", async () => {

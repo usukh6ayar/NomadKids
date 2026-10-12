@@ -67,9 +67,6 @@ export function PricingContent() {
         <h1 className="text-figure font-extrabold leading-tight text-[#102f5d] sm:text-hero">
           Үнийн санал
         </h1>
-        <p className="mx-auto mt-2 max-w-[640px] text-body text-slate-600">
-          Хэрэглээндээ тохирох багцаа сонгоод жилийн төлбөрөөр илүү хэмнээрэй.
-        </p>
 
         <div
           role="radiogroup"
@@ -122,7 +119,9 @@ export function PricingContent() {
           initialBillingPeriod={period}
         />
       ) : null}
-      {applying === "teacher" ? <TeacherApplyDialog onClose={() => setApplying(null)} /> : null}
+      {applying === "teacher" ? (
+        <TeacherApplyDialog initialMode="solo" onClose={() => setApplying(null)} />
+      ) : null}
     </main>
   );
 }

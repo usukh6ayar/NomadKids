@@ -5,7 +5,8 @@ import { primaryDashboardSchema, sessionSchema } from "@kinder/contracts";
 import {
   ArrowRight,
   BarChart3,
-  BookOpenCheck,
+  Building2,
+  GraduationCap,
   Heart,
   LockKeyhole,
   Mail,
@@ -15,12 +16,12 @@ import {
   UserRound,
   Users,
   X,
-  Zap,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { createPortal } from "react-dom";
+import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, PasswordInput } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
@@ -34,10 +35,12 @@ import { ModalOverlay } from "@/components/ui/modal-overlay";
 import { FacebookIcon } from "@/components/ui/facebook-icon";
 import { BrandWordmark } from "@/components/ui/brand-wordmark";
 import { InstallAppCard } from "@/components/public/install-app";
+import { DeviceLimitPanel, isDeviceLimit } from "@/components/auth/device-limit-panel";
+import { RegisterDialog } from "@/components/public/register-dialog";
+import { TeacherApplyDialog } from "@/components/public/teacher-apply-dialog";
 
 const navigationItems = [
   { label: "Эхлэл", href: "#home" },
-  { label: "Бүтээгдэхүүн", href: "#features" },
   { label: "Хэнд зориулагдсан", href: "#audiences" },
   { label: "Давуу тал", href: "#benefits" },
   { label: "Түгээмэл асуулт", href: "#faq" },
@@ -62,92 +65,68 @@ const loginMenuItems = [
   { label: "Холбоо барих", href: null },
 ] as const;
 
-/**
- * ★ In the preschool curriculum's own words (СӨБ: суралцагч, цахим хувийн
- * хавтас, явцын ба үр дүнгийн үнэлгээ, сургалтын 7 чиглэл, А/79 шалгуур) and
- * only what the system does — 2026-10-08, the client.
- */
-const featureItems = [
-  {
-    icon: BookOpenCheck,
-    title: "Хөгжлийн явцын мэдээлэл",
-    copy: "Суралцагчийн ажиглалт, ярилцлага, бүтээл, ирц, хоолыг цахим хувийн хавтсаар эцэг эхтэй хуваалцана.",
-    tone: "bg-[#eaf6ff]",
-    iconTone: "bg-[#d7efff] text-[#1686f5]",
-  },
-  {
-    icon: Zap,
-    title: "Хялбар явцын үнэлгээ",
-    copy: "Багш сургалтын 7 чиглэлээр тэмдэглэлээ хөтөлж, А/79 шалгууртай цөөн даралтаар холбоно.",
-    tone: "bg-[#eafaf2]",
-    iconTone: "bg-[#d8f5e6] text-[#26ad70]",
-  },
-  {
-    icon: BarChart3,
-    title: "Үр дүнд суурилсан удирдлага",
-    copy: "Явцын ба үр дүнгийн үнэлгээ, ирц, санхүүжилтийн нэгдсэн тайлангаар цэцэрлэгээ удирдана.",
-    tone: "bg-[#fff3e9]",
-    iconTone: "bg-[#ffe5d0] text-[#f37d35]",
-  },
-] as const;
-
 const audienceItems = [
   {
     imageSrc: "/illustrations/audience-teacher.png",
     imageAlt: "Багш",
     title: "Багшийн веб",
-    copy: "Өдрийн тайлан, ирц, хүүхдийн хөгжил, эцэг эхтэй харилцах ажлыг хялбарчилна.",
+    copy: "Багшийн өдөр тутамд хийдэг механик ажлыг автоматжуулан хялбар шийдлээр явцын ба үр дүнгийн үнэлгээ, судалгаа авах эцэг эхтэй харилцан хамтран ажиллах боломжийг бүрдүүлнэ.",
   },
   {
     imageSrc: "/illustrations/audience-parent.png",
     imageAlt: "Эцэг эх хүүхдийн хамт",
     title: "Эцэг эхийн веб",
-    copy: "Хүүхдийн ирц, хоол, хөгжлийн мэдээлэл болон цэцэрлэгийн мэдэгдлийг нэг дороос харна.",
+    copy: "Багш, боловсролын байгууллагатай хамтран хүүхдийн хөгжлийг дэмжих, ирцийн бүртгэл, хоолны цэс, сургалт үйл ажиллагааны мэдээллийг нэг дороос аван, цахим орчин дахь хүүхдийн аюулгүй байдлыг хамгаална.",
   },
   {
     imageSrc: "/illustrations/audience-management.png",
     imageAlt: "Удирдлагын ажилтан",
     title: "Удирдлагын самбар",
-    copy: "Бүх бүлгийн нэгтгэл, тайлан, гүйцэтгэлийг бодит хугацаанд хянана.",
+    copy: "Бүлэг тус бүрийн үнэлгээ, судалгааны нэгтгэлийг хянах, зөвлөн туслах, ирцийн бүртгэл, төлбөрийн мэдээлэл, хоол үйлдвэрлэлийн мэдээлэл солилцох, нэгдсэн тайлан гаргана.",
   },
   {
     imageSrc: "/illustrations/audience-cook.png",
     imageAlt: "Тогооч",
-    title: "Гал тогооны веб",
-    copy: "Өдрийн цэс, порц, харшлын анхааруулга, зарцуулалтыг хөтөлнө.",
+    title: "Тогоочийн веб",
+    copy: "Долоо хоногийн хоолны цэс, порц, харшлын анхааруулга, хүнсний зарцуулалтыг хөтөлнө.",
   },
   {
     imageSrc: "/illustrations/audience-accountant.png",
     imageAlt: "Нягтлан бодогч",
     title: "Нягтлангийн веб",
-    copy: "Нэхэмжлэл, төлбөр, санхүүжилт, тайлангаа нэг дор удирдана.",
+    copy: "Бүлэг, суралцагчийн ирцийн дэлгэрэнгүй нэгтгэл, төлбөрийн нэхэмжлэл, төлбөрийн бүртгэл, санхүүгийн тайланг нэг дор хөтөлнө.",
   },
 ] as const;
 
+/**
+ * ★ «Яагаад NomadKids» — 2026-10-12, the user's wording after the Боловсролын
+ * ерөнхий газар review. It absorbed «NomadKids гэж юу вэ?», which said the
+ * same three things again: development, assessment, management.
+ */
 const benefitItems = [
-  {
-    icon: Heart,
-    title: "Аюулгүй орчин",
-    copy: "Хүүхдийн мэдээлэл эрхийн хяналттай, найдвартай хамгаалагдана.",
-    tone: "bg-[#ffe9ec] text-[#ef6674]",
-  },
   {
     icon: Sparkles,
     title: "Хүүхэд бүрийн хөгжил",
-    copy: "Хүүхэд бүрийн ахиц, хэрэгцээг өдөр бүр анзаарч дэмжинэ.",
+    copy: "Ажиглалт, ярилцлага, бүтээлээр суралцагч бүрийн ахиц хөгжлийг баримтжуулж, хөгжлийн цахим хавтсаар эцэг эхтэй хуваалцана.",
     tone: "bg-[#fff4d5] text-[#e6ae28]",
   },
   {
     icon: Users,
     title: "Бүтээмжтэй хамт олон",
-    copy: "Бичиг цаасны ажлыг багасгаж, хамтын ажиллагааг дэмжинэ.",
+    copy: "Явцын үнэлгээг хялбар шийдлээр баримтжуулж, А/79 тушаалын шалгуураар үнэлэн, системтэй хялбар шийдэл нь багшийн бичиг цаасны ажлыг багасгана.",
     tone: "bg-[#e8f3ff] text-[#3c8de8]",
   },
   {
     icon: BarChart3,
     title: "Өгөгдөлд суурилсан удирдлага",
-    copy: "Бодит мэдээлэлд тулгуурлан оновчтой шийдвэр гаргана.",
+    copy: "Явцын ба үр дүнгийн үнэлгээ, ирц, санхүүжилтийн нэгдсэн тайланд тулгуурлан оновчтой шийдвэр гаргана.",
     tone: "bg-[#fff0df] text-[#ee9631]",
+  },
+  {
+    icon: Heart,
+    title: "Аюулгүй орчин",
+    copy: "Хүүхдийн мэдээллийг зөвхөн хариуцсан багш, эцэг эх нь харна. Эрхийн хяналттай, найдвартай хамгаалагдана.",
+    tone: "bg-[#ffe9ec] text-[#ef6674]",
   },
 ] as const;
 
@@ -278,16 +257,19 @@ function LoginCard() {
   const queryClient = useQueryClient();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  /** Already signed in on two devices — `DeviceLimitPanel` asks which to sign out. */
+  const [deviceLimit, setDeviceLimit] = useState(false);
 
   const login = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (replaceSessionId: string | undefined) => {
       const session = await mutate("/auth/login", sessionSchema, {
         method: "POST",
-        body: { identifier, password },
+        body: { identifier, password, ...(replaceSessionId ? { replaceSessionId } : {}) },
       });
       rememberCsrfToken(session.csrfToken);
       return get("/dashboard/primary", primaryDashboardSchema);
     },
+    onError: (error) => setDeviceLimit(isDeviceLimit(error)),
     onSuccess: async (primary) => {
       await queryClient.invalidateQueries({ queryKey: qk.session() });
       const from = params.get("from");
@@ -329,7 +311,7 @@ function LoginCard() {
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!login.isPending) login.mutate();
+    if (!login.isPending) login.mutate(undefined);
   }
 
   return (
@@ -340,16 +322,37 @@ function LoginCard() {
       <h2 className="text-lead font-bold leading-tight tracking-tight text-[#2f6fd6]">
         Системд нэвтрэх
       </h2>
-      <p className="mt-0.5 text-caption leading-4 text-[#8a93a3]">
-        Өөрийн эрхээр нэвтэрч, ажлаа үргэлжлүүлнэ үү.
+      {/* One line, at the client's request — it wrapped on a phone. The dots
+          are paler than the words, so the eye reads the roles, not the marks. */}
+      <p className="mt-0.5 whitespace-nowrap text-caption leading-4 tracking-[-0.01em] text-[#8a93a3]">
+        {SIGN_IN_ROLES.map((role, index) => (
+          <Fragment key={role}>
+            {index > 0 ? <span className="text-slate-300"> · </span> : null}
+            {role}
+          </Fragment>
+        ))}
       </p>
 
       <form onSubmit={onSubmit} className="mt-5 flex flex-col gap-3" noValidate>
         <FormError
           message={
-            login.isError && Object.keys(errors).length === 0 ? errorMessage(login.error) : null
+            login.isError && !deviceLimit && Object.keys(errors).length === 0
+              ? errorMessage(login.error)
+              : null
           }
         />
+        {deviceLimit ? (
+          <DeviceLimitPanel
+            identifier={identifier}
+            password={password}
+            pending={login.isPending}
+            onReplace={(sessionId) => login.mutate(sessionId)}
+            onCancel={() => {
+              setDeviceLimit(false);
+              login.reset();
+            }}
+          />
+        ) : null}
 
         <Field
           label="Утасны дугаар эсвэл нэвтрэх нэр"
@@ -372,7 +375,10 @@ function LoginCard() {
                 autoCapitalize="none"
                 placeholder="Утас эсвэл нэвтрэх нэр"
                 value={identifier}
-                onChange={(event) => setIdentifier(event.target.value)}
+                onChange={(event) => {
+                  setIdentifier(event.target.value);
+                  setDeviceLimit(false);
+                }}
                 className="h-12 rounded-control border-border bg-canvas pl-11 text-body transition-colors focus:bg-white"
               />
             </div>
@@ -394,7 +400,10 @@ function LoginCard() {
                 autoComplete="current-password"
                 placeholder="Нууц үг"
                 value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  setDeviceLimit(false);
+                }}
                 className="h-12 rounded-control border-border bg-canvas pl-11 text-body transition-colors focus:bg-white"
               />
             </div>
@@ -431,20 +440,16 @@ function LoginCard() {
         >
           Нууц үгээ мартсан?
         </Link>
-        {/*
-          ★ "Байгууллагын бүртгэл" above is a director applying to onboard a
-          whole kindergarten (`/register`, `docs/CONTRACT_ONBOARDING.md`). This
-          is a teacher who already has a kindergarten and a code to enter
-          (`/staff-register`). Both land near the login card, so the label
-          names who it is for — a director and a teacher pressing
-          same-looking links here would each land on the other's form.
-        */}
-        <Link
-          href="/staff-register"
-          className="inline-flex min-h-11 items-center text-caption font-semibold text-[#4a8ae8] hover:underline"
-        >
-          Багш, ажилтан бүртгүүлэх
-        </Link>
+        <span aria-hidden="true" className="text-caption text-slate-300">
+          ·
+        </span>
+        {/* ★ «Бүртгүүлэх» sits here, a plain link beside the password one, since
+            2026-10-12 — the card is for signing in, and the sign-up choices
+            (price, «Багш, ажилтан», «Байгууллага») are one press away. The old
+            «Багш, ажилтан бүртгүүлэх» link to `/staff-register` is gone: the
+            menu covers staff and teachers on their own, and a second link sent
+            the same person elsewhere. */}
+        <RegistrationMenu />
       </div>
 
       <p className="mt-3 hidden border-t border-border pt-4 text-center text-caption leading-5 text-muted lg:block">
@@ -459,6 +464,97 @@ function LoginCard() {
         танилцана уу.
       </p>
     </div>
+  );
+}
+
+/** Who signs in here — the line under «Системд нэвтрэх». */
+const SIGN_IN_ROLES = ["Багш", "Эцэг эх", "Удирдлага", "Нягтлан", "Тогооч"] as const;
+
+/**
+ * Registration choices under the login form: price, staff and organisation.
+ *
+ * ★ One way in for staff (2026-10-12): «Багш, ажилтан» opens the window where they
+ * pick their kindergarten from those with a contract, or sign up on their own
+ * when theirs has none. Parents and accountants are invited, so the menu tells a parent
+ * so instead of offering a button.
+ */
+function RegistrationMenu() {
+  const [open, setOpen] = useState(false);
+  const [dialog, setDialog] = useState<"teacher" | "kindergarten" | null>(null);
+
+  const choose = (next: "teacher" | "kindergarten") => {
+    setOpen(false);
+    setDialog(next);
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex min-h-11 items-center text-caption font-semibold text-[#4a8ae8] hover:underline"
+      >
+        Бүртгүүлэх
+      </button>
+
+      {open
+        ? createPortal(
+            <ModalOverlay label="Бүртгүүлэх" onClose={() => setOpen(false)}>
+              <div className="relative w-full max-w-[380px] rounded-card bg-white p-5 text-left shadow-xl">
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  aria-label="Хаах"
+                  className="absolute right-2 top-2 grid size-10 place-items-center rounded-pill text-slate-500 hover:bg-slate-100 hover:text-[#173e70]"
+                >
+                  <X className="size-5" aria-hidden="true" />
+                </button>
+                <h2 className="pr-10 text-lead font-extrabold text-[#102f5d]">Бүртгүүлэх</h2>
+                <p className="mt-1 text-caption text-slate-500">Бүртгэлийн төрлөө сонгоно уу.</p>
+                <Link
+                  href="/pricing"
+                  onClick={() => setOpen(false)}
+                  className="mt-4 flex min-h-11 items-center justify-between rounded-control bg-[#edf6ff] px-3 text-body font-bold text-[#2f6fd6] hover:bg-[#dfeeff]"
+                >
+                  Үнийн санал
+                  <ArrowRight className="size-4" aria-hidden="true" />
+                </Link>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => choose("teacher")}
+                    className="flex min-h-[112px] flex-col items-center justify-center rounded-row bg-[#effaf4] px-3 text-center text-[#0d6b4a] ring-1 ring-[#d3f0e0] hover:bg-[#e1f5ea]"
+                  >
+                    <GraduationCap className="mb-2 size-7" aria-hidden="true" />
+                    <span className="text-body font-bold">Багш, ажилтан</span>
+                    <span className="text-compact">Бүртгүүлэх</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => choose("kindergarten")}
+                    className="flex min-h-[112px] flex-col items-center justify-center rounded-row bg-[#fff6ec] px-3 text-center text-[#c2410c] ring-1 ring-[#fbe3c8] hover:bg-[#ffecd7]"
+                  >
+                    <Building2 className="mb-2 size-7" aria-hidden="true" />
+                    <span className="text-body font-bold">Байгууллага</span>
+                    <span className="text-compact">Хүсэлт илгээх</span>
+                  </button>
+                </div>
+                <p className="mt-3 text-center text-caption text-slate-500">
+                  Эцэг эх бүлгийн багшийн урилгаар нэвтрэнэ.
+                </p>
+              </div>
+            </ModalOverlay>,
+            document.body,
+          )
+        : null}
+
+      {dialog === "teacher"
+        ? createPortal(<TeacherApplyDialog onClose={() => setDialog(null)} />, document.body)
+        : null}
+      {dialog === "kindergarten"
+        ? createPortal(<RegisterDialog onClose={() => setDialog(null)} />, document.body)
+        : null}
+    </>
   );
 }
 
@@ -574,30 +670,29 @@ export function PublicLanding() {
         </div>
       </section>
 
-      <section id="features" className="px-5 py-16 sm:px-8 sm:py-20">
+      <section id="benefits" className="bg-[#fbfdff] px-5 py-16 sm:px-8 sm:py-20">
         <SectionHeading
-          eyebrow="Бүтээгдэхүүн"
-          title={`${BRAND_LATIN} гэж юу вэ?`}
-          copy="Цэцэрлэг, сургуулийн өдөр тутмын үйл ажиллагааг хялбар, ил тод, үр дүнтэй болгох цогц веб систем."
+          eyebrow={`Яагаад ${BRAND_LATIN}`}
+          // The client's wording, small — 2026-10-08.
+          title="Хүүхдийн хөгжилд хүн бүрийн оролцоо чухал"
+          copy="СӨБ-ийн шинэчилсэн хөтөлбөрт нийцсэн, хүүхэд, багш, эцэг эхэд ээлтэй цэцэрлэгийн цахим систем"
+          compact
         />
-        <div className="mx-auto mt-9 grid max-w-[1100px] gap-4 md:grid-cols-3">
-          {featureItems.map((item) => {
+        <div className="mx-auto mt-9 grid max-w-[1050px] gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          {benefitItems.map((item) => {
             const Icon = item.icon;
             return (
-              <article key={item.title} className={`rounded-control p-6 ${item.tone}`}>
-                {/* The icon on the title's row — 2026-10-08, the client. */}
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`grid size-12 shrink-0 place-items-center rounded-control ${item.iconTone}`}
-                  >
-                    <Icon className="size-6" aria-hidden="true" />
-                  </span>
-                  <h3 className="text-lead font-extrabold leading-tight text-[#173e70]">
-                    {item.title}
-                  </h3>
+              <div key={item.title} className="flex gap-3 lg:block lg:text-center">
+                <span
+                  className={`grid size-11 shrink-0 place-items-center rounded-pill ${item.tone} lg:mx-auto`}
+                >
+                  <Icon className="size-5" aria-hidden="true" />
+                </span>
+                <div>
+                  <h3 className="text-body font-extrabold text-[#173e70] lg:mt-3">{item.title}</h3>
+                  <p className="mt-1 text-caption leading-5 text-slate-500">{item.copy}</p>
                 </div>
-                <p className="mt-2 text-body leading-6 text-slate-600">{item.copy}</p>
-              </article>
+              </div>
             );
           })}
         </div>
@@ -639,34 +734,6 @@ export function PublicLanding() {
               </div>
             </article>
           ))}
-        </div>
-      </section>
-
-      <section id="benefits" className="bg-[#fbfdff] px-5 py-16 sm:px-8 sm:py-20">
-        <SectionHeading
-          eyebrow={`Яагаад ${BRAND_LATIN}`}
-          // The client's wording, small — 2026-10-08.
-          title="Хүүхдийн хөгжилд хүн бүрийн оролцоо чухал"
-          copy="Хүүхэд, багшид ээлтэй, аюулгүй цахим сувагт тавтай морил"
-          compact
-        />
-        <div className="mx-auto mt-9 grid max-w-[1050px] gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {benefitItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <div key={item.title} className="flex gap-3 lg:block lg:text-center">
-                <span
-                  className={`grid size-11 shrink-0 place-items-center rounded-pill ${item.tone} lg:mx-auto`}
-                >
-                  <Icon className="size-5" aria-hidden="true" />
-                </span>
-                <div>
-                  <h3 className="text-body font-extrabold text-[#173e70] lg:mt-3">{item.title}</h3>
-                  <p className="mt-1 text-caption leading-5 text-slate-500">{item.copy}</p>
-                </div>
-              </div>
-            );
-          })}
         </div>
       </section>
 
@@ -728,7 +795,6 @@ export function PublicLanding() {
           <Brand />
           <nav className="flex flex-wrap justify-center gap-x-5 gap-y-3 text-caption text-slate-500">
             <Link href="/register">Байгууллагын бүртгэл</Link>
-            <a href="#features">Бүтээгдэхүүн</a>
             <a href="#audiences">Хэнд зориулагдсан</a>
             <Link href="/faq">Түгээмэл асуулт</Link>
             <Link href="/privacy">Нууцлалын бодлого</Link>

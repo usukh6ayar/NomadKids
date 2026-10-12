@@ -1,8 +1,14 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, ROUTER, setParams, setSearchParams, stubApi } from "./support/render";
 import StaffRegisterPage from "@/app/staff-register/page";
+
+/*
+ * The form opens over the home page (2026-10-12); the home page's own
+ * «Бүртгүүлэх» would answer the same button name, so it is stood in for here.
+ */
+vi.mock("@/components/public/landing", () => ({ PublicLanding: () => null }));
 
 /*
  * ★ `StaffRegistrationService.register`'s `REFUSAL` constant, copied rather
@@ -74,7 +80,7 @@ describe("бүртгүүлэх маягт", () => {
 
     renderWithProviders(<StaffRegisterPage />);
 
-    expect(screen.getByText(/захиралтай холбогдоно уу/)).toBeInTheDocument();
+    expect(screen.getByText(/эрхлэгчдээ хандаж урилга авна уу/)).toBeInTheDocument();
   });
 
   it("амжилттай бүртгүүлбэл урилгын хуудас руу шилжинэ", async () => {
@@ -99,5 +105,16 @@ describe("бүртгүүлэх маягт", () => {
 
     const post = calls.find((c) => c.method === "POST" && c.url.startsWith("/staff-registration"));
     expect(post?.body).toEqual({ institutionId: "42778", registerNumber: "УЛ24270406" });
+  });
+
+  it("цонхоор нээгдэж, × дарахад нүүр хуудас руу буцна", async () => {
+    const user = userEvent.setup();
+    stubApi([{ path: "/auth/me", status: 401 }]);
+
+    renderWithProviders(<StaffRegisterPage />);
+
+    const dialog = screen.getByRole("dialog", { name: "Ажилтны бүртгэл" });
+    await user.click(within(dialog).getByRole("button", { name: "Хаах" }));
+    expect(ROUTER.push).toHaveBeenCalledWith("/");
   });
 });

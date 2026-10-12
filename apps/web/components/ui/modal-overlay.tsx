@@ -17,7 +17,8 @@ import { cn } from "@/lib/utils";
  *
  * ★★ A hook returning props, rather than a wrapper component, on purpose.
  * Every one of those dialogs already has its own overlay element with its own
- * layout — `grid place-items-center`, `grid items-end` for the survey sheet,
+ * layout — `grid place-items-center` (every window is centred since
+ * 2026-10-12, a phone included),
  * `flex` for the lightbox. Spreading two handlers onto what is already there
  * changes behaviour without touching a single line of layout, which is the
  * difference between a change that can be reviewed and one that cannot.

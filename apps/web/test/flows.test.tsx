@@ -1825,7 +1825,7 @@ describe("teacher dashboard", () => {
       // what it actually shows. The assertion is that the card is on the
       // dashboard at all, which is unchanged.
       "Долоо хоногийн ирц",
-      "Төрсөн өдөрийн булан",
+      "Төрсөн өдрийн булан",
       "Явцын үнэлгээ",
       "Сүүлийн нийтлэл",
       "Чат",

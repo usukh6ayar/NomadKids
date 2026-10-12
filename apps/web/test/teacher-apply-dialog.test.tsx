@@ -1,80 +1,201 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ROUTER, renderWithProviders, stubApi } from "./support/render";
-import { TeacherApplyDialog } from "@/components/public/teacher-apply-dialog";
+import {
+  TeacherApplyDialog,
+  looksLikeSameKindergarten,
+} from "@/components/public/teacher-apply-dialog";
 
 /*
- * ★ «Багшийн гэрээ» — 2026-10-08, the client. Since 2026-10-11 the sign-up
- * creates the teacher's own workspace at once and answers an invitation
- * token; the window goes to `/invitation/[token]` to set the password.
+ * ★ «Багш, ажилтан» — 2026-10-12. Two tabs: «Цэцэрлэгээр» for staff of a
+ * kindergarten on NomadKids (picked by district and name, no ESIS code), and
+ * «Дангаараа» for a teacher whose kindergarten is not. The routes are the
+ * contract the backend is asked for; until they exist the window says so.
  */
 afterEach(() => vi.unstubAllGlobals());
 
-async function fill(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(screen.getByLabelText(/Овог нэр/), "Д.Сувдаа");
-  await user.type(screen.getByLabelText(/^Утас/), "99112233");
-  await user.type(screen.getByLabelText(/^И-мэйл/), "suvdaa@example.mn");
-  await user.click(screen.getByLabelText(/Аймаг \/ дүүрэг/));
+/** The visible panel — the other tab's panel is mounted but hidden. */
+const panel = () => within(screen.getByRole("tabpanel"));
+
+async function chooseDistrict(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(panel().getByLabelText(/Аймаг \/ дүүрэг/));
   await user.click(screen.getByRole("option", { name: "Баянзүрх" }));
-  await user.type(screen.getByLabelText(/Цэцэрлэгийн нэр/), "Нарлаг");
-  await user.click(screen.getByRole("button", { name: "Гэрээний хүсэлт илгээх" }));
 }
 
-describe("the teacher's contract window", () => {
-  it("sends the teacher's ownership, location and kindergarten, then sets the password", async () => {
+async function chooseKindergarten(user: ReturnType<typeof userEvent.setup>, name: string) {
+  await user.click(await panel().findByLabelText(/^Цэцэрлэг/));
+  await user.click(screen.getByRole("option", { name }));
+}
+
+describe("«Цэцэрлэгээр» — staff of a kindergarten on NomadKids", () => {
+  it("picks the kindergarten by name and goes on to set a password", async () => {
     const user = userEvent.setup();
     ROUTER.replace.mockClear();
     const api = stubApi([
+      { path: "/public/kindergartens", body: [{ id: "kg-1", name: "Нарлаг" }] },
       {
-        path: "/teacher-applications",
+        path: "/staff-registration",
         method: "POST",
         status: 201,
-        body: { invitationToken: "tok-123" },
+        body: { invitationToken: "tok-1" },
       },
     ]);
     renderWithProviders(<TeacherApplyDialog onClose={() => {}} />);
-    await fill(user);
-
-    await waitFor(() =>
-      expect(api.calls.find((call) => call.url === "/teacher-applications")?.body).toEqual({
-        fullName: "Д.Сувдаа",
-        phone: "99112233",
-        email: "suvdaa@example.mn",
-        propertyType: "Төрийн бус",
-        location: "Баянзүрх дүүрэг",
-        kindergartenName: "Нарлаг",
-      }),
+    expect(screen.getByRole("tab", { name: /Цэцэрлэгээр/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
     );
-    await waitFor(() => expect(ROUTER.replace).toHaveBeenCalledWith("/invitation/tok-123"));
+    await chooseDistrict(user);
+    await chooseKindergarten(user, "Нарлаг");
+    await user.type(panel().getByLabelText(/Регистрийн дугаар/), "УБ90010101");
+    await user.click(panel().getByRole("button", { name: "Бүртгүүлэх" }));
+
+    await waitFor(() => expect(ROUTER.replace).toHaveBeenCalledWith("/invitation/tok-1"));
+    expect(api.calls.find((call) => call.url === "/staff-registration")?.body).toEqual({
+      kindergartenId: "kg-1",
+      registerNumber: "УБ90010101",
+    });
   });
 
-  it("defaults the ownership to private and provides the location picker", () => {
-    renderWithProviders(<TeacherApplyDialog onClose={() => {}} />);
-
-    expect(screen.getByLabelText(/Өмчийн хэлбэр/)).toHaveTextContent("Төрийн бус");
-    expect(screen.getByLabelText(/Аймаг \/ дүүрэг/)).toHaveTextContent("Сонгоно уу");
-    expect(screen.getByLabelText(/Цэцэрлэгийн нэр/)).toBeInTheDocument();
-  });
-
-  it("says plainly when the phone is already in use", async () => {
+  it("shows the server's refusal and always points at the director", async () => {
     const user = userEvent.setup();
     stubApi([
+      { path: "/public/kindergartens", body: [{ id: "kg-1", name: "Нарлаг" }] },
       {
-        path: "/teacher-applications",
+        path: "/staff-registration",
         method: "POST",
-        status: 409,
+        status: 401,
         body: {
           type: "about:blank",
-          title: "Conflict",
-          status: 409,
-          detail: "Энэ утасны дугаар аль хэдийн бүртгэлтэй байна",
+          title: "Бүртгэл олдсонгүй",
+          status: 401,
+          detail: "Мэдээлэл таарсангүй.",
+          requestId: "test",
         },
       },
     ]);
     renderWithProviders(<TeacherApplyDialog onClose={() => {}} />);
-    await fill(user);
+    await chooseDistrict(user);
+    await chooseKindergarten(user, "Нарлаг");
+    await user.type(panel().getByLabelText(/Регистрийн дугаар/), "УБ90010101");
+    await user.click(panel().getByRole("button", { name: "Бүртгүүлэх" }));
 
-    expect(await screen.findByText(/аль хэдийн бүртгэ/)).toBeInTheDocument();
+    expect(await screen.findByText("Мэдээлэл таарсангүй.")).toBeInTheDocument();
+    expect(
+      panel().getByText("Бүртгүүлж чадахгүй бол эрхлэгчдээ хандаж урилга авна уу."),
+    ).toBeInTheDocument();
+  });
+
+  it("«Миний цэцэрлэг энд алга» moves to «Дангаараа» with the district kept", async () => {
+    const user = userEvent.setup();
+    stubApi([{ path: "/public/kindergartens", body: [{ id: "kg-1", name: "Нарлаг" }] }]);
+    renderWithProviders(<TeacherApplyDialog onClose={() => {}} />);
+    await chooseDistrict(user);
+    await chooseKindergarten(user, "➕ Миний цэцэрлэг энд алга");
+
+    expect(screen.getByRole("tab", { name: /Дангаараа/ })).toHaveAttribute("aria-selected", "true");
+    expect(panel().getByLabelText(/Аймаг \/ дүүрэг/)).toHaveTextContent("Баянзүрх");
+    expect(panel().getByLabelText(/Цэцэрлэгийн нэр/)).toBeInTheDocument();
+  });
+
+  it("offers the ESIS-code page while the list is not served yet", async () => {
+    const user = userEvent.setup();
+    stubApi([]);
+    renderWithProviders(<TeacherApplyDialog onClose={() => {}} />);
+    await chooseDistrict(user);
+
+    expect(await panel().findByRole("link", { name: /кодоор бүртгүүлнэ үү/ })).toHaveAttribute(
+      "href",
+      "/staff-register",
+    );
+  });
+});
+
+/*
+ * Eight fields are typed key by key; under a full run's load that alone can
+ * pass the default 5 s, so these tests get more room.
+ */
+describe("«Дангаараа» — a teacher on their own (#202)", { timeout: 15_000 }, () => {
+  async function fillSolo(user: ReturnType<typeof userEvent.setup>) {
+    await chooseDistrict(user);
+    await user.type(panel().getByLabelText(/Цэцэрлэгийн нэр/), "Нарлаг");
+    await user.type(panel().getByLabelText(/Овог нэр/), "Батаагийн Сувд");
+    await user.type(panel().getByLabelText(/^Утас/), "99112233");
+    await user.type(panel().getByLabelText(/^И-мэйл/), "suvdaa@example.mn");
+    await user.click(panel().getByRole("button", { name: "Бүртгүүлэх" }));
+  }
+
+  it("keeps what was typed across tabs, signs up and goes on to set a password", async () => {
+    const user = userEvent.setup();
+    ROUTER.replace.mockClear();
+    const api = stubApi([
+      { path: "/public/kindergartens", body: [] },
+      {
+        path: "/teacher-applications",
+        method: "POST",
+        status: 201,
+        body: { invitationToken: "tok-solo" },
+      },
+    ]);
+    renderWithProviders(<TeacherApplyDialog onClose={() => {}} />);
+    await user.click(screen.getByRole("tab", { name: /Дангаараа/ }));
+    expect(screen.getByText("Цэцэрлэг маань бүртгэлгүй — үнэгүй")).toBeInTheDocument();
+    await user.type(panel().getByLabelText(/Овог нэр/), "Ба");
+    await user.click(screen.getByRole("tab", { name: /Цэцэрлэгээр/ }));
+    await user.click(screen.getByRole("tab", { name: /Дангаараа/ }));
+    expect(panel().getByLabelText(/Овог нэр/)).toHaveValue("Ба");
+    await user.clear(panel().getByLabelText(/Овог нэр/));
+    await fillSolo(user);
+
+    await waitFor(() => expect(ROUTER.replace).toHaveBeenCalledWith("/invitation/tok-solo"));
+    expect(api.calls.find((call) => call.url === "/teacher-applications")?.body).toEqual({
+      fullName: "Батаагийн Сувд",
+      phone: "99112233",
+      email: "suvdaa@example.mn",
+      propertyType: "Төрийн бус",
+      location: "Баянзүрх дүүрэг",
+      kindergartenName: "Нарлаг",
+    });
+  });
+});
+
+describe("a solo sign-up for a kindergarten that is already on NomadKids", () => {
+  it("matches a name however it is typed, but not on two letters", () => {
+    expect(looksLikeSameKindergarten("нарлаг цэцэрлэг", "Нарлаг")).toBe(true);
+    expect(looksLikeSameKindergarten("Нарлаг-цэцэрлэг", "Нарлаг цэцэрлэг")).toBe(true);
+    expect(looksLikeSameKindergarten("Нарл", "Нарлаг")).toBe(true);
+    expect(looksLikeSameKindergarten("На", "Нарлаг")).toBe(false);
+    expect(looksLikeSameKindergarten("Хүслэн", "Нарлаг")).toBe(false);
+  });
+
+  it("offers the listed kindergarten and opens «Цэцэрлэгээр» with it chosen", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      {
+        path: "/public/kindergartens",
+        body: [
+          { id: "kg-1", name: "Нарлаг цэцэрлэг" },
+          { id: "kg-2", name: "Хүслэн" },
+        ],
+      },
+    ]);
+    renderWithProviders(<TeacherApplyDialog initialMode="solo" onClose={() => {}} />);
+    await chooseDistrict(user);
+    await user.type(panel().getByLabelText(/Цэцэрлэгийн нэр/), "нарлаг");
+
+    expect(await panel().findByText(/NomadKids ашигладаг/)).toHaveTextContent(
+      "«Нарлаг цэцэрлэг» NomadKids ашигладаг",
+    );
+    expect(panel().queryByText(/«Хүслэн»/)).toBeNull();
+    await user.click(panel().getByRole("button", { name: /Цэцэрлэгээр бүртгүүлэх/ }));
+
+    expect(screen.getByRole("tab", { name: /Цэцэрлэгээр/ })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(panel().getByLabelText(/Аймаг \/ дүүрэг/)).toHaveTextContent("Баянзүрх");
+    expect(panel().getByLabelText(/^Цэцэрлэг/)).toHaveTextContent("Нарлаг цэцэрлэг");
+    expect(panel().getByLabelText(/Регистрийн дугаар/)).toBeInTheDocument();
   });
 });

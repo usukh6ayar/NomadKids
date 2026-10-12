@@ -32,7 +32,7 @@ import { EsisCoverageSection } from "@/components/esis/esis-coverage";
  * `runRosterSync` writes `{ kind: "ROSTER", … }`).
  *
  * ★ `null` is a real answer, not a parsing failure: the platform operator's
- * "Синк шалгалт" dry run writes to this same `EsisSyncRun` table with a
+ * "Мэдээлэл тулгалт" dry run writes to this same `EsisSyncRun` table with a
  * summary of `{ mode: "LIVE", resources: {...} }` and no `kind` at all — a
  * preview and a tier sync sit in the same history and are told apart only by
  * this field. `sync-runs` is tenant-scoped, so an ADMIN's own dry-run
@@ -51,7 +51,7 @@ function tierLabel(summary: unknown): string {
   const tier = runTier(summary);
   if (tier === "REFERENCE") return "Лавлах мэдээлэл";
   if (tier === "ROSTER") return "Ажилтны бүртгэл";
-  return "Синк шалгалт";
+  return "Мэдээлэл тулгалт";
 }
 
 /** `runReferenceSync`'s summary, read defensively — see `runTier`'s note. */
