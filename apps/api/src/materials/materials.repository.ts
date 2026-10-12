@@ -1,6 +1,10 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import type { MaterialFileType, MaterialLevel } from "../generated/prisma/enums";
+import type {
+  MaterialFileType,
+  MaterialLevel,
+  MaterialPreviewStatus,
+} from "../generated/prisma/enums";
 
 /**
  * The teaching-materials catalog and its purchases (client, 2026-10-09).
@@ -48,6 +52,8 @@ export interface MaterialData {
   price: number;
   contents: string[];
   published: boolean;
+  /** MANUAL for the operator's own pictures, PENDING while the server draws them. */
+  previewStatus: MaterialPreviewStatus;
 }
 
 export interface MaterialFileData {
@@ -278,6 +284,65 @@ export class MaterialsRepository {
         unused.push(...before.previews.map((p) => p.storageKey));
       }
       return unused;
+    });
+  }
+
+  /** Back to PENDING for «дахин үүсгэх»; the file the job will draw. */
+  async markPreviewsPending(id: string): Promise<{ storageKey: string }> {
+    return this.prisma.teachingMaterial.update({
+      where: { id },
+      data: { previewStatus: "PENDING" },
+      select: { storageKey: true },
+    });
+  }
+
+  /** The material a sample-page job was asked for — if it still wants one, on that file. */
+  findPendingRender(id: string, storageKey: string) {
+    return this.prisma.teachingMaterial.findFirst({
+      where: { id, storageKey, previewStatus: "PENDING" },
+      select: { storageKey: true, mimeType: true },
+    });
+  }
+
+  /**
+   * Swaps in the pages a job drew — **only if the material is still PENDING on
+   * the file the job drew**, checked by the same statement that marks it
+   * READY, so an operator's edit committed meanwhile wins. `null` when it was
+   * not current (the caller removes what it stored); otherwise the storage
+   * keys of the pages replaced, for removal after the commit.
+   */
+  async savePreviewsIfCurrent(
+    id: string,
+    storageKey: string,
+    previews: PreviewData[],
+  ): Promise<string[] | null> {
+    return this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.teachingMaterial.updateMany({
+        where: { id, storageKey, previewStatus: "PENDING" },
+        data: { previewStatus: "READY" },
+      });
+      if (count === 0) return null;
+
+      const before = await tx.teachingMaterialPreview.findMany({
+        where: { materialId: id, deletedAt: null },
+        select: { storageKey: true },
+      });
+      await tx.teachingMaterialPreview.updateMany({
+        where: { materialId: id, deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
+      await tx.teachingMaterialPreview.createMany({
+        data: previews.map((p, order) => ({ ...p, order, materialId: id })),
+      });
+      return before.map((p) => p.storageKey);
+    });
+  }
+
+  /** FAILED, under the same "still current" condition as a save. */
+  async failPreviewsIfCurrent(id: string, storageKey: string): Promise<void> {
+    await this.prisma.teachingMaterial.updateMany({
+      where: { id, storageKey, previewStatus: "PENDING" },
+      data: { previewStatus: "FAILED" },
     });
   }
 

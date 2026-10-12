@@ -13,6 +13,9 @@ import {
   type Scenario,
 } from "./support/fixtures";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
+import { MaterialPreviewProcessor } from "../src/materials/material-preview.processor";
+import { StorageService } from "../src/storage/storage.service";
+import { makePdf } from "./support/pdf-fixture";
 
 /**
  * Сургалтын хэрэглэгдэхүүн — the platform's lessons, sold to teachers through
@@ -72,6 +75,8 @@ interface Fields {
   area?: string;
   price?: string;
   published?: string;
+  /** Sent only when given — the operator's own pictures are the default. */
+  autoPreview?: string;
   contents?: string[];
 }
 
@@ -86,8 +91,8 @@ function upload(
     .field("title", fields.title ?? "Тоолж сурцгаая")
     .field("area", fields.area ?? "Математик")
     .field("price", fields.price ?? "12000")
-    .field("published", fields.published ?? "true")
-    .field("autoPreview", "true");
+    .field("published", fields.published ?? "true");
+  if (fields.autoPreview) req = req.field("autoPreview", fields.autoPreview);
   for (const line of fields.contents ?? ["1–5 хүртэл тоолох", "Их, бага харьцуулах"]) {
     req = req.field("contents", line);
   }
@@ -133,7 +138,7 @@ describe("the operator's catalog", () => {
       sales: 0,
       fileName: "тоолох.pdf",
       contents: ["1–5 хүртэл тоолох", "Их, бага харьцуулах"],
-      // Asked for, but the server cannot draw pages yet (Phase 2).
+      // The operator's own pictures — the default (the user, 2026-10-12).
       previewStatus: "MANUAL",
     });
     expect(res.body.previewUrls).toEqual([
@@ -215,13 +220,136 @@ describe("the operator's catalog", () => {
     ).toBe(2);
   });
 
-  it("cannot draw sample pages yet, and says so", async () => {
+  it("regenerates only for the operator", async () => {
     const material = await createMaterial();
+    for (const session of [teacher, director]) {
+      const res = await authed(
+        request(server()).post(`/v1/platform/materials/${material.id}/previews/regenerate`),
+        session,
+      );
+      expect(res.status).toBe(404);
+    }
+  });
+});
+
+/*
+ * ★ Sample pages drawn by the server (2026-10-12): the first pages of the file,
+ * on the queue (CLAUDE.md §6). The tests call the processor the worker calls.
+ */
+describe("sample pages drawn from the file", () => {
+  const draw = (materialId: string, storageKey: string) =>
+    app.get(MaterialPreviewProcessor).run({ materialId, storageKey });
+  const fileKey = async (id: string) =>
+    (await db.teachingMaterial.findUniqueOrThrow({ where: { id } })).storageKey;
+  const catalogRow = async (id: string) => {
+    const res = await authed(request(server()).get("/v1/platform/materials"), operator);
+    return (res.body as { id: string; previewStatus: string; previewUrls: string[] }[]).find(
+      (m) => m.id === id,
+    )!;
+  };
+
+  it("draws the first three pages, watermarked, ignoring pictures sent beside it", async () => {
+    const res = await upload(
+      "post",
+      "/platform/materials",
+      operator,
+      { autoPreview: "true" },
+      { file: [makePdf(5), "тоолох.pdf"], previews: 2 },
+    );
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ previewStatus: "PENDING", previewUrls: [] });
+
+    expect(await draw(res.body.id, await fileKey(res.body.id))).toBe("ready");
+
+    const row = await catalogRow(res.body.id);
+    expect(row.previewStatus).toBe("READY");
+    expect(row.previewUrls).toHaveLength(3);
+    const stored = await db.teachingMaterialPreview.findFirstOrThrow({
+      where: { materialId: res.body.id, order: 0, deletedAt: null },
+    });
+    const page = await app.get(StorageService).get(stored.storageKey);
+    const meta = await sharp(page).metadata();
+    expect(meta.format).toBe("jpeg");
+    // The page's own black block is there, not only the watermark.
+    expect((await sharp(page).stats()).channels[0]!.min).toBeLessThan(20);
+
+    // A title edit leaves the drawn pages alone.
+    const edit = await upload(
+      "put",
+      `/platform/materials/${res.body.id}`,
+      operator,
+      {
+        title: "Шинэ нэр",
+        autoPreview: "true",
+      },
+      {},
+    );
+    expect(edit.body).toMatchObject({ previewStatus: "READY" });
+    expect(edit.body.previewUrls).toHaveLength(3);
+  });
+
+  it("a job for a replaced file throws its pages away", async () => {
+    const res = await upload(
+      "post",
+      "/platform/materials",
+      operator,
+      { autoPreview: "true" },
+      { file: [makePdf(2), "a.pdf"] },
+    );
+    const oldKey = await fileKey(res.body.id);
+    await upload(
+      "put",
+      `/platform/materials/${res.body.id}`,
+      operator,
+      { autoPreview: "true" },
+      { file: [makePdf(1), "b.pdf"] },
+    ).expect(200);
+
+    expect(await draw(res.body.id, oldKey)).toBe("stale");
+    expect(await db.teachingMaterialPreview.count({ where: { materialId: res.body.id } })).toBe(0);
+    expect((await catalogRow(res.body.id)).previewStatus).toBe("PENDING");
+
+    expect(await draw(res.body.id, await fileKey(res.body.id))).toBe("ready");
+    expect((await catalogRow(res.body.id)).previewUrls).toHaveLength(1);
+  });
+
+  it("the operator's own pictures, chosen while a job runs, win", async () => {
+    const res = await upload(
+      "post",
+      "/platform/materials",
+      operator,
+      { autoPreview: "true" },
+      { file: [makePdf(3), "a.pdf"] },
+    );
+    const key = await fileKey(res.body.id);
+    const manual = await upload(
+      "put",
+      `/platform/materials/${res.body.id}`,
+      operator,
+      { autoPreview: "false" },
+      { previews: 1 },
+    );
+    expect(manual.body).toMatchObject({ previewStatus: "MANUAL" });
+
+    expect(await draw(res.body.id, key)).toBe("stale");
+    expect((await catalogRow(res.body.id)).previewUrls).toHaveLength(1);
+  });
+
+  it("regenerate answers 202 at PENDING; a file that cannot be drawn ends FAILED", async () => {
+    // `PDF` is a valid header with no pages in it.
+    const material = await createMaterial({}, 2);
     const res = await authed(
       request(server()).post(`/v1/platform/materials/${material.id}/previews/regenerate`),
       operator,
     );
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(202);
+    expect(res.body).toMatchObject({ previewStatus: "PENDING" });
+
+    expect(await draw(material.id, await fileKey(material.id))).toBe("failed");
+    const row = await catalogRow(material.id);
+    expect(row.previewStatus).toBe("FAILED");
+    // The operator's pictures stay until something replaces them.
+    expect(row.previewUrls).toHaveLength(2);
   });
 });
 

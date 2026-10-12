@@ -225,10 +225,10 @@ function MaterialDialog({
   /** Up to six sample pages; the first is the shop card's cover. */
   const [previews, setPreviews] = useState<File[]>([]);
   /**
-   * ★ Phase 2: let the server draw the sample pages from the file itself.
-   * Off by default until the server can (2026-10-11): it needs poppler and
-   * LibreOffice in the worker image, and with it on the operator's own
-   * pictures are not sent — a new material would have no sample pages.
+   * ★ Let the server draw the sample pages from the file itself — it can
+   * since 2026-10-12 (poppler and LibreOffice in the worker image). Still off
+   * by default for a new material: the operator's own pictures are the
+   * default (the user, 2026-10-12), and with this on they are not sent.
    */
   const [autoPreview, setAutoPreview] = useState(
     material ? material.previewStatus !== "MANUAL" : false,

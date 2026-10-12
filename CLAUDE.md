@@ -297,8 +297,9 @@ as a defect until shown otherwise.
 ## 6. Slow work goes to a queue
 
 BullMQ, never inside a request: PDF generation (~2.5 s), chat video
-transcoding (`chat/chat-video.*`, ffmpeg in the same image), image processing,
-bulk notifications, cleanup sweeps.
+transcoding (`chat/chat-video.*`, ffmpeg in the same image), teaching-material
+sample pages (`materials/material-preview.*`, LibreOffice and poppler in the
+same image), image processing, bulk notifications, cleanup sweeps.
 
 The `reports-worker` container (2 GB) runs the slow work. It needs Chromium and
 **Cyrillic fonts installed system-wide** — without them a PDF renders blank with

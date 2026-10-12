@@ -34,7 +34,7 @@ import { downloadUrl } from "@/lib/api/client";
  *   DELETE /platform/materials/:id            — hides it from the shop; whoever
  *                                               bought it keeps it (a soft delete)
  *
- * ★ Phase 2 — sample pages made by the server, 2026-10-09: when the operator
+ * ★ Sample pages made by the server (asked 2026-10-09, built 2026-10-12): when the operator
  * asks for it (`autoPreview=true` on the upload) the server renders the first
  * `AUTO_PREVIEW_PAGES` pages of the file to reduced, watermarked pictures on
  * a BullMQ job (CLAUDE.md §6 — a PowerPoint goes through PDF first, with

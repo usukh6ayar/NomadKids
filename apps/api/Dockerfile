@@ -83,6 +83,12 @@ RUN apt-get update \
       # Chat video — `src/chat/chat-video.ts` transcodes every upload to
       # 720p H.264 in the reports-worker container.
       ffmpeg \
+      # Teaching-material sample pages — `src/materials/material-render.ts`
+      # draws a PDF's first pages with poppler, and turns a PowerPoint into a
+      # PDF with LibreOffice first. The headless Impress package, without the
+      # desktop: it runs in the reports-worker container only.
+      poppler-utils \
+      libreoffice-impress-nogui \
       ca-certificates \
       # Prisma's query engine links against libssl — see the build stage.
       openssl \
