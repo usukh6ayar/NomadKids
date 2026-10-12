@@ -22,8 +22,9 @@ export const materialFileTypeSchema = z.enum(MATERIAL_FILE_TYPES);
 
 export const MATERIAL_PREVIEW_STATUSES = ["MANUAL", "PENDING", "READY", "FAILED"] as const;
 export const materialPreviewStatusSchema = z.enum(MATERIAL_PREVIEW_STATUSES);
+export type MaterialPreviewStatus = z.infer<typeof materialPreviewStatusSchema>;
 
-/** Sample pages per material — the operator's upload, or the server's (Phase 2). */
+/** Sample pages per material — the operator's upload, or the server's. */
 export const MATERIAL_PREVIEWS_MAX = 6;
 export const MATERIAL_CONTENTS_MAX = 30;
 
@@ -87,7 +88,12 @@ export const materialFormSchema = z.object({
     .regex(/^\d{1,9}$/, "Үнийг бүхэл төгрөгөөр оруулна уу")
     .transform(Number),
   published: formBoolean.default(true),
-  /** Accepted, and ignored until the server can draw sample pages (Phase 2). */
+  /**
+   * The server draws the first pages of the file as the sample pages, on a
+   * queue (2026-10-12); any `previews` sent beside it are ignored. Off unless
+   * asked — the operator's own pictures are the default (the user,
+   * 2026-10-12). Absent on an edit, the material keeps the source it had.
+   */
   autoPreview: formBoolean.optional(),
   contents: formLines,
 });

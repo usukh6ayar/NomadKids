@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import {
   MATERIAL_PREVIEWS_MAX,
   type Material,
+  type MaterialPreviewStatus,
   type MaterialForm,
   type MaterialListQuery,
   type PlatformMaterial,
@@ -16,6 +17,7 @@ import { UploadRejected, sanitiseFilename } from "../media/upload-validation";
 import { StorageService } from "../storage/storage.service";
 import { materialExtension, validateMaterialFile } from "./material-file";
 import { preparePreview } from "./material-preview";
+import { MaterialPreviewQueue } from "./material-preview.queue";
 import {
   MaterialsRepository,
   type MaterialData,
@@ -48,6 +50,7 @@ export class MaterialsService {
     private readonly qpay: QpayService,
     private readonly storage: StorageService,
     private readonly audit: AuditRepository,
+    private readonly previewQueue: MaterialPreviewQueue,
   ) {}
 
   // ── The shop ─────────────────────────────────────────────────────────────
@@ -176,20 +179,26 @@ export class MaterialsService {
   ): Promise<PlatformMaterial> {
     this.platform.assertSuperAdmin(actor);
     if (!file) throw new BadRequestException("PDF эсвэл PowerPoint файлаа хавсаргана уу.");
-    const data = await this.formData(form);
-    const pages = await this.preparePreviews(previews);
+    // ★ The operator's own pictures unless they ask (the user, 2026-10-12).
+    const auto = form.autoPreview ?? false;
+    const data = await this.formData(form, auto ? "PENDING" : "MANUAL");
+    // Drawn pages replace whatever was attached, so a picture is not even read.
+    const pages = auto ? [] : await this.preparePreviews(previews);
 
     const stored = await this.storeFile(file);
     const keys = [stored.storageKey];
+    let id: string;
     try {
       const savedPreviews = await this.storePreviews(pages, keys);
-      const { id } = await this.repo.create({ ...data, ...stored }, savedPreviews, actor.userId);
-      await this.record(actor, "CREATE", id, { title: data.title, price: data.price });
-      return this.platformView(id);
+      ({ id } = await this.repo.create({ ...data, ...stored }, savedPreviews, actor.userId));
     } catch (error) {
       await this.removeObjects(keys);
       throw error;
     }
+    await this.record(actor, "CREATE", id, { title: data.title, price: data.price });
+    // After the commit (§3.5): the worker must find the row.
+    if (auto) await this.previewQueue.enqueue({ materialId: id, storageKey: stored.storageKey });
+    return this.platformView(id);
   }
 
   /**
@@ -207,14 +216,31 @@ export class MaterialsService {
     const before = await this.repo.findLive(id);
     if (!before) throw new NotFoundException();
 
-    const data = await this.formData(form);
-    const pages = previews.length > 0 ? await this.preparePreviews(previews) : null;
+    /*
+      ★ Drawn again when the file changed, or when the pages are not the
+      server's yet (MANUAL, or a FAILED run being retried). An edit of the
+      title leaves READY or PENDING pages alone. A form without the field
+      keeps whichever source the material already had.
+    */
+    const auto = form.autoPreview ?? before.previewStatus !== "MANUAL";
+    const draw =
+      auto &&
+      (Boolean(file) || before.previewStatus === "MANUAL" || before.previewStatus === "FAILED");
+    const data = await this.formData(
+      form,
+      !auto ? "MANUAL" : draw ? "PENDING" : before.previewStatus,
+    );
+    const pages = !auto && previews.length > 0 ? await this.preparePreviews(previews) : null;
 
     const keys: string[] = [];
     let unused: string[];
+    let storageKey = before.storageKey;
     try {
       const stored = file ? await this.storeFile(file) : null;
-      if (stored) keys.push(stored.storageKey);
+      if (stored) {
+        keys.push(stored.storageKey);
+        storageKey = stored.storageKey;
+      }
       const savedPreviews = pages ? await this.storePreviews(pages, keys) : null;
       unused = await this.repo.update(id, data, stored, savedPreviews);
     } catch (error) {
@@ -229,7 +255,10 @@ export class MaterialsService {
       after: { title: data.title, price: data.price, published: data.published },
       fileReplaced: Boolean(file),
       previewsReplaced: Boolean(pages),
+      previewStatus: { before: before.previewStatus, after: data.previewStatus },
     });
+    // After the commit (§3.5). A job still drawing the old file discards itself.
+    if (draw) await this.previewQueue.enqueue({ materialId: id, storageKey });
     return this.platformView(id);
   }
 
@@ -243,20 +272,30 @@ export class MaterialsService {
   }
 
   /**
-   * Phase 2 of the contract: the server drawing sample pages from the file
-   * needs poppler and LibreOffice in the worker image, which it does not have.
+   * «Жишээ хуудас дахин үүсгэх» — the server draws the first pages of the file
+   * again (2026-10-12; LibreOffice and poppler in the worker image). Answers
+   * 202 with the material back at PENDING; the worker replaces the pages, the
+   * operator's own included, when it finishes.
    */
-  async regeneratePreviews(actor: Actor, id: string): Promise<never> {
+  async regeneratePreviews(actor: Actor, id: string): Promise<PlatformMaterial> {
     this.platform.assertSuperAdmin(actor);
-    if (!(await this.repo.findLive(id))) throw new NotFoundException();
-    throw new BadRequestException(
-      "Жишээ хуудсыг автоматаар үүсгэх боломж хараахан нээгдээгүй. Зургаа гараар оруулна уу.",
-    );
+    const before = await this.repo.findLive(id);
+    if (!before) throw new NotFoundException();
+
+    const { storageKey } = await this.repo.markPreviewsPending(id);
+    await this.record(actor, "UPDATE", id, {
+      previewStatus: { before: before.previewStatus, after: "PENDING" },
+    });
+    await this.previewQueue.enqueue({ materialId: id, storageKey });
+    return this.platformView(id);
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
-  private async formData(form: MaterialForm): Promise<MaterialData> {
+  private async formData(
+    form: MaterialForm,
+    previewStatus: MaterialPreviewStatus,
+  ): Promise<MaterialData> {
     const areas = await this.repo.systemAreaNames();
     if (!areas.has(form.area)) {
       throw new BadRequestException(`Ийм сургалтын чиглэл алга: ${form.area}`);
@@ -269,6 +308,7 @@ export class MaterialsService {
       price: form.price,
       contents: form.contents,
       published: form.published,
+      previewStatus,
     };
   }
 
