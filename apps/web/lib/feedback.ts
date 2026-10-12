@@ -138,9 +138,7 @@ export const feedbackReplySchema = z.object({
 
 export const FEEDBACK_SIGNATURE = "Цэцэрлэгийн захиргаа";
 
-export const FEEDBACK_NOT_READY = "Санал хүсэлтийн сервер холболт хараахан бэлэн болоогүй байна.";
-
-/** The status and category filters, applied where the server does not. */
+/** The status and category filters, applied where the server does not — a guardian's own list. */
 export function filterFeedback<T extends Pick<Feedback, "status" | "category">>(
   rows: T[],
   status: FeedbackStatus | "",

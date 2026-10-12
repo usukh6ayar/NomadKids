@@ -341,12 +341,3 @@ export function FeedbackFilters({
     </div>
   );
 }
-
-/** Said once, above sample rows, so nobody mistakes them for real notes. */
-export function DemoBanner({ children }: { children: string }) {
-  return (
-    <p role="status" className="rounded-row bg-sun px-3 py-2 text-caption text-sun-ink">
-      {children}
-    </p>
-  );
-}

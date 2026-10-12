@@ -7,9 +7,9 @@ import FeedbackPage from "@/app/(app)/feedback/page";
 import FeedbackInboxPage from "@/app/(app)/surveys/feedback/page";
 
 /*
- * ★ Санал хүсэлт — 2026-10-08, ready for the API the backend is being asked
- * for (`lib/feedback.ts`). A guardian writes, the administration reads; a
- * named note gets an official answer and an anonymous one never names anyone.
+ * ★ Санал хүсэлт — 2026-10-08 (`lib/feedback.ts`, `apps/api/src/feedback/`).
+ * A guardian writes, the administration reads; a named note gets an official
+ * answer and an anonymous one never names anyone.
  */
 
 const KG = "33333333-3333-4333-8333-333333333333";
@@ -131,20 +131,45 @@ describe("the administration's inbox", () => {
   });
 
   /*
-    ★ Sample notes until the endpoint exists — the client asked to see the
-    inbox filled. Who sent each named one is spelled out; an anonymous one
-    names nobody, not even a group.
+    ★ 2026-10-12: the API answers, so a 404 is shown as the error it is —
+    never a sample inbox in its place.
   */
-  it("shows sample notes with group, teacher and parent while the endpoint answers 404", async () => {
-    const user = userEvent.setup();
+  it("shows a 404 as an error, with no sample notes", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
       { path: INBOX, status: 404, body: { title: "Not found", status: 404 } },
     ]);
     renderWithProviders(<FeedbackInboxPage />);
 
-    expect(await screen.findByText(/Жишээ санал хүсэлт харагдаж байна/)).toBeInTheDocument();
-    const named = screen.getByText(/өдрийн хоол хүйтэн ирж байна/).closest("li")!;
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+    expect(screen.queryByText(/Жишээ санал хүсэлт/)).toBeNull();
+  });
+
+  /*
+    Who sent a named note is spelled out; an anonymous one names nobody, not
+    even a group.
+  */
+  it("spells out the group, teacher and parent of a named note", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: INBOX,
+        body: page([
+          note("a", {
+            author: { firstName: "Сараа", lastName: "Батболд", phone: "99112233" },
+            relation: "ээж",
+            groupName: "Солонго бүлэг",
+            teacherName: "Д.Сувдаа",
+          }),
+          note("b", { body: "Ногоо бага байна.", anonymous: true, author: null, childName: null }),
+        ]),
+      },
+    ]);
+    renderWithProviders(<FeedbackInboxPage />);
+
+    const named = (await screen.findByText("Хоолны чанар муу байна.")).closest("li")!;
     expect(within(named).getByText("Солонго бүлэг · Батболд Сараа (ээж)")).toBeInTheDocument();
     await openNote(user, named);
     expect(within(named).getByText("Батболд Сараа (ээж)")).toBeInTheDocument();
@@ -152,7 +177,7 @@ describe("the administration's inbox", () => {
     expect(within(named).getByText("Солонго бүлэг")).toBeInTheDocument();
     expect(within(named).getByText("Д.Сувдаа")).toBeInTheDocument();
 
-    const anonymous = screen.getByText(/Ногоо бага/).closest("li")!;
+    const anonymous = screen.getByText("Ногоо бага байна.").closest("li")!;
     await openNote(user, anonymous);
     expect(within(anonymous).getByText("Нэргүй")).toBeInTheDocument();
     expect(within(anonymous).queryByText(/бүлэг/)).toBeNull();
@@ -196,56 +221,25 @@ describe("the administration's inbox", () => {
     );
   });
 
-  it("filters by status and by category", async () => {
-    const user = userEvent.setup();
-    stubApi([
-      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
-      { path: INBOX, status: 404, body: { title: "Not found", status: 404 } },
-    ]);
-    renderWithProviders(<FeedbackInboxPage />);
-    await screen.findByText(/Жишээ санал хүсэлт харагдаж байна/);
-
-    await user.click(screen.getByRole("button", { name: "Хариулсан" }));
-    expect(screen.getAllByRole("listitem")).toHaveLength(1);
-    expect(screen.getByText(/дүүжин эвдэрсэн/)).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Шинэ" }));
-    await selectOption(user, "Чиглэлээр шүүх", "Хоол, гал тогоо");
-    expect(screen.getAllByRole("listitem")).toHaveLength(2);
-
-    await selectOption(user, "Чиглэлээр шүүх", "Бүх чиглэл");
-    await selectOption(user, "Бүлгээр шүүх", "Солонго бүлэг");
-    for (const item of screen.getAllByRole("listitem")) {
-      expect(within(item).getByText(/^Солонго бүлэг · /)).toBeInTheDocument();
-    }
-  });
-
-  it("acknowledges and answers a sample note without sending anything", async () => {
+  it("asks the server to filter by status and by category", async () => {
     const user = userEvent.setup();
     const api = stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
-      { path: INBOX, status: 404, body: { title: "Not found", status: 404 } },
+      { path: INBOX, body: page([note("a")]) },
     ]);
     renderWithProviders(<FeedbackInboxPage />);
+    await screen.findByText("Хоолны чанар муу байна.");
+    expect(api.calls.some((call) => call.url.includes("status=NEW"))).toBe(true);
 
-    const card = (await screen.findByText(/өдрийн хоол хүйтэн ирж байна/)).closest("li")!;
-    await openNote(user, card);
-    await user.click(within(card).getByRole("button", { name: "Хүлээн авлаа" }));
-    // It moves out of «Шинэ» and under «Хүлээн авсан».
-    await waitFor(() => expect(screen.queryByText(/өдрийн хоол хүйтэн ирж байна/)).toBeNull());
-    await user.click(screen.getByRole("button", { name: "Хүлээн авсан" }));
-    const moved = screen.getByText(/өдрийн хоол хүйтэн ирж байна/).closest("li")!;
-    await openNote(user, moved);
-
-    await user.click(within(moved).getByRole("button", { name: "Албан хариу өгөх" }));
-    await user.type(within(moved).getByLabelText(/Албан хариу/), "Шалгалаа.");
-    await user.click(within(moved).getByRole("button", { name: "Илгээх" }));
-    await waitFor(() => expect(screen.queryByText(/өдрийн хоол хүйтэн ирж байна/)).toBeNull());
     await user.click(screen.getByRole("button", { name: "Хариулсан" }));
-    const answered = screen.getByText(/өдрийн хоол хүйтэн ирж байна/).closest("li")!;
-    await openNote(user, answered);
-    expect(within(answered).getByRole("article", { name: "Албан хариу" })).toBeInTheDocument();
-    expect(api.calls.filter((call) => call.method === "POST")).toHaveLength(0);
+    await selectOption(user, "Чиглэлээр шүүх", "Хоол, гал тогоо");
+    await waitFor(() =>
+      expect(
+        api.calls.some(
+          (call) => call.url.includes("status=ANSWERED") && call.url.includes("category=FOOD"),
+        ),
+      ).toBe(true),
+    );
   });
 
   it("removes a note from the inbox through ⋯, after asking", async () => {
@@ -374,42 +368,38 @@ describe("a guardian's page", () => {
     expect(within(letter).getByText("Засварлалаа.")).toBeInTheDocument();
   });
 
-  it("shows sample notes and filters them while the endpoint answers 404", async () => {
-    const user = userEvent.setup();
+  it("shows a 404 as an error, with no sample notes", async () => {
     stubApi([
       { path: "/auth/me", body: sessionFor(["PARENT"]) },
       { path: MINE, status: 404, body: { title: "Not found", status: 404 } },
     ]);
     renderParent();
 
-    expect(await screen.findByText(/Жишээ санал хүсэлт харагдаж байна/)).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
     const list = screen.getByRole("region", { name: "Миний илгээсэн" });
-    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
-
-    await user.click(within(list).getByRole("button", { name: "Хариулсан" }));
-    expect(within(list).getAllByRole("listitem")).toHaveLength(1);
-    await openNote(user, within(list).getByRole("listitem"));
-    expect(within(list).getByRole("article", { name: "Албан хариу" })).toBeInTheDocument();
+    expect(within(list).queryAllByRole("listitem")).toHaveLength(0);
+    expect(screen.queryByText(/Жишээ санал хүсэлт/)).toBeNull();
   });
 
   it("removes one of their own notes from the list through ⋯", async () => {
     const user = userEvent.setup();
-    stubApi([
+    const api = stubApi([
       { path: "/auth/me", body: sessionFor(["PARENT"]) },
-      { path: MINE, status: 404, body: { title: "Not found", status: 404 } },
+      { path: `${MINE}/a`, method: "DELETE", status: 204, body: null },
+      { path: MINE, body: page([note("a")]) },
     ]);
     renderParent();
 
-    await screen.findByText(/Жишээ санал хүсэлт харагдаж байна/);
-    const list = screen.getByRole("region", { name: "Миний илгээсэн" });
-    await user.click(within(list).getByRole("button", { name: "Хариулсан" }));
-    const card = within(list)
-      .getByText(/дүүжин эвдэрсэн/)
-      .closest("li")!;
+    const list = await screen.findByRole("region", { name: "Миний илгээсэн" });
+    const card = (await within(list).findByText("Хоолны чанар муу байна.")).closest("li")!;
     await user.click(within(card).getByRole("button", { name: /үйлдэл/ }));
     await user.click(screen.getByRole("menuitem", { name: "Устгах" }));
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Устгах" }));
 
-    await waitFor(() => expect(within(list).queryByText(/дүүжин эвдэрсэн/)).toBeNull());
+    await waitFor(() =>
+      expect(api.calls.some((call) => call.method === "DELETE" && call.url === `${MINE}/a`)).toBe(
+        true,
+      ),
+    );
   });
 });
