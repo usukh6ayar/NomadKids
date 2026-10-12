@@ -27,6 +27,12 @@ describe("renderFirstPages", () => {
     expect(await renderFirstPages(makePdf(2), ".pdf")).toHaveLength(2);
   });
 
+  it("kills a run that outlasts its timeout", async () => {
+    await expect(
+      renderFirstPages(makePdf(3), ".pdf", 3, { convertMs: 1_000, renderMs: 1 }),
+    ).rejects.toThrow(/timed out/);
+  });
+
   it("rejects a file it cannot draw", async () => {
     const broken = Buffer.from("%PDF-1.7\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n");
     await expect(renderFirstPages(broken, ".pdf")).rejects.toThrow();
