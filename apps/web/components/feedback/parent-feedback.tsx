@@ -5,7 +5,6 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { z } from "zod";
 import {
-  DemoBanner,
   FeedbackFilters,
   FeedbackMailbox,
   FeedbackRow,
@@ -18,11 +17,10 @@ import { Checkbox, Field, Select, Textarea } from "@/components/ui/field";
 import { ErrorState, FormError } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { get, mutate } from "@/lib/api/browser";
-import { errorMessage, isNotFound } from "@/lib/api/errors";
+import { errorMessage } from "@/lib/api/errors";
 import {
   FEEDBACK_CATEGORIES,
   FEEDBACK_CATEGORY_LABEL,
-  FEEDBACK_NOT_READY,
   FEEDBACK_RELATIONS,
   FEEDBACK_RELATION_LABEL,
   feedbackListSchema,
@@ -34,7 +32,6 @@ import {
   type FeedbackStatus,
   type NewFeedback,
 } from "@/lib/feedback";
-import { DEMO_MINE } from "@/lib/feedback-demo";
 import { capitalize } from "@/lib/format";
 import { useSelectedChild } from "@/lib/selected-child";
 
@@ -59,32 +56,23 @@ export function ParentFeedbackPanel() {
   const [writing, setWriting] = useState(false);
   const [status, setStatus] = useState<FeedbackStatus>("NEW");
   const [category, setCategory] = useState<FeedbackCategory | "">("");
-  const [demoRows, setDemoRows] = useState<Feedback[]>(DEMO_MINE);
   const mine = useQuery({
     queryKey: MINE_KEY,
     queryFn: () => get("/me/feedback?page=1&pageSize=50", feedbackListSchema),
     retry: false,
   });
-  /*
-    ★ Sample notes while the endpoint is missing — 2026-10-08, the client
-    asked to see the list filled. A send in this state lands here only, and
-    the banner says it was not delivered.
-  */
-  const demo = mine.isError && isNotFound(mine.error);
-  const all = demo ? demoRows : (mine.data?.items ?? []);
+  // ★ No sample notes on a 404 any more (2026-10-12): the API answers, so an
+  // error is shown as the error it is.
+  const all = mine.data?.items ?? [];
   const rows = filterFeedback(all, status, category);
-  const loaded = demo || Boolean(mine.data);
 
   const remove = useMutation({
-    mutationFn: async (id: string) => {
-      if (demo) return setDemoRows((current) => current.filter((row) => row.id !== id));
-      return mutate(`/me/feedback/${id}`, z.unknown(), { method: "DELETE" });
-    },
+    mutationFn: (id: string) => mutate(`/me/feedback/${id}`, z.unknown(), { method: "DELETE" }),
     onSuccess: () => {
       toast.success("Санал устгагдлаа.");
-      if (!demo) void queryClient.invalidateQueries({ queryKey: MINE_KEY });
+      void queryClient.invalidateQueries({ queryKey: MINE_KEY });
     },
-    onError: (error) => toast.error(isNotFound(error) ? FEEDBACK_NOT_READY : errorMessage(error)),
+    onError: (error) => toast.error(errorMessage(error)),
   });
 
   return (
@@ -101,20 +89,9 @@ export function ParentFeedbackPanel() {
         )}
       </div>
 
-      {writing ? (
-        <NewFeedbackForm
-          onClose={() => setWriting(false)}
-          onDemoSend={demo ? (row) => setDemoRows((current) => [row, ...current]) : undefined}
-        />
-      ) : null}
+      {writing ? <NewFeedbackForm onClose={() => setWriting(false)} /> : null}
 
-      {demo ? (
-        <DemoBanner>
-          Жишээ санал хүсэлт харагдаж байна. Сервер холбогдох хүртэл илгээсэн санал удирдлагад
-          хүрэхгүй.
-        </DemoBanner>
-      ) : null}
-      {mine.isError && !demo ? <ErrorState description={errorMessage(mine.error)} /> : null}
+      {mine.isError ? <ErrorState description={errorMessage(mine.error)} /> : null}
 
       <FeedbackMailbox
         filters={
@@ -127,7 +104,7 @@ export function ParentFeedbackPanel() {
         }
         loading={mine.isLoading}
         empty={
-          loaded && rows.length === 0
+          mine.data && rows.length === 0
             ? all.length === 0
               ? {
                   title: "Одоогоор илгээсэн санал алга",
@@ -194,14 +171,7 @@ function MyFeedbackRow({
   );
 }
 
-function NewFeedbackForm({
-  onClose,
-  onDemoSend,
-}: {
-  onClose: () => void;
-  /** Set while the endpoint is missing: the note is listed here, not sent. */
-  onDemoSend?: (row: Feedback) => void;
-}) {
+function NewFeedbackForm({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const { selectedChildId } = useSelectedChild();
@@ -226,25 +196,10 @@ function NewFeedbackForm({
         // An anonymous note names nobody, not even "the father".
         relation: anonymous ? null : (relation as FeedbackRelation),
       };
-      if (onDemoSend) {
-        const row: Feedback = {
-          id: `demo-${Date.now()}`,
-          category: payload.category,
-          body: payload.body,
-          anonymous: payload.anonymous,
-          relation: payload.relation ? FEEDBACK_RELATION_LABEL[payload.relation] : null,
-          status: "NEW",
-          createdAt: new Date().toISOString(),
-        };
-        onDemoSend(row);
-        return row;
-      }
       return mutate("/me/feedback", feedbackSchema, { method: "POST", body: payload });
     },
     onSuccess: () => {
-      toast.success(
-        onDemoSend ? "Жишээ горим: санал жагсаалтад нэмэгдлээ." : "Санал хүсэлт илгээгдлээ.",
-      );
+      toast.success("Санал хүсэлт илгээгдлээ.");
       setCategory("");
       setBody("");
       setAnonymous(false);
@@ -252,14 +207,11 @@ function NewFeedbackForm({
       onClose();
       void queryClient.invalidateQueries({ queryKey: MINE_KEY });
     },
-    onError: (error) => toast.error(isNotFound(error) ? FEEDBACK_NOT_READY : errorMessage(error)),
   });
 
   return (
     <Card pad="none" className="flex flex-col gap-3 px-4 py-4">
-      <FormError
-        message={send.isError && !isNotFound(send.error) ? errorMessage(send.error) : null}
-      />
+      <FormError message={send.isError ? errorMessage(send.error) : null} />
       <Field label="Чиглэл" required>
         {({ id }) => (
           <Select
