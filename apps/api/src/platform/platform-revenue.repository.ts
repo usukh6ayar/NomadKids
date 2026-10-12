@@ -72,10 +72,10 @@ export class PlatformRevenueRepository {
    * not money that moved. The subscription is what becomes paid, so it is the
    * ledger. `QpayInvoice` stays the audit trail of how it was paid.
    */
-  async accessFeesByKindergarten(from: Date, to: Date) {
+  async accessFeesByKindergarten(from: Date, before: Date) {
     const rows = await this.prisma.accessSubscription.groupBy({
       by: ["kindergartenId"],
-      where: { deletedAt: null, paidAt: { gte: from, lte: to } },
+      where: { deletedAt: null, paidAt: { gte: from, lt: before } },
       _sum: { amount: true },
       _count: { _all: true },
     });
@@ -86,6 +86,32 @@ export class PlatformRevenueRepository {
       accessPayments: row._count._all,
       accessFees: row._sum.amount?.toString() ?? "0",
     }));
+  }
+
+  /**
+   * Paid teaching-material sales for a month — the platform's other income
+   * (CLAUDE.md §7, client 2026-10-09).
+   *
+   * ★ One platform-wide total, never per kindergarten: a purchase belongs to
+   * the teacher's user. Mapping it through their membership would invent a
+   * kindergarten's income, and `userId` is never selected.
+   *
+   * ★★ `amount > 0`: a free material is PAID at once with nothing charged
+   * (`MaterialsService.buy`), and an acquisition that moved no money is not a
+   * sale. The catalog's `sales` column counts it as an acquisition; this does
+   * not.
+   */
+  async materialSales(from: Date, before: Date) {
+    const row = await this.prisma.materialPurchase.aggregate({
+      where: { status: "PAID", amount: { gt: 0 }, paidAt: { gte: from, lt: before } },
+      _sum: { amount: true },
+      _count: { _all: true },
+    });
+    // Whole tugrik as an `Int` — a string here so the service sums it as money.
+    return {
+      materialPayments: row._count._all,
+      materialSales: String(row._sum.amount ?? 0),
+    };
   }
 
   /** Names for the ids the aggregate returned. Never the whole table. */
