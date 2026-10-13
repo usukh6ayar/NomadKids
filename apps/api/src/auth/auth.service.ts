@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { AuditRepository } from "../audit/audit.repository";
+import { loadEnv } from "../config/env";
 import { AuthzRepository } from "../authz/authz.repository";
 import type { Actor } from "../authz/actor";
 import type { GuardianRelation } from "@kinder/contracts";
@@ -53,7 +54,50 @@ export class AuthService {
   ) {}
 
   /**
-   * Password login.
+   * Password login. The credential checks are `verifyCredentials`; the device
+   * limit runs only once they have passed — `enforceDeviceLimit`.
+   */
+  async login(
+    identifier: string,
+    password: string,
+    ctx: RequestContext,
+    replaceSessionId?: string,
+  ): Promise<LoginResult> {
+    const user = await this.verifyCredentials(identifier, password, ctx);
+
+    // A successful login clears the counter, so a user who mistypes three times
+    // and then succeeds does not carry those failures toward a later lockout.
+    await this.repo.clearFailures(identifier);
+    await this.repo.recordAttempt(identifier, ctx.ipAddress, true);
+
+    await this.enforceDeviceLimit(user, replaceSessionId);
+    await this.repo.touchLastLogin(user.id);
+
+    const { accessToken, refreshToken } = await this.issueSession(user.id, randomUUID(), ctx);
+
+    await this.audit.append({
+      action: "LOGIN",
+      actorUserId: user.id,
+      actorLabel: `${user.lastName} ${user.firstName}`,
+      ipAddress: ctx.ipAddress,
+      userAgent: ctx.userAgent,
+    });
+
+    return {
+      accessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        username: user.username,
+        lastName: user.lastName,
+        firstName: user.firstName,
+        isSuperAdmin: user.isSuperAdmin,
+      },
+    };
+  }
+
+  /**
+   * The checks every password sign-in makes, in order.
    *
    * Three things here are deliberate and easy to break:
    *
@@ -67,8 +111,11 @@ export class AuthService {
    *
    *  3. **The lockout is checked before the password**, so a locked account
    *     cannot be probed for password correctness during the lockout window.
+   *
+   * ★ Shared by `login` and `devicesForLogin`, so the device list is no
+   * cheaper a way to guess a password than the sign-in itself.
    */
-  async login(identifier: string, password: string, ctx: RequestContext): Promise<LoginResult> {
+  private async verifyCredentials(identifier: string, password: string, ctx: RequestContext) {
     const since = new Date(Date.now() - LOCKOUT_WINDOW_MS);
     const failures = await this.repo.countRecentFailures(identifier, since);
 
@@ -94,33 +141,83 @@ export class AuthService {
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
 
-    // A successful login clears the counter, so a user who mistypes three times
-    // and then succeeds does not carry those failures toward a later lockout.
+    return user;
+  }
+
+  // ── Devices (#211, the user 2026-10-12) ───────────────────────────────────
+
+  /**
+   * Refuses a sign-in that would put the account on more devices than
+   * `AUTH_DEVICE_LIMIT` allows — after the password has been proven, so the
+   * 409 says nothing to somebody who does not know it.
+   *
+   * ★ `replaceSessionId` signs one of this account's devices out first. It is
+   * honoured only after the password, and only for a device of this account:
+   * an id that is not one is refused with the same 409, never used.
+   *
+   * Two sign-ins racing past the count can both succeed. That is one device
+   * too many until either signs out, which is not worth a lock on the login
+   * path.
+   */
+  private async enforceDeviceLimit(
+    user: { id: string; isSuperAdmin: boolean },
+    replaceSessionId: string | undefined,
+  ) {
+    const limit = loadEnv().AUTH_DEVICE_LIMIT;
+    if (limit === 0 || user.isSuperAdmin) return;
+
+    let devices = await this.repo.listActiveDevices(user.id, new Date());
+    if (replaceSessionId) {
+      if (!devices.some((device) => device.id === replaceSessionId)) {
+        throw deviceLimit(limit);
+      }
+      await this.repo.revokeFamily(replaceSessionId);
+      await this.audit.append({
+        action: "LOGOUT",
+        actorUserId: user.id,
+        metadata: { reason: "device_replaced", familyId: replaceSessionId },
+      });
+      devices = devices.filter((device) => device.id !== replaceSessionId);
+    }
+    if (devices.length >= limit) throw deviceLimit(limit);
+  }
+
+  /**
+   * The sign-in screen's list when the limit is reached: the password is
+   * checked again (with the lockout), so a stranger holding only a phone
+   * number sees nothing.
+   */
+  async devicesForLogin(identifier: string, password: string, ctx: RequestContext) {
+    const user = await this.verifyCredentials(identifier, password, ctx);
     await this.repo.clearFailures(identifier);
-    await this.repo.recordAttempt(identifier, ctx.ipAddress, true);
-    await this.repo.touchLastLogin(user.id);
+    const devices = await this.repo.listActiveDevices(user.id, new Date());
+    return { sessions: devices.map(deviceView) };
+  }
 
-    const { accessToken, refreshToken } = await this.issueSession(user.id, randomUUID(), ctx);
-
-    await this.audit.append({
-      action: "LOGIN",
-      actorUserId: user.id,
-      actorLabel: `${user.lastName} ${user.firstName}`,
-      ipAddress: ctx.ipAddress,
-      userAgent: ctx.userAgent,
-    });
-
+  /** «Бүртгэлтэй төхөөрөмж» — this account's devices, this one marked. */
+  async devices(actor: Actor) {
+    const current = await this.repo.findSessionById(actor.sessionId);
+    const devices = await this.repo.listActiveDevices(actor.userId, new Date());
     return {
-      accessToken,
-      refreshToken,
-      user: {
-        id: user.id,
-        username: user.username,
-        lastName: user.lastName,
-        firstName: user.firstName,
-        isSuperAdmin: user.isSuperAdmin,
-      },
+      limit: loadEnv().AUTH_DEVICE_LIMIT,
+      sessions: devices.map((device) => ({
+        ...deviceView(device),
+        current: device.id === current?.familyId,
+      })),
     };
+  }
+
+  /** Signs one of the actor's own devices out. Anybody else's id is a 404. */
+  async signOutDevice(actor: Actor, familyId: string) {
+    const devices = await this.repo.listActiveDevices(actor.userId, new Date());
+    if (!devices.some((device) => device.id === familyId)) throw new NotFoundException();
+
+    await this.repo.revokeFamily(familyId);
+    await this.audit.append({
+      action: "LOGOUT",
+      actorUserId: actor.userId,
+      metadata: { reason: "device_signed_out", familyId },
+    });
   }
 
   /**
@@ -605,4 +702,26 @@ function isUniqueViolation(error: unknown): boolean {
     "code" in error &&
     (error as { code?: unknown }).code === "P2002"
   );
+}
+
+/** The 409 the web recognises by its `code` — `apps/web/lib/devices.ts`. */
+function deviceLimit(limit: number) {
+  return new ConflictException({
+    message: `Та ${limit} төхөөрөмжөөс нэвтэрсэн байна. Аль нэгийг нь гаргаад нэвтэрнэ үү.`,
+    code: "DEVICE_LIMIT",
+  });
+}
+
+function deviceView(device: {
+  id: string;
+  userAgent: string | null;
+  createdAt: Date;
+  lastUsedAt: Date;
+}) {
+  return {
+    id: device.id,
+    userAgent: device.userAgent,
+    createdAt: device.createdAt.toISOString(),
+    lastUsedAt: device.lastUsedAt.toISOString(),
+  };
 }
