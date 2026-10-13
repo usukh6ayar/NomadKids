@@ -64,9 +64,71 @@ describe("the operator's applications", () => {
     ]);
     renderWithProviders(<ApplicationsPage />);
 
-    expect(await screen.findByText(/6 бүлэг · жилээр/)).toBeInTheDocument();
-    expect(screen.getByText(/80 хүүхэд/)).toBeInTheDocument();
-    expect(screen.getByText("Дархан")).toBeInTheDocument();
+    const table = await screen.findByRole("table");
+    const row = (name: string) => within(table).getByText(name).closest("tr")!;
+    expect(row("Аз жаргал цэцэрлэг")).toHaveTextContent("6");
+    expect(row("Аз жаргал цэцэрлэг")).toHaveTextContent("Жилээр");
+    expect(row("Хуучин цэцэрлэг")).toHaveTextContent("80 хүүхэд");
+    expect(within(row("Хуучин цэцэрлэг")).getByText("Дархан")).toBeInTheDocument();
+  });
+
+  /*
+   * ★ A minimal table with a search and a period filter — 2026-10-14, the user.
+   */
+  it("searches any column of the row and filters by the period, with a count", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/applications", body: list([APPLICATION, LEGACY]) },
+    ]);
+    renderWithProviders(<ApplicationsPage />);
+    const table = await screen.findByRole("table");
+    const names = () =>
+      [...table.querySelectorAll("tbody tr")].map(
+        (tr) => tr.querySelectorAll("td")[1]!.textContent,
+      );
+    expect(screen.getByText("2 хүсэлт")).toBeInTheDocument();
+
+    // The registration number, not the name.
+    await user.type(screen.getByLabelText("Хүсэлт хайх"), "9099999");
+    expect(names()).toEqual(["Хуучин цэцэрлэг"]);
+    expect(screen.getByText("2-оос 1 хүсэлт")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Бүгдийг цэвэрлэх" }));
+    expect(names()).toHaveLength(2);
+
+    await user.click(screen.getByLabelText("Төлбөрийн хугацаагаар шүүх"));
+    await user.click(screen.getByRole("option", { name: "Жилээр" }));
+    expect(names()).toEqual(["Аз жаргал цэцэрлэг"]);
+  });
+
+  it("shows the contract once approved and the reason once refused", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      {
+        path: "/platform/applications?status=REJECTED",
+        body: list([
+          {
+            ...APPLICATION,
+            status: "REJECTED",
+            reviewedAt: "2026-10-12T09:00:00.000Z",
+            reviewNote: "Гэрчилгээ дутуу",
+          },
+        ]),
+      },
+      { path: "/platform/applications", body: list([APPLICATION]) },
+    ]);
+    renderWithProviders(<ApplicationsPage />);
+
+    const table = await screen.findByRole("table");
+    expect(within(table).getByRole("button", { name: "Шалгах" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Татгалзсан" }));
+    expect(await screen.findByText("Гэрчилгээ дутуу")).toBeInTheDocument();
+    const refused = screen.getByRole("table");
+    expect(within(refused).getByRole("columnheader", { name: /Шалтгаан/ })).toBeInTheDocument();
+    expect(within(refused).getByRole("columnheader", { name: /Шийдвэрлэсэн/ })).toBeInTheDocument();
+    expect(within(refused).queryByRole("button", { name: "Шалгах" })).toBeNull();
   });
 
   it("approves with the per-group terms, the total following the price sheet", async () => {

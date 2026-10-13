@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
 import { z } from "zod";
-import { Building2, FileDown, Plus, Search, X } from "lucide-react";
+import { Building2, FileDown, Plus, Search } from "lucide-react";
 import {
   paginated,
   platformKindergartenSchema,
@@ -17,7 +17,7 @@ import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { Button } from "@/components/ui/button";
-import { Input, Select } from "@/components/ui/field";
+import { Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { RequireSuperAdmin } from "@/components/shell/require-role";
 import { useToggleKindergartenActive } from "@/components/admin/toggle-kindergarten-active";
@@ -26,6 +26,15 @@ import { DeleteKindergartenButton } from "@/components/admin/delete-kindergarten
 import { RegisterKindergartenDialog } from "@/components/platform/register-kindergarten-dialog";
 import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
 import { daysUntil, formatDate } from "@/lib/format";
+import {
+  FROZEN_NAME,
+  FROZEN_NO,
+  FilterChips,
+  FilterSelect,
+  SortHeader,
+  labelOf,
+  type Chip,
+} from "@/components/platform/table-kit";
 
 /** "" = no filter (Бүгд); the API's `isActive` param is a `z.stringbool()`. */
 const STATUS_OPTIONS = [
@@ -46,78 +55,6 @@ const OWNERSHIP_OPTIONS = [
   { value: "Төрийн", label: "Төрийн" },
   { value: "Төрийн бус", label: "Төрийн бус" },
 ] as const;
-
-type FilterOption = { readonly value: string; readonly label: string };
-
-function labelOf(options: readonly FilterOption[], value: string): string {
-  return options.find((option) => option.value === value)?.label ?? value;
-}
-
-/** A named filter — «Төрөл: [Бүгд ▾]» — ringed in blue once it narrows the list. */
-function FilterSelect({
-  label,
-  ariaLabel,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  ariaLabel: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: readonly FilterOption[];
-}) {
-  return (
-    <label className="flex items-center gap-1.5 text-caption text-muted">
-      <span className="whitespace-nowrap">{label}:</span>
-      <Select
-        aria-label={ariaLabel}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`h-9 w-auto min-w-[120px] text-compact ${
-          value ? "border-primary ring-2 ring-primary/20" : ""
-        }`}
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </Select>
-    </label>
-  );
-}
-
-type Chip = { key: string; label: string; clear: () => void };
-
-/** «Идэвхтэй шүүлтүүр: [Төрийн ×] … Бүгдийг цэвэрлэх» — nothing while none is set. */
-function FilterChips({ chips, onClearAll }: { chips: Chip[]; onClearAll: () => void }) {
-  if (chips.length === 0) return null;
-  return (
-    <div className="flex flex-wrap items-center gap-2 text-caption">
-      <span className="text-muted">Идэвхтэй шүүлтүүр:</span>
-      {chips.map((chip) => (
-        <button
-          key={chip.key}
-          type="button"
-          onClick={chip.clear}
-          aria-label={`«${chip.label}» шүүлтүүрийг арилгах`}
-          className="inline-flex min-h-7 items-center gap-1 rounded-pill border border-primary/30 bg-primary/5 px-2.5 font-semibold text-ink hover:bg-primary/10"
-        >
-          {chip.label}
-          <X size={12} aria-hidden="true" />
-        </button>
-      ))}
-      <button
-        type="button"
-        onClick={onClearAll}
-        className="min-h-7 px-1 font-semibold text-primary hover:underline"
-      >
-        Бүгдийг цэвэрлэх
-      </button>
-    </div>
-  );
-}
 
 /*
  * ★ The columns the operator asked for (2026-10-13). The list route returns
@@ -480,14 +417,6 @@ function areaOf(kg: Row): string | null {
   return [kg.province, kg.district].filter(Boolean).join(" · ") || null;
 }
 
-/*
- * ★ № and the name stay put while the rest scrolls sideways — 2026-10-13,
- * the user. `border-separate` (not `collapse`) so a sticky cell keeps its own
- * borders; the faint shadow marks the edge the columns slide under.
- */
-const FROZEN_NO = "sticky left-0 z-10 w-10 min-w-10";
-const FROZEN_NAME = "sticky left-10 z-10 min-w-[200px] shadow-[1px_0_0_0_var(--color-border)]";
-
 /** Linked to ESIS; read from the institution number until the API says so. */
 function esisConnected(kg: Row): boolean {
   return kg.esisConnected ?? Boolean(kg.esisInstitutionId);
@@ -621,44 +550,6 @@ function compareRows(a: Row, b: Row, key: SortKey, dir: 1 | -1): number {
       ? x - y
       : String(x).localeCompare(String(y), "mn");
   return order * dir;
-}
-
-function SortHeader<K extends string>({
-  label,
-  column,
-  sort,
-  onSort,
-  align = "left",
-  className,
-}: {
-  label: string;
-  column: K;
-  sort: { key: K; dir: 1 | -1 };
-  onSort: (column: K) => void;
-  align?: "left" | "right";
-  className?: string;
-}) {
-  const active = sort.key === column;
-  return (
-    <th
-      scope="col"
-      aria-sort={active ? (sort.dir === 1 ? "ascending" : "descending") : "none"}
-      className={
-        [align === "right" ? "text-right" : "", className ?? ""].join(" ").trim() || undefined
-      }
-    >
-      <button
-        type="button"
-        onClick={() => onSort(column)}
-        className={`inline-flex items-center gap-1 font-semibold hover:text-ink ${active ? "text-ink" : ""}`}
-      >
-        {label}
-        <span aria-hidden="true" className="text-faint">
-          {active ? (sort.dir === 1 ? "▲" : "▼") : "↕"}
-        </span>
-      </button>
-    </th>
-  );
 }
 
 /**

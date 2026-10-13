@@ -1,11 +1,10 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, FileText, X } from "lucide-react";
+import { Check, Search, X } from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
 import {
-  KINDERGARTEN_APPLICATION_STATUS_LABEL,
   CONTRACT_STATUS_LABEL,
   applicationApprovalSchema,
   kindergartenApplicationSchema,
@@ -26,6 +25,15 @@ import { FormDialog } from "@/components/ui/form-dialog";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { formatDate } from "@/lib/format";
+import {
+  FROZEN_NAME,
+  FROZEN_NO,
+  FilterChips,
+  FilterSelect,
+  SortHeader,
+  labelOf,
+  type Chip,
+} from "@/components/platform/table-kit";
 import { KINDERGARTEN_MONTHLY_PER_GROUP, kindergartenPrice } from "@/lib/pricing";
 
 const listSchema = paginated(kindergartenApplicationSchema);
@@ -54,9 +62,52 @@ export default function ApplicationsPage() {
   );
 }
 
+type SortKey = "name" | "groups" | "created" | "reviewed";
+
+/** «Бүгд», per term or per school year — the period the kindergarten asked for. */
+const PERIOD_OPTIONS = [
+  { value: "", label: "Бүгд" },
+  { value: "term", label: "Улирлаар" },
+  { value: "year", label: "Жилээр" },
+] as const;
+
+function compareApplications(
+  a: KindergartenApplication,
+  b: KindergartenApplication,
+  key: SortKey,
+  dir: 1 | -1,
+): number {
+  const value = (row: KindergartenApplication): string | number | null =>
+    key === "name"
+      ? row.kindergartenName
+      : key === "groups"
+        ? (row.groupCount ?? null)
+        : key === "reviewed"
+          ? row.reviewedAt
+          : row.createdAt;
+  const x = value(a);
+  const y = value(b);
+  if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
+  const order =
+    typeof x === "number" && typeof y === "number"
+      ? x - y
+      : String(x).localeCompare(String(y), "mn");
+  return order * dir;
+}
+
+/*
+ * ★ A minimal table, as the kindergartens are — 2026-10-14, the user
+ * ("хүснэгтээр минимал … хайх шүүлтүүр"). The three states stay tabs, each a
+ * query of its own; the search and the period filter narrow the page the API
+ * returned (50). The last column follows the state: «Шалгах» while pending,
+ * the contract once approved, the reason once refused.
+ */
 function Applications() {
   const [status, setStatus] = useState<(typeof TABS)[number]["value"]>("PENDING");
   const [reviewing, setReviewing] = useState<KindergartenApplication | null>(null);
+  const [query, setQuery] = useState("");
+  const [period, setPeriod] = useState("");
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "created", dir: -1 });
 
   const list = useQuery({
     queryKey: ["platform", "applications", status],
@@ -64,30 +115,49 @@ function Applications() {
   });
 
   const items = list.data?.items ?? [];
+  const needle = query.trim().toLocaleLowerCase("mn");
+  const rows = items
+    .filter(
+      (row) =>
+        (!needle ||
+          [
+            row.kindergartenName,
+            row.registrationNumber,
+            row.directorName,
+            row.phone,
+            row.email,
+            row.address ?? "",
+          ].some((text) => text.toLocaleLowerCase("mn").includes(needle))) &&
+        (!period || row.billingPeriod === period),
+    )
+    .sort((a, b) => compareApplications(a, b, sort.key, sort.dir));
+  const chips = [
+    query.trim() && { key: "q", label: `«${query.trim()}»`, clear: () => setQuery("") },
+    period && { key: "period", label: labelOf(PERIOD_OPTIONS, period), clear: () => setPeriod("") },
+  ].filter((chip): chip is Chip => Boolean(chip));
+  const clearAll = () => {
+    setQuery("");
+    setPeriod("");
+  };
+  const sortBy = (key: SortKey) =>
+    setSort((current) => ({ key, dir: current.key === key ? (-current.dir as 1 | -1) : 1 }));
+  const decided = status !== "PENDING";
 
   return (
-    <div className="flex flex-col gap-6 pb-8">
-      <PlatformPageHeading
-        title="Байгууллагын хүсэлт"
-        lede="Ирсэн хүсэлт, гэрээний төлөв болон шийдвэрийг нэг дарааллаар хянаарай."
-        mark={<FileText />}
-      />
+    <div className="flex flex-col gap-5 pb-8">
+      <PlatformPageHeading title="Байгууллагын хүсэлт" />
 
-      <div
-        role="group"
-        aria-label="Хүсэлтийн төлөв"
-        className="flex flex-wrap gap-1.5 rounded-card border border-border bg-white p-1.5"
-      >
+      <div role="group" aria-label="Хүсэлтийн төлөв" className="flex gap-1 border-b border-border">
         {TABS.map((tab) => (
           <button
             key={tab.value}
             type="button"
             aria-pressed={status === tab.value}
             onClick={() => setStatus(tab.value)}
-            className={`min-h-[44px] flex-1 rounded-control px-3.5 text-body font-semibold transition-colors sm:flex-none ${
+            className={`-mb-px min-h-10 border-b-2 px-3 text-compact font-semibold ${
               status === tab.value
-                ? "bg-primary text-primary-ink shadow-sm"
-                : "text-muted hover:bg-canvas hover:text-ink"
+                ? "border-primary text-ink"
+                : "border-transparent text-muted hover:text-ink"
             }`}
           >
             {tab.label}
@@ -95,25 +165,118 @@ function Applications() {
         ))}
       </div>
 
-      {list.isLoading ? <LoadingState rows={3} /> : null}
-      {list.isError ? <ErrorState description={errorMessage(list.error)} /> : null}
-
-      {list.data && items.length === 0 ? (
-        <EmptyState
-          title="Хүсэлт алга"
-          description="Цэцэрлэг nomadkids.mn дээрх “Байгууллагын бүртгэл”-ээр хүсэлт илгээхэд энд харагдана."
-        />
-      ) : null}
-
-      <div className="flex flex-col gap-3">
-        {items.map((application) => (
-          <ApplicationCard
-            key={application.id}
-            application={application}
-            onReview={() => setReviewing(application)}
+      <section aria-label="Хүсэлтийн жагсаалт" className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="relative min-w-0 flex-1 sm:max-w-[480px]">
+            <span className="sr-only">Хүсэлт хайх</span>
+            <Search
+              size={16}
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
+            />
+            <Input
+              type="search"
+              aria-label="Хүсэлт хайх"
+              placeholder="Цэцэрлэг, РД, эрхлэгч, утас, и-мэйлээр хайх"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="h-9 pl-9 text-compact"
+            />
+          </label>
+          {list.data ? (
+            <span className="ml-auto text-caption text-muted">
+              {chips.length ? `${items.length}-оос ${rows.length}` : rows.length} хүсэлт
+            </span>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <FilterSelect
+            label="Төлбөрийн хугацаа"
+            ariaLabel="Төлбөрийн хугацаагаар шүүх"
+            value={period}
+            onChange={setPeriod}
+            options={PERIOD_OPTIONS}
           />
-        ))}
-      </div>
+        </div>
+        <FilterChips chips={chips} onClearAll={clearAll} />
+
+        {list.isLoading ? <LoadingState rows={3} /> : null}
+        {list.isError ? <ErrorState description={errorMessage(list.error)} /> : null}
+
+        {list.data && items.length === 0 ? (
+          <EmptyState
+            title="Хүсэлт алга"
+            description="Цэцэрлэг nomadkids.mn дээрх “Байгууллагын бүртгэл”-ээр хүсэлт илгээхэд энд харагдана."
+          />
+        ) : null}
+        {items.length > 0 && rows.length === 0 ? (
+          <EmptyState title="Тохирох хүсэлт алга" description="Шүүлтүүрээ өөрчилж үзнэ үү." />
+        ) : null}
+
+        {rows.length > 0 ? (
+          <div className="overflow-x-auto rounded-control border border-border bg-white">
+            <table className="w-full min-w-[1280px] border-separate border-spacing-0 text-left text-caption">
+              <thead className="bg-slate-50 text-muted">
+                <tr className="[&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-r [&>th]:border-border [&>th]:px-3 [&>th]:py-2 [&>th]:font-semibold [&>th:last-child]:border-r-0">
+                  <th scope="col" className={`${FROZEN_NO} bg-slate-50 text-right`}>
+                    №
+                  </th>
+                  <SortHeader
+                    label="Цэцэрлэг"
+                    column="name"
+                    sort={sort}
+                    onSort={sortBy}
+                    className={`${FROZEN_NAME} bg-slate-50`}
+                  />
+                  <th scope="col">РД</th>
+                  <th scope="col">Эрхлэгч</th>
+                  <th scope="col">Утас</th>
+                  <th scope="col">И-мэйл</th>
+                  <th scope="col">Хаяг</th>
+                  <SortHeader
+                    label="Бүлэг"
+                    column="groups"
+                    sort={sort}
+                    onSort={sortBy}
+                    align="right"
+                  />
+                  <th scope="col">Хугацаа</th>
+                  <th scope="col">Тэмдэглэл</th>
+                  <SortHeader label="Илгээсэн" column="created" sort={sort} onSort={sortBy} />
+                  {decided ? (
+                    <SortHeader
+                      label="Шийдвэрлэсэн"
+                      column="reviewed"
+                      sort={sort}
+                      onSort={sortBy}
+                    />
+                  ) : null}
+                  <th scope="col">
+                    {status === "APPROVED" ? (
+                      "Гэрээ"
+                    ) : status === "REJECTED" ? (
+                      "Шалтгаан"
+                    ) : (
+                      <span className="sr-only">Үйлдэл</span>
+                    )}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((application, index) => (
+                  <ApplicationRow
+                    key={application.id}
+                    application={application}
+                    index={index + 1}
+                    decided={decided}
+                    onReview={() => setReviewing(application)}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
 
       {reviewing ? (
         <ReviewDialog application={reviewing} onClose={() => setReviewing(null)} />
@@ -122,86 +285,89 @@ function Applications() {
   );
 }
 
-function ApplicationCard({
+function ApplicationRow({
   application,
+  index,
+  decided,
   onReview,
 }: {
   application: KindergartenApplication;
+  index: number;
+  decided: boolean;
   onReview: () => void;
 }) {
+  const cell =
+    "border-b border-r border-border-soft px-3 py-2 align-middle bg-white group-hover:bg-slate-50 last:border-r-0";
+  const contract = application.contract;
   return (
-    <Card pad="roomy" className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <span
-            className="grid size-11 shrink-0 place-items-center rounded-control bg-primary-soft text-primary"
-            aria-hidden="true"
-          >
-            <FileText size={20} />
-          </span>
-          <div className="min-w-0">
-            <p className="flex flex-wrap items-center gap-2">
-              <span className="text-lead font-bold text-ink">{application.kindergartenName}</span>
-              <Badge tone={application.status === "PENDING" ? "sun" : "neutral"}>
-                {KINDERGARTEN_APPLICATION_STATUS_LABEL[application.status]}
-              </Badge>
-            </p>
-            <p className="mt-1 text-caption text-muted">
-              РД {application.registrationNumber} · {pricingBase(application)} ·{" "}
-              {formatDate(application.createdAt)}
-            </p>
-          </div>
-        </div>
-
+    <tr className="group">
+      <td className={`${cell} ${FROZEN_NO} text-right tabular-nums text-muted`}>{index}</td>
+      <td className={`${cell} ${FROZEN_NAME} font-semibold text-ink`}>
+        {application.kindergartenName}
+      </td>
+      <td className={`${cell} tabular-nums`}>{application.registrationNumber}</td>
+      <td className={`${cell} whitespace-nowrap`}>{application.directorName}</td>
+      <td className={`${cell} whitespace-nowrap tabular-nums`}>{application.phone}</td>
+      <td className={`${cell} max-w-[200px] truncate`}>{application.email}</td>
+      <td className={`${cell} max-w-[220px] truncate`} title={application.address ?? undefined}>
+        {application.address || "—"}
+      </td>
+      <td className={`${cell} whitespace-nowrap text-right tabular-nums`}>
+        {groupsOf(application)}
+      </td>
+      <td className={`${cell} whitespace-nowrap`}>
+        {application.billingPeriod ? PERIOD_LABEL[application.billingPeriod] : "—"}
+      </td>
+      <td className={`${cell} max-w-[220px] truncate`} title={application.note ?? undefined}>
+        {application.note || "—"}
+      </td>
+      <td className={`${cell} whitespace-nowrap tabular-nums`}>
+        {formatDate(application.createdAt)}
+      </td>
+      {decided ? (
+        <td className={`${cell} whitespace-nowrap tabular-nums`}>
+          {application.reviewedAt ? formatDate(application.reviewedAt) : "—"}
+        </td>
+      ) : null}
+      <td className={`${cell} whitespace-nowrap`}>
         {application.status === "PENDING" ? (
           <Button size="sm" onClick={onReview}>
             Шалгах
           </Button>
-        ) : null}
-      </div>
-
-      <dl className="grid grid-cols-1 gap-x-6 gap-y-2 rounded-row bg-sunken p-3 text-body sm:grid-cols-2 sm:p-4">
-        <Detail label="Эрхлэгч" value={application.directorName} />
-        <Detail label="Утас" value={application.phone} />
-        <Detail label="И-мэйл" value={application.email} />
-        {application.address ? <Detail label="Хаяг" value={application.address} /> : null}
-      </dl>
-
-      {application.note ? <p className="text-body text-muted">{application.note}</p> : null}
-
-      {application.reviewNote ? (
-        <p className="rounded-row bg-canvas px-3 py-2 text-caption text-muted">
-          Шийдвэрийн тэмдэглэл: {application.reviewNote}
-        </p>
-      ) : null}
-
-      {/*
-        ★ The contract appears here the moment it is created — step 4. The PDF
-        is rendered on the queue (CLAUDE.md §6), so `pdfMediaFileId` is null for
-        the first couple of seconds and the row says so rather than showing a
-        dead link.
-      */}
-      {application.contract ? (
-        <div className="flex flex-wrap items-center gap-2 border-t border-border-soft pt-3">
-          <FileText size={16} aria-hidden="true" className="text-muted" />
-          <span className="text-body font-medium text-ink">
-            Гэрээ №{application.contract.number}
+        ) : application.status === "REJECTED" ? (
+          <span
+            className="block max-w-[280px] truncate whitespace-normal text-muted"
+            title={application.reviewNote ?? undefined}
+          >
+            {application.reviewNote || "—"}
           </span>
-          <Badge tone="sky">{CONTRACT_STATUS_LABEL[application.contract.status]}</Badge>
-          {application.contract.pdfMediaFileId ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => void openContractPdf(application.contract!.id)}
-            >
-              PDF татах
-            </Button>
-          ) : (
-            <span className="text-caption text-muted">PDF бэлтгэгдэж байна…</span>
-          )}
-        </div>
-      ) : null}
-    </Card>
+        ) : contract ? (
+          /*
+            ★ The contract appears the moment it is created — step 4. The PDF
+            is rendered on the queue (CLAUDE.md §6), so `pdfMediaFileId` is null
+            for the first seconds and the cell says so rather than showing a
+            dead link.
+          */
+          <span className="inline-flex items-center gap-2">
+            <span className="font-medium text-ink">№{contract.number}</span>
+            <Badge tone="sky">{CONTRACT_STATUS_LABEL[contract.status]}</Badge>
+            {contract.pdfMediaFileId ? (
+              <button
+                type="button"
+                onClick={() => void openContractPdf(contract.id)}
+                className="font-semibold text-primary hover:underline"
+              >
+                PDF
+              </button>
+            ) : (
+              <span className="text-muted">PDF бэлтгэгдэж байна…</span>
+            )}
+          </span>
+        ) : (
+          "—"
+        )}
+      </td>
+    </tr>
   );
 }
 
@@ -220,27 +386,15 @@ async function openContractPdf(contractId: string): Promise<void> {
   window.open(url, "_blank", "noopener");
 }
 
-const PERIOD_LABEL: Record<BillingPeriod, string> = { term: "улирлаар", year: "жилээр" };
+const PERIOD_LABEL: Record<BillingPeriod, string> = { term: "Улирлаар", year: "Жилээр" };
 
 /**
- * «6 бүлэг · жилээр» — since #195 an application is priced per group; one
- * made before carries a child count instead, and says so.
+ * «6» — since #195 an application is priced per group; one made before carries
+ * a child count instead, and says so: «80 хүүхэд».
  */
-function pricingBase(application: KindergartenApplication): string {
-  if (application.groupCount !== null) {
-    const period = application.billingPeriod ? ` · ${PERIOD_LABEL[application.billingPeriod]}` : "";
-    return `${application.groupCount} бүлэг${period}`;
-  }
+function groupsOf(application: KindergartenApplication): string {
+  if (application.groupCount !== null) return String(application.groupCount);
   return application.childCount !== null ? `${application.childCount} хүүхэд` : "—";
-}
-
-function Detail({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex gap-2">
-      <dt className="shrink-0 text-muted">{label}:</dt>
-      <dd className="min-w-0 truncate text-ink">{value}</dd>
-    </div>
-  );
 }
 
 /**
