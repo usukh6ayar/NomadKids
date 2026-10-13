@@ -23,7 +23,7 @@ export const createUserSchema = z.object({
     .min(3, "Нэвтрэх нэр дор хаяж 3 тэмдэгт байх ёстой")
     .max(64)
     .regex(/^[a-zA-Z0-9._-]+$/, "Нэвтрэх нэр латин үсэг, тоо, . _ - агуулна"),
-  email: z.string().email().max(254).nullable().optional(),
+  email: z.string().trim().toLowerCase().email().max(254).nullable().optional(),
   phone: phoneSchema.optional(),
   lastName: z.string().min(1, "Овгийг оруулна уу").max(100),
   firstName: z.string().min(1, "Нэрийг оруулна уу").max(100),
@@ -49,7 +49,7 @@ const isoDate = z
   .nullable();
 
 export const updateUserSchema = z.object({
-  email: z.string().email().max(254).nullable().optional(),
+  email: z.string().trim().toLowerCase().email().max(254).nullable().optional(),
   phone: phoneSchema.optional(),
   lastName: z.string().min(1).max(100).optional(),
   firstName: z.string().min(1).max(100).optional(),
@@ -69,7 +69,7 @@ export const updateUserSchema = z.object({
 export type UpdateUserDto = z.infer<typeof updateUserSchema>;
 
 export const updateProfileSchema = z.object({
-  email: z.string().email().max(254).nullable().optional(),
+  email: z.string().trim().toLowerCase().email().max(254).nullable().optional(),
   phone: phoneSchema.optional(),
   lastName: z.string().min(1).max(100).optional(),
   firstName: z.string().min(1).max(100).optional(),

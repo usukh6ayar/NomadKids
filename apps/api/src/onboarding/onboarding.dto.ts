@@ -50,7 +50,7 @@ export const submitApplicationSchema = z
       .string()
       .trim()
       .regex(/^\d{8}$/, "Утасны дугаар 8 оронтой байна"),
-    email: z.string().trim().email("И-мэйл хаяг буруу байна").max(200),
+    email: z.string().trim().toLowerCase().email("И-мэйл хаяг буруу байна").max(200),
     groupCount: z.number().int().min(1).max(GROUPS_MAX),
     billingPeriod: billingPeriodSchema,
     note: z.string().trim().max(1000).optional(),

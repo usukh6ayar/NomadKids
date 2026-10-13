@@ -379,8 +379,8 @@ export class UsersService {
     }
 
     if (dto.email && dto.email !== existing.email) {
-      const clash = await this.repo.findByEmail(dto.email);
-      if (clash && clash.id !== id) throw new ConflictException("Энэ и-мэйл аль хэдийн бүртгэлтэй");
+      const clash = await this.repo.findByEmail(dto.email, id);
+      if (clash) throw new ConflictException("Энэ и-мэйл аль хэдийн бүртгэлтэй");
     }
     if (dto.phone && dto.phone !== existing.phone) {
       const clash = await this.repo.findByPhone(dto.phone);
@@ -597,8 +597,8 @@ export class UsersService {
 
   async updateOwnProfile(actor: Actor, dto: UpdateProfileDto) {
     if (dto.email) {
-      const clash = await this.repo.findByEmail(dto.email);
-      if (clash && clash.id !== actor.userId) {
+      const clash = await this.repo.findByEmail(dto.email, actor.userId);
+      if (clash) {
         throw new ConflictException("Энэ и-мэйл аль хэдийн бүртгэлтэй");
       }
     }
