@@ -31,11 +31,14 @@ export function AccessPayDialog({
   childId,
   trigger,
   onPaid,
+  period = "YEAR",
 }: {
   childId: string;
   trigger: ReactNode;
   /** Called once, the moment a poll reports PAID — the gate has opened. */
   onPaid: () => void;
+  /** A term or the school year (#217); the year when absent. */
+  period?: "TERM" | "YEAR";
 }) {
   const [open, setOpen] = useState(false);
   const [attemptId, setAttemptId] = useState<string | null>(null);
@@ -45,7 +48,7 @@ export function AccessPayDialog({
     mutationFn: () =>
       mutate(`/children/${childId}/access/qpay`, qpayInvoiceAttemptSchema, {
         method: "POST",
-        body: {},
+        body: { period },
       }),
     onSuccess: (attempt) => {
       queryClient.setQueryData(qk.accessQpay(childId), attempt);
@@ -55,7 +58,8 @@ export function AccessPayDialog({
 
   const { data: attempt } = useQuery({
     queryKey: qk.accessQpay(childId),
-    queryFn: () => get(`/children/${childId}/access/qpay`, qpayInvoiceAttemptSchema),
+    queryFn: () =>
+      get(`/children/${childId}/access/qpay?period=${period}`, qpayInvoiceAttemptSchema),
     enabled: Boolean(attemptId) && open,
     // Polls only while the attempt is still PENDING — the same rule
     // `ReportDialog` applies to a report job, here applied to a payment.

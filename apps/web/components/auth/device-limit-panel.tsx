@@ -38,12 +38,18 @@ export function isDeviceLimit(error: unknown): boolean {
 export function DeviceLimitPanel({
   identifier,
   password,
+  message,
   pending,
   onReplace,
   onCancel,
 }: {
   identifier: string;
   password: string;
+  /**
+   * The 409's own sentence — it names the limit, which is a deployment
+   * setting (`AUTH_DEVICE_LIMIT`), not a number this screen may assume.
+   */
+  message?: string | null;
   /** The sign-in that replaces a device is running. */
   pending: boolean;
   onReplace: (sessionId: string) => void;
@@ -69,7 +75,8 @@ export function DeviceLimitPanel({
       className="flex flex-col gap-3 rounded-control bg-[#fff6ec] p-3.5 ring-1 ring-[#fbe3c8]"
     >
       <p className="text-body font-semibold text-[#9a3412]">
-        Та 2 төхөөрөмжөөс нэвтэрсэн байна. Аль нэгийг нь гаргаад энд нэвтэрнэ үү.
+        {message ??
+          "Та зөвшөөрөгдсөн тооны төхөөрөмжөөс нэвтэрсэн байна. Аль нэгийг нь гаргаад энд нэвтэрнэ үү."}
       </p>
 
       {devices.isPending ? (

@@ -106,10 +106,61 @@ describe("the staff directory", () => {
       "Мэдээлэл засах",
       "Бүлэг оноох / солих",
       "Системийн эрх тохируулах",
+      "Нууц үг сэргээх",
       "Идэвхгүй болгох",
     ]) {
       expect(screen.getByRole("menuitem", { name: new RegExp(label) })).toBeInTheDocument();
     }
+  });
+
+  /*
+   * ★ #213: «Идэвхгүй болгох» closes this kindergarten's role, not the account
+   * — `DELETE /memberships/:id`, never `PATCH /users/:id { isActive }`.
+   */
+  it("deactivates the membership here, not the whole account", async () => {
+    const user = userEvent.setup();
+    stub();
+    renderWithProviders(<AdminUsersPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Анхбаяр Энх-Адьяа — үйлдэл/ }));
+    await user.click(screen.getByRole("menuitem", { name: /Идэвхгүй болгох/ }));
+    const membershipId = TEACHER.memberships[0]!.id;
+    const api = stubApi([{ path: `/memberships/${membershipId}`, method: "DELETE", status: 204 }]);
+    const dialog = await screen.findByRole("dialog", { name: "Идэвхгүй болгох уу?" });
+    await user.click(within(dialog).getByRole("button", { name: "Идэвхгүй болгох" }));
+
+    await waitFor(() =>
+      expect(
+        api.calls.some((c) => c.method === "DELETE" && c.url === `/memberships/${membershipId}`),
+      ).toBe(true),
+    );
+    expect(api.calls.some((c) => c.method === "PATCH")).toBe(false);
+  });
+
+  it("hands over a one-time reset link, or the server's reason it may not", async () => {
+    const user = userEvent.setup();
+    stub();
+    renderWithProviders(<AdminUsersPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Анхбаяр Энх-Адьяа — үйлдэл/ }));
+    await user.click(screen.getByRole("menuitem", { name: /Нууц үг сэргээх/ }));
+    stubApi([
+      {
+        path: `/users/${TEACHER_ID}/password-reset`,
+        method: "POST",
+        status: 409,
+        body: {
+          type: "about:blank",
+          title: "Conflict",
+          status: 409,
+          detail: "Энэ хүн өөр байгууллагад бүртгэлтэй.",
+          requestId: "t",
+        },
+      },
+    ]);
+    await user.click(await screen.findByRole("button", { name: "Холбоос үүсгэх" }));
+
+    expect(await screen.findByText("Энэ хүн өөр байгууллагад бүртгэлтэй.")).toBeInTheDocument();
   });
 
   it("starts an invitation in the section's own role", async () => {

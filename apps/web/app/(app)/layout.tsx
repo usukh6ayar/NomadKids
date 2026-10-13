@@ -918,7 +918,9 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          * user: the contract period and its renewal, the director's twin of
          * the parent's row.
          */
-        ...adminEntry("Үйлчилгээний эрх", "/admin/service-access", "navParentAccess"),
+        ...adminEntry("Үйлчилгээний эрх", "/admin/service-access", "navParentAccess").map(
+          (item) => ({ ...item, badge: "serviceAccess" as const }),
+        ),
         entry("Хувийн тохиргоо", "/settings"),
         /*
          * ★ The administration screens, named — and no "Удирдлага" row above
