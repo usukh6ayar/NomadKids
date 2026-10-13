@@ -76,6 +76,15 @@ const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
  */
 const ADMIN_PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
 
+/**
+ * The refusal when an account reaches beyond this administrator —
+ * `TenantAccessService.canManageAccount`. A 409, not a 404: the person is on
+ * this administrator's own staff list, so their existence is no secret, and
+ * the message says what to do instead.
+ */
+export const ACCOUNT_NOT_YOURS =
+  "Энэ хүн өөр байгууллагад эсвэл эцэг эхээр бүртгэлтэй, эсвэл эрхлэгч тул нэвтрэх бүртгэлийг нь энд өөрчлөх боломжгүй. Энэ цэцэрлэгт ажиллах эрхийг нь хасаж болно.";
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -358,6 +367,17 @@ export class UsersService {
     const existing = await this.repo.findInScope(id, scope);
     if (!existing) throw new NotFoundException();
 
+    // ★ The fields that act on the account rather than on this kindergarten's
+    // record of the person — `TenantAccessService.canManageAccount`. Sending
+    // the value the account already has is not a change.
+    const touchesAccount =
+      (dto.isActive !== undefined && dto.isActive !== existing.isActive) ||
+      (dto.email !== undefined && dto.email !== existing.email) ||
+      (dto.phone !== undefined && dto.phone !== existing.phone);
+    if (touchesAccount && !(await this.tenants.canManageAccount(actor, id))) {
+      throw new ConflictException(ACCOUNT_NOT_YOURS);
+    }
+
     if (dto.email && dto.email !== existing.email) {
       const clash = await this.repo.findByEmail(dto.email);
       if (clash && clash.id !== id) throw new ConflictException("Энэ и-мэйл аль хэдийн бүртгэлтэй");
@@ -413,6 +433,9 @@ export class UsersService {
     const scope = this.tenants.adminKindergartenIds(actor);
     const user = await this.repo.findInScope(id, scope);
     if (!user) throw new NotFoundException();
+    if (!(await this.tenants.canManageAccount(actor, id))) {
+      throw new ConflictException(ACCOUNT_NOT_YOURS);
+    }
 
     await this.auth.invalidateAuthTokens(user.id, "PASSWORD_RESET");
 
@@ -443,6 +466,13 @@ export class UsersService {
 
   async addMembership(actor: Actor, userId: string, dto: AddMembershipDto) {
     this.tenants.assertAdmin(actor, dto.kindergartenId);
+    // ★ Somebody already on this administrator's staff, or an account nobody
+    // else holds. Attaching a role to anybody else's id would put them in this
+    // directory — and in reach of everything an administrator does to it.
+    const inScope = await this.repo.findInScope(userId, this.tenants.adminKindergartenIds(actor));
+    if (!inScope && !(await this.tenants.canManageAccount(actor, userId))) {
+      throw new NotFoundException();
+    }
     await this.solo.assertRoleAllowed(dto.kindergartenId, dto.role);
 
     const existing = await this.repo.findMembershipFor(userId, dto.kindergartenId, dto.role);

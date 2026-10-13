@@ -31,6 +31,31 @@ export class AuthzRepository {
   }
 
   /**
+   * What one account reaches beyond any single kindergarten — the facts
+   * `TenantAccessService.canManageAccount` decides from. Live memberships
+   * only (a revoked one grants nothing), and any live guardianship.
+   */
+  async loadAccountFootprint(userId: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: {
+        isSuperAdmin: true,
+        memberships: {
+          where: { isActive: true, deletedAt: null },
+          select: { kindergartenId: true, role: true },
+        },
+        _count: { select: { guardianships: { where: { deletedAt: null } } } },
+      },
+    });
+    if (!user) return null;
+    return {
+      isSuperAdmin: user.isSuperAdmin,
+      memberships: user.memberships,
+      guardianships: user._count.guardianships,
+    };
+  }
+
+  /**
    * Everything needed to decide access to one child.
    *
    * Returns `null` when the child does not exist or is soft-deleted — the
