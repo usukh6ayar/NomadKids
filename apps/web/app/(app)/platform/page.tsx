@@ -92,8 +92,8 @@ function Platform() {
   const [status, setStatus] = useState("");
   const [creating, setCreating] = useState(false);
   const [tab, setTab] = useState<"kindergartens" | "solo">("kindergartens");
-  /** «Бүх цэцэрлэг» or only those linked to ESIS — 2026-10-13, the user. */
-  const [esisOnly, setEsisOnly] = useState(false);
+  /** «Бүгд», «Цэцэрлэг» (not linked to ESIS) or «ЭСИС цэцэрлэг» — 2026-10-13. */
+  const [kind, setKind] = useState<"" | "plain" | "esis">("");
   const [ownership, setOwnership] = useState("");
   const [area, setArea] = useState("");
   const [deleting, setDeleting] = useState<Row | null>(null);
@@ -122,12 +122,12 @@ function Platform() {
   const rows = items
     .filter(
       (kg) =>
-        (!esisOnly || esisConnected(kg)) &&
+        (!kind || esisConnected(kg) === (kind === "esis")) &&
         (!ownership || kg.propertyType === ownership) &&
         (!area || areaOf(kg) === area),
     )
     .sort((a, b) => compareRows(a, b, sort.key, sort.dir));
-  const filtered = Boolean(query.trim() || status || ownership || area || esisOnly);
+  const filtered = Boolean(query.trim() || status || ownership || area || kind);
   const sortBy = (key: SortKey) =>
     setSort((current) => ({ key, dir: current.key === key ? (-current.dir as 1 | -1) : 1 }));
 
@@ -180,11 +180,12 @@ function Platform() {
         <div className="flex flex-wrap items-center gap-2">
           <Select
             aria-label="ЭСИС-ээр шүүх"
-            value={esisOnly ? "esis" : ""}
-            onChange={(e) => setEsisOnly(e.target.value === "esis")}
+            value={kind}
+            onChange={(e) => setKind(e.target.value as "" | "plain" | "esis")}
             className="h-9 w-full text-compact sm:w-[160px]"
           >
-            <option value="">Бүх цэцэрлэг</option>
+            <option value="">Бүгд</option>
+            <option value="plain">Цэцэрлэг</option>
             <option value="esis">ЭСИС цэцэрлэг</option>
           </Select>
           <label className="relative min-w-0 flex-1 sm:max-w-[320px]">
@@ -263,7 +264,7 @@ function Platform() {
           <EmptyState
             title="Цэцэрлэг олдсонгүй"
             description={
-              query || status || ownership || area || esisOnly
+              query || status || ownership || area || kind
                 ? "Хайлт, шүүлтээ өөрчилж үзнэ үү."
                 : "Эхний цэцэрлэгээ бүртгээрэй."
             }

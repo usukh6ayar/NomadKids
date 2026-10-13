@@ -289,16 +289,23 @@ describe("the operator's kindergartens table", () => {
     expect(screen.queryByRole("region", { name: "ЭСИС-тэй тулгалт" })).toBeNull();
   });
 
-  it("shows all kindergartens, or only the ESIS ones", async () => {
+  it("shows all, the plain ones, or the ESIS ones", async () => {
     const user = userEvent.setup();
     renderPage();
     const table = await screen.findByRole("table");
     expect(table.querySelectorAll("tbody tr")).toHaveLength(2);
 
-    await user.click(screen.getByLabelText("ЭСИС-ээр шүүх"));
-    await user.click(screen.getByRole("option", { name: "ЭСИС цэцэрлэг" }));
-    const rows = screen.getByRole("table").querySelectorAll("tbody tr");
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toHaveTextContent("Нарлаг цэцэрлэг");
+    const pick = async (name: string) => {
+      await user.click(screen.getByLabelText("ЭСИС-ээр шүүх"));
+      await user.click(screen.getByRole("option", { name }));
+      return screen.getByRole("table").querySelectorAll("tbody tr");
+    };
+    const esis = await pick("ЭСИС цэцэрлэг");
+    expect(esis).toHaveLength(1);
+    expect(esis[0]).toHaveTextContent("Нарлаг цэцэрлэг");
+    const plain = await pick("Цэцэрлэг");
+    expect(plain).toHaveLength(1);
+    expect(plain[0]).toHaveTextContent("Хүслэн");
+    expect(await pick("Бүгд")).toHaveLength(2);
   });
 });
