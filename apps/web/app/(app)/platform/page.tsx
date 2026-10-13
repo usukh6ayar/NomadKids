@@ -344,6 +344,7 @@ function Platform() {
                     <span className="sr-only">Үйлдэл</span>
                   </th>
                 </tr>
+                <KindergartenTotals rows={rows} platform={filtered ? null : (stats.data ?? null)} />
               </thead>
               <tbody>
                 {rows.map((kg, index) => (
@@ -355,7 +356,6 @@ function Platform() {
                   />
                 ))}
               </tbody>
-              <KindergartenTotals rows={rows} platform={filtered ? null : (stats.data ?? null)} />
             </table>
           </div>
         ) : null}
@@ -702,6 +702,16 @@ function SoloTeachersTable() {
                   <span className="sr-only">Үйлдэл</span>
                 </th>
               </tr>
+              <tr className="[&>td]:border-b-2 [&>td]:border-r [&>td]:border-border [&>td]:bg-slate-50 [&>td]:px-3 [&>td]:py-2 [&>td]:font-semibold [&>td]:text-ink [&>td:last-child]:border-r-0">
+                <td className={FROZEN_NO} />
+                <td className={FROZEN_NAME}>Нийт: {rows.length} багш</td>
+                <td />
+                <td />
+                <td className="text-right tabular-nums">
+                  {rows.reduce((sum, row) => sum + row.childCount, 0).toLocaleString("en-US")}
+                </td>
+                <td colSpan={4} />
+              </tr>
             </thead>
             <tbody>
               {rows.map((row, index) => (
@@ -727,18 +737,6 @@ function SoloTeachersTable() {
                 </tr>
               ))}
             </tbody>
-            <tfoot>
-              <tr className="[&>td]:border-t-2 [&>td]:border-r [&>td]:border-border [&>td]:bg-slate-50 [&>td]:px-3 [&>td]:py-2 [&>td]:font-semibold [&>td]:text-ink [&>td:last-child]:border-r-0">
-                <td className={FROZEN_NO} />
-                <td className={FROZEN_NAME}>Нийт: {rows.length} багш</td>
-                <td />
-                <td />
-                <td className="text-right tabular-nums">
-                  {rows.reduce((sum, row) => sum + row.childCount, 0).toLocaleString("en-US")}
-                </td>
-                <td colSpan={4} />
-              </tr>
-            </tfoot>
           </table>
         </div>
       ) : null}
@@ -753,8 +751,9 @@ function sumOf(rows: Row[], pick: (row: Row) => number | null | undefined): numb
 }
 
 /**
- * «Нийт» — the figures that used to sit in a strip above the page, now under
- * the columns they add up (2026-10-13, the user). Unfiltered, the platform's
+ * «Нийт» — the figures that used to sit in a strip above the page, now on the
+ * table's second header row, over the columns they add up (2026-10-13, the
+ * user: on top, not below). Unfiltered, the platform's
  * own totals; filtered, the sum of the rows on screen, so the line always
  * agrees with the table above it. Active parents have no column, so they are
  * named in the first cell.
@@ -767,31 +766,29 @@ function KindergartenTotals({ rows, platform }: { rows: Row[]; platform: Platfor
   const staff = platform ? platform.staff : sumOf(rows, (row) => row.staffCount);
   const connected = rows.filter(esisConnected).length;
   const cell =
-    "border-t-2 border-r border-border bg-slate-50 px-3 py-2 font-semibold text-ink last:border-r-0";
+    "border-b-2 border-r border-border bg-slate-50 px-3 py-2 font-semibold text-ink last:border-r-0";
 
   return (
-    <tfoot>
-      <tr>
-        <td className={`${cell} ${FROZEN_NO}`} />
-        <td className={`${cell} ${FROZEN_NAME}`}>
-          Нийт: {figure(platform ? platform.kindergartens : rows.length)} цэцэрлэг
-          {platform ? (
-            <span className="block font-normal text-muted">
-              Идэвхтэй эцэг эх: {figure(platform.guardians)}
-            </span>
-          ) : null}
-        </td>
-        <td className={cell} />
-        <td className={cell} />
-        <td className={`${cell} whitespace-nowrap`}>
-          {connected} / {rows.length}
-        </td>
-        <td className={cell} />
-        <td className={`${cell} text-right tabular-nums`}>{figure(groups)}</td>
-        <td className={`${cell} text-right tabular-nums`}>{figure(children)}</td>
-        <td className={`${cell} text-right tabular-nums`}>{figure(staff)}</td>
-        <td className={cell} colSpan={6} />
-      </tr>
-    </tfoot>
+    <tr>
+      <td className={`${cell} ${FROZEN_NO}`} />
+      <td className={`${cell} ${FROZEN_NAME}`}>
+        Нийт: {figure(platform ? platform.kindergartens : rows.length)} цэцэрлэг
+        {platform ? (
+          <span className="block font-normal text-muted">
+            Идэвхтэй эцэг эх: {figure(platform.guardians)}
+          </span>
+        ) : null}
+      </td>
+      <td className={cell} />
+      <td className={cell} />
+      <td className={`${cell} whitespace-nowrap`}>
+        {connected} / {rows.length}
+      </td>
+      <td className={cell} />
+      <td className={`${cell} text-right tabular-nums`}>{figure(groups)}</td>
+      <td className={`${cell} text-right tabular-nums`}>{figure(children)}</td>
+      <td className={`${cell} text-right tabular-nums`}>{figure(staff)}</td>
+      <td className={cell} colSpan={6} />
+    </tr>
   );
 }

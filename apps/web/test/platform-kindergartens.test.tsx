@@ -71,7 +71,7 @@ describe("the operator's kindergartens table", () => {
         within(table).getByRole("columnheader", { name: new RegExp(heading) }),
       ).toBeInTheDocument();
     }
-    const [first, second] = within(table).getAllByRole("row").slice(1);
+    const [first, second] = [...table.querySelectorAll<HTMLElement>("tbody tr")];
     expect(first).toHaveTextContent("Улаанбаатар · Баянзүрх");
     // ESIS: connected, with the institution number; or not connected.
     expect(first).toHaveTextContent("Холбогдсон");
@@ -146,7 +146,7 @@ describe("the operator's kindergartens table", () => {
     ]);
     renderWithProviders(<PlatformPage />);
 
-    const row = (await screen.findAllByRole("row"))[1]!;
+    const row = (await screen.findByRole("table")).querySelector<HTMLElement>("tbody tr")!;
     expect(
       within(row).getByText(
         (_, el) => el?.tagName === "SPAN" && el.className.includes("text-danger"),
@@ -186,7 +186,7 @@ describe("the operator's kindergartens table", () => {
         within(table).getByRole("columnheader", { name: new RegExp(heading) }),
       ).toBeInTheDocument();
     }
-    const first = within(table).getAllByRole("row")[1]!;
+    const first = table.querySelector<HTMLElement>("tbody tr")!;
     expect(first).toHaveTextContent("142");
     expect(first).toHaveTextContent("18");
   });
@@ -235,7 +235,7 @@ describe("the operator's kindergartens table", () => {
     expect(screen.queryByText("Нарлаг цэцэрлэг")).not.toBeVisible();
   });
 
-  it("totals the columns under the table — the platform's, or the rows filtered", async () => {
+  it("totals the columns at the top of the table — the platform's, or the rows filtered", async () => {
     const user = userEvent.setup();
     stubApi([
       { path: "/auth/me", body: operator() },
@@ -258,7 +258,8 @@ describe("the operator's kindergartens table", () => {
     renderWithProviders(<PlatformPage />);
     const table = await screen.findByRole("table");
 
-    const totals = () => within(table).getAllByRole("row").at(-1)!;
+    // On top — the header's second row (the user: "доор биш дээр").
+    const totals = () => table.querySelectorAll("thead tr")[1]!;
     expect(await within(table).findByText(/Идэвхтэй эцэг эх: 250/)).toBeInTheDocument();
     expect(totals()).toHaveTextContent("Нийт: 2 цэцэрлэг");
     expect(totals()).toHaveTextContent("300");
