@@ -771,11 +771,11 @@ function KindergartenTotals({ rows, platform }: { rows: Row[]; platform: Platfor
   return (
     <tr>
       <td className={`${cell} ${FROZEN_NO}`} />
-      <td className={`${cell} ${FROZEN_NAME}`}>
+      <td className={`${cell} ${FROZEN_NAME} whitespace-nowrap`}>
         Нийт: {figure(platform ? platform.kindergartens : rows.length)} цэцэрлэг
         {platform ? (
-          <span className="block font-normal text-muted">
-            Идэвхтэй эцэг эх: {figure(platform.guardians)}
+          <span className="font-normal text-muted">
+            {" · "}Идэвхтэй эцэг эх: {figure(platform.guardians)}
           </span>
         ) : null}
       </td>
