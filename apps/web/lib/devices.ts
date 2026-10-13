@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ApiError } from "@/lib/api/client";
 
 /**
  * «Бүртгэлтэй төхөөрөмж» — every account signs in from at most two devices
@@ -91,4 +92,18 @@ export function describeDevice(userAgent: string | null | undefined): {
 
   const label = [system, browser].filter(Boolean).join(" · ") || "Тодорхойгүй төхөөрөмж";
   return { label, kind };
+}
+
+/** The sign-in refusal that means «the account is on its limit of devices». */
+export function isDeviceLimit(error: unknown): boolean {
+  return (
+    error instanceof ApiError && error.status === 409 && error.problem.code === DEVICE_LIMIT_CODE
+  );
+}
+
+/** The devices to sign out, the one used longest ago first. */
+export function leastRecentlyUsedFirst(sessions: DeviceSession[]): DeviceSession[] {
+  const lastUsed = (session: DeviceSession) =>
+    new Date(session.lastUsedAt ?? session.createdAt).getTime();
+  return [...sessions].sort((a, b) => lastUsed(a) - lastUsed(b));
 }

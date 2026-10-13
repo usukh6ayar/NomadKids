@@ -858,22 +858,14 @@ describe("role-based navigation", () => {
   });
 
   /*
-   * The six reference rows fold away so the menu the parent actually uses fits
-   * a phone screen. `toBeVisible` rather than `toBeInTheDocument` is the whole
-   * point of these two cases: the panel stays mounted while closed, so the
-   * weaker matcher would pass on a disclosure that never opens *and* on one
-   * that never closes.
+   * «Тусламж» folds away so the menu the parent actually uses fits a phone
+   * screen. Since 2026-10-13 it holds two rows, and both open a window in
+   * place (the user). `toBeVisible` rather than `toBeInTheDocument`: the panel
+   * stays mounted while closed.
    */
-  const FOLDED = [
-    "Миний гэрээ",
-    "Гарын авлага",
-    "Түгээмэл асуулт",
-    "Үйлчилгээний нөхцөл",
-    "Нууцлалын бодлого",
-    "Холбоо барих",
-  ];
+  const FOLDED = ["Гарын авлага", "Холбоо барих"];
 
-  it("keeps the six help rows folded away until Тусламж is opened", async () => {
+  it("keeps the two help rows folded away until Тусламж is opened", async () => {
     const user = userEvent.setup();
     renderShell(["PARENT"], "/home", [OWN_CHILD], GROUPS, 3);
     const nav = await sidebar();
@@ -882,6 +874,14 @@ describe("role-based navigation", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     for (const label of FOLDED) {
       expect(within(nav).getByText(label), `${label} should start folded`).not.toBeVisible();
+    }
+    for (const gone of [
+      "Миний гэрээ",
+      "Түгээмэл асуулт",
+      "Үйлчилгээний нөхцөл",
+      "Нууцлалын бодлого",
+    ]) {
+      expect(within(nav).queryByText(gone)).toBeNull();
     }
 
     await user.click(toggle);
@@ -892,32 +892,23 @@ describe("role-based navigation", () => {
     }
   });
 
-  it("folds Тусламж shut again, and reaches support last", async () => {
+  it("opens the guide and the home page's contact window in place", async () => {
     const user = userEvent.setup();
     renderShell(["PARENT"], "/home", [OWN_CHILD], GROUPS, 3);
     const nav = await sidebar();
+    await user.click(within(nav).getByRole("button", { name: "Тусламж" }));
 
-    const toggle = within(nav).getByRole("button", { name: "Тусламж" });
-    await user.click(toggle);
+    await user.click(within(nav).getByRole("button", { name: "Гарын авлага" }));
+    const guide = screen.getByRole("dialog", { name: "Гарын авлага" });
+    expect(within(guide).getByText("Үйлчилгээний эрх")).toBeInTheDocument();
+    await user.click(within(guide).getByRole("button", { name: "Хаах" }));
 
-    // Ordered so the address to write to sits below the five pages that may
-    // save the parent from needing it.
-    const opened = FOLDED.map((label) => within(nav).getByText(label));
-    for (let i = 1; i < opened.length; i += 1) {
-      expect(
-        opened[i - 1]!.compareDocumentPosition(opened[i]!) & Node.DOCUMENT_POSITION_FOLLOWING,
-        `${FOLDED[i]} should follow ${FOLDED[i - 1]}`,
-      ).toBeTruthy();
-    }
-    expect(within(nav).getByRole("link", { name: "Холбоо барих" })).toHaveAttribute(
+    await user.click(within(nav).getByRole("button", { name: "Холбоо барих" }));
+    const contact = screen.getByRole("dialog", { name: "Холбоо барих" });
+    expect(within(contact).getByRole("link", { name: /Мэйл/ })).toHaveAttribute(
       "href",
-      "mailto:Nomadkidsmn@gmail.com",
+      expect.stringContaining("mailto:"),
     );
-
-    await user.click(toggle);
-
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    expect(within(nav).getByText("Миний гэрээ")).not.toBeVisible();
   });
 });
 
@@ -1074,7 +1065,9 @@ describe("mobile navigation", () => {
 
     const bar = await waitFor(() => screen.getByRole("navigation", { name: "Доод цэс" }));
 
-    for (const label of ["Нүүр", "Мэдээ", "Зураг", "Хоол", "Дэглэм", "Дуу, шүлэг"]) {
+    // «Дэглэм» is not on the bar since 2026-10-13 (the user): too many icons.
+    expect(within(bar).queryByRole("link", { name: "Дэглэм" })).toBeNull();
+    for (const label of ["Нүүр", "Мэдээ", "Зураг", "Хоол", "Дуу, шүлэг"]) {
       const link = within(bar).getByRole("link", { name: label });
       // A glyph, not one of the menu's illustrations. ★ 2026-10-01, at the
       // client's instruction: icons only — the name is kept for screen

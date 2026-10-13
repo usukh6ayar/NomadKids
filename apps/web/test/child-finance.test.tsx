@@ -188,7 +188,9 @@ describe("a guardian's own view of a child's finances", () => {
 
     renderFinancePage();
 
-    expect(await screen.findByText(/50 000₮ · Бэлнээр/)).toBeInTheDocument();
+    // A receipt row: the day and the method on the left, the amount on the right.
+    expect(await screen.findByText(/· Бэлнээр/)).toBeInTheDocument();
+    expect(screen.getAllByText("50 000₮").length).toBeGreaterThan(0);
   });
 });
 

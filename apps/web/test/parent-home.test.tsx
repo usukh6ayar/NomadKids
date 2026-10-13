@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ParentHomePage from "@/app/(app)/home/page";
 import { renderWithProviders, sessionFor, stubApi } from "./support/render";
@@ -69,6 +69,29 @@ describe("parent home portfolio artwork", () => {
     expect(image!.getAttribute("src")).toContain(asset);
     expect(artwork).toHaveClass("h-full", "items-end", "bg-transparent");
     expect(image).toHaveClass("object-bottom");
+  });
+});
+
+describe("parent home quick links", () => {
+  it("moves routine and songs from the side menu into the requested home order", async () => {
+    stubParentHome("MALE");
+
+    renderWithProviders(<ParentHomePage />);
+
+    const links = within(await screen.findByRole("region", { name: "Түргэн холбоос" }))
+      .getAllByRole("link")
+      .map((link) => link.textContent);
+
+    expect(links).toEqual([
+      "Ангийн самбар",
+      "Ирц",
+      "Хоол",
+      "Өдрийн дэглэм",
+      "Дуу, шүлэг",
+      "Судалгаа",
+      "Цэцэрлэг",
+      "Санхүү",
+    ]);
   });
 });
 

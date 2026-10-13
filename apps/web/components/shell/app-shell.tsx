@@ -142,6 +142,8 @@ export interface NavSection {
   entries: {
     label: string;
     href?: string;
+    /** Opens something in place instead of navigating — «Тусламж»'s windows. */
+    onSelect?: () => void;
     badge?: "unread" | "surveys" | "serviceAccess";
     tag?: string;
     /**
@@ -1804,11 +1806,21 @@ function ParentSidebarRow({
     "flex min-h-[47px] w-full items-center gap-3 rounded-card px-3 py-2.5 text-left text-compact transition-colors",
     active
       ? "bg-sky-50 font-semibold text-sky-700"
-      : item.href
+      : item.href || item.onSelect
         ? "text-slate-600 hover:bg-slate-50 hover:text-slate-800"
         : "text-slate-500",
   );
 
+  // ★ A row that opens a window in place — «Гарын авлага», «Холбоо барих»
+  // (2026-10-13). Until then a row without an `href` was drawn as plain text,
+  // which is why the old help rows did nothing when pressed.
+  if (!item.href && item.onSelect) {
+    return (
+      <button type="button" onClick={item.onSelect} className={className}>
+        {content}
+      </button>
+    );
+  }
   if (!item.href) return <span className={className}>{content}</span>;
 
   return (

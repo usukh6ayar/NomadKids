@@ -26,10 +26,7 @@ import {
   Truck,
   UserCog,
   FileBarChart,
-  FileCheck2,
   Headphones,
-  HelpCircle,
-  LockKeyhole,
   ChartNoAxesColumnIncreasing,
   FileSearch,
   UsersRound,
@@ -55,7 +52,7 @@ import {
   Music2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { childSummarySchema, type ChildSummary } from "@kinder/contracts";
 import { z } from "zod";
 import {
@@ -73,6 +70,9 @@ import { Art, type ArtName } from "@/components/ui/art";
 import { useNavigationHistory } from "@/lib/nav-history";
 import { useSession } from "@/lib/auth/session";
 import { AgreementGate } from "@/components/agreements/agreement-gate";
+import { ContactDialog } from "@/components/public/contact-dialog";
+import { GuideDialog } from "@/components/help/guide-dialog";
+import { PARENT_GUIDES } from "@/lib/guides";
 import { SelectedChildProvider, useSelectedChild } from "@/lib/selected-child";
 
 const ownChildrenSchema = z.array(childSummarySchema);
@@ -241,6 +241,8 @@ function AuthenticatedShell({
   children: ReactNode;
 }) {
   const { selectedChildId, setSelectedChildId } = useSelectedChild();
+  /** The guardian's «Тусламж» windows — `parentSections`. */
+  const [help, setHelp] = useState<"guide" | "contact" | null>(null);
 
   const nav = isStaff ? staffNav(isAdmin, groupId) : parentNav(myChildren, selectedChildId);
 
@@ -283,7 +285,10 @@ function AuthenticatedShell({
           ? isAdmin
             ? withRailGlyphs(staffSections(true, groupId))
             : teacherSections(groupId)
-          : parentSections(myChildren, selectedChildId)
+          : parentSections(myChildren, selectedChildId, {
+              openGuide: () => setHelp("guide"),
+              openContact: () => setHelp("contact"),
+            })
       }
       variant={isStaff ? "teacher" : "parent"}
       teacherTheme={isStaff && !isAdmin}
@@ -292,6 +297,14 @@ function AuthenticatedShell({
       childSwitcher={childSwitcher}
     >
       {children}
+      {help === "guide" ? (
+        <GuideDialog
+          groups={PARENT_GUIDES}
+          onClose={() => setHelp(null)}
+          onContact={() => setHelp("contact")}
+        />
+      ) : null}
+      {help === "contact" ? <ContactDialog onClose={() => setHelp(null)} /> : null}
     </AppShell>
   );
 }
@@ -1492,13 +1505,7 @@ function parentNav(
       icon: artIcon("navFood", 20),
       barIcon: <UtensilsCrossed {...barIconProps} />,
     },
-    // After «Хоол» — 2026-10-09, the client: the group's routine and clubs.
-    {
-      href: activeId ? `/children/${activeId}/routine` : "/children",
-      label: "Дэглэм",
-      icon: artIcon("adminCurriculum", 20),
-      barIcon: <CalendarClock {...barIconProps} />,
-    },
+    // «Дэглэм» left the bar on 2026-10-13 (the user): too many icons on a phone.
     {
       href: activeId ? `/children/${activeId}/songs-poems` : "/children",
       label: "Дуу, шүлэг",
@@ -1522,6 +1529,7 @@ function parentNav(
 function parentSections(
   myChildren: ChildSummary[] | undefined,
   selectedChildId: string | undefined,
+  help: { openGuide: () => void; openContact: () => void },
 ): NavSection[] {
   const selected = myChildren?.find((child) => child.id === selectedChildId) ?? myChildren?.[0];
 
@@ -1550,12 +1558,12 @@ function parentSections(
         {
           label: "Өдрийн дэглэм",
           href: selected ? `${childBase}/routine` : childBase,
-          icon: artIcon("adminCurriculum", 20),
+          icon: artIcon("navParentRoutine", 20),
         },
         {
           label: "Дуу, шүлэг",
           href: selected ? `${childBase}/songs-poems` : childBase,
-          icon: artIcon("songsPoems", 20),
+          icon: artIcon("navParentSongs", 20),
         },
         {
           label: "Мэдээ",
@@ -1582,7 +1590,7 @@ function parentSections(
         {
           label: "Санхүү",
           href: selected ? `${childBase}/finance` : childBase,
-          icon: artIcon("finance", 20),
+          icon: artIcon("navParentFinance", 20),
         },
         {
           label: "Үйлчилгээний эрх",
@@ -1592,34 +1600,18 @@ function parentSections(
       ],
     },
     /*
-     * ★ The six reference rows fold away — 2026-09-10, on the client's own
-     * sketch of this menu.
-     *
-     * They used to sit flat under the seven a guardian actually navigates
-     * with, which made the menu fourteen rows and pushed "Системээс гарах"
-     * off a phone screen. None of the six is a daily destination: a contract,
-     * a manual and three policy pages are read once. Grouping them behind one
-     * named row keeps them reachable while the part of the menu that does the
-     * work fits without scrolling.
-     *
-     * "Холбоо барих" moves to the foot of the group because it is the one to
-     * reach for when the five above it did not answer the question.
+     * ★ «Тусламж» keeps two rows — 2026-10-13, the user: the contract is in
+     * «Хувийн тохиргоо», and the FAQ and policy rows did nothing when pressed.
+     * Both open a window in place: the guide to every section of this menu,
+     * and the same «Холбоо барих» window as the home page.
      */
     {
       title: "Тусламж",
       collapsible: true,
       icon: artIcon("navParentHelp", 20),
       entries: [
-        { label: "Миний гэрээ", icon: <FileText {...iconProps} /> },
-        { label: "Гарын авлага", icon: <BookOpen {...iconProps} /> },
-        { label: "Түгээмэл асуулт", icon: <HelpCircle {...iconProps} /> },
-        { label: "Үйлчилгээний нөхцөл", icon: <FileCheck2 {...iconProps} /> },
-        { label: "Нууцлалын бодлого", icon: <LockKeyhole {...iconProps} /> },
-        {
-          label: "Холбоо барих",
-          href: "mailto:Nomadkidsmn@gmail.com",
-          icon: <Headphones {...iconProps} />,
-        },
+        { label: "Гарын авлага", icon: <BookOpen {...iconProps} />, onSelect: help.openGuide },
+        { label: "Холбоо барих", icon: <Headphones {...iconProps} />, onSelect: help.openContact },
       ],
     },
   ];

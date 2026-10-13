@@ -107,6 +107,10 @@ const SOURCE = {
   navParentNews: "/icons/icon-nav-news-v2.png",
   navParentChat: "/icons/icon-nav-chat-v2.png",
   navParentAccess: "/icons/icon-nav-access-v2.png",
+  // Drawn 2026-10-13 in the same flat style, for the guardian's sidebar.
+  navParentRoutine: "/icons/icon-nav-routine-v2.png",
+  navParentSongs: "/icons/icon-nav-songs-v2.png",
+  navParentFinance: "/icons/icon-nav-finance-v2.png",
   navParentHelp: "/icons/icon-nav-help-v2.png",
   navParentSettings: "/icons/icon-nav-settings-v2.png",
   navParentSignOut: "/icons/icon-nav-signout-v2.png",
