@@ -214,11 +214,15 @@ export const envSchema = z.object({
    */
   ACCESS_FEE_TERM_AMOUNT: z
     .string()
-    .regex(
-      /^\d{1,10}(\.\d{1,2})?$/,
-      "ACCESS_FEE_TERM_AMOUNT нь мөнгөн дүн байна (жишээ: 9000.00)",
-    )
+    .regex(/^\d{1,10}(\.\d{1,2})?$/, "ACCESS_FEE_TERM_AMOUNT нь мөнгөн дүн байна (жишээ: 9000.00)")
     .default("0"),
+
+  /**
+   * How many devices one account may be signed in on at once (#211, the user
+   * 2026-10-12). A device is a refresh-token family — one sign-in and its
+   * rotations. `0` turns the limit off. A platform operator is never limited.
+   */
+  AUTH_DEVICE_LIMIT: z.coerce.number().int().min(0).max(20).default(2),
 
   QPAY_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
 
