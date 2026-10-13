@@ -15,7 +15,7 @@ export const teacherSignupSchema = z
       .string()
       .trim()
       .regex(/^\d{8}$/, "Утасны дугаар 8 оронтой байна"),
-    email: z.string().trim().email("И-мэйл хаяг буруу байна").max(200),
+    email: z.string().trim().toLowerCase().email("И-мэйл хаяг буруу байна").max(200),
     propertyType: z.string().trim().max(40).optional(),
     location: z.string().trim().max(80).optional(),
     /** The kindergarten they work at — what the operator merges into later. */

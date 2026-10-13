@@ -99,6 +99,10 @@ describe("signing up", () => {
     expect((await signup()).status).toBe(201);
     expect((await signup({ ...FORM, email: "other@example.mn" })).status).toBe(409);
     expect((await signup({ ...FORM, phone: "88112233" })).status).toBe(409);
+    // The same address in another casing — how one teacher got two accounts.
+    expect((await signup({ ...FORM, phone: "88112233", email: "Saraa@Example.MN" })).status).toBe(
+      409,
+    );
     expect(await db.kindergarten.count({ where: { kind: "SOLO_TEACHER" } })).toBe(1);
   });
 

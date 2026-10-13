@@ -644,6 +644,57 @@ describe("own profile", () => {
     expect(res.status).toBe(200);
   });
 
+  /*
+   * ★ An address is one address in any casing — 2026-10-13, production held
+   * two pairs of accounts under one address in two casings. Stored
+   * lower-cased; a casing of one's own address is not a clash.
+   */
+  it("refuses another account's e-mail in any casing, and stores it lower-cased", async () => {
+    const other = uniq("Taken");
+    await createUser({ username: uniq("u"), email: `${other.toLowerCase()}@test.mn` });
+
+    const clash = await authed(request(server()).patch("/v1/me/profile"), teacherA).send({
+      email: `${other.toUpperCase()}@Test.mn`,
+    });
+    expect(clash.status).toBe(409);
+
+    const own = uniq("Mine");
+    const ok = await authed(request(server()).patch("/v1/me/profile"), teacherA).send({
+      email: `${own}@Test.mn`,
+    });
+    expect(ok.status).toBe(200);
+    const again = await authed(request(server()).patch("/v1/me/profile"), teacherA).send({
+      email: `${own.toUpperCase()}@test.mn`,
+    });
+    expect(again.status).toBe(200);
+    const stored = await db.user.findUniqueOrThrow({ where: { id: a.teacherUser.id } });
+    expect(stored.email).toBe(`${own.toLowerCase()}@test.mn`);
+  });
+
+  /*
+   * ★ The pairs production already holds keep working: the settings form
+   * sends every field on every save, and the address on file — another
+   * casing of someone else's — is no change and is not rewritten, which
+   * would break the case-sensitive unique index.
+   */
+  it("saves the profile of an account sharing its address in another casing", async () => {
+    const shared = uniq("Pair");
+    await createUser({ username: uniq("u"), email: `${shared.toLowerCase()}@test.mn` });
+    await db.user.update({
+      where: { id: a.teacherUser.id },
+      data: { email: `${shared}@Test.mn` },
+    });
+
+    const res = await authed(request(server()).patch("/v1/me/profile"), teacherA).send({
+      email: `${shared}@Test.mn`,
+      bio: "Шинэ танилцуулга",
+    });
+    expect(res.status).toBe(200);
+    const stored = await db.user.findUniqueOrThrow({ where: { id: a.teacherUser.id } });
+    expect(stored.email).toBe(`${shared}@Test.mn`);
+    expect(stored.bio).toBe("Шинэ танилцуулга");
+  });
+
   /**
    * The three lines the family's "Цэцэрлэгийн мэдээлэл" card reads off a
    * teacher — client, 2026-09-24. Both the teacher and an administrator can
