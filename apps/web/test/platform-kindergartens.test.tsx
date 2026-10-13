@@ -300,13 +300,20 @@ describe("the operator's kindergartens table", () => {
       await user.click(screen.getByRole("option", { name }));
       return screen.getByRole("table").querySelectorAll("tbody tr");
     };
+    const esisHeader = () => screen.queryByRole("columnheader", { name: "ЭСИС ажилтан" });
     const esis = await pick("ЭСИС цэцэрлэг");
     expect(esis).toHaveLength(1);
     expect(esis[0]).toHaveTextContent("Нарлаг цэцэрлэг");
+    expect(esis[0]).toHaveTextContent("15 / 18");
+    expect(esisHeader()).not.toBeNull();
+    // The plain ones have no ESIS, so its four columns go.
     const plain = await pick("Цэцэрлэг");
     expect(plain).toHaveLength(1);
     expect(plain[0]).toHaveTextContent("Хүслэн");
+    expect(esisHeader()).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "ЭСИС код" })).toBeNull();
     expect(await pick("Бүгд")).toHaveLength(2);
+    expect(esisHeader()).not.toBeNull();
   });
 
   it("names each chosen filter as a chip, and clears them", async () => {

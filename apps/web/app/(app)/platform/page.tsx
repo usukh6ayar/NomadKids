@@ -182,6 +182,8 @@ function Platform() {
     )
     .sort((a, b) => compareRows(a, b, sort.key, sort.dir));
   const filtered = Boolean(query.trim() || status || ownership || area || kind);
+  // «Цэцэрлэг» lists the ones without ESIS, where its four columns mean nothing.
+  const showEsis = kind !== "plain";
   const total = stats.data?.kindergartens ?? items.length;
   const chips = [
     query.trim() && { key: "q", label: `«${query.trim()}»`, clear: () => setQuery("") },
@@ -285,7 +287,7 @@ function Platform() {
                 size="sm"
                 variant="secondary"
                 disabled={rows.length === 0}
-                onClick={() => downloadSheet(rows)}
+                onClick={() => downloadSheet(rows, showEsis)}
               >
                 <FileDown size={16} aria-hidden="true" />
                 Excel татах
@@ -369,7 +371,9 @@ function Platform() {
 
         {rows.length > 0 ? (
           <div className="overflow-x-auto rounded-control border border-border bg-white">
-            <table className="w-full min-w-[1560px] border-separate border-spacing-0 text-left text-caption">
+            <table
+              className={`w-full ${showEsis ? "min-w-[1560px]" : "min-w-[1240px]"} border-separate border-spacing-0 text-left text-caption`}
+            >
               <thead className="bg-slate-50 text-muted">
                 <tr className="[&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-r [&>th]:border-border [&>th]:px-3 [&>th]:py-2 [&>th]:font-semibold [&>th:last-child]:border-r-0">
                   <th scope="col" className={`${FROZEN_NO} bg-slate-50 text-right`}>
@@ -384,14 +388,18 @@ function Platform() {
                   />
                   <th scope="col">Өмчийн хэлбэр</th>
                   <SortHeader label="Аймаг / дүүрэг" column="area" sort={sort} onSort={sortBy} />
-                  <th scope="col">ЭСИС холболт</th>
-                  <th scope="col">ЭСИС код</th>
-                  <th scope="col" className="text-right">
-                    ЭСИС ажилтан
-                  </th>
-                  <th scope="col" className="text-right">
-                    ЭСИС суралцагч
-                  </th>
+                  {showEsis ? (
+                    <>
+                      <th scope="col">ЭСИС холболт</th>
+                      <th scope="col">ЭСИС код</th>
+                      <th scope="col" className="text-right">
+                        ЭСИС ажилтан
+                      </th>
+                      <th scope="col" className="text-right">
+                        ЭСИС суралцагч
+                      </th>
+                    </>
+                  ) : null}
                   <SortHeader
                     label="Бүлэг"
                     column="groups"
@@ -422,7 +430,11 @@ function Platform() {
                     <span className="sr-only">Үйлдэл</span>
                   </th>
                 </tr>
-                <KindergartenTotals rows={rows} platform={filtered ? null : (stats.data ?? null)} />
+                <KindergartenTotals
+                  rows={rows}
+                  platform={filtered ? null : (stats.data ?? null)}
+                  showEsis={showEsis}
+                />
               </thead>
               <tbody>
                 {rows.map((kg, index) => (
@@ -430,6 +442,7 @@ function Platform() {
                     key={kg.id}
                     kg={kg}
                     index={index + 1}
+                    showEsis={showEsis}
                     onDelete={() => setDeleting(kg)}
                   />
                 ))}
@@ -493,12 +506,15 @@ function startedOn(kg: Row): string {
 function KindergartenRow({
   kg,
   index,
+  showEsis,
   onDelete,
 }: {
   kg: Row;
   index: number;
+  showEsis: boolean;
   onDelete: () => void;
 }) {
+  const linked = esisConnected(kg);
   const toggle = useToggleKindergartenActive(kg);
   const cell =
     "border-b border-r border-border-soft px-3 py-2 align-middle bg-white group-hover:bg-slate-50 last:border-r-0";
@@ -515,16 +531,20 @@ function KindergartenRow({
       </td>
       <td className={cell}>{kg.propertyType || "—"}</td>
       <td className={cell}>{areaOf(kg) ?? "—"}</td>
-      <td className={cell}>
-        <EsisCell kg={kg} />
-      </td>
-      <td className={`${cell} tabular-nums`}>{kg.esisInstitutionId || "—"}</td>
-      <td className={`${cell} whitespace-nowrap text-right tabular-nums`}>
-        {ratio(kg.esisStaffLinked, kg.staffCount)}
-      </td>
-      <td className={`${cell} whitespace-nowrap text-right tabular-nums`}>
-        {ratio(kg.esisChildrenLinked, kg.childCount)}
-      </td>
+      {showEsis ? (
+        <>
+          <td className={cell}>
+            <EsisCell kg={kg} />
+          </td>
+          <td className={`${cell} tabular-nums`}>{kg.esisInstitutionId || "—"}</td>
+          <td className={`${cell} whitespace-nowrap text-right tabular-nums`}>
+            {linked ? ratio(kg.esisStaffLinked, kg.staffCount) : "—"}
+          </td>
+          <td className={`${cell} whitespace-nowrap text-right tabular-nums`}>
+            {linked ? ratio(kg.esisChildrenLinked, kg.childCount) : "—"}
+          </td>
+        </>
+      ) : null}
       <td className={`${cell} text-right tabular-nums`}>{kg.groupCount ?? "—"}</td>
       <td className={`${cell} text-right tabular-nums`}>{kg.childCount ?? "—"}</td>
       <td className={`${cell} text-right tabular-nums`}>{kg.staffCount ?? "—"}</td>
@@ -637,17 +657,15 @@ function SortHeader({
  * opens with its Cyrillic intact (the UTF-8 mark first), the way the yearly
  * attendance export does.
  */
-function downloadSheet(rows: Row[]) {
+function downloadSheet(rows: Row[], showEsis: boolean) {
+  const esis = (...cells: string[]) => (showEsis ? cells : []);
   const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
   const header = [
     "№",
     "Цэцэрлэг",
     "Өмчийн хэлбэр",
     "Аймаг / дүүрэг",
-    "ЭСИС холболт",
-    "ЭСИС код",
-    "ЭСИС ажилтан",
-    "ЭСИС суралцагч",
+    ...esis("ЭСИС холболт", "ЭСИС код", "ЭСИС ажилтан", "ЭСИС суралцагч"),
     "Бүлэг",
     "Хүүхэд",
     "Ажилтан",
@@ -662,10 +680,12 @@ function downloadSheet(rows: Row[]) {
     kg.name,
     kg.propertyType ?? "",
     areaOf(kg) ?? "",
-    esisConnected(kg) ? "Холбогдсон" : "Холбогдоогүй",
-    kg.esisInstitutionId ?? "",
-    ratio(kg.esisStaffLinked, kg.staffCount, ""),
-    ratio(kg.esisChildrenLinked, kg.childCount, ""),
+    ...esis(
+      esisConnected(kg) ? "Холбогдсон" : "Холбогдоогүй",
+      kg.esisInstitutionId ?? "",
+      esisConnected(kg) ? ratio(kg.esisStaffLinked, kg.staffCount, "") : "",
+      esisConnected(kg) ? ratio(kg.esisChildrenLinked, kg.childCount, "") : "",
+    ),
     kg.groupCount ?? "",
     kg.childCount ?? "",
     kg.staffCount ?? "",
@@ -822,13 +842,23 @@ function sumOf(rows: Row[], pick: (row: Row) => number | null | undefined): numb
  * agrees with the table above it. Active parents have no column, so they are
  * named in the first cell.
  */
-function KindergartenTotals({ rows, platform }: { rows: Row[]; platform: PlatformStats | null }) {
+function KindergartenTotals({
+  rows,
+  platform,
+  showEsis,
+}: {
+  rows: Row[];
+  platform: PlatformStats | null;
+  showEsis: boolean;
+}) {
   const figure = (value: number | null | undefined) =>
     typeof value === "number" ? value.toLocaleString("en-US") : "—";
   const groups = platform ? platform.groups : sumOf(rows, (row) => row.groupCount);
   const children = platform ? platform.children : sumOf(rows, (row) => row.childCount);
   const staff = platform ? platform.staff : sumOf(rows, (row) => row.staffCount);
-  const connected = rows.filter(esisConnected).length;
+  // ESIS ratios count only the linked kindergartens, so «Бүгд» does not dilute them.
+  const esisRows = rows.filter(esisConnected);
+  const connected = esisRows.length;
   const cell =
     "border-b-2 border-r border-border bg-slate-50 px-3 py-2 font-semibold text-ink last:border-r-0";
 
@@ -845,27 +875,31 @@ function KindergartenTotals({ rows, platform }: { rows: Row[]; platform: Platfor
       </td>
       <td className={cell} />
       <td className={cell} />
-      <td className={`${cell} whitespace-nowrap`}>
-        {platform?.esis ? platform.esis.connected : connected} /{" "}
-        {platform ? platform.kindergartens : rows.length}
-      </td>
-      <td className={cell} />
-      <td className={`${cell} whitespace-nowrap text-right tabular-nums`}>
-        {platform?.esis
-          ? ratio(platform.esis.staffLinked, platform.esis.staffRegistered)
-          : ratio(
-              sumOf(rows, (row) => row.esisStaffLinked),
-              sumOf(rows, (row) => row.staffCount),
-            )}
-      </td>
-      <td className={`${cell} whitespace-nowrap text-right tabular-nums`}>
-        {platform?.esis
-          ? ratio(platform.esis.childrenLinked, platform.children)
-          : ratio(
-              sumOf(rows, (row) => row.esisChildrenLinked),
-              sumOf(rows, (row) => row.childCount),
-            )}
-      </td>
+      {showEsis ? (
+        <>
+          <td className={`${cell} whitespace-nowrap`}>
+            {platform?.esis ? platform.esis.connected : connected} /{" "}
+            {platform ? platform.kindergartens : rows.length}
+          </td>
+          <td className={cell} />
+          <td className={`${cell} whitespace-nowrap text-right tabular-nums`}>
+            {platform?.esis
+              ? ratio(platform.esis.staffLinked, platform.esis.staffRegistered)
+              : ratio(
+                  sumOf(esisRows, (row) => row.esisStaffLinked),
+                  sumOf(esisRows, (row) => row.staffCount),
+                )}
+          </td>
+          <td className={`${cell} whitespace-nowrap text-right tabular-nums`}>
+            {platform?.esis
+              ? ratio(platform.esis.childrenLinked, platform.children)
+              : ratio(
+                  sumOf(esisRows, (row) => row.esisChildrenLinked),
+                  sumOf(esisRows, (row) => row.childCount),
+                )}
+          </td>
+        </>
+      ) : null}
       <td className={`${cell} text-right tabular-nums`}>{figure(groups)}</td>
       <td className={`${cell} text-right tabular-nums`}>{figure(children)}</td>
       <td className={`${cell} text-right tabular-nums`}>{figure(staff)}</td>
