@@ -207,6 +207,17 @@ export const envSchema = z.object({
     .default("0"),
 
   /**
+   * ★ The price of one **term** of access (#211, the user 2026-10-12) —
+   * `ACCESS_FEE_AMOUNT` stays the school year's. "0" sells no terms: the
+   * year alone, as before. Meaningless while `ACCESS_FEE_AMOUNT` is "0",
+   * which turns the whole gate off.
+   */
+  ACCESS_FEE_TERM_AMOUNT: z
+    .string()
+    .regex(/^\d{1,10}(\.\d{1,2})?$/, "ACCESS_FEE_TERM_AMOUNT нь мөнгөн дүн байна (жишээ: 9000.00)")
+    .default("0"),
+
+  /**
    * How many devices one account may be signed in on at once (#211, the user
    * 2026-10-12). A device is a refresh-token family — one sign-in and its
    * rotations. `0` turns the limit off. A platform operator is never limited.

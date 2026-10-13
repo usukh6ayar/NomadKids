@@ -2,8 +2,12 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import type { Prisma } from "../generated/prisma/client";
 
+const SUBSCRIPTION_INCLUDE = {
+  schoolYear: { select: { id: true, name: true, endsOn: true } },
+} as const;
+
 /**
- * Portal access subscriptions — one child, one school year.
+ * Portal access subscriptions — one child, one school year or one term.
  *
  * CLAUDE.md §2.2: the only file in this directory that may import
  * `PrismaClient`.
@@ -16,14 +20,45 @@ export class AccessRepository {
   async currentSchoolYear(kindergartenId: string) {
     return this.prisma.schoolYear.findFirst({
       where: { kindergartenId, deletedAt: null, isCurrent: true },
-      select: { id: true, name: true, endsOn: true },
+      select: { id: true, name: true, startsOn: true, endsOn: true },
     });
   }
 
+  /** The kindergarten's own terms for a school year, if it has set any up. */
+  async termsOfYear(schoolYearId: string) {
+    return this.prisma.term.findMany({
+      where: { schoolYearId, deletedAt: null },
+      select: { number: true, name: true, startsOn: true, endsOn: true },
+      orderBy: { number: "asc" },
+    });
+  }
+
+  /** This child's YEAR row for a school year. */
   async findForChildYear(childId: string, schoolYearId: string) {
     return this.prisma.accessSubscription.findFirst({
-      where: { childId, schoolYearId, deletedAt: null },
-      include: { schoolYear: { select: { id: true, name: true, endsOn: true } } },
+      where: { childId, schoolYearId, period: "YEAR", deletedAt: null },
+      include: SUBSCRIPTION_INCLUDE,
+    });
+  }
+
+  /** This child's TERM row for one term of a school year. */
+  async findForChildTerm(childId: string, schoolYearId: string, termNumber: number) {
+    return this.prisma.accessSubscription.findFirst({
+      where: { childId, schoolYearId, termNumber, period: "TERM", deletedAt: null },
+      include: SUBSCRIPTION_INCLUDE,
+    });
+  }
+
+  /**
+   * A paid row of this child's that covers `day` — a year or a term, the
+   * longest first. The same question `AuthzRepository.loadPortalAccessActive`
+   * asks for the gate.
+   */
+  async findActiveCovering(childId: string, day: Date) {
+    return this.prisma.accessSubscription.findFirst({
+      where: { childId, status: "ACTIVE", deletedAt: null, expiresAt: { gte: day } },
+      include: SUBSCRIPTION_INCLUDE,
+      orderBy: { expiresAt: "desc" },
     });
   }
 
@@ -32,10 +67,7 @@ export class AccessRepository {
   }
 
   async create(data: Prisma.AccessSubscriptionUncheckedCreateInput) {
-    return this.prisma.accessSubscription.create({
-      data,
-      include: { schoolYear: { select: { id: true, name: true, endsOn: true } } },
-    });
+    return this.prisma.accessSubscription.create({ data, include: SUBSCRIPTION_INCLUDE });
   }
 
   /**
