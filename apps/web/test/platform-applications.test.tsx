@@ -85,8 +85,8 @@ describe("the operator's applications", () => {
     await user.click(await screen.findByRole("button", { name: "Шалгах" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByLabelText(/Бүлгийн тоо/)).toHaveValue("6");
-    // 6 groups × 36,000₮ for the school year.
-    expect(within(dialog).getByLabelText(/Нийт төлбөр/)).toHaveValue("216000");
+    // 6 groups × 30,000₮ for the school year — the discounted price sheet.
+    expect(within(dialog).getByLabelText(/Нийт төлбөр/)).toHaveValue("180000");
 
     await user.type(within(dialog).getByLabelText(/Админы нэвтрэх нэр/), "azjargal");
     await user.click(within(dialog).getByRole("button", { name: "Батлах" }));
@@ -98,7 +98,7 @@ describe("the operator's applications", () => {
         groupCount: 6,
         billingPeriod: "year",
         perGroupMonthlyFee: "4000",
-        periodFee: "216000",
+        periodFee: "180000",
       });
     });
   });
@@ -117,6 +117,7 @@ describe("the operator's applications", () => {
     expect(within(dialog).getByLabelText(/Нийт төлбөр/)).toHaveValue("");
 
     await user.type(within(dialog).getByLabelText(/Бүлгийн тоо/), "3");
-    expect(within(dialog).getByLabelText(/Нийт төлбөр/)).toHaveValue("108000");
+    // 3 groups × 30,000₮ for the year — the discounted price sheet.
+    expect(within(dialog).getByLabelText(/Нийт төлбөр/)).toHaveValue("90000");
   });
 });

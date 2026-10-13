@@ -61,11 +61,11 @@ describe("the family's «Үйлчилгээний эрх»", () => {
     renderWithProviders(<ChildAccessPage />);
 
     expect(await screen.findByText("10 хоногийн дараа дуусна. Сунгана уу.")).toBeInTheDocument();
-    expect(screen.getByText("27,000₮")).toBeInTheDocument();
+    expect(screen.getByText("22,000₮")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "QPay-ээр төлөх" })).toBeEnabled();
 
     await user.click(screen.getByRole("radio", { name: "Улирлаар" }));
-    expect(screen.getByText("9,000₮")).toBeInTheDocument();
+    expect(screen.getByText("5,000₮")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "QPay-ээр төлөх" })).toBeDisabled();
     expect(screen.getByText("Улирлаар төлөх боломж удахгүй нээгдэнэ.")).toBeInTheDocument();
   });
@@ -84,11 +84,11 @@ describe("the director's «Үйлчилгээний эрх»", () => {
     renderWithProviders(<AdminServiceAccessPage />);
 
     expect(await screen.findByText("7 хоногийн дараа дуусна. Сунгана уу.")).toBeInTheDocument();
-    // 4 groups × 12,000₮ a term — the price page's own amount (#201).
-    expect(screen.getByText("48,000₮")).toBeInTheDocument();
+    // 4 groups × 2,000₮ a term — the price page's own amount.
+    expect(screen.getByText("8,000₮")).toBeInTheDocument();
 
     await user.click(screen.getByRole("radio", { name: "Жилээр — хямд" }));
-    expect(screen.getByText("144,000₮")).toBeInTheDocument();
+    expect(screen.getByText("120,000₮")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Нэхэмжлэх татах" })).toHaveAttribute(
       "href",
       expect.stringContaining("/service-access/invoice?period=year"),
