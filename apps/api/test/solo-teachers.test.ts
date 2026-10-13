@@ -170,3 +170,36 @@ describe("currentSchoolYear", () => {
     expect(currentSchoolYear(new Date("2027-07-01T00:00:00Z")).name).toBe("2027-2028");
   });
 });
+
+/**
+ * A teacher whose kindergarten has signed is refused a workspace of their own
+ * beside it (#211 item 3) — equal names in the same district only.
+ */
+describe("a solo sign-up for a contracted kindergarten", () => {
+  async function contracted(name: string, district: string) {
+    const scenario = await createScenario("c");
+    await db.kindergarten.update({
+      where: { id: scenario.kindergarten.id },
+      data: { name, district },
+    });
+  }
+
+  it("is refused when the district's contracted kindergarten has the same name", async () => {
+    await contracted("115-р Цэцэрлэг", "Баянзүрх");
+
+    const res = await signup();
+
+    expect(res.status).toBe(409);
+    expect(res.body.detail ?? res.body.message).toContain("115-р Цэцэрлэг");
+    expect(await db.kindergarten.count({ where: { kind: "SOLO_TEACHER" } })).toBe(0);
+  });
+
+  it("goes through when the name only resembles one, or the district differs", async () => {
+    await contracted("115-р цэцэрлэг", "Сүхбаатар");
+    await contracted("1150-р цэцэрлэг", "Баянзүрх");
+
+    const res = await signup();
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+  });
+});

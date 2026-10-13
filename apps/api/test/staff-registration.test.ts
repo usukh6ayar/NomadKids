@@ -367,6 +367,67 @@ describe("staff self-registration", () => {
  * approval. This is a read; revocation already exists as `DELETE
  * /v1/memberships/:id` and is not rebuilt here.
  */
+/**
+ * The kindergarten chosen by name instead of its ESIS number (#211): the
+ * sign-up dialog lists a district's contracted kindergartens and sends the id.
+ * Everything behind the first field is unchanged — and so is the one refusal.
+ */
+describe("staff self-registration by kindergarten id", () => {
+  const url = "/v1/staff-registration";
+
+  it("registers a teacher on the roster who chose their kindergarten", async () => {
+    await seedRoster(a.kindergarten.id);
+
+    const res = await request(server())
+      .post(url)
+      .send({ kindergartenId: a.kindergarten.id, registerNumber: REG });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const membership = await db.membership.findFirst({
+      where: { kindergartenId: a.kindergarten.id, role: "TEACHER" },
+    });
+    expect(membership).not.toBeNull();
+  });
+
+  it("refuses a solo workspace, an inactive kindergarten, an unknown and a malformed id alike", async () => {
+    const solo = await createKindergarten(`Бие даасан ${uniq()}`);
+    await db.kindergarten.update({ where: { id: solo.id }, data: { kind: "SOLO_TEACHER" } });
+    await seedRoster(solo.id);
+    await db.kindergarten.update({ where: { id: b.kindergarten.id }, data: { isActive: false } });
+    await seedRoster(b.kindergarten.id, { esisPersonId: "90000000000002" });
+
+    const ids = [solo.id, b.kindergarten.id, "00000000-0000-4000-8000-000000000000", "not-an-id"];
+    const responses = [];
+    for (const kindergartenId of ids) {
+      responses.push(
+        await request(server()).post(url).send({ kindergartenId, registerNumber: REG }),
+      );
+    }
+
+    expect(responses.map((r) => r.status)).toEqual([401, 401, 401, 401]);
+    // `requestId` differs by construction — see the six-branch case above.
+    const bodies = responses.map((r) => {
+      const { requestId: _requestId, ...body } = r.body as Record<string, unknown>;
+      return JSON.stringify(body);
+    });
+    expect(new Set(bodies).size).toBe(1);
+    expect(responses[0]!.body.detail ?? responses[0]!.body.message).toBe(REFUSAL);
+    const created = await db.membership.count({ where: { role: "TEACHER" } });
+    expect(created).toBe(0);
+  });
+
+  it("takes exactly one of the ESIS number and the kindergarten", async () => {
+    const both = await request(server()).post(url).send({
+      institutionId: a.institutionId,
+      kindergartenId: a.kindergarten.id,
+      registerNumber: REG,
+    });
+    const neither = await request(server()).post(url).send({ registerNumber: REG });
+
+    expect([both.status, neither.status]).toEqual([400, 400]);
+  });
+});
+
 describe("who registered themselves", () => {
   const url = (kindergartenId: string) => `/v1/kindergartens/${kindergartenId}/staff-registrations`;
 
