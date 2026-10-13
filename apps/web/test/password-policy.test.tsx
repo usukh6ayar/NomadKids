@@ -276,9 +276,8 @@ describe("password reset — new password", () => {
  * The two audiences an invitation can be for.
  *
  * ★ A guardian gives a given name, a phone and a relationship. A member of
- * staff gives a surname and an e-mail — a register names them in full, and the
- * e-mail is what they log in with, because an operator invited this way has a
- * generated handle they never see (`prisma/add-superadmin.ts`).
+ * staff gives a surname and a phone — a register names them in full. Both may
+ * give an e-mail to sign in with (2026-10-13); it is optional.
  *
  * The shape comes from `GET /auth/invitation/:token` rather than from the URL:
  * a query parameter would let whoever holds the link decide which questions
@@ -293,22 +292,21 @@ describe("invitation — who is accepting", () => {
     expect(await screen.findByLabelText(/^Утасны дугаар/)).toBeInTheDocument();
     expect(screen.getByLabelText(/^Хүүхдийн юу нь болох/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/^Овог/)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/и-мэйл/i)).not.toBeInTheDocument();
   });
 
   /*
-   * ★ A phone, not an e-mail, since 2026-10-04 — client: «email-ээр
-   * verification хийхгүй, зөвхөн SMS». It is what a member of staff signs in
-   * with now, as a guardian does.
+   * ★ The phone is required and SMS-proven — it is how a password is reset
+   * (client, 2026-10-04: «зөвхөн SMS»). The e-mail only signs in, so it is
+   * optional (the user, 2026-10-13).
    */
-  it("asks a member of staff for a surname and a phone, never an e-mail", async () => {
+  it("asks a member of staff for a surname and a phone, the e-mail optional", async () => {
     stubApi([{ path: "/auth/invitation/", body: { valid: true, kind: "staff" } }]);
 
     renderWithProviders(<AcceptInvitationPage />);
 
     expect(await screen.findByLabelText(/^Овог/)).toBeInTheDocument();
     expect(screen.getByLabelText(/^Утасны дугаар/)).toBeInTheDocument();
-    expect(screen.queryByLabelText(/и-мэйл/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/^И-мэйл хаяг/)).not.toBeRequired();
     expect(screen.queryByLabelText(/^Хүүхдийн юу нь болох/)).not.toBeInTheDocument();
   });
 
@@ -344,8 +342,32 @@ describe("invitation — who is accepting", () => {
     >;
     expect(sent.lastName).toBe("Сосорбурам");
     expect(sent.phone).toBe("99112233");
+    // Left blank, so not sent: an empty string would fail the schema.
     expect(sent).not.toHaveProperty("email");
     expect(sent).not.toHaveProperty("relation");
+  });
+
+  it("sends the e-mail when one is given", async () => {
+    const user = userEvent.setup();
+    const { calls } = stubApi([
+      { path: "/auth/invitation/", body: { valid: true, kind: "guardian" } },
+      { path: "/auth/invitation/accept", method: "POST", status: 204 },
+    ]);
+
+    renderWithProviders(<AcceptInvitationPage />);
+
+    await user.type(await screen.findByLabelText(/^Таны нэр/), "Бямбарааш");
+    await user.type(screen.getByLabelText(/^Утасны дугаар/), "99112233");
+    await user.type(screen.getByLabelText(/^И-мэйл хаяг/), "eej@example.mn");
+    await user.type(screen.getByLabelText(/^Нууц үг \*/), STRONG);
+    await user.type(screen.getByLabelText(/давта[нх]/), STRONG);
+    await user.click(screen.getByRole("button", { name: /Бүртгэл/ }));
+
+    await waitFor(() =>
+      expect(
+        calls.find((c) => c.method === "POST" && c.url.includes("accept"))?.body,
+      ).toMatchObject({ email: "eej@example.mn", phone: "99112233" }),
+    );
   });
 });
 

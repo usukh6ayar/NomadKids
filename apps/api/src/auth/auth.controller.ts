@@ -332,6 +332,7 @@ export class AuthController {
         phone: body.phone,
         relation: body.relation,
         lastName: body.lastName,
+        email: body.email,
       },
       body.phoneVerification,
       context(req),

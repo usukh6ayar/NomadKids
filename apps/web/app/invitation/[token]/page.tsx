@@ -71,6 +71,7 @@ export default function AcceptInvitationPage() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   /** The verify.mn proof for `phone`, by number — a changed number has none. */
   const [phoneProof, setPhoneProof] = useState<{ phone: string; handle: string } | null>(null);
   const phoneEnabled = usePhoneVerificationEnabled();
@@ -83,9 +84,8 @@ export default function AcceptInvitationPage() {
     ★ What kind of person is accepting this — 2026-09-04.
 
     A guardian gives a given name, a phone and how they are related to the
-    child. A member of staff gives a surname and an e-mail, because a register
-    names them in full and the e-mail is what they will log in with (an
-    operator invited this way has a generated handle they never see).
+    child. A member of staff gives a surname too, because a register names
+    them in full. Both may give an e-mail to sign in with (2026-10-13).
 
     The token is opaque, so the shape has to come from the server. Putting it
     in the URL instead would let whoever holds the link flip it.
@@ -118,10 +118,12 @@ export default function AcceptInvitationPage() {
           // string would fail the schema's `.min(1)`; sending the other
           // audience's fields would write facts nobody was asked to give.
           //
-          // ★ The phone for both since 2026-10-04 — it is how a member of
-          // staff signs in now, as a guardian does. No e-mail.
+          // ★ The phone for both since 2026-10-04 — SMS-proven, it is how a
+          // password is reset. An e-mail only signs in, and is optional
+          // (the user, 2026-10-13), so a blank one is not sent.
           ...(isStaff ? { lastName: lastName.trim() } : { relation }),
           phone: phone.trim(),
+          ...(email.trim() ? { email: email.trim() } : {}),
           ...(phoneProof?.phone === phone.trim() ? { phoneVerification: phoneProof.handle } : {}),
         },
       }),
@@ -290,6 +292,23 @@ export default function AcceptInvitationPage() {
             onVerified={(handle) => setPhoneProof({ phone: phone.trim(), handle })}
           />
         ) : null}
+
+        <Field label="И-мэйл хаяг" error={errors.email} hint="Заавал биш. Нэвтрэхэд ашиглаж болно.">
+          {({ id, describedBy, invalid }) => (
+            <Input
+              id={id}
+              className={COMPACT_INPUT}
+              aria-describedby={describedBy}
+              invalid={invalid}
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              autoCapitalize="none"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          )}
+        </Field>
 
         {!isStaff ? (
           <Field label="Хүүхдийн юу нь болох" error={errors.relation} required>

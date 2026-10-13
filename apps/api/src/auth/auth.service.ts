@@ -502,6 +502,7 @@ export class AuthService {
       phone?: string;
       relation?: GuardianRelation;
       lastName?: string;
+      email?: string;
     },
     phoneVerification: string | undefined,
     ctx: RequestContext,
@@ -534,9 +535,13 @@ export class AuthService {
      */
     const taken = await this.repo.findOtherUserByContact(row.userId, {
       phone: profile.phone,
+      email: profile.email,
     });
-    if (taken) {
+    if (taken === "phone") {
       throw new ConflictException("Энэ утасны дугаар өөр бүртгэлд ашиглагдсан байна");
+    }
+    if (taken === "email") {
+      throw new ConflictException("Энэ и-мэйл хаяг өөр бүртгэлд ашиглагдсан байна");
     }
 
     /*
@@ -570,7 +575,13 @@ export class AuthService {
       father in both, and the invitation they just accepted is the only place
       they will ever be asked.
     */
-    if (profile.firstName || profile.phone || profile.relation || profile.lastName) {
+    if (
+      profile.firstName ||
+      profile.phone ||
+      profile.relation ||
+      profile.lastName ||
+      profile.email
+    ) {
       try {
         await this.repo.completeInvitedProfile(row.userId, profile);
       } catch (error) {
@@ -581,7 +592,9 @@ export class AuthService {
          */
         if (isUniqueViolation(error)) {
           throw new ConflictException(
-            "Энэ утасны дугаар өөр бүртгэлд ашиглагдсан байна. " +
+            (profile.email
+              ? "Энэ утасны дугаар эсвэл и-мэйл хаяг өөр бүртгэлд ашиглагдсан байна. "
+              : "Энэ утасны дугаар өөр бүртгэлд ашиглагдсан байна. ") +
               "Нууц үг тань тохирсон тул нэвтрэх нэрээрээ орно уу.",
           );
         }
@@ -634,13 +647,14 @@ export class AuthService {
 
   /**
    * Clears failed attempts recorded against any identifier this user can log in
-   * with — username or phone. See the note at the call site for why this
-   * cannot simply take a user id.
+   * with — username, phone or e-mail. See the note at the call site for why
+   * this cannot simply take a user id. The e-mail lower-cased, as the login
+   * schema records it.
    */
   private async clearLockoutForUser(userId: string): Promise<void> {
     const user = await this.repo.findById(userId);
     if (!user) return;
-    for (const identifier of [user.username, user.phone]) {
+    for (const identifier of [user.username, user.phone, user.email?.toLowerCase()]) {
       if (identifier) await this.repo.clearFailures(identifier);
     }
   }

@@ -25,7 +25,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
       <div className="grid place-items-center px-6 py-8">
         {/*
           `overflow-wrap: anywhere` is load-bearing, not defensive. Mongolian
-          labels are long compounds — "Утасны дугаар эсвэл нэвтрэх нэр" —
+          labels are long compounds — "Утас, и-мэйл эсвэл нэвтрэх нэр" —
           and without it a single unbroken word pushes the card wider than its
           column and the inputs run off the right edge.
         */}

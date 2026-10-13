@@ -98,7 +98,7 @@ describe("signing in on a third device", () => {
   };
 
   async function signIn(user: ReturnType<typeof userEvent.setup>) {
-    await user.type(screen.getByLabelText(/Утасны дугаар эсвэл нэвтрэх нэр/), "99112233");
+    await user.type(screen.getByLabelText(/Утас, и-мэйл эсвэл нэвтрэх нэр/), "99112233");
     await user.type(screen.getByLabelText("Нууц үг *"), "Нууцүг123");
     await user.click(screen.getByRole("button", { name: "Нэвтрэх" }));
   }

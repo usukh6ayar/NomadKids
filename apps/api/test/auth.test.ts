@@ -106,14 +106,16 @@ describe("POST /auth/login", () => {
   });
 
   /*
-   * ★ By username or phone — and no longer by e-mail, 2026-10-04 (client:
-   * «email-ээр verification хийхгүй, зөвхөн SMS»). An address nobody has
-   * proven is not an identity; the phone is SMS-verified wherever it is set.
+   * ★ By username, phone or e-mail. E-mail went out on 2026-10-04 (#170) and
+   * came back on 2026-10-13 (the user: «бүртгүүлэхэд болон нэвтрэхэд email
+   * авч болно. Гэхдээ нууц үг сэргээх, бүртгэлээ баталгаажуулахад SMS-ээр»).
+   * It signs in and does nothing else; the reset stays with the phone.
    */
-  it("accepts login by phone, and refuses it by e-mail", async () => {
+  it("accepts login by phone, and by e-mail in any casing", async () => {
+    const local = uniq("Bagsh");
     const user = await createUser({
       username: uniq("u"),
-      email: `${uniq()}@test.mn`,
+      email: `${local}@Test.mn`,
       phone: `9911${Math.floor(1000 + Math.random() * 8999)}`,
     });
 
@@ -122,10 +124,29 @@ describe("POST /auth/login", () => {
       .send({ identifier: user.phone, password: TEST_PASSWORD });
     expect(byPhone.status).toBe(200);
 
-    const byEmail = await request(server())
+    for (const identifier of [`${local}@Test.mn`, `${local.toLowerCase()}@test.mn`]) {
+      const byEmail = await request(server())
+        .post("/v1/auth/login")
+        .send({ identifier: ` ${identifier} `, password: TEST_PASSWORD });
+      expect(byEmail.status).toBe(200);
+      expect(byEmail.body.user.id).toBe(user.id);
+    }
+  });
+
+  /*
+   * The unique index is case-sensitive, and production held two accounts
+   * under one address in two casings on 2026-10-13. Such an address names
+   * nobody — never whichever account sorts first.
+   */
+  it("signs in as neither account when two hold one address in two casings", async () => {
+    const local = uniq("twice");
+    await createUser({ username: uniq("u"), email: `${local}@test.mn` });
+    await createUser({ username: uniq("u"), email: `${local.toUpperCase()}@test.mn` });
+
+    const res = await request(server())
       .post("/v1/auth/login")
-      .send({ identifier: user.email, password: TEST_PASSWORD });
-    expect(byEmail.status).toBe(401);
+      .send({ identifier: `${local}@test.mn`, password: TEST_PASSWORD });
+    expect(res.status).toBe(401);
   });
 
   it("rejects a wrong password", async () => {
@@ -196,6 +217,34 @@ describe("account lockout", () => {
       .post("/v1/auth/login")
       .send({ identifier: user.username, password: TEST_PASSWORD });
 
+    expect(res.status).toBe(401);
+    expect(res.body.detail ?? res.body.title).toMatch(/олон удаа|Хэт олон/);
+  });
+
+  /*
+   * ★ Counted as typed, every casing of an address would get its own five
+   * guesses. The login schema lower-cases an e-mail before anything counts.
+   */
+  it("counts every casing of an e-mail as one identifier", async () => {
+    const local = uniq("case");
+    await createUser({ username: uniq("u"), email: `${local}@test.mn` });
+    const casings = [
+      `${local}@test.mn`,
+      `${local.toUpperCase()}@test.mn`,
+      `${local}@TEST.MN`,
+      `${local.toUpperCase()}@TEST.MN`,
+      `${local}@Test.Mn`,
+    ];
+
+    for (const [i, identifier] of casings.entries()) {
+      await request(server())
+        .post("/v1/auth/login")
+        .send({ identifier, password: `Wrong${i}Pass1` });
+    }
+
+    const res = await request(server())
+      .post("/v1/auth/login")
+      .send({ identifier: `${local}@test.MN`, password: TEST_PASSWORD });
     expect(res.status).toBe(401);
     expect(res.body.detail ?? res.body.title).toMatch(/олон удаа|Хэт олон/);
   });
@@ -544,12 +593,16 @@ describe("password reset", () => {
     //
     // `LoginAttempt.identifier` stores what was typed, not a user id, so
     // clearing has to go through every identifier the user can log in with.
-    const user = await createUser({ username: uniq("u"), email: `${uniq()}@test.mn` });
+    const user = await createUser({ username: uniq("u"), email: `${uniq("Mixed")}@test.mn` });
 
     for (let i = 0; i < 5; i++) {
       await request(server())
         .post("/v1/auth/login")
         .send({ identifier: user.username, password: "WrongPass123" });
+      // And by e-mail, which counts lower-cased — the reset must clear that too.
+      await request(server())
+        .post("/v1/auth/login")
+        .send({ identifier: user.email, password: "WrongPass123" });
     }
 
     const raw = "reset-" + uniq();
@@ -569,8 +622,12 @@ describe("password reset", () => {
     const relogin = await request(server())
       .post("/v1/auth/login")
       .send({ identifier: user.username, password: "BrandNew123" });
-
     expect(relogin.status).toBe(200);
+
+    const byEmail = await request(server())
+      .post("/v1/auth/login")
+      .send({ identifier: user.email, password: "BrandNew123" });
+    expect(byEmail.status).toBe(200);
   });
 
   it("refuses to reuse a consumed token", async () => {
@@ -801,3 +858,58 @@ function extractCookie(setCookie: string[], name: string): string {
   if (!found) throw new Error(`Cookie ${name} not found`);
   return found.split(";")[0]!.split("=")[1]!;
 }
+
+/*
+ * ★ An invitation may carry an e-mail to sign in with — optional, stored
+ * lower-cased, and refused before the link is spent when another account
+ * holds it in any casing (the user, 2026-10-13).
+ */
+describe("invitation e-mail", () => {
+  async function invite() {
+    const invitee = await createUser({ phone: null, email: null, firstName: "Асран хамгаалагч" });
+    const token = `invite-${uniq()}`;
+    await db.authToken.create({
+      data: {
+        userId: invitee.id,
+        purpose: "INVITATION",
+        tokenHash: hashToken(token),
+        expiresAt: new Date(Date.now() + 60 * 60_000),
+      },
+    });
+    return { invitee, token };
+  }
+
+  const accept = (token: string, email: string) =>
+    request(server())
+      .post("/v1/auth/invitation/accept")
+      .send({
+        token,
+        password: "Shine-Nuuts99",
+        firstName: "Сарнай",
+        phone: `9912${Math.floor(1000 + Math.random() * 8999)}`,
+        relation: "MOTHER",
+        email,
+      });
+
+  it("refuses an address another account holds, keeps the link, then signs in by the new one", async () => {
+    const holder = uniq("holder");
+    await createUser({ username: uniq("u"), email: `${holder}@test.mn` });
+    const { invitee, token } = await invite();
+
+    const clash = await accept(token, `${holder.toUpperCase()}@Test.mn`);
+    expect(clash.status).toBe(409);
+    expect(clash.body.detail).toBe("Энэ и-мэйл хаяг өөр бүртгэлд ашиглагдсан байна");
+
+    const own = uniq("Eej");
+    const ok = await accept(token, `${own}@Test.mn`);
+    expect(ok.status).toBe(204);
+
+    const stored = await db.user.findUniqueOrThrow({ where: { id: invitee.id } });
+    expect(stored.email).toBe(`${own.toLowerCase()}@test.mn`);
+
+    const login = await request(server())
+      .post("/v1/auth/login")
+      .send({ identifier: `${own}@test.mn`, password: "Shine-Nuuts99" });
+    expect(login.status).toBe(200);
+  });
+});

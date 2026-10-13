@@ -356,7 +356,7 @@ function LoginCard() {
         ) : null}
 
         <Field
-          label="Утасны дугаар эсвэл нэвтрэх нэр"
+          label="Утас, и-мэйл эсвэл нэвтрэх нэр"
           labelHidden
           error={errors.identifier}
           required
@@ -374,7 +374,7 @@ function LoginCard() {
                 name="identifier"
                 autoComplete="username"
                 autoCapitalize="none"
-                placeholder="Утас эсвэл нэвтрэх нэр"
+                placeholder="Утас, и-мэйл эсвэл нэвтрэх нэр"
                 value={identifier}
                 onChange={(event) => {
                   setIdentifier(event.target.value);

@@ -10,8 +10,19 @@ import { guardianRelationSchema } from "@kinder/contracts";
  */
 
 const credentialsSchema = z.object({
-  /** Username or phone — the user should not have to remember which. */
-  identifier: z.string().min(1, "Нэвтрэх нэрээ оруулна уу").max(254),
+  /**
+   * Username, phone or e-mail — the user should not have to remember which.
+   *
+   * ★ An e-mail is lower-cased here, once, so the lockout counts every casing
+   * of one address as the same identifier: counted as typed, «A@x.mn» and
+   * «a@X.mn» would each get their own five guesses.
+   */
+  identifier: z
+    .string()
+    .trim()
+    .min(1, "Нэвтрэх нэрээ оруулна уу")
+    .max(254)
+    .transform((value) => (value.includes("@") ? value.toLowerCase() : value)),
   password: z.string().min(1, "Нууц үгээ оруулна уу").max(200),
 });
 
@@ -92,12 +103,16 @@ export const invitationAcceptSchema = z.object({
    * ★ Staff-shaped invitations, added 2026-09-04: a member of staff gives a
    * surname too, because a register and an audit row name them in full.
    *
-   * ★★ No e-mail since 2026-10-04 (client: «email-ээр verification хийхгүй,
-   * зөвхөн SMS»). A member of staff signs in with the phone they prove here,
-   * exactly as a guardian does; the field that used to carry their login
-   * address is gone.
+   * ★★ The phone they prove here is how they reset a password — SMS only
+   * (client, 2026-10-04: «email-ээр verification хийхгүй, зөвхөн SMS»).
    */
   lastName: z.string().trim().min(1, "Овгоо оруулна уу").max(100).optional(),
+  /**
+   * ★ An e-mail to sign in with — optional, never verified and never written
+   * to (the user, 2026-10-13: «бүртгүүлэхэд болон нэвтрэхэд email авч болно.
+   * Гэхдээ нууц үг сэргээх, бүртгэлээ баталгаажуулахад SMS-ээр»).
+   */
+  email: z.string().trim().toLowerCase().email("И-мэйл хаяг буруу байна").max(254).optional(),
   /**
    * The verify.mn handle proving `phone` — required with a phone once
    * `VERIFY_MN_API_KEY` is set, ignored otherwise. `AuthService.acceptInvitation`.

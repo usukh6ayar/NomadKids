@@ -127,8 +127,19 @@ export class UsersRepository {
     return this.prisma.user.findUnique({ where: { username }, select: { id: true } });
   }
 
-  async findByEmail(email: string) {
-    return this.prisma.user.findUnique({ where: { email }, select: { id: true } });
+  /**
+   * Another account holding this address in any casing — e-mail signs in
+   * since 2026-10-13, and two casings of one address would name two people.
+   * The unique index is case-sensitive, so this check is the one that counts.
+   */
+  async findByEmail(email: string, exceptUserId?: string) {
+    return this.prisma.user.findFirst({
+      where: {
+        email: { equals: email, mode: "insensitive" },
+        ...(exceptUserId ? { NOT: { id: exceptUserId } } : {}),
+      },
+      select: { id: true },
+    });
   }
 
   async findByPhone(phone: string) {

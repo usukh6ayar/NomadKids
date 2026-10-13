@@ -20,30 +20,53 @@ export class AuthRepository {
    *
    * Soft-deleted and deactivated users are excluded here rather than checked by
    * the caller, so there is one place to get it wrong.
+   *
+   * ★ Routed by shape: with an `@` it is an e-mail and matches `email` alone;
+   * otherwise a username or a phone. A username cannot hold an `@`
+   * (`createUserSchema`), so one account's username can never answer for
+   * another's address.
+   *
+   * ★★ E-mail again since 2026-10-13 (the user: «бүртгүүлэхэд болон нэвтрэхэд
+   * email авч болно. Гэхдээ нууц үг сэргээх, бүртгэлээ баталгаажуулахад
+   * SMS-ээр»), after #170 took it out on 2026-10-04. Signing in is all it
+   * does: nothing is sent to it and nothing is reset through it — the phone,
+   * SMS-proven, stays the account's proof.
    */
   async findByIdentifier(identifier: string) {
     const value = identifier.trim();
-    return this.prisma.user.findFirst({
+    const select = {
+      id: true,
+      username: true,
+      passwordHash: true,
+      lastName: true,
+      firstName: true,
+      isSuperAdmin: true,
+    } as const;
+
+    if (!value.includes("@")) {
+      return this.prisma.user.findFirst({
+        where: { deletedAt: null, isActive: true, OR: [{ username: value }, { phone: value }] },
+        select,
+      });
+    }
+
+    /*
+     * Case-insensitive, because people type their address however they like
+     * and older rows were stored as typed. The unique index is case-sensitive,
+     * so two accounts can hold one address in two casings — production had
+     * two such pairs on 2026-10-13. Then the address names nobody: picking one
+     * would sign a person into whichever account happened to sort first.
+     */
+    const matches = await this.prisma.user.findMany({
       where: {
         deletedAt: null,
         isActive: true,
-        /*
-         * ★ Username or phone — not e-mail, since 2026-10-04 (client: «email-ээр
-         * verification хийхгүй, зөвхөн SMS»). An address nobody has proven is
-         * not an identity, and the phone now is: it is SMS-verified wherever a
-         * person sets it. `User.email` stays as a contact field.
-         */
-        OR: [{ username: value }, { phone: value }],
+        email: { equals: value, mode: "insensitive" },
       },
-      select: {
-        id: true,
-        username: true,
-        passwordHash: true,
-        lastName: true,
-        firstName: true,
-        isSuperAdmin: true,
-      },
+      select,
+      take: 2,
     });
+    return matches.length === 1 ? matches[0]! : null;
   }
 
   /**
@@ -73,14 +96,24 @@ export class AuthRepository {
    */
   async findOtherUserByContact(
     userId: string,
-    contact: { phone?: string },
-  ): Promise<{ phone: string | null } | null> {
-    if (!contact.phone) return null;
-
-    return this.prisma.user.findFirst({
-      where: { NOT: { id: userId }, phone: contact.phone },
-      select: { phone: true },
-    });
+    contact: { phone?: string; email?: string },
+  ): Promise<"phone" | "email" | null> {
+    if (contact.phone) {
+      const byPhone = await this.prisma.user.findFirst({
+        where: { NOT: { id: userId }, phone: contact.phone },
+        select: { id: true },
+      });
+      if (byPhone) return "phone";
+    }
+    if (contact.email) {
+      // Case-insensitive: an address in another casing would sign in as both.
+      const byEmail = await this.prisma.user.findFirst({
+        where: { NOT: { id: userId }, email: { equals: contact.email, mode: "insensitive" } },
+        select: { id: true },
+      });
+      if (byEmail) return "email";
+    }
+    return null;
   }
 
   async findById(userId: string) {
@@ -311,6 +344,7 @@ export class AuthRepository {
       relation?: string;
       /** Staff only — a guardian gives a given name and no surname. */
       lastName?: string;
+      email?: string;
     },
   ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
@@ -320,13 +354,14 @@ export class AuthRepository {
         kindergarten was registered, and overwriting it with `undefined` would
         be this endpoint erasing a fact it was never given.
       */
-      if (profile.firstName || profile.phone || profile.lastName) {
+      if (profile.firstName || profile.phone || profile.lastName || profile.email) {
         await tx.user.update({
           where: { id: userId },
           data: {
             ...(profile.firstName ? { firstName: profile.firstName } : {}),
             ...(profile.phone ? { phone: profile.phone } : {}),
             ...(profile.lastName ? { lastName: profile.lastName } : {}),
+            ...(profile.email ? { email: profile.email } : {}),
           },
         });
       }
