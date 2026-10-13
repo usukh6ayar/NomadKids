@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
+import type { AccessPeriod } from "@kinder/contracts";
 import { AuditRepository } from "../../audit/audit.repository";
 import { ChildAccessService } from "../../authz/child-access.service";
 import type { Actor } from "../../authz/actor";
@@ -63,7 +64,7 @@ export class QpayService {
    * and deliberately not behind the access gate — this route has to stay
    * reachable by the family that has not paid yet.
    */
-  async createForSubscription(actor: Actor, childId: string) {
+  async createForSubscription(actor: Actor, childId: string, period: AccessPeriod = "YEAR") {
     // ★★ Authorization FIRST, configuration second. The order is the test
     // `refuses a teacher` and `refuses another family's guardian` exist to
     // pin: checking `isConfigured` up front answered a stranger with "QPay is
@@ -71,14 +72,14 @@ export class QpayService {
     // rule is 404 and indistinguishability (docs/SECURITY.md §5.4). Whether
     // this deployment has QPay credentials is not a fact an unauthorized
     // caller gets to learn.
-    const subscription = await this.access.ensureForChild(actor, childId);
+    const subscription = await this.access.ensureForChild(actor, childId, period);
 
     if (!this.isConfigured) {
       throw new BadRequestException("QPay холболт тохируулагдаагүй байна.");
     }
 
     if (subscription.status === "ACTIVE") {
-      throw new BadRequestException("Энэ хичээлийн жилийн хандалт аль хэдийн нээгдсэн байна.");
+      throw new BadRequestException("Энэ хүүхдийн үйлчилгээний эрх аль хэдийн нээгдсэн байна.");
     }
 
     // decimal.js is unnecessary here — the amount is copied, never computed.
@@ -99,7 +100,9 @@ export class QpayService {
       created = await this.client.createInvoice({
         senderInvoiceNo,
         amount,
-        description: `NomadKids — хандалтын төлбөр ${subscription.schoolYear.name}`,
+        description: `NomadKids — хандалтын төлбөр ${subscription.schoolYear.name}${
+          subscription.termNumber ? `, ${subscription.termNumber}-р улирал` : ""
+        }`,
       });
     } catch (cause) {
       throw this.toHttpError(cause, "createInvoice");
@@ -200,8 +203,8 @@ export class QpayService {
     return row ? this.reconcile(row) : null;
   }
 
-  async status(actor: Actor, childId: string) {
-    const subscription = await this.access.ensureForChild(actor, childId);
+  async status(actor: Actor, childId: string, period: AccessPeriod = "YEAR") {
+    const subscription = await this.access.ensureForChild(actor, childId, period);
 
     const row = await this.repo.findLatestForSubscription(subscription.id);
     if (!row) throw new NotFoundException();

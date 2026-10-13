@@ -1,5 +1,5 @@
-import { Controller, Get, Param, Post } from "@nestjs/common";
-import { idParamSchema } from "@kinder/contracts";
+import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { accessPeriodBodySchema, idParamSchema, type AccessPeriod } from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
 import type { Actor } from "../authz/actor";
@@ -27,12 +27,16 @@ export class ChildAccessFeeController {
     return this.service.statusForChild(actor, params.id);
   }
 
-  /** Raises the subscription a QPay QR will be drawn against, if none exists. */
+  /**
+   * Raises the subscription a QPay QR will be drawn against, if none exists.
+   * `{ period }` — a term or the school year (#211); the year when absent.
+   */
   @Post()
   async ensure(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(accessPeriodBodySchema)) body: { period: AccessPeriod },
   ) {
-    return this.service.ensureForChild(actor, params.id);
+    return this.service.ensureForChild(actor, params.id, body.period);
   }
 }
