@@ -288,4 +288,17 @@ describe("the operator's kindergartens table", () => {
     // The block of platform-wide figures above the table is gone.
     expect(screen.queryByRole("region", { name: "ЭСИС-тэй тулгалт" })).toBeNull();
   });
+
+  it("shows all kindergartens, or only the ESIS ones", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const table = await screen.findByRole("table");
+    expect(table.querySelectorAll("tbody tr")).toHaveLength(2);
+
+    await user.click(screen.getByLabelText("ЭСИС-ээр шүүх"));
+    await user.click(screen.getByRole("option", { name: "ЭСИС цэцэрлэг" }));
+    const rows = screen.getByRole("table").querySelectorAll("tbody tr");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent("Нарлаг цэцэрлэг");
+  });
 });

@@ -92,6 +92,8 @@ function Platform() {
   const [status, setStatus] = useState("");
   const [creating, setCreating] = useState(false);
   const [tab, setTab] = useState<"kindergartens" | "solo">("kindergartens");
+  /** «Бүх цэцэрлэг» or only those linked to ESIS — 2026-10-13, the user. */
+  const [esisOnly, setEsisOnly] = useState(false);
   const [ownership, setOwnership] = useState("");
   const [area, setArea] = useState("");
   const [deleting, setDeleting] = useState<Row | null>(null);
@@ -118,9 +120,14 @@ function Platform() {
     ...new Set(items.map(areaOf).filter((name): name is string => Boolean(name))),
   ].sort((a, b) => a.localeCompare(b, "mn"));
   const rows = items
-    .filter((kg) => (!ownership || kg.propertyType === ownership) && (!area || areaOf(kg) === area))
+    .filter(
+      (kg) =>
+        (!esisOnly || esisConnected(kg)) &&
+        (!ownership || kg.propertyType === ownership) &&
+        (!area || areaOf(kg) === area),
+    )
     .sort((a, b) => compareRows(a, b, sort.key, sort.dir));
-  const filtered = Boolean(query.trim() || status || ownership || area);
+  const filtered = Boolean(query.trim() || status || ownership || area || esisOnly);
   const sortBy = (key: SortKey) =>
     setSort((current) => ({ key, dir: current.key === key ? (-current.dir as 1 | -1) : 1 }));
 
@@ -171,6 +178,15 @@ function Platform() {
         hidden={tab !== "kindergartens"}
       >
         <div className="flex flex-wrap items-center gap-2">
+          <Select
+            aria-label="ЭСИС-ээр шүүх"
+            value={esisOnly ? "esis" : ""}
+            onChange={(e) => setEsisOnly(e.target.value === "esis")}
+            className="h-9 w-full text-compact sm:w-[160px]"
+          >
+            <option value="">Бүх цэцэрлэг</option>
+            <option value="esis">ЭСИС цэцэрлэг</option>
+          </Select>
           <label className="relative min-w-0 flex-1 sm:max-w-[320px]">
             <span className="sr-only">Нэрээр хайх</span>
             <Search
@@ -247,7 +263,7 @@ function Platform() {
           <EmptyState
             title="Цэцэрлэг олдсонгүй"
             description={
-              query || status || ownership || area
+              query || status || ownership || area || esisOnly
                 ? "Хайлт, шүүлтээ өөрчилж үзнэ үү."
                 : "Эхний цэцэрлэгээ бүртгээрэй."
             }
