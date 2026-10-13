@@ -103,50 +103,61 @@ describe("signing in on a third device", () => {
     await user.click(screen.getByRole("button", { name: "Нэвтрэх" }));
   }
 
-  it("lists the signed-in devices and replaces the one chosen", async () => {
+  /*
+   * ★ No question at the limit (the user, 2026-10-13): the device used longest
+   * ago is signed out and this one signed in. An account still over its limit
+   * (sign-ins from before the limit) loses the oldest one by one.
+   */
+  it("signs the least recently used devices out, oldest first, and signs in", async () => {
     const user = userEvent.setup();
     ROUTER.replace.mockClear();
-    stubApi([
+    const OLDEST = {
+      id: "s-old",
+      userAgent: WINDOWS_CHROME,
+      createdAt: "2026-09-01T00:00:00Z",
+      lastUsedAt: "2026-09-30T14:43:00Z",
+    };
+    const { calls, fetchMock } = stubApi([
       { path: "/auth/me", status: 401 },
-      // `/auth/login/devices` before `/auth/login`: stubs match by prefix.
-      { path: "/auth/login/devices", method: "POST", body: { sessions: SESSIONS } },
-      { path: "/auth/login", method: "POST", status: 409, body: DEVICE_LIMIT },
-    ]);
-    renderWithProviders(<LoginPage />);
-    await signIn(user);
-
-    const choice = await screen.findByRole("button", { name: /Windows · Chrome/ });
-    expect(
-      // The 409's own sentence — the limit is a server setting.
-      screen.getByText("Та 2 төхөөрөмжөөс нэвтэрсэн байна. Аль нэгийг нь гаргаад нэвтэрнэ үү."),
-    ).toBeInTheDocument();
-
-    const api = stubApi([
-      { path: "/auth/login", method: "POST", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/auth/login/devices",
+        method: "POST",
+        body: { sessions: [...SESSIONS, OLDEST] },
+      },
       { path: "/dashboard/primary", body: { dashboard: "teacher" } },
     ]);
-    await user.click(choice);
-
-    await waitFor(() => expect(ROUTER.replace).toHaveBeenCalledWith("/dashboard"));
-    expect(api.calls.find((call) => call.url === "/auth/login")?.body).toEqual({
-      identifier: "99112233",
-      password: "Нууцүг123",
-      replaceSessionId: "s-pc",
+    // `/auth/login`: refused twice (still over the limit), then let in.
+    const served = fetchMock.getMockImplementation()!;
+    let attempts = 0;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.endsWith("/auth/login")) {
+        calls.push({
+          url: "/auth/login",
+          method: "POST",
+          body: JSON.parse(String(init?.body)),
+          headers: {},
+        });
+        attempts += 1;
+        const body = attempts <= 2 ? DEVICE_LIMIT : sessionFor(["TEACHER"]);
+        return new Response(JSON.stringify(body), {
+          status: attempts <= 2 ? 409 : 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return served(input, init);
     });
-  });
 
-  it("points at the settings while the device list is not served", async () => {
-    const user = userEvent.setup();
-    stubApi([
-      { path: "/auth/me", status: 401 },
-      { path: "/auth/login/devices", method: "POST", status: 404, body: null },
-      { path: "/auth/login", method: "POST", status: 409, body: DEVICE_LIMIT },
-    ]);
     renderWithProviders(<LoginPage />);
     await signIn(user);
 
-    expect(
-      await screen.findByText(/«Бүртгэлтэй төхөөрөмж» хэсэгт орж гарна уу/),
-    ).toBeInTheDocument();
+    await waitFor(() => expect(ROUTER.replace).toHaveBeenCalledWith("/dashboard"));
+    expect(calls.filter((call) => call.url === "/auth/login").map((call) => call.body)).toEqual([
+      { identifier: "99112233", password: "Нууцүг123" },
+      { identifier: "99112233", password: "Нууцүг123", replaceSessionId: "s-old" },
+      { identifier: "99112233", password: "Нууцүг123", replaceSessionId: "s-pc" },
+    ]);
+    // No list, no question.
+    expect(screen.queryByText(/Аль нэгийг нь гаргаад/)).toBeNull();
   });
 });

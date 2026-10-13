@@ -144,7 +144,8 @@ export default function ParentHomePage() {
 
       {/*
         ★ A 3-column icon grid matching the parent's own mock-up: Ангийн
-        самбар, Ирц, Хоол, Цэцэрлэг, Үнэлгээ, Судалгаа, Санхүү. The icon assets
+        самбар, Ирц, Хоол, Өдрийн дэглэм, Дуу, шүлэг, Судалгаа, Цэцэрлэг,
+        Санхүү. The icon assets
         (icon-notice-3d.png, icon-attendance-3d.png, …) already carry their own
         colour per tile, so the grid reads as varied as the reference's
         icon-square grid without inventing a new colour system for it.
@@ -160,9 +161,12 @@ export default function ParentHomePage() {
         `/assessments`) rather than a `?tab=` deep link into the child hub —
         the hub dropped those same tabs, so a deep link into them would no
         longer have opened anything.
+        Өдрийн дэглэм and Дуу, шүлэг moved here from the parent's side menu on
+        2026-10-12. Their order follows the client's sequence: immediately
+        after Хоол, before Судалгаа; Цэцэрлэг and Санхүү follow them.
         Цэцэрлэг is the client's own later addition — "Цэцэрлэг, бүлгийн
         архив", the current placement, its teacher, and the family's full
-        enrollment history — sitting between Хоол and Үнэлгээ.
+        enrollment history.
         Санхүү was a `ComingSoonTile` (a `<div>`, not a `<Link>`) while
         CLAUDE.md §7 kept finance a later phase; invoices are built now
         (`нэмэлт.md` §7–§10) and it is a real `QuickTile` to
@@ -188,9 +192,14 @@ export default function ParentHomePage() {
             icon={<TileIcon name="food" />}
           />
           <QuickTile
-            href={`/children/${selected.id}/enrollment-archive`}
-            label="Цэцэрлэг"
-            icon={<TileIcon name="kindergarten" />}
+            href={`/children/${selected.id}/routine`}
+            label="Өдрийн дэглэм"
+            icon={<TileIcon name="adminCurriculum" />}
+          />
+          <QuickTile
+            href={`/children/${selected.id}/songs-poems`}
+            label="Дуу, шүлэг"
+            icon={<TileIcon name="songsPoems" />}
           />
           {/*
             ★ No "Үнэлгээ" tile — removed 2026-09-24 at the client's request
@@ -199,6 +208,11 @@ export default function ParentHomePage() {
             putting it back is this block again rather than a rebuild.
           */}
           <SurveyTile childId={selected.id} />
+          <QuickTile
+            href={`/children/${selected.id}/enrollment-archive`}
+            label="Цэцэрлэг"
+            icon={<TileIcon name="kindergarten" />}
+          />
           <QuickTile
             href={`/children/${selected.id}/finance`}
             label="Санхүү"

@@ -21,25 +21,28 @@ export const CHILD_MONTHLY_PRICE = 3_000;
 export const CHILD_STANDARD_TERM_PRICE = CHILD_MONTHLY_PRICE * 3;
 export const CHILD_STANDARD_YEAR_PRICE = CHILD_MONTHLY_PRICE * MONTHS_IN_SCHOOL_YEAR;
 /**
- * ★ The prices charged now. The first-term discount (5,000₮ / 22,000₮ for a
- * child, 2,000₮ / 34,000₮ a group) ended on 2026-10-11 — the user: "шууд
- * одооноос", the year being the monthly price × 9. A future discount is a
- * lower figure here; the screens show the struck-through price and the saving
- * only while one is lower than the standard.
+ * ★ The prices charged now — the discount is back (the user, 2026-10-13, with
+ * a picture of the price page): 5,000₮ a term and 22,000₮ a year for a child,
+ * 2,000₮ a term and 30,000₮ a year a group. It had ended on 2026-10-11. The
+ * screens show the struck-through standard price and the saving only while a
+ * figure here is lower than the standard.
  */
-export const CHILD_CURRENT_TERM_PRICE = CHILD_STANDARD_TERM_PRICE;
-export const CHILD_CURRENT_YEAR_PRICE = CHILD_STANDARD_YEAR_PRICE;
+export const CHILD_CURRENT_TERM_PRICE = 5_000;
+export const CHILD_CURRENT_YEAR_PRICE = 22_000;
 
 export const KINDERGARTEN_MONTHLY_PER_GROUP = 4_000;
 export const KINDERGARTEN_STANDARD_TERM_PER_GROUP = KINDERGARTEN_MONTHLY_PER_GROUP * 3;
 export const KINDERGARTEN_STANDARD_YEAR_PER_GROUP =
   KINDERGARTEN_MONTHLY_PER_GROUP * MONTHS_IN_SCHOOL_YEAR;
-export const KINDERGARTEN_CURRENT_TERM_PER_GROUP = KINDERGARTEN_STANDARD_TERM_PER_GROUP;
-export const KINDERGARTEN_CURRENT_YEAR_PER_GROUP = KINDERGARTEN_STANDARD_YEAR_PER_GROUP;
+export const KINDERGARTEN_CURRENT_TERM_PER_GROUP = 2_000;
+export const KINDERGARTEN_CURRENT_YEAR_PER_GROUP = 30_000;
 
 /** Whether a term is sold below its standard price now — what the discount lines hang on. */
 export const TERM_DISCOUNTED =
   KINDERGARTEN_CURRENT_TERM_PER_GROUP < KINDERGARTEN_STANDARD_TERM_PER_GROUP;
+
+/** The discounted first term runs to this day — the user, 2026-10-13. */
+export const DISCOUNT_PERIOD_LABEL = "I-р улирал : 2026.11.30 хүртэл";
 
 export const PLANS: Plan[] = [
   {

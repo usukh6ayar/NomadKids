@@ -41,14 +41,25 @@ import { useToast } from "@/components/ui/toast";
 export function DeleteKindergartenButton({
   kindergarten,
   onDeleted,
+  open: openProp,
+  onOpenChange,
 }: {
   kindergarten: { id: string; name: string; isActive: boolean };
   /** The detail page navigates away; the list just refetches. */
   onDeleted?: () => void;
+  /**
+   * Opened from elsewhere — the list's «⋯» menu (2026-10-13). With this set
+   * the component draws no button of its own, only the dialog.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
-  const [open, setOpen] = useState(false);
+  const [ownOpen, setOwnOpen] = useState(false);
+  const controlled = openProp !== undefined;
+  const open = controlled ? openProp : ownOpen;
+  const setOpen = (next: boolean) => (controlled ? onOpenChange?.(next) : setOwnOpen(next));
   const [confirmName, setConfirmName] = useState("");
 
   const remove = useMutation({
@@ -76,16 +87,18 @@ export function DeleteKindergartenButton({
 
   return (
     <>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="text-danger hover:bg-danger-soft"
-        onClick={() => setOpen(true)}
-      >
-        <Trash2 size={16} aria-hidden />
-        Устгах
-      </Button>
+      {controlled ? null : (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="text-danger hover:bg-danger-soft"
+          onClick={() => setOpen(true)}
+        >
+          <Trash2 size={16} aria-hidden />
+          Устгах
+        </Button>
+      )}
 
       <FormDialog
         open={open}

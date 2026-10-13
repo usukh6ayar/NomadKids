@@ -76,7 +76,7 @@ function Applications() {
       <div
         role="group"
         aria-label="Хүсэлтийн төлөв"
-        className="flex flex-wrap gap-1.5 rounded-card border border-border bg-white p-1.5 shadow-sm"
+        className="flex flex-wrap gap-1.5 rounded-card border border-border bg-white p-1.5"
       >
         {TABS.map((tab) => (
           <button
@@ -130,7 +130,7 @@ function ApplicationCard({
   onReview: () => void;
 }) {
   return (
-    <Card pad="roomy" className="flex flex-col gap-4 shadow-sm">
+    <Card pad="roomy" className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
           <span

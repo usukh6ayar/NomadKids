@@ -42,11 +42,15 @@ import { z } from "zod";
 import { Input } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/states";
 import { qk } from "@/lib/api/keys";
+import {
+  usePendingApplicationsCount,
+  useSoloWorkspacesCount,
+} from "@/components/platform/platform-counts";
 import { useMyProfile } from "@/lib/use-my-profile";
 import { useLogout, useSession } from "@/lib/auth/session";
 import { setNavigationMenu } from "@/lib/nav-history";
 import { excerpt, formatRelative, fullName, groupLabel, initials, shortName } from "@/lib/format";
-import { BRAND } from "@/lib/vocabulary";
+import { BRAND, BRAND_LATIN } from "@/lib/vocabulary";
 import { BrandWordmark } from "@/components/ui/brand-wordmark";
 import { Art } from "@/components/ui/art";
 import { cn } from "@/lib/utils";
@@ -101,7 +105,7 @@ export interface NavItem {
    * `unread` shows the unread-notification count — only one item sets it.
    * `surveys` shows the administration's surveys a teacher has not opened.
    */
-  badge?: "unread" | "surveys" | "serviceAccess";
+  badge?: "unread" | "surveys" | "serviceAccess" | "platformApplications" | "platformSolo";
   /** Small trailing context used by the guardian service row. */
   tag?: string;
   /** Runs instead of navigating. See `href`. */
@@ -142,7 +146,9 @@ export interface NavSection {
   entries: {
     label: string;
     href?: string;
-    badge?: "unread" | "surveys" | "serviceAccess";
+    /** Opens something in place instead of navigating — «Тусламж»'s windows. */
+    onSelect?: () => void;
+    badge?: "unread" | "surveys" | "serviceAccess" | "platformApplications" | "platformSolo";
     tag?: string;
     /**
      * A small mark before the label — a lucide icon at the same weight as
@@ -1169,6 +1175,40 @@ function Brand({ subtitle }: { subtitle: string }) {
 }
 
 /**
+ * The operator's masthead — 2026-10-13, the user: formal, like a spreadsheet's
+ * title bar ("албан, эксэл загварын"). A small square mark, the product's name
+ * in plain type and the workspace in small capitals, in one grey ruled box. The other roles keep `Brand`.
+ */
+function PlatformBrand() {
+  const home = useHomeHref();
+  return (
+    <Link
+      href={home}
+      className="flex min-h-[44px] items-center gap-2.5 rounded-control border border-border bg-slate-50 px-2.5 py-2"
+    >
+      <span
+        data-brand-mark
+        className="grid size-8 shrink-0 place-items-center rounded-control border border-border bg-white"
+      >
+        <Image
+          src="/brand-logo.png"
+          alt={BRAND}
+          width={28}
+          height={28}
+          className="size-7 object-contain"
+        />
+      </span>
+      <span className="min-w-0 leading-tight">
+        <span className="block text-compact font-bold text-ink">{BRAND_LATIN}</span>
+        <span className="block text-caption font-semibold uppercase tracking-[0.08em] text-muted">
+          Платформын удирдлага
+        </span>
+      </span>
+    </Link>
+  );
+}
+
+/**
  * The sidebar's foot: who is signed in and the route to their profile.
  *
  * ★ The second line names the person's **context**, not the section they are
@@ -1461,7 +1501,9 @@ function SidebarContent({
       */}
       {teacherRail ? (
         <WhoAmI variant={variant} isAdmin={isAdmin} part="identity" />
-      ) : variant === "parent" ? null : (
+      ) : variant === "parent" ? null : variant === "platform" ? (
+        <PlatformBrand />
+      ) : (
         <Brand subtitle={subtitle} />
       )}
 
@@ -1537,7 +1579,7 @@ function SidebarContent({
                     renamed two of them, which is not what was asked: the
                     categories existed already and only needed drawing.
                   */}
-                  {isAdmin && sections
+                  {(isAdmin || variant === "platform") && sections
                     ? sections.map((section, sectionIndex) => (
                         <div key={section.title} className="contents">
                           {section.title ? (
@@ -1804,11 +1846,21 @@ function ParentSidebarRow({
     "flex min-h-[47px] w-full items-center gap-3 rounded-card px-3 py-2.5 text-left text-compact transition-colors",
     active
       ? "bg-sky-50 font-semibold text-sky-700"
-      : item.href
+      : item.href || item.onSelect
         ? "text-slate-600 hover:bg-slate-50 hover:text-slate-800"
         : "text-slate-500",
   );
 
+  // ★ A row that opens a window in place — «Гарын авлага», «Холбоо барих»
+  // (2026-10-13). Until then a row without an `href` was drawn as plain text,
+  // which is why the old help rows did nothing when pressed.
+  if (!item.href && item.onSelect) {
+    return (
+      <button type="button" onClick={item.onSelect} className={className}>
+        {content}
+      </button>
+    );
+  }
   if (!item.href) return <span className={className}>{content}</span>;
 
   return (
@@ -2298,7 +2350,10 @@ function PillBottomBar({
                 {item.badge === "unread" ? <UnreadDot /> : null}
                 {item.badge === "surveys" ? <SurveyUnreadDot /> : null}
                 {item.badge === "serviceAccess" ? <ServiceAccessDot /> : null}
-                {item.badge === "serviceAccess" ? <ServiceAccessDot /> : null}
+                {item.badge === "platformApplications" ? (
+                  <PlatformCountDot kind="applications" />
+                ) : null}
+                {item.badge === "platformSolo" ? <PlatformCountDot kind="solo" /> : null}
               </span>
               {/*
                 ★ Not drawn — 2026-10-01, at the client's instruction: the
@@ -2471,6 +2526,8 @@ function NavLink({
         {horizontal ? (item.barIcon ?? item.icon) : item.icon}
         {item.badge === "unread" ? <UnreadDot /> : null}
         {item.badge === "surveys" ? <SurveyUnreadDot /> : null}
+        {item.badge === "platformApplications" ? <PlatformCountDot kind="applications" /> : null}
+        {item.badge === "platformSolo" ? <PlatformCountDot kind="solo" /> : null}
       </span>
       {/*
         ★ The phone bar draws icons only — 2026-10-01, at the client's
@@ -2570,6 +2627,26 @@ function ServiceAccessDot() {
 }
 
 const serviceAccessRemindSchema = z.object({ remind: z.boolean().optional() });
+
+/**
+ * The operator's queues as a red count — pending applications and solo
+ * workspaces not yet merged (2026-10-13). Nothing at zero.
+ */
+function PlatformCountDot({ kind }: { kind: "applications" | "solo" }) {
+  const applications = usePendingApplicationsCount(kind === "applications");
+  const solo = useSoloWorkspacesCount(kind === "solo");
+  const count = kind === "applications" ? applications : solo;
+  if (!count) return null;
+
+  return (
+    <span className="absolute -right-2.5 -top-1.5 flex min-w-[18px] items-center justify-center rounded-pill bg-danger px-1 text-caption font-bold leading-[18px] text-white">
+      <span aria-hidden="true">{count > 99 ? "99+" : count}</span>
+      <span className="sr-only">
+        {count} {kind === "applications" ? "хүлээгдэж буй хүсэлт" : "нэгтгэгдээгүй орчин"}
+      </span>
+    </span>
+  );
+}
 
 function useUnreadCount(): number {
   const { data } = useQuery({

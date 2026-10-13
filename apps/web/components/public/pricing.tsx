@@ -7,11 +7,14 @@ import { RegisterDialog } from "@/components/public/register-dialog";
 import { TeacherApplyDialog } from "@/components/public/teacher-apply-dialog";
 import {
   CHILD_STANDARD_TERM_PRICE,
+  CHILD_STANDARD_YEAR_PRICE,
   KINDERGARTEN_CURRENT_TERM_PER_GROUP,
   KINDERGARTEN_MONTHLY_PER_GROUP,
   PLANS,
+  DISCOUNT_PERIOD_LABEL,
   TERM_DISCOUNTED,
   kindergartenTermPrice,
+  kindergartenStandardYearPrice,
   kindergartenYearlyPrice,
   tugrik,
   type BillingPeriod,
@@ -67,6 +70,9 @@ export function PricingContent() {
         <h1 className="text-figure font-extrabold leading-tight text-[#102f5d] sm:text-hero">
           Үнийн санал
         </h1>
+        {TERM_DISCOUNTED ? (
+          <p className="mt-2 text-lead font-extrabold text-[#102f5d]">{DISCOUNT_PERIOD_LABEL}</p>
+        ) : null}
 
         <div
           role="radiogroup"
@@ -195,6 +201,12 @@ function PlanCard({
           />
           <PriceBox
             amount={yearlyAmount}
+            was={standardTermIfHigher(
+              plan.key === "child"
+                ? CHILD_STANDARD_YEAR_PRICE
+                : kindergartenStandardYearPrice(groupCount),
+              yearlyAmount,
+            )}
             unit={plan.key === "kindergarten" ? "/ хичээлийн жил · нийт" : "/ хичээлийн жил"}
             selected={period === "year"}
             textClass="text-[#e11d63]"

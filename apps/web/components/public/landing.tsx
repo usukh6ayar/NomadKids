@@ -33,9 +33,10 @@ import { BRAND_LATIN } from "@/lib/vocabulary";
 import { CONTACT } from "@/lib/contact";
 import { ModalOverlay } from "@/components/ui/modal-overlay";
 import { FacebookIcon } from "@/components/ui/facebook-icon";
+import { ContactDialog } from "@/components/public/contact-dialog";
 import { BrandWordmark } from "@/components/ui/brand-wordmark";
 import { InstallAppCard } from "@/components/public/install-app";
-import { DeviceLimitPanel, isDeviceLimit } from "@/components/auth/device-limit-panel";
+import { isDeviceLimit, leastRecentlyUsedFirst, loginDevicesSchema } from "@/lib/devices";
 import { RegisterDialog } from "@/components/public/register-dialog";
 import { TeacherApplyDialog } from "@/components/public/teacher-apply-dialog";
 
@@ -257,19 +258,46 @@ function LoginCard() {
   const queryClient = useQueryClient();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
-  /** Already signed in on two devices — `DeviceLimitPanel` asks which to sign out. */
-  const [deviceLimit, setDeviceLimit] = useState(false);
-
   const login = useMutation({
-    mutationFn: async (replaceSessionId: string | undefined) => {
-      const session = await mutate("/auth/login", sessionSchema, {
-        method: "POST",
-        body: { identifier, password, ...(replaceSessionId ? { replaceSessionId } : {}) },
-      });
+    mutationFn: async () => {
+      const signIn = (replaceSessionId?: string) =>
+        mutate("/auth/login", sessionSchema, {
+          method: "POST",
+          body: { identifier, password, ...(replaceSessionId ? { replaceSessionId } : {}) },
+        });
+
+      /*
+        ★ At the device limit, the device used longest ago is signed out and
+        this one signed in — no question asked (the user, 2026-10-13: "аль
+        нэг нь шууд log out гараад би орж болох уу"). The API signs out one
+        device per attempt and answers 409 again while the account is still
+        over its limit (sign-ins from before the limit existed), so the oldest
+        go one by one until there is room — never more than the list holds.
+      */
+      let session;
+      try {
+        session = await signIn();
+      } catch (error) {
+        if (!isDeviceLimit(error)) throw error;
+        const { sessions } = await mutate("/auth/login/devices", loginDevicesSchema, {
+          method: "POST",
+          body: { identifier, password },
+        });
+        let lastError: unknown = error;
+        for (const device of leastRecentlyUsedFirst(sessions)) {
+          try {
+            session = await signIn(device.id);
+            break;
+          } catch (retry) {
+            if (!isDeviceLimit(retry)) throw retry;
+            lastError = retry;
+          }
+        }
+        if (!session) throw lastError;
+      }
       rememberCsrfToken(session.csrfToken);
       return get("/dashboard/primary", primaryDashboardSchema);
     },
-    onError: (error) => setDeviceLimit(isDeviceLimit(error)),
     onSuccess: async (primary) => {
       await queryClient.invalidateQueries({ queryKey: qk.session() });
       const from = params.get("from");
@@ -282,7 +310,7 @@ function LoginCard() {
 
       router.replace(
         primary.dashboard === "platform"
-          ? "/platform"
+          ? "/platform/overview"
           : primary.dashboard === "admin"
             ? "/admin"
             : primary.dashboard === "teacher"
@@ -311,7 +339,7 @@ function LoginCard() {
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!login.isPending) login.mutate(undefined);
+    if (!login.isPending) login.mutate();
   }
 
   return (
@@ -336,24 +364,9 @@ function LoginCard() {
       <form onSubmit={onSubmit} className="mt-5 flex flex-col gap-3" noValidate>
         <FormError
           message={
-            login.isError && !deviceLimit && Object.keys(errors).length === 0
-              ? errorMessage(login.error)
-              : null
+            login.isError && Object.keys(errors).length === 0 ? errorMessage(login.error) : null
           }
         />
-        {deviceLimit ? (
-          <DeviceLimitPanel
-            identifier={identifier}
-            password={password}
-            message={login.error ? errorMessage(login.error) : null}
-            pending={login.isPending}
-            onReplace={(sessionId) => login.mutate(sessionId)}
-            onCancel={() => {
-              setDeviceLimit(false);
-              login.reset();
-            }}
-          />
-        ) : null}
 
         <Field
           label="Утасны дугаар эсвэл нэвтрэх нэр"
@@ -376,10 +389,7 @@ function LoginCard() {
                 autoCapitalize="none"
                 placeholder="Утас эсвэл нэвтрэх нэр"
                 value={identifier}
-                onChange={(event) => {
-                  setIdentifier(event.target.value);
-                  setDeviceLimit(false);
-                }}
+                onChange={(event) => setIdentifier(event.target.value)}
                 className="h-12 rounded-control border-border bg-canvas pl-11 text-body transition-colors focus:bg-white"
               />
             </div>
@@ -401,10 +411,7 @@ function LoginCard() {
                 autoComplete="current-password"
                 placeholder="Нууц үг"
                 value={password}
-                onChange={(event) => {
-                  setPassword(event.target.value);
-                  setDeviceLimit(false);
-                }}
+                onChange={(event) => setPassword(event.target.value)}
                 className="h-12 rounded-control border-border bg-canvas pl-11 text-body transition-colors focus:bg-white"
               />
             </div>
@@ -928,66 +935,6 @@ function LoginMenu() {
  * барих дээр дарахаар жижиг цонх дээр холбоо барих хэсгүүд гарч болох уу".
  * Escape, × and a press on the backdrop close it (`ModalOverlay`).
  */
-function ContactDialog({ onClose }: { onClose: () => void }) {
-  const rows = [
-    {
-      icon: <Phone className="size-5" aria-hidden />,
-      label: "Утас",
-      value: CONTACT.phone,
-      href: CONTACT.phoneHref,
-    },
-    {
-      icon: <Mail className="size-5" aria-hidden />,
-      label: "Мэйл",
-      value: CONTACT.email,
-      href: CONTACT.emailHref,
-    },
-    {
-      icon: <FacebookIcon className="size-5" />,
-      label: "Facebook",
-      value: "Facebook хуудас",
-      href: CONTACT.facebook,
-      external: true,
-    },
-  ];
-  return (
-    <ModalOverlay label="Холбоо барих" onClose={onClose}>
-      <div className="relative w-full max-w-[340px] rounded-card bg-white p-5 text-left shadow-xl">
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Хаах"
-          className="absolute right-2 top-2 grid size-10 place-items-center rounded-pill text-slate-500 hover:bg-slate-100 hover:text-[#173e70]"
-        >
-          <X className="size-5" aria-hidden />
-        </button>
-        <h2 className="text-lead font-extrabold text-[#102f5d]">Холбоо барих</h2>
-        <ul className="mt-3 flex flex-col gap-1">
-          {rows.map((row) => (
-            <li key={row.label}>
-              <a
-                href={row.href}
-                {...(row.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-                className="flex min-h-12 items-center gap-3 rounded-control px-2 hover:bg-[#edf6ff]"
-              >
-                <span className="grid size-9 shrink-0 place-items-center rounded-pill bg-[#edf6ff] text-[#3f86ef]">
-                  {row.icon}
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-caption text-slate-500">{row.label}</span>
-                  <span className="block truncate text-body font-semibold text-[#173e70]">
-                    {row.value}
-                  </span>
-                </span>
-              </a>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </ModalOverlay>
-  );
-}
-
 /**
  * ESIS-тэй холбогдсон — the badge in the hero's top-left corner, and how a
  * kindergarten asks to be connected — 2026-10-08, the client.
