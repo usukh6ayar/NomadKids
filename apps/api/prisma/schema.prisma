@@ -481,6 +481,7 @@ model User {
   albumCategoriesCreated AlbumCategory[]           @relation("AlbumCategoryCreatedBy")
   memberships            Membership[]
   guardianships          Guardianship[]
+  agreementAcceptances   AgreementAcceptance[]
   authTokens             AuthToken[]
   phoneVerifications     PhoneVerification[]
   sessions               Session[]
@@ -604,6 +605,45 @@ model Session {
   @@index([familyId])
   @@index([expiresAt])
   @@map("sessions")
+}
+
+/// Which user agreement — a teacher's or a guardian's (#211, 2026-10-12). A
+/// director signs the kindergarten's contract by e-mail and gets none.
+enum AgreementKind {
+  TEACHER
+  PARENT
+}
+
+/// One person accepting one version of a user agreement on first sign-in.
+///
+/// ★ Append-only — a record someone may have to produce, like `AuditLog`. Its
+/// repository exposes `append()` and reads; nothing updates or deletes a row,
+/// so there is no `updatedAt` and no `deletedAt`. A new version of the text is
+/// a new row for everyone who accepts it, never an edit of the old one.
+///
+/// ★★ No `kindergartenId`: the agreement is between the person and the
+/// platform, whichever kindergartens they belong to — the same reason
+/// `Session` carries none. Only the person themselves and a platform operator
+/// read it.
+///
+/// `version` is the identifier in `CURRENT_AGREEMENT_VERSIONS`
+/// (`@kinder/contracts`); the text of each version is in git history.
+model AgreementAcceptance {
+  id         String        @id @default(uuid()) @db.Uuid
+  userId     String        @db.Uuid
+  kind       AgreementKind
+  version    String        @db.VarChar(64)
+  acceptedAt DateTime      @default(now())
+  ipAddress  String?
+  userAgent  String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  /// Accepting the same version twice is one acceptance — a repeat POST finds
+  /// the row rather than adding a second.
+  @@unique([userId, kind, version])
+  @@index([kind, version, acceptedAt(sort: Desc)])
+  @@map("agreement_acceptances")
 }
 
 /// Single-use tokens for password reset and invitation. Merged from two

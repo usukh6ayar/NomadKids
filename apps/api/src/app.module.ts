@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { AgreementsModule } from "./agreements/agreements.module";
 import { AuditModule } from "./audit/audit.module";
 import { AuthModule } from "./auth/auth.module";
 import { AssessmentModule } from "./assessment/assessment.module";
@@ -59,6 +60,7 @@ import { UsersModule } from "./users/users.module";
   imports: [
     PrismaModule,
     AuditModule,
+    AgreementsModule,
     RateLimitModule,
     AuthzModule,
     AuthModule,
