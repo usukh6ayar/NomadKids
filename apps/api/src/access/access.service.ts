@@ -1,4 +1,4 @@
-import { localDate } from "@kinder/contracts";
+import { localDate, type AccessPeriod } from "@kinder/contracts";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { AuditRepository } from "../audit/audit.repository";
 import { ChildAccessService } from "../authz/child-access.service";
@@ -8,7 +8,8 @@ import { loadEnv } from "../config/env";
 import { AccessRepository } from "./access.repository";
 
 /**
- * The portal access fee — one child, one school year (client, 2026-09-01).
+ * The portal access fee — one child, one school year (client, 2026-09-01), or
+ * one term (#211, the user 2026-10-12).
  *
  * ★ `assertCanViewFinance`, not `assertCanAccess`, and both halves of that
  * choice are load-bearing.
@@ -23,6 +24,7 @@ import { AccessRepository } from "./access.repository";
 @Injectable()
 export class AccessService {
   private readonly feeAmount = loadEnv().ACCESS_FEE_AMOUNT;
+  private readonly termFeeAmount = loadEnv().ACCESS_FEE_TERM_AMOUNT;
 
   constructor(
     private readonly repo: AccessRepository,
@@ -35,32 +37,35 @@ export class AccessService {
     return this.feeAmount !== "0";
   }
 
+  /** Whether a term can be bought instead of the year (#211). */
+  private get sellsTerms(): boolean {
+    return this.isCharging && this.termFeeAmount !== "0";
+  }
+
   /**
-   * What the unlock screen shows: is a fee owed for this child, how much, and
-   * for which school year.
+   * What the unlock screen shows: is a fee owed for this child, how much for
+   * the year and for a term, and what is paid.
    */
   async statusForChild(actor: Actor, childId: string) {
     const facts = await this.childAccess.assertCanViewFinance(actor, childId);
 
     if (!this.isCharging) {
-      return { required: false, active: true, amount: null, subscription: null };
+      return { required: false, active: true, amount: null, termAmount: null, subscription: null };
     }
 
-    const subscription = await this.currentSubscription(facts.childId, facts);
-    const active = subscription?.status === "ACTIVE" && subscription.expiresAt >= today();
+    const day = today();
+    const covering = await this.repo.findActiveCovering(facts.childId, day);
+    const year = await this.currentYear(facts);
+    const term = year && this.sellsTerms ? await this.termCovering(year, day) : null;
+    const subscription =
+      covering ?? (year ? await this.repo.findForChildYear(facts.childId, year.id) : null);
 
     return {
       required: true,
-      active,
+      active: covering !== null,
       amount: this.feeAmount,
-      subscription: subscription && {
-        id: subscription.id,
-        status: subscription.status,
-        amount: subscription.amount.toString(),
-        expiresAt: subscription.expiresAt,
-        paidAt: subscription.paidAt,
-        schoolYear: subscription.schoolYear,
-      },
+      termAmount: term ? this.termFeeAmount : null,
+      subscription: subscription && view(subscription),
     };
   }
 
@@ -71,15 +76,21 @@ export class AccessService {
    * ★ Raised lazily, at the moment a family first looks at the screen, not by
    * a sweep over every enrolled child. A row that exists for a family who never
    * opens the portal is a debt the system invented on its own.
+   *
+   * ★★ A paid row covering today is returned whatever period was asked: there
+   * is nothing to buy, and `QpayService` refuses to draw a QR for it. A YEAR
+   * row and a TERM row are separate rows with their own QR, so choosing the
+   * other period never re-prices a QR already in a parent's hand.
    */
-  async ensureForChild(actor: Actor, childId: string) {
+  async ensureForChild(actor: Actor, childId: string, period: AccessPeriod = "YEAR") {
     const facts = await this.childAccess.assertCanViewFinance(actor, childId);
     if (!this.isCharging) {
       throw new BadRequestException("Энэ системд хандалтын төлбөр тогтоогүй байна.");
     }
 
-    const existing = await this.currentSubscription(facts.childId, facts);
-    if (existing) return existing;
+    const day = today();
+    const covering = await this.repo.findActiveCovering(facts.childId, day);
+    if (covering) return covering;
 
     const kindergartenId = [...childKindergartenIds(facts)][0];
     if (!kindergartenId) throw new NotFoundException();
@@ -91,15 +102,58 @@ export class AccessService {
       );
     }
 
-    const created = await this.repo.create({
-      kindergartenId,
-      childId: facts.childId,
+    if (period === "TERM") {
+      if (!this.sellsTerms) {
+        throw new BadRequestException("Улирлаар төлөх боломжгүй. Жилээр төлнө үү.");
+      }
+      const term = await this.termCovering(year, day);
+      if (!term) {
+        throw new BadRequestException("Одоо хичээлийн улирал биш байна. Жилээр төлнө үү.");
+      }
+      const existing = await this.repo.findForChildTerm(facts.childId, year.id, term.number);
+      if (existing) return existing;
+
+      return this.issue(actor, facts.childId, kindergartenId, {
+        schoolYearId: year.id,
+        period: "TERM",
+        termNumber: term.number,
+        amount: this.termFeeAmount,
+        // Frozen from the term at issue — see `expiresAt`'s schema comment.
+        expiresAt: term.endsOn,
+        label: `${year.name}, ${term.name}`,
+      });
+    }
+
+    const existing = await this.repo.findForChildYear(facts.childId, year.id);
+    if (existing) return existing;
+
+    return this.issue(actor, facts.childId, kindergartenId, {
       schoolYearId: year.id,
+      period: "YEAR",
+      termNumber: null,
       amount: this.feeAmount,
       // Frozen from the school year at issue — shortening the year later must
       // not cut access somebody already paid for.
       expiresAt: year.endsOn,
+      label: year.name,
     });
+  }
+
+  private async issue(
+    actor: Actor,
+    childId: string,
+    kindergartenId: string,
+    row: {
+      schoolYearId: string;
+      period: AccessPeriod;
+      termNumber: number | null;
+      amount: string;
+      expiresAt: Date;
+      label: string;
+    },
+  ) {
+    const { label, ...data } = row;
+    const created = await this.repo.create({ kindergartenId, childId, ...data });
 
     await this.audit.append({
       action: "CREATE",
@@ -107,8 +161,8 @@ export class AccessService {
       actorUserId: actor.userId,
       objectType: "AccessSubscription",
       objectId: created.id,
-      childId: facts.childId,
-      metadata: { schoolYear: year.name, amount: this.feeAmount },
+      childId,
+      metadata: { schoolYear: label, period: row.period, amount: row.amount },
     });
 
     return created;
@@ -138,19 +192,58 @@ export class AccessService {
     return true;
   }
 
-  /** Finds this child's subscription for the kindergarten's current school year. */
-  private async currentSubscription(
-    childId: string,
-    facts: Parameters<typeof childKindergartenIds>[0],
-  ) {
+  /**
+   * The term of this school year that covers `day` (#211).
+   *
+   * ★ The kindergarten's own `Term` rows when it has set any up — and then
+   * only those: a day between its terms is in no term. A year with none (a
+   * solo workspace, or a kindergarten that has not configured terms) is cut
+   * into three three-month terms from its start — September–November,
+   * December–February, March–May — the months a term's price is three of.
+   */
+  private async termCovering(
+    year: { id: string; startsOn: Date },
+    day: Date,
+  ): Promise<{ number: number; name: string; endsOn: Date } | null> {
+    const own = await this.repo.termsOfYear(year.id);
+    const terms = own.length > 0 ? own : calendarTerms(year.startsOn);
+    const term = terms.find((t) => t.startsOn <= day && day <= t.endsOn);
+    return term ? { number: term.number, name: term.name, endsOn: term.endsOn } : null;
+  }
+
+  /** The kindergarten's current school year for this child. */
+  private async currentYear(facts: Parameters<typeof childKindergartenIds>[0]) {
     const kindergartenId = [...childKindergartenIds(facts)][0];
     if (!kindergartenId) return null;
-
-    const year = await this.repo.currentSchoolYear(kindergartenId);
-    if (!year) return null;
-
-    return this.repo.findForChildYear(childId, year.id);
+    return this.repo.currentSchoolYear(kindergartenId);
   }
+}
+
+function view(subscription: Awaited<ReturnType<AccessRepository["findForChildYear"]>> & {}) {
+  return {
+    id: subscription.id,
+    status: subscription.status,
+    period: subscription.period,
+    amount: subscription.amount.toString(),
+    expiresAt: subscription.expiresAt,
+    paidAt: subscription.paidAt,
+    schoolYear: subscription.schoolYear,
+    termNumber: subscription.termNumber,
+  };
+}
+
+/** Three three-month terms from a school year's first day — see `termCovering`. */
+export function calendarTerms(startsOn: Date) {
+  const y = startsOn.getUTCFullYear();
+  const m = startsOn.getUTCMonth();
+  const day = (months: number, d: number) => new Date(Date.UTC(y, m + months, d));
+  // Day 0 of a month is the last day of the one before, leap February included.
+  return [1, 2, 3].map((number) => ({
+    number,
+    name: `${number}-р улирал`,
+    startsOn: day((number - 1) * 3, 1),
+    endsOn: day(number * 3, 0),
+  }));
 }
 
 /**

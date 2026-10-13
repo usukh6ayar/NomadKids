@@ -206,6 +206,20 @@ export const envSchema = z.object({
     .regex(/^\d{1,10}(\.\d{1,2})?$/, "ACCESS_FEE_AMOUNT нь мөнгөн дүн байна (жишээ: 15000.00)")
     .default("0"),
 
+  /**
+   * ★ The price of one **term** of access (#211, the user 2026-10-12) —
+   * `ACCESS_FEE_AMOUNT` stays the school year's. "0" sells no terms: the
+   * year alone, as before. Meaningless while `ACCESS_FEE_AMOUNT` is "0",
+   * which turns the whole gate off.
+   */
+  ACCESS_FEE_TERM_AMOUNT: z
+    .string()
+    .regex(
+      /^\d{1,10}(\.\d{1,2})?$/,
+      "ACCESS_FEE_TERM_AMOUNT нь мөнгөн дүн байна (жишээ: 9000.00)",
+    )
+    .default("0"),
+
   QPAY_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
 
   /**

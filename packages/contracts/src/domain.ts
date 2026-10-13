@@ -5762,14 +5762,33 @@ export const accessSubscriptionSchema = z.object({
   expiresAt: z.string(),
   paidAt: z.string().nullable(),
   schoolYear: z.object({ id: z.string(), name: z.string(), endsOn: z.string() }),
+  /** A term or the school year (#211). Absent on an older API: a year. */
+  period: z.enum(["TERM", "YEAR"]).optional(),
+  /** A TERM row's term, 1–3, of its school year. */
+  termNumber: z.number().int().nullish(),
 });
 export type AccessSubscription = z.infer<typeof accessSubscriptionSchema>;
+
+/** Which period a family pays for — `POST /children/:id/access(/qpay)`, #211. */
+export const accessPeriodSchema = z.enum(["TERM", "YEAR"]);
+export type AccessPeriod = z.infer<typeof accessPeriodSchema>;
+// ★ The body may be absent altogether: the web's existing pay button posts none.
+export const accessPeriodBodySchema = z
+  .object({ period: accessPeriodSchema.default("YEAR") })
+  .default({ period: "YEAR" });
+export const accessPeriodQuerySchema = accessPeriodBodySchema;
 
 /** What the unlock screen reads. `required: false` means the deployment does not charge. */
 export const accessStatusSchema = z.object({
   required: z.boolean(),
   active: z.boolean(),
+  /** The school year's price. */
   amount: z.string().nullable(),
+  /**
+   * A term's price, or null when terms are not sold here — no term price is
+   * configured, or the kindergarten's current school year has no term today.
+   */
+  termAmount: z.string().nullable().optional(),
   subscription: accessSubscriptionSchema.nullable(),
 });
 export type AccessStatus = z.infer<typeof accessStatusSchema>;
