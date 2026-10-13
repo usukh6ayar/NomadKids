@@ -367,6 +367,46 @@ describe("the same child on both rolls", () => {
     expect(await db.childProfile.count({ where: { childId: solo.childId } })).toBe(1);
   });
 
+  /**
+   * ★ A paid term settles the target's term, not its year (#211). Stamped onto
+   * the year, it would read as paid and lapse at the term's end — and the
+   * family could then never buy the year, because a paid row covering today
+   * is "already open".
+   */
+  it("carries a paid term to the target's term only, never to its unpaid year", async () => {
+    const twin = await targetTwin();
+    const soloYear = await db.schoolYear.findFirstOrThrow({
+      where: { kindergartenId: solo.kindergartenId, isCurrent: true },
+    });
+    // The family paid a term, not the year.
+    await db.accessSubscription.updateMany({
+      where: { childId: solo.childId, period: "YEAR" },
+      data: { status: "UNPAID", paidAt: null },
+    });
+    await db.accessSubscription.create({
+      data: {
+        kindergartenId: solo.kindergartenId,
+        childId: solo.childId,
+        schoolYearId: soloYear.id,
+        period: "TERM",
+        termNumber: 1,
+        amount: "9000.00",
+        status: "ACTIVE",
+        paidAt: new Date(),
+        expiresAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    const res = await merge(operator, { targetKindergartenId: target.kindergarten.id });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const year = await db.accessSubscription.findFirstOrThrow({
+      where: { childId: twin.id, schoolYearId: target.schoolYear.id, period: "YEAR" },
+    });
+    expect(year.status).toBe("UNPAID");
+    expect(year.amount.toString()).toBe("27000");
+  });
+
   it("leaves a pair separate when the operator says they are different children", async () => {
     const twin = await targetTwin();
     const res = await merge(operator, {
