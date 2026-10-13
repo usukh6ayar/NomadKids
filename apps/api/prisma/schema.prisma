@@ -348,6 +348,11 @@ enum ReportType {
   /// single change would expose a kindergarten's whole financial position to
   /// any guardian of the child it was pinned to.
   FINANCE_REPORT
+
+  /// A kindergarten's invoice for renewing NomadKids — a term or the school
+  /// year (#211). Like `CONTRACT` and `FINANCE_REPORT` it carries **no
+  /// childId**; its own routes check `assertAdmin`.
+  SERVICE_INVOICE
 }
 
 enum ReportStatus {

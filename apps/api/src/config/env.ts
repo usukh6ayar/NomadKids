@@ -224,6 +224,16 @@ export const envSchema = z.object({
    */
   AUTH_DEVICE_LIMIT: z.coerce.number().int().min(0).max(20).default(2),
 
+  /**
+   * Where a kindergarten pays its NomadKids renewal (#211) — printed on the
+   * invoice a director downloads. Not QPay: the client allows QPay for
+   * families' fees and teaching materials only (CLAUDE.md §7). Unset, no
+   * invoice is issued rather than one with blank bank details.
+   */
+  SERVICE_INVOICE_BANK_NAME: z.string().trim().max(120).default(""),
+  SERVICE_INVOICE_BANK_ACCOUNT: z.string().trim().max(60).default(""),
+  SERVICE_INVOICE_ACCOUNT_HOLDER: z.string().trim().max(200).default(""),
+
   QPAY_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
 
   /**

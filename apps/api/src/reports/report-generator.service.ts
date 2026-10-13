@@ -17,6 +17,7 @@ import {
 } from "./annual-report-template";
 import { reportAudience, type ReportJobParams } from "./report-params";
 import { financeReportChrome, renderFinanceReportHtml } from "./finance-report-template";
+import { renderServiceInvoiceHtml, serviceInvoiceChrome } from "./service-invoice-template";
 import { contractChrome, renderContractHtml, type ContractTerms } from "./contract-template";
 import { FinanceReportsService } from "../invoices/finance-reports.service";
 
@@ -78,8 +79,10 @@ export class ReportGeneratorService {
      * from rendering as an empty document.
      */
     const isContract = job?.type === "CONTRACT";
+    // ★ `SERVICE_INVOICE` (#211) is the third childless type.
+    const isServiceInvoice = job?.type === "SERVICE_INVOICE";
 
-    if (!job || (!job.childId && !isFinance && !isContract)) {
+    if (!job || (!job.childId && !isFinance && !isContract && !isServiceInvoice)) {
       // Not re-thrown: a job whose row is gone will never succeed, and retrying
       // it three times with backoff only delays the inevitable.
       this.logger.warn(`Report job ${jobId} not found; nothing to generate`);
@@ -101,15 +104,17 @@ export class ReportGeneratorService {
 
     try {
       const params = job.params as unknown as ReportJobParams;
-      const { html, chrome, filename } = isContract
-        ? await this.buildContract(params)
-        : isFinance
-          ? await this.buildFinanceReport(job.kindergartenId, params)
-          : job.type === "TERM_REPORT"
-            ? await this.buildTermReport(job.childId!, params)
-            : job.type === "ANNUAL_REPORT"
-              ? await this.buildAnnualReport(job.childId!, params)
-              : await this.buildPortfolio(job.childId!, params);
+      const { html, chrome, filename } = isServiceInvoice
+        ? this.buildServiceInvoice(params)
+        : isContract
+          ? await this.buildContract(params)
+          : isFinance
+            ? await this.buildFinanceReport(job.kindergartenId, params)
+            : job.type === "TERM_REPORT"
+              ? await this.buildTermReport(job.childId!, params)
+              : job.type === "ANNUAL_REPORT"
+                ? await this.buildAnnualReport(job.childId!, params)
+                : await this.buildPortfolio(job.childId!, params);
 
       const pdf = await this.renderer.render(html, chrome);
 
@@ -390,6 +395,16 @@ export class ReportGeneratorService {
       }),
       chrome: contractChrome(contract.number, contract.application.kindergartenName),
       filename: `${contract.number}.pdf`,
+    };
+  }
+
+  private buildServiceInvoice(params: ReportJobParams) {
+    const invoice = params.serviceInvoice;
+    if (!invoice) throw new Error("Service invoice job has no figures");
+    return {
+      html: renderServiceInvoiceHtml(invoice),
+      chrome: serviceInvoiceChrome(invoice.kindergartenName),
+      filename: `nehemjleh-${invoice.contractNumber}-${invoice.issuedOn}.pdf`,
     };
   }
 
