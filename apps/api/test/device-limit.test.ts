@@ -4,11 +4,15 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestApp } from "./support/app";
 import { resetData, testDb, uniq } from "./support/db";
 import { authed, createUser, login, TEST_PASSWORD, type AuthSession } from "./support/fixtures";
+import { randomUUID } from "node:crypto";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
 
 /**
  * The two-device limit (#211, the user 2026-10-12). A device is a
  * refresh-token family; the limit is checked only after the password.
+ *
+ * ★ At the limit the device used longest ago is signed out and this one signed
+ * in (the user, 2026-10-13: «аль нэг нь шууд log out гараад би орж болох уу»).
  *
  * ★ Off everywhere else in the suite (`test/setup.ts`); on here.
  */
@@ -48,14 +52,58 @@ async function twoDevices(): Promise<[AuthSession, AuthSession]> {
 }
 
 describe("signing in on a third device", () => {
-  it("is refused with 409 DEVICE_LIMIT once two are signed in", async () => {
-    await twoDevices();
+  it("signs the device used longest ago out and this one in", async () => {
+    const [first, second] = await twoDevices();
+    // `second` was used since: a refresh is a use.
+    expect(
+      (await request(server()).post("/v1/auth/refresh").set("Cookie", second.cookies)).status,
+    ).toBe(200);
 
     const res = await signIn({});
 
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe("DEVICE_LIMIT");
-    expect(res.headers["set-cookie"]).toBeUndefined();
+    expect(res.status).toBe(200);
+    const me = (session: AuthSession) =>
+      request(server()).get("/v1/auth/me").set("Cookie", session.cookies);
+    expect((await me(first)).status).toBe(401);
+    expect((await devicesForLogin()).body.sessions).toHaveLength(2);
+    const audit = await db.auditLog.findMany({
+      where: { actorUserId: first.userId, action: "LOGOUT" },
+    });
+    expect(audit.map((row) => (row.metadata as { reason?: string }).reason)).toEqual([
+      "device_limit_oldest",
+    ]);
+  });
+
+  /*
+   * Accounts signed in on more devices before the limit existed come down to
+   * it in one sign-in, the most recently used one kept.
+   */
+  it("brings an account over the limit down to it in one sign-in", async () => {
+    const user = await db.user.findFirstOrThrow({ where: { username } });
+    const families = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+    for (const [i, familyId] of families.entries()) {
+      await db.session.create({
+        data: {
+          userId: user.id,
+          familyId,
+          tokenHash: `seed-${randomUUID()}`,
+          expiresAt: new Date(Date.now() + 86_400_000),
+          // families[0] used most recently, families[3] longest ago.
+          createdAt: new Date(Date.now() - (i + 1) * 3_600_000),
+        },
+      });
+    }
+
+    const res = await signIn({});
+
+    expect(res.status).toBe(200);
+    const live = await db.session.findMany({
+      where: { userId: user.id, revokedAt: null },
+      select: { familyId: true },
+    });
+    const liveFamilies = new Set(live.map((row) => row.familyId));
+    expect(liveFamilies.size).toBe(2);
+    expect(liveFamilies.has(families[0]!)).toBe(true);
   });
 
   it("answers a wrong password with 401, never with the 409", async () => {
