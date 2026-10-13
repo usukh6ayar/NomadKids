@@ -34,6 +34,8 @@ const ROWS = [
     district: "Баянзүрх",
     esisInstitutionId: "42778",
     groupCount: 6,
+    childCount: 142,
+    staffCount: 18,
   }),
   KG({ id: "22222222-2222-4222-8222-222222222222", name: "Хүслэн", phone: null, email: null }),
 ];
@@ -170,5 +172,62 @@ describe("the operator's kindergartens table", () => {
     });
     expect(text).toContain('"Нарлаг цэцэрлэг"');
     expect(text).toContain('"Улаанбаатар · Баянзүрх"');
+  });
+
+  it("counts the people using it — children and staff", async () => {
+    renderPage();
+    const table = await screen.findByRole("table");
+    for (const heading of ["Хүүхэд", "Ажилтан"]) {
+      expect(
+        within(table).getByRole("columnheader", { name: new RegExp(heading) }),
+      ).toBeInTheDocument();
+    }
+    const first = within(table).getAllByRole("row")[1]!;
+    expect(first).toHaveTextContent("142");
+    expect(first).toHaveTextContent("18");
+  });
+
+  it("shows the solo teachers on their own tab", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      {
+        path: "/platform/kindergartens",
+        body: { items: ROWS, page: 1, pageSize: 50, total: 2, totalPages: 1 },
+      },
+      {
+        path: "/platform/solo-workspaces",
+        body: {
+          items: [
+            {
+              id: "s1",
+              name: "Батаагийн Сувд",
+              phone: "99001122",
+              email: null,
+              location: "Баянзүрх дүүрэг",
+              workplace: "Од цэцэрлэг",
+              childCount: 12,
+              createdAt: "2026-10-05T00:00:00Z",
+            },
+          ],
+          page: 1,
+          pageSize: 100,
+          total: 1,
+          totalPages: 1,
+        },
+      },
+    ]);
+    renderWithProviders(<PlatformPage />);
+    await screen.findByRole("table");
+
+    await user.click(screen.getByRole("tab", { name: "Багш дангаар" }));
+    expect(screen.getByRole("tab", { name: "Багш дангаар" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    const row = (await screen.findByText("Батаагийн Сувд")).closest("tr")!;
+    expect(row).toHaveTextContent("Од цэцэрлэг");
+    expect(row).toHaveTextContent("12");
+    expect(screen.queryByText("Нарлаг цэцэрлэг")).not.toBeVisible();
   });
 });

@@ -5,7 +5,12 @@ import Link from "next/link";
 import { useState } from "react";
 import { z } from "zod";
 import { Building2, FileDown, Plus, Search } from "lucide-react";
-import { paginated, platformKindergartenSchema, platformStatsSchema } from "@kinder/contracts";
+import {
+  paginated,
+  platformKindergartenSchema,
+  platformStatsSchema,
+  soloWorkspaceSchema,
+} from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
@@ -40,6 +45,9 @@ const rowSchema = platformKindergartenSchema.extend({
   district: z.string().nullish(),
   esisInstitutionId: z.string().nullish(),
   groupCount: z.number().int().nullish(),
+  /** How many use it — children enrolled and staff with an account. */
+  childCount: z.number().int().nullish(),
+  staffCount: z.number().int().nullish(),
   /** The contract's first day; the registration date stands in until it is sent. */
   contractStartsOn: z.string().nullish(),
   /** The contract's last day — a red date within 14 days of it. */
@@ -75,6 +83,7 @@ function Platform() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [creating, setCreating] = useState(false);
+  const [tab, setTab] = useState<"kindergartens" | "solo">("kindergartens");
   const [ownership, setOwnership] = useState("");
   const [area, setArea] = useState("");
   const [deleting, setDeleting] = useState<Row | null>(null);
@@ -110,7 +119,6 @@ function Platform() {
     <div className="flex flex-col gap-5 pb-8">
       <PlatformPageHeading
         title="Цэцэрлэгүүд"
-        lede="Байгууллагуудын бүртгэл, идэвх болон хамрах хүрээг нэг дороос хянаарай."
         backHref={null}
         mark={<Building2 />}
         actions={
@@ -172,7 +180,38 @@ function Platform() {
         </section>
       ) : null}
 
-      <section aria-label="Цэцэрлэгийн жагсаалт" className="flex flex-col gap-2">
+      {/* Kindergartens and solo teachers, side by side — 2026-10-13, the user. */}
+      <div role="tablist" aria-label="Жагсаалт" className="flex gap-1 border-b border-border">
+        {(
+          [
+            ["kindergartens", "Цэцэрлэг"],
+            ["solo", "Багш дангаар"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            aria-selected={tab === value}
+            onClick={() => setTab(value)}
+            className={`-mb-px min-h-10 border-b-2 px-3 text-compact font-semibold ${
+              tab === value
+                ? "border-primary text-ink"
+                : "border-transparent text-muted hover:text-ink"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "solo" ? <SoloTeachersTable /> : null}
+
+      <section
+        aria-label="Цэцэрлэгийн жагсаалт"
+        className="flex flex-col gap-2"
+        hidden={tab !== "kindergartens"}
+      >
         <div className="flex flex-wrap items-center gap-2">
           <label className="relative min-w-0 flex-1 sm:max-w-[320px]">
             <span className="sr-only">Нэрээр хайх</span>
@@ -259,7 +298,7 @@ function Platform() {
 
         {rows.length > 0 ? (
           <div className="overflow-x-auto rounded-control border border-border bg-white">
-            <table className="w-full min-w-[1200px] border-separate border-spacing-0 text-left text-caption">
+            <table className="w-full min-w-[1320px] border-separate border-spacing-0 text-left text-caption">
               <thead className="bg-slate-50 text-muted">
                 <tr className="[&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-r [&>th]:border-border [&>th]:px-3 [&>th]:py-2 [&>th]:font-semibold [&>th:last-child]:border-r-0">
                   <th scope="col" className={`${FROZEN_NO} bg-slate-50 text-right`}>
@@ -278,6 +317,20 @@ function Platform() {
                   <SortHeader
                     label="Бүлэг"
                     column="groups"
+                    sort={sort}
+                    onSort={sortBy}
+                    align="right"
+                  />
+                  <SortHeader
+                    label="Хүүхэд"
+                    column="children"
+                    sort={sort}
+                    onSort={sortBy}
+                    align="right"
+                  />
+                  <SortHeader
+                    label="Ажилтан"
+                    column="staff"
                     sort={sort}
                     onSort={sortBy}
                     align="right"
@@ -411,6 +464,8 @@ function KindergartenRow({
         <EsisCell kg={kg} />
       </td>
       <td className={`${cell} text-right tabular-nums`}>{kg.groupCount ?? "—"}</td>
+      <td className={`${cell} text-right tabular-nums`}>{kg.childCount ?? "—"}</td>
+      <td className={`${cell} text-right tabular-nums`}>{kg.staffCount ?? "—"}</td>
       <td className={`${cell} whitespace-nowrap tabular-nums`}>{kg.phone || "—"}</td>
       <td className={`${cell} max-w-[200px] truncate`}>{kg.email || "—"}</td>
       <td className={`${cell} whitespace-nowrap tabular-nums`}>{formatDate(startedOn(kg))}</td>
@@ -449,7 +504,7 @@ function KindergartenRow({
   );
 }
 
-type SortKey = "name" | "area" | "groups" | "start" | "contract";
+type SortKey = "name" | "area" | "groups" | "children" | "staff" | "start" | "contract";
 
 /** Missing values sort last whichever way the column runs. */
 function compareRows(a: Row, b: Row, key: SortKey, dir: 1 | -1): number {
@@ -460,9 +515,13 @@ function compareRows(a: Row, b: Row, key: SortKey, dir: 1 | -1): number {
         ? areaOf(row)
         : key === "groups"
           ? (row.groupCount ?? null)
-          : key === "start"
-            ? startedOn(row)
-            : (row.contractEndsOn ?? null);
+          : key === "children"
+            ? (row.childCount ?? null)
+            : key === "staff"
+              ? (row.staffCount ?? null)
+              : key === "start"
+                ? startedOn(row)
+                : (row.contractEndsOn ?? null);
   const x = value(a);
   const y = value(b);
   if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
@@ -526,6 +585,8 @@ function downloadSheet(rows: Row[]) {
     "ЭСИС холболт",
     "ЭСИС дугаар",
     "Бүлэг",
+    "Хүүхэд",
+    "Ажилтан",
     "Утас",
     "И-мэйл",
     "Эхэлсэн",
@@ -540,6 +601,8 @@ function downloadSheet(rows: Row[]) {
     (kg.esisConnected ?? Boolean(kg.esisInstitutionId)) ? "Холбогдсон" : "Холбогдоогүй",
     kg.esisInstitutionId ?? "",
     kg.groupCount ?? "",
+    kg.childCount ?? "",
+    kg.staffCount ?? "",
     kg.phone ?? "",
     kg.email ?? "",
     formatDate(startedOn(kg)),
@@ -553,4 +616,118 @@ function downloadSheet(rows: Row[]) {
   link.download = "tsetserleguud.csv";
   link.click();
   URL.revokeObjectURL(url);
+}
+
+const soloListSchema = paginated(soloWorkspaceSchema);
+
+/**
+ * «Багш дангаар» — teachers working on their own, before their kindergarten
+ * signs (#202). The same quiet table; merging happens on «Бие даасан багш»,
+ * which the row's «⋯» opens.
+ */
+function SoloTeachersTable() {
+  const [search, setSearch] = useState("");
+  const list = useQuery({
+    queryKey: ["platform", "solo-workspaces"],
+    queryFn: () => get("/platform/solo-workspaces?page=1&pageSize=100", soloListSchema),
+  });
+  const needle = search.trim().toLocaleLowerCase("mn");
+  const rows = (list.data?.items ?? []).filter(
+    (row) =>
+      !needle ||
+      [row.name, row.workplace ?? "", row.location ?? ""].some((text) =>
+        text.toLocaleLowerCase("mn").includes(needle),
+      ),
+  );
+  const cell =
+    "border-b border-r border-border-soft px-3 py-2 align-middle bg-white group-hover:bg-slate-50 last:border-r-0";
+
+  return (
+    <section aria-label="Бие даасан багшийн жагсаалт" className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="relative min-w-0 flex-1 sm:max-w-[320px]">
+          <span className="sr-only">Багш, цэцэрлэгээр хайх</span>
+          <Search
+            size={16}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
+          />
+          <Input
+            type="search"
+            aria-label="Багш, цэцэрлэгээр хайх"
+            placeholder="Багш, цэцэрлэгээр хайх"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-9 pl-9 text-compact"
+          />
+        </label>
+        {list.data ? (
+          <span className="ml-auto text-caption text-muted">{rows.length} багш</span>
+        ) : null}
+      </div>
+
+      {list.isLoading ? <LoadingState rows={4} /> : null}
+      {list.isError ? <ErrorState description={errorMessage(list.error)} /> : null}
+      {list.data && rows.length === 0 ? (
+        <EmptyState
+          title="Бие даасан багш алга"
+          description={
+            search ? "Хайлтаа өөрчилж үзнэ үү." : "Дангаар бүртгүүлсэн багш одоогоор алга."
+          }
+        />
+      ) : null}
+
+      {rows.length > 0 ? (
+        <div className="overflow-x-auto rounded-control border border-border bg-white">
+          <table className="w-full min-w-[960px] border-separate border-spacing-0 text-left text-caption">
+            <thead className="bg-slate-50 text-muted">
+              <tr className="[&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-r [&>th]:border-border [&>th]:px-3 [&>th]:py-2 [&>th]:font-semibold [&>th:last-child]:border-r-0">
+                <th scope="col" className={`${FROZEN_NO} bg-slate-50 text-right`}>
+                  №
+                </th>
+                <th scope="col" className={`${FROZEN_NAME} bg-slate-50`}>
+                  Багш
+                </th>
+                <th scope="col">Ажилладаг цэцэрлэг</th>
+                <th scope="col">Аймаг / дүүрэг</th>
+                <th scope="col" className="text-right">
+                  Хүүхэд
+                </th>
+                <th scope="col">Утас</th>
+                <th scope="col">И-мэйл</th>
+                <th scope="col">Бүртгэсэн</th>
+                <th scope="col" className="w-10">
+                  <span className="sr-only">Үйлдэл</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => (
+                <tr key={row.id} className="group">
+                  <td className={`${cell} ${FROZEN_NO} text-right tabular-nums text-muted`}>
+                    {index + 1}
+                  </td>
+                  <td className={`${cell} ${FROZEN_NAME} font-semibold text-ink`}>{row.name}</td>
+                  <td className={cell}>{row.workplace || "—"}</td>
+                  <td className={cell}>{row.location || "—"}</td>
+                  <td className={`${cell} text-right tabular-nums`}>{row.childCount}</td>
+                  <td className={`${cell} whitespace-nowrap tabular-nums`}>{row.phone || "—"}</td>
+                  <td className={`${cell} max-w-[200px] truncate`}>{row.email || "—"}</td>
+                  <td className={`${cell} whitespace-nowrap tabular-nums`}>
+                    {formatDate(row.createdAt)}
+                  </td>
+                  <td className={`${cell} text-right`}>
+                    <RowMenu
+                      ariaLabel={`${row.name} — үйлдэл`}
+                      items={[{ label: "Цэцэрлэгт нэгтгэх", href: "/platform/solo-workspaces" }]}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
+  );
 }
