@@ -166,4 +166,57 @@ describe("the platform's teaching materials", () => {
       ),
     );
   });
+
+  it("asks before taking a material off the shop, then removes it", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/materials/m1", method: "DELETE", status: 204 },
+      { path: "/platform/materials", body: [row] },
+    ]);
+    renderWithProviders(<PlatformMaterialsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Тоо 1–5 — үйлдэл" }));
+    await user.click(screen.getByRole("menuitem", { name: "Устгах" }));
+    // Nothing is sent before the confirmation (CLAUDE.md §5).
+    expect(api.calls.some((c) => c.method === "DELETE")).toBe(false);
+
+    const confirm = screen.getByRole("dialog", { name: "Дэлгүүрээс хасах уу?" });
+    expect(confirm).toHaveTextContent("Худалдаж авсан багш нар санд нь хадгалсаар байна.");
+    await user.click(within(confirm).getByRole("button", { name: "Устгах" }));
+
+    await waitFor(() =>
+      expect(api.calls.find((c) => c.method === "DELETE")?.url).toBe("/platform/materials/m1"),
+    );
+  });
+
+  it("takes the price in whole tögrög only", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/materials", body: [] },
+    ]);
+    renderWithProviders(<PlatformMaterialsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Нэмэх" }));
+    const dialog = screen.getByRole("dialog", { name: "Хэрэглэгдэхүүн нэмэх" });
+    await user.type(within(dialog).getByLabelText(/^Нэр/), "Тоо 1–5");
+    await selectOption(user, /Сургалтын чиглэл/, "Зураг, урлал");
+    await user.type(within(dialog).getByLabelText(/Үнэ/), "12000.50");
+    await user.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
+
+    expect(within(dialog).getByText("Үнийг бүхэл төгрөгөөр оруулна уу.")).toBeInTheDocument();
+    expect(api.calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
+  it("says what to do when the catalog is empty", async () => {
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/materials", body: [] },
+    ]);
+    renderWithProviders(<PlatformMaterialsPage />);
+
+    expect(await screen.findByText("Хэрэглэгдэхүүн нэмээгүй байна")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).toBeNull();
+  });
 });

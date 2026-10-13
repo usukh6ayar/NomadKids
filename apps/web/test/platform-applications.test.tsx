@@ -120,4 +120,61 @@ describe("the operator's applications", () => {
     // 3 groups × 30,000₮ for the year — the discounted price sheet.
     expect(within(dialog).getByLabelText(/Нийт төлбөр/)).toHaveValue("90000");
   });
+
+  it("refuses only with a reason, and sends it", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/auth/me", body: operator() },
+      {
+        path: `/platform/applications/${APPLICATION.id}/reject`,
+        method: "POST",
+        body: { ...APPLICATION, status: "REJECTED", reviewNote: "Гэрчилгээ дутуу" },
+      },
+      { path: "/platform/applications", body: list([APPLICATION]) },
+    ]);
+    renderWithProviders(<ApplicationsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Шалгах" }));
+    const dialog = await screen.findByRole("dialog");
+    const refuse = within(dialog).getByRole("button", { name: "Татгалзах" });
+    expect(refuse).toBeDisabled();
+    // Nor can it be approved without the director's login name.
+    expect(within(dialog).getByRole("button", { name: "Батлах" })).toBeDisabled();
+
+    await user.type(within(dialog).getByLabelText(/Тэмдэглэл/), "Гэрчилгээ дутуу");
+    expect(refuse).toBeEnabled();
+    await user.click(refuse);
+
+    await waitFor(() =>
+      expect(api.calls.find((call) => call.url.endsWith("/reject"))?.body).toEqual({
+        reviewNote: "Гэрчилгээ дутуу",
+      }),
+    );
+    expect(api.calls.some((call) => call.url.endsWith("/approve"))).toBe(false);
+  });
+
+  it("reads each state from the API, and says what to wait for when none is there", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/applications", body: list([]) },
+    ]);
+    renderWithProviders(<ApplicationsPage />);
+
+    expect(await screen.findByText("Хүсэлт алга")).toBeInTheDocument();
+    const states = screen.getByRole("group", { name: "Хүсэлтийн төлөв" });
+    expect(within(states).getByRole("button", { name: "Хүлээгдэж буй" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.click(within(states).getByRole("button", { name: "Татгалзсан" }));
+    await waitFor(() =>
+      expect(api.calls.some((call) => call.url.includes("status=REJECTED"))).toBe(true),
+    );
+    expect(within(states).getByRole("button", { name: "Татгалзсан" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
 });

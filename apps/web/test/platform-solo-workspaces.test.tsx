@@ -153,4 +153,34 @@ describe("the operator's solo workspaces", () => {
       }),
     );
   });
+
+  it("says why a kindergarten without a school year cannot take the workspace", async () => {
+    const user = userEvent.setup();
+    const api = stub({ ok: false, refusal: { kind: "noSchoolYear" }, targetGroups: [] });
+    renderWithProviders(<SoloWorkspacesPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Цэцэрлэгт нэгтгэх" }));
+    const dialog = await screen.findByRole("dialog");
+    await selectOption(user, /Цэцэрлэг/, "Нарлаг цэцэрлэг");
+    await user.click(within(dialog).getByRole("button", { name: "Урьдчилан харах" }));
+
+    expect(
+      await within(dialog).findByText("Цэцэрлэгт идэвхтэй хичээлийн жил алга."),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Нэгтгэх" })).toBeDisabled();
+    expect(api.calls.some((c) => c.url.endsWith("/merge"))).toBe(false);
+  });
+
+  it("says where a solo teacher comes from when there is none yet", async () => {
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/solo-workspaces", body: page([]) },
+    ]);
+    renderWithProviders(<SoloWorkspacesPage />);
+
+    expect(await screen.findByText("Бие даасан багш алга")).toBeInTheDocument();
+    expect(
+      screen.getByText("Багш «Үнийн санал» хуудаснаас бүртгүүлэхэд энд харагдана."),
+    ).toBeInTheDocument();
+  });
 });
