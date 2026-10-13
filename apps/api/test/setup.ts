@@ -7,6 +7,19 @@
 
 import { config } from "dotenv";
 import { resolve } from "node:path";
+/*
+ * ★ Zod's ESM build, loaded before anything can load `@kinder/contracts`.
+ *
+ * Under vitest the api's TypeScript imports zod as ESM while the contracts'
+ * built CommonJS `require`s it: two zod instances sharing one
+ * `globalThis.__zod_globalConfig`, and each one's first load runs
+ * `config(en())`. Whichever loads *after* the contracts entry point has
+ * installed the Mongolian locale switches every message back to English —
+ * which is what happened once a module importing the contracts came first in
+ * `app.module.ts` (#215, "expected date, received Date"). Production runs one
+ * CommonJS instance and is unaffected; this pins the order here.
+ */
+import "zod";
 
 config({ path: resolve(__dirname, "../../../.env"), quiet: true });
 
