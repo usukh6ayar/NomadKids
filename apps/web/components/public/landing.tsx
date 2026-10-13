@@ -310,7 +310,7 @@ function LoginCard() {
 
       router.replace(
         primary.dashboard === "platform"
-          ? "/platform"
+          ? "/platform/overview"
           : primary.dashboard === "admin"
             ? "/admin"
             : primary.dashboard === "teacher"

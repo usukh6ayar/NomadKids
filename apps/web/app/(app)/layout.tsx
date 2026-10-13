@@ -1416,6 +1416,13 @@ function platformNav(): NavItem[] {
 function platformSections(): NavSection[] {
   return [
     {
+      title: "",
+      entries: [
+        // What is waiting, first — 2026-10-13.
+        { href: "/platform/overview", label: "Самбар", icon: <RailGlyph icon={LayoutGrid} /> },
+      ],
+    },
+    {
       title: "Байгууллага",
       entries: [
         { href: "/platform", label: "Цэцэрлэгүүд", icon: <RailGlyph icon={Building2} /> },
@@ -1424,12 +1431,14 @@ function platformSections(): NavSection[] {
           href: "/platform/applications",
           label: "Байгууллагын хүсэлт",
           icon: <RailGlyph icon={Inbox} />,
+          badge: "platformApplications",
         },
         // Solo teachers' workspaces, and their merge into a kindergarten (D3).
         {
           href: "/platform/solo-workspaces",
           label: "Бие даасан багш",
           icon: <RailGlyph icon={UserRound} />,
+          badge: "platformSolo",
         },
       ],
     },

@@ -42,6 +42,10 @@ import { z } from "zod";
 import { Input } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/states";
 import { qk } from "@/lib/api/keys";
+import {
+  usePendingApplicationsCount,
+  useSoloWorkspacesCount,
+} from "@/components/platform/platform-counts";
 import { useMyProfile } from "@/lib/use-my-profile";
 import { useLogout, useSession } from "@/lib/auth/session";
 import { setNavigationMenu } from "@/lib/nav-history";
@@ -101,7 +105,7 @@ export interface NavItem {
    * `unread` shows the unread-notification count — only one item sets it.
    * `surveys` shows the administration's surveys a teacher has not opened.
    */
-  badge?: "unread" | "surveys" | "serviceAccess";
+  badge?: "unread" | "surveys" | "serviceAccess" | "platformApplications" | "platformSolo";
   /** Small trailing context used by the guardian service row. */
   tag?: string;
   /** Runs instead of navigating. See `href`. */
@@ -144,7 +148,7 @@ export interface NavSection {
     href?: string;
     /** Opens something in place instead of navigating — «Тусламж»'s windows. */
     onSelect?: () => void;
-    badge?: "unread" | "surveys" | "serviceAccess";
+    badge?: "unread" | "surveys" | "serviceAccess" | "platformApplications" | "platformSolo";
     tag?: string;
     /**
      * A small mark before the label — a lucide icon at the same weight as
@@ -2310,7 +2314,10 @@ function PillBottomBar({
                 {item.badge === "unread" ? <UnreadDot /> : null}
                 {item.badge === "surveys" ? <SurveyUnreadDot /> : null}
                 {item.badge === "serviceAccess" ? <ServiceAccessDot /> : null}
-                {item.badge === "serviceAccess" ? <ServiceAccessDot /> : null}
+                {item.badge === "platformApplications" ? (
+                  <PlatformCountDot kind="applications" />
+                ) : null}
+                {item.badge === "platformSolo" ? <PlatformCountDot kind="solo" /> : null}
               </span>
               {/*
                 ★ Not drawn — 2026-10-01, at the client's instruction: the
@@ -2483,6 +2490,8 @@ function NavLink({
         {horizontal ? (item.barIcon ?? item.icon) : item.icon}
         {item.badge === "unread" ? <UnreadDot /> : null}
         {item.badge === "surveys" ? <SurveyUnreadDot /> : null}
+        {item.badge === "platformApplications" ? <PlatformCountDot kind="applications" /> : null}
+        {item.badge === "platformSolo" ? <PlatformCountDot kind="solo" /> : null}
       </span>
       {/*
         ★ The phone bar draws icons only — 2026-10-01, at the client's
@@ -2582,6 +2591,26 @@ function ServiceAccessDot() {
 }
 
 const serviceAccessRemindSchema = z.object({ remind: z.boolean().optional() });
+
+/**
+ * The operator's queues as a red count — pending applications and solo
+ * workspaces not yet merged (2026-10-13). Nothing at zero.
+ */
+function PlatformCountDot({ kind }: { kind: "applications" | "solo" }) {
+  const applications = usePendingApplicationsCount(kind === "applications");
+  const solo = useSoloWorkspacesCount(kind === "solo");
+  const count = kind === "applications" ? applications : solo;
+  if (!count) return null;
+
+  return (
+    <span className="absolute -right-2.5 -top-1.5 flex min-w-[18px] items-center justify-center rounded-pill bg-danger px-1 text-caption font-bold leading-[18px] text-white">
+      <span aria-hidden="true">{count > 99 ? "99+" : count}</span>
+      <span className="sr-only">
+        {count} {kind === "applications" ? "хүлээгдэж буй хүсэлт" : "нэгтгэгдээгүй орчин"}
+      </span>
+    </span>
+  );
+}
 
 function useUnreadCount(): number {
   const { data } = useQuery({

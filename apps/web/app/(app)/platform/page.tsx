@@ -16,6 +16,7 @@ import { ToggleActiveButton } from "@/components/admin/toggle-kindergarten-activ
 import { DeleteKindergartenButton } from "@/components/admin/delete-kindergarten-button";
 import { RegisterKindergartenDialog } from "@/components/platform/register-kindergarten-dialog";
 import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
+import { PlatformStatsStrip } from "@/components/platform/platform-stats-strip";
 import { formatRelative } from "@/lib/format";
 
 /** "" = no filter (Бүгд); the API's `isActive` param is a `z.stringbool()`. */
@@ -85,31 +86,7 @@ function Platform() {
         }
       />
 
-      {/*
-        ★ One strip, not five cards — 2026-10-13, the user: minimal, compact,
-        formal. The figures share a hairline-divided row; no icons.
-      */}
-      {stats.data ? (
-        <section
-          aria-label="Системийн товч мэдээлэл"
-          className="grid grid-cols-2 overflow-hidden rounded-card border border-border bg-white sm:grid-cols-5 [&>div]:border-border-soft [&>div:not(:last-child)]:border-b sm:[&>div:not(:last-child)]:border-b-0 sm:[&>div:not(:last-child)]:border-r"
-        >
-          {[
-            { label: "Цэцэрлэг", value: stats.data.kindergartens },
-            { label: "Бүлэг", value: stats.data.groups },
-            { label: "Хүүхэд", value: stats.data.children },
-            { label: "Багш, ажилтан", value: stats.data.staff },
-            { label: "Идэвхтэй эцэг эх", value: stats.data.guardians },
-          ].map(({ label, value }) => (
-            <div key={label} className="px-4 py-3">
-              <p className="text-caption text-muted">{label}</p>
-              <p className="mt-0.5 text-title font-bold tabular-nums text-ink">
-                {value.toLocaleString("en-US")}
-              </p>
-            </div>
-          ))}
-        </section>
-      ) : null}
+      {stats.data ? <PlatformStatsStrip stats={stats.data} /> : null}
 
       {/*
         ★ ЭСИС-тэй тулгалт, platform-wide — 2026-09-24, the same request that

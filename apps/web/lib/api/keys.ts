@@ -421,4 +421,8 @@ export const qk = {
     ["platform", "kindergartens", filters] as const,
   platformKindergarten: (id: string) => ["platform", "kindergartens", "detail", id] as const,
   platformStats: () => ["platform", "stats"] as const,
+  /** Counts for the operator's dashboard and menu — `platform-counts.ts`. */
+  platformPendingApplications: () => ["platform", "applications", "pending-count"] as const,
+  platformSoloWorkspacesCount: () => ["platform", "solo-workspaces", "count"] as const,
+  platformRevenueMonth: (month: string) => ["platform", "revenue", month] as const,
 } as const;
