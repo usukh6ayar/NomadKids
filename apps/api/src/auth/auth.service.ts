@@ -147,13 +147,19 @@ export class AuthService {
   // ── Devices (#211, the user 2026-10-12) ───────────────────────────────────
 
   /**
-   * Refuses a sign-in that would put the account on more devices than
-   * `AUTH_DEVICE_LIMIT` allows — after the password has been proven, so the
-   * 409 says nothing to somebody who does not know it.
+   * Makes room for this sign-in within `AUTH_DEVICE_LIMIT` — after the
+   * password has been proven, so nobody who does not know it signs anyone out.
    *
-   * ★ `replaceSessionId` signs one of this account's devices out first. It is
-   * honoured only after the password, and only for a device of this account:
-   * an id that is not one is refused with the same 409, never used.
+   * ★ At the limit, the device used longest ago is signed out and this one
+   * signed in, with no question asked (the user, 2026-10-13: «аль нэг нь шууд
+   * log out гараад би орж болох уу»). As many go as it takes, oldest first:
+   * accounts signed in on more devices before the limit existed come down to
+   * it in one sign-in. Decided here rather than in the web, so every client
+   * signs in the same way (#222 did it in the browser, one request a device).
+   *
+   * `replaceSessionId` still names a device to go first. It is honoured only
+   * for a device of this account: an id that is not one is refused with 409,
+   * never used.
    *
    * Two sign-ins racing past the count can both succeed. That is one device
    * too many until either signs out, which is not worth a lock on the login
@@ -179,7 +185,16 @@ export class AuthService {
       });
       devices = devices.filter((device) => device.id !== replaceSessionId);
     }
-    if (devices.length >= limit) throw deviceLimit(limit);
+
+    // `listActiveDevices` is newest-used first, so the oldest are at the end.
+    for (const device of devices.slice(limit - 1).reverse()) {
+      await this.repo.revokeFamily(device.id);
+      await this.audit.append({
+        action: "LOGOUT",
+        actorUserId: user.id,
+        metadata: { reason: "device_limit_oldest", familyId: device.id },
+      });
+    }
   }
 
   /**
