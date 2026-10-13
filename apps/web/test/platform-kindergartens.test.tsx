@@ -36,6 +36,8 @@ const ROWS = [
     groupCount: 6,
     childCount: 142,
     staffCount: 18,
+    esisStaffLinked: 15,
+    esisChildrenLinked: 140,
   }),
   KG({ id: "22222222-2222-4222-8222-222222222222", name: "Хүслэн", phone: null, email: null }),
 ];
@@ -271,5 +273,19 @@ describe("the operator's kindergartens table", () => {
     expect(totals()).toHaveTextContent("Нийт: 1 цэцэрлэг");
     expect(totals()).toHaveTextContent("142");
     expect(totals()).not.toHaveTextContent("Идэвхтэй эцэг эх");
+  });
+
+  it("reconciles each kindergarten with ESIS in its own columns", async () => {
+    renderPage();
+    const table = await screen.findByRole("table");
+    for (const heading of ["ЭСИС ажилтан", "ЭСИС суралцагч"]) {
+      expect(within(table).getByRole("columnheader", { name: heading })).toBeInTheDocument();
+    }
+    const [first, second] = [...table.querySelectorAll<HTMLElement>("tbody tr")];
+    expect(first).toHaveTextContent("15 / 18");
+    expect(first).toHaveTextContent("140 / 142");
+    expect(second).toHaveTextContent("—");
+    // The block of platform-wide figures above the table is gone.
+    expect(screen.queryByRole("region", { name: "ЭСИС-тэй тулгалт" })).toBeNull();
   });
 });

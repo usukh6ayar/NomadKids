@@ -54,6 +54,14 @@ const rowSchema = platformKindergartenSchema.extend({
   contractEndsOn: z.string().nullish(),
   /** Linked to ESIS; read from `esisInstitutionId` until the API says so itself. */
   esisConnected: z.boolean().nullish(),
+  /*
+   * ★ The ESIS reconciliation, per kindergarten — it was one block of
+   * platform-wide figures above the table (2026-09-24) and became columns on
+   * 2026-10-13 (the user: "хүснэгтэд нэмж … хянах"). Staff accounts matched
+   * to their ESIS row, and children that came from ESIS.
+   */
+  esisStaffLinked: z.number().int().nullish(),
+  esisChildrenLinked: z.number().int().nullish(),
 });
 type Row = z.infer<typeof rowSchema>;
 const listSchema = paginated(rowSchema);
@@ -129,55 +137,6 @@ function Platform() {
           </Button>
         }
       />
-
-      {/*
-        ★ ЭСИС-тэй тулгалт, platform-wide — 2026-09-24, the same request that
-        put it on the director's dashboard: how much of this came from the
-        ministry, and how much of it can actually sign in.
-
-        ★★ Local sums, no outbound call. `EsisStaffRoster` holds every tenant's
-        staff list already; reading each kindergarten live would be one request
-        per tenant on a page open.
-
-        ★★★ The children and group figures count records carrying a ministry
-        id — provenance, not ESIS's own totals, which are not stored. Labelled
-        as such rather than presented as the ministry's number.
-      */}
-      {stats.data?.esis ? (
-        <section
-          aria-label="ЭСИС-тэй тулгалт"
-          className="rounded-card border border-border bg-white px-4 py-3"
-        >
-          <h2 className="text-caption font-semibold uppercase tracking-[0.12em] text-muted">
-            ЭСИС-тэй тулгалт
-          </h2>
-          <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 xl:grid-cols-5">
-            <PlatformEsisFigure
-              label="Холбогдсон цэцэрлэг"
-              value={`${stats.data.esis.connected} / ${stats.data.kindergartens}`}
-            />
-            <PlatformEsisFigure
-              label="ЭСИС-д бүртгэлтэй ажилтан"
-              value={stats.data.esis.staffInRoster}
-            />
-            <PlatformEsisFigure
-              label="Системд бүртгэлтэй ажилтан"
-              value={stats.data.esis.staffRegistered}
-            />
-            <PlatformEsisFigure
-              label="ЭСИС-тэй холбогдсон бүртгэл"
-              value={`${stats.data.esis.staffLinked} / ${stats.data.esis.staffRegistered}`}
-              /* The one figure that is a backlog: an unlinked account is a
-                 person the staff directory cannot match to their ESIS row. */
-              warn={stats.data.esis.staffLinked < stats.data.esis.staffRegistered}
-            />
-            <PlatformEsisFigure
-              label="ЭСИС-ээс ирсэн суралцагч"
-              value={`${stats.data.esis.childrenLinked} / ${stats.data.children}`}
-            />
-          </dl>
-        </section>
-      ) : null}
 
       {/* Kindergartens and solo teachers, side by side — 2026-10-13, the user. */}
       <div role="tablist" aria-label="Жагсаалт" className="flex gap-1 border-b border-border">
@@ -297,7 +256,7 @@ function Platform() {
 
         {rows.length > 0 ? (
           <div className="overflow-x-auto rounded-control border border-border bg-white">
-            <table className="w-full min-w-[1400px] border-separate border-spacing-0 text-left text-caption">
+            <table className="w-full min-w-[1560px] border-separate border-spacing-0 text-left text-caption">
               <thead className="bg-slate-50 text-muted">
                 <tr className="[&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-r [&>th]:border-border [&>th]:px-3 [&>th]:py-2 [&>th]:font-semibold [&>th:last-child]:border-r-0">
                   <th scope="col" className={`${FROZEN_NO} bg-slate-50 text-right`}>
@@ -314,6 +273,12 @@ function Platform() {
                   <SortHeader label="Аймаг / дүүрэг" column="area" sort={sort} onSort={sortBy} />
                   <th scope="col">ЭСИС холболт</th>
                   <th scope="col">ЭСИС код</th>
+                  <th scope="col" className="text-right">
+                    ЭСИС ажилтан
+                  </th>
+                  <th scope="col" className="text-right">
+                    ЭСИС суралцагч
+                  </th>
                   <SortHeader
                     label="Бүлэг"
                     column="groups"
@@ -371,30 +336,6 @@ function Platform() {
       ) : null}
 
       {creating ? <RegisterKindergartenDialog onClose={() => setCreating(false)} /> : null}
-    </div>
-  );
-}
-
-/** One figure in the platform's ESIS strip. */
-function PlatformEsisFigure({
-  label,
-  value,
-  warn = false,
-}: {
-  label: string;
-  value: string | number;
-  warn?: boolean;
-}) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-caption text-muted">{label}</dt>
-      <dd
-        className={`mt-0.5 truncate text-body font-semibold tabular-nums ${
-          warn ? "text-sun-ink" : "text-ink"
-        }`}
-      >
-        {value}
-      </dd>
     </div>
   );
 }
@@ -465,6 +406,12 @@ function KindergartenRow({
         <EsisCell kg={kg} />
       </td>
       <td className={`${cell} tabular-nums`}>{kg.esisInstitutionId || "—"}</td>
+      <td className={`${cell} whitespace-nowrap text-right tabular-nums`}>
+        {ratio(kg.esisStaffLinked, kg.staffCount)}
+      </td>
+      <td className={`${cell} whitespace-nowrap text-right tabular-nums`}>
+        {ratio(kg.esisChildrenLinked, kg.childCount)}
+      </td>
       <td className={`${cell} text-right tabular-nums`}>{kg.groupCount ?? "—"}</td>
       <td className={`${cell} text-right tabular-nums`}>{kg.childCount ?? "—"}</td>
       <td className={`${cell} text-right tabular-nums`}>{kg.staffCount ?? "—"}</td>
@@ -586,6 +533,8 @@ function downloadSheet(rows: Row[]) {
     "Аймаг / дүүрэг",
     "ЭСИС холболт",
     "ЭСИС код",
+    "ЭСИС ажилтан",
+    "ЭСИС суралцагч",
     "Бүлэг",
     "Хүүхэд",
     "Ажилтан",
@@ -602,6 +551,8 @@ function downloadSheet(rows: Row[]) {
     areaOf(kg) ?? "",
     esisConnected(kg) ? "Холбогдсон" : "Холбогдоогүй",
     kg.esisInstitutionId ?? "",
+    ratio(kg.esisStaffLinked, kg.staffCount, ""),
+    ratio(kg.esisChildrenLinked, kg.childCount, ""),
     kg.groupCount ?? "",
     kg.childCount ?? "",
     kg.staffCount ?? "",
@@ -782,13 +733,39 @@ function KindergartenTotals({ rows, platform }: { rows: Row[]; platform: Platfor
       <td className={cell} />
       <td className={cell} />
       <td className={`${cell} whitespace-nowrap`}>
-        {connected} / {rows.length}
+        {platform?.esis ? platform.esis.connected : connected} /{" "}
+        {platform ? platform.kindergartens : rows.length}
       </td>
       <td className={cell} />
+      <td className={`${cell} whitespace-nowrap text-right tabular-nums`}>
+        {platform?.esis
+          ? ratio(platform.esis.staffLinked, platform.esis.staffRegistered)
+          : ratio(
+              sumOf(rows, (row) => row.esisStaffLinked),
+              sumOf(rows, (row) => row.staffCount),
+            )}
+      </td>
+      <td className={`${cell} whitespace-nowrap text-right tabular-nums`}>
+        {platform?.esis
+          ? ratio(platform.esis.childrenLinked, platform.children)
+          : ratio(
+              sumOf(rows, (row) => row.esisChildrenLinked),
+              sumOf(rows, (row) => row.childCount),
+            )}
+      </td>
       <td className={`${cell} text-right tabular-nums`}>{figure(groups)}</td>
       <td className={`${cell} text-right tabular-nums`}>{figure(children)}</td>
       <td className={`${cell} text-right tabular-nums`}>{figure(staff)}</td>
       <td className={cell} colSpan={6} />
     </tr>
   );
+}
+
+/** «3 / 5», or «—» (or `empty`) while either figure is missing. */
+function ratio(
+  part: number | null | undefined,
+  whole: number | null | undefined,
+  empty = "—",
+): string {
+  return typeof part === "number" && typeof whole === "number" ? `${part} / ${whole}` : empty;
 }
