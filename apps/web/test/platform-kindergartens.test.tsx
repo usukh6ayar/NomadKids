@@ -308,4 +308,25 @@ describe("the operator's kindergartens table", () => {
     expect(plain[0]).toHaveTextContent("Хүслэн");
     expect(await pick("Бүгд")).toHaveLength(2);
   });
+
+  it("names each chosen filter as a chip, and clears them", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole("table");
+    expect(screen.getByText("2 цэцэрлэг")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Өмчийн хэлбэрээр шүүх"));
+    await user.click(screen.getByRole("option", { name: "Төрийн" }));
+    expect(screen.getByText("2-оос 1 цэцэрлэг")).toBeInTheDocument();
+    expect(screen.getByText("Идэвхтэй шүүлтүүр:")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "«Төрийн» шүүлтүүрийг арилгах" }));
+    expect(document.querySelectorAll("tbody tr")).toHaveLength(2);
+    expect(screen.queryByText("Идэвхтэй шүүлтүүр:")).toBeNull();
+
+    await user.click(screen.getByLabelText("Өмчийн хэлбэрээр шүүх"));
+    await user.click(screen.getByRole("option", { name: "Төрийн" }));
+    await user.click(screen.getByRole("button", { name: "Бүгдийг цэвэрлэх" }));
+    expect(document.querySelectorAll("tbody tr")).toHaveLength(2);
+  });
 });

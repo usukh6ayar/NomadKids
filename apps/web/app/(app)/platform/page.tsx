@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
 import { z } from "zod";
-import { Building2, FileDown, Plus, Search } from "lucide-react";
+import { Building2, FileDown, Plus, Search, X } from "lucide-react";
 import {
   paginated,
   platformKindergartenSchema,
@@ -32,6 +32,60 @@ const STATUS_OPTIONS = [
   { value: "true", label: "Идэвхтэй" },
   { value: "false", label: "Идэвхгүй" },
 ] as const;
+
+/** «Бүгд», «Цэцэрлэг» (not linked to ESIS) or «ЭСИС цэцэрлэг». */
+const KIND_OPTIONS = [
+  { value: "", label: "Бүгд" },
+  { value: "plain", label: "Цэцэрлэг" },
+  { value: "esis", label: "ЭСИС цэцэрлэг" },
+] as const;
+
+const OWNERSHIP_OPTIONS = [
+  { value: "", label: "Бүгд" },
+  { value: "Төрийн", label: "Төрийн" },
+  { value: "Төрийн бус", label: "Төрийн бус" },
+] as const;
+
+type FilterOption = { readonly value: string; readonly label: string };
+
+function labelOf(options: readonly FilterOption[], value: string): string {
+  return options.find((option) => option.value === value)?.label ?? value;
+}
+
+/** A named filter — «Төрөл: [Бүгд ▾]» — ringed in blue once it narrows the list. */
+function FilterSelect({
+  label,
+  ariaLabel,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  ariaLabel: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: readonly FilterOption[];
+}) {
+  return (
+    <label className="flex items-center gap-1.5 text-caption text-muted">
+      <span className="whitespace-nowrap">{label}:</span>
+      <Select
+        aria-label={ariaLabel}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`h-9 w-auto min-w-[120px] text-compact ${
+          value ? "border-primary ring-2 ring-primary/20" : ""
+        }`}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </Select>
+    </label>
+  );
+}
 
 /*
  * ★ The columns the operator asked for (2026-10-13). The list route returns
@@ -128,6 +182,29 @@ function Platform() {
     )
     .sort((a, b) => compareRows(a, b, sort.key, sort.dir));
   const filtered = Boolean(query.trim() || status || ownership || area || kind);
+  const total = stats.data?.kindergartens ?? items.length;
+  const chips = [
+    query.trim() && { key: "q", label: `«${query.trim()}»`, clear: () => setQuery("") },
+    kind && {
+      key: "kind",
+      label: labelOf(KIND_OPTIONS, kind),
+      clear: () => setKind(""),
+    },
+    ownership && { key: "ownership", label: ownership, clear: () => setOwnership("") },
+    area && { key: "area", label: area, clear: () => setArea("") },
+    status && {
+      key: "status",
+      label: labelOf(STATUS_OPTIONS, status),
+      clear: () => setStatus(""),
+    },
+  ].filter((chip): chip is { key: string; label: string; clear: () => void } => Boolean(chip));
+  const clearAll = () => {
+    setQuery("");
+    setKind("");
+    setOwnership("");
+    setArea("");
+    setStatus("");
+  };
   const sortBy = (key: SortKey) =>
     setSort((current) => ({ key, dir: current.key === key ? (-current.dir as 1 | -1) : 1 }));
 
@@ -177,18 +254,13 @@ function Platform() {
         className="flex flex-col gap-2"
         hidden={tab !== "kindergartens"}
       >
+        {/*
+         * ★ The filter bar, made legible (2026-10-13, the user): the search on
+         * its own row, every filter named before it with «Бүгд» as its default,
+         * a chosen filter ringed and repeated as a removable chip below.
+         */}
         <div className="flex flex-wrap items-center gap-2">
-          <Select
-            aria-label="ЭСИС-ээр шүүх"
-            value={kind}
-            onChange={(e) => setKind(e.target.value as "" | "plain" | "esis")}
-            className="h-9 w-full text-compact sm:w-[160px]"
-          >
-            <option value="">Бүгд</option>
-            <option value="plain">Цэцэрлэг</option>
-            <option value="esis">ЭСИС цэцэрлэг</option>
-          </Select>
-          <label className="relative min-w-0 flex-1 sm:max-w-[320px]">
+          <label className="relative min-w-0 flex-1 sm:max-w-[480px]">
             <span className="sr-only">Нэрээр хайх</span>
             <Search
               size={16}
@@ -204,44 +276,11 @@ function Platform() {
               className="h-9 pl-9 text-compact"
             />
           </label>
-          <Select
-            aria-label="Өмчийн хэлбэрээр шүүх"
-            value={ownership}
-            onChange={(e) => setOwnership(e.target.value)}
-            className="h-9 w-full text-compact sm:w-[150px]"
-          >
-            <option value="">Өмчийн хэлбэр</option>
-            <option value="Төрийн">Төрийн</option>
-            <option value="Төрийн бус">Төрийн бус</option>
-          </Select>
-          <Select
-            aria-label="Аймаг, дүүргээр шүүх"
-            value={area}
-            onChange={(e) => setArea(e.target.value)}
-            className="h-9 w-full text-compact sm:w-[170px]"
-          >
-            <option value="">Аймаг / дүүрэг</option>
-            {areas.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </Select>
-          <Select
-            aria-label="Төлвөөр шүүх"
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="h-9 w-full text-compact sm:w-[130px]"
-          >
-            {STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.value ? option.label : "Төлөв"}
-              </option>
-            ))}
-          </Select>
           {kindergartens.data ? (
             <span className="ml-auto flex items-center gap-2">
-              <span className="text-caption text-muted">{rows.length} цэцэрлэг</span>
+              <span className="text-caption text-muted">
+                {filtered ? `${total}-оос ${rows.length}` : rows.length} цэцэрлэг
+              </span>
               <Button
                 size="sm"
                 variant="secondary"
@@ -254,6 +293,63 @@ function Platform() {
             </span>
           ) : null}
         </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <FilterSelect
+            label="Төрөл"
+            ariaLabel="ЭСИС-ээр шүүх"
+            value={kind}
+            onChange={(value) => setKind(value as "" | "plain" | "esis")}
+            options={KIND_OPTIONS}
+          />
+          <FilterSelect
+            label="Өмчийн хэлбэр"
+            ariaLabel="Өмчийн хэлбэрээр шүүх"
+            value={ownership}
+            onChange={setOwnership}
+            options={OWNERSHIP_OPTIONS}
+          />
+          <FilterSelect
+            label="Аймаг / дүүрэг"
+            ariaLabel="Аймаг, дүүргээр шүүх"
+            value={area}
+            onChange={setArea}
+            options={[
+              { value: "", label: "Бүгд" },
+              ...areas.map((name) => ({ value: name, label: name })),
+            ]}
+          />
+          <FilterSelect
+            label="Төлөв"
+            ariaLabel="Төлвөөр шүүх"
+            value={status}
+            onChange={setStatus}
+            options={STATUS_OPTIONS}
+          />
+        </div>
+        {chips.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2 text-caption">
+            <span className="text-muted">Идэвхтэй шүүлтүүр:</span>
+            {chips.map((chip) => (
+              <button
+                key={chip.key}
+                type="button"
+                onClick={chip.clear}
+                aria-label={`«${chip.label}» шүүлтүүрийг арилгах`}
+                className="inline-flex min-h-7 items-center gap-1 rounded-pill border border-primary/30 bg-primary/5 px-2.5 font-semibold text-ink hover:bg-primary/10"
+              >
+                {chip.label}
+                <X size={12} aria-hidden="true" />
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={clearAll}
+              className="min-h-7 px-1 font-semibold text-primary hover:underline"
+            >
+              Бүгдийг цэвэрлэх
+            </button>
+          </div>
+        ) : null}
 
         {kindergartens.isLoading ? <LoadingState rows={5} /> : null}
         {kindergartens.isError ? (
