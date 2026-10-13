@@ -154,7 +154,47 @@ export class AuthRepository {
   async findSessionById(sessionId: string) {
     return this.prisma.session.findUnique({
       where: { id: sessionId },
-      select: { id: true, userId: true, revokedAt: true, expiresAt: true },
+      select: { id: true, userId: true, familyId: true, revokedAt: true, expiresAt: true },
+    });
+  }
+
+  /**
+   * The devices an account is signed in on: one per refresh-token family that
+   * still has a live row. The live row is the family's newest — every refresh
+   * revokes the row it replaces — so its `createdAt` is when the device was
+   * last used, and the family's oldest row is when it signed in.
+   *
+   * ★ Capped: with the limit off an account can hold any number of families,
+   * and no list here is unbounded (§3.4).
+   */
+  async listActiveDevices(userId: string, now: Date) {
+    const live = await this.prisma.session.findMany({
+      where: { userId, revokedAt: null, expiresAt: { gt: now } },
+      select: { familyId: true, userAgent: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    });
+    if (live.length === 0) return [];
+
+    const started = await this.prisma.session.groupBy({
+      by: ["familyId"],
+      where: { userId, familyId: { in: [...new Set(live.map((row) => row.familyId))] } },
+      _min: { createdAt: true },
+    });
+    const startedAt = new Map(started.map((row) => [row.familyId, row._min.createdAt]));
+
+    const seen = new Set<string>();
+    return live.flatMap((row) => {
+      if (seen.has(row.familyId)) return [];
+      seen.add(row.familyId);
+      return [
+        {
+          id: row.familyId,
+          userAgent: row.userAgent,
+          createdAt: startedAt.get(row.familyId) ?? row.createdAt,
+          lastUsedAt: row.createdAt,
+        },
+      ];
     });
   }
 

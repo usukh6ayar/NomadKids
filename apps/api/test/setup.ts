@@ -102,6 +102,10 @@ process.env.ESIS_WRITE_WORKER_ENABLED = "false";
 // `test/portal-access.test.ts` set a price themselves.
 process.env.ACCESS_FEE_AMOUNT ??= "0";
 
+// ★ The device limit is OFF by default under test. Fixtures sign the same seed
+// users in many times per file; `test/device-limit.test.ts` sets its own.
+process.env.AUTH_DEVICE_LIMIT ??= "0";
+
 /*
  * ★★ ESIS gets the same treatment, and for a sharper reason — 2026-09-11.
  *

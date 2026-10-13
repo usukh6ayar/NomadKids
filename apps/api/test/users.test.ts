@@ -334,9 +334,7 @@ describe("PATCH /users/:id", () => {
 
   /** The 409 the edit dialog renders above its form. */
   it("refuses an email another account already holds", async () => {
-    await authed(request(server()).patch(`/v1/users/${a.parentUser.id}`), adminA).send({
-      email: "taken@nomadkids.mn",
-    });
+    await db.user.update({ where: { id: a.parentUser.id }, data: { email: "taken@nomadkids.mn" } });
 
     const res = await authed(request(server()).patch(`/v1/users/${a.teacherUser.id}`), adminA).send(
       { email: "taken@nomadkids.mn" },
@@ -346,9 +344,7 @@ describe("PATCH /users/:id", () => {
   });
 
   it("refuses a phone another account already holds", async () => {
-    await authed(request(server()).patch(`/v1/users/${a.parentUser.id}`), adminA).send({
-      phone: "99887766",
-    });
+    await db.user.update({ where: { id: a.parentUser.id }, data: { phone: "99887766" } });
 
     const res = await authed(request(server()).patch(`/v1/users/${a.teacherUser.id}`), adminA).send(
       { phone: "99887766" },
@@ -385,6 +381,153 @@ describe("PATCH /users/:id", () => {
 
     expect(res.status).toBe(400);
     expect(res.body.errors?.phone).toBeDefined();
+  });
+});
+
+/**
+ * The account is not the kindergarten's (#211, 2026-10-13).
+ *
+ * One sign-in reaches every kindergarten a person works at and every child
+ * they are a guardian of. An administrator acts on the account — switching it
+ * off, changing the e-mail or phone a reset reaches, issuing a reset link —
+ * only when nothing of it lies outside their own staff. What stays open is
+ * revoking the membership here.
+ */
+describe("account-level changes — only an account the administrator holds whole", () => {
+  async function alsoTeachesInB() {
+    await createMembership(a.teacherUser.id, b.kindergarten.id, "TEACHER");
+  }
+
+  it("refuses to switch off a teacher who also works at another kindergarten", async () => {
+    await alsoTeachesInB();
+
+    const res = await authed(request(server()).patch(`/v1/users/${a.teacherUser.id}`), adminA).send(
+      { isActive: false },
+    );
+
+    expect(res.status).toBe(409);
+    const row = await db.user.findUniqueOrThrow({ where: { id: a.teacherUser.id } });
+    expect(row.isActive).toBe(true);
+  });
+
+  it("refuses to change the phone or e-mail of that teacher, and changes nothing", async () => {
+    await alsoTeachesInB();
+
+    const phone = await authed(
+      request(server()).patch(`/v1/users/${a.teacherUser.id}`),
+      adminA,
+    ).send({ phone: "99112233" });
+    const email = await authed(
+      request(server()).patch(`/v1/users/${a.teacherUser.id}`),
+      adminA,
+    ).send({ email: "mine@nomadkids.mn" });
+
+    expect([phone.status, email.status]).toEqual([409, 409]);
+    const row = await db.user.findUniqueOrThrow({ where: { id: a.teacherUser.id } });
+    expect(row.phone).toBeNull();
+    expect(row.email).toBeNull();
+  });
+
+  it("still edits that teacher's name, and still revokes the membership here only", async () => {
+    await alsoTeachesInB();
+
+    const name = await authed(
+      request(server()).patch(`/v1/users/${a.teacherUser.id}`),
+      adminA,
+    ).send({ lastName: "Шинэ" });
+    const revoke = await authed(
+      request(server()).delete(`/v1/memberships/${a.teacherMembership.id}`),
+      adminA,
+    );
+
+    expect([name.status, revoke.status]).toEqual([200, 204]);
+    const inB = await db.membership.findFirstOrThrow({
+      where: { userId: a.teacherUser.id, kindergartenId: b.kindergarten.id },
+    });
+    expect(inB.isActive).toBe(true);
+    const user = await db.user.findUniqueOrThrow({ where: { id: a.teacherUser.id } });
+    expect(user.isActive).toBe(true);
+  });
+
+  it("refuses to switch off a parent's account", async () => {
+    const res = await authed(request(server()).patch(`/v1/users/${a.parentUser.id}`), adminA).send({
+      isActive: false,
+    });
+
+    expect(res.status).toBe(409);
+  });
+
+  it("sending the value the account already has is not a change", async () => {
+    await alsoTeachesInB();
+
+    const res = await authed(request(server()).patch(`/v1/users/${a.teacherUser.id}`), adminA).send(
+      { isActive: true, lastName: "Хэвээр" },
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  describe("POST /users/:id/password-reset", () => {
+    const reset = (id: string, who: AuthSession) =>
+      authed(request(server()).post(`/v1/users/${id}/password-reset`), who);
+
+    it("issues a one-time link for a teacher who works only here", async () => {
+      const res = await reset(a.teacherUser.id, adminA);
+
+      expect(res.status).toBe(201);
+      expect(res.body.resetToken).toEqual(expect.any(String));
+    });
+
+    it("refuses another director of the same kindergarten", async () => {
+      const second = await createUser({ username: uniq("admin2") });
+      await createMembership(second.id, a.kindergarten.id, "ADMIN");
+
+      expect((await reset(second.id, adminA)).status).toBe(409);
+    });
+
+    it("refuses a parent", async () => {
+      expect((await reset(a.parentUser.id, adminA)).status).toBe(409);
+    });
+
+    it("refuses a teacher who also works at another kindergarten", async () => {
+      await alsoTeachesInB();
+
+      expect((await reset(a.teacherUser.id, adminA)).status).toBe(409);
+      const tokens = await db.authToken.count({
+        where: { userId: a.teacherUser.id, purpose: "PASSWORD_RESET" },
+      });
+      expect(tokens).toBe(0);
+    });
+
+    it("another kindergarten's administrator gets 404", async () => {
+      expect((await reset(a.teacherUser.id, adminB)).status).toBe(404);
+    });
+  });
+
+  describe("POST /users/:id/memberships — attaching a role", () => {
+    const grant = (id: string) =>
+      authed(request(server()).post(`/v1/users/${id}/memberships`), adminA).send({
+        kindergartenId: a.kindergarten.id,
+        role: "TEACHER",
+      });
+
+    it("refuses a person who works at another kindergarten (404)", async () => {
+      expect((await grant(b.teacherUser.id)).status).toBe(404);
+      const rows = await db.membership.count({
+        where: { userId: b.teacherUser.id, kindergartenId: a.kindergarten.id },
+      });
+      expect(rows).toBe(0);
+    });
+
+    it("refuses another kindergarten's parent (404)", async () => {
+      expect((await grant(b.parentUser.id)).status).toBe(404);
+    });
+
+    it("refuses a platform operator (404)", async () => {
+      const operator = await createUser({ username: uniq("op"), isSuperAdmin: true });
+
+      expect((await grant(operator.id)).status).toBe(404);
+    });
   });
 });
 

@@ -2,6 +2,7 @@ import { ConflictException, Injectable } from "@nestjs/common";
 import type { TeacherSignup, TeacherSignupResult } from "@kinder/contracts";
 import { randomBytes } from "node:crypto";
 import { AuditRepository } from "../audit/audit.repository";
+import { PublicKindergartensService } from "../public-kindergartens/public-kindergartens.service";
 import { PasswordService } from "../auth/password.service";
 import { TokenService } from "../auth/token.service";
 import { SoloTeachersRepository } from "./solo-teachers.repository";
@@ -29,9 +30,25 @@ export class SoloTeachersService {
     private readonly passwords: PasswordService,
     private readonly tokens: TokenService,
     private readonly audit: AuditRepository,
+    private readonly publicKindergartens: PublicKindergartensService,
   ) {}
 
   async signup(dto: TeacherSignup, ip: string | null): Promise<TeacherSignupResult> {
+    // ★ A teacher whose kindergarten has signed joins it, not a workspace of
+    // their own beside it (#211 item 3). Equal names in the same district
+    // only — `findSameNamed`; the form's own warning is looser.
+    if (dto.location && dto.kindergartenName) {
+      const contracted = await this.publicKindergartens.findSameNamed(
+        dto.location,
+        dto.kindergartenName,
+      );
+      if (contracted) {
+        throw new ConflictException(
+          `«${contracted.name}» NomadKids-тэй гэрээтэй. «Цэцэрлэгээр» хэсгээс бүртгүүлнэ үү.`,
+        );
+      }
+    }
+
     const taken = await this.repo.contactTaken(dto.email, dto.phone);
     if (taken === "email") throw new ConflictException("Энэ и-мэйл аль хэдийн бүртгэлтэй байна");
     if (taken === "phone") {

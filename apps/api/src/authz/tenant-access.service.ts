@@ -230,6 +230,41 @@ export class TenantAccessService {
   }
 
   /**
+   * Whether the actor may act on a person's **account** — the one sign-in
+   * that reaches every kindergarten they belong to, and every child they are
+   * a guardian of. Deactivating it, changing the e-mail or phone a reset
+   * reaches, issuing a reset link (#211, the user 2026-10-13).
+   *
+   * ★ Not `adminKindergartenIds` alone. A user is in an administrator's
+   * directory when **one** of their memberships is there. Before this rule a
+   * director of A could switch off `User.isActive` for a teacher who also
+   * works at B — or for that teacher's parent account — and could hand
+   * themselves a reset link for another director, or for a parent, and sign
+   * in as them.
+   *
+   * So the account is the administrator's only when every live membership is
+   * in a kindergarten they administer, none of them is ADMIN (a director's
+   * password is the platform operator's to reset), they are a guardian of no
+   * child (a reset link would let the director write in chat as the parent),
+   * and they are not a platform operator. What stays open regardless is
+   * revoking the membership here — `DELETE /memberships/:id`.
+   *
+   * A person with no live membership and no guardianship at all — a new
+   * account, or one whose every role elsewhere has ended — is also the
+   * administrator's: there is nobody else's access to take.
+   */
+  async canManageAccount(actor: Actor, userId: string): Promise<boolean> {
+    const footprint = await this.repo.loadAccountFootprint(userId);
+    if (!footprint || footprint.isSuperAdmin || footprint.guardianships > 0) return false;
+
+    const administered = new Set(this.adminKindergartenIds(actor));
+    if (administered.size === 0) return false;
+    return footprint.memberships.every(
+      (m) => administered.has(m.kindergartenId) && m.role !== Role.ADMIN,
+    );
+  }
+
+  /**
    * Throws 404 unless the actor may address this audience — a notice board
    * post, a survey, anything published *to* families.
    *

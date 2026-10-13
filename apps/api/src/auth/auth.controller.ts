@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -10,6 +11,7 @@ import {
   Res,
   UseGuards,
 } from "@nestjs/common";
+import { idParamSchema } from "@kinder/contracts";
 import { randomBytes } from "node:crypto";
 import type { Request, Response } from "express";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
@@ -18,11 +20,13 @@ import type { Actor } from "../authz/actor";
 import { AuthService, type RequestContext } from "./auth.service";
 import {
   changePasswordSchema,
+  loginDevicesSchema,
   loginSchema,
   invitationAcceptSchema,
   passwordResetConfirmSchema,
   passwordResetPhoneConfirmSchema,
   type ChangePasswordDto,
+  type LoginDevicesDto,
   type LoginDto,
   type InvitationAcceptDto,
   type PasswordResetConfirmDto,
@@ -88,7 +92,12 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.auth.login(body.identifier, body.password, context(req));
+    const result = await this.auth.login(
+      body.identifier,
+      body.password,
+      context(req),
+      body.replaceSessionId,
+    );
     const csrfToken = randomBytes(24).toString("base64url");
 
     setAuthCookies(res, {
@@ -99,6 +108,38 @@ export class AuthController {
 
     const memberships = await this.authz.loadMemberships(result.user.id);
     return { user: result.user, memberships, csrfToken };
+  }
+
+  /**
+   * The devices this account is signed in on, for the sign-in screen when the
+   * limit refused it (#211). The password is checked again, through the same
+   * lockout as the sign-in, and the same rate limit applies.
+   */
+  @Public()
+  @Post("login/devices")
+  @HttpCode(HttpStatus.OK)
+  @RateLimit({ limit: 60, windowMs: 15 * MINUTE })
+  async loginDevices(
+    @Body(new ZodValidationPipe(loginDevicesSchema)) body: LoginDevicesDto,
+    @Req() req: Request,
+  ) {
+    return this.auth.devicesForLogin(body.identifier, body.password, context(req));
+  }
+
+  /** «Бүртгэлтэй төхөөрөмж» — `{ limit, sessions }`, this device marked. */
+  @Get("sessions")
+  async sessions(@CurrentActor() actor: Actor) {
+    return this.auth.devices(actor);
+  }
+
+  /** Signs one of your own devices out. `:id` is a device id from the list. */
+  @Delete("sessions/:id")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async signOutDevice(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ): Promise<void> {
+    await this.auth.signOutDevice(actor, params.id);
   }
 
   /**
