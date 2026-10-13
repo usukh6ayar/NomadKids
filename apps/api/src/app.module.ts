@@ -9,6 +9,7 @@ import { StaffModule } from "./staff/staff.module";
 import { IncidentsModule } from "./incidents/incidents.module";
 import { FeedbackModule } from "./feedback/feedback.module";
 import { RoutineModule } from "./routine/routine.module";
+import { PublicKindergartensModule } from "./public-kindergartens/public-kindergartens.module";
 import { ServiceAccessModule } from "./service-access/service-access.module";
 import { SoloTeachersModule } from "./solo-teachers/solo-teachers.module";
 import { SongsPoemsModule } from "./songs-poems/songs-poems.module";
@@ -85,6 +86,7 @@ import { UsersModule } from "./users/users.module";
     IncidentsModule,
     FeedbackModule,
     RoutineModule,
+    PublicKindergartensModule,
     ServiceAccessModule,
     SoloTeachersModule,
     SongsPoemsModule,

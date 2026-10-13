@@ -9,20 +9,33 @@ import { paginationQuerySchema } from "@kinder/contracts";
  * one would let a caller tell the two apart, which is precisely the
  * uniform-refusal property this route exists to keep.
  */
-export const staffSelfRegistrationSchema = z.object({
-  /**
-   * The kindergarten's ESIS institution number — `Kindergarten.esisInstitutionId`.
-   *
-   * ★ Still only a shape check, and deliberately not `z.coerce.number()`:
-   * the column is a `String?`, and parsing here would make "0042778" and
-   * "42778" two different submissions for one kindergarten while telling a
-   * caller, through a 400, that their value was at least numerically
-   * plausible. `register()` trims it and looks it up; anything that does not
-   * match ends in the same `REFUSAL` as everything else.
-   */
-  institutionId: z.string().min(1).max(64),
-  registerNumber: z.string().min(1).max(32),
-});
+export const staffSelfRegistrationSchema = z
+  .object({
+    /**
+     * The kindergarten's ESIS institution number — `Kindergarten.esisInstitutionId`.
+     *
+     * ★ Still only a shape check, and deliberately not `z.coerce.number()`:
+     * the column is a `String?`, and parsing here would make "0042778" and
+     * "42778" two different submissions for one kindergarten while telling a
+     * caller, through a 400, that their value was at least numerically
+     * plausible. `register()` trims it and looks it up; anything that does not
+     * match ends in the same `REFUSAL` as everything else.
+     */
+    institutionId: z.string().min(1).max(64).optional(),
+    /**
+     * ★ Or the kindergarten chosen from `GET /public/kindergartens` (#211) —
+     * teachers do not know the ESIS number by heart. Also only a shape: a
+     * malformed, unknown or solo id ends in the same `REFUSAL`.
+     */
+    kindergartenId: z.string().min(1).max(64).optional(),
+    registerNumber: z.string().min(1).max(32),
+  })
+  // Exactly one way to name the kindergarten. Which one was sent is the
+  // caller's own choice, so saying so reveals nothing.
+  .refine((dto) => (dto.institutionId === undefined) !== (dto.kindergartenId === undefined), {
+    message: "Байгууллагын дугаар эсвэл цэцэрлэгийн аль нэгийг сонгоно уу",
+    path: ["kindergartenId"],
+  });
 
 export type StaffSelfRegistrationDto = z.infer<typeof staffSelfRegistrationSchema>;
 
