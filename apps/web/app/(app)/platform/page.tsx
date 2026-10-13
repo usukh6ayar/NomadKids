@@ -19,7 +19,7 @@ import { DeleteKindergartenButton } from "@/components/admin/delete-kindergarten
 import { RegisterKindergartenDialog } from "@/components/platform/register-kindergarten-dialog";
 import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
 import { PlatformStatsStrip } from "@/components/platform/platform-stats-strip";
-import { daysUntil, formatDate, formatRelative } from "@/lib/format";
+import { daysUntil, formatDate } from "@/lib/format";
 
 /** "" = no filter (Бүгд); the API's `isActive` param is a `z.stringbool()`. */
 const STATUS_OPTIONS = [
@@ -40,8 +40,12 @@ const rowSchema = platformKindergartenSchema.extend({
   district: z.string().nullish(),
   esisInstitutionId: z.string().nullish(),
   groupCount: z.number().int().nullish(),
+  /** The contract's first day; the registration date stands in until it is sent. */
+  contractStartsOn: z.string().nullish(),
   /** The contract's last day — a red date within 14 days of it. */
   contractEndsOn: z.string().nullish(),
+  /** Linked to ESIS; read from `esisInstitutionId` until the API says so itself. */
+  esisConnected: z.boolean().nullish(),
 });
 type Row = z.infer<typeof rowSchema>;
 const listSchema = paginated(rowSchema);
@@ -255,13 +259,19 @@ function Platform() {
 
         {rows.length > 0 ? (
           <div className="overflow-x-auto rounded-control border border-border bg-white">
-            <table className="w-full min-w-[1040px] border-collapse text-left text-caption">
+            <table className="w-full min-w-[1200px] border-separate border-spacing-0 text-left text-caption">
               <thead className="bg-slate-50 text-muted">
-                <tr className="[&>th]:border-b [&>th]:border-border [&>th]:px-3 [&>th]:py-2 [&>th]:font-semibold">
-                  <th scope="col" className="w-10 text-right">
+                <tr className="[&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-r [&>th]:border-border [&>th]:px-3 [&>th]:py-2 [&>th]:font-semibold [&>th:last-child]:border-r-0">
+                  <th scope="col" className={`${FROZEN_NO} bg-slate-50 text-right`}>
                     №
                   </th>
-                  <SortHeader label="Цэцэрлэг" column="name" sort={sort} onSort={sortBy} />
+                  <SortHeader
+                    label="Цэцэрлэг"
+                    column="name"
+                    sort={sort}
+                    onSort={sortBy}
+                    className={`${FROZEN_NAME} bg-slate-50`}
+                  />
                   <th scope="col">Өмчийн хэлбэр</th>
                   <SortHeader label="Аймаг / дүүрэг" column="area" sort={sort} onSort={sortBy} />
                   <th scope="col">ЭСИС</th>
@@ -274,7 +284,8 @@ function Platform() {
                   />
                   <th scope="col">Утас</th>
                   <th scope="col">И-мэйл</th>
-                  <SortHeader label="Гэрээ дуусах" column="contract" sort={sort} onSort={sortBy} />
+                  <SortHeader label="Эхэлсэн" column="start" sort={sort} onSort={sortBy} />
+                  <SortHeader label="Дуусах" column="contract" sort={sort} onSort={sortBy} />
                   <th scope="col">Төлөв</th>
                   <th scope="col" className="w-10">
                     <span className="sr-only">Үйлдэл</span>
@@ -339,6 +350,38 @@ function areaOf(kg: Row): string | null {
   return [kg.province, kg.district].filter(Boolean).join(" · ") || null;
 }
 
+/*
+ * ★ № and the name stay put while the rest scrolls sideways — 2026-10-13,
+ * the user. `border-separate` (not `collapse`) so a sticky cell keeps its own
+ * borders; the faint shadow marks the edge the columns slide under.
+ */
+const FROZEN_NO = "sticky left-0 z-10 w-10 min-w-10";
+const FROZEN_NAME = "sticky left-10 z-10 min-w-[200px] shadow-[1px_0_0_0_var(--color-border)]";
+
+/** ESIS: «Холбогдсон» with the institution number, or «Холбогдоогүй». */
+function EsisCell({ kg }: { kg: Row }) {
+  const connected = kg.esisConnected ?? Boolean(kg.esisInstitutionId);
+  return (
+    <span className="inline-flex flex-col">
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+        <span
+          aria-hidden="true"
+          className={`size-1.5 rounded-pill ${connected ? "bg-emerald-500" : "bg-slate-300"}`}
+        />
+        {connected ? "Холбогдсон" : "Холбогдоогүй"}
+      </span>
+      {kg.esisInstitutionId ? (
+        <span className="pl-3 tabular-nums text-muted">{kg.esisInstitutionId}</span>
+      ) : null}
+    </span>
+  );
+}
+
+/** When the kindergarten began using NomadKids: the contract, else registration. */
+function startedOn(kg: Row): string {
+  return kg.contractStartsOn ?? kg.createdAt;
+}
+
 function KindergartenRow({
   kg,
   index,
@@ -349,25 +392,28 @@ function KindergartenRow({
   onDelete: () => void;
 }) {
   const toggle = useToggleKindergartenActive(kg);
-  const cell = "border-b border-border-soft px-3 py-2 align-middle";
+  const cell =
+    "border-b border-r border-border-soft px-3 py-2 align-middle bg-white group-hover:bg-slate-50 last:border-r-0";
   return (
-    <tr className="hover:bg-slate-50">
-      <td className={`${cell} text-right tabular-nums text-muted`}>{index}</td>
-      <td className={cell}>
+    <tr className="group">
+      <td className={`${cell} ${FROZEN_NO} text-right tabular-nums text-muted`}>{index}</td>
+      <td className={`${cell} ${FROZEN_NAME}`}>
         <Link
           href={`/platform/${kg.id}`}
           className="font-semibold text-ink hover:text-primary hover:underline"
         >
           {kg.name}
         </Link>
-        <span className="block text-muted">{formatRelative(kg.createdAt)} бүртгэсэн</span>
       </td>
       <td className={cell}>{kg.propertyType || "—"}</td>
       <td className={cell}>{areaOf(kg) ?? "—"}</td>
-      <td className={`${cell} tabular-nums`}>{kg.esisInstitutionId || "—"}</td>
+      <td className={cell}>
+        <EsisCell kg={kg} />
+      </td>
       <td className={`${cell} text-right tabular-nums`}>{kg.groupCount ?? "—"}</td>
-      <td className={`${cell} tabular-nums`}>{kg.phone || "—"}</td>
+      <td className={`${cell} whitespace-nowrap tabular-nums`}>{kg.phone || "—"}</td>
       <td className={`${cell} max-w-[200px] truncate`}>{kg.email || "—"}</td>
+      <td className={`${cell} whitespace-nowrap tabular-nums`}>{formatDate(startedOn(kg))}</td>
       <td className={`${cell} whitespace-nowrap tabular-nums`}>
         {kg.contractEndsOn ? (
           <span className={daysUntil(kg.contractEndsOn) <= 14 ? "font-semibold text-danger" : ""}>
@@ -403,7 +449,7 @@ function KindergartenRow({
   );
 }
 
-type SortKey = "name" | "area" | "groups" | "contract";
+type SortKey = "name" | "area" | "groups" | "start" | "contract";
 
 /** Missing values sort last whichever way the column runs. */
 function compareRows(a: Row, b: Row, key: SortKey, dir: 1 | -1): number {
@@ -414,7 +460,9 @@ function compareRows(a: Row, b: Row, key: SortKey, dir: 1 | -1): number {
         ? areaOf(row)
         : key === "groups"
           ? (row.groupCount ?? null)
-          : (row.contractEndsOn ?? null);
+          : key === "start"
+            ? startedOn(row)
+            : (row.contractEndsOn ?? null);
   const x = value(a);
   const y = value(b);
   if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
@@ -431,19 +479,23 @@ function SortHeader({
   sort,
   onSort,
   align = "left",
+  className,
 }: {
   label: string;
   column: SortKey;
   sort: { key: SortKey; dir: 1 | -1 };
   onSort: (column: SortKey) => void;
   align?: "left" | "right";
+  className?: string;
 }) {
   const active = sort.key === column;
   return (
     <th
       scope="col"
       aria-sort={active ? (sort.dir === 1 ? "ascending" : "descending") : "none"}
-      className={align === "right" ? "text-right" : undefined}
+      className={
+        [align === "right" ? "text-right" : "", className ?? ""].join(" ").trim() || undefined
+      }
     >
       <button
         type="button"
@@ -471,11 +523,13 @@ function downloadSheet(rows: Row[]) {
     "Цэцэрлэг",
     "Өмчийн хэлбэр",
     "Аймаг / дүүрэг",
-    "ЭСИС",
+    "ЭСИС холболт",
+    "ЭСИС дугаар",
     "Бүлэг",
     "Утас",
     "И-мэйл",
-    "Гэрээ дуусах",
+    "Эхэлсэн",
+    "Дуусах",
     "Төлөв",
   ];
   const body = rows.map((kg, index) => [
@@ -483,10 +537,12 @@ function downloadSheet(rows: Row[]) {
     kg.name,
     kg.propertyType ?? "",
     areaOf(kg) ?? "",
+    (kg.esisConnected ?? Boolean(kg.esisInstitutionId)) ? "Холбогдсон" : "Холбогдоогүй",
     kg.esisInstitutionId ?? "",
     kg.groupCount ?? "",
     kg.phone ?? "",
     kg.email ?? "",
+    formatDate(startedOn(kg)),
     kg.contractEndsOn ? formatDate(kg.contractEndsOn) : "",
     kg.isActive ? "Идэвхтэй" : "Идэвхгүй",
   ]);

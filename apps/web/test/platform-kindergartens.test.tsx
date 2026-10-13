@@ -57,10 +57,24 @@ describe("the operator's kindergartens table", () => {
     for (const heading of ["Цэцэрлэг", "Өмчийн хэлбэр", "Аймаг / дүүрэг", "ЭСИС", "Бүлэг"]) {
       expect(within(table).getByRole("columnheader", { name: heading })).toBeInTheDocument();
     }
+    for (const heading of ["Эхэлсэн", "Дуусах"]) {
+      expect(
+        within(table).getByRole("columnheader", { name: new RegExp(heading) }),
+      ).toBeInTheDocument();
+    }
     const [first, second] = within(table).getAllByRole("row").slice(1);
     expect(first).toHaveTextContent("Улаанбаатар · Баянзүрх");
+    // ESIS: connected, with the institution number; or not connected.
+    expect(first).toHaveTextContent("Холбогдсон");
     expect(first).toHaveTextContent("42778");
+    expect(second).toHaveTextContent("Холбогдоогүй");
     expect(second).toHaveTextContent("—");
+    // Started: the registration date until the contract's own is sent.
+    expect(first).toHaveTextContent("2026.10.01");
+    // The name stays put while the table scrolls sideways.
+    expect(within(first!).getByRole("link", { name: "Нарлаг цэцэрлэг" }).closest("td")).toHaveClass(
+      "sticky",
+    );
   });
 
   it("filters by ownership, and keeps the row's actions behind «⋯»", async () => {
