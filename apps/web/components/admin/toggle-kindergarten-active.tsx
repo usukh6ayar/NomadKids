@@ -15,6 +15,37 @@ import { Button } from "@/components/ui/button";
  * `["platform", "kindergartens"]` prefix, which covers the list query and
  * `qk.platformKindergarten(id)` alike.
  */
+/**
+ * Asks, then suspends or restores — the button below and the list's «⋯»
+ * menu (2026-10-13) share it.
+ */
+export function useToggleKindergartenActive(kindergarten: {
+  id: string;
+  name: string;
+  isActive: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const toggle = useMutation({
+    mutationFn: () =>
+      mutate(`/platform/kindergartens/${kindergarten.id}`, platformKindergartenSchema, {
+        method: "PATCH",
+        body: { isActive: !kindergarten.isActive },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["platform", "kindergartens"] });
+    },
+  });
+  return {
+    pending: toggle.isPending,
+    run: () => {
+      const message = kindergarten.isActive
+        ? `${kindergarten.name}-г идэвхгүй болгох уу?\n\nБагш, эцэг эх нэвтрэх боломжгүй болно. Дараа нь дахин идэвхжүүлж болно.`
+        : `${kindergarten.name}-г идэвхжүүлэх үү?`;
+      if (window.confirm(message)) toggle.mutate();
+    },
+  };
+}
+
 export function ToggleActiveButton({
   kindergarten,
 }: {

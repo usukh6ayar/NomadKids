@@ -50,7 +50,7 @@ import { useMyProfile } from "@/lib/use-my-profile";
 import { useLogout, useSession } from "@/lib/auth/session";
 import { setNavigationMenu } from "@/lib/nav-history";
 import { excerpt, formatRelative, fullName, groupLabel, initials, shortName } from "@/lib/format";
-import { BRAND } from "@/lib/vocabulary";
+import { BRAND, BRAND_LATIN } from "@/lib/vocabulary";
 import { BrandWordmark } from "@/components/ui/brand-wordmark";
 import { Art } from "@/components/ui/art";
 import { cn } from "@/lib/utils";
@@ -1175,6 +1175,40 @@ function Brand({ subtitle }: { subtitle: string }) {
 }
 
 /**
+ * The operator's masthead — 2026-10-13, the user: formal, like a spreadsheet's
+ * title bar ("албан, эксэл загварын"). A small square mark, the product's name
+ * in plain type and the workspace in small capitals, in one grey ruled box. The other roles keep `Brand`.
+ */
+function PlatformBrand() {
+  const home = useHomeHref();
+  return (
+    <Link
+      href={home}
+      className="flex min-h-[44px] items-center gap-2.5 rounded-control border border-border bg-slate-50 px-2.5 py-2"
+    >
+      <span
+        data-brand-mark
+        className="grid size-8 shrink-0 place-items-center rounded-control border border-border bg-white"
+      >
+        <Image
+          src="/brand-logo.png"
+          alt={BRAND}
+          width={28}
+          height={28}
+          className="size-7 object-contain"
+        />
+      </span>
+      <span className="min-w-0 leading-tight">
+        <span className="block text-compact font-bold text-ink">{BRAND_LATIN}</span>
+        <span className="block text-caption font-semibold uppercase tracking-[0.08em] text-muted">
+          Платформын удирдлага
+        </span>
+      </span>
+    </Link>
+  );
+}
+
+/**
  * The sidebar's foot: who is signed in and the route to their profile.
  *
  * ★ The second line names the person's **context**, not the section they are
@@ -1467,7 +1501,9 @@ function SidebarContent({
       */}
       {teacherRail ? (
         <WhoAmI variant={variant} isAdmin={isAdmin} part="identity" />
-      ) : variant === "parent" ? null : (
+      ) : variant === "parent" ? null : variant === "platform" ? (
+        <PlatformBrand />
+      ) : (
         <Brand subtitle={subtitle} />
       )}
 
