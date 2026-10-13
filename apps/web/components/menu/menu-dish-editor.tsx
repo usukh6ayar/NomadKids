@@ -385,7 +385,7 @@ export function MenuDishEditor({
     ★ The screen supplies its own "add" and its own footer.
 
     The cook's day screen draws "+ Хоолны цаг нэмэх" in its toolbar and
-    Уръдчилан харах · Цуцлах · Хадгалах along its foot, which is where the
+    Урьдчилан харах · Цуцлах · Хадгалах along its foot, which is where the
     client drew them. `chrome="none"` renders the cards and nothing else;
     `addRowRef` is how the toolbar reaches the row-adding this component owns.
   */
@@ -970,7 +970,7 @@ export function MenuDishEditor({
         /*
           ★ The client's footer: preview on the left, the pair on the right.
 
-          Уръдчилан харах leaves the editor for the family's own view — the
+          Урьдчилан харах leaves the editor for the family's own view — the
           only honest preview there is, since that screen is literally what a
           parent opens.
         */
@@ -978,7 +978,7 @@ export function MenuDishEditor({
           {onPreview ? (
             <Button type="button" variant="secondary" onClick={onPreview} disabled={saving}>
               <Eye size={16} aria-hidden="true" />
-              Уръдчилан харах
+              Урьдчилан харах
             </Button>
           ) : (
             <span />

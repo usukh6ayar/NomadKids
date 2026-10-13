@@ -299,8 +299,13 @@ describe("signing in", () => {
     expect(within(hero).getByText("Цэцэрлэгийн ухаалаг цахим систем")).toBeInTheDocument();
     expect(within(hero).getByRole("heading", { level: 1, name: "NomadKids" })).toBeInTheDocument();
     expect(within(hero).getByText("Цахимжуулах цогц шийдэл")).toBeInTheDocument();
+    // The roles are separated by pale dots in their own spans.
     expect(
-      within(hero).getByText("Өөрийн эрхээр нэвтэрч, ажлаа үргэлжлүүлнэ үү."),
+      within(hero).getByText(
+        (_, element) =>
+          element?.tagName === "P" &&
+          element.textContent === "Багш · Эцэг эх · Удирдлага · Нягтлан · Тогооч",
+      ),
     ).toBeInTheDocument();
     // «Байгууллагын бүртгэл» sits in the ☰ menu above the card since 2026-10-08.
     expect(within(hero).getByRole("button", { name: "Цэс нээх" })).toBeInTheDocument();
@@ -312,6 +317,36 @@ describe("signing in", () => {
     ]) {
       expect(screen.queryByText(gone)).toBeNull();
     }
+  });
+
+  it("opens teacher and organisation registration beside the login title", async () => {
+    const user = userEvent.setup();
+    stubApi([{ path: "/auth/me", body: sessionFor([]) }]);
+    renderWithProviders(<LoginPage />);
+
+    const card = document.getElementById("login-card")!;
+    await user.click(within(card).getByRole("button", { name: "Бүртгүүлэх" }));
+    const choices = screen.getByRole("dialog", { name: "Бүртгүүлэх" });
+    expect(choices.parentElement).toBe(document.body);
+    expect(within(choices).getByRole("link", { name: "Үнийн санал" })).toHaveAttribute(
+      "href",
+      "/pricing",
+    );
+    expect(within(choices).getByRole("button", { name: /Багш/ })).toBeVisible();
+    expect(within(choices).getByRole("button", { name: /Байгууллага/ })).toBeVisible();
+    expect(within(choices).getByRole("button", { name: "Хаах" })).toBeVisible();
+
+    await user.click(within(choices).getByRole("button", { name: /Багш/ }));
+    expect(screen.getByRole("dialog", { name: "Багш, ажилтан" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Хаах" }));
+
+    await user.click(within(card).getByRole("button", { name: "Бүртгүүлэх" }));
+    await user.click(
+      within(screen.getByRole("dialog", { name: "Бүртгүүлэх" })).getByRole("button", {
+        name: /Байгууллага/,
+      }),
+    );
+    expect(screen.getByRole("dialog", { name: "Байгууллагын бүртгэл" })).toBeVisible();
   });
 
   it("shows the five supplied audience characters in the requested order", () => {
@@ -331,7 +366,7 @@ describe("signing in", () => {
       "Багшийн веб",
       "Эцэг эхийн веб",
       "Удирдлагын самбар",
-      "Гал тогооны веб",
+      "Тогоочийн веб",
       "Нягтлангийн веб",
     ]);
     expect(audience.getAllByRole("img").map((image) => image.getAttribute("alt"))).toEqual([

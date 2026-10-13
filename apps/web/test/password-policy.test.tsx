@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  ROUTER,
   renderWithProviders,
   sessionFor,
   setParams,
@@ -11,6 +12,13 @@ import {
 import AcceptInvitationPage from "@/app/invitation/[token]/page";
 import ResetPasswordPage from "@/app/reset-password/[token]/page";
 import SettingsPage from "@/app/(app)/settings/page";
+
+/*
+ * The invitation opens over the home page (2026-10-12); the home page's own
+ * login form would answer the same labels, so it is stood in for here and the
+ * window is tested on its own.
+ */
+vi.mock("@/components/public/landing", () => ({ PublicLanding: () => null }));
 
 /**
  * The password policy, as the two forms that set a first password present it.
@@ -63,7 +71,7 @@ describe("invitation — first password", () => {
     await user.type(screen.getByLabelText(/^Таны нэр/), "Оюун");
     await user.type(screen.getByLabelText(/^Утасны дугаар/), "99112233");
     await user.type(screen.getByLabelText(/^Нууц үг \*/), WEAK);
-    await user.type(screen.getByLabelText(/давтан/), WEAK);
+    await user.type(screen.getByLabelText(/давта[нх]/), WEAK);
     await user.click(screen.getByRole("button", { name: "Бүртгэл идэвхжүүлэх" }));
 
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/том үсэг/));
@@ -79,7 +87,7 @@ describe("invitation — first password", () => {
     await user.type(screen.getByLabelText(/^Таны нэр/), "Оюун");
     await user.type(screen.getByLabelText(/^Утасны дугаар/), "99112233");
     await user.type(screen.getByLabelText(/^Нууц үг \*/), STRONG);
-    await user.type(screen.getByLabelText(/давтан/), STRONG);
+    await user.type(screen.getByLabelText(/давта[нх]/), STRONG);
     await user.click(screen.getByRole("button", { name: "Бүртгэл идэвхжүүлэх" }));
 
     await waitFor(() =>
@@ -256,7 +264,7 @@ describe("password reset — new password", () => {
     renderWithProviders(<ResetPasswordPage />);
 
     await user.type(screen.getByLabelText(/^Шинэ нууц үг/), WEAK);
-    await user.type(screen.getByLabelText(/давтан/), WEAK);
+    await user.type(screen.getByLabelText(/давта[нх]/), WEAK);
     await user.click(screen.getByRole("button", { name: "Нууц үг хадгалах" }));
 
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/тоо/));
@@ -323,7 +331,7 @@ describe("invitation — who is accepting", () => {
     await user.type(screen.getByLabelText(/^Таны нэр/), "Бямбарааш");
     await user.type(screen.getByLabelText(/^Утасны дугаар/), "99112233");
     await user.type(screen.getByLabelText(/^Нууц үг \*/), STRONG);
-    await user.type(screen.getByLabelText(/давтан/), STRONG);
+    await user.type(screen.getByLabelText(/давта[нх]/), STRONG);
     await user.click(screen.getByRole("button", { name: /Бүртгэл/ }));
 
     await waitFor(() =>
@@ -367,5 +375,19 @@ describe("settings — editing one's own profile", () => {
       const call = api.calls.find((c) => c.method === "PATCH" && c.url === "/me/profile");
       expect(call?.body).toMatchObject({ phone: "99112233" });
     });
+  });
+});
+
+describe("invitation — the window", () => {
+  it("opens over the home page and goes home on ×", async () => {
+    const user = userEvent.setup();
+    ROUTER.push.mockClear();
+    setParams({ token: "tok-window" });
+    stubApi([{ path: "/auth/invitation/tok-window", body: { valid: true, kind: "staff" } }]);
+    renderWithProviders(<AcceptInvitationPage />);
+
+    const window = screen.getByRole("dialog", { name: "Тавтай морил" });
+    await user.click(within(window).getByRole("button", { name: "Хаах" }));
+    expect(ROUTER.push).toHaveBeenCalledWith("/");
   });
 });

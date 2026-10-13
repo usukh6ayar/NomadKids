@@ -41,6 +41,8 @@ import {
 } from "@/components/auth/phone-verification";
 import { EsisButton } from "@/components/esis/esis-button";
 import { FactRow } from "@/components/ui/fact-row";
+import { RegisteredDevicesCard } from "@/components/settings/registered-devices";
+import { AgreementButton } from "@/components/agreements/agreement-gate";
 
 const profileSchema = userProfileSchema.extend({
   specialization: z.string().nullish(),
@@ -67,11 +69,18 @@ export default function SettingsPage() {
   */
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-      <PageHeader title="Хувийн тохиргоо" lede="Хувийн мэдээлэл болон нэвтрэх эрхээ удирдана." />
+      <PageHeader
+        title="Хувийн тохиргоо"
+        lede="Хувийн мэдээлэл болон нэвтрэх эрхээ удирдана."
+        // The accepted agreement, at the header's right — 2026-10-12, the user.
+        actions={<AgreementButton />}
+      />
       <ProfileCard />
       <CoTeachersCard />
       <ChildPhotosCard />
       {hasRole("TEACHER") || hasRole("ADMIN") ? <MyStaffRecords /> : null}
+      {/* Last, for every role — 2026-10-12, the user. */}
+      <RegisteredDevicesCard />
     </div>
   );
 }

@@ -200,7 +200,7 @@ describe("RFP §4.1 completeness", () => {
       within(form).getByRole("textbox", { name: "Нэр" }),
       within(form).getByLabelText("Төрсөн өдөр"),
       within(form).getByRole("combobox", { name: "Хүйс" }),
-      within(form).getByRole("textbox", { name: "Нэрний утга" }),
+      within(form).getByRole("textbox", { name: "Миний нэрний утга" }),
       within(form).getByRole("textbox", { name: "Өхөөрддөг нэр" }),
       within(form).getByRole("textbox", { name: "Төрсөн газар" }),
       within(form).getByRole("textbox", { name: "Цусны бүлэг" }),

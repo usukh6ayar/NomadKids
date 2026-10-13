@@ -189,7 +189,7 @@ export function ConclusionForm({
 
           {citedNotes.length === 0 ? (
             <p className="rounded-control bg-canvas px-3.5 py-3 text-caption text-muted">
-              Зүүн талаас тэмдэглэлээ чеклэж сонгоно уу.
+              Зүүн талаас тэмдэглэлээ сонгоно уу.
             </p>
           ) : (
             <ul className="flex flex-col gap-2">

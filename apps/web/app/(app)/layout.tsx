@@ -72,6 +72,7 @@ import { LoadingState } from "@/components/ui/states";
 import { Art, type ArtName } from "@/components/ui/art";
 import { useNavigationHistory } from "@/lib/nav-history";
 import { useSession } from "@/lib/auth/session";
+import { AgreementGate } from "@/components/agreements/agreement-gate";
 import { SelectedChildProvider, useSelectedChild } from "@/lib/selected-child";
 
 const ownChildrenSchema = z.array(childSummarySchema);
@@ -214,6 +215,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       >
         {children}
       </AuthenticatedShell>
+      {/* A teacher's and a guardian's first sign-in — 2026-10-12, the user. */}
+      <AgreementGate />
     </SelectedChildProvider>
   );
 }
@@ -910,6 +913,12 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
          * of the kindergarten's teachers: that is "Хэрэглэгч ба эрх" one row
          * below, and "Багшийн мэдээлэл" promised this row was it.
          */
+        /*
+         * ★ «Үйлчилгээний эрх» just above «Хувийн тохиргоо» — 2026-10-12, the
+         * user: the contract period and its renewal, the director's twin of
+         * the parent's row.
+         */
+        ...adminEntry("Үйлчилгээний эрх", "/admin/service-access", "navParentAccess"),
         entry("Хувийн тохиргоо", "/settings"),
         /*
          * ★ The administration screens, named — and no "Удирдлага" row above
@@ -1562,11 +1571,21 @@ function parentSections(
           href: "/feedback",
           icon: <MessageSquareText {...iconProps} />,
         },
+        /*
+         * ★ Two rows, two different payments — 2026-10-12, the user:
+         * «Санхүү» is the kindergarten's own invoices (tuition, meals),
+         * «Үйлчилгээний эрх» is the fee for using NomadKids. The second used to
+         * open the first.
+         */
+        {
+          label: "Санхүү",
+          href: selected ? `${childBase}/finance` : childBase,
+          icon: artIcon("finance", 20),
+        },
         {
           label: "Үйлчилгээний эрх",
-          href: selected ? `${childBase}/finance` : childBase,
+          href: selected ? `${childBase}/access` : childBase,
           icon: artIcon("navParentAccess", 20),
-          tag: "Жилийн",
         },
       ],
     },

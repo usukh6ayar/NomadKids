@@ -45,7 +45,7 @@ const TABS: { value: Tab; label: string; icon: typeof Database }[] = [
   { value: "overview", label: "Ерөнхий", icon: Network },
   { value: "apis", label: "Сервис ба талбар", icon: ShieldCheck },
   { value: "requests", label: "Эрхийн хүсэлт", icon: KeyRound },
-  { value: "preview", label: "Синк шалгалт", icon: FlaskConical },
+  { value: "preview", label: "Мэдээлэл тулгалт", icon: FlaskConical },
   { value: "history", label: "Түүх", icon: History },
 ];
 
@@ -703,7 +703,7 @@ function EndpointFields({ endpoint }: { endpoint: EsisOverview["endpoints"][numb
           (CLAUDE.md §1.1), so the route answers 404 for them by design. A
           button that always fails is worse than no button.
 
-          The operator's live check is the "Синк шалгалт" tab, which spends the
+          The operator's live check is the "Мэдээлэл тулгалт" tab, which spends the
           same token against the same services through a route that is theirs.
           The staff-facing pull buttons are unchanged on the screens that draw
           them — the roster, a child's record, the day sheet.

@@ -104,7 +104,7 @@ export function MonthBirthdays({
    */
   if (birthdays.length === 0) {
     return (
-      <BoardCard title="Төрсөн өдөрийн булан">
+      <BoardCard title="Төрсөн өдрийн булан">
         <BoardCardEmpty
           icon={<Cake size={22} />}
           title="Энэ сард төрсөн өдөр алга"
@@ -126,7 +126,7 @@ export function MonthBirthdays({
 
   return (
     <BoardCard
-      title="Төрсөн өдөрийн булан"
+      title="Төрсөн өдрийн булан"
       footer={
         /*
           Only when the list is folded. The sketch shows two names and nothing

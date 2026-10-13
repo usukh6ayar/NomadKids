@@ -100,7 +100,7 @@ describe("the kindergarten's details", () => {
     expect(screen.getByLabelText("Дүүрэг")).toHaveValue("Баянзүрх");
     // No source for these at all.
     expect(screen.getByLabelText("Байршил")).toHaveValue("");
-    expect(screen.getByLabelText("Хариуцалагч нэгж")).toHaveValue("");
+    expect(screen.getByLabelText("Хариуцагч нэгж")).toHaveValue("");
   });
 
   // Only what was changed — a PATCH, not the whole record re-sent.

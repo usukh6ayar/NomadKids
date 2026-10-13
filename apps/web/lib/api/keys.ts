@@ -16,6 +16,9 @@
 export const qk = {
   session: () => ["session"] as const,
 
+  /** The public kindergarten picker on the teacher's sign-up window. */
+  publicKindergartens: (location: string) => ["public", "kindergartens", location] as const,
+
   dashboard: {
     primary: () => ["dashboard", "primary"] as const,
     teacher: () => ["dashboard", "teacher"] as const,
@@ -404,6 +407,12 @@ export const qk = {
     ["admin", "staff-registrations", kindergartenId, page] as const,
 
   profile: () => ["me", "profile"] as const,
+  /** «Бүртгэлтэй төхөөрөмж» — the devices this account is signed in on. */
+  devices: () => ["me", "devices"] as const,
+  /** The user agreements this person has accepted — `lib/agreements.ts`. */
+  agreements: () => ["me", "agreements"] as const,
+  /** «Үйлчилгээний эрх» — the kindergarten's own contract period. */
+  serviceAccess: () => ["service-access"] as const,
 
   phoneVerificationAvailability: () => ["phone-verification", "availability"] as const,
   phoneVerificationCheck: (handle: string) => ["phone-verification", "check", handle] as const,

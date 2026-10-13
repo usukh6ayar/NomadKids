@@ -138,21 +138,15 @@ export function ChildPickerDialog({
       aria-label={title}
       {...backdrop}
       /*
-        ★ `justify-items-center` — 2026-09-16, at the client's request that
-        this stop hugging the left edge on a phone.
-
-        The sheet is `w-full max-w-[480px]`, and a grid item with a max-width
-        resolves a `stretch` justification to *start*: at any width between
-        480px and the `sm` breakpoint the sheet was 480px of dialog pinned to
-        the left with a band of dimmed page beside it. Below 480 it filled the
-        screen, which is why it read as correct on the narrowest phones and
-        wrong on the large ones.
+        ★ Centred at every width — 2026-09-16 it stopped hugging the left edge
+        on a phone, and since 2026-10-12 it opens in the middle rather than
+        from the bottom, like every other window.
       */
-      className="fixed inset-0 z-50 grid items-end justify-items-center bg-ink/50 p-0 sm:place-items-center sm:p-4"
+      className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4"
     >
       <div
         className={cn(
-          "flex max-h-[calc(100dvh-1rem)] w-full flex-col gap-3 rounded-t-card border border-border bg-surface p-4 shadow-lg sm:max-h-[calc(100vh-2rem)] sm:rounded-card sm:p-5",
+          "flex max-h-[calc(100dvh-2rem)] w-full flex-col gap-3 rounded-card border border-border bg-surface p-4 shadow-lg sm:p-5",
           layout === "table" ? "max-w-[640px]" : "max-w-[480px]",
         )}
       >

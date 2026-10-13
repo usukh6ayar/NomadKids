@@ -4,7 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { CheckCircle2, Minus, Plus, X } from "lucide-react";
 import Image from "next/image";
 import { useState, type FormEvent, type ReactNode } from "react";
-import { applicationReceiptSchema } from "@kinder/contracts";
+import { PASSWORD_RULES, applicationReceiptSchema } from "@kinder/contracts";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
 import { ModalOverlay } from "@/components/ui/modal-overlay";
@@ -101,8 +101,66 @@ export function PublicDialogFrame({
   );
 }
 
+/**
+ * The password rules as one quiet line — «8-аас доошгүй тэмдэгт · Том, жижиг
+ * үсэг хоёулаа · Дор хаяж нэг тоо» — rather than a bulleted list three rows
+ * tall on a phone (2026-10-12). Still a list, so it reads as three rules.
+ */
+export function PasswordRuleLine({ className }: { className?: string }) {
+  return (
+    <ul className={cn("flex flex-wrap gap-x-1.5 text-compact text-slate-500", className)}>
+      {PASSWORD_RULES.map((rule, index) => (
+        <li key={rule}>
+          {index > 0 ? (
+            <span aria-hidden="true" className="mr-1.5 text-slate-300">
+              ·
+            </span>
+          ) : null}
+          {rule}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** Compact inputs: 44px, the touch target, not the forms' usual 48. */
 export const COMPACT_INPUT = "h-11";
+
+/** Mongolia's districts and provinces, for the public sign-up windows. */
+export const UB_DISTRICTS = [
+  "Багануур",
+  "Багахангай",
+  "Баянгол",
+  "Баянзүрх",
+  "Налайх",
+  "Сонгинохайрхан",
+  "Сүхбаатар",
+  "Хан-Уул",
+  "Чингэлтэй",
+] as const;
+export const PROVINCES = [
+  "Архангай",
+  "Баян-Өлгий",
+  "Баянхонгор",
+  "Булган",
+  "Говь-Алтай",
+  "Говьсүмбэр",
+  "Дархан-Уул",
+  "Дорноговь",
+  "Дорнод",
+  "Дундговь",
+  "Завхан",
+  "Орхон",
+  "Өвөрхангай",
+  "Өмнөговь",
+  "Сүхбаатар",
+  "Сэлэнгэ",
+  "Төв",
+  "Увс",
+  "Ховд",
+  "Хөвсгөл",
+  "Хэнтий",
+] as const;
 const COMPACT = COMPACT_INPUT;
 
 function RegisterForm({
@@ -226,7 +284,7 @@ function RegisterForm({
         )}
       </Field>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-2 gap-3">
         <Field label="Регистрийн дугаар" error={errors.registrationNumber} required>
           {({ id, describedBy, invalid }) => (
             <Input
@@ -341,7 +399,7 @@ function RegisterForm({
         )}
       </Field>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-2 gap-3">
         <Field label="Утас" error={errors.phone} required>
           {({ id, describedBy, invalid }) => (
             <Input

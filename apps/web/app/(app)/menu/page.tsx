@@ -974,7 +974,7 @@ function MenuDayCard({
   canEdit: boolean;
   /** Leaves the day. Drawn as "Цуцлах" beside "Хадгалах". */
   onCancel?: () => void;
-  /** Shows the day as a family would read it — the drawing's "Уръдчилан харах". */
+  /** Shows the day as a family would read it — the drawing's "Урьдчилан харах". */
   onPreview?: () => void;
   /** Handed the card's "add a sitting", so the page toolbar can press it. */
   addRowRef?: MutableRefObject<(() => void) | null>;

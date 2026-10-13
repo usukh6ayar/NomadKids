@@ -1,21 +1,23 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { Suspense, useState, type FormEvent, type ReactNode } from "react";
 import { z } from "zod";
-import {
-  PASSWORD_RULES,
-  phoneVerificationStartSchema,
-  validatePasswordStrength,
-} from "@kinder/contracts";
+import { phoneVerificationStartSchema, validatePasswordStrength } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { Field, Input, PasswordInput, Select } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
-import { AuthShell } from "@/components/shell/auth-shell";
+import { PublicLanding } from "@/components/public/landing";
+import {
+  COMPACT_INPUT,
+  PasswordRuleLine,
+  PublicDialogFrame,
+} from "@/components/public/register-dialog";
 import {
   MOBILE_PHONE,
   PhoneVerificationStep,
@@ -164,39 +166,34 @@ export default function AcceptInvitationPage() {
 
   if (accept.isSuccess) {
     return (
-      <AuthShell>
-        <h2 className="mb-1.5 text-heading font-semibold tracking-[-.01em] text-ink">
-          Бүртгэл идэвхжлээ
-        </h2>
-        <p role="status" className="text-body text-muted">
-          Нэвтрэх хуудас руу шилжиж байна…
-        </p>
-        <p>
+      <InvitationWindow>
+        <div className="flex flex-col items-center gap-2 py-4 text-center">
+          <CheckCircle2 className="size-10 text-mint-ink" aria-hidden />
+          <h2 className="text-lead font-extrabold text-[#102f5d]">Бүртгэл идэвхжлээ</h2>
+          <p role="status" className="text-body text-slate-600">
+            Нэвтрэх хуудас руу шилжиж байна…
+          </p>
           <Link
             href="/login"
-            className="inline-flex min-h-[44px] items-center text-body font-semibold text-primary hover:underline"
+            className="inline-flex min-h-11 items-center text-body font-semibold text-primary hover:underline"
           >
             Нэвтрэх
           </Link>
-        </p>
-      </AuthShell>
+        </div>
+      </InvitationWindow>
     );
   }
 
   return (
-    <AuthShell>
-      <h2 className="mb-1.5 text-heading font-semibold tracking-[-.01em] text-ink">Тавтай морил</h2>
-      <p className="mb-4 text-body leading-relaxed text-muted">
-        Өөрийнхөө нэр, утсаа бөглөөд нууц үгээ сонгоно уу.
-      </p>
+    <InvitationWindow>
+      <div className="mb-3 pr-8">
+        <h2 className="text-lead font-extrabold leading-tight text-[#102f5d]">Тавтай морил</h2>
+        <p className="text-caption text-slate-500">
+          Өөрийнхөө нэр, утсаа бөглөөд нууц үгээ сонгоно уу.
+        </p>
+      </div>
 
-      <ul className="mb-4 list-disc space-y-1 pl-5 text-body text-muted">
-        {PASSWORD_RULES.map((rule) => (
-          <li key={rule}>{rule}</li>
-        ))}
-      </ul>
-
-      <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+      <form onSubmit={onSubmit} className="flex flex-col gap-3" noValidate>
         <FormError message={localError ?? (accept.isError ? errorMessage(accept.error) : null)} />
 
         {/*
@@ -212,35 +209,39 @@ export default function AcceptInvitationPage() {
           зөвхөн нэр нь байхад болно". A form finished in a corridor on a phone
           should ask for what is needed and stop.
         */}
-        {isStaff ? (
-          <Field label="Овог" error={errors.lastName} required>
+        <div className={isStaff ? "grid grid-cols-2 gap-3" : "contents"}>
+          {isStaff ? (
+            <Field label="Овог" error={errors.lastName} required>
+              {({ id, describedBy, invalid }) => (
+                <Input
+                  id={id}
+                  className={COMPACT_INPUT}
+                  aria-describedby={describedBy}
+                  invalid={invalid}
+                  autoComplete="family-name"
+                  autoFocus
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                />
+              )}
+            </Field>
+          ) : null}
+
+          <Field label="Таны нэр" error={errors.firstName} required>
             {({ id, describedBy, invalid }) => (
               <Input
                 id={id}
+                className={COMPACT_INPUT}
                 aria-describedby={describedBy}
                 invalid={invalid}
-                autoComplete="family-name"
-                autoFocus
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
+                autoComplete="given-name"
+                autoFocus={!isStaff}
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
               />
             )}
           </Field>
-        ) : null}
-
-        <Field label="Таны нэр" error={errors.firstName} required>
-          {({ id, describedBy, invalid }) => (
-            <Input
-              id={id}
-              aria-describedby={describedBy}
-              invalid={invalid}
-              autoComplete="given-name"
-              autoFocus={!isStaff}
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-            />
-          )}
-        </Field>
+        </div>
 
         <Field
           label="Утасны дугаар"
@@ -258,6 +259,7 @@ export default function AcceptInvitationPage() {
           {({ id, describedBy, invalid }) => (
             <Input
               id={id}
+              className={COMPACT_INPUT}
               aria-describedby={describedBy}
               invalid={invalid}
               type="tel"
@@ -294,6 +296,7 @@ export default function AcceptInvitationPage() {
             {({ id, describedBy }) => (
               <Select
                 id={id}
+                className={COMPACT_INPUT}
                 aria-describedby={describedBy}
                 value={relation}
                 onChange={(e) => setRelation(e.target.value)}
@@ -308,39 +311,62 @@ export default function AcceptInvitationPage() {
           </Field>
         ) : null}
 
-        <Field label="Нууц үг" error={errors.password} required>
-          {({ id, describedBy, invalid }) => (
-            <PasswordInput
-              id={id}
-              aria-describedby={describedBy}
-              invalid={invalid}
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          )}
-        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Нууц үг" error={errors.password} required>
+            {({ id, describedBy, invalid }) => (
+              <PasswordInput
+                id={id}
+                className={COMPACT_INPUT}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            )}
+          </Field>
 
-        <Field label="Нууц үгээ давтан оруулна уу" required>
-          {({ id, describedBy }) => (
-            <PasswordInput
-              id={id}
-              aria-describedby={describedBy}
-              autoComplete="new-password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-            />
-          )}
-        </Field>
+          <Field label="Нууц үг давтах" required>
+            {({ id, describedBy }) => (
+              <PasswordInput
+                id={id}
+                className={COMPACT_INPUT}
+                aria-describedby={describedBy}
+                autoComplete="new-password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+              />
+            )}
+          </Field>
+        </div>
+        <PasswordRuleLine className="-mt-1.5" />
 
-        <Button type="submit" size="lg" block disabled={accept.isPending}>
+        <Button type="submit" block disabled={accept.isPending} className="mt-1">
           {accept.isPending ? "Идэвхжүүлж байна…" : "Бүртгэл идэвхжүүлэх"}
         </Button>
       </form>
 
-      <p className="mt-[22px] border-t border-border pt-4 text-body leading-relaxed text-muted">
+      <p className="mt-3 border-t border-slate-100 pt-3 text-caption text-slate-500">
         Урилга хүчингүй болсон бол цэцэрлэгийн багш, администратортаа хандаж шинээр авна уу.
       </p>
-    </AuthShell>
+    </InvitationWindow>
+  );
+}
+
+/**
+ * ★ The home page with the invitation in a window over it — 2026-10-12, the
+ * user, so that every sign-up looks the same as «Байгууллагын бүртгэл» and
+ * «Багш, ажилтан» (`app/register/page.tsx` is the pattern). Closing it goes
+ * home; the link in the e-mail or SMS still works, it is the same address.
+ */
+function InvitationWindow({ children }: { children: ReactNode }) {
+  const router = useRouter();
+  return (
+    <Suspense fallback={<div className="min-h-dvh bg-white" />}>
+      <PublicLanding />
+      <PublicDialogFrame label="Тавтай морил" onClose={() => router.push("/")}>
+        {children}
+      </PublicDialogFrame>
+    </Suspense>
   );
 }

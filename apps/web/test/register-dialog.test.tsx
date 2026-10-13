@@ -89,3 +89,29 @@ describe("the organisation registration window", () => {
     expect(await screen.findByText(/Бүртгэлийн сервер шинэчлэгдэж байна/)).toBeInTheDocument();
   });
 });
+
+/*
+ * ★ One way in for staff (2026-10-12): «Багш, ажилтан» opens the window where they
+ * pick their kindergarten, and a parent is told an invitation is coming.
+ */
+describe("the registration menu on the home page", () => {
+  it("opens the teacher's window and tells a parent to wait for an invitation", async () => {
+    const user = userEvent.setup();
+    stubApi([{ path: "/auth/me", body: sessionFor([]) }]);
+    renderWithProviders(<RegisterPage />);
+    await user.click(
+      within(screen.getByRole("dialog", { name: "Байгууллагын бүртгэл" })).getByRole("button", {
+        name: "Хаах",
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Бүртгүүлэх" }));
+    const menu = screen.getByRole("dialog", { name: "Бүртгүүлэх" });
+    expect(
+      within(menu).getByText("Эцэг эх бүлгийн багшийн урилгаар нэвтрэнэ."),
+    ).toBeInTheDocument();
+    expect(within(menu).queryByText(/Үнэгүй багц/)).toBeNull();
+    await user.click(within(menu).getByRole("button", { name: /Багш, ажилтан/ }));
+    expect(screen.getByRole("dialog", { name: "Багш, ажилтан" })).toBeInTheDocument();
+  });
+});

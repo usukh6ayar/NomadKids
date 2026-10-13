@@ -66,7 +66,7 @@ const ABOUT_FIELDS = [
     a child who has either still has it in the database, and the age sections
     keep their own per-age "Миний мөрөөдөл" (`child-growth-ages.tsx`).
   */
-  { key: "nameMeaning", label: "Нэрний утга", long: false, Icon: Heart, tone: "peach" },
+  { key: "nameMeaning", label: "Миний нэрний утга", long: false, Icon: Heart, tone: "peach" },
   { key: "distinguishingTraits", label: "Миний онцлог", long: true, Icon: Sparkles, tone: "mint" },
   {
     key: "memorableSayings",
@@ -97,7 +97,7 @@ const EDIT_FIELDS = [
   { key: "firstName", label: "Нэр", kind: "text" },
   { key: "dateOfBirth", label: "Төрсөн өдөр", kind: "date" },
   { key: "sex", label: "Хүйс", kind: "sex" },
-  { key: "nameMeaning", label: "Нэрний утга", kind: "text" },
+  { key: "nameMeaning", label: "Миний нэрний утга", kind: "text" },
   { key: "nickname", label: "Өхөөрддөг нэр", kind: "text" },
   { key: "birthplace", label: "Төрсөн газар", kind: "text" },
   { key: "bloodType", label: "Цусны бүлэг", kind: "text" },

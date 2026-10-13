@@ -135,6 +135,19 @@ export function formatRelative(value: string | Date | null | undefined): string 
 }
 
 /**
+ * Whole days from today to a calendar date — 0 on the day itself, negative
+ * once it has passed. Read as a local date: `new Date("2026-11-30")` is UTC
+ * midnight, which in Ulaanbaatar is already 08:00 and counted a day too many.
+ */
+export function daysUntil(value: string): number {
+  const [year, month, day] = value.slice(0, 10).split("-").map(Number);
+  const end = new Date(year!, month! - 1, day!);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((end.getTime() - today.getTime()) / 86_400_000);
+}
+
+/**
  * Age in years, or years and months while under two.
  *
  * Under two the month matters — the difference between a 14-month-old and a

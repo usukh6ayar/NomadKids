@@ -5,6 +5,13 @@ import { renderWithProviders, setParams, setSearchParams, stubApi } from "./supp
 import ForgotPasswordPage from "@/app/forgot-password/page";
 import AcceptInvitationPage from "@/app/invitation/[token]/page";
 
+/*
+ * The invitation opens over the home page (2026-10-12); the home page's own
+ * login form would answer the same labels, so it is stood in for here and the
+ * window is tested on its own.
+ */
+vi.mock("@/components/public/landing", () => ({ PublicLanding: () => null }));
+
 /**
  * verify.mn phone verification on the two public screens — 2026-10-01.
  *
@@ -57,7 +64,7 @@ describe("forgot password — by phone", () => {
     await user.click(screen.getByRole("button", { name: "Код авах" }));
 
     await user.type(await screen.findByLabelText(/^Шинэ нууц үг/, { selector: "input" }), STRONG);
-    await user.type(screen.getByLabelText(/давтан/), STRONG);
+    await user.type(screen.getByLabelText(/давта[нх]/), STRONG);
     await user.click(screen.getByRole("button", { name: "Нууц үг шинэчлэх" }));
 
     await waitFor(() =>
@@ -144,7 +151,7 @@ describe("invitation — the guardian's phone", () => {
     await user.type(screen.getByLabelText(/^Таны нэр/), "Оюун");
     await user.type(screen.getByRole("textbox", { name: /^Утасны дугаар/ }), "99112233");
     await user.type(screen.getByLabelText(/^Нууц үг \*/), STRONG);
-    await user.type(screen.getByLabelText(/давтан/), STRONG);
+    await user.type(screen.getByLabelText(/давта[нх]/), STRONG);
   }
 
   it("is not submitted until the SMS proved it, and then carries the proof", async () => {

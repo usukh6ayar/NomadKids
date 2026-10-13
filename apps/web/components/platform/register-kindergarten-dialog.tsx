@@ -173,13 +173,13 @@ export function RegisterKindergartenDialog({ onClose }: { onClose: () => void })
   }
 
   return (
-    <ModalOverlay label="Цэцэрлэг бүртгэх" onClose={onClose} className="p-0 sm:p-4">
+    <ModalOverlay label="Цэцэрлэг бүртгэх" onClose={onClose}>
       {/*
         ★ Two panes from `md` up, stacked below it. The method chooser is the
         first decision, so on a phone it has to come first in the flow as well
         as in the source — which a grid with a fixed left column cannot do.
       */}
-      <div className="flex max-h-dvh w-full max-w-[980px] flex-col overflow-hidden border-border bg-surface shadow-lg sm:max-h-[calc(100dvh-2rem)] sm:rounded-card sm:border md:flex-row">
+      <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-[980px] flex-col overflow-hidden rounded-card border border-border bg-surface shadow-lg md:flex-row">
         <aside className="shrink-0 border-b border-border-soft bg-[linear-gradient(160deg,#e6f3fc_0%,#f6fbfe_68%,#ecf8f4_100%)] p-5 md:w-[310px] md:border-b-0 md:border-r md:p-6">
           <p className="mb-2 text-caption font-bold uppercase tracking-[0.12em] text-primary-strong">
             Платформын удирдлага

@@ -484,9 +484,9 @@ export function CreateSurveyWizard({
       aria-modal="true"
       aria-label={heading}
       {...backdrop}
-      className="fixed inset-0 z-50 grid items-end overflow-y-auto bg-ink/50 p-0 sm:place-items-center sm:p-4"
+      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
     >
-      <div className="max-h-[calc(100dvh-0.5rem)] w-full max-w-[680px] overflow-y-auto rounded-t-card border border-border bg-surface p-3.5 shadow-lg sm:max-h-[calc(100vh-2rem)] sm:rounded-card sm:p-4">
+      <div className="max-h-[calc(100dvh-2rem)] w-full max-w-[680px] overflow-y-auto rounded-card border border-border bg-surface p-3.5 shadow-lg sm:p-4">
         <div className="mb-2 flex items-center gap-2">
           <h2 className="min-w-0 flex-1 text-lead font-semibold leading-heading text-ink">
             {heading}
