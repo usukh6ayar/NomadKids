@@ -3,18 +3,15 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
-import { Baby, Building2, GraduationCap, Plus, Search, UsersRound } from "lucide-react";
+import { Building2, Plus, Search } from "lucide-react";
 import { paginated, platformKindergartenSchema, platformStatsSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RowList } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { RequireSuperAdmin } from "@/components/shell/require-role";
-import { Art } from "@/components/ui/art";
 import { ToggleActiveButton } from "@/components/admin/toggle-kindergarten-active";
 import { DeleteKindergartenButton } from "@/components/admin/delete-kindergarten-button";
 import { RegisterKindergartenDialog } from "@/components/platform/register-kindergarten-dialog";
@@ -74,7 +71,7 @@ function Platform() {
   const items = kindergartens.data?.items ?? [];
 
   return (
-    <div className="flex flex-col gap-6 pb-8 lg:gap-7">
+    <div className="flex flex-col gap-5 pb-8">
       <PlatformPageHeading
         title="Цэцэрлэгүүд"
         lede="Байгууллагуудын бүртгэл, идэвх болон хамрах хүрээг нэг дороос хянаарай."
@@ -88,30 +85,27 @@ function Platform() {
         }
       />
 
+      {/*
+        ★ One strip, not five cards — 2026-10-13, the user: minimal, compact,
+        formal. The figures share a hairline-divided row; no icons.
+      */}
       {stats.data ? (
         <section
           aria-label="Системийн товч мэдээлэл"
-          className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5"
+          className="grid grid-cols-2 overflow-hidden rounded-card border border-border bg-white sm:grid-cols-5 [&>div]:border-border-soft [&>div:not(:last-child)]:border-b sm:[&>div:not(:last-child)]:border-b-0 sm:[&>div:not(:last-child)]:border-r"
         >
           {[
-            { label: "Нийт цэцэрлэг", value: stats.data.kindergartens, icon: Building2 },
-            { label: "Нийт бүлэг", value: stats.data.groups, icon: UsersRound },
-            { label: "Нийт хүүхэд", value: stats.data.children, icon: Baby },
-            { label: "Багш, ажилтан", value: stats.data.staff, icon: GraduationCap },
-            { label: "Идэвхтэй эцэг эх", value: stats.data.guardians, icon: UsersRound },
-          ].map(({ label, value, icon: Icon }) => (
-            <div
-              key={label}
-              className="rounded-card border border-border bg-white p-4 shadow-sm sm:p-5"
-            >
-              <span
-                className="grid size-10 place-items-center rounded-control bg-primary-soft text-primary"
-                aria-hidden="true"
-              >
-                <Icon size={20} strokeWidth={1.8} />
-              </span>
-              <p className="mt-4 text-caption font-medium text-muted">{label}</p>
-              <p className="mt-1 text-heading font-extrabold tabular-nums text-ink">{value}</p>
+            { label: "Цэцэрлэг", value: stats.data.kindergartens },
+            { label: "Бүлэг", value: stats.data.groups },
+            { label: "Хүүхэд", value: stats.data.children },
+            { label: "Багш, ажилтан", value: stats.data.staff },
+            { label: "Идэвхтэй эцэг эх", value: stats.data.guardians },
+          ].map(({ label, value }) => (
+            <div key={label} className="px-4 py-3">
+              <p className="text-caption text-muted">{label}</p>
+              <p className="mt-0.5 text-title font-bold tabular-nums text-ink">
+                {value.toLocaleString("en-US")}
+              </p>
             </div>
           ))}
         </section>
@@ -133,10 +127,12 @@ function Platform() {
       {stats.data?.esis ? (
         <section
           aria-label="ЭСИС-тэй тулгалт"
-          className="rounded-card border border-border bg-white p-4 shadow-sm sm:p-5"
+          className="rounded-card border border-border bg-white px-4 py-3"
         >
-          <h2 className="text-body font-semibold text-ink">ЭСИС-тэй тулгалт</h2>
-          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 xl:grid-cols-5">
+          <h2 className="text-caption font-semibold uppercase tracking-[0.12em] text-muted">
+            ЭСИС-тэй тулгалт
+          </h2>
+          <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 xl:grid-cols-5">
             <PlatformEsisFigure
               label="Холбогдсон цэцэрлэг"
               value={`${stats.data.esis.connected} / ${stats.data.kindergartens}`}
@@ -164,20 +160,8 @@ function Platform() {
         </section>
       ) : null}
 
-      <section aria-label="Цэцэрлэгийн жагсаалт" className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-title font-bold text-ink">Байгууллагууд</h2>
-            <p className="mt-1 text-caption text-muted">Бүртгэлтэй цэцэрлэгүүдийн мэдээлэл</p>
-          </div>
-          {kindergartens.data ? (
-            <span className="rounded-pill bg-primary-soft px-3 py-1.5 text-caption font-semibold text-primary">
-              {kindergartens.data.total} цэцэрлэг
-            </span>
-          ) : null}
-        </div>
-
-        <div className="flex flex-wrap gap-3 rounded-card border border-border bg-white p-3 shadow-sm sm:p-4">
+      <section aria-label="Цэцэрлэгийн жагсаалт" className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           <label className="relative min-w-0 flex-1 sm:max-w-[440px]">
             <span className="sr-only">Нэрээр хайх</span>
             <Search
@@ -191,14 +175,14 @@ function Platform() {
               placeholder="Цэцэрлэгийн нэрээр хайх"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="bg-sunken pl-11"
+              className="h-10 pl-11"
             />
           </label>
           <Select
             aria-label="Төлөвөөр шүүх"
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="w-full sm:w-[170px]"
+            className="h-10 w-full sm:w-[170px]"
           >
             {STATUS_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -206,6 +190,11 @@ function Platform() {
               </option>
             ))}
           </Select>
+          {kindergartens.data ? (
+            <span className="ml-auto text-caption text-muted">
+              {kindergartens.data.total} цэцэрлэг
+            </span>
+          ) : null}
         </div>
 
         {kindergartens.isLoading ? <LoadingState rows={5} /> : null}
@@ -223,47 +212,42 @@ function Platform() {
         ) : null}
 
         {items.length > 0 ? (
-          <RowList>
+          <ul className="divide-y divide-border-soft overflow-hidden rounded-card border border-border bg-white">
             {items.map((kg) => (
-              <div
+              <li
                 key={kg.id}
-                className="flex min-h-[84px] flex-wrap items-center gap-3 rounded-card border border-border bg-white px-4 py-3 shadow-sm transition-all has-[a:hover]:border-primary has-[a:hover]:shadow-md sm:px-5"
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 hover:bg-canvas"
               >
-                <Link
-                  href={`/platform/${kg.id}`}
-                  className="flex min-w-[180px] flex-1 items-center gap-3 py-1"
-                >
-                  <span className="grid size-12 shrink-0 place-items-center rounded-control bg-primary-soft">
-                    <Art name="kindergarten" size={36} className="size-9" />
+                <Link href={`/platform/${kg.id}`} className="min-w-[180px] flex-1 py-0.5">
+                  <span className="block truncate text-body font-semibold text-ink hover:text-primary">
+                    {kg.name}
                   </span>
-
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-lead font-bold text-ink">{kg.name}</span>
-                    <span className="mt-px block truncate text-compact text-muted">
-                      {[kg.address, kg.phone, kg.email].filter(Boolean).join(" · ") || "—"}
-                      {" · "}
-                      {formatRelative(kg.createdAt)}
-                    </span>
+                  <span className="block truncate text-caption text-muted">
+                    {[kg.address, kg.phone, kg.email].filter(Boolean).join(" · ") || "—"}
+                    {" · "}
+                    {formatRelative(kg.createdAt)}
                   </span>
                 </Link>
 
                 {/*
-                Three verbs, in the order of how far they go: the badge says
-                which state it is in, the toggle moves between the two
-                reversible ones, and Устгах is last and the only one painted
-                as danger. `DeleteKindergartenButton` is where the difference
-                between suspending and retiring is spelled out.
-              */}
-                <span className="flex w-full flex-wrap items-center gap-1 border-t border-border-soft pt-2 sm:w-auto sm:border-0 sm:pt-0">
-                  <Badge tone={kg.isActive ? "mint" : "neutral"}>
+                  Three verbs, in the order of how far they go: the state, the
+                  toggle between the two reversible ones, and Устгах last and
+                  the only one painted as danger.
+                */}
+                <span className="flex items-center gap-1">
+                  <span className="mr-1 inline-flex items-center gap-1.5 text-caption text-muted">
+                    <span
+                      aria-hidden="true"
+                      className={`size-1.5 rounded-pill ${kg.isActive ? "bg-emerald-500" : "bg-slate-300"}`}
+                    />
                     {kg.isActive ? "Идэвхтэй" : "Идэвхгүй"}
-                  </Badge>
+                  </span>
                   <ToggleActiveButton kindergarten={kg} />
                   <DeleteKindergartenButton kindergarten={kg} />
                 </span>
-              </div>
+              </li>
             ))}
-          </RowList>
+          </ul>
         ) : null}
       </section>
 
@@ -286,7 +270,7 @@ function PlatformEsisFigure({
     <div className="min-w-0">
       <dt className="text-caption text-muted">{label}</dt>
       <dd
-        className={`mt-0.5 truncate text-lead font-semibold tabular-nums ${
+        className={`mt-0.5 truncate text-body font-semibold tabular-nums ${
           warn ? "text-sun-ink" : "text-ink"
         }`}
       >

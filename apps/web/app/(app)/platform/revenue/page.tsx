@@ -131,19 +131,11 @@ function PlatformRevenue() {
             ★ Two sources since 2026-10-12: access fees and teaching-material
             sales (the user's decision). Their sum is what is divided.
           */}
-          <Card
-            pad="roomy"
-            tone="mint"
-            className="relative flex flex-col gap-1 overflow-hidden bg-[linear-gradient(110deg,#e4f5ed_0%,#f4fbf7_70%,#ffffff_100%)]"
-          >
-            <span
-              className="mb-2 grid size-11 place-items-center rounded-control bg-white/80 text-mint-ink"
-              aria-hidden="true"
-            >
-              <WalletCards size={22} />
-            </span>
-            <p className="text-body font-bold text-mint-ink">Платформын орлого</p>
-            <p className="mt-1 text-display font-extrabold tabular-nums text-ink">
+          <Card pad="roomy" className="flex flex-col gap-1">
+            <p className="text-caption font-semibold uppercase tracking-[0.12em] text-muted">
+              Платформын орлого
+            </p>
+            <p className="text-heading font-bold tabular-nums text-ink">
               {money(revenue.data.platform.total)}
             </p>
             <p className="text-caption text-muted">Хуваарилалт үүнээс бодогдоно</p>
@@ -214,10 +206,10 @@ function Total({
   accent?: boolean;
 }) {
   return (
-    <Card pad="roomy" className="border-border bg-white shadow-sm">
-      <p className="text-caption font-semibold text-muted">{label}</p>
+    <Card pad="roomy" className="border-border bg-white">
+      <p className="text-caption text-muted">{label}</p>
       <p
-        className={`mt-2 text-heading font-extrabold tabular-nums sm:text-display ${accent ? "text-primary" : "text-ink"}`}
+        className={`mt-0.5 text-title font-bold tabular-nums ${accent ? "text-primary" : "text-ink"}`}
       >
         {money(value)}
       </p>

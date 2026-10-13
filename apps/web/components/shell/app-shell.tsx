@@ -1539,7 +1539,7 @@ function SidebarContent({
                     renamed two of them, which is not what was asked: the
                     categories existed already and only needed drawing.
                   */}
-                  {isAdmin && sections
+                  {(isAdmin || variant === "platform") && sections
                     ? sections.map((section, sectionIndex) => (
                         <div key={section.title} className="contents">
                           {section.title ? (

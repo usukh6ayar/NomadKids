@@ -177,7 +177,7 @@ function EsisMappingCard({ kindergarten }: { kindergarten: PlatformKindergartenD
           </Button>
         }
       />
-      <Card pad="roomy" className="shadow-sm">
+      <Card pad="roomy">
         {/*
           ★ Two columns, and the buttons share one row — 2026-09-19.
 

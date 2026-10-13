@@ -1002,6 +1002,36 @@ describe("the sidebar footer", () => {
   });
 
   /*
+    ★ The operator's menu in groups, by the work — 2026-10-13, the user: the
+    organisations first, then the money, then what is sold. «Санхүү» is the
+    group; the operator's own income is «Орлого».
+  */
+  it("groups the platform menu: organisations, money, content", async () => {
+    renderShell([], "/platform", [], GROUPS, 0, true);
+    const nav = await sidebar();
+
+    for (const heading of ["Байгууллага", "Санхүү", "Агуулга"]) {
+      expect(within(nav).getByText(heading)).toBeInTheDocument();
+    }
+    const rows = within(nav)
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href"));
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        "/platform",
+        "/platform/applications",
+        "/platform/solo-workspaces",
+        "/platform/revenue",
+        "/platform/materials",
+      ]),
+    );
+    expect(within(nav).getByRole("link", { name: "Орлого" })).toHaveAttribute(
+      "href",
+      "/platform/revenue",
+    );
+  });
+
+  /*
     ★ Red, and the assertion is on the token rather than a hex value.
 
     `text-danger` is the one meaning in `tone.ts` that says "this ends

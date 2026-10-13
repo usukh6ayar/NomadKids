@@ -50,6 +50,8 @@ import {
   MessageSquareText,
   CalendarClock,
   Music2,
+  Inbox,
+  UserRound,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
@@ -178,7 +180,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   // business seeing.
   if (isSuperAdmin) {
     return (
-      <AppShell nav={platformNav()} variant="platform" workspaceTheme="platform">
+      <AppShell
+        nav={platformNav()}
+        sections={platformSections()}
+        variant="platform"
+        workspaceTheme="platform"
+      >
         {children}
       </AppShell>
     );
@@ -1391,44 +1398,60 @@ function supportSections(isCook: boolean): NavSection[] {
  * platform surface deliberately small.
  */
 function platformNav(): NavItem[] {
-  return [
-    { href: "/platform", label: "Цэцэрлэгүүд", icon: artIcon("kindergarten", 20) },
-    /*
-      ★ Санхүү — the operator's own money, not a kindergarten's.
+  return platformSections().flatMap((section) =>
+    section.entries.map((entry) => ({ ...entry, href: entry.href! }) as NavItem),
+  );
+}
 
-      `/kindergartens/:id/funding` is the administrator's screen and correctly
-      refuses a superadmin, who holds no membership (§1.1). This is the question
-      above it: what arrived across every kindergarten, and how the agreed
-      shares divide it. It is the second item because registering kindergartens
-      is still the operator's first job — §7 keeps the platform surface small,
-      and this is the one addition the client asked for.
-    */
-    { href: "/platform/revenue", label: "Санхүү", icon: artIcon("finance", 20) },
-    // What the teachers' shop sells — 2026-10-09.
+/**
+ * The operator's menu, grouped by the work — 2026-10-13, the user ("илүү
+ * ойлгомжтой"): the organisations first (the daily queue), then the money,
+ * then what is sold. Flat glyphs, like every other rail.
+ *
+ * ★ Санхүү is now «Орлого»: the operator's own income across every
+ * kindergarten (`/platform/revenue`), not a kindergarten's ledger —
+ * `/kindergartens/:id/funding` stays the administrator's and refuses a
+ * superadmin (§1.1).
+ */
+function platformSections(): NavSection[] {
+  return [
     {
-      href: "/platform/materials",
-      label: "Сургалтын хэрэглэгдэхүүн",
-      icon: artIcon("adminCurriculum", 20),
+      title: "Байгууллага",
+      entries: [
+        { href: "/platform", label: "Цэцэрлэгүүд", icon: <RailGlyph icon={Building2} /> },
+        // The onboarding queue — `docs/CONTRACT_ONBOARDING.md` step 3.
+        {
+          href: "/platform/applications",
+          label: "Байгууллагын хүсэлт",
+          icon: <RailGlyph icon={Inbox} />,
+        },
+        // Solo teachers' workspaces, and their merge into a kindergarten (D3).
+        {
+          href: "/platform/solo-workspaces",
+          label: "Бие даасан багш",
+          icon: <RailGlyph icon={UserRound} />,
+        },
+      ],
     },
-    /*
-      ★ The onboarding queue — `docs/CONTRACT_ONBOARDING.md` step 3. It sits
-      below the money because approving an application is occasional work and
-      reading the month's income is not, but it is on the sidebar rather than
-      buried: an application nobody looks at is a kindergarten that filled in a
-      form and never heard back.
-    */
     {
-      href: "/platform/applications",
-      label: "Байгууллагын хүсэлт",
-      icon: artIcon("kindergarten", 20),
+      title: "Санхүү",
+      entries: [{ href: "/platform/revenue", label: "Орлого", icon: <RailGlyph icon={Wallet} /> }],
     },
-    // Solo teachers' workspaces, and their merge into a kindergarten (D3, 2026-10-11).
     {
-      href: "/platform/solo-workspaces",
-      label: "Бие даасан багш",
-      icon: artIcon("teacher", 20),
+      title: "Агуулга",
+      entries: [
+        // What the teachers' shop sells — 2026-10-09.
+        {
+          href: "/platform/materials",
+          label: "Сургалтын хэрэглэгдэхүүн",
+          icon: <RailGlyph icon={BookOpen} />,
+        },
+      ],
     },
-    { href: "/settings", label: "Хувийн тохиргоо", icon: <Settings {...iconProps} /> },
+    {
+      title: "",
+      entries: [{ href: "/settings", label: "Хувийн тохиргоо", icon: <Settings {...iconProps} /> }],
+    },
   ];
 }
 
