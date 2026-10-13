@@ -215,10 +215,20 @@ describe("the operator's kindergartens table", () => {
               childCount: 12,
               createdAt: "2026-10-05T00:00:00Z",
             },
+            {
+              id: "s2",
+              name: "Доржийн Нараа",
+              phone: null,
+              email: "naraa@example.mn",
+              location: "Дархан-Уул аймаг",
+              workplace: null,
+              childCount: 0,
+              createdAt: "2026-10-09T00:00:00Z",
+            },
           ],
           page: 1,
           pageSize: 100,
-          total: 1,
+          total: 2,
           totalPages: 1,
         },
       },
@@ -235,6 +245,24 @@ describe("the operator's kindergartens table", () => {
     expect(row).toHaveTextContent("Од цэцэрлэг");
     expect(row).toHaveTextContent("12");
     expect(screen.queryByText("Нарлаг цэцэрлэг")).not.toBeVisible();
+
+    // The same filter bar as the kindergartens: named filters, chips, a count.
+    const solo = within(screen.getByRole("region", { name: "Бие даасан багшийн жагсаалт" }));
+    const names = () =>
+      [...solo.getByRole("table").querySelectorAll("tbody tr")].map(
+        (tr) => tr.querySelectorAll("td")[1]!.textContent,
+      );
+    expect(names()).toEqual(["Доржийн Нараа", "Батаагийн Сувд"]); // newest first
+    await user.click(solo.getByLabelText("Ажилладаг цэцэрлэгээр шүүх"));
+    await user.click(screen.getByRole("option", { name: "Бичсэн" }));
+    expect(names()).toEqual(["Батаагийн Сувд"]);
+    expect(solo.getByText("2-оос 1 багш")).toBeInTheDocument();
+    await user.click(solo.getByRole("button", { name: "Бүгдийг цэвэрлэх" }));
+    await user.click(solo.getByLabelText("Хүүхдийн тоогоор шүүх"));
+    await user.click(screen.getByRole("option", { name: "Хүүхэдгүй" }));
+    expect(names()).toEqual(["Доржийн Нараа"]);
+    await user.click(solo.getByRole("button", { name: "«Хүүхэдгүй» шүүлтүүрийг арилгах" }));
+    expect(names()).toHaveLength(2);
   });
 
   it("totals the columns at the top of the table — the platform's, or the rows filtered", async () => {

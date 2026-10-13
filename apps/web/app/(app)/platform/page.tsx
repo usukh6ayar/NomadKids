@@ -11,6 +11,7 @@ import {
   platformStatsSchema,
   soloWorkspaceSchema,
   type PlatformStats,
+  type SoloWorkspace,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
@@ -84,6 +85,37 @@ function FilterSelect({
         ))}
       </Select>
     </label>
+  );
+}
+
+type Chip = { key: string; label: string; clear: () => void };
+
+/** «Идэвхтэй шүүлтүүр: [Төрийн ×] … Бүгдийг цэвэрлэх» — nothing while none is set. */
+function FilterChips({ chips, onClearAll }: { chips: Chip[]; onClearAll: () => void }) {
+  if (chips.length === 0) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-caption">
+      <span className="text-muted">Идэвхтэй шүүлтүүр:</span>
+      {chips.map((chip) => (
+        <button
+          key={chip.key}
+          type="button"
+          onClick={chip.clear}
+          aria-label={`«${chip.label}» шүүлтүүрийг арилгах`}
+          className="inline-flex min-h-7 items-center gap-1 rounded-pill border border-primary/30 bg-primary/5 px-2.5 font-semibold text-ink hover:bg-primary/10"
+        >
+          {chip.label}
+          <X size={12} aria-hidden="true" />
+        </button>
+      ))}
+      <button
+        type="button"
+        onClick={onClearAll}
+        className="min-h-7 px-1 font-semibold text-primary hover:underline"
+      >
+        Бүгдийг цэвэрлэх
+      </button>
+    </div>
   );
 }
 
@@ -199,7 +231,7 @@ function Platform() {
       label: labelOf(STATUS_OPTIONS, status),
       clear: () => setStatus(""),
     },
-  ].filter((chip): chip is { key: string; label: string; clear: () => void } => Boolean(chip));
+  ].filter((chip): chip is Chip => Boolean(chip));
   const clearAll = () => {
     setQuery("");
     setKind("");
@@ -328,30 +360,7 @@ function Platform() {
             options={STATUS_OPTIONS}
           />
         </div>
-        {chips.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-2 text-caption">
-            <span className="text-muted">Идэвхтэй шүүлтүүр:</span>
-            {chips.map((chip) => (
-              <button
-                key={chip.key}
-                type="button"
-                onClick={chip.clear}
-                aria-label={`«${chip.label}» шүүлтүүрийг арилгах`}
-                className="inline-flex min-h-7 items-center gap-1 rounded-pill border border-primary/30 bg-primary/5 px-2.5 font-semibold text-ink hover:bg-primary/10"
-              >
-                {chip.label}
-                <X size={12} aria-hidden="true" />
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={clearAll}
-              className="min-h-7 px-1 font-semibold text-primary hover:underline"
-            >
-              Бүгдийг цэвэрлэх
-            </button>
-          </div>
-        ) : null}
+        <FilterChips chips={chips} onClearAll={clearAll} />
 
         {kindergartens.isLoading ? <LoadingState rows={5} /> : null}
         {kindergartens.isError ? (
@@ -614,7 +623,7 @@ function compareRows(a: Row, b: Row, key: SortKey, dir: 1 | -1): number {
   return order * dir;
 }
 
-function SortHeader({
+function SortHeader<K extends string>({
   label,
   column,
   sort,
@@ -623,9 +632,9 @@ function SortHeader({
   className,
 }: {
   label: string;
-  column: SortKey;
-  sort: { key: SortKey; dir: 1 | -1 };
-  onSort: (column: SortKey) => void;
+  column: K;
+  sort: { key: K; dir: 1 | -1 };
+  onSort: (column: K) => void;
   align?: "left" | "right";
   className?: string;
 }) {
@@ -706,32 +715,138 @@ function downloadSheet(rows: Row[], showEsis: boolean) {
 
 const soloListSchema = paginated(soloWorkspaceSchema);
 
+/** «Excel татах» for the solo teachers — the rows on screen, as the kindergartens' does. */
+function downloadSoloSheet(rows: SoloWorkspace[]) {
+  const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+  const header = [
+    "№",
+    "Багш",
+    "Ажилладаг цэцэрлэг",
+    "Аймаг / дүүрэг",
+    "Хүүхэд",
+    "Утас",
+    "И-мэйл",
+    "Бүртгэсэн",
+  ];
+  const body = rows.map((row, index) => [
+    index + 1,
+    row.name,
+    row.workplace ?? "",
+    row.location ?? "",
+    row.childCount,
+    row.phone ?? "",
+    row.email ?? "",
+    formatDate(row.createdAt),
+  ]);
+  const csv = [header, ...body].map((line) => line.map(quote).join(",")).join("\r\n");
+  const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "bie-daasan-bagsh.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+/** «Бүгд», those who named the kindergarten they work at, or those who did not. */
+const WORKPLACE_OPTIONS = [
+  { value: "", label: "Бүгд" },
+  { value: "named", label: "Бичсэн" },
+  { value: "blank", label: "Бичээгүй" },
+] as const;
+
+/** «Бүгд», teachers with children on their list, or those with none yet. */
+const SOLO_CHILDREN_OPTIONS = [
+  { value: "", label: "Бүгд" },
+  { value: "some", label: "Хүүхэдтэй" },
+  { value: "none", label: "Хүүхэдгүй" },
+] as const;
+
+type SoloSortKey = "name" | "area" | "children" | "created";
+
+function compareSolo(a: SoloWorkspace, b: SoloWorkspace, key: SoloSortKey, dir: 1 | -1): number {
+  const value = (row: SoloWorkspace): string | number | null =>
+    key === "name"
+      ? row.name
+      : key === "area"
+        ? row.location || null
+        : key === "children"
+          ? row.childCount
+          : row.createdAt;
+  const x = value(a);
+  const y = value(b);
+  if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
+  const order =
+    typeof x === "number" && typeof y === "number"
+      ? x - y
+      : String(x).localeCompare(String(y), "mn");
+  return order * dir;
+}
+
 /**
  * «Багш дангаар» — teachers working on their own, before their kindergarten
- * signs (#202). The same quiet table; merging happens on «Бие даасан багш»,
- * which the row's «⋯» opens.
+ * signs (#202). The same table and filter bar as the kindergartens
+ * (2026-10-13, the user: "ийм байдлаар"); merging happens on «Бие даасан
+ * багш», which the row's «⋯» opens.
  */
 function SoloTeachersTable() {
   const [search, setSearch] = useState("");
+  const [area, setArea] = useState("");
+  const [workplace, setWorkplace] = useState("");
+  const [children, setChildren] = useState("");
+  const [sort, setSort] = useState<{ key: SoloSortKey; dir: 1 | -1 }>({
+    key: "created",
+    dir: -1,
+  });
   const list = useQuery({
     queryKey: ["platform", "solo-workspaces"],
     queryFn: () => get("/platform/solo-workspaces?page=1&pageSize=100", soloListSchema),
   });
+  const items = list.data?.items ?? [];
+  const areas = [
+    ...new Set(items.map((row) => row.location).filter((name): name is string => Boolean(name))),
+  ].sort((a, b) => a.localeCompare(b, "mn"));
   const needle = search.trim().toLocaleLowerCase("mn");
-  const rows = (list.data?.items ?? []).filter(
-    (row) =>
-      !needle ||
-      [row.name, row.workplace ?? "", row.location ?? ""].some((text) =>
-        text.toLocaleLowerCase("mn").includes(needle),
-      ),
-  );
+  const rows = items
+    .filter(
+      (row) =>
+        (!needle ||
+          [row.name, row.workplace ?? "", row.location ?? ""].some((text) =>
+            text.toLocaleLowerCase("mn").includes(needle),
+          )) &&
+        (!area || row.location === area) &&
+        (!workplace || Boolean(row.workplace?.trim()) === (workplace === "named")) &&
+        (!children || row.childCount > 0 === (children === "some")),
+    )
+    .sort((a, b) => compareSolo(a, b, sort.key, sort.dir));
+  const chips = [
+    search.trim() && { key: "q", label: `«${search.trim()}»`, clear: () => setSearch("") },
+    area && { key: "area", label: area, clear: () => setArea("") },
+    workplace && {
+      key: "workplace",
+      label: `Цэцэрлэг ${labelOf(WORKPLACE_OPTIONS, workplace).toLocaleLowerCase("mn")}`,
+      clear: () => setWorkplace(""),
+    },
+    children && {
+      key: "children",
+      label: labelOf(SOLO_CHILDREN_OPTIONS, children),
+      clear: () => setChildren(""),
+    },
+  ].filter((chip): chip is Chip => Boolean(chip));
+  const clearAll = () => {
+    setSearch("");
+    setArea("");
+    setWorkplace("");
+    setChildren("");
+  };
+  const sortBy = (key: SoloSortKey) =>
+    setSort((current) => ({ key, dir: current.key === key ? (-current.dir as 1 | -1) : 1 }));
   const cell =
     "border-b border-r border-border-soft px-3 py-2 align-middle bg-white group-hover:bg-slate-50 last:border-r-0";
 
   return (
     <section aria-label="Бие даасан багшийн жагсаалт" className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <label className="relative min-w-0 flex-1 sm:max-w-[320px]">
+        <label className="relative min-w-0 flex-1 sm:max-w-[480px]">
           <span className="sr-only">Багш, цэцэрлэгээр хайх</span>
           <Search
             size={16}
@@ -741,16 +856,56 @@ function SoloTeachersTable() {
           <Input
             type="search"
             aria-label="Багш, цэцэрлэгээр хайх"
-            placeholder="Багш, цэцэрлэгээр хайх"
+            placeholder="Багшийн нэр, цэцэрлэгээр хайх"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="h-9 pl-9 text-compact"
           />
         </label>
         {list.data ? (
-          <span className="ml-auto text-caption text-muted">{rows.length} багш</span>
+          <span className="ml-auto flex items-center gap-2">
+            <span className="text-caption text-muted">
+              {chips.length ? `${items.length}-оос ${rows.length}` : rows.length} багш
+            </span>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={rows.length === 0}
+              onClick={() => downloadSoloSheet(rows)}
+            >
+              <FileDown size={16} aria-hidden="true" />
+              Excel татах
+            </Button>
+          </span>
         ) : null}
       </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <FilterSelect
+          label="Аймаг / дүүрэг"
+          ariaLabel="Багшийг аймаг, дүүргээр шүүх"
+          value={area}
+          onChange={setArea}
+          options={[
+            { value: "", label: "Бүгд" },
+            ...areas.map((name) => ({ value: name, label: name })),
+          ]}
+        />
+        <FilterSelect
+          label="Ажилладаг цэцэрлэг"
+          ariaLabel="Ажилладаг цэцэрлэгээр шүүх"
+          value={workplace}
+          onChange={setWorkplace}
+          options={WORKPLACE_OPTIONS}
+        />
+        <FilterSelect
+          label="Хүүхэд"
+          ariaLabel="Хүүхдийн тоогоор шүүх"
+          value={children}
+          onChange={setChildren}
+          options={SOLO_CHILDREN_OPTIONS}
+        />
+      </div>
+      <FilterChips chips={chips} onClearAll={clearAll} />
 
       {list.isLoading ? <LoadingState rows={4} /> : null}
       {list.isError ? <ErrorState description={errorMessage(list.error)} /> : null}
@@ -758,7 +913,7 @@ function SoloTeachersTable() {
         <EmptyState
           title="Бие даасан багш алга"
           description={
-            search ? "Хайлтаа өөрчилж үзнэ үү." : "Дангаар бүртгүүлсэн багш одоогоор алга."
+            chips.length ? "Шүүлтүүрээ өөрчилж үзнэ үү." : "Дангаар бүртгүүлсэн багш одоогоор алга."
           }
         />
       ) : null}
@@ -771,17 +926,25 @@ function SoloTeachersTable() {
                 <th scope="col" className={`${FROZEN_NO} bg-slate-50 text-right`}>
                   №
                 </th>
-                <th scope="col" className={`${FROZEN_NAME} bg-slate-50`}>
-                  Багш
-                </th>
+                <SortHeader
+                  label="Багш"
+                  column="name"
+                  sort={sort}
+                  onSort={sortBy}
+                  className={`${FROZEN_NAME} bg-slate-50`}
+                />
                 <th scope="col">Ажилладаг цэцэрлэг</th>
-                <th scope="col">Аймаг / дүүрэг</th>
-                <th scope="col" className="text-right">
-                  Хүүхэд
-                </th>
+                <SortHeader label="Аймаг / дүүрэг" column="area" sort={sort} onSort={sortBy} />
+                <SortHeader
+                  label="Хүүхэд"
+                  column="children"
+                  sort={sort}
+                  onSort={sortBy}
+                  align="right"
+                />
                 <th scope="col">Утас</th>
                 <th scope="col">И-мэйл</th>
-                <th scope="col">Бүртгэсэн</th>
+                <SortHeader label="Бүртгэсэн" column="created" sort={sort} onSort={sortBy} />
                 <th scope="col" className="w-10">
                   <span className="sr-only">Үйлдэл</span>
                 </th>
