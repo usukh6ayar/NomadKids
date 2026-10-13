@@ -7,7 +7,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId, useState, type FormEvent } from "react";
 import { z } from "zod";
-import { staffSelfRegistrationResultSchema, teacherSignupResultSchema } from "@kinder/contracts";
+import {
+  normalizeKindergartenName,
+  staffSelfRegistrationResultSchema,
+  teacherSignupResultSchema,
+} from "@kinder/contracts";
 import {
   COMPACT_INPUT,
   PROVINCES,
@@ -38,10 +42,12 @@ import { cn } from "@/lib/utils";
  *    `/invitation/[token]`, as staff self-registration does. The operator
  *    later merges the workspace into the kindergarten (#204, #205).
  *
- * ★ Still asked of the backend for the first half — nothing answers it yet:
+ * ★ The backend routes for the first half:
  *
  *   GET  /public/kindergartens?location=…  → [{ id, name }]   contracted only
  *   POST /staff-registration { kindergartenId, registerNumber } → as today
+ *
+ * Both answered since #214.
  *
  * ★★ The staff path adds no validation of its own and renders the server's
  * one refusal sentence, for the reason `app/staff-register/page.tsx` gives.
@@ -239,16 +245,11 @@ function useContractedKindergartens(location: string) {
 }
 
 /**
- * A kindergarten's name as people type it: no case, no «цэцэрлэг», no
- * punctuation or spaces — «Нарлаг», «нарлаг цэцэрлэг» and «Нарлаг-цэцэрлэг»
- * are one name.
+ * A kindergarten's name as people type it — shared with the server's refusal
+ * of a solo sign-up for a signed kindergarten (#214), so the two never read a
+ * name differently.
  */
-export function normalizeKindergartenName(name: string): string {
-  return name
-    .toLocaleLowerCase("mn")
-    .replace(/цэцэрлэг/g, "")
-    .replace(/[^\p{L}\p{N}]/gu, "");
-}
+export { normalizeKindergartenName };
 
 /**
  * Whether what a teacher typed looks like one of the listed names — either

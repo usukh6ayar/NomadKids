@@ -101,7 +101,7 @@ export interface NavItem {
    * `unread` shows the unread-notification count — only one item sets it.
    * `surveys` shows the administration's surveys a teacher has not opened.
    */
-  badge?: "unread" | "surveys";
+  badge?: "unread" | "surveys" | "serviceAccess";
   /** Small trailing context used by the guardian service row. */
   tag?: string;
   /** Runs instead of navigating. See `href`. */
@@ -142,7 +142,7 @@ export interface NavSection {
   entries: {
     label: string;
     href?: string;
-    badge?: "unread" | "surveys";
+    badge?: "unread" | "surveys" | "serviceAccess";
     tag?: string;
     /**
      * A small mark before the label — a lucide icon at the same weight as
@@ -2297,6 +2297,8 @@ function PillBottomBar({
                 {item.barIcon ?? item.icon}
                 {item.badge === "unread" ? <UnreadDot /> : null}
                 {item.badge === "surveys" ? <SurveyUnreadDot /> : null}
+                {item.badge === "serviceAccess" ? <ServiceAccessDot /> : null}
+                {item.badge === "serviceAccess" ? <ServiceAccessDot /> : null}
               </span>
               {/*
                 ★ Not drawn — 2026-10-01, at the client's instruction: the
@@ -2544,6 +2546,30 @@ function SurveyUnreadDot() {
     </span>
   );
 }
+
+/**
+ * The red «1» on «Үйлчилгээний эрх» — the contract ends within 14 days
+ * (`GET /service-access`'s `remind`, #218; the user 2026-10-12). Silent for a
+ * kindergarten without the row: a solo workspace answers 404.
+ */
+function ServiceAccessDot() {
+  const { data } = useQuery({
+    queryKey: qk.serviceAccess(),
+    queryFn: () => get("/service-access", serviceAccessRemindSchema),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  if (!data?.remind) return null;
+
+  return (
+    <span className="absolute -right-2.5 -top-1.5 flex min-w-[18px] items-center justify-center rounded-pill bg-danger px-1 text-caption font-bold leading-[18px] text-white">
+      <span aria-hidden="true">1</span>
+      <span className="sr-only">Үйлчилгээний эрх удахгүй дуусна</span>
+    </span>
+  );
+}
+
+const serviceAccessRemindSchema = z.object({ remind: z.boolean().optional() });
 
 function useUnreadCount(): number {
   const { data } = useQuery({

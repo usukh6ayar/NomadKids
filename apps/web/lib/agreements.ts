@@ -10,7 +10,8 @@ import type { Role, Session } from "@kinder/contracts";
  * `sections` below and raise `version` — a new version asks everyone to
  * accept again, which is the point of versioning an agreement.
  *
- * ★★ The contract the backend is asked for — nothing answers it yet:
+ * ★★ The backend contract (#215 — the server accepts only `CURRENT_AGREEMENT_VERSIONS`
+ * from `@kinder/contracts`, so raising `version` here means raising it there too):
  *
  *   GET  /me/agreements  → { accepted: [{ kind, version, acceptedAt }] }
  *   POST /me/agreements  { kind, version } → 201

@@ -14,12 +14,7 @@ import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { daysUntil, formatDate } from "@/lib/format";
-import {
-  CHILD_CURRENT_TERM_PRICE,
-  CHILD_CURRENT_YEAR_PRICE,
-  tugrik,
-  type BillingPeriod,
-} from "@/lib/pricing";
+import { tugrik, type BillingPeriod } from "@/lib/pricing";
 import { cn } from "@/lib/utils";
 
 /**
@@ -33,9 +28,10 @@ import { cn } from "@/lib/utils";
  * child layout shows `AccessGate` instead — so this is the paid state: until
  * when, and renewing 14 days before the end.
  *
- * ★ «Улирлаар» is offered at the price page's amount but cannot be paid yet:
- * the API issues one subscription per school year. It opens when the API
- * takes a term (the admin list, item 10).
+ * ★ The amounts are the server's — `amount` for the year, `termAmount` for a
+ * term (#217) — not `lib/pricing.ts`: the server's figure is what QPay
+ * charges. «Улирлаар» is offered only while `termAmount` is set: terms are
+ * sold here and today is in one.
  */
 const REMIND_DAYS = 14;
 
@@ -57,7 +53,10 @@ export default function ChildAccessPage() {
     );
   }
 
-  const { required, active, subscription } = status.data;
+  const { required, active, subscription, amount, termAmount } = status.data;
+  // Without a term price the year is the only choice, whatever was picked.
+  const chosen: BillingPeriod = termAmount ? period : "year";
+  const price = chosen === "year" ? amount : termAmount;
   const daysLeft = subscription && active ? daysUntil(subscription.expiresAt) : null;
   const canRenew = required && (!active || (daysLeft !== null && daysLeft <= REMIND_DAYS));
 
@@ -110,11 +109,12 @@ export default function ChildAccessPage() {
                 key={value}
                 type="button"
                 role="radio"
-                aria-checked={period === value}
+                aria-checked={chosen === value}
+                disabled={value === "term" && !termAmount}
                 onClick={() => setPeriod(value)}
                 className={cn(
-                  "min-h-11 rounded-pill px-3 text-body font-semibold transition-colors",
-                  period === value ? "bg-primary text-white shadow-sm" : "text-muted",
+                  "min-h-11 rounded-pill px-3 text-body font-semibold transition-colors disabled:opacity-50",
+                  chosen === value ? "bg-primary text-white shadow-sm" : "text-muted",
                 )}
               >
                 {label}
@@ -123,26 +123,20 @@ export default function ChildAccessPage() {
           </div>
 
           <p aria-live="polite" className="text-body text-ink">
-            <strong className="text-title">
-              {tugrik(period === "year" ? CHILD_CURRENT_YEAR_PRICE : CHILD_CURRENT_TERM_PRICE)}
-            </strong>{" "}
-            / {period === "year" ? "хичээлийн жил" : "улирал"}
+            <strong className="text-title">{price ? tugrik(Number(price)) : "—"}</strong> /{" "}
+            {chosen === "year" ? "хичээлийн жил" : "улирал"}
           </p>
+          {!termAmount ? (
+            <p className="text-caption text-muted">Одоогоор зөвхөн жилээр төлөх боломжтой.</p>
+          ) : null}
 
-          {period === "year" ? (
-            <AccessPayDialog
-              childId={childId}
-              onPaid={() => status.refetch()}
-              trigger={<Button className="self-start">QPay-ээр төлөх</Button>}
-            />
-          ) : (
-            <>
-              <Button disabled className="self-start">
-                QPay-ээр төлөх
-              </Button>
-              <p className="text-caption text-muted">Улирлаар төлөх боломж удахгүй нээгдэнэ.</p>
-            </>
-          )}
+          <AccessPayDialog
+            key={chosen}
+            childId={childId}
+            period={chosen === "year" ? "YEAR" : "TERM"}
+            onPaid={() => status.refetch()}
+            trigger={<Button className="self-start">QPay-ээр төлөх</Button>}
+          />
         </Card>
       ) : null}
     </div>

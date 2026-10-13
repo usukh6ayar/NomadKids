@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { CalendarClock, FileDown } from "lucide-react";
 import { useState } from "react";
 import { z } from "zod";
@@ -9,18 +9,12 @@ import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { LoadingState } from "@/components/ui/states";
-import { downloadUrl } from "@/lib/api/client";
-import { get } from "@/lib/api/browser";
+import { get, mutate } from "@/lib/api/browser";
+import { useToast } from "@/components/ui/toast";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { daysUntil, formatDate } from "@/lib/format";
-import {
-  KINDERGARTEN_CURRENT_TERM_PER_GROUP,
-  KINDERGARTEN_CURRENT_YEAR_PER_GROUP,
-  kindergartenPrice,
-  tugrik,
-  type BillingPeriod,
-} from "@/lib/pricing";
+import { tugrik, type BillingPeriod } from "@/lib/pricing";
 import { cn } from "@/lib/utils";
 
 /**
@@ -28,12 +22,10 @@ import { cn } from "@/lib/utils";
  * just above «Хувийн тохиргоо», a director sees how long the contract runs and
  * renews it by term or by year at the price page's own amounts.
  *
- * ★ The contract the backend is asked for — nothing answers it yet:
- *
- *   GET /service-access
- *     → { expiresAt: date | null, period: "term" | "year" | null, groupCount }
- *   GET /service-access/invoice?period=term|year
- *     → the invoice PDF with the bank details; the operator marks it paid
+ * ★ `GET /service-access` (#218) answers the contract in force, the groups
+ * running now and both renewal amounts — the contract's own per-group fee,
+ * not `lib/pricing.ts`. The invoice is a job rendered by the worker:
+ * `POST /service-access/invoices { period }` → poll → `…/download`.
  *
  * ★★ No QPay button. The client said on 2026-09-01 that QPay takes only the
  * parents' access fee; a «QPay-ээр шууд төлөх» button joins «Нэхэмжлэх
@@ -43,7 +35,17 @@ const serviceAccessSchema = z.object({
   expiresAt: z.string().nullish(),
   period: z.enum(["term", "year"]).nullish(),
   groupCount: z.number().int().nonnegative(),
+  termAmount: z.string().nullish(),
+  yearAmount: z.string().nullish(),
 });
+
+const invoiceJobSchema = z.object({
+  id: z.string(),
+  status: z.string(),
+  downloadable: z.boolean(),
+  errorMessage: z.string().nullish(),
+});
+const invoiceDownloadSchema = z.object({ url: z.string() });
 
 /** The reminder window — the user, 2026-10-12. */
 const REMIND_DAYS = 14;
@@ -68,6 +70,7 @@ function ServiceAccess() {
   const notReady = access.isError && isNotFound(access.error);
   const groups = access.data?.groupCount ?? 0;
   const daysLeft = access.data?.expiresAt ? daysUntil(access.data.expiresAt) : null;
+  const price = period === "year" ? access.data?.yearAmount : access.data?.termAmount;
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
@@ -140,48 +143,83 @@ function ServiceAccess() {
         </div>
 
         <p aria-live="polite" className="text-body text-ink">
-          {groups > 0 ? (
+          {price ? (
             <>
-              {groups} бүлэг ×{" "}
-              {tugrik(
-                period === "year"
-                  ? KINDERGARTEN_CURRENT_YEAR_PER_GROUP
-                  : KINDERGARTEN_CURRENT_TERM_PER_GROUP,
-              )}{" "}
-              = <strong className="text-title">{tugrik(kindergartenPrice(groups, period))}</strong>
+              {groups} бүлэг · <strong className="text-title">{tugrik(Number(price))}</strong> /{" "}
+              {period === "year" ? "хичээлийн жил" : "улирал"}
             </>
-          ) : (
-            <>
-              1 бүлэг:{" "}
-              <strong>
-                {tugrik(
-                  period === "year"
-                    ? KINDERGARTEN_CURRENT_YEAR_PER_GROUP
-                    : KINDERGARTEN_CURRENT_TERM_PER_GROUP,
-                )}
-              </strong>{" "}
-              / {period === "year" ? "жил" : "улирал"}
-            </>
-          )}
+          ) : access.isSuccess ? (
+            "Гэрээнд бүлгийн төлбөр тогтоогоогүй байна. NomadKids-тэй холбогдож нэхэмжлэх авна уу."
+          ) : null}
         </p>
 
-        {access.isSuccess ? (
-          <Button asChild className="self-start">
-            <a href={downloadUrl(`/service-access/invoice?period=${period}`)}>
-              <FileDown aria-hidden="true" />
-              Нэхэмжлэх татах
-            </a>
-          </Button>
-        ) : (
-          <Button disabled className="self-start">
-            <FileDown aria-hidden="true" />
-            Нэхэмжлэх татах
-          </Button>
-        )}
+        <InvoiceButton period={period} disabled={!price} />
         <p className="text-caption text-muted">
           Нэхэмжлэхийн дагуу шилжүүлэг хийсний дараа эрх сунгагдана.
         </p>
       </Card>
     </div>
+  );
+}
+
+/**
+ * «Нэхэмжлэх татах» — queued, polled, then opened. The same shape as the
+ * finance PDFs: Chromium never runs inside a request (CLAUDE.md §6).
+ */
+function InvoiceButton({ period, disabled }: { period: BillingPeriod; disabled: boolean }) {
+  const toast = useToast();
+  const [jobId, setJobId] = useState<string | null>(null);
+
+  const queue = useMutation({
+    mutationFn: () =>
+      mutate("/service-access/invoices", invoiceJobSchema, { method: "POST", body: { period } }),
+    onSuccess: (job) => setJobId(job.id),
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const job = useQuery({
+    enabled: Boolean(jobId),
+    queryKey: ["service-access", "invoice", jobId],
+    queryFn: () => get(`/service-access/invoices/${jobId}`, invoiceJobSchema),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "DONE" || status === "FAILED" ? false : 1500;
+    },
+  });
+
+  const download = useMutation({
+    mutationFn: () => get(`/service-access/invoices/${jobId}/download`, invoiceDownloadSchema),
+    onSuccess: (result) => {
+      setJobId(null);
+      window.location.href = result.url;
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const status = job.data?.status;
+  const working = queue.isPending || status === "QUEUED" || status === "RUNNING";
+
+  if (job.data?.downloadable) {
+    return (
+      <Button
+        className="self-start"
+        onClick={() => download.mutate()}
+        disabled={download.isPending}
+      >
+        <FileDown aria-hidden="true" />
+        Нэхэмжлэх татах
+      </Button>
+    );
+  }
+
+  return (
+    <Button className="self-start" onClick={() => queue.mutate()} disabled={disabled || working}>
+      <FileDown aria-hidden="true" />
+      {working
+        ? "Нэхэмжлэх бэлдэж байна…"
+        : status === "FAILED"
+          ? "Дахин оролдох"
+          : "Нэхэмжлэх үүсгэх"}
+    </Button>
   );
 }

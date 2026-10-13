@@ -92,7 +92,7 @@ describe("signing in on a third device", () => {
     type: "about:blank",
     title: "Төхөөрөмжийн хязгаар",
     status: 409,
-    detail: "Та 2 төхөөрөмжөөс нэвтэрсэн байна.",
+    detail: "Та 2 төхөөрөмжөөс нэвтэрсэн байна. Аль нэгийг нь гаргаад нэвтэрнэ үү.",
     requestId: "test",
     code: "DEVICE_LIMIT",
   };
@@ -117,7 +117,8 @@ describe("signing in on a third device", () => {
 
     const choice = await screen.findByRole("button", { name: /Windows · Chrome/ });
     expect(
-      screen.getByText("Та 2 төхөөрөмжөөс нэвтэрсэн байна. Аль нэгийг нь гаргаад энд нэвтэрнэ үү."),
+      // The 409's own sentence — the limit is a server setting.
+      screen.getByText("Та 2 төхөөрөмжөөс нэвтэрсэн байна. Аль нэгийг нь гаргаад нэвтэрнэ үү."),
     ).toBeInTheDocument();
 
     const api = stubApi([

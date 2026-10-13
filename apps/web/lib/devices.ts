@@ -4,7 +4,7 @@ import { z } from "zod";
  * «Бүртгэлтэй төхөөрөмж» — every account signs in from at most two devices
  * (the user, 2026-10-12). The web side is built first; the API follows.
  *
- * ★ The contract the backend is asked for — nothing answers it yet:
+ * ★ The backend contract (#216):
  *
  *   GET    /auth/sessions        → { limit, sessions: DeviceSession[] }
  *   DELETE /auth/sessions/:id    → 204, signs that device out

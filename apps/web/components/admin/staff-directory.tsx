@@ -16,6 +16,7 @@ import {
   Pencil,
   Phone,
   Plus,
+  KeyRound,
   Power,
   Settings,
   UserRound,
@@ -51,6 +52,8 @@ import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui
 import { Td, Th } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { StaffLinkDialog } from "@/components/admin/staff/staff-link-dialog";
+import { InvitationHandover } from "@/components/admin/invitation-handover";
+import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 import { cn } from "@/lib/utils";
 import { EsisButton } from "@/components/esis/esis-button";
 
@@ -156,6 +159,7 @@ function StaffSection({
   const [editing, setEditing] = useState<StaffUser | null>(null);
   const [roleOf, setRoleOf] = useState<StaffUser | null>(null);
   const [deactivating, setDeactivating] = useState<StaffUser | null>(null);
+  const [resetFor, setResetFor] = useState<StaffUser | null>(null);
   const toast = useToast();
   const queryClient = useQueryClient();
 
@@ -213,9 +217,14 @@ function StaffSection({
   const assignedCount = useStaffCount(primaryKindergartenId, roles, "true", teacher);
   const unassignedCount = useStaffCount(primaryKindergartenId, roles, "false", teacher);
 
+  /*
+    ★ The membership here, not the account (#213). One account reaches every
+    kindergarten a person works at and their own children as a parent; a
+    director closes this kindergarten's role only — `DELETE /memberships/:id`.
+  */
   const deactivate = useMutation({
-    mutationFn: (id: string) =>
-      mutate(`/users/${id}`, z.unknown(), { method: "PATCH", body: { isActive: false } }),
+    mutationFn: (membershipId: string) =>
+      mutate(`/memberships/${membershipId}`, z.unknown(), { method: "DELETE" }),
     onSuccess: () => {
       toast.success("Идэвхгүй болголоо.");
       setDeactivating(null);
@@ -450,6 +459,11 @@ function StaffSection({
                             onSelect: () => setRoleOf(user),
                           },
                           {
+                            label: "Нууц үг сэргээх",
+                            icon: <KeyRound size={16} aria-hidden />,
+                            onSelect: () => setResetFor(user),
+                          },
+                          {
                             label: "Идэвхгүй болгох",
                             icon: <Power size={16} aria-hidden />,
                             tone: "danger" as const,
@@ -513,14 +527,22 @@ function StaffSection({
         onOpenChange={(next) => (next ? undefined : setDeactivating(null))}
         title="Идэвхгүй болгох уу?"
         description={
-          deactivating ? `${fullName(deactivating)} системд нэвтрэх боломжгүй болно.` : ""
+          deactivating
+            ? `${fullName(deactivating)} энэ цэцэрлэгийн системд нэвтрэх боломжгүй болно.`
+            : ""
         }
         confirmLabel="Идэвхгүй болгох"
         cancelLabel="Болих"
         tone="danger"
         pending={deactivate.isPending}
-        onConfirm={() => (deactivating ? deactivate.mutate(deactivating.id) : undefined)}
+        onConfirm={() => {
+          const membership = deactivating
+            ? sectionMembership(deactivating, primaryKindergartenId, kind)
+            : undefined;
+          if (membership) deactivate.mutate(membership.id);
+        }}
       />
+      {resetFor ? <PasswordResetDialog user={resetFor} onClose={() => setResetFor(null)} /> : null}
     </section>
   );
 }
@@ -1178,5 +1200,62 @@ function UnclaimedEsisStaff() {
         />
       ) : null}
     </section>
+  );
+}
+
+/**
+ * «Нууц үг сэргээх» — a one-time link for a member of staff who is locked out
+ * (#211 item 10; `POST /users/:id/password-reset`). The director hands it over;
+ * the person chooses the password. The server refuses another director, a
+ * parent and anyone who also works elsewhere (409, with the reason shown).
+ */
+function PasswordResetDialog({ user, onClose }: { user: StaffUser; onClose: () => void }) {
+  const backdrop = useBackdropDismiss(onClose);
+  const reset = useMutation({
+    mutationFn: () =>
+      mutate(`/users/${user.id}/password-reset`, z.object({ resetToken: z.string() }), {
+        method: "POST",
+      }),
+  });
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Нууц үг сэргээх"
+      {...backdrop}
+      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
+    >
+      <div className="w-full max-w-[480px] rounded-card border border-border bg-surface p-5">
+        {reset.isSuccess ? (
+          <InvitationHandover
+            token={reset.data.resetToken}
+            path="/reset-password"
+            title="Нууц үг сэргээх холбоос"
+            subtitle={fullName(user)}
+            validity="Холбоос 1 цаг хүчинтэй."
+            onClose={onClose}
+          />
+        ) : (
+          <div className="flex flex-col gap-4">
+            <div>
+              <h2 className="text-title font-semibold text-ink">Нууц үг сэргээх</h2>
+              <p className="mt-0.5 text-body text-muted">
+                {fullName(user)} шинэ нууц үгээ өөрөө тохируулах нэг удаагийн холбоос үүснэ.
+              </p>
+            </div>
+            <FormError message={reset.isError ? errorMessage(reset.error) : null} />
+            <div className="flex gap-2 border-t border-border pt-4">
+              <Button type="button" disabled={reset.isPending} onClick={() => reset.mutate()}>
+                {reset.isPending ? "Үүсгэж байна…" : "Холбоос үүсгэх"}
+              </Button>
+              <Button type="button" variant="secondary" onClick={onClose}>
+                Болих
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

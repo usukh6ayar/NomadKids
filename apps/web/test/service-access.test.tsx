@@ -25,15 +25,16 @@ function inDays(days: number): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-function accessStatus(expiresAt: string) {
+function accessStatus(expiresAt: string, termAmount: string | null = "9000.00") {
   return {
     required: true,
     active: true,
-    amount: "22000.00",
+    amount: "27000.00",
+    termAmount,
     subscription: {
       id: "sub-1",
       status: "ACTIVE",
-      amount: "22000.00",
+      amount: "27000.00",
       expiresAt,
       paidAt: "2026-09-02T00:00:00Z",
       schoolYear: { id: "sy-1", name: "2026-2027", endsOn: expiresAt },
@@ -55,7 +56,7 @@ describe("the family's «Үйлчилгээний эрх»", () => {
     expect(screen.queryByText(/хоногийн дараа дуусна/)).toBeNull();
   });
 
-  it("warns 14 days before the end and renews by year; a term is not payable yet", async () => {
+  it("warns 14 days before the end and renews by the server's term or year price", async () => {
     const user = userEvent.setup();
     stubApi([{ path: `/children/${CHILD_ID}/access`, body: accessStatus(inDays(10)) }]);
     renderWithProviders(<ChildAccessPage />);
@@ -66,34 +67,61 @@ describe("the family's «Үйлчилгээний эрх»", () => {
 
     await user.click(screen.getByRole("radio", { name: "Улирлаар" }));
     expect(screen.getByText("9,000₮")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "QPay-ээр төлөх" })).toBeDisabled();
-    expect(screen.getByText("Улирлаар төлөх боломж удахгүй нээгдэнэ.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "QPay-ээр төлөх" })).toBeEnabled();
+  });
+
+  it("offers the year only when the server sells no term", async () => {
+    stubApi([{ path: `/children/${CHILD_ID}/access`, body: accessStatus(inDays(10), null) }]);
+    renderWithProviders(<ChildAccessPage />);
+
+    expect(await screen.findByRole("radio", { name: "Улирлаар" })).toBeDisabled();
+    expect(screen.getByText("27,000₮")).toBeInTheDocument();
+    expect(screen.getByText("Одоогоор зөвхөн жилээр төлөх боломжтой.")).toBeInTheDocument();
   });
 });
 
 describe("the director's «Үйлчилгээний эрх»", () => {
-  it("prices the renewal by the group count, and links the invoice", async () => {
+  it("prices the renewal from the server and queues the invoice", async () => {
     const user = userEvent.setup();
     stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
       {
         path: "/service-access",
-        body: { expiresAt: inDays(7), period: "term", groupCount: 4 },
+        body: {
+          expiresAt: inDays(7),
+          period: "term",
+          groupCount: 4,
+          termAmount: "48000.00",
+          yearAmount: "144000.00",
+        },
       },
     ]);
     renderWithProviders(<AdminServiceAccessPage />);
 
     expect(await screen.findByText("7 хоногийн дараа дуусна. Сунгана уу.")).toBeInTheDocument();
-    // 4 groups × 12,000₮ a term — the price page's own amount (#201).
     expect(screen.getByText("48,000₮")).toBeInTheDocument();
 
     await user.click(screen.getByRole("radio", { name: "Жилээр — хямд" }));
     expect(screen.getByText("144,000₮")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Нэхэмжлэх татах" })).toHaveAttribute(
-      "href",
-      expect.stringContaining("/service-access/invoice?period=year"),
-    );
     expect(screen.queryByRole("button", { name: /QPay/ })).toBeNull();
+
+    const api = stubApi([
+      {
+        path: "/service-access/invoices",
+        method: "POST",
+        status: 201,
+        body: { id: "job-1", status: "QUEUED", downloadable: false },
+      },
+      {
+        path: "/service-access/invoices/job-1",
+        body: { id: "job-1", status: "DONE", downloadable: true },
+      },
+    ]);
+    await user.click(screen.getByRole("button", { name: "Нэхэмжлэх үүсгэх" }));
+    expect(await screen.findByRole("button", { name: "Нэхэмжлэх татах" })).toBeEnabled();
+    expect(
+      api.calls.find((c) => c.method === "POST" && c.url === "/service-access/invoices")?.body,
+    ).toEqual({ period: "year" });
   });
 
   it("says the contract details are coming while the API does not answer", async () => {
@@ -103,6 +131,6 @@ describe("the director's «Үйлчилгээний эрх»", () => {
     expect(
       await screen.findByText("Үйлчилгээний эрхийн мэдээлэл удахгүй харагдана."),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Нэхэмжлэх татах" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Нэхэмжлэх үүсгэх" })).toBeDisabled();
   });
 });

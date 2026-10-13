@@ -345,6 +345,7 @@ function LoginCard() {
           <DeviceLimitPanel
             identifier={identifier}
             password={password}
+            message={login.error ? errorMessage(login.error) : null}
             pending={login.isPending}
             onReplace={(sessionId) => login.mutate(sessionId)}
             onCancel={() => {
