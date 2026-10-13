@@ -56,7 +56,14 @@ describe("the operator's kindergartens table", () => {
     renderPage();
 
     const table = await screen.findByRole("table");
-    for (const heading of ["Цэцэрлэг", "Өмчийн хэлбэр", "Аймаг / дүүрэг", "ЭСИС", "Бүлэг"]) {
+    for (const heading of [
+      "Цэцэрлэг",
+      "Өмчийн хэлбэр",
+      "Аймаг / дүүрэг",
+      "ЭСИС холболт",
+      "ЭСИС код",
+      "Бүлэг",
+    ]) {
       expect(within(table).getByRole("columnheader", { name: heading })).toBeInTheDocument();
     }
     for (const heading of ["Эхэлсэн", "Дуусах"]) {
@@ -86,7 +93,7 @@ describe("the operator's kindergartens table", () => {
 
     await user.click(screen.getByLabelText("Өмчийн хэлбэрээр шүүх"));
     await user.click(screen.getByRole("option", { name: "Төрийн" }));
-    expect(screen.getAllByRole("row")).toHaveLength(2); // header + one
+    expect(document.querySelectorAll("tbody tr")).toHaveLength(1);
     expect(screen.queryByText("Хүслэн")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Нарлаг цэцэрлэг — үйлдэл" }));
@@ -99,10 +106,7 @@ describe("the operator's kindergartens table", () => {
     renderPage();
     const table = await screen.findByRole("table");
     const names = () =>
-      within(table)
-        .getAllByRole("row")
-        .slice(1)
-        .map((row) => within(row).getAllByRole("cell")[1]!.querySelector("a")!.textContent);
+      [...table.querySelectorAll("tbody tr")].map((row) => row.querySelector("a")!.textContent);
 
     expect(names()).toEqual(["Нарлаг цэцэрлэг", "Хүслэн"]);
     const groups = within(table).getByRole("button", { name: /Бүлэг/ });
@@ -229,5 +233,42 @@ describe("the operator's kindergartens table", () => {
     expect(row).toHaveTextContent("Од цэцэрлэг");
     expect(row).toHaveTextContent("12");
     expect(screen.queryByText("Нарлаг цэцэрлэг")).not.toBeVisible();
+  });
+
+  it("totals the columns under the table — the platform's, or the rows filtered", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      {
+        path: "/platform/stats",
+        body: {
+          kindergartens: 2,
+          groups: 9,
+          children: 300,
+          staff: 40,
+          guardians: 250,
+          esis: null,
+        },
+      },
+      {
+        path: "/platform/kindergartens",
+        body: { items: ROWS, page: 1, pageSize: 50, total: 2, totalPages: 1 },
+      },
+    ]);
+    renderWithProviders(<PlatformPage />);
+    const table = await screen.findByRole("table");
+
+    const totals = () => within(table).getAllByRole("row").at(-1)!;
+    expect(await within(table).findByText(/Идэвхтэй эцэг эх: 250/)).toBeInTheDocument();
+    expect(totals()).toHaveTextContent("Нийт: 2 цэцэрлэг");
+    expect(totals()).toHaveTextContent("300");
+    expect(totals()).toHaveTextContent("1 / 2"); // ESIS: one of the two linked
+
+    // Filtered: the sum of what is on screen, so it matches the rows.
+    await user.click(screen.getByLabelText("Өмчийн хэлбэрээр шүүх"));
+    await user.click(screen.getByRole("option", { name: "Төрийн" }));
+    expect(totals()).toHaveTextContent("Нийт: 1 цэцэрлэг");
+    expect(totals()).toHaveTextContent("142");
+    expect(totals()).not.toHaveTextContent("Идэвхтэй эцэг эх");
   });
 });

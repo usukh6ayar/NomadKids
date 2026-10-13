@@ -10,6 +10,7 @@ import {
   platformKindergartenSchema,
   platformStatsSchema,
   soloWorkspaceSchema,
+  type PlatformStats,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
@@ -23,7 +24,6 @@ import { RowMenu } from "@/components/ui/menu";
 import { DeleteKindergartenButton } from "@/components/admin/delete-kindergarten-button";
 import { RegisterKindergartenDialog } from "@/components/platform/register-kindergarten-dialog";
 import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
-import { PlatformStatsStrip } from "@/components/platform/platform-stats-strip";
 import { daysUntil, formatDate } from "@/lib/format";
 
 /** "" = no filter (Бүгд); the API's `isActive` param is a `z.stringbool()`. */
@@ -112,6 +112,7 @@ function Platform() {
   const rows = items
     .filter((kg) => (!ownership || kg.propertyType === ownership) && (!area || areaOf(kg) === area))
     .sort((a, b) => compareRows(a, b, sort.key, sort.dir));
+  const filtered = Boolean(query.trim() || status || ownership || area);
   const sortBy = (key: SortKey) =>
     setSort((current) => ({ key, dir: current.key === key ? (-current.dir as 1 | -1) : 1 }));
 
@@ -128,8 +129,6 @@ function Platform() {
           </Button>
         }
       />
-
-      {stats.data ? <PlatformStatsStrip stats={stats.data} /> : null}
 
       {/*
         ★ ЭСИС-тэй тулгалт, platform-wide — 2026-09-24, the same request that
@@ -298,7 +297,7 @@ function Platform() {
 
         {rows.length > 0 ? (
           <div className="overflow-x-auto rounded-control border border-border bg-white">
-            <table className="w-full min-w-[1320px] border-separate border-spacing-0 text-left text-caption">
+            <table className="w-full min-w-[1400px] border-separate border-spacing-0 text-left text-caption">
               <thead className="bg-slate-50 text-muted">
                 <tr className="[&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-r [&>th]:border-border [&>th]:px-3 [&>th]:py-2 [&>th]:font-semibold [&>th:last-child]:border-r-0">
                   <th scope="col" className={`${FROZEN_NO} bg-slate-50 text-right`}>
@@ -313,7 +312,8 @@ function Platform() {
                   />
                   <th scope="col">Өмчийн хэлбэр</th>
                   <SortHeader label="Аймаг / дүүрэг" column="area" sort={sort} onSort={sortBy} />
-                  <th scope="col">ЭСИС</th>
+                  <th scope="col">ЭСИС холболт</th>
+                  <th scope="col">ЭСИС код</th>
                   <SortHeader
                     label="Бүлэг"
                     column="groups"
@@ -355,6 +355,7 @@ function Platform() {
                   />
                 ))}
               </tbody>
+              <KindergartenTotals rows={rows} platform={filtered ? null : (stats.data ?? null)} />
             </table>
           </div>
         ) : null}
@@ -411,21 +412,21 @@ function areaOf(kg: Row): string | null {
 const FROZEN_NO = "sticky left-0 z-10 w-10 min-w-10";
 const FROZEN_NAME = "sticky left-10 z-10 min-w-[200px] shadow-[1px_0_0_0_var(--color-border)]";
 
-/** ESIS: «Холбогдсон» with the institution number, or «Холбогдоогүй». */
+/** Linked to ESIS; read from the institution number until the API says so. */
+function esisConnected(kg: Row): boolean {
+  return kg.esisConnected ?? Boolean(kg.esisInstitutionId);
+}
+
+/** ESIS: «Холбогдсон» or «Холбогдоогүй»; the code has its own column. */
 function EsisCell({ kg }: { kg: Row }) {
-  const connected = kg.esisConnected ?? Boolean(kg.esisInstitutionId);
+  const connected = esisConnected(kg);
   return (
-    <span className="inline-flex flex-col">
-      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-        <span
-          aria-hidden="true"
-          className={`size-1.5 rounded-pill ${connected ? "bg-emerald-500" : "bg-slate-300"}`}
-        />
-        {connected ? "Холбогдсон" : "Холбогдоогүй"}
-      </span>
-      {kg.esisInstitutionId ? (
-        <span className="pl-3 tabular-nums text-muted">{kg.esisInstitutionId}</span>
-      ) : null}
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      <span
+        aria-hidden="true"
+        className={`size-1.5 rounded-pill ${connected ? "bg-emerald-500" : "bg-slate-300"}`}
+      />
+      {connected ? "Холбогдсон" : "Холбогдоогүй"}
     </span>
   );
 }
@@ -463,6 +464,7 @@ function KindergartenRow({
       <td className={cell}>
         <EsisCell kg={kg} />
       </td>
+      <td className={`${cell} tabular-nums`}>{kg.esisInstitutionId || "—"}</td>
       <td className={`${cell} text-right tabular-nums`}>{kg.groupCount ?? "—"}</td>
       <td className={`${cell} text-right tabular-nums`}>{kg.childCount ?? "—"}</td>
       <td className={`${cell} text-right tabular-nums`}>{kg.staffCount ?? "—"}</td>
@@ -583,7 +585,7 @@ function downloadSheet(rows: Row[]) {
     "Өмчийн хэлбэр",
     "Аймаг / дүүрэг",
     "ЭСИС холболт",
-    "ЭСИС дугаар",
+    "ЭСИС код",
     "Бүлэг",
     "Хүүхэд",
     "Ажилтан",
@@ -598,7 +600,7 @@ function downloadSheet(rows: Row[]) {
     kg.name,
     kg.propertyType ?? "",
     areaOf(kg) ?? "",
-    (kg.esisConnected ?? Boolean(kg.esisInstitutionId)) ? "Холбогдсон" : "Холбогдоогүй",
+    esisConnected(kg) ? "Холбогдсон" : "Холбогдоогүй",
     kg.esisInstitutionId ?? "",
     kg.groupCount ?? "",
     kg.childCount ?? "",
@@ -725,9 +727,71 @@ function SoloTeachersTable() {
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="[&>td]:border-t-2 [&>td]:border-r [&>td]:border-border [&>td]:bg-slate-50 [&>td]:px-3 [&>td]:py-2 [&>td]:font-semibold [&>td]:text-ink [&>td:last-child]:border-r-0">
+                <td className={FROZEN_NO} />
+                <td className={FROZEN_NAME}>Нийт: {rows.length} багш</td>
+                <td />
+                <td />
+                <td className="text-right tabular-nums">
+                  {rows.reduce((sum, row) => sum + row.childCount, 0).toLocaleString("en-US")}
+                </td>
+                <td colSpan={4} />
+              </tr>
+            </tfoot>
           </table>
         </div>
       ) : null}
     </section>
+  );
+}
+
+/** Sums one column over the rows, or `null` while the API sends none of it. */
+function sumOf(rows: Row[], pick: (row: Row) => number | null | undefined): number | null {
+  const values = rows.map(pick).filter((value): value is number => typeof value === "number");
+  return values.length ? values.reduce((sum, value) => sum + value, 0) : null;
+}
+
+/**
+ * «Нийт» — the figures that used to sit in a strip above the page, now under
+ * the columns they add up (2026-10-13, the user). Unfiltered, the platform's
+ * own totals; filtered, the sum of the rows on screen, so the line always
+ * agrees with the table above it. Active parents have no column, so they are
+ * named in the first cell.
+ */
+function KindergartenTotals({ rows, platform }: { rows: Row[]; platform: PlatformStats | null }) {
+  const figure = (value: number | null | undefined) =>
+    typeof value === "number" ? value.toLocaleString("en-US") : "—";
+  const groups = platform ? platform.groups : sumOf(rows, (row) => row.groupCount);
+  const children = platform ? platform.children : sumOf(rows, (row) => row.childCount);
+  const staff = platform ? platform.staff : sumOf(rows, (row) => row.staffCount);
+  const connected = rows.filter(esisConnected).length;
+  const cell =
+    "border-t-2 border-r border-border bg-slate-50 px-3 py-2 font-semibold text-ink last:border-r-0";
+
+  return (
+    <tfoot>
+      <tr>
+        <td className={`${cell} ${FROZEN_NO}`} />
+        <td className={`${cell} ${FROZEN_NAME}`}>
+          Нийт: {figure(platform ? platform.kindergartens : rows.length)} цэцэрлэг
+          {platform ? (
+            <span className="block font-normal text-muted">
+              Идэвхтэй эцэг эх: {figure(platform.guardians)}
+            </span>
+          ) : null}
+        </td>
+        <td className={cell} />
+        <td className={cell} />
+        <td className={`${cell} whitespace-nowrap`}>
+          {connected} / {rows.length}
+        </td>
+        <td className={cell} />
+        <td className={`${cell} text-right tabular-nums`}>{figure(groups)}</td>
+        <td className={`${cell} text-right tabular-nums`}>{figure(children)}</td>
+        <td className={`${cell} text-right tabular-nums`}>{figure(staff)}</td>
+        <td className={cell} colSpan={6} />
+      </tr>
+    </tfoot>
   );
 }
