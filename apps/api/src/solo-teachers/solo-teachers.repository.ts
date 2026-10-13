@@ -98,7 +98,11 @@ export class SoloTeachersRepository {
   /** Whether an account already holds this email or phone — a readable 409, not a 500. */
   async contactTaken(email: string, phone: string): Promise<"email" | "phone" | null> {
     const [byEmail, byPhone] = await Promise.all([
-      this.prisma.user.findUnique({ where: { email }, select: { id: true } }),
+      // Any casing — see `UsersRepository.findByEmail`.
+      this.prisma.user.findFirst({
+        where: { email: { equals: email, mode: "insensitive" } },
+        select: { id: true },
+      }),
       this.prisma.user.findUnique({ where: { phone }, select: { id: true } }),
     ]);
     return byEmail ? "email" : byPhone ? "phone" : null;

@@ -60,6 +60,19 @@ function withGroups<
 }
 
 /** Invitation links last a week — long enough for a parent to notice the SMS. */
+/**
+ * Whether an e-mail sent back is the one on file, in any casing.
+ *
+ * ★ Inputs are lower-cased now and older rows were stored as typed, so
+ * «Saraa@x.mn» on file and «saraa@x.mn» sent back is no change. It is never
+ * written either: where a second account holds the lower-cased form —
+ * production has two such pairs, 2026-10-13 — the write would break the
+ * unique index on a save that changed nothing.
+ */
+function sameEmail(sent: string | null | undefined, onFile: string | null | undefined): boolean {
+  return (sent ?? null)?.toLowerCase() === (onFile ?? null)?.toLowerCase();
+}
+
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
@@ -372,15 +385,15 @@ export class UsersService {
     // the value the account already has is not a change.
     const touchesAccount =
       (dto.isActive !== undefined && dto.isActive !== existing.isActive) ||
-      (dto.email !== undefined && dto.email !== existing.email) ||
+      (dto.email !== undefined && !sameEmail(dto.email, existing.email)) ||
       (dto.phone !== undefined && dto.phone !== existing.phone);
     if (touchesAccount && !(await this.tenants.canManageAccount(actor, id))) {
       throw new ConflictException(ACCOUNT_NOT_YOURS);
     }
 
-    if (dto.email && dto.email !== existing.email) {
-      const clash = await this.repo.findByEmail(dto.email);
-      if (clash && clash.id !== id) throw new ConflictException("Энэ и-мэйл аль хэдийн бүртгэлтэй");
+    if (dto.email && !sameEmail(dto.email, existing.email)) {
+      const clash = await this.repo.findByEmail(dto.email, id);
+      if (clash) throw new ConflictException("Энэ и-мэйл аль хэдийн бүртгэлтэй");
     }
     if (dto.phone && dto.phone !== existing.phone) {
       const clash = await this.repo.findByPhone(dto.phone);
@@ -388,6 +401,7 @@ export class UsersService {
     }
 
     const { dateOfBirth, ...rest } = dto;
+    if (sameEmail(rest.email, existing.email)) delete rest.email;
     const updated = await this.repo.update(id, {
       ...rest,
       ...(dateOfBirth !== undefined
@@ -596,9 +610,11 @@ export class UsersService {
   }
 
   async updateOwnProfile(actor: Actor, dto: UpdateProfileDto) {
-    if (dto.email) {
-      const clash = await this.repo.findByEmail(dto.email);
-      if (clash && clash.id !== actor.userId) {
+    // The settings form sends every field on every save.
+    const current = await this.repo.findProfile(actor.userId);
+    if (dto.email && !sameEmail(dto.email, current?.email)) {
+      const clash = await this.repo.findByEmail(dto.email, actor.userId);
+      if (clash) {
         throw new ConflictException("Энэ и-мэйл аль хэдийн бүртгэлтэй");
       }
     }
@@ -610,6 +626,7 @@ export class UsersService {
     }
 
     const { phoneVerification, ...changes } = dto;
+    if (sameEmail(changes.email, current?.email)) delete changes.email;
 
     /*
      * ★ A new number must be proven — verify.mn, 2026-10-01 — because the
@@ -620,7 +637,6 @@ export class UsersService {
      * field on every save.
      */
     if (changes.phone && this.phones.enabled) {
-      const current = await this.repo.findProfile(actor.userId);
       if (changes.phone !== current?.phone) {
         await this.phones.consume(phoneVerification, {
           purpose: "PROFILE_PHONE",
