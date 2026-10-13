@@ -11,6 +11,7 @@ import type { Actor } from "../authz/actor";
 import { paginate, toSkipTake, type PageParams } from "../common/pagination";
 import { EsisRepository } from "../integrations/esis/esis.repository";
 import { normalizeRegisterNumber, roleForJobCode } from "../integrations/esis/esis.roster";
+import { PublicKindergartensService } from "../public-kindergartens/public-kindergartens.service";
 import { UsersRepository } from "../users/users.repository";
 import { UsersService } from "../users/users.service";
 import { StaffRegistrationRepository } from "./staff-registration.repository";
@@ -63,6 +64,7 @@ export class StaffRegistrationService {
     private readonly esisRepo: EsisRepository,
     private readonly users: UsersService,
     private readonly usersRepo: UsersRepository,
+    private readonly publicKindergartens: PublicKindergartensService,
   ) {}
 
   /**
@@ -105,11 +107,14 @@ export class StaffRegistrationService {
     const registerNumber = normalizeRegisterNumber(dto.registerNumber);
     if (!registerNumber) throw new UnauthorizedException(REFUSAL);
 
-    const kindergarten = await this.repo.findKindergartenIdByEsisInstitutionId(
-      dto.institutionId.trim(),
-    );
-    if (!kindergarten) throw new UnauthorizedException(REFUSAL);
-    const kindergartenId = kindergarten.id;
+    // ★ Either way of naming the kindergarten ends in the same refusal when it
+    // names none — an ESIS number nobody carries, or an id that is not a
+    // contracted kindergarten (a solo workspace has no roster to match).
+    const kindergartenId = dto.kindergartenId
+      ? await this.publicKindergartens.contractedId(dto.kindergartenId.trim())
+      : ((await this.repo.findKindergartenIdByEsisInstitutionId(dto.institutionId?.trim() ?? ""))
+          ?.id ?? null);
+    if (!kindergartenId) throw new UnauthorizedException(REFUSAL);
 
     const entry = await this.esisRepo.findRosterEntryByRegisterNumber(
       kindergartenId,

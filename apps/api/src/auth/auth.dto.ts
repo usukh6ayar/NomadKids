@@ -9,12 +9,24 @@ import { guardianRelationSchema } from "@kinder/contracts";
  * state where the form accepts what the API rejects.
  */
 
-export const loginSchema = z.object({
+const credentialsSchema = z.object({
   /** Username or phone — the user should not have to remember which. */
   identifier: z.string().min(1, "Нэвтрэх нэрээ оруулна уу").max(254),
   password: z.string().min(1, "Нууц үгээ оруулна уу").max(200),
 });
+
+export const loginSchema = credentialsSchema.extend({
+  /**
+   * A device of this account to sign out so this one fits the limit (#211) —
+   * a `familyId` from `POST /auth/login/devices`.
+   */
+  replaceSessionId: z.string().uuid().optional(),
+});
 export type LoginDto = z.infer<typeof loginSchema>;
+
+/** `POST /auth/login/devices` — the same credentials, asking for the list. */
+export const loginDevicesSchema = credentialsSchema;
+export type LoginDevicesDto = z.infer<typeof loginDevicesSchema>;
 
 export const passwordResetConfirmSchema = z.object({
   token: z.string().min(10).max(200),

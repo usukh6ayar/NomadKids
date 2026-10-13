@@ -206,6 +206,34 @@ export const envSchema = z.object({
     .regex(/^\d{1,10}(\.\d{1,2})?$/, "ACCESS_FEE_AMOUNT нь мөнгөн дүн байна (жишээ: 15000.00)")
     .default("0"),
 
+  /**
+   * ★ The price of one **term** of access (#211, the user 2026-10-12) —
+   * `ACCESS_FEE_AMOUNT` stays the school year's. "0" sells no terms: the
+   * year alone, as before. Meaningless while `ACCESS_FEE_AMOUNT` is "0",
+   * which turns the whole gate off.
+   */
+  ACCESS_FEE_TERM_AMOUNT: z
+    .string()
+    .regex(/^\d{1,10}(\.\d{1,2})?$/, "ACCESS_FEE_TERM_AMOUNT нь мөнгөн дүн байна (жишээ: 9000.00)")
+    .default("0"),
+
+  /**
+   * How many devices one account may be signed in on at once (#211, the user
+   * 2026-10-12). A device is a refresh-token family — one sign-in and its
+   * rotations. `0` turns the limit off. A platform operator is never limited.
+   */
+  AUTH_DEVICE_LIMIT: z.coerce.number().int().min(0).max(20).default(2),
+
+  /**
+   * Where a kindergarten pays its NomadKids renewal (#211) — printed on the
+   * invoice a director downloads. Not QPay: the client allows QPay for
+   * families' fees and teaching materials only (CLAUDE.md §7). Unset, no
+   * invoice is issued rather than one with blank bank details.
+   */
+  SERVICE_INVOICE_BANK_NAME: z.string().trim().max(120).default(""),
+  SERVICE_INVOICE_BANK_ACCOUNT: z.string().trim().max(60).default(""),
+  SERVICE_INVOICE_ACCOUNT_HOLDER: z.string().trim().max(200).default(""),
+
   QPAY_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
 
   /**

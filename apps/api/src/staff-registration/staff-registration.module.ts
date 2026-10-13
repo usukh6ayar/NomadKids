@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
 import { EsisModule } from "../integrations/esis/esis.module";
+import { PublicKindergartensModule } from "../public-kindergartens/public-kindergartens.module";
 import { UsersModule } from "../users/users.module";
 import {
   StaffRegistrationController,
@@ -29,7 +30,7 @@ import { StaffRegistrationService } from "./staff-registration.service";
  * `@Global()` and need no import.
  */
 @Module({
-  imports: [AuthModule, EsisModule, UsersModule],
+  imports: [AuthModule, EsisModule, PublicKindergartensModule, UsersModule],
   controllers: [StaffRegistrationController, StaffRegistrationPublicController],
   providers: [StaffRegistrationService, StaffRegistrationRepository],
 })

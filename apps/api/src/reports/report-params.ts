@@ -55,6 +55,28 @@ export interface ReportJobParams {
    * renders of the same contract cannot disagree.
    */
   contractId?: string;
+
+  /**
+   * A kindergarten's renewal invoice — #211.
+   *
+   * ★ Only set for `SERVICE_INVOICE`, which carries no `childId`. Unlike a
+   * finance report the figures **are** frozen here: an invoice states the
+   * amount and the account at the moment it was asked for, and a price or a
+   * bank changing before the worker runs must not change what it says.
+   */
+  serviceInvoice?: ServiceInvoiceParams;
+}
+
+export interface ServiceInvoiceParams {
+  period: "TERM" | "YEAR";
+  months: number;
+  groupCount: number;
+  perGroupMonthlyFee: string;
+  amount: string;
+  kindergartenName: string;
+  contractNumber: string;
+  issuedOn: string;
+  bank: { name: string; account: string; holder: string };
 }
 
 /**

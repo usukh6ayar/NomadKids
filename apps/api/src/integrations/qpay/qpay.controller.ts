@@ -1,5 +1,10 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards } from "@nestjs/common";
-import { idParamSchema } from "@kinder/contracts";
+import {
+  accessPeriodBodySchema,
+  accessPeriodQuerySchema,
+  idParamSchema,
+  type AccessPeriod,
+} from "@kinder/contracts";
 import { ZodValidationPipe } from "../../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../../auth/decorators/actor.decorator";
 import { Public } from "../../auth/decorators/public.decorator";
@@ -23,13 +28,15 @@ const MINUTE = 60 * 1000;
 export class ChildAccessQpayController {
   constructor(private readonly service: QpayService) {}
 
+  /** `{ period }` — a term or the school year (#211); the year when absent. */
   @Post()
   @RateLimit({ limit: 10, windowMs: HOUR, byUser: true })
   async create(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(accessPeriodBodySchema)) body: { period: AccessPeriod },
   ) {
-    return this.service.createForSubscription(actor, params.id);
+    return this.service.createForSubscription(actor, params.id, body.period);
   }
 
   @Get()
@@ -37,8 +44,9 @@ export class ChildAccessQpayController {
   async status(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(accessPeriodQuerySchema)) query: { period: AccessPeriod },
   ) {
-    return this.service.status(actor, params.id);
+    return this.service.status(actor, params.id, query.period);
   }
 }
 

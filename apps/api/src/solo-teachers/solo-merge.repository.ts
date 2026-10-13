@@ -136,20 +136,30 @@ export class SoloMergeRepository {
    * in the merge's audit metadata via `kept`/`moved`.
    */
   private async carryPaidFee(tx: Tx, soloChildId: string, targetChildId: string, yearId: string) {
-    const paid = await tx.accessSubscription.findFirst({
+    const paid = await tx.accessSubscription.findMany({
       where: { childId: soloChildId, schoolYearId: yearId, status: "ACTIVE", deletedAt: null },
-      select: { amount: true, paidAt: true, expiresAt: true },
+      select: { period: true, termNumber: true, amount: true, paidAt: true, expiresAt: true },
     });
-    if (!paid) return;
-    await tx.accessSubscription.updateMany({
-      where: { childId: targetChildId, schoolYearId: yearId, status: { not: "ACTIVE" } },
-      data: {
-        status: "ACTIVE",
-        amount: paid.amount,
-        paidAt: paid.paidAt,
-        expiresAt: paid.expiresAt,
-      },
-    });
+    // ★ Like for like (#211): a paid term settles the target's row for that
+    // term, never its year — a YEAR row stamped with a term's price and end
+    // would read as paid, then lapse at the term's end with the year unbuyable.
+    for (const row of paid) {
+      await tx.accessSubscription.updateMany({
+        where: {
+          childId: targetChildId,
+          schoolYearId: yearId,
+          period: row.period,
+          termNumber: row.termNumber,
+          status: { not: "ACTIVE" },
+        },
+        data: {
+          status: "ACTIVE",
+          amount: row.amount,
+          paidAt: row.paidAt,
+          expiresAt: row.expiresAt,
+        },
+      });
+    }
   }
 
   /** A teacher already assigned to the target group is not assigned twice. */

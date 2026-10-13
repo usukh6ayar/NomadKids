@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { AgreementsModule } from "./agreements/agreements.module";
 import { AuditModule } from "./audit/audit.module";
 import { AuthModule } from "./auth/auth.module";
 import { AssessmentModule } from "./assessment/assessment.module";
@@ -9,6 +10,8 @@ import { StaffModule } from "./staff/staff.module";
 import { IncidentsModule } from "./incidents/incidents.module";
 import { FeedbackModule } from "./feedback/feedback.module";
 import { RoutineModule } from "./routine/routine.module";
+import { PublicKindergartensModule } from "./public-kindergartens/public-kindergartens.module";
+import { ServiceAccessModule } from "./service-access/service-access.module";
 import { SoloTeachersModule } from "./solo-teachers/solo-teachers.module";
 import { SongsPoemsModule } from "./songs-poems/songs-poems.module";
 import { MaterialsModule } from "./materials/materials.module";
@@ -59,6 +62,7 @@ import { UsersModule } from "./users/users.module";
   imports: [
     PrismaModule,
     AuditModule,
+    AgreementsModule,
     RateLimitModule,
     AuthzModule,
     AuthModule,
@@ -84,6 +88,8 @@ import { UsersModule } from "./users/users.module";
     IncidentsModule,
     FeedbackModule,
     RoutineModule,
+    PublicKindergartensModule,
+    ServiceAccessModule,
     SoloTeachersModule,
     SongsPoemsModule,
     MaterialsModule,

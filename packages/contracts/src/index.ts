@@ -27,6 +27,7 @@ import { mongolianErrorMap } from "./mn-locale";
  */
 z.config(mongolianErrorMap());
 
+export * from "./agreements";
 export * from "./birth-facts";
 export * from "./curriculum";
 export * from "./domain";

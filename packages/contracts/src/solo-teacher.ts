@@ -125,3 +125,46 @@ export const soloMergePreviewSchema = z.union([
   }),
 ]);
 export type SoloMergePreview = z.infer<typeof soloMergePreviewSchema>;
+
+/**
+ * A kindergarten's name as people type it: no case, no «цэцэрлэг», no
+ * punctuation or spaces — «Нарлаг», «нарлаг цэцэрлэг» and «Нарлаг-цэцэрлэг»
+ * are one name. The web's look-alike warning and the server's refusal of a
+ * solo sign-up for a contracted kindergarten (#211) read the same rule.
+ */
+export function normalizeKindergartenName(name: string): string {
+  return name
+    .toLocaleLowerCase("mn")
+    .replace(/цэцэрлэг/g, "")
+    .replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+/**
+ * «Баянзүрх дүүрэг» → «Баянзүрх». The sign-up form sends a district or
+ * province with its kind; a kindergarten's own profile may hold the bare name,
+ * or an address that contains it.
+ */
+export function locationStem(location: string): string {
+  return location
+    .trim()
+    .replace(/\s+(дүүрэг|аймаг)$/u, "")
+    .trim();
+}
+
+/**
+ * `GET /public/kindergartens?location=…` — the contracted kindergartens of one
+ * district, for staff sign-up (#211). Letters, spaces and hyphens only: the
+ * value is matched as text and must carry no pattern characters.
+ */
+export const publicKindergartensQuerySchema = z.object({
+  location: z
+    .string()
+    .trim()
+    .min(2)
+    .max(80)
+    .regex(/^[\p{L}\s-]+$/u),
+});
+export type PublicKindergartensQuery = z.infer<typeof publicKindergartensQuerySchema>;
+
+export const publicKindergartenSchema = z.object({ id: z.string(), name: z.string() });
+export type PublicKindergarten = z.infer<typeof publicKindergartenSchema>;

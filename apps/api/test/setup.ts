@@ -7,6 +7,19 @@
 
 import { config } from "dotenv";
 import { resolve } from "node:path";
+/*
+ * ★ Zod's ESM build, loaded before anything can load `@kinder/contracts`.
+ *
+ * Under vitest the api's TypeScript imports zod as ESM while the contracts'
+ * built CommonJS `require`s it: two zod instances sharing one
+ * `globalThis.__zod_globalConfig`, and each one's first load runs
+ * `config(en())`. Whichever loads *after* the contracts entry point has
+ * installed the Mongolian locale switches every message back to English —
+ * which is what happened once a module importing the contracts came first in
+ * `app.module.ts` (#215, "expected date, received Date"). Production runs one
+ * CommonJS instance and is unaffected; this pins the order here.
+ */
+import "zod";
 
 config({ path: resolve(__dirname, "../../../.env"), quiet: true });
 
@@ -88,6 +101,10 @@ process.env.ESIS_WRITE_WORKER_ENABLED = "false";
 // nothing to do with what it is testing. `test/qpay.test.ts` and
 // `test/portal-access.test.ts` set a price themselves.
 process.env.ACCESS_FEE_AMOUNT ??= "0";
+
+// ★ The device limit is OFF by default under test. Fixtures sign the same seed
+// users in many times per file; `test/device-limit.test.ts` sets its own.
+process.env.AUTH_DEVICE_LIMIT ??= "0";
 
 /*
  * ★★ ESIS gets the same treatment, and for a sharper reason — 2026-09-11.
