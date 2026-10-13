@@ -1029,6 +1029,8 @@ describe("the sidebar footer", () => {
       "href",
       "/platform/revenue",
     );
+    // «Самбар» heads the menu once — it was drawn twice on 2026-10-13.
+    expect(within(nav).getAllByRole("link", { name: "Самбар" })).toHaveLength(1);
   });
 
   /*

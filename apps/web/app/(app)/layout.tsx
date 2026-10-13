@@ -1398,9 +1398,14 @@ function supportSections(isCook: boolean): NavSection[] {
  * platform surface deliberately small.
  */
 function platformNav(): NavItem[] {
-  return platformSections().flatMap((section) =>
-    section.entries.map((entry) => ({ ...entry, href: entry.href! }) as NavItem),
-  );
+  return [
+    // What is waiting, first — 2026-10-13. The sidebar draws the first item on
+    // its own above the groups, as it does the director's «Самбар».
+    { href: "/platform/overview", label: "Самбар", icon: <RailGlyph icon={LayoutGrid} /> },
+    ...platformSections().flatMap((section) =>
+      section.entries.map((entry) => ({ ...entry, href: entry.href! }) as NavItem),
+    ),
+  ];
 }
 
 /**
@@ -1415,13 +1420,6 @@ function platformNav(): NavItem[] {
  */
 function platformSections(): NavSection[] {
   return [
-    {
-      title: "",
-      entries: [
-        // What is waiting, first — 2026-10-13.
-        { href: "/platform/overview", label: "Самбар", icon: <RailGlyph icon={LayoutGrid} /> },
-      ],
-    },
     {
       title: "Байгууллага",
       entries: [
