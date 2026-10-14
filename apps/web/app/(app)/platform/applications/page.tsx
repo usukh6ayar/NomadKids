@@ -36,7 +36,30 @@ import {
 } from "@/components/platform/table-kit";
 import { KINDERGARTEN_MONTHLY_PER_GROUP, kindergartenPrice } from "@/lib/pricing";
 
-const listSchema = paginated(kindergartenApplicationSchema);
+/*
+ * ★ What the applicant is — 2026-10-14, the user: «Бүгд / Багш дангаар /
+ * Цэцэрлэг / ЭСИС цэцэрлэг». The API does not send it yet (asked of the
+ * admin); until it does every application is «Цэцэрлэг», which is true today —
+ * they all come from the public kindergarten form.
+ */
+const applicationRowSchema = kindergartenApplicationSchema.extend({
+  kind: z.enum(["kindergarten", "esis", "solo"]).nullish(),
+});
+type ApplicationRow = z.infer<typeof applicationRowSchema>;
+type ApplicationKind = "kindergarten" | "esis" | "solo";
+
+const listSchema = paginated(applicationRowSchema);
+
+const KIND_OPTIONS = [
+  { value: "", label: "Бүгд" },
+  { value: "solo", label: "Багш дангаар" },
+  { value: "kindergarten", label: "Цэцэрлэг" },
+  { value: "esis", label: "ЭСИС цэцэрлэг" },
+] as const;
+
+function kindOf(row: ApplicationRow): ApplicationKind {
+  return row.kind ?? "kindergarten";
+}
 
 const TABS = [
   { value: "PENDING", label: "Хүлээгдэж буй" },
@@ -72,12 +95,12 @@ const PERIOD_OPTIONS = [
 ] as const;
 
 function compareApplications(
-  a: KindergartenApplication,
-  b: KindergartenApplication,
+  a: ApplicationRow,
+  b: ApplicationRow,
   key: SortKey,
   dir: 1 | -1,
 ): number {
-  const value = (row: KindergartenApplication): string | number | null =>
+  const value = (row: ApplicationRow): string | number | null =>
     key === "name"
       ? row.kindergartenName
       : key === "groups"
@@ -107,6 +130,7 @@ function Applications() {
   const [reviewing, setReviewing] = useState<KindergartenApplication | null>(null);
   const [query, setQuery] = useState("");
   const [period, setPeriod] = useState("");
+  const [kind, setKind] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "created", dir: -1 });
 
   const list = useQuery({
@@ -128,15 +152,18 @@ function Applications() {
             row.email,
             row.address ?? "",
           ].some((text) => text.toLocaleLowerCase("mn").includes(needle))) &&
+        (!kind || kindOf(row) === kind) &&
         (!period || row.billingPeriod === period),
     )
     .sort((a, b) => compareApplications(a, b, sort.key, sort.dir));
   const chips = [
     query.trim() && { key: "q", label: `«${query.trim()}»`, clear: () => setQuery("") },
+    kind && { key: "kind", label: labelOf(KIND_OPTIONS, kind), clear: () => setKind("") },
     period && { key: "period", label: labelOf(PERIOD_OPTIONS, period), clear: () => setPeriod("") },
   ].filter((chip): chip is Chip => Boolean(chip));
   const clearAll = () => {
     setQuery("");
+    setKind("");
     setPeriod("");
   };
   const sortBy = (key: SortKey) =>
@@ -191,6 +218,13 @@ function Applications() {
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <FilterSelect
+            label="Төрөл"
+            ariaLabel="Төрлөөр шүүх"
+            value={kind}
+            onChange={setKind}
+            options={KIND_OPTIONS}
+          />
+          <FilterSelect
             label="Төлбөрийн хугацаа"
             ariaLabel="Төлбөрийн хугацаагаар шүүх"
             value={period}
@@ -215,7 +249,7 @@ function Applications() {
 
         {rows.length > 0 ? (
           <div className="overflow-x-auto rounded-control border border-border bg-white">
-            <table className="w-full min-w-[1280px] border-separate border-spacing-0 text-left text-caption">
+            <table className="w-full min-w-[1380px] border-separate border-spacing-0 text-left text-caption">
               <thead className="bg-slate-50 text-muted">
                 <tr className="[&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-r [&>th]:border-border [&>th]:px-3 [&>th]:py-2 [&>th]:font-semibold [&>th:last-child]:border-r-0">
                   <th scope="col" className={`${FROZEN_NO} bg-slate-50 text-right`}>
@@ -228,6 +262,7 @@ function Applications() {
                     onSort={sortBy}
                     className={`${FROZEN_NAME} bg-slate-50`}
                   />
+                  <th scope="col">Төрөл</th>
                   <th scope="col">РД</th>
                   <th scope="col">Эрхлэгч</th>
                   <th scope="col">Утас</th>
@@ -264,7 +299,7 @@ function Applications() {
               </thead>
               <tbody>
                 {rows.map((application, index) => (
-                  <ApplicationRow
+                  <ApplicationTableRow
                     key={application.id}
                     application={application}
                     index={index + 1}
@@ -285,13 +320,13 @@ function Applications() {
   );
 }
 
-function ApplicationRow({
+function ApplicationTableRow({
   application,
   index,
   decided,
   onReview,
 }: {
-  application: KindergartenApplication;
+  application: ApplicationRow;
   index: number;
   decided: boolean;
   onReview: () => void;
@@ -305,6 +340,7 @@ function ApplicationRow({
       <td className={`${cell} ${FROZEN_NAME} font-semibold text-ink`}>
         {application.kindergartenName}
       </td>
+      <td className={`${cell} whitespace-nowrap`}>{labelOf(KIND_OPTIONS, kindOf(application))}</td>
       <td className={`${cell} tabular-nums`}>{application.registrationNumber}</td>
       <td className={`${cell} whitespace-nowrap`}>{application.directorName}</td>
       <td className={`${cell} whitespace-nowrap tabular-nums`}>{application.phone}</td>

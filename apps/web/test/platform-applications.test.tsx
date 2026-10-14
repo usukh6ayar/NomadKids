@@ -239,4 +239,46 @@ describe("the operator's applications", () => {
       "true",
     );
   });
+
+  it("filters by what the applicant is, «Цэцэрлэг» until the API says otherwise", async () => {
+    const user = userEvent.setup();
+    const SOLO = {
+      ...APPLICATION,
+      id: "55555555-5555-4555-8555-555555555555",
+      kindergartenName: "Д.Сараа",
+      kind: "solo",
+    };
+    const ESIS = {
+      ...APPLICATION,
+      id: "66666666-6666-4666-8666-666666666666",
+      kindergartenName: "Нарлаг цэцэрлэг",
+      kind: "esis",
+    };
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/applications", body: list([APPLICATION, SOLO, ESIS]) },
+    ]);
+    renderWithProviders(<ApplicationsPage />);
+    const table = await screen.findByRole("table");
+    const names = () =>
+      [...table.querySelectorAll("tbody tr")].map(
+        (tr) => tr.querySelectorAll("td")[1]!.textContent,
+      );
+    const row = (name: string) => within(table).getByText(name).closest("tr")!;
+    expect(row("Аз жаргал цэцэрлэг")).toHaveTextContent("Цэцэрлэг"); // no `kind` sent
+    expect(row("Д.Сараа")).toHaveTextContent("Багш дангаар");
+
+    const pick = async (name: string) => {
+      await user.click(screen.getByLabelText("Төрлөөр шүүх"));
+      await user.click(screen.getByRole("option", { name }));
+    };
+    await pick("Багш дангаар");
+    expect(names()).toEqual(["Д.Сараа"]);
+    await pick("ЭСИС цэцэрлэг");
+    expect(names()).toEqual(["Нарлаг цэцэрлэг"]);
+    await pick("Цэцэрлэг");
+    expect(names()).toEqual(["Аз жаргал цэцэрлэг"]);
+    await pick("Бүгд");
+    expect(names()).toHaveLength(3);
+  });
 });
