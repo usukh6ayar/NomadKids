@@ -130,14 +130,20 @@ describe("forgot password — the phone is lost", () => {
 });
 
 describe("forgot password — with SMS on or off", () => {
-  it("with SMS on: the form for whoever holds the phone, the rule for whoever lost it", async () => {
+  it("with SMS on: the form, and a small link that opens «Та хэн бэ?»", async () => {
+    const user = userEvent.setup();
     stubApi([{ path: "/phone-verifications/availability", body: { enabled: true } }]);
     renderWithProviders(<ForgotPasswordPage />);
 
     expect(await screen.findByLabelText(/Утасны дугаар/)).toBeInTheDocument();
-    expect(screen.getByLabelText("Хэнд хандах вэ")).toHaveTextContent(
-      "Утасны дугаараа сольсон эсвэл алдсан уу?",
-    );
+    // Whoever holds the phone sees the form and nothing else.
+    expect(screen.queryByRole("group", { name: "Та хэн бэ?" })).toBeNull();
+
+    const link = screen.getByRole("button", { name: "Тэр дугаар тань байхгүй болсон уу?" });
+    expect(link).toHaveAttribute("aria-expanded", "false");
+    await user.click(link);
+    expect(link).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("group", { name: "Та хэн бэ?" })).toBeInTheDocument();
   });
 
   it("with SMS off: everyone follows the rule — not «ask the kindergarten» for all", async () => {

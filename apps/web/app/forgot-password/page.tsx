@@ -3,7 +3,7 @@
 import { useMutation } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
-import { WhoResets } from "@/components/auth/who-resets";
+import { LostPhoneLink, WhoResets } from "@/components/auth/who-resets";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
@@ -327,10 +327,11 @@ export default function ForgotPasswordPage() {
                 issues a reset link (`ResetPasswordLinkDialog`).
               */}
               {/*
-                With the SMS form above, this is for whoever lost the phone;
-                with SMS off the rule is the page itself (`OffState`).
+                With the SMS form above, a small link for whoever lost the
+                phone, opening «Та хэн бэ?»; with SMS off the chooser is the
+                page itself (`OffState`). 2026-10-14, the user.
               */}
-              {availability.enabled ? <WhoResets /> : null}
+              {availability.enabled ? <LostPhoneLink /> : null}
               <nav
                 aria-label="Нууцлал ба тусламж"
                 className="mt-1 flex flex-wrap justify-center gap-x-4 text-caption font-semibold text-primary"

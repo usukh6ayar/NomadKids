@@ -89,3 +89,25 @@ export function WhoResets({
     </div>
   );
 }
+
+/**
+ * Under the SMS form: one small link, and the chooser only once it is pressed
+ * — 2026-10-14, the user: whoever holds the phone sees the form and nothing
+ * else; whoever lost it finds the way in one press.
+ */
+export function LostPhoneLink() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="min-h-9 text-caption font-semibold text-primary hover:underline"
+      >
+        Тэр дугаар тань байхгүй болсон уу?
+      </button>
+      {open ? <WhoResets title={null} /> : null}
+    </div>
+  );
+}
