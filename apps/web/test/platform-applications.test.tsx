@@ -153,6 +153,7 @@ describe("the operator's applications", () => {
 
     await user.clear(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/));
     await user.type(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/), "azjargal");
+    await user.click(within(dialog).getByRole("button", { name: "Гэрээ харах" }));
     await user.click(within(dialog).getByRole("button", { name: "Батлах" }));
 
     await waitFor(() => {
@@ -331,6 +332,7 @@ describe("the operator's applications", () => {
 
     await user.clear(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/));
     await user.type(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/), "azjargal");
+    await user.click(within(dialog).getByRole("button", { name: "Гэрээ харах" }));
     await user.click(within(dialog).getByRole("button", { name: "Батлах" }));
     await waitFor(() =>
       expect(api.calls.find((call) => call.url.endsWith("/approve"))?.body).toMatchObject({
@@ -363,6 +365,7 @@ describe("the operator's applications", () => {
     await user.type(within(dialog).getByLabelText(/Тохиролцсон нийт дүн/), "150000");
     await user.clear(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/));
     await user.type(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/), "azjargal");
+    await user.click(within(dialog).getByRole("button", { name: "Гэрээ харах" }));
     await user.click(within(dialog).getByRole("button", { name: "Батлах" }));
 
     await waitFor(() =>
@@ -403,6 +406,39 @@ describe("the operator's applications", () => {
     const dialog = await screen.findByRole("dialog");
     // «Аз жаргал цэцэрлэг» — the organisation, not «Дорж Сараа».
     expect(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/)).toHaveValue("az.jargal");
-    expect(within(dialog).getByRole("button", { name: "Батлах" })).toBeEnabled();
+  });
+
+  /*
+   * ★ Read before it is signed — 2026-10-14, the user: what is approved cannot
+   * be changed, so the contract is drawn first and can be printed.
+   */
+  it("shows the contract as it will print, and approves only after it was seen", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/applications", body: list([APPLICATION]) },
+    ]);
+    renderWithProviders(<ApplicationsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Шалгах" }));
+    const dialog = await screen.findByRole("dialog");
+    const approve = within(dialog).getByRole("button", { name: "Батлах" });
+    expect(approve).toBeDisabled();
+
+    await user.click(within(dialog).getByRole("button", { name: "Гэрээ харах" }));
+    const draft = within(dialog).getByTitle("Гэрээний төсөл");
+    const html = draft.getAttribute("srcdoc") ?? "";
+    expect(html).toContain("ТӨСӨЛ");
+    expect(html).toContain("<th>Байгууллагын нэр</th><td>Аз жаргал цэцэрлэг</td>");
+    expect(html).toContain("<th>Эрхлэгчийн нэр</th><td>Дорж Сараа</td>");
+    expect(html).toContain("<th>Бүлгийн тоо</th><td>6</td>");
+    expect(html).toContain("<th>Нийт төлбөр</th><td>180 000₮</td>");
+    expect(within(dialog).getByRole("button", { name: "Хэвлэх" })).toBeInTheDocument();
+    expect(approve).toBeEnabled();
+
+    // Back to the form, which keeps what was typed.
+    await user.click(within(dialog).getByRole("button", { name: "Засах руу буцах" }));
+    expect(within(dialog).queryByTitle("Гэрээний төсөл")).toBeNull();
+    expect(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/)).toHaveValue("az.jargal");
   });
 });

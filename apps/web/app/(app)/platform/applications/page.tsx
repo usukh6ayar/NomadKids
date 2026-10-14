@@ -1,8 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Search, X } from "lucide-react";
-import { useState } from "react";
+import { Check, Eye, Printer, Search, X } from "lucide-react";
+import { useRef, useState } from "react";
 import { z } from "zod";
 import {
   CONTRACT_STATUS_LABEL,
@@ -26,6 +26,7 @@ import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui
 import { useToast } from "@/components/ui/toast";
 import { formatDate } from "@/lib/format";
 import { suggestUsername } from "@/lib/username";
+import { renderContractDraftHtml } from "@/lib/contract-preview";
 import {
   FROZEN_NAME,
   FROZEN_NO,
@@ -485,6 +486,30 @@ function ReviewDialog({
   const [negotiatedFee, setNegotiatedFee] = useState("");
   const perGroupMonthlyFee = String(KINDERGARTEN_MONTHLY_PER_GROUP);
   const periodFee = negotiated ? negotiatedFee.trim() : schedule ? String(schedule.total) : "";
+  /*
+    ★ Read before it is signed — 2026-10-14, the user: nothing approved can be
+    changed, so «Гэрээ харах» draws the contract with these figures, and
+    «Батлах» waits until it has been looked at once.
+  */
+  const [previewing, setPreviewing] = useState(false);
+  const [previewed, setPreviewed] = useState(false);
+  const draftHtml =
+    schedule || negotiated
+      ? renderContractDraftHtml({
+          kindergartenName: application.kindergartenName,
+          registrationNumber: application.registrationNumber,
+          address: application.address,
+          directorName: application.directorName,
+          phone: application.phone,
+          email: application.email,
+          startsOn,
+          endsOn,
+          groupCount: groups,
+          billingPeriod,
+          perGroupMonthlyFee,
+          periodFee: periodFee || "0",
+        })
+      : null;
   const usernameBad =
     adminUsername.trim() !== "" && !/^[a-zA-Z0-9._-]+$/.test(adminUsername.trim());
   const [reviewNote, setReviewNote] = useState("");
@@ -594,10 +619,27 @@ function ReviewDialog({
             Татгалзах
           </Button>
           <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={!draftHtml || !periodFee}
+            aria-pressed={previewing}
+            onClick={() => {
+              setPreviewing((open) => !open);
+              setPreviewed(true);
+            }}
+          >
+            <Eye size={16} aria-hidden="true" />
+            {previewing ? "Засах руу буцах" : "Гэрээ харах"}
+          </Button>
+          <Button
             type="submit"
             form="review-form"
             size="sm"
-            disabled={busy || adminUsername.trim().length < 3 || usernameBad || !periodFee}
+            title={previewed ? undefined : "Эхлээд гэрээгээ харна уу"}
+            disabled={
+              busy || !previewed || adminUsername.trim().length < 3 || usernameBad || !periodFee
+            }
           >
             <Check size={16} aria-hidden="true" />
             {approve.isPending ? "Батлаж байна…" : "Батлах"}
@@ -605,8 +647,10 @@ function ReviewDialog({
         </>
       }
     >
+      {previewing && draftHtml ? <ContractDraft html={draftHtml} /> : null}
       <form
         id="review-form"
+        hidden={previewing}
         className="flex flex-col gap-4"
         noValidate
         onSubmit={(event) => {
@@ -622,7 +666,8 @@ function ReviewDialog({
 
         <p className="text-body text-muted">
           Батласнаар <strong>цэцэрлэг, эрхлэгчийн бүртгэл, гэрээ</strong> гурав зэрэг үүснэ. Доорх
-          дүнгүүд гэрээн дээр хэвлэгдэж, дараа нь өөрчлөгдөхгүй.
+          дүнгүүд гэрээн дээр хэвлэгдэж, дараа нь өөрчлөгдөхгүй. Батлахаас өмнө «Гэрээ харах»-аар
+          гэрээгээ шалгаж, хэвлэж болно.
         </p>
 
         <Field
@@ -819,6 +864,37 @@ function ContractBreakdown({
         </p>
       )}
       {error ? <p className="px-3 pb-2 text-danger">{error}</p> : null}
+    </section>
+  );
+}
+
+/**
+ * The contract as it will print, in a frame — «Хэвлэх» prints the frame alone.
+ * A frame rather than a new window: the page's CSP admits no inline script, and
+ * the print is called from here instead.
+ */
+function ContractDraft({ html }: { html: string }) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  return (
+    <section aria-label="Гэрээний төсөл" className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-caption text-muted">Төсөл — гэрээний дугаар батлахад олгогдоно.</p>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          onClick={() => frame.current?.contentWindow?.print()}
+        >
+          <Printer size={16} aria-hidden="true" />
+          Хэвлэх
+        </Button>
+      </div>
+      <iframe
+        ref={frame}
+        title="Гэрээний төсөл"
+        srcDoc={html}
+        className="h-[60vh] w-full rounded-control border border-border bg-white"
+      />
     </section>
   );
 }
