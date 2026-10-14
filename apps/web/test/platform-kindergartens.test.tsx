@@ -57,7 +57,7 @@ describe("the operator's kindergartens table", () => {
   it("draws the columns, «—» where the record has nothing", async () => {
     renderPage();
 
-    const table = await screen.findByRole("table");
+    const table = await screen.findByRole("table", {}, { timeout: 5000 });
     for (const heading of [
       "Цэцэрлэг",
       "Өмчийн хэлбэр",

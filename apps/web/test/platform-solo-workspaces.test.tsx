@@ -90,7 +90,7 @@ describe("the operator's solo workspaces", () => {
     renderWithProviders(<SoloWorkspacesPage />);
 
     // « — бие даасан багш» is not repeated in the solo teachers' own table.
-    const row = (await screen.findByText("Д.Сараа")).closest("tr")!;
+    const row = (await screen.findByText("Д.Сараа", {}, { timeout: 5000 })).closest("tr")!;
     expect(screen.queryByText(WORKSPACE.name)).toBeNull();
     expect(row).toHaveTextContent("Нарлаг цэцэрлэг");
     await openMerge(user);

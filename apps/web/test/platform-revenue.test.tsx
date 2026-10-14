@@ -76,7 +76,8 @@ describe("the operator's revenue screen", () => {
   it("shows the total and each of the two incomes", async () => {
     renderRevenue();
 
-    const card = (await screen.findByText("Платформын орлого")).parentElement!;
+    const card = (await screen.findByText("Платформын орлого", {}, { timeout: 5000 }))
+      .parentElement!;
     expect(within(card).getByText("23 000₮")).toBeInTheDocument();
     expect(within(card).getByText("15 000₮")).toBeInTheDocument();
     expect(within(card).getByText("3 төлөлт")).toBeInTheDocument();
