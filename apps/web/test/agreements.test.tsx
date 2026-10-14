@@ -20,6 +20,17 @@ afterEach(() => {
 
 const tick = (dialog: HTMLElement) => within(dialog).getByRole("checkbox");
 
+/** A teacher on their own — the only teacher who signs an agreement (2026-10-14). */
+const soloSession = () => {
+  const session = sessionFor(["ADMIN", "TEACHER"], USER_ID);
+  return {
+    ...session,
+    soloKindergartenIds: session.memberships.map(
+      (m: { kindergartenId: string }) => m.kindergartenId,
+    ),
+  };
+};
+
 /*
  * ★ Ticked, then accepted — 2026-10-14, the user, after the agreement's own
  * §2.1: «Гэрээг уншиж, зөвшөөрч байна» is ticked and «ЗӨВШӨӨРӨХ» pressed.
@@ -28,10 +39,12 @@ const tick = (dialog: HTMLElement) => within(dialog).getByRole("checkbox");
 describe("the agreement window", () => {
   it("asks a teacher to tick the consent, then welcomes them", async () => {
     const user = userEvent.setup();
-    stubApi([{ path: "/auth/me", body: sessionFor(["TEACHER"], USER_ID) }]);
+    stubApi([{ path: "/auth/me", body: soloSession() }]);
     renderWithProviders(<AgreementGate />);
 
-    const dialog = await screen.findByRole("dialog", { name: "Багш хэрэглэгчийн гэрээ" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Багшийн цахим үйлчилгээ ашиглах гэрээ",
+    });
     const accept = within(dialog).getByRole("button", { name: "Зөвшөөрөх" });
     expect(accept).toBeDisabled();
     await user.click(tick(dialog));
@@ -70,19 +83,21 @@ describe("the agreement window", () => {
   it("opens nothing on «Татгалзах», and goes back to the agreement or signs out", async () => {
     const user = userEvent.setup();
     const api = stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"], USER_ID) },
+      { path: "/auth/me", body: soloSession() },
       { path: "/auth/logout", method: "POST", status: 204 },
     ]);
     renderWithProviders(<AgreementGate />);
 
-    const dialog = await screen.findByRole("dialog", { name: "Багш хэрэглэгчийн гэрээ" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Багшийн цахим үйлчилгээ ашиглах гэрээ",
+    });
     await user.click(within(dialog).getByRole("button", { name: "Татгалзах" }));
     const refused = await screen.findByRole("dialog", { name: "Гэрээг зөвшөөрөөгүй" });
     expect(refused).toHaveTextContent("үйлчилгээ нээгдэхгүй");
 
     await user.click(within(refused).getByRole("button", { name: "Гэрээ рүү буцах" }));
     expect(
-      await screen.findByRole("dialog", { name: "Багш хэрэглэгчийн гэрээ" }),
+      await screen.findByRole("dialog", { name: "Багшийн цахим үйлчилгээ ашиглах гэрээ" }),
     ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Татгалзах" }));
@@ -102,7 +117,7 @@ describe("the agreement window", () => {
     unmount();
 
     stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"], USER_ID) },
+      { path: "/auth/me", body: soloSession() },
       {
         path: "/me/agreements",
         body: {
@@ -123,16 +138,6 @@ describe("the agreement window", () => {
  * lawyer-reviewed text, «Гол зүйлс» on top, the sections folded, a PDF.
  */
 describe("a solo teacher", () => {
-  const soloSession = () => {
-    const session = sessionFor(["ADMIN", "TEACHER"], USER_ID);
-    return {
-      ...session,
-      soloKindergartenIds: session.memberships.map(
-        (m: { kindergartenId: string }) => m.kindergartenId,
-      ),
-    };
-  };
-
   it("signs the solo teacher's agreement, version 2.0, and records that version", async () => {
     const user = userEvent.setup();
     const api = stubApi([
@@ -176,9 +181,7 @@ describe("a solo teacher", () => {
       {
         path: "/me/agreements",
         body: {
-          accepted: [
-            { kind: "TEACHER", version: AGREEMENTS.TEACHER.version, acceptedAt: "2026-10-12" },
-          ],
+          accepted: [{ kind: "TEACHER", version: "trial-2026-10-12", acceptedAt: "2026-10-12" }],
         },
       },
     ]);
@@ -194,7 +197,7 @@ describe("«Гэрээ» in the personal settings", () => {
   it("opens the accepted agreement with the day it was accepted", async () => {
     const user = userEvent.setup();
     stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"], USER_ID) },
+      { path: "/auth/me", body: soloSession() },
       {
         path: "/me/agreements",
         body: {
@@ -212,7 +215,7 @@ describe("«Гэрээ» in the personal settings", () => {
 
     await user.click(await screen.findByRole("button", { name: "Миний гэрээ" }));
     const dialog = screen.getByRole("dialog", { name: "Миний гэрээ" });
-    expect(within(dialog).getByText("Багш хэрэглэгчийн гэрээ")).toBeInTheDocument();
+    expect(within(dialog).getByText("Багшийн цахим үйлчилгээ ашиглах гэрээ")).toBeInTheDocument();
     expect(await within(dialog).findByText(/Зөвшөөрсөн:/)).toBeInTheDocument();
   });
 
@@ -258,5 +261,27 @@ describe("«Миний гэрээ» for a solo teacher", () => {
     expect(dialog).toHaveTextContent("Багшийн цахим үйлчилгээ ашиглах гэрээ");
     expect(dialog).toHaveTextContent("Гэрээний хувилбар: 2.0");
     expect(dialog).toHaveTextContent("Зөвшөөрсөн: 2026.10.14");
+  });
+});
+
+/*
+ * ★ «Цэцэрлэг дагасан багшид гэрээ байхгүй» — 2026-10-14, the user: a
+ * teacher of a contracted kindergarten signs nothing here.
+ */
+describe("a kindergarten's teacher", () => {
+  it("is asked to sign nothing, and has no «Миний гэрээ»", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"], USER_ID) },
+      { path: "/me/agreements", body: { accepted: [] } },
+    ]);
+    renderWithProviders(
+      <>
+        <AgreementGate />
+        <AgreementButton />
+      </>,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Миний гэрээ" })).toBeNull();
   });
 });

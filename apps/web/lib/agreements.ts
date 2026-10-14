@@ -43,49 +43,6 @@ export interface Agreement {
 const TRIAL_NOTE =
   "Энэ бол туршилтын хувилбар. Гэрээний эцсийн эх бичвэр удахгүй орж, дахин зөвшөөрөл авна.";
 
-export const AGREEMENTS: Record<AgreementKind, Agreement> = {
-  TEACHER: {
-    kind: "TEACHER",
-    version: "trial-2026-10-12",
-    title: "Багш хэрэглэгчийн гэрээ",
-    sections: [
-      { heading: "Туршилтын хувилбар", body: TRIAL_NOTE },
-      {
-        heading: "1. Ерөнхий зүйл",
-        body: "Энэхүү гэрээгээр NomadKids системийг багш ашиглахтай холбогдсон харилцааг зохицуулна.",
-      },
-      {
-        heading: "2. Хүүхдийн мэдээллийн нууцлал",
-        body: "Багш зөвхөн өөрийн хариуцсан бүлгийн хүүхдийн мэдээлэлд хандаж, түүнийг гуравдагч этгээдэд дамжуулахгүй.",
-      },
-      {
-        heading: "3. Хэрэглэгчийн үүрэг",
-        body: "Багш нэвтрэх нэр, нууц үгээ бусдад шилжүүлэхгүй бөгөөд системийг зөвхөн ажлын зорилгоор ашиглана.",
-      },
-    ],
-  },
-  PARENT: {
-    kind: "PARENT",
-    version: "trial-2026-10-12",
-    title: "Эцэг эх хэрэглэгчийн гэрээ",
-    sections: [
-      { heading: "Туршилтын хувилбар", body: TRIAL_NOTE },
-      {
-        heading: "1. Ерөнхий зүйл",
-        body: "Энэхүү гэрээгээр NomadKids системийг эцэг эх, асран хамгаалагч ашиглахтай холбогдсон харилцааг зохицуулна.",
-      },
-      {
-        heading: "2. Хүүхдийн мэдээллийн нууцлал",
-        body: "Эцэг эх зөвхөн өөрийн хүүхдийн мэдээллийг харах бөгөөд бусад хүүхдийн зураг, мэдээллийг тараахгүй.",
-      },
-      {
-        heading: "3. Үйлчилгээний эрхийн төлбөр",
-        body: "Үйлчилгээний эрхийн төлбөрийг улирлаар эсвэл жилээр төлнө. Хугацаа дуусахад хандалт хаагдана.",
-      },
-    ],
-  },
-};
-
 /*
  * ★ The solo teacher's agreement, version 2.0 — the user, 2026-10-14
  * (Nomadkids_Bagsh_Cahim_Geree_Alban_Zagvar.pdf, reviewed by a lawyer). Word
@@ -219,6 +176,36 @@ export const SOLO_TEACHER_AGREEMENT: Agreement = {
     "Монгол Улсын Иргэний хууль; Хүний хувийн мэдээлэл хамгаалах тухай хууль; Хүүхдийн эрхийн тухай хууль; Хүүхэд хамгааллын тухай хууль (шинэчилсэн найруулга); Боловсролын ерөнхий хууль; Сургуулийн өмнөх болон ерөнхий боловсролын тухай хууль; Цахим гарын үсгийн тухай хууль; Кибер аюулгүй байдлын тухай хууль.",
 };
 
+/*
+ * ★ Who signs what — 2026-10-14, the user: «цэцэрлэг дагасан багшид гэрээ
+ * байхгүй». The teacher's agreement is the solo teacher's alone; a teacher of
+ * a contracted kindergarten signs nothing here. The parent's is still the
+ * trial text until its own arrives.
+ */
+export const AGREEMENTS: Record<AgreementKind, Agreement> = {
+  TEACHER: SOLO_TEACHER_AGREEMENT,
+  PARENT: {
+    kind: "PARENT",
+    version: "trial-2026-10-12",
+    title: "Эцэг эх хэрэглэгчийн гэрээ",
+    sections: [
+      { heading: "Туршилтын хувилбар", body: TRIAL_NOTE },
+      {
+        heading: "1. Ерөнхий зүйл",
+        body: "Энэхүү гэрээгээр NomadKids системийг эцэг эх, асран хамгаалагч ашиглахтай холбогдсон харилцааг зохицуулна.",
+      },
+      {
+        heading: "2. Хүүхдийн мэдээллийн нууцлал",
+        body: "Эцэг эх зөвхөн өөрийн хүүхдийн мэдээллийг харах бөгөөд бусад хүүхдийн зураг, мэдээллийг тараахгүй.",
+      },
+      {
+        heading: "3. Үйлчилгээний эрхийн төлбөр",
+        body: "Үйлчилгээний эрхийн төлбөрийг улирлаар эсвэл жилээр төлнө. Хугацаа дуусахад хандалт хаагдана.",
+      },
+    ],
+  },
+};
+
 /** A teacher on their own — every teaching membership is in their own workspace. */
 export function isSoloTeacher(session: Session | null | undefined): boolean {
   const solo = new Set(session?.soloKindergartenIds ?? []);
@@ -227,8 +214,8 @@ export function isSoloTeacher(session: Session | null | undefined): boolean {
 }
 
 /** The agreement this person signs for this kind — the solo teacher's has its own. */
-export function agreementFor(kind: AgreementKind, session: Session | null | undefined): Agreement {
-  return kind === "TEACHER" && isSoloTeacher(session) ? SOLO_TEACHER_AGREEMENT : AGREEMENTS[kind];
+export function agreementFor(kind: AgreementKind, _session?: Session | null): Agreement {
+  return AGREEMENTS[kind];
 }
 
 export const acceptedAgreementsSchema = z.object({
@@ -258,7 +245,7 @@ export function agreementKindsFor(session: Session | null | undefined): Agreemen
   );
 
   const kinds: AgreementKind[] = [];
-  if (has("TEACHER") && !directsAContractedKindergarten) kinds.push("TEACHER");
+  if (isSoloTeacher(session) && !directsAContractedKindergarten) kinds.push("TEACHER");
   if (has("PARENT")) kinds.push("PARENT");
   return kinds;
 }
