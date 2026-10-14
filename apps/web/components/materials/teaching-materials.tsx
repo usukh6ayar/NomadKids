@@ -77,6 +77,10 @@ interface MaterialFilters {
   q: string;
   area: string;
   level: MaterialLevel | "";
+  /** «Үнэгүй» or «Үнэтэй» — 2026-10-14, the user. */
+  price: "" | "free" | "paid";
+  /** By price, cheapest or dearest first; "" keeps the catalog's own order. */
+  sort: "" | "price-asc" | "price-desc";
 }
 
 /** Whether a material matches — for «Миний сан», and the shop's samples. */
@@ -85,10 +89,19 @@ function matches(m: Material, f: MaterialFilters): boolean {
   return (
     (!f.area || m.area === f.area) &&
     (!f.level || m.level === f.level) &&
+    (!f.price || (m.price === 0) === (f.price === "free")) &&
     (!needle ||
       m.title.toLowerCase().includes(needle) ||
       (m.description ?? "").toLowerCase().includes(needle))
   );
+}
+
+/** The filtered list in the chosen order — by price when asked. */
+function arrange(items: Material[], f: MaterialFilters): Material[] {
+  const kept = items.filter((m) => matches(m, f));
+  if (!f.sort) return kept;
+  const dir = f.sort === "price-asc" ? 1 : -1;
+  return [...kept].sort((a, b) => (a.price - b.price) * dir);
 }
 
 /**
@@ -105,7 +118,11 @@ function MaterialsToolbar({
 }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
-  const active = (filters.area ? 1 : 0) + (filters.level ? 1 : 0);
+  const active =
+    (filters.area ? 1 : 0) +
+    (filters.level ? 1 : 0) +
+    (filters.price ? 1 : 0) +
+    (filters.sort ? 1 : 0);
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
@@ -161,12 +178,46 @@ function MaterialsToolbar({
             )}
           </Field>
         </div>
+        <div className="w-36">
+          <Field label="Үнээр шүүх" labelHidden>
+            {({ id }) => (
+              <Select
+                id={id}
+                value={filters.price}
+                onChange={(e) =>
+                  onChange({ ...filters, price: e.target.value as MaterialFilters["price"] })
+                }
+              >
+                <option value="">Бүх үнэ</option>
+                <option value="free">Үнэгүй</option>
+                <option value="paid">Үнэтэй</option>
+              </Select>
+            )}
+          </Field>
+        </div>
+        <div className="w-44">
+          <Field label="Эрэмбэлэх" labelHidden>
+            {({ id }) => (
+              <Select
+                id={id}
+                value={filters.sort}
+                onChange={(e) =>
+                  onChange({ ...filters, sort: e.target.value as MaterialFilters["sort"] })
+                }
+              >
+                <option value="">Эрэмбэ: анхдагч</option>
+                <option value="price-asc">Үнэ: хямдаас</option>
+                <option value="price-desc">Үнэ: үнэтэйгээс</option>
+              </Select>
+            )}
+          </Field>
+        </div>
       </div>
     </div>
   );
 }
 
-const NO_FILTERS: MaterialFilters = { q: "", area: "", level: "" };
+const NO_FILTERS: MaterialFilters = { q: "", area: "", level: "", price: "", sort: "" };
 
 /**
  * «Дэлгүүр» as the teachers see it, for the operator — 2026-10-14, the user:
@@ -182,10 +233,10 @@ export function StorePreview() {
     queryKey: ["platform", "materials"],
     queryFn: () => get("/platform/materials", platformMaterialsSchema),
   });
-  const items: Material[] = (catalog.data ?? [])
-    .filter((m) => m.published)
-    .map((m) => ({ ...m, owned: false }))
-    .filter((m) => matches(m, filters));
+  const items = arrange(
+    (catalog.data ?? []).filter((m) => m.published).map((m) => ({ ...m, owned: false })),
+    filters,
+  );
 
   return (
     <section aria-label="Дэлгүүрийн харагдац" className="flex flex-col gap-3">
@@ -210,10 +261,10 @@ export function StorePreview() {
             <MaterialCard material={material}>
               <span className="flex gap-1.5">
                 <Button size="sm" variant="ghost" onClick={() => setPreviewing(material)}>
-                  Урьдчилан харах
+                  Харах
                 </Button>
                 <Button size="sm" disabled title="Урьдчилсан харагдац — худалдан авах боломжгүй">
-                  Худалдаж авах
+                  Авах
                 </Button>
               </span>
             </MaterialCard>
@@ -249,7 +300,8 @@ function Store({ onOwned }: { onOwned: () => void }) {
   // ★ No sample catalog on a 404 any more (2026-10-11): the API answers, so a
   // 404 means the route is not this person's — the error is shown as it is.
   const buy = (material: Material) => setBuying(material);
-  const items = catalog.data?.items ?? [];
+  // The API narrows by word, area and level; price and order are drawn here.
+  const items = arrange(catalog.data?.items ?? [], filters);
 
   return (
     <section aria-label="Дэлгүүр" className="flex flex-col gap-3">
@@ -270,7 +322,7 @@ function Store({ onOwned }: { onOwned: () => void }) {
             <MaterialCard material={material}>
               <span className="flex gap-1.5">
                 <Button size="sm" variant="ghost" onClick={() => setPreviewing(material)}>
-                  Урьдчилан харах
+                  Харах
                 </Button>
                 {material.owned ? (
                   <Button size="sm" variant="secondary" onClick={onOwned}>
@@ -278,7 +330,7 @@ function Store({ onOwned }: { onOwned: () => void }) {
                   </Button>
                 ) : (
                   <Button size="sm" onClick={() => buy(material)}>
-                    Худалдаж авах
+                    Авах
                   </Button>
                 )}
               </span>
@@ -327,7 +379,7 @@ function Mine() {
   const notReady = owned.isError && isNotFound(owned.error);
   const all = owned.data ?? [];
   // A teacher's own shelf is small: filtered here, not asked of the server.
-  const items = all.filter((m) => matches(m, filters));
+  const items = arrange(all, filters);
 
   return (
     <section aria-label="Миний сан" className="flex flex-col gap-3">
@@ -655,10 +707,10 @@ function PreviewDialog({
             </span>
             {readOnly ? (
               <Button disabled title="Урьдчилсан харагдац — худалдан авах боломжгүй">
-                Худалдаж авах
+                Авах
               </Button>
             ) : onBuy ? (
-              <Button onClick={onBuy}>Худалдаж авах</Button>
+              <Button onClick={onBuy}>Авах</Button>
             ) : (
               <Badge tone="mint">Миний санд байгаа</Badge>
             )}

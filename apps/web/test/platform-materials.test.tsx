@@ -276,14 +276,14 @@ describe("the platform's teaching materials", () => {
     const shop = await screen.findByRole("region", { name: "Дэлгүүрийн харагдац" });
     expect(within(shop).getByText("Тоо 1–5")).toBeInTheDocument();
     expect(within(shop).queryByText("Нуусан хичээл")).toBeNull();
-    expect(within(shop).getByRole("button", { name: "Худалдаж авах" })).toBeDisabled();
+    expect(within(shop).getByRole("button", { name: "Авах" })).toBeDisabled();
 
     // The sample pages open on an A4 sheet, and nothing reads as owned.
-    await user.click(within(shop).getByRole("button", { name: "Урьдчилан харах" }));
+    await user.click(within(shop).getByRole("button", { name: "Харах" }));
     const preview = await screen.findByRole("dialog", { name: "Тоо 1–5" });
     expect(preview.querySelector('[data-paper="a4-landscape"]')).not.toBeNull();
     expect(within(preview).queryByText("Миний санд байгаа")).toBeNull();
-    expect(within(preview).getByRole("button", { name: "Худалдаж авах" })).toBeDisabled();
+    expect(within(preview).getByRole("button", { name: "Авах" })).toBeDisabled();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("table")).toBeNull();
 

@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, selectOption, sessionFor, stubApi } from "./support/render";
@@ -119,7 +119,7 @@ describe("the teaching materials tab", () => {
 
     const card = await screen.findByRole("article", { name: "Тоо 1–5: тоолж, харьцуулъя" });
     expect(within(card).getByText("12,000₮")).toBeInTheDocument();
-    await user.click(within(card).getByRole("button", { name: "Худалдаж авах" }));
+    await user.click(within(card).getByRole("button", { name: "Авах" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Тоо 1–5: тоолж, харьцуулъя" });
     expect(await within(dialog).findByText("Төлбөр амжилттай хийгдлээ")).toBeInTheDocument();
@@ -222,7 +222,7 @@ describe("the teaching materials tab", () => {
     await openStore(user);
 
     const card = await screen.findByRole("article", { name: "Тоо 1–5: тоолж, харьцуулъя" });
-    await user.click(within(card).getByRole("button", { name: "Урьдчилан харах" }));
+    await user.click(within(card).getByRole("button", { name: "Харах" }));
     const dialog = screen.getByRole("dialog", { name: "Тоо 1–5: тоолж, харьцуулъя" });
 
     expect(within(dialog).getByRole("img", { name: /жишээ хуудас 1$/ })).toHaveAttribute(
@@ -241,8 +241,43 @@ describe("the teaching materials tab", () => {
     expect(within(dialog).getByText("Их, бага харьцуулах")).toBeInTheDocument();
     expect(within(dialog).getByText("12,000₮")).toBeInTheDocument();
 
-    await user.click(within(dialog).getByRole("button", { name: "Худалдаж авах" }));
+    await user.click(within(dialog).getByRole("button", { name: "Авах" }));
     await screen.findByText("QR кодыг банкны аппаараа уншуулж төлнө үү.");
     expect(api.calls.some((c) => c.method === "POST" && c.url === "/materials/m1/qpay")).toBe(true);
+  });
+
+  /*
+   * ★ «Үнэгүй» and an order by price on the filter — 2026-10-14, the user.
+   */
+  it("filters the free ones and orders by price both ways", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/materials",
+        body: page([
+          material("m1", { title: "Дунд", price: 8000 }),
+          material("m2", { title: "Үнэгүй дасгал", price: 0 }),
+          material("m3", { title: "Үнэтэй", price: 20000 }),
+        ]),
+      },
+    ]);
+    renderWithProviders(<DocumentsPage />);
+    await openStore(user);
+    const titles = () =>
+      screen.getAllByRole("article").map((card) => card.getAttribute("aria-label"));
+    await waitFor(() => expect(titles()).toHaveLength(3));
+
+    await user.click(screen.getByRole("button", { name: /Шүүлтүүр/ }));
+    await user.click(screen.getByLabelText("Эрэмбэлэх"));
+    await user.click(screen.getByRole("option", { name: "Үнэ: хямдаас" }));
+    expect(titles()).toEqual(["Үнэгүй дасгал", "Дунд", "Үнэтэй"]);
+    await user.click(screen.getByLabelText("Эрэмбэлэх"));
+    await user.click(screen.getByRole("option", { name: "Үнэ: үнэтэйгээс" }));
+    expect(titles()).toEqual(["Үнэтэй", "Дунд", "Үнэгүй дасгал"]);
+
+    await user.click(screen.getByLabelText("Үнээр шүүх"));
+    await user.click(screen.getByRole("option", { name: "Үнэгүй" }));
+    expect(titles()).toEqual(["Үнэгүй дасгал"]);
   });
 });
