@@ -222,7 +222,7 @@ export function StorePreview() {
       </ul>
 
       {previewing ? (
-        <PreviewDialog material={previewing} onClose={() => setPreviewing(null)} />
+        <PreviewDialog material={previewing} onClose={() => setPreviewing(null)} readOnly />
       ) : null}
     </section>
   );
@@ -524,12 +524,20 @@ function PreviewDialog({
   material,
   onClose,
   onBuy,
+  readOnly = false,
 }: {
   material: Material;
   onClose: () => void;
   /** Absent when the teacher already owns it. */
   onBuy?: () => void;
+  /** The operator's look at the shop — nothing owned, nothing to buy. */
+  readOnly?: boolean;
 }) {
+  /*
+   * ★ A sample page as an A4 sheet — 2026-10-14, the user: a PDF upright
+   * (210 × 297), a PowerPoint on its side; white paper on a grey desk.
+   */
+  const landscape = material.fileType === "PPT";
   const pages = material.previewUrls;
   const [index, setIndex] = useState(0);
   const page = pages[index];
@@ -539,7 +547,7 @@ function PreviewDialog({
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-ink/40" />
         <Dialog.Content
-          className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[560px] -translate-x-1/2 -translate-y-1/2 flex-col gap-3 overflow-y-auto rounded-card border border-border bg-surface p-5 shadow-lg"
+          className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[640px] -translate-x-1/2 -translate-y-1/2 flex-col gap-3 overflow-y-auto rounded-card border border-border bg-surface p-5 shadow-lg"
           aria-describedby={undefined}
         >
           <div className="flex items-start justify-between gap-3">
@@ -554,36 +562,46 @@ function PreviewDialog({
           </div>
 
           <figure className="flex flex-col gap-2">
-            <div className="relative grid aspect-[4/3] place-items-center overflow-hidden rounded-row bg-canvas">
-              {page ? (
-                // A served preview picture, as `media-image.tsx` draws remote media.
-                <img
-                  src={page}
-                  alt={`${material.title} — жишээ хуудас ${index + 1}`}
-                  className="size-full object-contain"
-                />
-              ) : (
-                <span className="flex flex-col items-center gap-2 px-6 text-center">
-                  {AREA_IMAGE[material.area] ? (
-                    <Image
-                      src={AREA_IMAGE[material.area]!}
-                      alt=""
-                      width={96}
-                      height={96}
-                      className="size-24 object-contain"
-                    />
-                  ) : null}
-                  <span className="text-caption text-muted">Жишээ хуудас удахгүй нэмэгдэнэ.</span>
-                </span>
-              )}
-              {page ? (
-                <span
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 grid select-none place-items-center text-title font-bold text-ink/10 [transform:rotate(-24deg)]"
-                >
-                  NomadKids — жишээ
-                </span>
-              ) : null}
+            <div className="grid place-items-center rounded-row bg-slate-200 p-4">
+              <div
+                data-paper={landscape ? "a4-landscape" : "a4-portrait"}
+                className={cn(
+                  "relative grid w-full place-items-center overflow-hidden bg-white shadow-md ring-1 ring-black/5",
+                  landscape
+                    ? "aspect-[297/210] max-w-full"
+                    : "aspect-[210/297] max-w-[min(100%,calc(62dvh*0.707))]",
+                )}
+              >
+                {page ? (
+                  // A served preview picture, as `media-image.tsx` draws remote media.
+                  <img
+                    src={page}
+                    alt={`${material.title} — жишээ хуудас ${index + 1}`}
+                    className="size-full object-contain"
+                  />
+                ) : (
+                  <span className="flex flex-col items-center gap-2 px-6 text-center">
+                    {AREA_IMAGE[material.area] ? (
+                      <Image
+                        src={AREA_IMAGE[material.area]!}
+                        alt=""
+                        width={96}
+                        height={96}
+                        className="size-24 object-contain"
+                      />
+                    ) : null}
+                    <span className="text-caption text-muted">Жишээ хуудас удахгүй нэмэгдэнэ.</span>
+                  </span>
+                )}
+                {page ? (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 grid select-none place-items-center text-title font-bold text-ink/10 [transform:rotate(-24deg)]"
+                  >
+                    NomadKids — жишээ
+                  </span>
+                ) : null}
+              </div>
             </div>
             {pages.length > 1 ? (
               <figcaption className="flex items-center justify-center gap-3">
@@ -635,7 +653,11 @@ function PreviewDialog({
             <span className="text-lead font-bold tabular-nums text-ink">
               {materialPrice(material.price)}
             </span>
-            {onBuy ? (
+            {readOnly ? (
+              <Button disabled title="Урьдчилсан харагдац — худалдан авах боломжгүй">
+                Худалдаж авах
+              </Button>
+            ) : onBuy ? (
               <Button onClick={onBuy}>Худалдаж авах</Button>
             ) : (
               <Badge tone="mint">Миний санд байгаа</Badge>

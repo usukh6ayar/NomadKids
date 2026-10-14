@@ -231,6 +231,8 @@ describe("the teaching materials tab", () => {
       downloadUrl("/materials/m1/previews/0"),
     );
     expect(within(dialog).getByText("1 / 3")).toBeInTheDocument();
+    // A PowerPoint's sample page sits on an A4 sheet on its side (2026-10-14).
+    expect(dialog.querySelector('[data-paper="a4-landscape"]')).not.toBeNull();
     await user.click(within(dialog).getByRole("button", { name: "Дараагийн хуудас" }));
     expect(within(dialog).getByRole("img", { name: /жишээ хуудас 2$/ })).toHaveAttribute(
       "src",
