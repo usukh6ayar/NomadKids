@@ -3,6 +3,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { CheckCircle2 } from "lucide-react";
 import Link from "next/link";
+import { WhoResets } from "@/components/auth/who-resets";
 import { useParams, useRouter } from "next/navigation";
 import { Suspense, useState, type FormEvent, type ReactNode } from "react";
 import { z } from "zod";
@@ -179,6 +180,17 @@ export default function AcceptInvitationPage() {
           >
             Нэвтрэх
           </Link>
+          {/*
+            The moment a password is new is the moment to say how it comes
+            back — 2026-10-14, the user.
+          */}
+          <div className="mt-2 w-full rounded-row bg-canvas p-3">
+            <p className="mb-2 text-caption leading-5 text-muted">
+              Дугаараа сольсон даруйдаа «Хувийн тохиргоо»-нд шинэчлээрэй — нууц үгээ мартвал энэ
+              дугаараараа сэргээнэ.
+            </p>
+            <WhoResets title="Утсаа алдвал хэнд хандах вэ?" />
+          </div>
         </div>
       </InvitationWindow>
     );

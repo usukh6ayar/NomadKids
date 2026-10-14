@@ -307,4 +307,28 @@ describe("Ерөнхий — ESIS folded into the cards", () => {
     expect(screen.queryByRole("button", { name: /ESIS татах/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /ЭСИС-ийн бүх талбарыг харах/ })).toBeNull();
   });
+
+  /*
+   * ★ A parent who lost the phone turns to the teacher or the director —
+   * 2026-10-14, the user. The card offers a one-time reset link, after the
+   * person was checked.
+   */
+  it("offers staff a parent's password reset, checked first", async () => {
+    const user = userEvent.setup();
+    stub();
+    render();
+
+    const guardians = await screen.findByRole("region", { name: "Асран хамгаалагч" });
+    await user.click(within(guardians).getAllByRole("button", { name: "Нууц үг сэргээх" })[0]!);
+    const dialog = await screen.findByRole("dialog", { name: "Нууц үг сэргээх" });
+    const issue = within(dialog).getByRole("button", { name: "Холбоос үүсгэх" });
+    expect(issue).toBeDisabled();
+    await user.click(within(dialog).getByRole("checkbox"));
+    await user.click(issue);
+
+    // The API does not reset a parent yet — said plainly.
+    expect(
+      await within(dialog).findByText(/Эцэг эхийн нууц үг сэргээх хэсэг хараахан бэлэн болоогүй/),
+    ).toBeInTheDocument();
+  });
 });

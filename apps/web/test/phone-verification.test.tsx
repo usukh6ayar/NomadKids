@@ -102,19 +102,18 @@ describe("forgot password — by phone", () => {
  * director or a solo teacher calls NomadKids, which issues a reset link.
  */
 describe("forgot password — the phone is lost", () => {
-  it("says who to turn to, with NomadKids' phone and e-mail", async () => {
+  it("says who to turn to — whoever registered you resets you", async () => {
     stubApi([]);
     renderWithProviders(<ForgotPasswordPage />);
 
     const help = await screen.findByLabelText("Утсаа алдсан бол");
-    expect(help).toHaveTextContent("Цэцэрлэгийн багш, ажилтан бол эрхлэгчдээ хандана уу.");
+    // One rule: whoever registered you resets you.
+    expect(help).toHaveTextContent("Эцэг эхХүүхдийнхээ багш эсвэл цэцэрлэгийн эрхлэгчид");
+    expect(help).toHaveTextContent("Цэцэрлэгийн багш, ажилтанЭрхлэгчдээ");
+    expect(help).toHaveTextContent("Эрхлэгч, бие даасан багшNomadKids-д: 7213 4888");
     expect(within(help).getByRole("link", { name: "7213 4888" })).toHaveAttribute(
       "href",
       "tel:+97672134888",
-    );
-    expect(within(help).getByRole("link", { name: "nomadkidsmn@gmail.com" })).toHaveAttribute(
-      "href",
-      "mailto:nomadkidsmn@gmail.com",
     );
   });
 });
@@ -208,6 +207,10 @@ describe("invitation — the guardian's phone", () => {
       token: "invitation-token-value",
       phone: "99112233",
     });
+    // The moment a password is new is the moment to say how it comes back.
+    const tip = await screen.findByLabelText("Утсаа алдсан бол");
+    expect(tip).toHaveTextContent("Утсаа алдвал хэнд хандах вэ?");
+    expect(tip).toHaveTextContent("Эцэг эхХүүхдийнхээ багш эсвэл цэцэрлэгийн эрхлэгчид");
   });
 
   it("refuses to submit an unproven phone without calling the API", async () => {

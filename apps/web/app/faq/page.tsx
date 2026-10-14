@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PublicInfoShell, PublicNotice } from "@/components/public/public-info-shell";
 import { BRAND } from "@/lib/vocabulary";
+import { WHO_RESETS_TEXT } from "@/components/auth/who-resets";
 
 /**
  * ★ `canonical` is set, and the reason it has to be is that it is inherited.
@@ -40,9 +41,10 @@ const FAQ_GROUPS = [
           "Нэвтрэх хуудасны “Байгууллагын бүртгэл” холбоосоор хүсэлт илгээнэ. Хүсэлтийг шалгаж, гэрээ баталгаажсаны дараа байгууллагын администраторын урилга үүснэ.",
       },
       {
-        question: "Нууц үгээ мартсан бол яах вэ?",
-        answer:
-          "“Нууц үгээ мартсан?” холбоосоор бүртгэлтэй и-мэйл хаягтаа нэг удаагийн сэргээх холбоос авна. И-мэйлгүй эсхүл хаягтаа хандах боломжгүй бол байгууллагын администраторт хандана.",
+        question: "Нууц үгээ мартсан эсвэл утсаа алдсан бол яах вэ?",
+        // ★ By SMS since 2026-10-04; the e-mail reset is gone. Who helps
+        // without the phone — `components/auth/who-resets.tsx` (2026-10-14).
+        answer: WHO_RESETS_TEXT,
       },
       {
         question: "Нэг хүн хэд хэдэн эрхтэй байж болох уу?",

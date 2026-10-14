@@ -4,6 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { z } from "zod";
 import { mutate } from "@/lib/api/browser";
+import { ApiError } from "@/lib/api/client";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ export function ResetPasswordLinkDialog({
   person,
   username,
   notReady,
+  notReadyStatuses = [404],
   onClose,
 }: {
   /** The route that issues the link, answering `{ resetToken }`. */
@@ -33,6 +35,12 @@ export function ResetPasswordLinkDialog({
   person: string;
   username?: string | null;
   notReady: string;
+  /**
+   * The answers that mean "not built yet". 404 by default; a parent's reset
+   * also takes 409, which `POST /users/:id/password-reset` answers for a
+   * guardian until the admin opens it to them (2026-10-14).
+   */
+  notReadyStatuses?: number[];
   onClose: () => void;
 }) {
   const [checked, setChecked] = useState(false);
@@ -85,7 +93,12 @@ export function ResetPasswordLinkDialog({
         </p>
         <FormError
           message={
-            reset.isError ? (isNotFound(reset.error) ? notReady : errorMessage(reset.error)) : null
+            reset.isError
+              ? isNotFound(reset.error) ||
+                (reset.error instanceof ApiError && notReadyStatuses.includes(reset.error.status))
+                ? notReady
+                : errorMessage(reset.error)
+              : null
           }
         />
         <label className="flex items-start gap-2 text-body text-ink">
