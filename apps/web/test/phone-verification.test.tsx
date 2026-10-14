@@ -106,7 +106,7 @@ describe("forgot password — the phone is lost", () => {
     stubApi([]);
     renderWithProviders(<ForgotPasswordPage />);
 
-    const help = await screen.findByLabelText("Утсаа алдсан бол");
+    const help = await screen.findByLabelText("Хэнд хандах вэ");
     // One rule: whoever registered you resets you.
     expect(help).toHaveTextContent("Эцэг эхХүүхдийнхээ багш эсвэл цэцэрлэгийн эрхлэгчид");
     expect(help).toHaveTextContent("Цэцэрлэгийн багш, ажилтанЭрхлэгчдээ");
@@ -124,7 +124,7 @@ describe("forgot password — with SMS on or off", () => {
     renderWithProviders(<ForgotPasswordPage />);
 
     expect(await screen.findByLabelText(/Утасны дугаар/)).toBeInTheDocument();
-    expect(screen.getByLabelText("Утсаа алдсан бол")).toHaveTextContent(
+    expect(screen.getByLabelText("Хэнд хандах вэ")).toHaveTextContent(
       "Утсаа алдсан эсвэл дугаараа сольсон уу?",
     );
   });
@@ -133,13 +133,18 @@ describe("forgot password — with SMS on or off", () => {
     stubApi([{ path: "/phone-verifications/availability", body: { enabled: false } }]);
     renderWithProviders(<ForgotPasswordPage />);
 
+    // The heading, one sentence, the table, the way back — nothing else.
     expect(
-      await screen.findByText(/Утсаар өөрөө сэргээх боломж одоогоор идэвхгүй байна/),
+      await screen.findByText("Доорх хүнд хандвал нууц үгийг тань сэргээж өгнө."),
     ).toBeInTheDocument();
+    const tables = screen.getAllByLabelText("Хэнд хандах вэ");
+    expect(tables).toHaveLength(1);
+    expect(screen.queryByText(/идэвхгүй байна/)).toBeNull();
+    const back = screen.getByRole("link", { name: "Нэвтрэх хуудас руу буцах" });
+    // The way back comes after the table, not before it.
     expect(
-      screen.getByText("Таныг бүртгэсэн хүн нууц үгийг тань сэргээж өгнө."),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText("Утсаа алдсан бол")).toHaveTextContent("Хэнд хандах вэ?");
+      tables[0]!.compareDocumentPosition(back) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(screen.queryByText(/Цэцэрлэгийн администратор/)).toBeNull();
     expect(screen.queryByLabelText(/Утасны дугаар/)).toBeNull();
   });
@@ -235,7 +240,7 @@ describe("invitation — the guardian's phone", () => {
       phone: "99112233",
     });
     // The moment a password is new is the moment to say how it comes back.
-    const tip = await screen.findByLabelText("Утсаа алдсан бол");
+    const tip = await screen.findByLabelText("Хэнд хандах вэ");
     expect(tip).toHaveTextContent("Утсаа алдвал хэнд хандах вэ?");
     expect(tip).toHaveTextContent("Эцэг эхХүүхдийнхээ багш эсвэл цэцэрлэгийн эрхлэгчид");
   });

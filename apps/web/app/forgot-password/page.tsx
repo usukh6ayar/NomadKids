@@ -14,7 +14,6 @@ import {
   LockKeyhole,
   MessageSquareText,
   Phone,
-  PhoneOff,
   RotateCcw,
   SearchX,
 } from "lucide-react";
@@ -328,17 +327,10 @@ export default function ForgotPasswordPage() {
                 issues a reset link (`ResetPasswordLinkDialog`).
               */}
               {/*
-                With SMS on, the form above is for whoever holds the phone and
-                this is for whoever lost it; with SMS off, it is for everyone
-                (2026-10-14, the user).
+                With the SMS form above, this is for whoever lost the phone;
+                with SMS off the rule is the page itself (`OffState`).
               */}
-              <WhoResets
-                title={
-                  availability.loading || availability.enabled
-                    ? "Утсаа алдсан эсвэл дугаараа сольсон уу?"
-                    : "Хэнд хандах вэ?"
-                }
-              />
+              {availability.enabled ? <WhoResets /> : null}
               <nav
                 aria-label="Нууцлал ба тусламж"
                 className="mt-1 flex flex-wrap justify-center gap-x-4 text-caption font-semibold text-primary"
@@ -388,7 +380,7 @@ const COPY: Record<Phase | "off", { title: string; lede: string }> = {
   },
   off: {
     title: "Нууц үгээ мартсан уу?",
-    lede: "Таныг бүртгэсэн хүн нууц үгийг тань сэргээж өгнө.",
+    lede: "Доорх хүнд хандвал нууц үгийг тань сэргээж өгнө.",
   },
 };
 
@@ -646,16 +638,14 @@ function RuleList({ password }: { password: string }) {
 }
 
 /** No verify.mn key on this deployment: the only way back is an administrator. */
+/**
+ * SMS self-service off: who to ask, then the way back — nothing else. The
+ * "SMS is off" notice and a second heading only confused (2026-10-14, the user).
+ */
 function OffState() {
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-start gap-3 rounded-control bg-canvas p-4">
-        <PhoneOff className="mt-0.5 size-5 shrink-0 text-faint" aria-hidden="true" />
-        <p className="text-body leading-6 text-ink">
-          Утсаар өөрөө сэргээх боломж одоогоор идэвхгүй байна. Доорх хүснэгтээр хэнд хандахаа
-          хараарай.
-        </p>
-      </div>
+      <WhoResets bare />
       <Button asChild variant="secondary" block className="h-13">
         <Link href="/login">
           <ArrowLeft size={18} aria-hidden="true" />

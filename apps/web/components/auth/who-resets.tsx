@@ -21,14 +21,16 @@ export const WHO_RESETS_TEXT = `Утас тань гарт байвал «Нуу
 
 export function WhoResets({
   title = "Утсаа алдсан эсвэл дугаараа сольсон уу?",
+  bare = false,
 }: {
   title?: string;
+  /** Just the table — where the page's own heading already asks the question. */
+  bare?: boolean;
 }) {
   return (
-    <div aria-label="Утсаа алдсан бол" className="flex flex-col gap-1.5 text-left">
-      <p className="text-caption font-semibold leading-5 text-ink">{title}</p>
+    <div aria-label="Хэнд хандах вэ" className="flex flex-col gap-1.5 text-left">
+      {bare ? null : <p className="text-caption font-semibold leading-5 text-ink">{title}</p>}
       <table className="w-full border-collapse text-caption leading-5">
-        <caption className="sr-only">Утсаа алдвал хэнд хандах вэ</caption>
         <tbody>
           {WHO_RESETS.map((row) => (
             <tr key={row.who} className="border-t border-border-soft first:border-t-0">
@@ -54,9 +56,11 @@ export function WhoResets({
           ))}
         </tbody>
       </table>
-      <p className="text-caption leading-5 text-muted">
-        Хэн болохыг тань шалгаад нууц үг сэргээх холбоос өгнө.
-      </p>
+      {bare ? null : (
+        <p className="text-caption leading-5 text-muted">
+          Хэн болохыг тань шалгаад нууц үг сэргээх холбоос өгнө.
+        </p>
+      )}
     </div>
   );
 }
