@@ -25,6 +25,7 @@ import { FormDialog } from "@/components/ui/form-dialog";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { formatDate } from "@/lib/format";
+import { suggestUsername } from "@/lib/username";
 import {
   FROZEN_NAME,
   FROZEN_NO,
@@ -452,7 +453,11 @@ function ReviewDialog({
   const queryClient = useQueryClient();
 
   const thisYear = new Date().getUTCFullYear();
-  const [adminUsername, setAdminUsername] = useState("");
+  // Suggested from the kindergarten's name, never the director's — two
+  // directors can share a name (the user, 2026-10-14).
+  const [adminUsername, setAdminUsername] = useState(() =>
+    suggestUsername(application.kindergartenName),
+  );
   /*
     ★ Pre-filled from the application and the price sheet (`lib/pricing.ts`),
     then the operator's to confirm or change: the contract freezes whatever is
@@ -621,7 +626,7 @@ function ReviewDialog({
         </p>
 
         <Field
-          label="Админы нэвтрэх нэр"
+          label="Эрхлэгчийн нэвтрэх нэр"
           error={usernameBad ? "Латин үсэг, тоо, . _ - тэмдэгтээр бичнэ үү" : errors.adminUsername}
           hint="Латин үсэг, тоо, . _ - · Эрхлэгч энэ нэрээр нэвтэрнэ"
           required

@@ -151,7 +151,8 @@ describe("the operator's applications", () => {
     const breakdown = within(dialog).getByRole("region", { name: "Төлбөрийн задаргаа" });
     expect(breakdown).toHaveTextContent("Гэрээний нийт дүн180,000₮");
 
-    await user.type(within(dialog).getByLabelText(/Админы нэвтрэх нэр/), "azjargal");
+    await user.clear(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/));
+    await user.type(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/), "azjargal");
     await user.click(within(dialog).getByRole("button", { name: "Батлах" }));
 
     await waitFor(() => {
@@ -203,6 +204,7 @@ describe("the operator's applications", () => {
     const refuse = within(dialog).getByRole("button", { name: "Татгалзах" });
     expect(refuse).toBeDisabled();
     // Nor can it be approved without the director's login name.
+    await user.clear(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/));
     expect(within(dialog).getByRole("button", { name: "Батлах" })).toBeDisabled();
 
     await user.type(within(dialog).getByLabelText(/Тэмдэглэл/), "Гэрчилгээ дутуу");
@@ -327,7 +329,8 @@ describe("the operator's applications", () => {
     expect(breakdown).toHaveTextContent("Гэрээний нийт дүн90,000₮");
     expect(breakdown).toHaveTextContent("Суурь үнээр 108,000₮ — 18,000₮ хэмнэлт");
 
-    await user.type(within(dialog).getByLabelText(/Админы нэвтрэх нэр/), "azjargal");
+    await user.clear(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/));
+    await user.type(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/), "azjargal");
     await user.click(within(dialog).getByRole("button", { name: "Батлах" }));
     await waitFor(() =>
       expect(api.calls.find((call) => call.url.endsWith("/approve"))?.body).toMatchObject({
@@ -358,7 +361,8 @@ describe("the operator's applications", () => {
 
     await user.click(within(dialog).getByRole("checkbox", { name: "Тохиролцсон үнээр өөрчлөх" }));
     await user.type(within(dialog).getByLabelText(/Тохиролцсон нийт дүн/), "150000");
-    await user.type(within(dialog).getByLabelText(/Админы нэвтрэх нэр/), "azjargal");
+    await user.clear(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/));
+    await user.type(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/), "azjargal");
     await user.click(within(dialog).getByRole("button", { name: "Батлах" }));
 
     await waitFor(() =>
@@ -378,11 +382,27 @@ describe("the operator's applications", () => {
 
     await user.click(await screen.findByRole("button", { name: "Шалгах" }));
     const dialog = await screen.findByRole("dialog");
-    await user.type(within(dialog).getByLabelText(/Админы нэвтрэх нэр/), "Сосорбурам");
+    await user.clear(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/));
+    await user.type(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/), "Сосорбурам");
 
     expect(
       within(dialog).getByText("Латин үсэг, тоо, . _ - тэмдэгтээр бичнэ үү"),
     ).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Батлах" })).toBeDisabled();
+  });
+
+  it("suggests the director's login name from the kindergarten's, in Latin", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/applications", body: list([APPLICATION]) },
+    ]);
+    renderWithProviders(<ApplicationsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Шалгах" }));
+    const dialog = await screen.findByRole("dialog");
+    // «Аз жаргал цэцэрлэг» — the organisation, not «Дорж Сараа».
+    expect(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/)).toHaveValue("az.jargal");
+    expect(within(dialog).getByRole("button", { name: "Батлах" })).toBeEnabled();
   });
 });
