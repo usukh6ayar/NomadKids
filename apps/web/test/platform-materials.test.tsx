@@ -219,4 +219,39 @@ describe("the platform's teaching materials", () => {
     expect(await screen.findByText("Хэрэглэгдэхүүн нэмээгүй байна")).toBeInTheDocument();
     expect(screen.queryByRole("table")).toBeNull();
   });
+
+  /*
+   * ★ The learning area is optional — 2026-10-14, the user. The API still
+   * needs one, so an unchosen area goes as «Бусад».
+   */
+  it("saves without a learning area, sending «Бусад»", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/materials", method: "POST", status: 201, body: {} },
+      { path: "/platform/materials", body: [] },
+    ]);
+    renderWithProviders(<PlatformMaterialsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Нэмэх" }));
+    const dialog = screen.getByRole("dialog", { name: "Хэрэглэгдэхүүн нэмэх" });
+    expect(within(dialog).getByText("Заавал биш", { selector: "*" })).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText(/^Нэр/), "Ерөнхий дасгал");
+    await user.type(within(dialog).getByLabelText(/Үнэ/), "0");
+    await user.upload(
+      within(dialog).getByLabelText(/^Файл/),
+      new File(["%PDF-1.4"], "dasgal.pdf", { type: "application/pdf" }),
+    );
+    await user.click(within(dialog).getByRole("radio", { name: "Зургаа өөрөө оруулах" }));
+    await user.upload(within(dialog).getByLabelText(/Урьдчилан харах хуудас/), [
+      new File(["a"], "p1.png", { type: "image/png" }),
+    ]);
+    await user.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
+
+    await waitFor(() => {
+      const form = api.calls.find((c) => c.method === "POST")?.body as FormData;
+      expect(form.get("title")).toBe("Ерөнхий дасгал");
+      expect(form.get("area")).toBe("Бусад");
+    });
+  });
 });

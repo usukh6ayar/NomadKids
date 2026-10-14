@@ -45,6 +45,14 @@ export default function PlatformMaterialsPage() {
   );
 }
 
+/*
+ * ★ The learning area is optional — 2026-10-14, the user. The API still needs
+ * one (`area` is required in the upload contract and the column), so an
+ * unchosen area is sent as «Бусад»; making it truly optional is asked of the
+ * admin. The shop has no picture for «Бусад» and falls back as it does for
+ * any area without one.
+ */
+const OTHER_AREA = "Бусад";
 const KEY = ["platform", "materials"] as const;
 const PREVIEW_TONE: Record<PreviewStatus, "neutral" | "sun" | "mint" | "danger"> = {
   MANUAL: "neutral",
@@ -217,7 +225,10 @@ function MaterialDialog({
   const toast = useToast();
   const [title, setTitle] = useState(material?.title ?? "");
   const [description, setDescription] = useState(material?.description ?? "");
-  const [area, setArea] = useState(material?.area ?? "");
+  // «Бусад» is what an unchosen area is kept as — shown as unchosen here.
+  const [area, setArea] = useState(
+    material?.area && material.area !== OTHER_AREA ? material.area : "",
+  );
   const [level, setLevel] = useState<MaterialLevel | "">(material?.level ?? "");
   const [price, setPrice] = useState(material ? String(material.price) : "");
   const [published, setPublished] = useState(material?.published ?? true);
@@ -241,7 +252,7 @@ function MaterialDialog({
       const form = new FormData();
       form.set("title", title.trim());
       if (description.trim()) form.set("description", description.trim());
-      form.set("area", area);
+      form.set("area", area || OTHER_AREA);
       if (level) form.set("level", level);
       form.set("price", String(Number(price)));
       form.set("published", String(published));
@@ -272,7 +283,7 @@ function MaterialDialog({
   const errors = fieldErrors(save.error);
 
   function submit() {
-    if (!title.trim() || !area) return setProblem("Нэр, сургалтын чиглэлээ оруулна уу.");
+    if (!title.trim()) return setProblem("Нэрээ оруулна уу.");
     if (!/^\d+$/.test(price.trim())) return setProblem("Үнийг бүхэл төгрөгөөр оруулна уу.");
     if (!material && !file) return setProblem("PDF эсвэл PowerPoint файлаа сонгоно уу.");
     if (file && !fileTypeOf(file.name)) return setProblem("Зөвхөн PDF, PPT, PPTX файл оруулна.");
@@ -329,10 +340,15 @@ function MaterialDialog({
           )}
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Сургалтын чиглэл" error={errors.area} required>
-            {({ id }) => (
-              <Select id={id} value={area} onChange={(e) => setArea(e.target.value)}>
-                <option value="">Сонгоно уу</option>
+          <Field label="Сургалтын чиглэл" error={errors.area} hint="Заавал биш">
+            {({ id, describedBy }) => (
+              <Select
+                id={id}
+                aria-describedby={describedBy}
+                value={area}
+                onChange={(e) => setArea(e.target.value)}
+              >
+                <option value="">Сонгоогүй</option>
                 {LEARNING_AREAS.map((name) => (
                   <option key={name} value={name}>
                     {name}
