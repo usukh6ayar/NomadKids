@@ -103,15 +103,26 @@ describe("forgot password — by phone", () => {
  */
 describe("forgot password — the phone is lost", () => {
   it("says who to turn to — whoever registered you resets you", async () => {
+    const user = userEvent.setup();
     stubApi([]);
     renderWithProviders(<ForgotPasswordPage />);
 
+    // «Та хэн бэ?» — a person picks what they are and reads one sentence.
     const help = await screen.findByLabelText("Хэнд хандах вэ");
-    // One rule: whoever registered you resets you.
-    expect(help).toHaveTextContent("Эцэг эхХүүхдийнхээ багш эсвэл цэцэрлэгийн эрхлэгчид");
-    expect(help).toHaveTextContent("Цэцэрлэгийн багш, ажилтанЭрхлэгчдээ");
-    expect(help).toHaveTextContent("Эрхлэгч, бие даасан багшNomadKids-д: 7213 4888");
-    expect(within(help).getByRole("link", { name: "7213 4888" })).toHaveAttribute(
+    const who = within(help).getByRole("group", { name: "Та хэн бэ?" });
+    expect(within(help).queryByRole("status")).toBeNull();
+
+    await user.click(within(who).getByRole("button", { name: "Эцэг эх" }));
+    expect(within(help).getByRole("status")).toHaveTextContent(
+      "Хүүхдийнхээ багш эсвэл цэцэрлэгийн эрхлэгчид хандана уу.",
+    );
+    await user.click(within(who).getByRole("button", { name: "Цэцэрлэгийн багш, ажилтан" }));
+    expect(within(help).getByRole("status")).toHaveTextContent(
+      "Цэцэрлэгийнхээ эрхлэгчид хандана уу.",
+    );
+    await user.click(within(who).getByRole("button", { name: "Эрхлэгч / бие даасан багш" }));
+    expect(within(help).getByRole("status")).toHaveTextContent("NomadKids-д хандана уу.");
+    expect(within(help).getByRole("link", { name: /7213 4888 залгах/ })).toHaveAttribute(
       "href",
       "tel:+97672134888",
     );
@@ -125,7 +136,7 @@ describe("forgot password — with SMS on or off", () => {
 
     expect(await screen.findByLabelText(/Утасны дугаар/)).toBeInTheDocument();
     expect(screen.getByLabelText("Хэнд хандах вэ")).toHaveTextContent(
-      "Утсаа алдсан эсвэл дугаараа сольсон уу?",
+      "Утасны дугаараа сольсон эсвэл алдсан уу?",
     );
   });
 
@@ -135,7 +146,9 @@ describe("forgot password — with SMS on or off", () => {
 
     // The heading, one sentence, the table, the way back — nothing else.
     expect(
-      await screen.findByText("Доорх хүнд хандвал нууц үгийг тань сэргээж өгнө."),
+      await screen.findByText(
+        "Таныг бүртгэсэн хүн нууц үгийг тань сэргээнэ. Та хэн болохоо сонгоно уу.",
+      ),
     ).toBeInTheDocument();
     const tables = screen.getAllByLabelText("Хэнд хандах вэ");
     expect(tables).toHaveLength(1);
@@ -242,7 +255,7 @@ describe("invitation — the guardian's phone", () => {
     // The moment a password is new is the moment to say how it comes back.
     const tip = await screen.findByLabelText("Хэнд хандах вэ");
     expect(tip).toHaveTextContent("Утсаа алдвал хэнд хандах вэ?");
-    expect(tip).toHaveTextContent("Эцэг эхХүүхдийнхээ багш эсвэл цэцэрлэгийн эрхлэгчид");
+    expect(within(tip).getByRole("group", { name: "Та хэн бэ?" })).toBeInTheDocument();
   });
 
   it("refuses to submit an unproven phone without calling the API", async () => {

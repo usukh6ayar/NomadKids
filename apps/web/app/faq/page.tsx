@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { PublicInfoShell, PublicNotice } from "@/components/public/public-info-shell";
 import { BRAND } from "@/lib/vocabulary";
-import { WHO_RESETS_TEXT } from "@/components/auth/who-resets";
+import { WHO_RESETS_TEXT } from "@/components/auth/who-resets-text";
 
 /**
  * ★ `canonical` is set, and the reason it has to be is that it is inherited.

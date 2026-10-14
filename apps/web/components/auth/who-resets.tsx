@@ -1,3 +1,7 @@
+"use client";
+
+import { Phone } from "lucide-react";
+import { useState } from "react";
 import { CONTACT } from "@/lib/contact";
 
 /**
@@ -7,60 +11,81 @@ import { CONTACT } from "@/lib/contact";
  * director or a solo teacher NomadKids. With the phone at hand anyone resets
  * by SMS on «Нууц үгээ мартсан уу?».
  *
+ * ★ Asked as «Та хэн бэ?» rather than shown as a table (2026-10-14, the user:
+ * "энгийн хялбар") — a person picks what they are and reads the one sentence
+ * meant for them; NomadKids' number is a button that calls.
+ *
  * Shown on that page, after an invitation is accepted, and in the FAQ
- * (`WHO_RESETS_TEXT`).
+ * (`who-resets-text.ts`, kept apart: the FAQ is a server page).
  */
 export const WHO_RESETS = [
-  { who: "Эцэг эх", ask: "Хүүхдийнхээ багш эсвэл цэцэрлэгийн эрхлэгчид" },
-  { who: "Цэцэрлэгийн багш, ажилтан", ask: "Эрхлэгчдээ" },
-  { who: "Эрхлэгч, бие даасан багш", ask: `NomadKids-д: ${CONTACT.phone}` },
+  {
+    key: "parent",
+    who: "Эцэг эх",
+    answer: "Хүүхдийнхээ багш эсвэл цэцэрлэгийн эрхлэгчид хандана уу.",
+  },
+  {
+    key: "staff",
+    who: "Цэцэрлэгийн багш, ажилтан",
+    answer: "Цэцэрлэгийнхээ эрхлэгчид хандана уу.",
+  },
+  {
+    key: "head",
+    who: "Эрхлэгч / бие даасан багш",
+    answer: "NomadKids-д хандана уу.",
+  },
 ] as const;
 
-/** The same rule in one paragraph, for the FAQ. */
-export const WHO_RESETS_TEXT = `Утас тань гарт байвал «Нууц үгээ мартсан уу?» холбоосоор бүртгэлтэй дугаараасаа нэг SMS илгээж, шинэ нууц үгээ өөрөө тохируулна. Утсаа алдсан эсвэл дугаараа сольсон бол таныг бүртгэсэн хүн тусална: эцэг эх — хүүхдийнхээ багш эсвэл цэцэрлэгийн эрхлэгч, цэцэрлэгийн багш, ажилтан — эрхлэгч, эрхлэгч болон бие даасан багш — NomadKids (${CONTACT.phone}, ${CONTACT.email}). Тэд хэн болохыг тань шалгаад нууц үг сэргээх нэг удаагийн холбоос өгнө.`;
-
 export function WhoResets({
-  title = "Утсаа алдсан эсвэл дугаараа сольсон уу?",
-  bare = false,
+  title = "Утасны дугаараа сольсон эсвэл алдсан уу?",
 }: {
-  title?: string;
-  /** Just the table — where the page's own heading already asks the question. */
-  bare?: boolean;
+  /** The question above «Та хэн бэ?»; `null` where the page already asks it. */
+  title?: string | null;
 }) {
+  const [picked, setPicked] = useState<(typeof WHO_RESETS)[number]["key"] | null>(null);
+  const choice = WHO_RESETS.find((row) => row.key === picked);
+
   return (
-    <div aria-label="Хэнд хандах вэ" className="flex flex-col gap-1.5 text-left">
-      {bare ? null : <p className="text-caption font-semibold leading-5 text-ink">{title}</p>}
-      <table className="w-full border-collapse text-caption leading-5">
-        <tbody>
+    <div aria-label="Хэнд хандах вэ" className="flex flex-col gap-2 text-left">
+      {title ? <p className="text-caption font-semibold leading-5 text-ink">{title}</p> : null}
+      <div role="group" aria-label="Та хэн бэ?" className="flex flex-col gap-1.5">
+        <p className="text-caption leading-5 text-muted">Та хэн бэ?</p>
+        <div className="flex flex-wrap gap-1.5">
           {WHO_RESETS.map((row) => (
-            <tr key={row.who} className="border-t border-border-soft first:border-t-0">
-              <th scope="row" className="py-1 pr-3 text-left font-medium text-muted">
-                {row.who}
-              </th>
-              <td className="py-1 text-ink">
-                {row.ask.startsWith("NomadKids") ? (
-                  <>
-                    NomadKids-д:{" "}
-                    <a
-                      href={CONTACT.phoneHref}
-                      className="font-semibold text-primary hover:underline"
-                    >
-                      {CONTACT.phone}
-                    </a>
-                  </>
-                ) : (
-                  row.ask
-                )}
-              </td>
-            </tr>
+            <button
+              key={row.key}
+              type="button"
+              aria-pressed={picked === row.key}
+              onClick={() => setPicked(row.key)}
+              className={`min-h-9 rounded-pill border px-3 text-caption font-semibold ${
+                picked === row.key
+                  ? "border-primary bg-primary/10 text-ink"
+                  : "border-border bg-white text-ink hover:bg-canvas"
+              }`}
+            >
+              {row.who}
+            </button>
           ))}
-        </tbody>
-      </table>
-      {bare ? null : (
-        <p className="text-caption leading-5 text-muted">
-          Хэн болохыг тань шалгаад нууц үг сэргээх холбоос өгнө.
-        </p>
-      )}
+        </div>
+      </div>
+
+      {choice ? (
+        <div role="status" className="flex flex-col gap-2 rounded-row bg-canvas p-3">
+          <p className="text-body leading-6 text-ink">{choice.answer}</p>
+          {choice.key === "head" ? (
+            <a
+              href={CONTACT.phoneHref}
+              className="inline-flex min-h-10 w-fit items-center gap-2 rounded-control bg-primary px-4 text-body font-semibold text-primary-ink"
+            >
+              <Phone size={16} aria-hidden="true" />
+              {CONTACT.phone} залгах
+            </a>
+          ) : null}
+          <p className="text-caption leading-5 text-muted">
+            {choice.key === "head" ? "Бид" : "Тэд"} таныг таниад нууц үг сэргээх холбоос өгнө.
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }

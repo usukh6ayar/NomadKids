@@ -380,7 +380,7 @@ const COPY: Record<Phase | "off", { title: string; lede: string }> = {
   },
   off: {
     title: "Нууц үгээ мартсан уу?",
-    lede: "Доорх хүнд хандвал нууц үгийг тань сэргээж өгнө.",
+    lede: "Таныг бүртгэсэн хүн нууц үгийг тань сэргээнэ. Та хэн болохоо сонгоно уу.",
   },
 };
 
@@ -645,7 +645,7 @@ function RuleList({ password }: { password: string }) {
 function OffState() {
   return (
     <div className="flex flex-col gap-4">
-      <WhoResets bare />
+      <WhoResets title={null} />
       <Button asChild variant="secondary" block className="h-13">
         <Link href="/login">
           <ArrowLeft size={18} aria-hidden="true" />
