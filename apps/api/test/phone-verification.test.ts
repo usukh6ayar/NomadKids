@@ -289,12 +289,24 @@ describe("accepting a guardian invitation", () => {
 describe("accepting a solo teacher's invitation", () => {
   const PHONE = "99116001";
 
+  /**
+   * An invitation issued by the sign-up form before 2026-10-14, when it still
+   * answered a token — those links must keep working. Built directly: the
+   * form no longer makes them.
+   */
   async function signUp(): Promise<string> {
-    const res = await request(server())
-      .post("/v1/teacher-applications")
-      .send({ fullName: "Дорж Сараа", phone: PHONE, email: "saraa@example.mn" });
-    expect(res.status, JSON.stringify(res.body)).toBe(201);
-    return res.body.invitationToken as string;
+    const user = await createUser({ phone: PHONE, lastName: "Дорж", firstName: "Сараа" });
+    await db.user.update({ where: { id: user.id }, data: { selfRegisteredAt: new Date() } });
+    const token = `a-solo-invitation-token-${PHONE}-0123456789`;
+    await db.authToken.create({
+      data: {
+        userId: user.id,
+        purpose: "INVITATION",
+        tokenHash: hashToken(token),
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    return token;
   }
 
   it("names the number by its last digits and proves it without its being retyped", async () => {
@@ -341,5 +353,98 @@ describe("accepting a solo teacher's invitation", () => {
     });
     const res = await request(server()).post("/v1/auth/invitation/phone").send({ token });
     expect(res.status).toBe(400);
+  });
+});
+
+/*
+ * The sign-up form proves its own phone (the user, 2026-10-14: one window).
+ * No account exists yet, so the proof is bound to purpose SIGNUP and the
+ * number alone.
+ */
+describe("a solo teacher's sign-up", () => {
+  const PHONE = "99117001";
+  const FORM = {
+    lastName: "Дорж",
+    firstName: "Сараа",
+    phone: PHONE,
+    email: "saraa@example.mn",
+    password: NEW_PASSWORD,
+  };
+
+  async function proven(phone = PHONE): Promise<string> {
+    const started = await request(server()).post("/v1/teacher-applications/phone").send({ phone });
+    expect(started.status, JSON.stringify(started.body)).toBe(200);
+    deliver(phone);
+    return started.body.handle as string;
+  }
+
+  it("is refused without a proof, and goes through with one", async () => {
+    const unproven = await request(server()).post("/v1/teacher-applications").send(FORM);
+    expect(unproven.status).toBe(400);
+    expect(await db.user.count({ where: { phone: PHONE } })).toBe(0);
+
+    const handle = await proven();
+    const res = await request(server())
+      .post("/v1/teacher-applications")
+      .send({ ...FORM, phoneVerification: handle });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    await login(app, PHONE, NEW_PASSWORD);
+  });
+
+  it("will not take a proof made for another purpose or another number", async () => {
+    await createUser({ phone: "99117002" });
+    const reset = await startReset("99117002");
+    deliver("99117002");
+    const crossed = await request(server())
+      .post("/v1/teacher-applications")
+      .send({
+        ...FORM,
+        phone: "99117002",
+        email: "x@example.mn",
+        phoneVerification: reset.body.handle,
+      });
+    expect(crossed.status).toBe(409); // the number is taken — refused before the proof is read
+
+    const resetFree = await startReset("99117003");
+    deliver("99117003");
+    const wrongPurpose = await request(server())
+      .post("/v1/teacher-applications")
+      .send({ ...FORM, phone: "99117003", phoneVerification: resetFree.body.handle });
+    expect(wrongPurpose.status).toBe(400);
+
+    const other = await proven("99117004");
+    const wrongNumber = await request(server())
+      .post("/v1/teacher-applications")
+      .send({ ...FORM, phoneVerification: other });
+    expect(wrongNumber.status).toBe(400);
+    expect(await db.kindergarten.count({ where: { kind: "SOLO_TEACHER" } })).toBe(0);
+  });
+
+  it("refuses the SMS for a number already registered", async () => {
+    await createUser({ phone: "99117005" });
+    const res = await request(server())
+      .post("/v1/teacher-applications/phone")
+      .send({ phone: "99117005" });
+    expect(res.status).toBe(409);
+    expect(sessions.size).toBe(0);
+  });
+
+  it("leaves the proof unspent when the e-mail is taken or the password weak", async () => {
+    await createUser({ email: "taken@example.mn" });
+    const handle = await proven();
+
+    const taken = await request(server())
+      .post("/v1/teacher-applications")
+      .send({ ...FORM, email: "taken@example.mn", phoneVerification: handle });
+    expect(taken.status).toBe(409);
+    const weak = await request(server())
+      .post("/v1/teacher-applications")
+      .send({ ...FORM, password: "aaaaaaaa", phoneVerification: handle });
+    expect(weak.status).toBe(400);
+
+    const fixed = await request(server())
+      .post("/v1/teacher-applications")
+      .send({ ...FORM, phoneVerification: handle });
+    expect(fixed.status, JSON.stringify(fixed.body)).toBe(201);
   });
 });
