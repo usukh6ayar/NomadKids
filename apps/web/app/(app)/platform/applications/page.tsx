@@ -492,7 +492,8 @@ function ReviewDialog({
     «Батлах» waits until it has been looked at once.
   */
   const [previewing, setPreviewing] = useState(false);
-  const [previewed, setPreviewed] = useState(false);
+  /** The draft as last seen; a change to any figure after it asks for another look. */
+  const [seenHtml, setSeenHtml] = useState<string | null>(null);
   const draftHtml =
     schedule || negotiated
       ? renderContractDraftHtml({
@@ -510,6 +511,7 @@ function ReviewDialog({
           periodFee: periodFee || "0",
         })
       : null;
+  const previewed = draftHtml !== null && seenHtml === draftHtml;
   const usernameBad =
     adminUsername.trim() !== "" && !/^[a-zA-Z0-9._-]+$/.test(adminUsername.trim());
   const [reviewNote, setReviewNote] = useState("");
@@ -626,7 +628,7 @@ function ReviewDialog({
             aria-pressed={previewing}
             onClick={() => {
               setPreviewing((open) => !open);
-              setPreviewed(true);
+              setSeenHtml(draftHtml);
             }}
           >
             <Eye size={16} aria-hidden="true" />
@@ -655,7 +657,8 @@ function ReviewDialog({
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          if (!busy) approve.mutate();
+          // Never without the contract seen as it stands — Enter included.
+          if (!busy && previewed) approve.mutate();
         }}
       >
         <FormError

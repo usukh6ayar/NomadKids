@@ -441,4 +441,35 @@ describe("the operator's applications", () => {
     expect(within(dialog).queryByTitle("Гэрээний төсөл")).toBeNull();
     expect(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/)).toHaveValue("az.jargal");
   });
+
+  it("asks for another look when a figure changes after the contract was seen", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/applications", body: list([APPLICATION]) },
+    ]);
+    renderWithProviders(<ApplicationsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Шалгах" }));
+    const dialog = await screen.findByRole("dialog");
+    const approve = within(dialog).getByRole("button", { name: "Батлах" });
+    await user.click(within(dialog).getByRole("button", { name: "Гэрээ харах" }));
+    await user.click(within(dialog).getByRole("button", { name: "Засах руу буцах" }));
+    expect(approve).toBeEnabled();
+
+    const groups = within(dialog).getByLabelText(/Бүлгийн тоо/);
+    await user.clear(groups);
+    await user.type(groups, "7");
+    expect(approve).toBeDisabled();
+
+    // Enter in a field does not get round it.
+    await user.type(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/), "{Enter}");
+    expect(api.calls.some((call) => call.url.endsWith("/approve"))).toBe(false);
+
+    await user.click(within(dialog).getByRole("button", { name: "Гэрээ харах" }));
+    expect(within(dialog).getByTitle("Гэрээний төсөл").getAttribute("srcdoc")).toContain(
+      "<th>Бүлгийн тоо</th><td>7</td>",
+    );
+    expect(approve).toBeEnabled();
+  });
 });
