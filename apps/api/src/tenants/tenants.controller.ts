@@ -73,7 +73,8 @@ export class TenantsController {
   }
 
   @Post("kindergartens/:id/school-years")
-  @Roles("ADMIN")
+  // ★ And a solo teacher in their own workspace — the service decides (2026-10-14).
+  @Roles("ADMIN", "TEACHER")
   async createSchoolYear(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -83,7 +84,8 @@ export class TenantsController {
   }
 
   @Patch("school-years/:id")
-  @Roles("ADMIN")
+  // ★ And a solo teacher in their own workspace — the service decides (2026-10-14).
+  @Roles("ADMIN", "TEACHER")
   async updateSchoolYear(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -123,7 +125,8 @@ export class TenantsController {
    * because that is the roster the director is looking at when they do this.
    */
   @Post("groups/:id/promotions")
-  @Roles("ADMIN")
+  // ★ And a solo teacher in their own workspace — the service decides (2026-10-14).
+  @Roles("ADMIN", "TEACHER")
   async promoteGroup(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -133,7 +136,8 @@ export class TenantsController {
   }
 
   @Post("kindergartens/:id/groups")
-  @Roles("ADMIN")
+  // ★ And a solo teacher in their own workspace — the service decides (2026-10-14).
+  @Roles("ADMIN", "TEACHER")
   async createGroup(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -143,7 +147,8 @@ export class TenantsController {
   }
 
   @Patch("groups/:id")
-  @Roles("ADMIN")
+  // ★ And a solo teacher in their own workspace — the service decides (2026-10-14).
+  @Roles("ADMIN", "TEACHER")
   async updateGroup(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -153,7 +158,8 @@ export class TenantsController {
   }
 
   @Delete("groups/:id")
-  @Roles("ADMIN")
+  // ★ And a solo teacher in their own workspace — the service decides (2026-10-14).
+  @Roles("ADMIN", "TEACHER")
   async archiveGroup(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },

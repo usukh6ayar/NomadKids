@@ -10,8 +10,6 @@ export interface SoloWorkspaceInput {
     location: string | null;
     soloWorkplaceName: string | null;
   };
-  schoolYear: { name: string; startsOn: Date; endsOn: Date };
-  groupName: string;
   user: {
     username: string;
     email: string;
@@ -31,10 +29,14 @@ export class SoloTeachersRepository {
    * A solo teacher's whole workspace — atomically, as `PlatformRepository.
    * createWithAdmin` creates a kindergarten with its director.
    *
-   * All or nothing: a workspace with no group has nothing to work in, a user
-   * with no membership reaches nothing, and one with no invitation can never
-   * set a password. The hashes are computed by the service, outside the
-   * transaction; the token's plaintext never reaches this layer.
+   * All or nothing: a user with no membership reaches nothing, and one with no
+   * invitation can never set a password. The hashes are computed by the
+   * service, outside the transaction; the token's plaintext never reaches this
+   * layer.
+   *
+   * ★ No school year and no group (the user, 2026-10-14): the teacher sets up
+   * their own — `TenantsService.createSchoolYear` / `createGroup`, which
+   * assigns them to the group they open.
    *
    * ★ TEACHER only (the user, 2026-10-14). They used to be ADMIN as well, and
    * the web showed them the director («Удирдлага»). A solo teacher works as
@@ -48,36 +50,12 @@ export class SoloTeachersRepository {
         data: { ...input.kindergarten, kind: "SOLO_TEACHER", isActive: true },
         select: { id: true },
       });
-      const schoolYear = await tx.schoolYear.create({
-        data: { kindergartenId: kindergarten.id, ...input.schoolYear, isCurrent: true },
-        select: { id: true },
-      });
-      const group = await tx.group.create({
-        data: {
-          kindergartenId: kindergarten.id,
-          schoolYearId: schoolYear.id,
-          name: input.groupName,
-          // The teacher sets the real age band on the group's page.
-          ageBand: "MIDDLE",
-        },
-        select: { id: true },
-      });
-
       const user = await tx.user.create({
         data: { ...input.user, selfRegisteredAt: new Date() },
         select: { id: true },
       });
-      const teacher = await tx.membership.create({
+      await tx.membership.create({
         data: { userId: user.id, kindergartenId: kindergarten.id, role: "TEACHER" },
-        select: { id: true },
-      });
-      await tx.groupTeacher.create({
-        data: {
-          kindergartenId: kindergarten.id,
-          groupId: group.id,
-          membershipId: teacher.id,
-          startedOn: input.schoolYear.startsOn,
-        },
       });
       await tx.authToken.create({
         data: {
@@ -89,7 +67,7 @@ export class SoloTeachersRepository {
         },
       });
 
-      return { kindergartenId: kindergarten.id, userId: user.id, groupId: group.id };
+      return { kindergartenId: kindergarten.id, userId: user.id };
     });
   }
 

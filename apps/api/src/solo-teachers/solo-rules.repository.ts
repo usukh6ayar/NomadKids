@@ -14,7 +14,7 @@ export class SoloRulesRepository {
     return row?.kind ?? null;
   }
 
-  countLiveGroups(kindergartenId: string) {
-    return this.prisma.group.count({ where: { kindergartenId, deletedAt: null } });
+  countLiveGroups(kindergartenId: string, schoolYearId: string) {
+    return this.prisma.group.count({ where: { kindergartenId, schoolYearId, deletedAt: null } });
   }
 }

@@ -71,6 +71,7 @@ import { LoadingState } from "@/components/ui/states";
 import { Art, type ArtName } from "@/components/ui/art";
 import { useNavigationHistory } from "@/lib/nav-history";
 import { useSession } from "@/lib/auth/session";
+import { useSoloWorkspaceId } from "@/lib/auth/solo";
 import { AgreementGate } from "@/components/agreements/agreement-gate";
 import { ContactDialog } from "@/components/public/contact-dialog";
 import { GuideDialog } from "@/components/help/guide-dialog";
@@ -108,6 +109,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   // shell is the one thing under `(app)` that never unmounts between them.
   useNavigationHistory();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
+  // A teacher who signed up alone sets up their own year and group (2026-10-14).
+  const soloTeacher = useSoloWorkspaceId() !== null;
   /*
     ★ A solo teacher's own workspace (2026-10-11): they hold ADMIN there only so
     every route works without a director, and their menu is the teacher's —
@@ -218,6 +221,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         isStaff={isStaff}
         isAdmin={hasRole("ADMIN") && !onlySoloAdmin}
         groupId={groupId}
+        soloTeacher={soloTeacher}
         myChildren={myChildren.data}
       >
         {children}
@@ -237,11 +241,14 @@ function AuthenticatedShell({
   isStaff,
   isAdmin,
   groupId,
+  soloTeacher,
   myChildren,
   children,
 }: {
   isStaff: boolean;
   isAdmin: boolean;
+  /** Signed up alone — the menu gains «Бүлэг, хичээлийн жил» (`/my-group`). */
+  soloTeacher: boolean;
   /** The teacher's one group, resolved once by `useMyGroup()` in `AppLayout` — null for an admin (every group) or a teacher assigned none. */
   groupId: string | null;
   myChildren: ChildSummary[] | undefined;
@@ -291,7 +298,7 @@ function AuthenticatedShell({
         isStaff
           ? isAdmin
             ? withRailGlyphs(staffSections(true, groupId))
-            : teacherSections(groupId)
+            : teacherSections(groupId, soloTeacher)
           : parentSections(myChildren, selectedChildId, {
               openGuide: () => setHelp("guide"),
               openContact: () => setHelp("contact"),
@@ -1043,7 +1050,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
 }
 
 /** The teacher rail, in the client's daily-work order. */
-function teacherSections(groupId: string | null): NavSection[] {
+function teacherSections(groupId: string | null, soloTeacher = false): NavSection[] {
   const scoped = (feature: string) => (groupId ? `/groups/${groupId}/${feature}` : `/${feature}`);
 
   return [
@@ -1055,6 +1062,16 @@ function teacherSections(groupId: string | null): NavSection[] {
         only; the phone bar and every other role keep their own.
       */
       entries: [
+        // A solo teacher's own year and group — nobody else sets them up (2026-10-14).
+        ...(soloTeacher
+          ? [
+              {
+                label: "Бүлэг, хичээлийн жил",
+                href: "/my-group",
+                icon: <RailGlyph icon={UsersRound} />,
+              },
+            ]
+          : []),
         { label: "Суралцагч", href: "/children", icon: <RailGlyph icon={BookOpen} /> },
         { label: "Ирц", href: scoped("attendance"), icon: <RailGlyph icon={IdCardLanyard} /> },
         { label: "Хоолны цэс", href: "/menu", icon: <RailGlyph icon={Utensils} /> },

@@ -7,13 +7,17 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   authed,
+  createChild,
+  createGroup,
   createMembership,
   createScenario,
+  createSchoolYear,
+  enrollChild,
   login,
   type AuthSession,
 } from "./support/fixtures";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
-import { currentSchoolYear } from "../src/solo-teachers/solo-teachers.service";
+import { currentSchoolYear } from "./support/school-year";
 
 /**
  * A teacher signing up alone (#195; the user, 2026-10-11).
@@ -72,7 +76,7 @@ async function soloTeacher() {
 }
 
 describe("signing up", () => {
-  it("builds the whole workspace at once: the teacher is its group's teacher and nothing more", async () => {
+  it("builds the workspace and the teacher's membership — the year and the group are theirs to make", async () => {
     const res = await signup();
     expect(res.status).toBe(201);
     expect(Object.keys(res.body)).toEqual(["invitationToken"]);
@@ -86,17 +90,40 @@ describe("signing up", () => {
       soloWorkplaceName: "115-р цэцэрлэг",
       esisInstitutionId: null,
     });
-    expect(kindergarten.groups).toHaveLength(1);
-    expect(kindergarten.schoolYears).toEqual([
-      expect.objectContaining({ isCurrent: true, name: currentSchoolYear(new Date()).name }),
-    ]);
-    expect(kindergarten.memberships.map((m) => m.role).sort()).toEqual(["TEACHER"]);
+    expect(kindergarten.groups).toEqual([]);
+    expect(kindergarten.schoolYears).toEqual([]);
+    expect(kindergarten.memberships.map((m) => m.role)).toEqual(["TEACHER"]);
+  });
 
-    const teacher = kindergarten.memberships.find((m) => m.role === "TEACHER")!;
-    const assignment = await db.groupTeacher.findFirstOrThrow({
-      where: { membershipId: teacher.id },
+  it("splits «Овог нэр», and a one-word name is the given name alone", async () => {
+    await signup({ ...FORM, fullName: "Сараа" }).expect(201);
+    const user = await db.user.findFirstOrThrow({ where: { phone: FORM.phone } });
+    expect(user).toMatchObject({ lastName: "", firstName: "Сараа" });
+  });
+
+  it("the invitation knows the name and phone, so they are not asked again", async () => {
+    const res = await signup();
+    const described = await request(server()).get(
+      `/v1/auth/invitation/${res.body.invitationToken}`,
+    );
+    expect(described.body).toEqual({
+      valid: true,
+      kind: "staff",
+      knows: { name: true, phone: true },
     });
-    expect(assignment.groupId).toBe(kindergarten.groups[0]!.id);
+
+    // A director's invitation still asks.
+    const a = await createScenario("a");
+    const admin = await login(app, a.adminUser.username);
+    const invited = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/users`),
+      admin,
+    ).send({ username: "invited-teacher", lastName: "Бат", firstName: "Сүх", role: "TEACHER" });
+    expect(invited.status, JSON.stringify(invited.body)).toBe(201);
+    const asked = await request(server()).get(
+      `/v1/auth/invitation/${invited.body.invitationToken as string}`,
+    );
+    expect(asked.body.knows).toEqual({ name: false, phone: false });
   });
 
   it("the invitation sets the password; the teacher signs in by phone, and the session names the workspace", async () => {
@@ -131,72 +158,201 @@ describe("signing up", () => {
   });
 });
 
-describe("the solo teacher's role", () => {
-  it("is a teacher's: their group, its children and families — not the director's routes", async () => {
+const post = (session: AuthSession, url: string, body: Record<string, unknown>) =>
+  authed(request(server()).post(url), session).send(body);
+
+/** The teacher's own year and group, made the way the screen makes them. */
+async function setUp(session: AuthSession, kindergartenId: string) {
+  const year = currentSchoolYear(new Date());
+  const created = await post(session, `/v1/kindergartens/${kindergartenId}/school-years`, {
+    name: year.name,
+    startsOn: year.startsOn.toISOString().slice(0, 10),
+    endsOn: year.endsOn.toISOString().slice(0, 10),
+    isCurrent: true,
+  });
+  expect(created.status, JSON.stringify(created.body)).toBe(201);
+  const group = await post(session, `/v1/kindergartens/${kindergartenId}/groups`, {
+    schoolYearId: created.body.id,
+    name: "Нарлаг",
+    ageBand: "SENIOR",
+  });
+  expect(group.status, JSON.stringify(group.body)).toBe(201);
+  return { yearId: created.body.id as string, groupId: group.body.id as string };
+}
+
+describe("the solo teacher", () => {
+  it("sets up their own school year and group, and teaches the group at once", async () => {
     const { session, kindergartenId } = await soloTeacher();
-    const group = await db.group.findFirstOrThrow({ where: { kindergartenId } });
-    const year = await db.schoolYear.findFirstOrThrow({ where: { kindergartenId } });
+    const { yearId, groupId } = await setUp(session, kindergartenId);
 
-    const me = await authed(request(server()).get("/v1/auth/me"), session);
-    expect(me.body.memberships.map((m: { role: string }) => m.role)).toEqual(["TEACHER"]);
-
-    const child = await authed(
-      request(server()).post(`/v1/kindergartens/${kindergartenId}/children`),
+    const groups = await authed(
+      request(server()).get(`/v1/groups?kindergartenId=${kindergartenId}`),
       session,
-    ).send({
+    );
+    expect(groups.body.items.map((g: { id: string }) => g.id)).toEqual([groupId]);
+
+    const renamed = await authed(request(server()).patch(`/v1/groups/${groupId}`), session).send({
+      name: "Нарлаг бүлэг",
+      ageBand: "MIDDLE",
+    });
+    expect(renamed.status).toBe(200);
+    const year = await authed(request(server()).patch(`/v1/school-years/${yearId}`), session).send({
+      name: "Миний жил",
+    });
+    expect(year.status).toBe(200);
+
+    // One group a school year.
+    const second = await post(session, `/v1/kindergartens/${kindergartenId}/groups`, {
+      schoolYearId: yearId,
+      name: "Хоёр дахь",
+      ageBand: "SENIOR",
+    });
+    expect(second.status).toBe(400);
+  });
+
+  it("registers a child into their group and invites the family", async () => {
+    const { session, kindergartenId } = await soloTeacher();
+    const child = {
       lastName: "Бат",
       firstName: "Тэмүүлэн",
       sex: "MALE",
       dateOfBirth: "2021-03-04",
-      groupId: group.id,
-    });
-    expect(child.status, JSON.stringify(child.body)).toBe(201);
-    const invitation = await authed(
-      request(server()).post(`/v1/children/${child.body.id}/guardian-invitations`),
-      session,
-    ).send({ isPrimary: true });
-    expect(invitation.status, JSON.stringify(invitation.body)).toBe(201);
+    };
 
-    // The director's routes: staff and groups.
-    const staff = await authed(
-      request(server()).post(`/v1/kindergartens/${kindergartenId}/users`),
+    // No group yet: told what to do first, not left with a child they cannot see.
+    const early = await post(session, `/v1/kindergartens/${kindergartenId}/children`, child);
+    expect(early.status).toBe(400);
+
+    const { groupId } = await setUp(session, kindergartenId);
+    const created = await post(session, `/v1/kindergartens/${kindergartenId}/children`, child);
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const enrollment = await db.enrollment.findFirstOrThrow({
+      where: { childId: created.body.id as string },
+    });
+    expect(enrollment).toMatchObject({ groupId, status: "ACTIVE" });
+
+    const roster = await authed(request(server()).get("/v1/children"), session);
+    expect(roster.body.items.map((c: { id: string }) => c.id)).toEqual([created.body.id]);
+
+    const invitation = await post(
       session,
-    ).send({ username: "invited-parent", lastName: "Бат", firstName: "Сүх", role: "PARENT" });
-    expect(staff.status).toBe(404);
-    const newGroup = await authed(
-      request(server()).post(`/v1/kindergartens/${kindergartenId}/groups`),
-      session,
-    ).send({ schoolYearId: year.id, name: "Хоёр дахь", ageBand: "SENIOR" });
-    expect(newGroup.status).toBe(404);
-    expect(await db.group.count({ where: { kindergartenId } })).toBe(1);
+      `/v1/children/${created.body.id as string}/guardian-invitations`,
+      { isPrimary: true },
+    );
+    expect(invitation.status, JSON.stringify(invitation.body)).toBe(201);
   });
 
-  it("is taken back from those who signed up as director too, keeping their group", async () => {
+  it("is a teacher, not the director: no staff, no teacher assignments, nobody else's kindergarten", async () => {
+    const { session, kindergartenId } = await soloTeacher();
+    const { groupId } = await setUp(session, kindergartenId);
+
+    const me = await authed(request(server()).get("/v1/auth/me"), session);
+    expect(me.body.memberships.map((m: { role: string }) => m.role)).toEqual(["TEACHER"]);
+
+    const staff = await post(session, `/v1/kindergartens/${kindergartenId}/users`, {
+      username: "invited-parent",
+      lastName: "Бат",
+      firstName: "Сүх",
+      role: "PARENT",
+    });
+    expect(staff.status).toBe(404);
+    const teacher = await db.membership.findFirstOrThrow({ where: { kindergartenId } });
+    const assign = await post(session, `/v1/groups/${groupId}/teachers`, {
+      membershipId: teacher.id,
+    });
+    expect(assign.status).toBe(404);
+
+    // A contracted kindergarten's teacher sets up nothing.
+    const a = await createScenario("a");
+    const contracted = await login(app, a.teacherUser.username);
+    const year = await post(contracted, `/v1/kindergartens/${a.kindergarten.id}/school-years`, {
+      name: "2030-2031",
+      startsOn: "2030-09-01",
+      endsOn: "2031-05-31",
+    });
+    expect(year.status).toBe(404);
+    const group = await post(contracted, `/v1/kindergartens/${a.kindergarten.id}/groups`, {
+      schoolYearId: a.schoolYear.id,
+      name: "Шинэ",
+      ageBand: "SENIOR",
+    });
+    expect(group.status).toBe(404);
+    // Nor reaches the solo workspace.
+    const into = await post(contracted, `/v1/kindergartens/${kindergartenId}/school-years`, {
+      name: "2030-2031",
+      startsOn: "2030-09-01",
+      endsOn: "2031-05-31",
+    });
+    expect(into.status).toBe(404);
+  });
+});
+
+/** The migration's statements, one at a time — the driver takes one per call. */
+function runMigration() {
+  const sql = readFileSync(
+    join(__dirname, "../prisma/migrations/20261014090000_solo_teacher_role_only/migration.sql"),
+    "utf8",
+  );
+  const statements = sql
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("--"))
+    .join("\n")
+    .split(/;\s*\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return db.$transaction(statements.map((s) => db.$executeRawUnsafe(s)));
+}
+
+describe("the migration, for those who signed up as director too", () => {
+  /** A workspace as sign-up built it before 2026-10-14. */
+  async function oldWorkspace() {
     const { kindergartenId } = await soloTeacher();
     const teacher = await db.membership.findFirstOrThrow({
       where: { kindergartenId, role: "TEACHER" },
     });
-    // Before 2026-10-14 sign-up made them ADMIN as well.
-    const oldAdmin = await createMembership(teacher.userId, kindergartenId, "ADMIN");
-    // A solo workspace's ADMIN with no teacher's role there is left alone —
-    // revoking it would lock them out.
-    const other = await signup({ ...FORM, phone: "88112233", email: "other@example.mn" });
-    expect(other.status).toBe(201);
+    const admin = await createMembership(teacher.userId, kindergartenId, "ADMIN");
+    const year = await createSchoolYear(kindergartenId, true);
+    const group = await createGroup(kindergartenId, year.id, "Миний бүлэг");
+    await db.groupTeacher.create({
+      data: { kindergartenId, groupId: group.id, membershipId: teacher.id },
+    });
+    return { kindergartenId, teacher, admin, year, group };
+  }
+
+  it("keeps everything they made within a teacher's reach, then takes the director's role", async () => {
+    const { kindergartenId, teacher, admin, group } = await oldWorkspace();
+    // What an ADMIN could do that a TEACHER reaches only through a group:
+    // a child registered without one, a child no longer attending, and a
+    // group of last year nobody assigned them to.
+    const loose = await createChild(kindergartenId, { firstName: "Номин" });
+    const gone = await createChild(kindergartenId, { firstName: "Анар" });
+    await db.child.update({ where: { id: gone.id }, data: { status: "INACTIVE" } });
+    const lastYear = await createSchoolYear(kindergartenId, false);
+    const oldGroup = await createGroup(kindergartenId, lastYear.id, "Өнгөрсөн");
+    const placed = await createChild(kindergartenId, { firstName: "Тэмүүлэн" });
+    await enrollChild(kindergartenId, placed.id, oldGroup.id, lastYear.id);
+    // A one-word name, written twice by the old sign-up.
+    await db.user.update({
+      where: { id: teacher.userId },
+      data: { lastName: "Сараа", firstName: "Сараа" },
+    });
+    // Not theirs to touch: a contracted director, and a solo ADMIN with no
+    // teacher's role there (revoking it would lock them out).
+    const a = await createScenario("a");
+    await signup({ ...FORM, phone: "88112233", email: "other@example.mn" }).expect(201);
     const lone = await db.membership.findFirstOrThrow({
       where: { kindergartenId: { not: kindergartenId }, role: "TEACHER" },
     });
     await db.membership.update({ where: { id: lone.id }, data: { role: "ADMIN" } });
-    // A contracted kindergarten's director is never touched.
-    const a = await createScenario("a");
+    const directors = () =>
+      db.membership.count({
+        where: { kindergartenId: a.kindergarten.id, role: "ADMIN", deletedAt: null },
+      });
+    const directorsBefore = await directors();
 
-    await db.$executeRawUnsafe(
-      readFileSync(
-        join(__dirname, "../prisma/migrations/20261014090000_solo_teacher_role_only/migration.sql"),
-        "utf8",
-      ),
-    );
+    await runMigration();
 
-    expect(await db.membership.findUniqueOrThrow({ where: { id: oldAdmin.id } })).toMatchObject({
+    expect(await db.membership.findUniqueOrThrow({ where: { id: admin.id } })).toMatchObject({
       isActive: false,
       deletedAt: expect.any(Date),
     });
@@ -204,31 +360,61 @@ describe("the solo teacher's role", () => {
       isActive: true,
       deletedAt: null,
     });
-    expect(await db.groupTeacher.count({ where: { membershipId: teacher.id } })).toBe(1);
+    expect(
+      await db.groupTeacher.count({ where: { membershipId: teacher.id, endedOn: null } }),
+    ).toBe(2);
+    expect(await db.enrollment.findFirstOrThrow({ where: { childId: loose.id } })).toMatchObject({
+      groupId: group.id,
+      status: "ACTIVE",
+    });
+    expect(await db.enrollment.findFirstOrThrow({ where: { childId: gone.id } })).toMatchObject({
+      groupId: group.id,
+      status: "ENDED",
+    });
+    expect(await db.enrollment.count({ where: { childId: placed.id } })).toBe(1);
+    expect(await db.user.findUniqueOrThrow({ where: { id: teacher.userId } })).toMatchObject({
+      lastName: "",
+      firstName: "Сараа",
+    });
     expect(await db.membership.findUniqueOrThrow({ where: { id: lone.id } })).toMatchObject({
       isActive: true,
       deletedAt: null,
     });
-    expect(
-      await db.membership.count({
-        where: { kindergartenId: a.kindergarten.id, role: "ADMIN", deletedAt: null },
-      }),
-    ).toBe(1);
+    expect(await directors()).toBe(directorsBefore);
     expect(
       await db.auditLog.findFirstOrThrow({
-        where: { objectType: "Membership", objectId: oldAdmin.id },
+        where: { objectType: "Membership", objectId: admin.id },
       }),
     ).toMatchObject({ action: "PERMISSION_CHANGE", kindergartenId });
 
+    // Signed in as the teacher they now are: every child is still there.
     const session = await login(app, FORM.phone, PASSWORD);
     const me = await authed(request(server()).get("/v1/auth/me"), session);
     expect(me.body.memberships.map((m: { role: string }) => m.role)).toEqual(["TEACHER"]);
+    const roster = await authed(request(server()).get("/v1/children?pageSize=100"), session);
+    expect(roster.body.items.map((c: { id: string }) => c.id).sort()).toEqual(
+      [loose.id, gone.id, placed.id].sort(),
+    );
+  });
+
+  it("runs twice without doing anything twice", async () => {
+    const { kindergartenId } = await oldWorkspace();
+    await createChild(kindergartenId, { firstName: "Номин" });
+    await runMigration();
+    const counts = async () => ({
+      assignments: await db.groupTeacher.count({ where: { kindergartenId } }),
+      enrollments: await db.enrollment.count({ where: { kindergartenId } }),
+      audit: await db.auditLog.count({ where: { kindergartenId } }),
+    });
+    const once = await counts();
+    await runMigration();
+    expect(await counts()).toEqual(once);
   });
 });
 
 describe("the workspace's rules", () => {
   const invite = (session: AuthSession, kindergartenId: string, role: string, n = 1) =>
-    authed(request(server()).post(`/v1/kindergartens/${kindergartenId}/users`), session).send({
+    post(session, `/v1/kindergartens/${kindergartenId}/users`, {
       username: `invited-${role.toLowerCase()}-${n}`,
       lastName: "Бат",
       firstName: "Сүх",
@@ -258,16 +444,23 @@ describe("the workspace's rules", () => {
     expect((await invite(session, kindergartenId, "PARENT")).status).toBe(201);
   });
 
-  it("keeps one group", async () => {
+  it("keeps one group a school year", async () => {
     const { session, kindergartenId } = await soloAdministrator();
-    const year = await db.schoolYear.findFirstOrThrow({ where: { kindergartenId } });
+    const year = await createSchoolYear(kindergartenId, true);
+    await createGroup(kindergartenId, year.id);
+    const next = await createSchoolYear(kindergartenId, false);
 
-    const res = await authed(
-      request(server()).post(`/v1/kindergartens/${kindergartenId}/groups`),
-      session,
-    ).send({ schoolYearId: year.id, name: "Хоёр дахь", ageBand: "SENIOR" });
-    expect(res.status).toBe(400);
-    expect(await db.group.count({ where: { kindergartenId } })).toBe(1);
+    const body = { name: "Хоёр дахь", ageBand: "SENIOR" };
+    const same = await post(session, `/v1/kindergartens/${kindergartenId}/groups`, {
+      ...body,
+      schoolYearId: year.id,
+    });
+    expect(same.status).toBe(400);
+    const nextYear = await post(session, `/v1/kindergartens/${kindergartenId}/groups`, {
+      ...body,
+      schoolYearId: next.id,
+    });
+    expect(nextYear.status, JSON.stringify(nextYear.body)).toBe(201);
   });
 
   it("leaves a contracted kindergarten as it was", async () => {
@@ -286,18 +479,6 @@ describe("the workspace's rules", () => {
   });
 });
 
-describe("currentSchoolYear", () => {
-  it("runs September to May, and from June prepares the coming year", () => {
-    expect(currentSchoolYear(new Date("2026-10-11T00:00:00Z")).name).toBe("2026-2027");
-    expect(currentSchoolYear(new Date("2027-03-01T00:00:00Z")).name).toBe("2026-2027");
-    expect(currentSchoolYear(new Date("2027-07-01T00:00:00Z")).name).toBe("2027-2028");
-  });
-});
-
-/**
- * A teacher whose kindergarten has signed is refused a workspace of their own
- * beside it (#211 item 3) — equal names in the same district only.
- */
 describe("a solo sign-up for a contracted kindergarten", () => {
   async function contracted(name: string, district: string) {
     const scenario = await createScenario("c");

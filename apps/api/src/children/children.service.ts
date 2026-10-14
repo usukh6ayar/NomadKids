@@ -57,6 +57,29 @@ export class ChildrenService {
     private readonly esis: EsisService,
   ) {}
 
+  /**
+   * A solo teacher's own group of the current year — where a child they
+   * register without naming a group goes. `null` for anybody else.
+   *
+   * ★ Not a convenience (the user, 2026-10-14). A teacher reaches a child only
+   * through an enrolment in a group they teach; the no-enrolment fallback is
+   * the administrator's alone (§1.2). A solo teacher holds TEACHER only, so a
+   * child left without a group would vanish from their roster the moment it
+   * was saved. No group yet is a 400 that says what to do first.
+   */
+  private async soloTeacherGroup(actor: Actor, kindergartenId: string) {
+    if (this.tenants.isAdmin(actor, kindergartenId)) return null;
+    if (!(await this.tenants.soloTeacherKindergartenIds(actor)).includes(kindergartenId)) {
+      return null;
+    }
+    const teaching = await this.authz.loadActiveTeachingGroupIds(actor);
+    const group = await this.repo.findCurrentGroupAmong(teaching, kindergartenId);
+    if (!group) {
+      throw new BadRequestException("Эхлээд хичээлийн жил, бүлгээ үүсгэнэ үү.");
+    }
+    return group;
+  }
+
   /** "0" means no fee anywhere — read once, like `ChildAccessService`. */
   private readonly feeConfigured = loadEnv().ACCESS_FEE_AMOUNT !== "0";
 
@@ -202,6 +225,7 @@ export class ChildrenService {
    */
   async create(actor: Actor, kindergartenId: string, dto: CreateChildDto) {
     this.tenants.assertStaff(actor, kindergartenId);
+    const groupId = dto.groupId ?? (await this.soloTeacherGroup(actor, kindergartenId))?.id;
 
     if (dto.nationalId) {
       const clash = await this.repo.findByNationalId(kindergartenId, dto.nationalId);
@@ -220,8 +244,8 @@ export class ChildrenService {
       healthNotes: dto.healthNotes ?? null,
     });
 
-    if (dto.groupId) {
-      await this.enrollInternal(kindergartenId, child.id, dto.groupId, new Date());
+    if (groupId) {
+      await this.enrollInternal(kindergartenId, child.id, groupId, new Date());
     }
 
     await this.audit.append({
@@ -894,6 +918,8 @@ export class ChildrenService {
     }
 
     const { rows, problems } = await parseChildWorkbook(file);
+    // A row with no group goes to a solo teacher's own group — see `soloTeacherGroup`.
+    const soloGroup = await this.soloTeacherGroup(actor, kindergartenId);
 
     const groups = await this.repo.groupsForImport(kindergartenId);
     const groupByName = new Map(groups.map((group) => [group.name.trim().toLowerCase(), group]));
@@ -951,8 +977,8 @@ export class ChildrenService {
         continue;
       }
 
-      let groupId: string | null = null;
-      let schoolYearId: string | null = null;
+      let groupId: string | null = soloGroup?.id ?? null;
+      let schoolYearId: string | null = soloGroup?.schoolYear.id ?? null;
 
       if (row.groupName) {
         const group = groupByName.get(row.groupName.trim().toLowerCase());

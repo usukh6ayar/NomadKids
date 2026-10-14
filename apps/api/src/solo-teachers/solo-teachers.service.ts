@@ -77,13 +77,13 @@ export class SoloTeachersService {
           location: dto.location || null,
           soloWorkplaceName: dto.kindergartenName || null,
         },
-        schoolYear: currentSchoolYear(new Date()),
-        groupName: "Миний бүлэг",
         user: {
           username,
           email: dto.email,
           phone: dto.phone,
-          lastName: family || firstName,
+          // ★ A one-word «Овог нэр» is the given name alone. The surname used
+          // to repeat it, and the teacher appeared as «Сараа Сараа» (2026-10-14).
+          lastName: family,
           firstName,
           passwordHash,
         },
@@ -112,18 +112,4 @@ export class SoloTeachersService {
 
     throw new ConflictException("Бүртгэл үүсгэж чадсангүй. Дахин оролдоно уу.");
   }
-}
-
-/**
- * The school year a sign-up starts in: September to May. From June the coming
- * year — a teacher signing up in summer prepares for September.
- */
-export function currentSchoolYear(today: Date): { name: string; startsOn: Date; endsOn: Date } {
-  const year = today.getUTCFullYear();
-  const start = today.getUTCMonth() >= 5 ? year : year - 1;
-  return {
-    name: `${start}-${start + 1}`,
-    startsOn: new Date(Date.UTC(start, 8, 1)),
-    endsOn: new Date(Date.UTC(start + 1, 4, 31)),
-  };
 }

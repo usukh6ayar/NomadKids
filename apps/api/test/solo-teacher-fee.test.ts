@@ -9,6 +9,7 @@ import {
   createScenario,
   enrollChild,
   login,
+  setUpSoloWorkspace,
   type AuthSession,
   type Scenario,
 } from "./support/fixtures";
@@ -62,15 +63,10 @@ beforeEach(async () => {
 
   const kindergarten = await db.kindergarten.findFirstOrThrow({
     where: { kind: "SOLO_TEACHER" },
-    include: { groups: true, schoolYears: true },
   });
+  const { schoolYear, group } = await setUpSoloWorkspace(kindergarten.id);
   const child = await createChild(kindergarten.id, { firstName: "Тэмүүлэн" });
-  await enrollChild(
-    kindergarten.id,
-    child.id,
-    kindergarten.groups[0]!.id,
-    kindergarten.schoolYears[0]!.id,
-  );
+  await enrollChild(kindergarten.id, child.id, group.id, schoolYear.id);
 
   solo = {
     session: await login(app, "99112233", PASSWORD),

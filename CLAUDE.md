@@ -121,6 +121,13 @@ they have passed `canAccessChild` first. Inviting the family
 (`assertCanInviteGuardian`) and the roster stay open; a contracted
 kindergarten's staff are never gated.
 
+★ **A solo teacher is TEACHER only, never ADMIN** (the user, 2026-10-14). They
+set up their own school year and one group a year
+(`TenantAccessService.workspaceKindergartenIds`); the group they open is
+assigned to them as it is created, and a child they register goes into it —
+the no-enrolment fallback is the administrator's alone (§1.2). Terms stay a
+director's: the operator's merge refuses them.
+
 ---
 
 ## 2. Architecture rules

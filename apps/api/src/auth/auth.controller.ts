@@ -17,7 +17,7 @@ import type { Request, Response } from "express";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { RateLimit, RateLimitGuard } from "../common/rate-limit/rate-limit.guard";
 import type { Actor } from "../authz/actor";
-import { AuthService, type RequestContext } from "./auth.service";
+import { AuthService, type InvitationDescription, type RequestContext } from "./auth.service";
 import {
   changePasswordSchema,
   loginDevicesSchema,
@@ -309,9 +309,7 @@ export class AuthController {
   @Public()
   @Get("invitation/:token")
   @RateLimit({ limit: 30, windowMs: HOUR })
-  async describeInvitation(
-    @Param("token") token: string,
-  ): Promise<{ valid: boolean; kind: "staff" | "guardian" }> {
+  async describeInvitation(@Param("token") token: string): Promise<InvitationDescription> {
     return this.auth.describeInvitation(token);
   }
 

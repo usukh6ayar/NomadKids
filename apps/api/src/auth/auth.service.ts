@@ -40,6 +40,14 @@ export interface LoginResult {
   };
 }
 
+/** `GET /auth/invitation/:token` — what the acceptance form needs to ask. */
+export interface InvitationDescription {
+  valid: boolean;
+  kind: "staff" | "guardian";
+  /** Facts the person already gave when they registered themselves — not asked again. */
+  knows: { name: boolean; phone: boolean };
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -498,15 +506,32 @@ export class AuthService {
    * kindergarten. An invitation token is 32 random bytes, so enumerating one is
    * not a real attack; leaking who it belongs to would be.
    */
-  async describeInvitation(token: string): Promise<{ valid: boolean; kind: "staff" | "guardian" }> {
+  async describeInvitation(token: string): Promise<InvitationDescription> {
     const row = await this.repo.findAuthToken(hashToken(token), "INVITATION");
     const valid = Boolean(row && !row.usedAt && row.expiresAt.getTime() >= Date.now());
 
     // The kind of an invalid token is not knowledge worth handing out, and
     // "guardian" is the safer default for a form: it asks for less.
-    if (!row || !valid) return { valid: false, kind: "guardian" };
+    if (!row || !valid)
+      return { valid: false, kind: "guardian", knows: { name: false, phone: false } };
 
-    return { valid: true, kind: await this.repo.findInvitedAccountKind(row.userId) };
+    /*
+      ★ What the person already told us — the user, 2026-10-14: a teacher who
+      signed up alone typed «Овог нэр» and a phone on the sign-up form, and
+      this page asked for them again. Someone who registered themselves (a
+      solo teacher, a member of staff matched on the ESIS roster) has given
+      their name; a solo teacher their phone as well. Two booleans, never the
+      values: the same thinness as the rest of this answer.
+    */
+    const account = await this.repo.findInvitedAccount(row.userId);
+    return {
+      valid: true,
+      kind: account.kind,
+      knows: {
+        name: account.selfRegistered && account.hasName,
+        phone: account.selfRegistered && account.hasPhone,
+      },
+    };
   }
 
   async acceptInvitation(

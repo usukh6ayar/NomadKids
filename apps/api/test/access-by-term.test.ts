@@ -7,7 +7,7 @@ import { resetData, testDb } from "./support/db";
 import { authed, createScenario, login, type AuthSession, type Scenario } from "./support/fixtures";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
 import { calendarTerms } from "../src/access/access.service";
-import { currentSchoolYear } from "../src/solo-teachers/solo-teachers.service";
+import { currentSchoolYear } from "./support/school-year";
 
 /**
  * Child access by term as well as by the school year (#211, the user

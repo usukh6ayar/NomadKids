@@ -267,12 +267,28 @@ export class AuthRepository {
    * rather than a flag on the token, so it cannot be set wrongly at invite
    * time and cannot drift from what the account actually is.
    */
-  async findInvitedAccountKind(userId: string): Promise<"staff" | "guardian"> {
+  async findInvitedAccount(userId: string): Promise<{
+    kind: "staff" | "guardian";
+    selfRegistered: boolean;
+    hasName: boolean;
+    hasPhone: boolean;
+  }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { isSuperAdmin: true, _count: { select: { memberships: true } } },
+      select: {
+        isSuperAdmin: true,
+        selfRegisteredAt: true,
+        firstName: true,
+        phone: true,
+        _count: { select: { memberships: true } },
+      },
     });
-    return user?.isSuperAdmin || (user?._count.memberships ?? 0) > 0 ? "staff" : "guardian";
+    return {
+      kind: user?.isSuperAdmin || (user?._count.memberships ?? 0) > 0 ? "staff" : "guardian",
+      selfRegistered: Boolean(user?.selfRegisteredAt),
+      hasName: Boolean(user?.firstName?.trim()),
+      hasPhone: Boolean(user?.phone),
+    };
   }
 
   async consumeAuthToken(id: string): Promise<void> {
