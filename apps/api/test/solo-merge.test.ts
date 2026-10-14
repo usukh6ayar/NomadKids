@@ -286,7 +286,7 @@ describe("the merge", () => {
     });
 
     const res = await merge(operator, { targetKindergartenId: target.kindergarten.id });
-    expect(res.body).toMatchObject({ membershipsJoined: 1, adminsDropped: 1 });
+    expect(res.body).toMatchObject({ membershipsJoined: 1, adminsDropped: 0 });
 
     const joined = await db.membership.findUniqueOrThrow({ where: { id: existing.id } });
     expect(joined).toMatchObject({ isActive: true, deletedAt: null });

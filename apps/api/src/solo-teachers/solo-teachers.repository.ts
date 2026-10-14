@@ -36,10 +36,11 @@ export class SoloTeachersRepository {
    * set a password. The hashes are computed by the service, outside the
    * transaction; the token's plaintext never reaches this layer.
    *
-   * ★ ADMIN **and** TEACHER: the teacher is the only staff here and does what a
-   * director would for their own group, so every route works unchanged. The
-   * solo rules — parents only, one group — are guards in the services that
-   * add people and groups.
+   * ★ TEACHER only (the user, 2026-10-14). They used to be ADMIN as well, and
+   * the web showed them the director («Удирдлага»). A solo teacher works as
+   * any group teacher does — their one group, its children, inviting the
+   * families — and nothing a director decides. Migration
+   * `20261014090000_solo_teacher_role_only` revoked the earlier ADMIN rows.
    */
   async createWorkspace(input: SoloWorkspaceInput) {
     return this.prisma.$transaction(async (tx) => {
@@ -65,9 +66,6 @@ export class SoloTeachersRepository {
       const user = await tx.user.create({
         data: { ...input.user, selfRegisteredAt: new Date() },
         select: { id: true },
-      });
-      await tx.membership.create({
-        data: { userId: user.id, kindergartenId: kindergarten.id, role: "ADMIN" },
       });
       const teacher = await tx.membership.create({
         data: { userId: user.id, kindergartenId: kindergarten.id, role: "TEACHER" },

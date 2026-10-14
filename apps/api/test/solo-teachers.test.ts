@@ -3,7 +3,15 @@ import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestApp } from "./support/app";
 import { resetData, testDb } from "./support/db";
-import { authed, createScenario, login, type AuthSession } from "./support/fixtures";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  authed,
+  createMembership,
+  createScenario,
+  login,
+  type AuthSession,
+} from "./support/fixtures";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
 import { currentSchoolYear } from "../src/solo-teachers/solo-teachers.service";
 
@@ -12,8 +20,11 @@ import { currentSchoolYear } from "../src/solo-teachers/solo-teachers.service";
  *
  * What is pinned: the sign-up builds the whole workspace at once and the
  * invitation sets the password; a phone or email already in use is a 409;
- * the workspace takes **parents only** and **one group**; a contracted
- * kindergarten is untouched by either rule; the session names the workspace.
+ * the teacher is the group's **teacher only**, never the director (the user,
+ * 2026-10-14) — and the migration took the director's role from those who
+ * signed up before; a workspace that still has an administrator takes
+ * **parents only** and **one group**; a contracted kindergarten is untouched
+ * by either rule; the session names the workspace.
  */
 
 let app: INestApplication;
@@ -61,7 +72,7 @@ async function soloTeacher() {
 }
 
 describe("signing up", () => {
-  it("builds the whole workspace at once: the teacher is its director and its group's teacher", async () => {
+  it("builds the whole workspace at once: the teacher is its group's teacher and nothing more", async () => {
     const res = await signup();
     expect(res.status).toBe(201);
     expect(Object.keys(res.body)).toEqual(["invitationToken"]);
@@ -79,7 +90,7 @@ describe("signing up", () => {
     expect(kindergarten.schoolYears).toEqual([
       expect.objectContaining({ isCurrent: true, name: currentSchoolYear(new Date()).name }),
     ]);
-    expect(kindergarten.memberships.map((m) => m.role).sort()).toEqual(["ADMIN", "TEACHER"]);
+    expect(kindergarten.memberships.map((m) => m.role).sort()).toEqual(["TEACHER"]);
 
     const teacher = kindergarten.memberships.find((m) => m.role === "TEACHER")!;
     const assignment = await db.groupTeacher.findFirstOrThrow({
@@ -120,6 +131,101 @@ describe("signing up", () => {
   });
 });
 
+describe("the solo teacher's role", () => {
+  it("is a teacher's: their group, its children and families — not the director's routes", async () => {
+    const { session, kindergartenId } = await soloTeacher();
+    const group = await db.group.findFirstOrThrow({ where: { kindergartenId } });
+    const year = await db.schoolYear.findFirstOrThrow({ where: { kindergartenId } });
+
+    const me = await authed(request(server()).get("/v1/auth/me"), session);
+    expect(me.body.memberships.map((m: { role: string }) => m.role)).toEqual(["TEACHER"]);
+
+    const child = await authed(
+      request(server()).post(`/v1/kindergartens/${kindergartenId}/children`),
+      session,
+    ).send({
+      lastName: "Бат",
+      firstName: "Тэмүүлэн",
+      sex: "MALE",
+      dateOfBirth: "2021-03-04",
+      groupId: group.id,
+    });
+    expect(child.status, JSON.stringify(child.body)).toBe(201);
+    const invitation = await authed(
+      request(server()).post(`/v1/children/${child.body.id}/guardian-invitations`),
+      session,
+    ).send({ isPrimary: true });
+    expect(invitation.status, JSON.stringify(invitation.body)).toBe(201);
+
+    // The director's routes: staff and groups.
+    const staff = await authed(
+      request(server()).post(`/v1/kindergartens/${kindergartenId}/users`),
+      session,
+    ).send({ username: "invited-parent", lastName: "Бат", firstName: "Сүх", role: "PARENT" });
+    expect(staff.status).toBe(404);
+    const newGroup = await authed(
+      request(server()).post(`/v1/kindergartens/${kindergartenId}/groups`),
+      session,
+    ).send({ schoolYearId: year.id, name: "Хоёр дахь", ageBand: "SENIOR" });
+    expect(newGroup.status).toBe(404);
+    expect(await db.group.count({ where: { kindergartenId } })).toBe(1);
+  });
+
+  it("is taken back from those who signed up as director too, keeping their group", async () => {
+    const { kindergartenId } = await soloTeacher();
+    const teacher = await db.membership.findFirstOrThrow({
+      where: { kindergartenId, role: "TEACHER" },
+    });
+    // Before 2026-10-14 sign-up made them ADMIN as well.
+    const oldAdmin = await createMembership(teacher.userId, kindergartenId, "ADMIN");
+    // A solo workspace's ADMIN with no teacher's role there is left alone —
+    // revoking it would lock them out.
+    const other = await signup({ ...FORM, phone: "88112233", email: "other@example.mn" });
+    expect(other.status).toBe(201);
+    const lone = await db.membership.findFirstOrThrow({
+      where: { kindergartenId: { not: kindergartenId }, role: "TEACHER" },
+    });
+    await db.membership.update({ where: { id: lone.id }, data: { role: "ADMIN" } });
+    // A contracted kindergarten's director is never touched.
+    const a = await createScenario("a");
+
+    await db.$executeRawUnsafe(
+      readFileSync(
+        join(__dirname, "../prisma/migrations/20261014090000_solo_teacher_role_only/migration.sql"),
+        "utf8",
+      ),
+    );
+
+    expect(await db.membership.findUniqueOrThrow({ where: { id: oldAdmin.id } })).toMatchObject({
+      isActive: false,
+      deletedAt: expect.any(Date),
+    });
+    expect(await db.membership.findUniqueOrThrow({ where: { id: teacher.id } })).toMatchObject({
+      isActive: true,
+      deletedAt: null,
+    });
+    expect(await db.groupTeacher.count({ where: { membershipId: teacher.id } })).toBe(1);
+    expect(await db.membership.findUniqueOrThrow({ where: { id: lone.id } })).toMatchObject({
+      isActive: true,
+      deletedAt: null,
+    });
+    expect(
+      await db.membership.count({
+        where: { kindergartenId: a.kindergarten.id, role: "ADMIN", deletedAt: null },
+      }),
+    ).toBe(1);
+    expect(
+      await db.auditLog.findFirstOrThrow({
+        where: { objectType: "Membership", objectId: oldAdmin.id },
+      }),
+    ).toMatchObject({ action: "PERMISSION_CHANGE", kindergartenId });
+
+    const session = await login(app, FORM.phone, PASSWORD);
+    const me = await authed(request(server()).get("/v1/auth/me"), session);
+    expect(me.body.memberships.map((m: { role: string }) => m.role)).toEqual(["TEACHER"]);
+  });
+});
+
 describe("the workspace's rules", () => {
   const invite = (session: AuthSession, kindergartenId: string, role: string, n = 1) =>
     authed(request(server()).post(`/v1/kindergartens/${kindergartenId}/users`), session).send({
@@ -129,8 +235,21 @@ describe("the workspace's rules", () => {
       role,
     });
 
+  /**
+   * A solo workspace that still has an administrator — an ADMIN row from
+   * before 2026-10-14 — keeps both rules.
+   */
+  async function soloAdministrator() {
+    const { kindergartenId } = await soloTeacher();
+    const teacher = await db.membership.findFirstOrThrow({
+      where: { kindergartenId, role: "TEACHER" },
+    });
+    await createMembership(teacher.userId, kindergartenId, "ADMIN");
+    return { session: await login(app, FORM.phone, PASSWORD), kindergartenId };
+  }
+
   it("takes parents only — no teacher, cook or accountant", async () => {
-    const { session, kindergartenId } = await soloTeacher();
+    const { session, kindergartenId } = await soloAdministrator();
 
     for (const role of ["TEACHER", "COOK", "ACCOUNTANT", "ADMIN"]) {
       const res = await invite(session, kindergartenId, role);
@@ -140,7 +259,7 @@ describe("the workspace's rules", () => {
   });
 
   it("keeps one group", async () => {
-    const { session, kindergartenId } = await soloTeacher();
+    const { session, kindergartenId } = await soloAdministrator();
     const year = await db.schoolYear.findFirstOrThrow({ where: { kindergartenId } });
 
     const res = await authed(
