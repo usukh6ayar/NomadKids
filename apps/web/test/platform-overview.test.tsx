@@ -121,4 +121,51 @@ describe("the operator's dashboard", () => {
     expect(row).toHaveTextContent("4 цэцэрлэгийн төлбөр хүлээгдэж байна · 144,000₮ (1 хоцорсон)");
     expect(row).toHaveAttribute("href", "/platform");
   });
+
+  it("names the contracts that ended or end within 14 days, each linked filtered", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 14));
+    try {
+      const kg = (id: string, contractEndsOn: string) => ({
+        id,
+        name: id,
+        address: null,
+        phone: null,
+        email: null,
+        isActive: true,
+        createdAt: "2026-09-01T00:00:00Z",
+        contractEndsOn,
+      });
+      stubApi([
+        { path: "/auth/me", body: operator() },
+        { path: "/platform/applications", body: page(0) },
+        { path: "/platform/solo-workspaces", body: page(0) },
+        {
+          path: "/platform/kindergartens",
+          body: {
+            items: [
+              kg("11111111-1111-4111-8111-111111111111", "2026-10-01"),
+              kg("22222222-2222-4222-8222-222222222222", "2026-09-30"),
+              kg("33333333-3333-4333-8333-333333333333", "2026-10-20"),
+              kg("44444444-4444-4444-8444-444444444444", "2027-05-31"),
+            ],
+            page: 1,
+            pageSize: 100,
+            total: 4,
+            totalPages: 1,
+          },
+        },
+      ]);
+      renderWithProviders(<PlatformOverviewPage />);
+
+      const ended = await screen.findByRole("link", { name: /гэрээ дууссан/ });
+      expect(ended).toHaveTextContent("2 цэцэрлэгийн гэрээ дууссан");
+      expect(ended).toHaveAttribute("href", "/platform?ending=ended");
+      const ending = screen.getByRole("link", { name: /14 хоногт дуусна/ });
+      expect(ending).toHaveTextContent("1 цэцэрлэгийн гэрээ 14 хоногт дуусна");
+      expect(ending).toHaveAttribute("href", "/platform?ending=14");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

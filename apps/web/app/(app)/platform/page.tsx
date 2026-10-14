@@ -135,7 +135,14 @@ function Platform() {
   const [area, setArea] = useState("");
   const [payment, setPayment] = useState("");
   const [signedWithin, setSignedWithin] = useState("");
-  const [ending, setEnding] = useState("");
+  // «?ending=ended» from «Самбар» opens the list already filtered (2026-10-14).
+  // Read once on mount: this subtree renders only in the browser, after the
+  // session has loaded.
+  const [ending, setEnding] = useState(() =>
+    typeof window === "undefined"
+      ? ""
+      : (new URLSearchParams(window.location.search).get("ending") ?? ""),
+  );
   const [deleting, setDeleting] = useState<Row | null>(null);
   const [recording, setRecording] = useState<Row | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "name", dir: 1 });
@@ -358,6 +365,7 @@ function Platform() {
           />
         </div>
         <FilterChips chips={chips} onClearAll={clearAll} />
+        <EndingCounts items={items} active={ending} onPick={setEnding} />
 
         {kindergartens.isLoading ? <LoadingState rows={5} /> : null}
         {kindergartens.isError ? (
@@ -533,8 +541,11 @@ function KindergartenRow({
 }) {
   const linked = esisConnected(kg);
   const toggle = useToggleKindergartenActive(kg);
-  const cell =
-    "border-b border-r border-border-soft px-3 py-2 align-middle bg-white group-hover:bg-slate-50 last:border-r-0";
+  // A contract that has ended tints its whole row (2026-10-14, the user).
+  const ended = Boolean(kg.contractEndsOn) && daysUntil(kg.contractEndsOn!) < 0;
+  const cell = `border-b border-r border-border-soft px-3 py-2 align-middle last:border-r-0 ${
+    ended ? "bg-red-50 group-hover:bg-red-100" : "bg-white group-hover:bg-slate-50"
+  }`;
   return (
     <tr className="group">
       <td className={`${cell} ${FROZEN_NO} text-right tabular-nums text-muted`}>{index}</td>
@@ -572,13 +583,7 @@ function KindergartenRow({
       </td>
       <td className={`${cell} whitespace-nowrap tabular-nums`}>{formatDate(startedOn(kg))}</td>
       <td className={`${cell} whitespace-nowrap tabular-nums`}>
-        {kg.contractEndsOn ? (
-          <span className={daysUntil(kg.contractEndsOn) <= 14 ? "font-semibold text-danger" : ""}>
-            {formatDate(kg.contractEndsOn)}
-          </span>
-        ) : (
-          "—"
-        )}
+        <EndsCell endsOn={kg.contractEndsOn} />
       </td>
       <td className={`${cell} whitespace-nowrap`}>
         {kg.billingPeriod ? BILLING_LABEL[kg.billingPeriod] : "—"}
@@ -1143,4 +1148,90 @@ function endingWithin(endsOn: string | null | undefined, choice: string): boolea
   if (!endsOn) return false;
   const days = daysUntil(endsOn);
   return choice === "ended" ? days < 0 : days >= 0 && days <= Number(choice);
+}
+
+/** «11 хоног үлдсэн», «Өнөөдөр дуусна», «Дууссан · 13 хоногийн өмнө», or nothing. */
+function endingNote(endsOn: string): { text: string; tone: "amber" | "red" | "ended" } | null {
+  const days = daysUntil(endsOn);
+  if (days < 0) return { text: `Дууссан · ${-days} хоногийн өмнө`, tone: "ended" };
+  if (days === 0) return { text: "Өнөөдөр дуусна", tone: "red" };
+  if (days <= 14) return { text: `${days} хоног үлдсэн`, tone: "red" };
+  if (days <= 30) return { text: `${days} хоног үлдсэн`, tone: "amber" };
+  return null;
+}
+
+const ENDING_TONE = {
+  amber: "bg-amber-100 text-amber-800",
+  red: "bg-red-100 text-red-700",
+  ended: "bg-slate-700 text-white",
+} as const;
+
+/**
+ * «Дуусах» — the date, and how near it is in words (2026-10-14, the user:
+ * "дуусах дөхөж бгаа бас дууссан … хялбар ойлгомжтой").
+ */
+function EndsCell({ endsOn }: { endsOn: string | null | undefined }) {
+  if (!endsOn) return <>—</>;
+  const note = endingNote(endsOn);
+  return (
+    <span className="inline-flex items-center gap-2">
+      {formatDate(endsOn)}
+      {note ? (
+        <span
+          className={`rounded-pill px-2 py-0.5 text-caption font-semibold ${ENDING_TONE[note.tone]}`}
+        >
+          {note.text}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * The contracts to act on, counted and clickable above the table — a click
+ * filters by it, a second click clears it. A count of none is not drawn.
+ */
+function EndingCounts({
+  items,
+  active,
+  onPick,
+}: {
+  items: Row[];
+  active: string;
+  onPick: (value: string) => void;
+}) {
+  const buttons = [
+    { value: "ended", label: "Дууссан", dot: "bg-slate-700" },
+    { value: "14", label: "14 хоногт дуусах", dot: "bg-red-500" },
+    { value: "30", label: "30 хоногт дуусах", dot: "bg-amber-400" },
+  ]
+    .map((button) => ({
+      ...button,
+      count: items.filter((kg) => endingWithin(kg.contractEndsOn, button.value)).length,
+    }))
+    .filter((button) => button.count > 0);
+  if (buttons.length === 0) return null;
+
+  return (
+    <div role="group" aria-label="Гэрээний хугацаа" className="flex flex-wrap items-center gap-2">
+      <span className="text-caption text-muted">Гэрээ:</span>
+      {buttons.map((button) => (
+        <button
+          key={button.value}
+          type="button"
+          aria-pressed={active === button.value}
+          onClick={() => onPick(active === button.value ? "" : button.value)}
+          className={`inline-flex min-h-8 items-center gap-1.5 rounded-pill border px-3 text-caption font-semibold ${
+            active === button.value
+              ? "border-primary bg-primary/10 text-ink"
+              : "border-border bg-white text-ink hover:bg-slate-50"
+          }`}
+        >
+          <span aria-hidden="true" className={`size-2 rounded-pill ${button.dot}`} />
+          {button.label}
+          <span className="tabular-nums">{button.count}</span>
+        </button>
+      ))}
+    </div>
+  );
 }

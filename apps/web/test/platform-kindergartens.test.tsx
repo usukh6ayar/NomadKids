@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, stubApi } from "./support/render";
 import PlatformPage from "@/app/(app)/platform/page";
 
@@ -129,7 +129,7 @@ describe("the operator's kindergartens table", () => {
     expect(names()).toEqual(["Хүслэн", "Нарлаг цэцэрлэг"]);
   });
 
-  it("marks a contract ending within 14 days in red", async () => {
+  it("says in red how many days a contract ending within 14 has left", async () => {
     const soon = new Date();
     soon.setDate(soon.getDate() + 5);
     const day = `${soon.getFullYear()}-${String(soon.getMonth() + 1).padStart(2, "0")}-${String(soon.getDate()).padStart(2, "0")}`;
@@ -149,11 +149,8 @@ describe("the operator's kindergartens table", () => {
     renderWithProviders(<PlatformPage />);
 
     const row = (await screen.findByRole("table")).querySelector<HTMLElement>("tbody tr")!;
-    expect(
-      within(row).getByText(
-        (_, el) => el?.tagName === "SPAN" && el.className.includes("text-danger"),
-      ),
-    ).toBeInTheDocument();
+    // In words, and red — 2026-10-14, the user.
+    expect(within(row).getByText("5 хоног үлдсэн")).toHaveClass("text-red-700");
   });
 
   it("downloads the rows on screen for Excel", async () => {
@@ -556,5 +553,88 @@ describe("the operator's kindergartens table", () => {
     expect(
       await within(dialog).findByText(/Төлбөр хадгалах хэсэг хараахан бэлэн болоогүй/),
     ).toBeInTheDocument();
+  });
+
+  /*
+   * ★ Ending and ended, at a glance — 2026-10-14, the user: the days left in
+   * words, clickable counts above the table, an ended row tinted, and «Самбар»
+   * opening the list already filtered.
+   */
+  describe("contracts ending and ended", () => {
+    const at = (days: number) => {
+      const day = new Date(2026, 9, 14 + days);
+      return day.toLocaleDateString("sv-SE");
+    };
+    const ITEMS = [
+      { ...ROWS[0], contractEndsOn: at(-13) }, // ended
+      { ...ROWS[1], contractEndsOn: at(6) }, // within 14
+      KG({ id: "33333333-3333-4333-8333-333333333333", name: "Од", contractEndsOn: at(25) }),
+      KG({ id: "44444444-4444-4444-8444-444444444444", name: "Солонго", contractEndsOn: at(200) }),
+    ];
+
+    async function renderEnding() {
+      stubApi([
+        { path: "/auth/me", body: operator() },
+        {
+          path: "/platform/kindergartens",
+          body: { items: ITEMS, page: 1, pageSize: 50, total: 4, totalPages: 1 },
+        },
+      ]);
+      renderWithProviders(<PlatformPage />);
+      return screen.findByRole("table");
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 9, 14));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+      window.history.replaceState(null, "", "/");
+    });
+
+    it("says how near each end is, in words", async () => {
+      const table = await renderEnding();
+      const row = (name: string) => within(table).getByText(name).closest("tr")!;
+
+      expect(row("Нарлаг цэцэрлэг")).toHaveTextContent("Дууссан · 13 хоногийн өмнө");
+      expect(row("Хүслэн")).toHaveTextContent("6 хоног үлдсэн");
+      expect(row("Од")).toHaveTextContent("25 хоног үлдсэн");
+      expect(row("Солонго")).not.toHaveTextContent("үлдсэн");
+      // An ended contract tints its row.
+      expect(row("Нарлаг цэцэрлэг").querySelector("td")).toHaveClass("bg-red-50");
+      expect(row("Солонго").querySelector("td")).toHaveClass("bg-white");
+    });
+
+    it("counts them above the table; a click filters, a second clears", async () => {
+      const user = userEvent.setup();
+      const table = await renderEnding();
+      const names = () =>
+        [...table.querySelectorAll("tbody tr")].map(
+          (tr) => tr.querySelectorAll("td")[1]!.textContent,
+        );
+      const counts = within(screen.getByRole("group", { name: "Гэрээний хугацаа" }));
+
+      expect(counts.getByRole("button", { name: /Дууссан/ })).toHaveTextContent("1");
+      expect(counts.getByRole("button", { name: /14 хоногт дуусах/ })).toHaveTextContent("1");
+      expect(counts.getByRole("button", { name: /30 хоногт дуусах/ })).toHaveTextContent("2");
+
+      await user.click(counts.getByRole("button", { name: /Дууссан/ }));
+      expect(names()).toEqual(["Нарлаг цэцэрлэг"]);
+      expect(counts.getByRole("button", { name: /Дууссан/ })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      await user.click(counts.getByRole("button", { name: /Дууссан/ }));
+      expect(names()).toHaveLength(4);
+    });
+
+    it("opens filtered when «Самбар» links with ?ending=", async () => {
+      window.history.replaceState(null, "", "/platform?ending=14");
+      const table = await renderEnding();
+
+      expect([...table.querySelectorAll("tbody tr")]).toHaveLength(1);
+      expect(within(table).getByText("Хүслэн")).toBeInTheDocument();
+    });
   });
 });

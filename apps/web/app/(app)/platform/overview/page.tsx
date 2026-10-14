@@ -4,7 +4,12 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, LayoutGrid } from "lucide-react";
 import Link from "next/link";
 import { z } from "zod";
-import { platformRevenueSchema, platformStatsSchema } from "@kinder/contracts";
+import {
+  paginated,
+  platformKindergartenSchema,
+  platformRevenueSchema,
+  platformStatsSchema,
+} from "@kinder/contracts";
 import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
 import {
   usePendingApplicationsCount,
@@ -15,6 +20,7 @@ import { RequireSuperAdmin } from "@/components/shell/require-role";
 import { LoadingState } from "@/components/ui/states";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
+import { daysUntil } from "@/lib/format";
 
 /**
  * «Самбар» — the operator's first screen (2026-10-13, the user: "илүү
@@ -55,6 +61,14 @@ const paymentSummarySchema = z.object({
   overdueKindergartens: z.number().int(),
 });
 
+/*
+ * ★ Contracts ended or ending — 2026-10-14, the user. Counted from the list
+ * rows' `contractEndsOn` (asked of the admin); none while the API sends none.
+ */
+const endingListSchema = paginated(
+  platformKindergartenSchema.extend({ contractEndsOn: z.string().nullish() }),
+);
+
 function Overview() {
   const month = thisMonth();
   const applications = usePendingApplicationsCount();
@@ -69,6 +83,15 @@ function Overview() {
     queryFn: () => get("/platform/payments/summary", paymentSummarySchema),
     retry: false,
   });
+  const kindergartens = useQuery({
+    queryKey: ["platform", "kindergartens", "ending"],
+    queryFn: () => get("/platform/kindergartens?page=1&pageSize=100", endingListSchema),
+    retry: false,
+  });
+  const ends = (kindergartens.data?.items ?? [])
+    .map((kg) => kg.contractEndsOn)
+    .filter((day): day is string => Boolean(day))
+    .map(daysUntil);
   const revenue = useQuery({
     queryKey: qk.platformRevenueMonth(month),
     queryFn: () => get(`/platform/revenue?month=${month}`, platformRevenueSchema),
@@ -95,6 +118,16 @@ function Overview() {
           }`
         : "",
       href: "/platform",
+    },
+    {
+      count: ends.filter((days) => days < 0).length,
+      text: "цэцэрлэгийн гэрээ дууссан",
+      href: "/platform?ending=ended",
+    },
+    {
+      count: ends.filter((days) => days >= 0 && days <= 14).length,
+      text: "цэцэрлэгийн гэрээ 14 хоногт дуусна",
+      href: "/platform?ending=14",
     },
   ].filter((row) => (row.count ?? 0) > 0);
   const counted = applications !== null && solo !== null;
