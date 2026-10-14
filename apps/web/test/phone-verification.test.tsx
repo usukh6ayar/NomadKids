@@ -118,6 +118,33 @@ describe("forgot password — the phone is lost", () => {
   });
 });
 
+describe("forgot password — with SMS on or off", () => {
+  it("with SMS on: the form for whoever holds the phone, the rule for whoever lost it", async () => {
+    stubApi([{ path: "/phone-verifications/availability", body: { enabled: true } }]);
+    renderWithProviders(<ForgotPasswordPage />);
+
+    expect(await screen.findByLabelText(/Утасны дугаар/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Утсаа алдсан бол")).toHaveTextContent(
+      "Утсаа алдсан эсвэл дугаараа сольсон уу?",
+    );
+  });
+
+  it("with SMS off: everyone follows the rule — not «ask the kindergarten» for all", async () => {
+    stubApi([{ path: "/phone-verifications/availability", body: { enabled: false } }]);
+    renderWithProviders(<ForgotPasswordPage />);
+
+    expect(
+      await screen.findByText(/Утсаар өөрөө сэргээх боломж одоогоор идэвхгүй байна/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Таныг бүртгэсэн хүн нууц үгийг тань сэргээж өгнө."),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Утсаа алдсан бол")).toHaveTextContent("Хэнд хандах вэ?");
+    expect(screen.queryByText(/Цэцэрлэгийн администратор/)).toBeNull();
+    expect(screen.queryByLabelText(/Утасны дугаар/)).toBeNull();
+  });
+});
+
 describe("the SMS step", () => {
   afterEach(() => {
     vi.useRealTimers();

@@ -327,7 +327,18 @@ export default function ForgotPasswordPage() {
                 above them, calls NomadKids, which checks who is calling and
                 issues a reset link (`ResetPasswordLinkDialog`).
               */}
-              <WhoResets />
+              {/*
+                With SMS on, the form above is for whoever holds the phone and
+                this is for whoever lost it; with SMS off, it is for everyone
+                (2026-10-14, the user).
+              */}
+              <WhoResets
+                title={
+                  availability.loading || availability.enabled
+                    ? "Утсаа алдсан эсвэл дугаараа сольсон уу?"
+                    : "Хэнд хандах вэ?"
+                }
+              />
               <nav
                 aria-label="Нууцлал ба тусламж"
                 className="mt-1 flex flex-wrap justify-center gap-x-4 text-caption font-semibold text-primary"
@@ -377,7 +388,7 @@ const COPY: Record<Phase | "off", { title: string; lede: string }> = {
   },
   off: {
     title: "Нууц үгээ мартсан уу?",
-    lede: "Цэцэрлэгийн администратор таны нууц үгийг сэргээж өгнө.",
+    lede: "Таныг бүртгэсэн хүн нууц үгийг тань сэргээж өгнө.",
   },
 };
 
@@ -641,8 +652,8 @@ function OffState() {
       <div className="flex items-start gap-3 rounded-control bg-canvas p-4">
         <PhoneOff className="mt-0.5 size-5 shrink-0 text-faint" aria-hidden="true" />
         <p className="text-body leading-6 text-ink">
-          Утсаар сэргээх боломж одоогоор идэвхгүй байна. Цэцэрлэгийн администратортаа хандаж нууц
-          үгээ сэргээлгэнэ үү.
+          Утсаар өөрөө сэргээх боломж одоогоор идэвхгүй байна. Доорх хүснэгтээр хэнд хандахаа
+          хараарай.
         </p>
       </div>
       <Button asChild variant="secondary" block className="h-13">
