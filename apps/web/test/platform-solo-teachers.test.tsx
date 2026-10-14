@@ -84,10 +84,11 @@ describe("the «Багш дангаар» tab", () => {
     const row = (await solo.findByText("Доржийн Нараа")).closest("tr")!;
 
     const cells = [...row.querySelectorAll("td")].map((td) => td.textContent);
-    // №, teacher, workplace, area, children, paid, unpaid, phone, e-mail.
-    expect(cells.slice(0, 9)).toEqual([
+    // №, teacher, workplace, ownership, area, children, paid, unpaid, phone, e-mail.
+    expect(cells.slice(0, 10)).toEqual([
       "1",
       "Доржийн Нараа",
+      "—",
       "—",
       "Дархан-Уул аймаг",
       "0",
@@ -230,5 +231,25 @@ describe("the «Багш дангаар» tab", () => {
       "href",
       "/platform/solo-workspaces",
     );
+  });
+
+  /*
+   * ★ «Төрийн» / «Төрийн бус» — asked on the sign-up form (2026-10-14, the
+   * user: "төрийн үү гэдэг алга").
+   */
+  it("shows and filters by ownership, «—» where the API sends none", async () => {
+    const { user, region, solo } = await openSoloTab(
+      TEACHERS.map((teacher, index) =>
+        index === 0 ? { ...teacher, propertyType: "Төрийн" } : teacher,
+      ),
+    );
+    await solo.findByRole("table");
+    const row = (name: string) => solo.getByText(name).closest("tr")!;
+    expect(row("Батаагийн Сувд").querySelectorAll("td")[3]).toHaveTextContent("Төрийн");
+    expect(row("Ганболдын Ану").querySelectorAll("td")[3]).toHaveTextContent("—");
+
+    await user.click(solo.getByLabelText("Багшийг өмчийн хэлбэрээр шүүх"));
+    await user.click(screen.getByRole("option", { name: "Төрийн" }));
+    expect(names(region)).toEqual(["Батаагийн Сувд"]);
   });
 });

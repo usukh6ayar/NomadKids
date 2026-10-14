@@ -223,11 +223,11 @@ describe("the operator's solo workspaces", () => {
       [...row(name).querySelectorAll("td")].map((td) => td.textContent);
 
     // Children, paid, not paid.
-    expect(cells("Д.Сараа").slice(4, 7)).toEqual(["4", "1", "3"]);
-    expect(cells("Б.Ану").slice(4, 7)).toEqual(["3", "3", "0"]);
+    expect(cells("Д.Сараа").slice(5, 8)).toEqual(["4", "1", "3"]);
+    expect(cells("Б.Ану").slice(5, 8)).toEqual(["3", "3", "0"]);
     const totals = table.querySelectorAll("thead tr")[1]!;
     expect(totals).toHaveTextContent("Нийт: 2 багш");
-    expect([...totals.querySelectorAll("td")].map((td) => td.textContent).slice(4, 7)).toEqual([
+    expect([...totals.querySelectorAll("td")].map((td) => td.textContent).slice(5, 8)).toEqual([
       "7",
       "4",
       "3",

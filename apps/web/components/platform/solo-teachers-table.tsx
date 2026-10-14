@@ -44,6 +44,11 @@ const figure = (value: number | null) => (value === null ? "—" : value.toLocal
  */
 const soloRowSchema = soloWorkspaceSchema.extend({
   paidChildCount: z.number().int().nullish(),
+  /*
+   * «Төрийн» / «Төрийн бус» — asked on the sign-up form and kept, but the list
+   * does not send it yet (asked of the admin, 2026-10-14); «—» until it does.
+   */
+  propertyType: z.string().nullish(),
 });
 export type SoloRow = z.infer<typeof soloRowSchema>;
 
@@ -65,6 +70,12 @@ function unpaidOf(row: SoloRow): number | null {
     : null;
 }
 
+const OWNERSHIP_OPTIONS = [
+  { value: "", label: "Бүгд" },
+  { value: "Төрийн", label: "Төрийн" },
+  { value: "Төрийн бус", label: "Төрийн бус" },
+] as const;
+
 /** «Бүгд», every child paid for, or some child still waiting. */
 const FEE_OPTIONS = [
   { value: "", label: "Бүгд" },
@@ -79,6 +90,7 @@ function downloadSoloSheet(rows: SoloRow[]) {
     "№",
     "Багш",
     "Ажилладаг цэцэрлэг",
+    "Өмчийн хэлбэр",
     "Аймаг / дүүрэг",
     "Хүүхэд",
     "Төлсөн",
@@ -91,6 +103,7 @@ function downloadSoloSheet(rows: SoloRow[]) {
     index + 1,
     teacherName(row),
     row.workplace ?? "",
+    row.propertyType ?? "",
     row.location ?? "",
     row.childCount,
     row.paidChildCount ?? "",
@@ -162,6 +175,7 @@ export function SoloTeachersTable({
   const [workplace, setWorkplace] = useState("");
   const [children, setChildren] = useState("");
   const [fee, setFee] = useState("");
+  const [ownership, setOwnership] = useState("");
   const [sort, setSort] = useState<{ key: SoloSortKey; dir: 1 | -1 }>({
     key: "created",
     dir: -1,
@@ -185,6 +199,7 @@ export function SoloTeachersTable({
         (!area || row.location === area) &&
         (!workplace || Boolean(row.workplace?.trim()) === (workplace === "named")) &&
         (!children || row.childCount > 0 === (children === "some")) &&
+        (!ownership || row.propertyType === ownership) &&
         (!fee || (unpaidOf(row) !== null && unpaidOf(row)! > 0 === (fee === "some"))),
     )
     .sort((a, b) => compareSolo(a, b, sort.key, sort.dir));
@@ -201,6 +216,7 @@ export function SoloTeachersTable({
       label: labelOf(SOLO_CHILDREN_OPTIONS, children),
       clear: () => setChildren(""),
     },
+    ownership && { key: "ownership", label: ownership, clear: () => setOwnership("") },
     fee && { key: "fee", label: labelOf(FEE_OPTIONS, fee), clear: () => setFee("") },
   ].filter((chip): chip is Chip => Boolean(chip));
   const clearAll = () => {
@@ -209,6 +225,7 @@ export function SoloTeachersTable({
     setWorkplace("");
     setChildren("");
     setFee("");
+    setOwnership("");
   };
   const sortBy = (key: SoloSortKey) =>
     setSort((current) => ({ key, dir: current.key === key ? (-current.dir as 1 | -1) : 1 }));
@@ -252,6 +269,13 @@ export function SoloTeachersTable({
         ) : null}
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <FilterSelect
+          label="Өмчийн хэлбэр"
+          ariaLabel="Багшийг өмчийн хэлбэрээр шүүх"
+          value={ownership}
+          onChange={setOwnership}
+          options={OWNERSHIP_OPTIONS}
+        />
         <FilterSelect
           label="Аймаг / дүүрэг"
           ariaLabel="Багшийг аймаг, дүүргээр шүүх"
@@ -301,7 +325,7 @@ export function SoloTeachersTable({
 
       {rows.length > 0 ? (
         <div className="overflow-x-auto rounded-control border border-border bg-white">
-          <table className="w-full min-w-[1120px] border-separate border-spacing-0 text-left text-caption">
+          <table className="w-full min-w-[1240px] border-separate border-spacing-0 text-left text-caption">
             <thead className="bg-slate-50 text-muted">
               <tr className="[&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-r [&>th]:border-border [&>th]:px-3 [&>th]:py-2 [&>th]:font-semibold [&>th:last-child]:border-r-0">
                 <th scope="col" className={`${FROZEN_NO} bg-slate-50 text-right`}>
@@ -315,6 +339,7 @@ export function SoloTeachersTable({
                   className={`${FROZEN_NAME} bg-slate-50`}
                 />
                 <th scope="col">Ажилладаг цэцэрлэг</th>
+                <th scope="col">Өмчийн хэлбэр</th>
                 <SortHeader label="Аймаг / дүүрэг" column="area" sort={sort} onSort={sortBy} />
                 <SortHeader
                   label="Хүүхэд"
@@ -345,6 +370,7 @@ export function SoloTeachersTable({
                 <td className={FROZEN_NAME}>Нийт: {rows.length} багш</td>
                 <td />
                 <td />
+                <td />
                 <td className="text-right tabular-nums">
                   {rows.reduce((sum, row) => sum + row.childCount, 0).toLocaleString("en-US")}
                 </td>
@@ -365,6 +391,7 @@ export function SoloTeachersTable({
                     {teacherName(row)}
                   </td>
                   <td className={cell}>{row.workplace || "—"}</td>
+                  <td className={cell}>{row.propertyType || "—"}</td>
                   <td className={cell}>{row.location || "—"}</td>
                   <td className={`${cell} text-right tabular-nums`}>{row.childCount}</td>
                   <td className={`${cell} text-right tabular-nums`}>{row.paidChildCount ?? "—"}</td>
