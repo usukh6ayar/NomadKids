@@ -1,13 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  renderWithProviders,
-  selectOption,
-  sessionFor,
-  stubApi,
-  type RouteStub,
-} from "./support/render";
+import { renderWithProviders, sessionFor, stubApi, type RouteStub } from "./support/render";
 import SoloWorkspacesPage from "@/app/(app)/platform/solo-workspaces/page";
 
 /*
@@ -85,7 +79,12 @@ async function openMerge(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("the operator's solo workspaces", () => {
-  it("previews the merge, then merges into the chosen kindergarten", async () => {
+  /*
+   * ★ Made simple on 2026-10-14 (the user): the kindergarten the teacher named
+   * is chosen already, the preview runs by itself, and «Нэгтгэх» asks once
+   * more — nothing is undone.
+   */
+  it("chooses the teacher's kindergarten, previews by itself, and merges after asking", async () => {
     const user = userEvent.setup();
     const api = stub({ ok: true, result: RESULT, targetGroups: TARGET_GROUPS });
     renderWithProviders(<SoloWorkspacesPage />);
@@ -94,25 +93,56 @@ describe("the operator's solo workspaces", () => {
     const row = (await screen.findByText("Д.Сараа")).closest("tr")!;
     expect(screen.queryByText(WORKSPACE.name)).toBeNull();
     expect(row).toHaveTextContent("Нарлаг цэцэрлэг");
-    expect(row).toHaveTextContent("4");
     await openMerge(user);
-    const dialog = await screen.findByRole("dialog");
-    const merge = within(dialog).getByRole("button", { name: "Нэгтгэх" });
-    expect(merge).toBeDisabled();
+    const dialog = await screen.findByRole("dialog", { name: "Д.Сараа-г цэцэрлэгт нэгтгэх" });
 
-    await selectOption(user, /Цэцэрлэг/, "Нарлаг цэцэрлэг");
-    await user.click(within(dialog).getByRole("button", { name: "Урьдчилан харах" }));
+    // «Нарлаг цэцэрлэг» — what the teacher wrote — is chosen, and previewed.
     expect(await within(dialog).findByText("Хүүхэд: 4")).toBeInTheDocument();
-    expect(
-      within(dialog).getByText(/«Миний бүлэг» бүлэг «Миний бүлэг \(бие даасан\)»/),
-    ).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/Цэцэрлэг/)).toHaveTextContent("Нарлаг цэцэрлэг");
+    expect(within(dialog).getByText(/Багшийн бичсэн «Нарлаг цэцэрлэг»-аар/)).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Урьдчилан харах" })).toBeNull();
+    // The name clashes, so — and only so — it is asked for.
+    expect(within(dialog).getByLabelText(/Бүлгийн нэр давхцаж байна/)).toBeInTheDocument();
 
-    await user.click(merge);
+    await user.click(within(dialog).getByRole("button", { name: "Нэгтгэх" }));
+    const confirm = await screen.findByRole("dialog", {
+      name: "Д.Сараа-г Нарлаг цэцэрлэг-т нэгтгэх үү?",
+    });
+    expect(api.calls.some((c) => c.url.endsWith("/merge"))).toBe(false);
+    await user.click(within(confirm).getByRole("button", { name: "Нэгтгэх" }));
     await waitFor(() =>
       expect(api.calls.find((c) => c.url.endsWith("/merge"))?.body).toEqual({
         targetKindergartenId: TARGET_ID,
       }),
     );
+  });
+
+  it("offers no inactive kindergarten", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/solo-workspaces", body: page([{ ...WORKSPACE, workplace: null }]) },
+      {
+        path: "/platform/kindergartens",
+        body: page([
+          KINDERGARTEN,
+          {
+            ...KINDERGARTEN,
+            id: "99999999-9999-4999-8999-999999999990",
+            name: "Хаалттай",
+            isActive: false,
+          },
+        ]),
+      },
+    ]);
+    renderWithProviders(<SoloWorkspacesPage />);
+
+    await openMerge(user);
+    const dialog = await screen.findByRole("dialog", { name: "Д.Сараа-г цэцэрлэгт нэгтгэх" });
+    await user.click(within(dialog).getByLabelText(/Цэцэрлэг/));
+    const options = (await screen.findAllByRole("option")).map((option) => option.textContent);
+    expect(options).toContain("Нарлаг цэцэрлэг");
+    expect(options).not.toContain("Хаалттай");
   });
 
   it("names a child matching two of the kindergarten's children, and keeps «Нэгтгэх» off", async () => {
@@ -125,15 +155,13 @@ describe("the operator's solo workspaces", () => {
     renderWithProviders(<SoloWorkspacesPage />);
 
     await openMerge(user);
-    const dialog = await screen.findByRole("dialog");
-    await selectOption(user, /Цэцэрлэг/, "Нарлаг цэцэрлэг");
-    await user.click(within(dialog).getByRole("button", { name: "Урьдчилан харах" }));
+    const dialog = await screen.findByRole("dialog", { name: "Д.Сараа-г цэцэрлэгт нэгтгэх" });
 
     expect(await within(dialog).findByText(/Дорж Тэмүүлэн/)).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Нэгтгэх" })).toBeDisabled();
   });
 
-  it("merges into a chosen group, leaving a matched child separate, only after a fresh preview", async () => {
+  it("merges into a chosen group, leaving a matched child separate, with the preview of those choices", async () => {
     const user = userEvent.setup();
     const api = stub({
       ok: true,
@@ -148,19 +176,28 @@ describe("the operator's solo workspaces", () => {
     renderWithProviders(<SoloWorkspacesPage />);
 
     await openMerge(user);
-    const dialog = await screen.findByRole("dialog");
-    await selectOption(user, /Цэцэрлэг/, "Нарлаг цэцэрлэг");
-    await user.click(within(dialog).getByRole("button", { name: "Урьдчилан харах" }));
+    const dialog = await screen.findByRole("dialog", { name: "Д.Сараа-г цэцэрлэгт нэгтгэх" });
     expect(await within(dialog).findByText(/бичлэгт нэгтгэгдэх хүүхэд: 1/)).toBeInTheDocument();
 
-    await selectOption(user, /^Бүлэг/, "Нарлаг бүлэг бүлэгт нэгтгэх");
-    await user.click(within(dialog).getByLabelText(/Дорж Тэмүүлэн — тусад нь үлдээх/));
-    const merge = within(dialog).getByRole("button", { name: "Нэгтгэх" });
-    expect(merge).toBeDisabled();
+    await user.click(within(dialog).getByRole("radio", { name: "«Нарлаг бүлэг» бүлэгт нэгтгэх" }));
+    await user.click(await within(dialog).findByLabelText(/Дорж Тэмүүлэн — тусад нь үлдээх/));
 
-    await user.click(within(dialog).getByRole("button", { name: "Урьдчилан харах" }));
+    // Each change previews again by itself; the last preview carries every choice.
+    await waitFor(() =>
+      expect(api.calls.filter((c) => c.url.endsWith("/merge-preview")).at(-1)?.body).toEqual({
+        targetKindergartenId: TARGET_ID,
+        targetGroupId: GROUP_ID,
+        keepSeparate: [SOLO_ID],
+      }),
+    );
+    const merge = within(dialog).getByRole("button", { name: "Нэгтгэх" });
     await waitFor(() => expect(merge).toBeEnabled());
     await user.click(merge);
+    await user.click(
+      within(await screen.findByRole("dialog", { name: /нэгтгэх үү\?/ })).getByRole("button", {
+        name: "Нэгтгэх",
+      }),
+    );
     await waitFor(() =>
       expect(api.calls.find((c) => c.url.endsWith("/merge"))?.body).toEqual({
         targetKindergartenId: TARGET_ID,
@@ -176,9 +213,7 @@ describe("the operator's solo workspaces", () => {
     renderWithProviders(<SoloWorkspacesPage />);
 
     await openMerge(user);
-    const dialog = await screen.findByRole("dialog");
-    await selectOption(user, /Цэцэрлэг/, "Нарлаг цэцэрлэг");
-    await user.click(within(dialog).getByRole("button", { name: "Урьдчилан харах" }));
+    const dialog = await screen.findByRole("dialog", { name: "Д.Сараа-г цэцэрлэгт нэгтгэх" });
 
     expect(
       await within(dialog).findByText("Цэцэрлэгт идэвхтэй хичээлийн жил алга."),
