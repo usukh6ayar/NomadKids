@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, stubApi } from "./support/render";
@@ -148,7 +148,8 @@ describe("the operator's applications", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByLabelText(/Бүлгийн тоо/)).toHaveValue("6");
     // 6 groups × 30,000₮ for the school year — the discounted price sheet.
-    expect(within(dialog).getByLabelText(/Нийт төлбөр/)).toHaveValue("180000");
+    const breakdown = within(dialog).getByRole("region", { name: "Төлбөрийн задаргаа" });
+    expect(breakdown).toHaveTextContent("Гэрээний нийт дүн180,000₮");
 
     await user.type(within(dialog).getByLabelText(/Админы нэвтрэх нэр/), "azjargal");
     await user.click(within(dialog).getByRole("button", { name: "Батлах" }));
@@ -176,11 +177,12 @@ describe("the operator's applications", () => {
     await user.click(await screen.findByRole("button", { name: "Шалгах" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByLabelText(/Бүлгийн тоо/)).toHaveValue("");
-    expect(within(dialog).getByLabelText(/Нийт төлбөр/)).toHaveValue("");
+    const breakdown = within(dialog).getByRole("region", { name: "Төлбөрийн задаргаа" });
+    expect(breakdown).toHaveTextContent("Бүлгийн тоо, гэрээний огноог оруулахад дүн бодогдоно.");
 
     await user.type(within(dialog).getByLabelText(/Бүлгийн тоо/), "3");
     // 3 groups × 30,000₮ for the year — the discounted price sheet.
-    expect(within(dialog).getByLabelText(/Нийт төлбөр/)).toHaveValue("90000");
+    expect(breakdown).toHaveTextContent("Гэрээний нийт дүн90,000₮");
   });
 
   it("refuses only with a reason, and sends it", async () => {
@@ -280,5 +282,106 @@ describe("the operator's applications", () => {
     expect(names()).toEqual(["Аз жаргал цэцэрлэг"]);
     await pick("Бүгд");
     expect(names()).toHaveLength(3);
+  });
+
+  /*
+   * ★ The price is worked out per term — 2026-10-14, the user: the discount on
+   * the first term only (to 2026.11.30), the standard price after, and the
+   * contract's whole sum is what the PDF prints as «Нийт төлбөр».
+   */
+  it("breaks a termly contract into its terms and sends the contract's sum", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/auth/me", body: operator() },
+      {
+        path: `/platform/applications/${APPLICATION.id}/approve`,
+        method: "POST",
+        body: { ...APPLICATION, status: "APPROVED", invitationToken: "t", adminUsername: "az" },
+      },
+      {
+        path: "/platform/applications",
+        body: list([{ ...APPLICATION, groupCount: 3, billingPeriod: "term" }]),
+      },
+    ]);
+    renderWithProviders(<ApplicationsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Шалгах" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/Эхлэх огноо/), {
+      target: { value: "2026-09-01" },
+    });
+    fireEvent.change(within(dialog).getByLabelText(/Дуусах огноо/), {
+      target: { value: "2027-05-31" },
+    });
+
+    const breakdown = within(dialog).getByRole("region", { name: "Төлбөрийн задаргаа" });
+    const lines = within(breakdown)
+      .getAllByRole("listitem")
+      .map((li) => li.textContent);
+    expect(lines).toEqual([
+      "I улирал (9–11 сар)2,000₮ × бүлэг6,000₮Хямдрал",
+      "II улирал (12–2 сар)12,000₮ × бүлэг36,000₮",
+      "III улирал (3–5 сар)12,000₮ × бүлэг36,000₮",
+    ]);
+    expect(breakdown).toHaveTextContent("Гэрээний нийт дүн78,000₮");
+    expect(breakdown).toHaveTextContent("Суурь үнээр 108,000₮ — 30,000₮ хэмнэлт");
+
+    await user.type(within(dialog).getByLabelText(/Админы нэвтрэх нэр/), "azjargal");
+    await user.click(within(dialog).getByRole("button", { name: "Батлах" }));
+    await waitFor(() =>
+      expect(api.calls.find((call) => call.url.endsWith("/approve"))?.body).toMatchObject({
+        groupCount: 3,
+        billingPeriod: "term",
+        perGroupMonthlyFee: "4000",
+        periodFee: "78000",
+      }),
+    );
+  });
+
+  it("takes a negotiated sum only when asked to", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/auth/me", body: operator() },
+      {
+        path: `/platform/applications/${APPLICATION.id}/approve`,
+        method: "POST",
+        body: { ...APPLICATION, status: "APPROVED", invitationToken: "t", adminUsername: "az" },
+      },
+      { path: "/platform/applications", body: list([APPLICATION]) },
+    ]);
+    renderWithProviders(<ApplicationsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Шалгах" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByLabelText(/Тохиролцсон нийт дүн/)).toBeNull();
+
+    await user.click(within(dialog).getByRole("checkbox", { name: "Тохиролцсон үнээр өөрчлөх" }));
+    await user.type(within(dialog).getByLabelText(/Тохиролцсон нийт дүн/), "150000");
+    await user.type(within(dialog).getByLabelText(/Админы нэвтрэх нэр/), "azjargal");
+    await user.click(within(dialog).getByRole("button", { name: "Батлах" }));
+
+    await waitFor(() =>
+      expect(api.calls.find((call) => call.url.endsWith("/approve"))?.body).toMatchObject({
+        periodFee: "150000",
+      }),
+    );
+  });
+
+  it("says at once that the login name must be Latin", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/applications", body: list([APPLICATION]) },
+    ]);
+    renderWithProviders(<ApplicationsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Шалгах" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/Админы нэвтрэх нэр/), "Сосорбурам");
+
+    expect(
+      within(dialog).getByText("Латин үсэг, тоо, . _ - тэмдэгтээр бичнэ үү"),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Батлах" })).toBeDisabled();
   });
 });

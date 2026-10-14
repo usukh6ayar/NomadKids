@@ -34,7 +34,7 @@ import {
   labelOf,
   type Chip,
 } from "@/components/platform/table-kit";
-import { KINDERGARTEN_MONTHLY_PER_GROUP, kindergartenPrice } from "@/lib/pricing";
+import { KINDERGARTEN_MONTHLY_PER_GROUP, contractSchedule } from "@/lib/pricing";
 
 /*
  * ★ What the applicant is — 2026-10-14, the user: «Бүгд / Багш дангаар /
@@ -465,19 +465,23 @@ function ReviewDialog({
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>(
     application.billingPeriod ?? "year",
   );
-  const [perGroupMonthlyFee, setPerGroupMonthlyFee] = useState(
-    String(KINDERGARTEN_MONTHLY_PER_GROUP),
-  );
-  /** `null` until typed: follows the groups and the period from the price sheet. */
-  const [periodFeeTyped, setPeriodFeeTyped] = useState<string | null>(null);
-  const groups = Number(groupCount);
-  const periodFee =
-    periodFeeTyped ??
-    (Number.isInteger(groups) && groups > 0
-      ? String(kindergartenPrice(groups, billingPeriod))
-      : "");
   const [startsOn, setStartsOn] = useState(`${thisYear}-09-01`);
   const [endsOn, setEndsOn] = useState(`${thisYear + 1}-05-31`);
+  /*
+    ★ The price is worked out, not typed — 2026-10-14, the user: the contract's
+    terms (or years) at the price of the day, the discount on the lines it
+    applies to, and the contract's whole sum sent as `periodFee`, which the PDF
+    prints as «Нийт төлбөр». A negotiated price is typed only after ticking
+    «Тохиролцсон үнээр өөрчлөх». `perGroupMonthlyFee` is the base rate.
+  */
+  const groups = Number(groupCount);
+  const schedule = contractSchedule(groups, billingPeriod, startsOn, endsOn);
+  const [negotiated, setNegotiated] = useState(false);
+  const [negotiatedFee, setNegotiatedFee] = useState("");
+  const perGroupMonthlyFee = String(KINDERGARTEN_MONTHLY_PER_GROUP);
+  const periodFee = negotiated ? negotiatedFee.trim() : schedule ? String(schedule.total) : "";
+  const usernameBad =
+    adminUsername.trim() !== "" && !/^[a-zA-Z0-9._-]+$/.test(adminUsername.trim());
   const [reviewNote, setReviewNote] = useState("");
 
   const refresh = () =>
@@ -588,7 +592,7 @@ function ReviewDialog({
             type="submit"
             form="review-form"
             size="sm"
-            disabled={busy || adminUsername.trim().length < 3}
+            disabled={busy || adminUsername.trim().length < 3 || usernameBad || !periodFee}
           >
             <Check size={16} aria-hidden="true" />
             {approve.isPending ? "Батлаж байна…" : "Батлах"}
@@ -618,7 +622,7 @@ function ReviewDialog({
 
         <Field
           label="Админы нэвтрэх нэр"
-          error={errors.adminUsername}
+          error={usernameBad ? "Латин үсэг, тоо, . _ - тэмдэгтээр бичнэ үү" : errors.adminUsername}
           hint="Латин үсэг, тоо, . _ - · Эрхлэгч энэ нэрээр нэвтэрнэ"
           required
         >
@@ -662,30 +666,6 @@ function ReviewDialog({
             )}
           </Field>
 
-          <Field label="Бүлэг/сар" error={errors.perGroupMonthlyFee} required>
-            {({ id, invalid }) => (
-              <Input
-                id={id}
-                invalid={invalid}
-                inputMode="numeric"
-                value={perGroupMonthlyFee}
-                onChange={(event) => setPerGroupMonthlyFee(event.target.value)}
-              />
-            )}
-          </Field>
-
-          <Field label="Нийт төлбөр" error={errors.periodFee} required>
-            {({ id, invalid }) => (
-              <Input
-                id={id}
-                invalid={invalid}
-                inputMode="numeric"
-                value={periodFee}
-                onChange={(event) => setPeriodFeeTyped(event.target.value)}
-              />
-            )}
-          </Field>
-
           <Field label="Эхлэх огноо" error={errors.startsOn} required>
             {({ id, invalid }) => (
               <Input
@@ -711,6 +691,38 @@ function ReviewDialog({
           </Field>
         </div>
 
+        <ContractBreakdown schedule={schedule} error={negotiated ? undefined : errors.periodFee} />
+
+        <label className="flex items-center gap-2 text-body text-ink">
+          <input
+            type="checkbox"
+            checked={negotiated}
+            onChange={(event) => setNegotiated(event.target.checked)}
+            className="size-4"
+          />
+          Тохиролцсон үнээр өөрчлөх
+        </label>
+        {negotiated ? (
+          <Field
+            label="Тохиролцсон нийт дүн"
+            error={errors.periodFee}
+            hint="Гэрээн дээр «Нийт төлбөр» болж хэвлэгдэнэ"
+            required
+          >
+            {({ id, describedBy, invalid }) => (
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                inputMode="numeric"
+                value={negotiatedFee}
+                onChange={(event) => setNegotiatedFee(event.target.value)}
+                placeholder={schedule ? String(schedule.total) : undefined}
+              />
+            )}
+          </Field>
+        ) : null}
+
         <Field
           label="Тэмдэглэл"
           hint="Татгалзахад заавал — цэцэрлэгт шалтгааныг хэлнэ"
@@ -728,5 +740,76 @@ function ReviewDialog({
         </Field>
       </form>
     </FormDialog>
+  );
+}
+
+/** «6,000₮». */
+function tugrug(value: number): string {
+  return `${value.toLocaleString("en-US")}₮`;
+}
+
+/**
+ * «Төлбөрийн задаргаа» — each term (or school year) of the contract at the
+ * price of the day, and the contract's sum. Nothing to type: the figures
+ * follow the groups, the period and the dates.
+ */
+function ContractBreakdown({
+  schedule,
+  error,
+}: {
+  schedule: ReturnType<typeof contractSchedule>;
+  error?: string;
+}) {
+  return (
+    <section
+      aria-label="Төлбөрийн задаргаа"
+      className="rounded-control border border-border bg-white text-caption"
+    >
+      <p className="border-b border-border-soft bg-slate-50 px-3 py-2 font-semibold text-muted">
+        Төлбөрийн задаргаа
+      </p>
+      {schedule ? (
+        <>
+          <ul className="divide-y divide-border-soft">
+            {schedule.lines.map((line) => (
+              <li
+                key={line.label}
+                className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-2"
+              >
+                <span className="min-w-0 flex-1 text-ink">{line.label}</span>
+                <span className="tabular-nums text-muted">{tugrug(line.perGroup)} × бүлэг</span>
+                <span className="w-24 text-right font-semibold tabular-nums text-ink">
+                  {tugrug(line.amount)}
+                </span>
+                {line.discounted ? (
+                  <Badge tone="mint">Хямдрал</Badge>
+                ) : (
+                  <span className="w-[62px]" aria-hidden="true" />
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="flex flex-wrap items-baseline justify-between gap-2 border-t border-border px-3 py-2">
+            <span className="font-semibold text-ink">Гэрээний нийт дүн</span>
+            <span className="text-lead font-bold tabular-nums text-ink">
+              {tugrug(schedule.total)}
+            </span>
+          </p>
+          <p className="px-3 pb-2 text-muted">
+            Суурь үнэ: бүлэг тутам сард {tugrug(KINDERGARTEN_MONTHLY_PER_GROUP)}
+            {schedule.standardTotal > schedule.total
+              ? ` · Суурь үнээр ${tugrug(schedule.standardTotal)} — ${tugrug(
+                  schedule.standardTotal - schedule.total,
+                )} хэмнэлт`
+              : ""}
+          </p>
+        </>
+      ) : (
+        <p className="px-3 py-2 text-muted">
+          Бүлгийн тоо, гэрээний огноог оруулахад дүн бодогдоно.
+        </p>
+      )}
+      {error ? <p className="px-3 pb-2 text-danger">{error}</p> : null}
+    </section>
   );
 }
