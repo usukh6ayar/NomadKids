@@ -72,14 +72,22 @@ function stub(previewBody: unknown) {
   ]);
 }
 
+/** The merge opens from the row's «⋯» since the page became a table (2026-10-14). */
+async function openMerge(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("button", { name: `${WORKSPACE.name} — үйлдэл` }));
+  await user.click(screen.getByRole("menuitem", { name: "Цэцэрлэгт нэгтгэх" }));
+}
+
 describe("the operator's solo workspaces", () => {
   it("previews the merge, then merges into the chosen kindergarten", async () => {
     const user = userEvent.setup();
     const api = stub({ ok: true, result: RESULT, targetGroups: TARGET_GROUPS });
     renderWithProviders(<SoloWorkspacesPage />);
 
-    expect(await screen.findByText(/Ажилладаг: Нарлаг цэцэрлэг · 4 хүүхэд/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Цэцэрлэгт нэгтгэх" }));
+    const row = (await screen.findByText(WORKSPACE.name)).closest("tr")!;
+    expect(row).toHaveTextContent("Нарлаг цэцэрлэг");
+    expect(row).toHaveTextContent("4");
+    await openMerge(user);
     const dialog = await screen.findByRole("dialog");
     const merge = within(dialog).getByRole("button", { name: "Нэгтгэх" });
     expect(merge).toBeDisabled();
@@ -108,7 +116,7 @@ describe("the operator's solo workspaces", () => {
     });
     renderWithProviders(<SoloWorkspacesPage />);
 
-    await user.click(await screen.findByRole("button", { name: "Цэцэрлэгт нэгтгэх" }));
+    await openMerge(user);
     const dialog = await screen.findByRole("dialog");
     await selectOption(user, /Цэцэрлэг/, "Нарлаг цэцэрлэг");
     await user.click(within(dialog).getByRole("button", { name: "Урьдчилан харах" }));
@@ -131,7 +139,7 @@ describe("the operator's solo workspaces", () => {
     });
     renderWithProviders(<SoloWorkspacesPage />);
 
-    await user.click(await screen.findByRole("button", { name: "Цэцэрлэгт нэгтгэх" }));
+    await openMerge(user);
     const dialog = await screen.findByRole("dialog");
     await selectOption(user, /Цэцэрлэг/, "Нарлаг цэцэрлэг");
     await user.click(within(dialog).getByRole("button", { name: "Урьдчилан харах" }));
@@ -159,7 +167,7 @@ describe("the operator's solo workspaces", () => {
     const api = stub({ ok: false, refusal: { kind: "noSchoolYear" }, targetGroups: [] });
     renderWithProviders(<SoloWorkspacesPage />);
 
-    await user.click(await screen.findByRole("button", { name: "Цэцэрлэгт нэгтгэх" }));
+    await openMerge(user);
     const dialog = await screen.findByRole("dialog");
     await selectOption(user, /Цэцэрлэг/, "Нарлаг цэцэрлэг");
     await user.click(within(dialog).getByRole("button", { name: "Урьдчилан харах" }));
@@ -182,5 +190,50 @@ describe("the operator's solo workspaces", () => {
     expect(
       screen.getByText("Багш «Үнийн санал» хуудаснаас бүртгүүлэхэд энд харагдана."),
     ).toBeInTheDocument();
+  });
+
+  /*
+   * ★ A solo teacher does not pay; each family pays its child's fee by QPay and
+   * the child is active once it does (2026-10-14, the user).
+   */
+  it("counts the children paid for and those not, and filters by it", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      {
+        path: "/platform/solo-workspaces",
+        body: page([
+          { ...WORKSPACE, paidChildCount: 1 },
+          {
+            ...WORKSPACE,
+            id: "66666666-6666-4666-8666-666666666666",
+            name: "Б.Ану — бие даасан багш",
+            childCount: 3,
+            paidChildCount: 3,
+          },
+        ]),
+      },
+    ]);
+    renderWithProviders(<SoloWorkspacesPage />);
+    const table = await screen.findByRole("table");
+    const row = (name: string) => within(table).getByText(name).closest("tr")!;
+    const cells = (name: string) =>
+      [...row(name).querySelectorAll("td")].map((td) => td.textContent);
+
+    // Children, paid, not paid.
+    expect(cells(WORKSPACE.name).slice(4, 7)).toEqual(["4", "1", "3"]);
+    expect(cells("Б.Ану — бие даасан багш").slice(4, 7)).toEqual(["3", "3", "0"]);
+    const totals = table.querySelectorAll("thead tr")[1]!;
+    expect(totals).toHaveTextContent("Нийт: 2 багш");
+    expect([...totals.querySelectorAll("td")].map((td) => td.textContent).slice(4, 7)).toEqual([
+      "7",
+      "4",
+      "3",
+    ]);
+
+    await user.click(screen.getByLabelText("Хүүхдийн төлбөрөөр шүүх"));
+    await user.click(screen.getByRole("option", { name: "Төлөөгүй хүүхэдтэй" }));
+    expect(table.querySelectorAll("tbody tr")).toHaveLength(1);
+    expect(within(table).getByText(WORKSPACE.name)).toBeInTheDocument();
   });
 });

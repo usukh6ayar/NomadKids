@@ -6,25 +6,22 @@ import {
   platformKindergartenSchema,
   soloMergePreviewSchema,
   soloMergeResultSchema,
-  soloWorkspaceSchema,
   type SoloMergePreview,
   type SoloWorkspace,
 } from "@kinder/contracts";
 import { UserRound } from "lucide-react";
 import { useState } from "react";
 import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
+import { SoloTeachersTable } from "@/components/platform/solo-teachers-table";
 import { RequireSuperAdmin } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Checkbox, Field, Input, Select } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
-import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { FormError } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
-import { formatDate } from "@/lib/format";
 
-const workspacesSchema = paginated(soloWorkspaceSchema);
 const kindergartensSchema = paginated(platformKindergartenSchema);
 
 /**
@@ -41,54 +38,23 @@ export default function SoloWorkspacesPage() {
   );
 }
 
+/*
+ * ★ The same table as «Цэцэрлэгүүд» — 2026-10-14, the user: search, filters,
+ * the children who paid their QPay fee and those who have not; «⋯» opens the
+ * merge right here.
+ */
 function SoloWorkspaces() {
-  const list = useQuery({
-    queryKey: ["platform", "solo-workspaces"],
-    queryFn: () => get("/platform/solo-workspaces?page=1&pageSize=100", workspacesSchema),
-  });
   const [merging, setMerging] = useState<SoloWorkspace | null>(null);
-  const items = list.data?.items ?? [];
 
   return (
-    <div className="flex flex-col gap-6 pb-8">
+    <div className="flex flex-col gap-5 pb-8">
       <PlatformPageHeading
         title="Бие даасан багш"
         lede="Цэцэрлэг гэрээ байгуулахад багшийн орчныг тэр цэцэрлэгт нэгтгэнэ. Юу ч устахгүй."
         mark={<UserRound />}
       />
 
-      {list.isLoading ? <LoadingState rows={3} /> : null}
-      {list.error ? <ErrorState description={errorMessage(list.error)} /> : null}
-      {list.data && items.length === 0 ? (
-        <EmptyState
-          title="Бие даасан багш алга"
-          description="Багш «Үнийн санал» хуудаснаас бүртгүүлэхэд энд харагдана."
-        />
-      ) : null}
-
-      <ul className="flex flex-col gap-3">
-        {items.map((workspace) => (
-          <li key={workspace.id}>
-            <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
-              <div className="min-w-0">
-                <p className="text-lead font-bold text-ink">{workspace.name}</p>
-                <p className="text-caption text-muted">
-                  {[workspace.phone, workspace.email, workspace.location]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
-                <p className="text-caption text-muted">
-                  Ажилладаг: {workspace.workplace ?? "—"} · {workspace.childCount} хүүхэд ·{" "}
-                  {formatDate(workspace.createdAt)}
-                </p>
-              </div>
-              <Button size="sm" onClick={() => setMerging(workspace)}>
-                Цэцэрлэгт нэгтгэх
-              </Button>
-            </Card>
-          </li>
-        ))}
-      </ul>
+      <SoloTeachersTable onMerge={setMerging} />
 
       {merging ? <MergeDialog workspace={merging} onClose={() => setMerging(null)} /> : null}
     </div>

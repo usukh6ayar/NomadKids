@@ -84,13 +84,15 @@ describe("the «Багш дангаар» tab", () => {
     const row = (await solo.findByText("Доржийн Нараа")).closest("tr")!;
 
     const cells = [...row.querySelectorAll("td")].map((td) => td.textContent);
-    // №, teacher, workplace, area, children, phone, e-mail, registered.
-    expect(cells.slice(0, 7)).toEqual([
+    // №, teacher, workplace, area, children, paid, unpaid, phone, e-mail.
+    expect(cells.slice(0, 9)).toEqual([
       "1",
       "Доржийн Нараа",
       "—",
       "Дархан-Уул аймаг",
       "0",
+      "—",
+      "—",
       "—",
       "naraa@example.mn",
     ]);
@@ -158,7 +160,9 @@ describe("the «Багш дангаар» tab", () => {
   it("says nobody has signed up alone yet when the list is empty", async () => {
     const { solo } = await openSoloTab([]);
 
-    expect(await solo.findByText("Дангаар бүртгүүлсэн багш одоогоор алга.")).toBeInTheDocument();
+    expect(
+      await solo.findByText("Багш «Үнийн санал» хуудаснаас бүртгүүлэхэд энд харагдана."),
+    ).toBeInTheDocument();
     expect(solo.getByRole("button", { name: "Excel татах" })).toBeDisabled();
   });
 
