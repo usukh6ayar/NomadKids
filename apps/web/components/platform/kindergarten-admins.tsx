@@ -1,8 +1,9 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { UserPlus } from "lucide-react";
+import { KeyRound, UserPlus } from "lucide-react";
 import { useState } from "react";
+import { z } from "zod";
 import {
   esisInstitutionLookupSchema,
   platformAdminInvitedSchema,
@@ -11,7 +12,7 @@ import {
   type PlatformAdmin,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
-import { errorMessage, fieldErrors } from "@/lib/api/errors";
+import { errorMessage, fieldErrors, isNotFound } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { formatRelative, fullName } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
@@ -58,6 +59,7 @@ export function KindergartenAdmins({
   admins: PlatformAdmin[];
 }) {
   const [adding, setAdding] = useState(false);
+  const [resetting, setResetting] = useState<PlatformAdmin | null>(null);
 
   return (
     <section aria-labelledby="platform-admins-heading">
@@ -116,11 +118,24 @@ export function KindergartenAdmins({
                 ) : (
                   <Badge tone="sun">Нэвтэрч байгаагүй</Badge>
                 )}
+
+                <Button size="sm" variant="secondary" onClick={() => setResetting(admin)}>
+                  <KeyRound size={14} aria-hidden="true" />
+                  Нууц үг сэргээх
+                </Button>
               </li>
             ))}
           </ul>
         )}
       </Card>
+
+      {resetting ? (
+        <ResetAdminPasswordDialog
+          kindergartenId={kindergartenId}
+          admin={resetting}
+          onClose={() => setResetting(null)}
+        />
+      ) : null}
 
       {adding ? (
         <AddAdminDialog
@@ -373,6 +388,104 @@ function AddAdminDialog({
           )}
         </Field>
       </form>
+    </FormDialog>
+  );
+}
+
+/**
+ * «Нууц үг сэргээх» for a director — 2026-10-14, the user: one who forgot the
+ * password and lost the phone has nobody above them but the operator. A
+ * one-time link, as a director gives their staff (`POST /users/:id/
+ * password-reset`); the person sets the password and then their new phone.
+ *
+ * ★ The operator first confirms who is asking — a "lost my phone" call is the
+ * oldest way into somebody else's account. The route is asked of the admin
+ * (`POST /platform/kindergartens/:id/admins/:userId/password-reset`); until it
+ * exists the dialog says what to do instead.
+ */
+function ResetAdminPasswordDialog({
+  kindergartenId,
+  admin,
+  onClose,
+}: {
+  kindergartenId: string;
+  admin: PlatformAdmin;
+  onClose: () => void;
+}) {
+  const [checked, setChecked] = useState(false);
+  const reset = useMutation({
+    mutationFn: () =>
+      mutate(
+        `/platform/kindergartens/${kindergartenId}/admins/${admin.id}/password-reset`,
+        z.object({ resetToken: z.string() }),
+        { method: "POST" },
+      ),
+  });
+
+  if (reset.isSuccess) {
+    return (
+      <FormDialog open onOpenChange={(open) => !open && onClose()} title="Нууц үг сэргээх холбоос">
+        <InvitationHandover
+          token={reset.data.resetToken}
+          path="/reset-password"
+          title="Нууц үг сэргээх холбоос"
+          subtitle={`${fullName(admin)} · ${admin.username}`}
+          validity="Холбоос 1 цаг хүчинтэй. Нэвтэрсний дараа профайлаасаа шинэ утсаа бүртгэнэ."
+          onClose={onClose}
+        />
+      </FormDialog>
+    );
+  }
+
+  return (
+    <FormDialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      busy={reset.isPending}
+      title="Нууц үг сэргээх"
+      description={`${fullName(admin)} · ${admin.username}`}
+      footer={
+        <>
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            Болих
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={!checked || reset.isPending}
+            onClick={() => reset.mutate()}
+          >
+            {reset.isPending ? "Үүсгэж байна…" : "Холбоос үүсгэх"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        <p className="text-body text-muted">
+          Нууц үгээ шинээр тохируулах нэг удаагийн холбоос үүснэ. Нууц үгийг та харахгүй.
+        </p>
+        <FormError
+          message={
+            reset.isError
+              ? isNotFound(reset.error)
+                ? "Сэргээх холбоос үүсгэх хэсэг хараахан бэлэн болоогүй. Одоохондоо «Удирдлага нэмэх»-ээр шинэ урилга үүсгэнэ үү."
+                : errorMessage(reset.error)
+              : null
+          }
+        />
+        <label className="flex items-start gap-2 text-body text-ink">
+          <input
+            type="checkbox"
+            className="mt-1 size-4"
+            checked={checked}
+            onChange={(event) => setChecked(event.target.checked)}
+          />
+          <span>
+            Энэ хүнийг утсаар эсвэл биечлэн таньж, <strong>{fullName(admin)}</strong> мөн гэдгийг
+            шалгасан.
+          </span>
+        </label>
+      </div>
     </FormDialog>
   );
 }
