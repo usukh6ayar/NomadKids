@@ -36,6 +36,8 @@ export interface Agreement {
   sections: { heading: string; body: string }[];
   /** The sentence ticked before «Зөвшөөрөх». */
   consent?: string;
+  /** «Хууль зүйн үндэслэл» — the laws it rests on, at its foot. */
+  legalBasis?: string;
 }
 
 const TRIAL_NOTE =
@@ -213,6 +215,8 @@ export const SOLO_TEACHER_AGREEMENT: Agreement = {
   ],
   consent:
     "Би “Багшийн цахим үйлчилгээ ашиглах гэрээ”-ний бүрэн эхийг уншиж, нөхцөлийг зөвшөөрч байна.",
+  legalBasis:
+    "Монгол Улсын Иргэний хууль; Хүний хувийн мэдээлэл хамгаалах тухай хууль; Хүүхдийн эрхийн тухай хууль; Хүүхэд хамгааллын тухай хууль (шинэчилсэн найруулга); Боловсролын ерөнхий хууль; Сургуулийн өмнөх болон ерөнхий боловсролын тухай хууль; Цахим гарын үсгийн тухай хууль; Кибер аюулгүй байдлын тухай хууль.",
 };
 
 /** A teacher on their own — every teaching membership is in their own workspace. */

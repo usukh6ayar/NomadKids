@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, CheckCircle2, ChevronDown, FileText, Printer, X } from "lucide-react";
+import { CheckCircle2, FileText, Printer, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -116,95 +116,92 @@ export function useAgreements() {
  * The agreement as a document — 2026-10-12, the user: formal, small, minimal.
  * A centred title with its version, numbered sections, justified text.
  */
+/**
+ * The agreement as a paper document — 2026-10-14, the user: «би явуулсан
+ * пдф шигээ загвараар албан ёсны». The whole text, open: a running head,
+ * the title centred over a rule, the parties' table, bold section heads,
+ * numbered clauses, justified, the legal basis at the foot.
+ */
 function AgreementText({ agreement }: { agreement: Agreement }) {
-  const minutes = Math.max(
-    1,
-    Math.round(agreement.sections.reduce((n, sec) => n + sec.body.length, 0) / 1500),
-  );
+  const version = agreement.version.replace(/^solo-/, "");
   return (
-    <div className="flex flex-col gap-4 text-left">
-      <header className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-lead font-bold leading-tight text-ink">{agreement.title}</h2>
-          {agreement.subtitle ? (
-            <p className="mt-1 text-caption text-muted">{agreement.subtitle}</p>
-          ) : null}
-          <p className="mt-1 text-caption text-faint">
-            Хувилбар {agreement.version.replace(/^solo-/, "")} · {agreement.sections.length} бүлэг ·
-            ~{minutes} мин уншина
-          </p>
-        </div>
+    <article className="relative bg-white font-serif text-[#0f172a]">
+      <div className="mb-5 flex items-center justify-between gap-3 border-b border-slate-200 pb-1.5">
+        <p className="text-caption font-semibold tracking-wide text-slate-500">
+          NOMADKIDS.MN • ЦАХИМ ҮЙЛЧИЛГЭЭНИЙ ГЭРЭЭ
+        </p>
         <Button
           type="button"
           size="sm"
           variant="secondary"
           onClick={() => printAgreement(agreement)}
           aria-label="Гэрээг хэвлэх, PDF болгох"
+          className="font-sans"
         >
           <Printer size={16} aria-hidden="true" />
           PDF
         </Button>
+      </div>
+
+      <header className="text-center">
+        <h2 className="mx-auto max-w-[26ch] text-title font-bold uppercase leading-snug">
+          {agreement.title}
+        </h2>
+        <div className="my-3 h-px w-full bg-[#2f6fb0]" />
+        {agreement.subtitle ? (
+          <p className="text-compact italic text-slate-600">{agreement.subtitle}</p>
+        ) : null}
+        <p className="mt-1 text-caption text-slate-500">
+          Гэрээний хувилбар: {version} | Цахим хэлбэрээр байгуулах гэрээ
+        </p>
       </header>
 
-      {agreement.summary ? (
-        <section aria-label="Гол зүйлс" className="rounded-row bg-canvas p-3">
-          <p className="mb-2 text-caption font-semibold text-ink">Гол зүйлс</p>
-          <ul className="flex flex-col gap-1.5 text-caption leading-5 text-ink">
-            {agreement.summary.map((line) => (
-              <li key={line} className="flex gap-2">
-                <Check size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-mint-ink" />
-                {line}
-              </li>
+      {agreement.parties?.length ? (
+        <table className="mt-4 w-full border-collapse text-caption leading-5">
+          <tbody>
+            {agreement.parties.map((party) => (
+              <tr key={party.label} className="border-y border-slate-200">
+                <th
+                  scope="row"
+                  className="w-[34%] bg-slate-50 px-3 py-2 text-left align-top font-bold"
+                >
+                  {party.label}
+                </th>
+                <td className="px-3 py-2 align-top">{party.value}</td>
+              </tr>
             ))}
-          </ul>
-          <p className="mt-2 text-caption text-faint">
-            Энэ бол товч тойм. Гэрээний бүрэн эх доор байна.
-          </p>
-        </section>
+          </tbody>
+        </table>
       ) : null}
 
-      <div className="divide-y divide-border-soft rounded-row border border-border-soft">
-        {agreement.parties?.length ? (
-          <details className="group px-3 py-2">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-compact font-semibold text-ink">
-              Талууд
-              <ChevronDown
-                size={16}
-                aria-hidden="true"
-                className="text-muted group-open:rotate-180"
-              />
-            </summary>
-            <dl className="mt-2 flex flex-col gap-1.5 text-caption leading-5">
-              {agreement.parties.map((party) => (
-                <div key={party.label}>
-                  <dt className="font-semibold text-ink">{party.label}</dt>
-                  <dd className="text-slate-700">{party.value}</dd>
-                </div>
-              ))}
-            </dl>
-          </details>
-        ) : null}
+      <div className="mt-5 flex flex-col gap-4">
         {agreement.sections.map((section) => (
-          <details key={section.heading} className="group px-3 py-2">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-compact font-semibold text-ink">
-              {section.heading}
-              <ChevronDown
-                size={16}
-                aria-hidden="true"
-                className="text-muted group-open:rotate-180"
-              />
-            </summary>
-            <div className="mt-2 flex flex-col gap-1.5 text-caption leading-5 text-slate-700">
-              {section.body.split("\n").map((line) => (
-                <p key={line} className="text-justify">
-                  {line}
-                </p>
-              ))}
+          <section key={section.heading} aria-label={section.heading}>
+            <h3 className="mb-1.5 text-compact font-bold">{section.heading}</h3>
+            <div className="flex flex-col gap-1.5 text-compact leading-6">
+              {section.body.split("\n").map((line) => {
+                const numbered = line.match(/^(\d+(?:\.\d+)*\.)\s+(.*)$/);
+                return numbered ? (
+                  <p key={line} className="pl-8 -indent-8 text-justify">
+                    <span className="font-bold">{numbered[1]}</span> {numbered[2]}
+                  </p>
+                ) : (
+                  <p key={line} className="text-justify">
+                    {line}
+                  </p>
+                );
+              })}
             </div>
-          </details>
+          </section>
         ))}
       </div>
-    </div>
+
+      {agreement.legalBasis ? (
+        <p className="mt-5 text-caption italic leading-5 text-slate-600">
+          Хууль зүйн үндэслэл: {agreement.legalBasis}
+        </p>
+      ) : null}
+    </article>
   );
 }
 
@@ -235,9 +232,10 @@ th { width: 30%; background: #f8fafc; }
 h2 { font-size: 11pt; margin: 5mm 0 1.5mm; }
 p { margin: 0 0 1.5mm; text-align: justify; }
 </style></head><body>
-<h1>${escapeHtml(agreement.title)}</h1>
+<p style="text-align:right;font-size:8.5pt;color:#64748b;border-bottom:1px solid #cbd5e1;padding-bottom:1mm;margin:0 0 6mm">NOMADKIDS.MN • ЦАХИМ ҮЙЛЧИЛГЭЭНИЙ ГЭРЭЭ</p>
+<h1>${escapeHtml(agreement.title)}</h1><hr style="border:0;border-top:1px solid #2f6fb0;margin:2mm 0 3mm">
 ${agreement.subtitle ? `<p class="sub">${escapeHtml(agreement.subtitle)}</p>` : ""}
-<p class="ver">Гэрээний хувилбар: ${escapeHtml(agreement.version.replace(/^solo-/, ""))}</p>
+<p class="ver">Гэрээний хувилбар: ${escapeHtml(agreement.version.replace(/^solo-/, ""))} | Цахим хэлбэрээр байгуулах гэрээ</p>
 ${
   agreement.parties?.length
     ? `<table>${agreement.parties
@@ -257,6 +255,7 @@ ${agreement.sections
         .join("")}`,
   )
   .join("")}
+${agreement.legalBasis ? `<p style="font-style:italic;font-size:9pt;color:#475569;margin-top:5mm">Хууль зүйн үндэслэл: ${escapeHtml(agreement.legalBasis)}</p>` : ""}
 </body></html>`;
   const frame = document.createElement("iframe");
   frame.setAttribute("aria-hidden", "true");
@@ -315,7 +314,7 @@ export function AgreementGate() {
     const isTicked = ticked === current.kind;
     return (
       <ModalOverlay label={current.title} onClose={() => {}} dismissable={false}>
-        <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-[600px] flex-col rounded-card bg-white shadow-xl">
+        <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-[720px] flex-col rounded-card bg-white shadow-xl">
           <div
             key={current.kind}
             tabIndex={0}

@@ -145,10 +145,16 @@ describe("a solo teacher", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Багшийн цахим үйлчилгээ ашиглах гэрээ",
     });
-    expect(dialog).toHaveTextContent("Хувилбар 2.0 · 10 бүлэг");
-    const summary = within(dialog).getByRole("region", { name: "Гол зүйлс" });
-    expect(summary).toHaveTextContent("Нэг бүртгэлд нэгэн зэрэг 2 хүртэл төхөөрөмж");
-    expect(summary).toHaveTextContent("30 хоног идэвхгүй, төлбөр нь хүчинтэй хүүхэдгүй");
+    // Laid out as the paper: the whole text open, nothing folded away.
+    expect(dialog).toHaveTextContent("NOMADKIDS.MN • ЦАХИМ ҮЙЛЧИЛГЭЭНИЙ ГЭРЭЭ");
+    expect(dialog).toHaveTextContent("Гэрээний хувилбар: 2.0 | Цахим хэлбэрээр байгуулах гэрээ");
+    expect(
+      within(dialog).getByRole("rowheader", { name: "Үйлчилгээ үзүүлэгч" }),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText(/Хүүхдийг доромжилсон, ичгүүртэй байдалд/)).toBeVisible();
+    expect(within(dialog).getAllByRole("region", { name: /^\d+\. / })).toHaveLength(10);
+    expect(dialog).toHaveTextContent("Хууль зүйн үндэслэл: Монгол Улсын Иргэний хууль");
+    expect(dialog.querySelector("details")).toBeNull();
     // §4 follows the rule the system keeps, not «no child invited in 30 days».
     expect(dialog).toHaveTextContent("4.3. Төлбөр нь хүчинтэй хүүхэдтэй багшийн бүртгэлийг");
     expect(
@@ -250,7 +256,7 @@ describe("«Миний гэрээ» for a solo teacher", () => {
     await user.click(await screen.findByRole("button", { name: "Миний гэрээ" }));
     const dialog = screen.getByRole("dialog", { name: "Миний гэрээ" });
     expect(dialog).toHaveTextContent("Багшийн цахим үйлчилгээ ашиглах гэрээ");
-    expect(dialog).toHaveTextContent("Хувилбар 2.0");
+    expect(dialog).toHaveTextContent("Гэрээний хувилбар: 2.0");
     expect(dialog).toHaveTextContent("Зөвшөөрсөн: 2026.10.14");
   });
 });
