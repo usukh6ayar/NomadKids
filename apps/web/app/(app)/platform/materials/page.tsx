@@ -71,7 +71,7 @@ function PlatformMaterials() {
   /** «Дэлгүүр» — the shop as the teachers see it (2026-10-14, the user). */
   const [shop, setShop] = useState(false);
   const copyLink = (m: PlatformMaterial) => {
-    const url = `${window.location.origin}${materialSharePath(m.id)}`;
+    const url = `${window.location.origin}${materialSharePath(m.id, "nk")}`;
     void navigator.clipboard.writeText(url).then(
       () =>
         toast.success(

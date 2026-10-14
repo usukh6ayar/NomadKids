@@ -5,7 +5,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Download, FileText, Presentation, X } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  FileText,
+  Presentation,
+  Share2,
+  X,
+} from "lucide-react";
 import { qpayInvoiceAttemptSchema } from "@kinder/contracts";
 import { QpayProgress } from "@/components/child/access-pay-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -24,11 +32,13 @@ import {
   materialPrice,
   ownedMaterialsSchema,
   platformMaterialsSchema,
+  materialSharePath,
   type Material,
   type MaterialLevel,
 } from "@/lib/materials";
 import { AREA_IMAGE, LEARNING_AREAS } from "@/lib/routine";
 import { cn } from "@/lib/utils";
+import { useSession } from "@/lib/auth/session";
 import { useDebounced } from "@/lib/use-debounced";
 
 type View = "store" | "mine";
@@ -43,7 +53,9 @@ export function TeachingMaterials() {
    * ★ `?material=<id>` — from a shared link (2026-10-14, the user): the shop
    * opens on that material, its sample pages and «Авах» in front.
    */
-  const wanted = useSearchParams().get("material");
+  const search = useSearchParams();
+  const wanted = search.get("material");
+  const take = search.get("take") === "1";
   // «Миний сан» first, and open — 2026-10-09, the client.
   const [view, setView] = useState<View>(wanted ? "store" : "mine");
   return (
@@ -74,7 +86,11 @@ export function TeachingMaterials() {
           </button>
         ))}
       </div>
-      {view === "store" ? <Store onOwned={() => setView("mine")} wanted={wanted} /> : <Mine />}
+      {view === "store" ? (
+        <Store onOwned={() => setView("mine")} wanted={wanted} take={take} />
+      ) : (
+        <Mine />
+      )}
     </div>
   );
 }
@@ -285,7 +301,16 @@ export function StorePreview() {
   );
 }
 
-function Store({ onOwned, wanted = null }: { onOwned: () => void; wanted?: string | null }) {
+function Store({
+  onOwned,
+  wanted = null,
+  take = false,
+}: {
+  onOwned: () => void;
+  wanted?: string | null;
+  /** From a shared link after signing in: a free one is taken by itself. */
+  take?: boolean;
+}) {
   const [filters, setFilters] = useState<MaterialFilters>(NO_FILTERS);
   const { area, level } = filters;
   const q = useDebounced(filters.q.trim());
@@ -308,6 +333,25 @@ function Store({ onOwned, wanted = null }: { onOwned: () => void; wanted?: strin
   // ★ No sample catalog on a 404 any more (2026-10-11): the API answers, so a
   // 404 means the route is not this person's — the error is shown as it is.
   const buy = (material: Material) => setBuying(material);
+  /*
+   * ★ «Үнэгүй авах» — 2026-10-14, the user: a free material is added to
+   * «Миний сан» in one press; the API marks it paid with nothing to scan.
+   */
+  const takeFree = useMutation({
+    mutationFn: (material: Material) =>
+      mutate(`/materials/${material.id}/qpay`, qpayInvoiceAttemptSchema, {
+        method: "POST",
+        body: {},
+      }).then(() => material),
+    onSuccess: (material) => {
+      toast.success(`«${material.title}» таны санд нэмэгдлээ.`);
+      void queryClient.invalidateQueries({ queryKey: ["materials"] });
+      onOwned();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+  const getIt = (material: Material) =>
+    material.price === 0 ? takeFree.mutate(material) : buy(material);
   // The API narrows by word, area and level; price and order are drawn here.
   const items = arrange(catalog.data?.items ?? [], filters);
   const shown =
@@ -315,6 +359,14 @@ function Store({ onOwned, wanted = null }: { onOwned: () => void; wanted?: strin
     (!wantedShown && wanted
       ? ((catalog.data?.items ?? []).find((m) => m.id === wanted) ?? null)
       : null);
+  const wantedItem = wanted ? (catalog.data?.items ?? []).find((m) => m.id === wanted) : undefined;
+  const tookOnce = useRef(false);
+  useEffect(() => {
+    if (!take || tookOnce.current || !wantedItem) return;
+    if (wantedItem.price !== 0 || wantedItem.owned) return;
+    tookOnce.current = true;
+    takeFree.mutate(wantedItem);
+  }, [take, wantedItem, takeFree]);
   const closePreview = () => {
     setPreviewing(null);
     setWantedShown(true);
@@ -346,10 +398,11 @@ function Store({ onOwned, wanted = null }: { onOwned: () => void; wanted?: strin
                     Миний санд
                   </Button>
                 ) : (
-                  <Button size="sm" onClick={() => buy(material)}>
-                    Авах
+                  <Button size="sm" disabled={takeFree.isPending} onClick={() => getIt(material)}>
+                    {material.price === 0 ? "Үнэгүй авах" : "Авах"}
                   </Button>
                 )}
+                <ShareButton material={material} />
               </span>
             </MaterialCard>
           </li>
@@ -365,7 +418,7 @@ function Store({ onOwned, wanted = null }: { onOwned: () => void; wanted?: strin
               ? undefined
               : () => {
                   closePreview();
-                  buy(shown);
+                  getIt(shown);
                 }
           }
         />
@@ -420,11 +473,14 @@ function Mine() {
             <MaterialCard material={material} showPrice={false}>
               {/* A navigation, not a fetch: the server checks ownership and
                   redirects to a 5-minute presigned URL (`lib/materials.ts`). */}
-              <Button asChild size="sm">
-                <a href={downloadUrl(`/materials/${material.id}/download`)}>
-                  <Download size={16} aria-hidden="true" /> Татах
-                </a>
-              </Button>
+              <span className="flex gap-1.5">
+                <Button asChild size="sm">
+                  <a href={downloadUrl(`/materials/${material.id}/download`)}>
+                    <Download size={16} aria-hidden="true" /> Татах
+                  </a>
+                </Button>
+                <ShareButton material={material} />
+              </span>
             </MaterialCard>
           </li>
         ))}
@@ -650,7 +706,7 @@ function PreviewDialog({
                 Авах
               </Button>
             ) : onBuy ? (
-              <Button onClick={onBuy}>Авах</Button>
+              <Button onClick={onBuy}>{material.price === 0 ? "Үнэгүй авах" : "Авах"}</Button>
             ) : (
               <Badge tone="mint">Миний санд байгаа</Badge>
             )}
@@ -744,5 +800,28 @@ export function SamplePages({
         </figcaption>
       ) : null}
     </figure>
+  );
+}
+
+/**
+ * «Хуваалцах» — 2026-10-14, the user: a teacher sends a material's page to
+ * colleagues; the link carries who shared it (`ref=t-…`) so the sign-ups it
+ * brings can be counted once the API keeps it.
+ */
+function ShareButton({ material }: { material: Material }) {
+  const toast = useToast();
+  const { session } = useSession();
+  const share = () => {
+    const ref = session ? `t-${session.user.id.slice(0, 8)}` : undefined;
+    const url = `${window.location.origin}${materialSharePath(material.id, ref)}`;
+    void navigator.clipboard.writeText(url).then(
+      () => toast.success("Холбоос хуулагдлаа — хамт олондоо илгээгээрэй."),
+      () => toast.error(`Хуулж чадсангүй: ${url}`),
+    );
+  };
+  return (
+    <Button size="sm" variant="ghost" onClick={share} aria-label={`${material.title} — хуваалцах`}>
+      <Share2 size={16} aria-hidden="true" />
+    </Button>
   );
 }

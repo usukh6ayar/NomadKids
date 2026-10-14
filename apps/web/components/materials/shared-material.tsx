@@ -32,7 +32,9 @@ export function SharedMaterial() {
     queryFn: () => get(`/public/materials/${id}`, publicMaterialSchema),
     retry: false,
   });
-  const buyPath = materialBuyPath(id);
+  // A free one is taken by itself on arrival (2026-10-14, the user).
+  const free = material.data?.price === 0;
+  const buyPath = materialBuyPath(id, free);
 
   if (material.isLoading) return <LoadingState rows={4} />;
   if (material.isError) {
@@ -87,7 +89,7 @@ export function SharedMaterial() {
         <p className="text-title font-bold tabular-nums text-ink">{materialPrice(m.price)}</p>
         {sessionLoading ? null : session && hasRole("TEACHER") ? (
           <Button asChild>
-            <Link href={buyPath}>Авах</Link>
+            <Link href={buyPath}>{free ? "Үнэгүй авах" : "Авах"}</Link>
           </Button>
         ) : session ? (
           <p className="text-body text-muted">
@@ -96,12 +98,15 @@ export function SharedMaterial() {
         ) : (
           <>
             <p className="text-body text-muted">
-              Авахын тулд багшийн бүртгэлээрээ нэвтэрнэ үү. Бүртгэлгүй бол үнэгүй бүртгүүлээд энэ
-              хуудас руу буцаж ирнэ.
+              {free
+                ? "Багшийн бүртгэлээрээ нэвтэрмэгц таны санд шууд нэмэгдэнэ. Бүртгэлгүй бол үнэгүй бүртгүүлнэ үү."
+                : "Авахын тулд багшийн бүртгэлээрээ нэвтэрнэ үү. Бүртгэлгүй бол үнэгүй бүртгүүлээд энэ хуудас руу буцаж ирнэ."}
             </p>
             <div className="flex flex-wrap gap-2">
               <Button asChild>
-                <Link href={`/login?from=${encodeURIComponent(buyPath)}`}>Нэвтэрч авах</Link>
+                <Link href={`/login?from=${encodeURIComponent(buyPath)}`}>
+                  {free ? "Нэвтэрч үнэгүй авах" : "Нэвтэрч авах"}
+                </Link>
               </Button>
               <Button variant="secondary" onClick={() => setSigningUp(true)}>
                 Багшаар бүртгүүлэх

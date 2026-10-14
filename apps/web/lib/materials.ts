@@ -120,14 +120,21 @@ export const PREVIEW_STATUS_LABEL: Record<PreviewStatus, string> = {
 export const publicMaterialSchema = materialSchema.omit({ owned: true });
 export type PublicMaterial = z.infer<typeof publicMaterialSchema>;
 
-/** The shareable page of one material — «Холбоос хуулах». */
-export function materialSharePath(id: string): string {
-  return `/m/${id}`;
+/**
+ * The shareable page of one material — «Холбоос хуулах» / «Хуваалцах».
+ * `ref` says who shared it (the operator `nk`, a teacher `t-…`) so sign-ups
+ * can be counted once the API keeps it (asked of the admin, 2026-10-14).
+ */
+export function materialSharePath(id: string, ref?: string): string {
+  return ref ? `/m/${id}?ref=${encodeURIComponent(ref)}` : `/m/${id}`;
 }
 
-/** Where a teacher buys it: the shop, opened on this material. */
-export function materialBuyPath(id: string): string {
-  return `/documents?material=${encodeURIComponent(id)}`;
+/**
+ * Where a teacher gets it: the shop, opened on this material. `take` — a free
+ * one is added to «Миний сан» by itself on arrival (2026-10-14, the user).
+ */
+export function materialBuyPath(id: string, take = false): string {
+  return `/documents?material=${encodeURIComponent(id)}${take ? "&take=1" : ""}`;
 }
 
 export const platformMaterialSchema = materialSchema.omit({ owned: true }).extend({
