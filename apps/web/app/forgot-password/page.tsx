@@ -3,6 +3,7 @@
 import { useMutation } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
+import { CONTACT } from "@/lib/contact";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
@@ -320,9 +321,36 @@ export default function ForgotPasswordPage() {
               sentence nobody can read on a phone.
             */}
             <div className="mt-6 border-t border-border pt-4 text-center">
-              <p className="text-caption leading-5 text-muted">
-                Утасны дугаараа сольсон бол цэцэрлэгийн администратортаа хандана уу.
-              </p>
+              {/*
+                ★ Who to turn to without the phone — 2026-10-14, the user: staff
+                ask their director; a director or a solo teacher, who has nobody
+                above them, calls NomadKids, which checks who is calling and
+                issues a reset link (`ResetPasswordLinkDialog`).
+              */}
+              <div aria-label="Утсаа алдсан бол" className="flex flex-col gap-1">
+                <p className="text-caption font-semibold leading-5 text-ink">
+                  Утсаа алдсан эсвэл дугаараа сольсон уу?
+                </p>
+                <p className="text-caption leading-5 text-muted">
+                  Цэцэрлэгийн багш, ажилтан бол эрхлэгчдээ хандана уу.
+                </p>
+                <p className="text-caption leading-5 text-muted">
+                  Эрхлэгч эсвэл бие даасан багш бол NomadKids-тэй холбогдоно уу:{" "}
+                  <a
+                    href={CONTACT.phoneHref}
+                    className="font-semibold text-primary hover:underline"
+                  >
+                    {CONTACT.phone}
+                  </a>{" "}
+                  ·{" "}
+                  <a
+                    href={CONTACT.emailHref}
+                    className="font-semibold text-primary hover:underline"
+                  >
+                    {CONTACT.email}
+                  </a>
+                </p>
+              </div>
               <nav
                 aria-label="Нууцлал ба тусламж"
                 className="mt-1 flex flex-wrap justify-center gap-x-4 text-caption font-semibold text-primary"

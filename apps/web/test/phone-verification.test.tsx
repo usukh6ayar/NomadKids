@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, setParams, setSearchParams, stubApi } from "./support/render";
@@ -94,6 +94,28 @@ describe("forgot password — by phone", () => {
 
     expect(await screen.findByText(/бүртгэл олдсонгүй/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/^Шинэ нууц үг/, { selector: "input" })).not.toBeInTheDocument();
+  });
+});
+
+/*
+ * ★ Without the phone — 2026-10-14, the user: staff ask their director; a
+ * director or a solo teacher calls NomadKids, which issues a reset link.
+ */
+describe("forgot password — the phone is lost", () => {
+  it("says who to turn to, with NomadKids' phone and e-mail", async () => {
+    stubApi([]);
+    renderWithProviders(<ForgotPasswordPage />);
+
+    const help = await screen.findByLabelText("Утсаа алдсан бол");
+    expect(help).toHaveTextContent("Цэцэрлэгийн багш, ажилтан бол эрхлэгчдээ хандана уу.");
+    expect(within(help).getByRole("link", { name: "7213 4888" })).toHaveAttribute(
+      "href",
+      "tel:+97672134888",
+    );
+    expect(within(help).getByRole("link", { name: "nomadkidsmn@gmail.com" })).toHaveAttribute(
+      "href",
+      "mailto:nomadkidsmn@gmail.com",
+    );
   });
 });
 
