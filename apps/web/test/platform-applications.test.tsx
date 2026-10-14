@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { renderWithProviders, sessionFor, stubApi } from "./support/render";
+import { renderWithProviders, sessionFor, stubApi, type RouteStub } from "./support/render";
 import ApplicationsPage from "@/app/(app)/platform/applications/page";
 
 /*
@@ -575,5 +575,125 @@ describe("the operator's applications", () => {
       `/platform/${KG}#platform-admins-heading`,
     );
     expect(within(table).getByText("№NK-2026-000001")).toBeInTheDocument();
+  });
+
+  /*
+   * ★ The copy the kindergarten signed — 2026-10-14, the user. The route is
+   * asked of the admin; the web is built against it.
+   */
+  describe("the signed contract", () => {
+    const KG = "77777777-7777-4777-8777-777777777777";
+    const CONTRACT_ID = "88888888-8888-4888-8888-888888888888";
+    const approved = (contract: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+      ...APPLICATION,
+      ...extra,
+      status: "APPROVED",
+      kindergartenId: KG,
+      reviewedAt: "2026-10-12T09:00:00.000Z",
+      contract: {
+        id: CONTRACT_ID,
+        number: "NK-2026-000001",
+        version: 1,
+        status: "PENDING_SIGNATURE",
+        pdfMediaFileId: null,
+        ...contract,
+      },
+    });
+
+    async function openApproved(items: unknown[], extra: RouteStub[] = []) {
+      const user = userEvent.setup();
+      const api = stubApi([
+        ...extra,
+        { path: "/auth/me", body: operator() },
+        { path: "/platform/applications", body: list(items) },
+      ]);
+      renderWithProviders(<ApplicationsPage />);
+      await user.click(await screen.findByRole("button", { name: "Батлагдсан" }));
+      return { user, api, table: await screen.findByRole("table") };
+    }
+
+    it("uploads the stamped copy once its number is confirmed", async () => {
+      const { user, api, table } = await openApproved(
+        [approved({})],
+        [{ path: `/platform/contracts/${CONTRACT_ID}/signed`, method: "POST", body: {} }],
+      );
+
+      await user.click(within(table).getByRole("button", { name: "Гарын үсэгтэйг оруулах" }));
+      const dialog = await screen.findByRole("dialog", { name: "Гарын үсэгтэй гэрээ оруулах" });
+      const send = within(dialog).getByRole("button", { name: "Оруулах" });
+      await user.upload(
+        within(dialog).getByLabelText(/Скан хийсэн гэрээ/),
+        new File(["%PDF"], "gereenii-scan.pdf", { type: "application/pdf" }),
+      );
+      expect(send).toBeDisabled(); // the number is not yet confirmed
+      await user.click(within(dialog).getByRole("checkbox"));
+      await user.click(send);
+
+      await waitFor(() => {
+        const call = api.calls.find((c) => c.url === `/platform/contracts/${CONTRACT_ID}/signed`);
+        expect(call?.method).toBe("POST");
+        expect((call?.body as FormData).get("file")).toBeInstanceOf(File);
+      });
+    });
+
+    it("refuses a file that is neither PDF nor a picture", async () => {
+      const { user, api, table } = await openApproved([approved({})]);
+
+      await user.click(within(table).getByRole("button", { name: "Гарын үсэгтэйг оруулах" }));
+      const dialog = await screen.findByRole("dialog", { name: "Гарын үсэгтэй гэрээ оруулах" });
+      await userEvent.setup({ applyAccept: false }).upload(
+        within(dialog).getByLabelText(/Скан хийсэн гэрээ/),
+        new File(["x"], "gereenii.docx", {
+          type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }),
+      );
+      expect(within(dialog).getByText("Зөвхөн PDF, JPG, PNG файл оруулна.")).toBeInTheDocument();
+      expect(within(dialog).getByRole("button", { name: "Оруулах" })).toBeDisabled();
+      expect(api.calls.some((c) => c.method === "POST")).toBe(false);
+    });
+
+    it("says «удахгүй» while the API has no such route", async () => {
+      const { user, table } = await openApproved([approved({})]);
+
+      await user.click(within(table).getByRole("button", { name: "Гарын үсэгтэйг оруулах" }));
+      const dialog = await screen.findByRole("dialog", { name: "Гарын үсэгтэй гэрээ оруулах" });
+      await user.upload(
+        within(dialog).getByLabelText(/Скан хийсэн гэрээ/),
+        new File(["%PDF"], "scan.pdf", { type: "application/pdf" }),
+      );
+      await user.click(within(dialog).getByRole("checkbox"));
+      await user.click(within(dialog).getByRole("button", { name: "Оруулах" }));
+
+      expect(
+        await within(dialog).findByText("Гарын үсэгтэй гэрээ хадгалах боломж удахгүй нээгдэнэ."),
+      ).toBeInTheDocument();
+    });
+
+    it("marks a signed contract, offers its copy, and filters by it", async () => {
+      const { user, table } = await openApproved([
+        approved({ signedAt: "2026-10-20T00:00:00.000Z", signedMediaFileId: CONTRACT_ID }),
+        approved(
+          { id: "99999999-9999-4999-8999-999999999999", number: "NK-2026-000002" },
+          { id: "55555555-5555-4555-8555-555555555555", kindergartenName: "Од цэцэрлэг" },
+        ),
+      ]);
+
+      const signedRow = within(table).getByText("№NK-2026-000001").closest("tr")!;
+      expect(within(signedRow).getByText("Гарын үсэг зурсан · 2026.10.20")).toBeInTheDocument();
+      expect(
+        within(signedRow).getByRole("button", { name: "Гарын үсэгтэй хувь" }),
+      ).toBeInTheDocument();
+      expect(
+        within(signedRow).queryByRole("button", { name: "Гарын үсэгтэйг оруулах" }),
+      ).toBeNull();
+
+      const names = () =>
+        [...table.querySelectorAll("tbody tr")].map(
+          (tr) => tr.querySelectorAll("td")[1]!.textContent,
+        );
+      await user.click(screen.getByLabelText("Гэрээний гарын үсгээр шүүх"));
+      await user.click(screen.getByRole("option", { name: "Гарын үсэг хүлээгдэж буй" }));
+      expect(names()).toEqual(["Од цэцэрлэг"]);
+    });
   });
 });

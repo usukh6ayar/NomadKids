@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Eye, Printer, Search, X } from "lucide-react";
+import { Check, Eye, Printer, Search, Upload, X } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { z } from "zod";
@@ -14,7 +14,7 @@ import {
   type KindergartenApplication,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
-import { errorMessage, fieldErrors } from "@/lib/api/errors";
+import { errorMessage, fieldErrors, isNotFound } from "@/lib/api/errors";
 import { RequireSuperAdmin } from "@/components/shell/require-role";
 import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
@@ -48,9 +48,34 @@ import { KINDERGARTEN_MONTHLY_PER_GROUP, contractSchedule } from "@/lib/pricing"
  */
 const applicationRowSchema = kindergartenApplicationSchema.extend({
   kind: z.enum(["kindergarten", "esis", "solo"]).nullish(),
+  /*
+   * ★ The copy the kindergarten signed and stamped — 2026-10-14, the user. The
+   * API does not keep one yet (asked of the admin); until it sends these, every
+   * contract reads «Гарын үсэг хүлээгдэж буй» and the upload says «удахгүй».
+   */
+  contract: kindergartenApplicationSchema.shape.contract
+    .unwrap()
+    .extend({
+      signedAt: z.string().nullish(),
+      signedMediaFileId: z.string().nullish(),
+    })
+    .nullable(),
 });
 type ApplicationRow = z.infer<typeof applicationRowSchema>;
 type ApplicationKind = "kindergarten" | "esis" | "solo";
+type SignedContract = NonNullable<ApplicationRow["contract"]>;
+
+/** Signed: the API's date for the stamped copy, or a status past signature. */
+function isSigned(contract: SignedContract): boolean {
+  return Boolean(contract.signedAt) || contract.status !== "PENDING_SIGNATURE";
+}
+
+/** «Бүгд», those still waiting for the kindergarten's signature, or signed. */
+const SIGNATURE_OPTIONS = [
+  { value: "", label: "Бүгд" },
+  { value: "waiting", label: "Гарын үсэг хүлээгдэж буй" },
+  { value: "signed", label: "Гарын үсэг зурсан" },
+] as const;
 
 const listSchema = paginated(applicationRowSchema);
 
@@ -134,6 +159,8 @@ function Applications() {
   const [reviewing, setReviewing] = useState<KindergartenApplication | null>(null);
   const [query, setQuery] = useState("");
   const [period, setPeriod] = useState("");
+  const [signature, setSignature] = useState("");
+  const [uploading, setUploading] = useState<ApplicationRow | null>(null);
   const [kind, setKind] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "created", dir: -1 });
 
@@ -157,17 +184,27 @@ function Applications() {
             row.address ?? "",
           ].some((text) => text.toLocaleLowerCase("mn").includes(needle))) &&
         (!kind || kindOf(row) === kind) &&
+        (status !== "APPROVED" ||
+          !signature ||
+          (row.contract !== null && isSigned(row.contract) === (signature === "signed"))) &&
         (!period || row.billingPeriod === period),
     )
     .sort((a, b) => compareApplications(a, b, sort.key, sort.dir));
   const chips = [
     query.trim() && { key: "q", label: `«${query.trim()}»`, clear: () => setQuery("") },
     kind && { key: "kind", label: labelOf(KIND_OPTIONS, kind), clear: () => setKind("") },
+    status === "APPROVED" &&
+      signature && {
+        key: "signature",
+        label: labelOf(SIGNATURE_OPTIONS, signature),
+        clear: () => setSignature(""),
+      },
     period && { key: "period", label: labelOf(PERIOD_OPTIONS, period), clear: () => setPeriod("") },
   ].filter((chip): chip is Chip => Boolean(chip));
   const clearAll = () => {
     setQuery("");
     setKind("");
+    setSignature("");
     setPeriod("");
   };
   const sortBy = (key: SortKey) =>
@@ -235,6 +272,15 @@ function Applications() {
             onChange={setPeriod}
             options={PERIOD_OPTIONS}
           />
+          {status === "APPROVED" ? (
+            <FilterSelect
+              label="Гэрээ"
+              ariaLabel="Гэрээний гарын үсгээр шүүх"
+              value={signature}
+              onChange={setSignature}
+              options={SIGNATURE_OPTIONS}
+            />
+          ) : null}
         </div>
         <FilterChips chips={chips} onClearAll={clearAll} />
 
@@ -309,6 +355,7 @@ function Applications() {
                     index={index + 1}
                     decided={decided}
                     onReview={() => setReviewing(application)}
+                    onUploadSigned={() => setUploading(application)}
                   />
                 ))}
               </tbody>
@@ -316,6 +363,14 @@ function Applications() {
           </div>
         ) : null}
       </section>
+
+      {uploading?.contract ? (
+        <UploadSignedDialog
+          application={uploading}
+          contract={uploading.contract}
+          onClose={() => setUploading(null)}
+        />
+      ) : null}
 
       {reviewing ? (
         <ReviewDialog application={reviewing} onClose={() => setReviewing(null)} />
@@ -329,11 +384,13 @@ function ApplicationTableRow({
   index,
   decided,
   onReview,
+  onUploadSigned,
 }: {
   application: ApplicationRow;
   index: number;
   decided: boolean;
   onReview: () => void;
+  onUploadSigned: () => void;
 }) {
   const cell =
     "border-b border-r border-border-soft px-3 py-2 align-middle bg-white group-hover:bg-slate-50 last:border-r-0";
@@ -400,7 +457,11 @@ function ApplicationTableRow({
           */
           <span className="inline-flex items-center gap-2">
             <span className="font-medium text-ink">№{contract.number}</span>
-            <Badge tone="sky">{CONTRACT_STATUS_LABEL[contract.status]}</Badge>
+            {contract.signedAt ? (
+              <Badge tone="mint">Гарын үсэг зурсан · {formatDate(contract.signedAt)}</Badge>
+            ) : (
+              <Badge tone="sky">{CONTRACT_STATUS_LABEL[contract.status]}</Badge>
+            )}
             {application.kindergartenId ? (
               /*
                 The way back when the invitation was closed unsent: the
@@ -424,6 +485,20 @@ function ApplicationTableRow({
             ) : (
               <span className="text-muted">PDF бэлтгэгдэж байна…</span>
             )}
+            {contract.signedMediaFileId ? (
+              <button
+                type="button"
+                onClick={() => void openSignedContract(contract.id)}
+                className="font-semibold text-primary hover:underline"
+              >
+                Гарын үсэгтэй хувь
+              </button>
+            ) : isSigned(contract) ? null : (
+              <Button size="sm" variant="secondary" onClick={onUploadSigned}>
+                <Upload size={14} aria-hidden="true" />
+                Гарын үсэгтэйг оруулах
+              </Button>
+            )}
           </span>
         ) : (
           "—"
@@ -446,6 +521,131 @@ async function openContractPdf(contractId: string): Promise<void> {
     z.object({ url: z.string() }),
   );
   window.open(url, "_blank", "noopener");
+}
+
+/** The stamped copy — fetched and followed, as the PDF is. */
+async function openSignedContract(contractId: string): Promise<void> {
+  const { url } = await get(
+    `/platform/contracts/${contractId}/signed/download`,
+    z.object({ url: z.string() }),
+  );
+  window.open(url, "_blank", "noopener");
+}
+
+const SIGNED_TYPES = ["application/pdf", "image/jpeg", "image/png"];
+const SIGNED_MAX_BYTES = 10 * 1024 * 1024;
+
+/**
+ * «Гарын үсэгтэй гэрээ оруулах» — the copy the kindergarten signed, stamped
+ * and sent back (2026-10-14, the user). The operator confirms it is this
+ * contract's number before it is kept. `POST /platform/contracts/:id/signed`
+ * is asked of the admin; until it exists the dialog says «удахгүй».
+ */
+function UploadSignedDialog({
+  application,
+  contract,
+  onClose,
+}: {
+  application: ApplicationRow;
+  contract: SignedContract;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [file, setFile] = useState<File | null>(null);
+  const [matches, setMatches] = useState(false);
+  const [problem, setProblem] = useState("");
+
+  const upload = useMutation({
+    mutationFn: () => {
+      const form = new FormData();
+      form.set("file", file!);
+      return mutate(`/platform/contracts/${contract.id}/signed`, z.unknown(), {
+        method: "POST",
+        body: form,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Гарын үсэгтэй гэрээ хадгалагдлаа.");
+      void queryClient.invalidateQueries({ queryKey: ["platform", "applications"] });
+      onClose();
+    },
+  });
+
+  function pick(next: File | null) {
+    setProblem("");
+    if (next && !SIGNED_TYPES.includes(next.type)) {
+      setProblem("Зөвхөн PDF, JPG, PNG файл оруулна.");
+      return setFile(null);
+    }
+    if (next && next.size > SIGNED_MAX_BYTES) {
+      setProblem("Файл 10 MB-аас ихгүй байна.");
+      return setFile(null);
+    }
+    setFile(next);
+  }
+
+  return (
+    <FormDialog
+      open
+      onOpenChange={(next) => !next && onClose()}
+      busy={upload.isPending}
+      title="Гарын үсэгтэй гэрээ оруулах"
+      description={`${application.kindergartenName} · Гэрээ №${contract.number}`}
+      footer={
+        <>
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            Болих
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={!file || !matches || upload.isPending}
+            onClick={() => upload.mutate()}
+          >
+            <Upload size={16} aria-hidden="true" />
+            {upload.isPending ? "Оруулж байна…" : "Оруулах"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <FormError
+          message={
+            problem ||
+            (upload.isError
+              ? isNotFound(upload.error)
+                ? "Гарын үсэгтэй гэрээ хадгалах боломж удахгүй нээгдэнэ."
+                : errorMessage(upload.error)
+              : null)
+          }
+        />
+        <Field label="Скан хийсэн гэрээ" hint="PDF, JPG эсвэл PNG · 10 MB хүртэл" required>
+          {({ id, describedBy }) => (
+            <Input
+              id={id}
+              aria-describedby={describedBy}
+              type="file"
+              accept="application/pdf,image/jpeg,image/png"
+              onChange={(event) => pick(event.target.files?.[0] ?? null)}
+            />
+          )}
+        </Field>
+        <label className="flex items-start gap-2 text-body text-ink">
+          <input
+            type="checkbox"
+            checked={matches}
+            onChange={(event) => setMatches(event.target.checked)}
+            className="mt-1 size-4"
+          />
+          <span>
+            Файл дээрх гэрээний дугаар <strong>№{contract.number}</strong> мөн, гарын үсэг,
+            тамгатай.
+          </span>
+        </label>
+      </div>
+    </FormDialog>
+  );
 }
 
 const PERIOD_LABEL: Record<BillingPeriod, string> = { term: "Улирлаар", year: "Жилээр" };
