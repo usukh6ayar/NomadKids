@@ -1,6 +1,6 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, stubApi } from "./support/render";
 import { AgreementButton, AgreementGate } from "@/components/agreements/agreement-gate";
 import { AGREEMENTS } from "@/lib/agreements";
@@ -18,14 +18,15 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-describe("the agreement window", () => {
-  beforeEach(() => {
-    // A text taller than its box, so it has to be scrolled to the end.
-    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(1000);
-    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(200);
-  });
+const tick = (dialog: HTMLElement) => within(dialog).getByRole("checkbox");
 
-  it("asks a teacher to read to the end, then welcomes them", async () => {
+/*
+ * ★ Ticked, then accepted — 2026-10-14, the user, after the agreement's own
+ * §2.1: «Гэрээг уншиж, зөвшөөрч байна» is ticked and «ЗӨВШӨӨРӨХ» pressed.
+ * Shown once per version; «Татгалзах» opens nothing (§2.4).
+ */
+describe("the agreement window", () => {
+  it("asks a teacher to tick the consent, then welcomes them", async () => {
     const user = userEvent.setup();
     stubApi([{ path: "/auth/me", body: sessionFor(["TEACHER"], USER_ID) }]);
     renderWithProviders(<AgreementGate />);
@@ -33,10 +34,7 @@ describe("the agreement window", () => {
     const dialog = await screen.findByRole("dialog", { name: "Багш хэрэглэгчийн гэрээ" });
     const accept = within(dialog).getByRole("button", { name: "Зөвшөөрөх" });
     expect(accept).toBeDisabled();
-
-    const text = within(dialog).getByLabelText("Гэрээний эх бичвэр");
-    text.scrollTop = 800;
-    fireEvent.scroll(text);
+    await user.click(tick(dialog));
     expect(accept).toBeEnabled();
     await user.click(accept);
 
@@ -59,15 +57,40 @@ describe("the agreement window", () => {
     renderWithProviders(<AgreementGate />);
 
     const dialog = await screen.findByRole("dialog", { name: "Эцэг эх хэрэглэгчийн гэрээ" });
-    const text = within(dialog).getByLabelText("Гэрээний эх бичвэр");
-    text.scrollTop = 800;
-    fireEvent.scroll(text);
+    await user.click(tick(dialog));
     await user.click(within(dialog).getByRole("button", { name: "Зөвшөөрөх" }));
 
     await waitFor(() =>
       expect(
         api.calls.find((call) => call.method === "POST" && call.url === "/me/agreements")?.body,
       ).toEqual({ kind: "PARENT", version: AGREEMENTS.PARENT.version }),
+    );
+  });
+
+  it("opens nothing on «Татгалзах», and goes back to the agreement or signs out", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"], USER_ID) },
+      { path: "/auth/logout", method: "POST", status: 204 },
+    ]);
+    renderWithProviders(<AgreementGate />);
+
+    const dialog = await screen.findByRole("dialog", { name: "Багш хэрэглэгчийн гэрээ" });
+    await user.click(within(dialog).getByRole("button", { name: "Татгалзах" }));
+    const refused = await screen.findByRole("dialog", { name: "Гэрээг зөвшөөрөөгүй" });
+    expect(refused).toHaveTextContent("үйлчилгээ нээгдэхгүй");
+
+    await user.click(within(refused).getByRole("button", { name: "Гэрээ рүү буцах" }));
+    expect(
+      await screen.findByRole("dialog", { name: "Багш хэрэглэгчийн гэрээ" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Татгалзах" }));
+    await user.click(await screen.findByRole("button", { name: "Системээс гарах" }));
+    await waitFor(() =>
+      expect(api.calls.some((call) => call.method === "POST" && call.url === "/auth/logout")).toBe(
+        true,
+      ),
     );
   });
 
@@ -96,37 +119,67 @@ describe("the agreement window", () => {
 });
 
 /*
- * ★ The defect the user found on 2026-10-12: a text short enough to need no
- * scrolling left «Зөвшөөрөх» disabled for ever.
+ * ★ The solo teacher's own agreement, version 2.0 — 2026-10-14, the user: the
+ * lawyer-reviewed text, «Гол зүйлс» on top, the sections folded, a PDF.
  */
-describe("a short agreement", () => {
-  it("can be accepted without scrolling", async () => {
-    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(150);
-    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(400);
-    stubApi([{ path: "/auth/me", body: sessionFor(["TEACHER"], USER_ID) }]);
-    renderWithProviders(<AgreementGate />);
-
-    const dialog = await screen.findByRole("dialog", { name: "Багш хэрэглэгчийн гэрээ" });
-    expect(within(dialog).getByRole("button", { name: "Зөвшөөрөх" })).toBeEnabled();
-  });
-});
-
-describe("a solo teacher (#202)", () => {
-  it("signs the teacher's agreement although they hold ADMIN in their own workspace", async () => {
-    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(150);
-    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(400);
+describe("a solo teacher", () => {
+  const soloSession = () => {
     const session = sessionFor(["ADMIN", "TEACHER"], USER_ID);
-    const solo = {
+    return {
       ...session,
       soloKindergartenIds: session.memberships.map(
         (m: { kindergartenId: string }) => m.kindergartenId,
       ),
     };
-    stubApi([{ path: "/auth/me", body: solo }]);
+  };
+
+  it("signs the solo teacher's agreement, version 2.0, and records that version", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/auth/me", body: soloSession() },
+      { path: "/me/agreements", method: "GET", body: { accepted: [] } },
+      { path: "/me/agreements", method: "POST", status: 201, body: {} },
+    ]);
+    renderWithProviders(<AgreementGate />);
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Багшийн цахим үйлчилгээ ашиглах гэрээ",
+    });
+    expect(dialog).toHaveTextContent("Хувилбар 2.0 · 10 бүлэг");
+    const summary = within(dialog).getByRole("region", { name: "Гол зүйлс" });
+    expect(summary).toHaveTextContent("Нэг бүртгэлд нэгэн зэрэг 2 хүртэл төхөөрөмж");
+    expect(summary).toHaveTextContent("30 хоног идэвхгүй, төлбөр нь хүчинтэй хүүхэдгүй");
+    // §4 follows the rule the system keeps, not «no child invited in 30 days».
+    expect(dialog).toHaveTextContent("4.3. Төлбөр нь хүчинтэй хүүхэдтэй багшийн бүртгэлийг");
+    expect(
+      within(dialog).getByRole("button", { name: "Гэрээг хэвлэх, PDF болгох" }),
+    ).toBeInTheDocument();
+
+    await user.click(tick(dialog));
+    await user.click(within(dialog).getByRole("button", { name: "Зөвшөөрөх" }));
+    await waitFor(() =>
+      expect(
+        api.calls.find((call) => call.method === "POST" && call.url === "/me/agreements")?.body,
+      ).toEqual({ kind: "TEACHER", version: "solo-2.0" }),
+    );
+  });
+
+  it("asks again when they had only accepted the trial text", async () => {
+    stubApi([
+      { path: "/auth/me", body: soloSession() },
+      {
+        path: "/me/agreements",
+        body: {
+          accepted: [
+            { kind: "TEACHER", version: AGREEMENTS.TEACHER.version, acceptedAt: "2026-10-12" },
+          ],
+        },
+      },
+    ]);
     renderWithProviders(<AgreementGate />);
 
     expect(
-      await screen.findByRole("dialog", { name: "Багш хэрэглэгчийн гэрээ" }),
+      await screen.findByRole("dialog", { name: "Багшийн цахим үйлчилгээ ашиглах гэрээ" }),
     ).toBeInTheDocument();
   });
 });

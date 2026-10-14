@@ -1,18 +1,18 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, FileText, X } from "lucide-react";
-import { useCallback, useEffect, useState, type UIEvent } from "react";
+import { Check, CheckCircle2, ChevronDown, FileText, Printer, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { ModalOverlay } from "@/components/ui/modal-overlay";
 import { get, mutate } from "@/lib/api/browser";
 import { isNotFound } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
-import { useSession } from "@/lib/auth/session";
+import { useLogout, useSession } from "@/lib/auth/session";
 import {
-  AGREEMENTS,
   acceptedAgreementsSchema,
+  agreementFor,
   agreementKindsFor,
   type AcceptedAgreement,
   type Agreement,
@@ -69,14 +69,16 @@ export function useAgreements() {
   const accepted = offline ? local : (server.data?.accepted ?? []);
   const pending = kinds.filter(
     (kind) =>
-      !accepted.some((row) => row.kind === kind && row.version === AGREEMENTS[kind].version),
+      !accepted.some(
+        (row) => row.kind === kind && row.version === agreementFor(kind, session).version,
+      ),
   );
 
   const acceptOnServer = useMutation({
     mutationFn: (kind: AgreementKind) =>
       mutate("/me/agreements", z.unknown(), {
         method: "POST",
-        body: { kind, version: AGREEMENTS[kind].version },
+        body: { kind, version: agreementFor(kind, session).version },
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.agreements() }),
   });
@@ -87,12 +89,16 @@ export function useAgreements() {
       if (!userId) return;
       const next = [
         ...local.filter((row) => row.kind !== kind),
-        { kind, version: AGREEMENTS[kind].version, acceptedAt: new Date().toISOString() },
+        {
+          kind,
+          version: agreementFor(kind, session).version,
+          acceptedAt: new Date().toISOString(),
+        },
       ];
       writeLocal(userId, next);
       setLocal(next);
     },
-    [offline, acceptOnServer, userId, local],
+    [offline, acceptOnServer, userId, local, session],
   );
 
   return {
@@ -111,25 +117,159 @@ export function useAgreements() {
  * A centred title with its version, numbered sections, justified text.
  */
 function AgreementText({ agreement }: { agreement: Agreement }) {
+  const minutes = Math.max(
+    1,
+    Math.round(agreement.sections.reduce((n, sec) => n + sec.body.length, 0) / 1500),
+  );
   return (
-    <div className="text-caption leading-5 text-slate-700">
-      <header className="mb-4 text-center">
-        <p className="text-caption tracking-[0.14em] text-slate-400">NOMADKIDS</p>
-        <h2 className="mt-1 text-compact font-bold uppercase tracking-wide text-ink">
-          {agreement.title}
-        </h2>
-        <p className="mt-0.5 text-caption text-slate-400">Хувилбар: {agreement.version}</p>
+    <div className="flex flex-col gap-4 text-left">
+      <header className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lead font-bold leading-tight text-ink">{agreement.title}</h2>
+          {agreement.subtitle ? (
+            <p className="mt-1 text-caption text-muted">{agreement.subtitle}</p>
+          ) : null}
+          <p className="mt-1 text-caption text-faint">
+            Хувилбар {agreement.version.replace(/^solo-/, "")} · {agreement.sections.length} бүлэг ·
+            ~{minutes} мин уншина
+          </p>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          onClick={() => printAgreement(agreement)}
+          aria-label="Гэрээг хэвлэх, PDF болгох"
+        >
+          <Printer size={16} aria-hidden="true" />
+          PDF
+        </Button>
       </header>
-      <div className="flex flex-col gap-3">
+
+      {agreement.summary ? (
+        <section aria-label="Гол зүйлс" className="rounded-row bg-canvas p-3">
+          <p className="mb-2 text-caption font-semibold text-ink">Гол зүйлс</p>
+          <ul className="flex flex-col gap-1.5 text-caption leading-5 text-ink">
+            {agreement.summary.map((line) => (
+              <li key={line} className="flex gap-2">
+                <Check size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-mint-ink" />
+                {line}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-caption text-faint">
+            Энэ бол товч тойм. Гэрээний бүрэн эх доор байна.
+          </p>
+        </section>
+      ) : null}
+
+      <div className="divide-y divide-border-soft rounded-row border border-border-soft">
+        {agreement.parties?.length ? (
+          <details className="group px-3 py-2">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-compact font-semibold text-ink">
+              Талууд
+              <ChevronDown
+                size={16}
+                aria-hidden="true"
+                className="text-muted group-open:rotate-180"
+              />
+            </summary>
+            <dl className="mt-2 flex flex-col gap-1.5 text-caption leading-5">
+              {agreement.parties.map((party) => (
+                <div key={party.label}>
+                  <dt className="font-semibold text-ink">{party.label}</dt>
+                  <dd className="text-slate-700">{party.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </details>
+        ) : null}
         {agreement.sections.map((section) => (
-          <section key={section.heading}>
-            <h3 className="font-semibold text-ink">{section.heading}</h3>
-            <p className="mt-0.5 text-justify">{section.body}</p>
-          </section>
+          <details key={section.heading} className="group px-3 py-2">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-compact font-semibold text-ink">
+              {section.heading}
+              <ChevronDown
+                size={16}
+                aria-hidden="true"
+                className="text-muted group-open:rotate-180"
+              />
+            </summary>
+            <div className="mt-2 flex flex-col gap-1.5 text-caption leading-5 text-slate-700">
+              {section.body.split("\n").map((line) => (
+                <p key={line} className="text-justify">
+                  {line}
+                </p>
+              ))}
+            </div>
+          </details>
         ))}
       </div>
     </div>
   );
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+/**
+ * «PDF» — the full text on paper, through the browser's print (save as PDF):
+ * the agreement can be read and kept before it is accepted (§2.1).
+ */
+function printAgreement(agreement: Agreement) {
+  const html = `<!doctype html><html lang="mn"><head><meta charset="utf-8"><title>${escapeHtml(
+    agreement.title,
+  )}</title><style>
+@page { size: A4; margin: 18mm 16mm; }
+body { font-family: "Noto Serif", "Times New Roman", serif; color: #0f172a; font-size: 10.5pt; line-height: 1.5; }
+h1 { text-align: center; font-size: 15pt; margin: 0 0 2mm; text-transform: uppercase; }
+.sub { text-align: center; color: #475569; font-style: italic; margin: 0 0 1mm; }
+.ver { text-align: center; color: #64748b; font-size: 9pt; margin: 0 0 5mm; }
+table { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
+th, td { border: 1px solid #cbd5e1; padding: 2mm 3mm; text-align: left; vertical-align: top; font-size: 9.5pt; }
+th { width: 30%; background: #f8fafc; }
+h2 { font-size: 11pt; margin: 5mm 0 1.5mm; }
+p { margin: 0 0 1.5mm; text-align: justify; }
+</style></head><body>
+<h1>${escapeHtml(agreement.title)}</h1>
+${agreement.subtitle ? `<p class="sub">${escapeHtml(agreement.subtitle)}</p>` : ""}
+<p class="ver">Гэрээний хувилбар: ${escapeHtml(agreement.version.replace(/^solo-/, ""))}</p>
+${
+  agreement.parties?.length
+    ? `<table>${agreement.parties
+        .map(
+          (party) =>
+            `<tr><th>${escapeHtml(party.label)}</th><td>${escapeHtml(party.value)}</td></tr>`,
+        )
+        .join("")}</table>`
+    : ""
+}
+${agreement.sections
+  .map(
+    (section) =>
+      `<h2>${escapeHtml(section.heading)}</h2>${section.body
+        .split("\n")
+        .map((line) => `<p>${escapeHtml(line)}</p>`)
+        .join("")}`,
+  )
+  .join("")}
+</body></html>`;
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.position = "fixed";
+  frame.style.width = "0";
+  frame.style.height = "0";
+  frame.style.border = "0";
+  frame.srcdoc = html;
+  frame.onload = () => {
+    frame.contentWindow?.print();
+    setTimeout(() => frame.remove(), 1000);
+  };
+  document.body.appendChild(frame);
 }
 
 /**
@@ -139,64 +279,82 @@ function AgreementText({ agreement }: { agreement: Agreement }) {
  * the agreement is accepted.
  */
 export function AgreementGate() {
+  const { session } = useSession();
+  const logout = useLogout();
   const { pending, ready, accept, accepting } = useAgreements();
   const [welcomed, setWelcomed] = useState<"no" | "showing" | "done">("no");
-  /** Which agreement has been read to its end — per agreement, not once. */
-  const [readKind, setReadKind] = useState<AgreementKind | null>(null);
-  const current = pending[0] ? AGREEMENTS[pending[0]] : null;
-  const readToEnd = current !== null && readKind === current.kind;
-
-  /*
-    ★ Measured when the box appears, not in an effect. The effect ran while the
-    window was still hidden (the gate waits for the server first), found no box,
-    and never ran again — so a text short enough to need no scrolling left
-    «Зөвшөөрөх» disabled for ever (2026-10-12).
-  */
-  const measure = useCallback(
-    (box: HTMLDivElement | null) => {
-      if (box && current && box.scrollHeight <= box.clientHeight + 8) setReadKind(current.kind);
-    },
-    [current],
-  );
-
-  function onScroll(event: UIEvent<HTMLDivElement>) {
-    const box = event.currentTarget;
-    if (current && box.scrollTop + box.clientHeight >= box.scrollHeight - 8) {
-      setReadKind(current.kind);
-    }
-  }
+  /** The agreement whose «уншиж, зөвшөөрч байна» is ticked — per agreement. */
+  const [ticked, setTicked] = useState<AgreementKind | null>(null);
+  /** «Татгалзах» pressed: nothing opens without it (§2.4). */
+  const [declined, setDeclined] = useState(false);
+  const current = pending[0] ? agreementFor(pending[0], session) : null;
 
   if (!ready) return null;
 
+  if (current && declined) {
+    return (
+      <ModalOverlay label="Гэрээг зөвшөөрөөгүй" onClose={() => {}} dismissable={false}>
+        <div className="flex w-full max-w-[400px] flex-col gap-3 rounded-card bg-white p-6 text-center shadow-xl">
+          <h2 className="text-lead font-bold text-ink">Гэрээг зөвшөөрөөгүй</h2>
+          <p className="text-body text-slate-600">
+            Гэрээг зөвшөөрөөгүй тул үйлчилгээ нээгдэхгүй. Дахин уншиж зөвшөөрөх эсвэл системээс гарч
+            болно.
+          </p>
+          <div className="mt-1 flex flex-col gap-2">
+            <Button onClick={() => setDeclined(false)}>Гэрээ рүү буцах</Button>
+            <Button variant="ghost" onClick={() => void logout()}>
+              Системээс гарах
+            </Button>
+          </div>
+        </div>
+      </ModalOverlay>
+    );
+  }
+
   if (current) {
+    const isTicked = ticked === current.kind;
     return (
       <ModalOverlay label={current.title} onClose={() => {}} dismissable={false}>
-        <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-[520px] flex-col gap-3 rounded-card bg-white p-5 shadow-xl">
+        <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-[600px] flex-col rounded-card bg-white shadow-xl">
           <div
             key={current.kind}
-            ref={measure}
-            onScroll={onScroll}
             tabIndex={0}
             aria-label="Гэрээний эх бичвэр"
-            className="min-h-0 flex-1 overflow-y-auto border-b border-border-soft px-1 pb-4"
+            className="min-h-0 flex-1 overflow-y-auto p-5"
           >
             <AgreementText agreement={current} />
           </div>
-          <p className="text-center text-caption text-muted">
-            {readToEnd
-              ? "Гэрээг уншиж танилцсан бол «Зөвшөөрөх» дарна уу."
-              : "Гэрээг бүтэн уншина уу. Доош гүйлгэхэд «Зөвшөөрөх» идэвхжинэ."}
-          </p>
-          <Button
-            block
-            disabled={!readToEnd || accepting}
-            onClick={() => {
-              accept(current.kind);
-              if (pending.length === 1) setWelcomed("showing");
-            }}
-          >
-            {accepting ? "Хадгалж байна…" : "Зөвшөөрөх"}
-          </Button>
+          <div className="flex flex-col gap-3 border-t border-border-soft p-4">
+            <label className="flex items-start gap-2 text-compact text-ink">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4"
+                checked={isTicked}
+                onChange={(event) => setTicked(event.target.checked ? current.kind : null)}
+              />
+              {current.consent ?? "Гэрээг уншиж, нөхцөлийг зөвшөөрч байна."}
+            </label>
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                className="flex-1"
+                disabled={accepting}
+                onClick={() => setDeclined(true)}
+              >
+                Татгалзах
+              </Button>
+              <Button
+                className="flex-[2]"
+                disabled={!isTicked || accepting}
+                onClick={() => {
+                  accept(current.kind);
+                  if (pending.length === 1) setWelcomed("showing");
+                }}
+              >
+                {accepting ? "Хадгалж байна…" : "Зөвшөөрөх"}
+              </Button>
+            </div>
+          </div>
         </div>
       </ModalOverlay>
     );
@@ -208,7 +366,9 @@ export function AgreementGate() {
         <div className="flex w-full max-w-[380px] flex-col items-center gap-2 rounded-card bg-white p-6 text-center shadow-xl">
           <CheckCircle2 className="size-10 text-mint-ink" aria-hidden="true" />
           <h2 className="text-lead font-extrabold text-[#102f5d]">Системд тавтай морил</h2>
-          <p className="text-body text-slate-600">Гэрээг зөвшөөрлөө. Одоо ажиллаж эхэлнэ үү.</p>
+          <p className="text-body text-slate-600">
+            Гэрээг зөвшөөрлөө. «Хувийн тохиргоо» → «Гэрээ»-нээс хүссэн үедээ дахин харна.
+          </p>
           <Button className="mt-2" onClick={() => setWelcomed("done")}>
             Эхлэх
           </Button>
@@ -225,6 +385,7 @@ export function AgreementGate() {
  * again. Nothing for a role without one (a director signs by e-mail).
  */
 export function AgreementButton() {
+  const { session } = useSession();
   const { kinds, accepted } = useAgreements();
   const [open, setOpen] = useState(false);
   if (kinds.length === 0) return null;
@@ -247,7 +408,7 @@ export function AgreementButton() {
               <X className="size-5" aria-hidden="true" />
             </button>
             {kinds.map((kind) => {
-              const agreement = AGREEMENTS[kind];
+              const agreement = agreementFor(kind, session);
               const row = accepted.find(
                 (item) => item.kind === kind && item.version === agreement.version,
               );
