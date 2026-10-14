@@ -272,6 +272,8 @@ export class AuthRepository {
     selfRegistered: boolean;
     hasName: boolean;
     hasPhone: boolean;
+    /** Server-side only — never answered to the public describe call. */
+    phone: string | null;
   }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -288,6 +290,7 @@ export class AuthRepository {
       selfRegistered: Boolean(user?.selfRegisteredAt),
       hasName: Boolean(user?.firstName?.trim()),
       hasPhone: Boolean(user?.phone),
+      phone: user?.phone ?? null,
     };
   }
 

@@ -42,6 +42,9 @@ import {
  * The order is the common cases first: `guardianRelationSchema` lists five and
  * two of them cover almost every family.
  */
+/** `phoneProof`'s key for the number given at sign-up, which this page never sees. */
+const KNOWN_PHONE = "known";
+
 const RELATIONS = [
   { value: "MOTHER", label: "Ээж" },
   { value: "FATHER", label: "Аав" },
@@ -105,6 +108,7 @@ export default function AcceptInvitationPage() {
           knows: z
             .object({ name: z.boolean(), phone: z.boolean() })
             .default({ name: false, phone: false }),
+          phoneHint: z.string().optional(),
         }),
       ),
     retry: false,
@@ -113,12 +117,16 @@ export default function AcceptInvitationPage() {
   const isStaff = invitation.data?.kind === "staff";
   /*
     ★ Not asked twice — the user, 2026-10-14. A teacher who signed up alone
-    typed «Овог нэр» and a phone on the sign-up form a minute ago. The phone is
-    still asked when verify.mn is on: the proof is an SMS from that number, and
-    the sign-up form did not take one.
+    typed «Овог нэр» and a phone on the sign-up form a minute ago. Neither is
+    typed again. Where verify.mn is on, the number they gave is still proven —
+    one SMS from it — but named by its last digits, not retyped: the API sends
+    the code to the number it holds when none is given.
   */
   const askName = !invitation.data?.knows.name;
-  const askPhone = !invitation.data?.knows.phone || phoneEnabled;
+  const knownPhone = Boolean(invitation.data?.knows.phone);
+  const askPhone = !knownPhone;
+  /** What a proof is for: the typed number, or the one given at sign-up. */
+  const proofFor = knownPhone ? KNOWN_PHONE : phone.trim();
 
   const accept = useMutation({
     mutationFn: () =>
@@ -136,7 +144,7 @@ export default function AcceptInvitationPage() {
           // staff signs in now, as a guardian does. No e-mail.
           ...(isStaff ? (askName ? { lastName: lastName.trim() } : {}) : { relation }),
           ...(askPhone ? { phone: phone.trim() } : {}),
-          ...(phoneProof?.phone === phone.trim() ? { phoneVerification: phoneProof.handle } : {}),
+          ...(phoneProof?.phone === proofFor ? { phoneVerification: phoneProof.handle } : {}),
         },
       }),
     onSuccess: () => {
@@ -165,9 +173,9 @@ export default function AcceptInvitationPage() {
     }
     // The server refuses an unproven phone too; saying so here saves the
     // round trip and points at the step that is missing.
-    if (askPhone && phoneEnabled && phoneProof?.phone !== phone.trim()) {
+    if (phoneEnabled && phoneProof?.phone !== proofFor) {
       setLocalError(
-        MOBILE_PHONE.test(phone.trim())
+        knownPhone || MOBILE_PHONE.test(phone.trim())
           ? "Утасны дугаараа SMS-ээр баталгаажуулна уу."
           : "Утасны дугаараа 8 оронтойгоор оруулна уу.",
       );
@@ -309,6 +317,25 @@ export default function AcceptInvitationPage() {
             }
             onVerified={(handle) => setPhoneProof({ phone: phone.trim(), handle })}
           />
+        ) : null}
+
+        {knownPhone && phoneEnabled ? (
+          <div className="flex flex-col gap-2">
+            <p className="text-body text-slate-600">
+              Бүртгүүлсэн утасны дугаар: <strong>{invitation.data?.phoneHint}</strong>
+            </p>
+            <PhoneVerificationStep
+              key={KNOWN_PHONE}
+              phone=""
+              start={() =>
+                mutate("/auth/invitation/phone", phoneVerificationStartSchema, {
+                  method: "POST",
+                  body: { token: params.token },
+                })
+              }
+              onVerified={(handle) => setPhoneProof({ phone: KNOWN_PHONE, handle })}
+            />
+          </div>
         ) : null}
 
         {!isStaff ? (

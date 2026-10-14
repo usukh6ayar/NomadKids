@@ -21,13 +21,37 @@ beforeEach(() => {
   setSearchParams("");
 });
 
-function stub(knows: { name: boolean; phone: boolean }) {
+const HANDLE = "handle-from-the-server-0123456789";
+
+function stub(knows: { name: boolean; phone: boolean }, sms = false) {
   return stubApi([
-    { path: "/phone-verifications/availability", body: { enabled: false } },
+    { path: "/phone-verifications/availability", body: { enabled: sms } },
     { path: "/auth/invitation/accept", method: "POST", status: 204 },
     {
+      path: "/auth/invitation/phone",
+      method: "POST",
+      body: {
+        handle: HANDLE,
+        shortcode: "144773",
+        code: "482916",
+        smsUri: "sms:144773?body=482916",
+        displayInstruction: 'Та 144773 дугаарт "482916" гэж SMS илгээнэ үү.',
+        expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+      },
+    },
+    {
+      path: "/phone-verifications/check",
+      method: "POST",
+      body: { status: "VERIFIED", expiresAt: new Date(Date.now() + 5 * 60_000).toISOString() },
+    },
+    {
       path: "/auth/invitation/invitation-token-value",
-      body: { valid: true, kind: "staff", knows },
+      body: {
+        valid: true,
+        kind: "staff",
+        knows,
+        ...(knows.phone ? { phoneHint: "••••2233" } : {}),
+      },
     },
   ]);
 }
@@ -53,6 +77,33 @@ describe("accepting an invitation after signing up alone", () => {
       expect(calls.find((c) => c.url === "/auth/invitation/accept")?.body).toEqual({
         token: "invitation-token-value",
         password: STRONG,
+      }),
+    );
+  });
+
+  it("proves the number given at sign-up by SMS without its being retyped", async () => {
+    const user = userEvent.setup();
+    const { calls } = stub({ name: true, phone: true }, true);
+    renderWithProviders(<AcceptInvitationPage />);
+
+    expect(await screen.findByText("••••2233")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: /^Утасны дугаар/ })).not.toBeInTheDocument();
+
+    await user.click(await screen.findByRole("button", { name: "SMS-ээр баталгаажуулах" }));
+    expect(await screen.findByText("Утасны дугаар баталгаажлаа")).toBeInTheDocument();
+    expect(calls.find((c) => c.url === "/auth/invitation/phone")?.body).toEqual({
+      token: "invitation-token-value",
+    });
+
+    await user.type(screen.getByLabelText(/^Нууц үг \*/), STRONG);
+    await user.type(screen.getByLabelText(/давта[нх]/), STRONG);
+    await user.click(screen.getByRole("button", { name: "Бүртгэл идэвхжүүлэх" }));
+
+    await waitFor(() =>
+      expect(calls.find((c) => c.url === "/auth/invitation/accept")?.body).toEqual({
+        token: "invitation-token-value",
+        password: STRONG,
+        phoneVerification: HANDLE,
       }),
     );
   });

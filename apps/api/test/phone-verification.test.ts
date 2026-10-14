@@ -280,3 +280,66 @@ describe("accepting a guardian invitation", () => {
     expect(crossed.status).toBe(400);
   });
 });
+
+/*
+ * A teacher who signed up alone gave their phone on the sign-up form; the
+ * invitation proves that number without asking for it again (the user,
+ * 2026-10-14: «гараас 2 удаа адилхан мэдээлэл авах»).
+ */
+describe("accepting a solo teacher's invitation", () => {
+  const PHONE = "99116001";
+
+  async function signUp(): Promise<string> {
+    const res = await request(server())
+      .post("/v1/teacher-applications")
+      .send({ fullName: "Дорж Сараа", phone: PHONE, email: "saraa@example.mn" });
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    return res.body.invitationToken as string;
+  }
+
+  it("names the number by its last digits and proves it without its being retyped", async () => {
+    const token = await signUp();
+
+    const described = await request(server()).get(`/v1/auth/invitation/${token}`);
+    expect(described.body).toMatchObject({
+      knows: { name: true, phone: true },
+      phoneHint: "••••6001",
+    });
+    expect(JSON.stringify(described.body)).not.toContain(PHONE);
+
+    // Leaving the number out is not a way past the SMS.
+    const unproven = await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send({ token, password: NEW_PASSWORD });
+    expect(unproven.status).toBe(400);
+
+    const started = await request(server()).post("/v1/auth/invitation/phone").send({ token });
+    expect(started.status, JSON.stringify(started.body)).toBe(200);
+    deliver(PHONE);
+    await request(server())
+      .post("/v1/phone-verifications/check")
+      .send({ handle: started.body.handle })
+      .expect(200);
+
+    const accepted = await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send({ token, password: NEW_PASSWORD, phoneVerification: started.body.handle });
+    expect(accepted.status, JSON.stringify(accepted.body)).toBe(204);
+    await login(app, PHONE, NEW_PASSWORD);
+  });
+
+  it("still needs a number from an invitation that holds none", async () => {
+    const user = await createUser({ username: "no-phone-guardian" });
+    const token = "a-guardian-invitation-token-0123456789";
+    await db.authToken.create({
+      data: {
+        userId: user.id,
+        purpose: "INVITATION",
+        tokenHash: hashToken(token),
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    });
+    const res = await request(server()).post("/v1/auth/invitation/phone").send({ token });
+    expect(res.status).toBe(400);
+  });
+});

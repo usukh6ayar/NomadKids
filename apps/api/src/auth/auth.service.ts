@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -46,6 +47,8 @@ export interface InvitationDescription {
   kind: "staff" | "guardian";
   /** Facts the person already gave when they registered themselves — not asked again. */
   knows: { name: boolean; phone: boolean };
+  /** The known phone's last digits, masked («••••2233») — what the SMS step names. */
+  phoneHint?: string;
 }
 
 @Injectable()
@@ -452,13 +455,17 @@ export class AuthService {
    */
   async startInvitationPhoneVerification(
     token: string,
-    phone: string,
+    given: string | undefined,
     ctx: RequestContext,
   ): Promise<PhoneVerificationStart> {
     const row = await this.repo.findAuthToken(hashToken(token), "INVITATION");
     if (!row || row.usedAt || row.expiresAt.getTime() < Date.now()) {
       throw new UnauthorizedException("Урилга хүчингүй эсвэл хугацаа нь дууссан байна");
     }
+    // ★ No number sent: the one given at sign-up (2026-10-14) — not typed twice.
+    const phone =
+      given ?? this.knownPhone(await this.repo.findInvitedAccount(row.userId)) ?? undefined;
+    if (!phone) throw new BadRequestException("Утасны дугаараа оруулна уу");
     if (await this.repo.findOtherUserByContact(row.userId, { phone })) {
       throw new ConflictException("Энэ утасны дугаар өөр бүртгэлд ашиглагдсан байна");
     }
@@ -520,18 +527,23 @@ export class AuthService {
       signed up alone typed «Овог нэр» and a phone on the sign-up form, and
       this page asked for them again. Someone who registered themselves (a
       solo teacher, a member of staff matched on the ESIS roster) has given
-      their name; a solo teacher their phone as well. Two booleans, never the
-      values: the same thinness as the rest of this answer.
+      their name; a solo teacher their phone as well. Booleans, and the
+      phone's last four digits so the SMS step can say which number — never
+      a name or a whole number.
     */
     const account = await this.repo.findInvitedAccount(row.userId);
+    const knownPhone = this.knownPhone(account);
     return {
       valid: true,
       kind: account.kind,
-      knows: {
-        name: account.selfRegistered && account.hasName,
-        phone: account.selfRegistered && account.hasPhone,
-      },
+      knows: { name: account.selfRegistered && account.hasName, phone: knownPhone !== null },
+      ...(knownPhone ? { phoneHint: `••••${knownPhone.slice(-4)}` } : {}),
     };
+  }
+
+  /** The phone a person gave when they registered themselves, or `null`. */
+  private knownPhone(account: { selfRegistered: boolean; phone: string | null }): string | null {
+    return account.selfRegistered && account.phone ? account.phone : null;
   }
 
   async acceptInvitation(
@@ -586,11 +598,20 @@ export class AuthService {
      * alike, since the phone is how both sign in. Only when verify.mn is
      * configured; otherwise the phone is taken on the person's word.
      */
-    if (profile.phone && this.phones.enabled) {
+    /*
+      ★ A number given at sign-up and not sent again is proven all the same
+      (2026-10-14): leaving the field out must not be a way past the SMS.
+    */
+    const provenPhone =
+      profile.phone ??
+      (this.phones.enabled
+        ? (this.knownPhone(await this.repo.findInvitedAccount(row.userId)) ?? undefined)
+        : undefined);
+    if (provenPhone && this.phones.enabled) {
       await this.phones.consume(phoneVerification, {
         purpose: "INVITATION",
         userId: row.userId,
-        phone: profile.phone,
+        phone: provenPhone,
       });
     }
 

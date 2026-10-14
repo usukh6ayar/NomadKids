@@ -110,6 +110,7 @@ describe("signing up", () => {
       valid: true,
       kind: "staff",
       knows: { name: true, phone: true },
+      phoneHint: "••••2233",
     });
 
     // A director's invitation still asks.
