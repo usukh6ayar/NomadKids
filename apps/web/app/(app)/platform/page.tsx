@@ -82,6 +82,12 @@ const rowSchema = platformKindergartenSchema.extend({
   paymentStatus: z.enum(["paid", "due", "overdue", "suspended"]).nullish(),
   paidPeriods: z.number().int().nullish(),
   totalPeriods: z.number().int().nullish(),
+  /*
+   * ★ How the contract is paid, and the day it was made (approved) — not the
+   * day it starts, which is «Эхэлсэн» (2026-10-14, the user). «—» until sent.
+   */
+  billingPeriod: z.enum(["term", "year"]).nullish(),
+  contractSignedAt: z.string().nullish(),
   /** Linked to ESIS; read from `esisInstitutionId` until the API says so itself. */
   esisConnected: z.boolean().nullish(),
   /*
@@ -127,6 +133,8 @@ function Platform() {
   const [ownership, setOwnership] = useState("");
   const [area, setArea] = useState("");
   const [payment, setPayment] = useState("");
+  const [signedWithin, setSignedWithin] = useState("");
+  const [ending, setEnding] = useState("");
   const [deleting, setDeleting] = useState<Row | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "name", dir: 1 });
 
@@ -156,7 +164,9 @@ function Platform() {
         (!kind || esisConnected(kg) === (kind === "esis")) &&
         (!ownership || kg.propertyType === ownership) &&
         (!area || areaOf(kg) === area) &&
-        (!payment || kg.paymentStatus === payment),
+        (!payment || kg.paymentStatus === payment) &&
+        (!signedWithin || signedWithinRange(kg.contractSignedAt, signedWithin)) &&
+        (!ending || endingWithin(kg.contractEndsOn, ending)),
     )
     .sort((a, b) => compareRows(a, b, sort.key, sort.dir));
   const filtered = Boolean(query.trim() || status || ownership || area || kind);
@@ -177,6 +187,16 @@ function Platform() {
       label: labelOf(PAYMENT_OPTIONS, payment),
       clear: () => setPayment(""),
     },
+    signedWithin && {
+      key: "signed",
+      label: `Гэрээ: ${labelOf(SIGNED_OPTIONS, signedWithin).toLocaleLowerCase("mn")}`,
+      clear: () => setSignedWithin(""),
+    },
+    ending && {
+      key: "ending",
+      label: `Дуусах: ${labelOf(ENDING_OPTIONS, ending).toLocaleLowerCase("mn")}`,
+      clear: () => setEnding(""),
+    },
     status && {
       key: "status",
       label: labelOf(STATUS_OPTIONS, status),
@@ -189,6 +209,8 @@ function Platform() {
     setOwnership("");
     setArea("");
     setPayment("");
+    setSignedWithin("");
+    setEnding("");
     setStatus("");
   };
   const sortBy = (key: SortKey) =>
@@ -305,6 +327,20 @@ function Platform() {
             ]}
           />
           <FilterSelect
+            label="Гэрээ байгуулсан"
+            ariaLabel="Гэрээ байгуулсан хугацаагаар шүүх"
+            value={signedWithin}
+            onChange={setSignedWithin}
+            options={SIGNED_OPTIONS}
+          />
+          <FilterSelect
+            label="Дуусах"
+            ariaLabel="Дуусах хугацаагаар шүүх"
+            value={ending}
+            onChange={setEnding}
+            options={ENDING_OPTIONS}
+          />
+          <FilterSelect
             label="Төлбөр"
             ariaLabel="Төлбөрөөр шүүх"
             value={payment}
@@ -340,7 +376,7 @@ function Platform() {
         {rows.length > 0 ? (
           <div className="overflow-x-auto rounded-control border border-border bg-white">
             <table
-              className={`w-full ${showEsis ? "min-w-[1660px]" : "min-w-[1340px]"} border-separate border-spacing-0 text-left text-caption`}
+              className={`w-full ${showEsis ? "min-w-[1860px]" : "min-w-[1540px]"} border-separate border-spacing-0 text-left text-caption`}
             >
               <thead className="bg-slate-50 text-muted">
                 <tr className="[&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-r [&>th]:border-border [&>th]:px-3 [&>th]:py-2 [&>th]:font-semibold [&>th:last-child]:border-r-0">
@@ -391,8 +427,15 @@ function Platform() {
                   />
                   <th scope="col">Утас</th>
                   <th scope="col">И-мэйл</th>
+                  <SortHeader
+                    label="Гэрээ байгуулсан"
+                    column="signed"
+                    sort={sort}
+                    onSort={sortBy}
+                  />
                   <SortHeader label="Эхэлсэн" column="start" sort={sort} onSort={sortBy} />
                   <SortHeader label="Дуусах" column="contract" sort={sort} onSort={sortBy} />
+                  <th scope="col">Хугацаа</th>
                   <th scope="col">Төлбөр</th>
                   <th scope="col">Төлөв</th>
                   <th scope="col" className="w-10">
@@ -511,6 +554,9 @@ function KindergartenRow({
       <td className={`${cell} text-right tabular-nums`}>{kg.staffCount ?? "—"}</td>
       <td className={`${cell} whitespace-nowrap tabular-nums`}>{kg.phone || "—"}</td>
       <td className={`${cell} max-w-[200px] truncate`}>{kg.email || "—"}</td>
+      <td className={`${cell} whitespace-nowrap tabular-nums`}>
+        {kg.contractSignedAt ? formatDate(kg.contractSignedAt) : "—"}
+      </td>
       <td className={`${cell} whitespace-nowrap tabular-nums`}>{formatDate(startedOn(kg))}</td>
       <td className={`${cell} whitespace-nowrap tabular-nums`}>
         {kg.contractEndsOn ? (
@@ -520,6 +566,9 @@ function KindergartenRow({
         ) : (
           "—"
         )}
+      </td>
+      <td className={`${cell} whitespace-nowrap`}>
+        {kg.billingPeriod ? BILLING_LABEL[kg.billingPeriod] : "—"}
       </td>
       <td className={`${cell} whitespace-nowrap`}>
         <PaymentCell kg={kg} />
@@ -550,7 +599,7 @@ function KindergartenRow({
   );
 }
 
-type SortKey = "name" | "area" | "groups" | "children" | "staff" | "start" | "contract";
+type SortKey = "name" | "area" | "groups" | "children" | "staff" | "signed" | "start" | "contract";
 
 /** Missing values sort last whichever way the column runs. */
 function compareRows(a: Row, b: Row, key: SortKey, dir: 1 | -1): number {
@@ -565,9 +614,11 @@ function compareRows(a: Row, b: Row, key: SortKey, dir: 1 | -1): number {
             ? (row.childCount ?? null)
             : key === "staff"
               ? (row.staffCount ?? null)
-              : key === "start"
-                ? startedOn(row)
-                : (row.contractEndsOn ?? null);
+              : key === "signed"
+                ? (row.contractSignedAt ?? null)
+                : key === "start"
+                  ? startedOn(row)
+                  : (row.contractEndsOn ?? null);
   const x = value(a);
   const y = value(b);
   if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
@@ -597,8 +648,10 @@ function downloadSheet(rows: Row[], showEsis: boolean) {
     "Ажилтан",
     "Утас",
     "И-мэйл",
+    "Гэрээ байгуулсан",
     "Эхэлсэн",
     "Дуусах",
+    "Хугацаа",
     "Төлбөр",
     "Төлөв",
   ];
@@ -618,8 +671,10 @@ function downloadSheet(rows: Row[], showEsis: boolean) {
     kg.staffCount ?? "",
     kg.phone ?? "",
     kg.email ?? "",
+    kg.contractSignedAt ? formatDate(kg.contractSignedAt) : "",
     formatDate(startedOn(kg)),
     kg.contractEndsOn ? formatDate(kg.contractEndsOn) : "",
+    kg.billingPeriod ? BILLING_LABEL[kg.billingPeriod] : "",
     paymentText(kg),
     kg.isActive ? "Идэвхтэй" : "Идэвхгүй",
   ]);
@@ -985,7 +1040,7 @@ function KindergartenTotals({
       <td className={`${cell} text-right tabular-nums`}>{figure(groups)}</td>
       <td className={`${cell} text-right tabular-nums`}>{figure(children)}</td>
       <td className={`${cell} text-right tabular-nums`}>{figure(staff)}</td>
-      <td className={cell} colSpan={7} />
+      <td className={cell} colSpan={9} />
     </tr>
   );
 }
@@ -1035,4 +1090,42 @@ function PaymentCell({ kg }: { kg: Row }) {
       {paymentText(kg)}
     </span>
   );
+}
+
+const BILLING_LABEL = { term: "Улирлаар", year: "Жилээр" } as const;
+
+/** Contracts made lately — 2026-10-14, the user: 7 or 14 days, 3 months, a year. */
+const SIGNED_OPTIONS = [
+  { value: "", label: "Бүгд" },
+  { value: "7d", label: "Сүүлийн 7 хоног" },
+  { value: "14d", label: "Сүүлийн 14 хоног" },
+  { value: "3m", label: "Сүүлийн 3 сар" },
+  { value: "1y", label: "Сүүлийн 1 жил" },
+] as const;
+
+/** Contracts to renew: ending within 14 or 30 days, or already ended. */
+const ENDING_OPTIONS = [
+  { value: "", label: "Бүгд" },
+  { value: "14", label: "14 хоногт" },
+  { value: "30", label: "30 хоногт" },
+  { value: "ended", label: "Дууссан" },
+] as const;
+
+/** Whether a contract was made within the chosen span, counted back from today. */
+function signedWithinRange(signedAt: string | null | undefined, span: string): boolean {
+  if (!signedAt) return false;
+  const since = new Date();
+  since.setHours(0, 0, 0, 0);
+  if (span === "7d") since.setDate(since.getDate() - 7);
+  else if (span === "14d") since.setDate(since.getDate() - 14);
+  else if (span === "3m") since.setMonth(since.getMonth() - 3);
+  else since.setFullYear(since.getFullYear() - 1);
+  const days = daysUntil(signedAt);
+  return days <= 0 && days >= daysUntil(since.toLocaleDateString("sv-SE"));
+}
+
+function endingWithin(endsOn: string | null | undefined, choice: string): boolean {
+  if (!endsOn) return false;
+  const days = daysUntil(endsOn);
+  return choice === "ended" ? days < 0 : days >= 0 && days <= Number(choice);
 }

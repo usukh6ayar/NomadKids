@@ -402,4 +402,76 @@ describe("the operator's kindergartens table", () => {
     await user.click(screen.getByRole("option", { name: "Хоцорсон" }));
     expect(table.querySelectorAll("tbody tr")).toHaveLength(1);
   });
+
+  /*
+   * ★ How each contract is paid and when it was made — 2026-10-14, the user:
+   * «Гэрээ байгуулсан» (7/14 days, 3 months, a year) and «Дуусах» filters.
+   */
+  it("shows how a contract is paid and filters by when it was made or ends", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 14)); // 2026-10-14
+    try {
+      const user = userEvent.setup();
+      stubApi([
+        { path: "/auth/me", body: operator() },
+        {
+          path: "/platform/kindergartens",
+          body: {
+            items: [
+              {
+                ...ROWS[0],
+                billingPeriod: "term",
+                contractSignedAt: "2026-10-10T08:00:00.000Z",
+                contractEndsOn: "2026-10-25",
+              },
+              {
+                ...ROWS[1],
+                billingPeriod: "year",
+                contractSignedAt: "2026-05-02T08:00:00.000Z",
+                contractEndsOn: "2027-05-31",
+              },
+            ],
+            page: 1,
+            pageSize: 50,
+            total: 2,
+            totalPages: 1,
+          },
+        },
+      ]);
+      renderWithProviders(<PlatformPage />);
+      const table = await screen.findByRole("table");
+      const headers = [...table.querySelectorAll("thead tr:first-child th")].map(
+        (th) => th.textContent ?? "",
+      );
+      const at = (label: string) => headers.findIndex((text) => text.startsWith(label));
+      const cell = (name: string, label: string) =>
+        within(table).getByText(name).closest("tr")!.querySelectorAll("td")[at(label)]!;
+      const names = () =>
+        [...table.querySelectorAll("tbody tr")].map(
+          (tr) => tr.querySelectorAll("td")[1]!.textContent,
+        );
+
+      expect(cell("Нарлаг цэцэрлэг", "Хугацаа")).toHaveTextContent("Улирлаар");
+      expect(cell("Хүслэн", "Хугацаа")).toHaveTextContent("Жилээр");
+      expect(cell("Нарлаг цэцэрлэг", "Гэрээ байгуулсан")).toHaveTextContent("2026.10.10");
+
+      const pick = async (label: string, option: string) => {
+        await user.click(screen.getByLabelText(label));
+        await user.click(screen.getByRole("option", { name: option }));
+      };
+      await pick("Гэрээ байгуулсан хугацаагаар шүүх", "Сүүлийн 7 хоног");
+      expect(names()).toEqual(["Нарлаг цэцэрлэг"]);
+      await pick("Гэрээ байгуулсан хугацаагаар шүүх", "Сүүлийн 1 жил");
+      expect(names()).toHaveLength(2);
+      await pick("Гэрээ байгуулсан хугацаагаар шүүх", "Бүгд");
+
+      await pick("Дуусах хугацаагаар шүүх", "14 хоногт");
+      expect(names()).toEqual(["Нарлаг цэцэрлэг"]);
+      await pick("Дуусах хугацаагаар шүүх", "Дууссан");
+      // Nothing has ended: the table gives way to the empty state.
+      expect(screen.queryByRole("table")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
