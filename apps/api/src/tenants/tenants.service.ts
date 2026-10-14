@@ -50,6 +50,15 @@ export class TenantsService {
     return { kindergartenIds: this.tenants.adminKindergartenIds(actor) };
   }
 
+  /**
+   * Setting up school years and groups: the administrator's kindergartens and
+   * a solo teacher's own workspace (the user, 2026-10-14) —
+   * `TenantAccessService.workspaceKindergartenIds`.
+   */
+  private async workspaceScope(actor: Actor): Promise<TenantScope> {
+    return { kindergartenIds: await this.tenants.workspaceKindergartenIds(actor) };
+  }
+
   // ── Kindergartens ─────────────────────────────────────────────────────────
 
   async listKindergartens(actor: Actor) {
@@ -99,7 +108,7 @@ export class TenantsService {
   }
 
   async createSchoolYear(actor: Actor, kindergartenId: string, dto: CreateSchoolYearDto) {
-    this.tenants.assertAdmin(actor, kindergartenId);
+    await this.tenants.assertCanSetUpWorkspace(actor, kindergartenId);
 
     // The repository demotes any existing current year inside the same
     // transaction — the partial unique index makes the ordering mandatory.
@@ -130,7 +139,7 @@ export class TenantsService {
    * kindergarten every time somebody fixed a typo in a year's name.
    */
   async updateSchoolYear(actor: Actor, id: string, dto: UpdateSchoolYearDto) {
-    const existing = await this.repo.findSchoolYear(this.adminScope(actor), id);
+    const existing = await this.repo.findSchoolYear(await this.workspaceScope(actor), id);
     if (!existing) throw new NotFoundException();
 
     const updated = await this.guardDuplicateName(() =>
@@ -238,25 +247,38 @@ export class TenantsService {
   }
 
   async createGroup(actor: Actor, kindergartenId: string, dto: CreateGroupDto) {
-    this.tenants.assertAdmin(actor, kindergartenId);
-    // A solo teacher works with one group (the user, 2026-10-11).
-    await this.solo.assertCanAddGroup(kindergartenId);
+    await this.tenants.assertCanSetUpWorkspace(actor, kindergartenId);
 
     // The school year must belong to the same kindergarten. Without this check
     // an admin could attach a group to another kindergarten's year by id.
-    const year = await this.repo.findSchoolYear(this.adminScope(actor), dto.schoolYearId);
+    const year = await this.repo.findSchoolYear(await this.workspaceScope(actor), dto.schoolYearId);
     if (!year || year.kindergartenId !== kindergartenId) {
       throw new BadRequestException("Хичээлийн жил олдсонгүй");
     }
+    // A solo teacher works with one group a school year (the user, 2026-10-11, 10-14).
+    await this.solo.assertCanAddGroup(kindergartenId, dto.schoolYearId);
 
-    const created = await this.repo.createGroup({
-      kindergartenId,
-      schoolYearId: dto.schoolYearId,
-      name: dto.name,
-      ageBand: dto.ageBand,
-      programKind: dto.programKind,
-      attendanceForm: dto.attendanceForm,
-    });
+    /*
+      ★ A solo teacher who opens their group teaches it at once — there is no
+      director to assign them, and a teacher reaches a group only through an
+      assignment. Created with the group, so neither exists without the other.
+    */
+    const teacherMembershipId = this.tenants.isAdmin(actor, kindergartenId)
+      ? null
+      : (actor.memberships.find((m) => m.kindergartenId === kindergartenId && m.role === "TEACHER")
+          ?.id ?? null);
+
+    const created = await this.repo.createGroup(
+      {
+        kindergartenId,
+        schoolYearId: dto.schoolYearId,
+        name: dto.name,
+        ageBand: dto.ageBand,
+        programKind: dto.programKind,
+        attendanceForm: dto.attendanceForm,
+      },
+      teacherMembershipId,
+    );
 
     await this.audit.append({
       action: "CREATE",
@@ -269,7 +291,7 @@ export class TenantsService {
   }
 
   async updateGroup(actor: Actor, id: string, dto: UpdateGroupDto) {
-    const existing = await this.repo.findGroup(this.adminScope(actor), id);
+    const existing = await this.repo.findGroup(await this.workspaceScope(actor), id);
     if (!existing) throw new NotFoundException();
 
     const updated = await this.repo.updateGroup(id, dto);
@@ -291,7 +313,7 @@ export class TenantsService {
    * and the children would quietly vanish from every roster.
    */
   async archiveGroup(actor: Actor, id: string) {
-    const existing = await this.repo.findGroup(this.adminScope(actor), id);
+    const existing = await this.repo.findGroup(await this.workspaceScope(actor), id);
     if (!existing) throw new NotFoundException();
 
     const active = await this.repo.countActiveEnrollments(id);
@@ -324,15 +346,17 @@ export class TenantsService {
    * register would then disagree with itself. The age bands already say which
    * happened, so they decide.
    *
-   * ★★ Both groups are loaded through the admin scope, so a director promoting
-   * into a kindergarten they do not administer gets 404 from the load rather
-   * than a partially applied move.
+   * ★★ Both groups are loaded through the workspace scope (an administrator's
+   * kindergartens, a solo teacher's own workspace), so promoting into a
+   * kindergarten one does not set up is a 404 from the load rather than a
+   * partially applied move.
    */
   async promoteGroup(actor: Actor, fromGroupId: string, dto: PromoteGroupDto) {
-    const from = await this.repo.findGroup(this.adminScope(actor), fromGroupId);
+    const scope = await this.workspaceScope(actor);
+    const from = await this.repo.findGroup(scope, fromGroupId);
     if (!from) throw new NotFoundException();
 
-    const to = await this.repo.findGroup(this.adminScope(actor), dto.toGroupId);
+    const to = await this.repo.findGroup(scope, dto.toGroupId);
     // 400 rather than 404: the *source* group is the addressed resource and the
     // caller may reach it. The target is a value in the body, and a bad value
     // in a body is a bad request — the same shape `createGroup` uses when the

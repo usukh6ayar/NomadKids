@@ -563,6 +563,15 @@ export class AuthzRepository {
     });
   }
 
+  /** Which of these kindergartens are a solo teacher's live workspace. */
+  async filterSoloKindergartenIds(ids: string[]): Promise<string[]> {
+    const rows = await this.prisma.kindergarten.findMany({
+      where: { id: { in: ids }, kind: "SOLO_TEACHER", deletedAt: null },
+      select: { id: true },
+    });
+    return rows.map((row) => row.id);
+  }
+
   async loadKindergartenNames(actor: Actor): Promise<Record<string, string | undefined>> {
     const ids = [...new Set(actor.memberships.map((m) => m.kindergartenId))];
     if (ids.length < 2) return {};

@@ -336,8 +336,30 @@ export class TenantsRepository {
     });
   }
 
-  async createGroup(data: GroupInput & { kindergartenId: string; schoolYearId: string }) {
-    return this.prisma.group.create({ data });
+  /**
+   * A group, and — for a solo teacher opening their own — the teacher's
+   * assignment to it, in one write.
+   */
+  async createGroup(
+    data: GroupInput & { kindergartenId: string; schoolYearId: string },
+    teacherMembershipId: string | null = null,
+  ) {
+    return this.prisma.group.create({
+      data: {
+        ...data,
+        ...(teacherMembershipId
+          ? {
+              teachers: {
+                create: {
+                  kindergartenId: data.kindergartenId,
+                  membershipId: teacherMembershipId,
+                  startedOn: new Date(),
+                },
+              },
+            }
+          : {}),
+      },
+    });
   }
 
   async updateGroup(id: string, data: Partial<GroupInput>) {

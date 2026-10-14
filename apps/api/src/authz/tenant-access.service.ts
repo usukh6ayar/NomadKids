@@ -397,4 +397,41 @@ export class TenantAccessService {
   memberKindergartenIds(actor: Actor): string[] {
     return [...new Set(actor.memberships.map((m) => m.kindergartenId))];
   }
+
+  /**
+   * The solo workspaces in which this actor is the teacher — kind
+   * SOLO_TEACHER, a live TEACHER membership.
+   *
+   * ★ The user, 2026-10-14: a teacher who signs up alone holds TEACHER only
+   * and **sets up their own school year and group** — nobody else is there to
+   * do it. Async because the kind is not in the actor (§1.3); one read.
+   */
+  async soloTeacherKindergartenIds(actor: Actor): Promise<string[]> {
+    const teaching = actor.memberships
+      .filter((m) => m.role === Role.TEACHER)
+      .map((m) => m.kindergartenId);
+    if (teaching.length === 0) return [];
+    return this.repo.filterSoloKindergartenIds([...new Set(teaching)]);
+  }
+
+  /**
+   * Where the actor may set up school years, terms and groups: the
+   * kindergartens they administer, and their own solo workspace. Assigning
+   * other teachers stays the administrator's (`adminKindergartenIds`).
+   */
+  async workspaceKindergartenIds(actor: Actor): Promise<string[]> {
+    return [
+      ...new Set([
+        ...this.adminKindergartenIds(actor),
+        ...(await this.soloTeacherKindergartenIds(actor)),
+      ]),
+    ];
+  }
+
+  /** Throws 404 unless the actor may set up school years and groups here. */
+  async assertCanSetUpWorkspace(actor: Actor, kindergartenId: string): Promise<void> {
+    if (!(await this.workspaceKindergartenIds(actor)).includes(kindergartenId)) {
+      throw new NotFoundException();
+    }
+  }
 }

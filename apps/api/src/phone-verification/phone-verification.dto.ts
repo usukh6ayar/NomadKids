@@ -9,7 +9,8 @@ export type StartPhoneVerificationDto = z.infer<typeof startPhoneVerificationSch
 
 export const startInvitationPhoneVerificationSchema = z.object({
   token: z.string().min(10).max(200),
-  phone: mobilePhoneSchema,
+  /** Left out: the number the person gave when they registered themselves. */
+  phone: mobilePhoneSchema.optional(),
 });
 export type StartInvitationPhoneVerificationDto = z.infer<
   typeof startInvitationPhoneVerificationSchema

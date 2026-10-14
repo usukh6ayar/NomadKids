@@ -242,3 +242,18 @@ interface ChildInput {
   sex: "MALE" | "FEMALE";
   dateOfBirth: Date;
 }
+
+/**
+ * A solo teacher's own year and group, as they set them up after signing up
+ * (sign-up creates neither since 2026-10-14): the current year, a group named
+ * «Миний бүлэг», and the teacher assigned to it.
+ */
+export async function setUpSoloWorkspace(kindergartenId: string) {
+  const teacher = await db.membership.findFirstOrThrow({
+    where: { kindergartenId, role: "TEACHER" },
+  });
+  const schoolYear = await createSchoolYear(kindergartenId, true);
+  const group = await createGroup(kindergartenId, schoolYear.id, "Миний бүлэг");
+  await assignTeacher(kindergartenId, group.id, teacher.id);
+  return { schoolYear, group, teacher };
+}
