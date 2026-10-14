@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Eye, Printer, Search, X } from "lucide-react";
+import Link from "next/link";
 import { useRef, useState } from "react";
 import { z } from "zod";
 import {
@@ -341,7 +342,17 @@ function ApplicationTableRow({
     <tr className="group">
       <td className={`${cell} ${FROZEN_NO} text-right tabular-nums text-muted`}>{index}</td>
       <td className={`${cell} ${FROZEN_NAME} font-semibold text-ink`}>
-        {application.kindergartenName}
+        {/* An approved one is a kindergarten now — its page, one click away. */}
+        {application.kindergartenId ? (
+          <Link
+            href={`/platform/${application.kindergartenId}`}
+            className="hover:text-primary hover:underline"
+          >
+            {application.kindergartenName}
+          </Link>
+        ) : (
+          application.kindergartenName
+        )}
       </td>
       <td className={`${cell} whitespace-nowrap`}>{labelOf(KIND_OPTIONS, kindOf(application))}</td>
       <td className={`${cell} tabular-nums`}>{application.registrationNumber}</td>
@@ -390,6 +401,18 @@ function ApplicationTableRow({
           <span className="inline-flex items-center gap-2">
             <span className="font-medium text-ink">№{contract.number}</span>
             <Badge tone="sky">{CONTRACT_STATUS_LABEL[contract.status]}</Badge>
+            {application.kindergartenId ? (
+              /*
+                The way back when the invitation was closed unsent: the
+                kindergarten's «Удирдлага» issues a new one (2026-10-14).
+              */
+              <Link
+                href={`/platform/${application.kindergartenId}#platform-admins-heading`}
+                className="font-semibold text-primary hover:underline"
+              >
+                Урилга дахин үүсгэх
+              </Link>
+            ) : null}
             {contract.pdfMediaFileId ? (
               <button
                 type="button"
@@ -500,6 +523,8 @@ function ReviewDialog({
   const [previewing, setPreviewing] = useState(false);
   /** The draft as last seen; a change to any figure after it asks for another look. */
   const [seenHtml, setSeenHtml] = useState<string | null>(null);
+  /** «Урилгыг дамжуулсан уу?» — the one-time invitation is not closed by accident. */
+  const [closingHandover, setClosingHandover] = useState(false);
   const draftHtml =
     schedule || negotiated
       ? renderContractDraftHtml({
@@ -576,7 +601,9 @@ function ReviewDialog({
     return (
       <FormDialog
         open
-        onOpenChange={(next) => !next && onClose()}
+        // ★ Esc, the backdrop and × all ask first — 2026-10-14, the user: the
+        // invitation shows once, and a slip of the hand must not lose it.
+        onOpenChange={(next) => !next && setClosingHandover(true)}
         busy={false}
         title="Батлагдлаа"
         // ★ No footer: `InvitationHandover` renders its own close button, and
@@ -601,9 +628,17 @@ function ReviewDialog({
             token={approved.invitationToken}
             title={`${application.kindergartenName} — эрхлэгчийн урилга`}
             subtitle={`Нэвтрэх нэр: ${approved.adminUsername}`}
-            onClose={onClose}
+            onClose={() => setClosingHandover(true)}
           />
         </div>
+        <ConfirmDialog
+          open={closingHandover}
+          onOpenChange={setClosingHandover}
+          title="Урилгыг эрхлэгчид дамжуулсан уу?"
+          description="Хаасны дараа энэ холбоос, QR дахин харагдахгүй. Дамжуулаагүй бол цэцэрлэгийн хуудасны «Удирдлага» хэсгээс шинэ урилга үүсгэнэ."
+          confirmLabel="Тийм, хаах"
+          onConfirm={onClose}
+        />
       </FormDialog>
     );
   }

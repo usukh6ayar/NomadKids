@@ -498,4 +498,82 @@ describe("the operator's applications", () => {
       vi.useRealTimers();
     }
   });
+
+  /*
+   * ★ The invitation shows once — 2026-10-14, the user: closing it by a slip
+   * must not lose it, and an approved row leads to where a new one is made.
+   */
+  it("asks before closing the one-time invitation", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      {
+        path: `/platform/applications/${APPLICATION.id}/approve`,
+        method: "POST",
+        body: {
+          ...APPLICATION,
+          status: "APPROVED",
+          invitationToken: "tok-123",
+          adminUsername: "az.jargal",
+        },
+      },
+      { path: "/platform/applications", body: list([APPLICATION]) },
+    ]);
+    renderWithProviders(<ApplicationsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Шалгах" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Гэрээ харах" }));
+    await user.click(within(dialog).getByRole("button", { name: "Батлах" }));
+    const done = await screen.findByRole("dialog", { name: "Батлагдлаа" });
+
+    // Escape asks rather than closes.
+    await user.keyboard("{Escape}");
+    const ask = await screen.findByRole("dialog", { name: "Урилгыг эрхлэгчид дамжуулсан уу?" });
+    await user.click(within(ask).getByRole("button", { name: "Болих" }));
+    expect(screen.getByRole("dialog", { name: "Батлагдлаа" })).toBeInTheDocument();
+
+    // «Хаах» asks too, and only «Тийм, хаах» closes it.
+    await user.click(within(done).getAllByRole("button", { name: "Хаах" }).at(-1)!);
+    const again = await screen.findByRole("dialog", { name: "Урилгыг эрхлэгчид дамжуулсан уу?" });
+    await user.click(within(again).getByRole("button", { name: "Тийм, хаах" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Батлагдлаа" })).toBeNull());
+  });
+
+  it("links an approved row to its kindergarten and to a new invitation", async () => {
+    const KG = "77777777-7777-4777-8777-777777777777";
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      {
+        path: "/platform/applications",
+        body: list([
+          {
+            ...APPLICATION,
+            status: "APPROVED",
+            kindergartenId: KG,
+            reviewedAt: "2026-10-12T09:00:00.000Z",
+            contract: {
+              id: "88888888-8888-4888-8888-888888888888",
+              number: "NK-2026-000001",
+              version: 1,
+              status: "PENDING_SIGNATURE",
+              pdfMediaFileId: null,
+            },
+          },
+        ]),
+      },
+    ]);
+    renderWithProviders(<ApplicationsPage />);
+
+    const table = await screen.findByRole("table");
+    expect(within(table).getByRole("link", { name: "Аз жаргал цэцэрлэг" })).toHaveAttribute(
+      "href",
+      `/platform/${KG}`,
+    );
+    expect(within(table).getByRole("link", { name: "Урилга дахин үүсгэх" })).toHaveAttribute(
+      "href",
+      `/platform/${KG}#platform-admins-heading`,
+    );
+    expect(within(table).getByText("№NK-2026-000001")).toBeInTheDocument();
+  });
 });
