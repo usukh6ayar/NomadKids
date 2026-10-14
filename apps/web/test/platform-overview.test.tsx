@@ -168,4 +168,39 @@ describe("the operator's dashboard", () => {
       vi.useRealTimers();
     }
   });
+
+  it("warns of solo teachers idle 14 days and more", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 14));
+    try {
+      const solo = (lastActiveAt: string | null) => ({
+        createdAt: "2026-09-01T00:00:00Z",
+        lastActiveAt,
+      });
+      stubApi([
+        { path: "/auth/me", body: operator() },
+        { path: "/platform/applications", body: page(0) },
+        {
+          path: "/platform/solo-workspaces",
+          body: {
+            items: [solo("2026-09-20T00:00:00Z"), solo(null), solo("2026-10-13T00:00:00Z")],
+            page: 1,
+            pageSize: 100,
+            total: 3,
+            totalPages: 1,
+          },
+        },
+      ]);
+      renderWithProviders(<PlatformOverviewPage />);
+
+      const row = await screen.findByRole("link", { name: /хоног идэвхгүй/ });
+      // Idle since 09.20, and never signed in since 09.01 — two; the third was active yesterday.
+      expect(row).toHaveTextContent(
+        "2 бие даасан багш 14+ хоног идэвхгүй — 30 хоногт автоматаар устна",
+      );
+      expect(row).toHaveAttribute("href", "/platform/solo-workspaces");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

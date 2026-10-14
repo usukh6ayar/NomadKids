@@ -69,6 +69,15 @@ const endingListSchema = paginated(
   platformKindergartenSchema.extend({ contractEndsOn: z.string().nullish() }),
 );
 
+/*
+ * ★ Solo teachers idle 14 days and more — 2026-10-14, the user: warned at 14,
+ * deleted at 30. Counted from `lastActiveAt`, asked of the admin; a list
+ * without it counts nobody.
+ */
+const idleListSchema = paginated(
+  z.object({ createdAt: z.string(), lastActiveAt: z.string().nullable().optional() }),
+);
+
 function Overview() {
   const month = thisMonth();
   const applications = usePendingApplicationsCount();
@@ -92,6 +101,14 @@ function Overview() {
     .map((kg) => kg.contractEndsOn)
     .filter((day): day is string => Boolean(day))
     .map(daysUntil);
+  const soloActivity = useQuery({
+    queryKey: ["platform", "solo-workspaces", "idle"],
+    queryFn: () => get("/platform/solo-workspaces?page=1&pageSize=100", idleListSchema),
+    retry: false,
+  });
+  const idleSolo = (soloActivity.data?.items ?? []).filter(
+    (row) => row.lastActiveAt !== undefined && -daysUntil(row.lastActiveAt ?? row.createdAt) >= 14,
+  ).length;
   const revenue = useQuery({
     queryKey: qk.platformRevenueMonth(month),
     queryFn: () => get(`/platform/revenue?month=${month}`, platformRevenueSchema),
@@ -118,6 +135,11 @@ function Overview() {
           }`
         : "",
       href: "/platform",
+    },
+    {
+      count: idleSolo,
+      text: "бие даасан багш 14+ хоног идэвхгүй — 30 хоногт автоматаар устна",
+      href: "/platform/solo-workspaces",
     },
     {
       count: ends.filter((days) => days < 0).length,
@@ -154,7 +176,7 @@ function Overview() {
         ) : (
           <ul className="divide-y divide-border-soft overflow-hidden rounded-card border border-border bg-white">
             {todo.map((row) => (
-              <li key={row.href}>
+              <li key={row.text}>
                 <Link
                   href={row.href}
                   className="flex min-h-12 items-center gap-3 px-4 py-2.5 text-body text-ink hover:bg-canvas"

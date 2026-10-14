@@ -1,7 +1,13 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { renderWithProviders, selectOption, sessionFor, stubApi } from "./support/render";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  renderWithProviders,
+  selectOption,
+  sessionFor,
+  stubApi,
+  type RouteStub,
+} from "./support/render";
 import SoloWorkspacesPage from "@/app/(app)/platform/solo-workspaces/page";
 
 /*
@@ -237,5 +243,94 @@ describe("the operator's solo workspaces", () => {
     await user.click(screen.getByRole("option", { name: "Төлөөгүй хүүхэдтэй" }));
     expect(table.querySelectorAll("tbody tr")).toHaveLength(1);
     expect(within(table).getByText("Д.Сараа")).toBeInTheDocument();
+  });
+
+  /*
+   * ★ Idle solo teachers — 2026-10-14, the user: warned at 14 days, deletable
+   * by the operator from then, deleted on their own at 30.
+   */
+  describe("idle teachers", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 9, 14));
+    });
+    afterEach(() => vi.useRealTimers());
+
+    const IDLE = { ...WORKSPACE, lastActiveAt: "2026-09-28T09:00:00.000Z", paidChildCount: 2 };
+    const FRESH = {
+      ...WORKSPACE,
+      id: "66666666-6666-4666-8666-666666666666",
+      name: "Б.Ану — бие даасан багш",
+      lastActiveAt: "2026-10-12T09:00:00.000Z",
+    };
+
+    function renderIdle(extra: RouteStub[] = []) {
+      const api = stubApi([
+        ...extra,
+        { path: "/auth/me", body: operator() },
+        { path: "/platform/solo-workspaces", body: page([IDLE, FRESH]) },
+      ]);
+      renderWithProviders(<SoloWorkspacesPage />);
+      return api;
+    }
+
+    it("counts down to the automatic deletion from day 14", async () => {
+      renderIdle();
+      const table = await screen.findByRole("table");
+      const row = (name: string) => within(table).getByText(name).closest("tr")!;
+
+      expect(row("Д.Сараа")).toHaveTextContent("16 хоног идэвхгүй · 14 хоногийн дараа устна");
+      expect(row("Б.Ану")).toHaveTextContent("2026.10.12");
+      expect(row("Б.Ану")).not.toHaveTextContent("идэвхгүй");
+    });
+
+    it("filters the idle ones", async () => {
+      const user = userEvent.setup();
+      renderIdle();
+      const table = await screen.findByRole("table");
+
+      await user.click(screen.getByLabelText("Идэвхээр шүүх"));
+      await user.click(screen.getByRole("option", { name: "14+ хоног идэвхгүй" }));
+      expect(table.querySelectorAll("tbody tr")).toHaveLength(1);
+      expect(within(table).getByText("Д.Сараа")).toBeInTheDocument();
+    });
+
+    it("offers «Устгах» from day 14 only, asks first, and names the paid children", async () => {
+      const user = userEvent.setup();
+      const api = renderIdle([
+        { path: `/platform/solo-workspaces/${SOLO_ID}`, method: "DELETE", status: 204 },
+      ]);
+      await screen.findByRole("table");
+
+      await user.click(screen.getByRole("button", { name: "Б.Ану — үйлдэл" }));
+      expect(screen.queryByRole("menuitem", { name: "Устгах" })).toBeNull();
+      await user.keyboard("{Escape}");
+
+      await user.click(screen.getByRole("button", { name: "Д.Сараа — үйлдэл" }));
+      await user.click(screen.getByRole("menuitem", { name: "Устгах" }));
+      const confirm = await screen.findByRole("dialog", { name: "Д.Сараа-г устгах уу?" });
+      expect(confirm).toHaveTextContent(
+        "16 хоног идэвхгүй. 4 хүүхэд, үүнээс 2 хүүхдийн эцэг эх төлбөр төлсөн",
+      );
+      expect(api.calls.some((call) => call.method === "DELETE")).toBe(false);
+
+      await user.click(within(confirm).getByRole("button", { name: "Устгах" }));
+      await waitFor(() =>
+        expect(api.calls.find((call) => call.method === "DELETE")?.url).toBe(
+          `/platform/solo-workspaces/${SOLO_ID}`,
+        ),
+      );
+    });
+
+    it("counts nobody idle while the API does not say when they were active", async () => {
+      stubApi([
+        { path: "/auth/me", body: operator() },
+        { path: "/platform/solo-workspaces", body: page([WORKSPACE]) },
+      ]);
+      renderWithProviders(<SoloWorkspacesPage />);
+      const table = await screen.findByRole("table");
+
+      expect(within(table).getByText("Д.Сараа").closest("tr")).not.toHaveTextContent("идэвхгүй");
+    });
   });
 });

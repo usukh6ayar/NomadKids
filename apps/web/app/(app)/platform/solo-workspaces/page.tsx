@@ -11,8 +11,15 @@ import {
 } from "@kinder/contracts";
 import { UserRound } from "lucide-react";
 import { useState } from "react";
+import { z } from "zod";
 import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
-import { SoloTeachersTable } from "@/components/platform/solo-teachers-table";
+import {
+  SoloTeachersTable,
+  idleDays,
+  teacherName,
+  type SoloRow,
+} from "@/components/platform/solo-teachers-table";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { RequireSuperAdmin } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
 import { Checkbox, Field, Input, Select } from "@/components/ui/field";
@@ -20,7 +27,7 @@ import { FormDialog } from "@/components/ui/form-dialog";
 import { FormError } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { get, mutate } from "@/lib/api/browser";
-import { errorMessage } from "@/lib/api/errors";
+import { errorMessage, isNotFound } from "@/lib/api/errors";
 
 const kindergartensSchema = paginated(platformKindergartenSchema);
 
@@ -45,6 +52,7 @@ export default function SoloWorkspacesPage() {
  */
 function SoloWorkspaces() {
   const [merging, setMerging] = useState<SoloWorkspace | null>(null);
+  const [deleting, setDeleting] = useState<SoloRow | null>(null);
 
   return (
     <div className="flex flex-col gap-5 pb-8">
@@ -54,10 +62,56 @@ function SoloWorkspaces() {
         mark={<UserRound />}
       />
 
-      <SoloTeachersTable onMerge={setMerging} />
+      <SoloTeachersTable onMerge={setMerging} onDelete={setDeleting} />
 
       {merging ? <MergeDialog workspace={merging} onClose={() => setMerging(null)} /> : null}
+      {deleting ? (
+        <DeleteSoloDialog workspace={deleting} onClose={() => setDeleting(null)} />
+      ) : null}
     </div>
+  );
+}
+
+/**
+ * «Устгах» from day 14 of idleness — 2026-10-14, the user; day 30 deletes on
+ * its own. A soft delete (CLAUDE.md §3.2): `DELETE /platform/solo-workspaces/
+ * :id`, asked of the admin. The children whose families paid are named, so
+ * the operator deletes knowing it.
+ */
+function DeleteSoloDialog({ workspace, onClose }: { workspace: SoloRow; onClose: () => void }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const remove = useMutation({
+    mutationFn: () =>
+      mutate(`/platform/solo-workspaces/${workspace.id}`, z.unknown(), { method: "DELETE" }),
+    onSuccess: () => {
+      toast.success("Бие даасан багшийг устгалаа.");
+      void queryClient.invalidateQueries({ queryKey: ["platform"] });
+      onClose();
+    },
+    onError: (error) =>
+      toast.error(
+        isNotFound(error)
+          ? "Устгах хэсэг хараахан бэлэн болоогүй. 30 хоног болоход автоматаар устна."
+          : errorMessage(error),
+      ),
+  });
+  const paid = workspace.paidChildCount ?? 0;
+
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={`${teacherName(workspace)}-г устгах уу?`}
+      description={`${idleDays(workspace) ?? 0} хоног идэвхгүй. ${workspace.childCount} хүүхэд${
+        paid > 0 ? `, үүнээс ${paid} хүүхдийн эцэг эх төлбөр төлсөн` : ""
+      }. Устгасны дараа багш болон эцэг эхчүүд нэвтрэх боломжгүй.`}
+      confirmLabel="Устгах"
+      pendingLabel="Устгаж байна…"
+      tone="danger"
+      pending={remove.isPending}
+      onConfirm={() => remove.mutate()}
+    />
   );
 }
 

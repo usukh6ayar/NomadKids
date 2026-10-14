@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { RowMenu } from "@/components/ui/menu";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { formatDate } from "@/lib/format";
+import { daysUntil, formatDate } from "@/lib/format";
 import {
   FROZEN_NAME,
   FROZEN_NO,
@@ -49,6 +49,14 @@ const soloRowSchema = soloWorkspaceSchema.extend({
    * does not send it yet (asked of the admin, 2026-10-14); «—» until it does.
    */
   propertyType: z.string().nullish(),
+  /*
+   * ★ When the teacher was last active — 2026-10-14, the user: idle 14 days,
+   * the operator is warned and may delete; idle 30, it is deleted on its own
+   * (the nightly cleanup, asked of the admin). `null` = never signed in, so
+   * idle since sign-up; absent = the API does not say yet, and nothing is
+   * counted rather than everyone looking idle.
+   */
+  lastActiveAt: z.string().nullable().optional(),
 });
 export type SoloRow = z.infer<typeof soloRowSchema>;
 
@@ -63,6 +71,15 @@ export function teacherName(row: { name: string }): string {
   return row.name.replace(/\s*—\s*бие даасан багш$/u, "");
 }
 
+export const IDLE_WARN_DAYS = 14;
+export const IDLE_DELETE_DAYS = 30;
+
+/** Days since the teacher was last active, or `null` while the API does not say. */
+export function idleDays(row: SoloRow): number | null {
+  if (row.lastActiveAt === undefined) return null;
+  return Math.max(0, -daysUntil(row.lastActiveAt ?? row.createdAt));
+}
+
 /** Children not yet paid for, or `null` while the API does not say. */
 function unpaidOf(row: SoloRow): number | null {
   return typeof row.paidChildCount === "number"
@@ -74,6 +91,13 @@ const OWNERSHIP_OPTIONS = [
   { value: "", label: "Бүгд" },
   { value: "Төрийн", label: "Төрийн" },
   { value: "Төрийн бус", label: "Төрийн бус" },
+] as const;
+
+/** «Бүгд», those active lately, or idle for 14 days and more. */
+const ACTIVITY_OPTIONS = [
+  { value: "", label: "Бүгд" },
+  { value: "active", label: "Идэвхтэй" },
+  { value: "idle", label: "14+ хоног идэвхгүй" },
 ] as const;
 
 /** «Бүгд», every child paid for, or some child still waiting. */
@@ -98,6 +122,7 @@ function downloadSoloSheet(rows: SoloRow[]) {
     "Утас",
     "И-мэйл",
     "Бүртгэсэн",
+    "Сүүлд идэвхтэй",
   ];
   const body = rows.map((row, index) => [
     index + 1,
@@ -111,6 +136,7 @@ function downloadSoloSheet(rows: SoloRow[]) {
     row.phone ?? "",
     row.email ?? "",
     formatDate(row.createdAt),
+    row.lastActiveAt ? formatDate(row.lastActiveAt) : row.lastActiveAt === null ? "Нэвтрээгүй" : "",
   ]);
   const csv = [header, ...body].map((line) => line.map(quote).join(",")).join("\r\n");
   const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
@@ -135,7 +161,7 @@ const SOLO_CHILDREN_OPTIONS = [
   { value: "none", label: "Хүүхэдгүй" },
 ] as const;
 
-type SoloSortKey = "name" | "area" | "children" | "unpaid" | "created";
+type SoloSortKey = "name" | "area" | "children" | "unpaid" | "created" | "idle";
 
 function compareSolo(a: SoloRow, b: SoloRow, key: SoloSortKey, dir: 1 | -1): number {
   const value = (row: SoloRow): string | number | null =>
@@ -147,7 +173,9 @@ function compareSolo(a: SoloRow, b: SoloRow, key: SoloSortKey, dir: 1 | -1): num
           ? row.childCount
           : key === "unpaid"
             ? unpaidOf(row)
-            : row.createdAt;
+            : key === "idle"
+              ? idleDays(row)
+              : row.createdAt;
   const x = value(a);
   const y = value(b);
   if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
@@ -166,9 +194,12 @@ function compareSolo(a: SoloRow, b: SoloRow, key: SoloSortKey, dir: 1 | -1): num
  */
 export function SoloTeachersTable({
   onMerge,
+  onDelete,
 }: {
   /** Opens the merge here; without it, «⋯» links to «Бие даасан багш». */
   onMerge?: (row: SoloRow) => void;
+  /** Offered from day 14 of idleness; without it, «⋯» has no «Устгах». */
+  onDelete?: (row: SoloRow) => void;
 }) {
   const [search, setSearch] = useState("");
   const [area, setArea] = useState("");
@@ -176,6 +207,7 @@ export function SoloTeachersTable({
   const [children, setChildren] = useState("");
   const [fee, setFee] = useState("");
   const [ownership, setOwnership] = useState("");
+  const [activity, setActivity] = useState("");
   const [sort, setSort] = useState<{ key: SoloSortKey; dir: 1 | -1 }>({
     key: "created",
     dir: -1,
@@ -200,6 +232,8 @@ export function SoloTeachersTable({
         (!workplace || Boolean(row.workplace?.trim()) === (workplace === "named")) &&
         (!children || row.childCount > 0 === (children === "some")) &&
         (!ownership || row.propertyType === ownership) &&
+        (!activity ||
+          (idleDays(row) !== null && idleDays(row)! >= IDLE_WARN_DAYS === (activity === "idle"))) &&
         (!fee || (unpaidOf(row) !== null && unpaidOf(row)! > 0 === (fee === "some"))),
     )
     .sort((a, b) => compareSolo(a, b, sort.key, sort.dir));
@@ -217,6 +251,11 @@ export function SoloTeachersTable({
       clear: () => setChildren(""),
     },
     ownership && { key: "ownership", label: ownership, clear: () => setOwnership("") },
+    activity && {
+      key: "activity",
+      label: labelOf(ACTIVITY_OPTIONS, activity),
+      clear: () => setActivity(""),
+    },
     fee && { key: "fee", label: labelOf(FEE_OPTIONS, fee), clear: () => setFee("") },
   ].filter((chip): chip is Chip => Boolean(chip));
   const clearAll = () => {
@@ -226,6 +265,7 @@ export function SoloTeachersTable({
     setChildren("");
     setFee("");
     setOwnership("");
+    setActivity("");
   };
   const sortBy = (key: SoloSortKey) =>
     setSort((current) => ({ key, dir: current.key === key ? (-current.dir as 1 | -1) : 1 }));
@@ -307,6 +347,13 @@ export function SoloTeachersTable({
           onChange={setFee}
           options={FEE_OPTIONS}
         />
+        <FilterSelect
+          label="Идэвх"
+          ariaLabel="Идэвхээр шүүх"
+          value={activity}
+          onChange={setActivity}
+          options={ACTIVITY_OPTIONS}
+        />
       </div>
       <FilterChips chips={chips} onClearAll={clearAll} />
 
@@ -325,7 +372,7 @@ export function SoloTeachersTable({
 
       {rows.length > 0 ? (
         <div className="overflow-x-auto rounded-control border border-border bg-white">
-          <table className="w-full min-w-[1240px] border-separate border-spacing-0 text-left text-caption">
+          <table className="w-full min-w-[1400px] border-separate border-spacing-0 text-left text-caption">
             <thead className="bg-slate-50 text-muted">
               <tr className="[&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-r [&>th]:border-border [&>th]:px-3 [&>th]:py-2 [&>th]:font-semibold [&>th:last-child]:border-r-0">
                 <th scope="col" className={`${FROZEN_NO} bg-slate-50 text-right`}>
@@ -361,6 +408,7 @@ export function SoloTeachersTable({
                 <th scope="col">Утас</th>
                 <th scope="col">И-мэйл</th>
                 <SortHeader label="Бүртгэсэн" column="created" sort={sort} onSort={sortBy} />
+                <SortHeader label="Сүүлд идэвхтэй" column="idle" sort={sort} onSort={sortBy} />
                 <th scope="col" className="w-10">
                   <span className="sr-only">Үйлдэл</span>
                 </th>
@@ -378,7 +426,7 @@ export function SoloTeachersTable({
                   {figure(sumKnown(rows.map((row) => row.paidChildCount)))}
                 </td>
                 <td className="text-right tabular-nums">{figure(sumKnown(rows.map(unpaidOf)))}</td>
-                <td colSpan={4} />
+                <td colSpan={5} />
               </tr>
             </thead>
             <tbody>
@@ -407,6 +455,9 @@ export function SoloTeachersTable({
                   <td className={`${cell} whitespace-nowrap tabular-nums`}>
                     {formatDate(row.createdAt)}
                   </td>
+                  <td className={`${cell} whitespace-nowrap`}>
+                    <IdleCell row={row} />
+                  </td>
                   <td className={`${cell} text-right`}>
                     <RowMenu
                       ariaLabel={`${teacherName(row)} — үйлдэл`}
@@ -414,6 +465,17 @@ export function SoloTeachersTable({
                         onMerge
                           ? { label: "Цэцэрлэгт нэгтгэх", onSelect: () => onMerge(row) }
                           : { label: "Цэцэрлэгт нэгтгэх", href: "/platform/solo-workspaces" },
+                        // From day 14 only — an action that cannot run is not shown.
+                        ...(onDelete && (idleDays(row) ?? 0) >= IDLE_WARN_DAYS
+                          ? [
+                              {
+                                label: "Устгах",
+                                onSelect: () => onDelete(row),
+                                tone: "danger" as const,
+                                separated: true,
+                              },
+                            ]
+                          : []),
                       ]}
                     />
                   </td>
@@ -424,5 +486,29 @@ export function SoloTeachersTable({
         </div>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * «Сүүлд идэвхтэй» — the day, and from day 14 how long until it goes:
+ * «16 хоног идэвхгүй · 14 хоногийн дараа устна».
+ */
+function IdleCell({ row }: { row: SoloRow }) {
+  const idle = idleDays(row);
+  if (idle === null) return <>—</>;
+  const left = IDLE_DELETE_DAYS - idle;
+  return (
+    <span className="inline-flex items-center gap-2">
+      {row.lastActiveAt ? formatDate(row.lastActiveAt) : "Нэвтрээгүй"}
+      {idle >= IDLE_WARN_DAYS ? (
+        <span
+          className={`rounded-pill px-2 py-0.5 text-caption font-semibold ${
+            left <= 3 ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800"
+          }`}
+        >
+          {idle} хоног идэвхгүй · {left > 0 ? `${left} хоногийн дараа устна` : "өнөөдөр устна"}
+        </span>
+      ) : null}
+    </span>
   );
 }
