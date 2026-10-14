@@ -45,6 +45,8 @@ const TEACHER = (() => {
   };
 })();
 const COOK = user(COOK_ID, "Батаа", "Ёндонжамц", "COOK", "88113344");
+const user_ = (id: string, lastName: string, firstName: string, role: string) =>
+  user(id, lastName, firstName, role, "99000000");
 
 function page(items: unknown[]) {
   return { items, page: 1, pageSize: 20, total: items.length, totalPages: 1 };
@@ -158,9 +160,46 @@ describe("the staff directory", () => {
         },
       },
     ]);
-    await user.click(await screen.findByRole("button", { name: "Холбоос үүсгэх" }));
+    // Checked first — the same dialog as everywhere a link is handed over.
+    const issue = await screen.findByRole("button", { name: "Холбоос үүсгэх" });
+    expect(issue).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: /мөн гэдгийг шалгасан/ }));
+    await user.click(issue);
 
     expect(await screen.findByText("Энэ хүн өөр байгууллагад бүртгэлтэй.")).toBeInTheDocument();
+  });
+
+  /*
+   * ★ 2026-10-14, the user: a director is reset by themself (SMS) or by
+   * NomadKids — the row says so instead of an error; and one's own row has no
+   * «Нууц үг сэргээх», since one's own password is changed in settings.
+   */
+  it("tells who resets a director, and leaves the option off one's own row", async () => {
+    const user = userEvent.setup();
+    const DIRECTOR = user_("77777777-7777-4777-8777-000000000003", "Дорж", "Сараа", "ADMIN");
+    const ME = user_("11111111-1111-4111-8111-111111111111", "Би", "Өөрөө", "ADMIN");
+    const api = stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: "/users/positions", body: [] },
+      { path: "/users?roles=TEACHER", body: page([TEACHER]) },
+      { path: "/users?roles=ADMIN", body: page([DIRECTOR, ME]) },
+    ]);
+    renderWithProviders(<AdminUsersPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Би Өөрөө — үйлдэл/ }));
+    expect(screen.queryByRole("menuitem", { name: /Нууц үг сэргээх/ })).toBeNull();
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByRole("button", { name: /Дорж Сараа — үйлдэл/ }));
+    await user.click(screen.getByRole("menuitem", { name: /Нууц үг сэргээх/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Нууц үг сэргээх" });
+    expect(dialog).toHaveTextContent("SMS-ээр өөрөө сэргээнэ");
+    expect(within(dialog).getByRole("link", { name: "7213 4888" })).toHaveAttribute(
+      "href",
+      "tel:+97672134888",
+    );
+    expect(within(dialog).queryByRole("button", { name: "Холбоос үүсгэх" })).toBeNull();
+    expect(api.calls.some((c) => c.url.endsWith("/password-reset"))).toBe(false);
   });
 
   it("starts an invitation in the section's own role", async () => {
