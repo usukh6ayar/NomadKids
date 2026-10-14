@@ -21,16 +21,17 @@ import {
 describe("the current school-year prices", () => {
   /*
    * ★ The discount is back (the user, 2026-10-13, after it ended on
-   * 2026-10-11): 5,000₮ / 22,000₮ a child and 2,000₮ / 30,000₮ a group, below
+   * 2026-10-11): 5,000₮ / 22,000₮ a child and 6,000₮ (2,000₮ a month) / 30,000₮ a group, below
    * the standard 3,000₮ and 4,000₮ a month.
    */
   it("charges the discounted price below the standard", () => {
     expect(CHILD_CURRENT_TERM_PRICE).toBe(5_000);
     expect(CHILD_CURRENT_YEAR_PRICE).toBe(22_000);
-    expect(KINDERGARTEN_CURRENT_TERM_PER_GROUP).toBe(2_000);
+    expect(KINDERGARTEN_CURRENT_TERM_PER_GROUP).toBe(6_000);
     expect(KINDERGARTEN_CURRENT_YEAR_PER_GROUP).toBe(30_000);
 
-    expect(kindergartenTermPrice(3)).toBe(6_000);
+    // The user's example: 2,000₮ × 3 months × 3 groups.
+    expect(kindergartenTermPrice(3)).toBe(18_000);
     expect(kindergartenYearlyPrice(3)).toBe(90_000);
     expect(yearlySavingAmount(kindergartenStandardYearPrice(3), kindergartenYearlyPrice(3))).toBe(
       18_000,
@@ -39,7 +40,7 @@ describe("the current school-year prices", () => {
     expect(savingPercent(CHILD_STANDARD_YEAR_PRICE, CHILD_CURRENT_YEAR_PRICE)).toBe(18.5);
     expect(
       savingPercent(KINDERGARTEN_STANDARD_TERM_PER_GROUP, KINDERGARTEN_CURRENT_TERM_PER_GROUP),
-    ).toBe(83.3);
+    ).toBe(50);
   });
 });
 
@@ -64,7 +65,7 @@ describe("the pricing page", () => {
     expect(kindergarten.getByText("1 бүлэг сарын 4,000₮")).toBeInTheDocument();
     expect(kindergarten.queryByText(/11 сар хүртэл/)).toBeNull();
     expect(kindergarten.getByText("12,000₮")).toHaveClass("line-through");
-    expect(kindergarten.getByText("2,000₮")).toBeInTheDocument();
+    expect(kindergarten.getByText("6,000₮")).toBeInTheDocument();
     expect(kindergarten.getByText("36,000₮")).toHaveClass("line-through");
     expect(kindergarten.getByText("30,000₮")).toBeInTheDocument();
     expect(
@@ -109,8 +110,8 @@ describe("the pricing page", () => {
 
     await user.click(kindergarten.getByRole("button", { name: "Бүлгийн тоо нэмэх" }));
     expect(kindergarten.getByLabelText("Сонгосон бүлгийн тоо")).toHaveTextContent("2");
-    // 2 groups: 2 × 2,000₮ a term, 2 × 30,000₮ a year.
-    expect(kindergarten.getByText("4,000₮")).toBeInTheDocument();
+    // 2 groups: 2 × 6,000₮ a term, 2 × 30,000₮ a year.
+    expect(kindergarten.getAllByText("12,000₮").length).toBeGreaterThan(0);
     expect(kindergarten.getByText("60,000₮")).toBeInTheDocument();
 
     await user.click(subtract);

@@ -23,7 +23,7 @@ export const CHILD_STANDARD_YEAR_PRICE = CHILD_MONTHLY_PRICE * MONTHS_IN_SCHOOL_
 /**
  * ★ The prices charged now — the discount is back (the user, 2026-10-13, with
  * a picture of the price page): 5,000₮ a term and 22,000₮ a year for a child,
- * 2,000₮ a term and 30,000₮ a year a group. It had ended on 2026-10-11. The
+ * 30,000₮ a year a group; a group's term is below. It had ended on 2026-10-11. The
  * screens show the struck-through standard price and the saving only while a
  * figure here is lower than the standard.
  */
@@ -34,7 +34,13 @@ export const KINDERGARTEN_MONTHLY_PER_GROUP = 4_000;
 export const KINDERGARTEN_STANDARD_TERM_PER_GROUP = KINDERGARTEN_MONTHLY_PER_GROUP * 3;
 export const KINDERGARTEN_STANDARD_YEAR_PER_GROUP =
   KINDERGARTEN_MONTHLY_PER_GROUP * MONTHS_IN_SCHOOL_YEAR;
-export const KINDERGARTEN_CURRENT_TERM_PER_GROUP = 2_000;
+/**
+ * ★ The discount is 2,000₮ a group **a month** — the user, 2026-10-14
+ * («2,000₮ × 3 сар × 3 бүлэг = 18,000₮», then "Сард 2,000₮"): 6,000₮ a term.
+ * It read 2,000₮ a term before.
+ */
+export const KINDERGARTEN_DISCOUNT_MONTHLY_PER_GROUP = 2_000;
+export const KINDERGARTEN_CURRENT_TERM_PER_GROUP = KINDERGARTEN_DISCOUNT_MONTHLY_PER_GROUP * 3;
 export const KINDERGARTEN_CURRENT_YEAR_PER_GROUP = 30_000;
 
 /** Whether a term is sold below its standard price now — what the discount lines hang on. */
@@ -139,13 +145,6 @@ export function tugrik(amount: number): string {
  */
 export const TERM_DISCOUNT_ENDS = "2026-11-30";
 
-/**
- * ★ A discounted term in a contract is 2,000₮ a group **a month** — the user's
- * breakdown, 2026-10-14: «2,000₮ × 3 сар × 3 бүлэг = 18,000₮». The price page
- * still reads 2,000₮ a term (`KINDERGARTEN_CURRENT_TERM_PER_GROUP`); which one
- * is right is the user's to settle.
- */
-export const KINDERGARTEN_DISCOUNT_MONTHLY_PER_GROUP = 2_000;
 const MONTHS_IN_TERM = 3;
 
 export interface ContractLine {
