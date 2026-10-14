@@ -391,3 +391,27 @@ describe("invitation — the window", () => {
     expect(ROUTER.push).toHaveBeenCalledWith("/");
   });
 });
+
+/*
+ * ★ A teacher who signed up from a shared material's page comes back to it
+ * once signed in — 2026-10-14, the user.
+ */
+describe("signing up to buy a shared material", () => {
+  it("lands the new teacher back on the material after signing in", async () => {
+    const user = userEvent.setup();
+    setSearchParams(`next=${encodeURIComponent("/documents?material=m1")}`);
+    stubApi([{ path: "/auth/invitation/accept", status: 204 }]);
+    renderWithProviders(<AcceptInvitationPage />);
+
+    await user.type(screen.getByLabelText(/^Таны нэр/), "Оюун");
+    await user.type(screen.getByLabelText(/^Утасны дугаар/), "99112233");
+    await user.type(screen.getByLabelText(/^Нууц үг \*/), STRONG);
+    await user.type(screen.getByLabelText(/давта[нх]/), STRONG);
+    await user.click(screen.getByRole("button", { name: "Бүртгэл идэвхжүүлэх" }));
+
+    expect(await screen.findByRole("link", { name: "Нэвтрэх" })).toHaveAttribute(
+      "href",
+      `/login?from=${encodeURIComponent("/documents?material=m1")}`,
+    );
+  });
+});

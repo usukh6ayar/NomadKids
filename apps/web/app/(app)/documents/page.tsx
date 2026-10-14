@@ -1,7 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useState, type ReactNode } from "react";
 import { TeachingMaterials } from "@/components/materials/teaching-materials";
 import { cn } from "@/lib/utils";
 import { Bookmark, BookmarkCheck, FileText, Pencil, Search, Trash2, Upload } from "lucide-react";
@@ -50,7 +51,10 @@ const categoriesSchema = z.array(z.string());
 export default function DocumentsPage() {
   return (
     <RequireRole roles={["TEACHER", "ADMIN"]}>
-      <DocumentsHome />
+      {/* `?material=` is read below — a shared material link (2026-10-14). */}
+      <Suspense fallback={<LoadingState rows={3} />}>
+        <DocumentsHome />
+      </Suspense>
     </RequireRole>
   );
 }
@@ -62,7 +66,9 @@ export default function DocumentsPage() {
 function DocumentsHome() {
   const { hasRole } = useSession();
   const teacher = hasRole("TEACHER");
-  const [tab, setTab] = useState<"docs" | "materials">("docs");
+  // A shared material's link opens on the materials (2026-10-14, the user).
+  const fromLink = Boolean(useSearchParams().get("material"));
+  const [tab, setTab] = useState<"docs" | "materials">(fromLink ? "materials" : "docs");
 
   const switcher = teacher ? (
     <div

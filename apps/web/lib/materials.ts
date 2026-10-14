@@ -112,6 +112,24 @@ export const PREVIEW_STATUS_LABEL: Record<PreviewStatus, string> = {
 };
 
 /** The operator's view of one material: whether it is on sale, and how it sold. */
+/**
+ * A material as anyone sees it from a shared link — 2026-10-14, the user:
+ * `GET /public/materials/:id`, on-sale ones only, sample pages and never the
+ * file. Asked of the admin. Nobody owns anything on it.
+ */
+export const publicMaterialSchema = materialSchema.omit({ owned: true });
+export type PublicMaterial = z.infer<typeof publicMaterialSchema>;
+
+/** The shareable page of one material — «Холбоос хуулах». */
+export function materialSharePath(id: string): string {
+  return `/m/${id}`;
+}
+
+/** Where a teacher buys it: the shop, opened on this material. */
+export function materialBuyPath(id: string): string {
+  return `/documents?material=${encodeURIComponent(id)}`;
+}
+
 export const platformMaterialSchema = materialSchema.omit({ owned: true }).extend({
   published: z.boolean(),
   sales: z.number().int().default(0),

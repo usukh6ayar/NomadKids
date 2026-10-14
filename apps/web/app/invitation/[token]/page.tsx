@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { WhoResets } from "@/components/auth/who-resets";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent, type ReactNode } from "react";
 import { z } from "zod";
 import { phoneVerificationStartSchema, validatePasswordStrength } from "@kinder/contracts";
@@ -68,6 +68,13 @@ const RELATIONS = [
 export default function AcceptInvitationPage() {
   const params = useParams<{ token: string }>();
   const router = useRouter();
+  /*
+   * `?next=` — where a teacher who signed up to buy a shared material lands
+   * after signing in (2026-10-14). A path on this site only.
+   */
+  const next = useSearchParams().get("next");
+  const afterLogin = next && next.startsWith("/") && !next.startsWith("//") ? next : null;
+  const loginHref = afterLogin ? `/login?from=${encodeURIComponent(afterLogin)}` : "/login";
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -129,7 +136,7 @@ export default function AcceptInvitationPage() {
     onSuccess: () => {
       // Straight to the login form: the account now has a credential and the
       // API cleared the cookies, so signing in is one deliberate step.
-      setTimeout(() => router.replace("/login"), 2000);
+      setTimeout(() => router.replace(loginHref), 2000);
     },
   });
 
@@ -175,7 +182,7 @@ export default function AcceptInvitationPage() {
             Нэвтрэх хуудас руу шилжиж байна…
           </p>
           <Link
-            href="/login"
+            href={loginHref}
             className="inline-flex min-h-11 items-center text-body font-semibold text-primary hover:underline"
           >
             Нэвтрэх

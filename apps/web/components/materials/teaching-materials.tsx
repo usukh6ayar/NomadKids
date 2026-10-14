@@ -3,6 +3,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Download, FileText, Presentation, X } from "lucide-react";
 import { qpayInvoiceAttemptSchema } from "@kinder/contracts";
@@ -38,8 +39,13 @@ type View = "store" | "mine";
  * shows this tab to a TEACHER and to nobody else. Contract: `lib/materials.ts`.
  */
 export function TeachingMaterials() {
+  /*
+   * ★ `?material=<id>` — from a shared link (2026-10-14, the user): the shop
+   * opens on that material, its sample pages and «Авах» in front.
+   */
+  const wanted = useSearchParams().get("material");
   // «Миний сан» first, and open — 2026-10-09, the client.
-  const [view, setView] = useState<View>("mine");
+  const [view, setView] = useState<View>(wanted ? "store" : "mine");
   return (
     <div className="flex flex-col gap-4">
       <div
@@ -68,7 +74,7 @@ export function TeachingMaterials() {
           </button>
         ))}
       </div>
-      {view === "store" ? <Store onOwned={() => setView("mine")} /> : <Mine />}
+      {view === "store" ? <Store onOwned={() => setView("mine")} wanted={wanted} /> : <Mine />}
     </div>
   );
 }
@@ -279,12 +285,14 @@ export function StorePreview() {
   );
 }
 
-function Store({ onOwned }: { onOwned: () => void }) {
+function Store({ onOwned, wanted = null }: { onOwned: () => void; wanted?: string | null }) {
   const [filters, setFilters] = useState<MaterialFilters>(NO_FILTERS);
   const { area, level } = filters;
   const q = useDebounced(filters.q.trim());
   const [buying, setBuying] = useState<Material | null>(null);
   const [previewing, setPreviewing] = useState<Material | null>(null);
+  /** The shared link's material is shown once; closing it does not reopen it. */
+  const [wantedShown, setWantedShown] = useState(false);
   const queryClient = useQueryClient();
   const toast = useToast();
 
@@ -302,6 +310,15 @@ function Store({ onOwned }: { onOwned: () => void }) {
   const buy = (material: Material) => setBuying(material);
   // The API narrows by word, area and level; price and order are drawn here.
   const items = arrange(catalog.data?.items ?? [], filters);
+  const shown =
+    previewing ??
+    (!wantedShown && wanted
+      ? ((catalog.data?.items ?? []).find((m) => m.id === wanted) ?? null)
+      : null);
+  const closePreview = () => {
+    setPreviewing(null);
+    setWantedShown(true);
+  };
 
   return (
     <section aria-label="Дэлгүүр" className="flex flex-col gap-3">
@@ -339,17 +356,16 @@ function Store({ onOwned }: { onOwned: () => void }) {
         ))}
       </ul>
 
-      {previewing ? (
+      {shown ? (
         <PreviewDialog
-          material={previewing}
-          onClose={() => setPreviewing(null)}
+          material={shown}
+          onClose={closePreview}
           onBuy={
-            previewing.owned
+            shown.owned
               ? undefined
               : () => {
-                  const chosen = previewing;
-                  setPreviewing(null);
-                  buy(chosen);
+                  closePreview();
+                  buy(shown);
                 }
           }
         />
@@ -585,15 +601,6 @@ function PreviewDialog({
   /** The operator's look at the shop — nothing owned, nothing to buy. */
   readOnly?: boolean;
 }) {
-  /*
-   * ★ A sample page as an A4 sheet — 2026-10-14, the user: a PDF upright
-   * (210 × 297), a PowerPoint on its side; white paper on a grey desk.
-   */
-  const landscape = material.fileType === "PPT";
-  const pages = material.previewUrls;
-  const [index, setIndex] = useState(0);
-  const page = pages[index];
-
   return (
     <Dialog.Root open onOpenChange={(next) => (next ? undefined : onClose())}>
       <Dialog.Portal>
@@ -613,74 +620,7 @@ function PreviewDialog({
             </Dialog.Close>
           </div>
 
-          <figure className="flex flex-col gap-2">
-            <div className="grid place-items-center rounded-row bg-slate-200 p-4">
-              <div
-                data-paper={landscape ? "a4-landscape" : "a4-portrait"}
-                className={cn(
-                  "relative grid w-full place-items-center overflow-hidden bg-white shadow-md ring-1 ring-black/5",
-                  landscape
-                    ? "aspect-[297/210] max-w-full"
-                    : "aspect-[210/297] max-w-[min(100%,calc(62dvh*0.707))]",
-                )}
-              >
-                {page ? (
-                  // A served preview picture, as `media-image.tsx` draws remote media.
-                  <img
-                    src={page}
-                    alt={`${material.title} — жишээ хуудас ${index + 1}`}
-                    className="size-full object-contain"
-                  />
-                ) : (
-                  <span className="flex flex-col items-center gap-2 px-6 text-center">
-                    {AREA_IMAGE[material.area] ? (
-                      <Image
-                        src={AREA_IMAGE[material.area]!}
-                        alt=""
-                        width={96}
-                        height={96}
-                        className="size-24 object-contain"
-                      />
-                    ) : null}
-                    <span className="text-caption text-muted">Жишээ хуудас удахгүй нэмэгдэнэ.</span>
-                  </span>
-                )}
-                {page ? (
-                  <span
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-0 grid select-none place-items-center text-title font-bold text-ink/10 [transform:rotate(-24deg)]"
-                  >
-                    NomadKids — жишээ
-                  </span>
-                ) : null}
-              </div>
-            </div>
-            {pages.length > 1 ? (
-              <figcaption className="flex items-center justify-center gap-3">
-                <Button
-                  size="icon"
-                  variant="secondary"
-                  aria-label="Өмнөх хуудас"
-                  disabled={index === 0}
-                  onClick={() => setIndex(index - 1)}
-                >
-                  <ChevronLeft size={18} aria-hidden="true" />
-                </Button>
-                <span className="text-caption tabular-nums text-muted">
-                  {index + 1} / {pages.length}
-                </span>
-                <Button
-                  size="icon"
-                  variant="secondary"
-                  aria-label="Дараагийн хуудас"
-                  disabled={index === pages.length - 1}
-                  onClick={() => setIndex(index + 1)}
-                >
-                  <ChevronRight size={18} aria-hidden="true" />
-                </Button>
-              </figcaption>
-            ) : null}
-          </figure>
+          <SamplePages material={material} />
 
           <p className="text-caption text-muted">
             {material.fileType} · {material.area}
@@ -718,5 +658,91 @@ function PreviewDialog({
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+/**
+ * A material's sample pages, one A4 sheet at a time — 2026-10-14, the user: a
+ * PDF upright (210 × 297), a PowerPoint on its side; white paper on a grey
+ * desk, watermarked. The shop's «Харах» and the shared page draw the same.
+ */
+export function SamplePages({
+  material,
+}: {
+  material: Pick<Material, "title" | "area" | "fileType" | "previewUrls">;
+}) {
+  const pages = material.previewUrls;
+  const [index, setIndex] = useState(0);
+  const page = pages[index];
+  const landscape = material.fileType === "PPT";
+  return (
+    <figure className="flex flex-col gap-2">
+      <div className="grid place-items-center rounded-row bg-slate-200 p-4">
+        <div
+          data-paper={landscape ? "a4-landscape" : "a4-portrait"}
+          className={cn(
+            "relative grid w-full place-items-center overflow-hidden bg-white shadow-md ring-1 ring-black/5",
+            landscape
+              ? "aspect-[297/210] max-w-full"
+              : "aspect-[210/297] max-w-[min(100%,calc(62dvh*0.707))]",
+          )}
+        >
+          {page ? (
+            // A served preview picture, as `media-image.tsx` draws remote media.
+            <img
+              src={page}
+              alt={`${material.title} — жишээ хуудас ${index + 1}`}
+              className="size-full object-contain"
+            />
+          ) : (
+            <span className="flex flex-col items-center gap-2 px-6 text-center">
+              {AREA_IMAGE[material.area] ? (
+                <Image
+                  src={AREA_IMAGE[material.area]!}
+                  alt=""
+                  width={96}
+                  height={96}
+                  className="size-24 object-contain"
+                />
+              ) : null}
+              <span className="text-caption text-muted">Жишээ хуудас удахгүй нэмэгдэнэ.</span>
+            </span>
+          )}
+          {page ? (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 grid select-none place-items-center text-title font-bold text-ink/10 [transform:rotate(-24deg)]"
+            >
+              NomadKids — жишээ
+            </span>
+          ) : null}
+        </div>
+      </div>
+      {pages.length > 1 ? (
+        <figcaption className="flex items-center justify-center gap-3">
+          <Button
+            size="icon"
+            variant="secondary"
+            aria-label="Өмнөх хуудас"
+            disabled={index === 0}
+            onClick={() => setIndex(index - 1)}
+          >
+            <ChevronLeft size={18} aria-hidden="true" />
+          </Button>
+          <span className="text-caption tabular-nums text-muted">
+            {index + 1} / {pages.length}
+          </span>
+          <Button
+            size="icon"
+            variant="secondary"
+            aria-label="Дараагийн хуудас"
+            disabled={index === pages.length - 1}
+            onClick={() => setIndex(index + 1)}
+          >
+            <ChevronRight size={18} aria-hidden="true" />
+          </Button>
+        </figcaption>
+      ) : null}
+    </figure>
   );
 }

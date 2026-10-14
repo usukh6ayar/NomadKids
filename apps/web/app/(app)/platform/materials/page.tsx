@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { List, MoreVertical, Pencil, Plus, RefreshCw, Store, Trash2 } from "lucide-react";
+import { Link2, List, MoreVertical, Pencil, Plus, RefreshCw, Store, Trash2 } from "lucide-react";
 import { StorePreview } from "@/components/materials/teaching-materials";
 import { useState } from "react";
 import { z } from "zod";
@@ -27,6 +27,7 @@ import {
   fileTypeOf,
   materialPrice,
   platformMaterialsSchema,
+  materialSharePath,
   type MaterialLevel,
   type PlatformMaterial,
 } from "@/lib/materials";
@@ -69,6 +70,18 @@ function PlatformMaterials() {
   const [removing, setRemoving] = useState<PlatformMaterial | null>(null);
   /** «Дэлгүүр» — the shop as the teachers see it (2026-10-14, the user). */
   const [shop, setShop] = useState(false);
+  const copyLink = (m: PlatformMaterial) => {
+    const url = `${window.location.origin}${materialSharePath(m.id)}`;
+    void navigator.clipboard.writeText(url).then(
+      () =>
+        toast.success(
+          m.published
+            ? "Холбоос хуулагдлаа."
+            : "Холбоос хуулагдлаа. Нуусан тул «Зарагдаж буй» болгох хүртэл нээгдэхгүй.",
+        ),
+      () => toast.error(`Хуулж чадсангүй: ${url}`),
+    );
+  };
   const list = useQuery({
     queryKey: KEY,
     queryFn: () => get("/platform/materials", platformMaterialsSchema),
@@ -191,6 +204,13 @@ function PlatformMaterials() {
                             label: "Засах",
                             icon: <Pencil size={16} />,
                             onSelect: () => setEditing(m),
+                          },
+                          // A page anyone can open, to share — 2026-10-14, the user.
+                          {
+                            label: "Холбоос хуулах",
+                            icon: <Link2 size={16} />,
+                            hint: m.published ? undefined : "Нуусан — нээхэд харагдахгүй",
+                            onSelect: () => copyLink(m),
                           },
                           {
                             label: "Жишээ хуудас дахин үүсгэх",

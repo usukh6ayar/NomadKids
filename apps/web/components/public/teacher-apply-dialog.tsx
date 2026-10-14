@@ -84,9 +84,15 @@ const TABS: { key: Mode; label: string; hint: string; icon: typeof Building2 }[]
 export function TeacherApplyDialog({
   onClose,
   initialMode = "staff",
+  next,
 }: {
   onClose: () => void;
   initialMode?: Mode;
+  /**
+   * Where to land once the password is set — a shared material's page, so a
+   * teacher who signed up to buy it comes back to it (2026-10-14).
+   */
+  next?: string;
 }) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [soloLocation, setSoloLocation] = useState("");
@@ -156,6 +162,7 @@ export function TeacherApplyDialog({
           >
             {tab.key === "staff" ? (
               <StaffForm
+                next={next}
                 location={staffLocation}
                 onLocationChange={(location) => {
                   setStaffLocation(location);
@@ -170,6 +177,7 @@ export function TeacherApplyDialog({
               />
             ) : (
               <SoloForm
+                next={next}
                 location={soloLocation}
                 onLocationChange={setSoloLocation}
                 onUseContracted={(kindergartenId) => {
@@ -265,12 +273,14 @@ export function looksLikeSameKindergarten(typed: string, listed: string): boolea
 
 /** Staff of a contracted kindergarten: district → kindergarten → register number. */
 function StaffForm({
+  next,
   location,
   onLocationChange,
   kindergartenId,
   onKindergartenChange,
   onNotListed,
 }: {
+  next?: string;
   location: string;
   onLocationChange: (location: string) => void;
   kindergartenId: string;
@@ -287,7 +297,7 @@ function StaffForm({
         method: "POST",
         body: { kindergartenId, registerNumber },
       }),
-    onSuccess: (result) => router.replace(`/invitation/${result.invitationToken}`),
+    onSuccess: (result) => router.replace(invitationPath(result.invitationToken, next)),
   });
 
   function onSubmit(event: FormEvent) {
@@ -405,10 +415,12 @@ function StaffForm({
  * the moment it answers; the password is set on `/invitation/[token]`.
  */
 function SoloForm({
+  next,
   location,
   onLocationChange,
   onUseContracted,
 }: {
+  next?: string;
   location: string;
   onLocationChange: (location: string) => void;
   /** «Цэцэрлэгээр бүртгүүлэх» on a matching name — switch tabs with it chosen. */
@@ -446,7 +458,7 @@ function SoloForm({
           kindergartenName: form.kindergartenName.trim(),
         },
       }),
-    onSuccess: (result) => router.replace(`/invitation/${result.invitationToken}`),
+    onSuccess: (result) => router.replace(invitationPath(result.invitationToken, next)),
   });
 
   const errors = fieldErrors(submit.error);
@@ -584,4 +596,9 @@ function SoloForm({
       </Button>
     </form>
   );
+}
+
+/** `/invitation/<token>`, carrying where to land afterwards when there is one. */
+function invitationPath(token: string, next?: string): string {
+  return next ? `/invitation/${token}?next=${encodeURIComponent(next)}` : `/invitation/${token}`;
 }
