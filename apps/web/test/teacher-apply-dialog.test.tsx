@@ -117,46 +117,83 @@ describe("«Цэцэрлэгээр» — staff of a kindergarten on NomadKids", 
  * pass the default 5 s, so these tests get more room.
  */
 describe("«Дангаараа» — a teacher on their own (#202)", { timeout: 15_000 }, () => {
+  /** Everything but the password — one window since 2026-10-14. */
   async function fillSolo(user: ReturnType<typeof userEvent.setup>) {
     await chooseDistrict(user);
     await user.type(panel().getByLabelText(/Цэцэрлэгийн нэр/), "Нарлаг");
-    await user.type(panel().getByLabelText(/Овог нэр/), "Батаагийн Сувд");
+    await user.type(panel().getByLabelText(/^Овог/), "Батаа");
+    await user.type(panel().getByLabelText(/^Нэр/), "Сувд");
     await user.type(panel().getByLabelText(/^Утас/), "99112233");
     await user.type(panel().getByLabelText(/^И-мэйл/), "suvdaa@example.mn");
-    await user.click(panel().getByRole("button", { name: "Бүртгүүлэх" }));
   }
 
-  it("keeps what was typed across tabs, signs up and goes on to set a password", async () => {
+  async function choosePassword(user: ReturnType<typeof userEvent.setup>, confirm = PASSWORD) {
+    await user.type(panel().getByLabelText(/^Нууц үг(?! давтах)/, { selector: "input" }), PASSWORD);
+    await user.type(panel().getByLabelText(/^Нууц үг давтах/, { selector: "input" }), confirm);
+  }
+
+  const PASSWORD = "Shine-Nuuts99";
+
+  it("keeps what was typed across tabs, signs up with the password, and goes to sign in", async () => {
     const user = userEvent.setup();
     ROUTER.replace.mockClear();
     const api = stubApi([
       { path: "/public/kindergartens", body: [] },
-      {
-        path: "/teacher-applications",
-        method: "POST",
-        status: 201,
-        body: { invitationToken: "tok-solo" },
-      },
+      { path: "/teacher-applications", method: "POST", status: 201, body: { created: true } },
     ]);
     renderWithProviders(<TeacherApplyDialog onClose={() => {}} />);
     await user.click(screen.getByRole("tab", { name: /Дангаараа/ }));
     expect(screen.getByText("Цэцэрлэг маань бүртгэлгүй — үнэгүй")).toBeInTheDocument();
-    await user.type(panel().getByLabelText(/Овог нэр/), "Ба");
+    await user.type(panel().getByLabelText(/^Овог/), "Ба");
     await user.click(screen.getByRole("tab", { name: /Цэцэрлэгээр/ }));
     await user.click(screen.getByRole("tab", { name: /Дангаараа/ }));
-    expect(panel().getByLabelText(/Овог нэр/)).toHaveValue("Ба");
-    await user.clear(panel().getByLabelText(/Овог нэр/));
+    expect(panel().getByLabelText(/^Овог/)).toHaveValue("Ба");
+    await user.clear(panel().getByLabelText(/^Овог/));
     await fillSolo(user);
+    await choosePassword(user);
+    await user.click(panel().getByRole("button", { name: "Бүртгүүлэх" }));
 
-    await waitFor(() => expect(ROUTER.replace).toHaveBeenCalledWith("/invitation/tok-solo"));
+    expect(await screen.findByText("Бүртгэл үүслээ")).toBeInTheDocument();
     expect(api.calls.find((call) => call.url === "/teacher-applications")?.body).toEqual({
-      fullName: "Батаагийн Сувд",
+      lastName: "Батаа",
+      firstName: "Сувд",
       phone: "99112233",
       email: "suvdaa@example.mn",
+      password: PASSWORD,
       propertyType: "Төрийн бус",
       location: "Баянзүрх дүүрэг",
       kindergartenName: "Нарлаг",
     });
+    await waitFor(() => expect(ROUTER.replace).toHaveBeenCalledWith("/login"), { timeout: 3000 });
+  });
+
+  it("says when the two passwords differ, and sends nothing", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([{ path: "/public/kindergartens", body: [] }]);
+    renderWithProviders(<TeacherApplyDialog onClose={() => {}} initialMode="solo" />);
+    await fillSolo(user);
+    await choosePassword(user, "Other-Nuuts99");
+    await user.click(panel().getByRole("button", { name: "Бүртгүүлэх" }));
+
+    expect(await panel().findByText("Хоёр нууц үг таарахгүй байна.")).toBeInTheDocument();
+    expect(api.calls.some((call) => call.url === "/teacher-applications")).toBe(false);
+  });
+
+  it("proves the phone by SMS in the same window where verify.mn is on", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/public/kindergartens", body: [] },
+      { path: "/phone-verifications/availability", body: { enabled: true } },
+    ]);
+    renderWithProviders(<TeacherApplyDialog onClose={() => {}} initialMode="solo" />);
+    await fillSolo(user);
+    await choosePassword(user);
+    await user.click(panel().getByRole("button", { name: "Бүртгүүлэх" }));
+
+    expect(
+      await panel().findByText("Утасны дугаараа SMS-ээр баталгаажуулна уу."),
+    ).toBeInTheDocument();
+    expect(api.calls.some((call) => call.url === "/teacher-applications")).toBe(false);
   });
 });
 
