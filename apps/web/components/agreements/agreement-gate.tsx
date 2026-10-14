@@ -7,7 +7,7 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { ModalOverlay } from "@/components/ui/modal-overlay";
 import { get, mutate } from "@/lib/api/browser";
-import { isNotFound } from "@/lib/api/errors";
+import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useLogout, useSession } from "@/lib/auth/session";
 import {
@@ -109,6 +109,8 @@ export function useAgreements() {
     ready: kinds.length === 0 || server.isSuccess || offline,
     accept,
     accepting: acceptOnServer.isPending,
+    /** The server refused — said in the window, never a silent button. */
+    acceptError: acceptOnServer.isError ? errorMessage(acceptOnServer.error) : null,
   };
 }
 
@@ -122,8 +124,15 @@ export function useAgreements() {
  * the title centred over a rule, the parties' table, bold section heads,
  * numbered clauses, justified, the legal basis at the foot.
  */
+const DEFAULT_FORM = "Цахим хэлбэрээр байгуулах гэрээ";
+
+/** «solo-2.0» → «2.0»: the number on the paper, not the stored key. */
+function versionNumber(agreement: Agreement) {
+  return agreement.version.replace(/^[a-z]+-/, "");
+}
+
 function AgreementText({ agreement }: { agreement: Agreement }) {
-  const version = agreement.version.replace(/^solo-/, "");
+  const version = versionNumber(agreement);
   return (
     <article className="relative bg-white font-serif text-[#0f172a]">
       <div className="mb-5 flex items-center justify-between gap-3 border-b border-slate-200 pb-1.5">
@@ -152,7 +161,7 @@ function AgreementText({ agreement }: { agreement: Agreement }) {
           <p className="text-compact italic text-slate-600">{agreement.subtitle}</p>
         ) : null}
         <p className="mt-1 text-caption text-slate-500">
-          Гэрээний хувилбар: {version} | Цахим хэлбэрээр байгуулах гэрээ
+          Гэрээний хувилбар: {version} | {agreement.form ?? DEFAULT_FORM}
         </p>
       </header>
 
@@ -235,7 +244,7 @@ p { margin: 0 0 1.5mm; text-align: justify; }
 <p style="text-align:right;font-size:8.5pt;color:#64748b;border-bottom:1px solid #cbd5e1;padding-bottom:1mm;margin:0 0 6mm">NOMADKIDS.MN • ЦАХИМ ҮЙЛЧИЛГЭЭНИЙ ГЭРЭЭ</p>
 <h1>${escapeHtml(agreement.title)}</h1><hr style="border:0;border-top:1px solid #2f6fb0;margin:2mm 0 3mm">
 ${agreement.subtitle ? `<p class="sub">${escapeHtml(agreement.subtitle)}</p>` : ""}
-<p class="ver">Гэрээний хувилбар: ${escapeHtml(agreement.version.replace(/^solo-/, ""))} | Цахим хэлбэрээр байгуулах гэрээ</p>
+<p class="ver">Гэрээний хувилбар: ${escapeHtml(versionNumber(agreement))} | ${escapeHtml(agreement.form ?? DEFAULT_FORM)}</p>
 ${
   agreement.parties?.length
     ? `<table>${agreement.parties
@@ -280,7 +289,7 @@ ${agreement.legalBasis ? `<p style="font-style:italic;font-size:9pt;color:#47556
 export function AgreementGate() {
   const { session } = useSession();
   const logout = useLogout();
-  const { pending, ready, accept, accepting } = useAgreements();
+  const { pending, ready, accept, accepting, acceptError } = useAgreements();
   const [welcomed, setWelcomed] = useState<"no" | "showing" | "done">("no");
   /** The agreement whose «уншиж, зөвшөөрч байна» is ticked — per agreement. */
   const [ticked, setTicked] = useState<AgreementKind | null>(null);
@@ -333,6 +342,14 @@ export function AgreementGate() {
               />
               {current.consent ?? "Гэрээг уншиж, нөхцөлийг зөвшөөрч байна."}
             </label>
+            {acceptError ? (
+              <p role="alert" className="text-caption text-danger">
+                Зөвшөөрөл хадгалагдсангүй: {acceptError}
+              </p>
+            ) : null}
+            {current.consentNote ? (
+              <p className="text-caption text-muted">{current.consentNote}</p>
+            ) : null}
             <div className="flex gap-2">
               <Button
                 variant="ghost"
@@ -350,7 +367,7 @@ export function AgreementGate() {
                   if (pending.length === 1) setWelcomed("showing");
                 }}
               >
-                {accepting ? "Хадгалж байна…" : "Зөвшөөрөх"}
+                {accepting ? "Хадгалж байна…" : (current.acceptLabel ?? "Зөвшөөрөх")}
               </Button>
             </div>
           </div>

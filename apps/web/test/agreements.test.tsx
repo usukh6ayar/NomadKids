@@ -69,9 +69,11 @@ describe("the agreement window", () => {
     ]);
     renderWithProviders(<AgreementGate />);
 
-    const dialog = await screen.findByRole("dialog", { name: "Эцэг эх хэрэглэгчийн гэрээ" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Эцэг, эх, асран хамгаалагчийн цахим үйлчилгээ ашиглах гэрээ",
+    });
     await user.click(tick(dialog));
-    await user.click(within(dialog).getByRole("button", { name: "Зөвшөөрөх" }));
+    await user.click(within(dialog).getByRole("button", { name: "Зөвшөөрч, үргэлжлүүлэх" }));
 
     await waitFor(() =>
       expect(
@@ -283,5 +285,54 @@ describe("a kindergarten's teacher", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.queryByRole("button", { name: "Миний гэрээ" })).toBeNull();
+  });
+});
+
+/*
+ * ★ The parent's agreement, version 1.0 — 2026-10-14, the user: every
+ * guardian sees it on their first sign-in, laid out as the paper.
+ */
+describe("a guardian", () => {
+  it("reads the parent's agreement 1.0 whole, with the special consent asked apart", async () => {
+    stubApi([{ path: "/auth/me", body: sessionFor(["PARENT"], USER_ID) }]);
+    renderWithProviders(<AgreementGate />);
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Эцэг, эх, асран хамгаалагчийн цахим үйлчилгээ ашиглах гэрээ",
+    });
+    expect(dialog).toHaveTextContent("Гэрээний хувилбар: 1.0");
+    expect(
+      within(dialog).getByRole("region", { name: "1. Нийтлэг үндэслэл, гэрээний зүйл" }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("region", { name: "11. Мэдэгдэл, маргаан шийдвэрлэх, бусад" }),
+    ).toHaveTextContent("11.4.");
+    expect(dialog).toHaveTextContent("тусгай зөвшөөрлийг тусдаа дэлгэцээр авна");
+    expect(tick(dialog).closest("label")).toHaveTextContent("1.0 хувилбарыг бүрэн уншиж");
+    expect(within(dialog).getByRole("button", { name: "Зөвшөөрч, үргэлжлүүлэх" })).toBeDisabled();
+  });
+
+  it("says so when the server refuses the acceptance, and stays open", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"], USER_ID) },
+      { path: "/me/agreements", method: "GET", body: { accepted: [] } },
+      {
+        path: "/me/agreements",
+        method: "POST",
+        status: 400,
+        body: { title: "Гэрээний хувилбар шинэчлэгдсэн байна. Хуудсаа дахин ачаална уу." },
+      },
+    ]);
+    renderWithProviders(<AgreementGate />);
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Эцэг, эх, асран хамгаалагчийн цахим үйлчилгээ ашиглах гэрээ",
+    });
+    await user.click(tick(dialog));
+    await user.click(within(dialog).getByRole("button", { name: "Зөвшөөрч, үргэлжлүүлэх" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Зөвшөөрөл хадгалагдсангүй");
+    expect(screen.queryByRole("dialog", { name: "Системд тавтай морил" })).toBeNull();
   });
 });
