@@ -719,12 +719,6 @@ function ReviewDialog({
           }
         />
 
-        <p className="text-body text-muted">
-          Батласнаар <strong>цэцэрлэг, эрхлэгчийн бүртгэл, гэрээ</strong> гурав зэрэг үүснэ. Доорх
-          дүнгүүд гэрээн дээр хэвлэгдэж, дараа нь өөрчлөгдөхгүй. Батлахаас өмнө «Гэрээ харах»-аар
-          гэрээгээ шалгаж, хэвлэж болно.
-        </p>
-
         <Field
           label="Эрхлэгчийн нэвтрэх нэр"
           error={usernameBad ? "Латин үсэг, тоо, . _ - тэмдэгтээр бичнэ үү" : errors.adminUsername}
@@ -837,9 +831,11 @@ function ReviewDialog({
             <Textarea
               id={id}
               aria-describedby={describedBy}
-              rows={2}
+              rows={1}
               value={reviewNote}
               onChange={(event) => setReviewNote(event.target.value)}
+              // One line until written in — 2026-10-14, the user: «зай шах».
+              className="min-h-10 py-2"
             />
           )}
         </Field>
