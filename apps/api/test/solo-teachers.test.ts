@@ -86,7 +86,7 @@ describe("signing up", () => {
       include: { groups: true, schoolYears: true, memberships: true },
     });
     expect(kindergarten).toMatchObject({
-      name: "Д.Сараа — бие даасан багш",
+      name: "Д.Сараа",
       soloWorkplaceName: "115-р цэцэрлэг",
       esisInstitutionId: null,
     });

@@ -70,7 +70,9 @@ export class SoloTeachersService {
 
       const created = await this.repo.createWorkspace({
         kindergarten: {
-          name: `${display} — бие даасан багш`,
+          // ★ The teacher's name alone — «— бие даасан багш» was on their own
+          // dashboard as its title (the user, 2026-10-14).
+          name: display,
           phone: dto.phone,
           email: dto.email,
           propertyType: dto.propertyType || null,

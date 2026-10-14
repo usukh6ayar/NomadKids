@@ -501,11 +501,6 @@ describe("a teacher may record but not administer", () => {
     expect(res.status).toBe(200);
   });
 
-  it("cannot archive a child", async () => {
-    const res = await authed(request(server()).delete(`/v1/children/${a.child.id}`), teacherA);
-    expect(res.status).toBe(404);
-  });
-
   it("cannot change guardianships", async () => {
     const res = await authed(
       request(server()).patch(`/v1/guardianships/${a.guardianship.id}`),
@@ -520,6 +515,52 @@ describe("a teacher may record but not administer", () => {
       teacherA,
     ).send({ groupId: a.group.id });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("a teacher archives a child of their own group (the user, 2026-10-14)", () => {
+  it("removes a child the teacher teaches now", async () => {
+    const res = await authed(request(server()).delete(`/v1/children/${a.child.id}`), teacherA);
+    expect(res.status).toBe(200);
+    const row = await db.child.findUniqueOrThrow({ where: { id: a.child.id } });
+    expect(row.deletedAt).not.toBeNull();
+    const audit = await db.auditLog.findFirst({
+      where: { action: "DELETE", objectType: "Child", objectId: a.child.id },
+    });
+    expect(audit?.actorUserId).toBe(a.teacherUser.id);
+  });
+
+  it("teacher from another group gets 404", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Өөр бүлэг");
+    const user = await createUser({ username: uniq("otherteacher") });
+    const membership = await createMembership(user.id, a.kindergarten.id, "TEACHER");
+    await assignTeacher(a.kindergarten.id, other.id, membership.id);
+    const session = await login(app, user.username);
+
+    const res = await authed(request(server()).delete(`/v1/children/${a.child.id}`), session);
+    expect(res.status).toBe(404);
+  });
+
+  it("the previous teacher cannot remove a child who moved on", async () => {
+    const newGroup = await createGroup(a.kindergarten.id, a.schoolYear.id, "Шинэ бүлэг");
+    await authed(request(server()).post(`/v1/children/${a.child.id}/enrollments`), adminA).send({
+      groupId: newGroup.id,
+    });
+
+    const res = await authed(request(server()).delete(`/v1/children/${a.child.id}`), teacherA);
+    expect(res.status).toBe(404);
+  });
+
+  it("guardian of the child gets 404", async () => {
+    const res = await authed(request(server()).delete(`/v1/children/${a.child.id}`), parentA);
+    expect(res.status).toBe(404);
+  });
+
+  it("user from another kindergarten gets 404", async () => {
+    const res = await authed(request(server()).delete(`/v1/children/${a.child.id}`), teacherB);
+    expect(res.status).toBe(404);
+    const row = await db.child.findUniqueOrThrow({ where: { id: a.child.id } });
+    expect(row.deletedAt).toBeNull();
   });
 });
 

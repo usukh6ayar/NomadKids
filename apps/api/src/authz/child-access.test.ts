@@ -4,6 +4,7 @@ import type { Actor } from "./actor";
 import {
   canAccessChild,
   canAdministerChild,
+  canArchiveChild,
   canRecordForChild,
   childKindergartenIds,
   isAssignedTeacherOf,
@@ -60,7 +61,7 @@ function facts(overrides: Partial<ChildAccessFacts> = {}): ChildAccessFacts {
     childId: "child-1",
     childKindergartenId: KG_A,
     childKindergartenKind: "CONTRACTED",
-    enrollments: [{ groupId: GROUP_1, kindergartenId: KG_A }],
+    enrollments: [{ groupId: GROUP_1, kindergartenId: KG_A, active: true }],
     guardianships: [],
     actorActiveTeachingGroupIds: [],
     ...overrides,
@@ -75,8 +76,8 @@ describe("childKindergartenIds", () => {
       facts({
         childKindergartenId: KG_B,
         enrollments: [
-          { groupId: GROUP_1, kindergartenId: KG_A },
-          { groupId: GROUP_2, kindergartenId: KG_B },
+          { groupId: GROUP_1, kindergartenId: KG_A, active: true },
+          { groupId: GROUP_2, kindergartenId: KG_B, active: true },
         ],
       }),
     );
@@ -87,7 +88,7 @@ describe("childKindergartenIds", () => {
     const set = childKindergartenIds(
       facts({
         childKindergartenId: KG_B,
-        enrollments: [{ groupId: GROUP_1, kindergartenId: KG_A }],
+        enrollments: [{ groupId: GROUP_1, kindergartenId: KG_A, active: true }],
       }),
     );
     expect(set.has(KG_B)).toBe(false);
@@ -108,7 +109,7 @@ describe("childKindergartenIds", () => {
     const set = childKindergartenIds(
       facts({
         childKindergartenId: KG_B,
-        enrollments: [{ groupId: GROUP_1, kindergartenId: KG_A }],
+        enrollments: [{ groupId: GROUP_1, kindergartenId: KG_A, active: true }],
       }),
     );
     expect([...set]).toEqual([KG_A]);
@@ -173,8 +174,8 @@ describe("isAssignedTeacherOf", () => {
     // become unreachable because the child moved up.
     const f = facts({
       enrollments: [
-        { groupId: GROUP_1, kindergartenId: KG_A }, // ended, still history
-        { groupId: GROUP_2, kindergartenId: KG_A },
+        { groupId: GROUP_1, kindergartenId: KG_A, active: false }, // ended, still history
+        { groupId: GROUP_2, kindergartenId: KG_A, active: true },
       ],
       actorActiveTeachingGroupIds: [GROUP_1],
     });
@@ -230,8 +231,8 @@ describe("canAccessChild", () => {
     const f = facts({
       childKindergartenId: KG_B,
       enrollments: [
-        { groupId: GROUP_1, kindergartenId: KG_A },
-        { groupId: GROUP_2, kindergartenId: KG_B },
+        { groupId: GROUP_1, kindergartenId: KG_A, active: true },
+        { groupId: GROUP_2, kindergartenId: KG_B, active: true },
       ],
     });
     expect(canAccessChild(admin(KG_A), f)).toBe(true);
@@ -291,5 +292,39 @@ describe("canAdministerChild", () => {
     expect(canAdministerChild(admin(KG_A), f)).toBe(true);
     expect(canAdministerChild(teacher(), f)).toBe(false);
     expect(canAdministerChild(parent(), f)).toBe(false);
+  });
+});
+
+describe("canArchiveChild", () => {
+  it("allows the teacher of the group the child attends now", () => {
+    expect(canArchiveChild(teacher(), facts({ actorActiveTeachingGroupIds: [GROUP_1] }))).toBe(
+      true,
+    );
+  });
+
+  it("refuses the teacher of a group the child has left", () => {
+    const moved = facts({
+      enrollments: [
+        { groupId: GROUP_1, kindergartenId: KG_A, active: false },
+        { groupId: GROUP_2, kindergartenId: KG_A, active: true },
+      ],
+      actorActiveTeachingGroupIds: [GROUP_1],
+    });
+    // Still reads the child — the history rule — but may not remove them.
+    expect(canAccessChild(teacher(), moved)).toBe(true);
+    expect(canArchiveChild(teacher(), moved)).toBe(false);
+  });
+
+  it("refuses a teacher of another group and a guardian", () => {
+    expect(canArchiveChild(teacher(), facts({ actorActiveTeachingGroupIds: [GROUP_2] }))).toBe(
+      false,
+    );
+    const own = facts({ guardianships: [{ guardianUserId: "parent-1", canView: true }] });
+    expect(canArchiveChild(parent(), own)).toBe(false);
+  });
+
+  it("allows an admin of the child's kindergarten, not of another", () => {
+    expect(canArchiveChild(admin(KG_A), facts())).toBe(true);
+    expect(canArchiveChild(admin(KG_B), facts())).toBe(false);
   });
 });

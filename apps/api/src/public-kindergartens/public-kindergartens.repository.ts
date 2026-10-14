@@ -8,7 +8,7 @@ export const PUBLIC_KINDERGARTEN_LIMIT = 200;
  * Contracted kindergartens, read by people who have no account.
  *
  * ★ `kind: CONTRACTED` is the line that matters. A solo teacher's workspace is
- * named after the teacher («Б.Сараа — бие даасан багш»), so listing one would
+ * named after the teacher («Б.Сараа»), so listing one would
  * publish a person's name and that they work alone. Inactive, deleted and
  * merged kindergartens are not offered either: nobody can sign up to them.
  *
