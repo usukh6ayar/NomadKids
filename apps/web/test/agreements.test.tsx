@@ -204,8 +204,8 @@ describe("«Гэрээ» in the personal settings", () => {
     ]);
     renderWithProviders(<AgreementButton />);
 
-    await user.click(await screen.findByRole("button", { name: "Гэрээ" }));
-    const dialog = screen.getByRole("dialog", { name: "Гэрээ" });
+    await user.click(await screen.findByRole("button", { name: "Миний гэрээ" }));
+    const dialog = screen.getByRole("dialog", { name: "Миний гэрээ" });
     expect(within(dialog).getByText("Багш хэрэглэгчийн гэрээ")).toBeInTheDocument();
     expect(await within(dialog).findByText(/Зөвшөөрсөн:/)).toBeInTheDocument();
   });
@@ -214,6 +214,43 @@ describe("«Гэрээ» in the personal settings", () => {
     stubApi([{ path: "/auth/me", body: sessionFor(["ADMIN"], USER_ID) }]);
     renderWithProviders(<AgreementButton />);
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(screen.queryByRole("button", { name: "Гэрээ" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Миний гэрээ" })).toBeNull();
+  });
+});
+
+/*
+ * ★ «Миний гэрээ» — 2026-10-14, the user: a solo teacher finds their own
+ * agreement, version 2.0, with the day it was accepted.
+ */
+describe("«Миний гэрээ» for a solo teacher", () => {
+  it("shows the solo teacher's 2.0 agreement and the day it was accepted", async () => {
+    const user = userEvent.setup();
+    const session = sessionFor(["ADMIN", "TEACHER"], USER_ID);
+    stubApi([
+      {
+        path: "/auth/me",
+        body: {
+          ...session,
+          soloKindergartenIds: session.memberships.map(
+            (m: { kindergartenId: string }) => m.kindergartenId,
+          ),
+        },
+      },
+      {
+        path: "/me/agreements",
+        body: {
+          accepted: [
+            { kind: "TEACHER", version: "solo-2.0", acceptedAt: "2026-10-14T05:30:00.000Z" },
+          ],
+        },
+      },
+    ]);
+    renderWithProviders(<AgreementButton />);
+
+    await user.click(await screen.findByRole("button", { name: "Миний гэрээ" }));
+    const dialog = screen.getByRole("dialog", { name: "Миний гэрээ" });
+    expect(dialog).toHaveTextContent("Багшийн цахим үйлчилгээ ашиглах гэрээ");
+    expect(dialog).toHaveTextContent("Хувилбар 2.0");
+    expect(dialog).toHaveTextContent("Зөвшөөрсөн: 2026.10.14");
   });
 });

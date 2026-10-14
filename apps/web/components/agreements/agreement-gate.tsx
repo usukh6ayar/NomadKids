@@ -367,7 +367,7 @@ export function AgreementGate() {
           <CheckCircle2 className="size-10 text-mint-ink" aria-hidden="true" />
           <h2 className="text-lead font-extrabold text-[#102f5d]">Системд тавтай морил</h2>
           <p className="text-body text-slate-600">
-            Гэрээг зөвшөөрлөө. «Хувийн тохиргоо» → «Гэрээ»-нээс хүссэн үедээ дахин харна.
+            Гэрээг зөвшөөрлөө. «Хувийн тохиргоо» → «Миний гэрээ»-нээс хүссэн үедээ дахин харна.
           </p>
           <Button className="mt-2" onClick={() => setWelcomed("done")}>
             Эхлэх
@@ -381,7 +381,8 @@ export function AgreementGate() {
 }
 
 /**
- * «Гэрээ» at the right of «Хувийн тохиргоо» — the accepted agreement, to read
+ * «Миний гэрээ» at the right of «Хувийн тохиргоо» — named as the agreement
+ * names it (§2.4, 2026-10-14); — the accepted agreement, to read
  * again. Nothing for a role without one (a director signs by e-mail).
  */
 export function AgreementButton() {
@@ -394,10 +395,10 @@ export function AgreementButton() {
     <>
       <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
         <FileText aria-hidden="true" />
-        Гэрээ
+        Миний гэрээ
       </Button>
       {open ? (
-        <ModalOverlay label="Гэрээ" onClose={() => setOpen(false)}>
+        <ModalOverlay label="Миний гэрээ" onClose={() => setOpen(false)}>
           <div className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-[560px] flex-col gap-4 overflow-y-auto rounded-card bg-white p-5 shadow-xl">
             <button
               type="button"
