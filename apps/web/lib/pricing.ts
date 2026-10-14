@@ -159,6 +159,12 @@ export interface ContractLine {
   amount: number;
   /** Below the standard price — the line says «Хямдрал». */
   discounted: boolean;
+  /**
+   * When it is paid: the day its term (or school year) begins — the user,
+   * 2026-10-14. The 14-day reminder runs up to it; unpaid on it, the
+   * kindergarten's access is suspended.
+   */
+  dueOn: string;
 }
 
 export interface ContractSchedule {
@@ -214,6 +220,7 @@ export function contractSchedule(
         perGroup: KINDERGARTEN_CURRENT_YEAR_PER_GROUP,
         amount: groups * KINDERGARTEN_CURRENT_YEAR_PER_GROUP,
         discounted: KINDERGARTEN_CURRENT_YEAR_PER_GROUP < KINDERGARTEN_STANDARD_YEAR_PER_GROUP,
+        dueOn: `${year}-09-01`,
       });
       standardTotal += groups * KINDERGARTEN_STANDARD_YEAR_PER_GROUP;
       continue;
@@ -235,6 +242,7 @@ export function contractSchedule(
         perGroup,
         amount: groups * perGroup,
         discounted,
+        dueOn: from,
       });
       standardTotal += groups * KINDERGARTEN_STANDARD_TERM_PER_GROUP;
     }

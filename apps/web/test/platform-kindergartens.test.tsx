@@ -364,4 +364,42 @@ describe("the operator's kindergartens table", () => {
     await user.click(screen.getByRole("button", { name: "Бүгдийг цэвэрлэх" }));
     expect(document.querySelectorAll("tbody tr")).toHaveLength(2);
   });
+
+  /*
+   * ★ What each kindergarten has paid the platform — 2026-10-14, the user.
+   * Read from the list row when the API sends it; «—» until then.
+   */
+  it("shows and filters by payment, «—» while the API sends none", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      {
+        path: "/platform/kindergartens",
+        body: {
+          items: [
+            { ...ROWS[0], paymentStatus: "overdue", paidPeriods: 1, totalPeriods: 3 },
+            ROWS[1],
+          ],
+          page: 1,
+          pageSize: 50,
+          total: 2,
+          totalPages: 1,
+        },
+      },
+    ]);
+    renderWithProviders(<PlatformPage />);
+    const table = await screen.findByRole("table");
+    const column = [...table.querySelectorAll("thead tr:first-child th")].findIndex(
+      (th) => th.textContent === "Төлбөр",
+    );
+    const cellOf = (name: string) =>
+      within(table).getByText(name).closest("tr")!.querySelectorAll("td")[column]!;
+
+    expect(cellOf("Нарлаг цэцэрлэг")).toHaveTextContent("Хоцорсон · 1/3");
+    expect(cellOf("Хүслэн")).toHaveTextContent("—");
+
+    await user.click(screen.getByLabelText("Төлбөрөөр шүүх"));
+    await user.click(screen.getByRole("option", { name: "Хоцорсон" }));
+    expect(table.querySelectorAll("tbody tr")).toHaveLength(1);
+  });
 });

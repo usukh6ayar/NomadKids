@@ -75,6 +75,13 @@ const rowSchema = platformKindergartenSchema.extend({
   contractStartsOn: z.string().nullish(),
   /** The contract's last day — a red date within 14 days of it. */
   contractEndsOn: z.string().nullish(),
+  /*
+   * ★ Paid to the platform — 2026-10-14, the user: each term (or year) due the
+   * day it begins, suspended unpaid on it. Asked of the admin; «—» until sent.
+   */
+  paymentStatus: z.enum(["paid", "due", "overdue", "suspended"]).nullish(),
+  paidPeriods: z.number().int().nullish(),
+  totalPeriods: z.number().int().nullish(),
   /** Linked to ESIS; read from `esisInstitutionId` until the API says so itself. */
   esisConnected: z.boolean().nullish(),
   /*
@@ -119,6 +126,7 @@ function Platform() {
   const [kind, setKind] = useState<"" | "plain" | "esis">("");
   const [ownership, setOwnership] = useState("");
   const [area, setArea] = useState("");
+  const [payment, setPayment] = useState("");
   const [deleting, setDeleting] = useState<Row | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "name", dir: 1 });
 
@@ -147,7 +155,8 @@ function Platform() {
       (kg) =>
         (!kind || esisConnected(kg) === (kind === "esis")) &&
         (!ownership || kg.propertyType === ownership) &&
-        (!area || areaOf(kg) === area),
+        (!area || areaOf(kg) === area) &&
+        (!payment || kg.paymentStatus === payment),
     )
     .sort((a, b) => compareRows(a, b, sort.key, sort.dir));
   const filtered = Boolean(query.trim() || status || ownership || area || kind);
@@ -163,6 +172,11 @@ function Platform() {
     },
     ownership && { key: "ownership", label: ownership, clear: () => setOwnership("") },
     area && { key: "area", label: area, clear: () => setArea("") },
+    payment && {
+      key: "payment",
+      label: labelOf(PAYMENT_OPTIONS, payment),
+      clear: () => setPayment(""),
+    },
     status && {
       key: "status",
       label: labelOf(STATUS_OPTIONS, status),
@@ -174,6 +188,7 @@ function Platform() {
     setKind("");
     setOwnership("");
     setArea("");
+    setPayment("");
     setStatus("");
   };
   const sortBy = (key: SortKey) =>
@@ -290,6 +305,13 @@ function Platform() {
             ]}
           />
           <FilterSelect
+            label="Төлбөр"
+            ariaLabel="Төлбөрөөр шүүх"
+            value={payment}
+            onChange={setPayment}
+            options={PAYMENT_OPTIONS}
+          />
+          <FilterSelect
             label="Төлөв"
             ariaLabel="Төлвөөр шүүх"
             value={status}
@@ -318,7 +340,7 @@ function Platform() {
         {rows.length > 0 ? (
           <div className="overflow-x-auto rounded-control border border-border bg-white">
             <table
-              className={`w-full ${showEsis ? "min-w-[1560px]" : "min-w-[1240px]"} border-separate border-spacing-0 text-left text-caption`}
+              className={`w-full ${showEsis ? "min-w-[1660px]" : "min-w-[1340px]"} border-separate border-spacing-0 text-left text-caption`}
             >
               <thead className="bg-slate-50 text-muted">
                 <tr className="[&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-r [&>th]:border-border [&>th]:px-3 [&>th]:py-2 [&>th]:font-semibold [&>th:last-child]:border-r-0">
@@ -371,6 +393,7 @@ function Platform() {
                   <th scope="col">И-мэйл</th>
                   <SortHeader label="Эхэлсэн" column="start" sort={sort} onSort={sortBy} />
                   <SortHeader label="Дуусах" column="contract" sort={sort} onSort={sortBy} />
+                  <th scope="col">Төлбөр</th>
                   <th scope="col">Төлөв</th>
                   <th scope="col" className="w-10">
                     <span className="sr-only">Үйлдэл</span>
@@ -498,6 +521,9 @@ function KindergartenRow({
           "—"
         )}
       </td>
+      <td className={`${cell} whitespace-nowrap`}>
+        <PaymentCell kg={kg} />
+      </td>
       <td className={cell}>
         <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
           <span
@@ -573,6 +599,7 @@ function downloadSheet(rows: Row[], showEsis: boolean) {
     "И-мэйл",
     "Эхэлсэн",
     "Дуусах",
+    "Төлбөр",
     "Төлөв",
   ];
   const body = rows.map((kg, index) => [
@@ -593,6 +620,7 @@ function downloadSheet(rows: Row[], showEsis: boolean) {
     kg.email ?? "",
     formatDate(startedOn(kg)),
     kg.contractEndsOn ? formatDate(kg.contractEndsOn) : "",
+    paymentText(kg),
     kg.isActive ? "Идэвхтэй" : "Идэвхгүй",
   ]);
   const csv = [header, ...body].map((line) => line.map(quote).join(",")).join("\r\n");
@@ -957,7 +985,7 @@ function KindergartenTotals({
       <td className={`${cell} text-right tabular-nums`}>{figure(groups)}</td>
       <td className={`${cell} text-right tabular-nums`}>{figure(children)}</td>
       <td className={`${cell} text-right tabular-nums`}>{figure(staff)}</td>
-      <td className={cell} colSpan={6} />
+      <td className={cell} colSpan={7} />
     </tr>
   );
 }
@@ -969,4 +997,42 @@ function ratio(
   empty = "—",
 ): string {
   return typeof part === "number" && typeof whole === "number" ? `${part} / ${whole}` : empty;
+}
+
+/** «Бүгд» or one payment state — 2026-10-14, the user. */
+const PAYMENT_OPTIONS = [
+  { value: "", label: "Бүгд" },
+  { value: "paid", label: "Төлсөн" },
+  { value: "due", label: "Төлөх хугацаа ойртсон" },
+  { value: "overdue", label: "Хоцорсон" },
+  { value: "suspended", label: "Эрх түр хаагдсан" },
+] as const;
+
+const PAYMENT_DOT = {
+  paid: "bg-emerald-500",
+  due: "bg-amber-400",
+  overdue: "bg-red-500",
+  suspended: "bg-red-500",
+} as const;
+
+/** «Төлсөн · 2/3», or «—» while the API sends nothing. */
+function paymentText(kg: Row): string {
+  if (!kg.paymentStatus) return "";
+  const label = labelOf(PAYMENT_OPTIONS, kg.paymentStatus);
+  return typeof kg.paidPeriods === "number" && typeof kg.totalPeriods === "number"
+    ? `${label} · ${kg.paidPeriods}/${kg.totalPeriods}`
+    : label;
+}
+
+function PaymentCell({ kg }: { kg: Row }) {
+  if (!kg.paymentStatus) return <>—</>;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span
+        aria-hidden="true"
+        className={`size-1.5 rounded-pill ${PAYMENT_DOT[kg.paymentStatus]}`}
+      />
+      {paymentText(kg)}
+    </span>
+  );
 }
