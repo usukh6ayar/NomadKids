@@ -49,6 +49,15 @@ export type SoloRow = z.infer<typeof soloRowSchema>;
 
 const soloListSchema = paginated(soloRowSchema);
 
+/**
+ * «Б.Сувд» — the workspace's name without the « — бие даасан багш» the API
+ * gives it (`solo-teachers.service.ts`): this table is the solo teachers', so
+ * it says nothing (2026-10-14, the user). Display only; the name is unchanged.
+ */
+export function teacherName(row: { name: string }): string {
+  return row.name.replace(/\s*—\s*бие даасан багш$/u, "");
+}
+
 /** Children not yet paid for, or `null` while the API does not say. */
 function unpaidOf(row: SoloRow): number | null {
   return typeof row.paidChildCount === "number"
@@ -80,7 +89,7 @@ function downloadSoloSheet(rows: SoloRow[]) {
   ];
   const body = rows.map((row, index) => [
     index + 1,
-    row.name,
+    teacherName(row),
     row.workplace ?? "",
     row.location ?? "",
     row.childCount,
@@ -118,7 +127,7 @@ type SoloSortKey = "name" | "area" | "children" | "unpaid" | "created";
 function compareSolo(a: SoloRow, b: SoloRow, key: SoloSortKey, dir: 1 | -1): number {
   const value = (row: SoloRow): string | number | null =>
     key === "name"
-      ? row.name
+      ? teacherName(row)
       : key === "area"
         ? row.location || null
         : key === "children"
@@ -352,7 +361,9 @@ export function SoloTeachersTable({
                   <td className={`${cell} ${FROZEN_NO} text-right tabular-nums text-muted`}>
                     {index + 1}
                   </td>
-                  <td className={`${cell} ${FROZEN_NAME} font-semibold text-ink`}>{row.name}</td>
+                  <td className={`${cell} ${FROZEN_NAME} font-semibold text-ink`}>
+                    {teacherName(row)}
+                  </td>
                   <td className={cell}>{row.workplace || "—"}</td>
                   <td className={cell}>{row.location || "—"}</td>
                   <td className={`${cell} text-right tabular-nums`}>{row.childCount}</td>
@@ -371,7 +382,7 @@ export function SoloTeachersTable({
                   </td>
                   <td className={`${cell} text-right`}>
                     <RowMenu
-                      ariaLabel={`${row.name} — үйлдэл`}
+                      ariaLabel={`${teacherName(row)} — үйлдэл`}
                       items={[
                         onMerge
                           ? { label: "Цэцэрлэгт нэгтгэх", onSelect: () => onMerge(row) }

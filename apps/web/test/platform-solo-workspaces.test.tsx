@@ -74,7 +74,7 @@ function stub(previewBody: unknown) {
 
 /** The merge opens from the row's «⋯» since the page became a table (2026-10-14). */
 async function openMerge(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole("button", { name: `${WORKSPACE.name} — үйлдэл` }));
+  await user.click(await screen.findByRole("button", { name: "Д.Сараа — үйлдэл" }));
   await user.click(screen.getByRole("menuitem", { name: "Цэцэрлэгт нэгтгэх" }));
 }
 
@@ -84,7 +84,9 @@ describe("the operator's solo workspaces", () => {
     const api = stub({ ok: true, result: RESULT, targetGroups: TARGET_GROUPS });
     renderWithProviders(<SoloWorkspacesPage />);
 
-    const row = (await screen.findByText(WORKSPACE.name)).closest("tr")!;
+    // « — бие даасан багш» is not repeated in the solo teachers' own table.
+    const row = (await screen.findByText("Д.Сараа")).closest("tr")!;
+    expect(screen.queryByText(WORKSPACE.name)).toBeNull();
     expect(row).toHaveTextContent("Нарлаг цэцэрлэг");
     expect(row).toHaveTextContent("4");
     await openMerge(user);
@@ -221,8 +223,8 @@ describe("the operator's solo workspaces", () => {
       [...row(name).querySelectorAll("td")].map((td) => td.textContent);
 
     // Children, paid, not paid.
-    expect(cells(WORKSPACE.name).slice(4, 7)).toEqual(["4", "1", "3"]);
-    expect(cells("Б.Ану — бие даасан багш").slice(4, 7)).toEqual(["3", "3", "0"]);
+    expect(cells("Д.Сараа").slice(4, 7)).toEqual(["4", "1", "3"]);
+    expect(cells("Б.Ану").slice(4, 7)).toEqual(["3", "3", "0"]);
     const totals = table.querySelectorAll("thead tr")[1]!;
     expect(totals).toHaveTextContent("Нийт: 2 багш");
     expect([...totals.querySelectorAll("td")].map((td) => td.textContent).slice(4, 7)).toEqual([
@@ -234,6 +236,6 @@ describe("the operator's solo workspaces", () => {
     await user.click(screen.getByLabelText("Хүүхдийн төлбөрөөр шүүх"));
     await user.click(screen.getByRole("option", { name: "Төлөөгүй хүүхэдтэй" }));
     expect(table.querySelectorAll("tbody tr")).toHaveLength(1);
-    expect(within(table).getByText(WORKSPACE.name)).toBeInTheDocument();
+    expect(within(table).getByText("Д.Сараа")).toBeInTheDocument();
   });
 });
