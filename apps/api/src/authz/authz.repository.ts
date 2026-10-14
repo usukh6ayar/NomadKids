@@ -75,7 +75,7 @@ export class AuthzRepository {
         kindergarten: { select: { kind: true } },
         enrollments: {
           where: { deletedAt: null },
-          select: { groupId: true, kindergartenId: true },
+          select: { groupId: true, kindergartenId: true, status: true },
         },
         guardianships: {
           where: { deletedAt: null },
@@ -90,7 +90,11 @@ export class AuthzRepository {
       childId: child.id,
       childKindergartenId: child.kindergartenId,
       childKindergartenKind: child.kindergarten.kind,
-      enrollments: child.enrollments,
+      enrollments: child.enrollments.map((e) => ({
+        groupId: e.groupId,
+        kindergartenId: e.kindergartenId,
+        active: e.status === "ACTIVE",
+      })),
       guardianships: child.guardianships,
       actorActiveTeachingGroupIds: await this.loadActiveTeachingGroupIds(actor),
     };

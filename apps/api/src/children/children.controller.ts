@@ -185,7 +185,7 @@ export class ChildrenController {
   }
 
   @Delete("children/:id")
-  @Roles("ADMIN")
+  @Roles("ADMIN", "TEACHER")
   async archive(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },

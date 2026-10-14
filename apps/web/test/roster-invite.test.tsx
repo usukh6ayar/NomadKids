@@ -76,13 +76,24 @@ describe("inviting from the roster row", () => {
     );
   });
 
-  it("does not offer «Устгах» to a teacher", async () => {
+  /** The user, 2026-10-14: a teacher removes a child of their own group too. */
+  it("offers «Устгах» to a teacher", async () => {
     const user = userEvent.setup();
     stubApi([{ path: "/auth/me", body: sessionFor(["TEACHER"]) }]);
     renderWithProviders(<StudentRosterTable items={[CHILD]} forTeacher />);
 
     await user.click(screen.getByRole("button", { name: "Батжаргал Ану — үйлдэл" }));
     await screen.findByRole("menuitem", { name: "Урих" });
+    expect(screen.getByRole("menuitem", { name: "Устгах" })).toBeInTheDocument();
+  });
+
+  it("does not offer «Устгах» to an accountant", async () => {
+    const user = userEvent.setup();
+    stubApi([{ path: "/auth/me", body: sessionFor(["ACCOUNTANT"]) }]);
+    renderWithProviders(<StudentRosterTable items={[CHILD]} />);
+
+    await user.click(screen.getByRole("button", { name: "Батжаргал Ану — үйлдэл" }));
+    await screen.findByRole("menuitem", { name: "Дэлгэрэнгүй" });
     expect(screen.queryByRole("menuitem", { name: "Устгах" })).toBeNull();
   });
 });

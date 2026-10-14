@@ -300,9 +300,12 @@ export class ChildrenService {
     return updated;
   }
 
-  /** Archives a child. Admins only — this is an administrative action. */
+  /**
+   * Archives a child — an admin, or the teacher of the group the child attends
+   * now (the user, 2026-10-14). `canArchiveChild`.
+   */
   async archive(actor: Actor, childId: string) {
-    const facts = await this.childAccess.assertCanAdminister(actor, childId);
+    const facts = await this.childAccess.assertCanArchive(actor, childId);
 
     const archived = await this.repo.softDeleteChild(childId);
     await this.audit.append({

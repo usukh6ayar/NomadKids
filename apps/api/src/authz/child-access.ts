@@ -41,6 +41,8 @@ export interface ChildAccessFacts {
 export interface EnrollmentFact {
   readonly groupId: string;
   readonly kindergartenId: string;
+  /** `status = ACTIVE` — the child attends this group now. Only `canArchiveChild` reads it. */
+  readonly active: boolean;
 }
 
 export interface GuardianshipFact {
@@ -185,6 +187,21 @@ export function canContributeMediaForChild(actor: Actor, facts: ChildAccessFacts
  */
 export function canAdministerChild(actor: Actor, facts: ChildAccessFacts): boolean {
   return isAdminOver(actor, facts);
+}
+
+/**
+ * ★ May this actor archive (soft-delete) this child? An admin of theirs, or a
+ * teacher of the group the child attends **now** — the user, 2026-10-14:
+ * «Устгах» in the teacher's own roster.
+ *
+ * Narrower than `isAssignedTeacherOf` on purpose. That one reads the whole
+ * enrollment history so a teacher keeps the records they wrote; it must not
+ * also let last year's teacher remove a child who has moved to another group.
+ */
+export function canArchiveChild(actor: Actor, facts: ChildAccessFacts): boolean {
+  if (isAdminOver(actor, facts)) return true;
+  const assigned = new Set(facts.actorActiveTeachingGroupIds);
+  return facts.enrollments.some((e) => e.active && assigned.has(e.groupId));
 }
 
 /**

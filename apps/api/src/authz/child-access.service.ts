@@ -6,6 +6,7 @@ import { isPortalAccessBlocked, PaymentRequiredException } from "./portal-access
 import {
   canAccessChild,
   canAdministerChild,
+  canArchiveChild,
   canContributeMediaForChild,
   canRecordForChild,
   canViewChildFinance,
@@ -149,6 +150,17 @@ export class ChildAccessService {
   async assertCanAdminister(actor: Actor, childId: string): Promise<ChildAccessFacts> {
     const facts = await this.repo.loadChildAccessFacts(actor, childId);
     if (!facts || !canAdministerChild(actor, facts)) throw new NotFoundException();
+    return facts;
+  }
+
+  /**
+   * Throws 404 unless the actor may archive this child — `canArchiveChild`.
+   * No fee gate: an unpaid child in a solo teacher's workspace must still be
+   * removable by the teacher who added them.
+   */
+  async assertCanArchive(actor: Actor, childId: string): Promise<ChildAccessFacts> {
+    const facts = await this.repo.loadChildAccessFacts(actor, childId);
+    if (!facts || !canArchiveChild(actor, facts)) throw new NotFoundException();
     return facts;
   }
 
