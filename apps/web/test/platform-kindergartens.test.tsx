@@ -522,19 +522,21 @@ describe("the operator's kindergartens table", () => {
 
     await user.click(screen.getByRole("button", { name: "Нарлаг цэцэрлэг — үйлдэл" }));
     await user.click(screen.getByRole("menuitem", { name: "Төлбөр бүртгэх" }));
-    const dialog = await screen.findByRole("dialog", { name: "Төлбөр бүртгэх" });
-    expect(dialog).toHaveTextContent("II улирал (12–2 сар)");
-    expect(within(dialog).getByLabelText(/Дүн/)).toHaveValue("36000");
+    const dialog = await screen.findByRole("dialog", {
+      name: "Төлбөр бүртгэх — Нарлаг цэцэрлэг",
+    });
+    expect(within(dialog).getByRole("checkbox", { name: /^II улирал/ })).toBeChecked();
+    expect(within(dialog).getByLabelText(/Орсон дүн/)).toHaveValue("36000");
     await user.click(within(dialog).getByRole("button", { name: "Бүртгэх" }));
 
     await waitFor(() =>
       expect(
         api.calls.find((call) => call.url === "/platform/contracts/c1/payments")?.body,
-      ).toMatchObject({ periodIndex: 1, amount: "36000", method: "transfer" }),
+      ).toMatchObject({ periodIndexes: [1], amount: "36000", method: "transfer" }),
     );
   });
 
-  it("says «удахгүй» from the row's «⋯» while the API keeps no payments", async () => {
+  it("says plainly from the row's «⋯» that payments cannot be kept yet", async () => {
     const user = userEvent.setup();
     stubApi([
       { path: "/auth/me", body: operator() },
@@ -552,7 +554,7 @@ describe("the operator's kindergartens table", () => {
     await user.click(screen.getByRole("menuitem", { name: "Төлбөр бүртгэх" }));
     const dialog = await screen.findByRole("dialog", { name: "Төлбөр бүртгэх" });
     expect(
-      await within(dialog).findByText("Төлбөрийн бүртгэл удахгүй нээгдэнэ."),
+      await within(dialog).findByText(/Төлбөр хадгалах хэсэг хараахан бэлэн болоогүй/),
     ).toBeInTheDocument();
   });
 });

@@ -81,7 +81,8 @@ describe("a kindergarten's payments", () => {
     const second = within(table).getByText("II улирал (12–2 сар)").closest("tr")!;
     await user.click(within(second).getByRole("button", { name: "Төлбөр бүртгэх" }));
     const dialog = await screen.findByRole("dialog", { name: "Төлбөр бүртгэх" });
-    expect(within(dialog).getByLabelText(/Дүн/)).toHaveValue("36000");
+    expect(dialog).toHaveTextContent("Гэрээ №NK-2026-000001 · Улирлаар");
+    expect(within(dialog).getByLabelText(/Орсон дүн/)).toHaveValue("36000");
     await user.type(within(dialog).getByLabelText(/Гүйлгээний утга/), "Хаан банк 123");
     await user.click(within(dialog).getByRole("button", { name: "Бүртгэх" }));
 
@@ -89,7 +90,7 @@ describe("a kindergarten's payments", () => {
       expect(
         api.calls.find((call) => call.url === `/platform/contracts/${CONTRACT}/payments`)?.body,
       ).toMatchObject({
-        periodIndex: 1,
+        periodIndexes: [1],
         amount: "36000",
         method: "transfer",
         reference: "Хаан банк 123",
@@ -139,16 +140,74 @@ describe("a kindergarten's payments", () => {
     expect(within(table).getByText(/2026\.08\.28 · 18,000₮/)).toHaveClass("line-through");
   });
 
-  it("says «удахгүй» while the API has no payments yet", async () => {
+  it("says in plain words that payments cannot be kept yet", async () => {
     stubApi([]);
     renderWithProviders(<KindergartenPayments kindergartenId={KG} />);
 
-    expect(await screen.findByText("Төлбөрийн бүртгэл удахгүй нээгдэнэ.")).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Төлбөр хадгалах хэсэг хараахан бэлэн болоогүй/),
+    ).toBeInTheDocument();
   });
 
   it("says where a contract comes from when there is none", async () => {
     renderPayments({ contract: null, periods: [], suspended: false });
 
-    expect(await screen.findByText(/Гэрээ байхгүй тул төлбөрийн хуваарь алга/)).toBeInTheDocument();
+    expect(await screen.findByText(/Энэ цэцэрлэг гэрээгүй/)).toBeInTheDocument();
+  });
+
+  it("pays several periods at once, the paid one shown but not to be chosen", async () => {
+    const user = userEvent.setup();
+    const THIRD = {
+      ...SCHEDULE.periods[1]!,
+      index: 2,
+      label: "III улирал (3–5 сар)",
+      dueOn: "2027-03-01",
+      status: "upcoming",
+    };
+    const api = renderPayments({ ...SCHEDULE, periods: [...SCHEDULE.periods, THIRD] }, [
+      { path: `/platform/contracts/${CONTRACT}/payments`, method: "POST", body: {} },
+    ]);
+    const table = await screen.findByRole("table");
+
+    const second = within(table).getByText("II улирал (12–2 сар)").closest("tr")!;
+    await user.click(within(second).getByRole("button", { name: "Төлбөр бүртгэх" }));
+    const dialog = await screen.findByRole("dialog", { name: "Төлбөр бүртгэх" });
+
+    const paid = within(dialog).getByRole("checkbox", { name: /I улирал \(9–11 сар\)/ });
+    expect(paid).toBeChecked();
+    expect(paid).toBeDisabled();
+    expect(within(dialog).getByRole("checkbox", { name: /^II улирал/ })).toBeChecked();
+
+    await user.click(within(dialog).getByRole("checkbox", { name: /^III улирал/ }));
+    expect(dialog).toHaveTextContent("Сонгосон дүн: 72,000₮");
+    expect(within(dialog).getByLabelText(/Орсон дүн/)).toHaveValue("72000");
+    await user.click(within(dialog).getByRole("button", { name: "Бүртгэх" }));
+
+    await waitFor(() =>
+      expect(
+        api.calls.find((call) => call.url === `/platform/contracts/${CONTRACT}/payments`)?.body,
+      ).toMatchObject({ periodIndexes: [1, 2], amount: "72000" }),
+    );
+  });
+
+  it("says how much is short, and shows a part-paid period as such", async () => {
+    const user = userEvent.setup();
+    renderPayments({
+      ...SCHEDULE,
+      periods: [SCHEDULE.periods[0], { ...SCHEDULE.periods[1]!, paidAmount: "6000.00" }],
+    });
+    const table = await screen.findByRole("table");
+
+    const second = within(table).getByText("II улирал (12–2 сар)").closest("tr")!;
+    expect(second).toHaveTextContent("Хэсэгчлэн төлсөн · 30,000₮ үлдсэн");
+
+    await user.click(within(second).getByRole("button", { name: "Төлбөр бүртгэх" }));
+    const dialog = await screen.findByRole("dialog", { name: "Төлбөр бүртгэх" });
+    const amount = within(dialog).getByLabelText(/Орсон дүн/);
+    expect(amount).toHaveValue("30000");
+    await user.clear(amount);
+    await user.type(amount, "20000");
+    expect(dialog).toHaveTextContent("10,000₮ дутуу — хэсэгчлэн төлсөн гэж бүртгэгдэнэ");
+    expect(within(dialog).getByRole("button", { name: "Бүртгэх" })).toBeEnabled();
   });
 });

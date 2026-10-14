@@ -27,7 +27,7 @@ import { formatDate } from "@/lib/format";
  *     (CLAUDE.md §3.2).
  *
  * Built against routes asked of the admin; until they exist the section says
- * «удахгүй».
+ * so in plain words (`NOT_READY`).
  */
 const paymentSchema = z.object({
   id: z.string(),
@@ -51,7 +51,13 @@ const periodSchema = z.object({
 
 const paymentsSchema = z.object({
   contract: z
-    .object({ id: z.string(), number: z.string(), billingPeriod: z.enum(["term", "year"]) })
+    .object({
+      id: z.string(),
+      number: z.string(),
+      billingPeriod: z.enum(["term", "year"]),
+      startsOn: z.string().nullish(),
+      endsOn: z.string().nullish(),
+    })
     .nullable(),
   periods: z.array(periodSchema).default([]),
   /** Access suspended for an unpaid period. */
@@ -60,6 +66,25 @@ const paymentsSchema = z.object({
 
 type Period = z.infer<typeof periodSchema>;
 type Payment = z.infer<typeof paymentSchema>;
+type Contract = NonNullable<z.infer<typeof paymentsSchema>["contract"]>;
+
+/** What is still owed on a period, in whole tögrög. */
+function owedOn(period: Period): number {
+  return Math.max(0, Math.round(Number(period.amount) - Number(period.paidAmount)));
+}
+
+/** Part paid: something came in, not all of it. */
+function isPartial(period: Period): boolean {
+  return period.status !== "paid" && Number(period.paidAmount) > 0;
+}
+
+/*
+ * ★ Said plainly, not «удахгүй» — 2026-10-14, the user: what it means and
+ * what to do meanwhile.
+ */
+const NOT_READY =
+  "Төлбөр хадгалах хэсэг хараахан бэлэн болоогүй. Одоохондоо данс шалгаад тэмдэглэлдээ бичнэ үү.";
+const NO_CONTRACT = "Энэ цэцэрлэг гэрээгүй. Гэрээ «Байгууллагын хүсэлт»-ээр батлагдана.";
 
 const STATUS: Record<
   Period["status"],
@@ -82,7 +107,7 @@ function money(value: string): string {
 const key = (kindergartenId: string) => ["platform", "kindergarten-payments", kindergartenId];
 
 export function KindergartenPayments({ kindergartenId }: { kindergartenId: string }) {
-  const [recording, setRecording] = useState<Period | null>(null);
+  const [recording, setRecording] = useState<number | null>(null);
   const payments = useQuery({
     queryKey: key(kindergartenId),
     queryFn: () => get(`/platform/kindergartens/${kindergartenId}/payments`, paymentsSchema),
@@ -101,15 +126,13 @@ export function KindergartenPayments({ kindergartenId }: { kindergartenId: strin
       {payments.isLoading ? <LoadingState rows={3} /> : null}
       {payments.isError ? (
         <p className="rounded-control bg-canvas px-3.5 py-3 text-caption text-muted">
-          {isNotFound(payments.error)
-            ? "Төлбөрийн бүртгэл удахгүй нээгдэнэ."
-            : errorMessage(payments.error)}
+          {isNotFound(payments.error) ? NOT_READY : errorMessage(payments.error)}
         </p>
       ) : null}
 
       {data && !data.contract ? (
         <p className="rounded-control bg-canvas px-3.5 py-3 text-caption text-muted">
-          Гэрээ байхгүй тул төлбөрийн хуваарь алга. Гэрээ «Байгууллагын хүсэлт»-ээр батлагдана.
+          {NO_CONTRACT}
         </p>
       ) : null}
 
@@ -118,6 +141,9 @@ export function KindergartenPayments({ kindergartenId }: { kindergartenId: strin
           <p className="flex flex-wrap items-center gap-2 text-caption text-muted">
             Гэрээ №{data.contract.number} ·{" "}
             {data.contract.billingPeriod === "year" ? "Жилээр" : "Улирлаар"}
+            {data.contract.startsOn && data.contract.endsOn
+              ? ` · ${formatDate(data.contract.startsOn)} – ${formatDate(data.contract.endsOn)}`
+              : ""}
             {data.suspended ? <Badge tone="peach">Эрх түр хаагдсан</Badge> : null}
           </p>
           <div className="overflow-x-auto rounded-control border border-border bg-white">
@@ -145,7 +171,7 @@ export function KindergartenPayments({ kindergartenId }: { kindergartenId: strin
                     key={period.index}
                     period={period}
                     kindergartenId={kindergartenId}
-                    onRecord={() => setRecording(period)}
+                    onRecord={() => setRecording(period.index)}
                   />
                 ))}
               </tbody>
@@ -154,11 +180,12 @@ export function KindergartenPayments({ kindergartenId }: { kindergartenId: strin
         </div>
       ) : null}
 
-      {recording && data?.contract ? (
+      {recording !== null && data?.contract ? (
         <RecordPaymentDialog
           kindergartenId={kindergartenId}
-          contractId={data.contract.id}
-          period={recording}
+          contract={data.contract}
+          periods={data.periods}
+          initial={recording}
           onClose={() => setRecording(null)}
         />
       ) : null}
@@ -188,7 +215,11 @@ function PeriodRow({
         {money(period.paidAmount)}
       </td>
       <td className={cell}>
-        <Badge tone={STATUS[period.status].tone}>{STATUS[period.status].label}</Badge>
+        {isPartial(period) ? (
+          <Badge tone="sun">Хэсэгчлэн төлсөн · {money(String(owedOn(period)))} үлдсэн</Badge>
+        ) : (
+          <Badge tone={STATUS[period.status].tone}>{STATUS[period.status].label}</Badge>
+        )}
       </td>
       <td className={cell}>
         {period.payments.length === 0 ? (
@@ -270,31 +301,56 @@ function PaymentLine({ payment, kindergartenId }: { payment: Payment; kindergart
   );
 }
 
+/**
+ * «Төлбөр бүртгэх» — 2026-10-14, the user: which period it is for is chosen
+ * here, the contract named on top. Several periods can be paid at once (II and
+ * III together); a paid one is shown but cannot be chosen; an amount that
+ * does not match is said aloud, and recorded all the same — a part payment
+ * leaves the period «Хэсэгчлэн төлсөн».
+ */
 function RecordPaymentDialog({
   kindergartenId,
-  contractId,
-  period,
+  kindergartenName,
+  contract,
+  periods,
+  initial,
   onClose,
 }: {
   kindergartenId: string;
-  contractId: string;
-  period: Period;
+  kindergartenName?: string;
+  contract: Contract;
+  periods: Period[];
+  /** The period the dialog opens on. */
+  initial: number;
   onClose: () => void;
 }) {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const owed = Math.max(0, Number(period.amount) - Number(period.paidAmount));
-  const [amount, setAmount] = useState(String(owed));
+  const [chosen, setChosen] = useState<number[]>([initial]);
+  /** `null` until typed: follows what the chosen periods owe. */
+  const [amountTyped, setAmountTyped] = useState<string | null>(null);
   const [paidOn, setPaidOn] = useState(() => new Date().toLocaleDateString("sv-SE"));
   const [method, setMethod] = useState<"transfer" | "cash">("transfer");
   const [reference, setReference] = useState("");
 
+  const owed = periods
+    .filter((period) => chosen.includes(period.index))
+    .reduce((sum, period) => sum + owedOn(period), 0);
+  const amount = amountTyped ?? String(owed);
+  const entered = /^\d+$/.test(amount.trim()) ? Number(amount) : NaN;
+  const gap = Number.isNaN(entered) ? 0 : entered - owed;
+
+  const toggle = (index: number) =>
+    setChosen((current) =>
+      current.includes(index) ? current.filter((i) => i !== index) : [...current, index].sort(),
+    );
+
   const record = useMutation({
     mutationFn: () =>
-      mutate(`/platform/contracts/${contractId}/payments`, z.unknown(), {
+      mutate(`/platform/contracts/${contract.id}/payments`, z.unknown(), {
         method: "POST",
         body: {
-          periodIndex: period.index,
+          periodIndexes: chosen,
           amount: amount.trim(),
           paidOn,
           method,
@@ -308,15 +364,21 @@ function RecordPaymentDialog({
     },
   });
   const errors = fieldErrors(record.error);
-  const valid = /^\d+$/.test(amount.trim()) && Number(amount) > 0 && Boolean(paidOn);
+  const valid = chosen.length > 0 && entered > 0 && Boolean(paidOn);
+  const span =
+    contract.startsOn && contract.endsOn
+      ? ` · ${formatDate(contract.startsOn)} – ${formatDate(contract.endsOn)}`
+      : "";
 
   return (
     <FormDialog
       open
       onOpenChange={(next) => !next && onClose()}
       busy={record.isPending}
-      title="Төлбөр бүртгэх"
-      description={`${period.label} · ${money(period.amount)} · төлөх өдөр ${formatDate(period.dueOn)}`}
+      title={kindergartenName ? `Төлбөр бүртгэх — ${kindergartenName}` : "Төлбөр бүртгэх"}
+      description={`Гэрээ №${contract.number} · ${
+        contract.billingPeriod === "year" ? "Жилээр" : "Улирлаар"
+      }${span}`}
       footer={
         <>
           <Button type="button" variant="ghost" size="sm" onClick={onClose}>
@@ -338,20 +400,72 @@ function RecordPaymentDialog({
           message={
             record.isError && Object.keys(errors).length === 0
               ? isNotFound(record.error)
-                ? "Төлбөр бүртгэх боломж удахгүй нээгдэнэ."
+                ? NOT_READY
                 : errorMessage(record.error)
               : null
           }
         />
+
+        <fieldset className="flex flex-col gap-1">
+          <legend className="mb-1 text-caption font-semibold text-ink">
+            Аль хугацааны төлбөр вэ?
+          </legend>
+          <ul className="divide-y divide-border-soft rounded-control border border-border bg-white text-caption">
+            {periods.map((period) => {
+              const paid = period.status === "paid";
+              const lastPaid = period.payments.filter((p) => !p.reversedAt).at(-1);
+              return (
+                <li key={period.index}>
+                  <label
+                    className={`flex items-center gap-3 px-3 py-2 ${paid ? "text-muted" : "text-ink"}`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="size-4"
+                      checked={paid || chosen.includes(period.index)}
+                      disabled={paid}
+                      onChange={() => toggle(period.index)}
+                    />
+                    <span className="min-w-0 flex-1">{period.label}</span>
+                    <span className="tabular-nums">{money(period.amount)}</span>
+                    <span className="w-40 text-right">
+                      {paid
+                        ? `Төлсөн${lastPaid ? ` ${formatDate(lastPaid.paidOn)}` : ""}`
+                        : isPartial(period)
+                          ? `${money(String(owedOn(period)))} үлдсэн`
+                          : `Төлөх: ${formatDate(period.dueOn)}`}
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="text-right text-caption text-muted">
+            Сонгосон дүн: <strong className="tabular-nums text-ink">{money(String(owed))}</strong>
+          </p>
+        </fieldset>
+
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="Дүн (₮)" error={errors.amount} required>
-            {({ id, invalid }) => (
+          <Field
+            label="Орсон дүн (₮)"
+            error={errors.amount}
+            hint={
+              gap < 0
+                ? `${money(String(-gap))} дутуу — хэсэгчлэн төлсөн гэж бүртгэгдэнэ`
+                : gap > 0
+                  ? `${money(String(gap))} илүү`
+                  : undefined
+            }
+            required
+          >
+            {({ id, describedBy, invalid }) => (
               <Input
                 id={id}
+                aria-describedby={describedBy}
                 invalid={invalid}
                 inputMode="numeric"
                 value={amount}
-                onChange={(event) => setAmount(event.target.value)}
+                onChange={(event) => setAmountTyped(event.target.value)}
               />
             )}
           </Field>
@@ -386,7 +500,7 @@ function RecordPaymentDialog({
                 invalid={invalid}
                 value={reference}
                 onChange={(event) => setReference(event.target.value)}
-                placeholder="жишээ: Гэрээ NK-2026-000001"
+                placeholder={`жишээ: Хаан банк, ${contract.number}`}
               />
             )}
           </Field>
@@ -421,8 +535,10 @@ export function QuickRecordPayment({
     return (
       <RecordPaymentDialog
         kindergartenId={kindergartenId}
-        contractId={payments.data.contract.id}
-        period={next}
+        kindergartenName={kindergartenName}
+        contract={payments.data.contract}
+        periods={payments.data.periods}
+        initial={next.index}
         onClose={onClose}
       />
     );
@@ -432,10 +548,10 @@ export function QuickRecordPayment({
     ? null
     : payments.isError
       ? isNotFound(payments.error)
-        ? "Төлбөрийн бүртгэл удахгүй нээгдэнэ."
+        ? NOT_READY
         : errorMessage(payments.error)
       : !payments.data?.contract
-        ? "Гэрээ байхгүй тул бүртгэх төлбөр алга."
+        ? NO_CONTRACT
         : "Бүх хугацааны төлбөр төлөгдсөн байна.";
 
   return (
