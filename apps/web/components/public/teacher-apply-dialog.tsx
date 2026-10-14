@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowRight, Building2, UserRound } from "lucide-react";
+import { ArrowRight, Building2, CheckCircle2, UserRound } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -9,17 +9,25 @@ import { useId, useState, type FormEvent } from "react";
 import { z } from "zod";
 import {
   normalizeKindergartenName,
+  phoneVerificationStartSchema,
   staffSelfRegistrationResultSchema,
   teacherSignupResultSchema,
+  validatePasswordStrength,
 } from "@kinder/contracts";
 import {
+  MOBILE_PHONE,
+  PhoneVerificationStep,
+  usePhoneVerificationEnabled,
+} from "@/components/auth/phone-verification";
+import {
   COMPACT_INPUT,
+  PasswordRuleLine,
   PROVINCES,
   PublicDialogFrame,
   UB_DISTRICTS,
 } from "@/components/public/register-dialog";
 import { Button } from "@/components/ui/button";
-import { Field, Input, Select } from "@/components/ui/field";
+import { Field, Input, PasswordInput, Select } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors, isNotFound } from "@/lib/api/errors";
@@ -37,10 +45,11 @@ import { cn } from "@/lib/utils";
  *    by register number alone was refused: anyone holding a number would
  *    learn where that person works.
  * 2. **A teacher on their own**, whose kindergarten has no contract — the
- *    solo workspace the backend shipped in #202: `POST /teacher-applications`
- *    answers an invitation token and the password is set on
- *    `/invitation/[token]`, as staff self-registration does. The operator
- *    later merges the workspace into the kindergarten (#204, #205).
+ *    solo workspace the backend shipped in #202. Everything in this one
+ *    window since 2026-10-14 (the user): surname and given name apart, the
+ *    phone proven by SMS, the password — `POST /teacher-applications`, then
+ *    the login form. The operator later merges the workspace into the
+ *    kindergarten (#204, #205).
  *
  * ★ The backend routes for the first half:
  *
@@ -401,8 +410,12 @@ function StaffForm({
 
 /**
  * A teacher whose kindergarten has no contract, signing up on their own —
- * the fields `POST /teacher-applications` takes (#202). The workspace exists
- * the moment it answers; the password is set on `/invitation/[token]`.
+ * the fields `POST /teacher-applications` takes (#202).
+ *
+ * ★ One window (the user, 2026-10-14). The password used to be set on
+ * `/invitation/[token]`, which asked for the name and phone again. Now the
+ * phone is proven here — one SMS from it, where verify.mn is on — and the
+ * account is usable the moment the server answers.
  */
 function SoloForm({
   location,
@@ -416,13 +429,20 @@ function SoloForm({
 }) {
   const router = useRouter();
   const contracted = useContractedKindergartens(location);
+  const phoneEnabled = usePhoneVerificationEnabled();
   const [form, setForm] = useState({
     propertyType: "Төрийн бус",
     kindergartenName: "",
-    fullName: "",
+    lastName: "",
+    firstName: "",
     phone: "",
     email: "",
+    password: "",
+    confirm: "",
   });
+  /** The verify.mn proof for the phone, by number — a changed number has none. */
+  const [phoneProof, setPhoneProof] = useState<{ phone: string; handle: string } | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
   /*
     ★ A teacher whose kindergarten already uses NomadKids belongs in it, not
     beside it. While they type the name, a listed kindergarten that looks like
@@ -433,20 +453,27 @@ function SoloForm({
     .filter((option) => looksLikeSameKindergarten(form.kindergartenName, option.name))
     .slice(0, 3);
 
+  const phone = form.phone.trim();
+
   const submit = useMutation({
     mutationFn: () =>
       mutate("/teacher-applications", teacherSignupResultSchema, {
         method: "POST",
         body: {
-          fullName: form.fullName.trim(),
-          phone: form.phone.trim(),
+          lastName: form.lastName.trim(),
+          firstName: form.firstName.trim(),
+          phone,
           email: form.email.trim(),
+          password: form.password,
+          ...(phoneProof?.phone === phone ? { phoneVerification: phoneProof.handle } : {}),
           propertyType: form.propertyType,
           location,
           kindergartenName: form.kindergartenName.trim(),
         },
       }),
-    onSuccess: (result) => router.replace(`/invitation/${result.invitationToken}`),
+    // Straight to the login form, as an accepted invitation does: the device
+    // limit and the rest of signing in live there.
+    onSuccess: () => setTimeout(() => router.replace("/login"), 2000),
   });
 
   const errors = fieldErrors(submit.error);
@@ -458,14 +485,41 @@ function SoloForm({
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!submit.isPending) submit.mutate();
+    if (submit.isPending) return;
+
+    const weaknesses = validatePasswordStrength(form.password);
+    if (weaknesses.length > 0) {
+      setLocalError(`${weaknesses.join(". ")}.`);
+      return;
+    }
+    if (form.password !== form.confirm) {
+      setLocalError("Хоёр нууц үг таарахгүй байна.");
+      return;
+    }
+    // The server refuses an unproven phone too; saying so here points at the
+    // step that is missing.
+    if (phoneEnabled && phoneProof?.phone !== phone) {
+      setLocalError(
+        MOBILE_PHONE.test(phone)
+          ? "Утасны дугаараа SMS-ээр баталгаажуулна уу."
+          : "Утасны дугаараа 8 оронтойгоор оруулна уу.",
+      );
+      return;
+    }
+
+    setLocalError(null);
+    submit.mutate();
   }
 
   if (submit.isSuccess) {
     return (
-      <p className="py-6 text-center text-body text-slate-600" aria-live="polite">
-        Нууц үг тохируулах хуудас руу шилжиж байна…
-      </p>
+      <div className="flex flex-col items-center gap-2 py-4 text-center">
+        <CheckCircle2 className="size-10 text-mint-ink" aria-hidden />
+        <p className="text-lead font-extrabold text-[#102f5d]">Бүртгэл үүслээ</p>
+        <p role="status" className="text-body text-slate-600">
+          Нэвтрэх хуудас руу шилжиж байна…
+        </p>
+      </div>
     );
   }
 
@@ -473,7 +527,8 @@ function SoloForm({
     <form className="flex flex-col gap-3" noValidate onSubmit={onSubmit}>
       <FormError
         message={
-          submit.isError && Object.keys(errors).length === 0 ? errorMessage(submit.error) : null
+          localError ??
+          (submit.isError && Object.keys(errors).length === 0 ? errorMessage(submit.error) : null)
         }
       />
 
@@ -533,19 +588,36 @@ function SoloForm({
         </div>
       ) : null}
 
-      <Field label="Овог нэр" error={errors.fullName} required>
-        {({ id, describedBy, invalid }) => (
-          <Input
-            id={id}
-            aria-describedby={describedBy}
-            invalid={invalid}
-            autoComplete="name"
-            value={form.fullName}
-            onChange={set("fullName")}
-            className={COMPACT_INPUT}
-          />
-        )}
-      </Field>
+      {/* ★ Овог and Нэр apart (the user, 2026-10-14) — one «Овог нэр» field was
+          split on its first space, and a one-word answer lost its surname. */}
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Овог" error={errors.lastName} required>
+          {({ id, describedBy, invalid }) => (
+            <Input
+              id={id}
+              aria-describedby={describedBy}
+              invalid={invalid}
+              autoComplete="family-name"
+              value={form.lastName}
+              onChange={set("lastName")}
+              className={COMPACT_INPUT}
+            />
+          )}
+        </Field>
+        <Field label="Нэр" error={errors.firstName} required>
+          {({ id, describedBy, invalid }) => (
+            <Input
+              id={id}
+              aria-describedby={describedBy}
+              invalid={invalid}
+              autoComplete="given-name"
+              value={form.firstName}
+              onChange={set("firstName")}
+              className={COMPACT_INPUT}
+            />
+          )}
+        </Field>
+      </div>
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="Утас" error={errors.phone} required>
@@ -554,6 +626,7 @@ function SoloForm({
               id={id}
               aria-describedby={describedBy}
               invalid={invalid}
+              type="tel"
               inputMode="tel"
               autoComplete="tel"
               placeholder="8 оронтой"
@@ -578,6 +651,51 @@ function SoloForm({
           )}
         </Field>
       </div>
+
+      {/* The number becomes a way into the account (password reset by phone),
+          so it is proven by one SMS from it where verify.mn is on. */}
+      {phoneEnabled && MOBILE_PHONE.test(phone) ? (
+        <PhoneVerificationStep
+          key={phone}
+          phone={phone}
+          start={(value) =>
+            mutate("/teacher-applications/phone", phoneVerificationStartSchema, {
+              method: "POST",
+              body: { phone: value },
+            })
+          }
+          onVerified={(handle) => setPhoneProof({ phone, handle })}
+        />
+      ) : null}
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Нууц үг" error={errors.password} required>
+          {({ id, describedBy, invalid }) => (
+            <PasswordInput
+              id={id}
+              aria-describedby={describedBy}
+              invalid={invalid}
+              autoComplete="new-password"
+              value={form.password}
+              onChange={set("password")}
+              className={COMPACT_INPUT}
+            />
+          )}
+        </Field>
+        <Field label="Нууц үг давтах" required>
+          {({ id, describedBy }) => (
+            <PasswordInput
+              id={id}
+              aria-describedby={describedBy}
+              autoComplete="new-password"
+              value={form.confirm}
+              onChange={set("confirm")}
+              className={COMPACT_INPUT}
+            />
+          )}
+        </Field>
+      </div>
+      <PasswordRuleLine className="-mt-1.5" />
 
       <Button type="submit" disabled={submit.isPending} className="mt-1 w-full">
         {submit.isPending ? "Илгээж байна…" : "Бүртгүүлэх"}

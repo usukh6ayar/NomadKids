@@ -64,16 +64,14 @@ beforeEach(async () => {
   await app.get(RateLimitService).resetAll();
 
   const signup = await request(server()).post("/v1/teacher-applications").send({
-    fullName: "Дорж Сараа",
+    lastName: "Дорж",
+    firstName: "Сараа",
+    password: PASSWORD,
     phone: TEACHER_PHONE,
     email: "saraa@example.mn",
     kindergartenName: "Нарлаг цэцэрлэг",
   });
-  expect(signup.status).toBe(201);
-  await request(server())
-    .post("/v1/auth/invitation/accept")
-    .send({ token: signup.body.invitationToken, password: PASSWORD })
-    .expect(204);
+  expect(signup.status, JSON.stringify(signup.body)).toBe(201);
 
   const kg = await db.kindergarten.findFirstOrThrow({ where: { kind: "SOLO_TEACHER" } });
   const { schoolYear, group, teacher } = await setUpSoloWorkspace(kg.id);

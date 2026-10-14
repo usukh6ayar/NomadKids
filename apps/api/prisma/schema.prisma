@@ -76,6 +76,8 @@ enum PhoneVerificationPurpose {
   PASSWORD_RESET
   INVITATION
   PROFILE_PHONE
+  /// A solo teacher's sign-up form — no account yet, so no `userId`.
+  SIGNUP
 }
 
 enum EsisSyncStatus {

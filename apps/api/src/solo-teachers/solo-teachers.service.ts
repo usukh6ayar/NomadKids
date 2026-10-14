@@ -1,23 +1,24 @@
-import { ConflictException, Injectable } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
 import type { TeacherSignup, TeacherSignupResult } from "@kinder/contracts";
 import { randomBytes } from "node:crypto";
 import { AuditRepository } from "../audit/audit.repository";
 import { PublicKindergartensService } from "../public-kindergartens/public-kindergartens.service";
-import { PasswordService } from "../auth/password.service";
-import { TokenService } from "../auth/token.service";
+import { PasswordService, validatePasswordStrength } from "../auth/password.service";
+import {
+  PhoneVerificationService,
+  type PhoneVerificationStart,
+} from "../phone-verification/phone-verification.service";
 import { SoloTeachersRepository } from "./solo-teachers.repository";
-
-/** A week, like every other invitation. */
-const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * A teacher signing up alone (#195; the user, 2026-10-11): no ESIS code, no
  * approval — they start at once in a workspace of their own.
  *
- * ★ The answer is the one-time invitation token, exactly as staff
- * self-registration answers (`/invitation/[token]` sets the password). The
- * account is unusable until then: its password hash is of random bytes nobody
- * knows. The token lives a week.
+ * ★ One window (the user, 2026-10-14). The form carries the password and,
+ * where verify.mn is on, the proof of the phone; the account is usable the
+ * moment this answers. It used to answer an invitation token and send the
+ * teacher to `/invitation/[token]`, which asked for them a second time. Tokens
+ * issued before then still work there — that path is untouched.
  *
  * ★★ The username is generated, never derived from the form. They sign in
  * with their phone (`loginSchema.identifier` takes either) and can choose a
@@ -28,10 +29,22 @@ export class SoloTeachersService {
   constructor(
     private readonly repo: SoloTeachersRepository,
     private readonly passwords: PasswordService,
-    private readonly tokens: TokenService,
+    private readonly phones: PhoneVerificationService,
     private readonly audit: AuditRepository,
     private readonly publicKindergartens: PublicKindergartensService,
   ) {}
+
+  /**
+   * The SMS for the sign-up form's phone. A number an account already holds is
+   * refused here, before the person pays for a text — the sign-up itself says
+   * the same, so this tells nobody anything new.
+   */
+  async startPhoneVerification(phone: string, ip: string | null): Promise<PhoneVerificationStart> {
+    if ((await this.repo.contactTaken(null, phone)) === "phone") {
+      throw new ConflictException("Энэ утасны дугаар аль хэдийн бүртгэлтэй байна");
+    }
+    return this.phones.start("SIGNUP", phone, null, ip);
+  }
 
   async signup(dto: TeacherSignup, ip: string | null): Promise<TeacherSignupResult> {
     // ★ A teacher whose kindergarten has signed joins it, not a workspace of
@@ -55,51 +68,64 @@ export class SoloTeachersService {
       throw new ConflictException("Энэ утасны дугаар аль хэдийн бүртгэлтэй байна");
     }
 
-    const [lastName, ...rest] = dto.fullName.split(/\s+/);
-    const firstName = rest.join(" ") || dto.fullName;
-    const family = lastName && rest.length > 0 ? lastName : "";
-    const display = family ? `${Array.from(family)[0]}.${firstName}` : firstName;
+    const weaknesses = validatePasswordStrength(dto.password);
+    if (weaknesses.length > 0) throw new BadRequestException(`${weaknesses.join(". ")}.`);
+
+    /*
+     * ★ The proof is spent only after every refusal that would leave the
+     * person able to try again — a taken e-mail or phone, a weak password —
+     * so fixing one of those does not cost another SMS. `acceptInvitation`
+     * learned the ordering from a production 500 (2026-09-19).
+     */
+    if (this.phones.enabled) {
+      await this.phones.consume(dto.phoneVerification, { purpose: "SIGNUP", phone: dto.phone });
+    }
+
+    const { lastName, firstName } = dto;
+    const display = `${Array.from(lastName)[0]!.toUpperCase()}.${firstName}`;
 
     // Hashing outside the transaction — argon2 takes hundreds of milliseconds.
-    const passwordHash = await this.passwords.hash(randomBytes(32).toString("hex"));
-    const { token, hash } = this.tokens.createOneTimeToken();
+    const passwordHash = await this.passwords.hash(dto.password);
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const username = `teacher-${randomBytes(6).toString("base64url").toLowerCase()}`;
       if (await this.repo.usernameTaken(username)) continue;
 
-      const created = await this.repo.createWorkspace({
-        kindergarten: {
-          // ★ The teacher's name alone — «— бие даасан багш» was on their own
-          // dashboard as its title (the user, 2026-10-14).
-          name: display,
-          phone: dto.phone,
-          email: dto.email,
-          propertyType: dto.propertyType || null,
-          location: dto.location || null,
-          soloWorkplaceName: dto.kindergartenName || null,
-        },
-        user: {
-          username,
-          email: dto.email,
-          phone: dto.phone,
-          // ★ A one-word «Овог нэр» is the given name alone. The surname used
-          // to repeat it, and the teacher appeared as «Сараа Сараа» (2026-10-14).
-          lastName: family,
-          firstName,
-          passwordHash,
-        },
-        invitation: {
-          tokenHash: hash,
-          expiresAt: new Date(Date.now() + INVITATION_TTL_MS),
-          requestedIp: ip,
-        },
-      });
+      let created: { kindergartenId: string; userId: string };
+      try {
+        created = await this.repo.createWorkspace({
+          kindergarten: {
+            // ★ The teacher's name alone — «— бие даасан багш» was on their own
+            // dashboard as its title (the user, 2026-10-14).
+            name: display,
+            phone: dto.phone,
+            email: dto.email,
+            propertyType: dto.propertyType || null,
+            location: dto.location || null,
+            soloWorkplaceName: dto.kindergartenName || null,
+          },
+          user: {
+            username,
+            email: dto.email,
+            phone: dto.phone,
+            lastName,
+            firstName,
+            passwordHash,
+          },
+        });
+      } catch (error) {
+        // The race past `contactTaken` above: a readable 409, never a 500.
+        if (isUniqueViolation(error)) {
+          throw new ConflictException("Энэ и-мэйл эсвэл утасны дугаар аль хэдийн бүртгэлтэй байна");
+        }
+        throw error;
+      }
 
       await this.audit.append({
         action: "CREATE",
         kindergartenId: created.kindergartenId,
         actorLabel: `Бие даасан багшийн бүртгэл — ${display}`,
+        ipAddress: ip,
         objectType: "Kindergarten",
         objectId: created.kindergartenId,
         metadata: {
@@ -109,9 +135,19 @@ export class SoloTeachersService {
         },
       });
 
-      return { invitationToken: token };
+      return { created: true };
     }
 
     throw new ConflictException("Бүртгэл үүсгэж чадсангүй. Дахин оролдоно уу.");
   }
+}
+
+/** The same four lines as `auth.service.ts`'s, for the reason it gives. */
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2002"
+  );
 }

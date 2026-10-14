@@ -22,8 +22,8 @@ import { currentSchoolYear } from "./support/school-year";
 /**
  * A teacher signing up alone (#195; the user, 2026-10-11).
  *
- * What is pinned: the sign-up builds the whole workspace at once and the
- * invitation sets the password; a phone or email already in use is a 409;
+ * What is pinned: the sign-up builds the whole workspace at once, password
+ * and all — one window (2026-10-14); a phone or email already in use is a 409;
  * the teacher is the group's **teacher only**, never the director (the user,
  * 2026-10-14) — and the migration took the director's role from those who
  * signed up before; a workspace that still has an administrator takes
@@ -37,7 +37,9 @@ const server = () => app.getHttpServer();
 const PASSWORD = "Shine-Nuuts99";
 
 const FORM = {
-  fullName: "Дорж Сараа",
+  lastName: "Дорж",
+  firstName: "Сараа",
+  password: PASSWORD,
   phone: "99112233",
   email: "saraa@example.mn",
   propertyType: "Төрийн",
@@ -61,14 +63,10 @@ beforeEach(async () => {
 const signup = (body: Record<string, unknown> = FORM) =>
   request(server()).post("/v1/teacher-applications").send(body);
 
-/** Signs up, sets the password through the invitation, and signs in by phone. */
+/** Signs up and signs in by phone with the password the form set. */
 async function soloTeacher() {
   const res = await signup();
   expect(res.status, JSON.stringify(res.body)).toBe(201);
-  const accept = await request(server())
-    .post("/v1/auth/invitation/accept")
-    .send({ token: res.body.invitationToken, password: PASSWORD });
-  expect(accept.status, JSON.stringify(accept.body)).toBe(204);
 
   const session = await login(app, FORM.phone, PASSWORD);
   const kindergarten = await db.kindergarten.findFirstOrThrow({ where: { kind: "SOLO_TEACHER" } });
@@ -79,7 +77,7 @@ describe("signing up", () => {
   it("builds the workspace and the teacher's membership — the year and the group are theirs to make", async () => {
     const res = await signup();
     expect(res.status).toBe(201);
-    expect(Object.keys(res.body)).toEqual(["invitationToken"]);
+    expect(res.body).toEqual({ created: true });
 
     const kindergarten = await db.kindergarten.findFirstOrThrow({
       where: { kind: "SOLO_TEACHER" },
@@ -95,39 +93,21 @@ describe("signing up", () => {
     expect(kindergarten.memberships.map((m) => m.role)).toEqual(["TEACHER"]);
   });
 
-  it("splits «Овог нэр», and a one-word name is the given name alone", async () => {
-    await signup({ ...FORM, fullName: "Сараа" }).expect(201);
+  it("keeps the surname and the given name apart, and issues no invitation", async () => {
+    await signup().expect(201);
     const user = await db.user.findFirstOrThrow({ where: { phone: FORM.phone } });
-    expect(user).toMatchObject({ lastName: "", firstName: "Сараа" });
+    expect(user).toMatchObject({ lastName: "Дорж", firstName: "Сараа" });
+    expect(user.selfRegisteredAt).not.toBeNull();
+    expect(await db.authToken.count({ where: { userId: user.id } })).toBe(0);
   });
 
-  it("the invitation knows the name and phone, so they are not asked again", async () => {
-    const res = await signup();
-    const described = await request(server()).get(
-      `/v1/auth/invitation/${res.body.invitationToken}`,
-    );
-    expect(described.body).toEqual({
-      valid: true,
-      kind: "staff",
-      knows: { name: true, phone: true },
-      phoneHint: "••••2233",
-    });
-
-    // A director's invitation still asks.
-    const a = await createScenario("a");
-    const admin = await login(app, a.adminUser.username);
-    const invited = await authed(
-      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/users`),
-      admin,
-    ).send({ username: "invited-teacher", lastName: "Бат", firstName: "Сүх", role: "TEACHER" });
-    expect(invited.status, JSON.stringify(invited.body)).toBe(201);
-    const asked = await request(server()).get(
-      `/v1/auth/invitation/${invited.body.invitationToken as string}`,
-    );
-    expect(asked.body.knows).toEqual({ name: false, phone: false });
+  it("refuses a weak password and a missing surname", async () => {
+    expect((await signup({ ...FORM, password: "aaaaaaaa" })).status).toBe(400);
+    expect((await signup({ ...FORM, lastName: " " })).status).toBe(400);
+    expect(await db.kindergarten.count({ where: { kind: "SOLO_TEACHER" } })).toBe(0);
   });
 
-  it("the invitation sets the password; the teacher signs in by phone, and the session names the workspace", async () => {
+  it("the teacher signs in by phone at once, and the session names the workspace", async () => {
     const { session, kindergartenId } = await soloTeacher();
     const me = await authed(request(server()).get("/v1/auth/me"), session);
     expect(me.status).toBe(200);

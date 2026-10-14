@@ -18,7 +18,6 @@ export interface SoloWorkspaceInput {
     firstName: string;
     passwordHash: string;
   };
-  invitation: { tokenHash: string; expiresAt: Date; requestedIp: string | null };
 }
 
 @Injectable()
@@ -29,10 +28,9 @@ export class SoloTeachersRepository {
    * A solo teacher's whole workspace — atomically, as `PlatformRepository.
    * createWithAdmin` creates a kindergarten with its director.
    *
-   * All or nothing: a user with no membership reaches nothing, and one with no
-   * invitation can never set a password. The hashes are computed by the
-   * service, outside the transaction; the token's plaintext never reaches this
-   * layer.
+   * All or nothing: a user with no membership reaches nothing. The password
+   * hash is computed by the service, outside the transaction (since
+   * 2026-10-14 it is the teacher's own — no invitation token any more).
    *
    * ★ No school year and no group (the user, 2026-10-14): the teacher sets up
    * their own — `TenantsService.createSchoolYear` / `createGroup`, which
@@ -57,28 +55,20 @@ export class SoloTeachersRepository {
       await tx.membership.create({
         data: { userId: user.id, kindergartenId: kindergarten.id, role: "TEACHER" },
       });
-      await tx.authToken.create({
-        data: {
-          userId: user.id,
-          purpose: "INVITATION",
-          tokenHash: input.invitation.tokenHash,
-          expiresAt: input.invitation.expiresAt,
-          requestedIp: input.invitation.requestedIp,
-        },
-      });
-
       return { kindergartenId: kindergarten.id, userId: user.id };
     });
   }
 
   /** Whether an account already holds this email or phone — a readable 409, not a 500. */
-  async contactTaken(email: string, phone: string): Promise<"email" | "phone" | null> {
+  async contactTaken(email: string | null, phone: string): Promise<"email" | "phone" | null> {
     const [byEmail, byPhone] = await Promise.all([
       // Any casing — see `UsersRepository.findByEmail`.
-      this.prisma.user.findFirst({
-        where: { email: { equals: email, mode: "insensitive" } },
-        select: { id: true },
-      }),
+      email === null
+        ? null
+        : this.prisma.user.findFirst({
+            where: { email: { equals: email, mode: "insensitive" } },
+            select: { id: true },
+          }),
       this.prisma.user.findUnique({ where: { phone }, select: { id: true } }),
     ]);
     return byEmail ? "email" : byPhone ? "phone" : null;
