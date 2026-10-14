@@ -261,7 +261,21 @@ function MaterialDialog({
     material?.area && material.area !== OTHER_AREA ? material.area : "",
   );
   const [level, setLevel] = useState<MaterialLevel | "">(material?.level ?? "");
-  const [price, setPrice] = useState(material ? String(material.price) : "");
+  const [price, setPrice] = useState(material && material.price > 0 ? String(material.price) : "");
+  /*
+   * ★ «Үнэгүй» and «Хямдрал» — 2026-10-14, the user. Free sends a price of 0.
+   * A discount (a lower price, until a day) is sent as `discountPrice` /
+   * `discountEndsOn`; the API does not keep it yet (asked of the admin), and
+   * the form says so.
+   */
+  const [free, setFree] = useState(material ? material.price === 0 : false);
+  const [discounted, setDiscounted] = useState(false);
+  const [discountPrice, setDiscountPrice] = useState("");
+  const [discountEndsOn, setDiscountEndsOn] = useState("");
+  const full = Number(price);
+  const cut = Number(discountPrice);
+  const percent =
+    discounted && full > 0 && cut > 0 && cut < full ? Math.round((1 - cut / full) * 100) : null;
   const [published, setPublished] = useState(material?.published ?? true);
   const [file, setFile] = useState<File | null>(null);
   /** Up to six sample pages; the first is the shop card's cover. */
@@ -285,7 +299,11 @@ function MaterialDialog({
       if (description.trim()) form.set("description", description.trim());
       form.set("area", area || OTHER_AREA);
       if (level) form.set("level", level);
-      form.set("price", String(Number(price)));
+      form.set("price", free ? "0" : String(Number(price)));
+      if (!free && discounted) {
+        form.set("discountPrice", String(Number(discountPrice)));
+        if (discountEndsOn) form.set("discountEndsOn", discountEndsOn);
+      }
       form.set("published", String(published));
       if (file) form.set("file", file);
       form.set("autoPreview", String(autoPreview));
@@ -315,7 +333,11 @@ function MaterialDialog({
 
   function submit() {
     if (!title.trim()) return setProblem("Нэрээ оруулна уу.");
-    if (!/^\d+$/.test(price.trim())) return setProblem("Үнийг бүхэл төгрөгөөр оруулна уу.");
+    if (!free && !/^\d+$/.test(price.trim()))
+      return setProblem("Үнийг бүхэл төгрөгөөр оруулна уу.");
+    if (!free && Number(price) === 0) return setProblem("Үнэ 0 бол «Үнэгүй»-г сонгоно уу.");
+    if (!free && discounted && !(/^\d+$/.test(discountPrice.trim()) && cut > 0 && cut < full))
+      return setProblem("Хямдралтай үнэ үндсэн үнээс бага, бүхэл төгрөг байна.");
     if (!material && !file) return setProblem("PDF эсвэл PowerPoint файлаа сонгоно уу.");
     if (file && !fileTypeOf(file.name)) return setProblem("Зөвхөн PDF, PPT, PPTX файл оруулна.");
     if (previews.length > 6) return setProblem("Урьдчилан харах зураг 6 хүртэл байна.");
@@ -405,17 +427,85 @@ function MaterialDialog({
             )}
           </Field>
         </div>
-        <Field label="Үнэ (₮)" error={errors.price} hint="0 бол үнэгүй" required>
-          {({ id, describedBy }) => (
-            <Input
-              id={id}
-              aria-describedby={describedBy}
-              inputMode="numeric"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-            />
+        <fieldset className="flex flex-col gap-3 rounded-control border border-border p-3">
+          <legend className="px-1 text-caption font-semibold text-ink">Үнэ</legend>
+          <div role="radiogroup" aria-label="Үнийн төрөл" className="flex gap-4 text-body">
+            {(
+              [
+                [false, "Үнэтэй"],
+                [true, "Үнэгүй"],
+              ] as const
+            ).map(([value, label]) => (
+              <label key={label} className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="material-price-kind"
+                  className="size-4"
+                  checked={free === value}
+                  onChange={() => setFree(value)}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+
+          {free ? (
+            <p className="text-caption text-muted">Багш нар үнэгүй татаж авна.</p>
+          ) : (
+            <>
+              <Field label="Үнэ (₮)" error={errors.price} required>
+                {({ id, describedBy }) => (
+                  <Input
+                    id={id}
+                    aria-describedby={describedBy}
+                    inputMode="numeric"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                  />
+                )}
+              </Field>
+              <Checkbox
+                label="Хямдрал зарлах"
+                checked={discounted}
+                onChange={(e) => setDiscounted(e.target.checked)}
+              />
+              {discounted ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <Field
+                    label="Хямдралтай үнэ (₮)"
+                    hint={percent !== null ? `${percent}% хямдрал` : undefined}
+                    required
+                  >
+                    {({ id, describedBy }) => (
+                      <Input
+                        id={id}
+                        aria-describedby={describedBy}
+                        inputMode="numeric"
+                        value={discountPrice}
+                        onChange={(e) => setDiscountPrice(e.target.value)}
+                      />
+                    )}
+                  </Field>
+                  <Field label="Дуусах огноо" hint="Хоосон бол хугацаагүй">
+                    {({ id, describedBy }) => (
+                      <Input
+                        id={id}
+                        aria-describedby={describedBy}
+                        type="date"
+                        value={discountEndsOn}
+                        onChange={(e) => setDiscountEndsOn(e.target.value)}
+                      />
+                    )}
+                  </Field>
+                  <p className="col-span-2 text-caption text-muted">
+                    Хямдрал хадгалах хэсэг хараахан бэлэн болоогүй тул одоохондоо дэлгүүрт
+                    харагдахгүй.
+                  </p>
+                </div>
+              ) : null}
+            </>
           )}
-        </Field>
+        </fieldset>
         <Field
           label={material ? "Файл солих (PDF, PPT)" : "Файл (PDF, PPT)"}
           error={errors.file}
