@@ -5,12 +5,12 @@ import { KindergartenLogoAvatar } from "@/components/media/kindergarten-logo";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { z } from "zod";
 import {
   enrollmentArchiveSchema,
   ageInMonths,
   ENROLLMENT_STATUS_LABEL,
   TEACHER_ROLE_LABEL,
-  type EnrollmentArchive,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
@@ -24,8 +24,28 @@ import { useSession } from "@/lib/auth/session";
 import { useEsisRows } from "@/components/esis/use-esis-rows";
 import { FactRow } from "@/components/ui/fact-row";
 
-type Current = NonNullable<EnrollmentArchive["current"]>;
-type Past = EnrollmentArchive["history"][number];
+/*
+ * ★ Boys and girls in the group — 2026-10-14, the user. Counts only, never
+ * who: `boyCount` / `girlCount` are asked of the admin on the archive's
+ * group, read here before `@kinder/contracts` carries them.
+ */
+const archiveCurrentSchema = enrollmentArchiveSchema.shape.current.unwrap();
+const familyArchiveSchema = enrollmentArchiveSchema.extend({
+  current: archiveCurrentSchema
+    .extend({
+      group: archiveCurrentSchema.shape.group
+        .unwrap()
+        .extend({
+          boyCount: z.number().int().nullish(),
+          girlCount: z.number().int().nullish(),
+        })
+        .nullable(),
+    })
+    .nullable(),
+});
+
+type Current = NonNullable<z.infer<typeof familyArchiveSchema>["current"]>;
+type Past = z.infer<typeof familyArchiveSchema>["history"][number];
 
 /** `Group.ageBand` as a family reads it. */
 const AGE_BAND_LABEL: Record<string, string> = {
@@ -33,6 +53,7 @@ const AGE_BAND_LABEL: Record<string, string> = {
   JUNIOR: "Дунд бүлэг",
   MIDDLE: "Ахлах бүлэг",
   SENIOR: "Бэлтгэл бүлэг",
+  MIXED: "Холимог бүлэг",
 };
 
 /**
@@ -69,7 +90,7 @@ export function ChildEnrollmentArchive({
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
   const archive = useQuery({
     queryKey: qk.enrollmentArchive(childId),
-    queryFn: () => get(`/children/${childId}/enrollment-archive`, enrollmentArchiveSchema),
+    queryFn: () => get(`/children/${childId}/enrollment-archive`, familyArchiveSchema),
   });
 
   if (archive.isLoading) return <LoadingState rows={4} />;
@@ -298,14 +319,21 @@ function FamilyCurrentView({ current }: { current: Current }) {
   }
 
   const groupFacts: { label: string; value: ReactNode }[] = [];
+  // ★ Kind, headcount, boys and girls — 2026-10-14, the user. The name is the heading.
   if (current.group?.ageBand) {
     groupFacts.push({
-      label: "Нас",
+      label: "Бүлгийн төрөл",
       value: AGE_BAND_LABEL[current.group.ageBand] ?? current.group.ageBand,
     });
   }
   if (current.group?.childCount) {
     groupFacts.push({ label: "Хүүхдийн тоо", value: `${current.group.childCount} хүүхэд` });
+  }
+  if (typeof current.group?.boyCount === "number") {
+    groupFacts.push({ label: "Эрэгтэй", value: `${current.group.boyCount} хүүхэд` });
+  }
+  if (typeof current.group?.girlCount === "number") {
+    groupFacts.push({ label: "Эмэгтэй", value: `${current.group.girlCount} хүүхэд` });
   }
   groupFacts.push({
     label: "Хичээлийн жил",
