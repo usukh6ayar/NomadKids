@@ -1,7 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MoreVertical, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { List, MoreVertical, Pencil, Plus, RefreshCw, Store, Trash2 } from "lucide-react";
+import { StorePreview } from "@/components/materials/teaching-materials";
 import { useState } from "react";
 import { z } from "zod";
 import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
@@ -66,6 +67,8 @@ function PlatformMaterials() {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<PlatformMaterial | "new" | null>(null);
   const [removing, setRemoving] = useState<PlatformMaterial | null>(null);
+  /** «Дэлгүүр» — the shop as the teachers see it (2026-10-14, the user). */
+  const [shop, setShop] = useState(false);
   const list = useQuery({
     queryKey: KEY,
     queryFn: () => get("/platform/materials", platformMaterialsSchema),
@@ -106,83 +109,111 @@ function PlatformMaterials() {
         lede="Багш нарт зарах бэлэн үзүүлэн, хичээлүүд."
         mark={<Art name="adminCurriculum" size={44} />}
         actions={
-          <Button size="sm" onClick={() => setEditing("new")}>
-            <Plus size={16} aria-hidden="true" /> Нэмэх
-          </Button>
+          <span className="flex gap-2">
+            <Button size="sm" onClick={() => setEditing("new")}>
+              <Plus size={16} aria-hidden="true" /> Нэмэх
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              aria-pressed={shop}
+              onClick={() => setShop((open) => !open)}
+            >
+              {shop ? (
+                <>
+                  <List size={16} aria-hidden="true" /> Каталог
+                </>
+              ) : (
+                <>
+                  <Store size={16} aria-hidden="true" /> Дэлгүүр
+                </>
+              )}
+            </Button>
+          </span>
         }
       />
 
-      {list.isLoading ? <LoadingState rows={5} /> : null}
-      {list.isError ? <ErrorState description={errorMessage(list.error)} /> : null}
-      {list.data && items.length === 0 ? (
-        <EmptyState
-          title="Хэрэглэгдэхүүн нэмээгүй байна"
-          description="«Нэмэх»-ээр PDF эсвэл PowerPoint файлаа оруулна уу."
-        />
-      ) : null}
+      {shop ? (
+        <StorePreview />
+      ) : (
+        <>
+          {list.isLoading ? <LoadingState rows={5} /> : null}
+          {list.isError ? <ErrorState description={errorMessage(list.error)} /> : null}
+          {list.data && items.length === 0 ? (
+            <EmptyState
+              title="Хэрэглэгдэхүүн нэмээгүй байна"
+              description="«Нэмэх»-ээр PDF эсвэл PowerPoint файлаа оруулна уу."
+            />
+          ) : null}
 
-      {items.length > 0 ? (
-        <TableShell caption="Сургалтын хэрэглэгдэхүүний каталог" minWidth="min-w-[720px]">
-          <thead>
-            <tr>
-              <Th>Нэр</Th>
-              <Th>Чиглэл</Th>
-              <Th>Түвшин</Th>
-              <Th>Төрөл</Th>
-              <Th numeric>Үнэ</Th>
-              <Th numeric>Борлуулалт</Th>
-              <Th>Жишээ хуудас</Th>
-              <Th>Төлөв</Th>
-              <Th className="w-10">
-                <span className="sr-only">Үйлдэл</span>
-              </Th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((m) => (
-              <tr key={m.id}>
-                <Td className="font-medium text-ink">{m.title}</Td>
-                <Td>{m.area}</Td>
-                <Td>{m.level ?? "—"}</Td>
-                <Td>{m.fileType}</Td>
-                <Td numeric>{materialPrice(m.price)}</Td>
-                <Td numeric>{m.sales}</Td>
-                <Td>
-                  <Badge tone={PREVIEW_TONE[m.previewStatus]}>
-                    {PREVIEW_STATUS_LABEL[m.previewStatus]}
-                  </Badge>
-                </Td>
-                <Td>
-                  <Badge tone={m.published ? "mint" : "neutral"}>
-                    {m.published ? "Зарагдаж буй" : "Нуусан"}
-                  </Badge>
-                </Td>
-                <Td>
-                  <RowMenu
-                    ariaLabel={`${m.title} — үйлдэл`}
-                    triggerIcon={<MoreVertical size={18} aria-hidden="true" />}
-                    items={[
-                      { label: "Засах", icon: <Pencil size={16} />, onSelect: () => setEditing(m) },
-                      {
-                        label: "Жишээ хуудас дахин үүсгэх",
-                        icon: <RefreshCw size={16} />,
-                        hint: `Эхний ${AUTO_PREVIEW_PAGES} хуудаснаас`,
-                        onSelect: () => regenerate.mutate(m.id),
-                      },
-                      {
-                        label: "Устгах",
-                        icon: <Trash2 size={16} />,
-                        tone: "danger",
-                        onSelect: () => setRemoving(m),
-                      },
-                    ]}
-                  />
-                </Td>
-              </tr>
-            ))}
-          </tbody>
-        </TableShell>
-      ) : null}
+          {items.length > 0 ? (
+            <TableShell caption="Сургалтын хэрэглэгдэхүүний каталог" minWidth="min-w-[720px]">
+              <thead>
+                <tr>
+                  <Th>Нэр</Th>
+                  <Th>Чиглэл</Th>
+                  <Th>Түвшин</Th>
+                  <Th>Төрөл</Th>
+                  <Th numeric>Үнэ</Th>
+                  <Th numeric>Борлуулалт</Th>
+                  <Th>Жишээ хуудас</Th>
+                  <Th>Төлөв</Th>
+                  <Th className="w-10">
+                    <span className="sr-only">Үйлдэл</span>
+                  </Th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((m) => (
+                  <tr key={m.id}>
+                    <Td className="font-medium text-ink">{m.title}</Td>
+                    <Td>{m.area}</Td>
+                    <Td>{m.level ?? "—"}</Td>
+                    <Td>{m.fileType}</Td>
+                    <Td numeric>{materialPrice(m.price)}</Td>
+                    <Td numeric>{m.sales}</Td>
+                    <Td>
+                      <Badge tone={PREVIEW_TONE[m.previewStatus]}>
+                        {PREVIEW_STATUS_LABEL[m.previewStatus]}
+                      </Badge>
+                    </Td>
+                    <Td>
+                      <Badge tone={m.published ? "mint" : "neutral"}>
+                        {m.published ? "Зарагдаж буй" : "Нуусан"}
+                      </Badge>
+                    </Td>
+                    <Td>
+                      <RowMenu
+                        ariaLabel={`${m.title} — үйлдэл`}
+                        triggerIcon={<MoreVertical size={18} aria-hidden="true" />}
+                        items={[
+                          {
+                            label: "Засах",
+                            icon: <Pencil size={16} />,
+                            onSelect: () => setEditing(m),
+                          },
+                          {
+                            label: "Жишээ хуудас дахин үүсгэх",
+                            icon: <RefreshCw size={16} />,
+                            hint: `Эхний ${AUTO_PREVIEW_PAGES} хуудаснаас`,
+                            onSelect: () => regenerate.mutate(m.id),
+                          },
+                          {
+                            label: "Устгах",
+                            icon: <Trash2 size={16} />,
+                            tone: "danger",
+                            onSelect: () => setRemoving(m),
+                          },
+                        ]}
+                      />
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </TableShell>
+          ) : null}
+        </>
+      )}
 
       {editing ? (
         <MaterialDialog

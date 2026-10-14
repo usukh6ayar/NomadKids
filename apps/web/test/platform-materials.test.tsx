@@ -254,4 +254,33 @@ describe("the platform's teaching materials", () => {
       expect(form.get("area")).toBe("Бусад");
     });
   });
+
+  /*
+   * ★ «Дэлгүүр» beside «Нэмэх» — 2026-10-14, the user: the shop as the
+   * teachers see it, from the platform's catalog: on-sale materials only,
+   * nothing to buy.
+   */
+  it("shows the shop as teachers see it — on sale only, nothing to buy", async () => {
+    const user = userEvent.setup();
+    const hidden = { ...row, id: "m2", title: "Нуусан хичээл", published: false };
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/materials", body: [row, hidden] },
+    ]);
+    renderWithProviders(<PlatformMaterialsPage />);
+
+    await screen.findByRole("table", { name: "Сургалтын хэрэглэгдэхүүний каталог" });
+    const toggle = screen.getByRole("button", { name: "Дэлгүүр" });
+    await user.click(toggle);
+
+    const shop = await screen.findByRole("region", { name: "Дэлгүүрийн харагдац" });
+    expect(within(shop).getByText("Тоо 1–5")).toBeInTheDocument();
+    expect(within(shop).queryByText("Нуусан хичээл")).toBeNull();
+    expect(within(shop).getByRole("button", { name: "Худалдаж авах" })).toBeDisabled();
+    expect(screen.queryByRole("table")).toBeNull();
+
+    // And back to the catalog.
+    await user.click(screen.getByRole("button", { name: "Каталог" }));
+    expect(await screen.findByRole("table")).toBeInTheDocument();
+  });
 });

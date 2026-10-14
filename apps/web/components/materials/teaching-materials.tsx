@@ -22,6 +22,7 @@ import {
   materialListSchema,
   materialPrice,
   ownedMaterialsSchema,
+  platformMaterialsSchema,
   type Material,
   type MaterialLevel,
 } from "@/lib/materials";
@@ -166,6 +167,66 @@ function MaterialsToolbar({
 }
 
 const NO_FILTERS: MaterialFilters = { q: "", area: "", level: "" };
+
+/**
+ * «Дэлгүүр» as the teachers see it, for the operator — 2026-10-14, the user:
+ * "хүмүүс яаж харагдахыг харуул". The teachers' catalog route is theirs alone
+ * (`@Roles("TEACHER")`), so this draws the platform's own catalog — the
+ * materials on sale only — with the same cards, filters and sample pages.
+ * Nothing can be bought here.
+ */
+export function StorePreview() {
+  const [filters, setFilters] = useState<MaterialFilters>(NO_FILTERS);
+  const [previewing, setPreviewing] = useState<Material | null>(null);
+  const catalog = useQuery({
+    queryKey: ["platform", "materials"],
+    queryFn: () => get("/platform/materials", platformMaterialsSchema),
+  });
+  const items: Material[] = (catalog.data ?? [])
+    .filter((m) => m.published)
+    .map((m) => ({ ...m, owned: false }))
+    .filter((m) => matches(m, filters));
+
+  return (
+    <section aria-label="Дэлгүүрийн харагдац" className="flex flex-col gap-3">
+      <p className="rounded-control bg-canvas px-3.5 py-2.5 text-caption text-muted">
+        Багш нар «Дэлгүүр»-ийг ингэж харна. Зөвхөн «Зарагдаж буй» хэрэглэгдэхүүн харагдана. Энд
+        худалдан авах боломжгүй.
+      </p>
+      <MaterialsToolbar filters={filters} onChange={setFilters} />
+
+      {catalog.isLoading ? <LoadingState rows={4} shape="cards" /> : null}
+      {catalog.isError ? <ErrorState description={errorMessage(catalog.error)} /> : null}
+      {catalog.data && items.length === 0 ? (
+        <EmptyState
+          title="Дэлгүүрт харагдах хэрэглэгдэхүүн алга"
+          description="«Нэмэх»-ээр оруулж, «Зарагдаж буй» болгоход энд харагдана."
+        />
+      ) : null}
+
+      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map((material) => (
+          <li key={material.id}>
+            <MaterialCard material={material}>
+              <span className="flex gap-1.5">
+                <Button size="sm" variant="ghost" onClick={() => setPreviewing(material)}>
+                  Урьдчилан харах
+                </Button>
+                <Button size="sm" disabled title="Урьдчилсан харагдац — худалдан авах боломжгүй">
+                  Худалдаж авах
+                </Button>
+              </span>
+            </MaterialCard>
+          </li>
+        ))}
+      </ul>
+
+      {previewing ? (
+        <PreviewDialog material={previewing} onClose={() => setPreviewing(null)} />
+      ) : null}
+    </section>
+  );
+}
 
 function Store({ onOwned }: { onOwned: () => void }) {
   const [filters, setFilters] = useState<MaterialFilters>(NO_FILTERS);
