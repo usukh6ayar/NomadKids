@@ -212,6 +212,12 @@ describe("the operator's applications", () => {
     expect(refuse).toBeEnabled();
     await user.click(refuse);
 
+    // Asked first: nothing is sent until it is confirmed.
+    const confirm = await screen.findByRole("dialog", { name: /хүсэлтээс татгалзах уу/ });
+    expect(confirm).toHaveTextContent("Шалтгаан: «Гэрчилгээ дутуу»");
+    expect(api.calls.some((call) => call.url.endsWith("/reject"))).toBe(false);
+    await user.click(within(confirm).getByRole("button", { name: "Татгалзах" }));
+
     await waitFor(() =>
       expect(api.calls.find((call) => call.url.endsWith("/reject"))?.body).toEqual({
         reviewNote: "Гэрчилгээ дутуу",
@@ -471,5 +477,25 @@ describe("the operator's applications", () => {
       "<th>Бүлгийн тоо</th><td>7</td>",
     );
     expect(approve).toBeEnabled();
+  });
+
+  it("dates the contract by the school year running today", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2027, 1, 10)); // 2027-02-10, mid school year
+    try {
+      const user = userEvent.setup();
+      stubApi([
+        { path: "/auth/me", body: operator() },
+        { path: "/platform/applications", body: list([APPLICATION]) },
+      ]);
+      renderWithProviders(<ApplicationsPage />);
+
+      await user.click(await screen.findByRole("button", { name: "Шалгах" }));
+      const dialog = await screen.findByRole("dialog");
+      expect(within(dialog).getByLabelText(/Эхлэх огноо/)).toHaveValue("2026-09-01");
+      expect(within(dialog).getByLabelText(/Дуусах огноо/)).toHaveValue("2027-05-31");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

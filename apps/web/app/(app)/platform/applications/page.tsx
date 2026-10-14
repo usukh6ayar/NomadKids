@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { formatDate } from "@/lib/format";
@@ -453,7 +454,12 @@ function ReviewDialog({
   const toast = useToast();
   const queryClient = useQueryClient();
 
-  const thisYear = new Date().getUTCFullYear();
+  /*
+    The school year running today — 2026-10-14: the calendar year read alone
+    put a contract approved in February into the *next* September.
+  */
+  const today = new Date();
+  const thisYear = today.getMonth() >= 8 ? today.getFullYear() : today.getFullYear() - 1;
   // Suggested from the kindergarten's name, never the director's — two
   // directors can share a name (the user, 2026-10-14).
   const [adminUsername, setAdminUsername] = useState(() =>
@@ -610,16 +616,27 @@ function ReviewDialog({
       title={`${application.kindergartenName} — шалгах`}
       footer={
         <>
-          <Button
-            type="button"
-            variant="danger"
-            size="sm"
-            disabled={busy || reviewNote.trim().length < 4}
-            onClick={() => reject.mutate()}
-          >
-            <X size={16} aria-hidden="true" />
-            Татгалзах
-          </Button>
+          {/* Not undone — asked first (CLAUDE.md §5; 2026-10-14). */}
+          <ConfirmDialog
+            trigger={
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                disabled={busy || reviewNote.trim().length < 4}
+              >
+                <X size={16} aria-hidden="true" />
+                Татгалзах
+              </Button>
+            }
+            title={`${application.kindergartenName}-ийн хүсэлтээс татгалзах уу?`}
+            description={`Шалтгаан: «${reviewNote.trim()}». Цэцэрлэг дахин бүртгүүлэхдээ шинээр хүсэлт илгээнэ.`}
+            confirmLabel="Татгалзах"
+            pendingLabel="Татгалзаж байна…"
+            tone="danger"
+            pending={reject.isPending}
+            onConfirm={() => reject.mutate()}
+          />
           <Button
             type="button"
             variant="secondary"
