@@ -333,4 +333,31 @@ describe("the operator's solo workspaces", () => {
       expect(within(table).getByText("Д.Сараа").closest("tr")).not.toHaveTextContent("идэвхгүй");
     });
   });
+
+  /*
+   * ★ A solo teacher locked out has nobody above them but the operator —
+   * 2026-10-14, the user.
+   */
+  it("issues a solo teacher a password-reset link from «⋯», once checked", async () => {
+    const user = userEvent.setup();
+    const RESET = `/platform/solo-workspaces/${SOLO_ID}/password-reset`;
+    const api = stubApi([
+      { path: RESET, method: "POST", body: { resetToken: "tok-solo" } },
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/solo-workspaces", body: page([WORKSPACE]) },
+    ]);
+    renderWithProviders(<SoloWorkspacesPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Д.Сараа — үйлдэл" }));
+    await user.click(screen.getByRole("menuitem", { name: "Нууц үг сэргээх" }));
+    const dialog = await screen.findByRole("dialog", { name: "Нууц үг сэргээх" });
+    expect(within(dialog).getByRole("button", { name: "Холбоос үүсгэх" })).toBeDisabled();
+    await user.click(within(dialog).getByRole("checkbox"));
+    await user.click(within(dialog).getByRole("button", { name: "Холбоос үүсгэх" }));
+
+    await waitFor(() => expect(api.calls.find((call) => call.url === RESET)?.method).toBe("POST"));
+    expect(
+      await screen.findByRole("dialog", { name: "Нууц үг сэргээх холбоос" }),
+    ).toHaveTextContent("/reset-password/tok-solo");
+  });
 });

@@ -195,11 +195,14 @@ function compareSolo(a: SoloRow, b: SoloRow, key: SoloSortKey, dir: 1 | -1): num
 export function SoloTeachersTable({
   onMerge,
   onDelete,
+  onResetPassword,
 }: {
   /** Opens the merge here; without it, «⋯» links to «Бие даасан багш». */
   onMerge?: (row: SoloRow) => void;
   /** Offered from day 14 of idleness; without it, «⋯» has no «Устгах». */
   onDelete?: (row: SoloRow) => void;
+  /** «Нууц үг сэргээх» — the teacher locked out with no one above them. */
+  onResetPassword?: (row: SoloRow) => void;
 }) {
   const [search, setSearch] = useState("");
   const [area, setArea] = useState("");
@@ -465,6 +468,9 @@ export function SoloTeachersTable({
                         onMerge
                           ? { label: "Цэцэрлэгт нэгтгэх", onSelect: () => onMerge(row) }
                           : { label: "Цэцэрлэгт нэгтгэх", href: "/platform/solo-workspaces" },
+                        ...(onResetPassword
+                          ? [{ label: "Нууц үг сэргээх", onSelect: () => onResetPassword(row) }]
+                          : []),
                         // From day 14 only — an action that cannot run is not shown.
                         ...(onDelete && (idleDays(row) ?? 0) >= IDLE_WARN_DAYS
                           ? [

@@ -20,6 +20,7 @@ import {
   type SoloRow,
 } from "@/components/platform/solo-teachers-table";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { ResetPasswordLinkDialog } from "@/components/platform/reset-password-link-dialog";
 import { RequireSuperAdmin } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
 import { Checkbox, Field, Input, Select } from "@/components/ui/field";
@@ -53,6 +54,7 @@ export default function SoloWorkspacesPage() {
 function SoloWorkspaces() {
   const [merging, setMerging] = useState<SoloWorkspace | null>(null);
   const [deleting, setDeleting] = useState<SoloRow | null>(null);
+  const [resetting, setResetting] = useState<SoloRow | null>(null);
 
   return (
     <div className="flex flex-col gap-5 pb-8">
@@ -62,9 +64,21 @@ function SoloWorkspaces() {
         mark={<UserRound />}
       />
 
-      <SoloTeachersTable onMerge={setMerging} onDelete={setDeleting} />
+      <SoloTeachersTable
+        onMerge={setMerging}
+        onDelete={setDeleting}
+        onResetPassword={setResetting}
+      />
 
       {merging ? <MergeDialog workspace={merging} onClose={() => setMerging(null)} /> : null}
+      {resetting ? (
+        <ResetPasswordLinkDialog
+          path={`/platform/solo-workspaces/${resetting.id}/password-reset`}
+          person={teacherName(resetting)}
+          notReady="Сэргээх холбоос үүсгэх хэсэг хараахан бэлэн болоогүй."
+          onClose={() => setResetting(null)}
+        />
+      ) : null}
       {deleting ? (
         <DeleteSoloDialog workspace={deleting} onClose={() => setDeleting(null)} />
       ) : null}
