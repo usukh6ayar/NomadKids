@@ -185,7 +185,8 @@ function schoolYearOf(date: string): number {
 /**
  * A kindergarten contract, period by period: each term — or school year — the
  * dates touch, at the price of the day. `null` while the groups or the dates
- * cannot be read. Whole terms: a contract starting mid-term pays that term.
+ * cannot be read. Whole terms: a contract starting mid-term pays that whole
+ * term — the user's decision, 2026-10-14 («бүтнээр»).
  */
 export function contractSchedule(
   groups: number,

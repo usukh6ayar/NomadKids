@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { renderWithProviders } from "./support/render";
 import { PricingContent } from "@/components/public/pricing";
 import {
+  contractSchedule,
   CHILD_CURRENT_TERM_PRICE,
   CHILD_CURRENT_YEAR_PRICE,
   CHILD_STANDARD_TERM_PRICE,
@@ -140,5 +141,18 @@ describe("the pricing page", () => {
       .getByRole("article", { name: "Цэцэрлэг" })
       .querySelector('img[src*="pricing-kids"]');
     expect(kids).toHaveClass("bottom-full", "hidden", "lg:block");
+  });
+});
+
+describe("a kindergarten contract's terms", () => {
+  /*
+   * ★ A contract approved mid-term pays that whole term — the user,
+   * 2026-10-14 («бүтнээр»).
+   */
+  it("charges the whole term a contract starts in", () => {
+    const fromSeptember = contractSchedule(3, "term", "2026-09-01", "2027-05-31")!;
+    const fromMidOctober = contractSchedule(3, "term", "2026-10-14", "2027-05-31")!;
+    expect(fromMidOctober.lines.map((line) => line.amount)).toEqual([18_000, 36_000, 36_000]);
+    expect(fromMidOctober.total).toBe(fromSeptember.total);
   });
 });
