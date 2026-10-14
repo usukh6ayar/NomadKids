@@ -195,9 +195,7 @@ describe("the operator's dashboard", () => {
 
       const row = await screen.findByRole("link", { name: /хоног идэвхгүй/ });
       // Idle since 09.20, and never signed in since 09.01 — two; the third was active yesterday.
-      expect(row).toHaveTextContent(
-        "2 бие даасан багш 14+ хоног идэвхгүй — 30 хоногт автоматаар устна",
-      );
+      expect(row).toHaveTextContent("2 бие даасан багш 14+ хоног идэвхгүй");
       expect(row).toHaveAttribute("href", "/platform/solo-workspaces");
     } finally {
       vi.useRealTimers();

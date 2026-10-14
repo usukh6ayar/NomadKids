@@ -80,6 +80,17 @@ export function idleDays(row: SoloRow): number | null {
   return Math.max(0, -daysUntil(row.lastActiveAt ?? row.createdAt));
 }
 
+/**
+ * Whether the workspace may be deleted for idleness — 2026-10-14, the user: a
+ * teacher whose children's families have paid, and whose fee still runs, is
+ * never deleted; an empty workspace, or one whose fees have all run out, is.
+ * `paidChildCount` counts the children paid for now; while the API does not
+ * send it, nothing is offered for deletion.
+ */
+export function deletable(row: SoloRow): boolean {
+  return row.paidChildCount === 0;
+}
+
 /** Children not yet paid for, or `null` while the API does not say. */
 function unpaidOf(row: SoloRow): number | null {
   return typeof row.paidChildCount === "number"
@@ -472,7 +483,7 @@ export function SoloTeachersTable({
                           ? [{ label: "Нууц үг сэргээх", onSelect: () => onResetPassword(row) }]
                           : []),
                         // From day 14 only — an action that cannot run is not shown.
-                        ...(onDelete && (idleDays(row) ?? 0) >= IDLE_WARN_DAYS
+                        ...(onDelete && deletable(row) && (idleDays(row) ?? 0) >= IDLE_WARN_DAYS
                           ? [
                               {
                                 label: "Устгах",
@@ -503,16 +514,26 @@ function IdleCell({ row }: { row: SoloRow }) {
   const idle = idleDays(row);
   if (idle === null) return <>—</>;
   const left = IDLE_DELETE_DAYS - idle;
+  const goes = deletable(row);
   return (
     <span className="inline-flex items-center gap-2">
       {row.lastActiveAt ? formatDate(row.lastActiveAt) : "Нэвтрээгүй"}
       {idle >= IDLE_WARN_DAYS ? (
         <span
           className={`rounded-pill px-2 py-0.5 text-caption font-semibold ${
-            left <= 3 ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800"
+            !goes
+              ? "bg-slate-100 text-slate-700"
+              : left <= 3
+                ? "bg-red-100 text-red-700"
+                : "bg-amber-100 text-amber-800"
           }`}
         >
-          {idle} хоног идэвхгүй · {left > 0 ? `${left} хоногийн дараа устна` : "өнөөдөр устна"}
+          {idle} хоног идэвхгүй ·{" "}
+          {!goes
+            ? "төлбөртэй хүүхэдтэй тул устахгүй"
+            : left > 0
+              ? `${left} хоногийн дараа устна`
+              : "өнөөдөр устна"}
         </span>
       ) : null}
     </span>

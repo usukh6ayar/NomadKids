@@ -138,7 +138,8 @@ function Overview() {
     },
     {
       count: idleSolo,
-      text: "бие даасан багш 14+ хоног идэвхгүй — 30 хоногт автоматаар устна",
+      // Only those with no paid child go at 30 days (2026-10-14, the user).
+      text: "бие даасан багш 14+ хоног идэвхгүй",
       href: "/platform/solo-workspaces",
     },
     {

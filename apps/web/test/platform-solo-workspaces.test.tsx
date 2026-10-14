@@ -291,7 +291,8 @@ describe("the operator's solo workspaces", () => {
     });
     afterEach(() => vi.useRealTimers());
 
-    const IDLE = { ...WORKSPACE, lastActiveAt: "2026-09-28T09:00:00.000Z", paidChildCount: 2 };
+    // Idle, and no child's fee runs — goes at 30 days (2026-10-14, the user).
+    const IDLE = { ...WORKSPACE, lastActiveAt: "2026-09-28T09:00:00.000Z", paidChildCount: 0 };
     const FRESH = {
       ...WORKSPACE,
       id: "66666666-6666-4666-8666-666666666666",
@@ -330,7 +331,7 @@ describe("the operator's solo workspaces", () => {
       expect(within(table).getByText("Д.Сараа")).toBeInTheDocument();
     });
 
-    it("offers «Устгах» from day 14 only, asks first, and names the paid children", async () => {
+    it("offers «Устгах» from day 14 only, and asks first", async () => {
       const user = userEvent.setup();
       const api = renderIdle([
         { path: `/platform/solo-workspaces/${SOLO_ID}`, method: "DELETE", status: 204 },
@@ -344,9 +345,7 @@ describe("the operator's solo workspaces", () => {
       await user.click(screen.getByRole("button", { name: "Д.Сараа — үйлдэл" }));
       await user.click(screen.getByRole("menuitem", { name: "Устгах" }));
       const confirm = await screen.findByRole("dialog", { name: "Д.Сараа-г устгах уу?" });
-      expect(confirm).toHaveTextContent(
-        "16 хоног идэвхгүй. 4 хүүхэд, үүнээс 2 хүүхдийн эцэг эх төлбөр төлсөн",
-      );
+      expect(confirm).toHaveTextContent("16 хоног идэвхгүй. 4 хүүхэд.");
       expect(api.calls.some((call) => call.method === "DELETE")).toBe(false);
 
       await user.click(within(confirm).getByRole("button", { name: "Устгах" }));
@@ -355,6 +354,29 @@ describe("the operator's solo workspaces", () => {
           `/platform/solo-workspaces/${SOLO_ID}`,
         ),
       );
+    });
+
+    /*
+     * ★ A teacher whose children's families paid, and whose fee still runs,
+     * is never deleted — not by the sweep, not by hand (2026-10-14, the user).
+     */
+    it("never counts down or offers «Устгах» for a teacher with a paid child", async () => {
+      const user = userEvent.setup();
+      stubApi([
+        { path: "/auth/me", body: operator() },
+        {
+          path: "/platform/solo-workspaces",
+          body: page([{ ...IDLE, paidChildCount: 2 }]),
+        },
+      ]);
+      renderWithProviders(<SoloWorkspacesPage />);
+      const table = await screen.findByRole("table");
+
+      const row = within(table).getByText("Д.Сараа").closest("tr")!;
+      expect(row).toHaveTextContent("16 хоног идэвхгүй · төлбөртэй хүүхэдтэй тул устахгүй");
+      expect(row).not.toHaveTextContent("устна");
+      await user.click(screen.getByRole("button", { name: "Д.Сараа — үйлдэл" }));
+      expect(screen.queryByRole("menuitem", { name: "Устгах" })).toBeNull();
     });
 
     it("counts nobody idle while the API does not say when they were active", async () => {
