@@ -24,6 +24,7 @@ import { useToggleKindergartenActive } from "@/components/admin/toggle-kindergar
 import { RowMenu } from "@/components/ui/menu";
 import { DeleteKindergartenButton } from "@/components/admin/delete-kindergarten-button";
 import { RegisterKindergartenDialog } from "@/components/platform/register-kindergarten-dialog";
+import { QuickRecordPayment } from "@/components/platform/kindergarten-payments";
 import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
 import { daysUntil, formatDate } from "@/lib/format";
 import {
@@ -136,6 +137,7 @@ function Platform() {
   const [signedWithin, setSignedWithin] = useState("");
   const [ending, setEnding] = useState("");
   const [deleting, setDeleting] = useState<Row | null>(null);
+  const [recording, setRecording] = useState<Row | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "name", dir: 1 });
 
   const stats = useQuery({
@@ -456,6 +458,7 @@ function Platform() {
                     index={index + 1}
                     showEsis={showEsis}
                     onDelete={() => setDeleting(kg)}
+                    onRecordPayment={() => setRecording(kg)}
                   />
                 ))}
               </tbody>
@@ -463,6 +466,14 @@ function Platform() {
           </div>
         ) : null}
       </section>
+
+      {recording ? (
+        <QuickRecordPayment
+          kindergartenId={recording.id}
+          kindergartenName={recording.name}
+          onClose={() => setRecording(null)}
+        />
+      ) : null}
 
       {deleting ? (
         <DeleteKindergartenButton
@@ -512,11 +523,13 @@ function KindergartenRow({
   index,
   showEsis,
   onDelete,
+  onRecordPayment,
 }: {
   kg: Row;
   index: number;
   showEsis: boolean;
   onDelete: () => void;
+  onRecordPayment: () => void;
 }) {
   const linked = esisConnected(kg);
   const toggle = useToggleKindergartenActive(kg);
@@ -587,6 +600,8 @@ function KindergartenRow({
           ariaLabel={`${kg.name} — үйлдэл`}
           items={[
             { label: "Дэлгэрэнгүй", href: `/platform/${kg.id}` },
+            // What came into the account — without opening the page (2026-10-14).
+            { label: "Төлбөр бүртгэх", onSelect: onRecordPayment },
             {
               label: kg.isActive ? "Идэвхгүй болгох" : "Идэвхжүүлэх",
               onSelect: toggle.run,

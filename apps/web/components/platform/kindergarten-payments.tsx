@@ -395,3 +395,66 @@ function RecordPaymentDialog({
     </FormDialog>
   );
 }
+
+/**
+ * «⋯ → Төлбөр бүртгэх» from the kindergartens table — 2026-10-14, the user:
+ * record what came into the account without opening the kindergarten. It
+ * loads the schedule and opens the first period not yet paid.
+ */
+export function QuickRecordPayment({
+  kindergartenId,
+  kindergartenName,
+  onClose,
+}: {
+  kindergartenId: string;
+  kindergartenName: string;
+  onClose: () => void;
+}) {
+  const payments = useQuery({
+    queryKey: key(kindergartenId),
+    queryFn: () => get(`/platform/kindergartens/${kindergartenId}/payments`, paymentsSchema),
+    retry: false,
+  });
+  const next = payments.data?.periods.find((period) => period.status !== "paid");
+
+  if (payments.data?.contract && next) {
+    return (
+      <RecordPaymentDialog
+        kindergartenId={kindergartenId}
+        contractId={payments.data.contract.id}
+        period={next}
+        onClose={onClose}
+      />
+    );
+  }
+
+  const message = payments.isLoading
+    ? null
+    : payments.isError
+      ? isNotFound(payments.error)
+        ? "Төлбөрийн бүртгэл удахгүй нээгдэнэ."
+        : errorMessage(payments.error)
+      : !payments.data?.contract
+        ? "Гэрээ байхгүй тул бүртгэх төлбөр алга."
+        : "Бүх хугацааны төлбөр төлөгдсөн байна.";
+
+  return (
+    <FormDialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title="Төлбөр бүртгэх"
+      description={kindergartenName}
+      footer={
+        <Button type="button" size="sm" variant="secondary" onClick={onClose}>
+          Хаах
+        </Button>
+      }
+    >
+      {message === null ? (
+        <LoadingState rows={2} />
+      ) : (
+        <p className="text-body text-muted">{message}</p>
+      )}
+    </FormDialog>
+  );
+}

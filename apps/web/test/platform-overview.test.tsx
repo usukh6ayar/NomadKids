@@ -100,4 +100,25 @@ describe("the operator's dashboard", () => {
     await vi.waitFor(() => expect(ROUTER.replace).toHaveBeenCalledWith("/"));
     expect(screen.queryByRole("heading", { name: "Самбар" })).toBeNull();
   });
+
+  /*
+   * ★ What should come into the account — 2026-10-14, the user checks the bank
+   * by hand, so the board says who owes and how much.
+   */
+  it("says how many kindergartens owe and how much, when the API counts it", async () => {
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/applications", body: page(0) },
+      { path: "/platform/solo-workspaces", body: page(0) },
+      {
+        path: "/platform/payments/summary",
+        body: { waitingKindergartens: 4, waitingAmount: "144000.00", overdueKindergartens: 1 },
+      },
+    ]);
+    renderWithProviders(<PlatformOverviewPage />);
+
+    const row = await screen.findByRole("link", { name: /төлбөр хүлээгдэж байна/ });
+    expect(row).toHaveTextContent("4 цэцэрлэгийн төлбөр хүлээгдэж байна · 144,000₮ (1 хоцорсон)");
+    expect(row).toHaveAttribute("href", "/platform");
+  });
 });

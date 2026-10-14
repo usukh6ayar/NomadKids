@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, LayoutGrid } from "lucide-react";
 import Link from "next/link";
+import { z } from "zod";
 import { platformRevenueSchema, platformStatsSchema } from "@kinder/contracts";
 import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
 import {
@@ -42,6 +43,18 @@ function amount(value: string): string {
   return `${Math.round(Number(value)).toLocaleString("en-US")}₮`;
 }
 
+/*
+ * ★ What should come into the account — 2026-10-14, the user: payments are
+ * checked by hand against the bank, so the board says how many kindergartens
+ * owe and how much. Asked of the admin; no row while the API cannot count it.
+ */
+const paymentSummarySchema = z.object({
+  /** Kindergartens with a period due within 14 days or overdue. */
+  waitingKindergartens: z.number().int(),
+  waitingAmount: z.string(),
+  overdueKindergartens: z.number().int(),
+});
+
 function Overview() {
   const month = thisMonth();
   const applications = usePendingApplicationsCount();
@@ -50,6 +63,11 @@ function Overview() {
   const stats = useQuery({
     queryKey: qk.platformStats(),
     queryFn: () => get("/platform/stats", platformStatsSchema),
+  });
+  const payments = useQuery({
+    queryKey: ["platform", "payments-summary"],
+    queryFn: () => get("/platform/payments/summary", paymentSummarySchema),
+    retry: false,
   });
   const revenue = useQuery({
     queryKey: qk.platformRevenueMonth(month),
@@ -66,6 +84,17 @@ function Overview() {
       count: solo,
       text: "бие даасан багшийн орчин цэцэрлэгт нэгтгэгдээгүй",
       href: "/platform/solo-workspaces",
+    },
+    {
+      count: payments.data?.waitingKindergartens ?? null,
+      text: payments.data
+        ? `цэцэрлэгийн төлбөр хүлээгдэж байна · ${amount(payments.data.waitingAmount)}${
+            payments.data.overdueKindergartens > 0
+              ? ` (${payments.data.overdueKindergartens} хоцорсон)`
+              : ""
+          }`
+        : "",
+      href: "/platform",
     },
   ].filter((row) => (row.count ?? 0) > 0);
   const counted = applications !== null && solo !== null;

@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, stubApi } from "./support/render";
@@ -100,7 +100,7 @@ describe("the operator's kindergartens table", () => {
 
     await user.click(screen.getByRole("button", { name: "Нарлаг цэцэрлэг — үйлдэл" }));
     const items = screen.getAllByRole("menuitem").map((item) => item.textContent);
-    expect(items).toEqual(["Дэлгэрэнгүй", "Идэвхгүй болгох", "Устгах"]);
+    expect(items).toEqual(["Дэлгэрэнгүй", "Төлбөр бүртгэх", "Идэвхгүй болгох", "Устгах"]);
   });
 
   it("sorts by a column, both ways, the empty ones last", async () => {
@@ -473,5 +473,86 @@ describe("the operator's kindergartens table", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  /*
+   * ★ What came into the account, recorded from the table — 2026-10-14, the
+   * user: «⋯ → Төлбөр бүртгэх» opens the first period not yet paid.
+   */
+  it("records a payment from the row's «⋯», against the first unpaid period", async () => {
+    const user = userEvent.setup();
+    const KG_ID = ROWS[0]!.id as string;
+    const api = stubApi([
+      { path: "/auth/me", body: operator() },
+      {
+        path: `/platform/kindergartens/${KG_ID}/payments`,
+        body: {
+          contract: { id: "c1", number: "NK-2026-000001", billingPeriod: "term" },
+          suspended: false,
+          periods: [
+            {
+              index: 0,
+              label: "I улирал (9–11 сар)",
+              dueOn: "2026-09-01",
+              amount: "18000.00",
+              paidAmount: "18000.00",
+              status: "paid",
+              payments: [],
+            },
+            {
+              index: 1,
+              label: "II улирал (12–2 сар)",
+              dueOn: "2026-12-01",
+              amount: "36000.00",
+              paidAmount: "0.00",
+              status: "due",
+              payments: [],
+            },
+          ],
+        },
+      },
+      { path: "/platform/contracts/c1/payments", method: "POST", body: {} },
+      {
+        path: "/platform/kindergartens",
+        body: { items: ROWS, page: 1, pageSize: 50, total: 2, totalPages: 1 },
+      },
+    ]);
+    renderWithProviders(<PlatformPage />);
+    await screen.findByRole("table");
+
+    await user.click(screen.getByRole("button", { name: "Нарлаг цэцэрлэг — үйлдэл" }));
+    await user.click(screen.getByRole("menuitem", { name: "Төлбөр бүртгэх" }));
+    const dialog = await screen.findByRole("dialog", { name: "Төлбөр бүртгэх" });
+    expect(dialog).toHaveTextContent("II улирал (12–2 сар)");
+    expect(within(dialog).getByLabelText(/Дүн/)).toHaveValue("36000");
+    await user.click(within(dialog).getByRole("button", { name: "Бүртгэх" }));
+
+    await waitFor(() =>
+      expect(
+        api.calls.find((call) => call.url === "/platform/contracts/c1/payments")?.body,
+      ).toMatchObject({ periodIndex: 1, amount: "36000", method: "transfer" }),
+    );
+  });
+
+  it("says «удахгүй» from the row's «⋯» while the API keeps no payments", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      // The route does not exist yet — the API answers 404.
+      { path: `/platform/kindergartens/${ROWS[0]!.id as string}/payments`, status: 404, body: {} },
+      {
+        path: "/platform/kindergartens",
+        body: { items: ROWS, page: 1, pageSize: 50, total: 2, totalPages: 1 },
+      },
+    ]);
+    renderWithProviders(<PlatformPage />);
+    await screen.findByRole("table");
+
+    await user.click(screen.getByRole("button", { name: "Нарлаг цэцэрлэг — үйлдэл" }));
+    await user.click(screen.getByRole("menuitem", { name: "Төлбөр бүртгэх" }));
+    const dialog = await screen.findByRole("dialog", { name: "Төлбөр бүртгэх" });
+    expect(
+      await within(dialog).findByText("Төлбөрийн бүртгэл удахгүй нээгдэнэ."),
+    ).toBeInTheDocument();
   });
 });
