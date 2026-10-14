@@ -286,7 +286,8 @@ describe("the operator's applications", () => {
 
   /*
    * ★ The price is worked out per term — 2026-10-14, the user: the discount on
-   * the first term only (to 2026.11.30), the standard price after, and the
+   * the first term only (to 2026.11.30, 2,000₮ a group a month), the standard
+   * 4,000₮ after, and the
    * contract's whole sum is what the PDF prints as «Нийт төлбөр».
    */
   it("breaks a termly contract into its terms and sends the contract's sum", async () => {
@@ -319,12 +320,12 @@ describe("the operator's applications", () => {
       .getAllByRole("listitem")
       .map((li) => li.textContent);
     expect(lines).toEqual([
-      "I улирал (9–11 сар)2,000₮ × бүлэг6,000₮Хямдрал",
-      "II улирал (12–2 сар)12,000₮ × бүлэг36,000₮",
-      "III улирал (3–5 сар)12,000₮ × бүлэг36,000₮",
+      "I улирал (9–11 сар)2,000₮ × 3 сар × 3 бүлэг18,000₮Хямдрал",
+      "II улирал (12–2 сар)4,000₮ × 3 сар × 3 бүлэг36,000₮",
+      "III улирал (3–5 сар)4,000₮ × 3 сар × 3 бүлэг36,000₮",
     ]);
-    expect(breakdown).toHaveTextContent("Гэрээний нийт дүн78,000₮");
-    expect(breakdown).toHaveTextContent("Суурь үнээр 108,000₮ — 30,000₮ хэмнэлт");
+    expect(breakdown).toHaveTextContent("Гэрээний нийт дүн90,000₮");
+    expect(breakdown).toHaveTextContent("Суурь үнээр 108,000₮ — 18,000₮ хэмнэлт");
 
     await user.type(within(dialog).getByLabelText(/Админы нэвтрэх нэр/), "azjargal");
     await user.click(within(dialog).getByRole("button", { name: "Батлах" }));
@@ -333,7 +334,7 @@ describe("the operator's applications", () => {
         groupCount: 3,
         billingPeriod: "term",
         perGroupMonthlyFee: "4000",
-        periodFee: "78000",
+        periodFee: "90000",
       }),
     );
   });

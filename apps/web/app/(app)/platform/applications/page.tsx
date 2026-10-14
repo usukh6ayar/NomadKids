@@ -777,7 +777,11 @@ function ContractBreakdown({
                 className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-2"
               >
                 <span className="min-w-0 flex-1 text-ink">{line.label}</span>
-                <span className="tabular-nums text-muted">{tugrug(line.perGroup)} × бүлэг</span>
+                <span className="tabular-nums text-muted">
+                  {line.perMonth !== null
+                    ? `${tugrug(line.perMonth)} × ${line.months} сар × ${line.groups} бүлэг`
+                    : `${tugrug(line.perGroup)} × ${line.groups} бүлэг`}
+                </span>
                 <span className="w-24 text-right font-semibold tabular-nums text-ink">
                   {tugrug(line.amount)}
                 </span>

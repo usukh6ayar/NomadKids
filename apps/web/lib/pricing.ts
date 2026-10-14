@@ -139,8 +139,23 @@ export function tugrik(amount: number): string {
  */
 export const TERM_DISCOUNT_ENDS = "2026-11-30";
 
+/**
+ * ★ A discounted term in a contract is 2,000₮ a group **a month** — the user's
+ * breakdown, 2026-10-14: «2,000₮ × 3 сар × 3 бүлэг = 18,000₮». The price page
+ * still reads 2,000₮ a term (`KINDERGARTEN_CURRENT_TERM_PER_GROUP`); which one
+ * is right is the user's to settle.
+ */
+export const KINDERGARTEN_DISCOUNT_MONTHLY_PER_GROUP = 2_000;
+const MONTHS_IN_TERM = 3;
+
 export interface ContractLine {
   label: string;
+  /** A term's monthly rate a group, or `null` for a school year. */
+  perMonth: number | null;
+  /** 3 for a term, `null` for a school year. */
+  months: number | null;
+  groups: number;
+  /** The year's price a group, or the term's (perMonth × months). */
   perGroup: number;
   amount: number;
   /** Below the standard price — the line says «Хямдрал». */
@@ -193,6 +208,9 @@ export function contractSchedule(
     if (period === "year") {
       lines.push({
         label: `${span} хичээлийн жил`,
+        perMonth: null,
+        months: null,
+        groups,
         perGroup: KINDERGARTEN_CURRENT_YEAR_PER_GROUP,
         amount: groups * KINDERGARTEN_CURRENT_YEAR_PER_GROUP,
         discounted: KINDERGARTEN_CURRENT_YEAR_PER_GROUP < KINDERGARTEN_STANDARD_YEAR_PER_GROUP,
@@ -205,11 +223,15 @@ export function contractSchedule(
       const to = `${term.toNext ? year + 1 : year}-${term.to}`;
       if (from > endsOn || to < startsOn) continue;
       const discounted = from <= TERM_DISCOUNT_ENDS && TERM_DISCOUNTED;
-      const perGroup = discounted
-        ? KINDERGARTEN_CURRENT_TERM_PER_GROUP
-        : KINDERGARTEN_STANDARD_TERM_PER_GROUP;
+      const perMonth = discounted
+        ? KINDERGARTEN_DISCOUNT_MONTHLY_PER_GROUP
+        : KINDERGARTEN_MONTHLY_PER_GROUP;
+      const perGroup = perMonth * MONTHS_IN_TERM;
       lines.push({
         label: first === last ? term.name : `${span} · ${term.name}`,
+        perMonth,
+        months: MONTHS_IN_TERM,
+        groups,
         perGroup,
         amount: groups * perGroup,
         discounted,
