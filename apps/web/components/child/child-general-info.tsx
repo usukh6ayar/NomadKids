@@ -14,7 +14,7 @@ import {
   UserPlus,
   Users,
 } from "lucide-react";
-import { ResetPasswordLinkDialog } from "@/components/platform/reset-password-link-dialog";
+import { GuardianResetDialog } from "@/components/child/guardian-password-reset";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
 import { z } from "zod";
@@ -909,15 +909,7 @@ function GuardianPasswordReset({ guardian }: { guardian: NonNullable<Guardianshi
         <KeyRound size={16} aria-hidden="true" />
         Нууц үг сэргээх
       </button>
-      {open ? (
-        <ResetPasswordLinkDialog
-          path={`/users/${guardian.id}/password-reset`}
-          person={fullName(guardian)}
-          notReady="Эцэг эхийн нууц үг сэргээх хэсэг хараахан бэлэн болоогүй. Утас нь гарт байвал «Нууц үгээ мартсан уу?»-аар өөрөө сэргээнэ."
-          notReadyStatuses={[404, 409]}
-          onClose={() => setOpen(false)}
-        />
-      ) : null}
+      {open ? <GuardianResetDialog guardian={guardian} onClose={() => setOpen(false)} /> : null}
     </>
   );
 }

@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/field";
 import { RowMenu } from "@/components/ui/menu";
+import { GuardianResetPicker } from "@/components/child/guardian-password-reset";
 import { Pagination } from "@/components/ui/pagination";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { Td, Th } from "@/components/ui/table";
@@ -400,6 +401,7 @@ export function StudentRosterTable({
   const router = useRouter();
   const isAdmin = useSession().hasRole("ADMIN");
   const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(null);
+  const [resetting, setResetting] = useState<{ id: string; name: string } | null>(null);
   const [inviting, setInviting] = useState<{ id: string; name: string } | null>(null);
   return (
     <div className="overflow-x-auto rounded-card border border-border bg-surface">
@@ -493,6 +495,15 @@ export function StudentRosterTable({
                         label: "Бүртгэлийн түүх",
                         onSelect: () => router.push(`/children/${child.id}/enrollment-archive`),
                       },
+                      // Without opening the child — 2026-10-14, the user.
+                      {
+                        label: "Эцэг эхийн нууц үг сэргээх",
+                        onSelect: () =>
+                          setResetting({
+                            id: child.id,
+                            name: `${child.lastName ?? ""} ${child.firstName}`.trim(),
+                          }),
+                      },
                       /*
                         ★ «Урих» from the row — client, 2026-10-06: a teacher
                         invites a child's parent without opening the child.
@@ -531,6 +542,13 @@ export function StudentRosterTable({
         </tbody>
       </table>
       <DeleteChildDialog child={deleting} onClose={() => setDeleting(null)} />
+      {resetting ? (
+        <GuardianResetPicker
+          childId={resetting.id}
+          childName={resetting.name}
+          onClose={() => setResetting(null)}
+        />
+      ) : null}
       {inviting ? (
         <InviteDialog
           childId={inviting.id}
@@ -565,6 +583,7 @@ export function ChildRosterTable({
   const router = useRouter();
   const isAdmin = useSession().hasRole("ADMIN");
   const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(null);
+  const [resetting, setResetting] = useState<{ id: string; name: string } | null>(null);
   return (
     <div className="rounded-card border border-border bg-surface">
       <table className="w-full border-collapse text-body">
@@ -629,6 +648,15 @@ export function ChildRosterTable({
                       label: "Бүртгэлийн түүх",
                       onSelect: () => router.push(`/children/${child.id}/enrollment-archive`),
                     },
+                    // Without opening the child — 2026-10-14, the user.
+                    {
+                      label: "Эцэг эхийн нууц үг сэргээх",
+                      onSelect: () =>
+                        setResetting({
+                          id: child.id,
+                          name: `${child.lastName ?? ""} ${child.firstName}`.trim(),
+                        }),
+                    },
                     ...(isAdmin
                       ? [
                           {
@@ -650,6 +678,13 @@ export function ChildRosterTable({
         </tbody>
       </table>
       <DeleteChildDialog child={deleting} onClose={() => setDeleting(null)} />
+      {resetting ? (
+        <GuardianResetPicker
+          childId={resetting.id}
+          childName={resetting.name}
+          onClose={() => setResetting(null)}
+        />
+      ) : null}
     </div>
   );
 }
