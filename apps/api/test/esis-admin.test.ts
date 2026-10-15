@@ -1929,15 +1929,43 @@ describe("POST /kindergartens/:id/esis/roster-import", () => {
       const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
 
       expect(res.status).toBe(200);
+      expect(res.body.enrollments.created).toBe(0);
       expect(res.body.enrollments.closed).toBe(0);
       const kept = await db.enrollment.findUniqueOrThrow({ where: { id: laterEnrollment.id } });
       expect(kept.status).toBe("ACTIVE");
+      // …and no second ACTIVE row in the older year beside it.
+      expect(
+        await db.enrollment.count({
+          where: { childId: a.child.id, status: "ACTIVE", deletedAt: null },
+        }),
+      ).toBe(1);
     });
 
-    it("never ends another kindergarten's enrolment", async () => {
+    it("starts on the year's first day when ESIS dates the move before the old row", async () => {
       await mapInstitution(a.kindergarten.id, superAdmin);
       await linkToEsis();
-      // The same child row is also enrolled at b — b's record is b's to close.
+      const year = await withCurrentYear(a.kindergarten.id);
+      // A returning child's original actionDate, older than last year's row.
+      rosterReads([GROUP_ROW], [{ ...CHILD_ROW, actionDate: "2025-08-20" }]);
+
+      const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+      expect(res.status).toBe(200);
+      const created = await db.enrollment.findFirstOrThrow({
+        where: { childId: a.child.id, schoolYearId: year.id },
+      });
+      expect(created.startedOn.toISOString().slice(0, 10)).toBe("2026-09-01");
+      const old = await db.enrollment.findUniqueOrThrow({ where: { id: a.enrollment.id } });
+      // Last year's row keeps last year's days.
+      expect(old.endedOn?.toISOString().slice(0, 10)).toBe("2026-09-01");
+    });
+
+    it("ends the child's live row in another kindergarten too, as enrollChild does", async () => {
+      await mapInstitution(a.kindergarten.id, superAdmin);
+      await linkToEsis();
+      // The same child row is still live at b. Enrolling a child moves them —
+      // leaving b's row ACTIVE would keep b's teacher's reach and count the
+      // child in two funding registers.
       const atB = await enrollChild(b.kindergarten.id, a.child.id, b.group.id, b.schoolYear.id);
       await withCurrentYear(a.kindergarten.id);
       rosterReads([GROUP_ROW], [CHILD_ROW]);
@@ -1945,9 +1973,9 @@ describe("POST /kindergartens/:id/esis/roster-import", () => {
       const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
 
       expect(res.status).toBe(200);
-      expect(res.body.enrollments.closed).toBe(1);
-      const untouched = await db.enrollment.findUniqueOrThrow({ where: { id: atB.id } });
-      expect(untouched.status).toBe("ACTIVE");
+      expect(res.body.enrollments.closed).toBe(2);
+      const ended = await db.enrollment.findUniqueOrThrow({ where: { id: atB.id } });
+      expect(ended.status).toBe("TRANSFERRED");
     });
   });
 

@@ -174,6 +174,9 @@ export class EsisRosterImportService {
       groupIdByEsisId.set(esisGroupId, created.id);
     }
 
+    /** Children already enrolled this year — their stale rows are ended after the loop. */
+    const current: { childId: string; enrollmentId: string; startedOn: Date }[] = [];
+
     for (const raw of studentResponse.data as Record<string, unknown>[]) {
       const esisPersonId = String(raw.personId ?? "");
       const dateOfBirth = esisDate(raw.dateOfBirth);
@@ -265,27 +268,32 @@ export class EsisRosterImportService {
           groupId,
           schoolYearId: year.id,
           startedOn: esisDate(raw.actionDate) ?? year.startsOn,
+          yearStartsOn: year.startsOn,
         });
-        outcome.enrollments.created += 1;
-        outcome.enrollments.closed += created.closed;
+        // `null`: the child is already live in a later year here — an older
+        // year's import opens nothing for them.
+        if (created) {
+          outcome.enrollments.created += 1;
+          outcome.enrollments.closed += created.closed;
+        }
       } else {
         if (enrollment.groupId !== groupId) {
           await this.repo.moveEnrollment(enrollment.id, groupId);
           outcome.enrollments.moved += 1;
         }
-        /*
-         * ★ Also when this year's enrolment already exists: an import before
-         * #236 left last year's row live beside it, and running the import
-         * again is what clears it.
-         */
-        outcome.enrollments.closed += await this.repo.closeEarlierEnrollments({
-          kindergartenId,
-          childId,
-          schoolYearId: year.id,
-          startedOn: enrollment.startedOn,
-        });
+        current.push({ childId, enrollmentId: enrollment.id, startedOn: enrollment.startedOn });
       }
     }
+
+    /*
+     * ★ The children whose enrolment this year already existed: an import
+     * before #236 left their old row live beside it, and running the import
+     * again is what clears it — once, for the whole roster, after the loop.
+     */
+    outcome.enrollments.closed += await this.repo.closeStaleEnrollments(current, {
+      kindergartenId,
+      yearStartsOn: year.startsOn,
+    });
 
     /*
      * ★ Counts, and the names of what could not be placed. No register

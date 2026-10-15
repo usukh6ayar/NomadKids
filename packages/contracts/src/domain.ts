@@ -6254,8 +6254,11 @@ export const esisRosterImportSchema = z.object({
   enrollments: z.object({
     created: z.number(),
     moved: z.number(),
-    /** Earlier years' live enrolments this import ended (№18). */
-    closed: z.number(),
+    /**
+     * Older live enrolments this import ended (№18). Defaulted, so a web
+     * built before the api reads an older answer without failing.
+     */
+    closed: z.number().default(0),
     unplaced: z.array(z.string()),
   }),
 });
