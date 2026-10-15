@@ -17,13 +17,13 @@ export const schoolMonthKeySchema = z.enum(SCHOOL_MONTH_KEYS);
 export type SchoolMonthKeyValue = z.infer<typeof schoolMonthKeySchema>;
 
 export const SONG_POEM_TYPES = ["song", "poem", "folklore", "fairy_tale"] as const;
+/**
+ * An `http(s)://` address with a host and no whitespace. A pattern rather than
+ * `new URL()`, which this package's compile target does not declare — and the
+ * scheme is the whole point: `javascript:` must never reach an `href`.
+ */
 function isWebLink(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" || url.protocol === "http:";
-  } catch {
-    return false;
-  }
+  return /^https?:\/\/[^\s/?#]+\.[^\s/?#]+(?:[/?#]\S*)?$/i.test(value);
 }
 
 export const songPoemTypeSchema = z.enum(SONG_POEM_TYPES);
