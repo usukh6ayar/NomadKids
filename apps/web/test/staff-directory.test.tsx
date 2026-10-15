@@ -352,9 +352,21 @@ describe("the staff directory", () => {
     await user.click(within(dialog).getByRole("button", { name: "Урилга үүсгэх" }));
 
     expect(await within(dialog).findByText("1 урилга бэлэн")).toBeInTheDocument();
-    expect(within(dialog).getByText(/\/invitation\/tok-teacher-0123456789$/)).toBeInTheDocument();
     expect(
       calls.find((c) => c.method === "POST" && c.url.endsWith("/staff-invitations"))?.body,
     ).toEqual({ esisPersonId: "esis-teacher" });
+
+    // ★ The invited person leaves the unclaimed list on the server; the sheet
+    // must survive that — no refetch while it is open, or the codes are lost.
+    const unclaimedReads = () =>
+      calls.filter((c) => c.method === "GET" && c.url.includes("/staff-roster/unclaimed")).length;
+    const readsBefore = unclaimedReads();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(unclaimedReads()).toBe(readsBefore);
+    expect(within(dialog).getByText(/\/invitation\/tok-teacher-0123456789$/)).toBeInTheDocument();
+
+    // Closing it is what refreshes the list.
+    await user.click(within(dialog).getByRole("button", { name: "Хаах" }));
+    await waitFor(() => expect(unclaimedReads()).toBeGreaterThan(readsBefore));
   });
 });

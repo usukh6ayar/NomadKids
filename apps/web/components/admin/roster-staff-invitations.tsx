@@ -52,14 +52,21 @@ export function RosterStaffInvitations({
         method: "POST",
         body: single ? { esisPersonId } : {},
       }),
-    onSuccess: () => {
-      for (const queryKey of invalidateKeys) void queryClient.invalidateQueries({ queryKey });
-    },
   });
 
+  /*
+   * ★ The lists refresh on close, never on success. The person just invited
+   * leaves the unclaimed list — and with them the row this button lives in —
+   * so refreshing while the sheet is open would unmount it, and the one-time
+   * codes would be gone before anyone printed them.
+   */
   const close = () => {
+    const created = invite.isSuccess;
     setOpen(false);
     invite.reset();
+    if (created) {
+      for (const queryKey of invalidateKeys) void queryClient.invalidateQueries({ queryKey });
+    }
   };
 
   return (
@@ -146,8 +153,7 @@ function Sheet({ result, onClose }: { result: RosterInvitations; onClose: () => 
           <p className="hidden text-body font-semibold text-ink print:block">{BRAND} урилга</p>
 
           <p className="rounded-control bg-sun px-3.5 py-2.5 text-caption leading-relaxed text-sun-ink print:hidden">
-            Энэ жагсаалтыг одоо хэвлээрэй. Цонхыг хаасны дараа кодуудыг дахин харуулахгүй — урилга
-            дууссан бол тухайн ажилтанд «Нууц үг сэргээх» холбоос өгнө.
+            Энэ жагсаалтыг одоо хэвлээрэй. Цонхыг хаасны дараа кодуудыг дахин харуулахгүй.
           </p>
 
           <ul className="grid gap-3 sm:grid-cols-2 print:grid-cols-2 print:gap-2">
