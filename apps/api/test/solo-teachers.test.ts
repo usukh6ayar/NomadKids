@@ -368,13 +368,16 @@ describe("the migration, for those who signed up as director too", () => {
       }),
     ).toMatchObject({ action: "PERMISSION_CHANGE", kindergartenId });
 
-    // Signed in as the teacher they now are: every child is still there.
+    // Signed in as the teacher they now are: every child who attends is there.
+    // ★ Not the one who no longer does — a teacher reaches a child through an
+    // ACTIVE enrollment, and a solo workspace is no exception (the user,
+    // 2026-10-16, D2 reversed). Their own notes about them stay readable.
     const session = await login(app, FORM.phone, PASSWORD);
     const me = await authed(request(server()).get("/v1/auth/me"), session);
     expect(me.body.memberships.map((m: { role: string }) => m.role)).toEqual(["TEACHER"]);
     const roster = await authed(request(server()).get("/v1/children?pageSize=100"), session);
     expect(roster.body.items.map((c: { id: string }) => c.id).sort()).toEqual(
-      [loose.id, gone.id, placed.id].sort(),
+      [loose.id, placed.id].sort(),
     );
   });
 

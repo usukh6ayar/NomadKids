@@ -732,28 +732,93 @@ describe("enrollment history", () => {
     expect(enrollments[1]!.status).toBe("ACTIVE");
   });
 
-  it("the PREVIOUS teacher keeps access after a transfer", async () => {
-    // D2: authorization semantics preserved unchanged from the reference.
-    const newGroup = await createGroup(a.kindergarten.id, a.schoolYear.id, "Шинэ бүлэг");
-    const newTeacher = await createUser({ username: uniq("newteacher") });
-    const membership = await createMembership(newTeacher.id, a.kindergarten.id, "TEACHER");
-    await assignTeacher(a.kindergarten.id, newGroup.id, membership.id);
+  /**
+   * ★ D2 reversed (the user, 2026-10-16). A teacher reached a child through
+   * the whole enrollment history, so the previous group's teacher kept seeing
+   * every new note, health record and photograph. Now a teacher reaches a child
+   * through the group the child attends; the previous one keeps only the
+   * observations they wrote.
+   */
+  describe("after a transfer to another group", () => {
+    let newSession: AuthSession;
+    let ownNoteId: string;
+    let newNoteId: string;
+    let typeId: string;
 
-    await authed(request(server()).post(`/v1/children/${a.child.id}/enrollments`), adminA).send({
-      groupId: newGroup.id,
+    beforeEach(async () => {
+      typeId = (await db.observationType.findFirstOrThrow({ where: { code: "daily" } })).id;
+      const note = (session: AuthSession, situation: string) =>
+        authed(request(server()).post(`/v1/children/${a.child.id}/observations`), session).send({
+          typeId,
+          observedOn: "2026-02-10",
+          situation,
+          childDid: "Цамхаг барив",
+        });
+
+      const own = await note(teacherA, "Хуучин бүлэгт");
+      expect(own.status).toBe(201);
+      ownNoteId = own.body.id;
+
+      const newGroup = await createGroup(a.kindergarten.id, a.schoolYear.id, "Шинэ бүлэг");
+      const newTeacher = await createUser({ username: uniq("newteacher") });
+      const membership = await createMembership(newTeacher.id, a.kindergarten.id, "TEACHER");
+      await assignTeacher(a.kindergarten.id, newGroup.id, membership.id);
+      const moved = await authed(
+        request(server()).post(`/v1/children/${a.child.id}/enrollments`),
+        adminA,
+      ).send({ groupId: newGroup.id });
+      expect(moved.status).toBe(201);
+
+      newSession = await login(app, newTeacher.username);
+      const fresh = await note(newSession, "Шинэ бүлэгт");
+      expect(fresh.status).toBe(201);
+      newNoteId = fresh.body.id;
     });
 
-    // The old teacher still reaches the child, through enrollment history.
-    expect(
-      (await request(server()).get(`/v1/children/${a.child.id}`).set("Cookie", teacherA.cookies))
-        .status,
-    ).toBe(200);
+    it("the new teacher reaches the child", async () => {
+      const res = await authed(request(server()).get(`/v1/children/${a.child.id}`), newSession);
+      expect(res.status).toBe(200);
+    });
 
-    const newSession = await login(app, newTeacher.username);
-    expect(
-      (await request(server()).get(`/v1/children/${a.child.id}`).set("Cookie", newSession.cookies))
-        .status,
-    ).toBe(200);
+    it("the previous teacher no longer reaches the child's record", async () => {
+      for (const path of ["", "/health", "/observations/types"]) {
+        const res = await authed(
+          request(server()).get(`/v1/children/${a.child.id}${path}`),
+          teacherA,
+        );
+        expect(res.status, path || "/").toBe(404);
+      }
+      const roster = await authed(request(server()).get("/v1/children"), teacherA);
+      expect(roster.body.items.map((c: { id: string }) => c.id)).not.toContain(a.child.id);
+    });
+
+    it("the previous teacher reads the observations they wrote, and only those", async () => {
+      const list = await authed(
+        request(server()).get(`/v1/children/${a.child.id}/observations`),
+        teacherA,
+      );
+      expect(list.status).toBe(200);
+      expect(list.body.items.map((o: { id: string }) => o.id)).toEqual([ownNoteId]);
+
+      const own = await authed(
+        request(server()).get(`/v1/children/${a.child.id}/observations/${ownNoteId}`),
+        teacherA,
+      );
+      expect(own.status).toBe(200);
+      const other = await authed(
+        request(server()).get(`/v1/children/${a.child.id}/observations/${newNoteId}`),
+        teacherA,
+      );
+      expect(other.status).toBe(404);
+    });
+
+    it("the previous teacher may not write about the child any more", async () => {
+      const res = await authed(
+        request(server()).post(`/v1/children/${a.child.id}/observations`),
+        teacherA,
+      ).send({ typeId, observedOn: "2026-02-11", situation: "Дахин", childDid: "Зурав" });
+      expect(res.status).toBe(404);
+    });
   });
 
   it("never leaves two ACTIVE enrollments for one school year", async () => {

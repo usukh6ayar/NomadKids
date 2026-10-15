@@ -124,8 +124,11 @@ export class ObservationsService {
    * private teaching note reaches a family.
    */
   async list(actor: Actor, childId: string, query: ListObservationsQuery) {
-    const facts = await this.childAccess.assertCanReadObservations(actor, childId);
-    const viewer = { isGuardian: isGuardianOf(actor, facts), userId: actor.userId };
+    const { facts, onlyOwn } = await this.childAccess.assertCanReadObservationsOrOwn(
+      actor,
+      childId,
+    );
+    const viewer = { isGuardian: isGuardianOf(actor, facts), userId: actor.userId, onlyOwn };
     const page: PageParams = { page: query.page, pageSize: query.pageSize };
 
     const { items, total } = await this.repo.list(
@@ -147,8 +150,11 @@ export class ObservationsService {
   }
 
   async get(actor: Actor, childId: string, observationId: string) {
-    const facts = await this.childAccess.assertCanReadObservations(actor, childId);
-    const viewer = { isGuardian: isGuardianOf(actor, facts), userId: actor.userId };
+    const { facts, onlyOwn } = await this.childAccess.assertCanReadObservationsOrOwn(
+      actor,
+      childId,
+    );
+    const viewer = { isGuardian: isGuardianOf(actor, facts), userId: actor.userId, onlyOwn };
 
     const observation = await this.repo.findReadable(observationId, childId, viewer);
     // 404 rather than 403: a guardian must not learn that a private teaching
