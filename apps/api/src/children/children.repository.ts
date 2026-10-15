@@ -315,8 +315,29 @@ export class ChildrenRepository {
     return this.prisma.child.update({ where: { id }, data });
   }
 
-  async softDeleteChild(id: string) {
-    return this.prisma.child.update({ where: { id }, data: { deletedAt: new Date() } });
+  /**
+   * Archives a child and ends their live enrolments, in one transaction.
+   *
+   * ★ Every group roster — attendance, the funding register, the invoice run,
+   * meals, the group-delete guard — reads `Enrollment` by `status: "ACTIVE"`
+   * and never looks at `Child.deletedAt`. Archiving the child alone left the
+   * enrolment live, and a child a teacher removed by mistake stayed on the
+   * attendance sheet and was billed (2026-10-15). Ending it here keeps those
+   * forty-odd readers right without each learning a second filter — the same
+   * reason `revokeMembership` ends the teacher's assignments.
+   *
+   * `updateMany`, as in `enrollChild`: a child may hold more than one ACTIVE row
+   * from before that was corrected.
+   */
+  async archiveChild(id: string) {
+    const now = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      await tx.enrollment.updateMany({
+        where: { childId: id, status: "ACTIVE", deletedAt: null },
+        data: { status: "ENDED", endedOn: now },
+      });
+      return tx.child.update({ where: { id }, data: { deletedAt: now } });
+    });
   }
 
   async findByNationalId(kindergartenId: string, nationalId: string) {
