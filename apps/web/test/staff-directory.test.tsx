@@ -52,8 +52,9 @@ function page(items: unknown[]) {
   return { items, page: 1, pageSize: 20, total: items.length, totalPages: 1 };
 }
 
-function stub() {
+function stub(extra: Parameters<typeof stubApi>[0] = []) {
   return stubApi([
+    ...extra,
     { path: "/auth/me", body: sessionFor(["ADMIN"]) },
     { path: "/users/positions", body: ["Арга зүйч", "Бүлгийн багш"] },
     { path: "/users?roles=TEACHER", body: page([TEACHER]) },
@@ -137,6 +138,60 @@ describe("the staff directory", () => {
       ).toBe(true),
     );
     expect(api.calls.some((c) => c.method === "PATCH")).toBe(false);
+  });
+
+  /*
+   * ★ 2026-10-15, the user: a kindergarten without ESIS invites a member of
+   * staff who has never signed in from the row's ⋯ — a one-time link, through
+   * `POST /users/:id/password-reset` until a reissue route exists.
+   */
+  it("invites, from the row, a member of staff who has never signed in — without ESIS", async () => {
+    const user = userEvent.setup();
+    const api = stub([
+      { path: `/kindergartens/${KG}`, body: { esisInstitutionId: null } },
+      {
+        path: `/users/${TEACHER_ID}/password-reset`,
+        method: "POST",
+        body: { resetToken: "tok-123" },
+      },
+    ]);
+    renderWithProviders(<AdminUsersPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Анхбаяр Энх-Адьяа — үйлдэл/ }));
+    await user.click(await screen.findByRole("menuitem", { name: /Урих/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Урих" });
+    await user.click(within(dialog).getByRole("button", { name: "Урилга үүсгэх" }));
+
+    expect(await screen.findByText("Урилгын холбоос")).toBeInTheDocument();
+    expect(
+      api.calls.some((c) => c.method === "POST" && c.url === `/users/${TEACHER_ID}/password-reset`),
+    ).toBe(true);
+  });
+
+  it("offers no «Урих» with ESIS, nor to someone who has signed in", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: "/users/positions", body: [] },
+      {
+        path: "/users?roles=TEACHER",
+        body: page([{ ...TEACHER, lastLoginAt: "2026-10-10T08:00:00Z" }]),
+      },
+      { path: "/users?roles=COOK", body: page([COOK]) },
+      { path: `/kindergartens/${KG}`, body: { esisInstitutionId: null } },
+    ]);
+    const { unmount } = renderWithProviders(<AdminUsersPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Анхбаяр Энх-Адьяа — үйлдэл/ }));
+    expect(await screen.findByRole("menuitem", { name: /Нууц үг сэргээх/ })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /Урих/ })).not.toBeInTheDocument();
+    unmount();
+
+    stub([{ path: `/kindergartens/${KG}`, body: { esisInstitutionId: "12345" } }]);
+    renderWithProviders(<AdminUsersPage />);
+    await user.click(await screen.findByRole("button", { name: /Анхбаяр Энх-Адьяа — үйлдэл/ }));
+    expect(await screen.findByRole("menuitem", { name: /Нууц үг сэргээх/ })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /Урих/ })).not.toBeInTheDocument();
   });
 
   it("hands over a one-time reset link, or the server's reason it may not", async () => {
