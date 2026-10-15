@@ -106,6 +106,25 @@ export class SoloMergeRepository {
     });
   }
 
+  /**
+   * The teacher of a solo workspace — the operator's reset target (№9). A
+   * contracted kindergarten, an archived workspace or a platform operator is
+   * `null`.
+   */
+  async findWorkspaceTeacher(kindergartenId: string) {
+    return this.prisma.membership.findFirst({
+      where: {
+        kindergartenId,
+        role: "TEACHER",
+        deletedAt: null,
+        kindergarten: { kind: "SOLO_TEACHER", deletedAt: null },
+        user: { deletedAt: null, isSuperAdmin: false },
+      },
+      orderBy: { createdAt: "asc" },
+      select: { userId: true },
+    });
+  }
+
   listWorkspaces(skip: number, take: number) {
     const where = { kind: "SOLO_TEACHER" as const, deletedAt: null };
     return Promise.all([

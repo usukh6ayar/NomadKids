@@ -31,6 +31,15 @@ export class SoloMergeController {
     return this.service.list(actor, query);
   }
 
+  /** №9 — the operator's reset link for the workspace's teacher. */
+  @Post(":id/password-reset")
+  async issueTeacherReset(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParams)) params: { id: string },
+  ) {
+    return this.service.issueTeacherReset(actor, params.id);
+  }
+
   @Post(":id/merge-preview")
   @HttpCode(HttpStatus.OK)
   async preview(

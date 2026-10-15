@@ -15,6 +15,7 @@ import { paginate, type PageParams } from "../common/pagination";
 import { DashboardRepository } from "../dashboard/dashboard.repository";
 import { EsisInstitutionLookupService } from "../integrations/esis/esis-institution-lookup.service";
 import { UsersRepository } from "../users/users.repository";
+import { UsersService } from "../users/users.service";
 import type { UpdateKindergartenDto } from "../tenants/tenants.dto";
 import { PlatformRepository } from "./platform.repository";
 import type {
@@ -40,6 +41,7 @@ export class PlatformService {
     private readonly repo: PlatformRepository,
     private readonly platform: PlatformAccessService,
     private readonly users: UsersRepository,
+    private readonly accounts: UsersService,
     private readonly passwords: PasswordService,
     private readonly tokens: TokenService,
     private readonly audit: AuditRepository,
@@ -306,6 +308,20 @@ export class PlatformService {
    * the person chooses their own password. An operator who typed one would
    * know it.
    */
+  /**
+   * A one-time password-reset link for a director — №9, the user 2026-10-14:
+   * a director who forgot the password and lost the phone has nobody above
+   * them but the operator. The web asks the operator to confirm who is
+   * calling first. 404 unless `userId` is a live director of this
+   * kindergarten — never a platform operator.
+   */
+  async issueAdminReset(actor: Actor, kindergartenId: string, userId: string) {
+    this.platform.assertSuperAdmin(actor);
+    if (!(await this.repo.findLiveAdmin(kindergartenId, userId))) throw new NotFoundException();
+    const resetToken = await this.accounts.issueAccountLink(actor.userId, userId, "PASSWORD_RESET");
+    return { resetToken };
+  }
+
   async addAdmin(actor: Actor, kindergartenId: string, dto: CreateKindergartenAdminDto) {
     this.platform.assertSuperAdmin(actor);
 

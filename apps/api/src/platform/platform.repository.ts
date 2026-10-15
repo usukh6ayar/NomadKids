@@ -181,6 +181,20 @@ export class PlatformRepository {
    * anybody get in", not "who is listed" — a director who never accepted
    * their invitation reads identically to a working one without it.
    */
+  /** A live director of this kindergarten — the operator's reset target (№9). */
+  async findLiveAdmin(kindergartenId: string, userId: string) {
+    return this.prisma.membership.findFirst({
+      where: {
+        kindergartenId,
+        userId,
+        role: "ADMIN",
+        deletedAt: null,
+        user: { deletedAt: null, isSuperAdmin: false },
+      },
+      select: { id: true },
+    });
+  }
+
   async listAdmins(kindergartenId: string) {
     const memberships = await this.prisma.membership.findMany({
       where: { kindergartenId, role: "ADMIN", deletedAt: null },

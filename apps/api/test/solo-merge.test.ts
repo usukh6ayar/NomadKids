@@ -120,6 +120,31 @@ const merge = (session: AuthSession, body: object) =>
     session,
   ).send(body);
 
+/** ★ №9 — the operator resets a solo teacher, who has nobody else above them. */
+describe("POST /platform/solo-workspaces/:id/password-reset", () => {
+  const reset = (id: string, who: AuthSession) =>
+    authed(request(server()).post(`/v1/platform/solo-workspaces/${id}/password-reset`), who);
+
+  it("issues a one-time link for the workspace's teacher", async () => {
+    const res = await reset(solo.kindergartenId, operator);
+    expect(res.status).toBe(201);
+    expect(res.body.resetToken).toEqual(expect.any(String));
+    const token = await db.authToken.findFirst({
+      where: { userId: solo.teacherUserId, purpose: "PASSWORD_RESET", usedAt: null },
+    });
+    expect(token).not.toBeNull();
+  });
+
+  it("answers 404 for a contracted kindergarten", async () => {
+    expect((await reset(target.kindergarten.id, operator)).status).toBe(404);
+  });
+
+  it("answers 404 to anyone but the operator", async () => {
+    const teacher = await login(app, target.teacherUser.username);
+    expect((await reset(solo.kindergartenId, teacher)).status).toBe(404);
+  });
+});
+
 describe("the plan", () => {
   it("classifies every table that points at a kindergarten", async () => {
     const keys = await app.get(SoloMergeRepository).foreignKeysInto("kindergartens");
