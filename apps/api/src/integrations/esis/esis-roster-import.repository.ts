@@ -226,7 +226,7 @@ export class EsisRosterImportRepository {
   findActiveEnrollment(childId: string, schoolYearId: string) {
     return this.prisma.enrollment.findFirst({
       where: { childId, schoolYearId, status: "ACTIVE", deletedAt: null },
-      select: { id: true, groupId: true },
+      select: { id: true, groupId: true, startedOn: true },
     });
   }
 
@@ -239,6 +239,7 @@ export class EsisRosterImportRepository {
    * child kept last year's row ACTIVE beside the new one — counted twice by
    * every roster, and last year's teacher kept their reach. The same rule
    * `ChildrenRepository.enrollChild` keeps: enrolling a child moves them.
+   * Which rows, and on what day: `closeEarlierEnrollments`.
    */
   createEnrollment(input: {
     kindergartenId: string;
@@ -248,12 +249,24 @@ export class EsisRosterImportRepository {
     startedOn: Date;
   }) {
     return this.prisma.$transaction(async (tx) => {
-      await tx.enrollment.updateMany({
-        where: { childId: input.childId, status: "ACTIVE", deletedAt: null },
-        data: { status: "TRANSFERRED", endedOn: new Date() },
-      });
-      return tx.enrollment.create({ data: input, select: { id: true } });
+      const closed = await closeEarlierEnrollments(tx, input);
+      const created = await tx.enrollment.create({ data: input, select: { id: true } });
+      return { id: created.id, closed };
     });
+  }
+
+  /**
+   * The same closing for a child whose enrolment this year already exists — an
+   * import before #236 left last year's row live beside it, and running the
+   * import again is what clears it. Returns how many rows it ended.
+   */
+  closeEarlierEnrollments(input: {
+    kindergartenId: string;
+    childId: string;
+    schoolYearId: string;
+    startedOn: Date;
+  }) {
+    return this.prisma.$transaction((tx) => closeEarlierEnrollments(tx, input));
   }
 
   /**
@@ -273,4 +286,51 @@ export class EsisRosterImportRepository {
       select: { id: true },
     });
   }
+}
+
+type Tx = Parameters<Parameters<PrismaService["$transaction"]>[0]>[0];
+
+/**
+ * ★ Ends the child's live enrolments from **earlier** years of **this**
+ * kindergarten — №18's rule, with its two edges (2026-10-16):
+ *
+ *  - Earlier years only. Re-importing last year must not end the child's
+ *    place in this one.
+ *  - This kindergarten only. A child row that moved here from elsewhere keeps
+ *    that kindergarten's history; its rows are not this import's to close.
+ *
+ * Ended on the day the new enrolment starts — never before the old row's own
+ * start — not on the day the import ran. `enrolledOn` (attendance) treats the
+ * end as exclusive, so any other date puts the child in two groups between
+ * ESIS's `actionDate` and the import.
+ */
+async function closeEarlierEnrollments(
+  tx: Tx,
+  input: { kindergartenId: string; childId: string; schoolYearId: string; startedOn: Date },
+): Promise<number> {
+  const year = await tx.schoolYear.findUniqueOrThrow({
+    where: { id: input.schoolYearId },
+    select: { startsOn: true },
+  });
+  const earlier = await tx.enrollment.findMany({
+    where: {
+      childId: input.childId,
+      kindergartenId: input.kindergartenId,
+      status: "ACTIVE",
+      deletedAt: null,
+      schoolYearId: { not: input.schoolYearId },
+      schoolYear: { startsOn: { lt: year.startsOn } },
+    },
+    select: { id: true, startedOn: true },
+  });
+  for (const row of earlier) {
+    await tx.enrollment.update({
+      where: { id: row.id },
+      data: {
+        status: "TRANSFERRED",
+        endedOn: row.startedOn > input.startedOn ? row.startedOn : input.startedOn,
+      },
+    });
+  }
+  return earlier.length;
 }

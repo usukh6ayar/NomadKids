@@ -1861,7 +1861,94 @@ describe("POST /kindergartens/:id/esis/roster-import", () => {
       [a.schoolYear.id, "TRANSFERRED"],
       [year.id, "ACTIVE"],
     ]);
-    expect(rows[0]!.endedOn).not.toBeNull();
+    // Ended on the day the new one starts (ESIS's actionDate), not the day
+    // the import ran — the end is exclusive, so any later date would put the
+    // child in both groups in between.
+    expect(rows[0]!.endedOn?.toISOString().slice(0, 10)).toBe("2026-05-14");
+    expect(res.body.enrollments.closed).toBe(1);
+  });
+
+  describe("№18 — which rows the import ends", () => {
+    async function linkToEsis() {
+      await db.child.update({
+        where: { id: a.child.id },
+        data: { esisPersonId: String(CHILD_ROW.personId) },
+      });
+    }
+
+    it("a second run clears a child an earlier import left in two years", async () => {
+      await mapInstitution(a.kindergarten.id, superAdmin);
+      await linkToEsis();
+      const year = await withCurrentYear(a.kindergarten.id);
+      rosterReads([GROUP_ROW], [CHILD_ROW]);
+      await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+      // The state an import before #236 left behind: both rows ACTIVE.
+      await db.enrollment.update({
+        where: { id: a.enrollment.id },
+        data: { status: "ACTIVE", endedOn: null },
+      });
+
+      const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+      expect(res.status).toBe(200);
+      expect(res.body.enrollments.created).toBe(0);
+      expect(res.body.enrollments.closed).toBe(1);
+      const active = await db.enrollment.findMany({
+        where: { childId: a.child.id, status: "ACTIVE", deletedAt: null },
+      });
+      expect(active.map((e) => e.schoolYearId)).toEqual([year.id]);
+    });
+
+    it("re-importing an older year leaves the later year's enrolment alone", async () => {
+      await mapInstitution(a.kindergarten.id, superAdmin);
+      await linkToEsis();
+      // The child already sits in 2026-2027; the current year is still 2025-2026.
+      const later = await db.schoolYear.create({
+        data: {
+          kindergartenId: a.kindergarten.id,
+          name: `2026-2027-${uniq()}`,
+          startsOn: new Date("2026-09-01"),
+          endsOn: new Date("2027-06-01"),
+          isCurrent: false,
+        },
+      });
+      const laterGroup = await createGroup(a.kindergarten.id, later.id, "Дараа жилийн бүлэг");
+      await db.enrollment.update({
+        where: { id: a.enrollment.id },
+        data: { status: "ENDED", endedOn: new Date("2026-06-01") },
+      });
+      const laterEnrollment = await enrollChild(
+        a.kindergarten.id,
+        a.child.id,
+        laterGroup.id,
+        later.id,
+      );
+      rosterReads([GROUP_ROW], [CHILD_ROW]);
+
+      const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+      expect(res.status).toBe(200);
+      expect(res.body.enrollments.closed).toBe(0);
+      const kept = await db.enrollment.findUniqueOrThrow({ where: { id: laterEnrollment.id } });
+      expect(kept.status).toBe("ACTIVE");
+    });
+
+    it("never ends another kindergarten's enrolment", async () => {
+      await mapInstitution(a.kindergarten.id, superAdmin);
+      await linkToEsis();
+      // The same child row is also enrolled at b — b's record is b's to close.
+      const atB = await enrollChild(b.kindergarten.id, a.child.id, b.group.id, b.schoolYear.id);
+      await withCurrentYear(a.kindergarten.id);
+      rosterReads([GROUP_ROW], [CHILD_ROW]);
+
+      const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+
+      expect(res.status).toBe(200);
+      expect(res.body.enrollments.closed).toBe(1);
+      const untouched = await db.enrollment.findUniqueOrThrow({ where: { id: atB.id } });
+      expect(untouched.status).toBe("ACTIVE");
+    });
   });
 
   /*

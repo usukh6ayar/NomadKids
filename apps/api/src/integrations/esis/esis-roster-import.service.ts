@@ -15,7 +15,7 @@ import { AGE_BAND_BY_LEVEL, esisDate, programStatusRows } from "./esis-roster.sh
 export interface RosterImportOutcome {
   groups: { created: number; updated: number; skipped: string[] };
   children: { created: number; updated: number; adopted: number; ambiguous: string[] };
-  enrollments: { created: number; moved: number; unplaced: string[] };
+  enrollments: { created: number; moved: number; closed: number; unplaced: string[] };
 }
 
 /**
@@ -113,7 +113,7 @@ export class EsisRosterImportService {
     const outcome: RosterImportOutcome = {
       groups: { created: 0, updated: 0, skipped: [] },
       children: { created: 0, updated: 0, adopted: 0, ambiguous: [] },
-      enrollments: { created: 0, moved: 0, unplaced: [] },
+      enrollments: { created: 0, moved: 0, closed: 0, unplaced: [] },
     };
 
     /** ESIS's group id → ours. Built as the groups are written, used below. */
@@ -259,7 +259,7 @@ export class EsisRosterImportService {
          * documented fallback, which exists for a child somebody just
          * registered by hand — not for ninety-three arriving at once.
          */
-        await this.repo.createEnrollment({
+        const created = await this.repo.createEnrollment({
           kindergartenId,
           childId,
           groupId,
@@ -267,9 +267,23 @@ export class EsisRosterImportService {
           startedOn: esisDate(raw.actionDate) ?? year.startsOn,
         });
         outcome.enrollments.created += 1;
-      } else if (enrollment.groupId !== groupId) {
-        await this.repo.moveEnrollment(enrollment.id, groupId);
-        outcome.enrollments.moved += 1;
+        outcome.enrollments.closed += created.closed;
+      } else {
+        if (enrollment.groupId !== groupId) {
+          await this.repo.moveEnrollment(enrollment.id, groupId);
+          outcome.enrollments.moved += 1;
+        }
+        /*
+         * ★ Also when this year's enrolment already exists: an import before
+         * #236 left last year's row live beside it, and running the import
+         * again is what clears it.
+         */
+        outcome.enrollments.closed += await this.repo.closeEarlierEnrollments({
+          kindergartenId,
+          childId,
+          schoolYearId: year.id,
+          startedOn: enrollment.startedOn,
+        });
       }
     }
 
@@ -312,6 +326,7 @@ export class EsisRosterImportService {
         enrollments: {
           created: outcome.enrollments.created,
           moved: outcome.enrollments.moved,
+          closed: outcome.enrollments.closed,
           unplaced: outcome.enrollments.unplaced.length,
         },
       },
