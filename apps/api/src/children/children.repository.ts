@@ -649,6 +649,20 @@ export class ChildrenRepository {
     });
   }
 
+  /** The live group of the current school year among these — a solo teacher's own. */
+  async findCurrentGroupAmong(groupIds: string[], kindergartenId: string) {
+    if (groupIds.length === 0) return null;
+    return this.prisma.group.findFirst({
+      where: {
+        id: { in: groupIds },
+        kindergartenId,
+        deletedAt: null,
+        schoolYear: { isCurrent: true, deletedAt: null },
+      },
+      select: { id: true, schoolYear: { select: { id: true } } },
+    });
+  }
+
   async findGroupInKindergarten(groupId: string, kindergartenId: string) {
     return this.prisma.group.findFirst({
       where: { id: groupId, kindergartenId, deletedAt: null },

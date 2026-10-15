@@ -534,6 +534,44 @@ describe("role-based navigation", () => {
     expect(within(nav).getByRole("link", { name: "Дуу, шүлэг" })).toBeInTheDocument();
   });
 
+  /*
+   * ★ Since 2026-10-14 a solo teacher is TEACHER only, and sets up their own
+   * school year and group — the one entry a contracted teacher never gets.
+   */
+  it("gives a solo teacher «Бүлэг, хичээлийн жил», and a contracted teacher not", async () => {
+    setPathname("/dashboard");
+    const session = sessionFor(["TEACHER"]);
+    stubApi([
+      {
+        path: "/auth/me",
+        body: { ...session, soloKindergartenIds: [session.memberships[0]!.kindergartenId] },
+      },
+      { path: "/groups", body: GROUPS },
+      { path: "/children/mine", body: [] },
+      { path: "/notifications/unread-count", body: { count: 0 } },
+    ]);
+    const { unmount } = renderWithProviders(
+      <AppLayout>
+        <p>содержимое</p>
+      </AppLayout>,
+    );
+    const nav = await sidebar();
+    expect(within(nav).getByRole("link", { name: "Бүлэг, хичээлийн жил" })).toHaveAttribute(
+      "href",
+      "/my-group",
+    );
+    for (const label of ["Багш, ажилтан", "Байгууллага"]) {
+      expect(within(nav).queryByRole("link", { name: label }), label).not.toBeInTheDocument();
+    }
+    unmount();
+
+    renderShell(["TEACHER"]);
+    const contracted = await sidebar();
+    expect(
+      within(contracted).queryByRole("link", { name: "Бүлэг, хичээлийн жил" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("hides every administration destination from a teacher", async () => {
     renderShell(["TEACHER"]);
     const nav = await sidebar();

@@ -12,8 +12,9 @@ import { useToast } from "@/components/ui/toast";
  *
  * ★ Confirmed first (CLAUDE.md §5), then `DELETE /children/:id`, which is a
  * soft delete (`deletedAt`, §3.2) written to the audit log — the child's
- * record leaves the roster and nothing is destroyed. The route is
- * administrator-only, so the rosters offer this to an administrator alone.
+ * record leaves the roster and nothing is destroyed. An administrator, or
+ * since 2026-10-14 the teacher of the group the child attends now (the user);
+ * the API refuses anyone else with 404.
  */
 export function DeleteChildDialog({
   child,

@@ -24,7 +24,12 @@ import { ESIS_ENDPOINTS } from "./esis.endpoints";
 import { ESIS_FIELDS, esisFieldsFor, ingestedFieldNames } from "./esis.fields";
 import { REFERENCE_RESOURCES, type EsisReferenceResource } from "./esis.reference";
 import { EsisRepository } from "./esis.repository";
-import { normalizeRegisterNumber } from "./esis.roster";
+import {
+  normalizeIdentity,
+  normalizeRegisterNumber,
+  roleForJobCode,
+  unclaimedRosterRows,
+} from "./esis.roster";
 import { esisVisibleRows } from "./esis.schemas";
 import { EsisService, esisReaderParams, type EsisReadableKey } from "./esis.service";
 
@@ -431,32 +436,19 @@ export class EsisAdminService {
       this.repo.findStaffIdentities(kindergartenId),
       this.repo.listStaffRoster(kindergartenId),
     ]);
-    const ids = new Set(identities.map((user) => user.esisPersonId).filter(Boolean));
-    const registers = new Set(
-      identities.map((user) => normalizeRegisterNumber(user.registerNumber)).filter(Boolean),
-    );
-    /*
-     * ★ And by name. An invited account carries neither key — 12 of 13 on
-     * live data — so without this every teacher the director already added
-     * would be listed again as "not registered". Display only: nothing is
-     * granted or linked on a name, which is why a name is enough here.
-     */
-    const names = new Set(
-      identities.map((user) => normalizeIdentity(`${user.lastName} ${user.firstName}`)),
-    );
-
-    const unclaimed = roster.filter(
-      (row) =>
-        !ids.has(row.esisPersonId) &&
-        !registers.has(row.registerNumber) &&
-        !names.has(normalizeIdentity(`${row.lastName} ${row.firstName}`)),
-    );
+    const unclaimed = unclaimedRosterRows(roster, identities);
     const start = (query.page - 1) * query.pageSize;
     return {
       items: unclaimed
         .slice(start, start + query.pageSize)
-        .map(({ registerNumber: _registerNumber, syncedAt, ...row }) => ({
+        .map(({ registerNumber: _registerNumber, jobCode, syncedAt, ...row }) => ({
           ...row,
+          /*
+           * The role «Урих» would give them — `roleForJobCode`, the rule
+           * self-registration already follows. `null` is "no account from a
+           * job code" (the жижүүр, the эрхлэгч): the screen offers no button.
+           */
+          role: roleForJobCode(jobCode),
           syncedAt: syncedAt.toISOString(),
         })),
       page: query.page,
@@ -1715,10 +1707,6 @@ const QUALIFICATION_RESOURCES: ReadonlySet<string> = new Set([
   "degreeDecisions",
   "degreeHistory",
 ]);
-
-function normalizeIdentity(value: string): string {
-  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("mn-MN");
-}
 
 function safeErrorCode(error: unknown): string {
   if (error instanceof EsisError) {

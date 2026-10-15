@@ -14,6 +14,7 @@ import {
 import { get } from "@/lib/api/browser";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { AdminRoster, StudentRosterTable } from "@/components/child/admin-roster";
+import { CardRoster } from "@/components/child/card-roster";
 import { PageHeader } from "@/components/shell/app-shell";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
@@ -55,6 +56,7 @@ const ownSchema = z.array(childSummarySchema);
 export default function ChildrenPage() {
   const { hasRole } = useSession();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
+  const isCardStaff = hasRole("PE_TEACHER") || hasRole("MUSIC_TEACHER") || hasRole("DOCTOR");
 
   /*
     ★ Wrapped in `RequireRole` since 2026-08-30, and the reason is the two
@@ -70,9 +72,20 @@ export default function ChildrenPage() {
     route actually answers.
   */
   return (
-    <RequireRole roles={["TEACHER", "ADMIN", "PARENT"]}>
+    <RequireRole roles={["TEACHER", "ADMIN", "PARENT", "PE_TEACHER", "MUSIC_TEACHER", "DOCTOR"]}>
       {/* The director's roster is its own compact table — 2026-09-25. */}
-      {isStaff ? hasRole("ADMIN") ? <AdminRoster /> : <StaffChildren /> : <MyChildren />}
+      {isStaff ? (
+        hasRole("ADMIN") ? (
+          <AdminRoster />
+        ) : (
+          <StaffChildren />
+        )
+      ) : isCardStaff ? (
+        // The PE/music teacher and the doctor — 2026-10-15.
+        <CardRoster />
+      ) : (
+        <MyChildren />
+      )}
     </RequireRole>
   );
 }

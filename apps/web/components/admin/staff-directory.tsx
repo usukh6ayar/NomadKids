@@ -3,7 +3,6 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { z } from "zod";
 import {
   Briefcase,
@@ -30,11 +29,9 @@ import {
   adminUserSchema,
   groupListItemSchema,
   paginated,
-  STAFF_ROLES,
   staffRosterRefreshSchema,
   unclaimedStaffSchema,
   type Role,
-  type UnclaimedStaff,
 } from "@kinder/contracts";
 import { downloadUrl } from "@/lib/api/client";
 import { get, mutate } from "@/lib/api/browser";
@@ -56,8 +53,8 @@ import { SearchField } from "@/components/ui/search-field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { Td, Th } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
-import { StaffLinkDialog } from "@/components/admin/staff/staff-link-dialog";
 import { FormDialog } from "@/components/ui/form-dialog";
+import { RosterStaffInvitations } from "@/components/admin/roster-staff-invitations";
 import { cn } from "@/lib/utils";
 import { EsisButton } from "@/components/esis/esis-button";
 
@@ -72,7 +69,14 @@ type StaffUser = z.infer<typeof adminUserSchema>;
 const PAGE_SIZES = [20, 50, 100] as const;
 
 /** The roles of the Ажилтан section — every staff role but a teacher's. */
-const OTHER_STAFF_ROLES = ["ADMIN", "COOK", "ACCOUNTANT"] as const satisfies readonly Role[];
+const OTHER_STAFF_ROLES = [
+  "ADMIN",
+  "COOK",
+  "ACCOUNTANT",
+  "PE_TEACHER",
+  "MUSIC_TEACHER",
+  "DOCTOR",
+] as const satisfies readonly Role[];
 
 type SectionKind = "teacher" | "staff";
 
@@ -1113,16 +1117,16 @@ const UNCLAIMED_KEY = ["esis", "staff-unclaimed"] as const;
  * харуулахгүй байна". «ESIS татах» fills the stored roster; the two tables
  * above list accounts, so what it brought was nowhere on the page.
  *
- * ★ A list, not accounts. A person gets an account by registering with the
- * institution number (`/admin/staff-code`) — the flow the client chose, which
- * lets them set their own password — and then moves up into the tables.
+ * A person gets an account either by registering themselves with the
+ * institution number (`/admin/staff-code`) or — since 2026-10-15 — from the
+ * director's «Урих» here, which prints a QR card per person whose account is
+ * linked to their ESIS record from the start. Either way they choose their own
+ * password, and then move up into the tables.
  * Hidden while empty: a heading over nothing reads as a fault.
  */
 function UnclaimedEsisStaff() {
   const { primaryKindergartenId } = useSession();
-  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [linking, setLinking] = useState<UnclaimedStaff | null>(null);
   const pageSize = 20;
 
   const roster = useQuery({
@@ -1137,54 +1141,37 @@ function UnclaimedEsisStaff() {
   });
 
   /*
-   * ★ «Холбох» — the second answer to a row here, and usually the right one.
-   * "ESIS-д байгаа, энд байхгүй" also covers a person who *has* an account
-   * that nobody tied to their ministry record: every invited account starts
-   * that way. The dialog lived only in `staff/staff-directory.tsx`, which this
-   * page stopped rendering on 2026-09-27, so the dashboard's «Холбох» led to a
-   * screen with no way to do it. The server re-checks everything
-   * (`linkStaffToEsisPerson`); this list is only the shortest path.
+   * ★ «Урих» instead of «Холбох» — the client, 2026-10-15: «холбох биш шууд
+   * урилга илгээх болгоё». The invitation creates the account already linked
+   * to the ESIS person, so nothing is left to connect afterwards — the same
+   * printable QR cards the parents get (`RosterStaffInvitations`).
    */
-  const accounts = useQuery({
-    queryKey: qk.adminUsers({ section: "esis-link", kindergartenId: primaryKindergartenId ?? "" }),
-    queryFn: () =>
-      get(
-        `/users?kindergartenId=${primaryKindergartenId}&roles=${STAFF_ROLES.join(",")}&page=1&pageSize=100`,
-        listSchema,
-      ),
-    enabled: Boolean(primaryKindergartenId) && Boolean(roster.data?.total),
-  });
-  const candidates = (accounts.data?.items ?? []).filter(
-    (user) =>
-      !user.esisPersonId &&
-      user.isActive !== false &&
-      user.memberships.some(
-        (m) =>
-          m.kindergartenId === primaryKindergartenId && m.role !== "PARENT" && m.isActive !== false,
-      ),
-  );
+  const invalidateKeys = [UNCLAIMED_KEY, ["admin", "users"]] as const;
 
   const data = roster.data;
-  if (!data || data.total === 0) return null;
+  if (!data || data.total === 0 || !primaryKindergartenId) return null;
   const offset = (page - 1) * pageSize;
 
   return (
     <section aria-labelledby="staff-unclaimed-heading" className="flex flex-col gap-3">
-      <div>
-        <h2
-          id="staff-unclaimed-heading"
-          className="text-display font-bold leading-heading text-ink"
-        >
-          ESIS-д бүртгэлтэй, системд бүртгүүлээгүй
-        </h2>
-        <p className="mt-1 text-body text-muted">
-          Эдгээр хүмүүс{" "}
-          <Link href="/admin/staff-code" className="text-primary underline">
-            цэцэрлэгийн кодоор
-          </Link>{" "}
-          өөрсдөө бүртгүүлмэгц дээрх жагсаалтад орно. Аль хэдийн бүртгэлтэй бол «Холбох» дарж
-          бүртгэлтэй нь холбоно уу.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2
+            id="staff-unclaimed-heading"
+            className="text-display font-bold leading-heading text-ink"
+          >
+            ESIS-д бүртгэлтэй, системд бүртгүүлээгүй
+          </h2>
+          <p className="mt-1 text-body text-muted">
+            «Урих» дарахад QR урилга гарна. Ажилтан утасны дугаараа баталгаажуулж бүртгүүлэхэд
+            ЭСИС-ийн бүртгэлтэйгээ автоматаар холбогдоно.
+          </p>
+        </div>
+        <RosterStaffInvitations
+          kindergartenId={primaryKindergartenId}
+          invalidateKeys={invalidateKeys}
+          variant="primary"
+        />
       </div>
       <div className="table-scroll rounded-card border border-border bg-surface">
         <table className="w-full min-w-[640px] border-collapse text-body">
@@ -1194,7 +1181,7 @@ function UnclaimedEsisStaff() {
               <Th className="w-12 rounded-tl-card py-2">№</Th>
               <Th className="py-2">Нэр</Th>
               <Th className="py-2">Албан тушаал</Th>
-              <Th className="py-2">Төрөл</Th>
+              <Th className="py-2">Эрх</Th>
               <Th className="rounded-tr-card py-2">
                 <span className="sr-only">Үйлдэл</span>
               </Th>
@@ -1206,18 +1193,21 @@ function UnclaimedEsisStaff() {
                 <Td className="py-1.5 tabular-nums text-muted">{offset + index + 1}</Td>
                 <Td className="py-1.5 font-medium text-ink">{shortName(person)}</Td>
                 <Td className="py-1.5 text-muted">{person.positionName || "—"}</Td>
-                <Td className="py-1.5 text-muted">{person.isInstructor ? "Багш" : "Ажилтан"}</Td>
+                <Td className="py-1.5 text-muted">
+                  {person.role ? ROLE_LABEL[person.role] : "Сонгоно"}
+                </Td>
                 <Td className="py-1.5 text-right">
-                  {candidates.length > 0 ? (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      aria-label={`${shortName(person)}-г бүртгэлтэй холбох`}
-                      onClick={() => setLinking(person)}
-                    >
-                      Холбох
-                    </Button>
-                  ) : null}
+                  {/*
+                    Every row — the director picks the role where the job code
+                    gives none (the doctor) or the wrong one (PE, music).
+                  */}
+                  <RosterStaffInvitations
+                    kindergartenId={primaryKindergartenId}
+                    esisPersonId={person.esisPersonId}
+                    suggestedRole={person.role ?? null}
+                    label="Урих"
+                    invalidateKeys={invalidateKeys}
+                  />
                 </Td>
               </tr>
             ))}
@@ -1230,15 +1220,6 @@ function UnclaimedEsisStaff() {
         </p>
         <Pagination page={page} totalPages={data.totalPages} onPage={setPage} />
       </div>
-      {linking && primaryKindergartenId ? (
-        <StaffLinkDialog
-          person={linking}
-          kindergartenId={primaryKindergartenId}
-          candidates={candidates}
-          onLinked={() => void queryClient.invalidateQueries({ queryKey: UNCLAIMED_KEY })}
-          onClose={() => setLinking(null)}
-        />
-      ) : null}
     </section>
   );
 }

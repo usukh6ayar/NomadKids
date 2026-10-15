@@ -2700,7 +2700,16 @@ function UnreadDot() {
  * tie-break at all.
  */
 function highestRole(memberships: { role: Role }[] | undefined): Role {
-  const rank: Role[] = ["ADMIN", "TEACHER", "ACCOUNTANT", "COOK", "PARENT"];
+  const rank: Role[] = [
+    "ADMIN",
+    "TEACHER",
+    "PE_TEACHER",
+    "MUSIC_TEACHER",
+    "DOCTOR",
+    "ACCOUNTANT",
+    "COOK",
+    "PARENT",
+  ];
   for (const role of rank) {
     if (memberships?.some((m) => m.role === role)) return role;
   }
@@ -2711,4 +2720,7 @@ function highestRole(memberships: { role: Role }[] | undefined): Role {
 const SUPPORT_SUBTITLE: Partial<Record<Role, string>> = {
   COOK: "Гал тогооны хэсэг",
   ACCOUNTANT: "Санхүүгийн хэсэг",
+  PE_TEACHER: "Биеийн тамир",
+  MUSIC_TEACHER: "Хөгжим",
+  DOCTOR: "Эрүүл мэнд",
 };

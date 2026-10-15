@@ -11,8 +11,9 @@ import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { formatLongDate, formatWeekday } from "@/lib/format";
 import { useSession } from "@/lib/auth/session";
+import { useSoloWorkspaceId } from "@/lib/auth/solo";
 import { RequireRole } from "@/components/shell/require-role";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { ErrorState, LoadingState, Skeleton } from "@/components/ui/states";
 import { Art, type ArtName } from "@/components/ui/art";
 import { AttendanceToday } from "@/components/dashboard/attendance-today";
@@ -156,7 +157,9 @@ function TeacherDashboard() {
   // one query key. Still read here for the "Ирц" quick action's href below —
   // not for the header, which stopped naming the group when its `lede` line
   // was removed (2026-09-07, every page's header subtitle went at once).
-  const { group } = useMyGroup();
+  const { group, isLoading: groupLoading } = useMyGroup();
+  // Signed up alone and not set up yet: the year and the group come first (2026-10-14).
+  const needsSetUp = useSoloWorkspaceId() !== null && !groupLoading && !group;
 
   /*
    * ★ All three branches render the same `PageHeader`.
@@ -302,6 +305,17 @@ function TeacherDashboard() {
     // the grouping is visible without a divider.
     <div className="page-band">
       {header}
+
+      {needsSetUp ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-card border border-border bg-surface p-4">
+          <p className="min-w-0 flex-1 text-body">
+            Эхлээд хичээлийн жил, бүлгээ үүсгэнэ үү. Дараа нь хүүхдээ бүртгэж, эцэг эхийг урина.
+          </p>
+          <Link href="/my-group" className={buttonVariants({ variant: "primary" })}>
+            Бүлэг үүсгэх
+          </Link>
+        </div>
+      ) : null}
 
       {/*
         ★ Ten tiles — the existing daily-work doors, Өдрийн дэглэм, and the

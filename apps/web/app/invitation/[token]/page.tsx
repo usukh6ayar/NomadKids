@@ -43,6 +43,9 @@ import {
  * The order is the common cases first: `guardianRelationSchema` lists five and
  * two of them cover almost every family.
  */
+/** `phoneProof`'s key for the number given at sign-up, which this page never sees. */
+const KNOWN_PHONE = "known";
+
 const RELATIONS = [
   { value: "MOTHER", label: "Ээж" },
   { value: "FATHER", label: "Аав" },
@@ -107,12 +110,31 @@ export default function AcceptInvitationPage() {
     queryFn: () =>
       get(
         `/auth/invitation/${params.token}`,
-        z.object({ valid: z.boolean(), kind: z.enum(["staff", "guardian"]) }),
+        z.object({
+          valid: z.boolean(),
+          kind: z.enum(["staff", "guardian"]),
+          knows: z
+            .object({ name: z.boolean(), phone: z.boolean() })
+            .default({ name: false, phone: false }),
+          phoneHint: z.string().optional(),
+        }),
       ),
     retry: false,
   });
 
   const isStaff = invitation.data?.kind === "staff";
+  /*
+    ★ Not asked twice — the user, 2026-10-14. A teacher who signed up alone
+    typed «Овог нэр» and a phone on the sign-up form a minute ago. Neither is
+    typed again. Where verify.mn is on, the number they gave is still proven —
+    one SMS from it — but named by its last digits, not retyped: the API sends
+    the code to the number it holds when none is given.
+  */
+  const askName = !invitation.data?.knows.name;
+  const knownPhone = Boolean(invitation.data?.knows.phone);
+  const askPhone = !knownPhone;
+  /** What a proof is for: the typed number, or the one given at sign-up. */
+  const proofFor = knownPhone ? KNOWN_PHONE : phone.trim();
 
   const accept = useMutation({
     mutationFn: () =>
@@ -121,16 +143,16 @@ export default function AcceptInvitationPage() {
         body: {
           token: params.token,
           password,
-          firstName: firstName.trim(),
+          ...(askName ? { firstName: firstName.trim() } : {}),
           // Only the fields this audience was asked for. Sending an empty
           // string would fail the schema's `.min(1)`; sending the other
           // audience's fields would write facts nobody was asked to give.
           //
           // ★ The phone for both since 2026-10-04 — it is how a member of
           // staff signs in now, as a guardian does. No e-mail.
-          ...(isStaff ? { lastName: lastName.trim() } : { relation }),
-          phone: phone.trim(),
-          ...(phoneProof?.phone === phone.trim() ? { phoneVerification: phoneProof.handle } : {}),
+          ...(isStaff ? (askName ? { lastName: lastName.trim() } : {}) : { relation }),
+          ...(askPhone ? { phone: phone.trim() } : {}),
+          ...(phoneProof?.phone === proofFor ? { phoneVerification: phoneProof.handle } : {}),
         },
       }),
     onSuccess: () => {
@@ -159,9 +181,9 @@ export default function AcceptInvitationPage() {
     }
     // The server refuses an unproven phone too; saying so here saves the
     // round trip and points at the step that is missing.
-    if (phoneEnabled && phoneProof?.phone !== phone.trim()) {
+    if (phoneEnabled && phoneProof?.phone !== proofFor) {
       setLocalError(
-        MOBILE_PHONE.test(phone.trim())
+        knownPhone || MOBILE_PHONE.test(phone.trim())
           ? "Утасны дугаараа SMS-ээр баталгаажуулна уу."
           : "Утасны дугаараа 8 оронтойгоор оруулна уу.",
       );
@@ -208,7 +230,9 @@ export default function AcceptInvitationPage() {
       <div className="mb-3 pr-8">
         <h2 className="text-lead font-extrabold leading-tight text-[#102f5d]">Тавтай морил</h2>
         <p className="text-caption text-slate-500">
-          Өөрийнхөө нэр, утсаа бөглөөд нууц үгээ сонгоно уу.
+          {askName || askPhone
+            ? "Өөрийнхөө нэр, утсаа бөглөөд нууц үгээ сонгоно уу."
+            : "Нууц үгээ сонгоод бүртгэлээ идэвхжүүлнэ үү."}
         </p>
       </div>
 
@@ -228,67 +252,71 @@ export default function AcceptInvitationPage() {
           зөвхөн нэр нь байхад болно". A form finished in a corridor on a phone
           should ask for what is needed and stop.
         */}
-        <div className={isStaff ? "grid grid-cols-2 gap-3" : "contents"}>
-          {isStaff ? (
-            <Field label="Овог" error={errors.lastName} required>
+        {askName ? (
+          <div className={isStaff ? "grid grid-cols-2 gap-3" : "contents"}>
+            {isStaff ? (
+              <Field label="Овог" error={errors.lastName} required>
+                {({ id, describedBy, invalid }) => (
+                  <Input
+                    id={id}
+                    className={COMPACT_INPUT}
+                    aria-describedby={describedBy}
+                    invalid={invalid}
+                    autoComplete="family-name"
+                    autoFocus
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                  />
+                )}
+              </Field>
+            ) : null}
+
+            <Field label="Таны нэр" error={errors.firstName} required>
               {({ id, describedBy, invalid }) => (
                 <Input
                   id={id}
                   className={COMPACT_INPUT}
                   aria-describedby={describedBy}
                   invalid={invalid}
-                  autoComplete="family-name"
-                  autoFocus
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
+                  autoComplete="given-name"
+                  autoFocus={!isStaff}
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
                 />
               )}
             </Field>
-          ) : null}
+          </div>
+        ) : null}
 
-          <Field label="Таны нэр" error={errors.firstName} required>
+        {askPhone ? (
+          <Field
+            label="Утасны дугаар"
+            error={errors.phone}
+            hint={
+              // The SMS step appears only for a number verify.mn can prove;
+              // without this a guardian typing "9911 2233" would be told to
+              // verify by SMS with no SMS button on screen.
+              phoneEnabled && phone.trim() && !MOBILE_PHONE.test(phone.trim())
+                ? "8 оронтой дугаар оруулна уу."
+                : undefined
+            }
+            required
+          >
             {({ id, describedBy, invalid }) => (
               <Input
                 id={id}
                 className={COMPACT_INPUT}
                 aria-describedby={describedBy}
                 invalid={invalid}
-                autoComplete="given-name"
-                autoFocus={!isStaff}
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
               />
             )}
           </Field>
-        </div>
-
-        <Field
-          label="Утасны дугаар"
-          error={errors.phone}
-          hint={
-            // The SMS step appears only for a number verify.mn can prove;
-            // without this a guardian typing "9911 2233" would be told to
-            // verify by SMS with no SMS button on screen.
-            phoneEnabled && phone.trim() && !MOBILE_PHONE.test(phone.trim())
-              ? "8 оронтой дугаар оруулна уу."
-              : undefined
-          }
-          required
-        >
-          {({ id, describedBy, invalid }) => (
-            <Input
-              id={id}
-              className={COMPACT_INPUT}
-              aria-describedby={describedBy}
-              invalid={invalid}
-              type="tel"
-              inputMode="tel"
-              autoComplete="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
-          )}
-        </Field>
+        ) : null}
 
         {/*
               ★ Proven by one SMS from this phone where verify.mn is on —
@@ -296,7 +324,7 @@ export default function AcceptInvitationPage() {
               reset by phone), so a typo or somebody else's number would hand
               that door to the wrong person.
             */}
-        {phoneEnabled && MOBILE_PHONE.test(phone.trim()) ? (
+        {askPhone && phoneEnabled && MOBILE_PHONE.test(phone.trim()) ? (
           <PhoneVerificationStep
             key={phone.trim()}
             phone={phone.trim()}
@@ -308,6 +336,25 @@ export default function AcceptInvitationPage() {
             }
             onVerified={(handle) => setPhoneProof({ phone: phone.trim(), handle })}
           />
+        ) : null}
+
+        {knownPhone && phoneEnabled ? (
+          <div className="flex flex-col gap-2">
+            <p className="text-body text-slate-600">
+              Бүртгүүлсэн утасны дугаар: <strong>{invitation.data?.phoneHint}</strong>
+            </p>
+            <PhoneVerificationStep
+              key={KNOWN_PHONE}
+              phone=""
+              start={() =>
+                mutate("/auth/invitation/phone", phoneVerificationStartSchema, {
+                  method: "POST",
+                  body: { token: params.token },
+                })
+              }
+              onVerified={(handle) => setPhoneProof({ phone: KNOWN_PHONE, handle })}
+            />
+          </div>
         ) : null}
 
         {!isStaff ? (

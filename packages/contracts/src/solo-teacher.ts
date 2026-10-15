@@ -2,20 +2,29 @@ import { z } from "zod";
 
 /**
  * A teacher signing up alone — «Багш» on the pricing page (#195; the user,
- * 2026-10-11). No ESIS code and no approval: the answer is a one-time
- * invitation token, and the web goes straight to `/invitation/[token]` to set
- * a password, as staff self-registration does. The workspace that comes with
- * it is a `Kindergarten` of kind SOLO_TEACHER: one group, parents only.
+ * 2026-10-11). No ESIS code and no approval. The workspace that comes with it
+ * is a `Kindergarten` of kind SOLO_TEACHER: one group, parents only.
+ *
+ * ★ One window (the user, 2026-10-14): the surname, the given name, the phone
+ * — proven by one SMS where verify.mn is on — and the password, all on the
+ * sign-up form. It used to answer an invitation token, and `/invitation/[token]`
+ * asked for the same person a second time.
  */
 export const teacherSignupSchema = z
   .object({
-    /** «Овог нэр» in one field — split on the first space, family name first. */
-    fullName: z.string().trim().min(2).max(120),
+    lastName: z.string().trim().min(1, "Овгоо оруулна уу").max(100),
+    firstName: z.string().trim().min(1, "Нэрээ оруулна уу").max(100),
     phone: z
       .string()
       .trim()
       .regex(/^\d{8}$/, "Утасны дугаар 8 оронтой байна"),
     email: z.string().trim().toLowerCase().email("И-мэйл хаяг буруу байна").max(200),
+    password: z.string().min(8, "Нууц үг дор хаяж 8 тэмдэгт байх ёстой").max(200),
+    /**
+     * The verify.mn handle proving `phone` — `POST /teacher-applications/phone`.
+     * Required once `VERIFY_MN_API_KEY` is set, ignored otherwise.
+     */
+    phoneVerification: z.string().min(20).max(200).optional(),
     propertyType: z.string().trim().max(40).optional(),
     location: z.string().trim().max(80).optional(),
     /** The kindergarten they work at — what the operator merges into later. */
@@ -24,7 +33,8 @@ export const teacherSignupSchema = z
   .strict();
 export type TeacherSignup = z.infer<typeof teacherSignupSchema>;
 
-export const teacherSignupResultSchema = z.object({ invitationToken: z.string() });
+/** The account exists and has its password: the next step is signing in. */
+export const teacherSignupResultSchema = z.object({ created: z.literal(true) });
 export type TeacherSignupResult = z.infer<typeof teacherSignupResultSchema>;
 
 /**

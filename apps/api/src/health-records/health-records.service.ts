@@ -30,7 +30,7 @@ export class HealthRecordsService {
    * and a family needs to see what the kindergarten has recorded about them.
    */
   async get(actor: Actor, childId: string) {
-    await this.childAccess.assertCanAccess(actor, childId);
+    await this.childAccess.assertCanReadHealth(actor, childId);
 
     const { child, allergies, specialNeeds, medications, vaccinations } =
       await this.repo.loadForChild(childId);
@@ -85,7 +85,7 @@ export class HealthRecordsService {
    * and see it is right; they do not write the flag themselves.
    */
   async createAllergy(actor: Actor, childId: string, dto: CreateAllergyDto) {
-    const facts = await this.childAccess.assertCanRecord(actor, childId);
+    const facts = await this.childAccess.assertCanRecordHealth(actor, childId);
 
     const saved = await this.repo.createAllergy({
       childId,
@@ -115,7 +115,7 @@ export class HealthRecordsService {
   async updateAllergy(actor: Actor, id: string, dto: UpdateAllergyDto) {
     const allergy = await this.repo.findAllergy(id);
     if (!allergy) throw new NotFoundException();
-    await this.childAccess.assertCanRecord(actor, allergy.childId);
+    await this.childAccess.assertCanRecordHealth(actor, allergy.childId);
 
     const data: Record<string, unknown> = {};
     if (dto.kind !== undefined) data.kind = dto.kind;
@@ -145,7 +145,7 @@ export class HealthRecordsService {
   async removeAllergy(actor: Actor, id: string) {
     const allergy = await this.repo.findAllergy(id);
     if (!allergy) throw new NotFoundException();
-    await this.childAccess.assertCanRecord(actor, allergy.childId);
+    await this.childAccess.assertCanRecordHealth(actor, allergy.childId);
 
     await this.repo.softDeleteAllergy(id);
     await this.audit.append({
@@ -173,7 +173,7 @@ export class HealthRecordsService {
    * consistent with the ids `createSpecialNeed` will actually accept.
    */
   async listSpecialNeedsCategories(actor: Actor, childId: string) {
-    const facts = await this.childAccess.assertCanRecord(actor, childId);
+    const facts = await this.childAccess.assertCanRecordHealth(actor, childId);
     return this.repo.listSpecialNeedsCategories(facts.childKindergartenId);
   }
 
@@ -193,7 +193,7 @@ export class HealthRecordsService {
    * cross-tenant write.
    */
   async createSpecialNeed(actor: Actor, childId: string, dto: CreateSpecialNeedDto) {
-    const facts = await this.childAccess.assertCanRecord(actor, childId);
+    const facts = await this.childAccess.assertCanRecordHealth(actor, childId);
 
     const category = await this.repo.findSpecialNeedsCategory(
       dto.categoryId,
@@ -234,7 +234,7 @@ export class HealthRecordsService {
   async updateSpecialNeed(actor: Actor, id: string, dto: UpdateSpecialNeedDto) {
     const record = await this.repo.findSpecialNeed(id);
     if (!record) throw new NotFoundException();
-    await this.childAccess.assertCanRecord(actor, record.childId);
+    await this.childAccess.assertCanRecordHealth(actor, record.childId);
 
     const data: Record<string, unknown> = {};
     if (dto.categoryId !== undefined) {
@@ -269,7 +269,7 @@ export class HealthRecordsService {
   async removeSpecialNeed(actor: Actor, id: string) {
     const record = await this.repo.findSpecialNeed(id);
     if (!record) throw new NotFoundException();
-    await this.childAccess.assertCanRecord(actor, record.childId);
+    await this.childAccess.assertCanRecordHealth(actor, record.childId);
 
     await this.repo.softDeleteSpecialNeed(id);
     await this.audit.append({
@@ -298,7 +298,7 @@ export class HealthRecordsService {
    * ordinary — and the audit row records who actually typed it.
    */
   async createMedication(actor: Actor, childId: string, dto: CreateMedicationDto) {
-    const facts = await this.childAccess.assertCanContributeMedia(actor, childId);
+    const facts = await this.childAccess.assertCanContributeHealth(actor, childId);
 
     // A window that closed before it opened is a typo; one that ended weeks ago
     // is a record nobody will act on. Both are caught at the boundary rather
@@ -347,7 +347,7 @@ export class HealthRecordsService {
     const medication = await this.repo.findMedication(id);
     if (!medication) throw new NotFoundException();
 
-    const facts = await this.childAccess.assertCanContributeMedia(actor, medication.childId);
+    const facts = await this.childAccess.assertCanContributeHealth(actor, medication.childId);
     if (isGuardianOf(actor, facts) && medication.authorisedById !== actor.userId) {
       throw new NotFoundException();
     }
@@ -369,7 +369,7 @@ export class HealthRecordsService {
 
   /** Staff record these: it is the kindergarten's immunisation register. */
   async createVaccination(actor: Actor, childId: string, dto: CreateVaccinationDto) {
-    const facts = await this.childAccess.assertCanRecord(actor, childId);
+    const facts = await this.childAccess.assertCanRecordHealth(actor, childId);
 
     if (dto.administeredOn > todayIso()) {
       throw new BadRequestException("Огноо ирээдүйд байж болохгүй");
@@ -402,7 +402,7 @@ export class HealthRecordsService {
   async removeVaccination(actor: Actor, id: string) {
     const vaccination = await this.repo.findVaccination(id);
     if (!vaccination) throw new NotFoundException();
-    await this.childAccess.assertCanRecord(actor, vaccination.childId);
+    await this.childAccess.assertCanRecordHealth(actor, vaccination.childId);
 
     await this.repo.softDeleteVaccination(id);
     await this.audit.append({

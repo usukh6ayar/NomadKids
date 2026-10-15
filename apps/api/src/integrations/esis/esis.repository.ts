@@ -100,6 +100,7 @@ export class EsisRepository {
         registerNumber: true,
         lastName: true,
         firstName: true,
+        jobCode: true,
         positionName: true,
         isInstructor: true,
         syncedAt: true,

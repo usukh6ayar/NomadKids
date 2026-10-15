@@ -8,8 +8,10 @@ import { RateLimit, RateLimitGuard } from "../common/rate-limit/rate-limit.guard
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import {
   listSelfRegisteredQuerySchema,
+  rosterInvitationSchema,
   staffSelfRegistrationSchema,
   type ListSelfRegisteredQuery,
+  type RosterInvitationDto,
   type StaffSelfRegistrationDto,
 } from "./staff-registration.dto";
 import { StaffRegistrationService } from "./staff-registration.service";
@@ -43,6 +45,22 @@ export class StaffRegistrationController {
     @Query(new ZodValidationPipe(listSelfRegisteredQuerySchema)) query: ListSelfRegisteredQuery,
   ) {
     return this.service.listSelfRegistered(actor, params.id, query);
+  }
+
+  /**
+   * «Бүх багшийг урих» — an invitation per unclaimed ESIS roster row, each
+   * already linked to its ministry record (`inviteFromRoster`). The tokens
+   * come back once, for the director to print as QR cards; they are never
+   * logged. `esisPersonId` narrows it to one row.
+   */
+  @Post("staff-invitations")
+  @Roles("ADMIN")
+  inviteFromRoster(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(rosterInvitationSchema)) body: RosterInvitationDto,
+  ) {
+    return this.service.inviteFromRoster(actor, params.id, body.esisPersonId, body.role);
   }
 }
 

@@ -6,6 +6,7 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import type { Actor } from "../authz/actor";
 import { TenantsService } from "./tenants.service";
 import {
+  assignSpecialistSchema,
   assignTeacherSchema,
   createGroupSchema,
   createSchoolYearSchema,
@@ -14,6 +15,7 @@ import {
   updateGroupSchema,
   updateKindergartenSchema,
   updateSchoolYearSchema,
+  type AssignSpecialistDto,
   type AssignTeacherDto,
   type CreateGroupDto,
   type CreateSchoolYearDto,
@@ -73,7 +75,8 @@ export class TenantsController {
   }
 
   @Post("kindergartens/:id/school-years")
-  @Roles("ADMIN")
+  // ★ And a solo teacher in their own workspace — the service decides (2026-10-14).
+  @Roles("ADMIN", "TEACHER")
   async createSchoolYear(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -83,7 +86,8 @@ export class TenantsController {
   }
 
   @Patch("school-years/:id")
-  @Roles("ADMIN")
+  // ★ And a solo teacher in their own workspace — the service decides (2026-10-14).
+  @Roles("ADMIN", "TEACHER")
   async updateSchoolYear(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -123,7 +127,8 @@ export class TenantsController {
    * because that is the roster the director is looking at when they do this.
    */
   @Post("groups/:id/promotions")
-  @Roles("ADMIN")
+  // ★ And a solo teacher in their own workspace — the service decides (2026-10-14).
+  @Roles("ADMIN", "TEACHER")
   async promoteGroup(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -133,7 +138,8 @@ export class TenantsController {
   }
 
   @Post("kindergartens/:id/groups")
-  @Roles("ADMIN")
+  // ★ And a solo teacher in their own workspace — the service decides (2026-10-14).
+  @Roles("ADMIN", "TEACHER")
   async createGroup(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -143,7 +149,8 @@ export class TenantsController {
   }
 
   @Patch("groups/:id")
-  @Roles("ADMIN")
+  // ★ And a solo teacher in their own workspace — the service decides (2026-10-14).
+  @Roles("ADMIN", "TEACHER")
   async updateGroup(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -153,7 +160,8 @@ export class TenantsController {
   }
 
   @Delete("groups/:id")
-  @Roles("ADMIN")
+  // ★ And a solo teacher in their own workspace — the service decides (2026-10-14).
+  @Roles("ADMIN", "TEACHER")
   async archiveGroup(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -180,6 +188,36 @@ export class TenantsController {
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
   ) {
     return this.service.endAssignment(actor, params.id);
+  }
+
+  // ── PE/music teacher assignments (`GroupSpecialist`) ──────────────────────
+
+  @Get("groups/:id/specialists")
+  @Roles("ADMIN")
+  async listSpecialists(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.listSpecialists(actor, params.id);
+  }
+
+  @Post("groups/:id/specialists")
+  @Roles("ADMIN")
+  async assignSpecialist(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(assignSpecialistSchema)) body: AssignSpecialistDto,
+  ) {
+    return this.service.assignSpecialist(actor, params.id, body);
+  }
+
+  @Delete("group-specialists/:id")
+  @Roles("ADMIN")
+  async endSpecialistAssignment(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.endSpecialistAssignment(actor, params.id);
   }
 }
 

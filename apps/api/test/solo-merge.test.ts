@@ -13,6 +13,7 @@ import {
   enrollChild,
   linkGuardian,
   login,
+  setUpSoloWorkspace,
   type AuthSession,
   type Scenario,
 } from "./support/fixtures";
@@ -63,23 +64,19 @@ beforeEach(async () => {
   await app.get(RateLimitService).resetAll();
 
   const signup = await request(server()).post("/v1/teacher-applications").send({
-    fullName: "Дорж Сараа",
+    lastName: "Дорж",
+    firstName: "Сараа",
+    password: PASSWORD,
     phone: TEACHER_PHONE,
     email: "saraa@example.mn",
     kindergartenName: "Нарлаг цэцэрлэг",
   });
-  expect(signup.status).toBe(201);
-  await request(server())
-    .post("/v1/auth/invitation/accept")
-    .send({ token: signup.body.invitationToken, password: PASSWORD })
-    .expect(204);
+  expect(signup.status, JSON.stringify(signup.body)).toBe(201);
 
-  const kg = await db.kindergarten.findFirstOrThrow({
-    where: { kind: "SOLO_TEACHER" },
-    include: { groups: true, schoolYears: true, memberships: true },
-  });
+  const kg = await db.kindergarten.findFirstOrThrow({ where: { kind: "SOLO_TEACHER" } });
+  const { schoolYear, group, teacher } = await setUpSoloWorkspace(kg.id);
   const child = await createChild(kg.id, { firstName: "Тэмүүлэн", nationalId: "УБ21041299" });
-  await enrollChild(kg.id, child.id, kg.groups[0]!.id, kg.schoolYears[0]!.id);
+  await enrollChild(kg.id, child.id, group.id, schoolYear.id);
   const parent = await createUser({ username: uniq("parent-solo") });
   await createMembership(parent.id, kg.id, "PARENT");
   await linkGuardian(kg.id, child.id, parent.id);
@@ -87,7 +84,7 @@ beforeEach(async () => {
     data: {
       kindergartenId: kg.id,
       childId: child.id,
-      schoolYearId: kg.schoolYears[0]!.id,
+      schoolYearId: schoolYear.id,
       amount: "27000.00",
       status: "ACTIVE",
       paidAt: new Date(),
@@ -97,10 +94,10 @@ beforeEach(async () => {
 
   solo = {
     kindergartenId: kg.id,
-    groupId: kg.groups[0]!.id,
-    yearId: kg.schoolYears[0]!.id,
+    groupId: group.id,
+    yearId: schoolYear.id,
     childId: child.id,
-    teacherUserId: kg.memberships[0]!.userId,
+    teacherUserId: teacher.userId,
     parentUsername: parent.username,
   };
 
@@ -286,7 +283,7 @@ describe("the merge", () => {
     });
 
     const res = await merge(operator, { targetKindergartenId: target.kindergarten.id });
-    expect(res.body).toMatchObject({ membershipsJoined: 1, adminsDropped: 1 });
+    expect(res.body).toMatchObject({ membershipsJoined: 1, adminsDropped: 0 });
 
     const joined = await db.membership.findUniqueOrThrow({ where: { id: existing.id } });
     expect(joined).toMatchObject({ isActive: true, deletedAt: null });

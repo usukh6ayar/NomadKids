@@ -4,8 +4,18 @@ import type { Actor } from "./actor";
 import {
   canAccessChild,
   canAdministerChild,
+  canArchiveChild,
+  canEditObservationAsStaff,
+  canObserveChild,
+  canReadChildCard,
+  canReadChildHealth,
+  canReadObservations,
+  canRecordChildHealth,
   canRecordForChild,
   childKindergartenIds,
+  isAssignedSpecialistOf,
+  isDoctorOver,
+  seesFullChildCard,
   isAssignedTeacherOf,
   isGuardianOf,
   type ChildAccessFacts,
@@ -60,9 +70,10 @@ function facts(overrides: Partial<ChildAccessFacts> = {}): ChildAccessFacts {
     childId: "child-1",
     childKindergartenId: KG_A,
     childKindergartenKind: "CONTRACTED",
-    enrollments: [{ groupId: GROUP_1, kindergartenId: KG_A }],
+    enrollments: [{ groupId: GROUP_1, kindergartenId: KG_A, active: true }],
     guardianships: [],
     actorActiveTeachingGroupIds: [],
+    actorActiveSpecialistGroupIds: [],
     ...overrides,
   };
 }
@@ -75,8 +86,8 @@ describe("childKindergartenIds", () => {
       facts({
         childKindergartenId: KG_B,
         enrollments: [
-          { groupId: GROUP_1, kindergartenId: KG_A },
-          { groupId: GROUP_2, kindergartenId: KG_B },
+          { groupId: GROUP_1, kindergartenId: KG_A, active: true },
+          { groupId: GROUP_2, kindergartenId: KG_B, active: true },
         ],
       }),
     );
@@ -87,7 +98,7 @@ describe("childKindergartenIds", () => {
     const set = childKindergartenIds(
       facts({
         childKindergartenId: KG_B,
-        enrollments: [{ groupId: GROUP_1, kindergartenId: KG_A }],
+        enrollments: [{ groupId: GROUP_1, kindergartenId: KG_A, active: true }],
       }),
     );
     expect(set.has(KG_B)).toBe(false);
@@ -108,7 +119,7 @@ describe("childKindergartenIds", () => {
     const set = childKindergartenIds(
       facts({
         childKindergartenId: KG_B,
-        enrollments: [{ groupId: GROUP_1, kindergartenId: KG_A }],
+        enrollments: [{ groupId: GROUP_1, kindergartenId: KG_A, active: true }],
       }),
     );
     expect([...set]).toEqual([KG_A]);
@@ -173,8 +184,8 @@ describe("isAssignedTeacherOf", () => {
     // become unreachable because the child moved up.
     const f = facts({
       enrollments: [
-        { groupId: GROUP_1, kindergartenId: KG_A }, // ended, still history
-        { groupId: GROUP_2, kindergartenId: KG_A },
+        { groupId: GROUP_1, kindergartenId: KG_A, active: false }, // ended, still history
+        { groupId: GROUP_2, kindergartenId: KG_A, active: true },
       ],
       actorActiveTeachingGroupIds: [GROUP_1],
     });
@@ -230,8 +241,8 @@ describe("canAccessChild", () => {
     const f = facts({
       childKindergartenId: KG_B,
       enrollments: [
-        { groupId: GROUP_1, kindergartenId: KG_A },
-        { groupId: GROUP_2, kindergartenId: KG_B },
+        { groupId: GROUP_1, kindergartenId: KG_A, active: true },
+        { groupId: GROUP_2, kindergartenId: KG_B, active: true },
       ],
     });
     expect(canAccessChild(admin(KG_A), f)).toBe(true);
@@ -291,5 +302,100 @@ describe("canAdministerChild", () => {
     expect(canAdministerChild(admin(KG_A), f)).toBe(true);
     expect(canAdministerChild(teacher(), f)).toBe(false);
     expect(canAdministerChild(parent(), f)).toBe(false);
+  });
+});
+
+describe("canArchiveChild", () => {
+  it("allows the teacher of the group the child attends now", () => {
+    expect(canArchiveChild(teacher(), facts({ actorActiveTeachingGroupIds: [GROUP_1] }))).toBe(
+      true,
+    );
+  });
+
+  it("refuses the teacher of a group the child has left", () => {
+    const moved = facts({
+      enrollments: [
+        { groupId: GROUP_1, kindergartenId: KG_A, active: false },
+        { groupId: GROUP_2, kindergartenId: KG_A, active: true },
+      ],
+      actorActiveTeachingGroupIds: [GROUP_1],
+    });
+    // Still reads the child — the history rule — but may not remove them.
+    expect(canAccessChild(teacher(), moved)).toBe(true);
+    expect(canArchiveChild(teacher(), moved)).toBe(false);
+  });
+
+  it("refuses a teacher of another group and a guardian", () => {
+    expect(canArchiveChild(teacher(), facts({ actorActiveTeachingGroupIds: [GROUP_2] }))).toBe(
+      false,
+    );
+    const own = facts({ guardianships: [{ guardianUserId: "parent-1", canView: true }] });
+    expect(canArchiveChild(parent(), own)).toBe(false);
+  });
+
+  it("allows an admin of the child's kindergarten, not of another", () => {
+    expect(canArchiveChild(admin(KG_A), facts())).toBe(true);
+    expect(canArchiveChild(admin(KG_B), facts())).toBe(false);
+  });
+});
+
+function withRole(role: Role, kindergartenId = KG_A, userId = "staff-1"): Actor {
+  return {
+    userId,
+    sessionId: "s",
+    isSuperAdmin: false,
+    memberships: [{ id: `m-${role}`, kindergartenId, role }],
+  };
+}
+
+describe("PE/music teacher and doctor (2026-10-15)", () => {
+  const pe = withRole(Role.PE_TEACHER);
+  const doctor = withRole(Role.DOCTOR);
+  const assigned = facts({ actorActiveSpecialistGroupIds: [GROUP_1] });
+
+  it("a specialist reaches an assigned group's child for the card and observations only", () => {
+    expect(isAssignedSpecialistOf(assigned)).toBe(true);
+    expect(canReadChildCard(pe, assigned)).toBe(true);
+    expect(seesFullChildCard(pe, assigned)).toBe(false);
+    expect(canReadObservations(pe, assigned)).toBe(true);
+    expect(canObserveChild(pe, assigned)).toBe(true);
+    // ★ Never the general chains.
+    expect(canAccessChild(pe, assigned)).toBe(false);
+    expect(canRecordForChild(pe, assigned)).toBe(false);
+    expect(canReadChildHealth(pe, assigned)).toBe(false);
+  });
+
+  it("a specialist of another group reaches nothing", () => {
+    const other = facts({ actorActiveSpecialistGroupIds: [GROUP_2] });
+    expect(canReadChildCard(pe, other)).toBe(false);
+    expect(canReadObservations(pe, other)).toBe(false);
+  });
+
+  it("a specialist edits only their own staff note", () => {
+    expect(
+      canEditObservationAsStaff(pe, assigned, { authorId: "staff-1", source: "TEACHER" }),
+    ).toBe(true);
+    expect(
+      canEditObservationAsStaff(pe, assigned, { authorId: "teacher-1", source: "TEACHER" }),
+    ).toBe(false);
+    expect(canEditObservationAsStaff(pe, assigned, { authorId: "staff-1", source: "PARENT" })).toBe(
+      false,
+    );
+  });
+
+  it("the doctor reaches every child of their kindergarten for health, and no development record", () => {
+    expect(isDoctorOver(doctor, facts())).toBe(true);
+    expect(canReadChildHealth(doctor, facts())).toBe(true);
+    expect(canRecordChildHealth(doctor, facts())).toBe(true);
+    expect(seesFullChildCard(doctor, facts())).toBe(true);
+    expect(canAccessChild(doctor, facts())).toBe(false);
+    expect(canReadObservations(doctor, facts())).toBe(false);
+    expect(canObserveChild(doctor, facts())).toBe(false);
+  });
+
+  it("the doctor of another kindergarten reaches nothing", () => {
+    const elsewhere = withRole(Role.DOCTOR, KG_B);
+    expect(isDoctorOver(elsewhere, facts())).toBe(false);
+    expect(canReadChildCard(elsewhere, facts())).toBe(false);
   });
 });

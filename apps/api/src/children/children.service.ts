@@ -8,6 +8,7 @@ import { AuditRepository } from "../audit/audit.repository";
 import { AuthzRepository } from "../authz/authz.repository";
 import { loadEnv } from "../config/env";
 import { ChildAccessService } from "../authz/child-access.service";
+import { seesFullChildCard } from "../authz/child-access";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import type { Actor } from "../authz/actor";
 import { paginate, type PageParams } from "../common/pagination";
@@ -57,6 +58,29 @@ export class ChildrenService {
     private readonly esis: EsisService,
   ) {}
 
+  /**
+   * A solo teacher's own group of the current year — where a child they
+   * register without naming a group goes. `null` for anybody else.
+   *
+   * ★ Not a convenience (the user, 2026-10-14). A teacher reaches a child only
+   * through an enrolment in a group they teach; the no-enrolment fallback is
+   * the administrator's alone (§1.2). A solo teacher holds TEACHER only, so a
+   * child left without a group would vanish from their roster the moment it
+   * was saved. No group yet is a 400 that says what to do first.
+   */
+  private async soloTeacherGroup(actor: Actor, kindergartenId: string) {
+    if (this.tenants.isAdmin(actor, kindergartenId)) return null;
+    if (!(await this.tenants.soloTeacherKindergartenIds(actor)).includes(kindergartenId)) {
+      return null;
+    }
+    const teaching = await this.authz.loadActiveTeachingGroupIds(actor);
+    const group = await this.repo.findCurrentGroupAmong(teaching, kindergartenId);
+    if (!group) {
+      throw new BadRequestException("Эхлээд хичээлийн жил, бүлгээ үүсгэнэ үү.");
+    }
+    return group;
+  }
+
   /** "0" means no fee anywhere — read once, like `ChildAccessService`. */
   private readonly feeConfigured = loadEnv().ACCESS_FEE_AMOUNT !== "0";
 
@@ -69,13 +93,28 @@ export class ChildrenService {
    * disagree about who exists.
    */
   async list(actor: Actor, query: ListChildrenQuery) {
-    const visible = await this.authz.visibleChildrenWhere(actor);
+    /*
+     * ★ Card-level since 2026-10-15: a PE/music teacher's groups and the
+     * doctor's kindergarten too (`visibleChildCardsWhere`). A specialist's
+     * rows lose what their card does not carry (`toSpecialistCard`).
+     */
+    const cards = await this.authz.visibleChildCardsWhere(actor);
     const page: PageParams = { page: query.page, pageSize: query.pageSize };
 
-    const { items, total } = await this.repo.listChildren(visible, childFilters(query), page, {
+    const listed = await this.repo.listChildren(cards.where, childFilters(query), page, {
       sort: query.sort,
       order: query.order,
     });
+    const full = cards.full
+      ? await this.authz.childIdsMatching(
+          listed.items.map((c) => c.id),
+          cards.full,
+        )
+      : null;
+    const items = full
+      ? listed.items.map((child) => (full.has(child.id) ? child : toSpecialistListRow(child)))
+      : listed.items;
+    const total = listed.total;
 
     /*
       ★ «Төлөгдсөн / Төлөгдөөгүй» on a solo teacher's roster (the user,
@@ -174,10 +213,12 @@ export class ChildrenService {
 
   async get(actor: Actor, childId: string) {
     // Throws 404 when absent or unauthorized — indistinguishable, by design.
-    await this.childAccess.assertCanAccess(actor, childId);
+    const facts = await this.childAccess.assertCanReadCard(actor, childId);
 
-    const child = await this.repo.findChild(childId);
-    if (!child) throw new NotFoundException();
+    const found = await this.repo.findChild(childId);
+    if (!found) throw new NotFoundException();
+    // A PE/music teacher's card: no health, no national id, no family contacts.
+    const child = seesFullChildCard(actor, facts) ? found : toSpecialistCard(found);
 
     // Opening a child's record is auditable: RFP §971 asks who viewed what.
     await this.audit.append({
@@ -202,6 +243,7 @@ export class ChildrenService {
    */
   async create(actor: Actor, kindergartenId: string, dto: CreateChildDto) {
     this.tenants.assertStaff(actor, kindergartenId);
+    const groupId = dto.groupId ?? (await this.soloTeacherGroup(actor, kindergartenId))?.id;
 
     if (dto.nationalId) {
       const clash = await this.repo.findByNationalId(kindergartenId, dto.nationalId);
@@ -220,8 +262,8 @@ export class ChildrenService {
       healthNotes: dto.healthNotes ?? null,
     });
 
-    if (dto.groupId) {
-      await this.enrollInternal(kindergartenId, child.id, dto.groupId, new Date());
+    if (groupId) {
+      await this.enrollInternal(kindergartenId, child.id, groupId, new Date());
     }
 
     await this.audit.append({
@@ -276,9 +318,12 @@ export class ChildrenService {
     return updated;
   }
 
-  /** Archives a child. Admins only — this is an administrative action. */
+  /**
+   * Archives a child — an admin, or the teacher of the group the child attends
+   * now (the user, 2026-10-14). `canArchiveChild`.
+   */
   async archive(actor: Actor, childId: string) {
-    const facts = await this.childAccess.assertCanAdminister(actor, childId);
+    const facts = await this.childAccess.assertCanArchive(actor, childId);
 
     const archived = await this.repo.softDeleteChild(childId);
     await this.audit.append({
@@ -894,6 +939,8 @@ export class ChildrenService {
     }
 
     const { rows, problems } = await parseChildWorkbook(file);
+    // A row with no group goes to a solo teacher's own group — see `soloTeacherGroup`.
+    const soloGroup = await this.soloTeacherGroup(actor, kindergartenId);
 
     const groups = await this.repo.groupsForImport(kindergartenId);
     const groupByName = new Map(groups.map((group) => [group.name.trim().toLowerCase(), group]));
@@ -951,8 +998,8 @@ export class ChildrenService {
         continue;
       }
 
-      let groupId: string | null = null;
-      let schoolYearId: string | null = null;
+      let groupId: string | null = soloGroup?.id ?? null;
+      let schoolYearId: string | null = soloGroup?.schoolYear.id ?? null;
 
       if (row.groupName) {
         const group = groupByName.get(row.groupName.trim().toLowerCase());
@@ -1085,5 +1132,32 @@ function childFilters(query: ListChildrenQuery) {
     ageMin: query.ageMin,
     ageMax: query.ageMax,
     ids: query.ids,
+  };
+}
+
+/**
+ * What a PE or music teacher's card leaves out (2026-10-15): the health note
+ * — they have no health reach — the national and foreign ids, and the
+ * family's contacts. The rest is the card: name, sex, birthday, group, photo.
+ */
+function toSpecialistCard<
+  T extends { healthNotes: string | null; nationalId: string | null; foreignId: string | null },
+>(child: T & { guardianships: unknown[] }) {
+  return { ...child, healthNotes: null, nationalId: null, foreignId: null, guardianships: [] };
+}
+
+/** The roster row's half of `toSpecialistCard`. */
+function toSpecialistListRow<
+  T extends {
+    nationalId: string | null;
+    foreignId: string | null;
+    profile: { photo: boolean; health: boolean; guardianContact: boolean };
+  },
+>(child: T): T {
+  return {
+    ...child,
+    nationalId: null,
+    foreignId: null,
+    profile: { ...child.profile, health: false, guardianContact: false },
   };
 }

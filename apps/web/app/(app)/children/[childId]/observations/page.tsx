@@ -39,7 +39,9 @@ function Body() {
   const typeCode = searchParams.get("type") ?? "";
   const initialPanel = searchParams.get("panel") === "progress" ? "reports" : "notes";
   const { hasRole } = useSession();
-  const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
+  // A PE or music teacher writes observations too (2026-10-15).
+  const isStaff =
+    hasRole("TEACHER") || hasRole("ADMIN") || hasRole("PE_TEACHER") || hasRole("MUSIC_TEACHER");
 
   /*
     The kind's id, resolved from its code — a kindergarten may add its own
@@ -113,7 +115,10 @@ function Body() {
 
   return (
     <div className="flex flex-col gap-6 py-2">
-      <PageHeader backHref="/dashboard" title="Явцын үнэлгээ" />
+      <PageHeader
+        backHref={hasRole("TEACHER") || hasRole("ADMIN") || !isStaff ? "/dashboard" : "/children"}
+        title="Явцын үнэлгээ"
+      />
 
       {/* ★ Staff only, 2026-09-09 — see assessments/page.tsx's note. */}
       {isStaff ? <ChildHeroProfile child={data} showHealthAlert={isStaff} /> : null}

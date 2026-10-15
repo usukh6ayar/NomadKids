@@ -336,8 +336,30 @@ export class TenantsRepository {
     });
   }
 
-  async createGroup(data: GroupInput & { kindergartenId: string; schoolYearId: string }) {
-    return this.prisma.group.create({ data });
+  /**
+   * A group, and — for a solo teacher opening their own — the teacher's
+   * assignment to it, in one write.
+   */
+  async createGroup(
+    data: GroupInput & { kindergartenId: string; schoolYearId: string },
+    teacherMembershipId: string | null = null,
+  ) {
+    return this.prisma.group.create({
+      data: {
+        ...data,
+        ...(teacherMembershipId
+          ? {
+              teachers: {
+                create: {
+                  kindergartenId: data.kindergartenId,
+                  membershipId: teacherMembershipId,
+                  startedOn: new Date(),
+                },
+              },
+            }
+          : {}),
+      },
+    });
   }
 
   async updateGroup(id: string, data: Partial<GroupInput>) {
@@ -407,6 +429,68 @@ export class TenantsRepository {
         isActive: true,
         deletedAt: null,
       },
+    });
+  }
+
+  // ── PE/music teacher assignments (`GroupSpecialist`, 2026-10-15) ──────────
+
+  /** A PE_TEACHER or MUSIC_TEACHER membership in this kindergarten. */
+  async findSpecialistMembership(membershipId: string, kindergartenId: string) {
+    return this.prisma.membership.findFirst({
+      where: {
+        id: membershipId,
+        kindergartenId,
+        role: { in: ["PE_TEACHER", "MUSIC_TEACHER"] },
+        isActive: true,
+        deletedAt: null,
+      },
+    });
+  }
+
+  async findActiveSpecialistAssignment(groupId: string, membershipId: string) {
+    return this.prisma.groupSpecialist.findFirst({
+      where: { groupId, membershipId, endedOn: null, deletedAt: null },
+    });
+  }
+
+  async assignSpecialist(data: { kindergartenId: string; groupId: string; membershipId: string }) {
+    return this.prisma.groupSpecialist.create({ data });
+  }
+
+  /** An active assignment in one of these kindergartens — ended ones are history. */
+  async findSpecialistAssignment(scope: TenantScope, id: string) {
+    return this.prisma.groupSpecialist.findFirst({
+      where: scopedWhere(scope, { id, endedOn: null }),
+    });
+  }
+
+  /** Revocation: `endedOn`, never a delete — the record of who taught whom stays. */
+  async endSpecialistAssignment(id: string) {
+    return this.prisma.groupSpecialist.update({ where: { id }, data: { endedOn: new Date() } });
+  }
+
+  /** A group's current PE/music teachers, with the names a screen shows. */
+  async listGroupSpecialists(groupId: string) {
+    return this.prisma.groupSpecialist.findMany({
+      where: {
+        groupId,
+        endedOn: null,
+        deletedAt: null,
+        membership: { deletedAt: null, role: { in: ["PE_TEACHER", "MUSIC_TEACHER"] } },
+      },
+      select: {
+        id: true,
+        membershipId: true,
+        startedOn: true,
+        membership: {
+          select: {
+            role: true,
+            user: { select: { id: true, lastName: true, firstName: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+      take: 50,
     });
   }
 }

@@ -10,8 +10,6 @@ export interface SoloWorkspaceInput {
     location: string | null;
     soloWorkplaceName: string | null;
   };
-  schoolYear: { name: string; startsOn: Date; endsOn: Date };
-  groupName: string;
   user: {
     username: string;
     email: string;
@@ -20,7 +18,6 @@ export interface SoloWorkspaceInput {
     firstName: string;
     passwordHash: string;
   };
-  invitation: { tokenHash: string; expiresAt: Date; requestedIp: string | null };
 }
 
 @Injectable()
@@ -31,15 +28,19 @@ export class SoloTeachersRepository {
    * A solo teacher's whole workspace — atomically, as `PlatformRepository.
    * createWithAdmin` creates a kindergarten with its director.
    *
-   * All or nothing: a workspace with no group has nothing to work in, a user
-   * with no membership reaches nothing, and one with no invitation can never
-   * set a password. The hashes are computed by the service, outside the
-   * transaction; the token's plaintext never reaches this layer.
+   * All or nothing: a user with no membership reaches nothing. The password
+   * hash is computed by the service, outside the transaction (since
+   * 2026-10-14 it is the teacher's own — no invitation token any more).
    *
-   * ★ ADMIN **and** TEACHER: the teacher is the only staff here and does what a
-   * director would for their own group, so every route works unchanged. The
-   * solo rules — parents only, one group — are guards in the services that
-   * add people and groups.
+   * ★ No school year and no group (the user, 2026-10-14): the teacher sets up
+   * their own — `TenantsService.createSchoolYear` / `createGroup`, which
+   * assigns them to the group they open.
+   *
+   * ★ TEACHER only (the user, 2026-10-14). They used to be ADMIN as well, and
+   * the web showed them the director («Удирдлага»). A solo teacher works as
+   * any group teacher does — their one group, its children, inviting the
+   * families — and nothing a director decides. Migration
+   * `20261014090000_solo_teacher_role_only` revoked the earlier ADMIN rows.
    */
   async createWorkspace(input: SoloWorkspaceInput) {
     return this.prisma.$transaction(async (tx) => {
@@ -47,62 +48,27 @@ export class SoloTeachersRepository {
         data: { ...input.kindergarten, kind: "SOLO_TEACHER", isActive: true },
         select: { id: true },
       });
-      const schoolYear = await tx.schoolYear.create({
-        data: { kindergartenId: kindergarten.id, ...input.schoolYear, isCurrent: true },
-        select: { id: true },
-      });
-      const group = await tx.group.create({
-        data: {
-          kindergartenId: kindergarten.id,
-          schoolYearId: schoolYear.id,
-          name: input.groupName,
-          // The teacher sets the real age band on the group's page.
-          ageBand: "MIDDLE",
-        },
-        select: { id: true },
-      });
-
       const user = await tx.user.create({
         data: { ...input.user, selfRegisteredAt: new Date() },
         select: { id: true },
       });
       await tx.membership.create({
-        data: { userId: user.id, kindergartenId: kindergarten.id, role: "ADMIN" },
-      });
-      const teacher = await tx.membership.create({
         data: { userId: user.id, kindergartenId: kindergarten.id, role: "TEACHER" },
-        select: { id: true },
       });
-      await tx.groupTeacher.create({
-        data: {
-          kindergartenId: kindergarten.id,
-          groupId: group.id,
-          membershipId: teacher.id,
-          startedOn: input.schoolYear.startsOn,
-        },
-      });
-      await tx.authToken.create({
-        data: {
-          userId: user.id,
-          purpose: "INVITATION",
-          tokenHash: input.invitation.tokenHash,
-          expiresAt: input.invitation.expiresAt,
-          requestedIp: input.invitation.requestedIp,
-        },
-      });
-
-      return { kindergartenId: kindergarten.id, userId: user.id, groupId: group.id };
+      return { kindergartenId: kindergarten.id, userId: user.id };
     });
   }
 
   /** Whether an account already holds this email or phone — a readable 409, not a 500. */
-  async contactTaken(email: string, phone: string): Promise<"email" | "phone" | null> {
+  async contactTaken(email: string | null, phone: string): Promise<"email" | "phone" | null> {
     const [byEmail, byPhone] = await Promise.all([
       // Any casing — see `UsersRepository.findByEmail`.
-      this.prisma.user.findFirst({
-        where: { email: { equals: email, mode: "insensitive" } },
-        select: { id: true },
-      }),
+      email === null
+        ? null
+        : this.prisma.user.findFirst({
+            where: { email: { equals: email, mode: "insensitive" } },
+            select: { id: true },
+          }),
       this.prisma.user.findUnique({ where: { phone }, select: { id: true } }),
     ]);
     return byEmail ? "email" : byPhone ? "phone" : null;

@@ -898,7 +898,9 @@ export function EditObservationDialog({
   const queryClient = useQueryClient();
   const toast = useToast();
   const { hasRole, primaryKindergartenId } = useSession();
-  const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
+  // A PE or music teacher writes observations too (2026-10-15).
+  const isStaff =
+    hasRole("TEACHER") || hasRole("ADMIN") || hasRole("PE_TEACHER") || hasRole("MUSIC_TEACHER");
 
   const [observedOn, setObservedOn] = useState(observation.observedOn.slice(0, 10));
   const [observedTime, setObservedTime] = useState(observation.observedTime?.slice(0, 5) ?? "");

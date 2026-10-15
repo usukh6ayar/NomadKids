@@ -399,7 +399,10 @@ export function StudentRosterTable({
   discounts?: ReadonlyMap<string, FoodDiscountStatus>;
 }) {
   const router = useRouter();
-  const isAdmin = useSession().hasRole("ADMIN");
+  const { hasRole } = useSession();
+  // ★ A teacher removes a child of their own group too (the user, 2026-10-14);
+  // the API decides which — `canArchiveChild`.
+  const canArchive = hasRole("ADMIN") || hasRole("TEACHER");
   const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(null);
   const [resetting, setResetting] = useState<{ id: string; name: string } | null>(null);
   const [inviting, setInviting] = useState<{ id: string; name: string } | null>(null);
@@ -520,7 +523,7 @@ export function StudentRosterTable({
                             },
                           ]
                         : []),
-                      ...(isAdmin
+                      ...(canArchive
                         ? [
                             {
                               label: "Устгах",
@@ -581,7 +584,10 @@ export function ChildRosterTable({
   discounts?: ReadonlyMap<string, FoodDiscountStatus>;
 }) {
   const router = useRouter();
-  const isAdmin = useSession().hasRole("ADMIN");
+  const { hasRole } = useSession();
+  // ★ A teacher removes a child of their own group too (the user, 2026-10-14);
+  // the API decides which — `canArchiveChild`.
+  const canArchive = hasRole("ADMIN") || hasRole("TEACHER");
   const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(null);
   const [resetting, setResetting] = useState<{ id: string; name: string } | null>(null);
   return (
@@ -657,7 +663,7 @@ export function ChildRosterTable({
                           name: `${child.lastName ?? ""} ${child.firstName}`.trim(),
                         }),
                     },
-                    ...(isAdmin
+                    ...(canArchive
                       ? [
                           {
                             label: "Устгах",

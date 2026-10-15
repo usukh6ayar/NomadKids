@@ -54,6 +54,9 @@ const BLOCK = new Set([
   "suppliers",
   // Staff.
   "staff_records",
+  // A PE/music teacher's groups (2026-10-15). Only a director assigns them and
+  // a solo workspace has none, so a row here is something nobody meant.
+  "group_specialists",
 ]);
 
 export function classify(table: string): MergeClass | null {

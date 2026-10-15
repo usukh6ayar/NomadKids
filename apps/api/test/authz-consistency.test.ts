@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Test } from "@nestjs/testing";
 import { AppModule } from "../src/app.module";
 import { AuthzRepository } from "../src/authz/authz.repository";
-import { canAccessChild } from "../src/authz/child-access";
+import { canAccessChild, canReadChildCard, seesFullChildCard } from "../src/authz/child-access";
 import type { Actor } from "../src/authz/actor";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { ObservationsRepository } from "../src/observations/observations.repository";
@@ -455,5 +455,134 @@ describe("the report reads the same observations as the list", () => {
       expect(forTeacher.report.has(id)).toBe(true);
     }
     expect(forParent.report.size).toBeLessThan(forTeacher.report.size);
+  });
+});
+
+/*
+ * ★ The card-level pair (2026-10-15): `visibleChildCardsWhere` against
+ * `canReadChildCard`, and its `full` half against `seesFullChildCard`. The
+ * doctor's chain copies the admin's history-or-fallback rule, so it is held to
+ * the same edge cases the admin is above.
+ */
+describe("card-level list and detail agree — the doctor and the PE teacher", () => {
+  async function cardList(actor: Actor, childId: string) {
+    const cards = await authz.visibleChildCardsWhere(actor);
+    const prisma = app.get(PrismaService);
+    const seen = await prisma.child.findFirst({
+      where: { AND: [cards.where, { id: childId }] },
+      select: { id: true },
+    });
+    const full = cards.full
+      ? (await authz.childIdsMatching([childId], cards.full)).has(childId)
+      : seen !== null;
+    return { list: seen !== null, full: seen !== null && full };
+  }
+
+  async function expectCardAgreement(
+    actor: Actor,
+    childId: string,
+    expected: { list: boolean; full: boolean },
+    label: string,
+  ) {
+    const facts = await authz.loadChildAccessFacts(actor, childId);
+    const detail = {
+      list: facts !== null && canReadChildCard(actor, facts),
+      full: facts !== null && canReadChildCard(actor, facts) && seesFullChildCard(actor, facts),
+    };
+    const list = await cardList(actor, childId);
+    expect({ case: label, list, detail }).toEqual({
+      case: label,
+      list: expected,
+      detail: expected,
+    });
+  }
+
+  async function setUp() {
+    const kg = await createKindergarten();
+    const year = await createSchoolYear(kg.id);
+    const group = await createGroup(kg.id, year.id);
+    const otherGroup = await createGroup(kg.id, year.id, uniq("other"));
+
+    const doctorUser = await createUser({ username: uniq("doctor") });
+    await createMembership(doctorUser.id, kg.id, "DOCTOR");
+
+    const peUser = await createUser({ username: uniq("pe") });
+    const peMembership = await createMembership(peUser.id, kg.id, "PE_TEACHER");
+    await db.groupSpecialist.create({
+      data: { kindergartenId: kg.id, groupId: group.id, membershipId: peMembership.id },
+    });
+
+    return {
+      kg,
+      year,
+      group,
+      otherGroup,
+      doctor: await actorFor(doctorUser.id),
+      pe: await actorFor(peUser.id),
+    };
+  }
+
+  it("a child with no enrollments — the doctor's fallback, nothing for the PE teacher", async () => {
+    const { kg, doctor, pe } = await setUp();
+    const child = await createChild(kg.id);
+
+    await expectCardAgreement(doctor, child.id, { list: true, full: true }, "doctor, none");
+    await expectCardAgreement(pe, child.id, { list: false, full: false }, "pe, none");
+  });
+
+  it("a child whose only enrollment is soft-deleted", async () => {
+    const { kg, year, group, doctor, pe } = await setUp();
+    const child = await createChild(kg.id);
+    const enrollment = await enrollChild(kg.id, child.id, group.id, year.id);
+    await db.enrollment.update({ where: { id: enrollment.id }, data: { deletedAt: new Date() } });
+
+    await expectCardAgreement(doctor, child.id, { list: true, full: true }, "doctor, deleted");
+    await expectCardAgreement(pe, child.id, { list: false, full: false }, "pe, deleted");
+  });
+
+  it("a child of the assigned group — the PE teacher's card is the partial one", async () => {
+    const { kg, year, group, doctor, pe } = await setUp();
+    const child = await createChild(kg.id);
+    await enrollChild(kg.id, child.id, group.id, year.id);
+
+    await expectCardAgreement(doctor, child.id, { list: true, full: true }, "doctor, group");
+    await expectCardAgreement(pe, child.id, { list: true, full: false }, "pe, group");
+  });
+
+  it("a child of another group, and of another kindergarten", async () => {
+    const { kg, year, otherGroup, doctor, pe } = await setUp();
+    const sibling = await createChild(kg.id);
+    await enrollChild(kg.id, sibling.id, otherGroup.id, year.id);
+    await expectCardAgreement(pe, sibling.id, { list: false, full: false }, "pe, other group");
+    await expectCardAgreement(
+      doctor,
+      sibling.id,
+      { list: true, full: true },
+      "doctor, other group",
+    );
+
+    const elsewhere = await createKindergarten();
+    const stranger = await createChild(elsewhere.id);
+    await expectCardAgreement(
+      doctor,
+      stranger.id,
+      { list: false, full: false },
+      "doctor, other kg",
+    );
+    await expectCardAgreement(pe, stranger.id, { list: false, full: false }, "pe, other kg");
+  });
+
+  it("an ended assignment reaches nothing", async () => {
+    const { kg, year, group, pe } = await setUp();
+    const child = await createChild(kg.id);
+    await enrollChild(kg.id, child.id, group.id, year.id);
+    await db.groupSpecialist.updateMany({ data: { endedOn: new Date() } });
+
+    await expectCardAgreement(
+      await actorFor(pe.userId),
+      child.id,
+      { list: false, full: false },
+      "pe, ended",
+    );
   });
 });

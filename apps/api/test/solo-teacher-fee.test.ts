@@ -9,6 +9,7 @@ import {
   createScenario,
   enrollChild,
   login,
+  setUpSoloWorkspace,
   type AuthSession,
   type Scenario,
 } from "./support/fixtures";
@@ -50,27 +51,20 @@ beforeEach(async () => {
   await app.get(RateLimitService).resetAll();
 
   const signup = await request(server()).post("/v1/teacher-applications").send({
-    fullName: "Дорж Сараа",
+    lastName: "Дорж",
+    firstName: "Сараа",
+    password: PASSWORD,
     phone: "99112233",
     email: "saraa@example.mn",
   });
-  expect(signup.status).toBe(201);
-  await request(server())
-    .post("/v1/auth/invitation/accept")
-    .send({ token: signup.body.invitationToken, password: PASSWORD })
-    .expect(204);
+  expect(signup.status, JSON.stringify(signup.body)).toBe(201);
 
   const kindergarten = await db.kindergarten.findFirstOrThrow({
     where: { kind: "SOLO_TEACHER" },
-    include: { groups: true, schoolYears: true },
   });
+  const { schoolYear, group } = await setUpSoloWorkspace(kindergarten.id);
   const child = await createChild(kindergarten.id, { firstName: "Тэмүүлэн" });
-  await enrollChild(
-    kindergarten.id,
-    child.id,
-    kindergarten.groups[0]!.id,
-    kindergarten.schoolYears[0]!.id,
-  );
+  await enrollChild(kindergarten.id, child.id, group.id, schoolYear.id);
 
   solo = {
     session: await login(app, "99112233", PASSWORD),
