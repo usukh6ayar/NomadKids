@@ -585,7 +585,7 @@ export function WeekTable({
   }
 
   return (
-    <div className="overflow-x-auto rounded-card border border-border bg-surface">
+    <div className="table-scroll rounded-card border border-border bg-surface">
       <table className="w-full min-w-[640px] border-collapse text-caption">
         <caption className="sr-only">Долоо хоногийн цэс</caption>
         <thead>

@@ -151,8 +151,8 @@ export function MethodUnions({ kindergartenId: kg }: { kindergartenId: string })
       ) : null}
 
       {data && data.items.length > 0 ? (
-        <div className="overflow-x-auto rounded-card border border-border bg-surface">
-          <table className="w-full border-collapse text-body">
+        <div className="table-scroll rounded-card border border-border bg-surface">
+          <table className="w-full min-w-[720px] border-collapse text-body">
             <caption className="sr-only">Заах аргын нэгдлийн жагсаалт</caption>
             <thead>
               <tr>

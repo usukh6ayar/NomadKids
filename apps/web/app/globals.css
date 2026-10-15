@@ -876,6 +876,33 @@ fieldset {
   }
 }
 
+/*
+ * A wide table's sideways scroll, made visible — 2026-10-15, the user: on a
+ * phone, and on a Mac whose scrollbars hide until used, the columns past the
+ * edge looked cut off with no sign they were there. A thin bar that is always
+ * drawn says "there is more", and can be dragged with a mouse.
+ */
+@utility table-scroll {
+  overflow-x: auto;
+
+  /*
+   * ★ No `scrollbar-width` / `scrollbar-color`: Chrome 121+ ignores the
+   * `::-webkit-scrollbar` rules below whenever either is set, and falls back
+   * to macOS's hidden overlay bar — the very thing this exists to avoid. (An
+   * `@supports` guard does not survive the build; it was flattened.)
+   */
+  &::-webkit-scrollbar {
+    height: 8px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 9999px;
+  }
+}
+
 @utility scrollbar-none {
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* old Edge */

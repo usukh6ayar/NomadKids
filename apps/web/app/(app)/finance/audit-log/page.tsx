@@ -161,7 +161,7 @@ function ChangeTable({ metadata }: { metadata: { before?: Values; after?: Values
   const fields = [...new Set([...Object.keys(before), ...Object.keys(after)])];
 
   return (
-    <div className="overflow-x-auto">
+    <div className="table-scroll">
       <table className="w-full text-caption">
         <caption className="sr-only">Өмнөх → Шинэ утга</caption>
         <thead>

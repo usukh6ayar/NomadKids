@@ -404,7 +404,7 @@ export function StudentRosterTable({
   const [resetting, setResetting] = useState<{ id: string; name: string } | null>(null);
   const [inviting, setInviting] = useState<{ id: string; name: string } | null>(null);
   return (
-    <div className="overflow-x-auto rounded-card border border-border bg-surface">
+    <div className="table-scroll rounded-card border border-border bg-surface">
       <table className="w-full min-w-[640px] border-collapse text-body">
         <caption className="sr-only">{caption}</caption>
         <thead>
@@ -585,8 +585,8 @@ export function ChildRosterTable({
   const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(null);
   const [resetting, setResetting] = useState<{ id: string; name: string } | null>(null);
   return (
-    <div className="rounded-card border border-border bg-surface">
-      <table className="w-full border-collapse text-body">
+    <div className="table-scroll rounded-card border border-border bg-surface">
+      <table className="w-full min-w-[880px] border-collapse text-body">
         <caption className="sr-only">{caption}</caption>
         <thead>
           <tr>

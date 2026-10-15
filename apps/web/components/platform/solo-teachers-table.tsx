@@ -385,7 +385,7 @@ export function SoloTeachersTable({
       ) : null}
 
       {rows.length > 0 ? (
-        <div className="overflow-x-auto rounded-control border border-border bg-white">
+        <div className="table-scroll rounded-control border border-border bg-white">
           <table className="w-full min-w-[1400px] border-separate border-spacing-0 text-left text-caption">
             <thead className="bg-slate-50 text-muted">
               <tr className="[&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-r [&>th]:border-border [&>th]:px-3 [&>th]:py-2 [&>th]:font-semibold [&>th:last-child]:border-r-0">

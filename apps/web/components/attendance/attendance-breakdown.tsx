@@ -137,8 +137,8 @@ function BreakdownTable({ days, rows }: { days: string[]; rows: AttendanceJourna
   const grand = (key: StatusKey) => perChild.reduce((sum, counts) => sum + counts[key], 0);
 
   return (
-    <div className="overflow-x-auto rounded-card border border-border">
-      <table className="w-full border-collapse text-body">
+    <div className="table-scroll rounded-card border border-border">
+      <table className="w-full min-w-[880px] border-collapse text-body">
         <caption className="sr-only">Ирцийн задаргаа</caption>
         <thead className="bg-sunken">
           <tr>

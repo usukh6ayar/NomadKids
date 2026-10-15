@@ -383,7 +383,7 @@ function Platform() {
         ) : null}
 
         {rows.length > 0 ? (
-          <div className="overflow-x-auto rounded-control border border-border bg-white">
+          <div className="table-scroll rounded-control border border-border bg-white">
             <table
               className={`w-full ${showEsis ? "min-w-[1860px]" : "min-w-[1540px]"} border-separate border-spacing-0 text-left text-caption`}
             >

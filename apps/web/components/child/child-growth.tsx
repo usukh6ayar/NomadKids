@@ -163,7 +163,7 @@ export function ChildGrowth({
           </h2>
           <p className="text-caption text-muted">Намар, хавар хоёр удаа бүртгэнэ</p>
         </div>
-        <div className="overflow-x-auto rounded-card border border-border bg-surface">
+        <div className="table-scroll rounded-card border border-border bg-surface">
           <table className="w-full min-w-[720px] border-collapse text-body">
             <caption className="sr-only">Өсөлтийн бүх хэмжилт</caption>
             <thead>

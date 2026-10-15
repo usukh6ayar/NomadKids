@@ -503,7 +503,7 @@ function ChildCoverage({
         "утсан дээр бүрэн харагддаг болгоод шах". The 560px floor and the
         16px cell padding apply from `sm` up only.
       */}
-      <div className="overflow-x-auto">
+      <div className="table-scroll">
         <table className="w-full border-collapse text-compact sm:min-w-[560px] sm:text-body">
           <caption className="sr-only">Хүүхдийн хамрагдалт</caption>
           <thead className="bg-sunken">

@@ -131,14 +131,9 @@ describe("a group's page", () => {
     expect(link).toHaveAttribute("href", "/children/99999999-9999-4999-8999-000000000001/general");
     // No photographs in the director's table — 2026-09-25.
     expect(table.querySelector("img")).toBeNull();
-    // Unclipped, so the ⋯ menu opens whole.
-    for (
-      let node = table.parentElement;
-      node && node !== document.body;
-      node = node.parentElement
-    ) {
-      expect(node.className).not.toMatch(/overflow-(hidden|x-auto|auto)/);
-    }
+    // Scrolls sideways on a phone (2026-10-15, the user); the ⋯ menu is
+    // portalled out of the scroller, so it still opens whole.
+    expect(table.parentElement).toHaveClass("table-scroll");
   });
 
   // No count badge and no register doors on a director's copy — 2026-09-25.

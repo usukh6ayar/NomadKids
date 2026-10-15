@@ -160,7 +160,7 @@ describe("the family's meal screen", () => {
     expect(within(table).getAllByRole("columnheader")).toHaveLength(8); // Хоолны цаг + 7 days
     expect(within(table).getByText("Тараг, Мюсли")).toBeInTheDocument();
 
-    expect(table.parentElement?.className).toContain("overflow-x-auto");
+    expect(table.parentElement?.className).toContain("table-scroll");
   });
 
   /*

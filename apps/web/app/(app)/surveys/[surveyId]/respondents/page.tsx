@@ -194,7 +194,7 @@ export default function SurveyRespondentsPage() {
               description="Хайлт эсвэл шүүлтэд тохирох хүүхэд алга. Нэрээ цэвэрлэж үзнэ үү."
             />
           ) : (
-            <Card pad="none" className="overflow-x-auto">
+            <Card pad="none" className="table-scroll">
               <table className="w-full border-collapse text-body">
                 <caption className="sr-only">Хариулсан хүүхдүүд</caption>
                 <thead>
