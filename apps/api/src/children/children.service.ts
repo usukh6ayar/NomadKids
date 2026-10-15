@@ -325,7 +325,7 @@ export class ChildrenService {
   async archive(actor: Actor, childId: string) {
     const facts = await this.childAccess.assertCanArchive(actor, childId);
 
-    const archived = await this.repo.softDeleteChild(childId);
+    const archived = await this.repo.archiveChild(childId);
     await this.audit.append({
       action: "DELETE",
       kindergartenId: facts.childKindergartenId,

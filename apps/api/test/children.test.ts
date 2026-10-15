@@ -564,6 +564,47 @@ describe("a teacher archives a child of their own group (the user, 2026-10-14)",
   });
 });
 
+/**
+ * ★ Archiving a child ends their enrolment (2026-10-15).
+ *
+ * Every group roster — the day sheet, the funding register, the invoice run,
+ * the group-delete guard — reads `Enrollment` with `status: "ACTIVE"` and never
+ * looks at `Child.deletedAt`. Archiving only the child left the enrolment live,
+ * and a child a teacher removed as a mistake stayed on the attendance sheet.
+ */
+describe("an archived child leaves the group's roster", () => {
+  async function archiveA() {
+    const res = await authed(request(server()).delete(`/v1/children/${a.child.id}`), adminA);
+    expect(res.status).toBe(200);
+  }
+
+  it("ends the enrolment with the child", async () => {
+    await archiveA();
+    const rows = await db.enrollment.findMany({ where: { childId: a.child.id } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.status).toBe("ENDED");
+    expect(rows[0]!.endedOn).not.toBeNull();
+  });
+
+  it("is gone from the attendance day sheet", async () => {
+    await archiveA();
+    const res = await authed(
+      request(server()).get(`/v1/groups/${a.group.id}/attendance?date=2026-10-15`),
+      teacherA,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.map((row: { child: { id: string } }) => row.child.id)).not.toContain(
+      a.child.id,
+    );
+  });
+
+  it("no longer keeps its group from being archived", async () => {
+    await archiveA();
+    const res = await authed(request(server()).delete(`/v1/groups/${a.group.id}`), adminA);
+    expect(res.status).toBe(200);
+  });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Registration and enrollment history
 // ═══════════════════════════════════════════════════════════════════════════

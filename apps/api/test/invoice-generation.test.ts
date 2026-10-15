@@ -152,6 +152,21 @@ describe("generating from the tariffs", () => {
     expect(invoice.lineItems[0]!.type).toBe("TUITION");
   });
 
+  it("bills nobody for a child who was archived", async () => {
+    // ★ 2026-10-15: archiving left the enrolment ACTIVE, and `billingInputs`
+    // reads enrolments — a child removed as a mistake was invoiced anyway.
+    await tariff();
+    const admin = await login(app, a.adminUser.username);
+    const archived = await authed(request(server()).delete(`/v1/children/${a.child.id}`), admin);
+    expect(archived.status).toBe(200);
+
+    const res = await generateMonth(accountant, a.kindergarten.id);
+
+    expect(res.status).toBe(201);
+    expect(res.body.created).toBe(0);
+    expect(await db.invoice.count({ where: { childId: a.child.id } })).toBe(0);
+  });
+
   it("gives the invoice a number a parent can quote", async () => {
     await tariff();
     await generateMonth(accountant, a.kindergarten.id);
