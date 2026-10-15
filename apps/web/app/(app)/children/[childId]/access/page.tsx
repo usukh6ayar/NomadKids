@@ -4,8 +4,10 @@ import { useQuery } from "@tanstack/react-query";
 import { CalendarClock } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useState } from "react";
-import { accessStatusSchema } from "@kinder/contracts";
+import { accessStatusSchema, type AccessPeriod } from "@kinder/contracts";
+import { AccessInvoice, useOwnChildName } from "@/components/child/access-invoice";
 import { AccessPayDialog } from "@/components/child/access-pay-dialog";
+import { AccessPeriodPicker } from "@/components/child/access-period-picker";
 import { PageHeader } from "@/components/shell/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
@@ -14,8 +16,6 @@ import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { daysUntil, formatDate } from "@/lib/format";
-import { tugrik, type BillingPeriod } from "@/lib/pricing";
-import { cn } from "@/lib/utils";
 
 /**
  * «Үйлчилгээний эрх» — what a family pays NomadKids to use the system, kept
@@ -32,12 +32,16 @@ import { cn } from "@/lib/utils";
  * term (#217) — not `lib/pricing.ts`: the server's figure is what QPay
  * charges. «Улирлаар» is offered only while `termAmount` is set: terms are
  * sold here and today is in one.
+ *
+ * ★★ 2026-10-15, the user: the paid period as a receipt with a PDF, and the
+ * renewal as an invoice before the QR — `AccessInvoice`.
  */
 const REMIND_DAYS = 14;
 
 export default function ChildAccessPage() {
   const { childId } = useParams<{ childId: string }>();
-  const [period, setPeriod] = useState<BillingPeriod>("year");
+  const [period, setPeriod] = useState<AccessPeriod>("YEAR");
+  const childName = useOwnChildName(childId);
 
   const status = useQuery({
     queryKey: qk.childAccess(childId),
@@ -55,8 +59,8 @@ export default function ChildAccessPage() {
 
   const { required, active, subscription, amount, termAmount } = status.data;
   // Without a term price the year is the only choice, whatever was picked.
-  const chosen: BillingPeriod = termAmount ? period : "year";
-  const price = chosen === "year" ? amount : termAmount;
+  const chosen: AccessPeriod = termAmount ? period : "YEAR";
+  const price = chosen === "YEAR" ? amount : (termAmount ?? null);
   const daysLeft = subscription && active ? daysUntil(subscription.expiresAt) : null;
   const canRenew = required && (!active || (daysLeft !== null && daysLeft <= REMIND_DAYS));
 
@@ -90,50 +94,50 @@ export default function ChildAccessPage() {
         )}
       </Card>
 
+      {required && subscription?.paidAt ? (
+        <AccessInvoice
+          data={{
+            state: "paid",
+            childName,
+            period: subscription.period ?? "YEAR",
+            termNumber: subscription.termNumber,
+            schoolYearName: subscription.schoolYear.name,
+            amount: subscription.amount,
+            number: subscription.id,
+            paidAt: subscription.paidAt,
+            expiresAt: subscription.expiresAt,
+          }}
+        />
+      ) : null}
+
       {canRenew ? (
         <Card pad="roomy" className="flex flex-col gap-4">
           <SectionHeader title="Сунгах" lede="Улирлаар эсвэл жилээр сонгоод QPay-ээр төлнө." />
 
-          <div
-            role="radiogroup"
-            aria-label="Төлбөрийн хугацаа"
-            className="grid max-w-[420px] grid-cols-2 gap-1 rounded-pill bg-canvas p-1"
-          >
-            {(
-              [
-                ["term", "Улирлаар"],
-                ["year", "Жилээр — хямд"],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={chosen === value}
-                disabled={value === "term" && !termAmount}
-                onClick={() => setPeriod(value)}
-                className={cn(
-                  "min-h-11 rounded-pill px-3 text-body font-semibold transition-colors disabled:opacity-50",
-                  chosen === value ? "bg-primary text-white shadow-sm" : "text-muted",
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          <p aria-live="polite" className="text-body text-ink">
-            <strong className="text-title">{price ? tugrik(Number(price)) : "—"}</strong> /{" "}
-            {chosen === "year" ? "хичээлийн жил" : "улирал"}
-          </p>
+          <AccessPeriodPicker
+            value={chosen}
+            onChange={setPeriod}
+            termAvailable={Boolean(termAmount)}
+            className="max-w-[420px]"
+          />
           {!termAmount ? (
             <p className="text-caption text-muted">Одоогоор зөвхөн жилээр төлөх боломжтой.</p>
           ) : null}
 
+          <AccessInvoice
+            data={{
+              state: "due",
+              childName,
+              // No year named: a renewal may already be next year's.
+              period: chosen,
+              amount: price,
+            }}
+          />
+
           <AccessPayDialog
             key={chosen}
             childId={childId}
-            period={chosen === "year" ? "YEAR" : "TERM"}
+            period={chosen}
             onPaid={() => status.refetch()}
             trigger={<Button className="self-start">QPay-ээр төлөх</Button>}
           />
