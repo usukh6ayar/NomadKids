@@ -19,6 +19,7 @@ import { useToast } from "@/components/ui/toast";
 import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 import { SingleImageUpload } from "@/components/media/single-image-upload";
 import { useEsisRows } from "@/components/esis/use-esis-rows";
+import { GroupSpecialists } from "@/components/admin/groups/group-specialists";
 
 const usersSchema = paginated(adminUserSchema);
 
@@ -318,6 +319,9 @@ export function ManageTeachersDialog({
               </>
             )}
           </form>
+
+          {/* The group's PE and music teachers — 2026-10-15. */}
+          <GroupSpecialists groupId={groupId} />
 
           {/*
             ★ **ЭСИС-д байгаа, энд бүртгэлгүй багш нар** — 2026-09-25, at the

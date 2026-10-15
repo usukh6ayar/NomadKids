@@ -19,7 +19,9 @@ import { Role } from "../../domain/enums";
  *   else's database must not decide who administers a kindergarten.
  *
  * `ACCOUNTANT` is absent for the same reason as `ADMIN`. Both stay
- * invitation-only.
+ * invitation-only — and so do `DOCTOR` (every child's health record),
+ * `PE_TEACHER` and `MUSIC_TEACHER` (whose ISCO group is `2342`, the class
+ * teacher's: a code cannot tell them apart, so it must not pick).
  */
 const ROLE_BY_OCCUPATION_GROUP: Record<string, Role> = {
   /** Early-childhood educators — багш, багшийн туслах. */

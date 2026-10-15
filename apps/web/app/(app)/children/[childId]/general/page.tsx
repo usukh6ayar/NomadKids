@@ -55,6 +55,15 @@ export default function ChildGeneralPage() {
   const childId = params.childId;
   const { hasRole } = useSession();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
+  /*
+    ★ 2026-10-15: the doctor writes the health record and the growth
+    measurements; a PE/music teacher reaches neither. Neither has the
+    placement history or the portfolio, so those are not offered — a tab that
+    answers 404 is a broken tab.
+  */
+  const isDoctor = hasRole("DOCTOR");
+  const isCardStaff = !isStaff && (isDoctor || hasRole("PE_TEACHER") || hasRole("MUSIC_TEACHER"));
+  const canHealth = isStaff || isDoctor;
 
   const child = useQuery({
     queryKey: qk.child(childId),
@@ -103,9 +112,9 @@ export default function ChildGeneralPage() {
 
       <ChildHeroProfile
         child={data}
-        showHealthAlert={isStaff}
-        canEditPhoto
-        actions={<ChildActions childId={childId} isStaff={isStaff} />}
+        showHealthAlert={canHealth}
+        canEditPhoto={!isCardStaff}
+        actions={isCardStaff ? null : <ChildActions childId={childId} isStaff={isStaff} />}
       />
 
       <ChildTabs
@@ -115,47 +124,55 @@ export default function ChildGeneralPage() {
             label: "Ерөнхий",
             content: <ChildGeneralInfo child={data} childId={childId} isStaff={isStaff} />,
           },
-          {
-            value: GROWTH,
-            label: "Өсөлт",
-            content: (
-              <ChildGrowth
-                childId={childId}
-                isStaff={isStaff}
-                dateOfBirth={data.dateOfBirth}
-                currentSchoolYear={
-                  data.enrollments.find((enrollment) => enrollment.status === "ACTIVE")?.schoolYear
-                    ?.name
-                }
-              />
-            ),
-          },
-          {
-            value: HEALTH,
-            label: "Эрүүл мэнд",
-            content: (
-              <ChildHealth
-                childId={childId}
-                isStaff={isStaff}
-                dateOfBirth={data.dateOfBirth}
-                currentSchoolYear={
-                  data.enrollments.find((enrollment) => enrollment.status === "ACTIVE")?.schoolYear
-                    ?.name
-                }
-              />
-            ),
-          },
-          {
-            value: PLACEMENT,
-            label: "Суралцсан түүх",
-            content: (
-              <ChildEnrollmentArchive
-                childId={childId}
-                dateOfBirth={data.dateOfBirth}
-                nationalId={data.nationalId}
-              />
-            ),
-          },
+          ...(isCardStaff && !isDoctor
+            ? []
+            : [
+                {
+                  value: GROWTH,
+                  label: "Өсөлт",
+                  content: (
+                    <ChildGrowth
+                      childId={childId}
+                      isStaff={canHealth}
+                      dateOfBirth={data.dateOfBirth}
+                      currentSchoolYear={
+                        data.enrollments.find((enrollment) => enrollment.status === "ACTIVE")
+                          ?.schoolYear?.name
+                      }
+                    />
+                  ),
+                },
+                {
+                  value: HEALTH,
+                  label: "Эрүүл мэнд",
+                  content: (
+                    <ChildHealth
+                      childId={childId}
+                      isStaff={canHealth}
+                      dateOfBirth={data.dateOfBirth}
+                      currentSchoolYear={
+                        data.enrollments.find((enrollment) => enrollment.status === "ACTIVE")
+                          ?.schoolYear?.name
+                      }
+                    />
+                  ),
+                },
+              ]),
+          ...(isCardStaff
+            ? []
+            : [
+                {
+                  value: PLACEMENT,
+                  label: "Суралцсан түүх",
+                  content: (
+                    <ChildEnrollmentArchive
+                      childId={childId}
+                      dateOfBirth={data.dateOfBirth}
+                      nationalId={data.nationalId}
+                    />
+                  ),
+                },
+              ]),
         ]}
       />
     </div>

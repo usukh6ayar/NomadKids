@@ -159,3 +159,7 @@ export const assignTeacherSchema = z.object({
   role: teacherRoleSchema.default("LEAD"),
 });
 export type AssignTeacherDto = z.infer<typeof assignTeacherSchema>;
+
+/** `POST /groups/:id/specialists` — a PE_TEACHER or MUSIC_TEACHER membership. */
+export const assignSpecialistSchema = z.object({ membershipId: uuidSchema });
+export type AssignSpecialistDto = z.infer<typeof assignSpecialistSchema>;

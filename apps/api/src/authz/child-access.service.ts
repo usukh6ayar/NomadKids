@@ -7,7 +7,13 @@ import {
   canAccessChild,
   canAdministerChild,
   canArchiveChild,
+  canContributeChildHealth,
   canContributeMediaForChild,
+  canObserveChild,
+  canReadChildCard,
+  canReadChildHealth,
+  canReadObservations,
+  canRecordChildHealth,
   canRecordForChild,
   canViewChildFinance,
   isGuardianOf,
@@ -142,6 +148,53 @@ export class ChildAccessService {
   async assertCanContributeMedia(actor: Actor, childId: string): Promise<ChildAccessFacts> {
     const facts = await this.repo.loadChildAccessFacts(actor, childId);
     if (!facts || !canContributeMediaForChild(actor, facts)) throw new NotFoundException();
+    await this.assertFeePaid(actor, facts);
+    return facts;
+  }
+
+  /**
+   * The per-purpose reads and writes of the PE/music teacher and the doctor
+   * (2026-10-15). Each is the existing rule *plus* that role, never a role on
+   * its own — and every one goes through the same fee gate as the rest.
+   */
+
+  /** The child's card: readers, a specialist of their group, the doctor. */
+  async assertCanReadCard(actor: Actor, childId: string): Promise<ChildAccessFacts> {
+    return this.assertGated(actor, childId, canReadChildCard);
+  }
+
+  /** Observations about the child: readers plus a specialist of their group. */
+  async assertCanReadObservations(actor: Actor, childId: string): Promise<ChildAccessFacts> {
+    return this.assertGated(actor, childId, canReadObservations);
+  }
+
+  /** Filing or editing a staff observation: writers plus a specialist. */
+  async assertCanObserve(actor: Actor, childId: string): Promise<ChildAccessFacts> {
+    return this.assertGated(actor, childId, canObserveChild);
+  }
+
+  /** The health record: readers plus the doctor. */
+  async assertCanReadHealth(actor: Actor, childId: string): Promise<ChildAccessFacts> {
+    return this.assertGated(actor, childId, canReadChildHealth);
+  }
+
+  /** Writing the health record: writers plus the doctor. */
+  async assertCanRecordHealth(actor: Actor, childId: string): Promise<ChildAccessFacts> {
+    return this.assertGated(actor, childId, canRecordChildHealth);
+  }
+
+  /** The health routes a family also writes to: contributors plus the doctor. */
+  async assertCanContributeHealth(actor: Actor, childId: string): Promise<ChildAccessFacts> {
+    return this.assertGated(actor, childId, canContributeChildHealth);
+  }
+
+  private async assertGated(
+    actor: Actor,
+    childId: string,
+    allowed: (actor: Actor, facts: ChildAccessFacts) => boolean,
+  ): Promise<ChildAccessFacts> {
+    const facts = await this.repo.loadChildAccessFacts(actor, childId);
+    if (!facts || !allowed(actor, facts)) throw new NotFoundException();
     await this.assertFeePaid(actor, facts);
     return facts;
   }

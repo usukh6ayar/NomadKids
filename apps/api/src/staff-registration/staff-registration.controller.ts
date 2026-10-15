@@ -60,7 +60,7 @@ export class StaffRegistrationController {
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
     @Body(new ZodValidationPipe(rosterInvitationSchema)) body: RosterInvitationDto,
   ) {
-    return this.service.inviteFromRoster(actor, params.id, body.esisPersonId);
+    return this.service.inviteFromRoster(actor, params.id, body.esisPersonId, body.role);
   }
 }
 

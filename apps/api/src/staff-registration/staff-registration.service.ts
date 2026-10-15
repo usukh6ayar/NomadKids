@@ -210,9 +210,11 @@ export class StaffRegistrationService {
    * asking: a stale roster is refused outright, a row whose job code maps to
    * no role (the жижүүр, the эрхлэгч) is skipped, and a person who already has
    * an account is not on the unclaimed list at all. `only` narrows it to one
-   * row — «Урих» on a single line.
+   * row — «Урих» on a single line — and there the director may pick the role
+   * (`ROSTER_INVITABLE_ROLES`), since a job code cannot tell a PE or music
+   * teacher from the class teacher.
    */
-  async inviteFromRoster(actor: Actor, kindergartenId: string, only?: string) {
+  async inviteFromRoster(actor: Actor, kindergartenId: string, only?: string, chosen?: Role) {
     this.tenants.assertAdmin(actor, kindergartenId);
 
     const [identities, roster] = await Promise.all([
@@ -231,8 +233,9 @@ export class StaffRegistrationService {
       );
     }
 
+    // ★ A role the director chose wins over the job code's — one row only (DTO).
     const invitable = rows.flatMap((row) => {
-      const role = roleForJobCode(row.jobCode);
+      const role = chosen ?? roleForJobCode(row.jobCode);
       return role ? [{ row, role }] : [];
     });
     if (only !== undefined && invitable.length === 0) {

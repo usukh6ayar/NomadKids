@@ -654,6 +654,46 @@ describe("a director invites from the ESIS roster", () => {
     ]);
   });
 
+  it("lets the director choose the role on one row — a PE teacher ESIS files as a teacher", async () => {
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), a.adminSession).send({
+      esisPersonId: "esis-teacher",
+      role: "PE_TEACHER",
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.items[0].role).toBe("PE_TEACHER");
+    const account = await db.user.findUniqueOrThrow({
+      where: { esisPersonId: "esis-teacher" },
+      include: { memberships: true },
+    });
+    expect(account.memberships.map((m) => m.role)).toEqual(["PE_TEACHER"]);
+  });
+
+  it("grants a role the job code gives none, when the director picks it — the doctor", async () => {
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), a.adminSession).send({
+      esisPersonId: "esis-caretaker",
+      role: "DOCTOR",
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.items[0].role).toBe("DOCTOR");
+  });
+
+  it("refuses a chosen role for the whole roster, and ADMIN or ACCOUNTANT on any row", async () => {
+    const bulk = await authed(request(server()).post(url(a.kindergarten.id)), a.adminSession).send({
+      role: "PE_TEACHER",
+    });
+    expect(bulk.status).toBe(400);
+
+    for (const role of ["ADMIN", "ACCOUNTANT", "PARENT"]) {
+      const res = await authed(request(server()).post(url(a.kindergarten.id)), a.adminSession).send(
+        { esisPersonId: "esis-teacher", role },
+      );
+      expect(res.status, role).toBe(400);
+    }
+    expect(await db.user.count({ where: { esisPersonId: { not: null } } })).toBe(0);
+  });
+
   it("answers 404 for a person not on this kindergarten's unclaimed list", async () => {
     const res = await authed(request(server()).post(url(a.kindergarten.id)), a.adminSession).send({
       esisPersonId: "not-on-the-roster",

@@ -65,7 +65,14 @@ type StaffUser = z.infer<typeof adminUserSchema>;
 const PAGE_SIZES = [20, 50, 100] as const;
 
 /** The roles of the Ажилтан section — every staff role but a teacher's. */
-const OTHER_STAFF_ROLES = ["ADMIN", "COOK", "ACCOUNTANT"] as const satisfies readonly Role[];
+const OTHER_STAFF_ROLES = [
+  "ADMIN",
+  "COOK",
+  "ACCOUNTANT",
+  "PE_TEACHER",
+  "MUSIC_TEACHER",
+  "DOCTOR",
+] as const satisfies readonly Role[];
 
 type SectionKind = "teacher" | "staff";
 
@@ -1147,17 +1154,20 @@ function UnclaimedEsisStaff() {
                 <Td className="py-1.5 font-medium text-ink">{shortName(person)}</Td>
                 <Td className="py-1.5 text-muted">{person.positionName || "—"}</Td>
                 <Td className="py-1.5 text-muted">
-                  {person.role ? ROLE_LABEL[person.role] : "Эрх олгохгүй"}
+                  {person.role ? ROLE_LABEL[person.role] : "Сонгоно"}
                 </Td>
                 <Td className="py-1.5 text-right">
-                  {person.role ? (
-                    <RosterStaffInvitations
-                      kindergartenId={primaryKindergartenId}
-                      esisPersonId={person.esisPersonId}
-                      label="Урих"
-                      invalidateKeys={invalidateKeys}
-                    />
-                  ) : null}
+                  {/*
+                    Every row — the director picks the role where the job code
+                    gives none (the doctor) or the wrong one (PE, music).
+                  */}
+                  <RosterStaffInvitations
+                    kindergartenId={primaryKindergartenId}
+                    esisPersonId={person.esisPersonId}
+                    suggestedRole={person.role ?? null}
+                    label="Урих"
+                    invalidateKeys={invalidateKeys}
+                  />
                 </Td>
               </tr>
             ))}

@@ -4,10 +4,17 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import QRCode from "qrcode";
 import { Printer, UsersRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { ROLE_LABEL, rosterInvitationsSchema, type RosterInvitations } from "@kinder/contracts";
+import {
+  ROLE_LABEL,
+  ROSTER_INVITABLE_ROLES,
+  rosterInvitationsSchema,
+  type Role,
+  type RosterInvitations,
+} from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
+import { Field, Select } from "@/components/ui/field";
 import { ModalOverlay } from "@/components/ui/modal-overlay";
 import { FormError } from "@/components/ui/states";
 import { BRAND } from "@/lib/vocabulary";
@@ -24,11 +31,14 @@ import { fullName } from "@/lib/format";
  * asked again. The director hands each card to the person named on it — that
  * hand-over is what makes the link right.
  *
- * `esisPersonId` narrows it to one person — «Урих» on a single row.
+ * `esisPersonId` narrows it to one person — «Урих» on a single row — and
+ * there the director picks the role: ESIS gives a PE or music teacher the
+ * class teacher's job code, so it cannot choose for them (2026-10-15).
  */
 export function RosterStaffInvitations({
   kindergartenId,
   esisPersonId,
+  suggestedRole,
   label = "Бүх багшийг урих",
   invalidateKeys,
   size = "sm",
@@ -36,6 +46,8 @@ export function RosterStaffInvitations({
 }: {
   kindergartenId: string;
   esisPersonId?: string;
+  /** The job code's role, preselected; `null` — the director must choose. */
+  suggestedRole?: Role | null;
   label?: string;
   /** Query keys to refresh once the accounts exist. */
   invalidateKeys: readonly (readonly unknown[])[];
@@ -45,12 +57,16 @@ export function RosterStaffInvitations({
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const single = esisPersonId !== undefined;
+  const preset = (ROSTER_INVITABLE_ROLES as readonly string[]).includes(suggestedRole ?? "")
+    ? (suggestedRole as Role)
+    : "";
+  const [role, setRole] = useState<Role | "">(preset);
 
   const invite = useMutation({
     mutationFn: () =>
       mutate(`/kindergartens/${kindergartenId}/staff-invitations`, rosterInvitationsSchema, {
         method: "POST",
-        body: single ? { esisPersonId } : {},
+        body: single ? { esisPersonId, ...(role ? { role } : {}) } : {},
       }),
   });
 
@@ -64,6 +80,7 @@ export function RosterStaffInvitations({
     const created = invite.isSuccess;
     setOpen(false);
     invite.reset();
+    setRole(preset);
     if (created) {
       for (const queryKey of invalidateKeys) void queryClient.invalidateQueries({ queryKey });
     }
@@ -94,6 +111,26 @@ export function RosterStaffInvitations({
 
                 <FormError message={invite.isError ? errorMessage(invite.error) : null} />
 
+                {single ? (
+                  <Field label="Эрх" required>
+                    {({ id, describedBy }) => (
+                      <Select
+                        id={id}
+                        aria-describedby={describedBy}
+                        value={role}
+                        onChange={(e) => setRole(e.target.value as Role | "")}
+                      >
+                        {preset ? null : <option value="">Эрх сонгоно уу</option>}
+                        {ROSTER_INVITABLE_ROLES.map((value) => (
+                          <option key={value} value={value}>
+                            {ROLE_LABEL[value]}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </Field>
+                ) : null}
+
                 <p className="rounded-control bg-canvas px-3.5 py-2.5 text-caption leading-relaxed text-muted">
                   Ажилтан QR-аа уншуулаад утасны дугаараа баталгаажуулж, нууц үгээ үүсгэнэ. Бүртгэл
                   нь ЭСИС-ийн бүртгэлтэйгээ <strong>автоматаар холбогдоно</strong>. QR бүрийг нэр
@@ -101,7 +138,10 @@ export function RosterStaffInvitations({
                 </p>
 
                 <div className="flex flex-wrap gap-2 border-t border-border pt-4">
-                  <Button onClick={() => invite.mutate()} disabled={invite.isPending}>
+                  <Button
+                    onClick={() => invite.mutate()}
+                    disabled={invite.isPending || (single && !role)}
+                  >
                     <UsersRound size={18} aria-hidden />
                     {invite.isPending ? "Үүсгэж байна…" : "Урилга үүсгэх"}
                   </Button>

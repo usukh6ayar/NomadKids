@@ -63,6 +63,14 @@ enum Role {
   /// every kindergarten and stays behind `isSuperAdmin`; this role reads
   /// `/kindergartens/:id/funding`, which is one kindergarten's own money.
   ACCOUNTANT
+  /// Биеийн тамирын багш — the groups a director assigns (`GroupSpecialist`),
+  /// their children's cards and observations. No register, no health, no money.
+  PE_TEACHER
+  /// Хөгжмийн багш — the same reach as PE_TEACHER.
+  MUSIC_TEACHER
+  /// Эмч — every child's health record in the kindergarten, and nothing of the
+  /// development record. Order А/261 Annex 2 §1 #11 «Зөвхөн эмч».
+  DOCTOR
 }
 
 enum AuthTokenPurpose {
@@ -579,6 +587,7 @@ model Membership {
   user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   kindergarten     Kindergarten        @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   assignments      GroupTeacher[]
+  specialistGroups GroupSpecialist[]
   methodUnionsLed  MethodUnion[]       @relation("MethodUnionLead")
   methodUnionSeats MethodUnionMember[]
 
@@ -842,6 +851,7 @@ model Kindergarten {
   schoolYears            SchoolYear[]
   groups                 Group[]
   groupTeachers          GroupTeacher[]
+  groupSpecialists       GroupSpecialist[]
   children               Child[]
   guardianships          Guardianship[]
   enrollments            Enrollment[]
@@ -1226,6 +1236,7 @@ model Group {
   kindergarten           Kindergarten            @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   schoolYear             SchoolYear              @relation(fields: [schoolYearId], references: [id], onDelete: Restrict)
   teachers               GroupTeacher[]
+  specialists            GroupSpecialist[]
   enrollments            Enrollment[]
   chatMessages           ChatMessage[]
   notificationTargets    NotificationTarget[]
@@ -1274,6 +1285,41 @@ model GroupTeacher {
   @@index([groupId, membershipId])
   @@index([membershipId, endedOn])
   @@map("group_teachers")
+}
+
+/// ★ A PE or music teacher's groups — deliberately NOT `GroupTeacher`.
+///
+/// Eight repositories read `GroupTeacher` as "this group's teachers": the
+/// family's archive card, chat rooms, notifications, the ESIS roster. A
+/// specialist written there would be a group's «Ахлах багш» to its families,
+/// and a role change from PE_TEACHER to TEACHER would turn every row into a
+/// full teacher assignment — register, health, meals — with no one deciding
+/// it. A table only the specialist predicate reads cannot do either.
+///
+/// Read only for memberships whose role is PE_TEACHER or MUSIC_TEACHER
+/// (`AuthzRepository.loadActiveSpecialistGroupIds`), so a row outlives a role
+/// change harmlessly. Revoked by `endedOn`, like `GroupTeacher`.
+model GroupSpecialist {
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  groupId        String @db.Uuid
+  membershipId   String @db.Uuid
+
+  startedOn DateTime? @db.Date
+  endedOn   DateTime? @db.Date
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  group        Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  membership   Membership   @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([groupId, membershipId])
+  @@index([membershipId, endedOn])
+  @@index([kindergartenId])
+  @@map("group_specialists")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

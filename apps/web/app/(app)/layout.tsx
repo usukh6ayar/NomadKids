@@ -136,6 +136,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   */
   const isCook = hasRole("COOK");
   const isAccountant = hasRole("ACCOUNTANT");
+  /*
+    ★ The PE/music teacher and the doctor (2026-10-15) — not `isStaff` either.
+    They reach children for one purpose each (observations; the health
+    record), so their menu is the children's list and the shared boards.
+  */
+  const isCardStaff =
+    !isStaff &&
+    !isCook &&
+    !isAccountant &&
+    (hasRole("PE_TEACHER") || hasRole("MUSIC_TEACHER") || hasRole("DOCTOR"));
 
   useEffect(() => {
     if (isLoading || session) return;
@@ -164,7 +174,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const myChildren = useQuery({
     queryKey: qk.myChildren(),
     queryFn: () => get("/children/mine", ownChildrenSchema),
-    enabled: Boolean(session) && !isSuperAdmin && !isStaff && !isCook && !isAccountant,
+    enabled:
+      Boolean(session) && !isSuperAdmin && !isStaff && !isCook && !isAccountant && !isCardStaff,
     staleTime: 60_000,
   });
 
@@ -188,6 +199,20 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         sections={platformSections()}
         variant="platform"
         workspaceTheme="platform"
+      >
+        {children}
+      </AppShell>
+    );
+  }
+
+  if (isCardStaff) {
+    return (
+      <AppShell
+        nav={cardStaffNav()}
+        sections={cardStaffSections()}
+        variant="teacher"
+        teacherTheme
+        workspaceTheme="teacher"
       >
         {children}
       </AppShell>
@@ -1191,6 +1216,52 @@ function withSupportRailGlyphs(
       return glyph ? { ...entry, icon: <RailGlyph icon={glyph} /> } : entry;
     }),
   }));
+}
+
+/** The PE/music teacher's and the doctor's phone bar — 2026-10-15. */
+function cardStaffNav(): NavItem[] {
+  return [
+    {
+      href: "/children",
+      label: "Суралцагч",
+      icon: <RailGlyph icon={BookOpen} />,
+      barIcon: <BookOpen {...pillIconProps} />,
+    },
+    {
+      href: "/notifications",
+      label: "Мэдээ",
+      icon: <RailGlyph icon={Newspaper} />,
+      barIcon: <FileText {...pillIconProps} />,
+      badge: "unread",
+    },
+    {
+      href: "/chat",
+      label: "Чат",
+      icon: <RailGlyph icon={MessageCircle} />,
+      barIcon: <MessageCircle {...pillIconProps} />,
+    },
+    {
+      href: "/settings",
+      label: "Цэс",
+      icon: <Menu {...iconProps} />,
+      barIcon: <Menu {...pillIconProps} />,
+    },
+  ];
+}
+
+/** And their side menu: the same four, nothing they would meet a 404 on. */
+function cardStaffSections(): NavSection[] {
+  return [
+    {
+      title: "",
+      entries: [
+        { label: "Суралцагч", href: "/children", icon: <RailGlyph icon={BookOpen} /> },
+        { label: "Мэдээ", href: "/notifications", icon: <RailGlyph icon={Newspaper} /> },
+        { label: "Чат", href: "/chat", icon: <RailGlyph icon={MessageCircle} /> },
+        { label: "Хувийн тохиргоо", href: "/settings", icon: <RailGlyph icon={Settings} /> },
+      ],
+    },
+  ];
 }
 
 /**

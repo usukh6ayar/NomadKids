@@ -36,6 +36,13 @@ export interface ChildAccessFacts {
    * not soft-deleted), restricted to their teacher memberships.
    */
   readonly actorActiveTeachingGroupIds: readonly string[];
+  /**
+   * Group ids the actor is actively assigned to as a PE or music teacher
+   * (`GroupSpecialist`, restricted to PE_TEACHER/MUSIC_TEACHER memberships).
+   * ★ A separate list on purpose: nothing that reads the teaching list may
+   * ever see these — see `isAssignedSpecialistOf`.
+   */
+  readonly actorActiveSpecialistGroupIds: readonly string[];
 }
 
 export interface EnrollmentFact {
@@ -109,6 +116,34 @@ export function isAccountantOver(actor: Actor, facts: ChildAccessFacts): boolean
 }
 
 /**
+ * Is this actor a PE or music teacher currently assigned to a group the child
+ * is (or was) enrolled in? Same history rule as `isAssignedTeacherOf`.
+ *
+ * ★ Never part of `canAccessChild` or `canRecordForChild`. Those two gate
+ * the register, the health record, the meal register, the portfolio — the
+ * client's answer (2026-10-15) was a specialist sees their groups' children
+ * and writes observations, and nothing else. Each route they need names
+ * them through a predicate below; every other route refuses them by default.
+ */
+export function isAssignedSpecialistOf(facts: ChildAccessFacts): boolean {
+  if (facts.actorActiveSpecialistGroupIds.length === 0) return false;
+  const assigned = new Set(facts.actorActiveSpecialistGroupIds);
+  return facts.enrollments.some((e) => assigned.has(e.groupId));
+}
+
+/**
+ * Is this actor the doctor of a kindergarten the child belongs to?
+ *
+ * Kindergarten-wide, like the accountant — a doctor sees every child, not a
+ * group. ★ Never part of `canAccessChild`: an эмч reads the health record
+ * and nothing of the development record (А/261 Annex 2 §1 #11).
+ */
+export function isDoctorOver(actor: Actor, facts: ChildAccessFacts): boolean {
+  const childKgs = childKindergartenIds(facts);
+  return kindergartenIdsForRole(actor, Role.DOCTOR).some((id) => childKgs.has(id));
+}
+
+/**
  * ★ May this actor READ this child's record?
  *
  * The three chains of docs/SECURITY.md §5.1, and nothing else. A role alone is
@@ -179,6 +214,80 @@ export function canRecordForChild(actor: Actor, facts: ChildAccessFacts): boolea
  */
 export function canContributeMediaForChild(actor: Actor, facts: ChildAccessFacts): boolean {
   return canRecordForChild(actor, facts) || isGuardianOf(actor, facts);
+}
+
+/**
+ * ★ May this actor open this child's card — name, group, photo?
+ *
+ * Everyone who reads the child, plus the two roles who reach a child for one
+ * purpose: a group's PE/music teacher and the kindergarten's doctor. What the
+ * card *contains* differs — `seesFullChildCard` decides that.
+ */
+export function canReadChildCard(actor: Actor, facts: ChildAccessFacts): boolean {
+  return (
+    canAccessChild(actor, facts) || isAssignedSpecialistOf(facts) || isDoctorOver(actor, facts)
+  );
+}
+
+/**
+ * Whether the card carries everything — guardians' contacts, the national id,
+ * `healthNotes`. A specialist's card does not: a PE teacher has no health
+ * reach, and `healthNotes` is health.
+ */
+export function seesFullChildCard(actor: Actor, facts: ChildAccessFacts): boolean {
+  return canAccessChild(actor, facts) || isDoctorOver(actor, facts);
+}
+
+/** May this actor read observations about this child? Readers plus specialists. */
+export function canReadObservations(actor: Actor, facts: ChildAccessFacts): boolean {
+  return canAccessChild(actor, facts) || isAssignedSpecialistOf(facts);
+}
+
+/**
+ * May this actor file (or edit their own) staff observation about this child?
+ * Writers plus specialists — not the doctor, and not a guardian, who has a
+ * route of their own.
+ */
+export function canObserveChild(actor: Actor, facts: ChildAccessFacts): boolean {
+  return canRecordForChild(actor, facts) || isAssignedSpecialistOf(facts);
+}
+
+/**
+ * May this actor edit or archive an existing staff observation as staff?
+ *
+ * A writer may change any note they can reach; a specialist only a note they
+ * filed themselves — the class teacher's notes are not theirs to rewrite.
+ */
+export function canEditObservationAsStaff(
+  actor: Actor,
+  facts: ChildAccessFacts,
+  observation: { readonly authorId: string | null; readonly source: string },
+): boolean {
+  if (canRecordForChild(actor, facts)) return true;
+  return (
+    isAssignedSpecialistOf(facts) &&
+    observation.source === "TEACHER" &&
+    observation.authorId === actor.userId
+  );
+}
+
+/** May this actor read this child's health record? Readers plus the doctor. */
+export function canReadChildHealth(actor: Actor, facts: ChildAccessFacts): boolean {
+  return canAccessChild(actor, facts) || isDoctorOver(actor, facts);
+}
+
+/** May this actor write this child's health record? Writers plus the doctor. */
+export function canRecordChildHealth(actor: Actor, facts: ChildAccessFacts): boolean {
+  return canRecordForChild(actor, facts) || isDoctorOver(actor, facts);
+}
+
+/**
+ * The health routes a family may also write to — a medication request with
+ * its photograph, a measurement taken at home. `canContributeMediaForChild`
+ * plus the doctor.
+ */
+export function canContributeChildHealth(actor: Actor, facts: ChildAccessFacts): boolean {
+  return canContributeMediaForChild(actor, facts) || isDoctorOver(actor, facts);
 }
 
 /**

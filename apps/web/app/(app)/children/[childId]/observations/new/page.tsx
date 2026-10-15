@@ -171,7 +171,14 @@ function NewObservationForm() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { hasRole, primaryKindergartenId } = useSession();
-  const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
+  /*
+    ★ A PE or music teacher files the staff form too (2026-10-15) — text only:
+    the album and the А/79 links are the class teacher's (`canRecordForChild`),
+    so neither picker is offered to them.
+  */
+  const specialistOnly =
+    !hasRole("TEACHER") && !hasRole("ADMIN") && (hasRole("PE_TEACHER") || hasRole("MUSIC_TEACHER"));
+  const isStaff = hasRole("TEACHER") || hasRole("ADMIN") || specialistOnly;
 
   const child = useQuery({
     queryKey: qk.child(childId),
@@ -972,7 +979,7 @@ function NewObservationForm() {
             ) : null}
           </div>
 
-          {!isStaff || fromProgress ? (
+          {(!isStaff || fromProgress) && !specialistOnly ? (
             <ObservationPhotoPicker
               files={photos}
               onChange={(next) => {
@@ -1034,15 +1041,17 @@ function NewObservationForm() {
           */}
           {isStaff && !fromProgress ? (
             <div className="grid grid-cols-2 gap-2">
-              <ObservationPhotoPicker
-                files={photos}
-                onChange={(next) => {
-                  setPhotos(next);
-                  if (next.length > 0) setPhotoError("");
-                }}
-                disabled={save.isPending}
-                compact
-              />
+              {specialistOnly ? null : (
+                <ObservationPhotoPicker
+                  files={photos}
+                  onChange={(next) => {
+                    setPhotos(next);
+                    if (next.length > 0) setPhotoError("");
+                  }}
+                  disabled={save.isPending}
+                  compact
+                />
+              )}
               {/*
                 ★ Unchecked by default, matching the API's own default. A
                 teacher's working note is private until they deliberately share
@@ -1059,7 +1068,7 @@ function NewObservationForm() {
             </div>
           ) : null}
 
-          {isStaff && !fromProgress ? (
+          {isStaff && !fromProgress && !specialistOnly ? (
             <A79LinksField
               links={a79Links}
               onChange={setA79Links}
