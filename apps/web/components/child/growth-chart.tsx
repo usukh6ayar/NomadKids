@@ -319,8 +319,8 @@ function GrowthTable({ chart }: { chart: GrowthChart }) {
         Тоон утгыг харах
       </summary>
 
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-caption">
+      <div className="table-scroll">
+        <table className="w-full min-w-[480px] border-collapse text-caption">
           <caption className="sr-only">Өсөлтийн хэмжилтүүд, өмнөх хэмжилттэй харьцуулсан</caption>
           <thead>
             <tr className="border-b border-border text-left text-muted">

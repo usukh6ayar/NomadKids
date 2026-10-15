@@ -286,7 +286,7 @@ export function EsisForms({
             </p>
           </header>
 
-          <div className="overflow-x-auto">
+          <div className="table-scroll">
             <table className="w-full min-w-[760px] border-collapse text-center text-body">
               <caption className="sr-only">{label}</caption>
               <thead>

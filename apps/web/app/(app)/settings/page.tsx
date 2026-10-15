@@ -42,6 +42,7 @@ import {
 import { EsisButton } from "@/components/esis/esis-button";
 import { FactRow } from "@/components/ui/fact-row";
 import { RegisteredDevicesCard } from "@/components/settings/registered-devices";
+import { GroupInfoCard } from "@/components/settings/group-info-card";
 import { AgreementButton } from "@/components/agreements/agreement-gate";
 
 const profileSchema = userProfileSchema.extend({
@@ -79,6 +80,8 @@ export default function SettingsPage() {
       <CoTeachersCard />
       <ChildPhotosCard />
       {hasRole("TEACHER") || hasRole("ADMIN") ? <MyStaffRecords /> : null}
+      {/* A teacher's group, above the devices — 2026-10-14, the user. */}
+      <GroupInfoCard />
       {/* Last, for every role — 2026-10-12, the user. */}
       <RegisteredDevicesCard />
     </div>
@@ -377,7 +380,11 @@ function EditProfileDialog({
         <Field label="Нэр" error={errors.firstName} required>
           {({ id }) => <Input id={id} value={form.firstName} onChange={set("firstName")} />}
         </Field>
-        <Field label="Утас" error={errors.phone}>
+        <Field
+          label="Утас"
+          error={errors.phone}
+          hint="Энэ дугаараар нууц үгээ сэргээнэ. Дугаараа сольсон бол энд шинэчилнэ үү."
+        >
           {({ id }) => (
             <Input id={id} inputMode="numeric" value={form.phone} onChange={set("phone")} />
           )}

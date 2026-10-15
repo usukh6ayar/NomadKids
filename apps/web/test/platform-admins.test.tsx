@@ -153,4 +153,59 @@ describe("a kindergarten's administrators", () => {
 
     expect(await screen.findByRole("dialog", { name: /Урилга бэлэн/ })).toBeInTheDocument();
   });
+
+  /*
+   * ★ A director who forgot the password and lost the phone — 2026-10-14, the
+   * user: the operator issues a one-time link, after checking who is asking.
+   */
+  describe("resetting a director's password", () => {
+    function renderReset(
+      extra: { path: string; method?: string; status?: number; body?: unknown }[],
+    ) {
+      setParams({ id: KG_ID });
+      const api = stubApi([
+        ...extra,
+        { path: "/auth/me", body: operator() },
+        { path: `/platform/kindergartens/${KG_ID}/payments`, status: 404, body: {} },
+        { path: `/platform/kindergartens/${KG_ID}`, body: detail([signedIn]) },
+      ]);
+      renderWithProviders(<PlatformKindergartenPage />);
+      return api;
+    }
+    const RESET = `/platform/kindergartens/${KG_ID}/admins/${signedIn.id}/password-reset`;
+
+    it("issues a one-time link only once the person was checked", async () => {
+      const user = userEvent.setup();
+      const api = renderReset([{ path: RESET, method: "POST", body: { resetToken: "tok-abc" } }]);
+
+      await user.click(await screen.findByRole("button", { name: "Нууц үг сэргээх" }));
+      const dialog = await screen.findByRole("dialog", { name: "Нууц үг сэргээх" });
+      const issue = within(dialog).getByRole("button", { name: "Холбоос үүсгэх" });
+      expect(issue).toBeDisabled();
+
+      await user.click(within(dialog).getByRole("checkbox"));
+      await user.click(issue);
+
+      await waitFor(() =>
+        expect(api.calls.find((call) => call.url === RESET)?.method).toBe("POST"),
+      );
+      const handover = await screen.findByRole("dialog", { name: "Нууц үг сэргээх холбоос" });
+      expect(handover).toHaveTextContent("/reset-password/tok-abc");
+      expect(handover).toHaveTextContent("Холбоос 1 цаг хүчинтэй");
+    });
+
+    it("says what to do instead while the API cannot issue one", async () => {
+      const user = userEvent.setup();
+      renderReset([{ path: RESET, method: "POST", status: 404, body: {} }]);
+
+      await user.click(await screen.findByRole("button", { name: "Нууц үг сэргээх" }));
+      const dialog = await screen.findByRole("dialog", { name: "Нууц үг сэргээх" });
+      await user.click(within(dialog).getByRole("checkbox"));
+      await user.click(within(dialog).getByRole("button", { name: "Холбоос үүсгэх" }));
+
+      expect(
+        await within(dialog).findByText(/хараахан бэлэн болоогүй. Одоохондоо «Удирдлага нэмэх»/),
+      ).toBeInTheDocument();
+    });
+  });
 });

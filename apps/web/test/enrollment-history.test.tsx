@@ -39,6 +39,8 @@ function stubArchive() {
             name: "Дэлбээ бүлэг",
             ageBand: "MIDDLE",
             childCount: 18,
+            boyCount: 10,
+            girlCount: 8,
             schedule: null,
             rules: null,
           },
@@ -162,6 +164,10 @@ describe("суралцсан түүх", () => {
     const group = screen.getByRole("region", { name: "Дэлбээ бүлэг" });
     expect(within(group).getByText("Ахлах бүлэг")).toBeInTheDocument();
     expect(within(group).getByText("18 хүүхэд")).toBeInTheDocument();
+    // Boys and girls, counts only — 2026-10-14, the user.
+    expect(within(group).getByText("Бүлгийн төрөл")).toBeInTheDocument();
+    expect(within(group).getByText("10 хүүхэд")).toBeInTheDocument();
+    expect(within(group).getByText("8 хүүхэд")).toBeInTheDocument();
     expect(within(group).getByText("2026.09.01")).toBeInTheDocument();
     // No picture on the group — 2026-10-06.
     expect(group.querySelector("svg, img")).toBeNull();

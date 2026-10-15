@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, setParams, setSearchParams, stubApi } from "./support/render";
@@ -97,6 +97,78 @@ describe("forgot password — by phone", () => {
   });
 });
 
+/*
+ * ★ Without the phone — 2026-10-14, the user: staff ask their director; a
+ * director or a solo teacher calls NomadKids, which issues a reset link.
+ */
+describe("forgot password — the phone is lost", () => {
+  it("says who to turn to — whoever registered you resets you", async () => {
+    const user = userEvent.setup();
+    stubApi([]);
+    renderWithProviders(<ForgotPasswordPage />);
+
+    // «Та хэн бэ?» — a person picks what they are and reads one sentence.
+    const help = await screen.findByLabelText("Хэнд хандах вэ");
+    const who = within(help).getByRole("group", { name: "Та хэн бэ?" });
+    expect(within(help).queryByRole("status")).toBeNull();
+
+    await user.click(within(who).getByRole("button", { name: "Эцэг эх" }));
+    expect(within(help).getByRole("status")).toHaveTextContent(
+      "Хүүхдийнхээ багш эсвэл цэцэрлэгийн эрхлэгчид хандана уу.",
+    );
+    await user.click(within(who).getByRole("button", { name: "Цэцэрлэгийн багш, ажилтан" }));
+    expect(within(help).getByRole("status")).toHaveTextContent(
+      "Цэцэрлэгийнхээ эрхлэгчид хандана уу.",
+    );
+    await user.click(within(who).getByRole("button", { name: "Эрхлэгч / бие даасан багш" }));
+    expect(within(help).getByRole("status")).toHaveTextContent("NomadKids-д хандана уу.");
+    expect(within(help).getByRole("link", { name: /7213 4888 залгах/ })).toHaveAttribute(
+      "href",
+      "tel:+97672134888",
+    );
+  });
+});
+
+describe("forgot password — with SMS on or off", () => {
+  it("with SMS on: the form, and a small link that opens «Та хэн бэ?»", async () => {
+    const user = userEvent.setup();
+    stubApi([{ path: "/phone-verifications/availability", body: { enabled: true } }]);
+    renderWithProviders(<ForgotPasswordPage />);
+
+    expect(await screen.findByLabelText(/Утасны дугаар/)).toBeInTheDocument();
+    // Whoever holds the phone sees the form and nothing else.
+    expect(screen.queryByRole("group", { name: "Та хэн бэ?" })).toBeNull();
+
+    const link = screen.getByRole("button", { name: "Тэр дугаар тань байхгүй болсон уу?" });
+    expect(link).toHaveAttribute("aria-expanded", "false");
+    await user.click(link);
+    expect(link).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("group", { name: "Та хэн бэ?" })).toBeInTheDocument();
+  });
+
+  it("with SMS off: everyone follows the rule — not «ask the kindergarten» for all", async () => {
+    stubApi([{ path: "/phone-verifications/availability", body: { enabled: false } }]);
+    renderWithProviders(<ForgotPasswordPage />);
+
+    // The heading, one sentence, the table, the way back — nothing else.
+    expect(
+      await screen.findByText(
+        "Таныг бүртгэсэн хүн нууц үгийг тань сэргээнэ. Та хэн болохоо сонгоно уу.",
+      ),
+    ).toBeInTheDocument();
+    const tables = screen.getAllByLabelText("Хэнд хандах вэ");
+    expect(tables).toHaveLength(1);
+    expect(screen.queryByText(/идэвхгүй байна/)).toBeNull();
+    const back = screen.getByRole("link", { name: "Нэвтрэх хуудас руу буцах" });
+    // The way back comes after the table, not before it.
+    expect(
+      tables[0]!.compareDocumentPosition(back) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.queryByText(/Цэцэрлэгийн администратор/)).toBeNull();
+    expect(screen.queryByLabelText(/Утасны дугаар/)).toBeNull();
+  });
+});
+
 describe("the SMS step", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -186,6 +258,10 @@ describe("invitation — the guardian's phone", () => {
       token: "invitation-token-value",
       phone: "99112233",
     });
+    // The moment a password is new is the moment to say how it comes back.
+    const tip = await screen.findByLabelText("Хэнд хандах вэ");
+    expect(tip).toHaveTextContent("Утсаа алдвал хэнд хандах вэ?");
+    expect(within(tip).getByRole("group", { name: "Та хэн бэ?" })).toBeInTheDocument();
   });
 
   it("refuses to submit an unproven phone without calling the API", async () => {

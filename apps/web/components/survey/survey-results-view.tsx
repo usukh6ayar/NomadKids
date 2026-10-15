@@ -520,7 +520,7 @@ function A79Coverage({ answered, domains }: { answered: number; domains: A79Doma
     <Card pad="roomy" className="flex flex-col gap-4">
       <h3 className="text-lead font-semibold text-ink">Хамрагдсан байдал</h3>
 
-      <div className="overflow-x-auto rounded-control border border-border">
+      <div className="table-scroll rounded-control border border-border">
         <table className="w-full min-w-[440px] border-collapse text-body">
           <thead>
             <tr className="bg-canvas">
@@ -1196,46 +1196,51 @@ function QuestionComparisonCard({
             ))}
         </div>
 
-        <table className="w-full border-collapse text-caption">
-          <caption className="sr-only">Хариултын харьцуулалт</caption>
-          <thead>
-            <tr className="bg-sunken text-muted">
-              <th scope="col" className="rounded-s-row px-3 py-2 text-start font-medium">
-                Хариулт
-              </th>
-              <th scope="col" className="px-2 py-2 text-end font-medium tabular-nums">
-                {beforeLabel}
-              </th>
-              <th scope="col" className="rounded-e-row px-3 py-2 text-end font-medium tabular-nums">
-                {nowLabel}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {bands
-              .filter((band) => band.before > 0 || band.now > 0)
-              .map((band) => (
-                <tr key={band.score} className="border-b border-border-soft last:border-0">
-                  <th scope="row" className="px-3 py-2 text-start font-normal text-ink">
-                    <span className="flex items-center gap-2">
-                      <span
-                        aria-hidden="true"
-                        className="size-2.5 shrink-0 rounded-pill"
-                        style={{ background: TONE_VAR[band.tone] }}
-                      />
-                      {band.label}
-                    </span>
-                  </th>
-                  <td className="px-2 py-2 text-end tabular-nums text-muted">
-                    {band.before} ({share(band.before, beforeTotal)}%)
-                  </td>
-                  <td className="px-3 py-2 text-end tabular-nums text-ink">
-                    {band.now} ({share(band.now, nowTotal)}%)
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
+        <div className="table-scroll">
+          <table className="w-full min-w-[520px] border-collapse text-caption">
+            <caption className="sr-only">Хариултын харьцуулалт</caption>
+            <thead>
+              <tr className="bg-sunken text-muted">
+                <th scope="col" className="rounded-s-row px-3 py-2 text-start font-medium">
+                  Хариулт
+                </th>
+                <th scope="col" className="px-2 py-2 text-end font-medium tabular-nums">
+                  {beforeLabel}
+                </th>
+                <th
+                  scope="col"
+                  className="rounded-e-row px-3 py-2 text-end font-medium tabular-nums"
+                >
+                  {nowLabel}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {bands
+                .filter((band) => band.before > 0 || band.now > 0)
+                .map((band) => (
+                  <tr key={band.score} className="border-b border-border-soft last:border-0">
+                    <th scope="row" className="px-3 py-2 text-start font-normal text-ink">
+                      <span className="flex items-center gap-2">
+                        <span
+                          aria-hidden="true"
+                          className="size-2.5 shrink-0 rounded-pill"
+                          style={{ background: TONE_VAR[band.tone] }}
+                        />
+                        {band.label}
+                      </span>
+                    </th>
+                    <td className="px-2 py-2 text-end tabular-nums text-muted">
+                      {band.before} ({share(band.before, beforeTotal)}%)
+                    </td>
+                    <td className="px-3 py-2 text-end tabular-nums text-ink">
+                      {band.now} ({share(band.now, nowTotal)}%)
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
 
         {delta === 0 ? null : (
           <p

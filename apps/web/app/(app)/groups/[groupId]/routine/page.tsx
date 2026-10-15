@@ -48,7 +48,16 @@ function GroupRoutine() {
       {isLoading ? <LoadingState rows={6} /> : null}
       {error ? <ErrorState description={errorMessage(error)} /> : null}
       {routine ? (
-        <RoutineView routine={routine} mode={mode} actions={mode === "teacher" ? actions : {}} />
+        <RoutineView
+          routine={routine}
+          mode={mode}
+          actions={mode === "teacher" ? actions : {}}
+          photoEndpoint={
+            mode === "teacher" && group.data?.kindergartenId
+              ? `/kindergartens/${group.data.kindergartenId}/menu/dish-photo`
+              : undefined
+          }
+        />
       ) : null}
     </div>
   );

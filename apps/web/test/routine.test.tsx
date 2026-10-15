@@ -8,7 +8,7 @@ import AdminRoutinePage from "@/app/(app)/admin/routine/page";
 import { ROUTINE_TEMPLATE, parseRoutineTable, routineToCsv } from "@/lib/routine";
 
 /*
- * ★ Өдрийн дэглэм · Судлагдахуун · Дугуйлан — 2026-10-09, the client. Per
+ * ★ Өдрийн дэглэм · Сургалтын чиглэл · Дугуйлан — 2026-10-09, the client. Per
  * group, the same every day; clubs per group, which a family asks to join and
  * the teacher approves; the director reads. Contract: `lib/routine.ts`.
  */
@@ -16,6 +16,7 @@ import { ROUTINE_TEMPLATE, parseRoutineTable, routineToCsv } from "@/lib/routine
 const KG = "33333333-3333-4333-8333-333333333333";
 const GROUP = "44444444-4444-4444-8444-444444444444";
 const CHILD = "66666666-6666-4666-8666-666666666666";
+const CLUB_PHOTO = "77777777-7777-4777-8777-777777777777";
 
 const routine = (overrides: Record<string, unknown> = {}) => ({
   group: { id: GROUP, name: "Нарлаг" },
@@ -34,10 +35,13 @@ const routine = (overrides: Record<string, unknown> = {}) => ({
       id: "club-1",
       name: "Бяцхан хөгжимчин",
       teacherName: "Д.Энхжаргал",
+      photoMediaFileId: CLUB_PHOTO,
       days: [1, 3],
       start: "15:00",
       end: "15:35",
       areas: ["Хөгжим"],
+      goal: "Хэмнэл мэдэрч, хамтран дуулна.",
+      description: "Дуу, хөдөлгөөнийг хослуулсан 35 минутын хичээл.",
     },
   ],
   requests: [],
@@ -190,6 +194,14 @@ describe("a teacher's routine", () => {
     renderWithProviders(<GroupRoutinePage />);
 
     await user.click(await screen.findByRole("tab", { name: "Дугуйлан" }));
+    expect(screen.getByRole("img", { name: "Бяцхан хөгжимчин зураг" })).toBeInTheDocument();
+    const clubPhoto = screen.getByTestId(`club-photo-club-1`);
+    const camera = within(clubPhoto).getByLabelText("Бяцхан хөгжимчин — зураг солих");
+    expect(camera).toBeInTheDocument();
+    expect(camera.closest(".absolute")).toHaveClass("bottom-1", "right-1");
+    expect(
+      screen.getByRole("button", { name: "Бяцхан хөгжимчин — зургийг устгах" }),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /^Хүсэлт/ }));
     const requests = screen.getByRole("dialog", { name: "Дугуйлангийн хүсэлт" });
     expect(within(requests).getByText(/Хүлээгдэж буй · 1/)).toBeInTheDocument();
@@ -203,6 +215,8 @@ describe("a teacher's routine", () => {
     await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "Нэмэх" }));
     const dialog = screen.getByRole("dialog", { name: "Дугуйлан нэмэх" });
+    expect(within(dialog).getByText("Дугуйлангийн зураг")).toBeInTheDocument();
+    expect(within(dialog).getByText("Зураг нэмэх")).toBeInTheDocument();
     await user.type(within(dialog).getByLabelText(/Дугуйлангийн нэр/), "Урлан");
     await user.type(within(dialog).getByLabelText(/Багшийн нэр/), "Б.Оюун");
     await user.click(within(dialog).getByRole("button", { name: "Даваа" }));
@@ -278,6 +292,22 @@ describe("a family's routine", () => {
 
     expect(await screen.findByText("Өглөөний дасгал")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Excel/ })).toBeNull();
+  });
+
+  it("opens a club to show its learning goal and detailed information", async () => {
+    const user = userEvent.setup();
+    setParams({ childId: CHILD });
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+      { path: `/children/${CHILD}/routine`, body: routine() },
+    ]);
+    renderWithProviders(<ChildRoutinePage />);
+
+    await user.click(await screen.findByRole("tab", { name: "Дугуйлан" }));
+    expect(screen.queryByText("Хэмнэл мэдэрч, хамтран дуулна.")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Бяцхан хөгжимчин/ }));
+    expect(screen.getByText("Хэмнэл мэдэрч, хамтран дуулна.")).toBeInTheDocument();
+    expect(screen.getByText("Дуу, хөдөлгөөнийг хослуулсан 35 минутын хичээл.")).toBeInTheDocument();
   });
 });
 
@@ -370,7 +400,11 @@ describe("the curriculum tab", () => {
     ]);
     renderWithProviders(<GroupRoutinePage />);
 
-    await user.click(await screen.findByRole("tab", { name: "Судлагдахуун" }));
+    await user.click(await screen.findByRole("tab", { name: "Сургалтын чиглэл" }));
+    expect(
+      screen.getByText("СӨБ-ын сургалтын чиглэл · хүүхдэд эзэмшүүлэх зорилго, агуулга"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/СӨБ-ын сургалтын 7 чиглэл/)).not.toBeInTheDocument();
     const toggles = screen
       .getAllByRole("button", { expanded: false })
       .filter((b) => b.getAttribute("aria-controls")?.startsWith("area-"));
@@ -394,7 +428,7 @@ describe("the curriculum tab", () => {
     ]);
     renderWithProviders(<GroupRoutinePage />);
 
-    await user.click(await screen.findByRole("tab", { name: "Судлагдахуун" }));
+    await user.click(await screen.findByRole("tab", { name: "Сургалтын чиглэл" }));
     await user.click(screen.getByRole("button", { name: "Хөгжим — үйлдэл" }));
     await user.click(screen.getByRole("menuitem", { name: "Засах" }));
     const dialog = screen.getByRole("dialog", { name: "Хөгжим" });

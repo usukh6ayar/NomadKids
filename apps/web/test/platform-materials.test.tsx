@@ -55,7 +55,7 @@ describe("the platform's teaching materials", () => {
     const dialog = screen.getByRole("dialog", { name: "Хэрэглэгдэхүүн нэмэх" });
     await user.type(within(dialog).getByLabelText(/^Нэр/), "Хэмнэл мэдэрье");
     await selectOption(user, /Сургалтын чиглэл/, "Хөгжим");
-    await user.type(within(dialog).getByLabelText(/Үнэ/), "6000");
+    await user.type(within(dialog).getByLabelText(/^Үнэ \(₮\)/), "6000");
     await user.upload(
       within(dialog).getByLabelText(/^Файл/),
       new File(["%PDF-1.4"], "hemnel.pdf", { type: "application/pdf" }),
@@ -94,7 +94,7 @@ describe("the platform's teaching materials", () => {
     const dialog = screen.getByRole("dialog", { name: "Хэрэглэгдэхүүн нэмэх" });
     await user.type(within(dialog).getByLabelText(/^Нэр/), "Зураг");
     await selectOption(user, /Сургалтын чиглэл/, "Зураг, урлал");
-    await user.type(within(dialog).getByLabelText(/Үнэ/), "0");
+    await user.click(within(dialog).getByRole("radio", { name: "Үнэгүй" }));
     await user.upload(
       within(dialog).getByLabelText(/^Файл/),
       new File(["x"], "zurag.png", { type: "image/png" }),
@@ -127,7 +127,7 @@ describe("the platform's teaching materials", () => {
     expect(within(dialog).getByRole("radio", { name: /Зургаа өөрөө оруулах/ })).toBeChecked();
     await user.type(within(dialog).getByLabelText(/^Нэр/), "Намар");
     await selectOption(user, /Сургалтын чиглэл/, "Байгаль, нийгмийн орчин");
-    await user.type(within(dialog).getByLabelText(/Үнэ/), "15000");
+    await user.type(within(dialog).getByLabelText(/^Үнэ \(₮\)/), "15000");
     await user.upload(
       within(dialog).getByLabelText(/^Файл/),
       new File(["x"], "namar.pptx", {
@@ -165,5 +165,190 @@ describe("the platform's teaching materials", () => {
         true,
       ),
     );
+  });
+
+  it("asks before taking a material off the shop, then removes it", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/materials/m1", method: "DELETE", status: 204 },
+      { path: "/platform/materials", body: [row] },
+    ]);
+    renderWithProviders(<PlatformMaterialsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Тоо 1–5 — үйлдэл" }));
+    await user.click(screen.getByRole("menuitem", { name: "Устгах" }));
+    // Nothing is sent before the confirmation (CLAUDE.md §5).
+    expect(api.calls.some((c) => c.method === "DELETE")).toBe(false);
+
+    const confirm = screen.getByRole("dialog", { name: "Дэлгүүрээс хасах уу?" });
+    expect(confirm).toHaveTextContent("Худалдаж авсан багш нар санд нь хадгалсаар байна.");
+    await user.click(within(confirm).getByRole("button", { name: "Устгах" }));
+
+    await waitFor(() =>
+      expect(api.calls.find((c) => c.method === "DELETE")?.url).toBe("/platform/materials/m1"),
+    );
+  });
+
+  it("takes the price in whole tögrög only", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/materials", body: [] },
+    ]);
+    renderWithProviders(<PlatformMaterialsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Нэмэх" }));
+    const dialog = screen.getByRole("dialog", { name: "Хэрэглэгдэхүүн нэмэх" });
+    await user.type(within(dialog).getByLabelText(/^Нэр/), "Тоо 1–5");
+    await selectOption(user, /Сургалтын чиглэл/, "Зураг, урлал");
+    await user.type(within(dialog).getByLabelText(/^Үнэ \(₮\)/), "12000.50");
+    await user.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
+
+    expect(within(dialog).getByText("Үнийг бүхэл төгрөгөөр оруулна уу.")).toBeInTheDocument();
+    expect(api.calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
+  it("says what to do when the catalog is empty", async () => {
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/materials", body: [] },
+    ]);
+    renderWithProviders(<PlatformMaterialsPage />);
+
+    expect(await screen.findByText("Хэрэглэгдэхүүн нэмээгүй байна")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  /*
+   * ★ The learning area is optional — 2026-10-14, the user. The API still
+   * needs one, so an unchosen area goes as «Бусад».
+   */
+  it("saves without a learning area, sending «Бусад»", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/materials", method: "POST", status: 201, body: {} },
+      { path: "/platform/materials", body: [] },
+    ]);
+    renderWithProviders(<PlatformMaterialsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Нэмэх" }));
+    const dialog = screen.getByRole("dialog", { name: "Хэрэглэгдэхүүн нэмэх" });
+    expect(within(dialog).getByText("Заавал биш", { selector: "*" })).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText(/^Нэр/), "Ерөнхий дасгал");
+    await user.click(within(dialog).getByRole("radio", { name: "Үнэгүй" }));
+    await user.upload(
+      within(dialog).getByLabelText(/^Файл/),
+      new File(["%PDF-1.4"], "dasgal.pdf", { type: "application/pdf" }),
+    );
+    await user.click(within(dialog).getByRole("radio", { name: "Зургаа өөрөө оруулах" }));
+    await user.upload(within(dialog).getByLabelText(/Урьдчилан харах хуудас/), [
+      new File(["a"], "p1.png", { type: "image/png" }),
+    ]);
+    await user.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
+
+    await waitFor(() => {
+      const form = api.calls.find((c) => c.method === "POST")?.body as FormData;
+      expect(form.get("title")).toBe("Ерөнхий дасгал");
+      expect(form.get("area")).toBe("Бусад");
+    });
+  });
+
+  /*
+   * ★ «Дэлгүүр» beside «Нэмэх» — 2026-10-14, the user: the shop as the
+   * teachers see it, from the platform's catalog: on-sale materials only,
+   * nothing to buy.
+   */
+  it("shows the shop as teachers see it — on sale only, nothing to buy", async () => {
+    const user = userEvent.setup();
+    const hidden = { ...row, id: "m2", title: "Нуусан хичээл", published: false };
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/materials", body: [row, hidden] },
+    ]);
+    renderWithProviders(<PlatformMaterialsPage />);
+
+    await screen.findByRole("table", { name: "Сургалтын хэрэглэгдэхүүний каталог" });
+    const toggle = screen.getByRole("button", { name: "Дэлгүүр" });
+    await user.click(toggle);
+
+    const shop = await screen.findByRole("region", { name: "Дэлгүүрийн харагдац" });
+    expect(within(shop).getByText("Тоо 1–5")).toBeInTheDocument();
+    expect(within(shop).queryByText("Нуусан хичээл")).toBeNull();
+    expect(within(shop).getByRole("button", { name: "Авах" })).toBeDisabled();
+
+    // The sample pages open on an A4 sheet, and nothing reads as owned.
+    await user.click(within(shop).getByRole("button", { name: "Харах" }));
+    const preview = await screen.findByRole("dialog", { name: "Тоо 1–5" });
+    expect(preview.querySelector('[data-paper="a4-landscape"]')).not.toBeNull();
+    expect(within(preview).queryByText("Миний санд байгаа")).toBeNull();
+    expect(within(preview).getByRole("button", { name: "Авах" })).toBeDisabled();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("table")).toBeNull();
+
+    // And back to the catalog.
+    await user.click(screen.getByRole("button", { name: "Каталог" }));
+    expect(await screen.findByRole("table")).toBeInTheDocument();
+  });
+
+  /*
+   * ★ «Үнэгүй» and «Хямдрал» in the add dialog — 2026-10-14, the user.
+   */
+  it("sends a free material as 0, and a discount below the price", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/materials", method: "POST", status: 201, body: {} },
+      { path: "/platform/materials", body: [] },
+    ]);
+    renderWithProviders(<PlatformMaterialsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Нэмэх" }));
+    const dialog = screen.getByRole("dialog", { name: "Хэрэглэгдэхүүн нэмэх" });
+    await user.type(within(dialog).getByLabelText(/^Нэр/), "Хэмнэл");
+    await user.type(within(dialog).getByLabelText(/^Үнэ \(₮\)/), "10000");
+    await user.click(within(dialog).getByRole("checkbox", { name: "Хямдрал зарлах" }));
+    await user.type(within(dialog).getByLabelText(/Хямдралтай үнэ/), "12000");
+    await user.upload(
+      within(dialog).getByLabelText(/^Файл/),
+      new File(["%PDF-1.4"], "h.pdf", { type: "application/pdf" }),
+    );
+    await user.click(within(dialog).getByRole("radio", { name: "Зургаа өөрөө оруулах" }));
+    await user.upload(within(dialog).getByLabelText(/Урьдчилан харах хуудас/), [
+      new File(["a"], "p1.png", { type: "image/png" }),
+    ]);
+
+    // A discount not below the price is refused.
+    await user.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
+    expect(within(dialog).getByText(/Хямдралтай үнэ үндсэн үнээс бага/)).toBeInTheDocument();
+    expect(api.calls.some((c) => c.method === "POST")).toBe(false);
+
+    const cut = within(dialog).getByLabelText(/Хямдралтай үнэ/);
+    await user.clear(cut);
+    await user.type(cut, "7500");
+    expect(dialog).toHaveTextContent("25% хямдрал");
+    await user.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
+    await waitFor(() => {
+      const form = api.calls.find((c) => c.method === "POST")?.body as FormData;
+      expect(form.get("price")).toBe("10000");
+      expect(form.get("discountPrice")).toBe("7500");
+    });
+  });
+
+  it("hides the price when the material is free", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/materials", body: [] },
+    ]);
+    renderWithProviders(<PlatformMaterialsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Нэмэх" }));
+    const dialog = screen.getByRole("dialog", { name: "Хэрэглэгдэхүүн нэмэх" });
+    await user.click(within(dialog).getByRole("radio", { name: "Үнэгүй" }));
+    expect(within(dialog).queryByLabelText(/^Үнэ \(₮\)/)).toBeNull();
+    expect(within(dialog).queryByRole("checkbox", { name: "Хямдрал зарлах" })).toBeNull();
+    expect(dialog).toHaveTextContent("Багш нар үнэгүй татаж авна.");
   });
 });

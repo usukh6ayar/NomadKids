@@ -374,11 +374,12 @@ function AdminGroups() {
       {visible.length > 0 ? (
         /*
           ★ A plain table, not `TableShell` — 2026-09-25, the client: the ⋯ menu
-          came out cut off. `TableShell` clips its card and scrolls sideways,
-          and the row menu opens inside that box; here nothing clips it.
+          came out cut off. The menu is portalled out of scrollers now, so the
+          table scrolls sideways on a phone (2026-10-15, the user) and the menu
+          still opens whole.
         */
-        <div className="rounded-card border border-border bg-surface">
-          <table className="w-full border-collapse text-body">
+        <div className="table-scroll rounded-card border border-border bg-surface">
+          <table className="w-full min-w-[880px] border-collapse text-body">
             <caption className="sr-only">Бүлгүүдийн жагсаалт</caption>
             <thead>
               <tr>

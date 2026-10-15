@@ -1,15 +1,19 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { accessStatusSchema } from "@kinder/contracts";
+import { ChevronLeft } from "lucide-react";
+import Link from "next/link";
+import { useState } from "react";
+import { accessStatusSchema, type AccessPeriod } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { useSession } from "@/lib/auth/session";
 import { qk } from "@/lib/api/keys";
-import { money } from "@/components/finance/money";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LoadingState } from "@/components/ui/states";
+import { AccessInvoice, useOwnChildName } from "@/components/child/access-invoice";
 import { AccessPayDialog } from "@/components/child/access-pay-dialog";
+import { AccessPeriodPicker } from "@/components/child/access-period-picker";
 
 /**
  * The unlock screen — what a family sees instead of their child's record when
@@ -27,9 +31,16 @@ import { AccessPayDialog } from "@/components/child/access-pay-dialog";
  * amount comes from `GET /children/:id/access`, which reads the subscription
  * frozen at issue. A price change must not silently restate what a family was
  * already asked for.
+ *
+ * ★★★ The first payment chooses a term or the year too (2026-10-15, the user),
+ * and shows what is being paid as a receipt before the QR — `AccessInvoice`.
  */
 export function AccessGate({ childId }: { childId: string }) {
   const { hasRole } = useSession();
+  const [period, setPeriod] = useState<AccessPeriod>("YEAR");
+  const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
+  // A family's own list — staff never read `/children/mine`.
+  const childName = useOwnChildName(childId, !isStaff);
   const status = useQuery({
     queryKey: qk.childAccess(childId),
     queryFn: () => get(`/children/${childId}/access`, accessStatusSchema),
@@ -41,15 +52,17 @@ export function AccessGate({ childId }: { childId: string }) {
   // way there is nothing to show — and the caller should not have rendered us.
   if (!status.data?.required || status.data.active) return null;
 
-  const amount = status.data.amount;
-  const year = status.data.subscription?.schoolYear.name;
+  const { amount, termAmount, subscription } = status.data;
+  const year = subscription?.schoolYear.name;
+  // Without a term price the year is the only choice, whatever was picked.
+  const chosen: AccessPeriod = termAmount ? period : "YEAR";
 
   /*
     ★ A solo teacher meets this too (2026-10-11): in their own workspace a child
     is inactive until the family pays. They are told so — and are not offered
     the pay button, because teachers never pay.
   */
-  if (hasRole("TEACHER") || hasRole("ADMIN")) {
+  if (isStaff) {
     return (
       <Card className="mx-auto mt-6 flex max-w-md flex-col gap-2 p-6 text-center">
         <h2 className="text-title text-ink">Төлбөр төлөгдөөгүй</h2>
@@ -65,31 +78,65 @@ export function AccessGate({ childId }: { childId: string }) {
   }
 
   return (
-    <Card className="mx-auto mt-6 flex max-w-md flex-col gap-4 p-6 text-center">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-title text-ink">Хандалтын төлбөр</h2>
-        <p className="text-body text-muted">
-          Хүүхдийнхээ хөгжлийн бүртгэл, зураг, тайланг үзэхийн тулд
-          {year ? ` ${year} оны хичээлийн жилийн` : ""} хандалтын төлбөрөө төлнө үү.
+    <div className="mx-auto mt-4 flex max-w-md flex-col gap-3">
+      {/*
+        ★ Back to «Нүүр» — 2026-10-15, the user. A link, not history: behind
+        this screen is usually another of the child's pages, which is this
+        gate again.
+      */}
+      <Button
+        asChild
+        variant="ghost"
+        size="icon"
+        className="shrink-0 self-start border border-border-soft bg-surface text-ink shadow-none transition-colors hover:bg-primary-soft hover:text-primary sm:h-10 sm:w-10"
+      >
+        <Link href="/home" aria-label="Нүүр рүү буцах">
+          <ChevronLeft size={22} strokeWidth={2.5} aria-hidden />
+        </Link>
+      </Button>
+
+      <Card className="flex flex-col gap-4 p-6 text-center">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-title text-ink">Хандалтын төлбөр</h2>
+          <p className="text-body text-muted">
+            Хүүхдийнхээ хөгжлийн бүртгэл, зураг, тайланг үзэхийн тулд хандалтын төлбөрөө улирлаар
+            эсвэл жилээр төлнө үү.
+          </p>
+        </div>
+
+        <AccessPeriodPicker
+          value={chosen}
+          onChange={setPeriod}
+          termAvailable={Boolean(termAmount)}
+        />
+        {!termAmount ? (
+          <p className="-mt-2 text-caption text-muted">Одоогоор зөвхөн жилээр төлөх боломжтой.</p>
+        ) : null}
+
+        <AccessInvoice
+          className="text-left"
+          data={{
+            state: "due",
+            childName,
+            period: chosen,
+            schoolYearName: year,
+            amount: chosen === "YEAR" ? amount : (termAmount ?? null),
+          }}
+        />
+
+        <AccessPayDialog
+          key={chosen}
+          childId={childId}
+          period={chosen}
+          onPaid={() => status.refetch()}
+          trigger={<Button className="w-full">QPay-ээр төлөх</Button>}
+        />
+
+        <p className="text-caption text-muted">
+          Төлбөр төлсний дараа хандалт шууд нээгдэнэ. Асуудал гарвал цэцэрлэгийн захиргаанд хандана
+          уу.
         </p>
-      </div>
-
-      {amount ? (
-        <p className="text-headline text-ink" aria-label="Төлөх дүн">
-          {money(amount)}
-        </p>
-      ) : null}
-
-      <AccessPayDialog
-        childId={childId}
-        onPaid={() => status.refetch()}
-        trigger={<Button className="w-full">QPay-ээр төлөх</Button>}
-      />
-
-      <p className="text-caption text-muted">
-        Төлбөр төлсний дараа хандалт шууд нээгдэнэ. Асуудал гарвал цэцэрлэгийн захиргаанд хандана
-        уу.
-      </p>
-    </Card>
+      </Card>
+    </div>
   );
 }

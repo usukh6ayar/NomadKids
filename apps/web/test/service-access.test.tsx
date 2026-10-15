@@ -1,9 +1,10 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setParams, stubApi } from "./support/render";
 import ChildAccessPage from "@/app/(app)/children/[childId]/access/page";
 import AdminServiceAccessPage from "@/app/(app)/admin/service-access/page";
+import { receiptHtml } from "@/components/child/access-invoice";
 
 /*
  * ★ «Үйлчилгээний эрх» — 2026-10-12, the user: the fee for using NomadKids,
@@ -51,7 +52,8 @@ describe("the family's «Үйлчилгээний эрх»", () => {
     stubApi([{ path: `/children/${CHILD_ID}/access`, body: accessStatus(inDays(120)) }]);
     renderWithProviders(<ChildAccessPage />);
 
-    expect(await screen.findByText(/2026-2027 хичээлийн жил/)).toBeInTheDocument();
+    // The current card and the receipt both name the year.
+    expect(await screen.findAllByText(/2026-2027 хичээлийн жил/)).toHaveLength(2);
     expect(screen.queryByRole("heading", { name: "Сунгах" })).toBeNull();
     expect(screen.queryByText(/хоногийн дараа дуусна/)).toBeNull();
   });
@@ -62,12 +64,41 @@ describe("the family's «Үйлчилгээний эрх»", () => {
     renderWithProviders(<ChildAccessPage />);
 
     expect(await screen.findByText("10 хоногийн дараа дуусна. Сунгана уу.")).toBeInTheDocument();
-    expect(screen.getByText("27,000₮")).toBeInTheDocument();
+    const invoice = screen.getByRole("article", { name: "Нэхэмжлэх" });
+    expect(within(invoice).getByText(/^27\s000₮$/)).toBeInTheDocument();
+    expect(within(invoice).getByText("Хичээлийн жил")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "QPay-ээр төлөх" })).toBeEnabled();
 
     await user.click(screen.getByRole("radio", { name: "Улирлаар" }));
-    expect(screen.getByText("9,000₮")).toBeInTheDocument();
+    expect(within(invoice).getByText(/^9\s000₮$/)).toBeInTheDocument();
+    expect(within(invoice).getByText("Нэг улирал")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "QPay-ээр төлөх" })).toBeEnabled();
+  });
+
+  /*
+   * ★ 2026-10-15, the user: what was paid, as a receipt with a PDF — the
+   * child, the number, the period and until when.
+   */
+  it("shows the paid period as a receipt, with a PDF", async () => {
+    stubApi([
+      { path: `/children/${CHILD_ID}/access`, body: accessStatus("2027-05-31") },
+      {
+        path: "/children/mine",
+        body: [{ id: CHILD_ID, lastName: "Дорж", firstName: "Болд", dateOfBirth: "2021-04-12" }],
+      },
+    ]);
+    renderWithProviders(<ChildAccessPage />);
+
+    const receipt = await screen.findByRole("article", { name: "Төлбөрийн баримт" });
+    expect(within(receipt).getByText("Төлөгдсөн")).toBeInTheDocument();
+    expect(await within(receipt).findByText("Дорж Болд")).toBeInTheDocument();
+    expect(within(receipt).getByText("SUB-1")).toBeInTheDocument();
+    expect(within(receipt).getByText("2026-2027 хичээлийн жил")).toBeInTheDocument();
+    expect(within(receipt).getByText("2027.05.31 хүртэл")).toBeInTheDocument();
+    expect(within(receipt).getByText(/^27\s000₮$/)).toBeInTheDocument();
+    expect(
+      within(receipt).getByRole("button", { name: "Төлбөрийн баримт хэвлэх, PDF болгох" }),
+    ).toBeInTheDocument();
   });
 
   it("offers the year only when the server sells no term", async () => {
@@ -75,7 +106,8 @@ describe("the family's «Үйлчилгээний эрх»", () => {
     renderWithProviders(<ChildAccessPage />);
 
     expect(await screen.findByRole("radio", { name: "Улирлаар" })).toBeDisabled();
-    expect(screen.getByText("27,000₮")).toBeInTheDocument();
+    const invoice = screen.getByRole("article", { name: "Нэхэмжлэх" });
+    expect(within(invoice).getByText(/^27\s000₮$/)).toBeInTheDocument();
     expect(screen.getByText("Одоогоор зөвхөн жилээр төлөх боломжтой.")).toBeInTheDocument();
   });
 });
@@ -132,5 +164,35 @@ describe("the director's «Үйлчилгээний эрх»", () => {
       await screen.findByText("Үйлчилгээний эрхийн мэдээлэл удахгүй харагдана."),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Нэхэмжлэх үүсгэх" })).toBeDisabled();
+  });
+});
+
+/*
+ * ★ The PDF is the receipt's own page printed — asserted on its text
+ * (CLAUDE.md §4.3), not on a file having been produced.
+ */
+describe("the access receipt's PDF", () => {
+  it("prints the screen's lines, and escapes what it prints", () => {
+    const html = receiptHtml("Төлбөрийн баримт", {
+      state: "paid",
+      childName: "Дорж <Болд>",
+      period: "TERM",
+      termNumber: 2,
+      schoolYearName: "2026-2027",
+      amount: "5000.00",
+      number: "a1b2c3d4-0000",
+      paidAt: "2026-11-02T10:15:00",
+      expiresAt: "2027-02-28",
+    });
+    const text = html.replace(/<style>[\s\S]*?<\/style>/, "").replace(/<[^>]+>/g, " ");
+
+    expect(text).toContain("Төлбөрийн баримт");
+    expect(text).toContain("Дорж &lt;Болд&gt;");
+    expect(text).toContain("A1B2C3D4");
+    expect(text).toContain("2026-2027 хичээлийн жилийн II улирал");
+    expect(text).toContain("2027.02.28 хүртэл");
+    expect(text).toMatch(/5\s000₮/);
+    expect(text).toContain("Төлөгдсөн");
+    expect(html).not.toContain("<Болд>");
   });
 });

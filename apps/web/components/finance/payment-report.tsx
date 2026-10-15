@@ -433,7 +433,7 @@ export function PaymentReport() {
       ) : null}
 
       {!pending && !failure && rows.length > 0 ? (
-        <div className="overflow-x-auto rounded-card border border-border bg-surface">
+        <div className="table-scroll rounded-card border border-border bg-surface">
           <table className="w-full min-w-[1900px] border-collapse text-body">
             <caption className="sr-only">Суралцагчдын хичээлийн жилийн төлбөрийн тайлан</caption>
             <thead>

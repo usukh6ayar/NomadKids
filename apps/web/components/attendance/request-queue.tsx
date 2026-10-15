@@ -237,7 +237,7 @@ export function AttendanceRequestQueue({ heading }: { heading?: string }) {
           {shown.length === 0 ? (
             <p className="px-4 py-5 text-center text-body text-muted">Энэ 7 хоногт хүсэлт алга.</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="table-scroll">
               <table className="w-full border-collapse text-body">
                 <caption className="sr-only">Чөлөөний хүсэлт, 7 хоногоор</caption>
                 <thead className="bg-sunken">

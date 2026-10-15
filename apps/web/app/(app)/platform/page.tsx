@@ -4,28 +4,37 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
 import { z } from "zod";
-import { Building2, FileDown, Plus, Search, X } from "lucide-react";
+import { Building2, FileDown, Plus, Search } from "lucide-react";
 import {
   paginated,
   platformKindergartenSchema,
   platformStatsSchema,
-  soloWorkspaceSchema,
   type PlatformStats,
-  type SoloWorkspace,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { Button } from "@/components/ui/button";
-import { Input, Select } from "@/components/ui/field";
+import { Input } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { RequireSuperAdmin } from "@/components/shell/require-role";
 import { useToggleKindergartenActive } from "@/components/admin/toggle-kindergarten-active";
 import { RowMenu } from "@/components/ui/menu";
 import { DeleteKindergartenButton } from "@/components/admin/delete-kindergarten-button";
 import { RegisterKindergartenDialog } from "@/components/platform/register-kindergarten-dialog";
+import { QuickRecordPayment } from "@/components/platform/kindergarten-payments";
+import { SoloTeachersTable } from "@/components/platform/solo-teachers-table";
 import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
 import { daysUntil, formatDate } from "@/lib/format";
+import {
+  FROZEN_NAME,
+  FROZEN_NO,
+  FilterChips,
+  FilterSelect,
+  SortHeader,
+  labelOf,
+  type Chip,
+} from "@/components/platform/table-kit";
 
 /** "" = no filter (Бүгд); the API's `isActive` param is a `z.stringbool()`. */
 const STATUS_OPTIONS = [
@@ -47,78 +56,6 @@ const OWNERSHIP_OPTIONS = [
   { value: "Төрийн бус", label: "Төрийн бус" },
 ] as const;
 
-type FilterOption = { readonly value: string; readonly label: string };
-
-function labelOf(options: readonly FilterOption[], value: string): string {
-  return options.find((option) => option.value === value)?.label ?? value;
-}
-
-/** A named filter — «Төрөл: [Бүгд ▾]» — ringed in blue once it narrows the list. */
-function FilterSelect({
-  label,
-  ariaLabel,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  ariaLabel: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: readonly FilterOption[];
-}) {
-  return (
-    <label className="flex items-center gap-1.5 text-caption text-muted">
-      <span className="whitespace-nowrap">{label}:</span>
-      <Select
-        aria-label={ariaLabel}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`h-9 w-auto min-w-[120px] text-compact ${
-          value ? "border-primary ring-2 ring-primary/20" : ""
-        }`}
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </Select>
-    </label>
-  );
-}
-
-type Chip = { key: string; label: string; clear: () => void };
-
-/** «Идэвхтэй шүүлтүүр: [Төрийн ×] … Бүгдийг цэвэрлэх» — nothing while none is set. */
-function FilterChips({ chips, onClearAll }: { chips: Chip[]; onClearAll: () => void }) {
-  if (chips.length === 0) return null;
-  return (
-    <div className="flex flex-wrap items-center gap-2 text-caption">
-      <span className="text-muted">Идэвхтэй шүүлтүүр:</span>
-      {chips.map((chip) => (
-        <button
-          key={chip.key}
-          type="button"
-          onClick={chip.clear}
-          aria-label={`«${chip.label}» шүүлтүүрийг арилгах`}
-          className="inline-flex min-h-7 items-center gap-1 rounded-pill border border-primary/30 bg-primary/5 px-2.5 font-semibold text-ink hover:bg-primary/10"
-        >
-          {chip.label}
-          <X size={12} aria-hidden="true" />
-        </button>
-      ))}
-      <button
-        type="button"
-        onClick={onClearAll}
-        className="min-h-7 px-1 font-semibold text-primary hover:underline"
-      >
-        Бүгдийг цэвэрлэх
-      </button>
-    </div>
-  );
-}
-
 /*
  * ★ The columns the operator asked for (2026-10-13). The list route returns
  * name, address, phone, e-mail and state today; ownership, province/district,
@@ -138,6 +75,19 @@ const rowSchema = platformKindergartenSchema.extend({
   contractStartsOn: z.string().nullish(),
   /** The contract's last day — a red date within 14 days of it. */
   contractEndsOn: z.string().nullish(),
+  /*
+   * ★ Paid to the platform — 2026-10-14, the user: each term (or year) due the
+   * day it begins, suspended unpaid on it. Asked of the admin; «—» until sent.
+   */
+  paymentStatus: z.enum(["paid", "due", "overdue", "suspended"]).nullish(),
+  paidPeriods: z.number().int().nullish(),
+  totalPeriods: z.number().int().nullish(),
+  /*
+   * ★ How the contract is paid, and the day it was made (approved) — not the
+   * day it starts, which is «Эхэлсэн» (2026-10-14, the user). «—» until sent.
+   */
+  billingPeriod: z.enum(["term", "year"]).nullish(),
+  contractSignedAt: z.string().nullish(),
   /** Linked to ESIS; read from `esisInstitutionId` until the API says so itself. */
   esisConnected: z.boolean().nullish(),
   /*
@@ -182,7 +132,18 @@ function Platform() {
   const [kind, setKind] = useState<"" | "plain" | "esis">("");
   const [ownership, setOwnership] = useState("");
   const [area, setArea] = useState("");
+  const [payment, setPayment] = useState("");
+  const [signedWithin, setSignedWithin] = useState("");
+  // «?ending=ended» from «Самбар» opens the list already filtered (2026-10-14).
+  // Read once on mount: this subtree renders only in the browser, after the
+  // session has loaded.
+  const [ending, setEnding] = useState(() =>
+    typeof window === "undefined"
+      ? ""
+      : (new URLSearchParams(window.location.search).get("ending") ?? ""),
+  );
   const [deleting, setDeleting] = useState<Row | null>(null);
+  const [recording, setRecording] = useState<Row | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "name", dir: 1 });
 
   const stats = useQuery({
@@ -210,7 +171,10 @@ function Platform() {
       (kg) =>
         (!kind || esisConnected(kg) === (kind === "esis")) &&
         (!ownership || kg.propertyType === ownership) &&
-        (!area || areaOf(kg) === area),
+        (!area || areaOf(kg) === area) &&
+        (!payment || kg.paymentStatus === payment) &&
+        (!signedWithin || signedWithinRange(kg.contractSignedAt, signedWithin)) &&
+        (!ending || endingWithin(kg.contractEndsOn, ending)),
     )
     .sort((a, b) => compareRows(a, b, sort.key, sort.dir));
   const filtered = Boolean(query.trim() || status || ownership || area || kind);
@@ -226,6 +190,21 @@ function Platform() {
     },
     ownership && { key: "ownership", label: ownership, clear: () => setOwnership("") },
     area && { key: "area", label: area, clear: () => setArea("") },
+    payment && {
+      key: "payment",
+      label: labelOf(PAYMENT_OPTIONS, payment),
+      clear: () => setPayment(""),
+    },
+    signedWithin && {
+      key: "signed",
+      label: `Гэрээ: ${labelOf(SIGNED_OPTIONS, signedWithin).toLocaleLowerCase("mn")}`,
+      clear: () => setSignedWithin(""),
+    },
+    ending && {
+      key: "ending",
+      label: `Дуусах: ${labelOf(ENDING_OPTIONS, ending).toLocaleLowerCase("mn")}`,
+      clear: () => setEnding(""),
+    },
     status && {
       key: "status",
       label: labelOf(STATUS_OPTIONS, status),
@@ -237,6 +216,9 @@ function Platform() {
     setKind("");
     setOwnership("");
     setArea("");
+    setPayment("");
+    setSignedWithin("");
+    setEnding("");
     setStatus("");
   };
   const sortBy = (key: SortKey) =>
@@ -353,6 +335,27 @@ function Platform() {
             ]}
           />
           <FilterSelect
+            label="Гэрээ байгуулсан"
+            ariaLabel="Гэрээ байгуулсан хугацаагаар шүүх"
+            value={signedWithin}
+            onChange={setSignedWithin}
+            options={SIGNED_OPTIONS}
+          />
+          <FilterSelect
+            label="Дуусах"
+            ariaLabel="Дуусах хугацаагаар шүүх"
+            value={ending}
+            onChange={setEnding}
+            options={ENDING_OPTIONS}
+          />
+          <FilterSelect
+            label="Төлбөр"
+            ariaLabel="Төлбөрөөр шүүх"
+            value={payment}
+            onChange={setPayment}
+            options={PAYMENT_OPTIONS}
+          />
+          <FilterSelect
             label="Төлөв"
             ariaLabel="Төлвөөр шүүх"
             value={status}
@@ -361,6 +364,7 @@ function Platform() {
           />
         </div>
         <FilterChips chips={chips} onClearAll={clearAll} />
+        <EndingCounts items={items} active={ending} onPick={setEnding} />
 
         {kindergartens.isLoading ? <LoadingState rows={5} /> : null}
         {kindergartens.isError ? (
@@ -379,9 +383,9 @@ function Platform() {
         ) : null}
 
         {rows.length > 0 ? (
-          <div className="overflow-x-auto rounded-control border border-border bg-white">
+          <div className="table-scroll rounded-control border border-border bg-white">
             <table
-              className={`w-full ${showEsis ? "min-w-[1560px]" : "min-w-[1240px]"} border-separate border-spacing-0 text-left text-caption`}
+              className={`w-full ${showEsis ? "min-w-[1860px]" : "min-w-[1540px]"} border-separate border-spacing-0 text-left text-caption`}
             >
               <thead className="bg-slate-50 text-muted">
                 <tr className="[&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-r [&>th]:border-border [&>th]:px-3 [&>th]:py-2 [&>th]:font-semibold [&>th:last-child]:border-r-0">
@@ -432,8 +436,16 @@ function Platform() {
                   />
                   <th scope="col">Утас</th>
                   <th scope="col">И-мэйл</th>
+                  <SortHeader
+                    label="Гэрээ байгуулсан"
+                    column="signed"
+                    sort={sort}
+                    onSort={sortBy}
+                  />
                   <SortHeader label="Эхэлсэн" column="start" sort={sort} onSort={sortBy} />
                   <SortHeader label="Дуусах" column="contract" sort={sort} onSort={sortBy} />
+                  <th scope="col">Хугацаа</th>
+                  <th scope="col">Төлбөр</th>
                   <th scope="col">Төлөв</th>
                   <th scope="col" className="w-10">
                     <span className="sr-only">Үйлдэл</span>
@@ -453,6 +465,7 @@ function Platform() {
                     index={index + 1}
                     showEsis={showEsis}
                     onDelete={() => setDeleting(kg)}
+                    onRecordPayment={() => setRecording(kg)}
                   />
                 ))}
               </tbody>
@@ -460,6 +473,14 @@ function Platform() {
           </div>
         ) : null}
       </section>
+
+      {recording ? (
+        <QuickRecordPayment
+          kindergartenId={recording.id}
+          kindergartenName={recording.name}
+          onClose={() => setRecording(null)}
+        />
+      ) : null}
 
       {deleting ? (
         <DeleteKindergartenButton
@@ -479,14 +500,6 @@ function Platform() {
 function areaOf(kg: Row): string | null {
   return [kg.province, kg.district].filter(Boolean).join(" · ") || null;
 }
-
-/*
- * ★ № and the name stay put while the rest scrolls sideways — 2026-10-13,
- * the user. `border-separate` (not `collapse`) so a sticky cell keeps its own
- * borders; the faint shadow marks the edge the columns slide under.
- */
-const FROZEN_NO = "sticky left-0 z-10 w-10 min-w-10";
-const FROZEN_NAME = "sticky left-10 z-10 min-w-[200px] shadow-[1px_0_0_0_var(--color-border)]";
 
 /** Linked to ESIS; read from the institution number until the API says so. */
 function esisConnected(kg: Row): boolean {
@@ -517,16 +530,21 @@ function KindergartenRow({
   index,
   showEsis,
   onDelete,
+  onRecordPayment,
 }: {
   kg: Row;
   index: number;
   showEsis: boolean;
   onDelete: () => void;
+  onRecordPayment: () => void;
 }) {
   const linked = esisConnected(kg);
   const toggle = useToggleKindergartenActive(kg);
-  const cell =
-    "border-b border-r border-border-soft px-3 py-2 align-middle bg-white group-hover:bg-slate-50 last:border-r-0";
+  // A contract that has ended tints its whole row (2026-10-14, the user).
+  const ended = Boolean(kg.contractEndsOn) && daysUntil(kg.contractEndsOn!) < 0;
+  const cell = `border-b border-r border-border-soft px-3 py-2 align-middle last:border-r-0 ${
+    ended ? "bg-red-50 group-hover:bg-red-100" : "bg-white group-hover:bg-slate-50"
+  }`;
   return (
     <tr className="group">
       <td className={`${cell} ${FROZEN_NO} text-right tabular-nums text-muted`}>{index}</td>
@@ -559,15 +577,18 @@ function KindergartenRow({
       <td className={`${cell} text-right tabular-nums`}>{kg.staffCount ?? "—"}</td>
       <td className={`${cell} whitespace-nowrap tabular-nums`}>{kg.phone || "—"}</td>
       <td className={`${cell} max-w-[200px] truncate`}>{kg.email || "—"}</td>
+      <td className={`${cell} whitespace-nowrap tabular-nums`}>
+        {kg.contractSignedAt ? formatDate(kg.contractSignedAt) : "—"}
+      </td>
       <td className={`${cell} whitespace-nowrap tabular-nums`}>{formatDate(startedOn(kg))}</td>
       <td className={`${cell} whitespace-nowrap tabular-nums`}>
-        {kg.contractEndsOn ? (
-          <span className={daysUntil(kg.contractEndsOn) <= 14 ? "font-semibold text-danger" : ""}>
-            {formatDate(kg.contractEndsOn)}
-          </span>
-        ) : (
-          "—"
-        )}
+        <EndsCell endsOn={kg.contractEndsOn} />
+      </td>
+      <td className={`${cell} whitespace-nowrap`}>
+        {kg.billingPeriod ? BILLING_LABEL[kg.billingPeriod] : "—"}
+      </td>
+      <td className={`${cell} whitespace-nowrap`}>
+        <PaymentCell kg={kg} />
       </td>
       <td className={cell}>
         <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
@@ -583,6 +604,8 @@ function KindergartenRow({
           ariaLabel={`${kg.name} — үйлдэл`}
           items={[
             { label: "Дэлгэрэнгүй", href: `/platform/${kg.id}` },
+            // What came into the account — without opening the page (2026-10-14).
+            { label: "Төлбөр бүртгэх", onSelect: onRecordPayment },
             {
               label: kg.isActive ? "Идэвхгүй болгох" : "Идэвхжүүлэх",
               onSelect: toggle.run,
@@ -595,7 +618,7 @@ function KindergartenRow({
   );
 }
 
-type SortKey = "name" | "area" | "groups" | "children" | "staff" | "start" | "contract";
+type SortKey = "name" | "area" | "groups" | "children" | "staff" | "signed" | "start" | "contract";
 
 /** Missing values sort last whichever way the column runs. */
 function compareRows(a: Row, b: Row, key: SortKey, dir: 1 | -1): number {
@@ -610,9 +633,11 @@ function compareRows(a: Row, b: Row, key: SortKey, dir: 1 | -1): number {
             ? (row.childCount ?? null)
             : key === "staff"
               ? (row.staffCount ?? null)
-              : key === "start"
-                ? startedOn(row)
-                : (row.contractEndsOn ?? null);
+              : key === "signed"
+                ? (row.contractSignedAt ?? null)
+                : key === "start"
+                  ? startedOn(row)
+                  : (row.contractEndsOn ?? null);
   const x = value(a);
   const y = value(b);
   if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
@@ -621,44 +646,6 @@ function compareRows(a: Row, b: Row, key: SortKey, dir: 1 | -1): number {
       ? x - y
       : String(x).localeCompare(String(y), "mn");
   return order * dir;
-}
-
-function SortHeader<K extends string>({
-  label,
-  column,
-  sort,
-  onSort,
-  align = "left",
-  className,
-}: {
-  label: string;
-  column: K;
-  sort: { key: K; dir: 1 | -1 };
-  onSort: (column: K) => void;
-  align?: "left" | "right";
-  className?: string;
-}) {
-  const active = sort.key === column;
-  return (
-    <th
-      scope="col"
-      aria-sort={active ? (sort.dir === 1 ? "ascending" : "descending") : "none"}
-      className={
-        [align === "right" ? "text-right" : "", className ?? ""].join(" ").trim() || undefined
-      }
-    >
-      <button
-        type="button"
-        onClick={() => onSort(column)}
-        className={`inline-flex items-center gap-1 font-semibold hover:text-ink ${active ? "text-ink" : ""}`}
-      >
-        {label}
-        <span aria-hidden="true" className="text-faint">
-          {active ? (sort.dir === 1 ? "▲" : "▼") : "↕"}
-        </span>
-      </button>
-    </th>
-  );
 }
 
 /**
@@ -680,8 +667,11 @@ function downloadSheet(rows: Row[], showEsis: boolean) {
     "Ажилтан",
     "Утас",
     "И-мэйл",
+    "Гэрээ байгуулсан",
     "Эхэлсэн",
     "Дуусах",
+    "Хугацаа",
+    "Төлбөр",
     "Төлөв",
   ];
   const body = rows.map((kg, index) => [
@@ -700,8 +690,11 @@ function downloadSheet(rows: Row[], showEsis: boolean) {
     kg.staffCount ?? "",
     kg.phone ?? "",
     kg.email ?? "",
+    kg.contractSignedAt ? formatDate(kg.contractSignedAt) : "",
     formatDate(startedOn(kg)),
     kg.contractEndsOn ? formatDate(kg.contractEndsOn) : "",
+    kg.billingPeriod ? BILLING_LABEL[kg.billingPeriod] : "",
+    paymentText(kg),
     kg.isActive ? "Идэвхтэй" : "Идэвхгүй",
   ]);
   const csv = [header, ...body].map((line) => line.map(quote).join(",")).join("\r\n");
@@ -711,284 +704,6 @@ function downloadSheet(rows: Row[], showEsis: boolean) {
   link.download = "tsetserleguud.csv";
   link.click();
   URL.revokeObjectURL(url);
-}
-
-const soloListSchema = paginated(soloWorkspaceSchema);
-
-/** «Excel татах» for the solo teachers — the rows on screen, as the kindergartens' does. */
-function downloadSoloSheet(rows: SoloWorkspace[]) {
-  const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
-  const header = [
-    "№",
-    "Багш",
-    "Ажилладаг цэцэрлэг",
-    "Аймаг / дүүрэг",
-    "Хүүхэд",
-    "Утас",
-    "И-мэйл",
-    "Бүртгэсэн",
-  ];
-  const body = rows.map((row, index) => [
-    index + 1,
-    row.name,
-    row.workplace ?? "",
-    row.location ?? "",
-    row.childCount,
-    row.phone ?? "",
-    row.email ?? "",
-    formatDate(row.createdAt),
-  ]);
-  const csv = [header, ...body].map((line) => line.map(quote).join(",")).join("\r\n");
-  const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "bie-daasan-bagsh.csv";
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-/** «Бүгд», those who named the kindergarten they work at, or those who did not. */
-const WORKPLACE_OPTIONS = [
-  { value: "", label: "Бүгд" },
-  { value: "named", label: "Бичсэн" },
-  { value: "blank", label: "Бичээгүй" },
-] as const;
-
-/** «Бүгд», teachers with children on their list, or those with none yet. */
-const SOLO_CHILDREN_OPTIONS = [
-  { value: "", label: "Бүгд" },
-  { value: "some", label: "Хүүхэдтэй" },
-  { value: "none", label: "Хүүхэдгүй" },
-] as const;
-
-type SoloSortKey = "name" | "area" | "children" | "created";
-
-function compareSolo(a: SoloWorkspace, b: SoloWorkspace, key: SoloSortKey, dir: 1 | -1): number {
-  const value = (row: SoloWorkspace): string | number | null =>
-    key === "name"
-      ? row.name
-      : key === "area"
-        ? row.location || null
-        : key === "children"
-          ? row.childCount
-          : row.createdAt;
-  const x = value(a);
-  const y = value(b);
-  if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
-  const order =
-    typeof x === "number" && typeof y === "number"
-      ? x - y
-      : String(x).localeCompare(String(y), "mn");
-  return order * dir;
-}
-
-/**
- * «Багш дангаар» — teachers working on their own, before their kindergarten
- * signs (#202). The same table and filter bar as the kindergartens
- * (2026-10-13, the user: "ийм байдлаар"); merging happens on «Бие даасан
- * багш», which the row's «⋯» opens.
- */
-function SoloTeachersTable() {
-  const [search, setSearch] = useState("");
-  const [area, setArea] = useState("");
-  const [workplace, setWorkplace] = useState("");
-  const [children, setChildren] = useState("");
-  const [sort, setSort] = useState<{ key: SoloSortKey; dir: 1 | -1 }>({
-    key: "created",
-    dir: -1,
-  });
-  const list = useQuery({
-    queryKey: ["platform", "solo-workspaces"],
-    queryFn: () => get("/platform/solo-workspaces?page=1&pageSize=100", soloListSchema),
-  });
-  const items = list.data?.items ?? [];
-  const areas = [
-    ...new Set(items.map((row) => row.location).filter((name): name is string => Boolean(name))),
-  ].sort((a, b) => a.localeCompare(b, "mn"));
-  const needle = search.trim().toLocaleLowerCase("mn");
-  const rows = items
-    .filter(
-      (row) =>
-        (!needle ||
-          [row.name, row.workplace ?? "", row.location ?? ""].some((text) =>
-            text.toLocaleLowerCase("mn").includes(needle),
-          )) &&
-        (!area || row.location === area) &&
-        (!workplace || Boolean(row.workplace?.trim()) === (workplace === "named")) &&
-        (!children || row.childCount > 0 === (children === "some")),
-    )
-    .sort((a, b) => compareSolo(a, b, sort.key, sort.dir));
-  const chips = [
-    search.trim() && { key: "q", label: `«${search.trim()}»`, clear: () => setSearch("") },
-    area && { key: "area", label: area, clear: () => setArea("") },
-    workplace && {
-      key: "workplace",
-      label: `Цэцэрлэг ${labelOf(WORKPLACE_OPTIONS, workplace).toLocaleLowerCase("mn")}`,
-      clear: () => setWorkplace(""),
-    },
-    children && {
-      key: "children",
-      label: labelOf(SOLO_CHILDREN_OPTIONS, children),
-      clear: () => setChildren(""),
-    },
-  ].filter((chip): chip is Chip => Boolean(chip));
-  const clearAll = () => {
-    setSearch("");
-    setArea("");
-    setWorkplace("");
-    setChildren("");
-  };
-  const sortBy = (key: SoloSortKey) =>
-    setSort((current) => ({ key, dir: current.key === key ? (-current.dir as 1 | -1) : 1 }));
-  const cell =
-    "border-b border-r border-border-soft px-3 py-2 align-middle bg-white group-hover:bg-slate-50 last:border-r-0";
-
-  return (
-    <section aria-label="Бие даасан багшийн жагсаалт" className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="relative min-w-0 flex-1 sm:max-w-[480px]">
-          <span className="sr-only">Багш, цэцэрлэгээр хайх</span>
-          <Search
-            size={16}
-            aria-hidden="true"
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
-          />
-          <Input
-            type="search"
-            aria-label="Багш, цэцэрлэгээр хайх"
-            placeholder="Багшийн нэр, цэцэрлэгээр хайх"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-9 pl-9 text-compact"
-          />
-        </label>
-        {list.data ? (
-          <span className="ml-auto flex items-center gap-2">
-            <span className="text-caption text-muted">
-              {chips.length ? `${items.length}-оос ${rows.length}` : rows.length} багш
-            </span>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={rows.length === 0}
-              onClick={() => downloadSoloSheet(rows)}
-            >
-              <FileDown size={16} aria-hidden="true" />
-              Excel татах
-            </Button>
-          </span>
-        ) : null}
-      </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <FilterSelect
-          label="Аймаг / дүүрэг"
-          ariaLabel="Багшийг аймаг, дүүргээр шүүх"
-          value={area}
-          onChange={setArea}
-          options={[
-            { value: "", label: "Бүгд" },
-            ...areas.map((name) => ({ value: name, label: name })),
-          ]}
-        />
-        <FilterSelect
-          label="Ажилладаг цэцэрлэг"
-          ariaLabel="Ажилладаг цэцэрлэгээр шүүх"
-          value={workplace}
-          onChange={setWorkplace}
-          options={WORKPLACE_OPTIONS}
-        />
-        <FilterSelect
-          label="Хүүхэд"
-          ariaLabel="Хүүхдийн тоогоор шүүх"
-          value={children}
-          onChange={setChildren}
-          options={SOLO_CHILDREN_OPTIONS}
-        />
-      </div>
-      <FilterChips chips={chips} onClearAll={clearAll} />
-
-      {list.isLoading ? <LoadingState rows={4} /> : null}
-      {list.isError ? <ErrorState description={errorMessage(list.error)} /> : null}
-      {list.data && rows.length === 0 ? (
-        <EmptyState
-          title="Бие даасан багш алга"
-          description={
-            chips.length ? "Шүүлтүүрээ өөрчилж үзнэ үү." : "Дангаар бүртгүүлсэн багш одоогоор алга."
-          }
-        />
-      ) : null}
-
-      {rows.length > 0 ? (
-        <div className="overflow-x-auto rounded-control border border-border bg-white">
-          <table className="w-full min-w-[960px] border-separate border-spacing-0 text-left text-caption">
-            <thead className="bg-slate-50 text-muted">
-              <tr className="[&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-r [&>th]:border-border [&>th]:px-3 [&>th]:py-2 [&>th]:font-semibold [&>th:last-child]:border-r-0">
-                <th scope="col" className={`${FROZEN_NO} bg-slate-50 text-right`}>
-                  №
-                </th>
-                <SortHeader
-                  label="Багш"
-                  column="name"
-                  sort={sort}
-                  onSort={sortBy}
-                  className={`${FROZEN_NAME} bg-slate-50`}
-                />
-                <th scope="col">Ажилладаг цэцэрлэг</th>
-                <SortHeader label="Аймаг / дүүрэг" column="area" sort={sort} onSort={sortBy} />
-                <SortHeader
-                  label="Хүүхэд"
-                  column="children"
-                  sort={sort}
-                  onSort={sortBy}
-                  align="right"
-                />
-                <th scope="col">Утас</th>
-                <th scope="col">И-мэйл</th>
-                <SortHeader label="Бүртгэсэн" column="created" sort={sort} onSort={sortBy} />
-                <th scope="col" className="w-10">
-                  <span className="sr-only">Үйлдэл</span>
-                </th>
-              </tr>
-              <tr className="[&>td]:border-b-2 [&>td]:border-r [&>td]:border-border [&>td]:bg-slate-50 [&>td]:px-3 [&>td]:py-2 [&>td]:font-semibold [&>td]:text-ink [&>td:last-child]:border-r-0">
-                <td className={FROZEN_NO} />
-                <td className={FROZEN_NAME}>Нийт: {rows.length} багш</td>
-                <td />
-                <td />
-                <td className="text-right tabular-nums">
-                  {rows.reduce((sum, row) => sum + row.childCount, 0).toLocaleString("en-US")}
-                </td>
-                <td colSpan={4} />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, index) => (
-                <tr key={row.id} className="group">
-                  <td className={`${cell} ${FROZEN_NO} text-right tabular-nums text-muted`}>
-                    {index + 1}
-                  </td>
-                  <td className={`${cell} ${FROZEN_NAME} font-semibold text-ink`}>{row.name}</td>
-                  <td className={cell}>{row.workplace || "—"}</td>
-                  <td className={cell}>{row.location || "—"}</td>
-                  <td className={`${cell} text-right tabular-nums`}>{row.childCount}</td>
-                  <td className={`${cell} whitespace-nowrap tabular-nums`}>{row.phone || "—"}</td>
-                  <td className={`${cell} max-w-[200px] truncate`}>{row.email || "—"}</td>
-                  <td className={`${cell} whitespace-nowrap tabular-nums`}>
-                    {formatDate(row.createdAt)}
-                  </td>
-                  <td className={`${cell} text-right`}>
-                    <RowMenu
-                      ariaLabel={`${row.name} — үйлдэл`}
-                      items={[{ label: "Цэцэрлэгт нэгтгэх", href: "/platform/solo-workspaces" }]}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-    </section>
-  );
 }
 
 /** Sums one column over the rows, or `null` while the API sends none of it. */
@@ -1066,7 +781,7 @@ function KindergartenTotals({
       <td className={`${cell} text-right tabular-nums`}>{figure(groups)}</td>
       <td className={`${cell} text-right tabular-nums`}>{figure(children)}</td>
       <td className={`${cell} text-right tabular-nums`}>{figure(staff)}</td>
-      <td className={cell} colSpan={6} />
+      <td className={cell} colSpan={9} />
     </tr>
   );
 }
@@ -1078,4 +793,166 @@ function ratio(
   empty = "—",
 ): string {
   return typeof part === "number" && typeof whole === "number" ? `${part} / ${whole}` : empty;
+}
+
+/** «Бүгд» or one payment state — 2026-10-14, the user. */
+const PAYMENT_OPTIONS = [
+  { value: "", label: "Бүгд" },
+  { value: "paid", label: "Төлсөн" },
+  { value: "due", label: "Төлөх хугацаа ойртсон" },
+  { value: "overdue", label: "Хоцорсон" },
+  { value: "suspended", label: "Эрх түр хаагдсан" },
+] as const;
+
+const PAYMENT_DOT = {
+  paid: "bg-emerald-500",
+  due: "bg-amber-400",
+  overdue: "bg-red-500",
+  suspended: "bg-red-500",
+} as const;
+
+/** «Төлсөн · 2/3», or «—» while the API sends nothing. */
+function paymentText(kg: Row): string {
+  if (!kg.paymentStatus) return "";
+  const label = labelOf(PAYMENT_OPTIONS, kg.paymentStatus);
+  return typeof kg.paidPeriods === "number" && typeof kg.totalPeriods === "number"
+    ? `${label} · ${kg.paidPeriods}/${kg.totalPeriods}`
+    : label;
+}
+
+function PaymentCell({ kg }: { kg: Row }) {
+  if (!kg.paymentStatus) return <>—</>;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span
+        aria-hidden="true"
+        className={`size-1.5 rounded-pill ${PAYMENT_DOT[kg.paymentStatus]}`}
+      />
+      {paymentText(kg)}
+    </span>
+  );
+}
+
+const BILLING_LABEL = { term: "Улирлаар", year: "Жилээр" } as const;
+
+/** Contracts made lately — 2026-10-14, the user: 7 or 14 days, 3 months, a year. */
+const SIGNED_OPTIONS = [
+  { value: "", label: "Бүгд" },
+  { value: "7d", label: "Сүүлийн 7 хоног" },
+  { value: "14d", label: "Сүүлийн 14 хоног" },
+  { value: "3m", label: "Сүүлийн 3 сар" },
+  { value: "1y", label: "Сүүлийн 1 жил" },
+] as const;
+
+/** Contracts to renew: ending within 14 or 30 days, or already ended. */
+const ENDING_OPTIONS = [
+  { value: "", label: "Бүгд" },
+  { value: "14", label: "14 хоногт" },
+  { value: "30", label: "30 хоногт" },
+  { value: "ended", label: "Дууссан" },
+] as const;
+
+/** Whether a contract was made within the chosen span, counted back from today. */
+function signedWithinRange(signedAt: string | null | undefined, span: string): boolean {
+  if (!signedAt) return false;
+  const since = new Date();
+  since.setHours(0, 0, 0, 0);
+  if (span === "7d") since.setDate(since.getDate() - 7);
+  else if (span === "14d") since.setDate(since.getDate() - 14);
+  else if (span === "3m") since.setMonth(since.getMonth() - 3);
+  else since.setFullYear(since.getFullYear() - 1);
+  const days = daysUntil(signedAt);
+  return days <= 0 && days >= daysUntil(since.toLocaleDateString("sv-SE"));
+}
+
+function endingWithin(endsOn: string | null | undefined, choice: string): boolean {
+  if (!endsOn) return false;
+  const days = daysUntil(endsOn);
+  return choice === "ended" ? days < 0 : days >= 0 && days <= Number(choice);
+}
+
+/** «11 хоног үлдсэн», «Өнөөдөр дуусна», «Дууссан · 13 хоногийн өмнө», or nothing. */
+function endingNote(endsOn: string): { text: string; tone: "amber" | "red" | "ended" } | null {
+  const days = daysUntil(endsOn);
+  if (days < 0) return { text: `Дууссан · ${-days} хоногийн өмнө`, tone: "ended" };
+  if (days === 0) return { text: "Өнөөдөр дуусна", tone: "red" };
+  if (days <= 14) return { text: `${days} хоног үлдсэн`, tone: "red" };
+  if (days <= 30) return { text: `${days} хоног үлдсэн`, tone: "amber" };
+  return null;
+}
+
+const ENDING_TONE = {
+  amber: "bg-amber-100 text-amber-800",
+  red: "bg-red-100 text-red-700",
+  ended: "bg-slate-700 text-white",
+} as const;
+
+/**
+ * «Дуусах» — the date, and how near it is in words (2026-10-14, the user:
+ * "дуусах дөхөж бгаа бас дууссан … хялбар ойлгомжтой").
+ */
+function EndsCell({ endsOn }: { endsOn: string | null | undefined }) {
+  if (!endsOn) return <>—</>;
+  const note = endingNote(endsOn);
+  return (
+    <span className="inline-flex items-center gap-2">
+      {formatDate(endsOn)}
+      {note ? (
+        <span
+          className={`rounded-pill px-2 py-0.5 text-caption font-semibold ${ENDING_TONE[note.tone]}`}
+        >
+          {note.text}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * The contracts to act on, counted and clickable above the table — a click
+ * filters by it, a second click clears it. A count of none is not drawn.
+ */
+function EndingCounts({
+  items,
+  active,
+  onPick,
+}: {
+  items: Row[];
+  active: string;
+  onPick: (value: string) => void;
+}) {
+  const buttons = [
+    { value: "ended", label: "Дууссан", dot: "bg-slate-700" },
+    { value: "14", label: "14 хоногт дуусах", dot: "bg-red-500" },
+    { value: "30", label: "30 хоногт дуусах", dot: "bg-amber-400" },
+  ]
+    .map((button) => ({
+      ...button,
+      count: items.filter((kg) => endingWithin(kg.contractEndsOn, button.value)).length,
+    }))
+    .filter((button) => button.count > 0);
+  if (buttons.length === 0) return null;
+
+  return (
+    <div role="group" aria-label="Гэрээний хугацаа" className="flex flex-wrap items-center gap-2">
+      <span className="text-caption text-muted">Гэрээ:</span>
+      {buttons.map((button) => (
+        <button
+          key={button.value}
+          type="button"
+          aria-pressed={active === button.value}
+          onClick={() => onPick(active === button.value ? "" : button.value)}
+          className={`inline-flex min-h-8 items-center gap-1.5 rounded-pill border px-3 text-caption font-semibold ${
+            active === button.value
+              ? "border-primary bg-primary/10 text-ink"
+              : "border-border bg-white text-ink hover:bg-slate-50"
+          }`}
+        >
+          <span aria-hidden="true" className={`size-2 rounded-pill ${button.dot}`} />
+          {button.label}
+          <span className="tabular-nums">{button.count}</span>
+        </button>
+      ))}
+    </div>
+  );
 }

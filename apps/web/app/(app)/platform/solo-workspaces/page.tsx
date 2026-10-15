@@ -6,25 +6,30 @@ import {
   platformKindergartenSchema,
   soloMergePreviewSchema,
   soloMergeResultSchema,
-  soloWorkspaceSchema,
   type SoloMergePreview,
   type SoloWorkspace,
 } from "@kinder/contracts";
 import { UserRound } from "lucide-react";
 import { useState } from "react";
+import { z } from "zod";
 import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
+import {
+  SoloTeachersTable,
+  idleDays,
+  teacherName,
+  type SoloRow,
+} from "@/components/platform/solo-teachers-table";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { ResetPasswordLinkDialog } from "@/components/platform/reset-password-link-dialog";
 import { RequireSuperAdmin } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Checkbox, Field, Input, Select } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
-import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
+import { FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { get, mutate } from "@/lib/api/browser";
-import { errorMessage } from "@/lib/api/errors";
-import { formatDate } from "@/lib/format";
+import { errorMessage, isNotFound } from "@/lib/api/errors";
 
-const workspacesSchema = paginated(soloWorkspaceSchema);
 const kindergartensSchema = paginated(platformKindergartenSchema);
 
 /**
@@ -41,110 +46,160 @@ export default function SoloWorkspacesPage() {
   );
 }
 
+/*
+ * ★ The same table as «Цэцэрлэгүүд» — 2026-10-14, the user: search, filters,
+ * the children who paid their QPay fee and those who have not; «⋯» opens the
+ * merge right here.
+ */
 function SoloWorkspaces() {
-  const list = useQuery({
-    queryKey: ["platform", "solo-workspaces"],
-    queryFn: () => get("/platform/solo-workspaces?page=1&pageSize=100", workspacesSchema),
-  });
   const [merging, setMerging] = useState<SoloWorkspace | null>(null);
-  const items = list.data?.items ?? [];
+  const [deleting, setDeleting] = useState<SoloRow | null>(null);
+  const [resetting, setResetting] = useState<SoloRow | null>(null);
 
   return (
-    <div className="flex flex-col gap-6 pb-8">
+    <div className="flex flex-col gap-5 pb-8">
       <PlatformPageHeading
         title="Бие даасан багш"
         lede="Цэцэрлэг гэрээ байгуулахад багшийн орчныг тэр цэцэрлэгт нэгтгэнэ. Юу ч устахгүй."
         mark={<UserRound />}
       />
 
-      {list.isLoading ? <LoadingState rows={3} /> : null}
-      {list.error ? <ErrorState description={errorMessage(list.error)} /> : null}
-      {list.data && items.length === 0 ? (
-        <EmptyState
-          title="Бие даасан багш алга"
-          description="Багш «Үнийн санал» хуудаснаас бүртгүүлэхэд энд харагдана."
-        />
-      ) : null}
-
-      <ul className="flex flex-col gap-3">
-        {items.map((workspace) => (
-          <li key={workspace.id}>
-            <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
-              <div className="min-w-0">
-                <p className="text-lead font-bold text-ink">{workspace.name}</p>
-                <p className="text-caption text-muted">
-                  {[workspace.phone, workspace.email, workspace.location]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
-                <p className="text-caption text-muted">
-                  Ажилладаг: {workspace.workplace ?? "—"} · {workspace.childCount} хүүхэд ·{" "}
-                  {formatDate(workspace.createdAt)}
-                </p>
-              </div>
-              <Button size="sm" onClick={() => setMerging(workspace)}>
-                Цэцэрлэгт нэгтгэх
-              </Button>
-            </Card>
-          </li>
-        ))}
-      </ul>
+      <SoloTeachersTable
+        onMerge={setMerging}
+        onDelete={setDeleting}
+        onResetPassword={setResetting}
+      />
 
       {merging ? <MergeDialog workspace={merging} onClose={() => setMerging(null)} /> : null}
+      {resetting ? (
+        <ResetPasswordLinkDialog
+          path={`/platform/solo-workspaces/${resetting.id}/password-reset`}
+          person={teacherName(resetting)}
+          notReady="Сэргээх холбоос үүсгэх хэсэг хараахан бэлэн болоогүй."
+          onClose={() => setResetting(null)}
+        />
+      ) : null}
+      {deleting ? (
+        <DeleteSoloDialog workspace={deleting} onClose={() => setDeleting(null)} />
+      ) : null}
     </div>
   );
 }
 
+/**
+ * «Устгах» from day 14 of idleness — 2026-10-14, the user; day 30 deletes on
+ * its own. A soft delete (CLAUDE.md §3.2): `DELETE /platform/solo-workspaces/
+ * :id`, asked of the admin. The children whose families paid are named, so
+ * the operator deletes knowing it.
+ */
+function DeleteSoloDialog({ workspace, onClose }: { workspace: SoloRow; onClose: () => void }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const remove = useMutation({
+    mutationFn: () =>
+      mutate(`/platform/solo-workspaces/${workspace.id}`, z.unknown(), { method: "DELETE" }),
+    onSuccess: () => {
+      toast.success("Бие даасан багшийг устгалаа.");
+      void queryClient.invalidateQueries({ queryKey: ["platform"] });
+      onClose();
+    },
+    onError: (error) =>
+      toast.error(
+        isNotFound(error)
+          ? "Устгах хэсэг хараахан бэлэн болоогүй. 30 хоног болоход автоматаар устна."
+          : errorMessage(error),
+      ),
+  });
+  const paid = workspace.paidChildCount ?? 0;
+
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={`${teacherName(workspace)}-г устгах уу?`}
+      description={`${idleDays(workspace) ?? 0} хоног идэвхгүй. ${workspace.childCount} хүүхэд${
+        paid > 0 ? `, үүнээс ${paid} хүүхдийн эцэг эх төлбөр төлсөн` : ""
+      }. Устгасны дараа багш болон эцэг эхчүүд нэвтрэх боломжгүй.`}
+      confirmLabel="Устгах"
+      pendingLabel="Устгаж байна…"
+      tone="danger"
+      pending={remove.isPending}
+      onConfirm={() => remove.mutate()}
+    />
+  );
+}
+
+/** «нарлаг» for «Нарлаг цэцэрлэг (тест)» — the words that tell a kindergarten apart. */
+function nameKey(name: string): string {
+  return name
+    .toLocaleLowerCase("mn")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/цэцэрлэг/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Merging a solo teacher's workspace into a kindergarten — made simple on
+ * 2026-10-14 (the user: "яаж хялбар болгох"). One screen, one decision:
+ *
+ *   - the kindergarten the teacher said they work at is chosen already;
+ *     inactive kindergartens are not offered;
+ *   - the preview runs by itself whenever a choice changes — it is the merge,
+ *     rolled back (D3), so what it shows is what happens — and «Нэгтгэх»
+ *     waits for the preview of exactly these choices;
+ *   - a group's name is asked for only when it clashes;
+ *   - nothing is undone, so «Нэгтгэх» asks once more.
+ */
 function MergeDialog({ workspace, onClose }: { workspace: SoloWorkspace; onClose: () => void }) {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [targetId, setTargetId] = useState("");
+  const [picked, setPicked] = useState<string | null>(null);
   const [groupName, setGroupName] = useState("");
-  /** D3b — "" moves the teacher's group in as a group of its own. */
   const [targetGroupId, setTargetGroupId] = useState("");
-  /** D3b — matched children the operator says are different children. */
-  const [keepSeparate, setKeepSeparate] = useState<string[]>([]);
-  /** Every match any preview has shown, so a child kept separate can be ticked back. */
-  const [matched, setMatched] = useState<Record<string, string>>({});
-  const [preview, setPreview] = useState<SoloMergePreview | null>(null);
-  /** A change since the last preview: «Нэгтгэх» waits for a fresh one. */
-  const [stale, setStale] = useState(false);
+  /** Children kept apart, by id, with their names — they leave the preview's list. */
+  const [kept, setKept] = useState<Record<string, string>>({});
+  const [confirming, setConfirming] = useState(false);
 
   const kindergartens = useQuery({
     queryKey: ["platform", "kindergartens", "merge-targets"],
     queryFn: () => get("/platform/kindergartens?page=1&pageSize=100", kindergartensSchema),
   });
+  const targets = (kindergartens.data?.items ?? []).filter((kg) => kg.isActive);
+  const said = workspace.workplace ? nameKey(workspace.workplace) : "";
+  const suggested = said
+    ? targets.find((kg) => {
+        const key = nameKey(kg.name);
+        return key !== "" && (key === said || key.includes(said) || said.includes(key));
+      })
+    : undefined;
+  const targetId = picked ?? suggested?.id ?? "";
 
-  const body = () => ({
+  const body = {
     targetKindergartenId: targetId,
     ...(groupName.trim() ? { groupName: groupName.trim() } : {}),
     ...(targetGroupId ? { targetGroupId } : {}),
-    ...(keepSeparate.length > 0 ? { keepSeparate } : {}),
-  });
+    ...(Object.keys(kept).length > 0 ? { keepSeparate: Object.keys(kept) } : {}),
+  };
 
-  const runPreview = useMutation({
-    mutationFn: () =>
+  const preview = useQuery({
+    queryKey: ["platform", "solo-merge-preview", workspace.id, body],
+    queryFn: () =>
       mutate(`/platform/solo-workspaces/${workspace.id}/merge-preview`, soloMergePreviewSchema, {
         method: "POST",
-        body: body(),
+        body,
       }),
-    onSuccess: (next) => {
-      setPreview(next);
-      setStale(false);
-      if (next.ok) {
-        setMatched((seen) => ({
-          ...seen,
-          ...Object.fromEntries(next.result.childrenAttached.map((c) => [c.soloChildId, c.name])),
-        }));
-      }
-    },
+    enabled: Boolean(targetId),
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
   });
 
   const runMerge = useMutation({
     mutationFn: () =>
       mutate(`/platform/solo-workspaces/${workspace.id}/merge`, soloMergeResultSchema, {
         method: "POST",
-        body: body(),
+        body,
       }),
     onSuccess: () => {
       toast.success("Багшийн орчныг цэцэрлэгт нэгтгэлээ.");
@@ -153,31 +208,37 @@ function MergeDialog({ workspace, onClose }: { workspace: SoloWorkspace; onClose
     },
   });
 
-  const busy = runPreview.isPending || runMerge.isPending;
-  const ready = preview?.ok === true && !stale;
-  const changed = () => setStale(true);
+  const shown = preview.data;
+  const ready = shown?.ok === true && !preview.isFetching;
+  const result = shown?.ok ? shown.result : null;
+  const target = targets.find((kg) => kg.id === targetId);
+  const clash = !targetGroupId && result && !result.intoExistingGroup ? result.groupsRenamed : [];
+  const attached = result?.childrenAttached ?? [];
+  const toggleKept = (id: string, name: string) =>
+    setKept((current) => {
+      const next = { ...current };
+      if (next[id]) delete next[id];
+      else next[id] = name;
+      return next;
+    });
 
   return (
     <FormDialog
       open
-      onOpenChange={(open) => !open && !busy && onClose()}
-      title={`${workspace.name} — нэгтгэх`}
-      description="Хүүхэд, бүлэг, эцэг эх, ажиглалт, төлбөр бүгд сонгосон цэцэрлэг рүү шилжинэ. Багш тэнд багш болно."
-      busy={busy}
+      onOpenChange={(open) => !open && !runMerge.isPending && onClose()}
+      title={`${teacherName(workspace)}-г цэцэрлэгт нэгтгэх`}
+      description="Хүүхэд, бүлэг, эцэг эх, ажиглалт, төлбөр бүгд сонгосон цэцэрлэг рүү шилжинэ. Багш тэнд багш болно. Юу ч устахгүй."
+      busy={runMerge.isPending}
       footer={
         <>
-          <Button variant="secondary" size="sm" onClick={onClose} disabled={busy}>
+          <Button variant="secondary" size="sm" onClick={onClose} disabled={runMerge.isPending}>
             Болих
           </Button>
           <Button
-            variant="secondary"
             size="sm"
-            disabled={!targetId || busy}
-            onClick={() => runPreview.mutate()}
+            disabled={!ready || runMerge.isPending}
+            onClick={() => setConfirming(true)}
           >
-            Урьдчилан харах
-          </Button>
-          <Button size="sm" disabled={!ready || busy} onClick={() => runMerge.mutate()}>
             {runMerge.isPending ? "Нэгтгэж байна…" : "Нэгтгэх"}
           </Button>
         </>
@@ -188,27 +249,35 @@ function MergeDialog({ workspace, onClose }: { workspace: SoloWorkspace; onClose
           message={
             runMerge.error
               ? errorMessage(runMerge.error)
-              : runPreview.error
-                ? errorMessage(runPreview.error)
+              : preview.error
+                ? errorMessage(preview.error)
                 : null
           }
         />
 
-        <Field label="Цэцэрлэг" required>
-          {({ id }) => (
+        <Field
+          label="Цэцэрлэг"
+          hint={
+            suggested && targetId === suggested.id
+              ? `Багшийн бичсэн «${workspace.workplace}»-аар сонгогдсон.`
+              : undefined
+          }
+          required
+        >
+          {({ id, describedBy }) => (
             <Select
               id={id}
+              aria-describedby={describedBy}
               value={targetId}
               onChange={(event) => {
-                setTargetId(event.target.value);
+                setPicked(event.target.value);
                 setTargetGroupId("");
-                setKeepSeparate([]);
-                setMatched({});
-                setPreview(null);
+                setKept({});
+                setGroupName("");
               }}
             >
               <option value="">Сонгоно уу</option>
-              {(kindergartens.data?.items ?? []).map((kg) => (
+              {targets.map((kg) => (
                 <option key={kg.id} value={kg.id}>
                   {kg.name}
                 </option>
@@ -217,74 +286,76 @@ function MergeDialog({ workspace, onClose }: { workspace: SoloWorkspace; onClose
           )}
         </Field>
 
-        {preview && preview.targetGroups.length > 0 ? (
-          <Field label="Бүлэг">
-            {({ id }) => (
-              <Select
-                id={id}
-                value={targetGroupId || "__new"}
-                onChange={(event) => {
-                  setTargetGroupId(event.target.value === "__new" ? "" : event.target.value);
-                  changed();
-                }}
-              >
-                <option value="__new">Шинэ бүлэг болж орно</option>
-                {preview.targetGroups.map((group) => (
-                  <option key={group.id} value={group.id}>
-                    {group.name} бүлэгт нэгтгэх
-                  </option>
-                ))}
-              </Select>
-            )}
-          </Field>
-        ) : null}
-
-        {!targetGroupId ? (
-          <Field label="Бүлгийн нэр (давхцвал)">
-            {({ id }) => (
-              <Input
-                id={id}
-                value={groupName}
-                placeholder="Хоосон бол «… (бие даасан)»"
-                onChange={(event) => {
-                  setGroupName(event.target.value);
-                  changed();
-                }}
-              />
-            )}
-          </Field>
-        ) : null}
-
-        {Object.keys(matched).length > 0 ? (
-          <fieldset className="flex flex-col gap-1">
-            <legend className="mb-1 text-caption font-semibold text-ink">
-              Цэцэрлэгт аль хэдийн бүртгэлтэй хүүхэд — бичлэгийг нь нэгтгэнэ
-            </legend>
-            {Object.entries(matched).map(([soloChildId, name]) => (
-              <Checkbox
-                key={soloChildId}
-                label={`${name} — тусад нь үлдээх`}
-                checked={keepSeparate.includes(soloChildId)}
-                onChange={(event) => {
-                  setKeepSeparate((current) =>
-                    event.target.checked
-                      ? [...current, soloChildId]
-                      : current.filter((id) => id !== soloChildId),
-                  );
-                  changed();
-                }}
-              />
+        {shown && shown.targetGroups.length > 0 ? (
+          <fieldset className="flex flex-col gap-1.5">
+            <legend className="mb-1 text-caption font-semibold text-ink">Бүлэг</legend>
+            {[{ id: "", name: "" }, ...shown.targetGroups].map((group) => (
+              <label key={group.id || "__new"} className="flex items-center gap-2 text-body">
+                <input
+                  type="radio"
+                  name="merge-group"
+                  className="size-4"
+                  checked={targetGroupId === group.id}
+                  onChange={() => {
+                    setTargetGroupId(group.id);
+                    setGroupName("");
+                  }}
+                />
+                {group.id ? `«${group.name}» бүлэгт нэгтгэх` : "Шинэ бүлэг болж орно"}
+              </label>
             ))}
           </fieldset>
         ) : null}
 
-        {stale ? (
-          <p className="text-caption text-muted">
-            Өөрчлөлт орсон тул дахин «Урьдчилан харах» дарна уу.
-          </p>
+        {preview.isFetching ? <LoadingState rows={2} /> : null}
+
+        {shown && !preview.isFetching ? <PreviewView preview={shown} /> : null}
+
+        {/* Asked only when the group's name is already taken there. */}
+        {clash.length > 0 && !preview.isFetching ? (
+          <Field label="Бүлгийн нэр давхцаж байна" hint={`Хоосон бол «${clash[0]!.to}» болно.`}>
+            {({ id, describedBy }) => (
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                value={groupName}
+                placeholder={clash[0]!.to}
+                onChange={(event) => setGroupName(event.target.value)}
+              />
+            )}
+          </Field>
         ) : null}
-        {preview && !stale ? <PreviewView preview={preview} /> : null}
+
+        {(attached.length > 0 || Object.keys(kept).length > 0) && !preview.isFetching ? (
+          <fieldset className="flex flex-col gap-1">
+            <legend className="mb-1 text-caption font-semibold text-ink">
+              Цэцэрлэгт аль хэдийн бүртгэлтэй хүүхэд — нэг бичлэг болгоно
+            </legend>
+            {[
+              ...attached.map((child) => [child.soloChildId, child.name] as const),
+              ...Object.entries(kept),
+            ].map(([soloChildId, name]) => (
+              <Checkbox
+                key={soloChildId}
+                label={`${name} — тусад нь үлдээх`}
+                checked={Boolean(kept[soloChildId])}
+                onChange={() => toggleKept(soloChildId, name)}
+              />
+            ))}
+          </fieldset>
+        ) : null}
       </div>
+
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title={`${teacherName(workspace)}-г ${target?.name ?? "цэцэрлэг"}-т нэгтгэх үү?`}
+        description="Нэгтгэлийг буцаах боломжгүй. Хүүхэд, эцэг эх, бүлэг цэцэрлэг рүү шилжиж, багш тэнд багш болно."
+        confirmLabel="Нэгтгэх"
+        pendingLabel="Нэгтгэж байна…"
+        pending={runMerge.isPending}
+        onConfirm={() => runMerge.mutate()}
+      />
     </FormDialog>
   );
 }

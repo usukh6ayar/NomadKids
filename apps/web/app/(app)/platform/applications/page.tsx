@@ -1,11 +1,11 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, FileText, X } from "lucide-react";
-import { useState } from "react";
+import { Check, Eye, Printer, Search, Upload, X } from "lucide-react";
+import Link from "next/link";
+import { useRef, useState } from "react";
 import { z } from "zod";
 import {
-  KINDERGARTEN_APPLICATION_STATUS_LABEL,
   CONTRACT_STATUS_LABEL,
   applicationApprovalSchema,
   kindergartenApplicationSchema,
@@ -14,7 +14,7 @@ import {
   type KindergartenApplication,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
-import { errorMessage, fieldErrors } from "@/lib/api/errors";
+import { errorMessage, fieldErrors, isNotFound } from "@/lib/api/errors";
 import { RequireSuperAdmin } from "@/components/shell/require-role";
 import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
@@ -23,12 +23,72 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { formatDate } from "@/lib/format";
-import { KINDERGARTEN_MONTHLY_PER_GROUP, kindergartenPrice } from "@/lib/pricing";
+import { suggestUsername } from "@/lib/username";
+import { renderContractDraftHtml } from "@/lib/contract-preview";
+import {
+  FROZEN_NAME,
+  FROZEN_NO,
+  FilterChips,
+  FilterSelect,
+  SortHeader,
+  labelOf,
+  type Chip,
+} from "@/components/platform/table-kit";
+import { KINDERGARTEN_MONTHLY_PER_GROUP, contractSchedule } from "@/lib/pricing";
 
-const listSchema = paginated(kindergartenApplicationSchema);
+/*
+ * ★ What the applicant is — 2026-10-14, the user: «Бүгд / Багш дангаар /
+ * Цэцэрлэг / ЭСИС цэцэрлэг». The API does not send it yet (asked of the
+ * admin); until it does every application is «Цэцэрлэг», which is true today —
+ * they all come from the public kindergarten form.
+ */
+const applicationRowSchema = kindergartenApplicationSchema.extend({
+  kind: z.enum(["kindergarten", "esis", "solo"]).nullish(),
+  /*
+   * ★ The copy the kindergarten signed and stamped — 2026-10-14, the user. The
+   * API does not keep one yet (asked of the admin); until it sends these, every
+   * contract reads «Гарын үсэг хүлээгдэж буй» and the upload says «удахгүй».
+   */
+  contract: kindergartenApplicationSchema.shape.contract
+    .unwrap()
+    .extend({
+      signedAt: z.string().nullish(),
+      signedMediaFileId: z.string().nullish(),
+    })
+    .nullable(),
+});
+type ApplicationRow = z.infer<typeof applicationRowSchema>;
+type ApplicationKind = "kindergarten" | "esis" | "solo";
+type SignedContract = NonNullable<ApplicationRow["contract"]>;
+
+/** Signed: the API's date for the stamped copy, or a status past signature. */
+function isSigned(contract: SignedContract): boolean {
+  return Boolean(contract.signedAt) || contract.status !== "PENDING_SIGNATURE";
+}
+
+/** «Бүгд», those still waiting for the kindergarten's signature, or signed. */
+const SIGNATURE_OPTIONS = [
+  { value: "", label: "Бүгд" },
+  { value: "waiting", label: "Гарын үсэг хүлээгдэж буй" },
+  { value: "signed", label: "Гарын үсэг зурсан" },
+] as const;
+
+const listSchema = paginated(applicationRowSchema);
+
+const KIND_OPTIONS = [
+  { value: "", label: "Бүгд" },
+  { value: "solo", label: "Багш дангаар" },
+  { value: "kindergarten", label: "Цэцэрлэг" },
+  { value: "esis", label: "ЭСИС цэцэрлэг" },
+] as const;
+
+function kindOf(row: ApplicationRow): ApplicationKind {
+  return row.kind ?? "kindergarten";
+}
 
 const TABS = [
   { value: "PENDING", label: "Хүлээгдэж буй" },
@@ -54,9 +114,55 @@ export default function ApplicationsPage() {
   );
 }
 
+type SortKey = "name" | "groups" | "created" | "reviewed";
+
+/** «Бүгд», per term or per school year — the period the kindergarten asked for. */
+const PERIOD_OPTIONS = [
+  { value: "", label: "Бүгд" },
+  { value: "term", label: "Улирлаар" },
+  { value: "year", label: "Жилээр" },
+] as const;
+
+function compareApplications(
+  a: ApplicationRow,
+  b: ApplicationRow,
+  key: SortKey,
+  dir: 1 | -1,
+): number {
+  const value = (row: ApplicationRow): string | number | null =>
+    key === "name"
+      ? row.kindergartenName
+      : key === "groups"
+        ? (row.groupCount ?? null)
+        : key === "reviewed"
+          ? row.reviewedAt
+          : row.createdAt;
+  const x = value(a);
+  const y = value(b);
+  if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
+  const order =
+    typeof x === "number" && typeof y === "number"
+      ? x - y
+      : String(x).localeCompare(String(y), "mn");
+  return order * dir;
+}
+
+/*
+ * ★ A minimal table, as the kindergartens are — 2026-10-14, the user
+ * ("хүснэгтээр минимал … хайх шүүлтүүр"). The three states stay tabs, each a
+ * query of its own; the search and the period filter narrow the page the API
+ * returned (50). The last column follows the state: «Шалгах» while pending,
+ * the contract once approved, the reason once refused.
+ */
 function Applications() {
   const [status, setStatus] = useState<(typeof TABS)[number]["value"]>("PENDING");
   const [reviewing, setReviewing] = useState<KindergartenApplication | null>(null);
+  const [query, setQuery] = useState("");
+  const [period, setPeriod] = useState("");
+  const [signature, setSignature] = useState("");
+  const [uploading, setUploading] = useState<ApplicationRow | null>(null);
+  const [kind, setKind] = useState("");
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "created", dir: -1 });
 
   const list = useQuery({
     queryKey: ["platform", "applications", status],
@@ -64,30 +170,62 @@ function Applications() {
   });
 
   const items = list.data?.items ?? [];
+  const needle = query.trim().toLocaleLowerCase("mn");
+  const rows = items
+    .filter(
+      (row) =>
+        (!needle ||
+          [
+            row.kindergartenName,
+            row.registrationNumber,
+            row.directorName,
+            row.phone,
+            row.email,
+            row.address ?? "",
+          ].some((text) => text.toLocaleLowerCase("mn").includes(needle))) &&
+        (!kind || kindOf(row) === kind) &&
+        (status !== "APPROVED" ||
+          !signature ||
+          (row.contract !== null && isSigned(row.contract) === (signature === "signed"))) &&
+        (!period || row.billingPeriod === period),
+    )
+    .sort((a, b) => compareApplications(a, b, sort.key, sort.dir));
+  const chips = [
+    query.trim() && { key: "q", label: `«${query.trim()}»`, clear: () => setQuery("") },
+    kind && { key: "kind", label: labelOf(KIND_OPTIONS, kind), clear: () => setKind("") },
+    status === "APPROVED" &&
+      signature && {
+        key: "signature",
+        label: labelOf(SIGNATURE_OPTIONS, signature),
+        clear: () => setSignature(""),
+      },
+    period && { key: "period", label: labelOf(PERIOD_OPTIONS, period), clear: () => setPeriod("") },
+  ].filter((chip): chip is Chip => Boolean(chip));
+  const clearAll = () => {
+    setQuery("");
+    setKind("");
+    setSignature("");
+    setPeriod("");
+  };
+  const sortBy = (key: SortKey) =>
+    setSort((current) => ({ key, dir: current.key === key ? (-current.dir as 1 | -1) : 1 }));
+  const decided = status !== "PENDING";
 
   return (
-    <div className="flex flex-col gap-6 pb-8">
-      <PlatformPageHeading
-        title="Байгууллагын хүсэлт"
-        lede="Ирсэн хүсэлт, гэрээний төлөв болон шийдвэрийг нэг дарааллаар хянаарай."
-        mark={<FileText />}
-      />
+    <div className="flex flex-col gap-5 pb-8">
+      <PlatformPageHeading title="Байгууллагын хүсэлт" />
 
-      <div
-        role="group"
-        aria-label="Хүсэлтийн төлөв"
-        className="flex flex-wrap gap-1.5 rounded-card border border-border bg-white p-1.5"
-      >
+      <div role="group" aria-label="Хүсэлтийн төлөв" className="flex gap-1 border-b border-border">
         {TABS.map((tab) => (
           <button
             key={tab.value}
             type="button"
             aria-pressed={status === tab.value}
             onClick={() => setStatus(tab.value)}
-            className={`min-h-[44px] flex-1 rounded-control px-3.5 text-body font-semibold transition-colors sm:flex-none ${
+            className={`-mb-px min-h-10 border-b-2 px-3 text-compact font-semibold ${
               status === tab.value
-                ? "bg-primary text-primary-ink shadow-sm"
-                : "text-muted hover:bg-canvas hover:text-ink"
+                ? "border-primary text-ink"
+                : "border-transparent text-muted hover:text-ink"
             }`}
           >
             {tab.label}
@@ -95,25 +233,144 @@ function Applications() {
         ))}
       </div>
 
-      {list.isLoading ? <LoadingState rows={3} /> : null}
-      {list.isError ? <ErrorState description={errorMessage(list.error)} /> : null}
+      <section aria-label="Хүсэлтийн жагсаалт" className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="relative min-w-0 flex-1 sm:max-w-[480px]">
+            <span className="sr-only">Хүсэлт хайх</span>
+            <Search
+              size={16}
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
+            />
+            <Input
+              type="search"
+              aria-label="Хүсэлт хайх"
+              placeholder="Цэцэрлэг, РД, эрхлэгч, утас, и-мэйлээр хайх"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="h-9 pl-9 text-compact"
+            />
+          </label>
+          {list.data ? (
+            <span className="ml-auto text-caption text-muted">
+              {chips.length ? `${items.length}-оос ${rows.length}` : rows.length} хүсэлт
+            </span>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <FilterSelect
+            label="Төрөл"
+            ariaLabel="Төрлөөр шүүх"
+            value={kind}
+            onChange={setKind}
+            options={KIND_OPTIONS}
+          />
+          <FilterSelect
+            label="Төлбөрийн хугацаа"
+            ariaLabel="Төлбөрийн хугацаагаар шүүх"
+            value={period}
+            onChange={setPeriod}
+            options={PERIOD_OPTIONS}
+          />
+          {status === "APPROVED" ? (
+            <FilterSelect
+              label="Гэрээ"
+              ariaLabel="Гэрээний гарын үсгээр шүүх"
+              value={signature}
+              onChange={setSignature}
+              options={SIGNATURE_OPTIONS}
+            />
+          ) : null}
+        </div>
+        <FilterChips chips={chips} onClearAll={clearAll} />
 
-      {list.data && items.length === 0 ? (
-        <EmptyState
-          title="Хүсэлт алга"
-          description="Цэцэрлэг nomadkids.mn дээрх “Байгууллагын бүртгэл”-ээр хүсэлт илгээхэд энд харагдана."
+        {list.isLoading ? <LoadingState rows={3} /> : null}
+        {list.isError ? <ErrorState description={errorMessage(list.error)} /> : null}
+
+        {list.data && items.length === 0 ? (
+          <EmptyState
+            title="Хүсэлт алга"
+            description="Цэцэрлэг nomadkids.mn дээрх “Байгууллагын бүртгэл”-ээр хүсэлт илгээхэд энд харагдана."
+          />
+        ) : null}
+        {items.length > 0 && rows.length === 0 ? (
+          <EmptyState title="Тохирох хүсэлт алга" description="Шүүлтүүрээ өөрчилж үзнэ үү." />
+        ) : null}
+
+        {rows.length > 0 ? (
+          <div className="table-scroll rounded-control border border-border bg-white">
+            <table className="w-full min-w-[1380px] border-separate border-spacing-0 text-left text-caption">
+              <thead className="bg-slate-50 text-muted">
+                <tr className="[&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-r [&>th]:border-border [&>th]:px-3 [&>th]:py-2 [&>th]:font-semibold [&>th:last-child]:border-r-0">
+                  <th scope="col" className={`${FROZEN_NO} bg-slate-50 text-right`}>
+                    №
+                  </th>
+                  <SortHeader
+                    label="Цэцэрлэг"
+                    column="name"
+                    sort={sort}
+                    onSort={sortBy}
+                    className={`${FROZEN_NAME} bg-slate-50`}
+                  />
+                  <th scope="col">Төрөл</th>
+                  <th scope="col">РД</th>
+                  <th scope="col">Эрхлэгч</th>
+                  <th scope="col">Утас</th>
+                  <th scope="col">И-мэйл</th>
+                  <th scope="col">Хаяг</th>
+                  <SortHeader
+                    label="Бүлэг"
+                    column="groups"
+                    sort={sort}
+                    onSort={sortBy}
+                    align="right"
+                  />
+                  <th scope="col">Хугацаа</th>
+                  <th scope="col">Тэмдэглэл</th>
+                  <SortHeader label="Илгээсэн" column="created" sort={sort} onSort={sortBy} />
+                  {decided ? (
+                    <SortHeader
+                      label="Шийдвэрлэсэн"
+                      column="reviewed"
+                      sort={sort}
+                      onSort={sortBy}
+                    />
+                  ) : null}
+                  <th scope="col">
+                    {status === "APPROVED" ? (
+                      "Гэрээ"
+                    ) : status === "REJECTED" ? (
+                      "Шалтгаан"
+                    ) : (
+                      <span className="sr-only">Үйлдэл</span>
+                    )}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((application, index) => (
+                  <ApplicationTableRow
+                    key={application.id}
+                    application={application}
+                    index={index + 1}
+                    decided={decided}
+                    onReview={() => setReviewing(application)}
+                    onUploadSigned={() => setUploading(application)}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
+
+      {uploading?.contract ? (
+        <UploadSignedDialog
+          application={uploading}
+          contract={uploading.contract}
+          onClose={() => setUploading(null)}
         />
       ) : null}
-
-      <div className="flex flex-col gap-3">
-        {items.map((application) => (
-          <ApplicationCard
-            key={application.id}
-            application={application}
-            onReview={() => setReviewing(application)}
-          />
-        ))}
-      </div>
 
       {reviewing ? (
         <ReviewDialog application={reviewing} onClose={() => setReviewing(null)} />
@@ -122,86 +379,132 @@ function Applications() {
   );
 }
 
-function ApplicationCard({
+function ApplicationTableRow({
   application,
+  index,
+  decided,
   onReview,
+  onUploadSigned,
 }: {
-  application: KindergartenApplication;
+  application: ApplicationRow;
+  index: number;
+  decided: boolean;
   onReview: () => void;
+  onUploadSigned: () => void;
 }) {
+  const cell =
+    "border-b border-r border-border-soft px-3 py-2 align-middle bg-white group-hover:bg-slate-50 last:border-r-0";
+  const contract = application.contract;
   return (
-    <Card pad="roomy" className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <span
-            className="grid size-11 shrink-0 place-items-center rounded-control bg-primary-soft text-primary"
-            aria-hidden="true"
+    <tr className="group">
+      <td className={`${cell} ${FROZEN_NO} text-right tabular-nums text-muted`}>{index}</td>
+      <td className={`${cell} ${FROZEN_NAME} font-semibold text-ink`}>
+        {/* An approved one is a kindergarten now — its page, one click away. */}
+        {application.kindergartenId ? (
+          <Link
+            href={`/platform/${application.kindergartenId}`}
+            className="hover:text-primary hover:underline"
           >
-            <FileText size={20} />
-          </span>
-          <div className="min-w-0">
-            <p className="flex flex-wrap items-center gap-2">
-              <span className="text-lead font-bold text-ink">{application.kindergartenName}</span>
-              <Badge tone={application.status === "PENDING" ? "sun" : "neutral"}>
-                {KINDERGARTEN_APPLICATION_STATUS_LABEL[application.status]}
-              </Badge>
-            </p>
-            <p className="mt-1 text-caption text-muted">
-              РД {application.registrationNumber} · {pricingBase(application)} ·{" "}
-              {formatDate(application.createdAt)}
-            </p>
-          </div>
-        </div>
-
+            {application.kindergartenName}
+          </Link>
+        ) : (
+          application.kindergartenName
+        )}
+      </td>
+      <td className={`${cell} whitespace-nowrap`}>{labelOf(KIND_OPTIONS, kindOf(application))}</td>
+      <td className={`${cell} tabular-nums`}>{application.registrationNumber}</td>
+      <td className={`${cell} whitespace-nowrap`}>{application.directorName}</td>
+      <td className={`${cell} whitespace-nowrap tabular-nums`}>{application.phone}</td>
+      <td className={`${cell} max-w-[200px] truncate`}>{application.email}</td>
+      <td className={`${cell} max-w-[220px] truncate`} title={application.address ?? undefined}>
+        {application.address || "—"}
+      </td>
+      <td className={`${cell} whitespace-nowrap text-right tabular-nums`}>
+        {groupsOf(application)}
+      </td>
+      <td className={`${cell} whitespace-nowrap`}>
+        {application.billingPeriod ? PERIOD_LABEL[application.billingPeriod] : "—"}
+      </td>
+      <td className={`${cell} max-w-[220px] truncate`} title={application.note ?? undefined}>
+        {application.note || "—"}
+      </td>
+      <td className={`${cell} whitespace-nowrap tabular-nums`}>
+        {formatDate(application.createdAt)}
+      </td>
+      {decided ? (
+        <td className={`${cell} whitespace-nowrap tabular-nums`}>
+          {application.reviewedAt ? formatDate(application.reviewedAt) : "—"}
+        </td>
+      ) : null}
+      <td className={`${cell} whitespace-nowrap`}>
         {application.status === "PENDING" ? (
           <Button size="sm" onClick={onReview}>
             Шалгах
           </Button>
-        ) : null}
-      </div>
-
-      <dl className="grid grid-cols-1 gap-x-6 gap-y-2 rounded-row bg-sunken p-3 text-body sm:grid-cols-2 sm:p-4">
-        <Detail label="Эрхлэгч" value={application.directorName} />
-        <Detail label="Утас" value={application.phone} />
-        <Detail label="И-мэйл" value={application.email} />
-        {application.address ? <Detail label="Хаяг" value={application.address} /> : null}
-      </dl>
-
-      {application.note ? <p className="text-body text-muted">{application.note}</p> : null}
-
-      {application.reviewNote ? (
-        <p className="rounded-row bg-canvas px-3 py-2 text-caption text-muted">
-          Шийдвэрийн тэмдэглэл: {application.reviewNote}
-        </p>
-      ) : null}
-
-      {/*
-        ★ The contract appears here the moment it is created — step 4. The PDF
-        is rendered on the queue (CLAUDE.md §6), so `pdfMediaFileId` is null for
-        the first couple of seconds and the row says so rather than showing a
-        dead link.
-      */}
-      {application.contract ? (
-        <div className="flex flex-wrap items-center gap-2 border-t border-border-soft pt-3">
-          <FileText size={16} aria-hidden="true" className="text-muted" />
-          <span className="text-body font-medium text-ink">
-            Гэрээ №{application.contract.number}
+        ) : application.status === "REJECTED" ? (
+          <span
+            className="block max-w-[280px] truncate whitespace-normal text-muted"
+            title={application.reviewNote ?? undefined}
+          >
+            {application.reviewNote || "—"}
           </span>
-          <Badge tone="sky">{CONTRACT_STATUS_LABEL[application.contract.status]}</Badge>
-          {application.contract.pdfMediaFileId ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => void openContractPdf(application.contract!.id)}
-            >
-              PDF татах
-            </Button>
-          ) : (
-            <span className="text-caption text-muted">PDF бэлтгэгдэж байна…</span>
-          )}
-        </div>
-      ) : null}
-    </Card>
+        ) : contract ? (
+          /*
+            ★ The contract appears the moment it is created — step 4. The PDF
+            is rendered on the queue (CLAUDE.md §6), so `pdfMediaFileId` is null
+            for the first seconds and the cell says so rather than showing a
+            dead link.
+          */
+          <span className="inline-flex items-center gap-2">
+            <span className="font-medium text-ink">№{contract.number}</span>
+            {contract.signedAt ? (
+              <Badge tone="mint">Гарын үсэг зурсан · {formatDate(contract.signedAt)}</Badge>
+            ) : (
+              <Badge tone="sky">{CONTRACT_STATUS_LABEL[contract.status]}</Badge>
+            )}
+            {application.kindergartenId ? (
+              /*
+                The way back when the invitation was closed unsent: the
+                kindergarten's «Удирдлага» issues a new one (2026-10-14).
+              */
+              <Link
+                href={`/platform/${application.kindergartenId}#platform-admins-heading`}
+                className="font-semibold text-primary hover:underline"
+              >
+                Урилга дахин үүсгэх
+              </Link>
+            ) : null}
+            {contract.pdfMediaFileId ? (
+              <button
+                type="button"
+                onClick={() => void openContractPdf(contract.id)}
+                className="font-semibold text-primary hover:underline"
+              >
+                PDF
+              </button>
+            ) : (
+              <span className="text-muted">PDF бэлтгэгдэж байна…</span>
+            )}
+            {contract.signedMediaFileId ? (
+              <button
+                type="button"
+                onClick={() => void openSignedContract(contract.id)}
+                className="font-semibold text-primary hover:underline"
+              >
+                Гарын үсэгтэй хувь
+              </button>
+            ) : isSigned(contract) ? null : (
+              <Button size="sm" variant="secondary" onClick={onUploadSigned}>
+                <Upload size={14} aria-hidden="true" />
+                Гарын үсэгтэйг оруулах
+              </Button>
+            )}
+          </span>
+        ) : (
+          "—"
+        )}
+      </td>
+    </tr>
   );
 }
 
@@ -220,27 +523,140 @@ async function openContractPdf(contractId: string): Promise<void> {
   window.open(url, "_blank", "noopener");
 }
 
-const PERIOD_LABEL: Record<BillingPeriod, string> = { term: "улирлаар", year: "жилээр" };
-
-/**
- * «6 бүлэг · жилээр» — since #195 an application is priced per group; one
- * made before carries a child count instead, and says so.
- */
-function pricingBase(application: KindergartenApplication): string {
-  if (application.groupCount !== null) {
-    const period = application.billingPeriod ? ` · ${PERIOD_LABEL[application.billingPeriod]}` : "";
-    return `${application.groupCount} бүлэг${period}`;
-  }
-  return application.childCount !== null ? `${application.childCount} хүүхэд` : "—";
+/** The stamped copy — fetched and followed, as the PDF is. */
+async function openSignedContract(contractId: string): Promise<void> {
+  const { url } = await get(
+    `/platform/contracts/${contractId}/signed/download`,
+    z.object({ url: z.string() }),
+  );
+  window.open(url, "_blank", "noopener");
 }
 
-function Detail({ label, value }: { label: string; value: string }) {
+const SIGNED_TYPES = ["application/pdf", "image/jpeg", "image/png"];
+const SIGNED_MAX_BYTES = 10 * 1024 * 1024;
+
+/**
+ * «Гарын үсэгтэй гэрээ оруулах» — the copy the kindergarten signed, stamped
+ * and sent back (2026-10-14, the user). The operator confirms it is this
+ * contract's number before it is kept. `POST /platform/contracts/:id/signed`
+ * is asked of the admin; until it exists the dialog says «удахгүй».
+ */
+function UploadSignedDialog({
+  application,
+  contract,
+  onClose,
+}: {
+  application: ApplicationRow;
+  contract: SignedContract;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [file, setFile] = useState<File | null>(null);
+  const [matches, setMatches] = useState(false);
+  const [problem, setProblem] = useState("");
+
+  const upload = useMutation({
+    mutationFn: () => {
+      const form = new FormData();
+      form.set("file", file!);
+      return mutate(`/platform/contracts/${contract.id}/signed`, z.unknown(), {
+        method: "POST",
+        body: form,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Гарын үсэгтэй гэрээ хадгалагдлаа.");
+      void queryClient.invalidateQueries({ queryKey: ["platform", "applications"] });
+      onClose();
+    },
+  });
+
+  function pick(next: File | null) {
+    setProblem("");
+    if (next && !SIGNED_TYPES.includes(next.type)) {
+      setProblem("Зөвхөн PDF, JPG, PNG файл оруулна.");
+      return setFile(null);
+    }
+    if (next && next.size > SIGNED_MAX_BYTES) {
+      setProblem("Файл 10 MB-аас ихгүй байна.");
+      return setFile(null);
+    }
+    setFile(next);
+  }
+
   return (
-    <div className="flex gap-2">
-      <dt className="shrink-0 text-muted">{label}:</dt>
-      <dd className="min-w-0 truncate text-ink">{value}</dd>
-    </div>
+    <FormDialog
+      open
+      onOpenChange={(next) => !next && onClose()}
+      busy={upload.isPending}
+      title="Гарын үсэгтэй гэрээ оруулах"
+      description={`${application.kindergartenName} · Гэрээ №${contract.number}`}
+      footer={
+        <>
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+            Болих
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={!file || !matches || upload.isPending}
+            onClick={() => upload.mutate()}
+          >
+            <Upload size={16} aria-hidden="true" />
+            {upload.isPending ? "Оруулж байна…" : "Оруулах"}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <FormError
+          message={
+            problem ||
+            (upload.isError
+              ? isNotFound(upload.error)
+                ? "Гарын үсэгтэй гэрээ хадгалах боломж удахгүй нээгдэнэ."
+                : errorMessage(upload.error)
+              : null)
+          }
+        />
+        <Field label="Скан хийсэн гэрээ" hint="PDF, JPG эсвэл PNG · 10 MB хүртэл" required>
+          {({ id, describedBy }) => (
+            <Input
+              id={id}
+              aria-describedby={describedBy}
+              type="file"
+              accept="application/pdf,image/jpeg,image/png"
+              onChange={(event) => pick(event.target.files?.[0] ?? null)}
+            />
+          )}
+        </Field>
+        <label className="flex items-start gap-2 text-body text-ink">
+          <input
+            type="checkbox"
+            checked={matches}
+            onChange={(event) => setMatches(event.target.checked)}
+            className="mt-1 size-4"
+          />
+          <span>
+            Файл дээрх гэрээний дугаар <strong>№{contract.number}</strong> мөн, гарын үсэг,
+            тамгатай.
+          </span>
+        </label>
+      </div>
+    </FormDialog>
   );
+}
+
+const PERIOD_LABEL: Record<BillingPeriod, string> = { term: "Улирлаар", year: "Жилээр" };
+
+/**
+ * «6» — since #195 an application is priced per group; one made before carries
+ * a child count instead, and says so: «80 хүүхэд».
+ */
+function groupsOf(application: KindergartenApplication): string {
+  if (application.groupCount !== null) return String(application.groupCount);
+  return application.childCount !== null ? `${application.childCount} хүүхэд` : "—";
 }
 
 /**
@@ -261,8 +677,17 @@ function ReviewDialog({
   const toast = useToast();
   const queryClient = useQueryClient();
 
-  const thisYear = new Date().getUTCFullYear();
-  const [adminUsername, setAdminUsername] = useState("");
+  /*
+    The school year running today — 2026-10-14: the calendar year read alone
+    put a contract approved in February into the *next* September.
+  */
+  const today = new Date();
+  const thisYear = today.getMonth() >= 8 ? today.getFullYear() : today.getFullYear() - 1;
+  // Suggested from the kindergarten's name, never the director's — two
+  // directors can share a name (the user, 2026-10-14).
+  const [adminUsername, setAdminUsername] = useState(() =>
+    suggestUsername(application.kindergartenName),
+  );
   /*
     ★ Pre-filled from the application and the price sheet (`lib/pricing.ts`),
     then the operator's to confirm or change: the contract freezes whatever is
@@ -275,19 +700,51 @@ function ReviewDialog({
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>(
     application.billingPeriod ?? "year",
   );
-  const [perGroupMonthlyFee, setPerGroupMonthlyFee] = useState(
-    String(KINDERGARTEN_MONTHLY_PER_GROUP),
-  );
-  /** `null` until typed: follows the groups and the period from the price sheet. */
-  const [periodFeeTyped, setPeriodFeeTyped] = useState<string | null>(null);
-  const groups = Number(groupCount);
-  const periodFee =
-    periodFeeTyped ??
-    (Number.isInteger(groups) && groups > 0
-      ? String(kindergartenPrice(groups, billingPeriod))
-      : "");
   const [startsOn, setStartsOn] = useState(`${thisYear}-09-01`);
   const [endsOn, setEndsOn] = useState(`${thisYear + 1}-05-31`);
+  /*
+    ★ The price is worked out, not typed — 2026-10-14, the user: the contract's
+    terms (or years) at the price of the day, the discount on the lines it
+    applies to, and the contract's whole sum sent as `periodFee`, which the PDF
+    prints as «Нийт төлбөр». A negotiated price is typed only after ticking
+    «Тохиролцсон үнээр өөрчлөх». `perGroupMonthlyFee` is the base rate.
+  */
+  const groups = Number(groupCount);
+  const schedule = contractSchedule(groups, billingPeriod, startsOn, endsOn);
+  const [negotiated, setNegotiated] = useState(false);
+  const [negotiatedFee, setNegotiatedFee] = useState("");
+  const perGroupMonthlyFee = String(KINDERGARTEN_MONTHLY_PER_GROUP);
+  const periodFee = negotiated ? negotiatedFee.trim() : schedule ? String(schedule.total) : "";
+  /*
+    ★ Read before it is signed — 2026-10-14, the user: nothing approved can be
+    changed, so «Гэрээ харах» draws the contract with these figures, and
+    «Батлах» waits until it has been looked at once.
+  */
+  const [previewing, setPreviewing] = useState(false);
+  /** The draft as last seen; a change to any figure after it asks for another look. */
+  const [seenHtml, setSeenHtml] = useState<string | null>(null);
+  /** «Урилгыг дамжуулсан уу?» — the one-time invitation is not closed by accident. */
+  const [closingHandover, setClosingHandover] = useState(false);
+  const draftHtml =
+    schedule || negotiated
+      ? renderContractDraftHtml({
+          kindergartenName: application.kindergartenName,
+          registrationNumber: application.registrationNumber,
+          address: application.address,
+          directorName: application.directorName,
+          phone: application.phone,
+          email: application.email,
+          startsOn,
+          endsOn,
+          groupCount: groups,
+          billingPeriod,
+          perGroupMonthlyFee,
+          periodFee: periodFee || "0",
+        })
+      : null;
+  const previewed = draftHtml !== null && seenHtml === draftHtml;
+  const usernameBad =
+    adminUsername.trim() !== "" && !/^[a-zA-Z0-9._-]+$/.test(adminUsername.trim());
   const [reviewNote, setReviewNote] = useState("");
 
   const refresh = () =>
@@ -344,7 +801,9 @@ function ReviewDialog({
     return (
       <FormDialog
         open
-        onOpenChange={(next) => !next && onClose()}
+        // ★ Esc, the backdrop and × all ask first — 2026-10-14, the user: the
+        // invitation shows once, and a slip of the hand must not lose it.
+        onOpenChange={(next) => !next && setClosingHandover(true)}
         busy={false}
         title="Батлагдлаа"
         // ★ No footer: `InvitationHandover` renders its own close button, and
@@ -369,9 +828,17 @@ function ReviewDialog({
             token={approved.invitationToken}
             title={`${application.kindergartenName} — эрхлэгчийн урилга`}
             subtitle={`Нэвтрэх нэр: ${approved.adminUsername}`}
-            onClose={onClose}
+            onClose={() => setClosingHandover(true)}
           />
         </div>
+        <ConfirmDialog
+          open={closingHandover}
+          onOpenChange={setClosingHandover}
+          title="Урилгыг эрхлэгчид дамжуулсан уу?"
+          description="Хаасны дараа энэ холбоос, QR дахин харагдахгүй. Дамжуулаагүй бол цэцэрлэгийн хуудасны «Удирдлага» хэсгээс шинэ урилга үүсгэнэ."
+          confirmLabel="Тийм, хаах"
+          onConfirm={onClose}
+        />
       </FormDialog>
     );
   }
@@ -384,21 +851,49 @@ function ReviewDialog({
       title={`${application.kindergartenName} — шалгах`}
       footer={
         <>
+          {/* Not undone — asked first (CLAUDE.md §5; 2026-10-14). */}
+          <ConfirmDialog
+            trigger={
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                disabled={busy || reviewNote.trim().length < 4}
+              >
+                <X size={16} aria-hidden="true" />
+                Татгалзах
+              </Button>
+            }
+            title={`${application.kindergartenName}-ийн хүсэлтээс татгалзах уу?`}
+            description={`Шалтгаан: «${reviewNote.trim()}». Цэцэрлэг дахин бүртгүүлэхдээ шинээр хүсэлт илгээнэ.`}
+            confirmLabel="Татгалзах"
+            pendingLabel="Татгалзаж байна…"
+            tone="danger"
+            pending={reject.isPending}
+            onConfirm={() => reject.mutate()}
+          />
           <Button
             type="button"
-            variant="danger"
+            variant="secondary"
             size="sm"
-            disabled={busy || reviewNote.trim().length < 4}
-            onClick={() => reject.mutate()}
+            disabled={!draftHtml || !periodFee}
+            aria-pressed={previewing}
+            onClick={() => {
+              setPreviewing((open) => !open);
+              setSeenHtml(draftHtml);
+            }}
           >
-            <X size={16} aria-hidden="true" />
-            Татгалзах
+            <Eye size={16} aria-hidden="true" />
+            {previewing ? "Засах руу буцах" : "Гэрээ харах"}
           </Button>
           <Button
             type="submit"
             form="review-form"
             size="sm"
-            disabled={busy || adminUsername.trim().length < 3}
+            title={previewed ? undefined : "Эхлээд гэрээгээ харна уу"}
+            disabled={
+              busy || !previewed || adminUsername.trim().length < 3 || usernameBad || !periodFee
+            }
           >
             <Check size={16} aria-hidden="true" />
             {approve.isPending ? "Батлаж байна…" : "Батлах"}
@@ -406,13 +901,16 @@ function ReviewDialog({
         </>
       }
     >
+      {previewing && draftHtml ? <ContractDraft html={draftHtml} /> : null}
       <form
         id="review-form"
+        hidden={previewing}
         className="flex flex-col gap-4"
         noValidate
         onSubmit={(event) => {
           event.preventDefault();
-          if (!busy) approve.mutate();
+          // Never without the contract seen as it stands — Enter included.
+          if (!busy && previewed) approve.mutate();
         }}
       >
         <FormError
@@ -421,14 +919,9 @@ function ReviewDialog({
           }
         />
 
-        <p className="text-body text-muted">
-          Батласнаар <strong>цэцэрлэг, эрхлэгчийн бүртгэл, гэрээ</strong> гурав зэрэг үүснэ. Доорх
-          дүнгүүд гэрээн дээр хэвлэгдэж, дараа нь өөрчлөгдөхгүй.
-        </p>
-
         <Field
-          label="Админы нэвтрэх нэр"
-          error={errors.adminUsername}
+          label="Эрхлэгчийн нэвтрэх нэр"
+          error={usernameBad ? "Латин үсэг, тоо, . _ - тэмдэгтээр бичнэ үү" : errors.adminUsername}
           hint="Латин үсэг, тоо, . _ - · Эрхлэгч энэ нэрээр нэвтэрнэ"
           required
         >
@@ -472,30 +965,6 @@ function ReviewDialog({
             )}
           </Field>
 
-          <Field label="Бүлэг/сар" error={errors.perGroupMonthlyFee} required>
-            {({ id, invalid }) => (
-              <Input
-                id={id}
-                invalid={invalid}
-                inputMode="numeric"
-                value={perGroupMonthlyFee}
-                onChange={(event) => setPerGroupMonthlyFee(event.target.value)}
-              />
-            )}
-          </Field>
-
-          <Field label="Нийт төлбөр" error={errors.periodFee} required>
-            {({ id, invalid }) => (
-              <Input
-                id={id}
-                invalid={invalid}
-                inputMode="numeric"
-                value={periodFee}
-                onChange={(event) => setPeriodFeeTyped(event.target.value)}
-              />
-            )}
-          </Field>
-
           <Field label="Эхлэх огноо" error={errors.startsOn} required>
             {({ id, invalid }) => (
               <Input
@@ -521,6 +990,38 @@ function ReviewDialog({
           </Field>
         </div>
 
+        <ContractBreakdown schedule={schedule} error={negotiated ? undefined : errors.periodFee} />
+
+        <label className="flex items-center gap-2 text-body text-ink">
+          <input
+            type="checkbox"
+            checked={negotiated}
+            onChange={(event) => setNegotiated(event.target.checked)}
+            className="size-4"
+          />
+          Тохиролцсон үнээр өөрчлөх
+        </label>
+        {negotiated ? (
+          <Field
+            label="Тохиролцсон нийт дүн"
+            error={errors.periodFee}
+            hint="Гэрээн дээр «Нийт төлбөр» болж хэвлэгдэнэ"
+            required
+          >
+            {({ id, describedBy, invalid }) => (
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                inputMode="numeric"
+                value={negotiatedFee}
+                onChange={(event) => setNegotiatedFee(event.target.value)}
+                placeholder={schedule ? String(schedule.total) : undefined}
+              />
+            )}
+          </Field>
+        ) : null}
+
         <Field
           label="Тэмдэглэл"
           hint="Татгалзахад заавал — цэцэрлэгт шалтгааныг хэлнэ"
@@ -530,13 +1031,124 @@ function ReviewDialog({
             <Textarea
               id={id}
               aria-describedby={describedBy}
-              rows={2}
+              rows={1}
               value={reviewNote}
               onChange={(event) => setReviewNote(event.target.value)}
+              // One line until written in — 2026-10-14, the user: «зай шах».
+              className="min-h-10 py-2"
             />
           )}
         </Field>
       </form>
     </FormDialog>
+  );
+}
+
+/** «6,000₮». */
+function tugrug(value: number): string {
+  return `${value.toLocaleString("en-US")}₮`;
+}
+
+/**
+ * «Төлбөрийн задаргаа» — each term (or school year) of the contract at the
+ * price of the day, and the contract's sum. Nothing to type: the figures
+ * follow the groups, the period and the dates.
+ */
+function ContractBreakdown({
+  schedule,
+  error,
+}: {
+  schedule: ReturnType<typeof contractSchedule>;
+  error?: string;
+}) {
+  return (
+    <section
+      aria-label="Төлбөрийн задаргаа"
+      className="rounded-control border border-border bg-white text-caption"
+    >
+      <p className="border-b border-border-soft bg-slate-50 px-3 py-2 font-semibold text-muted">
+        Төлбөрийн задаргаа
+      </p>
+      {schedule ? (
+        <>
+          <ul className="divide-y divide-border-soft">
+            {schedule.lines.map((line) => (
+              <li
+                key={line.label}
+                className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 py-2"
+              >
+                <span className="min-w-0 flex-1 text-ink">
+                  {line.label}
+                  <span className="block text-muted">Төлөх: {formatDate(line.dueOn)}</span>
+                </span>
+                <span className="tabular-nums text-muted">
+                  {line.perMonth !== null
+                    ? `${tugrug(line.perMonth)} × ${line.months} сар × ${line.groups} бүлэг`
+                    : `${tugrug(line.perGroup)} × ${line.groups} бүлэг`}
+                </span>
+                <span className="w-24 text-right font-semibold tabular-nums text-ink">
+                  {tugrug(line.amount)}
+                </span>
+                {line.discounted ? (
+                  <Badge tone="mint">Хямдрал</Badge>
+                ) : (
+                  <span className="w-[62px]" aria-hidden="true" />
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="flex flex-wrap items-baseline justify-between gap-2 border-t border-border px-3 py-2">
+            <span className="font-semibold text-ink">Гэрээний нийт дүн</span>
+            <span className="text-lead font-bold tabular-nums text-ink">
+              {tugrug(schedule.total)}
+            </span>
+          </p>
+          <p className="px-3 pb-2 text-muted">
+            Суурь үнэ: бүлэг тутам сард {tugrug(KINDERGARTEN_MONTHLY_PER_GROUP)}
+            {schedule.standardTotal > schedule.total
+              ? ` · Суурь үнээр ${tugrug(schedule.standardTotal)} — ${tugrug(
+                  schedule.standardTotal - schedule.total,
+                )} хэмнэлт`
+              : ""}
+          </p>
+        </>
+      ) : (
+        <p className="px-3 py-2 text-muted">
+          Бүлгийн тоо, гэрээний огноог оруулахад дүн бодогдоно.
+        </p>
+      )}
+      {error ? <p className="px-3 pb-2 text-danger">{error}</p> : null}
+    </section>
+  );
+}
+
+/**
+ * The contract as it will print, in a frame — «Хэвлэх» prints the frame alone.
+ * A frame rather than a new window: the page's CSP admits no inline script, and
+ * the print is called from here instead.
+ */
+function ContractDraft({ html }: { html: string }) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  return (
+    <section aria-label="Гэрээний төсөл" className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-caption text-muted">Төсөл — гэрээний дугаар батлахад олгогдоно.</p>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          onClick={() => frame.current?.contentWindow?.print()}
+        >
+          <Printer size={16} aria-hidden="true" />
+          Хэвлэх
+        </Button>
+      </div>
+      <iframe
+        ref={frame}
+        title="Гэрээний төсөл"
+        srcDoc={html}
+        className="h-[60vh] w-full rounded-control border border-border bg-white"
+      />
+    </section>
   );
 }

@@ -649,6 +649,7 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
           entry("Ирц", "/attendance/daily", "attendance"),
           // Every group's routine, as the teachers keep it — 2026-10-09.
           entry("Өдрийн дэглэм", "/admin/routine", "adminCurriculum"),
+          entry("Дуу, шүлэг", "/admin/songs-poems", "songsPoems"),
           entry("Үнэлгээ", "/admin/assessment", "progress"),
           entry("Судалгаа", "/surveys", "survey"),
           entry("Мэдээ", "/notifications", "notice"),
@@ -1153,6 +1154,8 @@ const ADMIN_RAIL_ICON: Record<string, LucideIcon> = {
   "/admin/qualifications": Award,
   "/admin/kindergarten": Building2,
   "/attendance/daily": IdCardLanyard,
+  "/admin/routine": CalendarClock,
+  "/admin/songs-poems": Music2,
   "/admin/assessment": ChartNoAxesColumnIncreasing,
   "/surveys": FileSearch,
   "/notifications": Newspaper,

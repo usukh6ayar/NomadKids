@@ -17,6 +17,7 @@ import {
   Plus,
   KeyRound,
   Power,
+  Send,
   Settings,
   UserRound,
   UsersRound,
@@ -43,14 +44,17 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Field, Input, Select } from "@/components/ui/field";
 import { RowMenu } from "@/components/ui/menu";
+import { CONTACT } from "@/lib/contact";
+import { ResetPasswordLinkDialog } from "@/components/platform/reset-password-link-dialog";
+import { InvitationHandover } from "@/components/admin/invitation-handover";
+import { useEsisLinked } from "@/lib/use-esis-linked";
 import { Pagination } from "@/components/ui/pagination";
 import { SearchField } from "@/components/ui/search-field";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { Td, Th } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
+import { FormDialog } from "@/components/ui/form-dialog";
 import { RosterStaffInvitations } from "@/components/admin/roster-staff-invitations";
-import { InvitationHandover } from "@/components/admin/invitation-handover";
-import { useBackdropDismiss } from "@/components/ui/modal-overlay";
 import { cn } from "@/lib/utils";
 import { EsisButton } from "@/components/esis/esis-button";
 
@@ -148,7 +152,7 @@ function StaffSection({
   onInvite: (role: Role) => void;
   onOpen: (target: { id: string; kind: SectionKind }) => void;
 }) {
-  const { primaryKindergartenId } = useSession();
+  const { primaryKindergartenId, session } = useSession();
   const router = useRouter();
   const [typed, setTyped] = useState("");
   const search = useDebounced(typed.trim());
@@ -164,6 +168,8 @@ function StaffSection({
   const [roleOf, setRoleOf] = useState<StaffUser | null>(null);
   const [deactivating, setDeactivating] = useState<StaffUser | null>(null);
   const [resetFor, setResetFor] = useState<StaffUser | null>(null);
+  const [inviting, setInviting] = useState<StaffUser | null>(null);
+  const esisLinked = useEsisLinked();
   const toast = useToast();
   const queryClient = useQueryClient();
 
@@ -384,9 +390,10 @@ function StaffSection({
       ) : null}
 
       {data && data.items.length > 0 ? (
-        /* Plain and unclipped, so the ⋯ menu opens whole (as on Анги, бүлэг). */
-        <div className="rounded-card border border-border bg-surface">
-          <table className="w-full border-collapse text-body">
+        /* Scrolls sideways on a phone (2026-10-15, the user); the ⋯ menu is
+           portalled out, so it still opens whole (as on Анги, бүлэг). */
+        <div className="table-scroll rounded-card border border-border bg-surface">
+          <table className="w-full min-w-[760px] border-collapse text-body">
             <caption className="sr-only">
               {teacher ? "Багшийн жагсаалт" : "Ажилтны жагсаалт"}
             </caption>
@@ -462,11 +469,36 @@ function StaffSection({
                             icon: <Settings size={16} aria-hidden />,
                             onSelect: () => setRoleOf(user),
                           },
-                          {
-                            label: "Нууц үг сэргээх",
-                            icon: <KeyRound size={16} aria-hidden />,
-                            onSelect: () => setResetFor(user),
-                          },
+                          /*
+                            ★ «Урих» — 2026-10-15, the user: a kindergarten
+                            without ESIS hands a member of staff who has never
+                            signed in a fresh link. ESIS staff register
+                            themselves, a director is NomadKids', and anyone
+                            who has signed in needs «Нууц үг сэргээх» instead.
+                          */
+                          ...(esisLinked === false &&
+                          !user.lastLoginAt &&
+                          user.id !== session?.user.id &&
+                          sectionMembership(user, primaryKindergartenId, kind)?.role !== "ADMIN"
+                            ? [
+                                {
+                                  label: "Урих",
+                                  icon: <Send size={16} aria-hidden />,
+                                  onSelect: () => setInviting(user),
+                                },
+                              ]
+                            : []),
+                          // Not on one's own row — one's own password is changed
+                          // in «Хувийн тохиргоо» (2026-10-14, the user).
+                          ...(user.id === session?.user.id
+                            ? []
+                            : [
+                                {
+                                  label: "Нууц үг сэргээх",
+                                  icon: <KeyRound size={16} aria-hidden />,
+                                  onSelect: () => setResetFor(user),
+                                },
+                              ]),
                           {
                             label: "Идэвхгүй болгох",
                             icon: <Power size={16} aria-hidden />,
@@ -546,7 +578,15 @@ function StaffSection({
           if (membership) deactivate.mutate(membership.id);
         }}
       />
-      {resetFor ? <PasswordResetDialog user={resetFor} onClose={() => setResetFor(null)} /> : null}
+      {inviting ? <StaffInviteDialog user={inviting} onClose={() => setInviting(null)} /> : null}
+
+      {resetFor ? (
+        <PasswordResetDialog
+          user={resetFor}
+          isDirector={sectionMembership(resetFor, primaryKindergartenId, kind)?.role === "ADMIN"}
+          onClose={() => setResetFor(null)}
+        />
+      ) : null}
     </section>
   );
 }
@@ -1133,8 +1173,8 @@ function UnclaimedEsisStaff() {
           variant="primary"
         />
       </div>
-      <div className="rounded-card border border-border bg-surface">
-        <table className="w-full border-collapse text-body">
+      <div className="table-scroll rounded-card border border-border bg-surface">
+        <table className="w-full min-w-[640px] border-collapse text-body">
           <caption className="sr-only">ESIS-д бүртгэлтэй, бүртгүүлээгүй ажилтнууд</caption>
           <thead>
             <tr>
@@ -1185,58 +1225,121 @@ function UnclaimedEsisStaff() {
 }
 
 /**
- * «Нууц үг сэргээх» — a one-time link for a member of staff who is locked out
- * (#211 item 10; `POST /users/:id/password-reset`). The director hands it over;
- * the person chooses the password. The server refuses another director, a
- * parent and anyone who also works elsewhere (409, with the reason shown).
+ * «Нууц үг сэргээх» — a one-time link for a member of staff who lost the phone
+ * (#211 item 10; `POST /users/:id/password-reset`). Since 2026-10-14 (the
+ * user) the same check-first dialog the operator and the teachers use
+ * (`ResetPasswordLinkDialog`). A director's row says instead who resets a
+ * director — the person themself by SMS, or NomadKids — since the API resets
+ * no director from here.
  */
-function PasswordResetDialog({ user, onClose }: { user: StaffUser; onClose: () => void }) {
-  const backdrop = useBackdropDismiss(onClose);
-  const reset = useMutation({
+function PasswordResetDialog({
+  user,
+  isDirector,
+  onClose,
+}: {
+  user: StaffUser;
+  isDirector: boolean;
+  onClose: () => void;
+}) {
+  if (isDirector) {
+    return (
+      <FormDialog
+        open
+        onOpenChange={(open) => !open && onClose()}
+        title="Нууц үг сэргээх"
+        description={fullName(user)}
+        footer={
+          <Button type="button" size="sm" variant="secondary" onClick={onClose}>
+            Хаах
+          </Button>
+        }
+      >
+        <div className="flex flex-col gap-3 text-body leading-6 text-ink">
+          <p>Эрхлэгч утас нь гарт байвал «Нууц үгээ мартсан уу?»-аар SMS-ээр өөрөө сэргээнэ.</p>
+          <p>
+            Утсаа алдсан бол NomadKids сэргээнэ:{" "}
+            <a href={CONTACT.phoneHref} className="font-semibold text-primary hover:underline">
+              {CONTACT.phone}
+            </a>
+          </p>
+        </div>
+      </FormDialog>
+    );
+  }
+
+  return (
+    <ResetPasswordLinkDialog
+      path={`/users/${user.id}/password-reset`}
+      person={fullName(user)}
+      username={user.username}
+      notReady="Нууц үг сэргээх боломжгүй байна."
+      onClose={onClose}
+    />
+  );
+}
+
+/**
+ * «Урих» — a one-time link for a member of staff who has not signed in yet
+ * (2026-10-15, the user). The API has no route that issues a second
+ * invitation, so this is `POST /users/:id/password-reset`'s link: the person
+ * opens it, chooses a password, and is in — what the first invitation did, in
+ * one hour instead of seven days. A seven-day reissue is asked of the admin.
+ */
+function StaffInviteDialog({ user, onClose }: { user: StaffUser; onClose: () => void }) {
+  const invite = useMutation({
     mutationFn: () =>
       mutate(`/users/${user.id}/password-reset`, z.object({ resetToken: z.string() }), {
         method: "POST",
       }),
   });
+  const who = user.username ? `${fullName(user)} · ${user.username}` : fullName(user);
+
+  if (invite.isSuccess) {
+    return (
+      <FormDialog open onOpenChange={(open) => !open && onClose()} title="Урилга">
+        <InvitationHandover
+          token={invite.data.resetToken}
+          path="/reset-password"
+          title="Урилгын холбоос"
+          subtitle={who}
+          validity="Холбоос 1 цаг хүчинтэй. Ажилтан холбоосоор орж нууц үгээ өөрөө үүсгэнэ."
+          onClose={onClose}
+        />
+      </FormDialog>
+    );
+  }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Нууц үг сэргээх"
-      {...backdrop}
-      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
+    <FormDialog
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title="Урих"
+      description={who}
+      busy={invite.isPending}
+      footer={
+        <>
+          <Button type="button" size="sm" variant="secondary" onClick={onClose}>
+            Болих
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => invite.mutate()}
+            disabled={invite.isPending}
+          >
+            {invite.isPending ? "Үүсгэж байна…" : "Урилга үүсгэх"}
+          </Button>
+        </>
+      }
     >
-      <div className="w-full max-w-[480px] rounded-card border border-border bg-surface p-5">
-        {reset.isSuccess ? (
-          <InvitationHandover
-            token={reset.data.resetToken}
-            path="/reset-password"
-            title="Нууц үг сэргээх холбоос"
-            subtitle={fullName(user)}
-            validity="Холбоос 1 цаг хүчинтэй."
-            onClose={onClose}
-          />
-        ) : (
-          <div className="flex flex-col gap-4">
-            <div>
-              <h2 className="text-title font-semibold text-ink">Нууц үг сэргээх</h2>
-              <p className="mt-0.5 text-body text-muted">
-                {fullName(user)} шинэ нууц үгээ өөрөө тохируулах нэг удаагийн холбоос үүснэ.
-              </p>
-            </div>
-            <FormError message={reset.isError ? errorMessage(reset.error) : null} />
-            <div className="flex gap-2 border-t border-border pt-4">
-              <Button type="button" disabled={reset.isPending} onClick={() => reset.mutate()}>
-                {reset.isPending ? "Үүсгэж байна…" : "Холбоос үүсгэх"}
-              </Button>
-              <Button type="button" variant="secondary" onClick={onClose}>
-                Болих
-              </Button>
-            </div>
-          </div>
-        )}
+      <div className="flex flex-col gap-3 text-body leading-6 text-ink">
+        <p>Энэ ажилтан системд хараахан нэвтрээгүй байна.</p>
+        <p className="text-muted">
+          Шинэ холбоос үүсгэж, ажилтанд өөрт нь гардуулна уу. Холбоосоор орж нууц үгээ өөрөө
+          үүсгэнэ.
+        </p>
+        <FormError message={invite.isError ? errorMessage(invite.error) : null} />
       </div>
-    </div>
+    </FormDialog>
   );
 }

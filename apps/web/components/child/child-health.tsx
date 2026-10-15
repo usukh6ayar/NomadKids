@@ -230,7 +230,7 @@ function HealthSection({
         {add}
       </div>
       {rows > 0 ? (
-        <div className="overflow-x-auto rounded-card border border-border bg-surface">
+        <div className="table-scroll rounded-card border border-border bg-surface">
           <table className="w-full min-w-[640px] border-collapse text-body">
             <caption className="sr-only">{title}</caption>
             <thead>

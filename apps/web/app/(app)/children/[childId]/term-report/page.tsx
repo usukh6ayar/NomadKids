@@ -32,7 +32,7 @@ import { ChildAvatar } from "@/components/media/media-image";
 import { ChildPickerDialog } from "@/components/child/child-picker-dialog";
 import { ConclusionNotes } from "@/components/assessment/conclusion-notes";
 import { ConclusionForm } from "@/components/assessment/conclusion-form";
-import { formatAge, fullName } from "@/lib/format";
+import { formatAge, fullName, todayLocal } from "@/lib/format";
 
 /**
  * Дүгнэлт бичих — the teacher's conclusion about one child, one term.
@@ -176,7 +176,7 @@ function TermReport({ childId }: { childId: string }) {
   useEffect(() => {
     if (from || ordered.length === 0) return;
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayLocal();
     const current = ordered.find(
       (row) => (row.startsOn ?? "") <= today && today <= (row.endsOn ?? ""),
     );

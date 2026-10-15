@@ -105,11 +105,13 @@ export function middleware(request: NextRequest) {
     `img-src 'self' data: blob: ${apiOrigin}${storageOrigin ? ` ${storageOrigin}` : ""}`,
     // Chat video — `/media/:id` on the API redirects to the storage origin.
     // Without this `default-src 'self'` blocks every `<video>`.
-    `media-src 'self' blob: ${apiOrigin}${storageOrigin ? ` ${storageOrigin}` : ""}`,
+    `media-src 'self' data: blob: https: ${apiOrigin}${storageOrigin ? ` ${storageOrigin}` : ""}`,
     "font-src 'self' data:",
     `connect-src 'self' ${apiOrigin}${isProduction ? "" : " ws: http://localhost:*"}`,
     "frame-ancestors 'none'",
-    "frame-src 'none'",
+    // Song/poem links open in a focused viewer. Only providers with a stable,
+    // purpose-built embed surface are allowed; arbitrary user URLs stay links.
+    "frame-src https://www.youtube.com https://www.youtube-nocookie.com https://drive.google.com",
     "object-src 'none'",
     "base-uri 'self'",
     // A form posting elsewhere is either a bug or an exfiltration attempt.

@@ -341,8 +341,8 @@ function DayTable({
   return (
     // `overflow-x-auto`: thirteen columns do not fit every width, and the
     // table scrolls inside its card rather than pushing the page (2026-09-29).
-    <div className="overflow-x-auto rounded-card border border-border">
-      <table className="w-full border-collapse text-body">
+    <div className="table-scroll rounded-card border border-border">
+      <table className="w-full min-w-[720px] border-collapse text-body">
         <caption className="sr-only">Өдөр тутмын ирцийн бүртгэл</caption>
         <thead>
           <tr>

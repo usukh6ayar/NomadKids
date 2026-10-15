@@ -170,10 +170,12 @@ describe("the group list", () => {
   });
 
   /*
-    ★ Titled "Анги, бүлэг", and the table does not scroll or clip — 2026-09-25:
-    the ⋯ menu came out cut off inside a scrolling, clipped box.
+    ★ Titled "Анги, бүлэг". The table scrolls sideways on a phone (2026-10-15,
+    the user), and the ⋯ menu — cut off inside a scrolling box on 2026-09-25 —
+    is portalled out of it, so it still opens whole.
   */
-  it("is titled Анги, бүлэг and keeps its table unclipped", async () => {
+  it("is titled Анги, бүлэг; its table scrolls and the ⋯ menu opens outside it", async () => {
+    const user = userEvent.setup();
     stubList();
     renderWithProviders(<AdminGroupsPage />);
 
@@ -181,13 +183,11 @@ describe("the group list", () => {
       await screen.findByRole("heading", { level: 1, name: "Анги, бүлэг" }),
     ).toBeInTheDocument();
     const table = await screen.findByRole("table", { name: "Бүлгүүдийн жагсаалт" });
-    for (
-      let node = table.parentElement;
-      node && node !== document.body;
-      node = node.parentElement
-    ) {
-      expect(node.className).not.toMatch(/overflow-(hidden|x-auto|auto)/);
-    }
+    const scroller = table.parentElement!;
+    expect(scroller).toHaveClass("table-scroll");
+
+    await user.click(screen.getByRole("button", { name: "Наран бүлэг — үйлдэл" }));
+    expect(scroller.contains(screen.getByRole("menu"))).toBe(false);
   });
 
   it("shows the header actions and an honest sync line", async () => {

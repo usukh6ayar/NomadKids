@@ -3,7 +3,18 @@
 import { useIsFetching, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Query } from "@tanstack/react-query";
 import Link from "next/link";
-import { House, Pencil, Phone, School, TriangleAlert, User, UserPlus, Users } from "lucide-react";
+import {
+  House,
+  KeyRound,
+  Pencil,
+  Phone,
+  School,
+  TriangleAlert,
+  User,
+  UserPlus,
+  Users,
+} from "lucide-react";
+import { GuardianResetDialog } from "@/components/child/guardian-password-reset";
 import { useId, useState } from "react";
 import type { ReactNode } from "react";
 import { z } from "zod";
@@ -864,6 +875,9 @@ function Guardians({
                   Холбоо барих мэдээлэл алга
                 </div>
               )}
+              {canManage && guardian && guardian.id !== currentUserId ? (
+                <GuardianPasswordReset guardian={guardian} />
+              ) : null}
             </Card>
           );
         })}
@@ -875,6 +889,30 @@ function Guardians({
 }
 
 type Guardianship = ChildDetail["guardianships"][number];
+
+/**
+ * «Нууц үг сэргээх» for a parent who lost the phone — 2026-10-14, the user:
+ * whoever registered you resets you, and a parent turns to the teacher or the
+ * director. The same check-first, one-time link the operator gives a
+ * director. `POST /users/:id/password-reset` refuses a guardian today (409);
+ * opening it to them is asked of the admin.
+ */
+function GuardianPasswordReset({ guardian }: { guardian: NonNullable<Guardianship["guardian"]> }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-2 flex min-h-10 w-full items-center justify-center gap-2 rounded-control px-4 text-caption font-semibold text-muted hover:bg-sunken hover:text-ink"
+      >
+        <KeyRound size={16} aria-hidden="true" />
+        Нууц үг сэргээх
+      </button>
+      {open ? <GuardianResetDialog guardian={guardian} onClose={() => setOpen(false)} /> : null}
+    </>
+  );
+}
 
 function localPhone(value: string): string {
   const digits = value.replace(/\D/g, "");

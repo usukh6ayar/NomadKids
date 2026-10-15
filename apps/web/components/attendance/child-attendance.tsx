@@ -99,7 +99,7 @@ export function ChildAttendance({
 
   return (
     <>
-      <div className="overflow-x-auto rounded-card border border-border">
+      <div className="table-scroll rounded-card border border-border">
         <table className="w-full border-collapse text-body">
           <caption className="sr-only">Суралцагчийн ирцийн бүртгэл</caption>
           <thead className="bg-sunken">

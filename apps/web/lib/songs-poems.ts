@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { songPoemLibrarySchema, songPoemSchema, type SongPoem } from "@kinder/contracts";
+import { songPoemLibrarySchema, songPoemSchema } from "@kinder/contracts";
 import { z } from "zod";
 import { get, mutate } from "@/lib/api/browser";
 import { downloadUrl } from "@/lib/api/client";
@@ -92,6 +92,15 @@ export const SCHOOL_MONTHS: readonly SchoolMonth[] = [
 
 export type SongPoemType = "song" | "poem" | "folklore" | "fairy_tale";
 
+/*
+ * ★ A link to listen to — YouTube, Google Drive or any page (the user,
+ * 2026-10-12). Read here before `@kinder/contracts` carries it, and sent with
+ * the form; until the API keeps `linkUrl` it is dropped on save.
+ */
+const itemSchema = songPoemSchema.extend({ linkUrl: z.string().nullish() });
+const librarySchema = songPoemLibrarySchema.extend({ items: z.array(itemSchema) });
+type SongPoemItem = z.infer<typeof itemSchema>;
+
 /** One item as the screens show it — files as full URLs, the date as «2026.10.11». */
 export type SongPoemResource = {
   id: string;
@@ -99,6 +108,7 @@ export type SongPoemResource = {
   type: SongPoemType;
   title: string;
   description: string;
+  linkUrl?: string;
   coverUrl?: string;
   coverFileName?: string;
   fileUrl?: string;
@@ -113,6 +123,7 @@ export type SongPoemDraft = {
   type: SongPoemType;
   title: string;
   description: string;
+  linkUrl?: string;
   cover: File | null;
   file: File | null;
 };
@@ -138,13 +149,14 @@ function apiUrl(path: string | null): string | undefined {
   return path ? downloadUrl(path) : undefined;
 }
 
-function toResource(item: SongPoem): SongPoemResource {
+function toResource(item: SongPoemItem): SongPoemResource {
   return {
     id: item.id,
     month: item.month,
     type: item.type,
     title: item.title,
     description: item.description,
+    linkUrl: item.linkUrl ?? undefined,
     coverUrl: apiUrl(item.coverUrl),
     coverFileName: item.coverFileName ?? undefined,
     fileUrl: apiUrl(item.fileUrl),
@@ -160,6 +172,7 @@ function toForm(draft: SongPoemDraft): FormData {
   form.set("type", draft.type);
   form.set("title", draft.title);
   form.set("description", draft.description);
+  if (draft.linkUrl) form.set("linkUrl", draft.linkUrl);
   if (draft.cover) form.set("cover", draft.cover);
   if (draft.file) form.set("file", draft.file);
   return form;
@@ -179,7 +192,7 @@ export function useSongPoemLibrary(source: SongPoemSource | null) {
 
   const query = useQuery({
     queryKey: key,
-    queryFn: () => get(path!, songPoemLibrarySchema),
+    queryFn: () => get(path!, librarySchema),
     enabled: path !== null,
   });
 

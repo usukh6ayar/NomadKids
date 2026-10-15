@@ -3,6 +3,7 @@
 import { useMutation } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
+import { LostPhoneLink, WhoResets } from "@/components/auth/who-resets";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
@@ -13,7 +14,6 @@ import {
   LockKeyhole,
   MessageSquareText,
   Phone,
-  PhoneOff,
   RotateCcw,
   SearchX,
 } from "lucide-react";
@@ -320,9 +320,18 @@ export default function ForgotPasswordPage() {
               sentence nobody can read on a phone.
             */}
             <div className="mt-6 border-t border-border pt-4 text-center">
-              <p className="text-caption leading-5 text-muted">
-                Утасны дугаараа сольсон бол цэцэрлэгийн администратортаа хандана уу.
-              </p>
+              {/*
+                ★ Who to turn to without the phone — 2026-10-14, the user: staff
+                ask their director; a director or a solo teacher, who has nobody
+                above them, calls NomadKids, which checks who is calling and
+                issues a reset link (`ResetPasswordLinkDialog`).
+              */}
+              {/*
+                With the SMS form above, a small link for whoever lost the
+                phone, opening «Та хэн бэ?»; with SMS off the chooser is the
+                page itself (`OffState`). 2026-10-14, the user.
+              */}
+              {availability.enabled ? <LostPhoneLink /> : null}
               <nav
                 aria-label="Нууцлал ба тусламж"
                 className="mt-1 flex flex-wrap justify-center gap-x-4 text-caption font-semibold text-primary"
@@ -372,7 +381,7 @@ const COPY: Record<Phase | "off", { title: string; lede: string }> = {
   },
   off: {
     title: "Нууц үгээ мартсан уу?",
-    lede: "Цэцэрлэгийн администратор таны нууц үгийг сэргээж өгнө.",
+    lede: "Таныг бүртгэсэн хүн нууц үгийг тань сэргээнэ. Та хэн болохоо сонгоно уу.",
   },
 };
 
@@ -630,16 +639,14 @@ function RuleList({ password }: { password: string }) {
 }
 
 /** No verify.mn key on this deployment: the only way back is an administrator. */
+/**
+ * SMS self-service off: who to ask, then the way back — nothing else. The
+ * "SMS is off" notice and a second heading only confused (2026-10-14, the user).
+ */
 function OffState() {
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-start gap-3 rounded-control bg-canvas p-4">
-        <PhoneOff className="mt-0.5 size-5 shrink-0 text-faint" aria-hidden="true" />
-        <p className="text-body leading-6 text-ink">
-          Утсаар сэргээх боломж одоогоор идэвхгүй байна. Цэцэрлэгийн администратортаа хандаж нууц
-          үгээ сэргээлгэнэ үү.
-        </p>
-      </div>
+      <WhoResets title={null} />
       <Button asChild variant="secondary" block className="h-13">
         <Link href="/login">
           <ArrowLeft size={18} aria-hidden="true" />

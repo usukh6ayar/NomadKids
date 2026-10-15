@@ -238,7 +238,7 @@ export function ReportTableView({ table }: { table: ReportTable }) {
         be eight columns wide; letting the page scroll sideways would move the
         navigation off screen on a phone (CLAUDE.md §5's mobile-first rule).
       */}
-      <div className="overflow-x-auto">
+      <div className="table-scroll">
         <table className="w-full min-w-[640px] border-collapse text-body-sm">
           <thead>
             <tr className="border-b border-border bg-canvas">

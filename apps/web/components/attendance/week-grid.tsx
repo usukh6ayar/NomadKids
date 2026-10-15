@@ -182,7 +182,7 @@ export function AttendanceWeekGrid({
   };
 
   return (
-    <div className="overflow-x-auto">
+    <div className="table-scroll">
       {/*
         ★ On a phone the table follows its content width and the name column
         has a small fixed width. This keeps Monday immediately beside the

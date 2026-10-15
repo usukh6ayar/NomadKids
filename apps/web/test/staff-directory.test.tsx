@@ -45,13 +45,16 @@ const TEACHER = (() => {
   };
 })();
 const COOK = user(COOK_ID, "Батаа", "Ёндонжамц", "COOK", "88113344");
+const user_ = (id: string, lastName: string, firstName: string, role: string) =>
+  user(id, lastName, firstName, role, "99000000");
 
 function page(items: unknown[]) {
   return { items, page: 1, pageSize: 20, total: items.length, totalPages: 1 };
 }
 
-function stub() {
+function stub(extra: Parameters<typeof stubApi>[0] = []) {
   return stubApi([
+    ...extra,
     { path: "/auth/me", body: sessionFor(["ADMIN"]) },
     { path: "/users/positions", body: ["Арга зүйч", "Бүлгийн багш"] },
     { path: "/users?roles=TEACHER", body: page([TEACHER]) },
@@ -137,6 +140,60 @@ describe("the staff directory", () => {
     expect(api.calls.some((c) => c.method === "PATCH")).toBe(false);
   });
 
+  /*
+   * ★ 2026-10-15, the user: a kindergarten without ESIS invites a member of
+   * staff who has never signed in from the row's ⋯ — a one-time link, through
+   * `POST /users/:id/password-reset` until a reissue route exists.
+   */
+  it("invites, from the row, a member of staff who has never signed in — without ESIS", async () => {
+    const user = userEvent.setup();
+    const api = stub([
+      { path: `/kindergartens/${KG}`, body: { esisInstitutionId: null } },
+      {
+        path: `/users/${TEACHER_ID}/password-reset`,
+        method: "POST",
+        body: { resetToken: "tok-123" },
+      },
+    ]);
+    renderWithProviders(<AdminUsersPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Анхбаяр Энх-Адьяа — үйлдэл/ }));
+    await user.click(await screen.findByRole("menuitem", { name: /Урих/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Урих" });
+    await user.click(within(dialog).getByRole("button", { name: "Урилга үүсгэх" }));
+
+    expect(await screen.findByText("Урилгын холбоос")).toBeInTheDocument();
+    expect(
+      api.calls.some((c) => c.method === "POST" && c.url === `/users/${TEACHER_ID}/password-reset`),
+    ).toBe(true);
+  });
+
+  it("offers no «Урих» with ESIS, nor to someone who has signed in", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: "/users/positions", body: [] },
+      {
+        path: "/users?roles=TEACHER",
+        body: page([{ ...TEACHER, lastLoginAt: "2026-10-10T08:00:00Z" }]),
+      },
+      { path: "/users?roles=COOK", body: page([COOK]) },
+      { path: `/kindergartens/${KG}`, body: { esisInstitutionId: null } },
+    ]);
+    const { unmount } = renderWithProviders(<AdminUsersPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Анхбаяр Энх-Адьяа — үйлдэл/ }));
+    expect(await screen.findByRole("menuitem", { name: /Нууц үг сэргээх/ })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /Урих/ })).not.toBeInTheDocument();
+    unmount();
+
+    stub([{ path: `/kindergartens/${KG}`, body: { esisInstitutionId: "12345" } }]);
+    renderWithProviders(<AdminUsersPage />);
+    await user.click(await screen.findByRole("button", { name: /Анхбаяр Энх-Адьяа — үйлдэл/ }));
+    expect(await screen.findByRole("menuitem", { name: /Нууц үг сэргээх/ })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /Урих/ })).not.toBeInTheDocument();
+  });
+
   it("hands over a one-time reset link, or the server's reason it may not", async () => {
     const user = userEvent.setup();
     stub();
@@ -158,9 +215,46 @@ describe("the staff directory", () => {
         },
       },
     ]);
-    await user.click(await screen.findByRole("button", { name: "Холбоос үүсгэх" }));
+    // Checked first — the same dialog as everywhere a link is handed over.
+    const issue = await screen.findByRole("button", { name: "Холбоос үүсгэх" });
+    expect(issue).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: /мөн гэдгийг шалгасан/ }));
+    await user.click(issue);
 
     expect(await screen.findByText("Энэ хүн өөр байгууллагад бүртгэлтэй.")).toBeInTheDocument();
+  });
+
+  /*
+   * ★ 2026-10-14, the user: a director is reset by themself (SMS) or by
+   * NomadKids — the row says so instead of an error; and one's own row has no
+   * «Нууц үг сэргээх», since one's own password is changed in settings.
+   */
+  it("tells who resets a director, and leaves the option off one's own row", async () => {
+    const user = userEvent.setup();
+    const DIRECTOR = user_("77777777-7777-4777-8777-000000000003", "Дорж", "Сараа", "ADMIN");
+    const ME = user_("11111111-1111-4111-8111-111111111111", "Би", "Өөрөө", "ADMIN");
+    const api = stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: "/users/positions", body: [] },
+      { path: "/users?roles=TEACHER", body: page([TEACHER]) },
+      { path: "/users?roles=ADMIN", body: page([DIRECTOR, ME]) },
+    ]);
+    renderWithProviders(<AdminUsersPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Би Өөрөө — үйлдэл/ }));
+    expect(screen.queryByRole("menuitem", { name: /Нууц үг сэргээх/ })).toBeNull();
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByRole("button", { name: /Дорж Сараа — үйлдэл/ }));
+    await user.click(screen.getByRole("menuitem", { name: /Нууц үг сэргээх/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Нууц үг сэргээх" });
+    expect(dialog).toHaveTextContent("SMS-ээр өөрөө сэргээнэ");
+    expect(within(dialog).getByRole("link", { name: "7213 4888" })).toHaveAttribute(
+      "href",
+      "tel:+97672134888",
+    );
+    expect(within(dialog).queryByRole("button", { name: "Холбоос үүсгэх" })).toBeNull();
+    expect(api.calls.some((c) => c.url.endsWith("/password-reset"))).toBe(false);
   });
 
   it("starts an invitation in the section's own role", async () => {

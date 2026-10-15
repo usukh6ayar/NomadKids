@@ -67,7 +67,7 @@ export function TableShell({
       data-ui-table={stacked ? "stacked" : "true"}
       className={cn("overflow-hidden p-0", className)}
     >
-      <div className="overflow-x-auto">
+      <div className="table-scroll">
         <table className={cn("w-full border-collapse text-body", minWidth, tableClassName)}>
           <caption className="sr-only">{caption}</caption>
           {children}

@@ -3,7 +3,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight, LayoutGrid } from "lucide-react";
 import Link from "next/link";
-import { platformRevenueSchema, platformStatsSchema } from "@kinder/contracts";
+import { z } from "zod";
+import {
+  paginated,
+  platformKindergartenSchema,
+  platformRevenueSchema,
+  platformStatsSchema,
+} from "@kinder/contracts";
 import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
 import {
   usePendingApplicationsCount,
@@ -14,6 +20,7 @@ import { RequireSuperAdmin } from "@/components/shell/require-role";
 import { LoadingState } from "@/components/ui/states";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
+import { daysUntil } from "@/lib/format";
 
 /**
  * «Самбар» — the operator's first screen (2026-10-13, the user: "илүү
@@ -42,6 +49,35 @@ function amount(value: string): string {
   return `${Math.round(Number(value)).toLocaleString("en-US")}₮`;
 }
 
+/*
+ * ★ What should come into the account — 2026-10-14, the user: payments are
+ * checked by hand against the bank, so the board says how many kindergartens
+ * owe and how much. Asked of the admin; no row while the API cannot count it.
+ */
+const paymentSummarySchema = z.object({
+  /** Kindergartens with a period due within 14 days or overdue. */
+  waitingKindergartens: z.number().int(),
+  waitingAmount: z.string(),
+  overdueKindergartens: z.number().int(),
+});
+
+/*
+ * ★ Contracts ended or ending — 2026-10-14, the user. Counted from the list
+ * rows' `contractEndsOn` (asked of the admin); none while the API sends none.
+ */
+const endingListSchema = paginated(
+  platformKindergartenSchema.extend({ contractEndsOn: z.string().nullish() }),
+);
+
+/*
+ * ★ Solo teachers idle 14 days and more — 2026-10-14, the user: warned at 14,
+ * deleted at 30. Counted from `lastActiveAt`, asked of the admin; a list
+ * without it counts nobody.
+ */
+const idleListSchema = paginated(
+  z.object({ createdAt: z.string(), lastActiveAt: z.string().nullable().optional() }),
+);
+
 function Overview() {
   const month = thisMonth();
   const applications = usePendingApplicationsCount();
@@ -51,6 +87,28 @@ function Overview() {
     queryKey: qk.platformStats(),
     queryFn: () => get("/platform/stats", platformStatsSchema),
   });
+  const payments = useQuery({
+    queryKey: ["platform", "payments-summary"],
+    queryFn: () => get("/platform/payments/summary", paymentSummarySchema),
+    retry: false,
+  });
+  const kindergartens = useQuery({
+    queryKey: ["platform", "kindergartens", "ending"],
+    queryFn: () => get("/platform/kindergartens?page=1&pageSize=100", endingListSchema),
+    retry: false,
+  });
+  const ends = (kindergartens.data?.items ?? [])
+    .map((kg) => kg.contractEndsOn)
+    .filter((day): day is string => Boolean(day))
+    .map(daysUntil);
+  const soloActivity = useQuery({
+    queryKey: ["platform", "solo-workspaces", "idle"],
+    queryFn: () => get("/platform/solo-workspaces?page=1&pageSize=100", idleListSchema),
+    retry: false,
+  });
+  const idleSolo = (soloActivity.data?.items ?? []).filter(
+    (row) => row.lastActiveAt !== undefined && -daysUntil(row.lastActiveAt ?? row.createdAt) >= 14,
+  ).length;
   const revenue = useQuery({
     queryKey: qk.platformRevenueMonth(month),
     queryFn: () => get(`/platform/revenue?month=${month}`, platformRevenueSchema),
@@ -66,6 +124,33 @@ function Overview() {
       count: solo,
       text: "бие даасан багшийн орчин цэцэрлэгт нэгтгэгдээгүй",
       href: "/platform/solo-workspaces",
+    },
+    {
+      count: payments.data?.waitingKindergartens ?? null,
+      text: payments.data
+        ? `цэцэрлэгийн төлбөр хүлээгдэж байна · ${amount(payments.data.waitingAmount)}${
+            payments.data.overdueKindergartens > 0
+              ? ` (${payments.data.overdueKindergartens} хоцорсон)`
+              : ""
+          }`
+        : "",
+      href: "/platform",
+    },
+    {
+      count: idleSolo,
+      // Only those with no paid child go at 30 days (2026-10-14, the user).
+      text: "бие даасан багш 14+ хоног идэвхгүй",
+      href: "/platform/solo-workspaces",
+    },
+    {
+      count: ends.filter((days) => days < 0).length,
+      text: "цэцэрлэгийн гэрээ дууссан",
+      href: "/platform?ending=ended",
+    },
+    {
+      count: ends.filter((days) => days >= 0 && days <= 14).length,
+      text: "цэцэрлэгийн гэрээ 14 хоногт дуусна",
+      href: "/platform?ending=14",
     },
   ].filter((row) => (row.count ?? 0) > 0);
   const counted = applications !== null && solo !== null;
@@ -92,7 +177,7 @@ function Overview() {
         ) : (
           <ul className="divide-y divide-border-soft overflow-hidden rounded-card border border-border bg-white">
             {todo.map((row) => (
-              <li key={row.href}>
+              <li key={row.text}>
                 <Link
                   href={row.href}
                   className="flex min-h-12 items-center gap-3 px-4 py-2.5 text-body text-ink hover:bg-canvas"

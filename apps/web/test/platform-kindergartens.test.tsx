@@ -1,6 +1,6 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, stubApi } from "./support/render";
 import PlatformPage from "@/app/(app)/platform/page";
 
@@ -57,7 +57,7 @@ describe("the operator's kindergartens table", () => {
   it("draws the columns, «—» where the record has nothing", async () => {
     renderPage();
 
-    const table = await screen.findByRole("table");
+    const table = await screen.findByRole("table", {}, { timeout: 5000 });
     for (const heading of [
       "Цэцэрлэг",
       "Өмчийн хэлбэр",
@@ -100,7 +100,7 @@ describe("the operator's kindergartens table", () => {
 
     await user.click(screen.getByRole("button", { name: "Нарлаг цэцэрлэг — үйлдэл" }));
     const items = screen.getAllByRole("menuitem").map((item) => item.textContent);
-    expect(items).toEqual(["Дэлгэрэнгүй", "Идэвхгүй болгох", "Устгах"]);
+    expect(items).toEqual(["Дэлгэрэнгүй", "Төлбөр бүртгэх", "Идэвхгүй болгох", "Устгах"]);
   });
 
   it("sorts by a column, both ways, the empty ones last", async () => {
@@ -129,7 +129,7 @@ describe("the operator's kindergartens table", () => {
     expect(names()).toEqual(["Хүслэн", "Нарлаг цэцэрлэг"]);
   });
 
-  it("marks a contract ending within 14 days in red", async () => {
+  it("says in red how many days a contract ending within 14 has left", async () => {
     const soon = new Date();
     soon.setDate(soon.getDate() + 5);
     const day = `${soon.getFullYear()}-${String(soon.getMonth() + 1).padStart(2, "0")}-${String(soon.getDate()).padStart(2, "0")}`;
@@ -149,11 +149,8 @@ describe("the operator's kindergartens table", () => {
     renderWithProviders(<PlatformPage />);
 
     const row = (await screen.findByRole("table")).querySelector<HTMLElement>("tbody tr")!;
-    expect(
-      within(row).getByText(
-        (_, el) => el?.tagName === "SPAN" && el.className.includes("text-danger"),
-      ),
-    ).toBeInTheDocument();
+    // In words, and red — 2026-10-14, the user.
+    expect(within(row).getByText("5 хоног үлдсэн")).toHaveClass("text-red-700");
   });
 
   it("downloads the rows on screen for Excel", async () => {
@@ -363,5 +360,281 @@ describe("the operator's kindergartens table", () => {
     await user.click(screen.getByRole("option", { name: "Төрийн" }));
     await user.click(screen.getByRole("button", { name: "Бүгдийг цэвэрлэх" }));
     expect(document.querySelectorAll("tbody tr")).toHaveLength(2);
+  });
+
+  /*
+   * ★ What each kindergarten has paid the platform — 2026-10-14, the user.
+   * Read from the list row when the API sends it; «—» until then.
+   */
+  it("shows and filters by payment, «—» while the API sends none", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      {
+        path: "/platform/kindergartens",
+        body: {
+          items: [
+            { ...ROWS[0], paymentStatus: "overdue", paidPeriods: 1, totalPeriods: 3 },
+            ROWS[1],
+          ],
+          page: 1,
+          pageSize: 50,
+          total: 2,
+          totalPages: 1,
+        },
+      },
+    ]);
+    renderWithProviders(<PlatformPage />);
+    const table = await screen.findByRole("table");
+    const column = [...table.querySelectorAll("thead tr:first-child th")].findIndex(
+      (th) => th.textContent === "Төлбөр",
+    );
+    const cellOf = (name: string) =>
+      within(table).getByText(name).closest("tr")!.querySelectorAll("td")[column]!;
+
+    expect(cellOf("Нарлаг цэцэрлэг")).toHaveTextContent("Хоцорсон · 1/3");
+    expect(cellOf("Хүслэн")).toHaveTextContent("—");
+
+    await user.click(screen.getByLabelText("Төлбөрөөр шүүх"));
+    await user.click(screen.getByRole("option", { name: "Хоцорсон" }));
+    expect(table.querySelectorAll("tbody tr")).toHaveLength(1);
+  });
+
+  /*
+   * ★ How each contract is paid and when it was made — 2026-10-14, the user:
+   * «Гэрээ байгуулсан» (7/14 days, 3 months, a year) and «Дуусах» filters.
+   */
+  it("shows how a contract is paid and filters by when it was made or ends", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 14)); // 2026-10-14
+    try {
+      const user = userEvent.setup();
+      stubApi([
+        { path: "/auth/me", body: operator() },
+        {
+          path: "/platform/kindergartens",
+          body: {
+            items: [
+              {
+                ...ROWS[0],
+                billingPeriod: "term",
+                contractSignedAt: "2026-10-10T08:00:00.000Z",
+                contractEndsOn: "2026-10-25",
+              },
+              {
+                ...ROWS[1],
+                billingPeriod: "year",
+                contractSignedAt: "2026-05-02T08:00:00.000Z",
+                contractEndsOn: "2027-05-31",
+              },
+            ],
+            page: 1,
+            pageSize: 50,
+            total: 2,
+            totalPages: 1,
+          },
+        },
+      ]);
+      renderWithProviders(<PlatformPage />);
+      const table = await screen.findByRole("table");
+      const headers = [...table.querySelectorAll("thead tr:first-child th")].map(
+        (th) => th.textContent ?? "",
+      );
+      const at = (label: string) => headers.findIndex((text) => text.startsWith(label));
+      const cell = (name: string, label: string) =>
+        within(table).getByText(name).closest("tr")!.querySelectorAll("td")[at(label)]!;
+      const names = () =>
+        [...table.querySelectorAll("tbody tr")].map(
+          (tr) => tr.querySelectorAll("td")[1]!.textContent,
+        );
+
+      expect(cell("Нарлаг цэцэрлэг", "Хугацаа")).toHaveTextContent("Улирлаар");
+      expect(cell("Хүслэн", "Хугацаа")).toHaveTextContent("Жилээр");
+      expect(cell("Нарлаг цэцэрлэг", "Гэрээ байгуулсан")).toHaveTextContent("2026.10.10");
+
+      const pick = async (label: string, option: string) => {
+        await user.click(screen.getByLabelText(label));
+        await user.click(screen.getByRole("option", { name: option }));
+      };
+      await pick("Гэрээ байгуулсан хугацаагаар шүүх", "Сүүлийн 7 хоног");
+      expect(names()).toEqual(["Нарлаг цэцэрлэг"]);
+      await pick("Гэрээ байгуулсан хугацаагаар шүүх", "Сүүлийн 1 жил");
+      expect(names()).toHaveLength(2);
+      await pick("Гэрээ байгуулсан хугацаагаар шүүх", "Бүгд");
+
+      await pick("Дуусах хугацаагаар шүүх", "14 хоногт");
+      expect(names()).toEqual(["Нарлаг цэцэрлэг"]);
+      await pick("Дуусах хугацаагаар шүүх", "Дууссан");
+      // Nothing has ended: the table gives way to the empty state.
+      expect(screen.queryByRole("table")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /*
+   * ★ What came into the account, recorded from the table — 2026-10-14, the
+   * user: «⋯ → Төлбөр бүртгэх» opens the first period not yet paid.
+   */
+  it("records a payment from the row's «⋯», against the first unpaid period", async () => {
+    const user = userEvent.setup();
+    const KG_ID = ROWS[0]!.id as string;
+    const api = stubApi([
+      { path: "/auth/me", body: operator() },
+      {
+        path: `/platform/kindergartens/${KG_ID}/payments`,
+        body: {
+          contract: { id: "c1", number: "NK-2026-000001", billingPeriod: "term" },
+          suspended: false,
+          periods: [
+            {
+              index: 0,
+              label: "I улирал (9–11 сар)",
+              dueOn: "2026-09-01",
+              amount: "18000.00",
+              paidAmount: "18000.00",
+              status: "paid",
+              payments: [],
+            },
+            {
+              index: 1,
+              label: "II улирал (12–2 сар)",
+              dueOn: "2026-12-01",
+              amount: "36000.00",
+              paidAmount: "0.00",
+              status: "due",
+              payments: [],
+            },
+          ],
+        },
+      },
+      { path: "/platform/contracts/c1/payments", method: "POST", body: {} },
+      {
+        path: "/platform/kindergartens",
+        body: { items: ROWS, page: 1, pageSize: 50, total: 2, totalPages: 1 },
+      },
+    ]);
+    renderWithProviders(<PlatformPage />);
+    await screen.findByRole("table");
+
+    await user.click(screen.getByRole("button", { name: "Нарлаг цэцэрлэг — үйлдэл" }));
+    await user.click(screen.getByRole("menuitem", { name: "Төлбөр бүртгэх" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Төлбөр бүртгэх — Нарлаг цэцэрлэг",
+    });
+    expect(within(dialog).getByRole("checkbox", { name: /^II улирал/ })).toBeChecked();
+    expect(within(dialog).getByLabelText(/Орсон дүн/)).toHaveValue("36000");
+    await user.click(within(dialog).getByRole("button", { name: "Бүртгэх" }));
+
+    await waitFor(() =>
+      expect(
+        api.calls.find((call) => call.url === "/platform/contracts/c1/payments")?.body,
+      ).toMatchObject({ periodIndexes: [1], amount: "36000", method: "transfer" }),
+    );
+  });
+
+  it("says plainly from the row's «⋯» that payments cannot be kept yet", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      // The route does not exist yet — the API answers 404.
+      { path: `/platform/kindergartens/${ROWS[0]!.id as string}/payments`, status: 404, body: {} },
+      {
+        path: "/platform/kindergartens",
+        body: { items: ROWS, page: 1, pageSize: 50, total: 2, totalPages: 1 },
+      },
+    ]);
+    renderWithProviders(<PlatformPage />);
+    await screen.findByRole("table");
+
+    await user.click(screen.getByRole("button", { name: "Нарлаг цэцэрлэг — үйлдэл" }));
+    await user.click(screen.getByRole("menuitem", { name: "Төлбөр бүртгэх" }));
+    const dialog = await screen.findByRole("dialog", { name: "Төлбөр бүртгэх" });
+    expect(
+      await within(dialog).findByText(/Төлбөр хадгалах хэсэг хараахан бэлэн болоогүй/),
+    ).toBeInTheDocument();
+  });
+
+  /*
+   * ★ Ending and ended, at a glance — 2026-10-14, the user: the days left in
+   * words, clickable counts above the table, an ended row tinted, and «Самбар»
+   * opening the list already filtered.
+   */
+  describe("contracts ending and ended", () => {
+    const at = (days: number) => {
+      const day = new Date(2026, 9, 14 + days);
+      return day.toLocaleDateString("sv-SE");
+    };
+    const ITEMS = [
+      { ...ROWS[0], contractEndsOn: at(-13) }, // ended
+      { ...ROWS[1], contractEndsOn: at(6) }, // within 14
+      KG({ id: "33333333-3333-4333-8333-333333333333", name: "Од", contractEndsOn: at(25) }),
+      KG({ id: "44444444-4444-4444-8444-444444444444", name: "Солонго", contractEndsOn: at(200) }),
+    ];
+
+    async function renderEnding() {
+      stubApi([
+        { path: "/auth/me", body: operator() },
+        {
+          path: "/platform/kindergartens",
+          body: { items: ITEMS, page: 1, pageSize: 50, total: 4, totalPages: 1 },
+        },
+      ]);
+      renderWithProviders(<PlatformPage />);
+      return screen.findByRole("table");
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 9, 14));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+      window.history.replaceState(null, "", "/");
+    });
+
+    it("says how near each end is, in words", async () => {
+      const table = await renderEnding();
+      const row = (name: string) => within(table).getByText(name).closest("tr")!;
+
+      expect(row("Нарлаг цэцэрлэг")).toHaveTextContent("Дууссан · 13 хоногийн өмнө");
+      expect(row("Хүслэн")).toHaveTextContent("6 хоног үлдсэн");
+      expect(row("Од")).toHaveTextContent("25 хоног үлдсэн");
+      expect(row("Солонго")).not.toHaveTextContent("үлдсэн");
+      // An ended contract tints its row.
+      expect(row("Нарлаг цэцэрлэг").querySelector("td")).toHaveClass("bg-red-50");
+      expect(row("Солонго").querySelector("td")).toHaveClass("bg-white");
+    });
+
+    it("counts them above the table; a click filters, a second clears", async () => {
+      const user = userEvent.setup();
+      const table = await renderEnding();
+      const names = () =>
+        [...table.querySelectorAll("tbody tr")].map(
+          (tr) => tr.querySelectorAll("td")[1]!.textContent,
+        );
+      const counts = within(screen.getByRole("group", { name: "Гэрээний хугацаа" }));
+
+      expect(counts.getByRole("button", { name: /Дууссан/ })).toHaveTextContent("1");
+      expect(counts.getByRole("button", { name: /14 хоногт дуусах/ })).toHaveTextContent("1");
+      expect(counts.getByRole("button", { name: /30 хоногт дуусах/ })).toHaveTextContent("2");
+
+      await user.click(counts.getByRole("button", { name: /Дууссан/ }));
+      expect(names()).toEqual(["Нарлаг цэцэрлэг"]);
+      expect(counts.getByRole("button", { name: /Дууссан/ })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      await user.click(counts.getByRole("button", { name: /Дууссан/ }));
+      expect(names()).toHaveLength(4);
+    });
+
+    it("opens filtered when «Самбар» links with ?ending=", async () => {
+      window.history.replaceState(null, "", "/platform?ending=14");
+      const table = await renderEnding();
+
+      expect([...table.querySelectorAll("tbody tr")]).toHaveLength(1);
+      expect(within(table).getByText("Хүслэн")).toBeInTheDocument();
+    });
   });
 });

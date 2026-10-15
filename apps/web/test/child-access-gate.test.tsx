@@ -1,4 +1,5 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { renderWithProviders, sessionFor, setParams, stubApi } from "./support/render";
 import ChildLayout from "@/app/(app)/children/[childId]/layout";
@@ -113,6 +114,72 @@ describe("what the layout intercepts", () => {
 
     expect(await screen.findByText("Хандалтын төлбөр")).toBeInTheDocument();
     expect(screen.queryByText("Хүүхдийн хуудас")).not.toBeInTheDocument();
+  });
+
+  /*
+   * ★ 2026-10-15, the user: the first payment is by term or by year too, and
+   * shows what is paid as an invoice before the QR — the term sent to QPay is
+   * the one chosen.
+   */
+  it("lets a family pay the first time by term or by year, from an invoice", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+      {
+        path: "/children/mine",
+        body: [CHILD],
+      },
+      {
+        path: `/children/${CHILD_ID}/access`,
+        method: "GET",
+        body: {
+          required: true,
+          active: false,
+          amount: "22000.00",
+          termAmount: "5000.00",
+          subscription: null,
+        },
+      },
+      {
+        path: `/children/${CHILD_ID}`,
+        method: "GET",
+        status: 402,
+        body: problem(402, "Хандалтын төлбөрөө төлнө үү."),
+      },
+      {
+        path: `/children/${CHILD_ID}/access/qpay`,
+        method: "POST",
+        body: {
+          id: "attempt-1",
+          status: "PENDING",
+          amount: "5000.00",
+          qrText: null,
+          qrImage: null,
+          expiresAt: null,
+          paidAt: null,
+        },
+      },
+    ]);
+
+    renderLayout();
+
+    const invoice = await screen.findByRole("article", { name: "Нэхэмжлэх" });
+    expect(within(invoice).getByText("Төлөгдөөгүй")).toBeInTheDocument();
+    // ★ The way out, to «Нүүр» (2026-10-15, the user).
+    expect(screen.getByRole("link", { name: "Нүүр рүү буцах" })).toHaveAttribute("href", "/home");
+    expect(await within(invoice).findByText("Дорж Болд")).toBeInTheDocument();
+    expect(within(invoice).getByText(/^22\s000₮$/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("radio", { name: "Улирлаар" }));
+    expect(within(invoice).getByText(/^5\s000₮$/)).toBeInTheDocument();
+    expect(within(invoice).getByText("Нэг улирал")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "QPay-ээр төлөх" }));
+    await screen.findByText("QR кодыг банкны аппаараа уншуулж төлнө үү.");
+    expect(
+      api.calls.find((c) => c.method === "POST" && c.url === `/children/${CHILD_ID}/access/qpay`)
+        ?.body,
+    ).toEqual({ period: "TERM" });
   });
 
   /*

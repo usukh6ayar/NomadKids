@@ -274,7 +274,7 @@ export function ChildPickerDialog({
             aria-label={title}
             className="min-h-0 flex-1 overflow-auto rounded-card border border-border"
           >
-            <table className="w-full border-collapse text-body">
+            <table className="w-full min-w-[640px] border-collapse text-body">
               <caption className="sr-only">{title}</caption>
               <thead className="sticky top-0 z-10">
                 <tr>

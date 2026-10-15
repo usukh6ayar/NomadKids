@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { UserPlus } from "lucide-react";
+import { KeyRound, UserPlus } from "lucide-react";
 import { useState } from "react";
 import {
   esisInstitutionLookupSchema,
@@ -22,6 +22,7 @@ import { FormDialog } from "@/components/ui/form-dialog";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { cn } from "@/lib/utils";
 import { InvitationHandover } from "@/components/admin/invitation-handover";
+import { ResetPasswordLinkDialog } from "@/components/platform/reset-password-link-dialog";
 
 /**
  * Who administers this kindergarten, and the way to add one.
@@ -58,6 +59,7 @@ export function KindergartenAdmins({
   admins: PlatformAdmin[];
 }) {
   const [adding, setAdding] = useState(false);
+  const [resetting, setResetting] = useState<PlatformAdmin | null>(null);
 
   return (
     <section aria-labelledby="platform-admins-heading">
@@ -116,11 +118,26 @@ export function KindergartenAdmins({
                 ) : (
                   <Badge tone="sun">Нэвтэрч байгаагүй</Badge>
                 )}
+
+                <Button size="sm" variant="secondary" onClick={() => setResetting(admin)}>
+                  <KeyRound size={14} aria-hidden="true" />
+                  Нууц үг сэргээх
+                </Button>
               </li>
             ))}
           </ul>
         )}
       </Card>
+
+      {resetting ? (
+        <ResetPasswordLinkDialog
+          path={`/platform/kindergartens/${kindergartenId}/admins/${resetting.id}/password-reset`}
+          person={fullName(resetting)}
+          username={resetting.username}
+          notReady="Сэргээх холбоос үүсгэх хэсэг хараахан бэлэн болоогүй. Одоохондоо «Удирдлага нэмэх»-ээр шинэ урилга үүсгэнэ үү."
+          onClose={() => setResetting(null)}
+        />
+      ) : null}
 
       {adding ? (
         <AddAdminDialog

@@ -210,7 +210,7 @@ function ScoreTable({ radar }: { radar: AssessmentRadar }) {
         Тоон утгыг харах
       </summary>
 
-      <div className="overflow-x-auto">
+      <div className="table-scroll">
         <table className="w-full border-collapse text-caption">
           <caption className="sr-only">
             {capitalize(radar.term.name)} — хөгжлийн чиглэл тус бүрийн үнэлгээ

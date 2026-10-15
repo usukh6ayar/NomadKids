@@ -3,8 +3,17 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Download, FileText, Presentation, X } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  FileText,
+  Presentation,
+  Share2,
+  X,
+} from "lucide-react";
 import { qpayInvoiceAttemptSchema } from "@kinder/contracts";
 import { QpayProgress } from "@/components/child/access-pay-dialog";
 import { Badge } from "@/components/ui/badge";
@@ -22,11 +31,14 @@ import {
   materialListSchema,
   materialPrice,
   ownedMaterialsSchema,
+  platformMaterialsSchema,
+  materialSharePath,
   type Material,
   type MaterialLevel,
 } from "@/lib/materials";
 import { AREA_IMAGE, LEARNING_AREAS } from "@/lib/routine";
 import { cn } from "@/lib/utils";
+import { useSession } from "@/lib/auth/session";
 import { useDebounced } from "@/lib/use-debounced";
 
 type View = "store" | "mine";
@@ -37,8 +49,15 @@ type View = "store" | "mine";
  * shows this tab to a TEACHER and to nobody else. Contract: `lib/materials.ts`.
  */
 export function TeachingMaterials() {
+  /*
+   * ★ `?material=<id>` — from a shared link (2026-10-14, the user): the shop
+   * opens on that material, its sample pages and «Авах» in front.
+   */
+  const search = useSearchParams();
+  const wanted = search.get("material");
+  const take = search.get("take") === "1";
   // «Миний сан» first, and open — 2026-10-09, the client.
-  const [view, setView] = useState<View>("mine");
+  const [view, setView] = useState<View>(wanted ? "store" : "mine");
   return (
     <div className="flex flex-col gap-4">
       <div
@@ -67,7 +86,11 @@ export function TeachingMaterials() {
           </button>
         ))}
       </div>
-      {view === "store" ? <Store onOwned={() => setView("mine")} /> : <Mine />}
+      {view === "store" ? (
+        <Store onOwned={() => setView("mine")} wanted={wanted} take={take} />
+      ) : (
+        <Mine />
+      )}
     </div>
   );
 }
@@ -76,6 +99,10 @@ interface MaterialFilters {
   q: string;
   area: string;
   level: MaterialLevel | "";
+  /** «Үнэгүй» or «Үнэтэй» — 2026-10-14, the user. */
+  price: "" | "free" | "paid";
+  /** By price, cheapest or dearest first; "" keeps the catalog's own order. */
+  sort: "" | "price-asc" | "price-desc";
 }
 
 /** Whether a material matches — for «Миний сан», and the shop's samples. */
@@ -84,10 +111,19 @@ function matches(m: Material, f: MaterialFilters): boolean {
   return (
     (!f.area || m.area === f.area) &&
     (!f.level || m.level === f.level) &&
+    (!f.price || (m.price === 0) === (f.price === "free")) &&
     (!needle ||
       m.title.toLowerCase().includes(needle) ||
       (m.description ?? "").toLowerCase().includes(needle))
   );
+}
+
+/** The filtered list in the chosen order — by price when asked. */
+function arrange(items: Material[], f: MaterialFilters): Material[] {
+  const kept = items.filter((m) => matches(m, f));
+  if (!f.sort) return kept;
+  const dir = f.sort === "price-asc" ? 1 : -1;
+  return [...kept].sort((a, b) => (a.price - b.price) * dir);
 }
 
 /**
@@ -104,7 +140,11 @@ function MaterialsToolbar({
 }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
-  const active = (filters.area ? 1 : 0) + (filters.level ? 1 : 0);
+  const active =
+    (filters.area ? 1 : 0) +
+    (filters.level ? 1 : 0) +
+    (filters.price ? 1 : 0) +
+    (filters.sort ? 1 : 0);
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
@@ -160,19 +200,124 @@ function MaterialsToolbar({
             )}
           </Field>
         </div>
+        <div className="w-36">
+          <Field label="Үнээр шүүх" labelHidden>
+            {({ id }) => (
+              <Select
+                id={id}
+                value={filters.price}
+                onChange={(e) =>
+                  onChange({ ...filters, price: e.target.value as MaterialFilters["price"] })
+                }
+              >
+                <option value="">Бүх үнэ</option>
+                <option value="free">Үнэгүй</option>
+                <option value="paid">Үнэтэй</option>
+              </Select>
+            )}
+          </Field>
+        </div>
+        <div className="w-44">
+          <Field label="Эрэмбэлэх" labelHidden>
+            {({ id }) => (
+              <Select
+                id={id}
+                value={filters.sort}
+                onChange={(e) =>
+                  onChange({ ...filters, sort: e.target.value as MaterialFilters["sort"] })
+                }
+              >
+                <option value="">Эрэмбэ: анхдагч</option>
+                <option value="price-asc">Үнэ: хямдаас</option>
+                <option value="price-desc">Үнэ: үнэтэйгээс</option>
+              </Select>
+            )}
+          </Field>
+        </div>
       </div>
     </div>
   );
 }
 
-const NO_FILTERS: MaterialFilters = { q: "", area: "", level: "" };
+const NO_FILTERS: MaterialFilters = { q: "", area: "", level: "", price: "", sort: "" };
 
-function Store({ onOwned }: { onOwned: () => void }) {
+/**
+ * «Дэлгүүр» as the teachers see it, for the operator — 2026-10-14, the user:
+ * "хүмүүс яаж харагдахыг харуул". The teachers' catalog route is theirs alone
+ * (`@Roles("TEACHER")`), so this draws the platform's own catalog — the
+ * materials on sale only — with the same cards, filters and sample pages.
+ * Nothing can be bought here.
+ */
+export function StorePreview() {
+  const [filters, setFilters] = useState<MaterialFilters>(NO_FILTERS);
+  const [previewing, setPreviewing] = useState<Material | null>(null);
+  const catalog = useQuery({
+    queryKey: ["platform", "materials"],
+    queryFn: () => get("/platform/materials", platformMaterialsSchema),
+  });
+  const items = arrange(
+    (catalog.data ?? []).filter((m) => m.published).map((m) => ({ ...m, owned: false })),
+    filters,
+  );
+
+  return (
+    <section aria-label="Дэлгүүрийн харагдац" className="flex flex-col gap-3">
+      <p className="rounded-control bg-canvas px-3.5 py-2.5 text-caption text-muted">
+        Багш нар «Дэлгүүр»-ийг ингэж харна. Зөвхөн «Зарагдаж буй» хэрэглэгдэхүүн харагдана. Энд
+        худалдан авах боломжгүй.
+      </p>
+      <MaterialsToolbar filters={filters} onChange={setFilters} />
+
+      {catalog.isLoading ? <LoadingState rows={4} shape="cards" /> : null}
+      {catalog.isError ? <ErrorState description={errorMessage(catalog.error)} /> : null}
+      {catalog.data && items.length === 0 ? (
+        <EmptyState
+          title="Дэлгүүрт харагдах хэрэглэгдэхүүн алга"
+          description="«Нэмэх»-ээр оруулж, «Зарагдаж буй» болгоход энд харагдана."
+        />
+      ) : null}
+
+      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map((material) => (
+          <li key={material.id}>
+            <MaterialCard material={material}>
+              <span className="flex gap-1.5">
+                <Button size="sm" variant="ghost" onClick={() => setPreviewing(material)}>
+                  Харах
+                </Button>
+                <Button size="sm" disabled title="Урьдчилсан харагдац — худалдан авах боломжгүй">
+                  Авах
+                </Button>
+              </span>
+            </MaterialCard>
+          </li>
+        ))}
+      </ul>
+
+      {previewing ? (
+        <PreviewDialog material={previewing} onClose={() => setPreviewing(null)} readOnly />
+      ) : null}
+    </section>
+  );
+}
+
+function Store({
+  onOwned,
+  wanted = null,
+  take = false,
+}: {
+  onOwned: () => void;
+  wanted?: string | null;
+  /** From a shared link after signing in: a free one is taken by itself. */
+  take?: boolean;
+}) {
   const [filters, setFilters] = useState<MaterialFilters>(NO_FILTERS);
   const { area, level } = filters;
   const q = useDebounced(filters.q.trim());
   const [buying, setBuying] = useState<Material | null>(null);
   const [previewing, setPreviewing] = useState<Material | null>(null);
+  /** The shared link's material is shown once; closing it does not reopen it. */
+  const [wantedShown, setWantedShown] = useState(false);
   const queryClient = useQueryClient();
   const toast = useToast();
 
@@ -188,7 +333,44 @@ function Store({ onOwned }: { onOwned: () => void }) {
   // ★ No sample catalog on a 404 any more (2026-10-11): the API answers, so a
   // 404 means the route is not this person's — the error is shown as it is.
   const buy = (material: Material) => setBuying(material);
-  const items = catalog.data?.items ?? [];
+  /*
+   * ★ «Үнэгүй авах» — 2026-10-14, the user: a free material is added to
+   * «Миний сан» in one press; the API marks it paid with nothing to scan.
+   */
+  const takeFree = useMutation({
+    mutationFn: (material: Material) =>
+      mutate(`/materials/${material.id}/qpay`, qpayInvoiceAttemptSchema, {
+        method: "POST",
+        body: {},
+      }).then(() => material),
+    onSuccess: (material) => {
+      toast.success(`«${material.title}» таны санд нэмэгдлээ.`);
+      void queryClient.invalidateQueries({ queryKey: ["materials"] });
+      onOwned();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+  const getIt = (material: Material) =>
+    material.price === 0 ? takeFree.mutate(material) : buy(material);
+  // The API narrows by word, area and level; price and order are drawn here.
+  const items = arrange(catalog.data?.items ?? [], filters);
+  const shown =
+    previewing ??
+    (!wantedShown && wanted
+      ? ((catalog.data?.items ?? []).find((m) => m.id === wanted) ?? null)
+      : null);
+  const wantedItem = wanted ? (catalog.data?.items ?? []).find((m) => m.id === wanted) : undefined;
+  const tookOnce = useRef(false);
+  useEffect(() => {
+    if (!take || tookOnce.current || !wantedItem) return;
+    if (wantedItem.price !== 0 || wantedItem.owned) return;
+    tookOnce.current = true;
+    takeFree.mutate(wantedItem);
+  }, [take, wantedItem, takeFree]);
+  const closePreview = () => {
+    setPreviewing(null);
+    setWantedShown(true);
+  };
 
   return (
     <section aria-label="Дэлгүүр" className="flex flex-col gap-3">
@@ -209,34 +391,34 @@ function Store({ onOwned }: { onOwned: () => void }) {
             <MaterialCard material={material}>
               <span className="flex gap-1.5">
                 <Button size="sm" variant="ghost" onClick={() => setPreviewing(material)}>
-                  Урьдчилан харах
+                  Харах
                 </Button>
                 {material.owned ? (
                   <Button size="sm" variant="secondary" onClick={onOwned}>
                     Миний санд
                   </Button>
                 ) : (
-                  <Button size="sm" onClick={() => buy(material)}>
-                    Худалдаж авах
+                  <Button size="sm" disabled={takeFree.isPending} onClick={() => getIt(material)}>
+                    {material.price === 0 ? "Үнэгүй авах" : "Авах"}
                   </Button>
                 )}
+                <ShareButton material={material} />
               </span>
             </MaterialCard>
           </li>
         ))}
       </ul>
 
-      {previewing ? (
+      {shown ? (
         <PreviewDialog
-          material={previewing}
-          onClose={() => setPreviewing(null)}
+          material={shown}
+          onClose={closePreview}
           onBuy={
-            previewing.owned
+            shown.owned
               ? undefined
               : () => {
-                  const chosen = previewing;
-                  setPreviewing(null);
-                  buy(chosen);
+                  closePreview();
+                  getIt(shown);
                 }
           }
         />
@@ -266,7 +448,7 @@ function Mine() {
   const notReady = owned.isError && isNotFound(owned.error);
   const all = owned.data ?? [];
   // A teacher's own shelf is small: filtered here, not asked of the server.
-  const items = all.filter((m) => matches(m, filters));
+  const items = arrange(all, filters);
 
   return (
     <section aria-label="Миний сан" className="flex flex-col gap-3">
@@ -291,11 +473,14 @@ function Mine() {
             <MaterialCard material={material} showPrice={false}>
               {/* A navigation, not a fetch: the server checks ownership and
                   redirects to a 5-minute presigned URL (`lib/materials.ts`). */}
-              <Button asChild size="sm">
-                <a href={downloadUrl(`/materials/${material.id}/download`)}>
-                  <Download size={16} aria-hidden="true" /> Татах
-                </a>
-              </Button>
+              <span className="flex gap-1.5">
+                <Button asChild size="sm">
+                  <a href={downloadUrl(`/materials/${material.id}/download`)}>
+                    <Download size={16} aria-hidden="true" /> Татах
+                  </a>
+                </Button>
+                <ShareButton material={material} />
+              </span>
             </MaterialCard>
           </li>
         ))}
@@ -463,22 +648,21 @@ function PreviewDialog({
   material,
   onClose,
   onBuy,
+  readOnly = false,
 }: {
   material: Material;
   onClose: () => void;
   /** Absent when the teacher already owns it. */
   onBuy?: () => void;
+  /** The operator's look at the shop — nothing owned, nothing to buy. */
+  readOnly?: boolean;
 }) {
-  const pages = material.previewUrls;
-  const [index, setIndex] = useState(0);
-  const page = pages[index];
-
   return (
     <Dialog.Root open onOpenChange={(next) => (next ? undefined : onClose())}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-ink/40" />
         <Dialog.Content
-          className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[560px] -translate-x-1/2 -translate-y-1/2 flex-col gap-3 overflow-y-auto rounded-card border border-border bg-surface p-5 shadow-lg"
+          className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[640px] -translate-x-1/2 -translate-y-1/2 flex-col gap-3 overflow-y-auto rounded-card border border-border bg-surface p-5 shadow-lg"
           aria-describedby={undefined}
         >
           <div className="flex items-start justify-between gap-3">
@@ -492,64 +676,7 @@ function PreviewDialog({
             </Dialog.Close>
           </div>
 
-          <figure className="flex flex-col gap-2">
-            <div className="relative grid aspect-[4/3] place-items-center overflow-hidden rounded-row bg-canvas">
-              {page ? (
-                // A served preview picture, as `media-image.tsx` draws remote media.
-                <img
-                  src={page}
-                  alt={`${material.title} — жишээ хуудас ${index + 1}`}
-                  className="size-full object-contain"
-                />
-              ) : (
-                <span className="flex flex-col items-center gap-2 px-6 text-center">
-                  {AREA_IMAGE[material.area] ? (
-                    <Image
-                      src={AREA_IMAGE[material.area]!}
-                      alt=""
-                      width={96}
-                      height={96}
-                      className="size-24 object-contain"
-                    />
-                  ) : null}
-                  <span className="text-caption text-muted">Жишээ хуудас удахгүй нэмэгдэнэ.</span>
-                </span>
-              )}
-              {page ? (
-                <span
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 grid select-none place-items-center text-title font-bold text-ink/10 [transform:rotate(-24deg)]"
-                >
-                  NomadKids — жишээ
-                </span>
-              ) : null}
-            </div>
-            {pages.length > 1 ? (
-              <figcaption className="flex items-center justify-center gap-3">
-                <Button
-                  size="icon"
-                  variant="secondary"
-                  aria-label="Өмнөх хуудас"
-                  disabled={index === 0}
-                  onClick={() => setIndex(index - 1)}
-                >
-                  <ChevronLeft size={18} aria-hidden="true" />
-                </Button>
-                <span className="text-caption tabular-nums text-muted">
-                  {index + 1} / {pages.length}
-                </span>
-                <Button
-                  size="icon"
-                  variant="secondary"
-                  aria-label="Дараагийн хуудас"
-                  disabled={index === pages.length - 1}
-                  onClick={() => setIndex(index + 1)}
-                >
-                  <ChevronRight size={18} aria-hidden="true" />
-                </Button>
-              </figcaption>
-            ) : null}
-          </figure>
+          <SamplePages material={material} />
 
           <p className="text-caption text-muted">
             {material.fileType} · {material.area}
@@ -574,8 +701,12 @@ function PreviewDialog({
             <span className="text-lead font-bold tabular-nums text-ink">
               {materialPrice(material.price)}
             </span>
-            {onBuy ? (
-              <Button onClick={onBuy}>Худалдаж авах</Button>
+            {readOnly ? (
+              <Button disabled title="Урьдчилсан харагдац — худалдан авах боломжгүй">
+                Авах
+              </Button>
+            ) : onBuy ? (
+              <Button onClick={onBuy}>{material.price === 0 ? "Үнэгүй авах" : "Авах"}</Button>
             ) : (
               <Badge tone="mint">Миний санд байгаа</Badge>
             )}
@@ -583,5 +714,114 @@ function PreviewDialog({
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+/**
+ * A material's sample pages, one A4 sheet at a time — 2026-10-14, the user: a
+ * PDF upright (210 × 297), a PowerPoint on its side; white paper on a grey
+ * desk, watermarked. The shop's «Харах» and the shared page draw the same.
+ */
+export function SamplePages({
+  material,
+}: {
+  material: Pick<Material, "title" | "area" | "fileType" | "previewUrls">;
+}) {
+  const pages = material.previewUrls;
+  const [index, setIndex] = useState(0);
+  const page = pages[index];
+  const landscape = material.fileType === "PPT";
+  return (
+    <figure className="flex flex-col gap-2">
+      <div className="grid place-items-center rounded-row bg-slate-200 p-4">
+        <div
+          data-paper={landscape ? "a4-landscape" : "a4-portrait"}
+          className={cn(
+            "relative grid w-full place-items-center overflow-hidden bg-white shadow-md ring-1 ring-black/5",
+            landscape
+              ? "aspect-[297/210] max-w-full"
+              : "aspect-[210/297] max-w-[min(100%,calc(62dvh*0.707))]",
+          )}
+        >
+          {page ? (
+            // A served preview picture, as `media-image.tsx` draws remote media.
+            <img
+              src={page}
+              alt={`${material.title} — жишээ хуудас ${index + 1}`}
+              className="size-full object-contain"
+            />
+          ) : (
+            <span className="flex flex-col items-center gap-2 px-6 text-center">
+              {AREA_IMAGE[material.area] ? (
+                <Image
+                  src={AREA_IMAGE[material.area]!}
+                  alt=""
+                  width={96}
+                  height={96}
+                  className="size-24 object-contain"
+                />
+              ) : null}
+              <span className="text-caption text-muted">Жишээ хуудас удахгүй нэмэгдэнэ.</span>
+            </span>
+          )}
+          {page ? (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 grid select-none place-items-center text-title font-bold text-ink/10 [transform:rotate(-24deg)]"
+            >
+              NomadKids — жишээ
+            </span>
+          ) : null}
+        </div>
+      </div>
+      {pages.length > 1 ? (
+        <figcaption className="flex items-center justify-center gap-3">
+          <Button
+            size="icon"
+            variant="secondary"
+            aria-label="Өмнөх хуудас"
+            disabled={index === 0}
+            onClick={() => setIndex(index - 1)}
+          >
+            <ChevronLeft size={18} aria-hidden="true" />
+          </Button>
+          <span className="text-caption tabular-nums text-muted">
+            {index + 1} / {pages.length}
+          </span>
+          <Button
+            size="icon"
+            variant="secondary"
+            aria-label="Дараагийн хуудас"
+            disabled={index === pages.length - 1}
+            onClick={() => setIndex(index + 1)}
+          >
+            <ChevronRight size={18} aria-hidden="true" />
+          </Button>
+        </figcaption>
+      ) : null}
+    </figure>
+  );
+}
+
+/**
+ * «Хуваалцах» — 2026-10-14, the user: a teacher sends a material's page to
+ * colleagues; the link carries who shared it (`ref=t-…`) so the sign-ups it
+ * brings can be counted once the API keeps it.
+ */
+function ShareButton({ material }: { material: Material }) {
+  const toast = useToast();
+  const { session } = useSession();
+  const share = () => {
+    const ref = session ? `t-${session.user.id.slice(0, 8)}` : undefined;
+    const url = `${window.location.origin}${materialSharePath(material.id, ref)}`;
+    void navigator.clipboard.writeText(url).then(
+      () => toast.success("Холбоос хуулагдлаа — хамт олондоо илгээгээрэй."),
+      () => toast.error(`Хуулж чадсангүй: ${url}`),
+    );
+  };
+  return (
+    <Button size="sm" variant="ghost" onClick={share} aria-label={`${material.title} — хуваалцах`}>
+      <Share2 size={16} aria-hidden="true" />
+    </Button>
   );
 }

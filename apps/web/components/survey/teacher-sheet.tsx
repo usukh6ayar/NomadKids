@@ -382,7 +382,7 @@ function SheetTable({
   multiple?: boolean;
 }) {
   return (
-    <div className="overflow-x-auto rounded-control border border-border">
+    <div className="table-scroll rounded-control border border-border">
       <table className="w-full border-collapse text-body">
         {caption ? (
           <caption className="bg-canvas px-3 py-2 text-left text-caption font-semibold text-ink">
@@ -487,7 +487,7 @@ function Totals({
   return (
     <Card pad="compact" className="flex flex-col gap-3">
       <p className="font-semibold text-ink">Нийт</p>
-      <div className="overflow-x-auto rounded-control border border-border">
+      <div className="table-scroll rounded-control border border-border">
         <table className="w-full border-collapse text-body">
           <thead>
             <tr className="bg-canvas">
@@ -545,7 +545,7 @@ function TextTable({
   editable: boolean;
 }) {
   return (
-    <div className="overflow-x-auto rounded-control border border-border">
+    <div className="table-scroll rounded-control border border-border">
       <table className="w-full border-collapse text-body">
         <thead>
           <tr className="bg-canvas">
