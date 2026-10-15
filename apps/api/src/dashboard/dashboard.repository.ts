@@ -17,7 +17,13 @@ export class DashboardRepository {
 
   // ── Teacher ───────────────────────────────────────────────────────────────
 
-  /** Parent submissions awaiting this teacher — the only true queue. */
+  /**
+   * Parent submissions awaiting this teacher — the only true queue.
+   *
+   * ★ By the group the child attends **now**, as `listPendingForGroups` reads
+   * it (#235): the badge and the queue it opens must count the same notes, and
+   * a teacher the child has left can no longer review one.
+   */
   async pendingReviewCount(groupIds: string[]): Promise<number> {
     if (groupIds.length === 0) return 0;
     return this.prisma.observation.count({
@@ -25,7 +31,10 @@ export class DashboardRepository {
         deletedAt: null,
         source: "PARENT",
         reviewStatus: "PENDING",
-        enrollment: { groupId: { in: groupIds }, deletedAt: null },
+        child: {
+          deletedAt: null,
+          enrollments: { some: { groupId: { in: groupIds }, status: "ACTIVE", deletedAt: null } },
+        },
       },
     });
   }
@@ -61,13 +70,23 @@ export class DashboardRepository {
     });
   }
 
-  /** Recent observations, so a teacher can resume where they left off. */
+  /**
+   * Recent observations, so a teacher can resume where they left off.
+   *
+   * ★ About children in the teacher's groups **now**. Read by the group a
+   * note was filed under, a teacher the child has left kept seeing every
+   * colleague's and family's note on their dashboard — the reach #235 took
+   * away everywhere else (a former teacher reads only their own notes).
+   */
   async recentObservations(groupIds: string[], take = 5) {
     if (groupIds.length === 0) return [];
     return this.prisma.observation.findMany({
       where: {
         deletedAt: null,
-        enrollment: { groupId: { in: groupIds }, deletedAt: null },
+        child: {
+          deletedAt: null,
+          enrollments: { some: { groupId: { in: groupIds }, status: "ACTIVE", deletedAt: null } },
+        },
       },
       orderBy: { createdAt: "desc" },
       take,

@@ -753,10 +753,19 @@ export class AttendanceRepository {
     const { skip, take } = toSkipTake(page);
     if (groupIds.length === 0) return { items: [], total: 0 };
 
+    // ★ By the group the child attends now (#235's rule): a request filed
+    // before a move is the new teacher's to decide — reviewing needs record
+    // access, which the previous teacher no longer has — and a row they cannot
+    // open must not name the child on their screen.
     const where = {
       deletedAt: null,
       reviewStatus: "PENDING" as AttendanceRequestStatus,
-      enrollment: { groupId: { in: groupIds }, deletedAt: null },
+      child: {
+        deletedAt: null,
+        enrollments: {
+          some: { groupId: { in: groupIds }, status: "ACTIVE" as const, deletedAt: null },
+        },
+      },
     };
 
     const [items, total] = await Promise.all([
