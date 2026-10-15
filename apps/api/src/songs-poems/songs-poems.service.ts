@@ -30,8 +30,8 @@ export interface UploadedPart {
  * Дуу, шүлэг — a group's library, a book per school month (#195, 2026-10-11).
  *
  * Who, decided in `authz/` and only called from here:
- *   - the group's own teacher writes — `assertTeachesGroup`;
- *   - the director reads — `assertCanReadGroup`;
+ *   - the group's own teacher and the director read and write —
+ *     `assertCanReadGroup` (the director's writing added 2026-10-16, №21);
  *   - a family reads the library of their child's group now —
  *     `assertCanAccess` on the child (the fee gate included), and its files
  *     through `assertCanReadGroupContent`.
@@ -61,7 +61,7 @@ export class SongsPoemsService {
   }
 
   async saveMonth(actor: Actor, groupId: string, month: string, input: SongPoemMonthInput) {
-    const group = await this.groups.assertTeachesGroup(actor, groupId);
+    const group = await this.groups.assertCanReadGroup(actor, groupId);
     const row = await this.repo.saveMonth(
       group.kindergartenId,
       group.id,
@@ -83,7 +83,7 @@ export class SongsPoemsService {
     cover: UploadedPart | undefined,
     file: UploadedPart | undefined,
   ): Promise<SongPoem> {
-    const group = await this.groups.assertTeachesGroup(actor, groupId);
+    const group = await this.groups.assertCanReadGroup(actor, groupId);
     if ((await this.repo.countInMonth(group.id, form.month)) >= SONG_POEMS_PER_MONTH_MAX) {
       throw new BadRequestException(
         `Нэг сард ${SONG_POEMS_PER_MONTH_MAX}-аас олон материал оруулах боломжгүй.`,
@@ -117,7 +117,7 @@ export class SongsPoemsService {
     cover: UploadedPart | undefined,
     file: UploadedPart | undefined,
   ): Promise<SongPoem> {
-    const group = await this.groups.assertTeachesGroup(actor, groupId);
+    const group = await this.groups.assertCanReadGroup(actor, groupId);
     const before = await this.repo.findInGroup(id, group.id);
     if (!before) throw new NotFoundException();
 
@@ -145,7 +145,7 @@ export class SongsPoemsService {
   }
 
   async remove(actor: Actor, groupId: string, id: string): Promise<void> {
-    const group = await this.groups.assertTeachesGroup(actor, groupId);
+    const group = await this.groups.assertCanReadGroup(actor, groupId);
     const before = await this.repo.findInGroup(id, group.id);
     if (!before) throw new NotFoundException();
     await this.repo.softDelete(id);
@@ -242,5 +242,6 @@ function formData(form: SongPoemForm): SongPoemData {
     type: TYPE_FROM_WIRE[form.type],
     title: form.title,
     description: form.description,
+    linkUrl: form.linkUrl,
   };
 }

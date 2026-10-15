@@ -37,6 +37,12 @@ export const routineItemSchema = z
     name: z.string().trim().min(1).max(80),
     description: z.string().trim().max(160).nullish(),
     areas: areasSchema.default([]),
+    /**
+     * A classroom photograph of this part of the day — a kindergarten image
+     * (`MENU_DISH`), checked on write (2026-10-16, №21). It was stripped
+     * silently before this field existed.
+     */
+    photoMediaFileId: uuidSchema.nullish(),
   })
   .refine(startBeforeEnd, START_BEFORE_END);
 export type RoutineItem = z.infer<typeof routineItemSchema>;
@@ -76,6 +82,10 @@ export const clubInputSchema = z
     end: clockTimeSchema,
     areas: areasSchema.min(1),
     goal: z.string().trim().max(450).nullish(),
+    /** What children do in the club, for families (№21). */
+    description: z.string().trim().max(1200).nullish(),
+    /** A small cover photograph — a kindergarten image, checked on write (№21). */
+    photoMediaFileId: uuidSchema.nullish(),
   })
   .refine(startBeforeEnd, START_BEFORE_END);
 export type ClubInput = z.infer<typeof clubInputSchema>;
@@ -90,6 +100,8 @@ export const clubSchema = z.object({
   end: z.string(),
   areas: z.array(z.string()),
   goal: z.string().nullable(),
+  description: z.string().nullable(),
+  photoMediaFileId: uuidSchema.nullable(),
 });
 export type Club = z.infer<typeof clubSchema>;
 

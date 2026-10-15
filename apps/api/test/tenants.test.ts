@@ -1214,7 +1214,11 @@ describe("group programme and hours", () => {
       programKind: "ALTERNATIVE",
     });
 
-    expect(res.status).toBe(404);
+    // 400, not 404, since №16 (2026-10-16): the group's own teacher may edit
+    // its name and kind, so the group is theirs to know — the programme is not.
+    expect(res.status).toBe(400);
+    const row = await db.group.findUniqueOrThrow({ where: { id: a.group.id } });
+    expect(row.programKind).toBe("MAIN");
   });
 });
 

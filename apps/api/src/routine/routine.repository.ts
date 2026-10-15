@@ -22,6 +22,8 @@ const CLUB_SELECT = {
   endTime: true,
   areas: true,
   goal: true,
+  description: true,
+  photoMediaFileId: true,
 } as const;
 
 const REQUEST_SELECT = {
@@ -42,6 +44,8 @@ export interface ClubData {
   endTime: string;
   areas: string[];
   goal: string | null;
+  description: string | null;
+  photoMediaFileId: string | null;
 }
 
 @Injectable()

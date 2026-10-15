@@ -65,7 +65,7 @@ export class GroupSongsPoemsController {
   }
 
   @Put("months/:month")
-  @Roles("TEACHER")
+  @Roles("TEACHER", "ADMIN")
   async saveMonth(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(monthParams)) params: { groupId: string; month: string },
@@ -75,7 +75,7 @@ export class GroupSongsPoemsController {
   }
 
   @Post()
-  @Roles("TEACHER")
+  @Roles("TEACHER", "ADMIN")
   @RateLimit({ limit: 120, windowMs: HOUR, byUser: true })
   @UseInterceptors(UPLOAD)
   async create(
@@ -88,7 +88,7 @@ export class GroupSongsPoemsController {
   }
 
   @Put(":id")
-  @Roles("TEACHER")
+  @Roles("TEACHER", "ADMIN")
   @RateLimit({ limit: 120, windowMs: HOUR, byUser: true })
   @UseInterceptors(UPLOAD)
   async update(
@@ -108,7 +108,7 @@ export class GroupSongsPoemsController {
   }
 
   @Delete(":id")
-  @Roles("TEACHER")
+  @Roles("TEACHER", "ADMIN")
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(
     @CurrentActor() actor: Actor,

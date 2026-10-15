@@ -23,6 +23,7 @@ export function songPoemView(row: SongPoemRow): SongPoem {
     type: TYPE_TO_WIRE[row.type],
     title: row.title,
     description: row.description,
+    linkUrl: row.linkUrl,
     coverUrl: row.coverKey ? `/songs-poems/${row.id}/cover` : null,
     coverFileName: row.coverKey ? row.coverName : null,
     fileUrl: row.fileKey ? `/songs-poems/${row.id}/file` : null,
