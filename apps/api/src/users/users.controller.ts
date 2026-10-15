@@ -147,17 +147,28 @@ export class UsersController {
   }
 
   /**
-   * A one-time password-reset link for a member of staff, handed over by the
-   * administrator. See `UsersService.issuePasswordReset` — it issues a link and
-   * never sets a password.
+   * A one-time password-reset link, handed over by the administrator — or, for
+   * a parent, by the teacher of their child's group (№10). See
+   * `UsersService.issuePasswordReset` — it issues a link and never sets a
+   * password.
    */
   @Post("users/:id/password-reset")
-  @Roles("ADMIN")
+  @Roles("ADMIN", "TEACHER")
   async issuePasswordReset(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
   ) {
     return this.service.issuePasswordReset(actor, params.id);
+  }
+
+  /** A fresh seven-day invitation for staff who have never signed in (№25). */
+  @Post("users/:id/invitation")
+  @Roles("ADMIN")
+  async issueInvitation(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.issueInvitation(actor, params.id);
   }
 
   @Post("users/:id/memberships")
