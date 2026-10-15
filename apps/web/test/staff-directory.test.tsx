@@ -291,43 +291,70 @@ describe("the staff directory", () => {
     ).toBeInTheDocument();
   });
 
-  it("links an ESIS person to an account that already exists", async () => {
+  it("invites an ESIS person straight from the list, printing a QR card", async () => {
     const user = userEvent.setup();
     const { calls } = stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
-      { path: "/users", body: page([TEACHER, { ...COOK, esisPersonId: "esis-cook" }]) },
+      { path: "/users", body: page([TEACHER]) },
       {
         path: `/kindergartens/${KG}/esis/staff-roster/unclaimed`,
         body: page([
           {
             esisPersonId: "esis-teacher",
-            lastName: "Анхбаяр",
-            firstName: "Энх-Адьяа",
+            lastName: "Ганжаргал",
+            firstName: "Болд",
             positionName: "Багш",
             isInstructor: true,
-            syncedAt: "2026-09-28T00:00:00.000Z",
+            role: "TEACHER",
+            syncedAt: "2026-10-14T00:00:00.000Z",
+          },
+          {
+            esisPersonId: "esis-caretaker",
+            lastName: "Минжмаа",
+            firstName: "Пүрэв",
+            positionName: "Жижүүр /байрны/",
+            isInstructor: false,
+            role: null,
+            syncedAt: "2026-10-14T00:00:00.000Z",
           },
         ]),
       },
-      { path: `/kindergartens/${KG}/esis/staff-link`, method: "POST", body: {} },
+      {
+        path: `/kindergartens/${KG}/staff-invitations`,
+        method: "POST",
+        body: {
+          items: [
+            {
+              esisPersonId: "esis-teacher",
+              lastName: "Ганжаргал",
+              firstName: "Болд",
+              role: "TEACHER",
+              invitationToken: "tok-teacher-0123456789",
+            },
+          ],
+          skipped: 0,
+        },
+      },
     ]);
     renderWithProviders(<AdminUsersPage />);
 
-    await user.click(await screen.findByRole("button", { name: /бүртгэлтэй холбох/ }));
-    const dialog = await screen.findByRole("dialog", { name: "Бүртгэлтэй холбох" });
-    await user.click(within(dialog).getByRole("combobox"));
-    // The cook already carries an ESIS person, so only the teacher is offered.
-    expect(screen.queryByRole("option", { name: /Ёндонжамц/ })).toBeNull();
-    await user.click(await screen.findByRole("option", { name: /Энх-Адьяа/ }));
-    await user.click(within(dialog).getByRole("button", { name: "Холбох" }));
+    // No «Холбох» any more — the client, 2026-10-15.
+    expect(await screen.findByRole("button", { name: "Бүх багшийг урих" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /холбох/i })).toBeNull();
 
-    await waitFor(() =>
-      expect(
-        calls.find((c) => c.method === "POST" && c.url.endsWith("/esis/staff-link"))?.body,
-      ).toEqual({
-        userId: TEACHER_ID,
-        esisPersonId: "esis-teacher",
-      }),
-    );
+    // One «Урих» — the caretaker's job code grants no role, so no button.
+    const invites = screen.getAllByRole("button", { name: "Урих" });
+    expect(invites).toHaveLength(1);
+    expect(screen.getByText("Эрх олгохгүй")).toBeInTheDocument();
+
+    await user.click(invites[0]!);
+    const dialog = await screen.findByRole("dialog", { name: "Урих" });
+    await user.click(within(dialog).getByRole("button", { name: "Урилга үүсгэх" }));
+
+    expect(await within(dialog).findByText("1 урилга бэлэн")).toBeInTheDocument();
+    expect(within(dialog).getByText(/\/invitation\/tok-teacher-0123456789$/)).toBeInTheDocument();
+    expect(
+      calls.find((c) => c.method === "POST" && c.url.endsWith("/staff-invitations"))?.body,
+    ).toEqual({ esisPersonId: "esis-teacher" });
   });
 });

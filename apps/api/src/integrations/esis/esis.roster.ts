@@ -30,6 +30,51 @@ const ROLE_BY_OCCUPATION_GROUP: Record<string, Role> = {
   "5120": Role.COOK,
 };
 
+/**
+ * The roster rows nobody here has claimed yet — «ESIS-д бүртгэлтэй, системд
+ * бүртгүүлээгүй».
+ *
+ * ★ One definition for the list the director reads and for «Бүх багшийг
+ * урих», which issues an invitation per row of it. Two copies would drift,
+ * and the drift would be an invitation for somebody the list says is
+ * registered — a second account for one person.
+ *
+ * A row is claimed when an account here carries its `esisPersonId` or its
+ * register number — or, for display and for not inviting twice, the same
+ * name: an invited account carries neither key (12 of 13 on live data), and
+ * listing every teacher the director already added as "not registered" was
+ * the bug this rule fixed. Nothing is *granted* on a name.
+ */
+export function unclaimedRosterRows<
+  R extends { esisPersonId: string; registerNumber: string; lastName: string; firstName: string },
+>(
+  roster: readonly R[],
+  identities: readonly {
+    esisPersonId: string | null;
+    registerNumber: string | null;
+    lastName: string;
+    firstName: string;
+  }[],
+): R[] {
+  const ids = new Set(identities.map((user) => user.esisPersonId).filter(Boolean));
+  const registers = new Set(
+    identities.map((user) => normalizeRegisterNumber(user.registerNumber)).filter(Boolean),
+  );
+  const names = new Set(
+    identities.map((user) => normalizeIdentity(`${user.lastName} ${user.firstName}`)),
+  );
+  return roster.filter(
+    (row) =>
+      !ids.has(row.esisPersonId) &&
+      !registers.has(row.registerNumber) &&
+      !names.has(normalizeIdentity(`${row.lastName} ${row.firstName}`)),
+  );
+}
+
+export function normalizeIdentity(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("mn-MN");
+}
+
 export function roleForJobCode(jobCode: string | null | undefined): Role | null {
   const group = /^(\d{4})-/.exec((jobCode ?? "").trim())?.[1];
   return group ? (ROLE_BY_OCCUPATION_GROUP[group] ?? null) : null;

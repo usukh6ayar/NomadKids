@@ -536,7 +536,14 @@ export class AuthService {
     return {
       valid: true,
       kind: account.kind,
-      knows: { name: account.selfRegistered && account.hasName, phone: knownPhone !== null },
+      /*
+        ★ An account a director invited from the ESIS roster carries the
+        ministry's name (2026-10-15) — not asked again, like a self-registration.
+      */
+      knows: {
+        name: (account.selfRegistered || account.esisLinked) && account.hasName,
+        phone: knownPhone !== null,
+      },
       ...(knownPhone ? { phoneHint: `••••${knownPhone.slice(-4)}` } : {}),
     };
   }

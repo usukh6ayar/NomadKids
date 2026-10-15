@@ -46,3 +46,9 @@ export type StaffSelfRegistrationDto = z.infer<typeof staffSelfRegistrationSchem
 export const listSelfRegisteredQuerySchema = paginationQuerySchema;
 
 export type ListSelfRegisteredQuery = z.infer<typeof listSelfRegisteredQuerySchema>;
+
+/** `POST /kindergartens/:id/staff-invitations` — no body invites every unclaimed row. */
+export const rosterInvitationSchema = z
+  .object({ esisPersonId: z.string().trim().min(1).max(64).optional() })
+  .default({});
+export type RosterInvitationDto = z.infer<typeof rosterInvitationSchema>;
