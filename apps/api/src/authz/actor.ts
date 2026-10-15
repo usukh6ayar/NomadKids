@@ -50,6 +50,17 @@ export function teacherMembershipIds(actor: Actor): string[] {
   return actor.memberships.filter((m) => m.role === Role.TEACHER).map((m) => m.id);
 }
 
+/**
+ * Membership ids for the actor's PE/music teacher roles — the join into
+ * `GroupSpecialist`. ★ Filtered by role at read time, so a row left behind by
+ * a role change (PE_TEACHER → TEACHER) grants nothing.
+ */
+export function specialistMembershipIds(actor: Actor): string[] {
+  return actor.memberships
+    .filter((m) => m.role === Role.PE_TEACHER || m.role === Role.MUSIC_TEACHER)
+    .map((m) => m.id);
+}
+
 function unique(values: string[]): string[] {
   return [...new Set(values)];
 }

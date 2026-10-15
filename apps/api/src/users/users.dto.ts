@@ -2,7 +2,16 @@ import { z } from "zod";
 import { paginationQuerySchema, uuidSchema } from "@kinder/contracts";
 import { searchTermSchema } from "../common/repository/search";
 
-export const roleSchema = z.enum(["ADMIN", "TEACHER", "PARENT", "COOK", "ACCOUNTANT"]);
+export const roleSchema = z.enum([
+  "ADMIN",
+  "TEACHER",
+  "PARENT",
+  "COOK",
+  "ACCOUNTANT",
+  "PE_TEACHER",
+  "MUSIC_TEACHER",
+  "DOCTOR",
+]);
 
 /**
  * Mongolian mobile numbers: eight digits, first digit 5–9.

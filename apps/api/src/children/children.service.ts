@@ -8,6 +8,7 @@ import { AuditRepository } from "../audit/audit.repository";
 import { AuthzRepository } from "../authz/authz.repository";
 import { loadEnv } from "../config/env";
 import { ChildAccessService } from "../authz/child-access.service";
+import { seesFullChildCard } from "../authz/child-access";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import type { Actor } from "../authz/actor";
 import { paginate, type PageParams } from "../common/pagination";
@@ -92,13 +93,28 @@ export class ChildrenService {
    * disagree about who exists.
    */
   async list(actor: Actor, query: ListChildrenQuery) {
-    const visible = await this.authz.visibleChildrenWhere(actor);
+    /*
+     * ★ Card-level since 2026-10-15: a PE/music teacher's groups and the
+     * doctor's kindergarten too (`visibleChildCardsWhere`). A specialist's
+     * rows lose what their card does not carry (`toSpecialistCard`).
+     */
+    const cards = await this.authz.visibleChildCardsWhere(actor);
     const page: PageParams = { page: query.page, pageSize: query.pageSize };
 
-    const { items, total } = await this.repo.listChildren(visible, childFilters(query), page, {
+    const listed = await this.repo.listChildren(cards.where, childFilters(query), page, {
       sort: query.sort,
       order: query.order,
     });
+    const full = cards.full
+      ? await this.authz.childIdsMatching(
+          listed.items.map((c) => c.id),
+          cards.full,
+        )
+      : null;
+    const items = full
+      ? listed.items.map((child) => (full.has(child.id) ? child : toSpecialistListRow(child)))
+      : listed.items;
+    const total = listed.total;
 
     /*
       ★ «Төлөгдсөн / Төлөгдөөгүй» on a solo teacher's roster (the user,
@@ -197,10 +213,12 @@ export class ChildrenService {
 
   async get(actor: Actor, childId: string) {
     // Throws 404 when absent or unauthorized — indistinguishable, by design.
-    await this.childAccess.assertCanAccess(actor, childId);
+    const facts = await this.childAccess.assertCanReadCard(actor, childId);
 
-    const child = await this.repo.findChild(childId);
-    if (!child) throw new NotFoundException();
+    const found = await this.repo.findChild(childId);
+    if (!found) throw new NotFoundException();
+    // A PE/music teacher's card: no health, no national id, no family contacts.
+    const child = seesFullChildCard(actor, facts) ? found : toSpecialistCard(found);
 
     // Opening a child's record is auditable: RFP §971 asks who viewed what.
     await this.audit.append({
@@ -1114,5 +1132,32 @@ function childFilters(query: ListChildrenQuery) {
     ageMin: query.ageMin,
     ageMax: query.ageMax,
     ids: query.ids,
+  };
+}
+
+/**
+ * What a PE or music teacher's card leaves out (2026-10-15): the health note
+ * — they have no health reach — the national and foreign ids, and the
+ * family's contacts. The rest is the card: name, sex, birthday, group, photo.
+ */
+function toSpecialistCard<
+  T extends { healthNotes: string | null; nationalId: string | null; foreignId: string | null },
+>(child: T & { guardianships: unknown[] }) {
+  return { ...child, healthNotes: null, nationalId: null, foreignId: null, guardianships: [] };
+}
+
+/** The roster row's half of `toSpecialistCard`. */
+function toSpecialistListRow<
+  T extends {
+    nationalId: string | null;
+    foreignId: string | null;
+    profile: { photo: boolean; health: boolean; guardianContact: boolean };
+  },
+>(child: T): T {
+  return {
+    ...child,
+    nationalId: null,
+    foreignId: null,
+    profile: { ...child.profile, health: false, guardianContact: false },
   };
 }

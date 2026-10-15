@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { paginationQuerySchema } from "@kinder/contracts";
+import { ROSTER_INVITABLE_ROLES, paginationQuerySchema } from "@kinder/contracts";
 
 /**
  * Shape only. This deliberately does not reject a malformed register number
@@ -49,6 +49,14 @@ export type ListSelfRegisteredQuery = z.infer<typeof listSelfRegisteredQuerySche
 
 /** `POST /kindergartens/:id/staff-invitations` — no body invites every unclaimed row. */
 export const rosterInvitationSchema = z
-  .object({ esisPersonId: z.string().trim().min(1).max(64).optional() })
+  .object({
+    esisPersonId: z.string().trim().min(1).max(64).optional(),
+    /** Only with `esisPersonId`: overrides the role the job code would give. */
+    role: z.enum(ROSTER_INVITABLE_ROLES).optional(),
+  })
+  .refine((body) => body.role === undefined || body.esisPersonId !== undefined, {
+    message: "Эрхийг зөвхөн нэг хүнийг урихад сонгоно",
+    path: ["role"],
+  })
   .default({});
 export type RosterInvitationDto = z.infer<typeof rosterInvitationSchema>;

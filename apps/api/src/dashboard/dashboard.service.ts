@@ -483,12 +483,28 @@ export class DashboardService {
    */
   primaryDashboard(
     actor: Actor,
-  ): "platform" | "admin" | "teacher" | "cook" | "accountant" | "parent" | null {
+  ):
+    | "platform"
+    | "admin"
+    | "teacher"
+    | "specialist"
+    | "doctor"
+    | "cook"
+    | "accountant"
+    | "parent"
+    | null {
     if (actor.isSuperAdmin) return "platform";
 
     const roles = new Set(actor.memberships.map((m) => m.role));
     if (roles.has(Role.ADMIN)) return "admin";
     if (roles.has(Role.TEACHER)) return "teacher";
+    /*
+      ★ The PE/music teacher and the doctor (2026-10-15): below TEACHER — a
+      class teacher who also leads PE lands on the class — and above the
+      support roles and PARENT for the reason those sit where they do.
+    */
+    if (roles.has(Role.PE_TEACHER) || roles.has(Role.MUSIC_TEACHER)) return "specialist";
+    if (roles.has(Role.DOCTOR)) return "doctor";
     /*
       ★ Above PARENT, below TEACHER — 2026-08-30.
 

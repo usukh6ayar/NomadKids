@@ -57,6 +57,9 @@ function RootRedirect() {
     if (isSuperAdmin) router.replace("/platform");
     else if (hasRole("ADMIN")) router.replace("/admin");
     else if (hasRole("TEACHER")) router.replace("/dashboard");
+    // The PE/music teacher and the doctor work from the children's list — 2026-10-15.
+    else if (hasRole("PE_TEACHER") || hasRole("MUSIC_TEACHER") || hasRole("DOCTOR"))
+      router.replace("/children");
     /*
      * ★ COOK and ACCOUNTANT, added 2026-09-09 — they were missing.
      *

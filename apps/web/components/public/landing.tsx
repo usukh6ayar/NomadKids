@@ -315,22 +315,25 @@ function LoginCard() {
             ? "/admin"
             : primary.dashboard === "teacher"
               ? "/dashboard"
-              : // The screen each support role exists for. Neither can open
-                // `/dashboard` — every widget on it is about children — so
-                // sending them there would meet a permission wall on the first
-                // screen after signing in. The cook has its own `/kitchen/dashboard`
-                // instead (`app/(app)/layout.tsx`'s `supportNav`), not `/dashboard`.
-                primary.dashboard === "cook"
-                ? "/kitchen/dashboard"
-                : // ★ `/finance/dashboard` since 2026-09-09, not `/finance`.
-                  // The accountant's own board — what came in, what is unpaid,
-                  // and what needs a decision today. `/finance` is the
-                  // state-funding register beneath it.
-                  primary.dashboard === "accountant"
-                  ? "/finance/dashboard"
-                  : primary.dashboard === "parent"
-                    ? "/home"
-                    : "/no-access",
+              : // The PE/music teacher and the doctor — their children's list (2026-10-15).
+                primary.dashboard === "specialist" || primary.dashboard === "doctor"
+                ? "/children"
+                : // The screen each support role exists for. Neither can open
+                  // `/dashboard` — every widget on it is about children — so
+                  // sending them there would meet a permission wall on the first
+                  // screen after signing in. The cook has its own `/kitchen/dashboard`
+                  // instead (`app/(app)/layout.tsx`'s `supportNav`), not `/dashboard`.
+                  primary.dashboard === "cook"
+                  ? "/kitchen/dashboard"
+                  : // ★ `/finance/dashboard` since 2026-09-09, not `/finance`.
+                    // The accountant's own board — what came in, what is unpaid,
+                    // and what needs a decision today. `/finance` is the
+                    // state-funding register beneath it.
+                    primary.dashboard === "accountant"
+                    ? "/finance/dashboard"
+                    : primary.dashboard === "parent"
+                      ? "/home"
+                      : "/no-access",
       );
     },
   });

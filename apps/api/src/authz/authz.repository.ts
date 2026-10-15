@@ -2,7 +2,7 @@ import { guardianChatName } from "@kinder/contracts";
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import type { Actor, ActorMembership } from "./actor";
-import { teacherMembershipIds } from "./actor";
+import { specialistMembershipIds, teacherMembershipIds } from "./actor";
 import type { ChildAccessFacts } from "./child-access";
 import type { ChatAccessFacts } from "./chat-access";
 
@@ -97,6 +97,7 @@ export class AuthzRepository {
       })),
       guardianships: child.guardianships,
       actorActiveTeachingGroupIds: await this.loadActiveTeachingGroupIds(actor),
+      actorActiveSpecialistGroupIds: await this.loadActiveSpecialistGroupIds(actor),
     };
   }
 
@@ -132,6 +133,27 @@ export class AuthzRepository {
     if (membershipIds.length === 0) return [];
 
     const rows = await this.prisma.groupTeacher.findMany({
+      where: {
+        membershipId: { in: membershipIds },
+        endedOn: null,
+        deletedAt: null,
+        group: { deletedAt: null },
+      },
+      select: { groupId: true },
+    });
+    return [...new Set(rows.map((r) => r.groupId))];
+  }
+
+  /**
+   * Groups the actor is currently assigned to as a PE or music teacher.
+   * Empty — and no query — for everyone else, so the hot path is unchanged
+   * for every role that existed before.
+   */
+  async loadActiveSpecialistGroupIds(actor: Actor): Promise<string[]> {
+    const membershipIds = specialistMembershipIds(actor);
+    if (membershipIds.length === 0) return [];
+
+    const rows = await this.prisma.groupSpecialist.findMany({
       where: {
         membershipId: { in: membershipIds },
         endedOn: null,
@@ -254,6 +276,66 @@ export class AuthzRepository {
    * the same enrollment-history-plus-fallback shape the admin chain above
    * uses, mirrored here for one kindergarten instead of a list of them.
    */
+  /**
+   * The children whose **card** this actor may open — `canReadChildCard`'s
+   * list-shaped twin (2026-10-15): everyone `visibleChildrenWhere` admits,
+   * plus a PE/music teacher's assigned groups and the doctor's kindergarten.
+   *
+   * ★ A separate filter, not a widening of `visibleChildrenWhere`. That one is
+   * `canAccessChild` and feeds fourteen call sites — group invitations,
+   * reports, exports — none of which a specialist or a doctor may reach.
+   *
+   * `full` is `seesFullChildCard`'s twin: rows outside it are a specialist's,
+   * and the caller strips what a specialist's card does not carry. `null`
+   * when the two are the same set — no specialist membership, nothing to strip.
+   */
+  async visibleChildCardsWhere(
+    actor: Actor,
+  ): Promise<{ where: VisibleChildrenFilter; full: VisibleChildrenFilter | null }> {
+    const base = await this.visibleChildrenWhere(actor);
+    const doctorKindergartenIds = actor.memberships
+      .filter((m) => m.role === "DOCTOR")
+      .map((m) => m.kindergartenId);
+    const specialistGroupIds = await this.loadActiveSpecialistGroupIds(actor);
+
+    // The doctor's chain is the admin's two-part chain — `isDoctorOver` reads
+    // `childKindergartenIds`, the same history-or-fallback rule.
+    const doctor =
+      doctorKindergartenIds.length > 0
+        ? [
+            {
+              enrollments: {
+                some: { kindergartenId: { in: doctorKindergartenIds }, deletedAt: null },
+              },
+            },
+            {
+              kindergartenId: { in: doctorKindergartenIds },
+              enrollments: { none: { deletedAt: null } },
+            },
+          ]
+        : [];
+    const specialist =
+      specialistGroupIds.length > 0
+        ? [{ enrollments: { some: { groupId: { in: specialistGroupIds }, deletedAt: null } } }]
+        : [];
+
+    const full: VisibleChildrenFilter = { deletedAt: null, OR: [...base.OR, ...doctor] };
+    return {
+      where: { deletedAt: null, OR: [...full.OR, ...specialist] },
+      full: specialist.length > 0 ? full : null,
+    };
+  }
+
+  /** Which of these child ids also match `where` — one query for a page. */
+  async childIdsMatching(ids: string[], where: VisibleChildrenFilter): Promise<Set<string>> {
+    if (ids.length === 0) return new Set();
+    const rows = await this.prisma.child.findMany({
+      where: { AND: [{ id: { in: ids } }, where] },
+      select: { id: true },
+    });
+    return new Set(rows.map((row) => row.id));
+  }
+
   visibleChildrenForFinanceWhere(kindergartenId: string): VisibleChildrenFilter {
     return {
       deletedAt: null,

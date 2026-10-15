@@ -44,7 +44,7 @@ export class ChildHealthController {
 
   /** Staff only — an allergy flag is an instruction other people act on. */
   @Post("allergies")
-  @Roles("TEACHER", "ADMIN")
+  @Roles("TEACHER", "ADMIN", "DOCTOR")
   async createAllergy(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -75,7 +75,7 @@ export class ChildHealthController {
    * caller there has a child id and no reason to know a kindergarten id.
    */
   @Get("special-needs/categories")
-  @Roles("TEACHER", "ADMIN")
+  @Roles("TEACHER", "ADMIN", "DOCTOR")
   async listSpecialNeedsCategories(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -85,7 +85,7 @@ export class ChildHealthController {
 
   /** Staff only — a classification is something other people act on. */
   @Post("special-needs")
-  @Roles("TEACHER", "ADMIN")
+  @Roles("TEACHER", "ADMIN", "DOCTOR")
   async createSpecialNeed(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -95,7 +95,7 @@ export class ChildHealthController {
   }
 
   @Post("vaccinations")
-  @Roles("TEACHER", "ADMIN")
+  @Roles("TEACHER", "ADMIN", "DOCTOR")
   async createVaccination(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -110,7 +110,7 @@ export class HealthRecordsController {
   constructor(private readonly service: HealthRecordsService) {}
 
   @Patch("allergies/:id")
-  @Roles("TEACHER", "ADMIN")
+  @Roles("TEACHER", "ADMIN", "DOCTOR")
   async updateAllergy(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -120,7 +120,7 @@ export class HealthRecordsController {
   }
 
   @Delete("allergies/:id")
-  @Roles("TEACHER", "ADMIN")
+  @Roles("TEACHER", "ADMIN", "DOCTOR")
   async removeAllergy(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -129,7 +129,7 @@ export class HealthRecordsController {
   }
 
   @Patch("special-needs/:id")
-  @Roles("TEACHER", "ADMIN")
+  @Roles("TEACHER", "ADMIN", "DOCTOR")
   async updateSpecialNeed(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -139,7 +139,7 @@ export class HealthRecordsController {
   }
 
   @Delete("special-needs/:id")
-  @Roles("TEACHER", "ADMIN")
+  @Roles("TEACHER", "ADMIN", "DOCTOR")
   async removeSpecialNeed(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -157,7 +157,7 @@ export class HealthRecordsController {
   }
 
   @Delete("vaccinations/:id")
-  @Roles("TEACHER", "ADMIN")
+  @Roles("TEACHER", "ADMIN", "DOCTOR")
   async removeVaccination(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },

@@ -8,7 +8,7 @@ import { AuditRepository } from "../audit/audit.repository";
 import { AuthzRepository } from "../authz/authz.repository";
 import { ChildAccessService } from "../authz/child-access.service";
 import { TenantAccessService } from "../authz/tenant-access.service";
-import { canRecordForChild, isGuardianOf } from "../authz/child-access";
+import { canEditObservationAsStaff, canObserveChild, isGuardianOf } from "../authz/child-access";
 import type { Actor } from "../authz/actor";
 import { paginate, type PageParams } from "../common/pagination";
 import { ObservationsRepository } from "./observations.repository";
@@ -112,7 +112,7 @@ export class ObservationsService {
   }
 
   async listTypes(actor: Actor, childId: string) {
-    const facts = await this.childAccess.assertCanAccess(actor, childId);
+    const facts = await this.childAccess.assertCanReadObservations(actor, childId);
     return this.repo.listTypes(facts.childKindergartenId);
   }
 
@@ -124,7 +124,7 @@ export class ObservationsService {
    * private teaching note reaches a family.
    */
   async list(actor: Actor, childId: string, query: ListObservationsQuery) {
-    const facts = await this.childAccess.assertCanAccess(actor, childId);
+    const facts = await this.childAccess.assertCanReadObservations(actor, childId);
     const viewer = { isGuardian: isGuardianOf(actor, facts), userId: actor.userId };
     const page: PageParams = { page: query.page, pageSize: query.pageSize };
 
@@ -147,7 +147,7 @@ export class ObservationsService {
   }
 
   async get(actor: Actor, childId: string, observationId: string) {
-    const facts = await this.childAccess.assertCanAccess(actor, childId);
+    const facts = await this.childAccess.assertCanReadObservations(actor, childId);
     const viewer = { isGuardian: isGuardianOf(actor, facts), userId: actor.userId };
 
     const observation = await this.repo.findReadable(observationId, childId, viewer);
@@ -166,12 +166,13 @@ export class ObservationsService {
    * the family later receives as a PDF.
    */
   async createTeacherObservation(actor: Actor, childId: string, dto: CreateObservationDto) {
-    const facts = await this.childAccess.assertCanAccess(actor, childId);
+    // ★ A group's PE/music teacher files here too (2026-10-15) — `canObserveChild`.
+    const facts = await this.childAccess.assertCanReadObservations(actor, childId);
 
     if (
       !canCreateObservation("TEACHER", {
         canAccess: true,
-        canRecord: canRecordForChild(actor, facts),
+        canRecord: canObserveChild(actor, facts),
       })
     ) {
       throw new NotFoundException();
@@ -324,8 +325,8 @@ export class ObservationsService {
     const row = await this.repo.findForAuthorization(observationId);
     if (!row) throw new NotFoundException();
 
-    const facts = await this.childAccess.assertCanAccess(actor, row.childId);
-    const staff = canRecordForChild(actor, facts);
+    const facts = await this.childAccess.assertCanReadObservations(actor, row.childId);
+    const staff = canEditObservationAsStaff(actor, facts, row);
 
     const data: Record<string, unknown> = { ...dto };
     let domainIds = dto.domainIds;
@@ -373,8 +374,8 @@ export class ObservationsService {
     const row = await this.repo.findForAuthorization(observationId);
     if (!row) throw new NotFoundException();
 
-    const facts = await this.childAccess.assertCanAccess(actor, row.childId);
-    if (!canRecordForChild(actor, facts)) {
+    const facts = await this.childAccess.assertCanReadObservations(actor, row.childId);
+    if (!canEditObservationAsStaff(actor, facts, row)) {
       const verdict = guardianMayEdit(row, actor.userId);
       if (!verdict.allowed) {
         if (verdict.reason) throw new ForbiddenException(verdict.reason);

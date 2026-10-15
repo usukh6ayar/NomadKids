@@ -12,6 +12,7 @@ import { paginate, type PageParams } from "../common/pagination";
 import type { TenantScope } from "../common/repository/tenant-scope";
 import { TenantsRepository } from "./tenants.repository";
 import type {
+  AssignSpecialistDto,
   AssignTeacherDto,
   CreateGroupDto,
   CreateSchoolYearDto,
@@ -460,6 +461,80 @@ export class TenantsService {
       objectType: "GroupTeacher",
       objectId: assignmentId,
       metadata: { change: "revoked" },
+    });
+    return ended;
+  }
+
+  // ── PE/music teacher assignments ──────────────────────────────────────────
+
+  /**
+   * Assigns a Биеийн тамирын / Хөгжмийн багш to a group (2026-10-15).
+   *
+   * ★ `GroupSpecialist`, never `GroupTeacher` — see the schema. The membership
+   * must be PE_TEACHER or MUSIC_TEACHER in the group's own kindergarten; a
+   * class teacher is assigned through `assignTeacher`. Admins only.
+   */
+  async assignSpecialist(actor: Actor, groupId: string, dto: AssignSpecialistDto) {
+    const group = await this.repo.findGroup(this.adminScope(actor), groupId);
+    if (!group) throw new NotFoundException();
+
+    const membership = await this.repo.findSpecialistMembership(
+      dto.membershipId,
+      group.kindergartenId,
+    );
+    if (!membership) throw new BadRequestException("Биеийн тамирын эсвэл хөгжмийн багш олдсонгүй");
+
+    if (await this.repo.findActiveSpecialistAssignment(groupId, dto.membershipId)) {
+      throw new ConflictException("Энэ багш аль хэдийн энэ бүлэгт хуваарилагдсан байна");
+    }
+
+    const assignment = await this.repo.assignSpecialist({
+      kindergartenId: group.kindergartenId,
+      groupId,
+      membershipId: dto.membershipId,
+    });
+
+    await this.audit.append({
+      action: "PERMISSION_CHANGE",
+      kindergartenId: group.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "GroupSpecialist",
+      objectId: assignment.id,
+      metadata: { groupId, membershipId: dto.membershipId, change: "assigned" },
+    });
+    return assignment;
+  }
+
+  async listSpecialists(actor: Actor, groupId: string) {
+    const group = await this.repo.findGroup(this.adminScope(actor), groupId);
+    if (!group) throw new NotFoundException();
+
+    const rows = await this.repo.listGroupSpecialists(groupId);
+    return rows.map((row) => ({
+      id: row.id,
+      membershipId: row.membershipId,
+      role: row.membership.role,
+      user: row.membership.user,
+      startedOn: row.startedOn?.toISOString().slice(0, 10) ?? null,
+    }));
+  }
+
+  /** Ends a PE/music teacher's group — access stops on their next request. */
+  async endSpecialistAssignment(actor: Actor, assignmentId: string) {
+    const assignment = await this.repo.findSpecialistAssignment(
+      this.adminScope(actor),
+      assignmentId,
+    );
+    if (!assignment) throw new NotFoundException();
+
+    const ended = await this.repo.endSpecialistAssignment(assignmentId);
+    await this.audit.append({
+      action: "PERMISSION_CHANGE",
+      kindergartenId: assignment.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "GroupSpecialist",
+      objectId: assignmentId,
+      metadata: { change: "revoked", before: { endedOn: null } },
     });
     return ended;
   }

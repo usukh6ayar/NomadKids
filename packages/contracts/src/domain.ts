@@ -24,7 +24,16 @@ import { paginated } from "./pagination";
 
 // ── Primitives ───────────────────────────────────────────────────────────────
 
-export const roleSchema = z.enum(["ADMIN", "TEACHER", "PARENT", "COOK", "ACCOUNTANT"]);
+export const roleSchema = z.enum([
+  "ADMIN",
+  "TEACHER",
+  "PARENT",
+  "COOK",
+  "ACCOUNTANT",
+  "PE_TEACHER",
+  "MUSIC_TEACHER",
+  "DOCTOR",
+]);
 export type Role = z.infer<typeof roleSchema>;
 
 /**
@@ -40,6 +49,9 @@ export const ROLE_LABEL: Record<Role, string> = {
   PARENT: "Эцэг эх",
   COOK: "Тогооч",
   ACCOUNTANT: "Нягтлан",
+  PE_TEACHER: "Биеийн тамирын багш",
+  MUSIC_TEACHER: "Хөгжмийн багш",
+  DOCTOR: "Эмч",
 };
 
 /**
@@ -55,7 +67,16 @@ export const ROLE_LABEL: Record<Role, string> = {
  * the role here and an administrator repairing a broken account needs the same
  * reach the API has.
  */
-export const ASSIGNABLE_ROLES = ["ADMIN", "TEACHER", "PARENT", "COOK", "ACCOUNTANT"] as const;
+export const ASSIGNABLE_ROLES = [
+  "ADMIN",
+  "TEACHER",
+  "PARENT",
+  "COOK",
+  "ACCOUNTANT",
+  "PE_TEACHER",
+  "MUSIC_TEACHER",
+  "DOCTOR",
+] as const;
 
 /**
  * The roles that mean "works here" — what `/admin/users?roles=` asks for.
@@ -77,7 +98,38 @@ export const ASSIGNABLE_ROLES = ["ADMIN", "TEACHER", "PARENT", "COOK", "ACCOUNTA
  * survives a sixth role being added, where "everything except PARENT" would
  * silently start including it.
  */
-export const STAFF_ROLES = ["ADMIN", "TEACHER", "COOK", "ACCOUNTANT"] as const;
+export const STAFF_ROLES = [
+  "ADMIN",
+  "TEACHER",
+  "COOK",
+  "ACCOUNTANT",
+  "PE_TEACHER",
+  "MUSIC_TEACHER",
+  "DOCTOR",
+] as const;
+
+/**
+ * Биеийн тамирын багш and Хөгжмийн багш — staff a director assigns to groups
+ * through `GroupSpecialist`, never `GroupTeacher`. See the schema for why.
+ */
+export const SPECIALIST_ROLES = ["PE_TEACHER", "MUSIC_TEACHER"] as const;
+
+/**
+ * The roles a director may pick on one ESIS roster row's «Урих» (2026-10-15).
+ *
+ * ★ ESIS files a PE or music teacher under the class teacher's own ISCO code
+ * (`2342`), so the job code cannot choose between the three — the director
+ * does. The doctor's code maps to nothing on purpose (`roleForJobCode`); here
+ * the director grants it by hand. ADMIN and ACCOUNTANT stay out: they are
+ * given through «Багш нэмэх», never from someone else's database.
+ */
+export const ROSTER_INVITABLE_ROLES = [
+  "TEACHER",
+  "PE_TEACHER",
+  "MUSIC_TEACHER",
+  "COOK",
+  "DOCTOR",
+] as const;
 
 export const sexSchema = z.enum(["MALE", "FEMALE"]);
 /**
@@ -3923,7 +3975,9 @@ export const AUDIT_OBJECT_LABEL: Record<string, string> = {
  * revoked user gets.
  */
 export const primaryDashboardSchema = z.object({
-  dashboard: z.enum(["platform", "admin", "teacher", "cook", "accountant", "parent"]).nullable(),
+  dashboard: z
+    .enum(["platform", "admin", "teacher", "specialist", "doctor", "cook", "accountant", "parent"])
+    .nullable(),
 });
 
 // ── Platform (superadmin) ───────────────────────────────────────────────────
@@ -6244,6 +6298,20 @@ export const rosterInvitationsSchema = z.object({
   skipped: z.number(),
 });
 export type RosterInvitations = z.infer<typeof rosterInvitationsSchema>;
+
+/**
+ * `GET /groups/:id/specialists` — the group's current PE and music teachers
+ * (`GroupSpecialist`, 2026-10-15). Admin-only; the row id is what
+ * `DELETE /group-specialists/:id` ends.
+ */
+export const groupSpecialistSchema = z.object({
+  id: uuidSchema,
+  membershipId: uuidSchema,
+  role: roleSchema,
+  user: z.object({ id: uuidSchema, lastName: z.string(), firstName: z.string() }),
+  startedOn: z.string().nullable(),
+});
+export type GroupSpecialist = z.infer<typeof groupSpecialistSchema>;
 
 /**
  * One row of `GET /kindergartens/:id/staff-registrations` — the director's

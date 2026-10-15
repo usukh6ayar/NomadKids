@@ -342,19 +342,24 @@ describe("the staff directory", () => {
     expect(await screen.findByRole("button", { name: "Бүх багшийг урих" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /холбох/i })).toBeNull();
 
-    // One «Урих» — the caretaker's job code grants no role, so no button.
+    // «Урих» on every row — where the job code gives no role, the director picks one.
     const invites = screen.getAllByRole("button", { name: "Урих" });
-    expect(invites).toHaveLength(1);
-    expect(screen.getByText("Эрх олгохгүй")).toBeInTheDocument();
+    expect(invites).toHaveLength(2);
+    expect(screen.getByText("Сонгоно")).toBeInTheDocument();
 
     await user.click(invites[0]!);
     const dialog = await screen.findByRole("dialog", { name: "Урих" });
+    // The job code's role is preselected; a PE teacher ESIS files as a teacher is picked here.
+    const roleSelect = within(dialog).getByRole("combobox");
+    expect(roleSelect).toHaveTextContent("Багш");
+    await user.click(roleSelect);
+    await user.click(await screen.findByRole("option", { name: "Биеийн тамирын багш" }));
     await user.click(within(dialog).getByRole("button", { name: "Урилга үүсгэх" }));
 
     expect(await within(dialog).findByText("1 урилга бэлэн")).toBeInTheDocument();
     expect(
       calls.find((c) => c.method === "POST" && c.url.endsWith("/staff-invitations"))?.body,
-    ).toEqual({ esisPersonId: "esis-teacher" });
+    ).toEqual({ esisPersonId: "esis-teacher", role: "PE_TEACHER" });
 
     // ★ The invited person leaves the unclaimed list on the server; the sheet
     // must survive that — no refetch while it is open, or the codes are lost.

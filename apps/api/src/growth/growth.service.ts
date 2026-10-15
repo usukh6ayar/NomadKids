@@ -25,7 +25,7 @@ export class GrowthService {
    * the disclaimer §7.2 requires beside it.
    */
   async chart(actor: Actor, childId: string, from?: string, to?: string) {
-    await this.childAccess.assertCanAccess(actor, childId);
+    await this.childAccess.assertCanReadHealth(actor, childId);
 
     const child = await this.repo.findChildFacts(childId);
     if (!child) throw new NotFoundException();
@@ -97,7 +97,7 @@ export class GrowthService {
    * so a measurement is always attributable to whoever actually entered it.
    */
   async record(actor: Actor, childId: string, dateIso: string, dto: RecordGrowthDto) {
-    const facts = await this.childAccess.assertCanContributeMedia(actor, childId);
+    const facts = await this.childAccess.assertCanContributeHealth(actor, childId);
 
     const measuredOn = new Date(`${dateIso}T00:00:00.000Z`);
     const child = await this.repo.findChildFacts(childId);
@@ -150,7 +150,7 @@ export class GrowthService {
     const measurement = await this.repo.findById(id);
     if (!measurement) throw new NotFoundException();
 
-    await this.childAccess.assertCanRecord(actor, measurement.childId);
+    await this.childAccess.assertCanRecordHealth(actor, measurement.childId);
     await this.repo.softDelete(id);
 
     await this.audit.append({
