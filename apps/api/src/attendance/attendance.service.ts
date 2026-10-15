@@ -24,7 +24,7 @@ import {
   validatePdfUpload,
 } from "../media/upload-validation";
 import { buildJournalWorkbook } from "./journal-workbook";
-import { summariseDays } from "./daily-summary";
+import { coversDay, summariseDays } from "./daily-summary";
 import type { AttendanceRegisterQuery } from "./attendance.dto";
 import type {
   CalendarDayDto,
@@ -339,7 +339,11 @@ export class AttendanceService {
 
     const drafts: AttendanceDraft[] = dto.entries.map((entry) => {
       const dayIndex = built.days.findIndex((day) => day === entry.date);
-      const groupRows = built.rows.filter((row) => row.group.id === entry.groupId);
+      // ★ The children in the group *that day* — a row the register carries
+      // for a child who left or had not yet joined is not a missing mark (№19).
+      const groupRows = built.rows.filter(
+        (row) => row.group.id === entry.groupId && coversDay(row, entry.date),
+      );
       const groupName = groupRows[0]?.group.name;
 
       if (dayIndex < 0 || !groupName || groupRows.length === 0) {
@@ -651,6 +655,8 @@ export class AttendanceService {
 
     const rows = enrollments.map((enrollment) => {
       const marked = byEnrollment.get(enrollment.id) ?? new Map();
+      const startedOn = enrollment.startedOn.toISOString().slice(0, 10);
+      const endedOn = enrollment.endedOn?.toISOString().slice(0, 10) ?? null;
       const counts: Record<string, number> = {};
       for (const value of marked.values()) {
         counts[value.status] = (counts[value.status] ?? 0) + 1;
@@ -665,6 +671,9 @@ export class AttendanceService {
         // same fact as a day marked absent, and the register must not invent
         // the difference away.
         days: days.map((day) => marked.get(day) ?? null),
+        /* The enrolment's span — `coversDay` reads it; the screen may grey out the rest. */
+        startedOn,
+        endedOn,
         counts,
         recorded: marked.size,
         /*
@@ -673,12 +682,7 @@ export class AttendanceService {
          * measuring them against the whole week would show marks missing that
          * nobody could have made.
          */
-        expectedDays: days.filter((day) => {
-          const started = enrollment.startedOn.toISOString().slice(0, 10);
-          const ended = enrollment.endedOn?.toISOString().slice(0, 10);
-          // The end is exclusive, as `enrolledOn` reads it in the repository.
-          return day >= started && (!ended || day < ended);
-        }).length,
+        expectedDays: days.filter((day) => coversDay({ startedOn, endedOn }, day)).length,
       };
     });
 
@@ -1180,6 +1184,11 @@ export class AttendanceService {
 
     const enrollment = await this.repo.enrollmentOn(childId, date);
     if (!enrollment) throw new BadRequestException("Хүүхэд энэ өдөр бүлэгт бүртгэлгүй байсан");
+    // ★ The mark lands in the group the child was in that day, which may not
+    // be the one `assertCanRecord` just checked: after a move, the new group's
+    // teacher must not write into the old group's register, nor an admin into
+    // another kindergarten's. The same check the group save makes.
+    await this.groups.assertCanReadGroup(actor, enrollment.groupId);
 
     // `arrivedWith` sent with no `arrivedAt` means "just now" — the actual
     // moment of this request, not a client-supplied clock.
@@ -1322,6 +1331,11 @@ export class AttendanceService {
 
     const enrollment = await this.repo.enrollmentOn(childId, date);
     if (!enrollment) throw new BadRequestException("Хүүхэд энэ өдөр бүлэгт бүртгэлгүй байсан");
+    // ★ The mark lands in the group the child was in that day, which may not
+    // be the one `assertCanRecord` just checked: after a move, the new group's
+    // teacher must not write into the old group's register, nor an admin into
+    // another kindergarten's. The same check the group save makes.
+    await this.groups.assertCanReadGroup(actor, enrollment.groupId);
 
     const record = await this.repo.recordPickup(enrollment.id, date, {
       pickedUpWith: dto.pickedUpWith,

@@ -1112,6 +1112,41 @@ describe("POST /kindergartens/:id/attendance/daily/submit", () => {
    * figure it produces feeds a funding claim. The error names which group and
    * which date so a director knows who to chase — a generic 400 would not.
    */
+  /*
+   * ★ №19 — a child who left mid-week stays on the register for the days they
+   * were there, and must count towards nothing after. Counting them would
+   * leave every later day «incomplete» for a mark nobody can make, and this
+   * submission would be refused for ever.
+   */
+  it("submits a day after a child left — the leaver is not a missing mark", async () => {
+    const leaver = await createChild(a.kindergarten.id, { firstName: "Гарсан" });
+    const left = await enrollChild(a.kindergarten.id, leaver.id, a.group.id, a.schoolYear.id);
+    await db.enrollment.update({
+      where: { id: left.id },
+      data: { status: "TRANSFERRED", endedOn: new Date("2026-03-04") },
+    });
+    await mark(a, left.id, leaver.id, "2026-03-03", "PRESENT");
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-05", "PRESENT");
+
+    const daily = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/attendance/daily?from=2026-03-02&to=2026-03-06`,
+      ),
+      admin,
+    );
+    const day = (date: string) =>
+      daily.body.items.find(
+        (r: { groupId: string; date: string }) => r.groupId === a.group.id && r.date === date,
+      );
+    expect(day("2026-03-03").expected).toBe(2);
+    expect(day("2026-03-05")).toMatchObject({ expected: 1, complete: true });
+
+    const res = await submit(admin, a.kindergarten.id, [
+      { groupId: a.group.id, date: "2026-03-05" },
+    ]);
+    expect(res.status).toBe(201);
+  });
+
   it("refuses an incomplete register and names it", async () => {
     const second = await createChild(a.kindergarten.id, { firstName: "Хоёрдугаар" });
     await enrollChild(a.kindergarten.id, second.id, a.group.id, a.schoolYear.id);

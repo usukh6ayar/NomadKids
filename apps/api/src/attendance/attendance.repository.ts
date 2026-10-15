@@ -844,7 +844,7 @@ export class AttendanceRepository {
    */
   async enrollmentOn(childId: string, date: Date) {
     return this.prisma.enrollment.findFirst({
-      where: { childId, ...enrolledOn(date, date) },
+      where: { childId, group: { deletedAt: null }, ...enrolledOn(date, date) },
       orderBy: { startedOn: "desc" },
       select: { id: true, kindergartenId: true, groupId: true },
     });
