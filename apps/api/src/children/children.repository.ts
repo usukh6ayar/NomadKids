@@ -521,6 +521,23 @@ export class ChildrenRepository {
    * active rows would report a group that has since closed as empty, which is
    * a wrong answer to "how many of us were there".
    */
+  /**
+   * Boys and girls in the group now — counts only, never who (2026-10-14, the
+   * user; №16). One `groupBy`.
+   */
+  async countCurrentGroupBySex(groupId: string) {
+    const rows = await this.prisma.child.groupBy({
+      by: ["sex"],
+      where: {
+        deletedAt: null,
+        enrollments: { some: { groupId, status: "ACTIVE", deletedAt: null } },
+      },
+      _count: { _all: true },
+    });
+    const count = (sex: string) => rows.find((row) => row.sex === sex)?._count._all ?? 0;
+    return { boyCount: count("MALE"), girlCount: count("FEMALE") };
+  }
+
   async countChildrenByGroup(currentGroupId: string | null, pastGroupIds: string[]) {
     const [current, past] = await Promise.all([
       currentGroupId

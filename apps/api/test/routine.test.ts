@@ -112,6 +112,59 @@ const post = (session: AuthSession, url: string, body: object = {}) =>
   authed(request(server()).post(url), session).send(body);
 const del = (session: AuthSession, url: string) => authed(request(server()).delete(url), session);
 
+/** A kindergarten image, as the menu's photo route would have stored it. */
+async function kindergartenPhoto(kindergartenId = a.kindergarten.id) {
+  return db.mediaFile.create({
+    data: {
+      kindergartenId,
+      purpose: "MENU_DISH",
+      storageKey: `menu/${uniq("photo")}`,
+      originalName: "photo.jpg",
+      mimeType: "image/jpeg",
+      sizeBytes: 24,
+      status: "READY",
+      uploadedById: a.teacherUser.id,
+    },
+  });
+}
+
+/*
+ * ★ №21 (2026-10-16): a routine row's photograph, a club's description and
+ * cover. The row's photo was silently stripped before the field existed.
+ */
+describe("photographs and descriptions", () => {
+  it("keeps a routine row's photograph", async () => {
+    const photo = await kindergartenPhoto();
+    const res = await put(teacherA, groupUrl(a.group.id, "/routine/items"), {
+      items: [{ ...ITEM, photoMediaFileId: photo.id }],
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.items[0].photoMediaFileId).toBe(photo.id);
+  });
+
+  it("refuses a photograph that is not this kindergarten's image (400)", async () => {
+    const foreign = await kindergartenPhoto(b.kindergarten.id);
+    const res = await put(teacherA, groupUrl(a.group.id, "/routine/items"), {
+      items: [{ ...ITEM, photoMediaFileId: foreign.id }],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("keeps a club's description and cover photograph", async () => {
+    const photo = await kindergartenPhoto();
+    const res = await post(teacherA, groupUrl(a.group.id, "/clubs"), {
+      ...CLUB,
+      description: "Хүүхдүүд хэмнэлийн хөгжим тоглоно.",
+      photoMediaFileId: photo.id,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({
+      description: "Хүүхдүүд хэмнэлийн хөгжим тоглоно.",
+      photoMediaFileId: photo.id,
+    });
+  });
+});
+
 async function createClub(groupId = a.group.id, session = teacherA) {
   const res = await post(session, groupUrl(groupId, "/clubs"), CLUB);
   expect(res.status).toBe(201);

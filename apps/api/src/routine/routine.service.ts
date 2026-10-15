@@ -16,6 +16,7 @@ import type { Actor } from "../authz/actor";
 import { ChildAccessService } from "../authz/child-access.service";
 import { GroupAccessService } from "../authz/group-access.service";
 import { AuditRepository } from "../audit/audit.repository";
+import { MediaService } from "../media/media.service";
 import { RoutineRepository, type ClubData } from "./routine.repository";
 import { clubView, requestView, routineView } from "./routine.view";
 
@@ -36,7 +37,26 @@ export class RoutineService {
     private readonly groups: GroupAccessService,
     private readonly childAccess: ChildAccessService,
     private readonly audit: AuditRepository,
+    private readonly media: MediaService,
   ) {}
+
+  /**
+   * ★ Every photograph a routine row or a club names must be this
+   * kindergarten's own upload through the menu's photo route (`MENU_DISH`) —
+   * the check `MealsService.saveDay` makes for a dish. Otherwise a guessed id
+   * (a child's private photo, another kindergarten's file) would be shown to
+   * every family of the group (№21).
+   */
+  private async assertKindergartenPhotos(
+    kindergartenId: string,
+    ids: (string | null | undefined)[],
+  ) {
+    for (const id of new Set(ids.filter((value): value is string => Boolean(value)))) {
+      if (!(await this.media.isMenuDishPhoto(kindergartenId, id))) {
+        throw new BadRequestException("Зураг олдсонгүй. Дахин оруулна уу.");
+      }
+    }
+  }
 
   async forGroup(actor: Actor, groupId: string): Promise<Routine> {
     const group = await this.groups.assertCanReadGroup(actor, groupId);
@@ -59,6 +79,10 @@ export class RoutineService {
     await this.assertKnownAreas(
       group.kindergartenId,
       items.flatMap((i) => i.areas),
+    );
+    await this.assertKindergartenPhotos(
+      group.kindergartenId,
+      items.map((i) => i.photoMediaFileId),
     );
     const sorted = [...items].sort((x, y) => x.start.localeCompare(y.start));
     const row = await this.repo.saveRoutine(group.kindergartenId, group.id, { items: sorted });
@@ -88,6 +112,7 @@ export class RoutineService {
   async createClub(actor: Actor, groupId: string, input: ClubInput) {
     const group = await this.groups.assertTeachesGroup(actor, groupId);
     await this.assertKnownAreas(group.kindergartenId, input.areas);
+    await this.assertKindergartenPhotos(group.kindergartenId, [input.photoMediaFileId]);
     if ((await this.repo.countClubs(group.id)) >= CLUBS_PER_GROUP_MAX) {
       throw new BadRequestException(
         `Нэг бүлэг ${CLUBS_PER_GROUP_MAX}-аас олон дугуйлантай байж болохгүй.`,
@@ -103,6 +128,7 @@ export class RoutineService {
     const before = await this.repo.findClub(clubId, group.id);
     if (!before) throw new NotFoundException();
     await this.assertKnownAreas(group.kindergartenId, input.areas);
+    await this.assertKindergartenPhotos(group.kindergartenId, [input.photoMediaFileId]);
     const club = await this.repo.updateClub(clubId, clubData(input));
     await this.record(actor, group.kindergartenId, "UPDATE", "Club", club.id);
     return clubView(club);
@@ -214,5 +240,7 @@ function clubData(input: ClubInput): ClubData {
     endTime: input.end,
     areas: [...new Set(input.areas)],
     goal: input.goal || null,
+    description: input.description || null,
+    photoMediaFileId: input.photoMediaFileId ?? null,
   };
 }

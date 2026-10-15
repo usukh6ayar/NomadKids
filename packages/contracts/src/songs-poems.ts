@@ -17,6 +17,15 @@ export const schoolMonthKeySchema = z.enum(SCHOOL_MONTH_KEYS);
 export type SchoolMonthKeyValue = z.infer<typeof schoolMonthKeySchema>;
 
 export const SONG_POEM_TYPES = ["song", "poem", "folklore", "fairy_tale"] as const;
+/**
+ * An `http(s)://` address with a host and no whitespace. A pattern rather than
+ * `new URL()`, which this package's compile target does not declare — and the
+ * scheme is the whole point: `javascript:` must never reach an `href`.
+ */
+function isWebLink(value: string): boolean {
+  return /^https?:\/\/[^\s/?#]+\.[^\s/?#]+(?:[/?#]\S*)?$/i.test(value);
+}
+
 export const songPoemTypeSchema = z.enum(SONG_POEM_TYPES);
 
 /** Items per month's book — a generous ceiling, so no list is unbounded (§3.4). */
@@ -28,6 +37,8 @@ export const songPoemSchema = z.object({
   type: songPoemTypeSchema,
   title: z.string(),
   description: z.string(),
+  /** «Линк» — a YouTube or Google Drive page (№21). */
+  linkUrl: z.string().nullable(),
   coverUrl: z.string().nullable(),
   coverFileName: z.string().nullable(),
   fileUrl: z.string().nullable(),
@@ -65,5 +76,19 @@ export const songPoemFormSchema = z.object({
   type: songPoemTypeSchema,
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(1000).default(""),
+  /**
+   * «Линк» (2026-10-16, №21). `http(s):` only — it ends up in an `href` and an
+   * `iframe`, where `javascript:` would run. The form is a full replace, so a
+   * link left out clears it.
+   */
+  linkUrl: z
+    .string()
+    .trim()
+    .max(2000)
+    .optional()
+    .refine((value) => !value || isWebLink(value), {
+      message: "Линк http:// эсвэл https://-ээр эхэлнэ.",
+    })
+    .transform((value) => value || null),
 });
 export type SongPoemForm = z.infer<typeof songPoemFormSchema>;

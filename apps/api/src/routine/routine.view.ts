@@ -13,6 +13,8 @@ export function clubView(row: ClubRow): Club {
     end: row.endTime,
     areas: row.areas,
     goal: row.goal,
+    description: row.description,
+    photoMediaFileId: row.photoMediaFileId,
   };
 }
 

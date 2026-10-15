@@ -44,14 +44,18 @@ export class AuthzRepository {
           where: { isActive: true, deletedAt: null },
           select: { kindergartenId: true, role: true },
         },
-        _count: { select: { guardianships: { where: { deletedAt: null } } } },
+        guardianships: {
+          where: { deletedAt: null, child: { deletedAt: null } },
+          select: { childId: true },
+        },
       },
     });
     if (!user) return null;
     return {
       isSuperAdmin: user.isSuperAdmin,
       memberships: user.memberships,
-      guardianships: user._count.guardianships,
+      guardianships: user.guardianships.length,
+      guardianOfChildIds: user.guardianships.map((g) => g.childId),
     };
   }
 

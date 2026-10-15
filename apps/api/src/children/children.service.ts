@@ -602,16 +602,18 @@ export class ChildrenService {
     ];
     const groupIds = [...new Set([...pastGroupIds, ...(active?.group ? [active.group.id] : [])])];
 
-    const [teachers, esisPlacement, groupCounts, childCounts, teachersByGroup] = await Promise.all([
-      active?.group ? this.repo.listActiveGroupTeachers(active.group.id) : Promise.resolve([]),
-      active ? this.getEsisEnrollmentPlacement(child, active) : Promise.resolve(null),
-      this.repo.countGroupsByKindergarten(kindergartenIds),
-      this.repo.countChildrenByGroup(active?.group?.id ?? null, pastGroupIds),
-      // No early return for an empty list: `IN ()` is one cheap query, and a
-      // branch that has to name the map's value type is harder to read than
-      // the query it saves.
-      this.repo.listTeachersForGroups(groupIds),
-    ]);
+    const [teachers, esisPlacement, groupCounts, childCounts, teachersByGroup, bySex] =
+      await Promise.all([
+        active?.group ? this.repo.listActiveGroupTeachers(active.group.id) : Promise.resolve([]),
+        active ? this.getEsisEnrollmentPlacement(child, active) : Promise.resolve(null),
+        this.repo.countGroupsByKindergarten(kindergartenIds),
+        this.repo.countChildrenByGroup(active?.group?.id ?? null, pastGroupIds),
+        // No early return for an empty list: `IN ()` is one cheap query, and a
+        // branch that has to name the map's value type is harder to read than
+        // the query it saves.
+        this.repo.listTeachersForGroups(groupIds),
+        active?.group ? this.repo.countCurrentGroupBySex(active.group.id) : Promise.resolve(null),
+      ]);
 
     const kindergartenFacts = (k: {
       id: string;
@@ -648,6 +650,8 @@ export class ChildrenService {
               ? {
                   ...active.group,
                   childCount: childCounts.get(active.group.id) ?? 0,
+                  boyCount: bySex?.boyCount ?? 0,
+                  girlCount: bySex?.girlCount ?? 0,
                 }
               : null,
             teachers: teachers.map((t) => ({

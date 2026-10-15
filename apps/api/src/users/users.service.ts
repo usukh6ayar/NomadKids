@@ -469,39 +469,92 @@ export class UsersService {
    * as the self-service path does: a link issued to an address the person has
    * since lost control of stops working the moment a new one is made.
    */
+  /**
+   * A one-time password-reset link — a member of staff by their director, a
+   * parent by their director or their child's teacher (№10). Who may is
+   * `TenantAccessService.resetAuthority`: 404 for a stranger, 409 for an
+   * account that is partly someone else's.
+   */
   async issuePasswordReset(actor: Actor, id: string) {
+    const authority = await this.tenants.resetAuthority(actor, id);
+    if (authority === "unknown") throw new NotFoundException();
+    if (authority === "elsewhere") throw new ConflictException(ACCOUNT_NOT_YOURS);
+
+    const resetToken = await this.issueAccountLink(actor.userId, id, "PASSWORD_RESET");
+    return { resetToken };
+  }
+
+  /**
+   * A fresh invitation for a member of staff who has never signed in — seven
+   * days, the earlier one spent (the frontend's backend list №25). «Урих» had
+   * only the one-hour reset link to give.
+   *
+   * The same authority as a staff reset, and nobody who has signed in: their
+   * way back is «Нууц үг сэргээх».
+   */
+  async issueInvitation(actor: Actor, id: string) {
     const scope = this.tenants.adminKindergartenIds(actor);
     const user = await this.repo.findInScope(id, scope);
     if (!user) throw new NotFoundException();
     if (!(await this.tenants.canManageAccount(actor, id))) {
       throw new ConflictException(ACCOUNT_NOT_YOURS);
     }
+    if (user.lastLoginAt) {
+      throw new ConflictException(
+        "Энэ хүн системд нэвтэрсэн байна. «Нууц үг сэргээх»-ийг ашиглана уу.",
+      );
+    }
 
-    await this.auth.invalidateAuthTokens(user.id, "PASSWORD_RESET");
+    const invitationToken = await this.issueAccountLink(actor.userId, id, "INVITATION");
+    return { invitationToken };
+  }
+
+  /**
+   * Issues a one-time link onto an account — and spends every earlier one of
+   * the same purpose, so only the newest card opens anything. The operator's
+   * resets (№9) come through here too.
+   *
+   * The actor is the one who handed it over, not the account — the
+   * distinction the self-service audit row cannot make and this one must.
+   * The token itself is never audited and never logged.
+   */
+  async issueAccountLink(
+    actorUserId: string,
+    userId: string,
+    purpose: "PASSWORD_RESET" | "INVITATION",
+  ): Promise<string> {
+    await this.auth.invalidateAuthTokens(userId, purpose);
 
     const { token, hash } = this.tokens.createOneTimeToken();
     await this.auth.createAuthToken({
-      userId: user.id,
-      purpose: "PASSWORD_RESET",
+      userId,
+      purpose,
       tokenHash: hash,
-      expiresAt: new Date(Date.now() + ADMIN_PASSWORD_RESET_TTL_MS),
+      expiresAt: new Date(
+        Date.now() + (purpose === "INVITATION" ? INVITATION_TTL_MS : ADMIN_PASSWORD_RESET_TTL_MS),
+      ),
       requestedIp: null,
     });
 
-    /*
-      The actor is the administrator, not the account being reset — the
-      distinction the self-service audit row cannot make and this one must.
-      The token itself is never audited and never logged.
-    */
-    await this.audit.append({
-      action: "PASSWORD_RESET",
-      actorUserId: actor.userId,
-      objectType: "User",
-      objectId: user.id,
-      metadata: { stage: "issued_by_admin" },
-    });
+    await this.audit.append(
+      purpose === "INVITATION"
+        ? {
+            action: "INVITE",
+            actorUserId,
+            objectType: "User",
+            objectId: userId,
+            metadata: { stage: "reissued_by_admin" },
+          }
+        : {
+            action: "PASSWORD_RESET",
+            actorUserId,
+            objectType: "User",
+            objectId: userId,
+            metadata: { stage: "issued_by_admin" },
+          },
+    );
 
-    return { user, resetToken: token };
+    return token;
   }
 
   async addMembership(actor: Actor, userId: string, dto: AddMembershipDto) {

@@ -366,6 +366,9 @@ export const enrollmentArchiveGroupSchema = z.object({
   /** `NURSERY` … `SENIOR`; the screens hold the Mongolian labels. */
   ageBand: z.string().nullish(),
   childCount: z.number().int().nullish(),
+  /** Boys and girls in the group now — counts, never names (№16). Current group only. */
+  boyCount: z.number().int().nullish(),
+  girlCount: z.number().int().nullish(),
 });
 
 export const enrollmentArchiveEntrySchema = z.object({

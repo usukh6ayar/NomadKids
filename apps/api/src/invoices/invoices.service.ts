@@ -305,7 +305,7 @@ export class InvoicesService {
       amount: line.amount,
     }));
 
-    const existing = await this.repo.findByChildAndMonth(dto.childId, month);
+    const existing = await this.repo.findByChildAndMonth(kindergartenId, dto.childId, month);
 
     if (existing) {
       if (!new Decimal(existing.paidAmount.toString()).isZero()) {
@@ -444,7 +444,7 @@ export class InvoicesService {
       const childId = enrollment.childId;
       if (wanted && !wanted.has(childId)) continue;
 
-      const existing = await this.repo.findByChildAndMonth(childId, first);
+      const existing = await this.repo.findByChildAndMonth(kindergartenId, childId, first);
       if (existing) {
         skipped.push({ childId, reason: "already_invoiced" });
         continue;

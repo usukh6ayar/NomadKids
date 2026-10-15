@@ -144,9 +144,30 @@ describe("the group's library", () => {
     expect(library.body.months).toEqual([{ month: "10", label: "Намар", subtitle: "Шар навч" }]);
   });
 
-  it("the director reads but does not write", async () => {
-    expect((await send("post", groupUrl(a.group.id), adminA)).status).toBe(404);
-    expect(await db.songPoem.count()).toBe(0);
+  // ★ №21 (2026-10-16): the director writes to a group's library too.
+  it("the director writes to a group's library", async () => {
+    expect((await send("post", groupUrl(a.group.id), adminA)).status).toBe(201);
+    expect(await db.songPoem.count()).toBe(1);
+  });
+
+  it("keeps a song's web link, and refuses one that is not http(s) — №21", async () => {
+    const ok = await send("post", groupUrl(a.group.id), teacherA).field(
+      "linkUrl",
+      "https://www.youtube.com/watch?v=abc",
+    );
+    expect(ok.status).toBe(201);
+    expect(ok.body.linkUrl).toBe("https://www.youtube.com/watch?v=abc");
+
+    const bad = await send("post", groupUrl(a.group.id), teacherA).field(
+      "linkUrl",
+      "javascript:alert(1)",
+    );
+    expect(bad.status).toBe(400);
+
+    // The form is a full replace: an edit without the link clears it.
+    const edited = await send("put", `${groupUrl(a.group.id)}/${ok.body.id}`, teacherA);
+    expect(edited.status).toBe(200);
+    expect(edited.body.linkUrl).toBeNull();
   });
 
   it("teacher from another group gets 404, reading or writing", async () => {

@@ -1214,7 +1214,11 @@ describe("group programme and hours", () => {
       programKind: "ALTERNATIVE",
     });
 
-    expect(res.status).toBe(404);
+    // 400, not 404, since №16 (2026-10-16): the group's own teacher may edit
+    // its name and kind, so the group is theirs to know — the programme is not.
+    expect(res.status).toBe(400);
+    const row = await db.group.findUniqueOrThrow({ where: { id: a.group.id } });
+    expect(row.programKind).toBe("MAIN");
   });
 });
 
@@ -1398,6 +1402,42 @@ describe("POST /groups/:id/promotions", () => {
     expect(res.status).toBe(404);
     const row = await db.enrollment.findUniqueOrThrow({ where: { id: a.enrollment.id } });
     expect(row.status).toBe("ACTIVE");
+  });
+});
+
+/**
+ * ★ №16 (2026-10-16): «Бүлгийн мэдээлэл» in a teacher's settings — the group's
+ * own teacher names it and sets its kind, «Холимог бүлэг» included. Nothing
+ * else of the group is theirs.
+ */
+describe("PATCH /groups/:id — the group's own teacher", () => {
+  const patch = (groupId: string, who: AuthSession) =>
+    authed(request(server()).patch(`/v1/groups/${groupId}`), who);
+
+  it("renames their group and sets it to a mixed group", async () => {
+    const res = await patch(a.group.id, teacherA).send({ name: "Нарлаг", ageBand: "MIXED" });
+    expect(res.status).toBe(200);
+    const row = await db.group.findUniqueOrThrow({ where: { id: a.group.id } });
+    expect([row.name, row.ageBand]).toEqual(["Нарлаг", "MIXED"]);
+  });
+
+  it("may not touch the group's status or programme (400)", async () => {
+    const res = await patch(a.group.id, teacherA).send({ status: "ARCHIVED" });
+    expect(res.status).toBe(400);
+    const row = await db.group.findUniqueOrThrow({ where: { id: a.group.id } });
+    expect(row.status).toBe("ACTIVE");
+  });
+
+  it("a teacher of another group gets 404", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Өөр бүлэг");
+    expect((await patch(other.id, teacherA).send({ name: "Миний" })).status).toBe(404);
+  });
+
+  it("a teacher of another kindergarten gets 404", async () => {
+    const res = await patch(a.group.id, await login(app, b.teacherUser.username)).send({
+      name: "Хулгай",
+    });
+    expect(res.status).toBe(404);
   });
 });
 

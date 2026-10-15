@@ -50,6 +50,7 @@ const AGE_BAND_LABEL: Record<string, string> = {
   JUNIOR: "Дунд бүлэг",
   MIDDLE: "Ахлах бүлэг",
   SENIOR: "Бэлтгэл бүлэг",
+  MIXED: "Холимог бүлэг",
 };
 
 type Enrollment = ChildDetail["enrollments"][number];

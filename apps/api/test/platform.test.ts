@@ -1056,3 +1056,36 @@ describe("duplicate identifiers losing the race with the pre-check", () => {
     }
   });
 });
+
+/**
+ * ★ №9 — the operator resets a director (the user, 2026-10-14): a director who
+ * forgot the password and lost the phone has nobody above them but NomadKids.
+ */
+describe("POST /platform/kindergartens/:id/admins/:userId/password-reset", () => {
+  const reset = (kindergartenId: string, userId: string, who: AuthSession) =>
+    authed(
+      request(app.getHttpServer()).post(
+        `/v1/platform/kindergartens/${kindergartenId}/admins/${userId}/password-reset`,
+      ),
+      who,
+    );
+
+  it("issues a one-time link for the kindergarten's director", async () => {
+    const res = await reset(a.kindergarten.id, a.adminUser.id, superadmin);
+    expect(res.status).toBe(201);
+    expect(res.body.resetToken).toEqual(expect.any(String));
+    const audit = await db.auditLog.findFirst({
+      where: { action: "PASSWORD_RESET", objectId: a.adminUser.id },
+    });
+    expect(audit).not.toBeNull();
+  });
+
+  it("answers 404 for someone who is not that kindergarten's director", async () => {
+    expect((await reset(a.kindergarten.id, a.teacherUser.id, superadmin)).status).toBe(404);
+    expect((await reset(b.kindergarten.id, a.adminUser.id, superadmin)).status).toBe(404);
+  });
+
+  it("answers 404 to a director", async () => {
+    expect((await reset(a.kindergarten.id, a.adminUser.id, adminA)).status).toBe(404);
+  });
+});

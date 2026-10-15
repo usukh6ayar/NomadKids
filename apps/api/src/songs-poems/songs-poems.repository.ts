@@ -11,6 +11,7 @@ const ITEM_SELECT = {
   type: true,
   title: true,
   description: true,
+  linkUrl: true,
   coverKey: true,
   coverName: true,
   fileKey: true,
@@ -24,6 +25,7 @@ export interface SongPoemData {
   type: SongPoemType;
   title: string;
   description: string;
+  linkUrl: string | null;
 }
 
 export interface CoverData {

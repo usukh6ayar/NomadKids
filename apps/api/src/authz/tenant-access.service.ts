@@ -3,6 +3,7 @@ import type { Actor } from "./actor";
 import { hasRoleIn } from "./actor";
 import { Role } from "../domain/enums";
 import { AuthzRepository } from "./authz.repository";
+import { isAdminOver, isAssignedTeacherOf } from "./child-access";
 
 /**
  * Authorization for kindergarten-scoped resources — groups, school years,
@@ -253,6 +254,48 @@ export class TenantAccessService {
    * account, or one whose every role elsewhere has ended — is also the
    * administrator's: there is nobody else's access to take.
    */
+  /**
+   * ★ Whether the actor may hand this person a password-reset link — the
+   * user, 2026-10-14: «таныг бүртгэсэн хүн сэргээнэ», whoever registered you
+   * resets you (the frontend's backend list №10). Wider than
+   * `canManageAccount`, which keeps every guardian out.
+   *
+   * - `"unknown"` — the person is not the actor's to see at all: 404.
+   * - `"elsewhere"` — they are, but part of the account is not the actor's:
+   *   409, and nothing is issued.
+   * - `"allowed"`.
+   *
+   * Allowed when the whole account is the actor's: every child it is a
+   * guardian of is the actor's (an admin's kindergarten, or the group a
+   * teacher teaches **now** — `isAssignedTeacherOf`), and every staff role it
+   * holds is a non-ADMIN role in a kindergarten the actor administers. A
+   * teacher therefore never resets staff, and nobody resets a director or a
+   * platform operator here. A reset link signs the actor in as the parent —
+   * the audit row names who issued it.
+   */
+  async resetAuthority(actor: Actor, userId: string): Promise<"unknown" | "elsewhere" | "allowed"> {
+    const footprint = await this.repo.loadAccountFootprint(userId);
+    if (!footprint) return "unknown";
+
+    const administered = new Set(this.adminKindergartenIds(actor));
+    const staff = footprint.memberships.filter((m) => m.role !== Role.PARENT);
+    const children = await Promise.all(
+      footprint.guardianOfChildIds.map((childId) => this.repo.loadChildAccessFacts(actor, childId)),
+    );
+    const mine = children.map(
+      (facts) => facts !== null && (isAdminOver(actor, facts) || isAssignedTeacherOf(facts)),
+    );
+
+    const visible = mine.some(Boolean) || staff.some((m) => administered.has(m.kindergartenId));
+    if (!visible) return "unknown";
+
+    const whole =
+      !footprint.isSuperAdmin &&
+      mine.every(Boolean) &&
+      staff.every((m) => administered.has(m.kindergartenId) && m.role !== Role.ADMIN);
+    return whole ? "allowed" : "elsewhere";
+  }
+
   async canManageAccount(actor: Actor, userId: string): Promise<boolean> {
     const footprint = await this.repo.loadAccountFootprint(userId);
     if (!footprint || footprint.isSuperAdmin || footprint.guardianships > 0) return false;

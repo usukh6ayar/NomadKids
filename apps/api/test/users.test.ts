@@ -4,8 +4,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestApp } from "./support/app";
 import { resetData, testDb, uniq } from "./support/db";
 import {
+  assignTeacher,
   authed,
+  createGroup,
   createMembership,
+  linkGuardian,
   createScenario,
   createUser,
   login,
@@ -485,8 +488,54 @@ describe("account-level changes — only an account the administrator holds whol
       expect((await reset(second.id, adminA)).status).toBe(409);
     });
 
-    it("refuses a parent", async () => {
+    /*
+     * ★ №10 (the user, 2026-10-14 — «таныг бүртгэсэн хүн сэргээнэ»): a parent
+     * who lost the phone turns to the teacher or the director. Allowed when
+     * every child the account is a guardian of is the caller's — the director's
+     * kindergarten, the teacher's current group — and it holds no staff role
+     * elsewhere.
+     */
+    it("issues a link for a parent whose children are all here", async () => {
+      const res = await reset(a.parentUser.id, adminA);
+      expect(res.status).toBe(201);
+      expect(res.body.resetToken).toEqual(expect.any(String));
+    });
+
+    it("lets the teacher of the child's group reset the parent", async () => {
+      expect((await reset(a.parentUser.id, teacherA)).status).toBe(201);
+    });
+
+    it("a teacher of another group gets 404 for that parent", async () => {
+      const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Өөр бүлэг");
+      const user = await createUser({ username: uniq("t-other") });
+      const membership = await createMembership(user.id, a.kindergarten.id, "TEACHER");
+      await assignTeacher(a.kindergarten.id, other.id, membership.id);
+
+      expect((await reset(a.parentUser.id, await login(app, user.username))).status).toBe(404);
+    });
+
+    it("a teacher never resets staff — 404", async () => {
+      const colleague = await createUser({ username: uniq("colleague") });
+      await createMembership(colleague.id, a.kindergarten.id, "TEACHER");
+
+      expect((await reset(colleague.id, teacherA)).status).toBe(404);
+    });
+
+    it("refuses a parent who also has a child at another kindergarten (409)", async () => {
+      await linkGuardian(b.kindergarten.id, b.child.id, a.parentUser.id);
+
       expect((await reset(a.parentUser.id, adminA)).status).toBe(409);
+      expect((await reset(a.parentUser.id, teacherA)).status).toBe(409);
+    });
+
+    it("lets the director reset a member of staff whose child attends here", async () => {
+      await linkGuardian(a.kindergarten.id, a.child.id, a.teacherUser.id);
+
+      expect((await reset(a.teacherUser.id, adminA)).status).toBe(201);
+    });
+
+    it("a parent gets 404", async () => {
+      expect((await reset(a.teacherUser.id, parentA)).status).toBe(404);
     });
 
     it("refuses a teacher who also works at another kindergarten", async () => {
@@ -501,6 +550,57 @@ describe("account-level changes — only an account the administrator holds whol
 
     it("another kindergarten's administrator gets 404", async () => {
       expect((await reset(a.teacherUser.id, adminB)).status).toBe(404);
+    });
+  });
+
+  /*
+   * ★ №25: a fresh invitation for a member of staff who has never signed in —
+   * seven days, the earlier one spent. «Урих» used a one-hour reset link.
+   */
+  describe("POST /users/:id/invitation", () => {
+    const invite = (id: string, who: AuthSession) =>
+      authed(request(server()).post(`/v1/users/${id}/invitation`), who);
+
+    async function newcomer() {
+      const user = await createUser({ username: uniq("new") });
+      await createMembership(user.id, a.kindergarten.id, "TEACHER");
+      return user;
+    }
+
+    it("issues a seven-day invitation and spends the earlier one", async () => {
+      const user = await newcomer();
+      const first = await invite(user.id, adminA);
+      const second = await invite(user.id, adminA);
+
+      expect(second.status).toBe(201);
+      const fresh = await request(server()).get(
+        `/v1/auth/invitation/${second.body.invitationToken}`,
+      );
+      expect(fresh.body.valid).toBe(true);
+      const stale = await request(server()).get(
+        `/v1/auth/invitation/${first.body.invitationToken}`,
+      );
+      expect(stale.body.valid).toBe(false);
+
+      const row = await db.authToken.findFirstOrThrow({
+        where: { userId: user.id, purpose: "INVITATION", usedAt: null },
+      });
+      const days = (row.expiresAt.getTime() - Date.now()) / 86_400_000;
+      expect(days).toBeGreaterThan(6.9);
+    });
+
+    it("refuses someone who has already signed in (409)", async () => {
+      expect((await invite(a.teacherUser.id, adminA)).status).toBe(409);
+    });
+
+    it("another kindergarten's administrator gets 404", async () => {
+      const user = await newcomer();
+      expect((await invite(user.id, adminB)).status).toBe(404);
+    });
+
+    it("a teacher gets 404", async () => {
+      const user = await newcomer();
+      expect((await invite(user.id, teacherA)).status).toBe(404);
     });
   });
 

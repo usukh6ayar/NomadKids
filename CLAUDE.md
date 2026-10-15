@@ -359,6 +359,13 @@ library through QPay (`/materials/:id/qpay`, #195). Like the fee, it is the
 platform operator's revenue — no `Payment` row. Nothing a kindergarten bills
 a family goes through QPay.
 
+★ **The line moved twice** (the user, 2026-10-16): a kindergarten pays its
+**platform contract** — the per-group term or year — through QPay too, not by
+bank transfer. Every payment to the platform is QPay, so the revenue page and
+the partners' shares count it without anyone typing it in (backend list №6).
+It is the operator's revenue like the fee — no `Payment` row. A kindergarten's
+own tuition and meal invoices to families still never touch QPay.
+
 ★ **Chat** has **no AI in it** — the client said so three times. It is a group
 message board: membership derived per request, 404 for a room you are not in,
 `kindergartenId` on every row, soft delete, paginated history.

@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { UsersModule } from "../users/users.module";
 import { AuthModule } from "../auth/auth.module";
 import { PhoneVerificationModule } from "../phone-verification/phone-verification.module";
 import { PublicKindergartensModule } from "../public-kindergartens/public-kindergartens.module";
@@ -11,7 +12,7 @@ import { SoloTeachersService } from "./solo-teachers.service";
 
 /** A solo teacher's sign-up. `AuthModule` for `PasswordService`, verify.mn for the phone. */
 @Module({
-  imports: [AuthModule, PhoneVerificationModule, PublicKindergartensModule],
+  imports: [AuthModule, PhoneVerificationModule, PublicKindergartensModule, UsersModule],
   controllers: [SoloTeachersController, SoloMergeController],
   providers: [SoloTeachersService, SoloTeachersRepository, SoloMergeService, SoloMergeRepository],
 })

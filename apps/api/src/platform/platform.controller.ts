@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from "@nestjs/common";
-import { idParamSchema } from "@kinder/contracts";
+import { idParamSchema, uuidSchema } from "@kinder/contracts";
+import { z } from "zod";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
 import { SuperAdmin } from "../auth/decorators/super-admin.decorator";
@@ -16,6 +17,8 @@ import {
   type DeleteKindergartenDto,
   type ListPlatformKindergartensQuery,
 } from "./platform.dto";
+
+const adminResetParamsSchema = z.object({ id: uuidSchema, userId: uuidSchema });
 
 /**
  * Platform routes.
@@ -91,6 +94,15 @@ export class PlatformController {
     @Body(new ZodValidationPipe(createKindergartenAdminSchema)) body: CreateKindergartenAdminDto,
   ) {
     return this.service.addAdmin(actor, params.id, body);
+  }
+
+  /** №9 — the operator's reset link for a director. */
+  @Post("kindergartens/:id/admins/:userId/password-reset")
+  async issueAdminReset(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(adminResetParamsSchema)) params: { id: string; userId: string },
+  ) {
+    return this.service.issueAdminReset(actor, params.id, params.userId);
   }
 
   @Delete("kindergartens/:id")

@@ -11,6 +11,7 @@ import { PlatformAccessService } from "../authz/platform-access.service";
 import { AuditRepository } from "../audit/audit.repository";
 import { paginate, toSkipTake, type PageParams } from "../common/pagination";
 import { MergeRefused, SoloMergeRepository } from "./solo-merge.repository";
+import { UsersService } from "../users/users.service";
 
 /**
  * D3 — the platform operator merges a solo teacher's workspace into the
@@ -25,7 +26,25 @@ export class SoloMergeService {
     private readonly repo: SoloMergeRepository,
     private readonly platform: PlatformAccessService,
     private readonly audit: AuditRepository,
+    private readonly accounts: UsersService,
   ) {}
+
+  /**
+   * A one-time password-reset link for a solo teacher — №9: like a director,
+   * they have nobody above them but the operator. 404 for anything that is
+   * not a solo workspace with a teacher.
+   */
+  async issueTeacherReset(actor: Actor, kindergartenId: string) {
+    this.platform.assertSuperAdmin(actor);
+    const teacher = await this.repo.findWorkspaceTeacher(kindergartenId);
+    if (!teacher) throw new NotFoundException();
+    const resetToken = await this.accounts.issueAccountLink(
+      actor.userId,
+      teacher.userId,
+      "PASSWORD_RESET",
+    );
+    return { resetToken };
+  }
 
   async list(actor: Actor, query: PageParams) {
     this.platform.assertSuperAdmin(actor);
