@@ -522,3 +522,188 @@ describe("who registered themselves", () => {
     expect(after.body.items).toHaveLength(0);
   });
 });
+
+/*
+ * «Бүх багшийг урих» — the client, 2026-10-15: the director invites the ESIS
+ * roster the way a teacher invites a group's parents, one QR per person, and
+ * the account is linked to its ESIS record from the start.
+ */
+describe("a director invites from the ESIS roster", () => {
+  const url = (kindergartenId: string) => `/v1/kindergartens/${kindergartenId}/staff-invitations`;
+  const PASSWORD = "Shine-Nuuts99";
+
+  beforeEach(async () => {
+    await seedRoster(a.kindergarten.id, {
+      esisPersonId: "esis-teacher",
+      registerNumber: "УЛ90010101",
+      lastName: "Ганжаргал",
+      firstName: "Болд",
+    });
+    await seedRoster(a.kindergarten.id, {
+      esisPersonId: "esis-cook",
+      registerNumber: "УЛ90010102",
+      lastName: "Амаржаргал",
+      firstName: "Сэлэнгэ",
+      jobCode: "5120-11",
+      positionName: "туслах Тогооч",
+      isInstructor: false,
+    });
+    // The жижүүр: a job code that grants no role, so no invitation.
+    await seedRoster(a.kindergarten.id, {
+      esisPersonId: "esis-caretaker",
+      registerNumber: "УЛ90010103",
+      lastName: "Минжмаа",
+      firstName: "Пүрэв",
+      jobCode: "5153-11",
+      positionName: "Жижүүр /байрны/",
+      isInstructor: false,
+    });
+  });
+
+  it("invites every unclaimed person a role fits, each account linked to ESIS", async () => {
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), a.adminSession).send(
+      {},
+    );
+
+    expect(res.status).toBe(201);
+    expect(res.body.skipped).toBe(1);
+    expect(
+      res.body.items.map((item: { esisPersonId: string; role: string }) => [
+        item.esisPersonId,
+        item.role,
+      ]),
+    ).toEqual(
+      expect.arrayContaining([
+        ["esis-teacher", "TEACHER"],
+        ["esis-cook", "COOK"],
+      ]),
+    );
+    expect(res.body.items).toHaveLength(2);
+
+    const teacher = await db.user.findUniqueOrThrow({
+      where: { esisPersonId: "esis-teacher" },
+      include: { memberships: true },
+    });
+    expect(teacher.lastName).toBe("Ганжаргал");
+    // The director made it, not the person — «Ажилтны бүртгэл» must not list it.
+    expect(teacher.selfRegisteredAt).toBeNull();
+    expect(teacher.memberships.map((m) => [m.kindergartenId, m.role])).toEqual([
+      [a.kindergarten.id, "TEACHER"],
+    ]);
+    expect(await db.user.count({ where: { esisPersonId: "esis-caretaker" } })).toBe(0);
+
+    // Nobody is left on the unclaimed list but the caretaker.
+    const unclaimed = await authed(
+      request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/esis/staff-roster/unclaimed`),
+      a.adminSession,
+    );
+    expect(unclaimed.body.items.map((row: { esisPersonId: string }) => row.esisPersonId)).toEqual([
+      "esis-caretaker",
+    ]);
+    expect(unclaimed.body.items[0].role).toBeNull();
+  });
+
+  it("opens an account the person activates and signs into, without retyping their name", async () => {
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), a.adminSession).send({
+      esisPersonId: "esis-teacher",
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.items).toHaveLength(1);
+    const token = res.body.items[0].invitationToken as string;
+
+    const described = await request(server()).get(`/v1/auth/invitation/${token}`);
+    expect(described.body).toMatchObject({ valid: true, kind: "staff", knows: { name: true } });
+
+    const accept = await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send({ token, password: PASSWORD });
+    expect(accept.status).toBe(204);
+
+    const account = await db.user.findUniqueOrThrow({ where: { esisPersonId: "esis-teacher" } });
+    const signIn = await request(server())
+      .post("/v1/auth/login")
+      .send({ identifier: account.username, password: PASSWORD });
+    expect(signIn.status).toBe(200);
+  });
+
+  it("invites nobody twice", async () => {
+    await authed(request(server()).post(url(a.kindergarten.id)), a.adminSession).send({});
+    const again = await authed(request(server()).post(url(a.kindergarten.id)), a.adminSession).send(
+      {},
+    );
+
+    expect(again.status).toBe(201);
+    expect(again.body.items).toEqual([]);
+    expect(await db.user.count({ where: { esisPersonId: "esis-teacher" } })).toBe(1);
+  });
+
+  it("skips a person who already has an account here under the same name", async () => {
+    const existing = await createUser({
+      username: uniq("invited"),
+      lastName: "Ганжаргал",
+      firstName: "Болд",
+    });
+    await createMembership(existing.id, a.kindergarten.id, "TEACHER");
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), a.adminSession).send(
+      {},
+    );
+
+    expect(res.body.items.map((item: { esisPersonId: string }) => item.esisPersonId)).toEqual([
+      "esis-cook",
+    ]);
+  });
+
+  it("answers 404 for a person not on this kindergarten's unclaimed list", async () => {
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), a.adminSession).send({
+      esisPersonId: "not-on-the-roster",
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses one row whose job code grants no role", async () => {
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), a.adminSession).send({
+      esisPersonId: "esis-caretaker",
+    });
+
+    expect(res.status).toBe(400);
+    expect(await db.user.count({ where: { esisPersonId: "esis-caretaker" } })).toBe(0);
+  });
+
+  it("refuses a roster older than the staleness threshold", async () => {
+    await db.esisStaffRoster.updateMany({
+      where: { kindergartenId: a.kindergarten.id },
+      data: { syncedAt: new Date(Date.now() - STALE_AFTER_MS - 60_000) },
+    });
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), a.adminSession).send(
+      {},
+    );
+
+    expect(res.status).toBe(400);
+    expect(await db.user.count({ where: { esisPersonId: { not: null } } })).toBe(0);
+  });
+
+  it("returns 404 to a teacher, and creates nothing", async () => {
+    const teacherUser = await createUser({ username: uniq("teacher-a") });
+    await createMembership(teacherUser.id, a.kindergarten.id, "TEACHER");
+    const teacherSession = await login(app, teacherUser.username);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), teacherSession).send(
+      {},
+    );
+
+    expect(res.status).toBe(404);
+    expect(await db.user.count({ where: { esisPersonId: { not: null } } })).toBe(0);
+  });
+
+  it("returns 404 to an admin of another kindergarten, and creates nothing", async () => {
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), b.adminSession).send(
+      {},
+    );
+
+    expect(res.status).toBe(404);
+    expect(await db.user.count({ where: { esisPersonId: { not: null } } })).toBe(0);
+  });
+});

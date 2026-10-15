@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -10,7 +11,12 @@ import { TenantAccessService } from "../authz/tenant-access.service";
 import type { Actor } from "../authz/actor";
 import { paginate, toSkipTake, type PageParams } from "../common/pagination";
 import { EsisRepository } from "../integrations/esis/esis.repository";
-import { normalizeRegisterNumber, roleForJobCode } from "../integrations/esis/esis.roster";
+import {
+  normalizeRegisterNumber,
+  roleForJobCode,
+  unclaimedRosterRows,
+} from "../integrations/esis/esis.roster";
+import type { Role } from "../domain/enums";
 import { PublicKindergartensService } from "../public-kindergartens/public-kindergartens.service";
 import { UsersRepository } from "../users/users.repository";
 import { UsersService } from "../users/users.service";
@@ -181,6 +187,115 @@ export class StaffRegistrationService {
     }
 
     throw new ConflictException("Бүртгэл үүсгэж чадсангүй. Дахин оролдоно уу.");
+  }
+
+  /**
+   * «Бүх багшийг урих» — one invitation per unclaimed ESIS roster row, already
+   * tied to that person's ministry record (the client, 2026-10-15: «эцэг эх
+   * уридаг шиг ... QR гараад ... ESIS-ийнхээ бүртгэлтэй холбогдоно»).
+   *
+   * ★ The parents' bulk invitation is the model: one token per person, each
+   * opening exactly one account, printed as cards the director hands out.
+   * The person scans theirs, proves their phone and chooses a password on
+   * `/invitation/[token]` — and the account is linked from the moment it
+   * exists, so there is no «Холбох» afterwards.
+   *
+   * ★★ The director is the judgement here, as with `linkStaffToEsisPerson`:
+   * the row comes from *this* kindergarten's roster, which the ministry fills,
+   * and the card goes to the person whose name is on it. What self-registration
+   * proves with a register number, the director proves by handing it over.
+   * That is also why `selfRegisteredAt` stays empty (`createRosterInvitedAccount`).
+   *
+   * The same refusals as `register()`, said plainly since a director is
+   * asking: a stale roster is refused outright, a row whose job code maps to
+   * no role (the жижүүр, the эрхлэгч) is skipped, and a person who already has
+   * an account is not on the unclaimed list at all. `only` narrows it to one
+   * row — «Урих» on a single line.
+   */
+  async inviteFromRoster(actor: Actor, kindergartenId: string, only?: string) {
+    this.tenants.assertAdmin(actor, kindergartenId);
+
+    const [identities, roster] = await Promise.all([
+      this.esisRepo.findStaffIdentities(kindergartenId),
+      this.esisRepo.listStaffRoster(kindergartenId),
+    ]);
+    let rows = unclaimedRosterRows(roster, identities);
+    if (only !== undefined) {
+      rows = rows.filter((row) => row.esisPersonId === only);
+      if (rows.length === 0) throw new NotFoundException();
+    }
+
+    if (rows.some((row) => Date.now() - row.syncedAt.getTime() > STALE_AFTER_MS)) {
+      throw new BadRequestException(
+        "ЭСИС-ийн ажилтны жагсаалт 30 хоногоос хуучирсан байна. «ЭСИС татах»-аар шинэчлээд дахин урина уу.",
+      );
+    }
+
+    const invitable = rows.flatMap((row) => {
+      const role = roleForJobCode(row.jobCode);
+      return role ? [{ row, role }] : [];
+    });
+    if (only !== undefined && invitable.length === 0) {
+      throw new BadRequestException("Энэ албан тушаалд эрх олгох боломжгүй тул урих боломжгүй.");
+    }
+
+    const items: {
+      esisPersonId: string;
+      lastName: string;
+      firstName: string;
+      role: Role;
+      invitationToken: string;
+    }[] = [];
+
+    for (const { row, role } of invitable) {
+      // Two presses at once: the unique column would answer with a 500.
+      if (await this.usersRepo.findByEsisPersonId(row.esisPersonId)) continue;
+      const { invitationToken } = await this.createRosterInvitation(
+        actor,
+        kindergartenId,
+        row,
+        role,
+      );
+      items.push({
+        esisPersonId: row.esisPersonId,
+        lastName: row.lastName,
+        firstName: row.firstName,
+        role,
+        invitationToken,
+      });
+    }
+
+    // Rows passed over — a job code that grants no role. Said, not counted silently.
+    return { items, skipped: rows.length - items.length };
+  }
+
+  private async createRosterInvitation(
+    actor: Actor,
+    kindergartenId: string,
+    row: { esisPersonId: string; lastName: string; firstName: string },
+    role: Role,
+  ) {
+    // Generated, never derived from the person — `register()` gives the reason.
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const username = `staff-${randomBytes(6).toString("base64url").toLowerCase()}`;
+      if (await this.usersRepo.findByUsername(username)) continue;
+
+      return this.users.createRosterInvitedAccount(
+        actor,
+        kindergartenId,
+        {
+          username,
+          email: null,
+          phone: null,
+          lastName: row.lastName,
+          firstName: row.firstName,
+          role,
+        },
+        row.esisPersonId,
+      );
+    }
+
+    throw new ConflictException("Урилга үүсгэж чадсангүй. Дахин оролдоно уу.");
   }
 
   /**

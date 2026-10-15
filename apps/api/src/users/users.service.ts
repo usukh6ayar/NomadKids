@@ -310,11 +310,36 @@ export class UsersService {
     });
   }
 
+  /**
+   * A member of staff's account from a director's «Урих» on an ESIS roster row
+   * (`StaffRegistrationService.inviteFromRoster`) — linked to the ministry
+   * record from the start, like a self-registration, but **not** marked
+   * self-registered: the director made it, and «Ажилтны бүртгэл» asks who
+   * signed themselves up. The caller has run `assertAdmin`.
+   */
+  async createRosterInvitedAccount(
+    actor: Actor,
+    kindergartenId: string,
+    dto: CreateUserDto,
+    esisPersonId: string,
+  ) {
+    return this.createInvitedAccount(actor, kindergartenId, dto, {
+      extraMetadata: { source: "esis-roster-invitation" },
+      esisPersonId,
+      selfRegistered: false,
+    });
+  }
+
   private async createInvitedAccount(
     actor: Actor | null,
     kindergartenId: string,
     dto: CreateUserDto,
-    options: { extraMetadata?: Record<string, unknown>; esisPersonId?: string } = {},
+    options: {
+      extraMetadata?: Record<string, unknown>;
+      esisPersonId?: string;
+      /** Defaults to "an ESIS id was given" — self-registration's own case. */
+      selfRegistered?: boolean;
+    } = {},
   ) {
     // A solo teacher's workspace takes parents only (the user, 2026-10-11).
     await this.solo.assertRoleAllowed(kindergartenId, dto.role);
@@ -348,7 +373,8 @@ export class UsersService {
        * writer; a director can now link an invited account to its ESIS person,
        * so the two facts need two columns. See `schema.prisma`.
        */
-      selfRegisteredAt: options.esisPersonId ? new Date() : null,
+      selfRegisteredAt:
+        (options.selfRegistered ?? Boolean(options.esisPersonId)) ? new Date() : null,
     });
 
     await this.repo.createMembership(user.id, kindergartenId, dto.role);

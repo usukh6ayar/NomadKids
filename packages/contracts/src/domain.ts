@@ -6220,9 +6220,30 @@ export const unclaimedStaffSchema = z.object({
   firstName: z.string(),
   positionName: z.string().nullable(),
   isInstructor: z.boolean(),
+  /** The role «Урих» gives them, from the job code; `null` — no button. */
+  role: roleSchema.nullish(),
   syncedAt: z.string(),
 });
 export type UnclaimedStaff = z.infer<typeof unclaimedStaffSchema>;
+
+/**
+ * `POST /kindergartens/:id/staff-invitations` — «Бүх багшийг урих». One token
+ * per person, each account already linked to its ESIS record. Shown once.
+ */
+export const rosterInvitationsSchema = z.object({
+  items: z.array(
+    z.object({
+      esisPersonId: z.string(),
+      lastName: z.string(),
+      firstName: z.string(),
+      role: roleSchema,
+      invitationToken: z.string(),
+    }),
+  ),
+  /** Unclaimed rows this press passed over — a job code that grants no role. */
+  skipped: z.number(),
+});
+export type RosterInvitations = z.infer<typeof rosterInvitationsSchema>;
 
 /**
  * One row of `GET /kindergartens/:id/staff-registrations` — the director's

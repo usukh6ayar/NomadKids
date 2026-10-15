@@ -270,6 +270,8 @@ export class AuthRepository {
   async findInvitedAccount(userId: string): Promise<{
     kind: "staff" | "guardian";
     selfRegistered: boolean;
+    /** Tied to an ESIS person — its name is the ministry's, not retyped. */
+    esisLinked: boolean;
     hasName: boolean;
     hasPhone: boolean;
     /** Server-side only — never answered to the public describe call. */
@@ -280,6 +282,7 @@ export class AuthRepository {
       select: {
         isSuperAdmin: true,
         selfRegisteredAt: true,
+        esisPersonId: true,
         firstName: true,
         phone: true,
         _count: { select: { memberships: true } },
@@ -288,6 +291,7 @@ export class AuthRepository {
     return {
       kind: user?.isSuperAdmin || (user?._count.memberships ?? 0) > 0 ? "staff" : "guardian",
       selfRegistered: Boolean(user?.selfRegisteredAt),
+      esisLinked: Boolean(user?.esisPersonId),
       hasName: Boolean(user?.firstName?.trim()),
       hasPhone: Boolean(user?.phone),
       phone: user?.phone ?? null,
