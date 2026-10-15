@@ -48,7 +48,10 @@ export interface ChildAccessFacts {
 export interface EnrollmentFact {
   readonly groupId: string;
   readonly kindergartenId: string;
-  /** `status = ACTIVE` — the child attends this group now. Only `canArchiveChild` reads it. */
+  /**
+   * `status = ACTIVE` — the child attends this group now. A teacher's and a
+   * specialist's reach reads it (D2 reversed, 2026-10-16); an admin's does not.
+   */
   readonly active: boolean;
 }
 
@@ -60,9 +63,10 @@ export interface GuardianshipFact {
 /**
  * Every kindergarten this child has ever been enrolled in.
  *
- * ★ This is the function that makes a transfer safe. Deriving the set from
- * enrollment *history* rather than `Child.kindergartenId` means a teacher keeps
- * access to the observations they wrote themselves after the child moves on.
+ * ★ The admin chain's set (and the accountant's and the doctor's). Deriving it
+ * from enrollment *history* rather than `Child.kindergartenId` means a
+ * kindergarten keeps the records it made after the child moves on. A teacher's
+ * reach no longer reads this history — see `isAssignedTeacherOf`.
  *
  * **The one exception**, kept deliberately (D8): a child with *no enrollments
  * at all* falls back to `childKindergartenId`, so the staff who just registered
@@ -89,18 +93,51 @@ export function isGuardianOf(actor: Actor, facts: ChildAccessFacts): boolean {
   return facts.guardianships.some((g) => g.guardianUserId === actor.userId && g.canView);
 }
 
+/** Does any of these groups hold an enrollment of the child, active or ended? */
+function holdsEnrollment(
+  facts: ChildAccessFacts,
+  groupIds: readonly string[],
+  which: "active" | "ended",
+): boolean {
+  if (groupIds.length === 0) return false;
+  const assigned = new Set(groupIds);
+  return facts.enrollments.some(
+    (e) => assigned.has(e.groupId) && e.active === (which === "active"),
+  );
+}
+
 /**
- * Is this actor a teacher currently assigned to a group the child is (or was)
- * enrolled in?
+ * Is this actor a teacher currently assigned to the group the child attends
+ * **now**?
  *
- * Reads the child's whole enrollment history, so a teacher does not lose their
- * own records when a child changes group. Revocation works because
- * `actorActiveTeachingGroupIds` excludes assignments with `endedOn` set.
+ * ★ The child's ACTIVE enrollment only — the user, 2026-10-16, reversing
+ * SECURITY.md D2. Reading the whole history let the previous group's teacher
+ * keep seeing every new note, health record and photograph for as long as
+ * they stayed assigned to that group. What a previous teacher keeps is the
+ * observations they wrote — `isFormerTeacherOf`, and nothing else.
+ *
+ * Revocation works because `actorActiveTeachingGroupIds` excludes assignments
+ * with `endedOn` set. ★★ `visibleChildrenWhere` is this predicate's
+ * list-shaped twin; `authz-consistency.test.ts` keeps them identical.
  */
 export function isAssignedTeacherOf(facts: ChildAccessFacts): boolean {
-  if (facts.actorActiveTeachingGroupIds.length === 0) return false;
-  const assigned = new Set(facts.actorActiveTeachingGroupIds);
-  return facts.enrollments.some((e) => assigned.has(e.groupId));
+  return holdsEnrollment(facts, facts.actorActiveTeachingGroupIds, "active");
+}
+
+/**
+ * Did this actor teach the child — assigned (still) to a group whose
+ * enrollment of the child has ended — without teaching them now?
+ *
+ * Grants exactly one thing: reading the observations this actor wrote
+ * (`ChildAccessService.assertCanReadObservationsOrOwn`). Never part of any
+ * other predicate.
+ */
+export function isFormerTeacherOf(facts: ChildAccessFacts): boolean {
+  if (isAssignedTeacherOf(facts) || isAssignedSpecialistOf(facts)) return false;
+  return (
+    holdsEnrollment(facts, facts.actorActiveTeachingGroupIds, "ended") ||
+    holdsEnrollment(facts, facts.actorActiveSpecialistGroupIds, "ended")
+  );
 }
 
 /** Is this actor an admin of a kindergarten the child belongs to? */
@@ -116,8 +153,8 @@ export function isAccountantOver(actor: Actor, facts: ChildAccessFacts): boolean
 }
 
 /**
- * Is this actor a PE or music teacher currently assigned to a group the child
- * is (or was) enrolled in? Same history rule as `isAssignedTeacherOf`.
+ * Is this actor a PE or music teacher currently assigned to the group the
+ * child attends now? The same ACTIVE-enrollment rule as `isAssignedTeacherOf`.
  *
  * ★ Never part of `canAccessChild` or `canRecordForChild`. Those two gate
  * the register, the health record, the meal register, the portfolio — the
@@ -126,9 +163,7 @@ export function isAccountantOver(actor: Actor, facts: ChildAccessFacts): boolean
  * them through a predicate below; every other route refuses them by default.
  */
 export function isAssignedSpecialistOf(facts: ChildAccessFacts): boolean {
-  if (facts.actorActiveSpecialistGroupIds.length === 0) return false;
-  const assigned = new Set(facts.actorActiveSpecialistGroupIds);
-  return facts.enrollments.some((e) => assigned.has(e.groupId));
+  return holdsEnrollment(facts, facts.actorActiveSpecialistGroupIds, "active");
 }
 
 /**
@@ -301,16 +336,11 @@ export function canAdministerChild(actor: Actor, facts: ChildAccessFacts): boole
 /**
  * ★ May this actor archive (soft-delete) this child? An admin of theirs, or a
  * teacher of the group the child attends **now** — the user, 2026-10-14:
- * «Устгах» in the teacher's own roster.
- *
- * Narrower than `isAssignedTeacherOf` on purpose. That one reads the whole
- * enrollment history so a teacher keeps the records they wrote; it must not
- * also let last year's teacher remove a child who has moved to another group.
+ * «Устгах» in the teacher's own roster. Since 2026-10-16 that is exactly
+ * `isAssignedTeacherOf`, which reads the ACTIVE enrollment only.
  */
 export function canArchiveChild(actor: Actor, facts: ChildAccessFacts): boolean {
-  if (isAdminOver(actor, facts)) return true;
-  const assigned = new Set(facts.actorActiveTeachingGroupIds);
-  return facts.enrollments.some((e) => e.active && assigned.has(e.groupId));
+  return isAdminOver(actor, facts) || isAssignedTeacherOf(facts);
 }
 
 /**

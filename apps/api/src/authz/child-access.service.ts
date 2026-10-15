@@ -17,6 +17,7 @@ import {
   canRecordChildHealth,
   canRecordForChild,
   canViewChildFinance,
+  isFormerTeacherOf,
   isGuardianOf,
   type ChildAccessFacts,
 } from "./child-access";
@@ -171,6 +172,28 @@ export class ChildAccessService {
   /** Observations about the child: readers plus a specialist of their group. */
   async assertCanReadObservations(actor: Actor, childId: string): Promise<ChildAccessFacts> {
     return this.assertGated(actor, childId, canReadObservations);
+  }
+
+  /**
+   * Reading observations, for the list and the detail only: everyone
+   * `assertCanReadObservations` admits, **plus** a teacher of a group the child
+   * has left, who reads the staff notes they wrote and nothing else
+   * (`isFormerTeacherOf`, the user 2026-10-16). `onlyOwn` tells the caller to
+   * narrow the read to those notes.
+   *
+   * ★ Never the check for anything that writes, nor for `listTypes` — a
+   * previous teacher's reach is these two reads.
+   */
+  async assertCanReadObservationsOrOwn(
+    actor: Actor,
+    childId: string,
+  ): Promise<{ facts: ChildAccessFacts; onlyOwn: boolean }> {
+    const facts = await this.repo.loadChildAccessFacts(actor, childId);
+    if (!facts) throw new NotFoundException();
+    const full = canReadObservations(actor, facts);
+    if (!full && !isFormerTeacherOf(facts)) throw new NotFoundException();
+    await this.assertFeePaid(actor, facts);
+    return { facts, onlyOwn: !full };
   }
 
   /** Filing or editing a staff observation: writers plus a specialist. */

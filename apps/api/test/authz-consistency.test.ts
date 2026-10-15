@@ -225,6 +225,22 @@ describe("list and detail authorization agree", () => {
     await expectAgreement(await actorFor(teacherUser.id), child.id, false, "wrong group");
   });
 
+  it("teacher of a group the child has LEFT — D2 reversed, 2026-10-16", async () => {
+    const kg = await createKindergarten();
+    const year = await createSchoolYear(kg.id);
+    const oldGroup = await createGroup(kg.id, year.id, "Хуучин бүлэг");
+    const newGroup = await createGroup(kg.id, year.id, "Шинэ бүлэг");
+    const teacherUser = await createUser({ username: uniq("teacher") });
+    const membership = await createMembership(teacherUser.id, kg.id, "TEACHER");
+    await assignTeacher(kg.id, oldGroup.id, membership.id);
+
+    const child = await createChild(kg.id);
+    await enrollChild(kg.id, child.id, oldGroup.id, year.id, "TRANSFERRED");
+    await enrollChild(kg.id, child.id, newGroup.id, year.id);
+
+    await expectAgreement(await actorFor(teacherUser.id), child.id, false, "left the group");
+  });
+
   it("REVOKED teacher — assignment ended", async () => {
     const kg = await createKindergarten();
     const year = await createSchoolYear(kg.id);
