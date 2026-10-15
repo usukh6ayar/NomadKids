@@ -917,6 +917,13 @@ describe("promotion — Order А/261, Annex 2 §1 item 9", () => {
 describe("enrollment archive", () => {
   const archive = (childId: string) => `/v1/children/${childId}/enrollment-archive`;
 
+  it("counts the boys and girls in the child's group — numbers, never names (№16)", async () => {
+    const res = await request(server()).get(archive(a.child.id)).set("Cookie", parentA.cookies);
+    expect(res.status).toBe(200);
+    const group = res.body.current.group;
+    expect(group.boyCount + group.girlCount).toBe(group.childCount);
+  });
+
   it("gives a guardian the current placement, its teacher, and an empty history", async () => {
     const res = await request(server()).get(archive(a.child.id)).set("Cookie", parentA.cookies);
 

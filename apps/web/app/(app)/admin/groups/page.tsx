@@ -68,6 +68,7 @@ const AGE_BANDS = [
   { value: "JUNIOR", label: "Дунд бүлэг" },
   { value: "MIDDLE", label: "Ахлах бүлэг" },
   { value: "SENIOR", label: "Бэлтгэл бүлэг" },
+  { value: "MIXED", label: "Холимог бүлэг" },
 ] as const;
 
 const BAND_LABEL = Object.fromEntries(AGE_BANDS.map((b) => [b.value, b.label]));

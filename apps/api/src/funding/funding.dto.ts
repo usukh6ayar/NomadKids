@@ -27,7 +27,7 @@ export const createFundingRuleSchema = z
     source: fundingSourceSchema,
     effectiveFrom: isoDate,
     effectiveTo: isoDate.nullable().optional(),
-    ageBand: z.enum(["NURSERY", "JUNIOR", "MIDDLE", "SENIOR"]).nullable().optional(),
+    ageBand: z.enum(["NURSERY", "JUNIOR", "MIDDLE", "SENIOR", "MIXED"]).nullable().optional(),
     dailyRate: money,
     monthlyRate: money,
     dependsOnAttendance: z.boolean().default(true),

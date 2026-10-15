@@ -7,6 +7,7 @@ import {
 import { AuditRepository } from "../audit/audit.repository";
 import { AuthzRepository } from "../authz/authz.repository";
 import { TenantAccessService } from "../authz/tenant-access.service";
+import { GroupAccessService } from "../authz/group-access.service";
 import type { Actor } from "../authz/actor";
 import { paginate, type PageParams } from "../common/pagination";
 import type { TenantScope } from "../common/repository/tenant-scope";
@@ -39,6 +40,7 @@ export class TenantsService {
     private readonly authz: AuthzRepository,
     private readonly audit: AuditRepository,
     private readonly solo: SoloRulesService,
+    private readonly groups: GroupAccessService,
   ) {}
 
   /** The actor's full membership scope — what any read may see. */
@@ -291,9 +293,34 @@ export class TenantsService {
     return created;
   }
 
+  /**
+   * Edits a group — its director (or a solo teacher, in their own workspace)
+   * any field; the teacher assigned to it now, its name and kind only
+   * (2026-10-16, the frontend's backend list №16: «Бүлгийн мэдээлэл» in the
+   * teacher's settings).
+   *
+   * ★ A group teacher's other fields are a 400, not a quiet drop: the status
+   * and the programme are the director's, and a request that names them has
+   * asked for something it may not do. A specialist, another group's teacher
+   * or another kindergarten gets 404 (`assertTeachesGroup`).
+   */
   async updateGroup(actor: Actor, id: string, dto: UpdateGroupDto) {
-    const existing = await this.repo.findGroup(await this.workspaceScope(actor), id);
-    if (!existing) throw new NotFoundException();
+    let existing = await this.repo.findGroup(await this.workspaceScope(actor), id);
+    if (!existing) {
+      await this.groups.assertTeachesGroup(actor, id);
+      const extra = Object.keys(dto).filter(
+        (key) =>
+          key !== "name" && key !== "ageBand" && dto[key as keyof UpdateGroupDto] !== undefined,
+      );
+      if (extra.length > 0) {
+        throw new BadRequestException("Бүлгийн багш зөвхөн бүлгийн нэр, төрлийг засна.");
+      }
+      existing = await this.repo.findGroup(
+        { kindergartenIds: this.tenants.memberKindergartenIds(actor) },
+        id,
+      );
+      if (!existing) throw new NotFoundException();
+    }
 
     const updated = await this.repo.updateGroup(id, dto);
     await this.audit.append({

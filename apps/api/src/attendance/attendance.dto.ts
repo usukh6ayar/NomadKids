@@ -293,7 +293,7 @@ export const attendanceRegisterQuerySchema = z
       )
       .pipe(z.array(z.uuid()).max(200).optional()),
 
-    ageBand: commaSeparated(["NURSERY", "JUNIOR", "MIDDLE", "SENIOR"], 4),
+    ageBand: commaSeparated(["NURSERY", "JUNIOR", "MIDDLE", "SENIOR", "MIXED"], 5),
     programKind: z.enum(["MAIN", "ALTERNATIVE"]).optional(),
     attendanceForm: z.enum(["STANDARD", "EXTENDED", "SHORTENED"]).optional(),
     status: commaSeparated(registerStatusValues, 6),

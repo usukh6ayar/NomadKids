@@ -21,12 +21,13 @@ const groupsSchema = paginated(groupListItemSchema);
 type SchoolYear = z.infer<typeof schoolYearSchema>;
 type Group = z.infer<typeof groupListItemSchema>;
 
-/** The same four bands, in the same words, as «Анги бүлэг» (`/admin/groups`). */
+/** The same bands, in the same words, as «Анги бүлэг» (`/admin/groups`). */
 const AGE_BANDS = [
   { value: "NURSERY", label: "Бага бүлэг" },
   { value: "JUNIOR", label: "Дунд бүлэг" },
   { value: "MIDDLE", label: "Ахлах бүлэг" },
   { value: "SENIOR", label: "Бэлтгэл бүлэг" },
+  { value: "MIXED", label: "Холимог бүлэг" },
 ] as const;
 
 const KEY = ["solo-workspace"] as const;

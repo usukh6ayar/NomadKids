@@ -2,7 +2,8 @@ import { z } from "zod";
 import { paginationQuerySchema, uuidSchema } from "@kinder/contracts";
 
 /** Age bands of the Mongolian preschool system. Fixed, so an enum is correct. */
-export const ageBandSchema = z.enum(["NURSERY", "JUNIOR", "MIDDLE", "SENIOR"]);
+/** `MIXED` — Холимог бүлэг (2026-10-16, №16). */
+export const ageBandSchema = z.enum(["NURSERY", "JUNIOR", "MIDDLE", "SENIOR", "MIXED"]);
 export const groupStatusSchema = z.enum(["ACTIVE", "ARCHIVED"]);
 
 /**
