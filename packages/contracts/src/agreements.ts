@@ -12,8 +12,8 @@ import { paginationQuerySchema } from "./pagination";
  * value change in one commit — and everyone is asked again.
  */
 export const CURRENT_AGREEMENT_VERSIONS = {
-  TEACHER: "trial-2026-10-12",
-  PARENT: "trial-2026-10-12",
+  TEACHER: "solo-2.0",
+  PARENT: "parent-1.0",
 } as const;
 
 export const agreementKindSchema = z.enum(["TEACHER", "PARENT"]);
