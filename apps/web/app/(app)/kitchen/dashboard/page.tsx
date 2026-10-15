@@ -11,11 +11,12 @@ import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
 import { TableShell, Td, Th } from "@/components/ui/table";
 import { ErrorState, LoadingState } from "@/components/ui/states";
-import { formatDate } from "@/lib/format";
+import { formatDate, todayLocal } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
+/** Ulaanbaatar's today — the UTC date is yesterday until 08:00 local. */
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayLocal();
 }
 
 /**

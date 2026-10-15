@@ -17,7 +17,7 @@ import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
-import { fullName } from "@/lib/format";
+import { fullName, todayLocal } from "@/lib/format";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
@@ -55,8 +55,9 @@ function emptyLine(type: InvoiceLineType = "TUITION"): DraftLine {
 const CELL_INPUT =
   "h-9 border-transparent bg-transparent px-1.5 hover:border-border focus:border-primary focus:bg-surface";
 
+/** Ulaanbaatar's today — the UTC date is yesterday until 08:00 local. */
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayLocal();
 }
 
 function thisMonth(): string {
