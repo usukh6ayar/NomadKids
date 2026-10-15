@@ -10,6 +10,7 @@ import {
   Coffee,
   Download,
   HeartHandshake,
+  ImagePlus,
   Leaf,
   MessagesSquare,
   Moon,
@@ -31,6 +32,8 @@ import {
   Utensils,
   type LucideProps,
 } from "lucide-react";
+import { MediaThumb } from "@/components/media/media-image";
+import { SingleImageUpload } from "@/components/media/single-image-upload";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -76,12 +79,12 @@ export interface RoutineActions {
 type Tab = "daily" | "plan" | "clubs";
 const TABS: { key: Tab; label: string }[] = [
   { key: "daily", label: "Өдрийн дэглэм" },
-  { key: "plan", label: "Судлагдахуун" },
+  { key: "plan", label: "Сургалтын чиглэл" },
   { key: "clubs", label: "Дугуйлан" },
 ];
 
 /**
- * Өдрийн дэглэм · Судлагдахуун · Дугуйлан — the client's prototype as the
+ * Өдрийн дэглэм · Сургалтын чиглэл · Дугуйлан — the client's prototype as the
  * product's screen, 2026-10-09. One component for the three readers: the
  * teacher edits, the director reads what the teacher keeps, a family reads
  * and asks to join a club. Contract and template: `lib/routine.ts`.
@@ -90,10 +93,13 @@ export function RoutineView({
   routine,
   mode,
   actions,
+  photoEndpoint,
 }: {
   routine: Routine;
   mode: RoutineMode;
   actions: RoutineActions;
+  /** Uses the same tenant-scoped single-photo upload flow as a menu dish. */
+  photoEndpoint?: string;
 }) {
   const [tab, setTab] = useState<Tab>("daily");
   return (
@@ -121,9 +127,13 @@ export function RoutineView({
       </div>
 
       <div role="tabpanel" aria-label={TABS.find((entry) => entry.key === tab)!.label}>
-        {tab === "daily" ? <DailyTab routine={routine} mode={mode} actions={actions} /> : null}
+        {tab === "daily" ? (
+          <DailyTab routine={routine} mode={mode} actions={actions} photoEndpoint={photoEndpoint} />
+        ) : null}
         {tab === "plan" ? <PlanTab routine={routine} mode={mode} actions={actions} /> : null}
-        {tab === "clubs" ? <ClubsTab routine={routine} mode={mode} actions={actions} /> : null}
+        {tab === "clubs" ? (
+          <ClubsTab routine={routine} mode={mode} actions={actions} photoEndpoint={photoEndpoint} />
+        ) : null}
       </div>
     </div>
   );
@@ -175,11 +185,8 @@ function ActivityIcon({ name }: { name: string }) {
     "text-muted",
   ];
   return (
-    <span
-      aria-hidden="true"
-      className="grid size-8 shrink-0 place-items-center rounded-pill bg-canvas"
-    >
-      <Glyph size={16} strokeWidth={1.75} className={tone} />
+    <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center">
+      <Glyph size={20} strokeWidth={1.75} className={tone} />
     </span>
   );
 }
@@ -210,10 +217,12 @@ function DailyTab({
   routine,
   mode,
   actions,
+  photoEndpoint,
 }: {
   routine: Routine;
   mode: RoutineMode;
   actions: RoutineActions;
+  photoEndpoint?: string;
 }) {
   const toast = useToast();
   const [editing, setEditing] = useState<{ index: number | null } | null>(null);
@@ -242,7 +251,7 @@ function DailyTab({
   return (
     <section aria-label="Өдрийн дэглэм" className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-caption text-muted">Ажлын өдөр бүр ижил хуваарь</p>
+        <p className="text-caption text-muted">Хуваарьт үйл ажиллагаа</p>
         {/* No Excel for a family — 2026-10-09, the client. */}
         {mode !== "parent" ? (
           <div className="flex flex-wrap gap-2">
@@ -288,7 +297,15 @@ function DailyTab({
                 {item.start}
                 <span className="block font-normal text-muted">{item.end}</span>
               </span>
-              <ActivityIcon name={item.name} />
+              {item.photoMediaFileId ? (
+                <MediaThumb
+                  mediaId={item.photoMediaFileId}
+                  caption={`${item.name} зураг`}
+                  className="size-12 shrink-0"
+                />
+              ) : (
+                <ActivityIcon name={item.name} />
+              )}
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="text-body font-medium text-ink">{item.name}</span>
                 {item.description ? (
@@ -311,6 +328,7 @@ function DailyTab({
       {editing ? (
         <RoutineItemDialog
           item={editing.index === null ? null : items[editing.index]!}
+          photoEndpoint={photoEndpoint}
           onClose={() => setEditing(null)}
           onSave={async (item) => {
             const next =
@@ -400,17 +418,26 @@ function AreaPicker({
 
 function RoutineItemDialog({
   item,
+  photoEndpoint,
   onClose,
   onSave,
   onDelete,
 }: {
   item: RoutineItem | null;
+  photoEndpoint?: string;
   onClose: () => void;
   onSave: (item: RoutineItem) => Promise<void>;
   onDelete?: () => Promise<void>;
 }) {
   const [form, setForm] = useState<RoutineItem>(
-    item ?? { start: "10:00", end: "10:30", name: "", description: "", areas: [] },
+    item ?? {
+      start: "10:00",
+      end: "10:30",
+      name: "",
+      description: "",
+      areas: [],
+      photoMediaFileId: null,
+    },
   );
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
@@ -488,6 +515,30 @@ function RoutineItemDialog({
             />
           )}
         </Field>
+        {photoEndpoint ? (
+          <div className="flex flex-col gap-1.5">
+            <p className="text-caption font-semibold text-ink">Үйл ажиллагааны зураг</p>
+            <div className="flex flex-wrap items-end gap-2">
+              <SingleImageUpload
+                endpoint={photoEndpoint}
+                currentMediaId={form.photoMediaFileId}
+                label="Зураг нэмэх"
+                alt={`${form.name || "Үйл ажиллагаа"} зураг`}
+                onUploaded={(media) => setForm({ ...form, photoMediaFileId: media.id })}
+              />
+              {form.photoMediaFileId ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setForm({ ...form, photoMediaFileId: null })}
+                >
+                  <Trash2 size={16} aria-hidden="true" /> Зургийг устгах
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Эхлэх цаг" required>
             {({ id }) => (
@@ -604,7 +655,7 @@ function ImportDialog({
   );
 }
 
-// ─── Судлагдахуун ────────────────────────────────────────────────────────────
+// ─── Сургалтын чиглэл ────────────────────────────────────────────────────────
 
 /**
  * Each learning area's 3D picture, as «Хоолны цэс» draws a dish's — the
@@ -666,9 +717,9 @@ function PlanTab({
   const replace = (next: AreaPlan) => plan.map((row) => (row.area === next.area ? next : row));
 
   return (
-    <section aria-label="Судлагдахуун" className="flex flex-col gap-3">
+    <section aria-label="Сургалтын чиглэл" className="flex flex-col gap-3">
       <p className="text-caption text-muted">
-        СӨБ-ын сургалтын 7 чиглэл · хүүхдэд эзэмшүүлэх зорилго, агуулга
+        СӨБ-ын сургалтын чиглэл · хүүхдэд эзэмшүүлэх зорилго, агуулга
       </p>
       {/*
         ★ The seven names, numbered, each opening downward — 2026-10-09, the
@@ -874,16 +925,19 @@ function ClubsTab({
   routine,
   mode,
   actions,
+  photoEndpoint,
 }: {
   routine: Routine;
   mode: RoutineMode;
   actions: RoutineActions;
+  photoEndpoint?: string;
 }) {
   const toast = useToast();
   const [editing, setEditing] = useState<Club | "new" | null>(null);
   const [deleting, setDeleting] = useState<Club | null>(null);
   const [busy, setBusy] = useState(false);
   const [requestsOpen, setRequestsOpen] = useState(false);
+  const [expandedClubId, setExpandedClubId] = useState<string | null>(null);
   const canEdit = mode === "teacher" && Boolean(actions.saveClub);
   const requestOf = (clubId: string) => routine.requests.find((r) => r.clubId === clubId);
   const pending = routine.requests.filter((r) => r.status === "PENDING").length;
@@ -922,46 +976,102 @@ function ClubsTab({
           {routine.clubs.map((club) => {
             const mine = requestOf(club.id);
             return (
-              <li key={club.id} className="flex items-center gap-3 px-3 py-2.5">
-                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="text-body font-semibold text-ink">{club.name}</span>
-                  <span className="text-caption text-muted">
-                    {dayLabels(club.days)} · {club.start}–{club.end}
-                    {club.room ? ` · ${club.room}` : ""} · {club.teacherName}
-                  </span>
-                </span>
-                {mode === "parent" ? (
-                  mine ? (
-                    <Badge
-                      tone={
-                        mine.status === "APPROVED"
-                          ? "mint"
-                          : mine.status === "REJECTED"
-                            ? "neutral"
-                            : "sun"
-                      }
-                    >
-                      {CLUB_REQUEST_LABEL[mine.status]}
-                    </Badge>
-                  ) : actions.requestClub ? (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={async () => {
-                        await actions.requestClub!(club.id);
-                        toast.success("Хамрагдах хүсэлт илгээгдлээ.");
-                      }}
-                    >
-                      Хамрагдах хүсэлт
-                    </Button>
-                  ) : null
-                ) : null}
-                {canEdit ? (
-                  <EditMenu
-                    label={club.name}
-                    onEdit={() => setEditing(club)}
-                    onDelete={() => setDeleting(club)}
+              <li key={club.id} className="flex flex-col px-3 py-2.5">
+                <div className="flex items-center gap-3">
+                  <ClubPhoto
+                    club={club}
+                    editable={canEdit}
+                    photoEndpoint={photoEndpoint}
+                    onChange={async (photoMediaFileId) => {
+                      await actions.saveClub!(clubInput(club, photoMediaFileId), club.id);
+                      toast.success(
+                        photoMediaFileId ? "Дугуйлангийн зураг шинэчлэгдлээ." : "Зураг устгагдлаа.",
+                      );
+                    }}
                   />
+                  {mode === "parent" ? (
+                    <button
+                      type="button"
+                      aria-expanded={expandedClubId === club.id}
+                      onClick={() =>
+                        setExpandedClubId((current) => (current === club.id ? null : club.id))
+                      }
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    >
+                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <span className="text-body font-semibold text-ink">{club.name}</span>
+                        <span className="text-caption text-muted">
+                          {dayLabels(club.days)} · {club.start}–{club.end}
+                          {club.room ? ` · ${club.room}` : ""} · {club.teacherName}
+                        </span>
+                      </span>
+                      <ChevronDown
+                        size={18}
+                        aria-hidden="true"
+                        className={cn(
+                          "shrink-0 text-muted transition-transform",
+                          expandedClubId === club.id && "rotate-180",
+                        )}
+                      />
+                    </button>
+                  ) : (
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="text-body font-semibold text-ink">{club.name}</span>
+                      <span className="text-caption text-muted">
+                        {dayLabels(club.days)} · {club.start}–{club.end}
+                        {club.room ? ` · ${club.room}` : ""} · {club.teacherName}
+                      </span>
+                    </span>
+                  )}
+                  {mode === "parent" ? (
+                    mine ? (
+                      <Badge
+                        tone={
+                          mine.status === "APPROVED"
+                            ? "mint"
+                            : mine.status === "REJECTED"
+                              ? "neutral"
+                              : "sun"
+                        }
+                      >
+                        {CLUB_REQUEST_LABEL[mine.status]}
+                      </Badge>
+                    ) : actions.requestClub ? (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={async () => {
+                          await actions.requestClub!(club.id);
+                          toast.success("Хамрагдах хүсэлт илгээгдлээ.");
+                        }}
+                      >
+                        Хамрагдах хүсэлт
+                      </Button>
+                    ) : null
+                  ) : null}
+                  {canEdit ? (
+                    <EditMenu
+                      label={club.name}
+                      onEdit={() => setEditing(club)}
+                      onDelete={() => setDeleting(club)}
+                    />
+                  ) : null}
+                </div>
+                {mode === "parent" && expandedClubId === club.id ? (
+                  <div className="mt-3 flex flex-col gap-2 border-t border-border-soft pt-3 text-caption text-muted">
+                    <p>
+                      <span className="font-semibold text-ink">Сургалтын чиглэл: </span>
+                      {club.areas.join(", ")}
+                    </p>
+                    <p className="whitespace-pre-line">
+                      <span className="font-semibold text-ink">Сургалтын зорилго: </span>
+                      {club.goal || "—"}
+                    </p>
+                    <p className="whitespace-pre-line">
+                      <span className="font-semibold text-ink">Дэлгэрэнгүй мэдээлэл: </span>
+                      {club.description || "—"}
+                    </p>
+                  </div>
                 ) : null}
               </li>
             );
@@ -972,6 +1082,7 @@ function ClubsTab({
       {editing ? (
         <ClubDialog
           club={editing === "new" ? null : editing}
+          photoEndpoint={photoEndpoint}
           onClose={() => setEditing(null)}
           onSave={async (input) => {
             await actions.saveClub!(input, editing === "new" ? undefined : editing.id);
@@ -1013,6 +1124,87 @@ function ClubsTab({
         />
       ) : null}
     </section>
+  );
+}
+
+function clubInput(club: Club, photoMediaFileId = club.photoMediaFileId): ClubInput {
+  return {
+    name: club.name,
+    teacherName: club.teacherName,
+    photoMediaFileId: photoMediaFileId || null,
+    room: club.room,
+    days: club.days,
+    start: club.start,
+    end: club.end,
+    areas: club.areas,
+    goal: club.goal,
+    description: club.description,
+  };
+}
+
+function ClubPhoto({
+  club,
+  editable,
+  photoEndpoint,
+  onChange,
+}: {
+  club: Club;
+  editable: boolean;
+  photoEndpoint?: string;
+  onChange: (mediaId: string | null) => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <div className="relative size-14 shrink-0" data-testid={`club-photo-${club.id}`}>
+      {club.photoMediaFileId ? (
+        <MediaThumb
+          mediaId={club.photoMediaFileId}
+          caption={`${club.name} зураг`}
+          className="size-14"
+        />
+      ) : (
+        <div
+          aria-hidden="true"
+          className="grid size-14 place-items-center rounded-control border border-dashed border-border bg-canvas text-faint"
+        >
+          <ImagePlus size={20} />
+        </div>
+      )}
+      {editable && photoEndpoint ? (
+        <div className="absolute bottom-1 right-1">
+          <SingleImageUpload
+            endpoint={photoEndpoint}
+            currentMediaId={club.photoMediaFileId}
+            label={
+              club.photoMediaFileId ? `${club.name} — зураг солих` : `${club.name} — зураг нэмэх`
+            }
+            alt={`${club.name} зураг`}
+            hidePreview
+            compactIcon
+            onUploaded={(media) => void onChange(media.id)}
+          />
+        </div>
+      ) : null}
+      {editable && club.photoMediaFileId ? (
+        <button
+          type="button"
+          aria-label={`${club.name} — зургийг устгах`}
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await onChange(null);
+            } finally {
+              setBusy(false);
+            }
+          }}
+          className="absolute right-1 top-1 grid size-7 place-items-center rounded-control bg-surface/90 text-muted shadow-sm transition-colors hover:text-danger disabled:opacity-60"
+        >
+          <Trash2 size={14} aria-hidden="true" />
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -1156,11 +1348,13 @@ function RequestsDialog({
 
 function ClubDialog({
   club,
+  photoEndpoint,
   onClose,
   onSave,
   onDelete,
 }: {
   club: Club | null;
+  photoEndpoint?: string;
   onClose: () => void;
   onSave: (input: ClubInput) => Promise<void>;
   onDelete?: () => Promise<void>;
@@ -1169,12 +1363,14 @@ function ClubDialog({
     club ?? {
       name: "",
       teacherName: "",
+      photoMediaFileId: null,
       room: "",
       days: [1],
       start: "15:00",
       end: "15:30",
       areas: [],
       goal: "",
+      description: "",
     },
   );
   const [busy, setBusy] = useState(false);
@@ -1206,6 +1402,7 @@ function ClubDialog({
         teacherName: form.teacherName.trim(),
         room: form.room?.trim() || null,
         goal: form.goal?.trim() || null,
+        description: form.description?.trim() || null,
       }),
     );
   }
@@ -1254,6 +1451,30 @@ function ClubDialog({
               />
             )}
           </Field>
+          {photoEndpoint ? (
+            <div className="flex flex-col gap-1.5">
+              <p className="text-caption font-semibold text-ink">Дугуйлангийн зураг</p>
+              <div className="flex flex-wrap items-end gap-2">
+                <SingleImageUpload
+                  endpoint={photoEndpoint}
+                  currentMediaId={form.photoMediaFileId}
+                  label="Зураг нэмэх"
+                  alt={`${form.name || "Дугуйлан"} зураг`}
+                  onUploaded={(media) => setForm({ ...form, photoMediaFileId: media.id })}
+                />
+                {form.photoMediaFileId ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setForm({ ...form, photoMediaFileId: null })}
+                  >
+                    <Trash2 size={16} aria-hidden="true" /> Зургийг устгах
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Багшийн нэр" required>
               {({ id }) => (
@@ -1343,6 +1564,18 @@ function ClubDialog({
                 maxLength={450}
                 value={form.goal ?? ""}
                 onChange={(e) => setForm({ ...form, goal: e.target.value })}
+              />
+            )}
+          </Field>
+          <Field label="Дэлгэрэнгүй мэдээлэл">
+            {({ id }) => (
+              <Textarea
+                id={id}
+                rows={4}
+                maxLength={1200}
+                value={form.description ?? ""}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="Хичээлийн агуулга, хэрэглэх зүйлс болон эцэг эхэд өгөх мэдээлэл"
               />
             )}
           </Field>

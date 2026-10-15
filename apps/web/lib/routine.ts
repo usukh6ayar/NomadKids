@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * Өдрийн дэглэм · Судлагдахуун · Дугуйлан — 2026-10-09, the client, from
+ * Өдрийн дэглэм · Сургалтын чиглэл · Дугуйлан — 2026-10-09, the client, from
  * their prototype: a group's daily routine (the same every day), its plan for
  * the seven learning areas, and its clubs, which a family asks to join and the
  * teacher approves. In the words of the 2026 preschool curriculum (СӨБ).
@@ -62,6 +62,8 @@ export const routineItemSchema = z.object({
   name: z.string().min(1).max(80),
   description: z.string().max(160).nullish(),
   areas: z.array(z.string()).default([]),
+  /** An optional classroom photograph illustrating this part of the day. */
+  photoMediaFileId: z.string().uuid().nullish(),
 });
 export type RoutineItem = z.infer<typeof routineItemSchema>;
 
@@ -93,12 +95,16 @@ export const WEEKDAYS = [
 export const clubInputSchema = z.object({
   name: z.string().min(1).max(60),
   teacherName: z.string().min(1).max(60),
+  /** A small cover photograph shown before the club's name. */
+  photoMediaFileId: z.string().uuid().nullish(),
   room: z.string().max(50).nullish(),
   days: z.array(z.number().int().min(1).max(5)).min(1),
   start: time,
   end: time,
   areas: z.array(z.string()).min(1),
   goal: z.string().max(450).nullish(),
+  /** What children do in the club and any information a family should know. */
+  description: z.string().max(1200).nullish(),
 });
 export type ClubInput = z.infer<typeof clubInputSchema>;
 

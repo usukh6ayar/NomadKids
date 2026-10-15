@@ -2,22 +2,24 @@
 
 import {
   ArrowLeft,
-  BookOpenText,
-  FileDown,
+  ExternalLink,
+  FileText,
   FileUp,
   ImagePlus,
+  Link2,
   MoreVertical,
   Music2,
   Pencil,
+  Play,
   Plus,
   Trash2,
+  X,
 } from "lucide-react";
 import { useEffect, useId, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Field, Input, Select, Textarea } from "@/components/ui/field";
+import { Field, Input, Select } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { RowMenu } from "@/components/ui/menu";
 import { ErrorState, FormError, LoadingState } from "@/components/ui/states";
@@ -50,11 +52,16 @@ export function SongsPoemsLibrary({
   mode,
   source,
 }: {
-  mode: "teacher" | "parent";
+  /**
+   * ★ «admin» reads a group's library (2026-10-12, the user). The API lets the
+   * group's own teacher write and the director read, so only a teacher edits.
+   */
+  mode: "teacher" | "parent" | "admin";
   /** `null` while the page is still working out which group or child. */
   source: SongPoemSource | null;
 }) {
   const { months, resources, isLoading, error, actions } = useSongPoemLibrary(source);
+  const editable = mode === "teacher";
   const toast = useToast();
   const [month, setMonth] = useState<SchoolMonthKey | null>(null);
   const [editing, setEditing] = useState<SongPoemResource | "new" | null>(null);
@@ -80,7 +87,7 @@ export function SongsPoemsLibrary({
                 key={item.key}
                 month={item}
                 count={resources.filter((resource) => resource.month === item.key).length}
-                editable={mode === "teacher"}
+                editable={editable}
                 onOpen={() => setMonth(item.key)}
                 onEdit={() => setEditingMonth(item)}
               />
@@ -88,7 +95,7 @@ export function SongsPoemsLibrary({
           </div>
         </section>
 
-        {actions && editingMonth ? (
+        {actions && editable && editingMonth ? (
           <MonthBookFormDialog
             open
             month={editingMonth}
@@ -126,10 +133,12 @@ export function SongsPoemsLibrary({
           </div>
         </div>
 
-        {mode === "teacher" ? (
-          <Button size="sm" onClick={() => setEditing("new")}>
+        {editable ? (
+          // «Нэмэх» on the button (2026-10-15, the user); the full name stays for
+          // a screen reader.
+          <Button size="sm" onClick={() => setEditing("new")} aria-label="Дуу, шүлэг нэмэх">
             <Plus aria-hidden="true" />
-            Дуу, шүлэг нэмэх
+            Нэмэх
           </Button>
         ) : null}
       </div>
@@ -139,12 +148,12 @@ export function SongsPoemsLibrary({
           <p className="text-body font-medium text-muted/70">Хоосон</p>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="flex max-w-3xl flex-col gap-4">
           {monthResources.map((resource) => (
             <ResourceCard
               key={resource.id}
               resource={resource}
-              editable={mode === "teacher"}
+              editable={editable}
               onEdit={() => setEditing(resource)}
               onRemove={() => setRemoving(resource)}
             />
@@ -152,7 +161,7 @@ export function SongsPoemsLibrary({
         </div>
       )}
 
-      {actions && editing ? (
+      {actions && editable && editing ? (
         <ResourceFormDialog
           open
           month={selectedMonth.key}
@@ -170,7 +179,7 @@ export function SongsPoemsLibrary({
         />
       ) : null}
 
-      {actions && removing ? (
+      {actions && editable && removing ? (
         <ConfirmDialog
           open
           onOpenChange={(open) => !open && setRemoving(null)}
@@ -320,6 +329,11 @@ function MonthBookFormDialog({
   );
 }
 
+/**
+ * One item as a post — 2026-10-12, the user: the title, kind and date, the
+ * description, then one media box. A PDF or a sound file is the same size as
+ * a picture, and any of them opens large; a link opens in the same viewer.
+ */
 function ResourceCard({
   resource,
   editable,
@@ -331,23 +345,28 @@ function ResourceCard({
   onEdit: () => void;
   onRemove: () => void;
 }) {
-  const Icon = resource.type === "song" ? Music2 : BookOpenText;
   const type = RESOURCE_TYPES[resource.type];
+  const [viewer, setViewer] = useState<"media" | "link" | null>(null);
+  const mediaUrl = resource.fileUrl ?? resource.coverUrl;
+  const mediaName = resource.fileName ?? resource.coverFileName;
+  const mediaType = resource.fileType ?? (resource.coverUrl ? "image/*" : undefined);
+  const image = Boolean(mediaUrl && mediaType?.startsWith("image/"));
+  const audio = Boolean(mediaUrl && mediaType?.startsWith("audio/"));
+  const video = Boolean(mediaUrl && mediaType?.startsWith("video/"));
+
   return (
-    <Card className="flex h-full flex-col overflow-hidden">
-      <div className="relative grid h-40 place-items-center overflow-hidden bg-gradient-to-br from-primary-soft via-surface to-mint">
-        {resource.coverUrl ? (
-          <img src={resource.coverUrl} alt="" className="h-full w-full object-contain p-4" />
-        ) : (
-          <Icon size={52} aria-hidden="true" className="text-primary/75" />
-        )}
-        <Badge tone={type.tone} className="absolute bottom-3 left-3">
-          {type.label}
-        </Badge>
+    <article className="flex flex-col gap-3 rounded-card border border-border-soft bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <h3 className="text-lead font-semibold text-ink">{resource.title}</h3>
+          <div className="mt-1 flex items-center gap-2 text-caption text-muted">
+            <Badge tone={type.tone}>{type.label}</Badge>
+            <span>{resource.updatedAt}</span>
+          </div>
+        </div>
         {editable ? (
           <RowMenu
             ariaLabel={`${resource.title} — үйлдэл`}
-            className="absolute right-2 top-2 rounded-pill bg-surface/90 shadow-sm"
             triggerIcon={<MoreVertical size={18} aria-hidden="true" />}
             items={[
               { label: "Засах", icon: <Pencil size={16} />, onSelect: onEdit },
@@ -363,55 +382,178 @@ function ResourceCard({
         ) : null}
       </div>
 
-      <div className="flex flex-1 flex-col gap-3 p-4">
-        <div>
-          <h3 className="text-lead font-semibold text-ink">{resource.title}</h3>
-          {resource.description ? (
-            <p className="mt-1 text-body leading-relaxed text-muted">{resource.description}</p>
-          ) : null}
-        </div>
+      {resource.description ? (
+        <p className="text-body leading-relaxed text-ink">{resource.description}</p>
+      ) : null}
 
-        {resource.fileUrl && resource.fileType?.startsWith("audio/") ? (
-          <audio controls preload="metadata" src={resource.fileUrl} className="mt-auto w-full">
-            Таны браузер аудио тоглуулах боломжгүй байна.
-          </audio>
-        ) : null}
-
-        {resource.fileUrl && resource.fileType?.startsWith("image/") ? (
-          <a href={resource.fileUrl} target="_blank" rel="noreferrer" className="mt-auto">
+      {mediaUrl ? (
+        <button
+          type="button"
+          aria-label={`${resource.title} — томоор харах`}
+          onClick={() => setViewer("media")}
+          className="relative grid max-h-[420px] min-h-44 w-full place-items-center overflow-hidden rounded-control bg-canvas"
+        >
+          {image ? (
             <img
-              src={resource.fileUrl}
-              alt={`${resource.title} файлын зураг`}
-              className="max-h-44 w-full rounded-row border border-border bg-sunken object-contain"
+              src={mediaUrl}
+              alt={`${resource.title} зураг`}
+              className="max-h-[420px] w-full object-contain"
             />
-          </a>
-        ) : null}
+          ) : (
+            <span className="flex flex-col items-center gap-2 px-4 py-8 text-primary">
+              {audio || video ? (
+                <Play size={42} aria-hidden="true" />
+              ) : (
+                <FileText size={42} aria-hidden="true" />
+              )}
+              <span className="max-w-full truncate text-body font-semibold text-ink">
+                {mediaName || (audio ? "Сонсох" : "Файл харах")}
+              </span>
+            </span>
+          )}
+        </button>
+      ) : null}
 
-        {resource.fileUrl &&
-        !resource.fileType?.startsWith("audio/") &&
-        !resource.fileType?.startsWith("image/") ? (
-          <Button asChild variant="secondary" size="sm" block className="mt-auto">
-            <a
-              href={resource.fileUrl}
-              target="_blank"
-              rel="noreferrer"
-              download={resource.fileName}
-            >
-              <FileDown aria-hidden="true" />
-              Файл нээх
-            </a>
-          </Button>
-        ) : null}
+      {resource.linkUrl ? (
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => setViewer("link")}
+          className="self-start"
+        >
+          <Play aria-hidden="true" /> Шууд сонсох
+        </Button>
+      ) : null}
 
-        <div className="mt-auto flex items-center justify-between gap-2 border-t border-border-soft pt-3 text-caption text-muted">
-          <span className="truncate">
-            {resource.fileName ?? resource.coverFileName ?? "Тайлбар"}
-          </span>
-          <span className="shrink-0">{resource.updatedAt}</span>
+      {viewer ? (
+        <ResourceViewer
+          title={resource.title}
+          url={viewer === "link" ? resource.linkUrl! : mediaUrl!}
+          type={viewer === "link" ? undefined : mediaType}
+          fileName={viewer === "link" ? undefined : mediaName}
+          onClose={() => setViewer(null)}
+        />
+      ) : null}
+    </article>
+  );
+}
+
+function ResourceViewer({
+  title,
+  url,
+  type,
+  fileName,
+  onClose,
+}: {
+  title: string;
+  url: string;
+  type?: string;
+  fileName?: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const key = (event: KeyboardEvent) => event.key === "Escape" && onClose();
+    document.addEventListener("keydown", key);
+    return () => {
+      document.body.style.overflow = previous;
+      document.removeEventListener("keydown", key);
+    };
+  }, [onClose]);
+
+  const isImage = type?.startsWith("image/") || /\.(png|jpe?g|webp|gif)(\?|$)/i.test(url);
+  const isAudio = type?.startsWith("audio/") || /\.(mp3|wav|m4a|ogg)(\?|$)/i.test(url);
+  const isVideo = type?.startsWith("video/") || /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-ink/80 p-3 sm:p-6"
+    >
+      <button
+        type="button"
+        aria-hidden="true"
+        tabIndex={-1}
+        className="absolute inset-0"
+        onClick={onClose}
+      />
+      <div className="relative z-10 flex max-h-full w-full max-w-4xl flex-col gap-3">
+        <Button
+          variant="secondary"
+          size="icon"
+          className="ml-auto"
+          onClick={onClose}
+          aria-label="Хаах"
+        >
+          <X aria-hidden="true" />
+        </Button>
+        <div className="flex min-h-64 flex-1 items-center justify-center overflow-hidden rounded-card bg-surface p-3 shadow-lg sm:p-5">
+          {isImage ? (
+            <img
+              src={url}
+              alt={title}
+              className="max-h-[calc(100vh-8rem)] max-w-full object-contain"
+            />
+          ) : isAudio ? (
+            <div className="flex w-full max-w-xl flex-col items-center gap-5 p-4">
+              <Music2 size={64} aria-hidden="true" className="text-primary" />
+              <h3 className="text-title font-semibold text-ink">{title}</h3>
+              <audio controls autoPlay src={url} className="w-full">
+                Таны браузер аудио тоглуулах боломжгүй байна.
+              </audio>
+            </div>
+          ) : isVideo ? (
+            <video controls autoPlay src={url} className="max-h-[calc(100vh-8rem)] max-w-full">
+              Таны браузер видео тоглуулах боломжгүй байна.
+            </video>
+          ) : embeddableLink(url) ? (
+            <iframe
+              src={embeddableLink(url)!}
+              title={fileName || title}
+              allow="autoplay; encrypted-media; picture-in-picture"
+              allowFullScreen
+              className="h-[75vh] w-full rounded-control bg-white"
+            />
+          ) : (
+            <div className="flex max-w-lg flex-col items-center gap-4 p-6 text-center">
+              <Link2 size={56} aria-hidden="true" className="text-primary" />
+              <h3 className="text-title font-semibold text-ink">{title}</h3>
+              <Button asChild>
+                <a href={url} target="_blank" rel="noreferrer">
+                  <ExternalLink aria-hidden="true" /> Нээх
+                </a>
+              </Button>
+            </div>
+          )}
         </div>
       </div>
-    </Card>
+    </div>
   );
+}
+
+function embeddableLink(value: string): string | null {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.replace(/^www\./, "");
+    if (host === "youtu.be") {
+      const id = url.pathname.split("/").filter(Boolean)[0];
+      return id ? `https://www.youtube-nocookie.com/embed/${id}` : null;
+    }
+    if (host === "youtube.com" || host === "m.youtube.com") {
+      const id = url.searchParams.get("v") ?? url.pathname.match(/^\/shorts\/([^/]+)/)?.[1];
+      return id ? `https://www.youtube-nocookie.com/embed/${id}` : null;
+    }
+    if (host === "drive.google.com") {
+      const match = url.pathname.match(/\/file\/d\/([^/]+)/);
+      return match?.[1] ? `https://drive.google.com/file/d/${match[1]}/preview` : null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 function ResourceFormDialog({
@@ -431,7 +573,7 @@ function ResourceFormDialog({
   const [title, setTitle] = useState("");
   const [type, setType] = useState<SongPoemType>("song");
   const [description, setDescription] = useState("");
-  const [cover, setCover] = useState<File | null>(null);
+  const [linkUrl, setLinkUrl] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -441,7 +583,7 @@ function ResourceFormDialog({
     setTitle(resource?.title ?? "");
     setType(resource?.type ?? "song");
     setDescription(resource?.description ?? "");
-    setCover(null);
+    setLinkUrl(resource?.linkUrl ?? "");
     setAttachment(null);
     setProblem(null);
   }, [open, resource]);
@@ -450,25 +592,32 @@ function ResourceFormDialog({
     event.preventDefault();
     const cleanTitle = title.trim();
     const cleanDescription = description.trim();
+    const cleanLink = linkUrl.trim();
     if (!cleanTitle) return setProblem("Нэрийг оруулна уу.");
-    if (!resource && !cover && !attachment) {
-      return setProblem("Нүүр зураг эсвэл дуу, шүлгийн файлаас дор хаяж нэгийг сонгоно уу.");
+    if (!resource && !attachment && !cleanLink) {
+      return setProblem("Зураг, файл эсвэл линкээс нэгийг оруулна уу.");
     }
-    if (cover && cover.size > MAX_IMAGE_BYTES) return setProblem("Нүүр зураг 5 MB-аас бага байна.");
+    if (attachment?.type.startsWith("video/")) {
+      return setProblem("Видео файл оруулах боломжгүй.");
+    }
     if (attachment && attachment.size > MAX_FILE_BYTES) {
-      return setProblem("Дуу, шүлгийн файл 10 MB-аас бага байна.");
+      return setProblem("Файл 10 MB-аас бага байна.");
     }
+    if (attachment?.type.startsWith("image/") && attachment.size > MAX_IMAGE_BYTES)
+      return setProblem("Зураг 5 MB-аас бага байна.");
 
     setSaving(true);
     setProblem(null);
     try {
+      // One attachment — a picture, a sound or a document — sent as the file.
       // A file not chosen again is kept by the server.
       await onSaved({
         month,
         title: cleanTitle,
         type,
         description: cleanDescription,
-        cover,
+        linkUrl: cleanLink || undefined,
+        cover: null,
         file: attachment,
       });
     } catch (cause) {
@@ -482,7 +631,7 @@ function ResourceFormDialog({
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={resource ? "Дуу, шүлэг засах" : "Дуу, шүлэг нэмэх"}
+      title={resource ? "Засах" : "Нэмэх"}
       busy={saving}
       footer={
         <>
@@ -503,68 +652,89 @@ function ResourceFormDialog({
       <form id={formId} onSubmit={(event) => void submit(event)} className="flex flex-col gap-4">
         <FormError message={problem} />
 
-        <Field label="Нэр" required>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Төрөл" required>
+            {({ id, describedBy, invalid }) => (
+              <Select
+                id={id}
+                value={type}
+                onChange={(event) => setType(event.target.value as SongPoemType)}
+                aria-describedby={describedBy}
+                invalid={invalid}
+              >
+                <option value="song">Дуу</option>
+                <option value="poem">Шүлэг</option>
+                <option value="folklore">Ардын аман зохиол</option>
+                <option value="fairy_tale">Үлгэр</option>
+              </Select>
+            )}
+          </Field>
+          <Field label="Нэр" required>
+            {({ id, describedBy, invalid }) => (
+              <Input
+                id={id}
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                aria-describedby={describedBy}
+                invalid={invalid}
+                placeholder="Алтан намар"
+              />
+            )}
+          </Field>
+        </div>
+
+        <Field label="Тайлбар" optional>
           {({ id, describedBy, invalid }) => (
             <Input
               id={id}
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              aria-describedby={describedBy}
-              invalid={invalid}
-              placeholder="Жишээ: Алтан намар"
-            />
-          )}
-        </Field>
-
-        <Field label="Төрөл" required>
-          {({ id, describedBy, invalid }) => (
-            <Select
-              id={id}
-              value={type}
-              onChange={(event) => setType(event.target.value as SongPoemType)}
-              aria-describedby={describedBy}
-              invalid={invalid}
-            >
-              <option value="song">Дуу</option>
-              <option value="poem">Шүлэг</option>
-              <option value="folklore">Ардын аман зохиол</option>
-              <option value="fairy_tale">Үлгэр</option>
-            </Select>
-          )}
-        </Field>
-
-        <Field label="Тайлбар" hint="Заавал биш">
-          {({ id, describedBy, invalid }) => (
-            <Textarea
-              id={id}
+              maxLength={160}
+              className="h-9 px-3 text-compact"
               value={description}
               onChange={(event) => setDescription(event.target.value)}
               aria-describedby={describedBy}
               invalid={invalid}
-              placeholder="Хүүхдүүд юу сурсан, гэртээ хэрхэн давтахыг товч бичнэ."
+              placeholder="Товч тайлбар"
             />
           )}
         </Field>
 
-        <UploadField
-          label="Нүүр зураг"
-          hint="JPEG, PNG, WebP · 5 MB хүртэл"
-          accept="image/jpeg,image/png,image/webp"
-          file={cover}
-          currentName={resource?.coverFileName}
-          icon={<ImagePlus aria-hidden="true" />}
-          onChange={setCover}
-        />
+        <Field label="Линк" optional>
+          {({ id, describedBy, invalid }) => (
+            <Input
+              id={id}
+              type="url"
+              value={linkUrl}
+              onChange={(event) => setLinkUrl(event.target.value)}
+              aria-describedby={describedBy}
+              invalid={invalid}
+              placeholder="https://"
+            />
+          )}
+        </Field>
 
-        <UploadField
-          label="Дуу, шүлгийн файл"
-          hint="Аудио, зураг, PDF эсвэл Word · 10 MB хүртэл"
-          accept="audio/*,image/*,application/pdf,.doc,.docx"
-          file={attachment}
-          currentName={resource?.fileName}
-          icon={<FileUp aria-hidden="true" />}
-          onChange={setAttachment}
-        />
+        <div role="group" className="grid grid-cols-2 gap-3" aria-label="Медиа оруулах">
+          <UploadField
+            label="Зураг"
+            accept="image/jpeg,image/png,image/webp"
+            file={attachment?.type.startsWith("image/") ? attachment : null}
+            currentName={resource?.fileType?.startsWith("image/") ? resource.fileName : undefined}
+            icon={<ImagePlus aria-hidden="true" />}
+            onChange={setAttachment}
+          />
+          <UploadField
+            label="Файл"
+            accept="audio/*,application/pdf,.doc,.docx,.mp3,.wav,.m4a,.ogg"
+            file={attachment && !attachment.type.startsWith("image/") ? attachment : null}
+            currentName={
+              resource?.fileType && !resource.fileType.startsWith("image/")
+                ? resource.fileName
+                : undefined
+            }
+            icon={<FileUp aria-hidden="true" />}
+            onChange={setAttachment}
+          />
+        </div>
+        {attachment ? <p className="truncate text-caption text-muted">{attachment.name}</p> : null}
       </form>
     </FormDialog>
   );
@@ -572,7 +742,6 @@ function ResourceFormDialog({
 
 function UploadField({
   label,
-  hint,
   accept,
   file,
   currentName,
@@ -580,7 +749,6 @@ function UploadField({
   onChange,
 }: {
   label: string;
-  hint: string;
   accept: string;
   file: File | null;
   currentName?: string;
@@ -588,7 +756,7 @@ function UploadField({
   onChange: (file: File | null) => void;
 }) {
   return (
-    <Field label={label} hint={hint}>
+    <Field label={label}>
       {({ id, describedBy }) => (
         <div>
           <input
@@ -602,7 +770,7 @@ function UploadField({
           <Button asChild variant="secondary" size="sm">
             <label htmlFor={id} className="w-full cursor-pointer justify-start">
               {icon}
-              <span className="truncate">{file?.name ?? currentName ?? "Файл сонгох"}</span>
+              <span className="truncate">{file?.name ?? currentName ?? label}</span>
             </label>
           </Button>
         </div>

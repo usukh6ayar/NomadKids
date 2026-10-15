@@ -37,6 +37,7 @@ export function Field({
   error,
   hint,
   required,
+  optional,
   children,
   className,
 }: {
@@ -57,6 +58,8 @@ export function Field({
   error?: string | null;
   hint?: string;
   required?: boolean;
+  /** Draws the optional marker beside the label, quietly rather than below the field. */
+  optional?: boolean;
   /** Receives the ids to bind. */
   children: (ids: { id: string; describedBy?: string; invalid: boolean }) => ReactNode;
   className?: string;
@@ -84,6 +87,9 @@ export function Field({
           <span className="text-danger" aria-hidden="true">
             {" *"}
           </span>
+        ) : null}
+        {optional ? (
+          <span className="ml-1 text-caption font-normal italic text-muted">/заавал биш/</span>
         ) : null}
       </LabelPrimitive.Root>
 

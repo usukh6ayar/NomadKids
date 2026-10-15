@@ -109,8 +109,9 @@ describe("the monthly songs and poems library", () => {
     await user.click(screen.getByRole("combobox", { name: /Төрөл/ }));
     await user.click(screen.getByRole("option", { name: "Үлгэр" }));
     await user.type(screen.getByLabelText(/Нэр/), "Цасан хүн");
+    await user.type(screen.getByLabelText(/Линк/), "https://youtu.be/abc123");
     await user.upload(
-      screen.getByLabelText("Дуу, шүлгийн файл"),
+      screen.getByLabelText("Файл"),
       new File(["audio"], "tsasan-hun.mp3", { type: "audio/mpeg" }),
     );
     await user.click(screen.getByRole("button", { name: "Хадгалах" }));
@@ -122,6 +123,7 @@ describe("the monthly songs and poems library", () => {
       expect(form.get("title")).toBe("Цасан хүн");
       expect((form.get("file") as File).name).toBe("tsasan-hun.mp3");
       expect(form.get("cover")).toBeNull();
+      expect(form.get("linkUrl")).toBe("https://youtu.be/abc123");
     });
   });
 
@@ -157,7 +159,37 @@ describe("the monthly songs and poems library", () => {
     expect(screen.queryByRole("button", { name: "Дуу, шүлэг нэмэх" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /үйлдэл/ })).not.toBeInTheDocument();
 
-    const audio = document.querySelector("audio");
-    expect(audio?.getAttribute("src")).toBe(downloadUrl(`/songs-poems/${SONG_ID}/file`));
+    // ★ The media box opens large (2026-10-12, the user); the sound plays there.
+    await user.click(screen.getByRole("button", { name: "Өглөөний мэнд — томоор харах" }));
+    const viewer = screen.getByRole("dialog", { name: "Өглөөний мэнд" });
+    expect(viewer.querySelector("audio")?.getAttribute("src")).toBe(
+      downloadUrl(`/songs-poems/${SONG_ID}/file`),
+    );
+  });
+
+  /*
+   * ★ A YouTube link plays inside the page (the CSP allows youtube-nocookie and
+   * Drive only); any other link is offered to open.
+   */
+  it("plays a YouTube link inside the page", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+      {
+        path: `/children/${CHILD_ID}/songs-poems`,
+        body: {
+          ...library(),
+          items: [{ ...SONG, linkUrl: "https://www.youtube.com/watch?v=abc123" }],
+        },
+      },
+    ]);
+    renderWithProviders(<ChildSongsPoemsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "9-р сар хавтас, 1 материал" }));
+    await user.click(screen.getByRole("button", { name: "Шууд сонсох" }));
+    const viewer = screen.getByRole("dialog", { name: "Өглөөний мэнд" });
+    expect(viewer.querySelector("iframe")?.getAttribute("src")).toBe(
+      "https://www.youtube-nocookie.com/embed/abc123",
+    );
   });
 });

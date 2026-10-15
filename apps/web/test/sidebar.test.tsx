@@ -443,11 +443,14 @@ describe("role-based navigation", () => {
     expect(within(nav).queryByRole("link", { name: "Удирдлага" })).not.toBeInTheDocument();
   });
 
-  it("keeps the songs and poems entry teacher-only until administration is built", async () => {
+  it("gives administration its own songs and poems table", async () => {
     renderShell(["ADMIN"]);
     const nav = await sections();
 
-    expect(within(nav).queryByRole("link", { name: "Дуу, шүлэг" })).not.toBeInTheDocument();
+    const link = within(nav).getByRole("link", { name: "Дуу, шүлэг" });
+    expect(link).toHaveAttribute("href", "/admin/songs-poems");
+    expect(link.querySelector("img")).toBeNull();
+    expect(link.querySelector("svg")).toHaveAttribute("stroke-width", "1.35");
   });
 
   /**
