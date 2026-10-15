@@ -230,6 +230,16 @@ export class EsisRosterImportRepository {
     });
   }
 
+  /**
+   * Enrols a child who has no live enrolment in this year — and ends any live
+   * one they hold in another, in the same transaction.
+   *
+   * ★ A new school year's import is the case (2026-10-16, the frontend's
+   * backend list №18): `findActiveEnrollment` looks in this year only, so the
+   * child kept last year's row ACTIVE beside the new one — counted twice by
+   * every roster, and last year's teacher kept their reach. The same rule
+   * `ChildrenRepository.enrollChild` keeps: enrolling a child moves them.
+   */
   createEnrollment(input: {
     kindergartenId: string;
     childId: string;
@@ -237,7 +247,13 @@ export class EsisRosterImportRepository {
     schoolYearId: string;
     startedOn: Date;
   }) {
-    return this.prisma.enrollment.create({ data: input, select: { id: true } });
+    return this.prisma.$transaction(async (tx) => {
+      await tx.enrollment.updateMany({
+        where: { childId: input.childId, status: "ACTIVE", deletedAt: null },
+        data: { status: "TRANSFERRED", endedOn: new Date() },
+      });
+      return tx.enrollment.create({ data: input, select: { id: true } });
+    });
   }
 
   /**

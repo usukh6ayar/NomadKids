@@ -1834,6 +1834,37 @@ describe("POST /kindergartens/:id/esis/roster-import", () => {
   });
 
   /*
+   * ★ A new school year's import closes last year's enrolment (2026-10-16,
+   * the frontend's backend list №18). `findActiveEnrollment` looks in this
+   * year only, so the child kept last year's row ACTIVE beside the new one:
+   * counted twice by every roster, and last year's teacher kept their reach.
+   */
+  it("moves a child enrolled last year, closing last year's enrolment", async () => {
+    await mapInstitution(a.kindergarten.id, superAdmin);
+    // The scenario's child, in the scenario's (last) year — known to ESIS.
+    await db.child.update({
+      where: { id: a.child.id },
+      data: { esisPersonId: String(CHILD_ROW.personId) },
+    });
+    const year = await withCurrentYear(a.kindergarten.id);
+    rosterReads([GROUP_ROW], [CHILD_ROW]);
+
+    const res = await authed(request(server()).post(url(a.kindergarten.id)), adminA).send({});
+    expect(res.status).toBe(200);
+    expect(res.body.enrollments.created).toBe(1);
+
+    const rows = await db.enrollment.findMany({
+      where: { childId: a.child.id, deletedAt: null },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(rows.map((e) => [e.schoolYearId, e.status])).toEqual([
+      [a.schoolYear.id, "TRANSFERRED"],
+      [year.id, "ACTIVE"],
+    ]);
+    expect(rows[0]!.endedOn).not.toBeNull();
+  });
+
+  /*
    * ★★★★ **A group typed by hand is adopted, not duplicated — even when the
    * capital letter differs.**
    *
