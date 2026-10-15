@@ -1248,3 +1248,79 @@ describe("which parent reports need a decision", () => {
     expect(marked.body.status).toBe("SICK");
   });
 });
+
+/**
+ * ★ A day's roster is who attended the group **that day** (2026-10-16, the
+ * frontend's backend list №19). The day sheet listed the ACTIVE enrolments —
+ * today's roster — so a past day showed a child who had joined since and hid
+ * one who had left, and a mark written for that day landed on the wrong row.
+ */
+describe("the roster of a given day", () => {
+  let newGroupId: string;
+
+  beforeEach(async () => {
+    // a.child left a.group on 2026-02-11 and joined a new group that day.
+    const newGroup = await createGroup(a.kindergarten.id, a.schoolYear.id, "Шинэ бүлэг");
+    newGroupId = newGroup.id;
+    await db.enrollment.update({
+      where: { id: a.enrollment.id },
+      data: { status: "TRANSFERRED", endedOn: new Date("2026-02-11") },
+    });
+    await db.enrollment.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        childId: a.child.id,
+        groupId: newGroup.id,
+        schoolYearId: a.schoolYear.id,
+        startedOn: new Date("2026-02-11"),
+      },
+    });
+  });
+
+  const sheet = async (groupId: string, date: string) => {
+    const res = await authed(
+      request(server()).get(`/v1/groups/${groupId}/attendance?date=${date}`),
+      await login(app, a.adminUser.username),
+    );
+    expect(res.status).toBe(200);
+    return res.body.map((row: { child: { id: string } }) => row.child.id);
+  };
+
+  it("lists the child in the group they attended that day, and only there", async () => {
+    expect(await sheet(a.group.id, "2026-02-10")).toContain(a.child.id);
+    expect(await sheet(newGroupId, "2026-02-10")).not.toContain(a.child.id);
+    expect(await sheet(a.group.id, "2026-02-11")).not.toContain(a.child.id);
+    expect(await sheet(newGroupId, "2026-02-11")).toContain(a.child.id);
+  });
+
+  it("keeps the child on the old group's week, the days they were there", async () => {
+    const res = await authed(
+      request(server()).get(
+        `/v1/groups/${a.group.id}/attendance/range?from=2026-02-09&to=2026-02-13`,
+      ),
+      teacherA,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.rows.map((row: { child: { id: string } }) => row.child.id)).toContain(
+      a.child.id,
+    );
+  });
+
+  it("writes a past day's mark onto the enrolment of that day", async () => {
+    const res = await authed(
+      request(server()).put(`/v1/groups/${a.group.id}/attendance`),
+      teacherA,
+    ).send({ date: "2026-02-10", entries: [{ childId: a.child.id, status: "PRESENT" }] });
+    expect(res.status).toBe(200);
+
+    const row = await db.attendance.findFirstOrThrow({
+      where: { childId: a.child.id, date: new Date("2026-02-10") },
+    });
+    expect(row.enrollmentId).toBe(a.enrollment.id);
+  });
+
+  it("leaves out a child archived as a mistake, on every day", async () => {
+    await db.child.update({ where: { id: a.child.id }, data: { deletedAt: new Date() } });
+    expect(await sheet(a.group.id, "2026-02-10")).not.toContain(a.child.id);
+  });
+});
