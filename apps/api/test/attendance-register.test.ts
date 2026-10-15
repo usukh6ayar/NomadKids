@@ -434,6 +434,34 @@ describe("the grid", () => {
     expect(row(joiner.id).expectedDays).toBe(3);
   });
 
+  /*
+   * ★ №19 — the register is drawn from the enrolments that covered the span,
+   * not from who is ACTIVE today. The end is exclusive: a child whose
+   * enrolment ended on Thursday was there Monday to Wednesday.
+   */
+  it("keeps a child who left during the span and drops one who joined after it", async () => {
+    const leaver = await createChild(a.kindergarten.id, { firstName: "Гарсан" });
+    const left = await enrollChild(a.kindergarten.id, leaver.id, a.group.id, a.schoolYear.id);
+    await db.enrollment.update({
+      where: { id: left.id },
+      data: { status: "ENDED", endedOn: new Date("2026-03-05") },
+    });
+    const later = await createChild(a.kindergarten.id, { firstName: "Дараа" });
+    const joined = await enrollChild(a.kindergarten.id, later.id, a.group.id, a.schoolYear.id);
+    await db.enrollment.update({
+      where: { id: joined.id },
+      data: { startedOn: new Date("2026-03-10") },
+    });
+
+    const res = await register(admin, a.kindergarten.id, "from=2026-03-02&to=2026-03-08");
+    const ids = res.body.items.map((r: { childId: string }) => r.childId);
+
+    expect(ids).toContain(leaver.id);
+    expect(ids).not.toContain(later.id);
+    const row = res.body.items.find((r: { childId: string }) => r.childId === leaver.id);
+    expect(row.expectedDays).toBe(3);
+  });
+
   it("totals across every matching child, not just the page on screen", async () => {
     await mark(a, a.enrollment.id, a.child.id, "2026-03-02", "PRESENT");
     await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");

@@ -1319,6 +1319,30 @@ describe("the roster of a given day", () => {
     expect(row.enrollmentId).toBe(a.enrollment.id);
   });
 
+  it("writes one child's past-day mark onto the enrolment of that day", async () => {
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/attendance/2026-02-10`),
+      await login(app, a.adminUser.username),
+    ).send({ status: "PRESENT" });
+    expect(res.status).toBe(200);
+    expect(res.body.enrollmentId).toBe(a.enrollment.id);
+  });
+
+  it("refuses one child's mark for a day they were in no group", async () => {
+    const joiner = await createChild(a.kindergarten.id, { firstName: "Шинэ" });
+    const joined = await enrollChild(a.kindergarten.id, joiner.id, newGroupId, a.schoolYear.id);
+    await db.enrollment.update({
+      where: { id: joined.id },
+      data: { startedOn: new Date("2026-02-11") },
+    });
+
+    const res = await authed(
+      request(server()).put(`/v1/children/${joiner.id}/attendance/2026-02-10`),
+      await login(app, a.adminUser.username),
+    ).send({ status: "PRESENT" });
+    expect(res.status).toBe(400);
+  });
+
   it("leaves out a child archived as a mistake, on every day", async () => {
     await db.child.update({ where: { id: a.child.id }, data: { deletedAt: new Date() } });
     expect(await sheet(a.group.id, "2026-02-10")).not.toContain(a.child.id);

@@ -676,7 +676,8 @@ export class AttendanceService {
         expectedDays: days.filter((day) => {
           const started = enrollment.startedOn.toISOString().slice(0, 10);
           const ended = enrollment.endedOn?.toISOString().slice(0, 10);
-          return day >= started && (!ended || day <= ended);
+          // The end is exclusive, as `enrolledOn` reads it in the repository.
+          return day >= started && (!ended || day < ended);
         }).length,
       };
     });
@@ -1177,8 +1178,8 @@ export class AttendanceService {
       throw new BadRequestException("Ирээдүйн огноонд ирц бүртгэх боломжгүй");
     }
 
-    const enrollment = await this.repo.activeEnrollment(childId);
-    if (!enrollment) throw new BadRequestException("Хүүхэд бүлэгт бүртгэлтэй биш байна");
+    const enrollment = await this.repo.enrollmentOn(childId, date);
+    if (!enrollment) throw new BadRequestException("Хүүхэд энэ өдөр бүлэгт бүртгэлгүй байсан");
 
     // `arrivedWith` sent with no `arrivedAt` means "just now" — the actual
     // moment of this request, not a client-supplied clock.
@@ -1319,8 +1320,8 @@ export class AttendanceService {
       throw new BadRequestException("Ирээдүйн огноонд ирц бүртгэх боломжгүй");
     }
 
-    const enrollment = await this.repo.activeEnrollment(childId);
-    if (!enrollment) throw new BadRequestException("Хүүхэд бүлэгт бүртгэлтэй биш байна");
+    const enrollment = await this.repo.enrollmentOn(childId, date);
+    if (!enrollment) throw new BadRequestException("Хүүхэд энэ өдөр бүлэгт бүртгэлгүй байсан");
 
     const record = await this.repo.recordPickup(enrollment.id, date, {
       pickedUpWith: dto.pickedUpWith,

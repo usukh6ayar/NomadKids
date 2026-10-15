@@ -268,10 +268,11 @@ export class AttendanceRepository {
       ...(filters.attendanceForm ? { attendanceForm: filters.attendanceForm } : {}),
     };
 
+    // ★ The enrolments that covered the span, not today's (№19) — `enrolledOn`.
+    // Spread first: the `child` filter below carries `deletedAt: null` itself.
     const enrollmentWhere: Prisma.EnrollmentWhereInput = {
+      ...enrolledOn(filters.from, filters.to),
       kindergartenId,
-      deletedAt: null,
-      status: "ACTIVE",
       ...(filters.groupIds?.length ? { groupId: { in: filters.groupIds } } : {}),
       ...(filters.childIds?.length ? { childId: { in: filters.childIds } } : {}),
       group: groupWhere,
@@ -832,6 +833,18 @@ export class AttendanceRepository {
   async activeEnrollment(childId: string) {
     return this.prisma.enrollment.findFirst({
       where: { childId, status: "ACTIVE", deletedAt: null },
+      orderBy: { startedOn: "desc" },
+      select: { id: true, kindergartenId: true, groupId: true },
+    });
+  }
+
+  /**
+   * The enrolment the child was in on `date` — a mark for a past day belongs
+   * to the group the child attended that day, not the one they attend now.
+   */
+  async enrollmentOn(childId: string, date: Date) {
+    return this.prisma.enrollment.findFirst({
+      where: { childId, ...enrolledOn(date, date) },
       orderBy: { startedOn: "desc" },
       select: { id: true, kindergartenId: true, groupId: true },
     });
