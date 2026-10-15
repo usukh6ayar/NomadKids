@@ -78,7 +78,16 @@ describe("the staff directory", () => {
       within(teachers)
         .getAllByRole("columnheader")
         .map((th) => th.textContent),
-    ).toEqual(["№", "Багшийн нэр", "Регистр", "Албан тушаал", "Хариуцсан бүлэг", "Утас", "Үйлдэл"]);
+    ).toEqual([
+      "№",
+      "Багшийн нэр",
+      "Регистр",
+      "Албан тушаал",
+      "Хариуцсан бүлэг",
+      "Утас",
+      "Төлөв",
+      "Үйлдэл",
+    ]);
     const row = within(teachers).getByRole("row", { name: /А\.Энх-Адьяа/ });
     const cells = within(row).getAllByRole("cell");
     // #147's fields: register, the post held here, and the live groups.
@@ -338,6 +347,82 @@ describe("the staff directory", () => {
   });
 
   // A post is free text, so the choices are the ones in use; a category is a list.
+  /*
+   * ★ 2026-10-15, the user: «идэвхтэй байгаа идэвхгүй байгааг хянах, харах»,
+   * and a way back from «Идэвхгүй болгох».
+   */
+  it("shows each row's state and filters by it through the API", async () => {
+    const user = userEvent.setup();
+    const api = stub();
+    renderWithProviders(<AdminUsersPage />);
+
+    const teachers = await screen.findByRole("table", { name: "Багшийн жагсаалт" });
+    const row = within(teachers).getByRole("row", { name: /А\.Энх-Адьяа/ });
+    expect(within(row).getByText("Идэвхтэй")).toBeInTheDocument();
+    expect(within(row).getByText(/нэвтрээгүй/)).toBeInTheDocument();
+
+    const section = screen.getByRole("heading", { name: "Багш" }).closest("section")!;
+    await user.click(within(section).getByLabelText("Төлөв"));
+    await user.click(await screen.findByRole("option", { name: "Идэвхгүй" }));
+    await waitFor(() =>
+      expect(
+        api.calls.some((c) => c.url.includes("roles=TEACHER") && c.url.includes("isActive=false")),
+      ).toBe(true),
+    );
+  });
+
+  it("reactivates a deactivated member of staff in the same role", async () => {
+    const user = userEvent.setup();
+    const inactive = {
+      ...TEACHER,
+      memberships: [{ ...TEACHER.memberships[0]!, isActive: false }],
+    };
+    const api = stubApi([
+      { path: `/users/${TEACHER_ID}/memberships`, method: "POST", status: 201, body: {} },
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: "/users/positions", body: [] },
+      { path: "/users?roles=TEACHER", body: page([inactive]) },
+      { path: "/users?roles=COOK", body: page([COOK]) },
+    ]);
+    renderWithProviders(<AdminUsersPage />);
+
+    const teachers = await screen.findByRole("table", { name: "Багшийн жагсаалт" });
+    expect(within(teachers).getByText("Идэвхгүй")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Анхбаяр Энх-Адьяа — үйлдэл/ }));
+    expect(screen.queryByRole("menuitem", { name: /Идэвхгүй болгох/ })).toBeNull();
+    await user.click(screen.getByRole("menuitem", { name: /Идэвхжүүлэх/ }));
+
+    await waitFor(() => {
+      const call = api.calls.find(
+        (c) => c.method === "POST" && c.url === `/users/${TEACHER_ID}/memberships`,
+      );
+      expect(call?.body).toEqual({ kindergartenId: KG, role: "TEACHER" });
+    });
+  });
+
+  it("takes back the invitation of someone who has never signed in", async () => {
+    const user = userEvent.setup();
+    stub();
+    renderWithProviders(<AdminUsersPage />);
+
+    await user.click(await screen.findByRole("button", { name: /Анхбаяр Энх-Адьяа — үйлдэл/ }));
+    await user.click(screen.getByRole("menuitem", { name: /Урилга буцаах/ }));
+    const membershipId = TEACHER.memberships[0]!.id;
+    const api = stubApi([
+      { path: `/memberships/${membershipId}/invitation`, method: "DELETE", status: 204 },
+    ]);
+    const dialog = await screen.findByRole("dialog", { name: "Урилгыг буцаах уу?" });
+    await user.click(within(dialog).getByRole("button", { name: "Урилга буцаах" }));
+
+    await waitFor(() =>
+      expect(
+        api.calls.some(
+          (c) => c.method === "DELETE" && c.url === `/memberships/${membershipId}/invitation`,
+        ),
+      ).toBe(true),
+    );
+  });
+
   it("filters teachers by post and staff by category through the API", async () => {
     const user = userEvent.setup();
     const api = stub();

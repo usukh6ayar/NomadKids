@@ -208,4 +208,15 @@ export class UsersController {
   ): Promise<void> {
     await this.service.revokeMembership(actor, params.id);
   }
+
+  /** Takes back an invitation never used, so the person can be invited afresh. */
+  @Delete("memberships/:id/invitation")
+  @Roles("ADMIN")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async revokeInvitation(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ): Promise<void> {
+    await this.service.revokeInvitation(actor, params.id);
+  }
 }

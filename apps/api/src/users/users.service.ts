@@ -627,6 +627,46 @@ export class UsersService {
     });
   }
 
+  /**
+   * Takes back an invitation the person never used (the user, 2026-10-15).
+   *
+   * ★ An invitation's code is stored hashed and shown once. A director who lost
+   * the card, or invited the wrong person, had no way back: the account existed,
+   * so the person was off the ESIS unclaimed list for good. Revoking archives
+   * the account and returns them to it, and «Урих» prints a fresh card.
+   *
+   * Only before the first sign-in. Somebody who has signed in has a history
+   * here, and the way to stop their access is `revokeMembership`.
+   */
+  async revokeInvitation(actor: Actor, membershipId: string) {
+    const scope = this.tenants.adminKindergartenIds(actor);
+    const membership = await this.repo.findMembership(membershipId, scope);
+    if (!membership) throw new NotFoundException();
+    const user = await this.repo.findInScope(membership.userId, scope);
+    if (!user) throw new NotFoundException();
+    if (user.lastLoginAt) {
+      throw new ConflictException(
+        "Энэ хүн системд нэвтэрсэн тул урилгыг буцаах боломжгүй. «Идэвхгүй болгох»-ыг ашиглана уу.",
+      );
+    }
+
+    const result = await this.repo.revokeInvitation(membershipId, membership.userId);
+    await this.audit.append({
+      action: "DELETE",
+      kindergartenId: membership.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "Membership",
+      objectId: membershipId,
+      metadata: {
+        change: "invitation_revoked",
+        role: membership.role,
+        userId: membership.userId,
+        accountArchived: result.accountArchived,
+        before: { isActive: membership.isActive, esisPersonId: result.esisPersonId },
+      },
+    });
+  }
+
   // ── Own profile ───────────────────────────────────────────────────────────
 
   async getOwnProfile(actor: Actor) {

@@ -125,7 +125,15 @@ export const listUsersQuerySchema = paginationQuerySchema.extend({
   kindergartenId: uuidSchema.optional(),
   role: roleSchema.optional(),
   roles: rolesSchema.optional(),
-  isActive: z.coerce.boolean().optional(),
+  /**
+   * «Идэвхтэй / Идэвхгүй» — the membership's state here. An enum for the same
+   * reason as `hasGroup` below: `z.coerce.boolean()` read "false" as `true`,
+   * so asking for the inactive staff listed the active ones (2026-10-15).
+   */
+  isActive: z
+    .enum(["true", "false"])
+    .transform((value) => value === "true")
+    .optional(),
   q: searchTermSchema,
   /** Staff assigned to this group. */
   groupId: uuidSchema.optional(),

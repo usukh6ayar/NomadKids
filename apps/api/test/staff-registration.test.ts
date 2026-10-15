@@ -746,4 +746,98 @@ describe("a director invites from the ESIS roster", () => {
     expect(res.status).toBe(404);
     expect(await db.user.count({ where: { esisPersonId: { not: null } } })).toBe(0);
   });
+
+  /**
+   * ★ Taking an invitation back (the user, 2026-10-15). The code on the card is
+   * stored hashed and is shown once; a director who lost it, or invited the
+   * wrong person, had no way back — the person was off the unclaimed list for
+   * good. Revoking returns them to it, so a fresh card can be printed.
+   */
+  describe("taking an invitation back", () => {
+    const revoke = (membershipId: string) => `/v1/memberships/${membershipId}/invitation`;
+
+    async function inviteTeacher() {
+      const res = await authed(request(server()).post(url(a.kindergarten.id)), a.adminSession).send(
+        { esisPersonId: "esis-teacher" },
+      );
+      expect(res.status).toBe(201);
+      const user = await db.user.findUniqueOrThrow({
+        where: { esisPersonId: "esis-teacher" },
+        include: { memberships: true },
+      });
+      return { user, membership: user.memberships[0]!, token: res.body.items[0].invitationToken };
+    }
+
+    it("returns the person to the unclaimed list, and a new card can be printed", async () => {
+      const { user, membership, token } = await inviteTeacher();
+
+      const res = await authed(request(server()).delete(revoke(membership.id)), a.adminSession);
+      expect(res.status).toBe(204);
+
+      const unclaimed = await authed(
+        request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/esis/staff-roster/unclaimed`),
+        a.adminSession,
+      );
+      expect(
+        unclaimed.body.items.map((row: { esisPersonId: string }) => row.esisPersonId),
+      ).toContain("esis-teacher");
+
+      // The old card opens nothing.
+      const described = await request(server()).get(`/v1/auth/invitation/${token}`);
+      expect(described.body.valid).toBe(false);
+
+      // Archived, never deleted — and the ESIS id is free for the next account.
+      const row = await db.user.findUniqueOrThrow({ where: { id: user.id } });
+      expect(row.deletedAt).not.toBeNull();
+      expect(row.esisPersonId).toBeNull();
+      const audit = await db.auditLog.findFirst({
+        where: { objectType: "Membership", objectId: membership.id, action: "DELETE" },
+      });
+      expect(audit?.actorUserId).toBe(a.adminUser.id);
+
+      const again = await authed(
+        request(server()).post(url(a.kindergarten.id)),
+        a.adminSession,
+      ).send({ esisPersonId: "esis-teacher" });
+      expect(again.status).toBe(201);
+      expect(again.body.items).toHaveLength(1);
+    });
+
+    it("works after the membership was deactivated", async () => {
+      const { membership } = await inviteTeacher();
+      await authed(request(server()).delete(`/v1/memberships/${membership.id}`), a.adminSession);
+
+      const res = await authed(request(server()).delete(revoke(membership.id)), a.adminSession);
+      expect(res.status).toBe(204);
+    });
+
+    it("refuses once the person has signed in — that is «Идэвхгүй болгох»", async () => {
+      const { user, membership } = await inviteTeacher();
+      await db.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+
+      const res = await authed(request(server()).delete(revoke(membership.id)), a.adminSession);
+      expect(res.status).toBe(409);
+      const row = await db.user.findUniqueOrThrow({ where: { id: user.id } });
+      expect(row.deletedAt).toBeNull();
+    });
+
+    it("returns 404 to an admin of another kindergarten, and changes nothing", async () => {
+      const { user, membership } = await inviteTeacher();
+
+      const res = await authed(request(server()).delete(revoke(membership.id)), b.adminSession);
+      expect(res.status).toBe(404);
+      const row = await db.user.findUniqueOrThrow({ where: { id: user.id } });
+      expect(row.deletedAt).toBeNull();
+    });
+
+    it("returns 404 to a teacher of the same kindergarten", async () => {
+      const { membership } = await inviteTeacher();
+      const teacherUser = await createUser({ username: uniq("teacher-a") });
+      await createMembership(teacherUser.id, a.kindergarten.id, "TEACHER");
+      const teacherSession = await login(app, teacherUser.username);
+
+      const res = await authed(request(server()).delete(revoke(membership.id)), teacherSession);
+      expect(res.status).toBe(404);
+    });
+  });
 });
