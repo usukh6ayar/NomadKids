@@ -14,6 +14,25 @@ import type {
 import { searchWhere } from "../common/repository/search";
 
 /**
+ * Enrollments that held on at least one day of `from`..`to`: started by `to`,
+ * and not ended before `from`. Of an archived child, none.
+ *
+ * `endedOn` is exclusive — the day a transfer is recorded is the new group's
+ * (`ChildrenRepository.enrollChild` ends one row and starts the next the same
+ * day), so the child is on one sheet that day, not two. A row that is not
+ * ACTIVE yet carries no `endedOn` is an old ended row with its date lost; it
+ * counts on no day rather than on every day.
+ */
+function enrolledOn(from: Date, to: Date): Prisma.EnrollmentWhereInput {
+  return {
+    deletedAt: null,
+    child: { deletedAt: null },
+    startedOn: { lte: to },
+    OR: [{ endedOn: null, status: "ACTIVE" }, { endedOn: { gt: from } }],
+  };
+}
+
+/**
  * Attendance records and the guardian requests that precede them.
  *
  * ★ Unlike observations, there is no parent-visibility filter to build here —
@@ -77,14 +96,20 @@ export class AttendanceRepository {
 
   /**
    * The whole group's attendance for one day, plus the roster it should cover.
-   * `children` is every currently-enrolled child in the group; `records` is
-   * whatever has been marked so far — the caller reconciles the two so an
+   * `children` is every child enrolled in the group **on that day**; `records`
+   * is whatever has been marked so far — the caller reconciles the two so an
    * unmarked child shows up as unmarked rather than silently missing.
+   *
+   * ★ That day's roster, not today's (2026-10-16, the frontend's backend list
+   * №19). Reading `status: "ACTIVE"` put today's children on every past day —
+   * one who joined since appeared, one who left vanished — and the group write
+   * and the ESIS submission, which take their roster from here, wrote that day
+   * against the wrong rows. `enrolledOn` is the rule.
    */
   async groupDaySheet(groupId: string, date: Date) {
     const [enrollments, records] = await Promise.all([
       this.prisma.enrollment.findMany({
-        where: { groupId, status: "ACTIVE", deletedAt: null },
+        where: { groupId, ...enrolledOn(date, date) },
         select: {
           id: true,
           childId: true,
@@ -111,7 +136,9 @@ export class AttendanceRepository {
   async groupRangeSheet(groupId: string, from: Date, to: Date) {
     const [enrollments, records] = await Promise.all([
       this.prisma.enrollment.findMany({
-        where: { groupId, status: "ACTIVE", deletedAt: null },
+        // Everyone enrolled on any day of the span — a child who moved mid-week
+        // is on both groups' weeks, each with the days they were there.
+        where: { groupId, ...enrolledOn(from, to) },
         select: {
           id: true,
           childId: true,
