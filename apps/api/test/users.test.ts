@@ -592,6 +592,24 @@ describe("memberships", () => {
     expect(row?.isActive).toBe(false);
   });
 
+  it("lists the deactivated apart from the active — «Идэвхгүй» means false", async () => {
+    // ★ `z.coerce.boolean()` read "false" as true, so this filter listed the
+    // active staff (2026-10-15).
+    await authed(request(server()).delete(`/v1/memberships/${a.teacherMembership.id}`), adminA);
+    const list = async (isActive: string) =>
+      (
+        await authed(
+          request(server()).get(
+            `/v1/users?kindergartenId=${a.kindergarten.id}&roles=TEACHER&isActive=${isActive}`,
+          ),
+          adminA,
+        )
+      ).body.items.map((user: { id: string }) => user.id);
+
+    expect(await list("false")).toEqual([a.teacherUser.id]);
+    expect(await list("true")).not.toContain(a.teacherUser.id);
+  });
+
   it("revoking a membership also ENDS its group assignments", async () => {
     // ★ Otherwise the GroupTeacher rows stay open, and reactivating the
     // membership later silently restores access to groups nobody re-granted.

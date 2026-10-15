@@ -245,6 +245,19 @@ describe("a PE or music teacher", () => {
     const res = await get("/v1/dashboard/primary", pe);
     expect(res.body.dashboard).toBe("specialist");
   });
+
+  it("loses the group when deactivated, and does not get it back on reactivation", async () => {
+    // ★ As with a class teacher's GroupTeacher row: left open, reactivating the
+    // membership would silently restore a group nobody re-granted.
+    const revoked = await authed(
+      request(server()).delete(`/v1/memberships/${peMembershipId}`),
+      adminA,
+    );
+    expect(revoked.status).toBe(204);
+
+    const row = await db.groupSpecialist.findUniqueOrThrow({ where: { id: peAssignmentId } });
+    expect(row.endedOn).not.toBeNull();
+  });
 });
 
 describe("the doctor", () => {

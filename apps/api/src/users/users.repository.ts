@@ -286,9 +286,61 @@ export class UsersRepository {
    * later silently restores access to groups nobody re-granted.
    */
   async endAssignmentsForMembership(membershipId: string) {
-    await this.prisma.groupTeacher.updateMany({
-      where: { membershipId, endedOn: null },
-      data: { endedOn: new Date() },
+    const now = new Date();
+    await this.prisma.$transaction([
+      this.prisma.groupTeacher.updateMany({
+        where: { membershipId, endedOn: null },
+        data: { endedOn: now },
+      }),
+      // A PE or music teacher's, or a doctor's, groups — the same reasoning.
+      this.prisma.groupSpecialist.updateMany({
+        where: { membershipId, endedOn: null },
+        data: { endedOn: now },
+      }),
+    ]);
+  }
+
+  /**
+   * Takes back an invitation nobody has used — `UsersService.revokeInvitation`.
+   *
+   * Archives the membership, ends its group assignments and spends every open
+   * token of the account. The account itself is archived only when nothing else
+   * holds it — no live membership elsewhere, no child it is the guardian of —
+   * and then its `esisPersonId` is released: the column is unique, and the
+   * person's next invitation creates a new account carrying it.
+   *
+   * Returns the ESIS id the account carried, for the audit row's `before`.
+   */
+  async revokeInvitation(membershipId: string, userId: string) {
+    const now = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      await tx.membership.update({
+        where: { id: membershipId },
+        data: { isActive: false, deletedAt: now },
+      });
+      await tx.groupTeacher.updateMany({
+        where: { membershipId, endedOn: null },
+        data: { endedOn: now },
+      });
+      await tx.groupSpecialist.updateMany({
+        where: { membershipId, endedOn: null },
+        data: { endedOn: now },
+      });
+      await tx.authToken.updateMany({ where: { userId, usedAt: null }, data: { usedAt: now } });
+
+      const [memberships, guardianships, user] = await Promise.all([
+        tx.membership.count({ where: { userId, deletedAt: null } }),
+        tx.guardianship.count({ where: { guardianUserId: userId, deletedAt: null } }),
+        tx.user.findUniqueOrThrow({ where: { id: userId }, select: { esisPersonId: true } }),
+      ]);
+      const accountArchived = memberships === 0 && guardianships === 0;
+      if (accountArchived) {
+        await tx.user.update({
+          where: { id: userId },
+          data: { deletedAt: now, isActive: false, esisPersonId: null },
+        });
+      }
+      return { accountArchived, esisPersonId: user.esisPersonId };
     });
   }
 }

@@ -17,8 +17,10 @@ import {
   Plus,
   KeyRound,
   Power,
+  RotateCcw,
   Send,
   Settings,
+  Undo2,
   UserRound,
   UsersRound,
   X,
@@ -162,6 +164,8 @@ function StaffSection({
   /** A teacher's free-text post — one of the ones in use here. */
   const [position, setPosition] = useState("");
   const [category, setCategory] = useState("");
+  /** «Төлөв» — the membership's state here (the user, 2026-10-15). */
+  const [status, setStatus] = useState<"" | "active" | "inactive">("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(20);
   const [editing, setEditing] = useState<StaffUser | null>(null);
@@ -169,6 +173,7 @@ function StaffSection({
   const [deactivating, setDeactivating] = useState<StaffUser | null>(null);
   const [resetFor, setResetFor] = useState<StaffUser | null>(null);
   const [inviting, setInviting] = useState<StaffUser | null>(null);
+  const [revokingInvite, setRevokingInvite] = useState<StaffUser | null>(null);
   const esisLinked = useEsisLinked();
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -188,6 +193,7 @@ function StaffSection({
   else if (teacher && groupFilter) filters.set("groupId", groupFilter);
   if (teacher && position) filters.set("position", position);
   if (!teacher && category) filters.set("staffCategory", category);
+  if (status) filters.set("isActive", status === "active" ? "true" : "false");
 
   const users = useQuery({
     queryKey: qk.adminUsers({
@@ -197,6 +203,7 @@ function StaffSection({
       group: groupFilter,
       position,
       category,
+      status,
       page: String(page),
       pageSize: String(pageSize),
     }),
@@ -239,6 +246,41 @@ function StaffSection({
       toast.success("Идэвхгүй болголоо.");
       setDeactivating(null);
       void queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  /*
+    «Идэвхжүүлэх» — re-granting the same role here reactivates the membership
+    (`UsersService.addMembership`). Its groups stay ended: they are given again
+    on «Анги, бүлэг», never restored silently.
+  */
+  const reactivate = useMutation({
+    mutationFn: (membership: { kindergartenId: string; role: string; userId: string }) =>
+      mutate(`/users/${membership.userId}/memberships`, z.unknown(), {
+        method: "POST",
+        body: { kindergartenId: membership.kindergartenId, role: membership.role },
+      }),
+    onSuccess: () => {
+      toast.success("Идэвхжүүллээ. Бүлгийг «Анги, бүлэг» хуудаснаас дахин оноогоорой.");
+      void queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  /*
+    «Урилга буцаах» — an invitation's code is shown once and stored hashed, so a
+    lost card cannot be shown again. Taking it back returns an ESIS person to
+    the list below, where «Урих» prints a fresh one (the user, 2026-10-15).
+  */
+  const revokeInvite = useMutation({
+    mutationFn: (membershipId: string) =>
+      mutate(`/memberships/${membershipId}/invitation`, z.unknown(), { method: "DELETE" }),
+    onSuccess: () => {
+      toast.success("Урилгыг буцаалаа.");
+      setRevokingInvite(null);
+      void queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+      void queryClient.invalidateQueries({ queryKey: UNCLAIMED_KEY });
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -302,7 +344,7 @@ function StaffSection({
         </div>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[200px_200px_minmax(0,1fr)]">
+      <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-[200px_200px_160px_minmax(0,1fr)]">
         {teacher ? (
           <Select
             aria-label="Албан тушаал"
@@ -359,6 +401,17 @@ function StaffSection({
             ))}
           </Select>
         )}
+        <Select
+          aria-label="Төлөв"
+          value={status}
+          onChange={(event) =>
+            resetting(setStatus)(event.target.value as "" | "active" | "inactive")
+          }
+        >
+          <option value="">Бүх төлөв</option>
+          <option value="active">Идэвхтэй</option>
+          <option value="inactive">Идэвхгүй</option>
+        </Select>
         <SearchField
           label={`${title} хайх`}
           placeholder="Нэр, регистр, утсаар хайх..."
@@ -393,7 +446,7 @@ function StaffSection({
         /* Scrolls sideways on a phone (2026-10-15, the user); the ⋯ menu is
            portalled out, so it still opens whole (as on Анги, бүлэг). */
         <div className="table-scroll rounded-card border border-border bg-surface">
-          <table className="w-full min-w-[760px] border-collapse text-body">
+          <table className="w-full min-w-[860px] border-collapse text-body">
             <caption className="sr-only">
               {teacher ? "Багшийн жагсаалт" : "Ажилтны жагсаалт"}
             </caption>
@@ -405,6 +458,7 @@ function StaffSection({
                 <Th className="py-2">Албан тушаал</Th>
                 <Th className="py-2">{teacher ? "Хариуцсан бүлэг" : "Ангилал"}</Th>
                 <Th className="py-2">Утас</Th>
+                <Th className="py-2">Төлөв</Th>
                 <Th className="w-12 rounded-tr-card py-2">
                   <span className="sr-only">Үйлдэл</span>
                 </Th>
@@ -413,6 +467,8 @@ function StaffSection({
             <tbody>
               {data.items.map((user, index) => {
                 const membership = sectionMembership(user, primaryKindergartenId, kind);
+                const active = membership?.isActive !== false;
+                const invitedOnly = !user.lastLoginAt && user.id !== session?.user.id;
                 return (
                   <tr key={user.id} className="hover:bg-sunken/60">
                     <Td className="py-1.5 tabular-nums text-muted">{offset + index + 1}</Td>
@@ -439,6 +495,21 @@ function StaffSection({
                           : "—"}
                     </Td>
                     <Td className="py-1.5 tabular-nums text-muted">{user.phone || "—"}</Td>
+                    <Td className="py-1.5">
+                      <span
+                        className={cn(
+                          "whitespace-nowrap rounded-pill px-2 py-0.5 text-caption font-medium",
+                          active ? "bg-mint text-mint-ink" : "bg-danger-soft text-danger",
+                        )}
+                      >
+                        {active ? "Идэвхтэй" : "Идэвхгүй"}
+                      </span>
+                      {invitedOnly ? (
+                        <span className="ml-1 whitespace-nowrap text-caption text-muted">
+                          · нэвтрээгүй
+                        </span>
+                      ) : null}
+                    </Td>
                     <Td className="py-1 text-right">
                       <RowMenu
                         ariaLabel={`${fullName(user)} — үйлдэл`}
@@ -477,8 +548,8 @@ function StaffSection({
                             who has signed in needs «Нууц үг сэргээх» instead.
                           */
                           ...(esisLinked === false &&
-                          !user.lastLoginAt &&
-                          user.id !== session?.user.id &&
+                          active &&
+                          invitedOnly &&
                           sectionMembership(user, primaryKindergartenId, kind)?.role !== "ADMIN"
                             ? [
                                 {
@@ -490,7 +561,7 @@ function StaffSection({
                             : []),
                           // Not on one's own row — one's own password is changed
                           // in «Хувийн тохиргоо» (2026-10-14, the user).
-                          ...(user.id === session?.user.id
+                          ...(user.id === session?.user.id || !active
                             ? []
                             : [
                                 {
@@ -499,13 +570,40 @@ function StaffSection({
                                   onSelect: () => setResetFor(user),
                                 },
                               ]),
-                          {
-                            label: "Идэвхгүй болгох",
-                            icon: <Power size={16} aria-hidden />,
-                            tone: "danger" as const,
-                            separated: true,
-                            onSelect: () => setDeactivating(user),
-                          },
+                          // Never signed in: the invitation can still be taken
+                          // back — the person returns to the ESIS list below.
+                          ...(invitedOnly && membership
+                            ? [
+                                {
+                                  label: "Урилга буцаах",
+                                  icon: <Undo2 size={16} aria-hidden />,
+                                  separated: true,
+                                  onSelect: () => setRevokingInvite(user),
+                                },
+                              ]
+                            : []),
+                          active
+                            ? {
+                                label: "Идэвхгүй болгох",
+                                icon: <Power size={16} aria-hidden />,
+                                tone: "danger" as const,
+                                separated: !invitedOnly,
+                                onSelect: () => setDeactivating(user),
+                              }
+                            : {
+                                label: "Идэвхжүүлэх",
+                                icon: <RotateCcw size={16} aria-hidden />,
+                                separated: !invitedOnly,
+                                onSelect: () => {
+                                  if (membership) {
+                                    reactivate.mutate({
+                                      userId: user.id,
+                                      kindergartenId: membership.kindergartenId,
+                                      role: membership.role,
+                                    });
+                                  }
+                                },
+                              },
                         ]}
                       />
                     </Td>
@@ -579,6 +677,26 @@ function StaffSection({
         }}
       />
       {inviting ? <StaffInviteDialog user={inviting} onClose={() => setInviting(null)} /> : null}
+      <ConfirmDialog
+        open={Boolean(revokingInvite)}
+        onOpenChange={(next) => (next ? undefined : setRevokingInvite(null))}
+        title="Урилгыг буцаах уу?"
+        description={
+          revokingInvite
+            ? `${fullName(revokingInvite)}-д өгсөн урилгын код хүчингүй болж, бүртгэл архивлагдана. ESIS-ийн ажилтан бол доорх жагсаалтад буцаж орох тул «Урих»-аар шинэ QR хэвлэнэ.`
+            : ""
+        }
+        confirmLabel="Урилга буцаах"
+        cancelLabel="Болих"
+        tone="danger"
+        pending={revokeInvite.isPending}
+        onConfirm={() => {
+          const membership = revokingInvite
+            ? sectionMembership(revokingInvite, primaryKindergartenId, kind)
+            : undefined;
+          if (membership) revokeInvite.mutate(membership.id);
+        }}
+      />
 
       {resetFor ? (
         <PasswordResetDialog
