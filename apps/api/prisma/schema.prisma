@@ -105,6 +105,10 @@ enum AgeBand {
   JUNIOR // Дунд бүлэг
   MIDDLE // Ахлах бүлэг
   SENIOR // Бэлтгэл бүлэг
+  /// Холимог бүлэг — children of several ages together (2026-10-16, №16).
+  /// No ESIS level: a mixed group cannot be created in ESIS from here
+  /// (`ESIS_AGE_BAND_UNMAPPED`), and a tariff for one age band never reaches it.
+  MIXED
 }
 
 enum GroupStatus {
@@ -2635,9 +2639,11 @@ model Invoice {
   lineItems    InvoiceLineItem[]
   payments     Payment[]
 
-  /// One invoice per child per month, among live rows — mirrors
-  /// `FundingCalculation`'s own `@@unique([childId, month, source])`.
-  @@unique([childId, month])
+  /// One invoice per child per month **per kindergarten** — a child who moves
+  /// mid-month is billed by each kindergarten for its own part (2026-10-16,
+  /// the frontend's backend list №20). It was `[childId, month]`, so the second
+  /// kindergarten could not bill the month at all.
+  @@unique([kindergartenId, childId, month])
   @@unique([kindergartenId, number])
   @@index([kindergartenId, month])
   @@index([kindergartenId, status])
@@ -5291,24 +5297,28 @@ model GroupRoutine {
 
 /// Дугуйлан — a group's after-hours club, kept by the group's teacher.
 model Club {
-  id             String    @id @default(uuid()) @db.Uuid
-  kindergartenId String    @db.Uuid
-  groupId        String    @db.Uuid
-  name           String
+  id               String    @id @default(uuid()) @db.Uuid
+  kindergartenId   String    @db.Uuid
+  groupId          String    @db.Uuid
+  name             String
   /// Who leads it, as text: often someone from outside with no account.
-  teacherName    String
-  room           String?
+  teacherName      String
+  room             String?
   /// Monday 1 … Friday 5.
-  days           Int[]
+  days             Int[]
   /// `HH:MM`.
-  startTime      String
-  endTime        String
+  startTime        String
+  endTime          String
   /// `DevelopmentDomain` names, checked on write.
-  areas          String[]
-  goal           String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  deletedAt      DateTime?
+  areas            String[]
+  goal             String?
+  /// What children do in the club, for families (2026-10-16, №21).
+  description      String?
+  /// A small cover photograph — a kindergarten image, checked on write.
+  photoMediaFileId String?   @db.Uuid
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
 
   kindergarten Kindergarten  @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   group        Group         @relation(fields: [groupId], references: [id], onDelete: Restrict)
@@ -5494,6 +5504,8 @@ model SongPoem {
   type           SongPoemType
   title          String
   description    String       @default("")
+  /// «Линк» — a YouTube or Google Drive page, `https:` only (2026-10-16, №21).
+  linkUrl        String?
 
   coverKey      String? @unique
   coverMimeType String?

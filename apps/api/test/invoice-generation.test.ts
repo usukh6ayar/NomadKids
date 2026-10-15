@@ -167,6 +167,58 @@ describe("generating from the tariffs", () => {
     expect(await db.invoice.count({ where: { childId: a.child.id } })).toBe(0);
   });
 
+  /*
+   * ★ №20 (2026-10-16): the key was (childId, month) across every
+   * kindergarten, so a child who moved mid-month could be billed by one of
+   * them only — and the lookup that decides "already invoiced" would have
+   * rewritten the other's invoice.
+   */
+  it("bills a child who moved mid-month in the new kindergarten too, leaving the old invoice alone", async () => {
+    await tariff();
+    expect((await generateMonth(accountant, a.kindergarten.id)).body.created).toBe(1);
+    const before = await db.invoice.findFirstOrThrow({ where: { childId: a.child.id } });
+
+    // The child moves to kindergarten B the same month.
+    await db.enrollment.update({
+      where: { id: a.enrollment.id },
+      data: { status: "TRANSFERRED", endedOn: new Date("2026-08-15") },
+    });
+    await db.enrollment.create({
+      data: {
+        kindergartenId: b.kindergarten.id,
+        childId: a.child.id,
+        groupId: b.group.id,
+        schoolYearId: b.schoolYear.id,
+        startedOn: new Date("2026-08-15"),
+      },
+    });
+    await db.fundingRule.create({
+      data: {
+        kindergartenId: b.kindergarten.id,
+        name: "Сургалтын төлбөр",
+        source: "PARENT",
+        effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
+        monthlyRate: "90000.00",
+        dependsOnAttendance: false,
+        dependsOnMeals: false,
+        invoiceItemKind: "TUITION",
+      } as never,
+    });
+
+    const res = await generateMonth(accountantB, b.kindergarten.id);
+    expect(res.status).toBe(201);
+
+    const rows = await db.invoice.findMany({
+      where: { childId: a.child.id, deletedAt: null },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(rows.map((r) => [r.kindergartenId, r.baseAmount.toString()])).toEqual([
+      [a.kindergarten.id, "150000"],
+      [b.kindergarten.id, "90000"],
+    ]);
+    expect(rows[0]!.updatedAt.getTime()).toBe(before.updatedAt.getTime());
+  });
+
   it("gives the invoice a number a parent can quote", async () => {
     await tariff();
     await generateMonth(accountant, a.kindergarten.id);

@@ -39,9 +39,15 @@ export class InvoicesRepository {
     });
   }
 
-  async findByChildAndMonth(childId: string, month: Date) {
+  /**
+   * This kindergarten's invoice for the child's month. ★ Scoped by the
+   * kindergarten (№20): a child who moved mid-month has one in each, and the
+   * caller updates what it finds — unscoped, it would rewrite the other
+   * kindergarten's invoice.
+   */
+  async findByChildAndMonth(kindergartenId: string, childId: string, month: Date) {
     return this.prisma.invoice.findFirst({
-      where: { childId, month, deletedAt: null },
+      where: { kindergartenId, childId, month, deletedAt: null },
       include: INVOICE_INCLUDE,
     });
   }
