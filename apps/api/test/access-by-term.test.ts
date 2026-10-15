@@ -1,6 +1,6 @@
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { localDate } from "@kinder/contracts";
 import { createTestApp } from "./support/app";
 import { resetData, testDb } from "./support/db";
@@ -140,6 +140,37 @@ describe("a term or the school year", () => {
     const closed = await authed(request(server()).get(`/v1/children/${a.child.id}`), parent);
 
     expect([open.status, closed.status]).toEqual([200, 402]);
+  });
+
+  it("closes at Ulaanbaatar's midnight, not at UTC's", async () => {
+    // ★ 2026-10-16: `expiresAt` is a DATE and the gate compared it with
+    // `new Date()`, which Prisma keys by its UTC day — yesterday in Ulaanbaatar
+    // until 08:00. A fee that ended yesterday stayed open till morning, and this
+    // file failed in CI whenever it ran in those hours.
+    await db.accessSubscription.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        childId: a.child.id,
+        schoolYearId: yearId,
+        period: "TERM",
+        termNumber: 1,
+        amount: "9000.00",
+        status: "ACTIVE",
+        paidAt: new Date("2026-10-01T00:00:00.000Z"),
+        expiresAt: new Date("2026-10-15T00:00:00.000Z"),
+      },
+    });
+
+    // 01:00 on 16 October in Ulaanbaatar; still the 15th in UTC.
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-15T17:00:00.000Z") });
+    try {
+      // Signed in on the same clock, or the session would be from the future.
+      const session = await login(app, a.parentUser.username);
+      const res = await authed(request(server()).get(`/v1/children/${a.child.id}`), session);
+      expect(res.status).toBe(402);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("the database keeps one YEAR row per child per year, and one per term", async () => {

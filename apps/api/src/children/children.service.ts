@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { localDate } from "@kinder/contracts";
 import { AuditRepository } from "../audit/audit.repository";
 import { AuthzRepository } from "../authz/authz.repository";
 import { loadEnv } from "../config/env";
@@ -125,7 +126,8 @@ export class ChildrenService {
     const fee = this.feeConfigured
       ? await this.repo.soloPortalFeeStates(
           items.map((c) => c.id),
-          new Date(),
+          // Ulaanbaatar's day, as the gate reads it — `ChildAccessService`.
+          new Date(`${localDate()}T00:00:00.000Z`),
         )
       : new Map<string, boolean>();
     const withFee = items.map((child) => {

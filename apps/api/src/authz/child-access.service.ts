@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
+import { localDate } from "@kinder/contracts";
 import { AuthzRepository } from "./authz.repository";
 import { loadEnv } from "../config/env";
 import type { Actor } from "./actor";
@@ -81,7 +82,11 @@ export class ChildAccessService {
   ): Promise<void> {
     if (!this.feeConfigured) return;
 
-    const active = await this.repo.loadPortalAccessActive(facts.childId, new Date());
+    // ★ `expiresAt` is a DATE column, and Prisma keys a Date by its UTC day —
+    // which is yesterday in Ulaanbaatar until 08:00. `new Date()` here left a
+    // fee that ran out yesterday open until eight in the morning (2026-10-16).
+    const today = new Date(`${localDate()}T00:00:00.000Z`);
+    const active = await this.repo.loadPortalAccessActive(facts.childId, today);
     const blocked = isPortalAccessBlocked(actor, facts, { required: true, active }, options);
     if (blocked === "guardian") {
       throw new PaymentRequiredException(
