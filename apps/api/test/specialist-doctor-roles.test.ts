@@ -106,6 +106,20 @@ describe("a PE or music teacher", () => {
     expect(res.body.guardianships).toEqual([]);
   });
 
+  it("loses the child's card once the child moves to a group they are not assigned to", async () => {
+    // ★ D2 reversed (2026-10-16): the group the child attends, not every group
+    // they ever did.
+    const moved = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/enrollments`),
+      adminA,
+    ).send({ groupId: otherGroupId });
+    expect(moved.status).toBe(201);
+
+    expect((await get(`/v1/children/${a.child.id}`, pe)).status).toBe(404);
+    const roster = await get("/v1/children?page=1&pageSize=50", pe);
+    expect(roster.body.items.map((c: { id: string }) => c.id)).not.toContain(a.child.id);
+  });
+
   it("lists only the assigned group's children, without their national ids", async () => {
     const res = await get("/v1/children?page=1&pageSize=50", pe);
 

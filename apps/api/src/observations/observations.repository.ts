@@ -12,6 +12,16 @@ import { searchWhere } from "../common/repository/search";
  * read path composes it — a list endpoint and a detail endpoint that build
  * their own filters is exactly how a private teaching note reaches a family.
  */
+/**
+ * Who is reading. `onlyOwn` is a teacher of a group the child has left — they
+ * read the staff observations they wrote and nothing else (2026-10-16).
+ */
+export interface ObservationViewer {
+  isGuardian: boolean;
+  userId: string;
+  onlyOwn?: boolean;
+}
+
 @Injectable()
 export class ObservationsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -29,7 +39,16 @@ export class ObservationsRepository {
    * Staff see everything about children they may reach; the child-level check
    * has already happened in `ChildAccessService`.
    */
-  readableWhere(childId: string, viewer: { isGuardian: boolean; userId: string }) {
+  readableWhere(childId: string, viewer: ObservationViewer) {
+    // A previous teacher — `isFormerTeacherOf`: the staff notes they wrote, only.
+    if (viewer.onlyOwn) {
+      return {
+        childId,
+        deletedAt: null,
+        source: "TEACHER" as ObservationSource,
+        authorId: viewer.userId,
+      };
+    }
     if (!viewer.isGuardian) return { childId, deletedAt: null };
 
     return {
@@ -44,7 +63,7 @@ export class ObservationsRepository {
 
   async list(
     childId: string,
-    viewer: { isGuardian: boolean; userId: string },
+    viewer: ObservationViewer,
     filters: ObservationFilters,
     page: PageParams,
   ) {
@@ -117,11 +136,7 @@ export class ObservationsRepository {
   }
 
   /** One observation, subject to the same visibility filter as the list. */
-  async findReadable(
-    observationId: string,
-    childId: string,
-    viewer: { isGuardian: boolean; userId: string },
-  ) {
+  async findReadable(observationId: string, childId: string, viewer: ObservationViewer) {
     return this.prisma.observation.findFirst({
       where: { AND: [this.readableWhere(childId, viewer), { id: observationId }] },
       include: {
@@ -227,7 +242,15 @@ export class ObservationsRepository {
     return this.prisma.observation.update({ where: { id }, data: { deletedAt: new Date() } });
   }
 
-  /** The review queue: parent submissions awaiting a teacher, in their groups. */
+  /**
+   * The review queue: parent submissions awaiting a teacher, about children who
+   * attend their groups **now**.
+   *
+   * ★ Matched through the child's ACTIVE enrollment, not the one the note was
+   * filed under — a note filed before a transfer belongs to the new teacher's
+   * queue, and the previous teacher may no longer act on it (D2 reversed,
+   * 2026-10-16).
+   */
   async listPendingForGroups(groupIds: string[], page: PageParams) {
     const { skip, take } = toSkipTake(page);
     if (groupIds.length === 0) return { items: [], total: 0 };
@@ -236,7 +259,12 @@ export class ObservationsRepository {
       deletedAt: null,
       source: "PARENT" as ObservationSource,
       reviewStatus: "PENDING" as ReviewStatus,
-      enrollment: { groupId: { in: groupIds }, deletedAt: null },
+      child: {
+        deletedAt: null,
+        enrollments: {
+          some: { groupId: { in: groupIds }, status: "ACTIVE" as const, deletedAt: null },
+        },
+      },
     };
 
     const [items, total] = await Promise.all([

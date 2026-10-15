@@ -217,13 +217,13 @@ export class AuthzRepository {
             some: { guardianUserId: actor.userId, canView: true, deletedAt: null },
           },
         },
-        // Teacher chain — via enrollment history, so a transferred child stays
-        // reachable to the teacher who taught them.
+        // Teacher chain — the group the child attends now, `isAssignedTeacherOf`'s
+        // twin. ★ Not the enrollment history (D2 reversed, the user 2026-10-16).
         ...(teachingGroupIds.length > 0
           ? [
               {
                 enrollments: {
-                  some: { groupId: { in: teachingGroupIds }, deletedAt: null },
+                  some: { groupId: { in: teachingGroupIds }, status: "ACTIVE", deletedAt: null },
                 },
               },
             ]
@@ -316,7 +316,13 @@ export class AuthzRepository {
         : [];
     const specialist =
       specialistGroupIds.length > 0
-        ? [{ enrollments: { some: { groupId: { in: specialistGroupIds }, deletedAt: null } } }]
+        ? [
+            {
+              enrollments: {
+                some: { groupId: { in: specialistGroupIds }, status: "ACTIVE", deletedAt: null },
+              },
+            },
+          ]
         : [];
 
     const full: VisibleChildrenFilter = { deletedAt: null, OR: [...base.OR, ...doctor] };

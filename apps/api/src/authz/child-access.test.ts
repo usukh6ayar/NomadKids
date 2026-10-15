@@ -17,6 +17,7 @@ import {
   isDoctorOver,
   seesFullChildCard,
   isAssignedTeacherOf,
+  isFormerTeacherOf,
   isGuardianOf,
   type ChildAccessFacts,
 } from "./child-access";
@@ -81,7 +82,7 @@ function facts(overrides: Partial<ChildAccessFacts> = {}): ChildAccessFacts {
 describe("childKindergartenIds", () => {
   it("derives the set from enrollment history, not the denormalised column", () => {
     // The child currently sits in KG_B but was enrolled in KG_A. Both appear;
-    // this is what keeps the previous teacher's own records reachable.
+    // this is what keeps a previous kindergarten's own records reachable.
     const set = childKindergartenIds(
       facts({
         childKindergartenId: KG_B,
@@ -179,17 +180,25 @@ describe("isAssignedTeacherOf", () => {
     expect(isAssignedTeacherOf(facts({ actorActiveTeachingGroupIds: [] }))).toBe(false);
   });
 
-  it("keeps access to a group the child has since left", () => {
-    // The teacher taught this child last year. Their own observations must not
-    // become unreachable because the child moved up.
+  it("does not reach a child who has left the group — D2 reversed, 2026-10-16", () => {
+    // The teacher taught this child last year. They keep the notes they wrote
+    // (`isFormerTeacherOf`), not the child's record.
     const f = facts({
       enrollments: [
-        { groupId: GROUP_1, kindergartenId: KG_A, active: false }, // ended, still history
+        { groupId: GROUP_1, kindergartenId: KG_A, active: false },
         { groupId: GROUP_2, kindergartenId: KG_A, active: true },
       ],
       actorActiveTeachingGroupIds: [GROUP_1],
     });
-    expect(isAssignedTeacherOf(f)).toBe(true);
+    expect(isAssignedTeacherOf(f)).toBe(false);
+    expect(isFormerTeacherOf(f)).toBe(true);
+  });
+
+  it("calls nobody a former teacher who teaches the child now, or never did", () => {
+    const now = facts({ actorActiveTeachingGroupIds: [GROUP_1] });
+    expect(isFormerTeacherOf(now)).toBe(false);
+    const never = facts({ actorActiveTeachingGroupIds: [GROUP_2] });
+    expect(isFormerTeacherOf(never)).toBe(false);
   });
 
   it("recognises a teacher assigned to several groups", () => {
@@ -320,8 +329,8 @@ describe("canArchiveChild", () => {
       ],
       actorActiveTeachingGroupIds: [GROUP_1],
     });
-    // Still reads the child — the history rule — but may not remove them.
-    expect(canAccessChild(teacher(), moved)).toBe(true);
+    // Neither reads nor removes them since 2026-10-16.
+    expect(canAccessChild(teacher(), moved)).toBe(false);
     expect(canArchiveChild(teacher(), moved)).toBe(false);
   });
 
