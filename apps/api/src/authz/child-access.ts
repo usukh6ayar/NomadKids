@@ -327,10 +327,26 @@ export function canContributeChildHealth(actor: Actor, facts: ChildAccessFacts):
 
 /**
  * May this actor administer this child — transfers, guardianship changes,
- * enrollment edits? Admins only.
+ * enrollment edits? Admins — and, in a solo workspace, its teacher.
  */
 export function canAdministerChild(actor: Actor, facts: ChildAccessFacts): boolean {
-  return isAdminOver(actor, facts);
+  return isAdminOver(actor, facts) || isSoloTeacherOver(actor, facts);
+}
+
+/**
+ * ★ Is this actor the teacher of the solo workspace the child belongs to?
+ *
+ * A solo workspace has no director (TEACHER only since 2026-10-14), so the
+ * administrator's acts on a child — linking or revoking a guardian, enrolling,
+ * ending an enrolment — had nobody to do them: an invitation sent to the
+ * wrong person could not be taken back. The user, 2026-10-16: the teacher
+ * does them. Their own workspace only; a contracted kindergarten's teacher
+ * never passes.
+ */
+export function isSoloTeacherOver(actor: Actor, facts: ChildAccessFacts): boolean {
+  if (facts.childKindergartenKind !== "SOLO_TEACHER") return false;
+  if (!childKindergartenIds(facts).has(facts.childKindergartenId)) return false;
+  return hasRoleIn(actor, Role.TEACHER, facts.childKindergartenId);
 }
 
 /**
