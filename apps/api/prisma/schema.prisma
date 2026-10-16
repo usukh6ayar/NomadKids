@@ -1466,7 +1466,12 @@ model Child {
   invoices            Invoice[]
   a79Links            ObservationA79Link[]
 
-  @@unique([kindergartenId, nationalId])
+  /// ★ One live child per register in a kindergarten — a partial unique
+  /// index (`WHERE "deletedAt" IS NULL`, migration 20261016160000), which
+  /// Prisma cannot express. A deleted child's register is free again: every
+  /// check in the code (`findByNationalId`, the roster import) already asked
+  /// only among live children, and the full index answered a re-import of a
+  /// deleted child with a 500 (2026-10-16, «4-р цэцэрлэг»).
   /// The lookup the ESIS authorization gate does on every per-child read.
   @@unique([kindergartenId, esisPersonId])
   @@index([kindergartenId, status])
