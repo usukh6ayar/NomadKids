@@ -2,19 +2,12 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
-import { z } from "zod";
-import { surveySchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { TeacherSheet, teacherSheetRowSchema } from "@/components/survey/teacher-sheet";
-
-const sheetSchema = z.object({
-  survey: surveySchema,
-  rows: z.array(teacherSheetRowSchema),
-});
+import { TeacherSheet, teacherSheetSchema } from "@/components/survey/teacher-sheet";
 
 /**
  * Багшийн судалгаа, filled in for the whole group at once — client,
@@ -34,7 +27,7 @@ function TeacherSheetScreen() {
 
   const sheet = useQuery({
     queryKey: ["survey", surveyId, "teacher-sheet"],
-    queryFn: () => get(`/surveys/${surveyId}/teacher-sheet`, sheetSchema),
+    queryFn: () => get(`/surveys/${surveyId}/teacher-sheet`, teacherSheetSchema),
   });
 
   const title = sheet.data?.survey.title ?? "Багшийн судалгаа";
