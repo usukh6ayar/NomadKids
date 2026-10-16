@@ -1,3 +1,4 @@
+import { localDate } from "@kinder/contracts";
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { SoloRulesRepository } from "./solo-rules.repository";
 
@@ -24,6 +25,28 @@ export class SoloRulesService {
     if (role === "PARENT") return;
     if ((await this.repo.kindOf(kindergartenId)) === "SOLO_TEACHER") {
       throw new BadRequestException("Бие даасан багшийн орчинд зөвхөн эцэг эхийг урина.");
+    }
+  }
+
+  /** Whether this is a solo teacher's workspace. */
+  async isSolo(kindergartenId: string): Promise<boolean> {
+    return (await this.repo.kindOf(kindergartenId)) === "SOLO_TEACHER";
+  }
+
+  /**
+   * ★ This year and the next, no more (the user, 2026-10-16). One group per
+   * year is only a limit if the years are: with no cap, a teacher opened
+   * «2026-2027», «2026-2027 Б», … and ran a group in each at once — a whole
+   * kindergarten without its contract. Two open years leave room to set up
+   * September's group before June's ends.
+   */
+  async assertCanAddSchoolYear(kindergartenId: string): Promise<void> {
+    if (!(await this.isSolo(kindergartenId))) return;
+    const today = new Date(`${localDate()}T00:00:00.000Z`);
+    if ((await this.repo.countOpenSchoolYears(kindergartenId, today)) >= 2) {
+      throw new BadRequestException(
+        "Бие даасан багш энэ болон дараагийн хичээлийн жилтэй ажиллана. Дууссан жил дуусахыг хүлээнэ үү.",
+      );
     }
   }
 

@@ -12,6 +12,7 @@ import {
   canContributeMediaForChild,
   canObserveChild,
   canReadChildCard,
+  canReadChildFile,
   canReadChildHealth,
   canReadObservations,
   canRecordChildHealth,
@@ -20,6 +21,7 @@ import {
   isFormerTeacherOf,
   isGuardianOf,
   type ChildAccessFacts,
+  type ChildFileFact,
 } from "./child-access";
 
 /**
@@ -74,6 +76,18 @@ export class ChildAccessService {
     const facts = await this.repo.loadChildAccessFacts(actor, childId);
     if (!facts || !canAccessChild(actor, facts)) throw new NotFoundException();
     return facts;
+  }
+
+  /**
+   * ★ The portal-fee gate for a group-level read that names children — the
+   * ids, among these, whose record a solo teacher may not open until the
+   * family pays (`isPortalAccessBlocked`'s "soloStaff"). A contracted
+   * kindergarten's staff are never gated, and no fee configured gates nobody.
+   * The caller leaves these children's record out; the roster stays open.
+   */
+  async soloStaffBlockedChildIds(childIds: string[]): Promise<Set<string>> {
+    if (!this.feeConfigured) return new Set();
+    return this.repo.unpaidSoloChildIds(childIds, new Date(`${localDate()}T00:00:00.000Z`));
   }
 
   private async assertFeePaid(
@@ -214,6 +228,15 @@ export class ChildAccessService {
   /** The health routes a family also writes to: contributors plus the doctor. */
   async assertCanContributeHealth(actor: Actor, childId: string): Promise<ChildAccessFacts> {
     return this.assertGated(actor, childId, canContributeChildHealth);
+  }
+
+  /** One of the child's files — `canReadChildFile`. Fee-gated as reading the child is. */
+  async assertCanReadFile(
+    actor: Actor,
+    childId: string,
+    file: ChildFileFact,
+  ): Promise<ChildAccessFacts> {
+    return this.assertGated(actor, childId, (a, facts) => canReadChildFile(a, facts, file));
   }
 
   private async assertGated(

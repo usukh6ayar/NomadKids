@@ -112,6 +112,7 @@ export class TenantsService {
 
   async createSchoolYear(actor: Actor, kindergartenId: string, dto: CreateSchoolYearDto) {
     await this.tenants.assertCanSetUpWorkspace(actor, kindergartenId);
+    await this.solo.assertCanAddSchoolYear(kindergartenId);
 
     // The repository demotes any existing current year inside the same
     // transaction — the partial unique index makes the ordering mandatory.
@@ -430,7 +431,30 @@ export class TenantsService {
       });
     }
 
-    return { outcome, movedCount: created.length, groupId: to.id };
+    /*
+     * ★ A solo teacher's old group, emptied by the move up, is archived with it
+     * (the user, 2026-10-16). Left live it stayed theirs — assigned, listed
+     * first by age band — so the dashboard and the rail opened last year's
+     * empty roster. A contracted kindergarten's director archives by hand.
+     */
+    let archivedFrom = false;
+    if (
+      (await this.solo.isSolo(from.kindergartenId)) &&
+      (await this.repo.countActiveEnrollments(fromGroupId)) === 0
+    ) {
+      await this.repo.softDeleteGroup(fromGroupId);
+      await this.audit.append({
+        action: "DELETE",
+        kindergartenId: from.kindergartenId,
+        actorUserId: actor.userId,
+        objectType: "Group",
+        objectId: fromGroupId,
+        metadata: { reason: "solo-promotion" },
+      });
+      archivedFrom = true;
+    }
+
+    return { outcome, movedCount: created.length, groupId: to.id, archivedFrom };
   }
 
   // ── Teacher assignments ───────────────────────────────────────────────────

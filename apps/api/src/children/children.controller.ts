@@ -204,7 +204,8 @@ export class ChildrenController {
   }
 
   @Post("children/:id/guardians")
-  @Roles("ADMIN")
+  // TEACHER for a solo workspace's teacher — `canAdministerChild` decides.
+  @Roles("ADMIN", "TEACHER")
   async addGuardian(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -292,7 +293,8 @@ export class ChildrenController {
   }
 
   @Post("children/:id/enrollments")
-  @Roles("ADMIN")
+  // TEACHER for a solo workspace's teacher — `canAdministerChild` decides.
+  @Roles("ADMIN", "TEACHER")
   async enroll(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
@@ -302,7 +304,8 @@ export class ChildrenController {
   }
 
   @Patch("enrollments/:id")
-  @Roles("ADMIN")
+  // TEACHER for a solo workspace's teacher — `canAdministerChild` decides.
+  @Roles("ADMIN", "TEACHER")
   async endEnrollment(
     @CurrentActor() actor: Actor,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },

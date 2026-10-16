@@ -434,6 +434,34 @@ describe("the grid", () => {
     expect(row(joiner.id).expectedDays).toBe(3);
   });
 
+  /*
+   * ★ №19 — the register is drawn from the enrolments that covered the span,
+   * not from who is ACTIVE today. The end is exclusive: a child whose
+   * enrolment ended on Thursday was there Monday to Wednesday.
+   */
+  it("keeps a child who left during the span and drops one who joined after it", async () => {
+    const leaver = await createChild(a.kindergarten.id, { firstName: "Гарсан" });
+    const left = await enrollChild(a.kindergarten.id, leaver.id, a.group.id, a.schoolYear.id);
+    await db.enrollment.update({
+      where: { id: left.id },
+      data: { status: "ENDED", endedOn: new Date("2026-03-05") },
+    });
+    const later = await createChild(a.kindergarten.id, { firstName: "Дараа" });
+    const joined = await enrollChild(a.kindergarten.id, later.id, a.group.id, a.schoolYear.id);
+    await db.enrollment.update({
+      where: { id: joined.id },
+      data: { startedOn: new Date("2026-03-10") },
+    });
+
+    const res = await register(admin, a.kindergarten.id, "from=2026-03-02&to=2026-03-08");
+    const ids = res.body.items.map((r: { childId: string }) => r.childId);
+
+    expect(ids).toContain(leaver.id);
+    expect(ids).not.toContain(later.id);
+    const row = res.body.items.find((r: { childId: string }) => r.childId === leaver.id);
+    expect(row.expectedDays).toBe(3);
+  });
+
   it("totals across every matching child, not just the page on screen", async () => {
     await mark(a, a.enrollment.id, a.child.id, "2026-03-02", "PRESENT");
     await mark(a, a.enrollment.id, a.child.id, "2026-03-03", "PRESENT");
@@ -1084,6 +1112,41 @@ describe("POST /kindergartens/:id/attendance/daily/submit", () => {
    * figure it produces feeds a funding claim. The error names which group and
    * which date so a director knows who to chase — a generic 400 would not.
    */
+  /*
+   * ★ №19 — a child who left mid-week stays on the register for the days they
+   * were there, and must count towards nothing after. Counting them would
+   * leave every later day «incomplete» for a mark nobody can make, and this
+   * submission would be refused for ever.
+   */
+  it("submits a day after a child left — the leaver is not a missing mark", async () => {
+    const leaver = await createChild(a.kindergarten.id, { firstName: "Гарсан" });
+    const left = await enrollChild(a.kindergarten.id, leaver.id, a.group.id, a.schoolYear.id);
+    await db.enrollment.update({
+      where: { id: left.id },
+      data: { status: "TRANSFERRED", endedOn: new Date("2026-03-04") },
+    });
+    await mark(a, left.id, leaver.id, "2026-03-03", "PRESENT");
+    await mark(a, a.enrollment.id, a.child.id, "2026-03-05", "PRESENT");
+
+    const daily = await authed(
+      request(server()).get(
+        `/v1/kindergartens/${a.kindergarten.id}/attendance/daily?from=2026-03-02&to=2026-03-06`,
+      ),
+      admin,
+    );
+    const day = (date: string) =>
+      daily.body.items.find(
+        (r: { groupId: string; date: string }) => r.groupId === a.group.id && r.date === date,
+      );
+    expect(day("2026-03-03").expected).toBe(2);
+    expect(day("2026-03-05")).toMatchObject({ expected: 1, complete: true });
+
+    const res = await submit(admin, a.kindergarten.id, [
+      { groupId: a.group.id, date: "2026-03-05" },
+    ]);
+    expect(res.status).toBe(201);
+  });
+
   it("refuses an incomplete register and names it", async () => {
     const second = await createChild(a.kindergarten.id, { firstName: "Хоёрдугаар" });
     await enrollChild(a.kindergarten.id, second.id, a.group.id, a.schoolYear.id);

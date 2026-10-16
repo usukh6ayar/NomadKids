@@ -345,3 +345,123 @@ describe("the roles that already existed", () => {
     }
   });
 });
+
+/**
+ * Follow-ups from the ultra review of #231 (2026-10-16).
+ */
+describe("follow-ups: role change, files, staff file, roster headline", () => {
+  async function file(data: Record<string, unknown>) {
+    return db.mediaFile.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        childId: a.child.id,
+        purpose: "CHILD_PHOTO",
+        storageKey: `test/${uniq("f")}.jpg`,
+        originalName: "a.jpg",
+        mimeType: "image/jpeg",
+        sizeBytes: 1,
+        ...data,
+      } as never,
+    });
+  }
+
+  async function staffNote(session: AuthSession) {
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/observations`),
+      session,
+    ).send({ typeId, observedOn: "2026-02-10", situation: "Тоглоомын буланд" });
+    expect(res.status).toBe(201);
+    return res.body.id as string;
+  }
+
+  const open = (id: string, session: AuthSession) => get(`/v1/media/${id}`, session);
+
+  it("a role changed away and back does not hand the old groups back", async () => {
+    for (const role of ["TEACHER", "PE_TEACHER"]) {
+      const changed = await authed(
+        request(server()).patch(`/v1/memberships/${peMembershipId}`),
+        adminA,
+      ).send({ role });
+      expect(changed.status).toBe(200);
+    }
+    const again = await login(
+      app,
+      (
+        await db.membership.findUniqueOrThrow({
+          where: { id: peMembershipId },
+          select: { user: { select: { username: true } } },
+        })
+      ).user.username!,
+    );
+
+    expect((await get(`/v1/children/${a.child.id}`, again)).status).toBe(404);
+  });
+
+  it("the card's readers open the profile photo, never the album", async () => {
+    const profile = await file({});
+    await db.child.update({ where: { id: a.child.id }, data: { photoMediaFileId: profile.id } });
+    const album = await file({});
+
+    for (const session of [pe, doctor]) {
+      expect((await open(profile.id, session)).status).toBe(302);
+      expect((await open(album.id, session)).status).toBe(404);
+    }
+  });
+
+  it("a group's PE teacher opens observation photos; the doctor does not", async () => {
+    const photo = await file({ purpose: "OBSERVATION", observationId: await staffNote(teacherA) });
+
+    expect((await open(photo.id, pe)).status).toBe(302);
+    expect((await open(photo.id, doctor)).status).toBe(404);
+  });
+
+  it("a teacher the child has left opens the photos on their own notes only", async () => {
+    const own = await file({ purpose: "OBSERVATION", observationId: await staffNote(teacherA) });
+    const others = await file({ purpose: "OBSERVATION", observationId: await staffNote(adminA) });
+    const moved = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/enrollments`),
+      adminA,
+    ).send({ groupId: otherGroupId });
+    expect(moved.status).toBe(201);
+
+    expect((await open(own.id, teacherA)).status).toBe(302);
+    expect((await open(others.id, teacherA)).status).toBe(404);
+  });
+
+  it("teacher from another kindergarten gets 404 for the profile photo", async () => {
+    const profile = await file({});
+    await db.child.update({ where: { id: a.child.id }, data: { photoMediaFileId: profile.id } });
+    expect((await open(profile.id, await login(app, b.teacherUser.username))).status).toBe(404);
+  });
+
+  it("the director files a doctor's staff record", async () => {
+    const doctorMembership = await db.membership.findFirstOrThrow({
+      where: { kindergartenId: a.kindergarten.id, role: "DOCTOR" },
+    });
+    const res = await authed(
+      request(server()).post(
+        `/v1/kindergartens/${a.kindergarten.id}/staff/${doctorMembership.userId}/records`,
+      ),
+      adminA,
+    ).send({
+      kind: "CERTIFICATE",
+      title: "Хүүхдийн эмчийн гэрчилгээ",
+      issuer: "ЭМЯ",
+      startedOn: "2024-03-01",
+    });
+    expect(res.status).toBe(201);
+  });
+
+  it("the roster headline counts the children the doctor's list shows", async () => {
+    const list = await get("/v1/children?pageSize=100", doctor);
+    const summary = await get("/v1/children/summary", doctor);
+    expect(summary.status).toBe(200);
+    expect(summary.body.total).toBe(list.body.total);
+    expect(summary.body.total).toBeGreaterThan(0);
+  });
+
+  it("a specialist assignment is dated", async () => {
+    const row = await db.groupSpecialist.findUniqueOrThrow({ where: { id: peAssignmentId } });
+    expect(row.startedOn).not.toBeNull();
+  });
+});
