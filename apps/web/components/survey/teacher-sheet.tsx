@@ -1,7 +1,6 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { z } from "zod";
 import {
@@ -169,7 +168,6 @@ export function TeacherSheet({
   editable: boolean;
 }) {
   const toast = useToast();
-  const router = useRouter();
   const queryClient = useQueryClient();
   const [savedAnswers] = useState<Answers>(() => answersFromRows(rows));
   const [answers, setAnswers] = useState<Answers>(() => answersFromRows(rows));
@@ -256,10 +254,6 @@ export function TeacherSheet({
       // Reloads the sheet too (`["survey", id, "teacher-sheet"]`). Not on an
       // error: that would remount the table and drop the rows not yet saved.
       void queryClient.invalidateQueries({ queryKey: ["survey", surveyId] });
-      // Back to «Судалгааны дүн» — 2026-10-16, the user: a save that stayed on
-      // the table read as nothing having happened. «Засах / үргэлжлүүлэх»
-      // there opens the table again.
-      router.push(`/surveys/${surveyId}`);
     },
     onError: (error) => toast.error(errorMessage(error)),
     onSettled: () => {
@@ -388,14 +382,6 @@ export function TeacherSheet({
                   }`
                 : "Хүүхэд бүрийн мөрөнд сонголтоо тэмдэглэнэ үү."}
           </p>
-          {/* «Буцах» before «Хадгалах» — 2026-10-16, the user. */}
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => router.push(`/surveys/${surveyId}`)}
-          >
-            Буцах
-          </Button>
           <Button
             type="submit"
             disabled={save.isPending || changedRows.length === 0 || emptied.length > 0}
