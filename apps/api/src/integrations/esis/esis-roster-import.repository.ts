@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import type { Prisma } from "../../generated/prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import type { AgeBand } from "../../domain/enums";
 import { normaliseName } from "./esis-roster.shared";
@@ -226,19 +227,29 @@ export class EsisRosterImportRepository {
   findActiveEnrollment(childId: string, schoolYearId: string) {
     return this.prisma.enrollment.findFirst({
       where: { childId, schoolYearId, status: "ACTIVE", deletedAt: null },
-      select: { id: true, groupId: true },
+      select: { id: true, groupId: true, startedOn: true },
     });
   }
 
   /**
-   * Enrols a child who has no live enrolment in this year — and ends any live
-   * one they hold in another, in the same transaction.
+   * Enrols a child who has no live enrolment in this year — and ends every
+   * other live one they hold, in the same transaction: enrolling a child
+   * moves them, the rule `ChildrenRepository.enrollChild` keeps (№18, #236).
    *
-   * ★ A new school year's import is the case (2026-10-16, the frontend's
-   * backend list №18): `findActiveEnrollment` looks in this year only, so the
-   * child kept last year's row ACTIVE beside the new one — counted twice by
-   * every roster, and last year's teacher kept their reach. The same rule
-   * `ChildrenRepository.enrollChild` keeps: enrolling a child moves them.
+   * ★ Three edges (review of #239, 2026-10-16):
+   *
+   *  - A later year. If the child is already live in a later school year of
+   *    this kindergarten, the import is of an older year and opens nothing —
+   *    ending the present for the past, or leaving two ACTIVE rows, are both
+   *    wrong. `null` says so.
+   *  - The start. ESIS's `actionDate` can predate the old row — a returning
+   *    child's original date, carried across years. Starting the new row
+   *    there would hand it last year's days and leave the old row covering
+   *    none, so it starts on the year's first day instead (or the day after
+   *    the old row's start, if that is later).
+   *  - The end. Old rows end on the day the new one starts, not the day the
+   *    import ran: `enrolledOn` treats the end as exclusive, and any other
+   *    date puts the child in two groups in between.
    */
   createEnrollment(input: {
     kindergartenId: string;
@@ -246,14 +257,81 @@ export class EsisRosterImportRepository {
     groupId: string;
     schoolYearId: string;
     startedOn: Date;
+    yearStartsOn: Date;
   }) {
     return this.prisma.$transaction(async (tx) => {
-      await tx.enrollment.updateMany({
+      const live = await tx.enrollment.findMany({
         where: { childId: input.childId, status: "ACTIVE", deletedAt: null },
-        data: { status: "TRANSFERRED", endedOn: new Date() },
+        select: {
+          id: true,
+          kindergartenId: true,
+          startedOn: true,
+          schoolYear: { select: { startsOn: true } },
+        },
       });
-      return tx.enrollment.create({ data: input, select: { id: true } });
+      if (live.some((row) => isLaterHere(row, input))) return null;
+
+      let startedOn = input.startedOn;
+      const latestStart = Math.max(...live.map((row) => row.startedOn.getTime()), -Infinity);
+      if (startedOn.getTime() <= latestStart) {
+        const dayAfter = new Date(latestStart + 86_400_000);
+        startedOn = input.yearStartsOn > dayAfter ? input.yearStartsOn : dayAfter;
+      }
+
+      await endRows(tx, live, startedOn);
+      const created = await tx.enrollment.create({
+        data: {
+          kindergartenId: input.kindergartenId,
+          childId: input.childId,
+          groupId: input.groupId,
+          schoolYearId: input.schoolYearId,
+          startedOn,
+        },
+        select: { id: true },
+      });
+      return { id: created.id, closed: live.length };
     });
+  }
+
+  /**
+   * The same ending for children whose enrolment this year already exists — an
+   * import before #236 left their old row live beside it, and running the
+   * import again is what clears it. One read for the whole roster, writes only
+   * where something is stale (§3.4). Returns how many rows it ended.
+   */
+  async closeStaleEnrollments(
+    current: { childId: string; enrollmentId: string; startedOn: Date }[],
+    here: { kindergartenId: string; yearStartsOn: Date },
+  ): Promise<number> {
+    if (current.length === 0) return 0;
+    const byChild = new Map(current.map((row) => [row.childId, row]));
+    const live = await this.prisma.enrollment.findMany({
+      where: {
+        childId: { in: [...byChild.keys()] },
+        id: { notIn: current.map((row) => row.enrollmentId) },
+        status: "ACTIVE",
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        childId: true,
+        kindergartenId: true,
+        startedOn: true,
+        schoolYear: { select: { startsOn: true } },
+      },
+    });
+    if (live.length === 0) return 0;
+
+    const laterHere = new Set(
+      live.filter((row) => isLaterHere(row, here)).map((row) => row.childId),
+    );
+    const stale = live.filter((row) => !laterHere.has(row.childId));
+    if (stale.length === 0) return 0;
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const row of stale) await endRows(tx, [row], byChild.get(row.childId)!.startedOn);
+    });
+    return stale.length;
   }
 
   /**
@@ -271,6 +349,31 @@ export class EsisRosterImportRepository {
       where: { id },
       data: { groupId },
       select: { id: true },
+    });
+  }
+}
+
+type LiveRow = {
+  id: string;
+  kindergartenId: string;
+  startedOn: Date;
+  schoolYear: { startsOn: Date };
+};
+
+/** A live row in a later school year of this same kindergarten. */
+function isLaterHere(row: LiveRow, here: { kindergartenId: string; yearStartsOn: Date }) {
+  return row.kindergartenId === here.kindergartenId && row.schoolYear.startsOn > here.yearStartsOn;
+}
+
+/**
+ * Ends rows on the day the next enrolment starts — never before a row's own
+ * start. TRANSFERRED, as `enrollChild` writes a move.
+ */
+async function endRows(tx: Prisma.TransactionClient, rows: LiveRow[], next: Date) {
+  for (const row of rows) {
+    await tx.enrollment.update({
+      where: { id: row.id },
+      data: { status: "TRANSFERRED", endedOn: row.startedOn > next ? row.startedOn : next },
     });
   }
 }
