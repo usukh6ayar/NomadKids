@@ -17,7 +17,9 @@ import { problemSchema, type Problem } from "@kinder/contracts";
  * helper rather than a flag that can be set by accident.
  */
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ??
+  (process.env.NODE_ENV === "production" ? "https://api.nomadkids.mn" : "http://localhost:3001");
 const API_PREFIX = "/v1";
 
 /**
