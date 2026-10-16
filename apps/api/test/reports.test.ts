@@ -475,6 +475,25 @@ describe("portfolio generation", () => {
     expect(countImages(pdf)).toBe(before + 2);
   }, 180_000);
 
+  /**
+   * A suggested milestone needs no title of its own, so the PDF names it by
+   * its kind's label — never the stored code a family cannot read.
+   */
+  it("names an untitled milestone by its kind's Mongolian label", async () => {
+    if (!pdftotextAvailable()) throw new Error("pdftotext (poppler) is required");
+
+    const res = await authed(
+      request(app.getHttpServer()).post(`/v1/children/${a.child.id}/milestones`),
+      teacherA,
+    ).send({ kind: "FIRST_STEP", occurredOn: "2025-03-01" });
+    expect(res.status).toBe(201);
+
+    const text = extractText(await generatedPdf(await createJob(teacherA, a.child.id)));
+
+    expect(text).toContain("Анхны алхам");
+    expect(text).not.toContain("FIRST_STEP");
+  }, 120_000);
+
   it("prints representative photographs in the age-album comparison", async () => {
     if (!pdftotextAvailable()) throw new Error("pdftotext (poppler) is required");
 
