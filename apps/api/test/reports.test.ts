@@ -375,11 +375,11 @@ describe("portfolio generation", () => {
     // …including the two characters unique to Mongolian, which a Russian-only
     // fallback font would drop.
     expect(text).toMatch(/[өүӨҮ]/);
-    // …and the actual identity content, not just chrome. Observation records
-    // are deliberately absent from the redesigned family portfolio.
+    // …and the actual identity content, not just chrome — and, since the
+    // 2026-10-16 redesign (#245, accepted by the user), the teacher's notes.
     expect(text).toContain(a.child.lastName);
     expect(text).toContain("Миний тухай");
-    expect(text).not.toContain(SHARED_NOTE);
+    expect(text).toContain(SHARED_NOTE);
   }, 120_000);
 
   /**
@@ -467,7 +467,7 @@ describe("portfolio generation", () => {
     const pdf = await generatedPdf(await createJob(teacherA, a.child.id));
     const text = extractText(pdf);
 
-    expect(text).toContain("Бүтээлийн өмнөх ба дараах ахиц");
+    expect(text).toContain("Бүтээлийн ахицын цуваа");
     expect(text).toContain(CONCLUSION);
     expect(text).not.toContain("Онцгой үйл явдал");
 
@@ -493,7 +493,7 @@ describe("portfolio generation", () => {
     const pdf = await generatedPdf(await createJob(teacherA, a.child.id));
     const text = extractText(pdf);
 
-    expect(text).toContain("Зургийн цомгийн харьцуулалт");
+    expect(text).toContain("Нас насны зургийн цомог");
     expect(text).toContain("Миний төрсөн өдөр");
     expect(text).toContain("Гурван насны төрсөн өдөр");
     expect(countImages(pdf)).toBe(before + 1);
@@ -587,8 +587,13 @@ describe("portfolio generation", () => {
     expect(job.progressPercent).toBe(100);
   }, 120_000);
 
-  /** The redesigned portfolio excludes the observation section for everyone. */
-  it("omits observation notes from both guardian and staff copies", async () => {
+  /**
+   * «Багшийн ажиглалт» in the portfolio — 2026-10-16, the redesign the user
+   * accepted (#245). Each copy prints the notes its reader may read
+   * (`ObservationsRepository.readableWhere`): the family's copy never carries
+   * a teacher's private note.
+   */
+  it("prints shared notes in both copies and a private note only in the staff copy", async () => {
     if (!pdftotextAvailable()) throw new Error("pdftotext (poppler) is required");
 
     await seedObservations(a);
@@ -596,14 +601,15 @@ describe("portfolio generation", () => {
     const parentJobId = await createJob(parentA, a.child.id);
     const parentText = extractText(await generatedPdf(parentJobId));
 
-    expect(parentText).not.toContain(SHARED_NOTE);
+    expect(parentText).toContain("Багшийн ажиглалт");
+    expect(parentText).toContain(SHARED_NOTE);
     expect(parentText).not.toContain(PRIVATE_NOTE);
 
     const teacherJobId = await createJob(teacherA, a.child.id);
     const teacherText = extractText(await generatedPdf(teacherJobId));
 
-    expect(teacherText).not.toContain(SHARED_NOTE);
-    expect(teacherText).not.toContain(PRIVATE_NOTE);
+    expect(teacherText).toContain(SHARED_NOTE);
+    expect(teacherText).toContain(PRIVATE_NOTE);
   }, 180_000);
 
   it("is idempotent — a repeated run does not produce a second file", async () => {

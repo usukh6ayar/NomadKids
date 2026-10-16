@@ -32,6 +32,7 @@ import {
   type PlatformMaterial,
 } from "@/lib/materials";
 import { LEARNING_AREAS } from "@/lib/routine";
+import { CANONICAL_ORIGIN } from "@/lib/canonical-host";
 
 /**
  * Сургалтын хэрэглэгдэхүүн — the operator's catalog, 2026-10-09: what the
@@ -71,7 +72,12 @@ function PlatformMaterials() {
   /** «Дэлгүүр» — the shop as the teachers see it (2026-10-14, the user). */
   const [shop, setShop] = useState(false);
   const copyLink = (m: PlatformMaterial) => {
-    const url = `${window.location.origin}${materialSharePath(m.id, "nk")}`;
+    // A production build must never put localhost into a link, even when its
+    // public-site build argument was omitted or the page is served by an old
+    // preview host. Local development still copies its own origin for testing.
+    const origin =
+      process.env.NODE_ENV === "production" ? CANONICAL_ORIGIN : window.location.origin;
+    const url = `${origin}${materialSharePath(m.id, "nk")}`;
     void navigator.clipboard.writeText(url).then(
       () =>
         toast.success(

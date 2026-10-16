@@ -194,7 +194,50 @@ export class ReportGeneratorService {
       });
     }
 
+    const observations: PortfolioData["observations"] = [];
+    for (const observation of data.observations.filter((item) => item.source === "TEACHER")) {
+      const photoDataUris: string[] = [];
+      for (const photo of observation.media) {
+        const dataUri = await this.embed(budget, photo);
+        if (dataUri) photoDataUris.push(dataUri);
+      }
+      observations.push({
+        typeName: observation.type.name,
+        observedOn: observation.observedOn,
+        activityName: observation.activityName,
+        situation: observation.situation,
+        childDid: observation.childDid,
+        childSaid: observation.childSaid,
+        teacherComment: observation.teacherComment,
+        photoDataUris,
+      });
+    }
+
+    const milestones: PortfolioData["milestones"] = [];
+    for (const milestone of data.milestones) {
+      const photoDataUris: string[] = [];
+      for (const photo of milestone.media) {
+        const dataUri = await this.embed(budget, photo);
+        if (dataUri) photoDataUris.push(dataUri);
+      }
+      milestones.push({
+        title: milestone.title?.trim() || milestone.kind,
+        occurredOn: milestone.occurredOn,
+        description: milestone.description,
+        photoDataUris,
+      });
+    }
+
     const photoAlbums: PortfolioData["photoAlbums"] = [];
+    const albumSummary = new Map<string, number>();
+    for (const photo of data.albumPhotos) {
+      const label =
+        photo.albumCategory?.name ??
+        (isAgeAlbumCategory(photo.category)
+          ? AGE_ALBUM_CATEGORY_LABEL[photo.category]
+          : (photo.category ?? "Бусад"));
+      albumSummary.set(label, (albumSummary.get(label) ?? 0) + 1);
+    }
     for (const age of [2, 3, 4, 5]) {
       const photos: PortfolioData["photoAlbums"][number]["photos"] = [];
       for (const photo of data.albumPhotos.filter((item) => item.age === age).slice(0, 3)) {
@@ -254,8 +297,16 @@ export class ReportGeneratorService {
         : null,
       ageProfiles: data.ageProfiles,
       birthdayNotes: data.birthdayNotes,
+      observations,
+      growthMeasurements: data.growthMeasurements,
+      milestones,
       artworkComparisons: comparisons,
       photoAlbums,
+      albumSummary: [...albumSummary].map(([label, count]) => ({ label, count })),
+      teacherLetter:
+        [...data.ageProfiles]
+          .sort((a, b) => b.age - a.age)
+          .find((profile) => profile.teacherNote?.trim())?.teacherNote ?? null,
       generatedAt: new Date(),
       omittedPhotoCount: budget.dropped,
     };

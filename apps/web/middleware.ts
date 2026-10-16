@@ -51,7 +51,9 @@ export function middleware(request: NextRequest) {
 
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isProduction = process.env.NODE_ENV === "production";
-  const apiOrigin = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+  const apiOrigin =
+    process.env.NEXT_PUBLIC_API_URL ??
+    (isProduction ? "https://api.nomadkids.mn" : "http://localhost:3001");
 
   /**
    * ★ The storage origin has to be in `img-src`, and it is not obvious why.

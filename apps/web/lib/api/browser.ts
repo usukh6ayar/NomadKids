@@ -113,7 +113,12 @@ async function refreshSession(): Promise<boolean> {
   inFlight ??= (async () => {
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"}/v1/auth/refresh`,
+        `${
+          process.env.NEXT_PUBLIC_API_URL ??
+          (process.env.NODE_ENV === "production"
+            ? "https://api.nomadkids.mn"
+            : "http://localhost:3001")
+        }/v1/auth/refresh`,
         {
           method: "POST",
           headers: { Accept: "application/json" },
