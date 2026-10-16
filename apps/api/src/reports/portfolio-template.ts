@@ -71,6 +71,27 @@ export interface PortfolioData {
   } | null;
   ageProfiles: PortfolioAgeProfile[];
   birthdayNotes: { age: number; note?: string | null }[];
+  observations: {
+    typeName: string;
+    observedOn: Date | string;
+    activityName?: string | null;
+    situation?: string | null;
+    childDid?: string | null;
+    childSaid?: string | null;
+    teacherComment?: string | null;
+    photoDataUris: string[];
+  }[];
+  growthMeasurements: {
+    measuredOn: Date | string;
+    heightCm?: unknown;
+    weightKg?: unknown;
+  }[];
+  milestones: {
+    title: string;
+    occurredOn: Date | string;
+    description?: string | null;
+    photoDataUris: string[];
+  }[];
   artworkComparisons: {
     conclusion: string;
     earlierDataUri?: string | null;
@@ -87,6 +108,8 @@ export interface PortfolioData {
       categoryLabel?: string | null;
     }[];
   }[];
+  albumSummary: { label: string; count: number }[];
+  teacherLetter?: string | null;
   generatedAt: Date;
   omittedPhotoCount?: number;
 }
@@ -119,11 +142,6 @@ function joined(values: unknown): string | null {
   return result || null;
 }
 
-function joinedNotes(value: unknown): string | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  return joined(Object.values(value));
-}
-
 function memoryTitles(value: unknown): string | null {
   if (!Array.isArray(value)) return null;
   return joined(
@@ -135,46 +153,9 @@ function memoryTitles(value: unknown): string | null {
   );
 }
 
-type CompareRow = {
-  label: string;
-  value: (profile: PortfolioAgeProfile) => string | null | undefined;
-};
-
-function comparisonTable(
-  title: string,
-  rows: CompareRow[],
-  profiles: PortfolioAgeProfile[],
-): string {
-  const byAge = new Map(profiles.map((profile) => [profile.age, profile]));
-  const usefulRows = rows.filter((row) =>
-    PORTFOLIO_AGES.some((age) => {
-      const profile = byAge.get(age);
-      return profile ? isPresent(row.value(profile)) : false;
-    }),
-  );
-  if (usefulRows.length === 0) return "";
-
-  return `
-    <section class="age-table-card">
-      <h3>${esc(title)}</h3>
-      <table class="age-table">
-        <thead><tr><th>Харьцуулах мэдээлэл</th>${PORTFOLIO_AGES.map((age) => `<th>${age} нас</th>`).join("")}</tr></thead>
-        <tbody>
-          ${usefulRows
-            .map(
-              (row) => `<tr>
-                <th>${esc(row.label)}</th>
-                ${PORTFOLIO_AGES.map((age) => {
-                  const profile = byAge.get(age);
-                  const value = profile ? row.value(profile) : null;
-                  return `<td>${isPresent(value) ? esc(value) : `<span class="empty-cell">-</span>`}</td>`;
-                }).join("")}
-              </tr>`,
-            )
-            .join("")}
-        </tbody>
-      </table>
-    </section>`;
+function joinedPresent(values: unknown[]): string | null {
+  const result = values.filter(isPresent).map(String).join(", ");
+  return result || null;
 }
 
 export function renderPortfolioHtml(data: PortfolioData): string {
@@ -222,102 +203,83 @@ export function renderPortfolioHtml(data: PortfolioData): string {
     )
     .join("");
 
-  const aboutRows = infoRows([
-    ["Нэрний утга", data.aboutMe?.nameMeaning],
-    ["Миний мөрөөдөл", data.aboutMe?.dream],
-    ["Миний онцлог", data.aboutMe?.distinguishingTraits],
-    ["Сонирхолтой хэлсэн үг", data.aboutMe?.memorableSayings],
-  ]);
+  const ageProfileBlocks = PORTFOLIO_AGES.map((profileAge) => {
+    const profile = data.ageProfiles.find((item) => item.age === profileAge);
+    if (!profile) return "";
+    const favorites = joinedPresent([
+      profile.favoriteColor,
+      profile.favoriteBook,
+      profile.favoriteFood,
+      profile.favoriteToy,
+      profile.favoriteSong,
+      profile.favoriteStory,
+      profile.favoriteActivity,
+      profile.favoriteClothes,
+      profile.favoriteMovie,
+      profile.favoriteTreat,
+    ]);
+    const personality = joinedPresent([
+      joined(profile.characterTraits),
+      profile.characterObservation,
+      profile.personality,
+      profile.emotionalTraits,
+    ]);
+    const family = joinedPresent([
+      profile.familySize ? `${profile.familySize} ам бүл` : null,
+      joined(profile.familyMemberTypes),
+      profile.familyDescription,
+      profile.familyMembers,
+    ]);
+    const rows = [
+      ["Миний дуртай зүйл", favorites],
+      ["Миний зан чанар", personality],
+      ["Миний гэр бүл", family],
+      ["Гэр бүлийн дурсамж", memoryTitles(profile.familyMemories)],
+      ["Төрсөн өдрийн дурсамж", data.birthdayNotes.find((note) => note.age === profileAge)?.note],
+    ] as const;
+    const presentRows = rows.filter(([, value]) => isPresent(value));
+    if (presentRows.length === 0) return "";
+    return `<article class="age-story-card">
+      <div class="age-story-heading"><strong>${profileAge}</strong><span>нас</span></div>
+      <div class="age-story-grid">${presentRows
+        .map(([label, value]) => `<section><h3>${esc(label)}</h3><p>${esc(value)}</p></section>`)
+        .join("")}</div>
+    </article>`;
+  })
+    .filter(Boolean)
+    .join("");
 
-  const birthdayBlocks = data.birthdayNotes
-    .filter((note) => isPresent(note.note))
+  const observationBlocks = data.observations
     .map(
-      (note) => `
-        <article class="birthday-card">
-          <span>${note.age}</span>
-          <div><h3>${note.age} насны төрсөн өдрийн дурсамж</h3>${paragraphs(note.note)}</div>
-        </article>`,
+      (observation) => `<article class="observation-card">
+        <div class="observation-copy">
+          <div class="eyebrow">${esc(observation.typeName)}</div>
+          ${observation.activityName ? `<h3>${esc(observation.activityName)}</h3>` : ""}
+          ${observation.situation ? paragraphs(observation.situation) : ""}
+          ${observation.childDid ? `<p><strong>Хүүхэд:</strong> ${esc(observation.childDid)}</p>` : ""}
+          ${observation.childSaid ? `<blockquote>“${esc(observation.childSaid)}”</blockquote>` : ""}
+          ${observation.teacherComment ? `<p><strong>Багшийн тэмдэглэл:</strong> ${esc(observation.teacherComment)}</p>` : ""}
+        </div>
+        ${observation.photoDataUris.length ? `<div class="observation-photos">${observation.photoDataUris.map((uri) => `<img src="${uri}" alt="Багшийн ажиглалтын зураг">`).join("")}</div>` : ""}
+      </article>`,
     )
     .join("");
 
-  const ageTables = [
-    comparisonTable(
-      "Миний дуртай бүх зүйлс",
-      [
-        ["Тоглоом", "favoriteToy"],
-        ["Дуу", "favoriteSong"],
-        ["Хувцас", "favoriteClothes"],
-        ["Үлгэр", "favoriteStory"],
-        ["Хүүхэлдэйн кино / кино", "favoriteMovie"],
-        ["Амттан", "favoriteTreat"],
-        ["Өнгө", "favoriteColor"],
-        ["Ном", "favoriteBook"],
-        ["Хийх дуртай зүйл", "favoriteActivity"],
-        ["Хоол", "favoriteFood"],
-      ].map(([label, key]) => ({
-        label: label!,
-        value: (profile: PortfolioAgeProfile) =>
-          profile[key as keyof PortfolioAgeProfile] as string | null | undefined,
-      })),
-      data.ageProfiles,
-    ),
-    comparisonTable(
-      "Миний цэцэрлэгтээ сурсан зүйлс",
-      [
-        { label: "Сонгосон чадварууд", value: (profile) => joined(profile.kindergartenSkills) },
-        {
-          label: "Нэмэлт тайлбар",
-          value: (profile) => joinedNotes(profile.kindergartenSkillNotes),
-        },
-        {
-          label: "Өөр сурсан зүйл",
-          value: (profile) => profile.kindergartenOtherSkill ?? profile.newSkills,
-        },
-        { label: "Сурах сонирхол", value: (profile) => profile.learningInterest },
-      ],
-      data.ageProfiles,
-    ),
-    comparisonTable(
-      "Миний гэр бүлээсээ суралцсан зүйлс",
-      [
-        { label: "Сонгосон чадварууд", value: (profile) => joined(profile.familyLearningSkills) },
-        { label: "Нэмэлт тайлбар", value: (profile) => joinedNotes(profile.familyLearningNotes) },
-        {
-          label: "Өөр сурсан зүйл",
-          value: (profile) => profile.familyLearningOther ?? profile.familyMembers,
-        },
-      ],
-      data.ageProfiles,
-    ),
-    comparisonTable(
-      "Миний зан араншин",
-      [
-        { label: "Зан араншингийн ажиглалт", value: (profile) => joined(profile.characterTraits) },
-        {
-          label: "Тухайн насны зан араншин",
-          value: (profile) =>
-            profile.characterObservation ??
-            joined([profile.personality, profile.emotionalTraits].filter(Boolean)),
-        },
-        { label: "Тухайн насны мөрөөдөл", value: (profile) => profile.dream },
-      ],
-      data.ageProfiles,
-    ),
-    comparisonTable(
-      "Миний гэр бүл",
-      [
-        {
-          label: "Ам бүлийн тоо",
-          value: (profile) => (profile.familySize ? String(profile.familySize) : null),
-        },
-        { label: "Гэр бүлийн гишүүд", value: (profile) => joined(profile.familyMemberTypes) },
-        { label: "Хамтдаа хийх дуртай зүйлс", value: (profile) => profile.familyDescription },
-        { label: "Гэр бүлийн дурсамж", value: (profile) => memoryTitles(profile.familyMemories) },
-      ],
-      data.ageProfiles,
-    ),
-  ]
-    .filter(Boolean)
+  const growthRows = data.growthMeasurements
+    .filter((point) => isPresent(point.heightCm) || isPresent(point.weightKg))
+    .map(
+      (point) =>
+        `<tr><td>${formatDate(point.measuredOn)}</td><td>${isPresent(point.heightCm) ? `${esc(point.heightCm)} см` : "-"}</td><td>${isPresent(point.weightKg) ? `${esc(point.weightKg)} кг` : "-"}</td></tr>`,
+    )
+    .join("");
+
+  const milestoneBlocks = data.milestones
+    .map(
+      (milestone) => `<article class="milestone-card">
+        ${milestone.photoDataUris[0] ? `<img src="${milestone.photoDataUris[0]}" alt="${esc(milestone.title)}">` : ""}
+        <div><time>${formatDate(milestone.occurredOn)}</time><h3>${esc(milestone.title)}</h3>${milestone.description ? paragraphs(milestone.description) : ""}</div>
+      </article>`,
+    )
     .join("");
 
   const comparisonBlocks = data.artworkComparisons
@@ -450,19 +412,37 @@ ${baseCss()}
   .enrollment-card h3, .enrollment-card p { margin: 0; }
   .about-card { break-inside: avoid; margin-top: 6mm; padding: 6mm; border-radius: 7mm; background: var(--pink-soft); }
   .about-card h3 { color: var(--pink); }
-  .birthday-card { display: grid; grid-template-columns: 16mm 1fr; gap: 4mm; break-inside: avoid; margin-top: 4mm; padding: 5mm; border-radius: 6mm; background: var(--orange-soft); }
-  .birthday-card > span { display: grid; place-items: center; width: 13mm; height: 13mm; border-radius: 50%; color: white; background: var(--orange); font-weight: 700; }
-  .birthday-card p { margin-bottom: 0; }
-
-  .age-table-card { break-inside: avoid; margin-bottom: 7mm; padding: 5mm; border-radius: 6mm; background: var(--blue-soft); }
-  .age-table-card:nth-child(even) { background: var(--green-soft); }
-  .age-table-card h3 { color: #07559f; }
-  .age-table { table-layout: fixed; margin: 0; background: white; }
-  .age-table th, .age-table td { padding: 2.2mm; font-size: 8.2pt; vertical-align: top; overflow-wrap: anywhere; }
-  .age-table thead th { color: #07559f; background: #dff4fd; text-align: center; }
-  .age-table thead th:first-child { width: 34mm; text-align: left; }
-  .age-table tbody th { color: #56647b; background: #fafcff; }
-  .empty-cell { color: #aab2bf; }
+  .age-story-card { break-inside: avoid; margin-bottom: 7mm; padding: 6mm; border-radius: 7mm; background: var(--yellow-soft); }
+  .age-story-card:nth-child(even) { background: var(--blue-soft); }
+  .age-story-heading { display: flex; align-items: baseline; gap: 2mm; margin-bottom: 4mm; color: #07559f; }
+  .age-story-heading strong { display: grid; place-items: center; width: 13mm; height: 13mm; border-radius: 50%; color: white; background: var(--pink); font-size: 16pt; }
+  .age-story-heading span { font-weight: 700; }
+  .age-story-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; }
+  .age-story-grid section { padding: 4mm; border-radius: 4mm; background: white; }
+  .age-story-grid h3 { margin: 0 0 1.5mm; color: #07559f; font-size: 10pt; }
+  .age-story-grid p { margin: 0; font-size: 9pt; }
+  .observation-card { display: grid; grid-template-columns: 1fr 62mm; gap: 5mm; break-inside: avoid; margin-bottom: 6mm; padding: 6mm; border-radius: 7mm; background: var(--blue-soft); }
+  .observation-card:not(:has(.observation-photos)) { grid-template-columns: 1fr; }
+  .observation-copy h3 { margin: 1mm 0 3mm; color: #07559f; }
+  .observation-copy p { margin: 0 0 2mm; }
+  .observation-copy blockquote { margin: 3mm 0; padding: 3mm 4mm; border-left: 1.5mm solid var(--yellow); border-radius: 2mm; background: white; }
+  .eyebrow { color: var(--pink); font-size: 8.5pt; font-weight: 700; }
+  .observation-photos { display: grid; gap: 2mm; }
+  .observation-photos img { width: 100%; height: 48mm; object-fit: cover; border: 1.5mm solid white; border-radius: 4mm; }
+  .growth-table { margin-bottom: 7mm; }
+  .growth-table th { color: #07559f; background: var(--blue-soft); }
+  .growth-table th, .growth-table td { padding: 2.6mm 3mm; text-align: left; }
+  .milestone-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+  .milestone-card { display: grid; grid-template-columns: 38mm 1fr; gap: 4mm; break-inside: avoid; min-height: 39mm; padding: 4mm; border-radius: 6mm; background: var(--green-soft); }
+  .milestone-card:not(:has(img)) { grid-template-columns: 1fr; }
+  .milestone-card img { width: 38mm; height: 38mm; object-fit: cover; border-radius: 4mm; }
+  .milestone-card time { color: var(--green); font-size: 8pt; font-weight: 700; }
+  .milestone-card h3 { margin: 1mm 0; font-size: 10pt; }
+  .milestone-card p { margin: 0; font-size: 8.5pt; }
+  .album-summary { display: flex; flex-wrap: wrap; gap: 2mm; margin: 5mm 0 7mm; }
+  .album-summary span { padding: 2mm 4mm; border-radius: 999px; color: #07559f; background: var(--blue-soft); font-size: 8.5pt; font-weight: 700; }
+  .teacher-letter { break-inside: avoid; padding: 9mm; border: 1mm solid #f6c4d1; border-radius: 8mm; background: linear-gradient(145deg, white, var(--pink-soft)); }
+  .teacher-letter p { line-height: 1.65; }
 
   .artwork-card { break-inside: avoid; margin-bottom: 8mm; padding: 6mm; border-radius: 7mm; background: var(--orange-soft); }
   .card-heading { display: flex; align-items: center; gap: 3mm; margin-bottom: 4mm; }
@@ -527,8 +507,6 @@ ${baseCss()}
     </div>
     <div class="info-panel"><dl class="info-list">${identityRows}</dl></div>
   </div>
-  ${data.aboutMe?.introduction ? `<div class="about-card"><h3>Энэ бол би</h3>${paragraphs(data.aboutMe.introduction)}</div>` : ""}
-  ${aboutRows ? `<div class="about-card"><h3>Миний мэдээлэл</h3><dl class="info-list">${aboutRows}</dl></div>` : ""}
   ${
     computedBirthFacts.yearAnimal.beforeLunarNewYear && !yearAnimalOverride
       ? `<p class="meta">Цагаан сараас өмнө төрсөн тул монгол жилийг гэр бүлийн мэдээлэлтэй тулган баталгаажуулна уу.</p>`
@@ -538,28 +516,41 @@ ${baseCss()}
   <h3 class="subheading">Суралцсан цэцэрлэгүүд</h3>
   ${enrollmentBlocks || `<p class="empty">Суралцсан цэцэрлэгийн түүх хараахан бүртгэгдээгүй.</p>`}
 
-  <h3 class="subheading">Төрсөн өдрийн мэдээлэл</h3>
-  ${birthdayBlocks || `<p class="empty">Төрсөн өдрийн дурсамж хараахан бүртгэгдээгүй.</p>`}
 </section>
 
 <section class="page-section">
-  <div class="section-heading"><span class="section-icon">2</span><h2>Нас насны хөгжлийн харьцуулалт</h2></div>
-  ${ageTables || `<p class="empty">2-5 насны хөгжлийн мэдээлэл хараахан бүртгэгдээгүй.</p>`}
+  <div class="section-heading"><span class="section-icon">2</span><h2>Нас насны миний түүх</h2></div>
+  ${ageProfileBlocks || `<p class="empty">2-5 насны мэдээлэл хараахан бүртгэгдээгүй.</p>`}
 </section>
+
+${observationBlocks ? `<section class="page-section"><div class="section-heading"><span class="section-icon">3</span><h2>Багшийн ажиглалт</h2></div>${observationBlocks}</section>` : ""}
+
+${
+  growthRows || milestoneBlocks
+    ? `<section class="page-section">
+        <div class="section-heading"><span class="section-icon">4</span><h2>Өсөлт ба онцгой үйл явдал</h2></div>
+        ${growthRows ? `<h3 class="subheading">Өндөр, жингийн түүх</h3><table class="growth-table"><thead><tr><th>Огноо</th><th>Өндөр</th><th>Жин</th></tr></thead><tbody>${growthRows}</tbody></table>` : ""}
+        ${milestoneBlocks ? `<h3 class="subheading">Миний онцгой мөчүүд</h3><div class="milestone-grid">${milestoneBlocks}</div>` : ""}
+      </section>`
+    : ""
+}
 
 ${
   comparisonBlocks
     ? `<section class="page-section">
-        <div class="section-heading"><span class="section-icon">3</span><h2>Бүтээлийн өмнөх ба дараах ахиц</h2></div>
+        <div class="section-heading"><span class="section-icon">5</span><h2>Бүтээлийн ахицын цуваа</h2></div>
         ${comparisonBlocks}
       </section>`
     : ""
 }
 
 <section class="page-section">
-  <div class="section-heading"><span class="section-icon">4</span><h2>Зургийн цомгийн харьцуулалт</h2></div>
+  <div class="section-heading"><span class="section-icon">6</span><h2>Нас насны зургийн цомог</h2></div>
+  ${data.albumSummary.length ? `<div class="album-summary">${data.albumSummary.map((item) => `<span>${esc(item.label)} · ${item.count} зураг</span>`).join("")}</div>` : ""}
   ${albumBlocks}
 </section>
+
+${data.teacherLetter ? `<section class="page-section"><div class="section-heading"><span class="section-icon">7</span><h2>Багшийн захиа</h2></div><div class="teacher-letter">${paragraphs(data.teacherLetter)}</div></section>` : ""}
 
 ${
   data.omittedPhotoCount

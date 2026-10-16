@@ -336,6 +336,7 @@ export class ReportsRepository {
       observations,
       assessments,
       artworkComparisons,
+      growthMeasurements,
       milestones,
       albumPhotos,
     ] = await Promise.all([
@@ -396,11 +397,24 @@ export class ReportsRepository {
           laterMedia: { select: { id: true, storageKey: true, takenAt: true, deletedAt: true } },
         },
       }),
+      this.prisma.growthMeasurement.findMany({
+        where: { childId, deletedAt: null },
+        orderBy: { measuredOn: "asc" },
+        select: { measuredOn: true, heightCm: true, weightKg: true },
+      }),
       // RFP §4.5 — the firsts, in the portfolio they belong to.
       this.prisma.milestone.findMany({
         where: { childId, deletedAt: null },
         orderBy: { occurredOn: "asc" },
         take: MAX_MILESTONES_PER_REPORT,
+        include: {
+          media: {
+            where: { deletedAt: null, status: "READY" },
+            select: { id: true, storageKey: true },
+            orderBy: { order: "asc" },
+            take: 3,
+          },
+        },
       }),
       /*
        * Representative photographs for the PDF's age-album comparison.
@@ -454,6 +468,7 @@ export class ReportsRepository {
       observations,
       assessments,
       artworkComparisons,
+      growthMeasurements,
       milestones,
       albumPhotos,
     };
