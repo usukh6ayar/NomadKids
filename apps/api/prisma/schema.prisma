@@ -229,6 +229,22 @@ enum ObservationSource {
   PARENT
 }
 
+/// The four levels of annex А/79 (`@kinder/contracts` a79.ts carries the criteria).
+enum A79Level {
+  I
+  II
+  III
+  IV
+}
+
+/// How a skill showed on one note — the client's four, 2026-10-08.
+enum A79Status {
+  INDEPENDENT
+  SUPPORTED
+  DEVELOPING
+  NOT_YET
+}
+
 /// §5.4 — the teacher reviews what a parent submits.
 ///
 /// A teacher's own observation is APPROVED on save: there is nobody above them
@@ -530,6 +546,7 @@ model User {
   mealServingsRecorded   MealServing[]             @relation("MealServingRecordedBy")
   surveysCreated         Survey[]                  @relation("SurveyCreatedBy")
   surveyResponses        SurveyResponse[]          @relation("SurveyRespondent")
+  surveyDraftsWritten    SurveyAnswerDraft[]       @relation("SurveyDraftAuthor")
   surveyStaffReads       SurveyStaffRead[]
   growthRecorded         GrowthMeasurement[]       @relation("GrowthRecordedBy")
   milestonesRecorded     Milestone[]               @relation("MilestoneRecordedBy")
@@ -891,6 +908,7 @@ model Kindergarten {
   surveyQuestions        SurveyQuestion[]
   surveyResponses        SurveyResponse[]
   surveyAnswers          SurveyAnswer[]
+  surveyAnswerDrafts     SurveyAnswerDraft[]
   growthMeasurements     GrowthMeasurement[]
   milestones             Milestone[]
   allergies              AllergyRecord[]
@@ -933,6 +951,7 @@ model Kindergarten {
   esisReference          EsisReference[]
   methodUnions           MethodUnion[]
   methodUnionMembers     MethodUnionMember[]
+  observationA79Links    ObservationA79Link[]
 
   @@index([deletedAt])
   @@map("kindergartens")
@@ -1432,6 +1451,7 @@ model Child {
   attendanceRecords   Attendance[]
   attendanceRequests  AttendanceRequest[]
   surveyResponses     SurveyResponse[]
+  surveyAnswerDrafts  SurveyAnswerDraft[]
   growthMeasurements  GrowthMeasurement[]
   milestones          Milestone[]
   allergies           AllergyRecord[]
@@ -1447,8 +1467,14 @@ model Child {
   mealRecords         MealRecord[]
   fundingCalculations FundingCalculation[]
   invoices            Invoice[]
+  a79Links            ObservationA79Link[]
 
-  @@unique([kindergartenId, nationalId])
+  /// ★ One live child per register in a kindergarten — a partial unique
+  /// index (`WHERE "deletedAt" IS NULL`, migration 20261016160000), which
+  /// Prisma cannot express. A deleted child's register is free again: every
+  /// check in the code (`findByNationalId`, the roster import) already asked
+  /// only among live children, and the full index answered a re-import of a
+  /// deleted child with a 500 (2026-10-16, «4-р цэцэрлэг»).
   /// The lookup the ESIS authorization gate does on every per-child read.
   @@unique([kindergartenId, esisPersonId])
   @@index([kindergartenId, status])
@@ -3182,6 +3208,7 @@ model Observation {
   domains      ObservationDomain[]
   media        MediaFile[]             @relation("ObservationMedia")
   termReports  TermReportObservation[]
+  a79Links     ObservationA79Link[]
 
   @@index([childId, observedOn(sort: Desc)])
   @@index([kindergartenId, observedOn(sort: Desc)])
@@ -3190,6 +3217,40 @@ model Observation {
   @@index([authorId, createdAt(sort: Desc)])
   @@index([childId, visibleToParents, observedOn(sort: Desc)])
   @@map("observations")
+}
+
+/// One observation linked to one А/79 criterion, with how the skill showed —
+/// the evidence «Үр дүнгийн үнэлгээ» reads back (client, 2026-10-08).
+///
+/// A criterion is named by its level and its number within the level, as the
+/// document numbers them («Ш18»); the text lives in `@kinder/contracts`.
+/// `PUT /observations/:id/a79-links` replaces a note's set: the old rows are
+/// soft-deleted, never overwritten. One live row per (note, level, number) —
+/// a partial unique index in the migration.
+model ObservationA79Link {
+  id             String    @id @default(uuid()) @db.Uuid
+  kindergartenId String    @db.Uuid
+  observationId  String    @db.Uuid
+  /// Denormalised from the observation, so a child's evidence is one index.
+  childId        String    @db.Uuid
+  level          A79Level
+  number         Int       @db.SmallInt
+  status         A79Status
+  /// The link's own «Тайлбар».
+  note           String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  observation  Observation  @relation(fields: [observationId], references: [id], onDelete: Cascade)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@index([childId, level])
+  @@index([observationId])
+  @@index([kindergartenId])
+  @@map("observation_a79_links")
 }
 
 model ObservationDomain {
@@ -3991,6 +4052,7 @@ model Survey {
   term         Term?             @relation(fields: [termId], references: [id], onDelete: Restrict)
   questions    SurveyQuestion[]
   responses    SurveyResponse[]
+  answerDrafts SurveyAnswerDraft[]
   staffReads   SurveyStaffRead[]
   clonedFrom   Survey?           @relation("SurveyClone", fields: [clonedFromSurveyId], references: [id], onDelete: SetNull)
   clones       Survey[]          @relation("SurveyClone")
@@ -4102,6 +4164,42 @@ model SurveyResponse {
   @@index([surveyId, childId])
   @@index([surveyId, respondentId])
   @@map("survey_responses")
+}
+
+/// A teacher survey's row for one child, saved before it is complete —
+/// 2026-10-16, the user: "Багш судалгаа авахдаа хадгалаад дахиад үргэлжлүүлээд
+/// хийдэг болгох". А/79's fourth level is 49 questions; a teacher who could only
+/// save a finished row lost every half-done child when the page closed.
+///
+/// ★ Its own table, never a `SurveyResponse`. Results, tally, export,
+/// participation and comparison all read responses; a draft kept apart cannot
+/// reach any of them by a forgotten filter.
+///
+/// ★★ One live draft per child per survey, whichever of the group's teachers
+/// wrote it — the same "one assessment per child" a response keeps. A saved
+/// complete row soft-deletes it. The partial unique index is in the migration.
+model SurveyAnswerDraft {
+  id             String    @id @default(uuid()) @db.Uuid
+  kindergartenId String    @db.Uuid
+  surveyId       String    @db.Uuid
+  childId        String    @db.Uuid
+  authorId       String    @db.Uuid
+  /// `[{ questionId, value }]` — the answers given so far, the shape a
+  /// response's answers have.
+  answers        Json
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  survey       Survey       @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  author       User         @relation("SurveyDraftAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([surveyId, childId])
+  @@index([kindergartenId])
+  @@map("survey_answer_drafts")
 }
 
 model SurveyAnswer {

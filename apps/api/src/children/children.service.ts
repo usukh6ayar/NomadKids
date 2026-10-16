@@ -183,7 +183,9 @@ export class ChildrenService {
    * under two.
    */
   async rosterSummary(actor: Actor, query: ListChildrenQuery) {
-    const visible = await this.authz.visibleChildrenWhere(actor);
+    // The list's own filter (`list` above), so a PE/music teacher's or a
+    // doctor's headline counts the children their list shows.
+    const visible = (await this.authz.visibleChildCardsWhere(actor)).where;
     const rows = await this.repo.rosterFacts(visible, childFilters(query));
 
     const now = new Date();

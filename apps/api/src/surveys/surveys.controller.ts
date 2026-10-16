@@ -14,6 +14,7 @@ import {
   createSurveySchema,
   questionAnswersParamsSchema,
   saveQuestionsSchema,
+  saveTeacherSheetDraftsSchema,
   saveTeacherSheetSchema,
   submitResponseSchema,
   surveyResultsQuerySchema,
@@ -22,6 +23,7 @@ import {
   type CompareSurveyQuery,
   type CreateSurveyDto,
   type SaveQuestionsDto,
+  type SaveTeacherSheetDraftsDto,
   type SaveTeacherSheetDto,
   type SubmitResponseDto,
   type SurveyResultsQuery,
@@ -186,6 +188,17 @@ export class SurveysController {
     @Body(new ZodValidationPipe(saveTeacherSheetSchema)) body: SaveTeacherSheetDto,
   ) {
     return this.service.saveTeacherSheet(actor, params.id, body);
+  }
+
+  /** Half-done rows of the same table, to be continued — 2026-10-16. */
+  @Put(":id/teacher-sheet/drafts")
+  @Roles("TEACHER", "ADMIN")
+  async saveTeacherSheetDrafts(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(saveTeacherSheetDraftsSchema)) body: SaveTeacherSheetDraftsDto,
+  ) {
+    return this.service.saveTeacherSheetDrafts(actor, params.id, body);
   }
 
   @Get(":id")

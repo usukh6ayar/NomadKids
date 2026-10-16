@@ -472,3 +472,40 @@ describe("into an existing group", () => {
     ).toBe(200);
   });
 });
+
+describe("solo groups that share a name", () => {
+  it("are renamed apart instead of failing the merge", async () => {
+    // Last year's group, archived, under the same name as this year's — the
+    // yearly flow a solo teacher follows (one group a year).
+    const lastYear = await db.schoolYear.create({
+      data: {
+        kindergartenId: solo.kindergartenId,
+        name: `2024-2025-${uniq()}`,
+        startsOn: new Date("2024-09-01"),
+        endsOn: new Date("2025-06-01"),
+        isCurrent: false,
+      },
+    });
+    const thisName = (await db.group.findUniqueOrThrow({ where: { id: solo.groupId } })).name;
+    const old = await db.group.create({
+      data: {
+        kindergartenId: solo.kindergartenId,
+        schoolYearId: lastYear.id,
+        name: thisName,
+        ageBand: "JUNIOR",
+        deletedAt: new Date(),
+      },
+    });
+
+    const res = await merge(operator, { targetKindergartenId: target.kindergarten.id });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+
+    const names = (
+      await db.group.findMany({
+        where: { id: { in: [solo.groupId, old.id] } },
+        select: { name: true, schoolYearId: true },
+      })
+    ).map((g) => g.name);
+    expect(new Set(names).size).toBe(2);
+  });
+});

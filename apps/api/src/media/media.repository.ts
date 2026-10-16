@@ -94,6 +94,9 @@ export class MediaRepository {
          * from the same row is what stops a second query from disagreeing.
          */
         chatMessage: { select: { roomKey: true, deletedAt: true } },
+        /* What `canReadChildFile` needs: is this the card's photo, whose note is it. */
+        child: { select: { photoMediaFileId: true } },
+        observation: { select: { authorId: true, source: true } },
       },
     });
   }

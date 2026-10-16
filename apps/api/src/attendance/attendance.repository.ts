@@ -11,26 +11,8 @@ import type {
   ChildStatus,
   ProgramKind,
 } from "../domain/enums";
+import { enrolledOn } from "../common/repository/enrolled-on";
 import { searchWhere } from "../common/repository/search";
-
-/**
- * Enrollments that held on at least one day of `from`..`to`: started by `to`,
- * and not ended before `from`. Of an archived child, none.
- *
- * `endedOn` is exclusive — the day a transfer is recorded is the new group's
- * (`ChildrenRepository.enrollChild` ends one row and starts the next the same
- * day), so the child is on one sheet that day, not two. A row that is not
- * ACTIVE yet carries no `endedOn` is an old ended row with its date lost; it
- * counts on no day rather than on every day.
- */
-function enrolledOn(from: Date, to: Date): Prisma.EnrollmentWhereInput {
-  return {
-    deletedAt: null,
-    child: { deletedAt: null },
-    startedOn: { lte: to },
-    OR: [{ endedOn: null, status: "ACTIVE" }, { endedOn: { gt: from } }],
-  };
-}
 
 /**
  * Attendance records and the guardian requests that precede them.
@@ -814,10 +796,19 @@ export class AttendanceRepository {
     const { skip, take } = toSkipTake(page);
     if (groupIds.length === 0) return { items: [], total: 0 };
 
+    // ★ By the group the child attends now (#235's rule): a request filed
+    // before a move is the new teacher's to decide — reviewing needs record
+    // access, which the previous teacher no longer has — and a row they cannot
+    // open must not name the child on their screen.
     const where = {
       deletedAt: null,
       reviewStatus: "PENDING" as AttendanceRequestStatus,
-      enrollment: { groupId: { in: groupIds }, deletedAt: null },
+      child: {
+        deletedAt: null,
+        enrollments: {
+          some: { groupId: { in: groupIds }, status: "ACTIVE" as const, deletedAt: null },
+        },
+      },
     };
 
     const [items, total] = await Promise.all([
