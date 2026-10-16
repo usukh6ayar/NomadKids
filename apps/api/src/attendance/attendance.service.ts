@@ -32,6 +32,7 @@ import type {
   CreateAttendanceRequestDto,
   RecordAttendanceDto,
   RecordGroupAttendanceDto,
+  RecordGroupRangeDto,
   SubmitAttendanceDto,
   RecordPickupDto,
   ReviewAttendanceRequestDto,
@@ -808,8 +809,18 @@ export class AttendanceService {
       byEnrollment.set(record.enrollmentId, forChild);
     }
 
+    /*
+      The days a register is expected to cover (`workingDays`) — what the month
+      grid offers for filling in (2026-10-16). The calendar is the group's
+      kindergarten's; `assertCanReadGroup` above has already let the actor in.
+    */
+    const group = await this.repo.findGroupById(groupId);
+    const calendar = group ? await this.repo.findCalendarDays(group.kindergartenId, from, to) : [];
+    const recordedDays = new Set(records.map((record) => record.date.toISOString().slice(0, 10)));
+
     return {
       days,
+      workingDays: workingDays(days, calendar, recordedDays),
       rows: enrollments.map((enrollment) => ({
         child: {
           id: enrollment.child.id,
@@ -817,9 +828,94 @@ export class AttendanceService {
           firstName: enrollment.child.firstName,
         },
         enrollmentId: enrollment.id,
+        // The child's days in this group: from `startedOn`, before `endedOn`.
+        startedOn: enrollment.startedOn.toISOString().slice(0, 10),
+        endedOn: enrollment.endedOn?.toISOString().slice(0, 10) ?? null,
         records: byEnrollment.get(enrollment.id) ?? {},
       })),
     };
+  }
+
+  /**
+   * A month filled in after the fact — 2026-10-16, the user: "Ирц сараар
+   * нөхөх".
+   *
+   * ★ The register's own gate (`assertCanReadGroup`, before any date check —
+   * see `recordGroupAttendance` for why the order matters, §1.7).
+   *
+   * ★★ Every cell is checked, and one bad cell refuses the whole save. The
+   * month grid offers only a child's own days in this group, up to today, so a
+   * cell outside them is a stale screen or a hand-made request — writing the
+   * other cells would leave the teacher believing the month was done.
+   *
+   * ★★★ Nothing is sent to ESIS. Like a correction on the day sheet, a
+   * backfilled day is sent from the register when the teacher chooses to.
+   */
+  async recordGroupRange(actor: Actor, groupId: string, dto: RecordGroupRangeDto) {
+    await this.groups.assertCanReadGroup(actor, groupId);
+
+    const dates = dto.entries.map((entry) => entry.date).sort();
+    const from = toUtcDate(dates[0]!);
+    const to = toUtcDate(dates[dates.length - 1]!);
+    if ((to.getTime() - from.getTime()) / 86_400_000 + 1 > MAX_REGISTER_DAYS) {
+      throw new BadRequestException(`Нэг удаад ${MAX_REGISTER_DAYS} хоногийн ирц хадгална`);
+    }
+    if (isFutureDate(to)) {
+      throw new BadRequestException("Ирээдүйн огноонд ирц бүртгэх боломжгүй");
+    }
+
+    const group = await this.repo.findGroup(groupId, this.tenants.memberKindergartenIds(actor));
+    if (!group) throw new NotFoundException();
+
+    const { enrollments } = await this.repo.groupRangeSheet(groupId, from, to);
+    const byChild = new Map<string, typeof enrollments>();
+    for (const enrollment of enrollments) {
+      byChild.set(enrollment.childId, [...(byChild.get(enrollment.childId) ?? []), enrollment]);
+    }
+
+    const rows = dto.entries.map((entry) => {
+      const day = toUtcDate(entry.date);
+      // `enrolledOn`'s rule for one day: started by it, not yet ended.
+      const enrollment = byChild
+        .get(entry.childId)
+        ?.find(
+          (candidate) =>
+            candidate.startedOn.getTime() <= day.getTime() &&
+            (candidate.endedOn === null || candidate.endedOn.getTime() > day.getTime()),
+        );
+      if (!enrollment) {
+        throw new BadRequestException(
+          `${entry.date}: хүүхэд энэ өдөр энэ бүлэгт бүртгэлгүй байсан`,
+        );
+      }
+      return {
+        kindergartenId: group.kindergartenId,
+        childId: entry.childId,
+        enrollmentId: enrollment.id,
+        date: day,
+        status: entry.status,
+        recordedById: actor.userId,
+      };
+    });
+
+    const saved = await this.repo.recordGroupRange(rows, from, to);
+
+    // One audit row for the save, as the day sheet's batch writes one.
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId: group.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "Attendance",
+      objectId: groupId,
+      metadata: {
+        from: dates[0],
+        to: dates[dates.length - 1],
+        created: saved.created,
+        updated: saved.updated,
+      },
+    });
+
+    return saved;
   }
 
   /**

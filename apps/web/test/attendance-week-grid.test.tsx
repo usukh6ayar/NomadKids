@@ -106,6 +106,7 @@ function stubRegister({
         roster: 2,
       },
     },
+    { path: `/groups/${GROUP}/attendance/range`, method: "PUT", body: { created: 3, updated: 0 } },
     { path: `/groups/${GROUP}/attendance`, method: "PUT", body: [] },
     { path: `/groups/${GROUP}/attendance`, method: "GET", body: daySheet },
     {
@@ -531,6 +532,64 @@ describe("the register's panels", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 // The controls, and where they sit
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * «Сараар нөхөх» — a past month filled in at once (the user, 2026-10-16).
+ */
+describe("filling in a month from the journal", () => {
+  const openJournal = async () => {
+    const user = userEvent.setup();
+    const api = stubRegister();
+    renderWithProviders(<GroupAttendancePage />);
+    await grid();
+    await user.click(screen.getByRole("button", { name: /Ирцийн дэлгэрэнгүй/ }));
+    await screen.findByLabelText("Сар");
+    const journal = async () =>
+      (await screen.findAllByRole("table", { name: /Бүлгийн ирцийн бүртгэл/ })).at(-1)!;
+    return { user, api, journal };
+  };
+
+  it("stays read-only until «Сараар нөхөх» is pressed", async () => {
+    const { user, journal } = await openJournal();
+    expect(within(await journal()).queryAllByRole("combobox")).toHaveLength(0);
+
+    await user.click(await screen.findByRole("button", { name: /Сараар нөхөх/ }));
+    expect(within(await journal()).getAllByRole("combobox").length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("button", { name: "Болих" }));
+    expect(within(await journal()).queryAllByRole("combobox")).toHaveLength(0);
+  });
+
+  it("fills only the empty cells with Ирсэн and saves them in one request", async () => {
+    const { user, api } = await openJournal();
+    await user.click(await screen.findByRole("button", { name: /Сараар нөхөх/ }));
+    await user.click(screen.getByRole("button", { name: /Бүгдийг «ирсэн» болгох/ }));
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+
+    await waitFor(() =>
+      expect(
+        api.calls.some((call) => call.method === "PUT" && call.url.includes("/attendance/range")),
+      ).toBe(true),
+    );
+    const put = api.calls.find(
+      (call) => call.method === "PUT" && call.url.includes("/attendance/range"),
+    )!;
+    const entries = (put.body as { entries: { childId: string; date: string; status: string }[] })
+      .entries;
+    // Ануужин's saved SICK day is left alone; every other open cell is Ирсэн.
+    expect(entries).not.toContainEqual(
+      expect.objectContaining({ childId: CHILD_A, date: EARLIER }),
+    );
+    expect(entries).toEqual(
+      expect.arrayContaining([
+        { childId: CHILD_B, date: EARLIER, status: "PRESENT" },
+        { childId: CHILD_A, date: TODAY, status: "PRESENT" },
+        { childId: CHILD_B, date: TODAY, status: "PRESENT" },
+      ]),
+    );
+    expect(entries.every((entry) => entry.status === "PRESENT")).toBe(true);
+  });
+});
 
 describe("the register's controls", () => {
   /*

@@ -120,6 +120,35 @@ export const recordGroupAttendanceSchema = z
   .strict();
 export type RecordGroupAttendanceDto = z.infer<typeof recordGroupAttendanceSchema>;
 
+/**
+ * A month filled in after the fact — 2026-10-16, the user: "Ирц сараар нөхөх".
+ * Each entry is one child on one day; the service bounds the span to a month
+ * and every day to one the child spent in this group.
+ */
+export const recordGroupRangeSchema = z
+  .object({
+    entries: z
+      .array(
+        z
+          .object({
+            childId: z.string().uuid(),
+            date: isoDate,
+            status: z.enum(attendanceStatusValues),
+          })
+          .strict(),
+      )
+      .min(1, "Хүүхэд сонгоно уу")
+      // Sixty children over a 31-day month — above any real group.
+      .max(1860)
+      .refine(
+        (entries) =>
+          new Set(entries.map((entry) => `${entry.childId}|${entry.date}`)).size === entries.length,
+        "Нэг хүүхдийн нэг өдөр хоёр удаа орсон байна",
+      ),
+  })
+  .strict();
+export type RecordGroupRangeDto = z.infer<typeof recordGroupRangeSchema>;
+
 export const createAttendanceRequestSchema = z
   .object({
     dateFrom: isoDate,

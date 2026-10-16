@@ -35,6 +35,7 @@ import {
   listAttendanceQuerySchema,
   recordAttendanceSchema,
   recordGroupAttendanceSchema,
+  recordGroupRangeSchema,
   submitAttendanceSchema,
   recordPickupSchema,
   reviewAttendanceRequestSchema,
@@ -48,6 +49,7 @@ import {
   type ListAttendanceQuery,
   type RecordAttendanceDto,
   type RecordGroupAttendanceDto,
+  type RecordGroupRangeDto,
   type SubmitAttendanceDto,
   type RecordPickupDto,
   type ReviewAttendanceRequestDto,
@@ -350,6 +352,20 @@ export class GroupAttendanceController {
     @Query(new ZodValidationPipe(groupRangeSheetQuerySchema)) query: GroupRangeSheetQuery,
   ) {
     return this.service.groupRangeSheet(actor, params.id, query.from, query.to);
+  }
+
+  /**
+   * A month of marks, filled in after the fact — 2026-10-16, the user: "Ирц
+   * сараар нөхөх". Declared on a literal path, as `range` above.
+   */
+  @Put("range")
+  @Roles("TEACHER", "ADMIN")
+  async recordRange(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(recordGroupRangeSchema)) body: RecordGroupRangeDto,
+  ) {
+    return this.service.recordGroupRange(actor, params.id, body);
   }
 
   /** The same span as a spreadsheet — the journal's download. */

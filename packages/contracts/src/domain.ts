@@ -1056,10 +1056,15 @@ export type GroupAttendanceRow = z.infer<typeof groupAttendanceRowSchema>;
  */
 export const groupAttendanceRangeSchema = z.object({
   days: z.array(z.string()),
+  /** The span's days a register is expected to cover — calendar and weekend applied. */
+  workingDays: z.array(z.string()).optional(),
   rows: z.array(
     z.object({
       child: personRefSchema,
       enrollmentId: uuidSchema,
+      /** The child's days in this group: from `startedOn`, before `endedOn`. */
+      startedOn: z.string().optional(),
+      endedOn: z.string().nullish(),
       records: z.record(
         z.string(),
         z.object({ id: uuidSchema, status: attendanceStatusSchema, note: z.string().nullish() }),
