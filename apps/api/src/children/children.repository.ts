@@ -650,6 +650,13 @@ export class ChildrenRepository {
    * and this is not it — that needs a start date in the future and a state that
    * says "not yet", neither of which exists. Until it does, the honest
    * behaviour is that enrolling a child moves them.
+   *
+   * ★★ The old rows end on the day the new one starts, not the day the move
+   * was recorded (review of #239, 2026-10-16). `enrolledOn` treats the end as
+   * exclusive, so a move dated last week and ended today left the child on
+   * both groups' registers for the days between. A start before a live row's
+   * own start would hand the new group days the old one already holds; it is
+   * refused — `null` — and the director corrects the date.
    */
   async enrollChild(data: {
     kindergartenId: string;
@@ -659,12 +666,17 @@ export class ChildrenRepository {
     startedOn: Date;
   }) {
     return this.prisma.$transaction(async (tx) => {
+      const where = { childId: data.childId, status: "ACTIVE" as const, deletedAt: null };
+      const live = await tx.enrollment.findMany({ where, select: { startedOn: true } });
+      const startDay = data.startedOn.toISOString().slice(0, 10);
+      if (live.some((row) => row.startedOn.toISOString().slice(0, 10) > startDay)) return null;
+
       // `updateMany`, not `update`: a child may already hold more than one
       // ACTIVE row from before this was corrected, and closing one of them
       // would leave the other to collide with the row inserted below.
       await tx.enrollment.updateMany({
-        where: { childId: data.childId, status: "ACTIVE", deletedAt: null },
-        data: { status: "TRANSFERRED", endedOn: new Date() },
+        where,
+        data: { status: "TRANSFERRED", endedOn: data.startedOn },
       });
 
       const enrollment = await tx.enrollment.create({ data });

@@ -840,13 +840,17 @@ export class ChildrenService {
     const group = await this.repo.findGroupInKindergarten(groupId, kindergartenId);
     if (!group) throw new BadRequestException("Бүлэг олдсонгүй");
 
-    return this.repo.enrollChild({
+    const enrollment = await this.repo.enrollChild({
       kindergartenId,
       childId,
       groupId,
       schoolYearId: group.schoolYear.id,
       startedOn,
     });
+    if (!enrollment) {
+      throw new BadRequestException("Шилжүүлэх огноо одоогийн бүлэгт элссэн өдрөөс өмнө байна");
+    }
+    return enrollment;
   }
 
   private async auditGuardianship(
