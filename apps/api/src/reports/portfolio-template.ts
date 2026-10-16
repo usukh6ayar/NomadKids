@@ -153,6 +153,11 @@ function memoryTitles(value: unknown): string | null {
   );
 }
 
+function joinedNotes(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return joined(Object.values(value));
+}
+
 function joinedPresent(values: unknown[]): string | null {
   const result = values.filter(isPresent).map(String).join(", ");
   return result || null;
@@ -203,6 +208,31 @@ export function renderPortfolioHtml(data: PortfolioData): string {
     )
     .join("");
 
+  /*
+    ★ What the family wrote about the child, kept through the 2026-10-16
+    redesign — the user accepted the new layout, not the loss of what families
+    had filled in. «Энэ бол би», «Миний мэдээлэл» and the birthday notes are
+    their own blocks again; what each age learned at kindergarten and at home,
+    and its dream, are rows of that age's card.
+  */
+  const aboutRows = infoRows([
+    ["Нэрний утга", data.aboutMe?.nameMeaning],
+    ["Миний мөрөөдөл", data.aboutMe?.dream],
+    ["Миний онцлог", data.aboutMe?.distinguishingTraits],
+    ["Сонирхолтой хэлсэн үг", data.aboutMe?.memorableSayings],
+  ]);
+
+  const birthdayBlocks = data.birthdayNotes
+    .filter((note) => isPresent(note.note))
+    .map(
+      (note) => `
+        <article class="birthday-card">
+          <span>${note.age}</span>
+          <div><h3>${note.age} насны төрсөн өдрийн дурсамж</h3>${paragraphs(note.note)}</div>
+        </article>`,
+    )
+    .join("");
+
   const ageProfileBlocks = PORTFOLIO_AGES.map((profileAge) => {
     const profile = data.ageProfiles.find((item) => item.age === profileAge);
     if (!profile) return "";
@@ -235,7 +265,24 @@ export function renderPortfolioHtml(data: PortfolioData): string {
       ["Миний зан чанар", personality],
       ["Миний гэр бүл", family],
       ["Гэр бүлийн дурсамж", memoryTitles(profile.familyMemories)],
-      ["Төрсөн өдрийн дурсамж", data.birthdayNotes.find((note) => note.age === profileAge)?.note],
+      [
+        "Цэцэрлэгтээ сурсан зүйлс",
+        joinedPresent([
+          joined(profile.kindergartenSkills),
+          joinedNotes(profile.kindergartenSkillNotes),
+          profile.kindergartenOtherSkill ?? profile.newSkills,
+        ]),
+      ],
+      ["Сурах сонирхол", profile.learningInterest],
+      [
+        "Гэр бүлээсээ суралцсан зүйлс",
+        joinedPresent([
+          joined(profile.familyLearningSkills),
+          joinedNotes(profile.familyLearningNotes),
+          profile.familyLearningOther,
+        ]),
+      ],
+      ["Тухайн насны мөрөөдөл", profile.dream],
     ] as const;
     const presentRows = rows.filter(([, value]) => isPresent(value));
     if (presentRows.length === 0) return "";
@@ -412,6 +459,9 @@ ${baseCss()}
   .enrollment-card h3, .enrollment-card p { margin: 0; }
   .about-card { break-inside: avoid; margin-top: 6mm; padding: 6mm; border-radius: 7mm; background: var(--pink-soft); }
   .about-card h3 { color: var(--pink); }
+  .birthday-card { display: grid; grid-template-columns: 16mm 1fr; gap: 4mm; break-inside: avoid; margin-top: 4mm; padding: 5mm; border-radius: 6mm; background: var(--orange-soft); }
+  .birthday-card > span { display: grid; place-items: center; width: 13mm; height: 13mm; border-radius: 50%; color: white; background: var(--orange); font-weight: 700; }
+  .birthday-card p { margin-bottom: 0; }
   .age-story-card { break-inside: avoid; margin-bottom: 7mm; padding: 6mm; border-radius: 7mm; background: var(--yellow-soft); }
   .age-story-card:nth-child(even) { background: var(--blue-soft); }
   .age-story-heading { display: flex; align-items: baseline; gap: 2mm; margin-bottom: 4mm; color: #07559f; }
@@ -507,6 +557,8 @@ ${baseCss()}
     </div>
     <div class="info-panel"><dl class="info-list">${identityRows}</dl></div>
   </div>
+  ${data.aboutMe?.introduction ? `<div class="about-card"><h3>Энэ бол би</h3>${paragraphs(data.aboutMe.introduction)}</div>` : ""}
+  ${aboutRows ? `<div class="about-card"><h3>Миний мэдээлэл</h3><dl class="info-list">${aboutRows}</dl></div>` : ""}
   ${
     computedBirthFacts.yearAnimal.beforeLunarNewYear && !yearAnimalOverride
       ? `<p class="meta">Цагаан сараас өмнө төрсөн тул монгол жилийг гэр бүлийн мэдээлэлтэй тулган баталгаажуулна уу.</p>`
@@ -515,6 +567,9 @@ ${baseCss()}
 
   <h3 class="subheading">Суралцсан цэцэрлэгүүд</h3>
   ${enrollmentBlocks || `<p class="empty">Суралцсан цэцэрлэгийн түүх хараахан бүртгэгдээгүй.</p>`}
+
+  <h3 class="subheading">Төрсөн өдрийн мэдээлэл</h3>
+  ${birthdayBlocks || `<p class="empty">Төрсөн өдрийн дурсамж хараахан бүртгэгдээгүй.</p>`}
 
 </section>
 

@@ -61,7 +61,8 @@ describe("renderPortfolioHtml", () => {
     expect(html).toContain("Улаанбаатар");
     expect(html).toContain("Суралцсан цэцэрлэгүүд");
     expect(html).toContain("NomadKids цэцэрлэг");
-    expect(html).not.toContain("Төрсөн өдрийн мэдээлэл");
+    // Restored 2026-10-16 — the redesign keeps the birthday section.
+    expect(html).toContain("Төрсөн өдрийн мэдээлэл");
     expect(html).not.toContain("Эцэг эхийн тэмдэглэл");
     expect(html).not.toContain("Багшийн ажиглалт");
     expect(html).not.toContain("Өсөлт ба онцгой үйл явдал");
@@ -136,8 +137,9 @@ describe("renderPortfolioHtml", () => {
     expect(html).toContain("<strong>3</strong><span>нас</span>");
     expect(html).toContain("Шар");
     expect(html).toContain("Ногоон");
-    expect(html).not.toContain("Өөрөө хувцаслах");
-    expect(html).not.toContain("Гутлаа үдэх");
+    // What each age learned at kindergarten stays in the PDF (2026-10-16).
+    expect(html).toContain("Өөрөө хувцаслах");
+    expect(html).toContain("Гутлаа үдэх");
     expect(html).not.toContain("PDF-д орох ёсгүй");
     expect(html).not.toContain("PDF-д мөн орох ёсгүй");
   });
