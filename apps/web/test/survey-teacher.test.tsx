@@ -396,17 +396,57 @@ describe("filling the whole group as one table", () => {
     expect(screen.getByText("Хүүхэд бүрийн мөрөнд сонголтоо тэмдэглэнэ үү.")).toBeInTheDocument();
   });
 
-  it("will not save a child whose row is only half done", async () => {
+  it("saves a half-done row as a draft, to be continued", async () => {
     const user = userEvent.setup();
     const second = { ...QUESTION, id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", order: 1 };
-    stubApi(sheet([bat], { ...SURVEY, questions: [QUESTION, second] }));
+    const api = stubApi([
+      ...sheet([bat], { ...SURVEY, questions: [QUESTION, second] }),
+      { path: `/surveys/${SURVEY.id}/teacher-sheet/drafts`, method: "PUT", body: { saved: 1 } },
+    ]);
     renderWithProviders(<TeacherSheetPage />);
 
     const [first] = await screen.findAllByRole("radio", { name: "Б.Бат: 1" });
     await user.click(first!);
+    expect(screen.getByText(/Дутуу мөр \(Б.Бат\)/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+
+    await vi.waitFor(() => expect(api.calls.filter((c) => c.method === "PUT")).toHaveLength(1));
+    const put = api.calls.find((c) => c.method === "PUT")!;
+    expect(put.url).toContain("/teacher-sheet/drafts");
+    expect(put.body).toEqual({
+      drafts: [{ childId: BAT, answers: [{ questionId: QUESTION.id, value: "1" }] }],
+    });
+  });
+
+  it("loads a saved draft back into the row and marks it дутуу", async () => {
+    const second = { ...QUESTION, id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", order: 1 };
+    const drafted = {
+      ...bat,
+      draft: {
+        updatedAt: "2026-10-16T08:00:00.000Z",
+        author: { id: USER_ID, lastName: "Дорж", firstName: "Сарнай" },
+        answers: [{ questionId: QUESTION.id, value: "1" }],
+      },
+    };
+    stubApi(sheet([drafted], { ...SURVEY, questions: [QUESTION, second] }));
+    renderWithProviders(<TeacherSheetPage />);
+
+    const [first] = await screen.findAllByRole("radio", { name: "Б.Бат: 1" });
+    expect(first).toBeChecked();
+    expect(screen.getAllByText("дутуу").length).toBeGreaterThan(0);
+    expect(screen.getByText(/Дутуу хадгалсан: Б.Бат/)).toBeInTheDocument();
+  });
+
+  it("will not turn a recorded response back into a half-done row", async () => {
+    const user = userEvent.setup();
+    stubApi(sheet([saruul]));
+    renderWithProviders(<TeacherSheetPage />);
+
+    // Clicking the chosen answer again clears it.
+    await user.click(await screen.findByRole("radio", { name: "Саруул: 0" }));
 
     expect(screen.getByRole("button", { name: "Хадгалах" })).toBeDisabled();
-    expect(screen.getByText(/Дутуу: Б.Бат/)).toBeInTheDocument();
+    expect(screen.getByText(/бүх асуултад хариулна уу: Саруул/)).toBeInTheDocument();
   });
 
   it("totals each child's score, as the А/79 form's Нийт row does", async () => {

@@ -554,7 +554,59 @@ export class SurveysRepository {
         ),
       });
 
+      // A finished row ends the child's draft, in the same transaction.
+      await tx.surveyAnswerDraft.updateMany({
+        where: {
+          surveyId: base.surveyId,
+          childId: { in: rows.map((row) => row.childId) },
+          deletedAt: null,
+        },
+        data: { deletedAt: new Date() },
+      });
+
       return created;
+    });
+  }
+
+  /** The live drafts of a teacher survey, one per child at most. */
+  async teacherSheetDrafts(surveyId: string, childIds: string[]) {
+    return this.prisma.surveyAnswerDraft.findMany({
+      where: { surveyId, childId: { in: childIds }, deletedAt: null },
+      select: {
+        id: true,
+        childId: true,
+        answers: true,
+        updatedAt: true,
+        author: { select: { id: true, lastName: true, firstName: true } },
+      },
+    });
+  }
+
+  /**
+   * Replaces the children's drafts in one transaction: the live ones are
+   * soft-deleted (§3.2) and a row with answers is written anew; a row with
+   * none only clears. Two writes for the whole batch (§3.4).
+   */
+  async saveTeacherSheetDrafts(
+    base: { kindergartenId: string; surveyId: string; authorId: string },
+    rows: { childId: string; answers: { questionId: string; value: unknown }[] }[],
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.surveyAnswerDraft.updateMany({
+        where: {
+          surveyId: base.surveyId,
+          childId: { in: rows.map((row) => row.childId) },
+          deletedAt: null,
+        },
+        data: { deletedAt: new Date() },
+      });
+
+      return tx.surveyAnswerDraft.createManyAndReturn({
+        data: rows
+          .filter((row) => row.answers.length > 0)
+          .map((row) => ({ ...base, childId: row.childId, answers: row.answers as object[] })),
+        select: { id: true, childId: true },
+      });
     });
   }
 
