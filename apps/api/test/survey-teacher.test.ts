@@ -576,3 +576,129 @@ describe("what a family is shown", () => {
     expect(res.body.total).toBe(0);
   });
 });
+
+/**
+ * Half-done rows, saved to be continued — 2026-10-16, the user: "Багш судалгаа
+ * авахдаа хадгалаад дахиад үргэлжлүүлээд хийдэг болгох".
+ */
+describe("a half-done row, saved and continued", () => {
+  function saveDrafts(
+    session: AuthSession,
+    surveyId: string,
+    drafts: { childId: string; answers: { questionId: string | undefined; value: unknown }[] }[],
+  ) {
+    return authed(
+      request(server()).put(`/v1/surveys/${surveyId}/teacher-sheet/drafts`),
+      session,
+    ).send({ drafts });
+  }
+
+  const sheetRow = async (surveyId: string, childId: string) => {
+    const sheet = await authed(
+      request(server()).get(`/v1/surveys/${surveyId}/teacher-sheet`),
+      teacherA,
+    );
+    return sheet.body.rows.find((r: { child: { id: string } }) => r.child.id === childId);
+  };
+
+  it("reads back a draft, keeps it out of every result, and ends it when the row is saved", async () => {
+    const { surveyId, questionIds } = await publishTeacherSurvey(teacherA);
+
+    const saved = await saveDrafts(teacherA, surveyId, [
+      { childId: a.child.id, answers: [{ questionId: questionIds[0], value: 4 }] },
+    ]);
+    expect(saved.status).toBe(200);
+    expect(saved.body.saved).toBe(1);
+
+    const row = await sheetRow(surveyId, a.child.id);
+    expect(row.response).toBeNull();
+    expect(row.draft.answers).toEqual([{ questionId: questionIds[0], value: 4 }]);
+
+    // A second save of the same child replaces the draft — one live row.
+    await saveDrafts(teacherA, surveyId, [
+      {
+        childId: a.child.id,
+        answers: [
+          { questionId: questionIds[0], value: 5 },
+          { questionId: questionIds[1], value: true },
+        ],
+      },
+    ]);
+    expect(await db.surveyAnswerDraft.count({ where: { surveyId, deletedAt: null } })).toBe(1);
+
+    // Never a response: nothing is counted.
+    expect(await db.surveyResponse.count({ where: { surveyId } })).toBe(0);
+    const participation = await authed(
+      request(server()).get(`/v1/surveys/${surveyId}/participation`),
+      teacherA,
+    );
+    expect(participation.body.answeredCount).toBe(0);
+
+    // The finished row ends the draft.
+    const done = await saveSheet(teacherA, surveyId, [
+      {
+        childId: a.child.id,
+        answers: [
+          { questionId: questionIds[0], value: 5 },
+          { questionId: questionIds[1], value: true },
+        ],
+      },
+    ]);
+    expect(done.status).toBe(200);
+    const after = await sheetRow(surveyId, a.child.id);
+    expect(after.draft).toBeNull();
+    expect(after.response).not.toBeNull();
+  });
+
+  it("an empty row clears the draft", async () => {
+    const { surveyId, questionIds } = await publishTeacherSurvey(teacherA);
+    await saveDrafts(teacherA, surveyId, [
+      { childId: a.child.id, answers: [{ questionId: questionIds[0], value: 2 }] },
+    ]);
+    const cleared = await saveDrafts(teacherA, surveyId, [{ childId: a.child.id, answers: [] }]);
+    expect(cleared.status).toBe(200);
+    expect((await sheetRow(surveyId, a.child.id)).draft).toBeNull();
+  });
+
+  it("refuses a draft for a child already answered, and on a closed survey", async () => {
+    const { surveyId, questionIds } = await publishTeacherSurvey(teacherA);
+    expect((await answer(teacherA, surveyId, a.child.id, questionIds)).status).toBe(201);
+    const res = await saveDrafts(teacherA, surveyId, [
+      { childId: a.child.id, answers: [{ questionId: questionIds[0], value: 1 }] },
+    ]);
+    expect(res.status).toBe(400);
+
+    const other = await publishTeacherSurvey(teacherA);
+    await authed(request(server()).post(`/v1/surveys/${other.surveyId}/close`), teacherA);
+    const closed = await saveDrafts(teacherA, other.surveyId, [
+      { childId: a.child.id, answers: [{ questionId: other.questionIds[0], value: 1 }] },
+    ]);
+    expect(closed.status).toBe(400);
+  });
+
+  it("teacher from another group gets 404", async () => {
+    const { surveyId, questionIds } = await publishTeacherSurvey(adminA);
+    const res = await saveDrafts(otherGroupTeacher, surveyId, [
+      { childId: a.child.id, answers: [{ questionId: questionIds[0], value: 2 }] },
+    ]);
+    expect(res.status).toBe(404);
+    expect(await db.surveyAnswerDraft.count({ where: { surveyId } })).toBe(0);
+  });
+
+  it("guardian gets 404 — even for their own child", async () => {
+    const { surveyId, questionIds } = await publishTeacherSurvey(teacherA);
+    const res = await saveDrafts(parentA, surveyId, [
+      { childId: a.child.id, answers: [{ questionId: questionIds[0], value: 2 }] },
+    ]);
+    expect(res.status).toBe(404);
+  });
+
+  it("user from another kindergarten gets 404", async () => {
+    const { surveyId, questionIds } = await publishTeacherSurvey(teacherA);
+    const res = await saveDrafts(teacherB, surveyId, [
+      { childId: a.child.id, answers: [{ questionId: questionIds[0], value: 2 }] },
+    ]);
+    expect(res.status).toBe(404);
+    expect(await db.surveyAnswerDraft.count({ where: { surveyId } })).toBe(0);
+  });
+});

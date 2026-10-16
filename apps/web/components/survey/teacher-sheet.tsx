@@ -24,6 +24,14 @@ export const teacherSheetRowSchema = z.object({
       answers: z.array(z.object({ questionId: uuidSchema, value: z.unknown() })),
     })
     .nullable(),
+  /** A half-done row saved to be continued (2026-10-16) — never a response. */
+  draft: z
+    .object({
+      updatedAt: z.string(),
+      author: z.object({ id: uuidSchema, lastName: z.string(), firstName: z.string() }),
+      answers: z.array(z.object({ questionId: uuidSchema, value: z.unknown() })),
+    })
+    .nullish(),
 });
 
 export type TeacherSheetRow = z.infer<typeof teacherSheetRowSchema>;
@@ -40,13 +48,27 @@ function answersFromRows(rows: TeacherSheetRow[]): Answers {
     rows.map((row) => [
       row.child.id,
       Object.fromEntries(
-        (row.response?.answers ?? []).map((answer) => [
+        (row.response?.answers ?? row.draft?.answers ?? []).map((answer) => [
           answer.questionId,
           answer.value as SurveyAnswerValue,
         ]),
       ),
     ]),
   );
+}
+
+/** Saved half-done, to be continued — and no finished response yet. */
+function isDraft(row: TeacherSheetRow) {
+  return !row.response && Boolean(row.draft);
+}
+
+/** The «дутуу» mark beside a half-done child's name. */
+function DraftMark({ row }: { row: TeacherSheetRow }) {
+  return isDraft(row) ? (
+    <span className="ml-1.5 rounded-pill bg-sunken px-1.5 py-0.5 text-caption text-muted">
+      дутуу
+    </span>
+  ) : null;
 }
 
 /** `Б.Ану` — the register's own short form (`shortName`), client 2026-09-21. */
@@ -124,10 +146,11 @@ function isComplete(questions: SurveyQuestion[], answers: Record<string, SurveyA
  * would lose which column belongs to which question. Stacked, each table
  * reads like the client's drawing: names down the left, the choices across.
  *
- * ★★ Saved whole, only the rows that changed, and a changed row must be
- * complete. A child half-filled in would otherwise be recorded as answered
- * and counted in every average with holes in it — the server keeps one
- * response per child, so the client sends a child only when their row is done.
+ * ★★ Saved whole, only the rows that changed. A complete row is the child's
+ * response; a half-done one is saved as a **draft** (2026-10-16, the user:
+ * "хадгалаад дахиад үргэлжлүүлээд хийдэг болгох") — kept apart on the server
+ * so it is never counted, and loaded back here to be continued. A child who
+ * already has a response is corrected whole, as before.
  */
 export function TeacherSheet({
   surveyId,
@@ -175,9 +198,20 @@ export function TeacherSheet({
     updateCell(childId, questionId, undefined);
 
   const changedRows = rows.filter((row) => changed.has(row.child.id));
-  const incomplete = changedRows.filter(
-    (row) => !isComplete(questions, answers[row.child.id] ?? {}),
-  );
+  const complete = (row: TeacherSheetRow) => isComplete(questions, answers[row.child.id] ?? {});
+  const finishedRows = changedRows.filter(complete);
+  const draftRows = changedRows.filter((row) => !complete(row) && !row.response);
+  // A recorded response is corrected whole — never turned back into a draft.
+  const blocked = changedRows.filter((row) => !complete(row) && row.response);
+  const savedDrafts = rows.filter((row) => isDraft(row) && !changed.has(row.child.id));
+
+  const answersOf = (row: TeacherSheetRow) =>
+    questions
+      .filter((question) => answers[row.child.id]?.[question.id] !== undefined)
+      .map((question) => ({
+        questionId: question.id,
+        value: answers[row.child.id]![question.id],
+      }));
 
   /*
     ★ Ten children per request — 2026-09-21, for the А/79 form.
@@ -189,36 +223,55 @@ export function TeacherSheet({
   */
   const save = useMutation({
     mutationFn: async () => {
-      let saved = 0;
-      for (let start = 0; start < changedRows.length; start += SAVE_CHUNK) {
-        const chunk = changedRows.slice(start, start + SAVE_CHUNK);
+      const markSaved = (chunk: TeacherSheetRow[]) =>
+        setChanged((current) => {
+          const next = new Set(current);
+          for (const row of chunk) next.delete(row.child.id);
+          return next;
+        });
+
+      let finished = 0;
+      for (let start = 0; start < finishedRows.length; start += SAVE_CHUNK) {
+        const chunk = finishedRows.slice(start, start + SAVE_CHUNK);
         const result = await mutate(
           `/surveys/${surveyId}/teacher-sheet`,
           z.object({ saved: z.number() }),
           {
             method: "PUT",
             body: {
-              responses: chunk.map((row) => ({
-                childId: row.child.id,
-                answers: questions.map((question) => ({
-                  questionId: question.id,
-                  value: answers[row.child.id]![question.id],
-                })),
-              })),
+              responses: chunk.map((row) => ({ childId: row.child.id, answers: answersOf(row) })),
             },
           },
         );
-        saved += result.saved;
-        setChanged((current) => {
-          const next = new Set(current);
-          for (const row of chunk) next.delete(row.child.id);
-          return next;
-        });
+        finished += result.saved;
+        markSaved(chunk);
       }
-      return saved;
+
+      let drafted = 0;
+      for (let start = 0; start < draftRows.length; start += SAVE_CHUNK) {
+        const chunk = draftRows.slice(start, start + SAVE_CHUNK);
+        await mutate(`/surveys/${surveyId}/teacher-sheet/drafts`, z.object({ saved: z.number() }), {
+          method: "PUT",
+          body: {
+            drafts: chunk.map((row) => ({ childId: row.child.id, answers: answersOf(row) })),
+          },
+        });
+        drafted += chunk.length;
+        markSaved(chunk);
+      }
+      return { finished, drafted };
     },
-    onSuccess: (saved) => {
-      toast.success(`${saved} хүүхдийн судалгаа хадгалагдлаа.`);
+    onSuccess: ({ finished, drafted }) => {
+      toast.success(
+        [
+          finished > 0 ? `${finished} хүүхдийн судалгаа хадгалагдлаа.` : null,
+          drafted > 0
+            ? `${drafted} хүүхдийн дутуу судалгаа хадгалагдлаа — дараа нь үргэлжлүүлж бөглөнө.`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      );
       // Reloads the sheet too (`["survey", id, "teacher-sheet"]`). Not on an
       // error: that would remount the table and drop the rows not yet saved.
       void queryClient.invalidateQueries({ queryKey: ["survey", surveyId] });
@@ -234,7 +287,7 @@ export function TeacherSheet({
       className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
-        if (!save.isPending && changedRows.length > 0 && incomplete.length === 0) save.mutate();
+        if (!save.isPending && changedRows.length > 0 && blocked.length === 0) save.mutate();
       }}
       noValidate
     >
@@ -335,15 +388,19 @@ export function TeacherSheet({
       {editable ? (
         <div className="sticky bottom-3 z-10 flex flex-col gap-2 rounded-card border border-border bg-surface p-3 shadow-lg sm:flex-row sm:items-center">
           <p className="min-w-0 flex-1 text-caption text-muted">
-            {incomplete.length > 0
-              ? `Дутуу: ${incomplete.map(childName).join(", ")} — бүх асуултад хариулна уу.`
+            {blocked.length > 0
+              ? `Хадгалагдсан судалгааг засахдаа бүх асуултад хариулна уу: ${blocked.map(childName).join(", ")}.`
               : changedRows.length > 0
-                ? `${changedRows.length} хүүхдийн өөрчлөлт хадгалагдаагүй байна.`
-                : "Хүүхэд бүрийн мөрөнд сонголтоо тэмдэглэнэ үү."}
+                ? draftRows.length > 0
+                  ? `${changedRows.length} хүүхдийн өөрчлөлт хадгалагдаагүй байна. Дутуу мөр (${draftRows.map(childName).join(", ")}) хадгалагдаад дараа нь үргэлжлүүлж бөглөнө.`
+                  : `${changedRows.length} хүүхдийн өөрчлөлт хадгалагдаагүй байна.`
+                : savedDrafts.length > 0
+                  ? `Дутуу хадгалсан: ${savedDrafts.map(childName).join(", ")} — үргэлжлүүлж бөглөнө үү.`
+                  : "Хүүхэд бүрийн мөрөнд сонголтоо тэмдэглэнэ үү."}
           </p>
           <Button
             type="submit"
-            disabled={save.isPending || changedRows.length === 0 || incomplete.length > 0}
+            disabled={save.isPending || changedRows.length === 0 || blocked.length > 0}
           >
             {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
           </Button>
@@ -418,6 +475,7 @@ function SheetTable({
                   className="sticky left-0 z-[1] bg-surface px-3 py-2.5 text-left font-normal text-ink"
                 >
                   {who}
+                  <DraftMark row={row} />
                 </th>
                 {columns.map((column) => (
                   <td key={column.key} className="px-2 py-2.5 text-center">
@@ -518,6 +576,7 @@ function Totals({
                 <tr key={row.child.id} className="border-t border-border-soft">
                   <th scope="row" className="px-3 py-2 text-left font-normal text-ink">
                     {childName(row)}
+                    <DraftMark row={row} />
                   </th>
                   <td className="px-3 py-2 text-right tabular-nums text-ink">
                     {marked.length === 0 ? "—" : `${total} / ${max}`}
@@ -567,6 +626,7 @@ function TextTable({
               <tr key={row.child.id} className="border-t border-border-soft">
                 <th scope="row" className="px-3 py-2 text-left font-normal text-ink">
                   {who}
+                  <DraftMark row={row} />
                 </th>
                 <td className="px-3 py-2">
                   <input
