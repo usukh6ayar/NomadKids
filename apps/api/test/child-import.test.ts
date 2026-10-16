@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import ExcelJS from "exceljs";
 import type { INestApplication } from "@nestjs/common";
@@ -133,4 +133,127 @@ it("a whole import fails together: nothing lands when a later row is bad", async
   expect(res.body.problems).toHaveLength(1);
   const after = await testDb().child.count({ where: { kindergartenId: a.kindergarten.id } });
   expect(after).toBe(before + 1);
+});
+
+/**
+ * 2026-10-16, «4-р цэцэрлэг»: children deleted and imported again answered 500
+ * four times — the register's unique index counted deleted children, while
+ * every check asked among live ones. The index is partial now.
+ */
+it("a deleted child's register can be imported again", async () => {
+  const first = await post(
+    a.kindergarten.id,
+    teacherA,
+    await book([["Буцаж", "Ирсэн", "Хүү", "2021-03-03", "ЗЗ11223344", "@G"]], a.group.name),
+    false,
+  );
+  expect(first.status).toBe(201);
+  const childId = first.body.imported[0].id as string;
+  await testDb().child.update({ where: { id: childId }, data: { deletedAt: new Date() } });
+
+  const again = await post(
+    a.kindergarten.id,
+    teacherA,
+    await book([["Буцаж", "Ирсэн", "Хүү", "2021-03-03", "ЗЗ11223344", "@G"]], a.group.name),
+    false,
+  );
+  expect(again.status).toBe(201);
+  expect(again.body.imported).toHaveLength(1);
+
+  // Still one live child per register: a third upload would skip, never 500.
+  const third = await post(
+    a.kindergarten.id,
+    teacherA,
+    await book([["Буцаж", "Ирсэн", "Хүү", "2021-03-03", "ЗЗ11223344", "@G"]], a.group.name),
+    true,
+  );
+  expect(third.status).toBe(201);
+  expect(third.body.willImport).toBe(0);
+  expect(third.body.problems[0].message).toContain("аль хэдийн бүртгэлтэй");
+});
+
+/**
+ * Whatever the roster was saved as — 2026-10-16, the client: "Эксэл оруулахад
+ * олон төрлөөс таньж оруулж болдог болгоод өг". Dry runs: nothing is written.
+ */
+describe("rosters in the shapes kindergartens actually have", () => {
+  const dry = (buf: Buffer, name: string) =>
+    authed(
+      request(app.getHttpServer()).post(
+        `/v1/kindergartens/${a.kindergarten.id}/children/import?dryRun=true`,
+      ),
+      teacherA,
+    ).attach("file", buf, name);
+
+  it("finds the headings below a title, on a later sheet, with marks and a rich-text heading", async () => {
+    const wb = new ExcelJS.Workbook();
+    wb.addWorksheet("Заавар").addRow(["Энэ хуудсыг бөглөнө үү"]);
+    const ws = wb.addWorksheet("Жагсаалт");
+    ws.addRow(["2026-2027 оны хичээлийн жилийн хүүхдийн бүртгэл"]);
+    ws.addRow([]);
+    ws.addRow([
+      "№",
+      { richText: [{ text: "Овог" }, { text: ":" }] },
+      "Нэр *",
+      "Хүйс",
+      "Төрсөн огноо (он-сар-өдөр)",
+      "Бүлгийн нэр",
+    ]);
+    ws.addRow([1, "Төмөр", "Анир", "Эр.", "2021 оны 4 сарын 15", a.group.name]);
+    ws.addRow([2, "Цогт", "Номин", "охин", 44301, a.group.name]);
+
+    const res = await dry(Buffer.from(await wb.xlsx.writeBuffer()), "roster.xlsx");
+    expect(res.status).toBe(201);
+    expect(res.body.problems).toEqual([]);
+    expect(res.body.willImport).toBe(2);
+  });
+
+  it("splits a single «Овог нэр» column", async () => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("s");
+    ws.addRow(["Хүүхдийн овог нэр", "Хүйс", "Төрсөн огноо"]);
+    ws.addRow(["Батын Тэнүүн", "Хүү", "15.04.2021"]);
+    ws.addRow(["Тэмүүлэн", "Хүү", "15.04.2021"]);
+
+    const res = await dry(Buffer.from(await wb.xlsx.writeBuffer()), "roster.xlsx");
+    expect(res.body.willImport).toBe(1);
+    expect(res.body.problems).toEqual([{ rowNumber: 3, message: "Овог хоосон байна" }]);
+  });
+
+  it("reads a windows-1251 CSV separated by semicolons, as Windows Excel saves one", async () => {
+    // «Овог;Нэр;Хүйс;Төрсөн огноо» / «Сүх;Ариун;Хүү;05.04.2021» in cp1251.
+    const cp1251 = (s: string) =>
+      Buffer.from(
+        [...s].map((ch) => {
+          const code = ch.codePointAt(0)!;
+          if (code < 0x80) return code;
+          if (code >= 0x410 && code <= 0x44f) return code - 0x350;
+          return { Ө: 0xaa, ө: 0xba, Ү: 0xaf, ү: 0xbf, Ё: 0xa8, ё: 0xb8 }[ch] ?? 0x3f;
+        }),
+      );
+    const csv = cp1251("Овог;Нэр;Хүйс;Төрсөн огноо\r\nСүх;Ариун;Хүү;05.04.2021\r\n");
+    const res = await dry(csv, "roster.csv");
+    expect(res.status).toBe(201);
+    expect(res.body.problems).toEqual([]);
+    expect(res.body.willImport).toBe(1);
+  });
+
+  it("reads a UTF-8 CSV with commas and a quoted field", async () => {
+    const csv = Buffer.from(
+      '﻿Овог,Нэр,Хүйс,Төрсөн огноо,Эрүүл мэнд\n"Болд","Хонгор","Охин","2021-06-01","Самар, сүү"\n',
+    );
+    const res = await dry(csv, "roster.csv");
+    expect(res.body.problems).toEqual([]);
+    expect(res.body.willImport).toBe(1);
+  });
+
+  it("refuses a legacy .xls with a message that says how to re-save it", async () => {
+    const ole = Buffer.concat([
+      Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]),
+      Buffer.alloc(504),
+    ]);
+    const res = await dry(ole, "roster.xls");
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toContain(".xlsx");
+  });
 });

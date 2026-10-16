@@ -9,8 +9,17 @@ export function previewPath(materialId: string, order: number): string {
   return `/materials/${materialId}/previews/${order}`;
 }
 
-function shared(row: MaterialRow) {
-  const previewUrls = row.previews.map((p) => previewPath(row.id, p.order));
+/**
+ * A shared link is deliberately readable without a session. Keep its preview
+ * URLs on the equally public route; pointing it at `previewPath` would make
+ * every image on `/m/:id` answer 401 for a signed-out visitor.
+ */
+export function publicPreviewPath(materialId: string, order: number): string {
+  return `/public/materials/${materialId}/previews/${order}`;
+}
+
+function shared(row: MaterialRow, pathForPreview = previewPath) {
+  const previewUrls = row.previews.map((p) => pathForPreview(row.id, p.order));
   return {
     id: row.id,
     title: row.title,
@@ -28,6 +37,11 @@ function shared(row: MaterialRow) {
 
 export function materialView(row: MaterialRow, owned: boolean): Material {
   return { ...shared(row), owned };
+}
+
+/** The on-sale fields exposed by `GET /public/materials/:id`. */
+export function publicMaterialView(row: MaterialRow) {
+  return shared(row, publicPreviewPath);
 }
 
 export function platformMaterialView(row: MaterialRow, sales: number): PlatformMaterial {

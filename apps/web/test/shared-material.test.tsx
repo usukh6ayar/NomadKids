@@ -11,6 +11,7 @@ import {
 } from "./support/render";
 import { SharedMaterial } from "@/components/materials/shared-material";
 import DocumentsPage from "@/app/(app)/documents/page";
+import { generateMetadata } from "@/app/m/[id]/page";
 
 /*
  * ★ A shared link to one teaching material — 2026-10-14, the user: anyone
@@ -43,6 +44,33 @@ function renderShared(me: RouteStub, extra: RouteStub[] = []) {
 }
 
 describe("a teaching material's shared page", () => {
+  it("puts the material's name, price and cover into the shared-link metadata", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify(MATERIAL), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+      ),
+    );
+
+    const metadata = await generateMetadata({ params: Promise.resolve({ id: "m1" }) });
+
+    expect(metadata.title).toContain(MATERIAL.title);
+    expect(metadata.description).toContain("12,000₮");
+    expect(metadata.openGraph).toMatchObject({
+      title: MATERIAL.title,
+      images: [
+        {
+          url: "http://localhost:3001/v1/public/materials/m1/previews/0",
+          alt: MATERIAL.title,
+        },
+      ],
+    });
+  });
+
   it("shows the material and its A4 sample to anyone, without signing in", async () => {
     renderShared({ path: "/auth/me", status: 401 });
 

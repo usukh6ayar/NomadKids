@@ -29,6 +29,7 @@ import { RateLimit, RateLimitGuard } from "../common/rate-limit/rate-limit.guard
 import { CurrentActor } from "../auth/decorators/actor.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { AllowSuperAdmin } from "../auth/decorators/allow-super-admin.decorator";
+import { Public } from "../auth/decorators/public.decorator";
 import type { Actor } from "../authz/actor";
 import { MAX_MATERIAL_BYTES } from "./material-file";
 import { MaterialsService, type UploadedPart } from "./materials.service";
@@ -116,6 +117,35 @@ export class MaterialsController {
   ) {
     return {
       url: await this.service.previewUrl(actor, params.id, params.order),
+      statusCode: 302,
+    };
+  }
+}
+
+/**
+ * The page behind a copied `/m/:id` link. Only published, live materials and
+ * their reduced sample images are exposed; the purchased source file remains
+ * behind `MaterialsController.download`.
+ */
+@Controller("public/materials")
+@UseGuards(RateLimitGuard)
+export class PublicMaterialsController {
+  constructor(private readonly service: MaterialsService) {}
+
+  @Get(":id")
+  @Public()
+  async detail(@Param(new ZodValidationPipe(idParams)) params: { id: string }) {
+    return this.service.publicMaterial(params.id);
+  }
+
+  @Get(":id/previews/:order")
+  @Public()
+  @Redirect()
+  async preview(
+    @Param(new ZodValidationPipe(previewParams)) params: { id: string; order: number },
+  ) {
+    return {
+      url: await this.service.publicPreviewUrl(params.id, params.order),
       statusCode: 302,
     };
   }

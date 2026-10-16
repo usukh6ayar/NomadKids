@@ -1,7 +1,6 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import Image from "next/image";
 import Link from "next/link";
 import { LostPhoneLink, WhoResets } from "@/components/auth/who-resets";
 import { useRouter } from "next/navigation";
@@ -27,6 +26,7 @@ import {
 import { mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
+import { BackButton } from "@/components/ui/back-button";
 import { Field, Input, PasswordInput } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
 import {
@@ -46,9 +46,9 @@ import { cn } from "@/lib/utils";
  * an administrator. `POST /auth/password-reset` still exists on the API; this
  * screen no longer calls it.
  *
- * Three steps on one card — the number, the SMS, the new password — drawn on
- * the same backdrop and card as the login it is reached from, so recovering an
- * account feels like the front door rather than a back office.
+ * Three steps on one page — the number, the SMS, the new password. The page is
+ * deliberately opaque and self-contained: it can be entered from Settings,
+ * and must not look like a popup laid over the public landing screen.
  *
  * ★★ It never says whether an account holds a number until the SMS has
  * proven the number is the asker's (`accountFound`, `docs/SECURITY.md` §2.1).
@@ -142,213 +142,184 @@ export default function ForgotPasswordPage() {
   const copy = COPY[availability.loading ? "phone" : availability.enabled ? phase : "off"];
 
   return (
-    <div className="relative isolate min-h-dvh bg-primary-soft bg-[url('/background/login-mobile.png')] bg-cover bg-top bg-no-repeat px-5 pb-[45vw] pt-6 sm:px-8 lg:bg-[url('/background/login-desktop.png')] lg:px-[7vw] lg:pb-10 lg:pt-10">
-      {/* The login hero's own grid width, so the card sits where the login
-          card sat and the backdrop's illustration stays clear of it. */}
-      <main className="mx-auto w-full max-w-[1320px]">
-        <div className="mx-auto w-full max-w-[440px] lg:mx-0">
-          <Link
-            href="/login"
-            className="inline-flex min-h-11 items-center gap-1.5 rounded-pill px-1 text-body font-semibold text-primary-strong hover:underline"
+    <div className="min-h-dvh bg-canvas px-4 py-4 sm:px-6 sm:py-6">
+      <main className="mx-auto w-full max-w-[640px]">
+        <BackButton href="/login" />
+
+        <section
+          aria-labelledby="reset-heading"
+          className="mt-4 rounded-card border border-border bg-surface p-5 shadow-sm [overflow-wrap:anywhere] sm:p-8"
+        >
+          <span className="inline-flex items-center gap-2 rounded-pill bg-primary-soft px-3 py-1.5 text-caption font-bold text-primary-strong">
+            <span className="size-2 rounded-pill bg-primary" aria-hidden="true" />
+            Нууц үг сэргээх
+          </span>
+
+          {availability.enabled && phase !== "done" && phase !== "no-account" ? (
+            <Stepper current={STEP_OF[phase]} />
+          ) : null}
+
+          <h1
+            id="reset-heading"
+            ref={heading}
+            tabIndex={-1}
+            className="mt-5 text-heading font-extrabold leading-heading tracking-tight text-ink outline-none"
           >
-            <ArrowLeft size={18} aria-hidden="true" />
-            Нэвтрэх хуудас
-          </Link>
+            {copy.title}
+          </h1>
+          <p className="mt-2 text-body leading-6 text-muted">{copy.lede}</p>
 
-          <section
-            aria-labelledby="reset-heading"
-            className="relative mt-12 rounded-card border border-white/80 bg-white/95 p-6 shadow-[0_24px_70px_rgba(25,72,111,.16)] backdrop-blur-xl [overflow-wrap:anywhere] sm:p-8"
-          >
-            {/*
-            The teacher from the login backdrop, leaning over the card's edge.
-            Decorative — the heading says everything she does.
-          */}
-            <Image
-              src="/background/mascot-girl-teal-b.webp"
-              alt=""
-              aria-hidden="true"
-              width={92}
-              height={240}
-              className="pointer-events-none absolute -top-[68px] right-6 h-[104px] w-auto drop-shadow-sm select-none"
-              priority
-            />
+          <div key={availability.loading ? "loading" : phase} className="mt-6 animate-step-in">
+            {availability.loading ? (
+              <div className="h-[132px] animate-pulse rounded-control bg-canvas" />
+            ) : !availability.enabled ? (
+              <OffState />
+            ) : phase === "phone" ? (
+              <form onSubmit={onSubmitPhone} className="flex flex-col gap-4" noValidate>
+                <FormError message={sms.startError} />
+                <PhoneField value={phone} onChange={setPhone} />
+                <Button
+                  type="submit"
+                  block
+                  disabled={!MOBILE_PHONE.test(phone) || sms.starting}
+                  className={PRIMARY_ACTION}
+                >
+                  {sms.starting ? "Код авч байна…" : "Код авах"}
+                  {!sms.starting ? <ArrowRight size={18} aria-hidden="true" /> : null}
+                </Button>
+              </form>
+            ) : phase === "sms" && sms.session ? (
+              <SmsStep
+                code={sms.session.code}
+                shortcode={sms.session.shortcode}
+                smsUri={sms.session.smsUri}
+                instruction={sms.session.displayInstruction}
+                secondsLeft={sms.secondsLeft}
+                totalSeconds={sms.session.totalSeconds}
+                expired={sms.expired}
+                restarting={sms.starting}
+                error={sms.startError}
+                onRestart={() => sms.begin(phone)}
+                onChangeNumber={startOver}
+              />
+            ) : phase === "password" ? (
+              <form onSubmit={onSubmitPassword} className="flex flex-col gap-4" noValidate>
+                <p
+                  role="status"
+                  className="flex items-center gap-2 self-start rounded-pill bg-mint px-3 py-1.5 text-caption font-bold text-mint-ink"
+                >
+                  <CheckCircle2 size={16} aria-hidden="true" />
+                  {phone} баталгаажлаа
+                </p>
 
-            <span className="inline-flex items-center gap-2 rounded-pill bg-primary-soft px-3 py-1.5 text-caption font-bold text-primary-strong">
-              <span className="size-2 rounded-pill bg-primary" aria-hidden="true" />
-              Нууц үг сэргээх
-            </span>
-
-            {availability.enabled && phase !== "done" && phase !== "no-account" ? (
-              <Stepper current={STEP_OF[phase]} />
-            ) : null}
-
-            <h1
-              id="reset-heading"
-              ref={heading}
-              tabIndex={-1}
-              className="mt-5 text-heading font-extrabold leading-heading tracking-tight text-ink outline-none"
-            >
-              {copy.title}
-            </h1>
-            <p className="mt-2 text-body leading-6 text-muted">{copy.lede}</p>
-
-            <div key={availability.loading ? "loading" : phase} className="mt-6 animate-step-in">
-              {availability.loading ? (
-                <div className="h-[132px] animate-pulse rounded-control bg-canvas" />
-              ) : !availability.enabled ? (
-                <OffState />
-              ) : phase === "phone" ? (
-                <form onSubmit={onSubmitPhone} className="flex flex-col gap-4" noValidate>
-                  <FormError message={sms.startError} />
-                  <PhoneField value={phone} onChange={setPhone} />
-                  <Button
-                    type="submit"
-                    block
-                    disabled={!MOBILE_PHONE.test(phone) || sms.starting}
-                    className={PRIMARY_ACTION}
-                  >
-                    {sms.starting ? "Код авч байна…" : "Код авах"}
-                    {!sms.starting ? <ArrowRight size={18} aria-hidden="true" /> : null}
-                  </Button>
-                </form>
-              ) : phase === "sms" && sms.session ? (
-                <SmsStep
-                  code={sms.session.code}
-                  shortcode={sms.session.shortcode}
-                  smsUri={sms.session.smsUri}
-                  instruction={sms.session.displayInstruction}
-                  secondsLeft={sms.secondsLeft}
-                  totalSeconds={sms.session.totalSeconds}
-                  expired={sms.expired}
-                  restarting={sms.starting}
-                  error={sms.startError}
-                  onRestart={() => sms.begin(phone)}
-                  onChangeNumber={startOver}
+                <FormError
+                  message={localError ?? (reset.isError ? errorMessage(reset.error) : null)}
                 />
-              ) : phase === "password" ? (
-                <form onSubmit={onSubmitPassword} className="flex flex-col gap-4" noValidate>
-                  <p
-                    role="status"
-                    className="flex items-center gap-2 self-start rounded-pill bg-mint px-3 py-1.5 text-caption font-bold text-mint-ink"
-                  >
-                    <CheckCircle2 size={16} aria-hidden="true" />
-                    {phone} баталгаажлаа
+
+                <Field label="Шинэ нууц үг" error={errors.password} required>
+                  {({ id, describedBy, invalid }) => (
+                    <IconInput icon={<LockKeyhole aria-hidden="true" />}>
+                      <PasswordInput
+                        id={id}
+                        aria-describedby={describedBy}
+                        invalid={invalid}
+                        autoComplete="new-password"
+                        autoFocus
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className={ICON_INPUT}
+                      />
+                    </IconInput>
+                  )}
+                </Field>
+
+                <RuleList password={password} />
+
+                <Field label="Нууц үгээ давтан оруулна уу" required>
+                  {({ id, describedBy }) => (
+                    <IconInput icon={<LockKeyhole aria-hidden="true" />}>
+                      <PasswordInput
+                        id={id}
+                        aria-describedby={describedBy}
+                        autoComplete="new-password"
+                        value={confirm}
+                        onChange={(e) => setConfirm(e.target.value)}
+                        className={ICON_INPUT}
+                      />
+                    </IconInput>
+                  )}
+                </Field>
+                {confirm && confirm === password ? (
+                  <p className="-mt-2 flex items-center gap-1.5 text-caption font-semibold text-mint-ink">
+                    <Check size={14} aria-hidden="true" />
+                    Нууц үг таарч байна
                   </p>
+                ) : null}
 
-                  <FormError
-                    message={localError ?? (reset.isError ? errorMessage(reset.error) : null)}
-                  />
-
-                  <Field label="Шинэ нууц үг" error={errors.password} required>
-                    {({ id, describedBy, invalid }) => (
-                      <IconInput icon={<LockKeyhole aria-hidden="true" />}>
-                        <PasswordInput
-                          id={id}
-                          aria-describedby={describedBy}
-                          invalid={invalid}
-                          autoComplete="new-password"
-                          autoFocus
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          className={ICON_INPUT}
-                        />
-                      </IconInput>
-                    )}
-                  </Field>
-
-                  <RuleList password={password} />
-
-                  <Field label="Нууц үгээ давтан оруулна уу" required>
-                    {({ id, describedBy }) => (
-                      <IconInput icon={<LockKeyhole aria-hidden="true" />}>
-                        <PasswordInput
-                          id={id}
-                          aria-describedby={describedBy}
-                          autoComplete="new-password"
-                          value={confirm}
-                          onChange={(e) => setConfirm(e.target.value)}
-                          className={ICON_INPUT}
-                        />
-                      </IconInput>
-                    )}
-                  </Field>
-                  {confirm && confirm === password ? (
-                    <p className="-mt-2 flex items-center gap-1.5 text-caption font-semibold text-mint-ink">
-                      <Check size={14} aria-hidden="true" />
-                      Нууц үг таарч байна
-                    </p>
-                  ) : null}
-
-                  <Button type="submit" block disabled={reset.isPending} className={PRIMARY_ACTION}>
-                    {reset.isPending ? "Хадгалж байна…" : "Нууц үг шинэчлэх"}
-                  </Button>
-                </form>
-              ) : phase === "no-account" ? (
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-start gap-3 rounded-control bg-peach/50 p-4">
-                    <SearchX className="mt-0.5 size-5 shrink-0 text-peach-ink" aria-hidden="true" />
-                    <p role="status" className="text-body leading-6 text-ink">
-                      <span className="font-bold tabular-nums">{phone}</span> дугаартай бүртгэл
-                      олдсонгүй.
-                    </p>
-                  </div>
-                  <Button variant="secondary" block onClick={startOver} className="h-13">
-                    <RotateCcw size={18} aria-hidden="true" />
-                    Өөр дугаар оруулах
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center gap-4 py-2 text-center">
-                  <span className="grid size-16 place-items-center rounded-pill bg-mint text-mint-ink shadow-sm">
-                    <Check className="size-8" strokeWidth={3} aria-hidden="true" />
-                  </span>
-                  <p role="status" className="text-body text-muted">
-                    Нэвтрэх хуудас руу шилжиж байна…
+                <Button type="submit" block disabled={reset.isPending} className={PRIMARY_ACTION}>
+                  {reset.isPending ? "Хадгалж байна…" : "Нууц үг шинэчлэх"}
+                </Button>
+              </form>
+            ) : phase === "no-account" ? (
+              <div className="flex flex-col gap-4">
+                <div className="flex items-start gap-3 rounded-control bg-peach/50 p-4">
+                  <SearchX className="mt-0.5 size-5 shrink-0 text-peach-ink" aria-hidden="true" />
+                  <p role="status" className="text-body leading-6 text-ink">
+                    <span className="font-bold tabular-nums">{phone}</span> дугаартай бүртгэл
+                    олдсонгүй.
                   </p>
-                  <Button asChild block className={PRIMARY_ACTION}>
-                    <Link href="/login">
-                      Нэвтрэх
-                      <ArrowRight size={18} aria-hidden="true" />
-                    </Link>
-                  </Button>
                 </div>
-              )}
-            </div>
+                <Button variant="secondary" block onClick={startOver} className="h-13">
+                  <RotateCcw size={18} aria-hidden="true" />
+                  Өөр дугаар оруулах
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-4 py-2 text-center">
+                <span className="grid size-16 place-items-center rounded-pill bg-mint text-mint-ink shadow-sm">
+                  <Check className="size-8" strokeWidth={3} aria-hidden="true" />
+                </span>
+                <p role="status" className="text-body text-muted">
+                  Нэвтрэх хуудас руу шилжиж байна…
+                </p>
+                <Button asChild block className={PRIMARY_ACTION}>
+                  <Link href="/login">
+                    Нэвтрэх
+                    <ArrowRight size={18} aria-hidden="true" />
+                  </Link>
+                </Button>
+              </div>
+            )}
+          </div>
+          <div className="mt-6 border-t border-border pt-4 text-center">
             {/*
-              Inside the card, not under it: below the card the backdrop's
-              illustration begins, and a sentence over a drawn face is a
-              sentence nobody can read on a phone.
-            */}
-            <div className="mt-6 border-t border-border pt-4 text-center">
-              {/*
                 ★ Who to turn to without the phone — 2026-10-14, the user: staff
                 ask their director; a director or a solo teacher, who has nobody
                 above them, calls NomadKids, which checks who is calling and
                 issues a reset link (`ResetPasswordLinkDialog`).
               */}
-              {/*
+            {/*
                 With the SMS form above, a small link for whoever lost the
                 phone, opening «Та хэн бэ?»; with SMS off the chooser is the
                 page itself (`OffState`). 2026-10-14, the user.
               */}
-              {availability.enabled ? <LostPhoneLink /> : null}
-              <nav
-                aria-label="Нууцлал ба тусламж"
-                className="mt-1 flex flex-wrap justify-center gap-x-4 text-caption font-semibold text-primary"
-              >
-                <Link href="/privacy" className="min-h-10 content-center hover:underline">
-                  Нууцлал
-                </Link>
-                <Link href="/terms" className="min-h-10 content-center hover:underline">
-                  Үйлчилгээний нөхцөл
-                </Link>
-                <Link href="/faq" className="min-h-10 content-center hover:underline">
-                  Түгээмэл асуулт
-                </Link>
-              </nav>
-            </div>
-          </section>
-        </div>
+            {availability.enabled ? <LostPhoneLink /> : null}
+            <nav
+              aria-label="Нууцлал ба тусламж"
+              className="mt-1 flex flex-wrap justify-center gap-x-4 text-caption font-semibold text-primary"
+            >
+              <Link href="/privacy" className="min-h-10 content-center hover:underline">
+                Нууцлал
+              </Link>
+              <Link href="/terms" className="min-h-10 content-center hover:underline">
+                Үйлчилгээний нөхцөл
+              </Link>
+              <Link href="/faq" className="min-h-10 content-center hover:underline">
+                Түгээмэл асуулт
+              </Link>
+            </nav>
+          </div>
+        </section>
       </main>
     </div>
   );

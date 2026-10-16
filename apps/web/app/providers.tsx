@@ -7,6 +7,7 @@ import { SessionProvider } from "@/lib/auth/session";
 import { ToastProvider } from "@/components/ui/toast";
 import { rememberCsrfToken } from "@/lib/api/csrf";
 import { isSessionExpired } from "@/lib/api/errors";
+import { useNavigationHistory } from "@/lib/nav-history";
 
 /**
  * TanStack Query configuration.
@@ -20,6 +21,10 @@ import { isSessionExpired } from "@/lib/api/errors";
  */
 export function Providers({ children }: { children: ReactNode }) {
   const router = useRouter();
+  // Back is a product-wide control. Keep following the route when a signed-in
+  // reader leaves the app shell for a public flow such as password recovery,
+  // so the arrow there can return to the settings screen it came from.
+  useNavigationHistory();
 
   const [queryClient] = useState(() => {
     /**

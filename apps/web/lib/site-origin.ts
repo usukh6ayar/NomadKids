@@ -1,8 +1,10 @@
-const FALLBACK_ORIGIN = "http://localhost:3000";
+const FALLBACK_ORIGIN =
+  process.env.NODE_ENV === "production" ? "https://nomadkids.mn" : "http://localhost:3000";
 
 /**
- * The site's own origin, or the localhost default if the setting is missing or
- * unparseable.
+ * The site's own origin. Development falls back to localhost; a production
+ * build falls back to the canonical NomadKids host so a missing build argument
+ * can never publish `localhost` in canonical or social-preview URLs.
  *
  * ★ `metadataBase` is the setting that decides whether a shared link previews.
  *

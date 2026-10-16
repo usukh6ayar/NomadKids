@@ -273,6 +273,34 @@ export const saveTeacherSheetSchema = z
 export type SaveTeacherSheetDto = z.infer<typeof saveTeacherSheetSchema>;
 
 /**
+ * Half-done rows of the teacher's table — 2026-10-16, the user: "хадгалаад
+ * дахиад үргэлжлүүлээд хийдэг болгох". A row may carry any number of answers,
+ * none included: an empty row clears that child's draft.
+ */
+export const saveTeacherSheetDraftsSchema = z
+  .object({
+    drafts: z
+      .array(
+        z
+          .object({
+            childId: uuidSchema,
+            answers: z
+              .array(z.object({ questionId: uuidSchema, value: answerValueSchema }))
+              .max(60),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(200)
+      .refine(
+        (rows) => new Set(rows.map((row) => row.childId)).size === rows.length,
+        "Нэг хүүхэд хоёр удаа орсон байна",
+      ),
+  })
+  .strict();
+export type SaveTeacherSheetDraftsDto = z.infer<typeof saveTeacherSheetDraftsSchema>;
+
+/**
  * Cloning a survey into the next wave — RFP Module 1.2.
  *
  * ★ The clone is how "ижил асуулга" comes to exist at all. Retyping thirty

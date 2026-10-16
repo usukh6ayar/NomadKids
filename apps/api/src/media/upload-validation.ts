@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { sniffSpreadsheet } from "../common/spreadsheet";
 
 /**
  * Upload validation.
@@ -368,20 +369,18 @@ export async function validatePdfUpload(
 export const MAX_SPREADSHEET_BYTES = 5 * 1024 * 1024;
 
 /**
- * Detects a real `.xlsx` from its content — CLAUDE.md §1.6.
+ * Detects a spreadsheet from its content — CLAUDE.md §1.6.
  *
- * ★ An `.xlsx` is a ZIP archive, so the magic number is a ZIP's.
+ * ★ An `.xlsx` is a ZIP archive, so the magic number is a ZIP's; anything
+ * else must decode as text to be read as a CSV (`common/spreadsheet.ts`).
+ * The parser is what proves a ZIP holds a workbook, inside a try/catch for
+ * exactly that reason. What this check buys is refusing an executable renamed
+ * to `.xlsx` before it ever reaches the parser — its bytes are not text.
  *
- * `PK\x03\x04` at offset zero is the local file header every ZIP begins with.
- * That is as far as content sniffing can go here: the parser is what proves the
- * archive holds a workbook rather than some other zipped thing, and it runs
- * inside a try/catch for exactly that reason. What this check does buy is
- * refusing an executable renamed to `.xlsx` before it ever reaches the parser.
- *
- * ★★ The legacy `.xls` binary format is deliberately **not** accepted. It is a
- * COM compound document that can carry macros, and supporting it would mean
- * parsing a format designed around executable content in order to read a list
- * of names.
+ * ★★ The legacy `.xls` binary format is still **not** parsed. It is a COM
+ * compound document that can carry macros; it is refused with a message that
+ * says how to re-save it as `.xlsx` or CSV (2026-10-16 — before, the bare
+ * "only .xlsx" left a kitchen with an old file nowhere to go).
  */
 export function validateSpreadsheetUpload(input: Buffer): void {
   if (input.length > MAX_SPREADSHEET_BYTES) {
@@ -390,7 +389,6 @@ export function validateSpreadsheetUpload(input: Buffer): void {
     );
   }
 
-  if (input.length < 4 || input.subarray(0, 4).toString("latin1") !== "PK\x03\x04") {
-    throw new UploadRejected("Зөвхөн .xlsx файл оруулах боломжтой");
-  }
+  const sniffed = sniffSpreadsheet(input);
+  if (sniffed.kind === "refused") throw new UploadRejected(sniffed.reason);
 }

@@ -18,6 +18,7 @@ import type {
   CloneSurveyDto,
   CreateSurveyDto,
   SaveQuestionsDto,
+  SaveTeacherSheetDraftsDto,
   SaveTeacherSheetDto,
   SubmitResponseDto,
 } from "./surveys.dto";
@@ -931,11 +932,17 @@ export class SurveysService {
       roster.map((row) => row.child.id),
     );
     const byChild = new Map(responses.map((row) => [row.childId, row]));
+    const drafts = await this.repo.teacherSheetDrafts(
+      surveyId,
+      roster.map((row) => row.child.id),
+    );
+    const draftByChild = new Map(drafts.map((row) => [row.childId, row]));
 
     return {
       survey,
       rows: roster.map(({ child, group }) => {
         const response = byChild.get(child.id);
+        const draft = draftByChild.get(child.id);
         return {
           child,
           group,
@@ -947,9 +954,76 @@ export class SurveysService {
                 answers: response.answers,
               }
             : null,
+          // A half-done row, saved to be continued — never a response.
+          draft: draft
+            ? {
+                updatedAt: draft.updatedAt.toISOString(),
+                author: draft.author,
+                answers: draft.answers as { questionId: string; value: unknown }[],
+              }
+            : null,
         };
       }),
     };
+  }
+
+  /**
+   * Saves half-done rows to be continued — 2026-10-16, the user: "Багш
+   * судалгаа авахдаа хадгалаад дахиад үргэлжлүүлээд хийдэг болгох".
+   *
+   * ★ The same gate as `saveTeacherSheet`: open survey, this actor's sheet,
+   * a child outside it 404 (§1.7). A draft is kept apart from responses
+   * (`SurveyAnswerDraft`), so nothing half-done reaches a result.
+   *
+   * ★★ Only for a child with no saved response. A recorded assessment is
+   * corrected whole, as before — a draft beside it would leave two versions of
+   * one child's answers and no saying which is true.
+   */
+  async saveTeacherSheetDrafts(actor: Actor, surveyId: string, dto: SaveTeacherSheetDraftsDto) {
+    const survey = await this.repo.findWithQuestions(surveyId);
+    if (!survey) throw new NotFoundException();
+    const groupIds = await this.teacherSheetScope(actor, survey);
+
+    if (survey.status !== "PUBLISHED") {
+      throw new BadRequestException("Энэ судалгаа одоогоор бөглөх боломжгүй байна");
+    }
+
+    const roster =
+      groupIds !== "all" && groupIds.length === 0
+        ? []
+        : await this.repo.teacherSheetRoster(survey.kindergartenId, groupIds);
+    const allowed = new Set(roster.map((row) => row.child.id));
+    if (dto.drafts.some((row) => !allowed.has(row.childId))) throw new NotFoundException();
+
+    for (const row of dto.drafts) this.assertValidAnswers(survey.questions, row.answers);
+
+    const answered = await this.repo.teacherSheetResponses(
+      surveyId,
+      dto.drafts.map((row) => row.childId),
+    );
+    if (answered.length > 0) {
+      throw new BadRequestException("Хадгалагдсан судалгааг засахдаа бүх асуултад хариулна уу");
+    }
+
+    const created = await this.repo.saveTeacherSheetDrafts(
+      { kindergartenId: survey.kindergartenId, surveyId, authorId: actor.userId },
+      dto.drafts,
+    );
+
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId: survey.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "SurveyAnswerDraft",
+      objectId: surveyId,
+      metadata: {
+        surveyId,
+        saved: created.map((row) => row.childId),
+        cleared: dto.drafts.filter((row) => row.answers.length === 0).map((row) => row.childId),
+      },
+    });
+
+    return { saved: created.length };
   }
 
   /**

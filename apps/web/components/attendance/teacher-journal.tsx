@@ -1,17 +1,40 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Download } from "lucide-react";
-import { groupAttendanceRangeSchema } from "@kinder/contracts";
-import { get } from "@/lib/api/browser";
+import { useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckCheck, Download, FileUp, PencilLine } from "lucide-react";
+import { z } from "zod";
+import {
+  groupAttendanceRangeSchema,
+  localDate,
+  type GroupAttendanceRange,
+} from "@kinder/contracts";
+import { get, mutate } from "@/lib/api/browser";
 import { downloadUrl } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { Field, Select } from "@/components/ui/field";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
-import { AttendanceWeekGrid } from "@/components/attendance/week-grid";
+import { useToast } from "@/components/ui/toast";
+import { AttendanceWeekGrid, isWeekend } from "@/components/attendance/week-grid";
+
+type RangeRow = GroupAttendanceRange["rows"][number];
+/** Unsaved marks of the month being filled in: day → child → status. */
+type MonthDraft = Record<string, Record<string, string>>;
+
+/**
+ * May this cell be filled in? A working day of the month (the calendar's,
+ * from the API; Mon–Fri when it sent none), up to today in Ulaanbaatar, and
+ * one the child spent in this group — `enrolledOn`'s rule, the end exclusive.
+ */
+function cellOpen(row: RangeRow, day: string, data: GroupAttendanceRange, today: string) {
+  if (day > today) return false;
+  if (data.workingDays ? !data.workingDays.includes(day) : isWeekend(day)) return false;
+  if (row.startedOn && day < row.startedOn) return false;
+  if (row.endedOn && day >= row.endedOn) return false;
+  return true;
+}
 
 /** The last day of `YYYY-MM`, as an ISO date. */
 function endOfMonth(month: string): string {
@@ -31,12 +54,14 @@ function endOfMonth(month: string): string {
  * tally rows, the cell colours and the Б.Батзориг names all come from the one
  * component, so they cannot disagree.
  *
- * ★★ Nothing here is editable, whatever the month.
- *
- * A journal is the record read back, and the register above is where it is
- * written — `editableDay={null}` says so. Correcting a past day is the
- * register's end-date field, which is one deliberate act on the screen that
- * owns the writing.
+ * ★★ Read-only until «Сараар нөхөх» is pressed — 2026-10-16, the user: "Ирц
+ * сараар нөхөх". Until then a journal was the record read back and nothing
+ * here was editable; a kindergarten that came to the product mid-year, or a
+ * teacher back from leave, had to open a past month one day at a time. The
+ * mode is a deliberate press, so the read-only month cannot be changed by a
+ * stray tap: the cells it opens are the child's own working days up to today
+ * (`cellOpen`), «Бүгдийг ирсэн болгох» fills only the empty ones of those, and
+ * nothing is written until Хадгалах.
  *
  * ★★★ A month is at most 31 columns and the grid scrolls horizontally for
  * them. That is why the month is a picker rather than a year of columns: the
@@ -79,6 +104,112 @@ export function TeacherJournal({
       get(`/groups/${groupId}/attendance/range?from=${from}&to=${to}`, groupAttendanceRangeSchema),
   });
 
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const today = localDate();
+  const [filling, setFilling] = useState(false);
+  const [fillDraft, setFillDraft] = useState<MonthDraft>({});
+
+  /** The draft's cells that differ from what is saved. */
+  const changes = range.data
+    ? range.data.rows.flatMap((row) =>
+        Object.entries(fillDraft).flatMap(([day, byChild]) => {
+          const status = byChild[row.child.id];
+          return status && status !== row.records[day]?.status
+            ? [{ childId: row.child.id, date: day, status }]
+            : [];
+        }),
+      )
+    : [];
+
+  const stopFilling = () => {
+    setFilling(false);
+    setFillDraft({});
+    setImportProblems([]);
+  };
+
+  /*
+    ★ Excel fills the grid, it does not write — 2026-10-16. The sheet is read
+    on the server against this month and this group's children, and what comes
+    back lands in the draft here, over any unsaved mark for the same cell. The
+    teacher sees it in the grid and saves it with Хадгалах, the same as a mark
+    made by hand.
+  */
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [importProblems, setImportProblems] = useState<{ rowNumber: number; message: string }[]>(
+    [],
+  );
+  const importSheet = useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return mutate(
+        `/groups/${groupId}/attendance/range/import?month=${month}`,
+        z.object({
+          entries: z.array(z.object({ childId: z.string(), date: z.string(), status: z.string() })),
+          problems: z.array(z.object({ rowNumber: z.number(), message: z.string() })),
+        }),
+        { method: "POST", body: form },
+      );
+    },
+    onSuccess: ({ entries, problems }) => {
+      setFillDraft((current) => {
+        const next: MonthDraft = { ...current };
+        for (const entry of entries) {
+          next[entry.date] = { ...(next[entry.date] ?? {}), [entry.childId]: entry.status };
+        }
+        return next;
+      });
+      setImportProblems(problems);
+      if (entries.length > 0) {
+        toast.success(`Файлаас ${entries.length} нүд бөглөгдлөө. Шалгаад «Хадгалах» дарна уу.`);
+      } else {
+        toast.error(problems[0]?.message ?? "Файлаас ирц олдсонгүй.");
+      }
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+    onSettled: () => {
+      if (fileInput.current) fileInput.current.value = "";
+    },
+  });
+
+  const changeMonth = (next: string) => {
+    stopFilling();
+    setMonth(next);
+  };
+
+  /** Every open, empty cell → Ирсэн. Never a cell that already has a mark. */
+  const fillPresent = () => {
+    if (!range.data) return;
+    const data = range.data;
+    setFillDraft((current) => {
+      const next: MonthDraft = { ...current };
+      for (const day of data.days) {
+        for (const row of data.rows) {
+          if (!cellOpen(row, day, data, today)) continue;
+          if (row.records[day] || current[day]?.[row.child.id]) continue;
+          next[day] = { ...(next[day] ?? {}), [row.child.id]: "PRESENT" };
+        }
+      }
+      return next;
+    });
+  };
+
+  const save = useMutation({
+    mutationFn: () =>
+      mutate(
+        `/groups/${groupId}/attendance/range`,
+        z.object({ created: z.number(), updated: z.number() }),
+        { method: "PUT", body: { entries: changes } },
+      ),
+    onSuccess: ({ created, updated }) => {
+      toast.success(`${created + updated} нүдний ирц хадгалагдлаа.`);
+      stopFilling();
+      void queryClient.invalidateQueries({ queryKey: ["group", groupId, "attendance"] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   /** Days in the span that carry at least one mark. */
   const recordedDays =
     range.data?.days.filter((day) => range.data!.rows.some((row) => row.records[day])).length ?? 0;
@@ -104,7 +235,7 @@ export function TeacherJournal({
               <Select
                 id={id}
                 value={year}
-                onChange={(event) => setMonth(`${event.target.value}-${monthNumber}`)}
+                onChange={(event) => changeMonth(`${event.target.value}-${monthNumber}`)}
               >
                 {YEARS.map((option) => (
                   <option key={option} value={option}>
@@ -119,7 +250,7 @@ export function TeacherJournal({
               <Select
                 id={id}
                 value={monthNumber}
-                onChange={(event) => setMonth(`${year}-${event.target.value}`)}
+                onChange={(event) => changeMonth(`${year}-${event.target.value}`)}
               >
                 {MONTHS.map((option) => (
                   <option key={option} value={option}>
@@ -164,6 +295,74 @@ export function TeacherJournal({
         ) : null}
       </p>
 
+      {range.data && range.data.rows.length > 0 && month <= today.slice(0, 7) ? (
+        filling ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-card border border-border bg-surface p-3">
+            <p className="min-w-0 flex-1 text-caption text-muted">
+              {changes.length > 0
+                ? `${changes.length} нүд хадгалагдаагүй байна.`
+                : "Нүдэн дээр дарж ирцийг сонгоно уу. Өнөөдрөөс хойших болон амралтын өдөр хаалттай."}
+            </p>
+            <Button type="button" variant="secondary" size="sm" onClick={fillPresent}>
+              <CheckCheck aria-hidden />
+              Бүгдийг «ирсэн» болгох
+            </Button>
+            <input
+              ref={fileInput}
+              id="attendance-month-file"
+              type="file"
+              accept=".xlsx,.csv,.xls,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/vnd.ms-excel"
+              className="sr-only"
+              onChange={(event) => {
+                const picked = event.target.files?.[0];
+                if (picked) importSheet.mutate(picked);
+              }}
+            />
+            <Button asChild variant="secondary" size="sm" disabled={importSheet.isPending}>
+              <label htmlFor="attendance-month-file" className="cursor-pointer">
+                <FileUp aria-hidden />
+                {importSheet.isPending ? "Уншиж байна…" : "Excel-ээс оруулах"}
+              </label>
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={stopFilling}>
+              Болих
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={changes.length === 0 || save.isPending}
+              onClick={() => save.mutate()}
+            >
+              {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+            </Button>
+          </div>
+        ) : (
+          <div>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setFilling(true)}>
+              <PencilLine aria-hidden />
+              Сараар нөхөх
+            </Button>
+          </div>
+        )
+      ) : null}
+
+      {filling && importProblems.length > 0 ? (
+        <div role="status" className="rounded-card bg-sunken px-4 py-3 text-caption text-muted">
+          <p className="font-semibold text-ink">
+            Файлын {importProblems.length} мөр/нүд оруулсангүй:
+          </p>
+          <ul className="mt-1 list-disc ps-5">
+            {importProblems.slice(0, 10).map((problem, index) => (
+              <li key={index}>
+                {problem.rowNumber > 0 ? `${problem.rowNumber}-р мөр: ` : ""}
+                {problem.message}
+              </li>
+            ))}
+          </ul>
+          {importProblems.length > 10 ? <p>…болон {importProblems.length - 10} бусад.</p> : null}
+        </div>
+      ) : null}
+
       {range.isLoading ? <LoadingState rows={6} shape="register" /> : null}
       {range.isError ? <ErrorState description={errorMessage(range.error)} /> : null}
       {range.data ? (
@@ -179,6 +378,22 @@ export function TeacherJournal({
             draft={{}}
             onSet={() => {}}
             showChildTotals
+            disabled={save.isPending}
+            backfill={
+              filling
+                ? {
+                    canEdit: (row, day) => cellOpen(row, day, range.data!, today),
+                    draft: fillDraft,
+                    onSet: (childId, day, status) =>
+                      setFillDraft((current) => {
+                        const forDay = { ...(current[day] ?? {}) };
+                        if (status) forDay[childId] = status;
+                        else delete forDay[childId];
+                        return { ...current, [day]: forDay };
+                      }),
+                  }
+                : undefined
+            }
           />
         )
       ) : null}

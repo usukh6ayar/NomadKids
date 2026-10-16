@@ -30,7 +30,7 @@ function ChildRoutine() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Өдрийн дэглэм" backHref="/home" lede={routine?.group.name || undefined} />
+      <PageHeader title="Өдрийн дэглэм" backHref="/home" />
       {isLoading ? <LoadingState rows={6} /> : null}
       {error ? <ErrorState description={errorMessage(error)} /> : null}
       {routine ? <RoutineView routine={routine} mode="parent" actions={actions} /> : null}

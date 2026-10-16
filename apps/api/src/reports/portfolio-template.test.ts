@@ -27,8 +27,12 @@ function portfolio(overrides: Partial<PortfolioData> = {}): PortfolioData {
     ],
     ageProfiles: [],
     birthdayNotes: [],
+    observations: [],
+    growthMeasurements: [],
+    milestones: [],
     artworkComparisons: [],
     photoAlbums: [],
+    albumSummary: [],
     generatedAt: new Date("2026-09-21T00:00:00.000Z"),
     ...overrides,
   };
@@ -57,10 +61,11 @@ describe("renderPortfolioHtml", () => {
     expect(html).toContain("Улаанбаатар");
     expect(html).toContain("Суралцсан цэцэрлэгүүд");
     expect(html).toContain("NomadKids цэцэрлэг");
+    // Restored 2026-10-16 — the redesign keeps the birthday section.
     expect(html).toContain("Төрсөн өдрийн мэдээлэл");
     expect(html).not.toContain("Эцэг эхийн тэмдэглэл");
-    expect(html).not.toContain("Багшийн тэмдэглэл");
-    expect(html).not.toContain("Онцгой үйл явдал");
+    expect(html).not.toContain("Багшийн ажиглалт");
+    expect(html).not.toContain("Өсөлт ба онцгой үйл явдал");
     expect(html).not.toContain("Ажиглалт, ярилцлага, бүтээл");
     expect(html).not.toContain("Хөгжлийн үнэлгээ");
   });
@@ -127,11 +132,12 @@ describe("renderPortfolioHtml", () => {
       }),
     );
 
-    expect(html).toContain("Нас насны хөгжлийн харьцуулалт");
-    expect(html).toContain("2 нас");
-    expect(html).toContain("3 нас");
+    expect(html).toContain("Нас насны миний түүх");
+    expect(html).toContain("<strong>2</strong><span>нас</span>");
+    expect(html).toContain("<strong>3</strong><span>нас</span>");
     expect(html).toContain("Шар");
     expect(html).toContain("Ногоон");
+    // What each age learned at kindergarten stays in the PDF (2026-10-16).
     expect(html).toContain("Өөрөө хувцаслах");
     expect(html).toContain("Гутлаа үдэх");
     expect(html).not.toContain("PDF-д орох ёсгүй");
@@ -162,10 +168,45 @@ describe("renderPortfolioHtml", () => {
       }),
     );
 
-    expect(html).toContain("Бүтээлийн өмнөх ба дараах ахиц");
+    expect(html).toContain("Бүтээлийн ахицын цуваа");
     expect(html).toContain("Өнгө сонголт болон дүрслэл ахисан.");
-    expect(html).toContain("Зургийн цомгийн харьцуулалт");
+    expect(html).toContain("Нас насны зургийн цомог");
     expect(html).toContain("Миний төрсөн өдөр");
     expect(html).toContain("3 насны зураг");
+  });
+
+  it("renders only recorded observations, growth, milestones, album counts, and teacher letter", () => {
+    const html = renderPortfolioHtml(
+      portfolio({
+        observations: [
+          {
+            typeName: "Чөлөөт ажиглалт",
+            observedOn: "2026-02-12",
+            activityName: "Хамтран бүтээсэн хот",
+            childDid: "Зам болон гүүр хийв.",
+            photoDataUris: ["data:image/png;base64,AA=="],
+          },
+        ],
+        growthMeasurements: [{ measuredOn: "2026-02-12", heightCm: 108, weightKg: 18 }],
+        milestones: [
+          {
+            title: "Цэцэрлэгийн анхны өдөр",
+            occurredOn: "2023-09-01",
+            photoDataUris: ["data:image/png;base64,AA=="],
+          },
+        ],
+        albumSummary: [{ label: "Цээж зураг", count: 4 }],
+        teacherLetter: "Хайрт шавьдаа",
+      }),
+    );
+
+    expect(html).toContain("Багшийн ажиглалт");
+    expect(html).toContain("Хамтран бүтээсэн хот");
+    expect(html).toContain("Өндөр, жингийн түүх");
+    expect(html).toContain("108 см");
+    expect(html).toContain("Цэцэрлэгийн анхны өдөр");
+    expect(html).toContain("Цээж зураг · 4 зураг");
+    expect(html).toContain("Багшийн захиа");
+    expect(html).toContain("Хайрт шавьдаа");
   });
 });
