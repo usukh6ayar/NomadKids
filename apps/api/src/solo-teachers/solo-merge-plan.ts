@@ -101,6 +101,7 @@ const MOVE = new Set([
   "notification_reactions",
   "notification_targets",
   "notifications",
+  "observation_a79_links",
   "observation_domains",
   "observations",
   "qpay_invoices",

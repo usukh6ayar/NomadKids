@@ -229,6 +229,22 @@ enum ObservationSource {
   PARENT
 }
 
+/// The four levels of annex А/79 (`@kinder/contracts` a79.ts carries the criteria).
+enum A79Level {
+  I
+  II
+  III
+  IV
+}
+
+/// How a skill showed on one note — the client's four, 2026-10-08.
+enum A79Status {
+  INDEPENDENT
+  SUPPORTED
+  DEVELOPING
+  NOT_YET
+}
+
 /// §5.4 — the teacher reviews what a parent submits.
 ///
 /// A teacher's own observation is APPROVED on save: there is nobody above them
@@ -933,6 +949,7 @@ model Kindergarten {
   esisReference          EsisReference[]
   methodUnions           MethodUnion[]
   methodUnionMembers     MethodUnionMember[]
+  observationA79Links    ObservationA79Link[]
 
   @@index([deletedAt])
   @@map("kindergartens")
@@ -1447,6 +1464,7 @@ model Child {
   mealRecords         MealRecord[]
   fundingCalculations FundingCalculation[]
   invoices            Invoice[]
+  a79Links            ObservationA79Link[]
 
   @@unique([kindergartenId, nationalId])
   /// The lookup the ESIS authorization gate does on every per-child read.
@@ -3182,6 +3200,7 @@ model Observation {
   domains      ObservationDomain[]
   media        MediaFile[]             @relation("ObservationMedia")
   termReports  TermReportObservation[]
+  a79Links     ObservationA79Link[]
 
   @@index([childId, observedOn(sort: Desc)])
   @@index([kindergartenId, observedOn(sort: Desc)])
@@ -3190,6 +3209,40 @@ model Observation {
   @@index([authorId, createdAt(sort: Desc)])
   @@index([childId, visibleToParents, observedOn(sort: Desc)])
   @@map("observations")
+}
+
+/// One observation linked to one А/79 criterion, with how the skill showed —
+/// the evidence «Үр дүнгийн үнэлгээ» reads back (client, 2026-10-08).
+///
+/// A criterion is named by its level and its number within the level, as the
+/// document numbers them («Ш18»); the text lives in `@kinder/contracts`.
+/// `PUT /observations/:id/a79-links` replaces a note's set: the old rows are
+/// soft-deleted, never overwritten. One live row per (note, level, number) —
+/// a partial unique index in the migration.
+model ObservationA79Link {
+  id             String    @id @default(uuid()) @db.Uuid
+  kindergartenId String    @db.Uuid
+  observationId  String    @db.Uuid
+  /// Denormalised from the observation, so a child's evidence is one index.
+  childId        String    @db.Uuid
+  level          A79Level
+  number         Int       @db.SmallInt
+  status         A79Status
+  /// The link's own «Тайлбар».
+  note           String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  observation  Observation  @relation(fields: [observationId], references: [id], onDelete: Cascade)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@index([childId, level])
+  @@index([observationId])
+  @@index([kindergartenId])
+  @@map("observation_a79_links")
 }
 
 model ObservationDomain {

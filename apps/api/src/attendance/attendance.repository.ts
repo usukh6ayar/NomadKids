@@ -11,26 +11,8 @@ import type {
   ChildStatus,
   ProgramKind,
 } from "../domain/enums";
+import { enrolledOn } from "../common/repository/enrolled-on";
 import { searchWhere } from "../common/repository/search";
-
-/**
- * Enrollments that held on at least one day of `from`..`to`: started by `to`,
- * and not ended before `from`. Of an archived child, none.
- *
- * `endedOn` is exclusive — the day a transfer is recorded is the new group's
- * (`ChildrenRepository.enrollChild` ends one row and starts the next the same
- * day), so the child is on one sheet that day, not two. A row that is not
- * ACTIVE yet carries no `endedOn` is an old ended row with its date lost; it
- * counts on no day rather than on every day.
- */
-function enrolledOn(from: Date, to: Date): Prisma.EnrollmentWhereInput {
-  return {
-    deletedAt: null,
-    child: { deletedAt: null },
-    startedOn: { lte: to },
-    OR: [{ endedOn: null, status: "ACTIVE" }, { endedOn: { gt: from } }],
-  };
-}
 
 /**
  * Attendance records and the guardian requests that precede them.
@@ -268,10 +250,11 @@ export class AttendanceRepository {
       ...(filters.attendanceForm ? { attendanceForm: filters.attendanceForm } : {}),
     };
 
+    // ★ The enrolments that covered the span, not today's (№19) — `enrolledOn`.
+    // Spread first: the `child` filter below carries `deletedAt: null` itself.
     const enrollmentWhere: Prisma.EnrollmentWhereInput = {
+      ...enrolledOn(filters.from, filters.to),
       kindergartenId,
-      deletedAt: null,
-      status: "ACTIVE",
       ...(filters.groupIds?.length ? { groupId: { in: filters.groupIds } } : {}),
       ...(filters.childIds?.length ? { childId: { in: filters.childIds } } : {}),
       group: groupWhere,
@@ -841,6 +824,18 @@ export class AttendanceRepository {
   async activeEnrollment(childId: string) {
     return this.prisma.enrollment.findFirst({
       where: { childId, status: "ACTIVE", deletedAt: null },
+      orderBy: { startedOn: "desc" },
+      select: { id: true, kindergartenId: true, groupId: true },
+    });
+  }
+
+  /**
+   * The enrolment the child was in on `date` — a mark for a past day belongs
+   * to the group the child attended that day, not the one they attend now.
+   */
+  async enrollmentOn(childId: string, date: Date) {
+    return this.prisma.enrollment.findFirst({
+      where: { childId, group: { deletedAt: null }, ...enrolledOn(date, date) },
       orderBy: { startedOn: "desc" },
       select: { id: true, kindergartenId: true, groupId: true },
     });
