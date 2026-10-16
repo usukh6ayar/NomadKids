@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import type { A79Link, A79LevelKey } from "@kinder/contracts";
+import { enrolledOn } from "../common/repository/enrolled-on";
 import { PrismaService } from "../prisma/prisma.service";
 
 /**
@@ -38,6 +39,10 @@ export class A79Repository {
     links: A79Link[],
   ) {
     return this.prisma.$transaction(async (tx) => {
+      // ★ Two saves of one note at once (a double click, a retry) would both
+      // see the old set live and both insert the new one — the second on the
+      // partial unique index, a 500. Taking the note's row first queues them.
+      await tx.$queryRaw`SELECT "id" FROM "observations" WHERE "id" = ${observation.id}::uuid FOR UPDATE`;
       const replaced = await tx.observationA79Link.updateMany({
         where: { observationId: observation.id, deletedAt: null },
         data: { deletedAt: new Date() },
@@ -102,13 +107,7 @@ export class A79Repository {
    */
   async rosterBetween(groupId: string, from: Date, to: Date) {
     const rows = await this.prisma.enrollment.findMany({
-      where: {
-        groupId,
-        deletedAt: null,
-        child: { deletedAt: null },
-        startedOn: { lte: to },
-        OR: [{ endedOn: null, status: "ACTIVE" }, { endedOn: { gt: from } }],
-      },
+      where: { groupId, ...enrolledOn(from, to) },
       select: {
         child: { select: { id: true, firstName: true, lastName: true, dateOfBirth: true } },
       },
@@ -120,12 +119,17 @@ export class A79Repository {
       .filter((child) => (seen.has(child.id) ? false : (seen.add(child.id), true)));
   }
 
-  /** Every live link of these children on notes observed within the span. One query. */
-  linksForChildren(childIds: string[], from: Date, to: Date) {
+  /**
+   * The live links of these children, at the levels asked, on notes observed
+   * within the span. One query, bounded as `evidenceForChild` is.
+   */
+  linksForChildren(childIds: string[], levels: A79LevelKey[], from: Date, to: Date) {
     if (childIds.length === 0) return Promise.resolve([]);
     return this.prisma.observationA79Link.findMany({
+      take: MAX_EVIDENCE * 10,
       where: {
         childId: { in: childIds },
+        level: { in: levels },
         deletedAt: null,
         observation: { deletedAt: null, observedOn: { gte: from, lte: to } },
       },

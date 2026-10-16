@@ -128,6 +128,18 @@ describe("PUT /observations/:id/a79-links", () => {
     expect((await putLinks(teacherA, id, [link(3), link(3, "SUPPORTED")])).status).toBe(400);
   });
 
+  it("two saves of one note at once leave one live set, not a 500", async () => {
+    const id = await note();
+    const [first, second] = await Promise.all([
+      putLinks(teacherA, id, [link(3), link(4)]),
+      putLinks(teacherA, id, [link(3), link(4)]),
+    ]);
+    expect([first.status, second.status]).toEqual([200, 200]);
+    expect(
+      await db.observationA79Link.count({ where: { observationId: id, deletedAt: null } }),
+    ).toBe(2);
+  });
+
   it("an administrator may link a note", async () => {
     const id = await note();
     expect((await putLinks(adminA, id, [link(1)])).status).toBe(200);
@@ -177,6 +189,18 @@ describe("GET /children/:id/a79-progress", () => {
     expect(three.evidence[1].note).toBe("Барилгын буланд");
     // A criterion nobody linked is absent, not NOT_YET.
     expect(res.body.criteria.map((c: { number: number }) => c.number)).toEqual([3, 7]);
+  });
+
+  it("a blank situation falls through to what the child did", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/observations`),
+      teacherA,
+    ).send({ typeId, observedOn: "2026-02-10", situation: "  ", childDid: "Цамхаг барив" });
+    expect(res.status).toBe(201);
+    await putLinks(teacherA, res.body.id, [link(3)]);
+
+    const three = (await progress(teacherA)).body.criteria[0];
+    expect(three.evidence[0].note).toBe("Цамхаг барив");
   });
 
   it("drops the evidence of an archived note", async () => {

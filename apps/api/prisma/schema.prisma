@@ -229,12 +229,6 @@ enum ObservationSource {
   PARENT
 }
 
-/// §5.4 — the teacher reviews what a parent submits.
-///
-/// A teacher's own observation is APPROVED on save: there is nobody above them
-/// to approve it. There is deliberately no "not required" state — the parent
-/// read filter is `visibleToParents AND APPROVED`, so a teacher observation in
-/// any other state would be invisible to the family it was written for.
 /// The four levels of annex А/79 (`@kinder/contracts` a79.ts carries the criteria).
 enum A79Level {
   I
@@ -251,6 +245,12 @@ enum A79Status {
   NOT_YET
 }
 
+/// §5.4 — the teacher reviews what a parent submits.
+///
+/// A teacher's own observation is APPROVED on save: there is nobody above them
+/// to approve it. There is deliberately no "not required" state — the parent
+/// read filter is `visibleToParents AND APPROVED`, so a teacher observation in
+/// any other state would be invisible to the family it was written for.
 enum ReviewStatus {
   PENDING // parent-submitted, awaiting a teacher
   APPROVED

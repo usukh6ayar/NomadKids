@@ -5,6 +5,7 @@ import {
   a79Level,
   a79LevelForAge,
   ageInYears,
+  localDate,
   type A79GroupSummary,
   type A79LevelKey,
   type A79Progress,
@@ -42,9 +43,11 @@ export class A79Service {
   ) {}
 
   /**
-   * Replaces the note's links. Whoever may edit the note as staff may link it
-   * — `canEditObservationAsStaff`, the rule `PATCH /observations/:id` keeps —
-   * and anyone else gets 404.
+   * Replaces the note's links. A teacher or an administrator who may edit the
+   * note as staff — `canEditObservationAsStaff`, the rule `PATCH
+   * /observations/:id` keeps — may link it; anyone else gets 404. The route's
+   * `@Roles("TEACHER", "ADMIN")` keeps a PE/music teacher out even of their own
+   * note: А/79 is the class teacher's assessment (the web's contract).
    */
   async replaceLinks(actor: Actor, observationId: string, dto: ObservationA79Links) {
     const row = await this.repo.findObservation(observationId);
@@ -84,7 +87,7 @@ export class A79Service {
         observedOn: isoDay(row.observation.observedOn),
         status: row.status,
         typeName: row.observation.type?.name ?? null,
-        note: row.note || opening(row.observation.situation ?? row.observation.childDid),
+        note: row.note || opening(row.observation.situation) || opening(row.observation.childDid),
       };
       const criterion = byNumber.get(row.number);
       // Rows arrive newest first, so the first one fixes the status.
@@ -100,11 +103,18 @@ export class A79Service {
   }
 
   /**
-   * The group's result, one row per child — counts only, scored as the
-   * child's own page scores (`a79IsMet`: latest evidence «Бие даан»).
+   * The group's result, one row per child — counts only, scored with the
+   * child's page's rule (`a79IsMet`: latest evidence «Бие даан»), over the
+   * notes observed within the span (the page reads every note; the span is
+   * what the director's term filter asks for).
    *
    * ★ The span defaults to the group's own school year. A child's level is
-   * their age on its last day, as `a79LevelForAge` reads it on their page.
+   * their age today — as their own page opens — or on the span's last day if
+   * the span is already over, so a past term reads the level it was taught at.
+   *
+   * ★★ The portal-fee gate (CLAUDE.md §1.7): a solo teacher's child whose
+   * family has not paid is on the roster and out of this record, as their own
+   * progress answers 402.
    */
   async groupSummary(
     actor: Actor,
@@ -119,9 +129,19 @@ export class A79Service {
     const to = query.to ? new Date(`${query.to}T00:00:00.000Z`) : group.schoolYear.endsOn;
     if (to < from) throw new BadRequestException("Эхлэх огноо нь дуусах огнооноос хойш байна");
 
-    const children = await this.repo.rosterBetween(groupId, from, to);
+    const roster = await this.repo.rosterBetween(groupId, from, to);
+    const blocked = await this.childAccess.soloStaffBlockedChildIds(roster.map((c) => c.id));
+    const today = new Date(`${localDate()}T00:00:00.000Z`);
+    const ageOn = to < today ? to : today;
+    const children = roster
+      .filter((child) => !blocked.has(child.id))
+      .map((child) => ({
+        ...child,
+        level: a79LevelForAge(child.dateOfBirth ? ageInYears(child.dateOfBirth, ageOn) : null),
+      }));
     const links = await this.repo.linksForChildren(
       children.map((child) => child.id),
+      [...new Set(children.map((child) => child.level))],
       from,
       to,
     );
@@ -142,7 +162,7 @@ export class A79Service {
 
     return {
       children: children.map((child) => {
-        const level = a79LevelForAge(child.dateOfBirth ? ageInYears(child.dateOfBirth, to) : null);
+        const level = child.level;
         const criteria = a79Level(level).criteria;
         const forChild = latest.get(child.id);
         const met = (number: number) => {
@@ -172,8 +192,9 @@ export class A79Service {
   }
 }
 
+/** The opening of a note's text — `null` for none or only whitespace, so the next field stands in. */
 function opening(text: string | null | undefined): string | null {
-  if (!text) return null;
-  const trimmed = text.trim();
+  const trimmed = text?.trim();
+  if (!trimmed) return null;
   return trimmed.length > NOTE_OPENING ? `${trimmed.slice(0, NOTE_OPENING)}…` : trimmed;
 }
