@@ -1,4 +1,5 @@
 import type { INestApplication } from "@nestjs/common";
+import ExcelJS from "exceljs";
 import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestApp } from "./support/app";
@@ -168,5 +169,99 @@ describe("filling in a month", () => {
     ]);
     expect(cross.status).toBe(400);
     expect(await db.attendance.count()).toBe(0);
+  });
+});
+
+/**
+ * «Ирц сараар нөхөх» by Excel — the sheet is read for the grid, never written.
+ */
+describe("reading a month out of a spreadsheet", () => {
+  const upload = (session: AuthSession, groupId: string, file: Buffer, name = "ирц.xlsx") =>
+    authed(
+      request(server()).post(`/v1/groups/${groupId}/attendance/range/import?month=2026-02`),
+      session,
+    ).attach("file", file, name);
+
+  it("reads back the journal's own download, edited in Excel", async () => {
+    const exported = await authed(
+      request(server())
+        .get(`/v1/groups/${a.group.id}/attendance/range/export?from=2026-02-01&to=2026-02-28`)
+        .buffer(true)
+        .parse((res, done) => {
+          const chunks: Buffer[] = [];
+          res.on("data", (chunk: Buffer) => chunks.push(chunk));
+          res.on("end", () => done(null, Buffer.concat(chunks)));
+        }),
+      teacherA,
+    );
+    expect(exported.status).toBe(200);
+
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(exported.body as ArrayBuffer);
+    const sheet = book.getWorksheet("Өдөр тутмын ирц")!;
+    // Row 3 is the heading; the child is the first row under it.
+    const header = sheet.getRow(3);
+    const columnOf = (day: string) => {
+      let found = 0;
+      header.eachCell((cell, column) => {
+        if (String(cell.value) === day) found = column;
+      });
+      return found;
+    };
+    const childRow = sheet.getRow(4);
+    childRow.getCell(columnOf("02")).value = "Ирсэн";
+    childRow.getCell(columnOf("03")).value = "Ө";
+    childRow.getCell(columnOf("04")).value = "+";
+    childRow.getCell(columnOf("07")).value = "И"; // a Saturday
+    childRow.getCell(columnOf("05")).value = "??";
+    const file = Buffer.from(await book.xlsx.writeBuffer());
+
+    const res = await upload(teacherA, a.group.id, file);
+    expect(res.status).toBe(201);
+    expect(res.body.entries).toEqual([
+      { childId: a.child.id, date: "2026-02-02", status: "PRESENT" },
+      { childId: a.child.id, date: "2026-02-03", status: "SICK" },
+      { childId: a.child.id, date: "2026-02-04", status: "PRESENT" },
+    ]);
+    const messages = res.body.problems.map((p: { message: string }) => p.message).join(" | ");
+    expect(messages).toContain("2026-02-07: амралтын өдөр");
+    expect(messages).toContain("«??»");
+
+    // Read for the grid — nothing written.
+    expect(await db.attendance.count()).toBe(0);
+  });
+
+  it("reads a CSV with surname and name columns, and names a child it cannot find", async () => {
+    const csv = Buffer.from(
+      [
+        "Овог;Нэр;1;2;3;4",
+        `${a.child.lastName ?? ""};${a.child.firstName};;И;Ч;Т`,
+        "Хэн;Нэгэн;;И;;",
+      ].join("\n"),
+    );
+    const res = await upload(teacherA, a.group.id, csv, "ирц.csv");
+    expect(res.status).toBe(201);
+    expect(res.body.entries).toEqual([
+      { childId: a.child.id, date: "2026-02-02", status: "PRESENT" },
+      { childId: a.child.id, date: "2026-02-03", status: "EXCUSED" },
+      { childId: a.child.id, date: "2026-02-04", status: "ABSENT" },
+    ]);
+    expect(res.body.problems).toEqual([
+      { rowNumber: 3, message: "Бүлэгт ийм хүүхэд олдсонгүй: «Хэн Нэгэн»" },
+    ]);
+  });
+
+  const someFile = () => Buffer.from("Хүүхэд;1;2;3\nБат;И;И;И\n");
+
+  it("teacher from another group gets 404", async () => {
+    expect((await upload(otherGroupTeacher, a.group.id, someFile(), "a.csv")).status).toBe(404);
+  });
+
+  it("guardian of the child gets 404", async () => {
+    expect((await upload(parentA, a.group.id, someFile(), "a.csv")).status).toBe(404);
+  });
+
+  it("user from another kindergarten gets 404", async () => {
+    expect((await upload(teacherB, a.group.id, someFile(), "a.csv")).status).toBe(404);
   });
 });

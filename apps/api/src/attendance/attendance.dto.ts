@@ -149,6 +149,12 @@ export const recordGroupRangeSchema = z
   .strict();
 export type RecordGroupRangeDto = z.infer<typeof recordGroupRangeSchema>;
 
+/** The month an imported sheet is read against — `YYYY-MM`. */
+export const rangeImportQuerySchema = z.object({
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Сар буруу байна"),
+});
+export type RangeImportQuery = z.infer<typeof rangeImportQuerySchema>;
+
 export const createAttendanceRequestSchema = z
   .object({
     dateFrom: isoDate,

@@ -107,6 +107,14 @@ function stubRegister({
       },
     },
     { path: `/groups/${GROUP}/attendance/range`, method: "PUT", body: { created: 3, updated: 0 } },
+    {
+      path: `/groups/${GROUP}/attendance/range/import`,
+      method: "POST",
+      body: {
+        entries: [{ childId: CHILD_B, date: EARLIER, status: "SICK" }],
+        problems: [{ rowNumber: 5, message: "Бүлэгт ийм хүүхэд олдсонгүй: «Хэн Нэгэн»" }],
+      },
+    },
     { path: `/groups/${GROUP}/attendance`, method: "PUT", body: [] },
     { path: `/groups/${GROUP}/attendance`, method: "GET", body: daySheet },
     {
@@ -558,6 +566,29 @@ describe("filling in a month from the journal", () => {
 
     await user.click(screen.getByRole("button", { name: "Болих" }));
     expect(within(await journal()).queryAllByRole("combobox")).toHaveLength(0);
+  });
+
+  it("fills the grid from an Excel file, names what it skipped, and saves on Хадгалах", async () => {
+    const { user, api } = await openJournal();
+    await user.click(await screen.findByRole("button", { name: /Сараар нөхөх/ }));
+
+    const file = new File(["Хүүхэд;1"], "ирц.csv", { type: "text/csv" });
+    await user.upload(screen.getByLabelText(/Excel-ээс оруулах/), file);
+
+    expect(await screen.findByText(/Бүлэгт ийм хүүхэд олдсонгүй/)).toBeInTheDocument();
+    // Nothing written by the import itself.
+    expect(api.calls.some((call) => call.method === "PUT")).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+    await waitFor(() =>
+      expect(
+        api.calls.some((call) => call.method === "PUT" && call.url.includes("/attendance/range")),
+      ).toBe(true),
+    );
+    const put = api.calls.find(
+      (call) => call.method === "PUT" && call.url.includes("/attendance/range"),
+    )!;
+    expect(put.body).toEqual({ entries: [{ childId: CHILD_B, date: EARLIER, status: "SICK" }] });
   });
 
   it("fills only the empty cells with Ирсэн and saves them in one request", async () => {
