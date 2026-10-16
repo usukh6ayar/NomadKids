@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCheck, Download, PencilLine } from "lucide-react";
+import { CheckCheck, Download, FileUp, PencilLine } from "lucide-react";
 import { z } from "zod";
 import {
   groupAttendanceRangeSchema,
@@ -125,7 +125,53 @@ export function TeacherJournal({
   const stopFilling = () => {
     setFilling(false);
     setFillDraft({});
+    setImportProblems([]);
   };
+
+  /*
+    ★ Excel fills the grid, it does not write — 2026-10-16. The sheet is read
+    on the server against this month and this group's children, and what comes
+    back lands in the draft here, over any unsaved mark for the same cell. The
+    teacher sees it in the grid and saves it with Хадгалах, the same as a mark
+    made by hand.
+  */
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [importProblems, setImportProblems] = useState<{ rowNumber: number; message: string }[]>(
+    [],
+  );
+  const importSheet = useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return mutate(
+        `/groups/${groupId}/attendance/range/import?month=${month}`,
+        z.object({
+          entries: z.array(z.object({ childId: z.string(), date: z.string(), status: z.string() })),
+          problems: z.array(z.object({ rowNumber: z.number(), message: z.string() })),
+        }),
+        { method: "POST", body: form },
+      );
+    },
+    onSuccess: ({ entries, problems }) => {
+      setFillDraft((current) => {
+        const next: MonthDraft = { ...current };
+        for (const entry of entries) {
+          next[entry.date] = { ...(next[entry.date] ?? {}), [entry.childId]: entry.status };
+        }
+        return next;
+      });
+      setImportProblems(problems);
+      if (entries.length > 0) {
+        toast.success(`Файлаас ${entries.length} нүд бөглөгдлөө. Шалгаад «Хадгалах» дарна уу.`);
+      } else {
+        toast.error(problems[0]?.message ?? "Файлаас ирц олдсонгүй.");
+      }
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+    onSettled: () => {
+      if (fileInput.current) fileInput.current.value = "";
+    },
+  });
 
   const changeMonth = (next: string) => {
     stopFilling();
@@ -261,6 +307,23 @@ export function TeacherJournal({
               <CheckCheck aria-hidden />
               Бүгдийг «ирсэн» болгох
             </Button>
+            <input
+              ref={fileInput}
+              id="attendance-month-file"
+              type="file"
+              accept=".xlsx,.csv,.xls,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/vnd.ms-excel"
+              className="sr-only"
+              onChange={(event) => {
+                const picked = event.target.files?.[0];
+                if (picked) importSheet.mutate(picked);
+              }}
+            />
+            <Button asChild variant="secondary" size="sm" disabled={importSheet.isPending}>
+              <label htmlFor="attendance-month-file" className="cursor-pointer">
+                <FileUp aria-hidden />
+                {importSheet.isPending ? "Уншиж байна…" : "Excel-ээс оруулах"}
+              </label>
+            </Button>
             <Button type="button" variant="secondary" size="sm" onClick={stopFilling}>
               Болих
             </Button>
@@ -281,6 +344,23 @@ export function TeacherJournal({
             </Button>
           </div>
         )
+      ) : null}
+
+      {filling && importProblems.length > 0 ? (
+        <div role="status" className="rounded-card bg-sunken px-4 py-3 text-caption text-muted">
+          <p className="font-semibold text-ink">
+            Файлын {importProblems.length} мөр/нүд оруулсангүй:
+          </p>
+          <ul className="mt-1 list-disc ps-5">
+            {importProblems.slice(0, 10).map((problem, index) => (
+              <li key={index}>
+                {problem.rowNumber > 0 ? `${problem.rowNumber}-р мөр: ` : ""}
+                {problem.message}
+              </li>
+            ))}
+          </ul>
+          {importProblems.length > 10 ? <p>…болон {importProblems.length - 10} бусад.</p> : null}
+        </div>
       ) : null}
 
       {range.isLoading ? <LoadingState rows={6} shape="register" /> : null}

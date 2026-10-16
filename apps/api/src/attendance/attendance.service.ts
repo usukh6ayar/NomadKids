@@ -22,7 +22,11 @@ import {
   UploadRejected,
   validateImageUpload,
   validatePdfUpload,
+  validateSpreadsheetUpload,
 } from "../media/upload-validation";
+import { loadSpreadsheet } from "../common/spreadsheet";
+import { localDate } from "@kinder/contracts";
+import { parseAttendanceMonth } from "./attendance-import";
 import { buildJournalWorkbook } from "./journal-workbook";
 import { coversDay, summariseDays } from "./daily-summary";
 import type { AttendanceRegisterQuery } from "./attendance.dto";
@@ -834,6 +838,73 @@ export class AttendanceService {
         records: byEnrollment.get(enrollment.id) ?? {},
       })),
     };
+  }
+
+  /**
+   * A month of marks read out of a spreadsheet, for the month grid to show —
+   * 2026-10-16, the user: "Ирц сараар нөхөх" (by Excel).
+   *
+   * ★ Writes nothing. The cells come back to the journal's «Сараар нөхөх»
+   * grid, where the teacher looks them over and saves through
+   * `recordGroupRange` — one write path, whatever filled the grid.
+   *
+   * ★★ Each cell is held to what the grid itself offers: a working day of the
+   * month, not after today, inside the child's enrolment in this group. A cell
+   * outside that is a problem row, not a mark.
+   */
+  async parseGroupRangeImport(actor: Actor, groupId: string, month: string, file: Buffer) {
+    // The same gate as the read it fills, before anything about the file (§1.7).
+    await this.groups.assertCanReadGroup(actor, groupId);
+
+    try {
+      validateSpreadsheetUpload(file);
+    } catch (error) {
+      if (error instanceof UploadRejected) throw new BadRequestException(error.reason);
+      throw error;
+    }
+
+    const from = `${month}-01`;
+    const [year, monthNumber] = month.split("-").map(Number);
+    const to = new Date(Date.UTC(year!, monthNumber!, 0)).toISOString().slice(0, 10);
+    const sheet = await this.groupRangeSheet(actor, groupId, from, to);
+
+    const book = await loadSpreadsheet(file);
+    if (!book) {
+      return { entries: [], problems: [{ rowNumber: 0, message: "Файлыг уншиж чадсангүй" }] };
+    }
+    const parsed = parseAttendanceMonth(
+      book,
+      month,
+      sheet.rows.map((row) => ({
+        childId: row.child.id,
+        lastName: row.child.lastName,
+        firstName: row.child.firstName,
+      })),
+    );
+
+    const today = localDate();
+    const working = new Set(sheet.workingDays);
+    const rowOf = new Map(sheet.rows.map((row) => [row.child.id, row]));
+    const problems = [...parsed.problems];
+    const entries: { childId: string; date: string; status: string }[] = [];
+    for (const cell of parsed.cells) {
+      const row = rowOf.get(cell.childId)!;
+      const refused =
+        cell.date > today
+          ? "ирээдүйн өдөр"
+          : !working.has(cell.date)
+            ? "амралтын өдөр"
+            : cell.date < row.startedOn || (row.endedOn !== null && cell.date >= row.endedOn)
+              ? "хүүхэд энэ өдөр бүлэгт бүртгэлгүй байсан"
+              : null;
+      if (refused) {
+        problems.push({ rowNumber: cell.rowNumber, message: `${cell.date}: ${refused}` });
+        continue;
+      }
+      entries.push({ childId: cell.childId, date: cell.date, status: cell.status });
+    }
+
+    return { entries, problems };
   }
 
   /**
