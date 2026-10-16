@@ -1,5 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { AGE_ALBUM_CATEGORY_LABEL, isAgeAlbumCategory } from "@kinder/contracts";
+import {
+  AGE_ALBUM_CATEGORY_LABEL,
+  MILESTONE_KIND_LABEL,
+  isAgeAlbumCategory,
+} from "@kinder/contracts";
 import { StorageService } from "../storage/storage.service";
 import { ReportsRepository } from "./reports.repository";
 import { PdfRendererService } from "./pdf-renderer.service";
@@ -221,7 +225,8 @@ export class ReportGeneratorService {
         if (dataUri) photoDataUris.push(dataUri);
       }
       milestones.push({
-        title: milestone.title?.trim() || milestone.kind,
+        // A suggested kind needs no title of its own; never print its code.
+        title: milestone.title?.trim() || MILESTONE_KIND_LABEL[milestone.kind] || "Онцгой мөч",
         occurredOn: milestone.occurredOn,
         description: milestone.description,
         photoDataUris,
