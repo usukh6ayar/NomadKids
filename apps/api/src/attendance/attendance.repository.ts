@@ -124,6 +124,9 @@ export class AttendanceRepository {
         select: {
           id: true,
           childId: true,
+          // Which of the span's days are this child's here (`enrolledOn`'s rule).
+          startedOn: true,
+          endedOn: true,
           child: {
             select: { id: true, lastName: true, firstName: true, dateOfBirth: true },
           },
@@ -419,6 +422,63 @@ export class AttendanceRepository {
       }
 
       return saved;
+    });
+  }
+
+  /**
+   * A month of marks written at once — the month grid's save (2026-10-16).
+   *
+   * ★ One transaction, and a fixed number of statements whatever the size:
+   * one read of what exists, one insert of what does not, one update per
+   * status that changed (six at most). `recordGroupAttendance` above asks per
+   * child, which is fine for one day's twenty-four rows and is not for a
+   * month's six hundred (§3.4). A cell already holding the sent status is not
+   * touched, so its `recordedById` keeps naming who marked it.
+   */
+  async recordGroupRange(
+    rows: {
+      kindergartenId: string;
+      childId: string;
+      enrollmentId: string;
+      date: Date;
+      status: AttendanceStatus;
+      recordedById: string;
+    }[],
+    from: Date,
+    to: Date,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.attendance.findMany({
+        where: {
+          enrollmentId: { in: [...new Set(rows.map((row) => row.enrollmentId))] },
+          date: { gte: from, lte: to },
+          deletedAt: null,
+        },
+        select: { id: true, enrollmentId: true, date: true, status: true },
+      });
+      const key = (enrollmentId: string, date: Date) =>
+        `${enrollmentId}|${date.toISOString().slice(0, 10)}`;
+      const byKey = new Map(existing.map((row) => [key(row.enrollmentId, row.date), row]));
+
+      const toCreate = rows.filter((row) => !byKey.has(key(row.enrollmentId, row.date)));
+      const toUpdate = new Map<AttendanceStatus, string[]>();
+      for (const row of rows) {
+        const found = byKey.get(key(row.enrollmentId, row.date));
+        if (!found || found.status === row.status) continue;
+        toUpdate.set(row.status, [...(toUpdate.get(row.status) ?? []), found.id]);
+      }
+
+      if (toCreate.length > 0) await tx.attendance.createMany({ data: toCreate });
+      let updated = 0;
+      for (const [status, ids] of toUpdate) {
+        const result = await tx.attendance.updateMany({
+          where: { id: { in: ids }, deletedAt: null },
+          data: { status, recordedById: rows[0]!.recordedById },
+        });
+        updated += result.count;
+      }
+
+      return { created: toCreate.length, updated };
     });
   }
 
@@ -771,6 +831,14 @@ export class AttendanceRepository {
   // ── Shared ────────────────────────────────────────────────────────────────
 
   /** Mirrors `AssessmentRepository.findGroupForAssessment` exactly. */
+  /** A group's kindergarten, for a caller that has already authorised the group. */
+  async findGroupById(groupId: string) {
+    return this.prisma.group.findFirst({
+      where: { id: groupId, deletedAt: null },
+      select: { id: true, kindergartenId: true },
+    });
+  }
+
   async findGroup(groupId: string, kindergartenIds: string[]) {
     return this.prisma.group.findFirst({
       where: { id: groupId, deletedAt: null, kindergartenId: { in: kindergartenIds } },
