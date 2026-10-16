@@ -429,6 +429,21 @@ describe("filling the whole group as one table", () => {
     expect(put.body).toEqual({
       responses: [{ childId: BAT, answers: [{ questionId: QUESTION.id, value: "1" }] }],
     });
+    // Said, then back to «Судалгааны дүн» — 2026-10-16, the user.
+    expect(await screen.findByText("1 хүүхдийн судалгаа хадгалагдлаа.")).toBeInTheDocument();
+    await vi.waitFor(() => expect(ROUTER.push).toHaveBeenCalledWith(`/surveys/${SURVEY.id}`));
+  });
+
+  it("has «Буцах» before «Хадгалах», back to the survey", async () => {
+    const user = userEvent.setup();
+    stubApi(sheet([bat, saruul]));
+    renderWithProviders(<TeacherSheetPage />);
+
+    const save = await screen.findByRole("button", { name: "Хадгалах" });
+    const back = within(save.parentElement!).getByRole("button", { name: "Буцах" });
+    expect(back.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await user.click(back);
+    expect(ROUTER.push).toHaveBeenCalledWith(`/surveys/${SURVEY.id}`);
   });
 
   it("will not save a saved child with every answer taken away", async () => {
