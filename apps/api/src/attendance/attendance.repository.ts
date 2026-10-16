@@ -825,7 +825,7 @@ export class AttendanceRepository {
     return this.prisma.enrollment.findFirst({
       where: { childId, status: "ACTIVE", deletedAt: null },
       orderBy: { startedOn: "desc" },
-      select: { id: true, kindergartenId: true, groupId: true },
+      select: { id: true, kindergartenId: true, groupId: true, startedOn: true },
     });
   }
 

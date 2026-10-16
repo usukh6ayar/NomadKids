@@ -279,7 +279,13 @@ export class ObservationsService {
     // `source=PARENT` would misattribute the note in the family's report.
     if (!isGuardianOf(actor, facts)) throw new NotFoundException();
 
-    const enrollment = await this.resolveEnrollment(childId);
+    // ★ A live enrolment, not `resolveEnrollment`'s fallback to the latest
+    // (review of #235, 2026-10-16). The note waits for a teacher, and the
+    // review queue reads ACTIVE enrolments only: for a child who has left,
+    // graduated or been archived it would sit in no one's queue while the
+    // family saw it as sent. Attendance requests refuse the same way.
+    const enrollment = await this.repo.activeEnrollment(childId);
+    if (!enrollment) throw new BadRequestException("Хүүхэд одоо бүлэгт бүртгэлгүй байна");
 
     const type = await this.parentObservationType(enrollment.kindergartenId, dto.categoryCode);
     if (!type) throw new BadRequestException("Эцэг эхийн ажиглалтын төрөл тохируулагдаагүй байна");

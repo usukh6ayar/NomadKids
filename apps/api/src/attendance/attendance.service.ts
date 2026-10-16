@@ -1380,6 +1380,14 @@ export class AttendanceService {
 
     const enrollment = await this.repo.activeEnrollment(childId);
     if (!enrollment) throw new BadRequestException("Хүүхэд бүлэгт бүртгэлтэй биш байна");
+    // ★ Every day of a request is the current group's (review of #240,
+    // 2026-10-16). The request reaches the current group's teacher, and
+    // approving writes each day onto this enrolment — a day from before the
+    // child joined would land in a register that did not hold them, while
+    // `record()` refuses that teacher the old group's own.
+    if (dateFrom < enrollment.startedOn) {
+      throw new BadRequestException("Хүсэлтийн огноо хүүхэд одоогийн бүлэгт элсэхээс өмнө байна");
+    }
 
     // Same "companion with no time means now" default `record()` uses — only
     // meaningful when this request is actually an arrival or pickup claim.
