@@ -65,18 +65,12 @@ export function useA79GroupSummary(groupId: string, range?: { from: string; to: 
   };
 }
 
-/**
- * What a group, a child or the kindergarten shows while there is no result.
- *
- * ★ Not «link observations first» (2026-10-16, the user): the А/79 routes do
- * not exist on the server yet, so linking changes nothing and a teacher who
- * had assessed kept meeting a screen telling them to do it. Say what is true.
- */
+/** What a group, a child or the kindergarten shows while there is no result. */
 export function A79NotReady() {
   return (
     <EmptyState
       title="Үр дүн хараахан гараагүй байна"
-      description="Үр дүнг А/79-ийн шалгуураар тооцох хэсэг удахгүй нэмэгдэнэ. Тэр болтол явцын үнэлгээ, ажиглалтаа ердийнхөөрөө бүртгээрэй."
+      description="Ажиглалтыг А/79-ийн шалгуурт холбосны дараа хүүхдийн үр дүн энд харагдана."
     />
   );
 }
