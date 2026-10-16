@@ -58,6 +58,12 @@ function cellSurface(status: string): string {
  * past day still exist — they are `?date=` on this same screen, which is one
  * deliberate act rather than a mis-tap.
  *
+ * ★ 2026-10-16, the user: "Ирц сараар нөхөх" — a past month filled in at
+ * once. That is `backfill`, a separate mode the journal switches on by a
+ * deliberate «Сараар нөхөх» press: every cell of the child's own working days
+ * up to today takes input there, and only there. The register keeps its one
+ * editable day.
+ *
  * ★★ An editable cell is a styled `<select>`, not a popover.
  *
  * §5 asks for mobile first, and on a phone a native select opens the OS picker
@@ -75,6 +81,7 @@ export function AttendanceWeekGrid({
   showChildTotals = false,
   mobileDays,
   desktopDays,
+  backfill,
 }: {
   data: GroupAttendanceRange;
   /** The one ISO date whose column accepts input, or null for a read-only grid. */
@@ -98,9 +105,24 @@ export function AttendanceWeekGrid({
   mobileDays?: string[];
   /** Days visible from `sm` upward; omitted when every supplied day is visible. */
   desktopDays?: string[];
+  /**
+   * The month-backfill mode: which cells take input, and their unsaved
+   * statuses keyed by day, then child. Overrides `editableDay` when given.
+   */
+  backfill?: {
+    canEdit: (row: GroupAttendanceRange["rows"][number], day: string) => boolean;
+    draft: Record<string, Record<string, string>>;
+    onSet: (childId: string, day: string, status: string) => void;
+  };
 }) {
   const statusFor = (row: GroupAttendanceRange["rows"][number], day: string) =>
-    (day === editableDay ? draft[row.child.id] : undefined) ?? row.records[day]?.status ?? null;
+    (backfill
+      ? backfill.draft[day]?.[row.child.id]
+      : day === editableDay
+        ? draft[row.child.id]
+        : undefined) ??
+    row.records[day]?.status ??
+    null;
 
   /*
    * The tally strip under the grid — one column per day, the four a teacher
@@ -345,9 +367,18 @@ export function AttendanceWeekGrid({
                     mobileExpanded={mobileExpanded}
                     day={day}
                     status={statusFor(row, day)}
-                    editable={!isWeekend(day) && day === editableDay && !disabled}
+                    editable={
+                      !disabled &&
+                      (backfill
+                        ? backfill.canEdit(row, day)
+                        : !isWeekend(day) && day === editableDay)
+                    }
                     muted={isWeekend(day)}
-                    onSet={(status) => onSet(row.child.id, status)}
+                    onSet={(status) =>
+                      backfill
+                        ? backfill.onSet(row.child.id, day, status)
+                        : onSet(row.child.id, status)
+                    }
                   />
                 </td>
               ))}

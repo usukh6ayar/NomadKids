@@ -1,4 +1,9 @@
-import ExcelJS from "exceljs";
+import type ExcelJS from "exceljs";
+import {
+  cellText as text,
+  loadSpreadsheet,
+  normalizeHeading as normalize,
+} from "../common/spreadsheet";
 
 /**
  * Reading a week's menu back out of a spreadsheet — the client's 2026-09-11
@@ -104,14 +109,11 @@ export interface MenuParseResult {
 const EMPTY_DAY_MARKER = "цэс төлөвлөгдөөгүй";
 
 export async function parseMenuWorkbook(input: Buffer): Promise<MenuParseResult> {
-  const book = new ExcelJS.Workbook();
-
-  try {
-    await book.xlsx.load(input as unknown as ArrayBuffer);
-  } catch {
-    // The ZIP header check passed but this is not a workbook. A problem rather
-    // than a throw, so the caller answers with the shape it uses for every
-    // other refusal.
+  // An `.xlsx` or a CSV (`common/spreadsheet.ts`). A file that is neither is a
+  // problem rather than a throw, so the caller answers with the shape it uses
+  // for every other refusal.
+  const book = await loadSpreadsheet(input);
+  if (!book) {
     return { days: [], problems: [{ rowNumber: 0, message: "Файлыг уншиж чадсангүй" }] };
   }
 
@@ -460,24 +462,6 @@ function dateReader(ctx: DateContext) {
   return (raw: string) => isoDate(raw, ctx);
 }
 
-function text(cell: ExcelJS.Cell | undefined): string {
-  const value = cell?.value;
-  if (value === null || value === undefined) return "";
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
-  if (typeof value === "object") {
-    // A formula cell, or rich text — both carry the displayed value separately.
-    if ("result" in value) return String((value as { result?: unknown }).result ?? "").trim();
-    if ("richText" in value) {
-      return (value as { richText: { text: string }[] }).richText
-        .map((part) => part.text)
-        .join("")
-        .trim();
-    }
-    if ("text" in value) return String((value as { text?: unknown }).text ?? "").trim();
-  }
-  return String(value).trim();
-}
-
 /**
  * `YYYY-MM-DD`, however Excel handed it over.
  *
@@ -582,16 +566,6 @@ function number(raw: string): number | null {
       .trim(),
   );
   return Number.isFinite(value) ? value : null;
-}
-
-function normalize(raw: string): string {
-  // The hyphen stays last in the class, where it is a literal. Moving it into
-  // the middle would turn it into a range and silently change what matches.
-  return raw
-    .toLowerCase()
-    .replace(/[().,:/_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 function integer(raw: string): number | null {

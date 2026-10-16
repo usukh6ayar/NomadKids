@@ -2,7 +2,7 @@ import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestApp } from "./support/app";
-import { resetData, testDb } from "./support/db";
+import { resetData, testDb, uniq } from "./support/db";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -12,6 +12,7 @@ import {
   createMembership,
   createScenario,
   createSchoolYear,
+  createUser,
   enrollChild,
   login,
   type AuthSession,
@@ -489,5 +490,103 @@ describe("a solo sign-up for a contracted kindergarten", () => {
     const res = await signup();
 
     expect(res.status, JSON.stringify(res.body)).toBe(201);
+  });
+});
+
+/**
+ * Follow-ups from the ultra review of #226 (the user's decisions, 2026-10-16).
+ */
+describe("the solo teacher runs their own workspace", () => {
+  const child = { lastName: "Бат", firstName: "Тэмүүлэн", sex: "MALE", dateOfBirth: "2021-03-04" };
+
+  it("revokes a guardian, links an account, ends an enrolment — and a contracted teacher cannot", async () => {
+    const { session, kindergartenId } = await soloTeacher();
+    await setUp(session, kindergartenId);
+    const created = await post(session, `/v1/kindergartens/${kindergartenId}/children`, child);
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const childId = created.body.id as string;
+
+    // An account already in NomadKids, linked by the teacher.
+    const parent = await createUser({ username: uniq("parent") });
+    await createMembership(parent.id, kindergartenId, "PARENT");
+    const linked = await post(session, `/v1/children/${childId}/guardians`, {
+      guardianUserId: parent.id,
+      relation: "MOTHER",
+    });
+    expect(linked.status, JSON.stringify(linked.body)).toBe(201);
+
+    // The wrong person after all: the teacher takes the access back.
+    const guardianship = await db.guardianship.findFirstOrThrow({
+      where: { childId, guardianUserId: parent.id },
+    });
+    const revoked = await authed(
+      request(server()).patch(`/v1/guardianships/${guardianship.id}`),
+      session,
+    ).send({ canView: false });
+    expect(revoked.status, JSON.stringify(revoked.body)).toBe(200);
+
+    const enrollment = await db.enrollment.findFirstOrThrow({ where: { childId } });
+    const ended = await authed(
+      request(server()).patch(`/v1/enrollments/${enrollment.id}`),
+      session,
+    ).send({ status: "ENDED" });
+    expect(ended.status, JSON.stringify(ended.body)).toBe(200);
+
+    // A contracted kindergarten's teacher still gets 404 on their own child.
+    const a = await createScenario("a");
+    const teacherA = await login(app, a.teacherUser.username);
+    const theirs = await authed(
+      request(server()).patch(`/v1/guardianships/${a.guardianship.id}`),
+      teacherA,
+    ).send({ canView: false });
+    expect(theirs.status).toBe(404);
+  });
+
+  it("holds two open school years, no more", async () => {
+    const { session, kindergartenId } = await soloTeacher();
+    await setUp(session, kindergartenId);
+    const year = (start: number) =>
+      post(session, `/v1/kindergartens/${kindergartenId}/school-years`, {
+        name: `${start}-${start + 1}`,
+        startsOn: `${start}-09-01`,
+        endsOn: `${start + 1}-06-01`,
+      });
+    const next = new Date().getUTCFullYear() + 1;
+    expect((await year(next)).status).toBe(201);
+    const third = await year(next + 1);
+    expect(third.status).toBe(400);
+  });
+
+  it("archives the old group once every child has moved up", async () => {
+    const { session, kindergartenId } = await soloTeacher();
+    const { groupId } = await setUp(session, kindergartenId);
+    expect(
+      (await post(session, `/v1/kindergartens/${kindergartenId}/children`, child)).status,
+    ).toBe(201);
+
+    const next = new Date().getUTCFullYear() + 1;
+    const year = await post(session, `/v1/kindergartens/${kindergartenId}/school-years`, {
+      name: `${next}-${next + 1}`,
+      startsOn: `${next}-09-01`,
+      endsOn: `${next + 1}-06-01`,
+    });
+    expect(year.status, JSON.stringify(year.body)).toBe(201);
+    const newGroup = await post(session, `/v1/kindergartens/${kindergartenId}/groups`, {
+      schoolYearId: year.body.id,
+      name: "Нарлаг 2",
+      ageBand: "SENIOR",
+    });
+    expect(newGroup.status, JSON.stringify(newGroup.body)).toBe(201);
+
+    const moved = await post(session, `/v1/groups/${groupId}/promotions`, {
+      toGroupId: newGroup.body.id,
+    });
+    expect(moved.status, JSON.stringify(moved.body)).toBe(201);
+    expect(moved.body.archivedFrom).toBe(true);
+    expect((await db.group.findUniqueOrThrow({ where: { id: groupId } })).deletedAt).not.toBeNull();
+  });
+
+  it("signs up with a mobile number only", async () => {
+    expect((await signup({ ...FORM, phone: "11223344" })).status).toBe(400);
   });
 });

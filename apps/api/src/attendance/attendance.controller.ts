@@ -1,5 +1,6 @@
 import type { Response } from "express";
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -21,7 +22,7 @@ import { CurrentActor } from "../auth/decorators/actor.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
 import type { Actor } from "../authz/actor";
 import { RateLimit, RateLimitGuard } from "../common/rate-limit/rate-limit.guard";
-import { MAX_PDF_BYTES } from "../media/upload-validation";
+import { MAX_PDF_BYTES, MAX_SPREADSHEET_BYTES } from "../media/upload-validation";
 import { AttendanceService } from "./attendance.service";
 import {
   calendarDayParamsSchema,
@@ -35,6 +36,8 @@ import {
   listAttendanceQuerySchema,
   recordAttendanceSchema,
   recordGroupAttendanceSchema,
+  recordGroupRangeSchema,
+  rangeImportQuerySchema,
   submitAttendanceSchema,
   recordPickupSchema,
   reviewAttendanceRequestSchema,
@@ -48,6 +51,8 @@ import {
   type ListAttendanceQuery,
   type RecordAttendanceDto,
   type RecordGroupAttendanceDto,
+  type RecordGroupRangeDto,
+  type RangeImportQuery,
   type SubmitAttendanceDto,
   type RecordPickupDto,
   type ReviewAttendanceRequestDto,
@@ -350,6 +355,40 @@ export class GroupAttendanceController {
     @Query(new ZodValidationPipe(groupRangeSheetQuerySchema)) query: GroupRangeSheetQuery,
   ) {
     return this.service.groupRangeSheet(actor, params.id, query.from, query.to);
+  }
+
+  /**
+   * A month of marks, filled in after the fact — 2026-10-16, the user: "Ирц
+   * сараар нөхөх". Declared on a literal path, as `range` above.
+   */
+  @Put("range")
+  @Roles("TEACHER", "ADMIN")
+  async recordRange(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(recordGroupRangeSchema)) body: RecordGroupRangeDto,
+  ) {
+    return this.service.recordGroupRange(actor, params.id, body);
+  }
+
+  /**
+   * A month read out of a spreadsheet for the «Сараар нөхөх» grid to show —
+   * writes nothing (2026-10-16). The multer ceiling is the same second limit
+   * the roster and menu imports carry in front of `validateSpreadsheetUpload`.
+   */
+  @Post("range/import")
+  @Roles("TEACHER", "ADMIN")
+  @UseInterceptors(
+    FileInterceptor("file", { limits: { fileSize: MAX_SPREADSHEET_BYTES, files: 1 } }),
+  )
+  async importRange(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(rangeImportQuerySchema)) query: RangeImportQuery,
+    @UploadedFile() file: { buffer: Buffer } | undefined,
+  ) {
+    if (!file) throw new BadRequestException("Файл сонгоно уу");
+    return this.service.parseGroupRangeImport(actor, params.id, query.month, file.buffer);
   }
 
   /** The same span as a spreadsheet — the journal's download. */

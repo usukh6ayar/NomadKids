@@ -110,6 +110,7 @@ const MOVE = new Set([
   "song_poem_months",
   "song_poems",
   "special_need_records",
+  "survey_answer_drafts",
   "survey_answers",
   "survey_questions",
   "survey_responses",

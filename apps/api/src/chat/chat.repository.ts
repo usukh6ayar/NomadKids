@@ -1,3 +1,4 @@
+import { STAFF_ROOM_ROLES } from "../authz/chat-access";
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import type { Room } from "../authz/chat-access";
@@ -407,7 +408,8 @@ export class ChatRepository {
               kindergartenId: room.kindergartenId,
               isActive: true,
               deletedAt: null,
-              role: { in: ["TEACHER", "ADMIN"] },
+              // The roles that are members — counted from the set that decides it.
+              role: { in: [...STAFF_ROOM_ROLES] },
             },
           }),
         );
