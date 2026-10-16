@@ -24,7 +24,7 @@ import {
   type MaterialFileData,
   type PreviewData,
 } from "./materials.repository";
-import { materialView, platformMaterialView } from "./materials.view";
+import { materialView, platformMaterialView, publicMaterialView } from "./materials.view";
 
 export interface UploadedPart {
   buffer: Buffer;
@@ -54,6 +54,22 @@ export class MaterialsService {
   ) {}
 
   // ── The shop ─────────────────────────────────────────────────────────────
+
+  /** A published material's share page — no session and never the source file. */
+  async publicMaterial(materialId: string) {
+    const material = await this.repo.findOnSale(materialId);
+    if (!material) throw new NotFoundException();
+    return publicMaterialView(material);
+  }
+
+  /** A public sample page, but only while its material is actually on sale. */
+  async publicPreviewUrl(materialId: string, order: number): Promise<string> {
+    const preview = await this.repo.findPreview(materialId, order);
+    if (!preview || !preview.material.published || preview.material.deletedAt !== null) {
+      throw new NotFoundException();
+    }
+    return this.storage.presignedGetUrl(preview.storageKey);
+  }
 
   async shop(actor: Actor, query: MaterialListQuery) {
     const { skip, take } = toSkipTake(query);

@@ -5,6 +5,7 @@ import {
   MaterialsController,
   OwnMaterialsController,
   PlatformMaterialsController,
+  PublicMaterialsController,
 } from "./materials.controller";
 import { MaterialPreviewProcessor } from "./material-preview.processor";
 import { MaterialPreviewQueue } from "./material-preview.queue";
@@ -14,7 +15,12 @@ import { MaterialsService } from "./materials.service";
 
 @Module({
   imports: [QpayModule, StorageModule],
-  controllers: [MaterialsController, OwnMaterialsController, PlatformMaterialsController],
+  controllers: [
+    MaterialsController,
+    PublicMaterialsController,
+    OwnMaterialsController,
+    PlatformMaterialsController,
+  ],
   providers: [
     MaterialsService,
     MaterialsRepository,
