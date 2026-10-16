@@ -134,3 +134,40 @@ it("a whole import fails together: nothing lands when a later row is bad", async
   const after = await testDb().child.count({ where: { kindergartenId: a.kindergarten.id } });
   expect(after).toBe(before + 1);
 });
+
+/**
+ * 2026-10-16, «4-р цэцэрлэг»: children deleted and imported again answered 500
+ * four times — the register's unique index counted deleted children, while
+ * every check asked among live ones. The index is partial now.
+ */
+it("a deleted child's register can be imported again", async () => {
+  const first = await post(
+    a.kindergarten.id,
+    teacherA,
+    await book([["Буцаж", "Ирсэн", "Хүү", "2021-03-03", "ЗЗ11223344", "@G"]], a.group.name),
+    false,
+  );
+  expect(first.status).toBe(201);
+  const childId = first.body.imported[0].id as string;
+  await testDb().child.update({ where: { id: childId }, data: { deletedAt: new Date() } });
+
+  const again = await post(
+    a.kindergarten.id,
+    teacherA,
+    await book([["Буцаж", "Ирсэн", "Хүү", "2021-03-03", "ЗЗ11223344", "@G"]], a.group.name),
+    false,
+  );
+  expect(again.status).toBe(201);
+  expect(again.body.imported).toHaveLength(1);
+
+  // Still one live child per register: a third upload would skip, never 500.
+  const third = await post(
+    a.kindergarten.id,
+    teacherA,
+    await book([["Буцаж", "Ирсэн", "Хүү", "2021-03-03", "ЗЗ11223344", "@G"]], a.group.name),
+    true,
+  );
+  expect(third.status).toBe(201);
+  expect(third.body.willImport).toBe(0);
+  expect(third.body.problems[0].message).toContain("аль хэдийн бүртгэлтэй");
+});
