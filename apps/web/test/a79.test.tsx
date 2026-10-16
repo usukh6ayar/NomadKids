@@ -517,6 +517,9 @@ describe("«Үр дүнгийн үнэлгээ»", () => {
     renderWithProviders(<GroupResultsPage />);
 
     expect(await screen.findByText("Үр дүн хараахан гараагүй байна")).toBeInTheDocument();
+    // Not «link observations first» — linking cannot produce a result yet.
+    expect(screen.queryByText(/шалгуурт холбосны дараа/)).toBeNull();
+    expect(screen.getByText(/удахгүй нэмэгдэнэ/)).toBeInTheDocument();
     expect(screen.queryByText(/Жишээ/)).toBeNull();
     expect(screen.queryByText(/[Сс]ервер/)).toBeNull();
     expect(screen.queryByRole("link", { name: "Г.Батбаяр" })).toBeNull();
