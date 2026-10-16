@@ -721,62 +721,6 @@ describe("a teacher survey's results", () => {
     ).toEqual(["Ерөнхий дүн", "Асуулт тус бүр", "Ахиц дэвшил"]);
   });
 
-  /*
-    ★ «Засах / үргэлжлүүлэх» once a row is saved, with the half rows counted —
-    2026-10-16, the user: a long form is saved half done and finished later.
-  */
-  it("offers to edit or continue the table once anything is saved, counting half rows", async () => {
-    const teacherSurvey = { ...SURVEY, respondent: "TEACHER" };
-    const response = (answers: { questionId: string; value: unknown }[]) => ({
-      id: "99999999-9999-4999-8999-999999999999",
-      submittedAt: "2026-10-16T08:00:00.000Z",
-      respondent: {
-        id: "11111111-1111-4111-8111-111111111111",
-        lastName: "Дорж",
-        firstName: "Сарнай",
-      },
-      answers,
-    });
-    stubResults({ respondent: "TEACHER" }, [
-      {
-        path: `/surveys/${SURVEY_ID}/teacher-sheet`,
-        body: {
-          survey: teacherSurvey,
-          rows: [
-            {
-              child: {
-                id: "77777777-7777-4777-8777-777777777777",
-                firstName: "Бат",
-                lastName: "Болд",
-              },
-              group: null,
-              // One of three — half done.
-              response: response([{ questionId: RATING.id, value: 4 }]),
-            },
-            {
-              child: {
-                id: "88888888-8888-4888-8888-888888888888",
-                firstName: "Саруул",
-                lastName: null,
-              },
-              group: null,
-              response: response([
-                { questionId: RATING.id, value: 5 },
-                { questionId: YES_NO.id, value: true },
-                { questionId: TEXT.id, value: "Сайн" },
-              ]),
-            },
-          ],
-        },
-      },
-    ]);
-    renderWithProviders(<SurveyDetailPage />);
-
-    const link = await screen.findByRole("link", { name: /Засах \/ үргэлжлүүлэх/ });
-    expect(link).toHaveAttribute("href", `/surveys/${SURVEY_ID}/fill`);
-    expect(await screen.findByText("2/3 хүүхэд бөглөгдсөн · 1 дутуу")).toBeInTheDocument();
-  });
-
   it("keeps Хариулт, and no progress tab, on a family survey", async () => {
     stubResults();
     renderWithProviders(<SurveyDetailPage />);

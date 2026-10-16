@@ -3,15 +3,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { z } from "zod";
-import {
-  surveySchema,
-  uuidSchema,
-  type SurveyAnswerValue,
-  type SurveyQuestion,
-} from "@kinder/contracts";
+import { uuidSchema, type SurveyAnswerValue, type SurveyQuestion } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
@@ -104,39 +98,21 @@ function columnsFor(question: SurveyQuestion): Column[] | null {
   }
 }
 
-/** The question is answered — a matrix only when every one of its rows is. */
-function isAnswered(question: SurveyQuestion, value: SurveyAnswerValue | undefined) {
-  if (value === undefined) return false;
-  if (question.type === "MATRIX") {
-    const shape = matrixShape(question.options);
-    const cells = value as Record<string, number>;
-    return (shape?.rows ?? []).every((row) => cells[row.key] !== undefined);
-  }
-  if (question.type === "CHECKBOX") return (value as string[]).length > 0;
-  if (question.type === "TEXT") return String(value).trim().length > 0;
-  return true;
+/** Every question has an answer — a matrix only when every one of its rows does. */
+function isComplete(questions: SurveyQuestion[], answers: Record<string, SurveyAnswerValue>) {
+  return questions.every((question) => {
+    const value = answers[question.id];
+    if (value === undefined) return false;
+    if (question.type === "MATRIX") {
+      const shape = matrixShape(question.options);
+      const cells = value as Record<string, number>;
+      return (shape?.rows ?? []).every((row) => cells[row.key] !== undefined);
+    }
+    if (question.type === "CHECKBOX") return (value as string[]).length > 0;
+    if (question.type === "TEXT") return String(value).trim().length > 0;
+    return true;
+  });
 }
-
-/** Something was marked — a matrix with even one row, a text with any letter. */
-function hasValue(question: SurveyQuestion, value: SurveyAnswerValue | undefined) {
-  if (value === undefined) return false;
-  if (question.type === "MATRIX") return Object.keys(value as Record<string, number>).length > 0;
-  return isAnswered(question, value);
-}
-
-/** How many of the questions this child's answers cover. */
-export function answeredCount(
-  questions: SurveyQuestion[],
-  answers: Record<string, SurveyAnswerValue>,
-) {
-  return questions.filter((question) => isAnswered(question, answers[question.id])).length;
-}
-
-/** The sheet as `GET /surveys/:id/teacher-sheet` returns it. */
-export const teacherSheetSchema = z.object({
-  survey: surveySchema,
-  rows: z.array(teacherSheetRowSchema),
-});
 
 /**
  * "Багшийн судалгаа", filled in as a table — client, 2026-09-21: a row per
@@ -148,13 +124,10 @@ export const teacherSheetSchema = z.object({
  * would lose which column belongs to which question. Stacked, each table
  * reads like the client's drawing: names down the left, the choices across.
  *
- * ★★ Only the rows that changed are saved — and a row may be half done
- * (2026-10-16, the user: a long form such as А/79 is filled over several
- * sittings, "дутуу ч гэсэн хадгалж болно, дараа нь засна"). A child is sent
- * with the questions marked so far; the table stays open, and «Нийт» says who
- * is still «Дутуу». Until 2026-10-16 a half row could not be saved at all.
- * The one row refused is a saved child with every answer taken away: the
- * server keeps one response per child and takes at least one answer.
+ * ★★ Saved whole, only the rows that changed, and a changed row must be
+ * complete. A child half-filled in would otherwise be recorded as answered
+ * and counted in every average with holes in it — the server keeps one
+ * response per child, so the client sends a child only when their row is done.
  */
 export function TeacherSheet({
   surveyId,
@@ -202,13 +175,8 @@ export function TeacherSheet({
     updateCell(childId, questionId, undefined);
 
   const changedRows = rows.filter((row) => changed.has(row.child.id));
-  /** What a child's row sends — the questions marked so far, nothing blank. */
-  const marked = (childId: string) =>
-    questions.filter((question) => hasValue(question, answers[childId]?.[question.id]));
-  /** A saved child with every answer taken away — the one row not sent. */
-  const emptied = changedRows.filter((row) => marked(row.child.id).length === 0);
-  const partial = changedRows.filter(
-    (row) => answeredCount(questions, answers[row.child.id] ?? {}) < questions.length,
+  const incomplete = changedRows.filter(
+    (row) => !isComplete(questions, answers[row.child.id] ?? {}),
   );
 
   /*
@@ -232,9 +200,9 @@ export function TeacherSheet({
             body: {
               responses: chunk.map((row) => ({
                 childId: row.child.id,
-                answers: marked(row.child.id).map((question) => ({
+                answers: questions.map((question) => ({
                   questionId: question.id,
-                  value: answers[row.child.id]![question.id]!,
+                  value: answers[row.child.id]![question.id],
                 })),
               })),
             },
@@ -266,7 +234,7 @@ export function TeacherSheet({
       className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
-        if (!save.isPending && changedRows.length > 0 && emptied.length === 0) save.mutate();
+        if (!save.isPending && changedRows.length > 0 && incomplete.length === 0) save.mutate();
       }}
       noValidate
     >
@@ -367,24 +335,15 @@ export function TeacherSheet({
       {editable ? (
         <div className="sticky bottom-3 z-10 flex flex-col gap-2 rounded-card border border-border bg-surface p-3 shadow-lg sm:flex-row sm:items-center">
           <p className="min-w-0 flex-1 text-caption text-muted">
-            {emptied.length > 0
-              ? `${emptied.map(childName).join(", ")} — хадгалсан хариултыг бүгдийг нь арилгах боломжгүй, дор хаяж нэгийг үлдээнэ үү.`
+            {incomplete.length > 0
+              ? `Дутуу: ${incomplete.map(childName).join(", ")} — бүх асуултад хариулна уу.`
               : changedRows.length > 0
-                ? `${changedRows.length} хүүхдийн өөрчлөлт хадгалагдаагүй байна.${
-                    partial.length > 0
-                      ? ` Дутуу: ${partial
-                          .map(
-                            (row) =>
-                              `${childName(row)} (${answeredCount(questions, answers[row.child.id] ?? {})}/${questions.length})`,
-                          )
-                          .join(", ")} — дутуу ч хадгалж, дараа нь үргэлжлүүлж болно.`
-                      : ""
-                  }`
+                ? `${changedRows.length} хүүхдийн өөрчлөлт хадгалагдаагүй байна.`
                 : "Хүүхэд бүрийн мөрөнд сонголтоо тэмдэглэнэ үү."}
           </p>
           <Button
             type="submit"
-            disabled={save.isPending || changedRows.length === 0 || emptied.length > 0}
+            disabled={save.isPending || changedRows.length === 0 || incomplete.length > 0}
           >
             {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
           </Button>
@@ -507,9 +466,6 @@ function numericScale(question: SurveyQuestion): number[] | null {
  * live, from what is on screen — the teacher sees the total move as they
  * mark. A child with nothing marked yet shows "—" rather than 0, which would
  * read as a result.
- *
- * ★ «Бөглөсөн» beside it, on every survey — 2026-10-16, the user: a half row
- * can be saved now, so the sheet says whose is still «Дутуу».
  */
 function Totals({
   questions,
@@ -525,6 +481,7 @@ function Totals({
     .filter((entry): entry is { question: SurveyQuestion; scale: number[] } =>
       Boolean(entry.scale),
     );
+  if (scored.length === 0) return null;
   const max = scored.reduce((sum, entry) => sum + Math.max(...entry.scale), 0);
 
   return (
@@ -544,16 +501,8 @@ function Totals({
                 scope="col"
                 className="px-3 py-2.5 text-right text-caption font-semibold text-ink"
               >
-                Бөглөсөн
+                Оноо
               </th>
-              {scored.length > 0 ? (
-                <th
-                  scope="col"
-                  className="px-3 py-2.5 text-right text-caption font-semibold text-ink"
-                >
-                  Оноо
-                </th>
-              ) : null}
             </tr>
           </thead>
           <tbody>
@@ -565,25 +514,14 @@ function Totals({
                 (sum, { question }) => sum + Number(answers[row.child.id]![question.id]),
                 0,
               );
-              const filled = answeredCount(questions, answers[row.child.id] ?? {});
               return (
                 <tr key={row.child.id} className="border-t border-border-soft">
                   <th scope="row" className="px-3 py-2 text-left font-normal text-ink">
                     {childName(row)}
                   </th>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-ink">
-                    {filled > 0 && filled < questions.length ? (
-                      <Badge tone="sun" className="mr-2">
-                        Дутуу
-                      </Badge>
-                    ) : null}
-                    {filled} / {questions.length}
+                  <td className="px-3 py-2 text-right tabular-nums text-ink">
+                    {marked.length === 0 ? "—" : `${total} / ${max}`}
                   </td>
-                  {scored.length > 0 ? (
-                    <td className="px-3 py-2 text-right tabular-nums text-ink">
-                      {marked.length === 0 ? "—" : `${total} / ${max}`}
-                    </td>
-                  ) : null}
                 </tr>
               );
             })}

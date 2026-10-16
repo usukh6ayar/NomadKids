@@ -396,50 +396,17 @@ describe("filling the whole group as one table", () => {
     expect(screen.getByText("Хүүхэд бүрийн мөрөнд сонголтоо тэмдэглэнэ үү.")).toBeInTheDocument();
   });
 
-  /*
-    ★ A half row is saved — 2026-10-16, the user: a long form is filled over
-    several sittings. Only the questions marked so far are sent, and «Нийт»
-    marks the child «Дутуу» until the rest are done.
-  */
-  it("saves a child whose row is only half done, and marks them «Дутуу»", async () => {
+  it("will not save a child whose row is only half done", async () => {
     const user = userEvent.setup();
     const second = { ...QUESTION, id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", order: 1 };
-    const api = stubApi([
-      ...sheet([bat], { ...SURVEY, questions: [QUESTION, second] }),
-      { path: `/surveys/${SURVEY.id}/teacher-sheet`, method: "PUT", body: { saved: 1 } },
-    ]);
+    stubApi(sheet([bat], { ...SURVEY, questions: [QUESTION, second] }));
     renderWithProviders(<TeacherSheetPage />);
 
     const [first] = await screen.findAllByRole("radio", { name: "Б.Бат: 1" });
     await user.click(first!);
 
-    expect(screen.getByText(/Дутуу: Б.Бат \(1\/2\)/)).toBeInTheDocument();
-    const total = within(screen.getByText("Нийт").closest("div")!)
-      .getByRole("rowheader", { name: "Б.Бат" })
-      .closest("tr")!;
-    expect(total).toHaveTextContent("Дутуу");
-    expect(total).toHaveTextContent("1 / 2");
-
-    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
-    const put = await vi.waitFor(() => {
-      const call = api.calls.find((c) => c.method === "PUT");
-      expect(call).toBeDefined();
-      return call!;
-    });
-    expect(put.body).toEqual({
-      responses: [{ childId: BAT, answers: [{ questionId: QUESTION.id, value: "1" }] }],
-    });
-  });
-
-  it("will not save a saved child with every answer taken away", async () => {
-    const user = userEvent.setup();
-    stubApi(sheet([saruul]));
-    renderWithProviders(<TeacherSheetPage />);
-
-    await user.click(await screen.findByRole("radio", { name: "Саруул: 0" }));
-
     expect(screen.getByRole("button", { name: "Хадгалах" })).toBeDisabled();
-    expect(screen.getByText(/бүгдийг нь арилгах боломжгүй/)).toBeInTheDocument();
+    expect(screen.getByText(/Дутуу: Б.Бат/)).toBeInTheDocument();
   });
 
   it("totals each child's score, as the А/79 form's Нийт row does", async () => {

@@ -6,7 +6,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { z } from "zod";
 import {
-  type SurveyAnswerValue,
   type SurveyQuestion,
   surveyResultsSchema,
   surveySchema,
@@ -19,7 +18,6 @@ import {
 import { get, mutate } from "@/lib/api/browser";
 import { downloadUrl } from "@/lib/api/client";
 import { SurveyResultsView } from "@/components/survey/survey-results-view";
-import { answeredCount, teacherSheetSchema } from "@/components/survey/teacher-sheet";
 import { qk } from "@/lib/api/keys";
 import { errorMessage } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
@@ -349,29 +347,12 @@ const fillRosterSchema = z.object({
  * `/surveys/:id/fill`, as one table of the whole group (the client's drawing),
  * and a second list of the same children here would be two places to do it.
  * The count is `participation`'s, the same one the list card shows.
- *
- * ★ «Засах / үргэлжлүүлэх» once anything is saved, and how many rows are still
- * «Дутуу» — 2026-10-16, the user: a half row can be saved and finished later.
- * The sheet is the same query the table loads, so opening it costs nothing.
  */
 function ChildrenToFill({ surveyId, open }: { surveyId: string; open: boolean }) {
   const roster = useQuery({
     queryKey: ["surveys", surveyId, "participation"],
     queryFn: () => get(`/surveys/${surveyId}/participation`, fillRosterSchema),
   });
-  const sheet = useQuery({
-    queryKey: ["survey", surveyId, "teacher-sheet"],
-    queryFn: () => get(`/surveys/${surveyId}/teacher-sheet`, teacherSheetSchema),
-  });
-  const questions = sheet.data?.survey.questions ?? [];
-  const partial = (sheet.data?.rows ?? []).filter((row) => {
-    if (!row.response) return false;
-    const answers = Object.fromEntries(
-      row.response.answers.map((answer) => [answer.questionId, answer.value as SurveyAnswerValue]),
-    );
-    return answeredCount(questions, answers) < questions.length;
-  }).length;
-  const started = (roster.data?.answeredCount ?? 0) > 0;
 
   return (
     <Card pad="compact" className="flex flex-wrap items-center gap-3">
@@ -379,9 +360,7 @@ function ChildrenToFill({ surveyId, open }: { surveyId: string; open: boolean })
         <p className="font-semibold text-ink">Хүүхэд бүрээр бөглөх</p>
         <p className="text-caption tabular-nums text-muted">
           {roster.data
-            ? `${roster.data.answeredCount}/${roster.data.roster} хүүхэд бөглөгдсөн${
-                partial > 0 ? ` · ${partial} дутуу` : ""
-              }`
+            ? `${roster.data.answeredCount}/${roster.data.roster} хүүхэд бөглөгдсөн`
             : "Бүлгийн хүүхдүүдийг нэг хүснэгтэд бөглөнө."}
         </p>
       </div>
@@ -389,7 +368,7 @@ function ChildrenToFill({ surveyId, open }: { surveyId: string; open: boolean })
         href={`/surveys/${surveyId}/fill`}
         className="inline-flex min-h-11 items-center gap-1.5 rounded-pill bg-primary px-4 text-body font-semibold text-white transition-colors hover:bg-primary-hover"
       >
-        {!open ? "Хүснэгт харах" : started ? "Засах / үргэлжлүүлэх" : "Хүснэгтээр бөглөх"}
+        {open ? "Хүснэгтээр бөглөх" : "Хүснэгт харах"}
         <ChevronRight size={16} aria-hidden="true" />
       </Link>
     </Card>
