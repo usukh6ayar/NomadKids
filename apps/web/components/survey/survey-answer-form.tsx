@@ -35,7 +35,7 @@ export function SurveyAnswerForm({
   onSubmit: () => void;
   submitLabel?: string;
 }) {
-  const unanswered = questions.some((q) => answers[q.id] === undefined);
+  const unanswered = questions.some((q) => !isQuestionAnswered(q, answers[q.id]));
 
   return (
     <form
@@ -246,6 +246,26 @@ export function SurveyAnswerForm({
       </Button>
     </form>
   );
+}
+
+/**
+ * Whether a question holds a real answer — 2026-10-16, the user: "судалгаа
+ * бөглөхдөө хоосон ч илгээж болдог". A TEXT needs more than blanks, a
+ * CHECKBOX a choice, a MATRIX every row. The API holds the same rule
+ * (`SurveysService.assertCompleteAnswers`); the teacher's table uses this too.
+ */
+export function isQuestionAnswered(
+  question: SurveyQuestion,
+  value: SurveyAnswerValue | undefined,
+): boolean {
+  if (value === undefined) return false;
+  if (question.type === "TEXT") return typeof value === "string" && value.trim().length > 0;
+  if (question.type === "CHECKBOX") return Array.isArray(value) && value.length > 0;
+  if (question.type === "MATRIX") {
+    const cells = value as Record<string, number>;
+    return (matrixShape(question.options)?.rows ?? []).every((row) => cells[row.key] !== undefined);
+  }
+  return true;
 }
 
 /**

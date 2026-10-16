@@ -535,6 +535,70 @@ describe("responding — CHILD scope", () => {
     expect(res.status).toBe(404);
   });
 
+  /**
+   * An empty form is not a response — 2026-10-16, the user: "судалгаа
+   * бөглөхдөө хоосон ч илгээж болдог". Every question needs an answer: a
+   * TEXT more than blanks, a CHECKBOX a choice, a MATRIX every row.
+   */
+  it("refuses a response that leaves a question unanswered or blank", async () => {
+    const created = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
+      teacherA,
+    ).send({ title: "Гэр бүлийн судалгаа", scope: "CHILD", groupId: a.group.id });
+    const surveyId = created.body.id as string;
+    await authed(request(server()).put(`/v1/surveys/${surveyId}/questions`), teacherA).send({
+      questions: [
+        { order: 0, type: "RATING", prompt: "Сэтгэл ханамж" },
+        { order: 1, type: "TEXT", prompt: "Санал" },
+        { order: 2, type: "CHECKBOX", prompt: "Дуртай зүйл", options: ["Зураг", "Дуу"] },
+        {
+          order: 3,
+          type: "MATRIX",
+          prompt: "Чадварууд",
+          options: {
+            rows: [
+              { key: "a", label: "Ярих" },
+              { key: "b", label: "Сонсох" },
+            ],
+            columns: [
+              { value: 1, label: "Үгүй" },
+              { value: 2, label: "Тийм" },
+            ],
+          },
+        },
+      ],
+    });
+    await authed(request(server()).post(`/v1/surveys/${surveyId}/publish`), teacherA);
+    const questions = await db.surveyQuestion.findMany({
+      where: { surveyId },
+      orderBy: { order: "asc" },
+    });
+    const [rating, text, checkbox, matrix] = questions.map((q) => q.id);
+    const full = {
+      [rating!]: 4,
+      [text!]: "Сайн",
+      [checkbox!]: ["Зураг"],
+      [matrix!]: { a: 1, b: 2 },
+    } as Record<string, unknown>;
+    const send = (values: Record<string, unknown>) =>
+      authed(request(server()).post(`/v1/surveys/${surveyId}/responses`), parentA).send({
+        childId: a.child.id,
+        answers: Object.entries(values).map(([questionId, value]) => ({ questionId, value })),
+      });
+
+    for (const broken of [
+      { [rating!]: 4 },
+      { ...full, [text!]: "   " },
+      { ...full, [checkbox!]: [] },
+      { ...full, [matrix!]: { a: 1 } },
+    ]) {
+      expect((await send(broken)).status).toBe(400);
+    }
+    expect(await db.surveyResponse.count({ where: { surveyId } })).toBe(0);
+
+    expect((await send(full)).status).toBe(201);
+  });
+
   it("requires a childId for a CHILD-scope survey", async () => {
     const { surveyId, questionId } = await publishedChildSurvey();
 

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import { FormError } from "@/components/ui/states";
+import { isQuestionAnswered } from "@/components/survey/survey-answer-form";
 import { shortName } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -122,18 +123,7 @@ function columnsFor(question: SurveyQuestion): Column[] | null {
 
 /** Every question has an answer — a matrix only when every one of its rows does. */
 function isComplete(questions: SurveyQuestion[], answers: Record<string, SurveyAnswerValue>) {
-  return questions.every((question) => {
-    const value = answers[question.id];
-    if (value === undefined) return false;
-    if (question.type === "MATRIX") {
-      const shape = matrixShape(question.options);
-      const cells = value as Record<string, number>;
-      return (shape?.rows ?? []).every((row) => cells[row.key] !== undefined);
-    }
-    if (question.type === "CHECKBOX") return (value as string[]).length > 0;
-    if (question.type === "TEXT") return String(value).trim().length > 0;
-    return true;
-  });
+  return questions.every((question) => isQuestionAnswered(question, answers[question.id]));
 }
 
 /**

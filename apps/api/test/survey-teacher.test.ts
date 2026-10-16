@@ -503,11 +503,16 @@ describe("Эксэл татах — a teacher survey as a workbook", () => {
 
   it("puts every question in one table, answered or not, and opens on it", async () => {
     const { surveyId, questionIds } = await publishTeacherSurvey(teacherA);
-    // Only the first of the two questions is answered.
+    // Only the first of the two questions is answered — a row from before
+    // 2026-10-16, when the API still took a half-answered response.
     await authed(request(server()).post(`/v1/surveys/${surveyId}/responses`), teacherA).send({
       childId: a.child.id,
-      answers: [{ questionId: questionIds[0], value: 4 }],
+      answers: [
+        { questionId: questionIds[0], value: 4 },
+        { questionId: questionIds[1], value: true },
+      ],
     });
+    await db.surveyAnswer.deleteMany({ where: { questionId: questionIds[1] } });
 
     const res = await authed(request(server()).get(`/v1/surveys/${surveyId}/export`), teacherA)
       .buffer(true)

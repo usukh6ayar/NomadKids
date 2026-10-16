@@ -755,6 +755,7 @@ export class SurveysService {
 
     const withQuestions = await this.repo.findWithQuestions(surveyId);
     this.assertValidAnswers(withQuestions?.questions ?? [], dto.answers);
+    this.assertCompleteAnswers(withQuestions?.questions ?? [], dto.answers);
 
     const response = await this.repo.createResponse(
       { kindergartenId: survey.kindergartenId, surveyId, childId, respondentId: actor.userId },
@@ -775,6 +776,34 @@ export class SurveysService {
   }
 
   // ── Teacher surveys — filled in by staff, one child at a time ──────────
+
+  /**
+   * Every question answered — 2026-10-16, the user: "судалгаа бөглөхдөө
+   * хоосон ч илгээж болдог". A TEXT needs more than blanks, a CHECKBOX a
+   * choice, a MATRIX every row: the rule the teacher's table already drew on
+   * the web, held here so a hand-made request cannot store an empty form.
+   * A draft is the one save it does not apply to.
+   */
+  private assertCompleteAnswers(
+    questions: QuestionForValidation[],
+    answers: { questionId: string; value: unknown }[],
+  ) {
+    const given = new Map(answers.map((answer) => [answer.questionId, answer.value]));
+    const answered = (question: QuestionForValidation) => {
+      const value = given.get(question.id);
+      if (value === undefined) return false;
+      if (question.type === "TEXT") return typeof value === "string" && value.trim().length > 0;
+      if (question.type === "CHECKBOX") return Array.isArray(value) && value.length > 0;
+      if (question.type === "MATRIX") {
+        const cells = (value ?? {}) as Record<string, unknown>;
+        return (matrixOptions(question)?.rows ?? []).every((row) => cells[row.key] !== undefined);
+      }
+      return true;
+    };
+    if (!questions.every(answered)) {
+      throw new BadRequestException("Бүх асуултад хариулна уу");
+    }
+  }
 
   /**
    * Every answer names a question of this survey and a value that question
@@ -1047,7 +1076,10 @@ export class SurveysService {
     const allowed = new Set(roster.map((row) => row.child.id));
     if (dto.responses.some((row) => !allowed.has(row.childId))) throw new NotFoundException();
 
-    for (const row of dto.responses) this.assertValidAnswers(survey.questions, row.answers);
+    for (const row of dto.responses) {
+      this.assertValidAnswers(survey.questions, row.answers);
+      this.assertCompleteAnswers(survey.questions, row.answers);
+    }
 
     const existing = await this.repo.teacherSheetResponses(
       surveyId,

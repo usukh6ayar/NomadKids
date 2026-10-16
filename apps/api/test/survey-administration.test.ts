@@ -92,7 +92,10 @@ describe("the administration's surveys, as a teacher reads them", () => {
 
     await authed(request(server()).post(`/v1/surveys/${surveyId}/responses`), parentA).send({
       childId: a.child.id,
-      answers: [{ questionId: questionIds[0], value: "4" }],
+      answers: [
+        { questionId: questionIds[0], value: "4" },
+        { questionId: questionIds[1], value: true },
+      ],
     });
 
     const res = await authed(request(server()).get(listUrl()), teacherA);
