@@ -263,24 +263,6 @@ export class AuthzRepository {
   }
 
   /**
-   * Child ids a kindergarten's finance staff may invoice, as the same kind of
-   * WHERE fragment `visibleChildrenWhere` returns.
-   *
-   * ★ Kept separate rather than folded into `visibleChildrenWhere`, the same
-   * way `canViewChildFinance` (child-access.ts) is kept apart from
-   * `canAccessChild`: нэмэлт.md §13 gives an accountant every child's invoice
-   * and no developmental record, so widening the general roster filter to
-   * admit them would leak the wrong axis of access into `GET /children` and
-   * every screen built on it. This is that predicate's list-shaped twin.
-   *
-   * ★★ Takes `kindergartenId` directly rather than deriving it from the
-   * actor's memberships. The one caller, `ChildrenService.financeRoster`, has
-   * already run `TenantAccessService.assertCanReadFinance` for this exact
-   * kindergarten, so there is nothing left to decide except *which children* —
-   * the same enrollment-history-plus-fallback shape the admin chain above
-   * uses, mirrored here for one kindergarten instead of a list of them.
-   */
-  /**
    * The children whose **card** this actor may open — `canReadChildCard`'s
    * list-shaped twin (2026-10-15): everyone `visibleChildrenWhere` admits,
    * plus a PE/music teacher's assigned groups and the doctor's kindergarten.
@@ -346,6 +328,24 @@ export class AuthzRepository {
     return new Set(rows.map((row) => row.id));
   }
 
+  /**
+   * Child ids a kindergarten's finance staff may invoice, as the same kind of
+   * WHERE fragment `visibleChildrenWhere` returns.
+   *
+   * ★ Kept separate rather than folded into `visibleChildrenWhere`, the same
+   * way `canViewChildFinance` (child-access.ts) is kept apart from
+   * `canAccessChild`: нэмэлт.md §13 gives an accountant every child's invoice
+   * and no developmental record, so widening the general roster filter to
+   * admit them would leak the wrong axis of access into `GET /children` and
+   * every screen built on it. This is that predicate's list-shaped twin.
+   *
+   * ★★ Takes `kindergartenId` directly rather than deriving it from the
+   * actor's memberships. The one caller, `ChildrenService.financeRoster`, has
+   * already run `TenantAccessService.assertCanReadFinance` for this exact
+   * kindergarten, so there is nothing left to decide except *which children* —
+   * the same enrollment-history-plus-fallback shape the admin chain above
+   * uses, mirrored here for one kindergarten instead of a list of them.
+   */
   visibleChildrenForFinanceWhere(kindergartenId: string): VisibleChildrenFilter {
     return {
       deletedAt: null,

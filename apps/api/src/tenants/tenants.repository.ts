@@ -454,7 +454,9 @@ export class TenantsRepository {
   }
 
   async assignSpecialist(data: { kindergartenId: string; groupId: string; membershipId: string }) {
-    return this.prisma.groupSpecialist.create({ data });
+    // Dated, as a class teacher's assignment is — the row is the record of who
+    // taught whom, and an assignment with only an end says half of it.
+    return this.prisma.groupSpecialist.create({ data: { ...data, startedOn: new Date() } });
   }
 
   /** An active assignment in one of these kindergartens — ended ones are history. */
