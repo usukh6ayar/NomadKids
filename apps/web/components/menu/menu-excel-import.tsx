@@ -131,7 +131,7 @@ export function MenuExcelImport({
           <input
             ref={input}
             type="file"
-            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            accept=".xlsx,.csv,.xls,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/vnd.ms-excel"
             className="sr-only"
             onChange={(event) => {
               const picked = event.target.files?.[0];
