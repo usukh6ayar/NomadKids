@@ -17,7 +17,9 @@ export const teacherSignupSchema = z
     phone: z
       .string()
       .trim()
-      .regex(/^\d{8}$/, "Утасны дугаар 8 оронтой байна"),
+      // A mobile, as every other phone a person proves (`mobilePhoneSchema`):
+      // the code is texted from it, so a landline can never be proven.
+      .regex(/^[5-9]\d{7}$/, "Гар утасны 8 оронтой дугаар оруулна уу"),
     email: z.string().trim().toLowerCase().email("И-мэйл хаяг буруу байна").max(200),
     password: z.string().min(8, "Нууц үг дор хаяж 8 тэмдэгт байх ёстой").max(200),
     /**

@@ -54,8 +54,12 @@ class Rollback extends Error {
   }
 }
 
-/** Identifiers come from `pg_constraint`, but are checked before being quoted into SQL. */
-const IDENTIFIER = /^[a-z_]+$|^[a-zA-Z]+$/;
+/**
+ * Identifiers come from `pg_constraint`, but are checked before being quoted
+ * into SQL. Letters, digits and underscores, never leading with a digit —
+ * `observation_a79_links` (2026-10-16) was the first table name with a digit.
+ */
+const IDENTIFIER = /^[a-z][a-z0-9_]*$|^[a-zA-Z][a-zA-Z0-9]*$/;
 
 /** Long enough for ~80 updates on a production-sized table set. */
 const TX = { timeout: 120_000, maxWait: 10_000 };
@@ -356,6 +360,11 @@ export class SoloMergeRepository {
         };
 
         // 3. Groups whose name is taken in the target's year get the operator's name.
+        //
+        // ★ Taken by the target's groups *or by another solo group* moving with
+        // it (2026-10-16): a solo teacher keeps one group a year, often under
+        // the same name, and step 4 puts every one of them in the target's one
+        // year — `@@unique([schoolYearId, name])` failed the whole merge.
         const soloYears = await tx.schoolYear.findMany({
           where: { kindergartenId: soloId },
           select: { id: true },
@@ -364,14 +373,25 @@ export class SoloMergeRepository {
         const groups = await tx.group.findMany({
           where: { schoolYearId: { in: soloYearIds } },
           select: { id: true, name: true },
+          orderBy: [{ deletedAt: { sort: "desc", nulls: "first" } }, { createdAt: "desc" }],
         });
+        const used = new Set(
+          (
+            await tx.group.findMany({
+              where: { schoolYearId: targetYear.id },
+              select: { name: true },
+            })
+          ).map((g) => g.name),
+        );
         for (const group of groups) {
-          const taken = await tx.group.findFirst({
-            where: { schoolYearId: targetYear.id, name: group.name },
-            select: { id: true },
-          });
-          if (!taken) continue;
-          const to = options.groupNameFor(group.name);
+          if (!used.has(group.name)) {
+            used.add(group.name);
+            continue;
+          }
+          const base = options.groupNameFor(group.name);
+          let to = base;
+          for (let n = 2; used.has(to); n += 1) to = `${base} (${n})`;
+          used.add(to);
           await tx.group.update({ where: { id: group.id }, data: { name: to } });
           result.groupsRenamed.push({ from: group.name, to });
         }

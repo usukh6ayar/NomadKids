@@ -14,6 +14,13 @@ export class SoloRulesRepository {
     return row?.kind ?? null;
   }
 
+  /** School years not archived and not yet over on `today`. */
+  countOpenSchoolYears(kindergartenId: string, today: Date) {
+    return this.prisma.schoolYear.count({
+      where: { kindergartenId, deletedAt: null, endsOn: { gte: today } },
+    });
+  }
+
   countLiveGroups(kindergartenId: string, schoolYearId: string) {
     return this.prisma.group.count({ where: { kindergartenId, schoolYearId, deletedAt: null } });
   }

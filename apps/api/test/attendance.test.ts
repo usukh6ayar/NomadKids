@@ -2,11 +2,14 @@ import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestApp } from "./support/app";
-import { resetData, testDb } from "./support/db";
+import { resetData, testDb, uniq } from "./support/db";
 import {
+  assignTeacher,
   authed,
   createChild,
   createGroup,
+  createMembership,
+  createUser,
   enrollChild,
   createScenario,
   login,
@@ -1317,6 +1320,60 @@ describe("the roster of a given day", () => {
       where: { childId: a.child.id, date: new Date("2026-02-10") },
     });
     expect(row.enrollmentId).toBe(a.enrollment.id);
+  });
+
+  it("writes one child's past-day mark onto the enrolment of that day", async () => {
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/attendance/2026-02-10`),
+      await login(app, a.adminUser.username),
+    ).send({ status: "PRESENT" });
+    expect(res.status).toBe(200);
+    expect(res.body.enrollmentId).toBe(a.enrollment.id);
+  });
+
+  it("the new group's teacher cannot write into the old group's day (404)", async () => {
+    const user = await createUser({ username: uniq("newgroupteacher") });
+    const membership = await createMembership(user.id, a.kindergarten.id, "TEACHER");
+    await assignTeacher(a.kindergarten.id, newGroupId, membership.id);
+    const newTeacher = await login(app, user.username);
+
+    // 2026-02-10 belongs to a.group, which this teacher does not teach.
+    const before = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/attendance/2026-02-10`),
+      newTeacher,
+    ).send({ status: "PRESENT" });
+    expect(before.status).toBe(404);
+    expect(await db.attendance.count({ where: { childId: a.child.id } })).toBe(0);
+
+    // Their own group's day is theirs to mark.
+    const after = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/attendance/2026-02-12`),
+      newTeacher,
+    ).send({ status: "PRESENT" });
+    expect(after.status).toBe(200);
+  });
+
+  it("a user from another kindergarten gets 404 for the past day", async () => {
+    const res = await authed(
+      request(server()).put(`/v1/children/${a.child.id}/attendance/2026-02-10`),
+      await login(app, b.adminUser.username),
+    ).send({ status: "PRESENT" });
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses one child's mark for a day they were in no group", async () => {
+    const joiner = await createChild(a.kindergarten.id, { firstName: "Шинэ" });
+    const joined = await enrollChild(a.kindergarten.id, joiner.id, newGroupId, a.schoolYear.id);
+    await db.enrollment.update({
+      where: { id: joined.id },
+      data: { startedOn: new Date("2026-02-11") },
+    });
+
+    const res = await authed(
+      request(server()).put(`/v1/children/${joiner.id}/attendance/2026-02-10`),
+      await login(app, a.adminUser.username),
+    ).send({ status: "PRESENT" });
+    expect(res.status).toBe(400);
   });
 
   it("leaves out a child archived as a mistake, on every day", async () => {

@@ -967,8 +967,17 @@ describe("the meal register", () => {
     });
 
     it("refuses a file that is not a workbook", async () => {
-      const res = await post(cookA, Buffer.from("Энэ бол excel биш"));
+      // Binary that is not a ZIP — an executable renamed `.xlsx`.
+      const exe = Buffer.concat([Buffer.from([0x4d, 0x5a, 0x90, 0x00]), Buffer.alloc(200)]);
+      const res = await post(cookA, exe);
       expect(res.status).toBe(400);
+    });
+
+    it("reads plain text as a CSV and says what it could not find", async () => {
+      // Text is a CSV since 2026-10-16; one with no menu in it is a problem row.
+      const res = await post(cookA, Buffer.from("Энэ бол excel биш"));
+      expect(res.status).toBe(201);
+      expect(res.body.problems[0].message).toContain("Огноо");
     });
 
     it("says which column is missing rather than importing nothing quietly", async () => {
