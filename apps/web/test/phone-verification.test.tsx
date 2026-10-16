@@ -55,6 +55,12 @@ describe("forgot password — by phone", () => {
 
     renderWithProviders(<ForgotPasswordPage />);
 
+    // A normal product Back control, not a destination label over the login
+    // illustration. The recovery flow is its own opaque page.
+    expect(screen.getByRole("link", { name: "Буцах" })).toHaveAttribute("href", "/login");
+    expect(screen.queryByRole("link", { name: "Нэвтрэх хуудас" })).toBeNull();
+    expect(document.querySelector("img")).toBeNull();
+
     // Phone only since 2026-10-04 — the e-mail path is gone from this screen.
     expect(await screen.findByRole("textbox", { name: /^Утасны дугаар/ })).toBeInTheDocument();
     expect(screen.queryByLabelText(/и-мэйл/i)).not.toBeInTheDocument();

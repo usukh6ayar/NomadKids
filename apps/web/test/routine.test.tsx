@@ -261,6 +261,21 @@ describe("the director's view", () => {
 });
 
 describe("a family's routine", () => {
+  it("does not repeat «Миний бүлэг» under the page title", async () => {
+    setParams({ childId: CHILD });
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["PARENT"]) },
+      {
+        path: `/children/${CHILD}/routine`,
+        body: routine({ group: { id: GROUP, name: "Миний бүлэг" } }),
+      },
+    ]);
+    renderWithProviders(<ChildRoutinePage />);
+
+    expect(await screen.findByRole("heading", { name: "Өдрийн дэглэм" })).toBeInTheDocument();
+    expect(screen.queryByText("Миний бүлэг")).toBeNull();
+  });
+
   it("asks to join a club", async () => {
     const user = userEvent.setup();
     setParams({ childId: CHILD });

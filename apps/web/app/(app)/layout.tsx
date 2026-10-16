@@ -69,7 +69,6 @@ import { qk } from "@/lib/api/keys";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
 import { LoadingState } from "@/components/ui/states";
 import { Art, type ArtName } from "@/components/ui/art";
-import { useNavigationHistory } from "@/lib/nav-history";
 import { useSession } from "@/lib/auth/session";
 import { useSoloWorkspaceId } from "@/lib/auth/solo";
 import { AgreementGate } from "@/components/agreements/agreement-gate";
@@ -104,10 +103,6 @@ const ownChildrenSchema = z.array(childSummarySchema);
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { session, isLoading, hasRole, isSuperAdmin } = useSession();
   const router = useRouter();
-  // Counts navigations so `BackButton` knows whether there is anywhere to go
-  // back *to*. Mounted here because it has to see every route change, and this
-  // shell is the one thing under `(app)` that never unmounts between them.
-  useNavigationHistory();
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
   // A teacher who signed up alone sets up their own year and group (2026-10-14).
   const soloTeacher = useSoloWorkspaceId() !== null;
