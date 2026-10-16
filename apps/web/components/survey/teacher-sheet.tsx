@@ -371,7 +371,7 @@ export function TeacherSheet({
       <Totals questions={questions} rows={rows} answers={answers} />
 
       {editable ? (
-        <div className="sticky bottom-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom)+0.5rem)] z-[35] flex flex-col gap-2 rounded-card border border-border bg-surface p-3 shadow-lg sm:flex-row sm:items-center lg:bottom-4">
+        <div className="sticky bottom-3 z-10 flex flex-col gap-2 rounded-card border border-border bg-surface p-3 shadow-lg sm:flex-row sm:items-center">
           <p className="min-w-0 flex-1 text-caption text-muted">
             {emptied.length > 0
               ? `${emptied.map(childName).join(", ")} — хадгалсан хариултыг бүгдийг нь арилгах боломжгүй, дор хаяж нэгийг үлдээнэ үү.`
@@ -388,28 +388,20 @@ export function TeacherSheet({
                   }`
                 : "Хүүхэд бүрийн мөрөнд сонголтоо тэмдэглэнэ үү."}
           </p>
-          {/*
-            «Буцах» · «Хадгалах», small and side by side on a phone too, and
-            above the floating chat button (z-30) and the phone's menu bar —
-            2026-10-16, the user: they had slid behind both.
-          */}
-          <div className="flex shrink-0 justify-end gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => router.push(`/surveys/${surveyId}`)}
-            >
-              Буцах
-            </Button>
-            <Button
-              type="submit"
-              size="sm"
-              disabled={save.isPending || changedRows.length === 0 || emptied.length > 0}
-            >
-              {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
-            </Button>
-          </div>
+          {/* «Буцах» before «Хадгалах» — 2026-10-16, the user. */}
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => router.push(`/surveys/${surveyId}`)}
+          >
+            Буцах
+          </Button>
+          <Button
+            type="submit"
+            disabled={save.isPending || changedRows.length === 0 || emptied.length > 0}
+          >
+            {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+          </Button>
         </div>
       ) : null}
     </form>
