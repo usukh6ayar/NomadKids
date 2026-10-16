@@ -13,14 +13,6 @@ import type {
 } from "./notifications.dto";
 
 /**
- * Announcements — REST only, no realtime (D: MVP decision, ARCHITECTURE.md §7).
- *
- * The unread count is polled while the tab is visible. At this product's
- * cadence — a teacher posts a handful of notices a day — that is
- * indistinguishable from realtime to the user, and it removes a stateful
- * connection layer and a second auth path.
- */
-/**
  * Staff who read the kindergarten's board. ★ Reading only — posting is still
  * `assertStaff`. The PE/music teachers and the doctor joined 2026-10-15: a
  * closure or a holiday is theirs to plan around as much as the cook's.
@@ -34,6 +26,14 @@ const BOARD_READER_ROLES = new Set<Role>([
   Role.DOCTOR,
 ]);
 
+/**
+ * Announcements — REST only, no realtime (D: MVP decision, ARCHITECTURE.md §7).
+ *
+ * The unread count is polled while the tab is visible. At this product's
+ * cadence — a teacher posts a handful of notices a day — that is
+ * indistinguishable from realtime to the user, and it removes a stateful
+ * connection layer and a second auth path.
+ */
 @Injectable()
 export class NotificationsService {
   constructor(

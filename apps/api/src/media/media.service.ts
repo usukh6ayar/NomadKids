@@ -665,7 +665,7 @@ export class MediaService {
 
     if (!media.childId) throw new NotFoundException();
 
-    const facts = await this.childAccess.assertCanAccess(actor, media.childId);
+    const facts = await this.childAccess.assertCanReadFile(actor, media.childId, fileFact(media));
 
     // A guardian may reach the child, which is not the same as being allowed
     // this particular file: an observation photo inherits its observation's
@@ -697,7 +697,7 @@ export class MediaService {
     const media = await this.repo.findForAuthorization(mediaId);
     if (!media || !media.childId || media.status !== "READY") throw new NotFoundException();
 
-    const facts = await this.childAccess.assertCanAccess(actor, media.childId);
+    const facts = await this.childAccess.assertCanReadFile(actor, media.childId, fileFact(media));
     if (isGuardianOf(actor, facts)) {
       const visible = await this.repo.isVisibleToGuardian(media.childId, mediaId, actor.userId);
       if (!visible) throw new NotFoundException();
@@ -1418,4 +1418,16 @@ function describeBadRequest(error: BadRequestException): string {
   if (Array.isArray(message)) return message.join(", ");
 
   return "Зургийг хүлээж авсангүй";
+}
+
+/** The file facts `canReadChildFile` decides on, from the authorization row. */
+function fileFact(media: {
+  id: string;
+  child: { photoMediaFileId: string | null } | null;
+  observation: { authorId: string | null; source: string } | null;
+}) {
+  return {
+    isProfilePhoto: media.child?.photoMediaFileId === media.id,
+    observation: media.observation,
+  };
 }

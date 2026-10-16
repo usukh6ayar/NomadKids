@@ -44,7 +44,7 @@ export type RoomKind = "GROUP" | "STAFF" | "PARENTS" | "DIRECT";
  * The name on screen stays "Бүх багш" — it is the client's own, and it is what
  * a kindergarten calls the room whether or not the cook is reading it.
  */
-const STAFF_ROOM_ROLES = new Set<Role>([
+export const STAFF_ROOM_ROLES = new Set<Role>([
   Role.TEACHER,
   Role.ADMIN,
   Role.COOK,

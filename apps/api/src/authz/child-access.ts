@@ -278,6 +278,47 @@ export function canReadObservations(actor: Actor, facts: ChildAccessFacts): bool
   return canAccessChild(actor, facts) || isAssignedSpecialistOf(facts);
 }
 
+/** What `canReadChildFile` needs to know about one of the child's files. */
+export interface ChildFileFact {
+  /** It is the child's current profile photograph — the card's photo. */
+  readonly isProfilePhoto: boolean;
+  /** It is attached to an observation, and who filed that observation. */
+  readonly observation: { readonly authorId: string | null; readonly source: string } | null;
+}
+
+/**
+ * ★ May this actor open this one file of the child's (`GET /media/:id`)?
+ *
+ * Everyone who reads the child — and three narrower readers, each to the
+ * file their own reach already shows them (2026-10-16, ultra review of #231
+ * and #235; until then all three got 404 for pictures their screens drew):
+ *
+ *  - the card's readers (a PE/music teacher, the doctor) — the profile
+ *    photograph only, never the album;
+ *  - a group's PE/music teacher — the photographs on observations, which
+ *    `canReadObservations` already gives them;
+ *  - a teacher the child has left — the photographs on the staff notes they
+ *    filed themselves, the one thing `isFormerTeacherOf` grants.
+ *
+ * A guardian's narrower view of observation photos is the caller's second
+ * check (`MediaRepository.isVisibleToGuardian`), as before.
+ */
+export function canReadChildFile(
+  actor: Actor,
+  facts: ChildAccessFacts,
+  file: ChildFileFact,
+): boolean {
+  if (canAccessChild(actor, facts)) return true;
+  if (file.isProfilePhoto && canReadChildCard(actor, facts)) return true;
+  if (file.observation && isAssignedSpecialistOf(facts)) return true;
+  return (
+    file.observation !== null &&
+    file.observation.source === "TEACHER" &&
+    file.observation.authorId === actor.userId &&
+    isFormerTeacherOf(facts)
+  );
+}
+
 /**
  * May this actor file (or edit their own) staff observation about this child?
  * Writers plus specialists — not the doctor, and not a guardian, who has a

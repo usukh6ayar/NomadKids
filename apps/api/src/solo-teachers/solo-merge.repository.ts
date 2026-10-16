@@ -54,8 +54,12 @@ class Rollback extends Error {
   }
 }
 
-/** Identifiers come from `pg_constraint`, but are checked before being quoted into SQL. */
-const IDENTIFIER = /^[a-z_]+$|^[a-zA-Z]+$/;
+/**
+ * Identifiers come from `pg_constraint`, but are checked before being quoted
+ * into SQL. Letters, digits and underscores, never leading with a digit —
+ * `observation_a79_links` (2026-10-16) was the first table name with a digit.
+ */
+const IDENTIFIER = /^[a-z][a-z0-9_]*$|^[a-zA-Z][a-zA-Z0-9]*$/;
 
 /** Long enough for ~80 updates on a production-sized table set. */
 const TX = { timeout: 120_000, maxWait: 10_000 };

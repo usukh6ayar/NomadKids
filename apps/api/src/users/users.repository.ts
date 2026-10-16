@@ -265,6 +265,13 @@ export class UsersRepository {
         where: { membershipId, endedOn: null, deletedAt: null },
         data: { endedOn: new Date() },
       });
+      // ★ A PE/music teacher's groups end with the role, as on revocation
+      // (`endAssignmentsForMembership`). Left open, changing the role back
+      // reactivates this membership and hands every old group back unasked.
+      await tx.groupSpecialist.updateMany({
+        where: { membershipId, endedOn: null },
+        data: { endedOn: new Date() },
+      });
 
       const existing = await tx.membership.findFirst({
         where: { userId, kindergartenId, role, deletedAt: null },
