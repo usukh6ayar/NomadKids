@@ -1,3 +1,4 @@
+import { STAFF_ROLES } from "@kinder/contracts";
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import type { StaffRecordKind } from "../domain/enums";
@@ -83,7 +84,9 @@ export class StaffRepository {
         kindergartenId,
         userId,
         deletedAt: null,
-        role: { in: ["ADMIN", "TEACHER", "COOK", "ACCOUNTANT"] },
+        // ★ `STAFF_ROLES`, the list the staff directory draws — a PE/music
+        // teacher or a doctor listed there has a file to fill in too.
+        role: { in: [...STAFF_ROLES] },
       },
       select: { id: true },
     });

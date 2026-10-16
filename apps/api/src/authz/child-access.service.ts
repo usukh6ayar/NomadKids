@@ -12,6 +12,7 @@ import {
   canContributeMediaForChild,
   canObserveChild,
   canReadChildCard,
+  canReadChildFile,
   canReadChildHealth,
   canReadObservations,
   canRecordChildHealth,
@@ -20,6 +21,7 @@ import {
   isFormerTeacherOf,
   isGuardianOf,
   type ChildAccessFacts,
+  type ChildFileFact,
 } from "./child-access";
 
 /**
@@ -226,6 +228,15 @@ export class ChildAccessService {
   /** The health routes a family also writes to: contributors plus the doctor. */
   async assertCanContributeHealth(actor: Actor, childId: string): Promise<ChildAccessFacts> {
     return this.assertGated(actor, childId, canContributeChildHealth);
+  }
+
+  /** One of the child's files — `canReadChildFile`. Fee-gated as reading the child is. */
+  async assertCanReadFile(
+    actor: Actor,
+    childId: string,
+    file: ChildFileFact,
+  ): Promise<ChildAccessFacts> {
+    return this.assertGated(actor, childId, (a, facts) => canReadChildFile(a, facts, file));
   }
 
   private async assertGated(
