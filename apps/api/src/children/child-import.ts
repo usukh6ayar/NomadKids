@@ -1,4 +1,5 @@
-import ExcelJS from "exceljs";
+import type ExcelJS from "exceljs";
+import { cellText, loadSpreadsheet, normalizeHeading } from "../common/spreadsheet";
 
 /**
  * Parsing a roster workbook — RFP §3.4's "Excel файлаас хүүхдийн мэдээлэл
@@ -40,38 +41,102 @@ export interface ParseResult {
   problems: RowProblem[];
 }
 
+/** A column the importer reads: a field of the row, or the combined name. */
+type Field = keyof ParsedChildRow | "fullName";
+
 /**
  * The column headings the importer understands.
  *
- * ★ Matched case-insensitively against several spellings each.
+ * ★ Matched after `normalizeHeading` against several spellings each.
  *
  * The person filling this in is a kindergarten administrator working from
  * whatever the ministry or their previous system gave them. Insisting on one
  * exact string means the first upload fails on "Овог " with a trailing space,
- * and the feature gets abandoned before it works once. Both Mongolian and
- * English are accepted because exported files from other systems use either.
+ * or «Төрсөн огноо (он-сар-өдөр)», and the feature gets abandoned before it
+ * works once. Both Mongolian and English are accepted because exported files
+ * from other systems use either.
+ *
+ * ★★ Within a field the aliases are in order of preference: when two columns
+ * match one field, the one matching the earlier alias wins, not the one further
+ * left. «Овог» beats «Эцэг эхийн нэр» wherever they stand, so a guardian
+ * column cannot become the child's surname by being first.
  */
-const COLUMNS: { field: keyof ParsedChildRow; aliases: string[]; required: boolean }[] = [
-  { field: "lastName", aliases: ["овог", "эцгийн нэр", "lastname", "last name"], required: true },
-  { field: "firstName", aliases: ["нэр", "өөрийн нэр", "firstname", "first name"], required: true },
-  { field: "sex", aliases: ["хүйс", "sex", "gender"], required: true },
+const COLUMNS: { field: Field; aliases: string[] }[] = [
+  {
+    field: "lastName",
+    aliases: [
+      "овог",
+      "хүүхдийн овог",
+      "эцгийн нэр",
+      "эцэг эхийн нэр",
+      "lastname",
+      "last name",
+      "surname",
+    ],
+  },
+  {
+    field: "firstName",
+    aliases: ["нэр", "өөрийн нэр", "хүүхдийн нэр", "firstname", "first name", "given name"],
+  },
+  /*
+   * One column holding both, «Батын Тэмүүлэн» — what many rosters have. Split
+   * at the first space (`splitFullName`). Read only when the file has no
+   * separate surname and given name.
+   */
+  {
+    field: "fullName",
+    aliases: [
+      "овог нэр",
+      "хүүхдийн овог нэр",
+      "овог нэр хүүхдийн",
+      "овог болон нэр",
+      "бүтэн нэр",
+      "full name",
+      "name",
+    ],
+  },
+  { field: "sex", aliases: ["хүйс", "хүйс эр эм", "sex", "gender"] },
   {
     field: "dateOfBirth",
-    aliases: ["төрсөн огноо", "төрсөн өдөр", "dateofbirth", "date of birth", "birthdate"],
-    required: true,
+    aliases: [
+      "төрсөн огноо",
+      "төрсөн өдөр",
+      "төрсөн он сар өдөр",
+      "төрсөн огноо он сар өдөр",
+      "төрсөн огноо он сар",
+      "dateofbirth",
+      "date of birth",
+      "birthdate",
+      "birth date",
+      "birthday",
+      "dob",
+    ],
   },
   {
     field: "nationalId",
-    aliases: ["регистр", "регистрийн дугаар", "nationalid", "register"],
-    required: false,
+    aliases: [
+      "регистр",
+      "регистрийн дугаар",
+      "регистрийн",
+      "регистр дугаар",
+      "рд",
+      "nationalid",
+      "national id",
+      "register",
+    ],
   },
-  { field: "groupName", aliases: ["бүлэг", "group", "бүлгийн нэр"], required: false },
+  {
+    field: "groupName",
+    aliases: ["бүлэг", "бүлгийн нэр", "анги", "group", "group name"],
+  },
   {
     field: "healthNotes",
-    aliases: ["эрүүл мэнд", "эрүүл мэндийн тэмдэглэл", "healthnotes", "notes"],
-    required: false,
+    aliases: ["эрүүл мэнд", "эрүүл мэндийн тэмдэглэл", "тэмдэглэл", "healthnotes", "notes"],
   },
 ];
+
+/** How far down each sheet the heading row is looked for — below a title or two. */
+const HEADER_SEARCH_ROWS = 20;
 
 /** How many data rows one upload may carry. */
 const MAX_ROWS = 500;
@@ -111,66 +176,59 @@ function normalise(value: string): string {
 }
 
 export async function parseChildWorkbook(input: Buffer): Promise<ParseResult> {
-  const book = new ExcelJS.Workbook();
-
-  try {
-    await book.xlsx.load(input as unknown as ArrayBuffer);
-  } catch {
-    // The ZIP header check passed but this is not a workbook. Reported as a
-    // problem rather than thrown, so the caller answers with the same shape it
-    // uses for every other refusal.
-    return { rows: [], problems: [{ rowNumber: 0, message: "Файлыг уншиж чадсангүй" }] };
+  // An `.xlsx` or a CSV (`common/spreadsheet.ts`). A file that is neither is
+  // reported as a problem rather than thrown, so the caller answers with the
+  // same shape it uses for every other refusal.
+  const book = await loadSpreadsheet(input);
+  if (!book) return { rows: [], problems: [{ rowNumber: 0, message: "Файлыг уншиж чадсангүй" }] };
+  if (book.worksheets.length === 0) {
+    return { rows: [], problems: [{ rowNumber: 0, message: "Хуудас олдсонгүй" }] };
   }
 
-  const sheet = book.worksheets[0];
-  if (!sheet) return { rows: [], problems: [{ rowNumber: 0, message: "Хуудас олдсонгүй" }] };
-
-  const headerRow = sheet.getRow(1);
-  const columnIndex = new Map<keyof ParsedChildRow, number>();
-
-  headerRow.eachCell((cell, index) => {
-    const heading = String(cell.value ?? "")
-      .trim()
-      .toLowerCase();
-
-    for (const column of COLUMNS) {
-      if (!columnIndex.has(column.field) && column.aliases.includes(heading)) {
-        columnIndex.set(column.field, index);
-      }
-    }
-  });
-
-  const missing = COLUMNS.filter((c) => c.required && !columnIndex.has(c.field));
-  if (missing.length > 0) {
+  /*
+   * ★ The heading row is looked for, not assumed to be row 1 of sheet 1.
+   *
+   * A ministry or school roster has a title — «2026-2027 оны хичээлийн жилийн
+   * хүүхдийн бүртгэл» — and often a blank line above its headings, and the
+   * roster is not always the first tab. Every sheet's first rows are tried;
+   * the row naming the most known columns wins, the top-most on a tie.
+   */
+  const found = findHeader(book);
+  if (!found) {
+    const best = bestEffortHeader(book);
+    const missing = [
+      ...(best.has("lastName") || best.has("fullName") ? [] : ["овог"]),
+      ...(best.has("firstName") || best.has("fullName") ? [] : ["нэр"]),
+      ...(best.has("sex") ? [] : ["хүйс"]),
+      ...(best.has("dateOfBirth") ? [] : ["төрсөн огноо"]),
+    ];
     return {
       rows: [],
-      problems: [
-        {
-          rowNumber: 1,
-          message: `Дараах багана дутуу байна: ${missing.map((c) => c.aliases[0]).join(", ")}`,
-        },
-      ],
+      problems: [{ rowNumber: 1, message: `Дараах багана дутуу байна: ${missing.join(", ")}` }],
     };
   }
+  const { sheet, headerRow, columnIndex } = found;
+  const splitName = !columnIndex.has("lastName") || !columnIndex.has("firstName");
 
   const rows: ParsedChildRow[] = [];
   const problems: RowProblem[] = [];
   const seenNationalIds = new Map<string, number>();
   const seenNameAndDate = new Map<string, number>();
 
-  const lastRow = Math.min(sheet.rowCount, MAX_ROWS + 1);
+  const lastRow = Math.min(sheet.rowCount, headerRow + MAX_ROWS);
 
-  for (let rowNumber = 2; rowNumber <= lastRow; rowNumber++) {
+  for (let rowNumber = headerRow + 1; rowNumber <= lastRow; rowNumber++) {
     const row = sheet.getRow(rowNumber);
-    const read = (field: keyof ParsedChildRow) => {
+    const read = (field: Field) => {
       const index = columnIndex.get(field);
       if (index === undefined) return "";
 
       return cellText(row.getCell(index));
     };
 
-    const lastName = read("lastName");
-    const firstName = read("firstName");
+    const [lastName, firstName] = splitName
+      ? splitFullName(read("fullName"))
+      : [read("lastName"), read("firstName")];
 
     // A wholly blank row is the trailing emptiness every spreadsheet has, not a
     // mistake worth reporting. Skipped silently.
@@ -247,9 +305,9 @@ export async function parseChildWorkbook(input: Buffer): Promise<ParseResult> {
     });
   }
 
-  if (sheet.rowCount > MAX_ROWS + 1) {
+  if (sheet.rowCount > headerRow + MAX_ROWS) {
     problems.push({
-      rowNumber: MAX_ROWS + 2,
+      rowNumber: headerRow + MAX_ROWS + 1,
       message: `Нэг удаад ${MAX_ROWS} хүртэл мөр оруулна. Үлдсэнийг тусад нь оруулна уу.`,
     });
   }
@@ -257,33 +315,84 @@ export async function parseChildWorkbook(input: Buffer): Promise<ParseResult> {
   return { rows, problems };
 }
 
-/** A cell as trimmed text, whatever Excel decided its type was. */
-function cellText(cell: ExcelJS.Cell): string {
-  const value = cell.value;
-  if (value === null || value === undefined) return "";
+/** The heading row of the roster: the sheet, the row, and where each column is. */
+interface FoundHeader {
+  sheet: ExcelJS.Worksheet;
+  headerRow: number;
+  columnIndex: Map<Field, number>;
+}
 
-  // A cell holding a formula reports `{ result }`; a rich-text cell reports
-  // `{ richText: [...] }`. Both are ordinary in a file that has been edited by
-  // hand, and both read as "[object Object]" without this.
-  if (typeof value === "object") {
-    if ("result" in value) return String(value.result ?? "").trim();
-    if ("richText" in value)
-      return value.richText
-        .map((part) => part.text)
-        .join("")
-        .trim();
-    if ("text" in value) return String(value.text ?? "").trim();
-    if (value instanceof Date) return value.toISOString().slice(0, 10);
+/** Which known columns one row names — each field at its most preferred alias. */
+function headingsOf(row: ExcelJS.Row): Map<Field, number> {
+  const best = new Map<Field, { column: number; rank: number }>();
+  row.eachCell((cell, column) => {
+    const heading = normalizeHeading(cellText(cell));
+    if (!heading) return;
+    for (const spec of COLUMNS) {
+      const rank = spec.aliases.indexOf(heading);
+      if (rank === -1) continue;
+      const current = best.get(spec.field);
+      if (!current || rank < current.rank) best.set(spec.field, { column, rank });
+    }
+  });
+  return new Map([...best].map(([field, { column }]) => [field, column]));
+}
+
+/** A row carries a roster when it names a child, their sex and their birth date. */
+function isComplete(index: Map<Field, number>): boolean {
+  const named = (index.has("lastName") && index.has("firstName")) || index.has("fullName");
+  return named && index.has("sex") && index.has("dateOfBirth");
+}
+
+function findHeader(book: ExcelJS.Workbook): FoundHeader | null {
+  let found: FoundHeader | null = null;
+  for (const sheet of book.worksheets) {
+    for (let r = 1; r <= Math.min(sheet.rowCount, HEADER_SEARCH_ROWS); r++) {
+      const columnIndex = headingsOf(sheet.getRow(r));
+      if (!isComplete(columnIndex)) continue;
+      if (!found || columnIndex.size > found.columnIndex.size) {
+        found = { sheet, headerRow: r, columnIndex };
+      }
+    }
   }
+  return found;
+}
 
-  return String(value).trim();
+/** The nearest miss, so the refusal names only the columns really absent. */
+function bestEffortHeader(book: ExcelJS.Workbook): Map<Field, number> {
+  let best = new Map<Field, number>();
+  for (const sheet of book.worksheets) {
+    for (let r = 1; r <= Math.min(sheet.rowCount, HEADER_SEARCH_ROWS); r++) {
+      const index = headingsOf(sheet.getRow(r));
+      if (index.size > best.size) best = index;
+    }
+  }
+  return best;
+}
+
+/**
+ * «Батын Тэмүүлэн» → surname «Батын», given name «Тэмүүлэн»; «Б.Тэмүүлэн» →
+ * «Б», «Тэмүүлэн». A single word cannot be split and comes back as a given
+ * name alone, which the row's own check reports as a missing surname.
+ */
+function splitFullName(raw: string): [string, string] {
+  const value = raw.replace(/\s+/g, " ").trim();
+  const space = value.indexOf(" ");
+  if (space > 0) return [value.slice(0, space).replace(/\.$/, ""), value.slice(space + 1)];
+  const dot = value.indexOf(".");
+  if (dot > 0 && dot < value.length - 1) return [value.slice(0, dot), value.slice(dot + 1)];
+  return ["", value];
 }
 
 function parseSex(raw: string): "MALE" | "FEMALE" | null {
-  const value = raw.trim().toLowerCase();
+  const value = normalizeHeading(raw);
 
-  if (["эрэгтэй", "хүү", "эр", "male", "m", "б"].includes(value)) return "MALE";
-  if (["эмэгтэй", "охин", "эм", "female", "f", "х"].includes(value)) return "FEMALE";
+  if (["эрэгтэй", "хүү", "эр", "эрэгтэй хүүхэд", "male", "m", "boy", "б"].includes(value)) {
+    return "MALE";
+  }
+  if (["эмэгтэй", "охин", "эм", "эмэгтэй хүүхэд", "female", "f", "girl", "х"].includes(value)) {
+    return "FEMALE";
+  }
 
   return null;
 }
@@ -303,14 +412,40 @@ function parseSex(raw: string): "MALE" | "FEMALE" | null {
 function parseDate(row: ExcelJS.Row, index: number | undefined): string | null {
   if (index === undefined) return null;
 
-  const value = row.getCell(index).value;
+  const raw = row.getCell(index).value;
+  // A formula cell's displayed value is its result.
+  const value =
+    raw !== null && typeof raw === "object" && !(raw instanceof Date) && "result" in raw
+      ? raw.result
+      : raw;
 
   if (value instanceof Date) {
     const iso = `${value.getUTCFullYear()}-${pad(value.getUTCMonth() + 1)}-${pad(value.getUTCDate())}`;
     return withinLivingMemory(iso) ? iso : null;
   }
 
-  const text = String(value ?? "").trim();
+  /*
+   * ★ An Excel serial number — a date column somebody formatted as "General",
+   * or values pasted from another sheet: 44301 is 2021-04-15. Only the span a
+   * kindergarten child's birth can fall in (2000 → today) is read this way.
+   */
+  const serialText = typeof value === "number" ? String(value) : cellText(row.getCell(index));
+  if (/^\d{5}$/.test(serialText)) {
+    const serial = Number(serialText);
+    if (serial >= 36526) {
+      const iso = new Date(Date.UTC(1899, 11, 30) + serial * 86_400_000).toISOString().slice(0, 10);
+      return withinLivingMemory(iso) ? iso : null;
+    }
+  }
+
+  // «2021 оны 4 сарын 15», «2021.04.15 0:00:00» — words and a time part dropped.
+  const text = cellText(row.getCell(index))
+    .replace(/\s+\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm)?$/i, "")
+    .replace(/\s*(?:оны|он)\s*/g, "-")
+    .replace(/\s*(?:сарын|сар)\s*/g, "-")
+    .replace(/\s*(?:өдөр|-ний|-нд)\s*$/g, "")
+    .replace(/\s+/g, "")
+    .replace(/[-/.]$/, "");
   if (!text) return null;
 
   // YYYY-MM-DD or YYYY/MM/DD

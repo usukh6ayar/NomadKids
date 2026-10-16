@@ -217,4 +217,21 @@ describe("menu spreadsheet import", () => {
     const result = await parseMenuWorkbook(input);
     expect(result.days.map((day) => day.date)).toEqual(["2026-09-21", "2026-09-22"]);
   });
+
+  it("reads a CSV the same way as a workbook", async () => {
+    const csv = Buffer.from(
+      "Огноо;Хоолны цаг;Хоолны нэр;Илчлэг\n2026-09-21;Өглөөний цай;Будаатай сүү;180\n2026-09-21;Үдийн хоол;Цуйван;420\n",
+    );
+    const result = await parseMenuWorkbook(csv);
+    expect(result.problems).toEqual([]);
+    expect(result.days).toEqual([
+      {
+        date: "2026-09-21",
+        dishes: [
+          expect.objectContaining({ name: "Будаатай сүү", kind: "BREAKFAST", calories: 180 }),
+          expect.objectContaining({ name: "Цуйван", kind: "LUNCH", calories: 420 }),
+        ],
+      },
+    ]);
+  });
 });

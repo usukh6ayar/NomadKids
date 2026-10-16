@@ -143,14 +143,14 @@ function ImportChildren() {
           <Card pad="roomy" className="flex flex-col gap-3">
             <SectionHeader
               title="1. Файл сонгох"
-              lede="Овог, Нэр, Хүйс, Төрсөн огноо баганатай .xlsx файл."
+              lede="Овог, Нэр (эсвэл «Овог нэр»), Хүйс, Төрсөн огноо баганатай .xlsx эсвэл .csv файл."
             />
 
             <input
               ref={inputRef}
               id="roster-file"
               type="file"
-              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              accept=".xlsx,.csv,.xls,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,application/vnd.ms-excel"
               className="sr-only"
               onChange={(e) => choose(e.target.files)}
             />
