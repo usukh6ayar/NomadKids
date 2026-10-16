@@ -65,7 +65,7 @@ function isDraft(row: TeacherSheetRow) {
 /** The «дутуу» mark beside a half-done child's name. */
 function DraftMark({ row }: { row: TeacherSheetRow }) {
   return isDraft(row) ? (
-    <span className="ml-1.5 rounded-full bg-sunken px-1.5 py-0.5 text-caption text-muted">
+    <span className="ml-1.5 rounded-pill bg-sunken px-1.5 py-0.5 text-caption text-muted">
       дутуу
     </span>
   ) : null;
