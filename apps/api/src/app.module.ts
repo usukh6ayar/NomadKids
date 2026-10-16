@@ -36,6 +36,7 @@ import { MethodUnionsModule } from "./method-unions/method-unions.module";
 import { MediaModule } from "./media/media.module";
 import { GroupReportsModule } from "./group-reports/group-reports.module";
 import { ObservationsModule } from "./observations/observations.module";
+import { A79Module } from "./a79/a79.module";
 import { ChatModule } from "./chat/chat.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { OnboardingModule } from "./onboarding/onboarding.module";
@@ -76,6 +77,7 @@ import { UsersModule } from "./users/users.module";
     PortfolioModule,
     GroupReportsModule,
     ObservationsModule,
+    A79Module,
     StorageModule,
     MediaModule,
     AssessmentModule,

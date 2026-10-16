@@ -132,6 +132,26 @@ export class AuthzRepository {
     return row !== null;
   }
 
+  /**
+   * Of these children, the ones in a solo teacher's workspace with no paid,
+   * unexpired portal subscription — `loadPortalAccessActive`'s question for a
+   * whole roster in one query (§3.4).
+   */
+  async unpaidSoloChildIds(childIds: string[], asOf: Date): Promise<Set<string>> {
+    if (childIds.length === 0) return new Set();
+    const rows = await this.prisma.child.findMany({
+      where: {
+        id: { in: childIds },
+        kindergarten: { kind: "SOLO_TEACHER" },
+        accessSubscriptions: {
+          none: { deletedAt: null, status: "ACTIVE", expiresAt: { gte: asOf } },
+        },
+      },
+      select: { id: true },
+    });
+    return new Set(rows.map((row) => row.id));
+  }
+
   async loadActiveTeachingGroupIds(actor: Actor): Promise<string[]> {
     const membershipIds = teacherMembershipIds(actor);
     if (membershipIds.length === 0) return [];
