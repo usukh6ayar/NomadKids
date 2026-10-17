@@ -118,7 +118,8 @@ The same 402 now also reaches **the staff of a solo teacher's workspace**
 (`Kindergarten.kind = SOLO_TEACHER`, the user 2026-10-11): no contract pays
 there, so an unpaid child is inactive for the teacher too. The argument holds —
 they have passed `canAccessChild` first. Inviting the family
-(`assertCanInviteGuardian`) and the roster stay open; a contracted
+(`assertCanInviteGuardian`), the roster and attendance
+(`assertCanRecordAttendance`, the user 2026-10-18) stay open; a contracted
 kindergarten's staff are never gated.
 
 ★ **A solo teacher is TEACHER only, never ADMIN** (the user, 2026-10-14). They

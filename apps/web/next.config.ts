@@ -4,6 +4,15 @@ import type { NextConfig } from "next";
 const isProduction = process.env.NODE_ENV === "production";
 
 /**
+ * ★ One id per build, inlined into the browser bundle and the server alike —
+ * 2026-10-18, the client: "өөрчлөлтүүд апп дээр харагдахгүй байна". A phone
+ * keeps an installed app open for days on the code it first loaded; the page
+ * compares its own id with `/api/version` and offers the new one
+ * (`components/shell/update-banner.tsx`).
+ */
+const BUILD_ID = process.env.NEXT_PUBLIC_BUILD_ID || Date.now().toString(36);
+
+/**
  * ★ CSP is NOT set here — it lives in `middleware.ts`.
  *
  * A static header cannot carry a nonce, and a nonce is what lets Next's own
@@ -14,6 +23,8 @@ const isProduction = process.env.NODE_ENV === "production";
  */
 const config: NextConfig = {
   reactStrictMode: true,
+
+  env: { NEXT_PUBLIC_BUILD_ID: BUILD_ID },
 
   /**
    * ★ A self-contained server bundle, for the VPS image.

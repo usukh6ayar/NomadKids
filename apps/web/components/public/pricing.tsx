@@ -63,8 +63,8 @@ type Applying = "teacher" | "kindergarten" | null;
 export function PricingContent() {
   /*
    * ★ «I-р улирал» is on sale through 2026-11-30 (2026-10-18). From 1
-   * December a child's term is not sold — no later price is defined, and none
-   * is made up here — and a group's term is the standard 12,000₮.
+   * December the terms are at the standard price: 9,000₮ a child (the user,
+   * 2026-10-18) and 12,000₮ a group.
    */
   const termOpen = termOnSale();
   const [period, setPeriod] = useState<BillingPeriod>("term");
@@ -157,8 +157,12 @@ function PlanCard({
 }) {
   const look = LOOK[plan.key];
   // A child's term exists only as «I-р улирал»; a group's goes on at 12,000₮.
-  const showTerm = termOpen || plan.key === "kindergarten";
-  const termAmount = plan.key === "kindergarten" ? kindergartenTermPrice(groupCount) : plan.perTerm;
+  const termAmount =
+    plan.key === "kindergarten"
+      ? kindergartenTermPrice(groupCount)
+      : termOpen
+        ? plan.perTerm
+        : CHILD_STANDARD_TERM_PRICE;
   const yearlyAmount =
     plan.key === "kindergarten" ? kindergartenYearlyPrice(groupCount) : plan.perYear;
   return (
@@ -197,29 +201,30 @@ function PlanCard({
           <p className="text-title font-extrabold text-[#0d6b4a]">Үнэгүй</p>
         </div>
       ) : (
-        <div className={cn("grid gap-2", showTerm ? "grid-cols-2" : "grid-cols-1")}>
-          {showTerm ? (
-            <PriceBox
-              amount={termAmount}
-              was={standardTermIfHigher(
-                plan.key === "child"
-                  ? CHILD_STANDARD_TERM_PRICE
-                  : groupCount * KINDERGARTEN_MONTHLY_PER_GROUP * 3,
-                termAmount,
-              )}
-              unit={
-                termOpen
-                  ? plan.key === "kindergarten"
-                    ? "/ I-р улирал · нийт"
-                    : "/ I-р улирал"
-                  : "/ улирал · нийт"
-              }
-              note={termOpen ? FIRST_TERM_PROMO.validityLabel : undefined}
-              selected={period === "term"}
-              textClass={look.text}
-              ringClass={look.ring}
-            />
-          ) : null}
+        <div className="grid grid-cols-2 gap-2">
+          <PriceBox
+            amount={termAmount}
+            was={standardTermIfHigher(
+              plan.key === "child"
+                ? CHILD_STANDARD_TERM_PRICE
+                : groupCount * KINDERGARTEN_MONTHLY_PER_GROUP * 3,
+              termAmount,
+            )}
+            unit={
+              termOpen
+                ? plan.key === "kindergarten"
+                  ? "/ I-р улирал · нийт"
+                  : "/ I-р улирал"
+                : plan.key === "kindergarten"
+                  ? "/ улирал · нийт"
+                  : "/ улирал"
+            }
+            note={termOpen ? FIRST_TERM_PROMO.validityLabel : undefined}
+            selected={period === "term"}
+            textClass={look.text}
+            ringClass={look.ring}
+          />
+
           <PriceBox
             amount={yearlyAmount}
             was={standardTermIfHigher(

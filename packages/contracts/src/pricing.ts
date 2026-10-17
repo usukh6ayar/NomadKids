@@ -55,3 +55,56 @@ export const FIRST_TERM_PROMO = {
 export function firstTermPromoOpen(today: string): boolean {
   return today <= FIRST_TERM_PROMO.endsOn;
 }
+
+/**
+ * The three terms of a school year, by the calendar — the same for every
+ * kindergarten, as the price sheet is (the user, 2026-10-18: after
+ * «I-р улирал», II and III are sold at the standard term price).
+ */
+export interface SchoolTerm {
+  number: 1 | 2 | 3;
+  /** «II улирал». */
+  label: string;
+  /** `YYYY-MM-DD`, inclusive. */
+  startsOn: string;
+  endsOn: string;
+}
+
+/** The term `day` falls in, or `null` from June to August. */
+export function schoolTermOn(day: string): SchoolTerm | null {
+  const year = Number(day.slice(0, 4));
+  const month = Number(day.slice(5, 7));
+  // The school year that began in September of `start`.
+  const start = month >= 9 ? year : year - 1;
+  const lastOfFebruary = new Date(Date.UTC(start + 1, 2, 0)).getUTCDate();
+  const terms: SchoolTerm[] = [
+    { number: 1, label: "I улирал", startsOn: `${start}-09-01`, endsOn: `${start}-11-30` },
+    {
+      number: 2,
+      label: "II улирал",
+      startsOn: `${start}-12-01`,
+      endsOn: `${start + 1}-02-${String(lastOfFebruary).padStart(2, "0")}`,
+    },
+    {
+      number: 3,
+      label: "III улирал",
+      startsOn: `${start + 1}-03-01`,
+      endsOn: `${start + 1}-05-31`,
+    },
+  ];
+  return terms.find((term) => term.startsOn <= day && day <= term.endsOn) ?? null;
+}
+
+/** A child's price for a term: «I-р улирал» 5,000₮ through 2026-11-30, then 9,000₮. */
+export function childTermPrice(term: SchoolTerm): number {
+  return term.endsOn <= FIRST_TERM_PROMO.endsOn
+    ? CHILD_PRICES.termPromo
+    : CHILD_PRICES.termStandard;
+}
+
+/** A group's price for a term: «I-р улирал» 6,000₮ through 2026-11-30, then 12,000₮. */
+export function groupTermPrice(term: SchoolTerm): number {
+  return term.endsOn <= FIRST_TERM_PROMO.endsOn
+    ? GROUP_PRICES.termPromo
+    : GROUP_PRICES.termStandard;
+}

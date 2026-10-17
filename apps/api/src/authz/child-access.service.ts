@@ -162,6 +162,21 @@ export class ChildAccessService {
   }
 
   /**
+   * Throws 404 unless the actor may mark this child's attendance — and, like
+   * `assertCanInviteGuardian`, does **not** stop a solo teacher whose family
+   * has not paid (the user, 2026-10-18: «нээчих»). The group register already
+   * wrote such a child's day; the single-child mark and «Гараас гарт» refused
+   * it with 402, so one screen took the morning and the other would not. A
+   * child in the room is marked whatever the fee. A guardian is still gated.
+   */
+  async assertCanRecordAttendance(actor: Actor, childId: string): Promise<ChildAccessFacts> {
+    const facts = await this.repo.loadChildAccessFacts(actor, childId);
+    if (!facts || !canRecordForChild(actor, facts)) throw new NotFoundException();
+    await this.assertFeePaid(actor, facts, { gateSoloStaff: false });
+    return facts;
+  }
+
+  /**
    * Throws 404 unless the actor may add a photograph to this child's album —
    * staff, or one of this child's own guardians. RFP §2.3.
    */
