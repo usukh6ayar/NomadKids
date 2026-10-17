@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import { uuidSchema, type SurveyAnswerValue, type SurveyQuestion } from "@kinder/contracts";
 import { mutate } from "@/lib/api/browser";
@@ -163,6 +163,15 @@ export function TeacherSheet({
   const toast = useToast();
   const router = useRouter();
   const [leaving, setLeaving] = useState(false);
+
+  // The chat button steps up over Буцах · Хадгалах while this sheet is open.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--chat-lift", "3.75rem");
+    return () => {
+      root.style.removeProperty("--chat-lift");
+    };
+  }, []);
   const queryClient = useQueryClient();
   const [savedAnswers] = useState<Answers>(() => answersFromRows(rows));
   const [answers, setAnswers] = useState<Answers>(() => answersFromRows(rows));
@@ -404,13 +413,15 @@ export function TeacherSheet({
         client: "буцах хадгалах товч жижигээр доор баруун талд байнга
         харагдана, утсан дээр хөвдөг цэсний дээр". The sticky bar they replace
         sat under the phone's bottom navigation, so a teacher half-way down
-        forty children could not save without scrolling to the end. Stacked
-        above the chat button, which holds the corner itself; the explanation
-        stays in the page above, so a disabled Хадгалах still says why.
+        forty children could not save without scrolling to the end. They take
+        the corner just above the bottom bar and the chat button moves up over
+        them (`--chat-lift`) — 2026-10-18, the client's drawing: "доор нь
+        оруул, чат нь дээр нь". The explanation stays in the page above, so a
+        disabled Хадгалах still says why.
       */}
       <div
         data-print-hide
-        className="fixed right-4 z-30 flex items-center gap-1.5 rounded-pill border border-border bg-surface p-1.5 shadow-lg bottom-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom)+4.5rem)] lg:bottom-[5.5rem] lg:right-6"
+        className="fixed bottom-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom)+0.5rem)] right-4 z-30 flex items-center gap-1.5 rounded-pill border border-border bg-surface p-1.5 shadow-lg lg:bottom-6 lg:right-6"
       >
         {changedRows.length > 0 ? (
           <Button

@@ -105,6 +105,11 @@ export function useEsisRows(
     retry: false,
   });
 
+  // No ESIS at all reads as "cannot read the service", which every caller
+  // already draws as "no ministry column" — not as an empty answer from it.
+  if (enabled && !esisLinked) {
+    return { rows: [], isPending: false, isUnavailable: true, isError: false };
+  }
   if (!wanted) {
     return { rows: [], isPending: false, isUnavailable: false, isError: false };
   }
