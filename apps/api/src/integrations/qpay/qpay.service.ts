@@ -215,7 +215,14 @@ export class QpayService {
     }
 
     const now = new Date();
-    const latest = await this.repo.findLatestForContractPayment(payment.id);
+    const found = await this.repo.findLatestForContractPayment(payment.id);
+    // ★ The QR before is asked about before another is drawn (review of
+    // #258): paid off-screen with no callback reaching us, it would otherwise
+    // be replaced and never credited — and the new QR charge a second time.
+    const latest = found?.status === "PENDING" ? await this.reconcile(found) : found;
+    if (latest?.status === "PAID") {
+      throw new BadRequestException("Энэ хугацааны төлбөр аль хэдийн төлөгдсөн.");
+    }
     if (
       latest &&
       latest.status === "PENDING" &&
@@ -289,7 +296,7 @@ export class QpayService {
     const row = await this.repo.findByQpayInvoiceId(qpayInvoiceId);
     if (!row) return;
 
-    await this.reconcile(row);
+    await this.reconcile(row, { recheckExpired: true });
   }
 
   /**
@@ -307,17 +314,28 @@ export class QpayService {
    * Everything before the claim (the `checkPayment` call) may run twice
    * harmlessly; nothing after it can.
    */
-  private async reconcile(row: NonNullable<Awaited<ReturnType<QpayRepository["findById"]>>>) {
-    if (row.status !== "PENDING") return row;
+  private async reconcile(
+    row: NonNullable<Awaited<ReturnType<QpayRepository["findById"]>>>,
+    { recheckExpired = false }: { recheckExpired?: boolean } = {},
+  ) {
+    // ★ An EXPIRED row is asked about again only when QPay itself calls about
+    // it (review of #258): our 30 minutes are not QPay's, and a QR scanned in
+    // its last seconds settles after them. A poll never re-asks — the screen
+    // has drawn a new QR by then.
+    if (row.status !== "PENDING" && !(row.status === "EXPIRED" && recheckExpired)) return row;
 
     const now = new Date();
-    if (row.expiresAt && row.expiresAt <= now) {
-      await this.repo.markExpired(row.id);
-      return { ...row, status: "EXPIRED" as const };
-    }
+    const stale = row.status === "PENDING" && row.expiresAt !== null && row.expiresAt <= now;
+    const expire = async () => {
+      if (stale) await this.repo.markExpired(row.id);
+      return stale ? { ...row, status: "EXPIRED" as const } : row;
+    };
 
-    if (!this.isConfigured) return row;
+    if (!this.isConfigured) return expire();
 
+    // ★ A stale row is checked once before it is expired, not expired blind —
+    // a payment that landed at minute 29 would otherwise take the money and
+    // open nothing.
     let checked;
     try {
       checked = await this.client.checkPayment(row.qpayInvoiceId);
@@ -329,11 +347,11 @@ export class QpayService {
           cause instanceof QpayError ? cause.message : "unknown error"
         }`,
       );
-      return row;
+      return expire();
     }
 
     const paidRow = checked.rows.find((r) => r.payment_status === "PAID");
-    if (!paidRow) return row;
+    if (!paidRow) return expire();
 
     /*
      * ★ The amount QPay says was paid must cover the row's — 2026-10-18, the
@@ -367,14 +385,36 @@ export class QpayService {
     //
     // ★★ Exactly one target per row (a CHECK in the database), so exactly
     // one branch runs.
+    let credited = true;
+    let contractPaymentBefore: { amount: string; groupCount: number } | null = null;
     if (row.subscriptionId) {
-      await this.access.markPaid(row.subscriptionId, now);
+      credited = await this.access.markPaid(row.subscriptionId, now);
     } else if (row.contractPaymentId) {
-      await this.repo.markContractPaymentPaid(row.contractPaymentId, now);
+      const result = await this.repo.markContractPaymentPaid(
+        row.contractPaymentId,
+        now,
+        row.amount.toFixed(2),
+      );
+      credited = result.claimed;
+      if (result.claimed) {
+        contractPaymentBefore = result.before;
+        if (result.overlaps) {
+          this.logger.error(
+            `Contract payment ${row.contractPaymentId} overlaps another paid period of its contract (QPay ${row.qpayInvoiceId}); refund or credit by hand`,
+          );
+        }
+      }
     } else if (row.materialPurchaseId) {
       // Whole tugrik, parsed from the decimal's own string — never a float.
       const paid = Number.parseInt(row.amount.toFixed(0), 10);
-      await this.repo.markMaterialPurchasePaid(row.materialPurchaseId, now, paid);
+      credited = await this.repo.markMaterialPurchasePaid(row.materialPurchaseId, now, paid);
+    }
+    // ★ Money moved and nothing was credited: the target was already paid by
+    // another QR (review of #258). Never silent — a person refunds it.
+    if (!credited) {
+      this.logger.error(
+        `QPay ${row.qpayInvoiceId} paid ${row.amount.toFixed(2)} for a target already paid; refund by hand`,
+      );
     }
 
     await this.audit.append({
@@ -385,11 +425,13 @@ export class QpayService {
       objectType: "QpayInvoice",
       objectId: row.id,
       metadata: {
+        before: { status: row.status, ...(contractPaymentBefore ? { contractPaymentBefore } : {}) },
         after: {
           subscriptionId: row.subscriptionId,
           contractPaymentId: row.contractPaymentId,
           materialPurchaseId: row.materialPurchaseId,
           amount: row.amount.toFixed(2),
+          credited,
         },
         qpayInvoiceId: row.qpayInvoiceId,
         qpayPaymentId: paidRow.payment_id,

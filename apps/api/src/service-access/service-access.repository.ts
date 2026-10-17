@@ -51,8 +51,26 @@ export class ServiceAccessRepository {
     });
   }
 
-  createPayment(data: Prisma.ContractPaymentUncheckedCreateInput) {
-    return this.prisma.contractPayment.create({ data });
+  /**
+   * Creates the period's row — or, when a concurrent request created it first
+   * (the unique key), returns that one with `created: false`.
+   */
+  async createPayment(data: Prisma.ContractPaymentUncheckedCreateInput) {
+    try {
+      return { row: await this.prisma.contractPayment.create({ data }), created: true };
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+      const row = await this.prisma.contractPayment.findFirst({
+        where: {
+          contractId: data.contractId,
+          period: data.period,
+          coversFrom: data.coversFrom,
+          deletedAt: null,
+        },
+      });
+      if (!row) throw error;
+      return { row, created: false };
+    }
   }
 
   /**
@@ -72,4 +90,13 @@ export class ServiceAccessRepository {
       where: { id, kindergartenId, deletedAt: null },
     });
   }
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2002"
+  );
 }

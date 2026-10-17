@@ -3,6 +3,7 @@ import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
 import { QpayRepository } from "../src/integrations/qpay/qpay.repository";
+import { ServiceAccessRepository } from "../src/service-access/service-access.repository";
 import { quote } from "../src/service-access/service-access.service";
 import { createTestApp } from "./support/app";
 import { resetData, testDb, uniq } from "./support/db";
@@ -53,7 +54,9 @@ async function contract(scenario: Scenario, endsOn: string, fee = "4000.00") {
   const application = await db.kindergartenApplication.create({
     data: {
       kindergartenName: scenario.kindergarten.name,
-      registrationNumber: uniq("rn").replace(/\D/g, "").slice(-7).padStart(7, "1"),
+      // Seven random digits — `uniq()` is base36, and its digits alone padded
+      // to seven collided between two scenarios in one test.
+      registrationNumber: String(1_000_000 + Math.floor(Math.random() * 9_000_000)),
       directorName: "Бат Сүх",
       phone: "99001122",
       email: `${uniq("kg")}@example.mn`,
@@ -123,6 +126,34 @@ describe("what renewing buys and costs", () => {
     expect(quote(negotiated, 2, "TERM", "2026-10-18").amount).toBe("21000.00");
     expect(quote(negotiated, 2, "YEAR", "2026-10-18").amount).toBe("63000.00");
   });
+
+  /*
+   * ★ Review of #258: a contract paid through «I-р улирал» bought the whole
+   * 2026–2027 year again, term 1 included, at 30,000₮ a group. A year from
+   * inside a school year is what is left of it, priced as those terms.
+   */
+  it("never sells a paid term again — a year from inside one is the terms left", () => {
+    expect(quote(standard("2026-11-30"), 2, "YEAR", "2026-11-20")).toMatchObject({
+      coversFrom: "2026-12-01",
+      coversTo: "2027-05-31",
+      months: 6,
+      perGroup: "24000.00",
+      amount: "48000.00",
+    });
+    // After II улирал, only III is left — the term's price, not the year's.
+    expect(quote(standard("2027-02-28"), 1, "YEAR", "2027-02-20")).toMatchObject({
+      coversFrom: "2027-03-01",
+      coversTo: "2027-05-31",
+      perGroup: "12000.00",
+    });
+    // Lapsed and renewed in January: from the term that day falls in.
+    expect(quote(standard("2026-08-31"), 1, "YEAR", "2027-01-10")).toMatchObject({
+      coversFrom: "2026-12-01",
+      perGroup: "24000.00",
+    });
+    const negotiated = { perGroupMonthlyFee: "3500.00", endsOn: day("2026-11-30") };
+    expect(quote(negotiated, 1, "YEAR", "2026-11-20").perGroup).toBe("21000.00");
+  });
 });
 
 describe("POST /service-access/qpay", () => {
@@ -146,7 +177,70 @@ describe("POST /service-access/qpay", () => {
     });
     expect(rows).toHaveLength(1);
     expect(rows[0]!.status).toBe("PENDING");
-    expect(rows[0]!.amount.toFixed(2)).toBe((30_000 * rows[0]!.groupCount).toFixed(2));
+    // Today's quote — a year bought after November is what is left of it.
+    expect(rows[0]!.amount.toFixed(2)).toBe(
+      quote({ perGroupMonthlyFee: "4000.00", endsOn: day("2026-08-31") }, rows[0]!.groupCount, "YEAR")
+        .amount,
+    );
+  });
+
+  it("answers two requests at once with one row, never a 500", async () => {
+    await contract(a, "2026-08-31");
+    const post = () =>
+      authed(request(server()).post("/v1/service-access/qpay"), adminA).send({ period: "term" });
+
+    const [one, two] = await Promise.all([post(), post()]);
+
+    // No merchant in tests — both refused the same honest way.
+    expect([one.status, two.status]).toEqual([400, 400]);
+    expect(await db.contractPayment.count({ where: { kindergartenId: a.kindergarten.id } })).toBe(1);
+  });
+
+  // The HTTP pair above may run one after the other; this loses the race every time.
+  it("hands the row back to the request that lost the race to create it", async () => {
+    const signed = await contract(a, "2026-08-31");
+    const repo = app.get(ServiceAccessRepository);
+    const data = {
+      kindergartenId: a.kindergarten.id,
+      contractId: signed.id,
+      period: "TERM" as const,
+      termNumber: 1,
+      coversFrom: day("2026-09-01"),
+      coversTo: day("2026-11-30"),
+      groupCount: 1,
+      perGroupAmount: "6000.00",
+      amount: "6000.00",
+    };
+
+    const first = await repo.createPayment(data);
+    const second = await repo.createPayment(data);
+
+    expect(first.created).toBe(true);
+    expect(second).toMatchObject({ created: false, row: { id: first.row.id } });
+  });
+
+  it("re-prices an unpaid period with what it was before in the audit log", async () => {
+    await contract(a, "2026-08-31");
+    const post = () =>
+      authed(request(server()).post("/v1/service-access/qpay"), adminA).send({ period: "term" });
+    await post();
+    const row = await db.contractPayment.findFirstOrThrow({
+      where: { kindergartenId: a.kindergarten.id },
+    });
+    // As if the QR before had been drawn for another number of groups.
+    await db.contractPayment.update({ where: { id: row.id }, data: { amount: "1.00" } });
+
+    await post();
+
+    const repriced = await db.contractPayment.findUniqueOrThrow({ where: { id: row.id } });
+    expect(repriced.amount.toFixed(2)).toBe(row.amount.toFixed(2));
+    const audit = await db.auditLog.findFirstOrThrow({
+      where: { objectType: "ContractPayment", objectId: row.id, action: "UPDATE" },
+    });
+    expect(audit.metadata).toMatchObject({
+      before: { amount: "1.00" },
+      after: { amount: row.amount.toFixed(2) },
+    });
   });
 
   it("is a director's only — another kindergarten's director gets 404 on the payment", async () => {
@@ -200,8 +294,14 @@ describe("a paid period", () => {
     const payment = await pending(a, "2027-05-31");
     const qpay = app.get(QpayRepository);
 
-    expect(await qpay.markContractPaymentPaid(payment.id, new Date())).toBe(true);
-    expect(await qpay.markContractPaymentPaid(payment.id, new Date())).toBe(false);
+    expect(await qpay.markContractPaymentPaid(payment.id, new Date(), "60000.00")).toEqual({
+      claimed: true,
+      before: null,
+      overlaps: false,
+    });
+    expect(await qpay.markContractPaymentPaid(payment.id, new Date(), "60000.00")).toEqual({
+      claimed: false,
+    });
 
     const signed = await db.contract.findUniqueOrThrow({ where: { id: payment.contractId } });
     expect(signed.endsOn.toISOString().slice(0, 10)).toBe("2027-05-31");
@@ -222,9 +322,33 @@ describe("a paid period", () => {
         amount: "12000.00",
       },
     });
-    await qpay.markContractPaymentPaid(shorter.id, new Date());
+    // ★ And it is flagged: the year already covers it, so money moved twice.
+    expect(await qpay.markContractPaymentPaid(shorter.id, new Date(), "12000.00")).toMatchObject({
+      claimed: true,
+      overlaps: true,
+    });
     const still = await db.contract.findUniqueOrThrow({ where: { id: payment.contractId } });
     expect(still.endsOn.toISOString().slice(0, 10)).toBe("2027-05-31");
+  });
+
+  /*
+   * ★ Review of #258: a QR drawn for one group and paid after the period was
+   * re-priced for two records what QPay took — the revenue and the partners'
+   * shares count money that arrived, not the re-priced figure.
+   */
+  it("records what QPay charged, not the re-priced figure", async () => {
+    const payment = await pending(a, "2027-05-31");
+    const qpay = app.get(QpayRepository);
+
+    expect(await qpay.markContractPaymentPaid(payment.id, new Date(), "30000.00")).toEqual({
+      claimed: true,
+      before: { amount: "60000.00", groupCount: 2 },
+      overlaps: false,
+    });
+
+    const paid = await db.contractPayment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(paid.amount.toFixed(2)).toBe("30000.00");
+    expect(paid.groupCount).toBe(1);
   });
 
   it("counts in the platform's income and in what the partners share", async () => {
