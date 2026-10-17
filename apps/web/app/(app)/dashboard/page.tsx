@@ -24,6 +24,7 @@ import { WeeklyAttendance } from "@/components/dashboard/weekly-attendance";
 import { AssessmentProgress } from "@/components/dashboard/assessment-progress";
 import { DashboardChatPreview } from "@/components/dashboard/dashboard-chat-preview";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
+import { TeacherSetupGuide } from "@/components/dashboard/teacher-setup-guide";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 /**
@@ -305,6 +306,9 @@ function TeacherDashboard() {
     // the grouping is visible without a divider.
     <div className="page-band">
       {header}
+
+      {/* Эхлэх алхам — opens itself until done or closed (2026-10-18). */}
+      <TeacherSetupGuide />
 
       {needsSetUp ? (
         <div className="flex flex-wrap items-center gap-3 rounded-card border border-border bg-surface p-4">

@@ -4,7 +4,7 @@ import { useEsisLinked } from "@/lib/use-esis-linked";
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Download, Info, MoreHorizontal, Plus, RefreshCw } from "lucide-react";
+import { Download, Info, MoreHorizontal, Plus, RefreshCw, Upload } from "lucide-react";
 import {
   SEX_LABEL,
   childSummarySchema,
@@ -188,6 +188,19 @@ export function AdminRoster() {
                 </a>
               </Button>
             ) : null}
+            {/*
+              ★ The director's Excel import, where there is no ESIS —
+              2026-10-18. The client's drawing has four actions and no import,
+              because «ESIS татах» brings the roster in; a director without
+              ESIS had no way to bring one in from a spreadsheet at all.
+            */}
+            {esisLinked ? null : (
+              <Button asChild size="sm" variant="secondary">
+                <Link href="/children/import">
+                  <Upload size={16} aria-hidden /> Импорт
+                </Link>
+              </Button>
+            )}
             {esisLinked ? (
               <Button
                 size="sm"

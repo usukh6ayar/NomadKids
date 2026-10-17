@@ -157,7 +157,7 @@ function GroupAttendance() {
     const requested = search.get("date");
     return requested && /^\d{4}-\d{2}-\d{2}$/.test(requested) && requested <= today()
       ? requested
-      : today();
+      : lastWorkingDay(today());
   });
   /*
    * ★ The span the grid draws, and `date` is its last column — 2026-09-10.
@@ -675,6 +675,13 @@ function GroupAttendance() {
             </div>
           ) : null}
 
+          {closedDay && rows.length > 0 ? (
+            // Said, not only disabled — a shut «Засах» read as broken (2026-10-18).
+            <p className="text-caption text-muted">
+              Амралтын өдөр ирц бүртгэхгүй. Өөр өдрийн ирцийг засахдаа «Дуусах огноо»-д тэр өдрийг
+              сонгоод хайна уу, эсвэл «Ирцийн дэлгэрэнгүй» › «Сараар нөхөх».
+            </p>
+          ) : null}
           <FormError message={save.isError ? errorMessage(save.error) : null} />
 
           {!editing && esisPreview.data ? (
@@ -995,4 +1002,16 @@ function countMismatches(
     stored.delete(key);
   }
   return differ + stored.size;
+}
+
+/**
+ * Today, or on a weekend the Friday before — 2026-10-18, the client: "Ирц
+ * засаж болохгүй байна", said on a Saturday. The register opened on the
+ * weekend, where nothing is marked and «Засах» is shut, with nothing saying
+ * why; a teacher catching up at the weekend wants the week just gone.
+ */
+function lastWorkingDay(day: string): string {
+  let current = day;
+  while (isWeekend(current)) current = addDays(current, -1);
+  return current;
 }
