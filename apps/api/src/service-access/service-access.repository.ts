@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import type { Prisma } from "../generated/prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 
 /**
@@ -22,6 +23,7 @@ export class ServiceAccessRepository {
       where: { kindergartenId, status: "ACTIVE", deletedAt: null },
       orderBy: { endsOn: "desc" },
       select: {
+        id: true,
         number: true,
         billingPeriod: true,
         perGroupMonthlyFee: true,
@@ -39,6 +41,35 @@ export class ServiceAccessRepository {
         status: "ACTIVE",
         schoolYear: { isCurrent: true, deletedAt: null },
       },
+    });
+  }
+
+  /** The payment for one period of one contract — at most one, by the unique key. */
+  findPayment(contractId: string, period: "TERM" | "YEAR", coversFrom: Date) {
+    return this.prisma.contractPayment.findFirst({
+      where: { contractId, period, coversFrom, deletedAt: null },
+    });
+  }
+
+  createPayment(data: Prisma.ContractPaymentUncheckedCreateInput) {
+    return this.prisma.contractPayment.create({ data });
+  }
+
+  /**
+   * Re-prices a PENDING payment to the groups running now — nothing has been
+   * paid against it, and the next QR must ask for what is owed today.
+   */
+  repricePending(id: string, data: { groupCount: number; perGroupAmount: string; amount: string }) {
+    return this.prisma.contractPayment.updateMany({
+      where: { id, status: "PENDING" },
+      data,
+    });
+  }
+
+  /** One of this kindergarten's payments — `null` for another's (§1.7: 404). */
+  paymentOf(id: string, kindergartenId: string) {
+    return this.prisma.contractPayment.findFirst({
+      where: { id, kindergartenId, deletedAt: null },
     });
   }
 }

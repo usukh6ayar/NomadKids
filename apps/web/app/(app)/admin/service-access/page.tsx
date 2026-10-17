@@ -1,9 +1,13 @@
 "use client";
 
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { CalendarClock, FileDown } from "lucide-react";
-import { useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CalendarClock, FileDown, QrCode, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
+import { qpayInvoiceAttemptSchema } from "@kinder/contracts";
+import { QpayProgress } from "@/components/child/access-pay-dialog";
+import { FormError } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { Button } from "@/components/ui/button";
@@ -27,9 +31,12 @@ import { cn } from "@/lib/utils";
  * not `lib/pricing.ts`. The invoice is a job rendered by the worker:
  * `POST /service-access/invoices { period }` → poll → `…/download`.
  *
- * ★★ No QPay button. The client said on 2026-09-01 that QPay takes only the
- * parents' access fee; a «QPay-ээр шууд төлөх» button joins «Нэхэмжлэх
- * татах» here only once the client allows it for kindergartens.
+ * ★★ «QPay-ээр төлөх» — №6, the user 2026-10-16, confirmed 2026-10-18
+ * («QPay байх»): a bank transfer never reached the system, so the platform's
+ * revenue and the partners' shares missed it. The server prices the next
+ * period (`POST /service-access/qpay`) and, once QPay confirms, the contract
+ * runs to the day shown here before paying. The invoice stays, second, as a
+ * document to keep.
  */
 const serviceAccessSchema = z.object({
   expiresAt: z.string().nullish(),
@@ -37,6 +44,19 @@ const serviceAccessSchema = z.object({
   groupCount: z.number().int().nonnegative(),
   termAmount: z.string().nullish(),
   yearAmount: z.string().nullish(),
+  /** What each period would extend the contract to (№6). */
+  termCoversTo: z.string().nullish(),
+  yearCoversTo: z.string().nullish(),
+});
+
+const contractQpaySchema = z.object({
+  payment: z.object({
+    id: z.string(),
+    coversTo: z.string(),
+    amount: z.string(),
+    status: z.enum(["PENDING", "PAID"]),
+  }),
+  attempt: qpayInvoiceAttemptSchema.nullable(),
 });
 
 const invoiceJobSchema = z.object({
@@ -71,6 +91,7 @@ function ServiceAccess() {
   const groups = access.data?.groupCount ?? 0;
   const daysLeft = access.data?.expiresAt ? daysUntil(access.data.expiresAt) : null;
   const price = period === "year" ? access.data?.yearAmount : access.data?.termAmount;
+  const coversTo = period === "year" ? access.data?.yearCoversTo : access.data?.termCoversTo;
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
@@ -113,7 +134,7 @@ function ServiceAccess() {
       </Card>
 
       <Card pad="roomy" className="flex flex-col gap-4">
-        <SectionHeader title="Сунгах" lede="Улирлаар эсвэл жилээр сонгоод нэхэмжлэхээ татна." />
+        <SectionHeader title="Сунгах" lede="Улирлаар эсвэл жилээр сонгоод QPay-ээр төлнө." />
 
         <div
           role="radiogroup"
@@ -153,9 +174,19 @@ function ServiceAccess() {
           ) : null}
         </p>
 
-        <InvoiceButton period={period} disabled={!price} />
+        {price && coversTo ? (
+          <p className="text-body text-muted">
+            Төлмөгц эрх <strong className="text-ink">{formatDate(coversTo)}</strong> хүртэл
+            сунгагдана.
+          </p>
+        ) : null}
+
+        <div className="flex flex-wrap gap-2">
+          <ContractPayDialog period={period} disabled={!price} />
+          <InvoiceButton period={period} disabled={!price} />
+        </div>
         <p className="text-caption text-muted">
-          Нэхэмжлэхийн дагуу шилжүүлэг хийсний дараа эрх сунгагдана.
+          QPay-ээр төлсөн даруйд эрх сунгагдана. Нэхэмжлэхийг баримтад хадгалж болно.
         </p>
       </Card>
     </div>
@@ -213,7 +244,12 @@ function InvoiceButton({ period, disabled }: { period: BillingPeriod; disabled: 
   }
 
   return (
-    <Button className="self-start" onClick={() => queue.mutate()} disabled={disabled || working}>
+    <Button
+      variant="secondary"
+      className="self-start"
+      onClick={() => queue.mutate()}
+      disabled={disabled || working}
+    >
       <FileDown aria-hidden="true" />
       {working
         ? "Нэхэмжлэх бэлдэж байна…"
@@ -221,5 +257,108 @@ function InvoiceButton({ period, disabled }: { period: BillingPeriod; disabled: 
           ? "Дахин оролдох"
           : "Нэхэмжлэх үүсгэх"}
     </Button>
+  );
+}
+
+/**
+ * «QPay-ээр төлөх» — the next period of the contract (№6). The QR comes
+ * from the server's price; the dialog follows the attempt until QPay
+ * confirms, then the contract's new end is read back.
+ */
+function ContractPayDialog({ period, disabled }: { period: BillingPeriod; disabled: boolean }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [paymentId, setPaymentId] = useState<string | null>(null);
+
+  const create = useMutation({
+    mutationFn: () =>
+      mutate("/service-access/qpay", contractQpaySchema, { method: "POST", body: { period } }),
+    onSuccess: (result) => {
+      queryClient.setQueryData(["service-access", "qpay", result.payment.id], result);
+      setPaymentId(result.payment.id);
+    },
+  });
+
+  const progress = useQuery({
+    queryKey: ["service-access", "qpay", paymentId],
+    queryFn: () => get(`/service-access/qpay/${paymentId}`, contractQpaySchema),
+    enabled: Boolean(paymentId) && open,
+    refetchInterval: (query) => (query.state.data?.attempt?.status === "PENDING" ? 3000 : false),
+  });
+
+  const done = useRef(false);
+  const paid = progress.data?.payment.status === "PAID";
+  useEffect(() => {
+    if (paid && !done.current) {
+      done.current = true;
+      void queryClient.invalidateQueries({ queryKey: qk.serviceAccess() });
+      toast.success(
+        `Төлбөр төлөгдлөө. Эрх ${formatDate(progress.data!.payment.coversTo)} хүртэл сунгагдлаа.`,
+      );
+    }
+  }, [paid, progress.data, queryClient, toast]);
+
+  function close() {
+    setOpen(false);
+    setPaymentId(null);
+    done.current = false;
+    create.reset();
+  }
+
+  return (
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next) => {
+        if (next) {
+          setOpen(true);
+          create.mutate();
+        } else close();
+      }}
+    >
+      <Dialog.Trigger asChild>
+        <Button className="self-start" disabled={disabled}>
+          <QrCode aria-hidden="true" />
+          QPay-ээр төлөх
+        </Button>
+      </Dialog.Trigger>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-ink/40" />
+        <Dialog.Content
+          className="fixed left-1/2 top-1/2 z-50 w-[calc(100vw-2rem)] max-w-[380px] -translate-x-1/2 -translate-y-1/2 rounded-card border border-border bg-surface p-5 shadow-lg"
+          aria-describedby="contract-qpay-description"
+        >
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <Dialog.Title className="text-lead font-semibold text-ink">
+                Үйлчилгээний эрх сунгах
+              </Dialog.Title>
+              <Dialog.Description
+                id="contract-qpay-description"
+                className="mt-1 text-body text-muted"
+              >
+                {progress.data
+                  ? `${formatDate(progress.data.payment.coversTo)} хүртэл · ${tugrik(Number(progress.data.payment.amount))}`
+                  : "QR кодыг банкны аппаараа уншуулж төлнө үү."}
+              </Dialog.Description>
+            </div>
+            <Dialog.Close asChild>
+              <Button variant="ghost" size="icon" aria-label="Хаах">
+                <X size={18} />
+              </Button>
+            </Dialog.Close>
+          </div>
+
+          <FormError message={create.isError ? errorMessage(create.error) : null} />
+          {create.isError ? null : (
+            <QpayProgress
+              attempt={progress.data?.attempt ?? undefined}
+              pending={create.isPending}
+              onRetry={() => create.mutate()}
+            />
+          )}
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

@@ -114,6 +114,23 @@ export class PlatformRevenueRepository {
     };
   }
 
+  /**
+   * Paid contract periods for a month — kindergartens paying the platform by
+   * QPay (№6, the user 2026-10-16/18). By `paidAt`, PAID only: a QR nobody
+   * scanned is not money that moved.
+   */
+  async contractFees(from: Date, before: Date) {
+    const row = await this.prisma.contractPayment.aggregate({
+      where: { deletedAt: null, status: "PAID", paidAt: { gte: from, lt: before } },
+      _sum: { amount: true },
+      _count: { _all: true },
+    });
+    return {
+      contractPayments: row._count._all,
+      contractFees: row._sum.amount?.toString() ?? "0",
+    };
+  }
+
   /** Names for the ids the aggregate returned. Never the whole table. */
   async kindergartenNames(ids: string[]) {
     if (ids.length === 0) return [];

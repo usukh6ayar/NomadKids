@@ -5283,7 +5283,10 @@ export const platformRevenueSchema = z.object({
      */
     materialSales: z.string(),
     materialPayments: z.number(),
-    /** `accessFees + materialSales` — the platform's whole income. */
+    /** Kindergartens' contract periods paid by QPay (№6, 2026-10-18). */
+    contractFees: z.string().default("0"),
+    contractPayments: z.number().default(0),
+    /** `accessFees + materialSales + contractFees` — the platform's whole income. */
     total: z.string(),
   }),
 });
@@ -5329,7 +5332,10 @@ export const revenueDistributionSchema = z.object({
   /** Paid teaching-material sales — divided too (the user, 2026-10-12). */
   materialSales: z.string(),
   materialPayments: z.number(),
-  /** `accessFees + materialSales` — the sum being divided. */
+  /** Kindergartens' contract periods paid by QPay — divided too (№6). */
+  contractFees: z.string().default("0"),
+  contractPayments: z.number().default(0),
+  /** `accessFees + materialSales + contractFees` — the sum being divided. */
   total: z.string(),
   allocatedPercent: z.string(),
   unallocated: z.string(),

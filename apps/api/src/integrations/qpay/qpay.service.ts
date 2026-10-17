@@ -197,6 +197,77 @@ export class QpayService {
     return row;
   }
 
+  /**
+   * A QR for one period of a kindergarten's platform contract — №6, the user
+   * 2026-10-16/18: every payment to the platform is QPay, so the revenue and
+   * the partners' shares count it without anybody typing it in.
+   *
+   * ★ No authorization here: `ServiceAccessService` has decided the actor is
+   * this kindergarten's director and priced `payment` on the server. An
+   * unexpired PENDING attempt at the same amount is reused, as for a material.
+   */
+  async createForContractPayment(
+    actor: Actor,
+    payment: { id: string; kindergartenId: string; amount: string; description: string },
+  ) {
+    if (!this.isConfigured) {
+      throw new BadRequestException("QPay холболт тохируулагдаагүй байна.");
+    }
+
+    const now = new Date();
+    const latest = await this.repo.findLatestForContractPayment(payment.id);
+    if (
+      latest &&
+      latest.status === "PENDING" &&
+      latest.expiresAt &&
+      latest.expiresAt > now &&
+      latest.amount.toFixed(2) === payment.amount
+    ) {
+      return latest;
+    }
+
+    const senderInvoiceNo = randomUUID();
+    let created;
+    try {
+      created = await this.client.createInvoice({
+        senderInvoiceNo,
+        amount: payment.amount,
+        description: `NomadKids — ${payment.description}`.slice(0, 120),
+      });
+    } catch (cause) {
+      throw this.toHttpError(cause, "createInvoice");
+    }
+
+    const row = await this.repo.create({
+      kindergartenId: payment.kindergartenId,
+      contractPaymentId: payment.id,
+      amount: payment.amount,
+      qpayInvoiceId: created.invoice_id,
+      senderInvoiceNo,
+      qrText: created.qr_text ?? null,
+      qrImage: created.qr_image ?? null,
+      createdById: actor.userId,
+      expiresAt: new Date(now.getTime() + QPAY_INVOICE_TTL_MS),
+    });
+
+    await this.audit.append({
+      action: "CREATE",
+      kindergartenId: payment.kindergartenId,
+      actorUserId: actor.userId,
+      objectType: "QpayInvoice",
+      objectId: row.id,
+      metadata: { contractPaymentId: payment.id, amount: payment.amount },
+    });
+
+    return row;
+  }
+
+  /** The latest attempt for a contract period, reconciled — `null` when none was drawn. */
+  async statusForContractPayment(contractPaymentId: string) {
+    const row = await this.repo.findLatestForContractPayment(contractPaymentId);
+    return row ? this.reconcile(row) : null;
+  }
+
   /** The latest attempt for a purchase, reconciled — `null` when none was drawn. */
   async statusForMaterialPurchase(purchaseId: string) {
     const row = await this.repo.findLatestForMaterialPurchase(purchaseId);
@@ -298,6 +369,8 @@ export class QpayService {
     // one branch runs.
     if (row.subscriptionId) {
       await this.access.markPaid(row.subscriptionId, now);
+    } else if (row.contractPaymentId) {
+      await this.repo.markContractPaymentPaid(row.contractPaymentId, now);
     } else if (row.materialPurchaseId) {
       // Whole tugrik, parsed from the decimal's own string — never a float.
       const paid = Number.parseInt(row.amount.toFixed(0), 10);
@@ -314,6 +387,7 @@ export class QpayService {
       metadata: {
         after: {
           subscriptionId: row.subscriptionId,
+          contractPaymentId: row.contractPaymentId,
           materialPurchaseId: row.materialPurchaseId,
           amount: row.amount.toFixed(2),
         },

@@ -363,7 +363,9 @@ a family goes through QPay.
 ★ **The line moved twice** (the user, 2026-10-16): a kindergarten pays its
 **platform contract** — the per-group term or year — through QPay too, not by
 bank transfer. Every payment to the platform is QPay, so the revenue page and
-the partners' shares count it without anyone typing it in (backend list №6).
+the partners' shares count it without anyone typing it in (backend list №6 —
+built 2026-10-18: `ContractPayment`, `POST /service-access/qpay`; paid, the
+contract runs to the period's end).
 It is the operator's revenue like the fee — no `Payment` row. A kindergarten's
 own tuition and meal invoices to families still never touch QPay.
 
