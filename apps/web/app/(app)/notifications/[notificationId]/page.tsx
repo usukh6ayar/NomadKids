@@ -1,5 +1,6 @@
 "use client";
 
+import { LinkedText } from "@/components/ui/linked-text";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { BackButton } from "@/components/ui/back-button";
@@ -129,7 +130,7 @@ export default function NotificationDetailPage() {
           collapsing it into a paragraph makes it unreadable.
         */}
         <div className="mt-5 whitespace-pre-wrap text-lead leading-relaxed text-ink">
-          {notification.body}
+          <LinkedText text={notification.body ?? ""} />
         </div>
 
         {notification.media.length > 0 ? (
