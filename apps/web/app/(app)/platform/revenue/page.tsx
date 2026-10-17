@@ -150,6 +150,12 @@ function PlatformRevenue() {
                 value={revenue.data.platform.materialSales}
                 count={`${revenue.data.platform.materialPayments} худалдан авалт`}
               />
+              {/* Kindergartens' contracts paid by QPay — №6, 2026-10-18. */}
+              <IncomeSource
+                label="Гэрээний төлбөр"
+                value={revenue.data.platform.contractFees}
+                count={`${revenue.data.platform.contractPayments} төлөлт`}
+              />
             </dl>
           </Card>
 

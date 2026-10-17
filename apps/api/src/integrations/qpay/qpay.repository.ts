@@ -66,6 +66,41 @@ export class QpayRepository {
     return result.count > 0;
   }
 
+  /** The latest attempt to pay for one period of a kindergarten's contract. */
+  async findLatestForContractPayment(contractPaymentId: string) {
+    return this.prisma.qpayInvoice.findFirst({
+      where: { contractPaymentId },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  /**
+   * PENDING → PAID on a contract period, once, and the contract's end moved
+   * to what it now covers — one transaction, so a paid period can never leave
+   * the contract short (№6, 2026-10-18). `false` means another call did it.
+   *
+   * ★ `endsOn` only ever moves forward: a period paid out of order cannot
+   * shorten a contract already paid further.
+   */
+  async markContractPaymentPaid(contractPaymentId: string, paidAt: Date): Promise<boolean> {
+    return this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.contractPayment.updateMany({
+        where: { id: contractPaymentId, status: "PENDING" },
+        data: { status: "PAID", paidAt },
+      });
+      if (claimed.count === 0) return false;
+      const payment = await tx.contractPayment.findUniqueOrThrow({
+        where: { id: contractPaymentId },
+        select: { contractId: true, coversTo: true },
+      });
+      await tx.contract.updateMany({
+        where: { id: payment.contractId, endsOn: { lt: payment.coversTo } },
+        data: { endsOn: payment.coversTo },
+      });
+      return true;
+    });
+  }
+
   /** `where: status: "PENDING"` guards this the same way `claimForPayment` guards itself. */
   async markExpired(id: string): Promise<void> {
     await this.prisma.qpayInvoice.updateMany({

@@ -1,10 +1,17 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { FIRST_TERM_PROMO, GROUP_PRICES, firstTermPromoOpen, localDate } from "@kinder/contracts";
+import {
+  GROUP_PRICES,
+  groupTermPrice,
+  localDate,
+  schoolTermOn,
+  type SchoolTerm,
+} from "@kinder/contracts";
 import Decimal from "decimal.js";
 import { AuditRepository } from "../audit/audit.repository";
 import type { Actor } from "../authz/actor";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import { loadEnv } from "../config/env";
+import { QpayService } from "../integrations/qpay/qpay.service";
 import type { ServiceInvoiceParams } from "../reports/report-params";
 import { ReportsQueue } from "../reports/reports.queue";
 import { ReportsRepository } from "../reports/reports.repository";
@@ -46,6 +53,7 @@ export class ServiceAccessService {
     private readonly queue: ReportsQueue,
     private readonly storage: StorageService,
     private readonly audit: AuditRepository,
+    private readonly qpay: QpayService,
   ) {}
 
   async status(actor: Actor, kindergartenId?: string) {
@@ -72,8 +80,11 @@ export class ServiceAccessService {
       daysLeft,
       remind: daysLeft !== null && daysLeft <= REMIND_DAYS,
       perGroupMonthlyFee: fee?.toString() ?? null,
-      termAmount: fee ? amountFor(fee.toString(), groupCount, "TERM") : null,
-      yearAmount: fee ? amountFor(fee.toString(), groupCount, "YEAR") : null,
+      termAmount: fee && contract ? quote(contract, groupCount, "TERM").amount : null,
+      yearAmount: fee && contract ? quote(contract, groupCount, "YEAR").amount : null,
+      // What each would extend the contract to — said before the QR (№6).
+      termCoversTo: contract ? quote(contract, groupCount, "TERM").coversTo : null,
+      yearCoversTo: contract ? quote(contract, groupCount, "YEAR").coversTo : null,
     };
   }
 
@@ -106,14 +117,15 @@ export class ServiceAccessService {
     }
 
     const fee = contract.perGroupMonthlyFee.toString();
+    const priced = quote(contract, groupCount, period);
     const invoice: ServiceInvoiceParams = {
       period,
       months: MONTHS[period],
       groupCount,
       perGroupMonthlyFee: fee,
-      perGroupAmount: perGroupFor(fee, period),
-      periodLabel: periodLabelFor(fee, period),
-      amount: amountFor(fee, groupCount, period),
+      perGroupAmount: priced.perGroup,
+      periodLabel: priced.label,
+      amount: priced.amount,
       kindergartenName: kindergarten.name,
       contractNumber: contract.number,
       issuedOn: localDate(),
@@ -182,6 +194,83 @@ export class ServiceAccessService {
    * The kindergarten asked about: the one named, or the director's only one.
    * Anything but a contracted kindergarten they administer is a 404.
    */
+  /**
+   * The next period of the contract, paid by QPay — №6 (the user,
+   * 2026-10-16/18). Priced here (`quote`), never from the request; the period
+   * row is reused while unpaid and re-priced to the groups running now, and a
+   * period already paid is refused. Paid, the contract runs to `coversTo`
+   * (`QpayRepository.markContractPaymentPaid`).
+   */
+  async payWithQpay(actor: Actor, period: Period, kindergartenId?: string) {
+    const kindergarten = await this.resolve(actor, kindergartenId);
+    const [contract, groupCount] = await Promise.all([
+      this.repo.activeContract(kindergarten.id),
+      this.repo.currentGroupCount(kindergarten.id),
+    ]);
+    if (!contract?.perGroupMonthlyFee) {
+      throw new BadRequestException(
+        "Гэрээнд бүлгийн төлбөр тогтоогоогүй байна. NomadKids-тэй холбогдоно уу.",
+      );
+    }
+    if (groupCount === 0) {
+      throw new BadRequestException("Одоогийн хичээлийн жилд идэвхтэй бүлэг алга байна.");
+    }
+
+    const priced = quote(contract, groupCount, period);
+    const coversFrom = new Date(`${priced.coversFrom}T00:00:00.000Z`);
+    let payment = await this.repo.findPayment(contract.id, period, coversFrom);
+    if (payment?.status === "PAID") {
+      throw new BadRequestException("Энэ хугацааны төлбөр аль хэдийн төлөгдсөн.");
+    }
+    if (payment && payment.amount.toFixed(2) !== priced.amount) {
+      await this.repo.repricePending(payment.id, {
+        groupCount,
+        perGroupAmount: priced.perGroup,
+        amount: priced.amount,
+      });
+    }
+    if (!payment) {
+      payment = await this.repo.createPayment({
+        kindergartenId: kindergarten.id,
+        contractId: contract.id,
+        period,
+        termNumber: priced.term?.number ?? null,
+        coversFrom,
+        coversTo: new Date(`${priced.coversTo}T00:00:00.000Z`),
+        groupCount,
+        perGroupAmount: priced.perGroup,
+        amount: priced.amount,
+        createdById: actor.userId,
+      });
+      await this.audit.append({
+        action: "CREATE",
+        kindergartenId: kindergarten.id,
+        actorUserId: actor.userId,
+        objectType: "ContractPayment",
+        objectId: payment.id,
+        metadata: { period, coversTo: priced.coversTo, groupCount, amount: priced.amount },
+      });
+    }
+
+    const attempt = await this.qpay.createForContractPayment(actor, {
+      id: payment.id,
+      kindergartenId: kindergarten.id,
+      amount: priced.amount,
+      description: `${kindergarten.name}, ${priced.label}`,
+    });
+    return { payment: paymentView({ ...payment, amount: priced.amount }), attempt };
+  }
+
+  /** One of this kindergarten's contract payments and its latest QR, reconciled. */
+  async qpayStatus(actor: Actor, paymentId: string, kindergartenId?: string) {
+    const kindergarten = await this.resolve(actor, kindergartenId);
+    const before = await this.repo.paymentOf(paymentId, kindergarten.id);
+    if (!before) throw new NotFoundException();
+    const attempt = await this.qpay.statusForContractPayment(paymentId);
+    const payment = (await this.repo.paymentOf(paymentId, kindergarten.id)) ?? before;
+    return { payment: paymentView(payment), attempt };
+  }
+
   private async resolve(actor: Actor, kindergartenId?: string) {
     const administered = this.tenants.adminKindergartenIds(actor);
     const id = kindergartenId ?? (administered.length === 1 ? administered[0] : undefined);
@@ -229,43 +318,102 @@ export class ServiceAccessService {
 }
 
 /** fee × groups × months, in decimal.js — never floats for money (§2.2). */
+type ContractForQuote = { perGroupMonthlyFee: { toString(): string } | null; endsOn: Date };
+
 /**
- * One group's price for the period.
+ * What renewing buys and costs — №6, 2026-10-18. One answer for the status,
+ * the invoice and the QR.
  *
- * ★ The price sheet's, when the contract is at the standard 4,000₮ a month —
- * 2026-10-18, the client's brief. `fee × 9` made a year 36,000₮ a group where
- * the agreed year is 30,000₮, and a term 12,000₮ while «I-р улирал» is
- * 6,000₮ (through 2026-11-30, then the standard 12,000₮). A contract signed
- * at a negotiated monthly fee keeps `fee × months`: that figure is the
- * operator's agreement, not the sheet's.
+ * ★ The period after the contract's current end (or from today, once it has
+ * ended): the calendar term that day falls in — or the next September's first
+ * term, from a summer day — or the school year, September to May. Whole
+ * periods, as a contract starting mid-term pays the whole term (the user,
+ * 2026-10-14).
+ *
+ * ★★ The price is the sheet's for a contract at the standard 4,000₮ a month
+ * — 30,000₮ a group a year, «I-р улирал» 6,000₮ through 2026-11-30, then
+ * 12,000₮ a term — and `fee × months` for a negotiated monthly fee, which is
+ * the operator's agreement rather than the sheet's.
  */
-function perGroupFor(fee: string, period: Period, today: string = localDate()): string {
-  if (new Decimal(fee).equals(GROUP_PRICES.monthly)) {
-    const sheet =
-      period === "YEAR"
-        ? GROUP_PRICES.year
-        : firstTermPromoOpen(today)
-          ? GROUP_PRICES.termPromo
-          : GROUP_PRICES.termStandard;
-    return new Decimal(sheet).toFixed(2);
+export function quote(
+  contract: ContractForQuote,
+  groups: number,
+  period: Period,
+  today: string = localDate(),
+): {
+  coversFrom: string;
+  coversTo: string;
+  term: SchoolTerm | null;
+  perGroup: string;
+  amount: string;
+  label: string;
+} {
+  const ends = contract.endsOn.toISOString().slice(0, 10);
+  const start = ends >= today ? addDay(ends) : today;
+
+  let coversFrom: string;
+  let coversTo: string;
+  let term: SchoolTerm | null = null;
+  if (period === "TERM") {
+    term = schoolTermOn(start) ?? schoolTermOn(`${Number(start.slice(0, 4))}-09-01`)!;
+    coversFrom = term.startsOn;
+    coversTo = term.endsOn;
+  } else {
+    const year = Number(start.slice(0, 4));
+    const month = Number(start.slice(5, 7));
+    const first = month >= 6 ? year : year - 1;
+    coversFrom = `${first}-09-01`;
+    coversTo = `${first + 1}-05-31`;
   }
-  return new Decimal(fee).times(MONTHS[period]).toFixed(2);
+
+  const fee = contract.perGroupMonthlyFee?.toString() ?? "0";
+  const standard = new Decimal(fee).equals(GROUP_PRICES.monthly);
+  const perGroup = standard
+    ? new Decimal(period === "YEAR" ? GROUP_PRICES.year : groupTermPrice(term!))
+    : new Decimal(fee).times(MONTHS[period]);
+  const label =
+    period === "YEAR"
+      ? `${coversFrom.slice(0, 4)}–${coversTo.slice(0, 4)} хичээлийн жил`
+      : `${term!.label} (${coversFrom.replaceAll("-", ".")} – ${coversTo.replaceAll("-", ".")})`;
+
+  return {
+    coversFrom,
+    coversTo,
+    term,
+    perGroup: perGroup.toFixed(2),
+    amount: perGroup.times(Math.max(0, groups)).toFixed(2),
+    label,
+  };
 }
 
-function amountFor(fee: string, groups: number, period: Period): string {
-  return new Decimal(perGroupFor(fee, period)).times(groups).toFixed(2);
-}
-
-/** «I-р улирал · 2026.11.30 хүртэл» while the promotion prices the term. */
-function periodLabelFor(fee: string, period: Period, today: string = localDate()): string {
-  if (period === "YEAR") return "Хичээлийн жил";
-  return new Decimal(fee).equals(GROUP_PRICES.monthly) && firstTermPromoOpen(today)
-    ? `${FIRST_TERM_PROMO.label} · ${FIRST_TERM_PROMO.endsOn.replaceAll("-", ".")} хүртэл`
-    : "Нэг улирал";
+function addDay(day: string): string {
+  return new Date(Date.parse(`${day}T00:00:00.000Z`) + 86_400_000).toISOString().slice(0, 10);
 }
 
 /** Whole days from Ulaanbaatar's today to a DATE column's day. */
 function daysUntil(day: Date): number {
   const today = new Date(`${localDate()}T00:00:00.000Z`);
   return Math.round((day.getTime() - today.getTime()) / 86_400_000);
+}
+
+function paymentView(payment: {
+  id: string;
+  period: Period;
+  coversFrom: Date;
+  coversTo: Date;
+  groupCount: number;
+  amount: { toString(): string } | string;
+  status: "PENDING" | "PAID";
+  paidAt: Date | null;
+}) {
+  return {
+    id: payment.id,
+    period: payment.period === "TERM" ? "term" : "year",
+    coversFrom: payment.coversFrom.toISOString().slice(0, 10),
+    coversTo: payment.coversTo.toISOString().slice(0, 10),
+    groupCount: payment.groupCount,
+    amount: new Decimal(payment.amount.toString()).toFixed(2),
+    status: payment.status,
+    paidAt: payment.paidAt,
+  };
 }
