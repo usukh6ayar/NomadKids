@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Database,
+  Download,
   FileSpreadsheet,
   ShieldCheck,
   Upload,
@@ -15,7 +16,6 @@ import { useRef, useState } from "react";
 import { z } from "zod";
 import { esisScopedCatalogSchema } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
-import { downloadUrl } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
@@ -170,20 +170,29 @@ function ImportChildren() {
             </div>
 
             {/*
-          The export doubles as the template: it is the same columns in the
-          same order, so "download, edit, upload" needs no separate example
-          file that could drift from what the parser accepts.
-        */}
-            <p className="text-caption text-muted">
-              Загвар хэрэгтэй бол{" "}
-              <a
-                className="font-medium text-primary hover:underline"
-                href={downloadUrl(`/kindergartens/${primaryKindergartenId}/children/export`)}
-              >
-                одоогийн жагсаалтыг Excel-ээр татаад
-              </a>{" "}
-              засаж болно.
-            </p>
+              ★ One fixed template — 2026-10-18, the user: «яг нэг тогтсон
+              загвартай»; the teacher downloads it, writes their own children
+              over the two «Жишээ» rows, and uploads it. The importer skips
+              those rows if they stay, and still reads other layouts.
+            */}
+            <div className="flex flex-col gap-2 rounded-card bg-sunken px-4 py-3">
+              <p className="text-body text-ink">
+                Загвар:{" "}
+                <span className="font-semibold">
+                  № · Овог · Нэр · Регистр · Төрсөн огноо · Хүйс · Бүлэг
+                </span>
+              </p>
+              <p className="text-caption text-muted">
+                Загварыг татаж, «Жишээ» мөрүүдийн оронд өөрийн хүүхдүүдийг бичээд энд оруулна.
+                Регистр бичвэл төрсөн огноо, хүйсийг хоосон үлдээж болно.
+              </p>
+              <Button asChild variant="secondary" size="sm" className="self-start">
+                <a href="/templates/huuhdiin-burtgel-zagvar.xlsx" download>
+                  <Download size={16} aria-hidden />
+                  Загвар татах
+                </a>
+              </Button>
+            </div>
 
             <FormError message={run.isError ? errorMessage(run.error) : null} />
           </Card>

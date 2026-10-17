@@ -207,10 +207,13 @@ export const envSchema = z.object({
     .default("0"),
 
   /**
-   * ★ The price of one **term** of access (#211, the user 2026-10-12) —
-   * `ACCESS_FEE_AMOUNT` stays the school year's. "0" sells no terms: the
-   * year alone, as before. Meaningless while `ACCESS_FEE_AMOUNT` is "0",
-   * which turns the whole gate off.
+   * Whether terms are sold beside the year (#211). "0" sells no terms: the
+   * year alone. Meaningless while `ACCESS_FEE_AMOUNT` is "0".
+   *
+   * ★ Since 2026-10-18 any other value only switches terms on: a term's price
+   * is the price sheet's (`@kinder/contracts` `childTermPrice` — 5,000₮ for
+   * «I-р улирал» to 2026-11-30, then 9,000₮), because it changes on a date
+   * and a deployment setting cannot.
    */
   ACCESS_FEE_TERM_AMOUNT: z
     .string()

@@ -1,9 +1,4 @@
-import {
-  FIRST_TERM_PROMO,
-  firstTermPromoOpen,
-  localDate,
-  type AccessPeriod,
-} from "@kinder/contracts";
+import { childTermPrice, localDate, schoolTermOn, type AccessPeriod } from "@kinder/contracts";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { AuditRepository } from "../audit/audit.repository";
 import { ChildAccessService } from "../authz/child-access.service";
@@ -11,9 +6,6 @@ import type { Actor } from "../authz/actor";
 import { childKindergartenIds } from "../authz/child-access";
 import { loadEnv } from "../config/env";
 import { AccessRepository } from "./access.repository";
-
-/** «I-р улирал» is the school year's first term. */
-const PROMO_TERM_NUMBER = 1;
 
 /**
  * The portal access fee — one child, one school year (client, 2026-09-01), or
@@ -64,8 +56,8 @@ export class AccessService {
     const day = today();
     const covering = await this.repo.findActiveCovering(facts.childId, day);
     const year = await this.currentYear(facts);
-    // «I-р улирал» is offered through 2026-11-30 and not after (2026-10-18).
-    const termOnSale = Boolean(year) && this.sellsTerms && firstTermPromoOpen(localDate());
+    // The calendar term today falls in — none in summer (2026-10-18).
+    const term = year && this.sellsTerms ? schoolTermOn(localDate()) : null;
     const subscription =
       covering ?? (year ? await this.repo.findForChildYear(facts.childId, year.id) : null);
 
@@ -73,7 +65,7 @@ export class AccessService {
       required: true,
       active: covering !== null,
       amount: this.feeAmount,
-      termAmount: termOnSale ? this.termFeeAmount : null,
+      termAmount: term ? termAmount(term) : null,
       subscription: subscription && view(subscription),
     };
   }
@@ -112,34 +104,33 @@ export class AccessService {
     }
 
     /*
-     * ★ «I-р улирал» — a fixed last day, 2026-11-30 (the client's brief,
-     * 2026-10-18). Bought on 18 October or 29 November, it ends on 30
-     * November: never the purchase day plus three months, never the
-     * kindergarten's own term (a solo workspace has none), and no past month
-     * is charged on top. From 1 December it is not sold, by any path — QPay
-     * reaches this method too — and nothing replaces it but the year.
-     * A term already paid keeps the day it was paid to (`findActiveCovering`
-     * above).
+     * ★ A term is the calendar's, priced by the sheet — 2026-10-18, the
+     * client's brief and the user: «I-р улирал» ends on 2026-11-30 whenever it
+     * is bought (5,000₮), and II and III follow at the standard 9,000₮ to the
+     * end of February and of May. Never the purchase day plus three months,
+     * never the kindergarten's own term (a solo workspace has none), and no
+     * past month on top. A term not paid by its last day is not sold after
+     * it: the next ask raises the next term's row. A term already paid keeps
+     * the day it was paid to (`findActiveCovering` above).
      */
     if (period === "TERM") {
       if (!this.sellsTerms) {
         throw new BadRequestException("Улирлаар төлөх боломжгүй. Жилээр төлнө үү.");
       }
-      if (!firstTermPromoOpen(localDate())) {
-        throw new BadRequestException(
-          `${FIRST_TERM_PROMO.label}-ын төлбөр ${FIRST_TERM_PROMO.endsOn.replaceAll("-", ".")}-нд дууссан. Жилээр төлнө үү.`,
-        );
+      const term = schoolTermOn(localDate());
+      if (!term) {
+        throw new BadRequestException("Одоо хичээлийн улирал биш байна. Жилээр төлнө үү.");
       }
-      const existing = await this.repo.findForChildTerm(facts.childId, year.id, PROMO_TERM_NUMBER);
+      const existing = await this.repo.findForChildTerm(facts.childId, year.id, term.number);
       if (existing) return existing;
 
       return this.issue(actor, facts.childId, kindergartenId, {
         schoolYearId: year.id,
         period: "TERM",
-        termNumber: PROMO_TERM_NUMBER,
-        amount: this.termFeeAmount,
-        expiresAt: new Date(`${FIRST_TERM_PROMO.endsOn}T00:00:00.000Z`),
-        label: `${year.name}, ${FIRST_TERM_PROMO.label}`,
+        termNumber: term.number,
+        amount: termAmount(term),
+        expiresAt: new Date(`${term.endsOn}T00:00:00.000Z`),
+        label: `${year.name}, ${term.label}`,
       });
     }
 
@@ -238,4 +229,9 @@ function view(subscription: Awaited<ReturnType<AccessRepository["findForChildYea
  */
 function today(): Date {
   return new Date(`${localDate()}T00:00:00.000Z`);
+}
+
+/** A term's price as the API's decimal string — the sheet's, never the client's. */
+function termAmount(term: NonNullable<ReturnType<typeof schoolTermOn>>): string {
+  return `${childTermPrice(term)}.00`;
 }

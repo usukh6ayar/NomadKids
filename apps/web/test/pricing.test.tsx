@@ -156,21 +156,22 @@ describe("the pricing page", () => {
 });
 
 /*
- * ★ After «I-р улирал» — 2026-10-18, the client's brief: the promotion is not
- * sold from 1 December. A child's term has no later price, so only the year is
- * offered; a group's term goes on at the standard 12,000₮ (the user's rule of
- * 2026-10-14).
+ * ★ After «I-р улирал» — the terms at the standard price: 9,000₮ a child (the
+ * user, 2026-10-18) and 12,000₮ a group; the promotion's label is gone.
  */
 describe("the pricing page from 1 December 2026", () => {
   beforeEach(() => onDay("2026-12-01T03:00:00.000Z"));
   afterEach(() => vi.useRealTimers());
 
-  it("offers a child the year only, and a group its term at the standard price", () => {
+  it("prices the term at the standard 9,000₮ a child and 12,000₮ a group", () => {
     render(<PricingContent />);
 
     expect(screen.queryByText(/2026\.11\.30 хүртэл хүчинтэй/)).toBeNull();
+    expect(screen.getByRole("radio", { name: "Улирлаар" })).toBeInTheDocument();
+
     const child = within(screen.getByRole("article", { name: "Хүүхэд" }));
     expect(child.queryByText("5,000₮")).toBeNull();
+    expect(child.getByText("9,000₮")).not.toHaveClass("line-through");
     expect(child.getByText("22,000₮")).toBeInTheDocument();
 
     const kindergarten = within(screen.getByRole("article", { name: "Цэцэрлэг" }));

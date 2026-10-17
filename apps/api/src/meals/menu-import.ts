@@ -190,6 +190,13 @@ export async function parseMenuWorkbook(input: Buffer): Promise<MenuParseResult>
       return column ? text(row.getCell(column)) : "";
     };
 
+    // The template's example rows — «Жишээ» in a cell — are never read (2026-10-18).
+    let example = false;
+    row.eachCell((c) => {
+      if (normalize(text(c)) === "жишээ") example = true;
+    });
+    if (example) return;
+
     const dateParts = [cell("year"), cell("month"), cell("day")];
     const rawDate = index.has("date")
       ? cell("date")
