@@ -47,6 +47,15 @@ const serviceAccessSchema = z.object({
   /** What each period would extend the contract to (№6). */
   termCoversTo: z.string().nullish(),
   yearCoversTo: z.string().nullish(),
+  /**
+   * What each period is, as the invoice and the QR name it. From December
+   * «Жилээр» is what is left of the school year, priced as terms (the user,
+   * 2026-10-18) — «2026–2027 хичээлийн жил, II улирал, III улирал».
+   */
+  termLabel: z.string().nullish(),
+  yearLabel: z.string().nullish(),
+  /** The whole school year at the year's price — the only one «хямд» is said of. */
+  yearWhole: z.boolean().nullish(),
 });
 
 const contractQpaySchema = z.object({
@@ -92,6 +101,11 @@ function ServiceAccess() {
   const daysLeft = access.data?.expiresAt ? daysUntil(access.data.expiresAt) : null;
   const price = period === "year" ? access.data?.yearAmount : access.data?.termAmount;
   const coversTo = period === "year" ? access.data?.yearCoversTo : access.data?.termCoversTo;
+  const periodLabel =
+    (period === "year" ? access.data?.yearLabel : access.data?.termLabel) ??
+    (period === "year" ? "хичээлийн жил" : "улирал");
+  // An API from before the labels sends no `yearWhole`: the year was always whole then.
+  const yearWhole = access.data?.yearWhole ?? true;
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
@@ -144,7 +158,7 @@ function ServiceAccess() {
           {(
             [
               ["term", "Улирлаар"],
-              ["year", "Жилээр — хямд"],
+              ["year", yearWhole ? "Жилээр — хямд" : "Жилээр"],
             ] as const
           ).map(([value, label]) => (
             <button
@@ -167,7 +181,7 @@ function ServiceAccess() {
           {price ? (
             <>
               {groups} бүлэг · <strong className="text-title">{tugrik(Number(price))}</strong> /{" "}
-              {period === "year" ? "хичээлийн жил" : "улирал"}
+              {periodLabel}
             </>
           ) : access.isSuccess ? (
             "Гэрээнд бүлгийн төлбөр тогтоогоогүй байна. NomadKids-тэй холбогдож нэхэмжлэх авна уу."

@@ -174,9 +174,11 @@ describe("GET /service-access — what each period is", () => {
 
     expect(res.status).toBe(200);
     const signed = { perGroupMonthlyFee: "4000.00", endsOn: day("2026-11-30") };
+    const year = quote(signed, res.body.groupCount, "YEAR");
     expect(res.body).toMatchObject({
       termLabel: quote(signed, res.body.groupCount, "TERM").label,
-      yearLabel: quote(signed, res.body.groupCount, "YEAR").label,
+      yearLabel: year.label,
+      yearWhole: year.months === 9,
     });
   });
 
@@ -184,7 +186,7 @@ describe("GET /service-access — what each period is", () => {
     const res = await authed(request(server()).get("/v1/service-access"), adminA);
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ termLabel: null, yearLabel: null });
+    expect(res.body).toMatchObject({ termLabel: null, yearLabel: null, yearWhole: null });
   });
 });
 

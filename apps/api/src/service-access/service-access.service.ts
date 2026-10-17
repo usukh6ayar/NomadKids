@@ -96,6 +96,8 @@ export class ServiceAccessService {
        */
       termLabel: term?.label ?? null,
       yearLabel: year?.label ?? null,
+      // Whether «Жилээр» is the whole school year at the year's price.
+      yearWhole: year ? year.months === MONTHS.YEAR : null,
     };
   }
 
