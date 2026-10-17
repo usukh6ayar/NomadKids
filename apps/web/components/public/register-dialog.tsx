@@ -15,7 +15,7 @@ import {
   KINDERGARTEN_CURRENT_TERM_PER_GROUP,
   KINDERGARTEN_CURRENT_YEAR_PER_GROUP,
   KINDERGARTEN_MONTHLY_PER_GROUP,
-  TERM_DISCOUNTED,
+  termOnSale,
   kindergartenPrice,
   kindergartenStandardYearPrice,
   kindergartenTermPrice,
@@ -379,9 +379,9 @@ function RegisterForm({
             Жилийн хэмнэлт: {yearlySaving}%
           </p>
         ) : null}
-        {billingPeriod === "term" && TERM_DISCOUNTED ? (
+        {billingPeriod === "term" && termOnSale() ? (
           <p className="mt-1 text-caption font-semibold text-[#9f174c]">
-            Улирлын хөнгөлөлттэй үнэ: {tugrik(termPrice)}.
+            I-р улирлын хөнгөлөлттэй үнэ: {tugrik(termPrice)} · 2026.11.30 хүртэл хүчинтэй.
           </p>
         ) : null}
       </div>

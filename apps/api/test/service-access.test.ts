@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import request from "supertest";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { localDate } from "@kinder/contracts";
+import { firstTermPromoOpen, localDate } from "@kinder/contracts";
 import { createTestApp } from "./support/app";
 import { resetData, testDb, uniq } from "./support/db";
 import { authed, createScenario, login, type AuthSession, type Scenario } from "./support/fixtures";
@@ -119,12 +119,22 @@ describe("GET /service-access", () => {
       daysLeft: 10,
       remind: true,
       perGroupMonthlyFee: "4000",
-      termAmount: "12000.00",
-      yearAmount: "36000.00",
+      // The price sheet's (2026-10-18): «I-р улирал» 6,000₮ through
+      // 2026-11-30, then 12,000₮; the year 30,000₮ — never 4,000 × 9.
+      termAmount: firstTermPromoOpen(localDate()) ? "6000.00" : "12000.00",
+      yearAmount: "30000.00",
     });
     expect(res.body.expiresAt).toBe(
       new Date(TODAY.getTime() + 10 * DAY).toISOString().slice(0, 10),
     );
+  });
+
+  it("keeps a negotiated monthly fee as agreed — fee × 3 and fee × 9", async () => {
+    await contract(10, "3500.00");
+
+    const res = await status(adminA);
+
+    expect(res.body).toMatchObject({ termAmount: "10500.00", yearAmount: "31500.00" });
   });
 
   it("does not remind more than 14 days out", async () => {
@@ -193,7 +203,8 @@ describe("the renewal invoice", () => {
 
       const queued = await requestInvoice(adminA, "year");
       expect(queued.status, JSON.stringify(queued.body)).toBe(201);
-      expect(queued.body).toMatchObject({ period: "year", amount: "36000.00" });
+      // The sheet's 30,000₮ a group, not 4,000 × 9 (2026-10-18).
+      expect(queued.body).toMatchObject({ period: "year", amount: "30000.00" });
 
       expect((await generator.run(queued.body.id as string)).status).toBe("DONE");
       const job = await db.reportJob.findUniqueOrThrow({
@@ -206,7 +217,9 @@ describe("the renewal invoice", () => {
 
       expect(text).toContain("Нэхэмжлэх");
       expect(text).toContain(a.kindergarten.name);
-      expect(text).toMatch(/36 000₮/);
+      expect(text).toMatch(/30 000₮/);
+      expect(text).toContain("Нэг бүлгийн төлбөр");
+      expect(text).not.toMatch(/36 000₮/);
       expect(text).toContain("5000123456");
       expect(text).toContain(signed.number);
 

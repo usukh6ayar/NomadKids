@@ -264,6 +264,22 @@ export class QpayService {
     const paidRow = checked.rows.find((r) => r.payment_status === "PAID");
     if (!paidRow) return row;
 
+    /*
+     * ★ The amount QPay says was paid must cover the row's — 2026-10-18, the
+     * pricing brief: "the backend must independently validate the amount".
+     * The invoice carries a fixed amount, so a short payment should not exist;
+     * if one is ever reported, nothing opens and the row stays PENDING for a
+     * person to look at. Whole tugrik, compared as strings of digits.
+     */
+    const paidTugrik = Number.parseInt(String(paidRow.payment_amount).split(".")[0] ?? "", 10);
+    const owedTugrik = Number.parseInt(row.amount.toFixed(0), 10);
+    if (!Number.isFinite(paidTugrik) || paidTugrik < owedTugrik) {
+      this.logger.error(
+        `QPay reported ${String(paidRow.payment_amount)} paid against ${row.amount.toFixed(2)} on ${row.qpayInvoiceId}; not settled`,
+      );
+      return row;
+    }
+
     const claimed = await this.repo.claimForPayment(row.id, now);
     if (!claimed) {
       // Lost the race to a concurrent call (the webhook and this poll firing
