@@ -19,8 +19,9 @@ import { useSession } from "@/lib/auth/session";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
-import { Checkbox, Field, Input, Select, Textarea } from "@/components/ui/field";
+import { Checkbox, Field, Input, Select } from "@/components/ui/field";
 import { FormError } from "@/components/ui/states";
+import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 import { groupLabel } from "@/lib/format";
@@ -87,7 +88,7 @@ function NewChild() {
   const [isForeign, setIsForeign] = useState(false);
   const [foreignId, setForeignId] = useState("");
   const [groupId, setGroupId] = useState("");
-  const [healthNotes, setHealthNotes] = useState("");
+  const toast = useToast();
   const appliedEsis = useRef(false);
 
   const groups = useQuery({
@@ -103,7 +104,18 @@ function NewChild() {
         esisStudentRegistrationTemplateSchema,
       ),
     enabled: Boolean(primaryKindergartenId),
+    // A kindergarten with no ESIS answers 503 every time; asking again is noise.
+    retry: false,
   });
+  /*
+   * ★ ESIS is an extra, not a requirement — 2026-10-17, the user: "ESIS-гүй
+   * цэцэрлэгүүд ч адилхан ашиглаж болдог байх, ESIS-ээс зүгээр дата авахгүй,
+   * дата явуулахгүй". The template answers only for a mapped kindergarten; for
+   * any other the form is the plain registration form, with no ESIS error,
+   * badge or field hint.
+   */
+  const fromEsis = Boolean(esisTemplate.data);
+  const esisHint = (field: string) => (fromEsis ? `ESIS: ${field}` : undefined);
 
   useEffect(() => {
     const row = esisTemplate.data?.row;
@@ -153,14 +165,21 @@ function NewChild() {
               ? { nationalId: nationalId.trim().toUpperCase() }
               : {}),
           ...(groupId ? { groupId } : {}),
-          healthNotes: healthNotes.trim() || null,
         },
       }),
-    onSuccess: (child) => {
+    /*
+     * ★ Saved, said so, and back to «Суралцагч» — 2026-10-17, the client. It
+     * went straight to the new child's page, which in a solo teacher's
+     * workspace is the unpaid-fee screen until the family pays: the teacher
+     * pressed Хадгалах and saw a blank page. The roster shows the child landed.
+     *
+     * «Эрүүл мэндийн тэмдэглэл» left the form the same day, at the client's
+     * word; the child's own health tab is where it is kept.
+     */
+    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["children"] });
-      // Straight to the child, which is where the next thing always happens —
-      // inviting the family, adding a photo, writing the first observation.
-      router.push(`/children/${child.id}/general`);
+      toast.success(`${lastName.trim()} ${firstName.trim()} бүртгэгдлээ.`);
+      router.push("/children");
     },
   });
 
@@ -171,20 +190,21 @@ function NewChild() {
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader title="Хүүхэд бүртгэх" />
 
-      {esisTemplate.isError ? <FormError message={errorMessage(esisTemplate.error)} /> : null}
       {esisTemplate.data ? <EsisStudentOutput template={esisTemplate.data} /> : null}
 
       <Card pad="roomy">
-        <SectionHeader
-          title="Дотоод бүртгэлд хадгалах"
-          lede="ESIS гаралтаас тохирох талбарууд автоматаар бөглөгдсөн."
-          action={
-            <Badge tone="mint">
-              <CheckCircle2 size={13} aria-hidden />
-              Тулгалт бэлэн
-            </Badge>
-          }
-        />
+        {fromEsis ? (
+          <SectionHeader
+            title="Дотоод бүртгэлд хадгалах"
+            lede="ESIS гаралтаас тохирох талбарууд автоматаар бөглөгдсөн."
+            action={
+              <Badge tone="mint">
+                <CheckCircle2 size={13} aria-hidden />
+                Тулгалт бэлэн
+              </Badge>
+            }
+          />
+        ) : null}
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -200,7 +220,7 @@ function NewChild() {
           />
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Овог" hint="ESIS: lastName" error={errors.lastName} required>
+            <Field label="Овог" hint={esisHint("lastName")} error={errors.lastName} required>
               {({ id, describedBy, invalid }) => (
                 <Input
                   id={id}
@@ -213,7 +233,7 @@ function NewChild() {
               )}
             </Field>
 
-            <Field label="Нэр" hint="ESIS: firstName" error={errors.firstName} required>
+            <Field label="Нэр" hint={esisHint("firstName")} error={errors.firstName} required>
               {({ id, describedBy, invalid }) => (
                 <Input
                   id={id}
@@ -227,7 +247,7 @@ function NewChild() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Хүйс" hint="ESIS: genderCode" error={errors.sex} required>
+            <Field label="Хүйс" hint={esisHint("genderCode")} error={errors.sex} required>
               {({ id, describedBy, invalid }) => (
                 <Select
                   id={id}
@@ -245,7 +265,7 @@ function NewChild() {
 
             <Field
               label="Төрсөн огноо"
-              hint="ESIS: dateOfBirth"
+              hint={esisHint("dateOfBirth")}
               error={errors.dateOfBirth}
               required
             >
@@ -291,7 +311,11 @@ function NewChild() {
               <Field
                 label="Регистрийн дугаар"
                 error={errors.nationalId}
-                hint="ESIS-ээс татахгүй; дотоод бүртгэлд шаардлагатай бол оруулна."
+                hint={
+                  fromEsis
+                    ? "ESIS-ээс татахгүй; дотоод бүртгэлд шаардлагатай бол оруулна."
+                    : undefined
+                }
               >
                 {({ id, describedBy, invalid }) => (
                   <Input
@@ -309,7 +333,7 @@ function NewChild() {
             <Field
               label="Бүлэг"
               error={errors.groupId}
-              hint="ESIS: studentGroupId, studentGroupName"
+              hint={esisHint("studentGroupId, studentGroupName")}
             >
               {({ id, describedBy, invalid }) => (
                 <Select
@@ -330,23 +354,6 @@ function NewChild() {
               )}
             </Field>
           </div>
-
-          <Field
-            label="Эрүүл мэндийн тэмдэглэл"
-            error={errors.healthNotes}
-            hint="ESIS-ээс татахгүй дотоод мэдээлэл."
-          >
-            {({ id, describedBy, invalid }) => (
-              <Textarea
-                id={id}
-                aria-describedby={describedBy}
-                invalid={invalid}
-                rows={3}
-                value={healthNotes}
-                onChange={(e) => setHealthNotes(e.target.value)}
-              />
-            )}
-          </Field>
 
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => router.back()}>
