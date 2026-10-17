@@ -66,6 +66,7 @@ function TeacherSheetScreen() {
             questions={sheet.data.survey.questions}
             rows={sheet.data.rows}
             editable={sheet.data.survey.status === "PUBLISHED"}
+            backHref={backHref}
           />
         </>
       ) : null}

@@ -1,6 +1,9 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ChevronLeft } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { z } from "zod";
 import { uuidSchema, type SurveyAnswerValue, type SurveyQuestion } from "@kinder/contracts";
@@ -8,6 +11,7 @@ import { mutate } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 import { FormError } from "@/components/ui/states";
 import { isQuestionAnswered } from "@/components/survey/survey-answer-form";
@@ -147,13 +151,18 @@ export function TeacherSheet({
   questions,
   rows,
   editable,
+  backHref,
 }: {
   surveyId: string;
   questions: SurveyQuestion[];
   rows: TeacherSheetRow[];
   editable: boolean;
+  /** Where «Буцах» goes — the survey's own page. */
+  backHref: string;
 }) {
   const toast = useToast();
+  const router = useRouter();
+  const [leaving, setLeaving] = useState(false);
   const queryClient = useQueryClient();
   const [savedAnswers] = useState<Answers>(() => answersFromRows(rows));
   const [answers, setAnswers] = useState<Answers>(() => answersFromRows(rows));
@@ -274,7 +283,8 @@ export function TeacherSheet({
 
   return (
     <form
-      className="flex flex-col gap-4"
+      // Room under the last table for the floating Буцах · Хадгалах.
+      className="flex flex-col gap-4 pb-16"
       onSubmit={(event) => {
         event.preventDefault();
         if (!save.isPending && changedRows.length > 0 && blocked.length === 0) save.mutate();
@@ -376,26 +386,75 @@ export function TeacherSheet({
       <Totals questions={questions} rows={rows} answers={answers} />
 
       {editable ? (
-        <div className="sticky bottom-3 z-10 flex flex-col gap-2 rounded-card border border-border bg-surface p-3 shadow-lg sm:flex-row sm:items-center">
-          <p className="min-w-0 flex-1 text-caption text-muted">
-            {blocked.length > 0
-              ? `Хадгалагдсан судалгааг засахдаа бүх асуултад хариулна уу: ${blocked.map(childName).join(", ")}.`
-              : changedRows.length > 0
-                ? draftRows.length > 0
-                  ? `${changedRows.length} хүүхдийн өөрчлөлт хадгалагдаагүй байна. Дутуу мөр (${draftRows.map(childName).join(", ")}) хадгалагдаад дараа нь үргэлжлүүлж бөглөнө.`
-                  : `${changedRows.length} хүүхдийн өөрчлөлт хадгалагдаагүй байна.`
-                : savedDrafts.length > 0
-                  ? `Дутуу хадгалсан: ${savedDrafts.map(childName).join(", ")} — үргэлжлүүлж бөглөнө үү.`
-                  : "Хүүхэд бүрийн мөрөнд сонголтоо тэмдэглэнэ үү."}
-          </p>
+        <p className="text-caption text-muted" role="status">
+          {blocked.length > 0
+            ? `Хадгалагдсан судалгааг засахдаа бүх асуултад хариулна уу: ${blocked.map(childName).join(", ")}.`
+            : changedRows.length > 0
+              ? draftRows.length > 0
+                ? `${changedRows.length} хүүхдийн өөрчлөлт хадгалагдаагүй байна. Дутуу мөр (${draftRows.map(childName).join(", ")}) хадгалагдаад дараа нь үргэлжлүүлж бөглөнө.`
+                : `${changedRows.length} хүүхдийн өөрчлөлт хадгалагдаагүй байна.`
+              : savedDrafts.length > 0
+                ? `Дутуу хадгалсан: ${savedDrafts.map(childName).join(", ")} — үргэлжлүүлж бөглөнө үү.`
+                : "Хүүхэд бүрийн мөрөнд сонголтоо тэмдэглэнэ үү."}
+        </p>
+      ) : null}
+
+      {/*
+        ★ Буцах and Хадгалах float, small, bottom right — 2026-10-17, the
+        client: "буцах хадгалах товч жижигээр доор баруун талд байнга
+        харагдана, утсан дээр хөвдөг цэсний дээр". The sticky bar they replace
+        sat under the phone's bottom navigation, so a teacher half-way down
+        forty children could not save without scrolling to the end. Stacked
+        above the chat button, which holds the corner itself; the explanation
+        stays in the page above, so a disabled Хадгалах still says why.
+      */}
+      <div
+        data-print-hide
+        className="fixed right-4 z-30 flex items-center gap-1.5 rounded-pill border border-border bg-surface p-1.5 shadow-lg bottom-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom)+4.5rem)] lg:bottom-[5.5rem] lg:right-6"
+      >
+        {changedRows.length > 0 ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="h-9 rounded-pill px-3"
+            onClick={() => setLeaving(true)}
+          >
+            <ChevronLeft aria-hidden />
+            Буцах
+          </Button>
+        ) : (
+          <Button asChild variant="secondary" size="sm" className="h-9 rounded-pill px-3">
+            <Link href={backHref}>
+              <ChevronLeft aria-hidden />
+              Буцах
+            </Link>
+          </Button>
+        )}
+        {editable ? (
           <Button
             type="submit"
+            size="sm"
+            className="h-9 rounded-pill px-4"
             disabled={save.isPending || changedRows.length === 0 || blocked.length > 0}
           >
             {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
           </Button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
+      <ConfirmDialog
+        open={leaving}
+        onOpenChange={setLeaving}
+        title="Хадгалаагүй өөрчлөлт байна"
+        description={`${changedRows.length} хүүхдийн өөрчлөлт хадгалагдаагүй байна. Хадгалахгүйгээр гарвал алга болно.`}
+        confirmLabel="Хадгалахгүй гарах"
+        cancelLabel="Үлдэх"
+        tone="danger"
+        onConfirm={() => {
+          setLeaving(false);
+          router.push(backHref);
+        }}
+      />
     </form>
   );
 }
