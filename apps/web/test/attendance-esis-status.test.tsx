@@ -29,6 +29,8 @@ const CHILD_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const ENROL_A = "11111111-1111-4111-8111-111111111111";
 const ENROL_B = "22222222-2222-4222-8222-222222222222";
 const TODAY = "2026-09-09";
+/** The kindergarten `sessionFor` puts on every membership. */
+const KINDERGARTEN = "33333333-3333-4333-8333-333333333333";
 
 const CHILDREN = [
   { id: CHILD_A, lastName: "Батжаргал", firstName: "Ануужин" },
@@ -37,7 +39,8 @@ const CHILDREN = [
 
 function stub(readBack: { source: "MOCK" | "LIVE"; rows: Record<string, string>[] }) {
   return stubApi([
-    { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+    // A kindergarten with ESIS — without it there is no ESIS step at all.
+    { path: "/auth/me", body: { ...sessionFor(["TEACHER"]), esisKindergartenIds: [KINDERGARTEN] } },
     {
       path: `/groups/${GROUP}/attendance/range`,
       body: {

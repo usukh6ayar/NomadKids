@@ -39,6 +39,7 @@ import {
   PhoneVerificationStep,
   usePhoneVerificationEnabled,
 } from "@/components/auth/phone-verification";
+import { useEsisLinked } from "@/lib/use-esis-linked";
 import { EsisButton } from "@/components/esis/esis-button";
 import { FactRow } from "@/components/ui/fact-row";
 import { RegisteredDevicesCard } from "@/components/settings/registered-devices";
@@ -279,6 +280,7 @@ function EditProfileDialog({
   ]);
   const phoneProof = useOwnPhoneProof(profile.phone, form.phone);
 
+  const esisLinked = useEsisLinked() === true;
   const esis = useQuery({
     queryKey: ["esis", "my-profile", primaryKindergartenId],
     queryFn: () =>
@@ -367,7 +369,8 @@ function EditProfileDialog({
         </>
       }
     >
-      {isStaff && primaryKindergartenId ? (
+      {/* «ЭСИС-ээс нөхөх» only where there is ESIS (2026-10-17). */}
+      {isStaff && primaryKindergartenId && esisLinked ? (
         <div className="flex items-center justify-between gap-3 rounded-control bg-sunken px-3 py-2">
           <p className="text-caption text-muted">ЭСИС-ээс нөхөөд, хадгалахаас өмнө шалгана.</p>
           <EsisButton pending={esis.isFetching} onClick={() => void fillFromEsis()} />

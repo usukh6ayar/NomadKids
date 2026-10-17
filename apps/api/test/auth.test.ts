@@ -283,6 +283,28 @@ describe("GET /auth/me", () => {
     expect(JSON.stringify(res.body)).not.toContain(other.id);
   });
 
+  /*
+   * ★ Which of their kindergartens has ESIS — 2026-10-17, so a teacher's
+   * register shows no ESIS step where there is no ESIS. A teacher cannot read
+   * `GET /kindergartens/:id`, where the mapping otherwise lives.
+   */
+  it("says which of their kindergartens is mapped to ESIS, to a teacher too", async () => {
+    const mapped = await createKindergarten();
+    const plain = await createKindergarten();
+    await db.kindergarten.update({
+      where: { id: mapped.id },
+      data: { esisInstitutionId: uniq("42") },
+    });
+    const user = await createUser({ username: uniq("u") });
+    await createMembership(user.id, mapped.id, "TEACHER");
+    await createMembership(user.id, plain.id, "TEACHER");
+
+    const session = await login(app, user.username);
+    const res = await request(server()).get("/v1/auth/me").set("Cookie", session.cookies);
+
+    expect(res.body.esisKindergartenIds).toEqual([mapped.id]);
+  });
+
   it("refuses an unauthenticated request", async () => {
     expect((await request(server()).get("/v1/auth/me")).status).toBe(401);
   });

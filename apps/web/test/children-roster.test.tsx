@@ -111,9 +111,9 @@ const localChildren = {
   totalPages: 1,
 };
 
-function stubRoster(roles: ("ADMIN" | "TEACHER")[] = ["ADMIN"]) {
+function stubRoster(roles: ("ADMIN" | "TEACHER")[] = ["ADMIN"], esis = true) {
   stubApi([
-    { path: "/auth/me", body: sessionFor(roles) },
+    { path: "/auth/me", body: { ...sessionFor(roles), esisKindergartenIds: esis ? [KG] : [] } },
     { path: `/kindergartens/${KG}/esis/resource`, body: read },
     { path: `/kindergartens/${KG}/esis/catalog`, body: catalog },
     { path: "/children", body: localChildren },
@@ -206,6 +206,21 @@ describe("/children — ESIS roster", () => {
    * group-scoped. Asserting on the route would ban those too and the test
    * would be pinning the wrong rule.
    */
+  /*
+   * ★ 2026-10-17, the user: a kindergarten without ESIS works the same, and
+   * nothing is asked of ESIS. The director's own roster is the screen.
+   */
+  it("asks ESIS nothing, and shows no ESIS panel, in a kindergarten without ESIS", async () => {
+    stubRoster(["ADMIN"], false);
+    renderWithProviders(<ChildrenPage />);
+
+    expect(await screen.findByText("Г.Батбаяр")).toBeInTheDocument();
+    expect(screen.queryByText("Намуун")).toBeNull();
+    expect(screen.queryByText(/ESIS-ээс регистрээр хайх/)).toBeNull();
+    const calls = vi.mocked(globalThis.fetch).mock.calls.map((call) => String(call[0]));
+    expect(calls.filter((url) => url.includes("/esis/"))).toEqual([]);
+  });
+
   it("never asks ESIS for the institution's roll on a teacher's screen", async () => {
     stubRoster(["TEACHER"]);
     renderWithProviders(<ChildrenPage />);

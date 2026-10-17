@@ -379,6 +379,44 @@ describe("«Үр дүнгийн үнэлгээ»", () => {
     expect(screen.queryByText(/Жишээ үр дүн/)).toBeNull();
   });
 
+  /*
+   * ★ 2026-10-17, the client: a solo teacher's group of unpaid children read
+   * «Бүлэгт хүүхэд алга». They are listed now, named, with no figures.
+   */
+  it("lists an unpaid solo child by name with no figures, not «Бүлэгт хүүхэд алга»", async () => {
+    setParams({ groupId: GROUP });
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: `/groups/${GROUP}/a79-summary`,
+        body: {
+          children: [
+            {
+              childId: CHILD,
+              firstName: "Ану",
+              lastName: "Батжаргал",
+              level: "III",
+              feeDue: true,
+              achieved: 0,
+              total: 0,
+              byDomain: [],
+            },
+          ],
+        },
+      },
+    ]);
+    renderWithProviders(<GroupResultsPage />);
+
+    const table = await screen.findByRole("table", { name: "Хүүхэд бүрийн үр дүн" });
+    const row = within(table).getByText("Б.Ану").closest("tr")!;
+    expect(
+      within(row)
+        .getAllByRole("cell")
+        .map((td) => td.textContent),
+    ).toEqual(["1", "Б.Ану", "III", "—", "—", "—", "—", "Төлбөр төлөгдөөгүй"]);
+    expect(screen.queryByText("Бүлэгт хүүхэд алга")).toBeNull();
+  });
+
   it("shows the child's share of criteria met, by part and one by one", async () => {
     const user = userEvent.setup();
     setParams({ groupId: GROUP, childId: CHILD });

@@ -453,6 +453,19 @@ describe("registering a child", () => {
         },
       },
       { path: "/kindergartens/", method: "POST", body: { id: CHILD_ID } },
+      // The ESIS template, as an unmapped kindergarten's API answers it.
+      {
+        path: "/kindergartens/",
+        method: "GET",
+        status: 503,
+        body: {
+          type: "about:blank",
+          title: "Алдаа",
+          detail: "ESIS холболт тохируулагдаагүй байна.",
+          status: 503,
+          requestId: "test",
+        },
+      },
     ]);
 
     renderWithProviders(<NewChildPage />);
@@ -468,7 +481,13 @@ describe("registering a child", () => {
 
     await user.click(screen.getByRole("button", { name: "Хадгалах" }));
 
-    await waitFor(() => expect(ROUTER.push).toHaveBeenCalledWith(`/children/${CHILD_ID}/general`));
+    // ★ Back to «Суралцагч» with a toast — 2026-10-17. The child's own page
+    // was a blank fee screen for a solo teacher until the family paid.
+    await waitFor(() => expect(ROUTER.push).toHaveBeenCalledWith("/children"));
+    expect(await screen.findByText("Ганболд Батбаяр бүртгэгдлээ.")).toBeInTheDocument();
+    // An unmapped kindergarten registers without any ESIS on the screen.
+    expect(screen.queryByText(/ESIS/)).toBeNull();
+    expect(screen.queryByLabelText(/Эрүүл мэнд/)).toBeNull();
 
     const post = calls.find((c) => c.method === "POST")!;
     // ★ The group has to travel with the child. Registered without one, the

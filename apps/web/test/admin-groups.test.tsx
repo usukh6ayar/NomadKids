@@ -81,7 +81,8 @@ describe("эрх", () => {
 describe("the group list", () => {
   function stubList(items = [group({ name: "Наран бүлэг", _count: { enrollments: 18 } })]) {
     return stubApi([
-      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      // A kindergarten with ESIS: the header offers «ESIS татах».
+      { path: "/auth/me", body: { ...sessionFor(["ADMIN"]), esisKindergartenIds: [KG] } },
       {
         path: "/groups",
         body: { items, page: 1, pageSize: 100, total: items.length, totalPages: 1 },
@@ -209,7 +210,7 @@ describe("the group list", () => {
   it("pulls years and groups from ESIS and says what changed", async () => {
     const user = userEvent.setup();
     const api = stubApi([
-      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: "/auth/me", body: { ...sessionFor(["ADMIN"]), esisKindergartenIds: [KG] } },
       {
         path: `/kindergartens/${KG}/esis/sync-groups`,
         method: "POST",
@@ -432,13 +433,7 @@ describe("ЭСИС рүү илгээлт", () => {
     renderWithProviders(<AdminGroupsPage />);
 
     await screen.findByRole("table", { name: "Бүлгүүдийн жагсаалт" });
-    await waitFor(() =>
-      expect(
-        api.calls.some(
-          (c) => c.url === `/v1/kindergartens/${KG}` || c.url.endsWith(`/kindergartens/${KG}`),
-        ),
-      ).toBe(true),
-    );
+    // The mapping arrives with the session (2026-10-17), so it is known by now.
     expect(screen.queryByRole("region", { name: "ЭСИС рүү илгээлт" })).toBeNull();
     expect(api.calls.some((c) => c.url.includes("/esis/group-writes"))).toBe(false);
   });

@@ -114,11 +114,34 @@ export function stubApi(routes: RouteStub[]) {
     }
 
     const status = route.status ?? 200;
+    if (path === "/auth/me" && status === 200) {
+      return jsonResponse(status, withEsisMapping(route.body, routes));
+    }
     return jsonResponse(status, route.body ?? null);
   });
 
   vi.stubGlobal("fetch", fetchMock);
   return { calls, fetchMock };
+}
+
+/**
+ * The session's `esisKindergartenIds`, as the API derives it — from the same
+ * `esisInstitutionId` a test stubs on `GET /kindergartens/:id`. A test that
+ * says "this kindergarten has (or has no) ESIS" there gets a session that
+ * agrees, as it would from the server. Without such a stub the session's own
+ * list stands.
+ */
+function withEsisMapping(body: unknown, routes: RouteStub[]): unknown {
+  if (typeof body !== "object" || body === null) return body;
+  const stated = routes.flatMap((route) => {
+    const match = /^\/kindergartens\/([^/?]+)$/.exec(route.path);
+    const stub = route.body as { esisInstitutionId?: unknown } | undefined;
+    return match && stub && "esisInstitutionId" in stub
+      ? [{ id: match[1]!, mapped: Boolean(stub.esisInstitutionId) }]
+      : [];
+  });
+  if (stated.length === 0) return body;
+  return { ...body, esisKindergartenIds: stated.filter((s) => s.mapped).map((s) => s.id) };
 }
 
 function lowerCased(headers: HeadersInit | undefined): Record<string, string> {
@@ -162,6 +185,13 @@ export function sessionFor(roles: Role[], userId = "11111111-1111-4111-8111-1111
       kindergartenId: "33333333-3333-4333-8333-333333333333",
       role,
     })),
+    /*
+     * ★ Mapped to ESIS by default — the suite was written against ESIS
+     * kindergartens. A test about one without ESIS says so: a session with
+     * `esisKindergartenIds: []`, or `esisInstitutionId: null` on its
+     * `GET /kindergartens/:id` stub (`withEsisMapping`).
+     */
+    esisKindergartenIds: ["33333333-3333-4333-8333-333333333333"],
     csrfToken: "test-csrf",
   };
 }

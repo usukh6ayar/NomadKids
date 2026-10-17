@@ -1,5 +1,6 @@
 "use client";
 
+import { LinkedText, urlsIn } from "@/components/ui/linked-text";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -1325,7 +1326,11 @@ function NotificationRow({
         */}
         {notification.title && notification.body ? (
           <p className="mt-1 text-body leading-relaxed text-ink">
-            {excerpt(notification.body, 140)}
+            {/* Outside the title's link, so an address in it opens (2026-10-17). */}
+            <LinkedText
+              text={excerpt(notification.body, 140)}
+              complete={urlsIn(notification.body)}
+            />
           </p>
         ) : null}
       </div>

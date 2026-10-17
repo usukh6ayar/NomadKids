@@ -1,5 +1,6 @@
 "use client";
 
+import { useEsisLinked } from "@/lib/use-esis-linked";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import {
@@ -41,7 +42,7 @@ import { EsisButton } from "@/components/esis/esis-button";
  * service that cannot answer says so through `EsisNoAnswer`, naming the
  * endpoint, rather than showing a fixture.
  */
-export function EsisPullButton({
+function EsisPullButtonInner({
   resource,
   params,
 }: {
@@ -468,4 +469,14 @@ function FieldCatalog({
       </TableShell>
     </section>
   );
+}
+
+/**
+ * ★ Nothing where the kindergarten has no ESIS — 2026-10-17, the user:
+ * "ESIS-гүй цэцэрлэгүүд ч адилхан ашиглаж болдог байх, ESIS-ээс зүгээр дата
+ * авахгүй, дата явуулахгүй". Gated here, once, rather than at every screen
+ * that draws one: no request leaves, and no "ESIS хариу өгсөнгүй" is drawn.
+ */
+export function EsisPullButton(props: Parameters<typeof EsisPullButtonInner>[0]) {
+  return useEsisLinked() === true ? <EsisPullButtonInner {...props} /> : null;
 }
