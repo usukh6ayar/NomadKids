@@ -231,8 +231,7 @@ export class ServiceAccessService {
 
     const priced = quote(contract, groupCount, period);
     const coversFrom = new Date(`${priced.coversFrom}T00:00:00.000Z`);
-    const alreadyPaid = () =>
-      new BadRequestException("Энэ хугацааны төлбөр аль хэдийн төлөгдсөн.");
+    const alreadyPaid = () => new BadRequestException("Энэ хугацааны төлбөр аль хэдийн төлөгдсөн.");
 
     let payment = await this.repo.findPayment(contract.id, period, coversFrom);
     if (!payment) {
@@ -419,8 +418,8 @@ export function quote(
   const first = month >= 6 ? year : year - 1;
   const yearStart = `${first}-09-01`;
   const coversTo = `${first + 1}-05-31`;
-  const terms = [`${first}-09-01`, `${first}-12-01`, `${first + 1}-03-01`].map(
-    (day) => schoolTermOn(day)!,
+  const terms = [`${first}-09-01`, `${first}-12-01`, `${first + 1}-03-01`].map((day) =>
+    schoolTermOn(day)!,
   );
   const whole = start <= yearStart || schoolTermOn(start)!.startsOn === yearStart;
   const schoolYear = `${first}–${first + 1} хичээлийн жил`;

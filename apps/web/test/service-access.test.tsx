@@ -255,7 +255,9 @@ describe("the director's «Үйлчилгээний эрх»", () => {
     ]);
     renderWithProviders(<AdminServiceAccessPage />);
 
-    expect(await screen.findByText(/II улирал \(2026\.12\.01 – 2027\.02\.28\)/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/II улирал \(2026\.12\.01 – 2027\.02\.28\)/),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: "Жилээр — хямд" })).toBeNull();
 
     await user.click(screen.getByRole("radio", { name: "Жилээр" }));

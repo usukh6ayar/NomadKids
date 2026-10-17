@@ -213,8 +213,11 @@ describe("POST /service-access/qpay", () => {
     expect(rows[0]!.status).toBe("PENDING");
     // Today's quote — a year bought after November is what is left of it.
     expect(rows[0]!.amount.toFixed(2)).toBe(
-      quote({ perGroupMonthlyFee: "4000.00", endsOn: day("2026-08-31") }, rows[0]!.groupCount, "YEAR")
-        .amount,
+      quote(
+        { perGroupMonthlyFee: "4000.00", endsOn: day("2026-08-31") },
+        rows[0]!.groupCount,
+        "YEAR",
+      ).amount,
     );
   });
 
@@ -227,7 +230,9 @@ describe("POST /service-access/qpay", () => {
 
     // No merchant in tests — both refused the same honest way.
     expect([one.status, two.status]).toEqual([400, 400]);
-    expect(await db.contractPayment.count({ where: { kindergartenId: a.kindergarten.id } })).toBe(1);
+    expect(await db.contractPayment.count({ where: { kindergartenId: a.kindergarten.id } })).toBe(
+      1,
+    );
   });
 
   // The HTTP pair above may run one after the other; this loses the race every time.
