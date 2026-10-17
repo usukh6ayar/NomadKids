@@ -72,6 +72,13 @@ export interface ServiceInvoiceParams {
   months: number;
   groupCount: number;
   perGroupMonthlyFee: string;
+  /**
+   * One group's price for the period, and the period as printed — since
+   * 2026-10-18. Absent on invoices queued before it, which print the old
+   * monthly columns.
+   */
+  perGroupAmount?: string;
+  periodLabel?: string;
   amount: string;
   kindergartenName: string;
   contractNumber: string;

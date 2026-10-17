@@ -6,15 +6,16 @@ import { createTestApp } from "./support/app";
 import { resetData, testDb } from "./support/db";
 import { authed, createScenario, login, type AuthSession, type Scenario } from "./support/fixtures";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
-import { calendarTerms } from "../src/access/access.service";
 import { currentSchoolYear } from "./support/school-year";
 
 /**
  * Child access by term as well as by the school year (#211, the user
- * 2026-10-12): 9,000₮ a term, 27,000₮ the year.
+ * 2026-10-12) — and since 2026-10-18 the term is «I-р улирал», sold through
+ * 2026-11-30 and ending on that day whenever it is bought. The prices are the
+ * sheet's (`@kinder/contracts` `CHILD_PRICES`): 5,000₮ a term, 22,000₮ a year.
  */
-process.env.ACCESS_FEE_AMOUNT = "27000.00";
-process.env.ACCESS_FEE_TERM_AMOUNT = "9000.00";
+process.env.ACCESS_FEE_AMOUNT = "22000.00";
+process.env.ACCESS_FEE_TERM_AMOUNT = "5000.00";
 
 let app: INestApplication;
 const db = testDb();
@@ -59,64 +60,115 @@ const ensure = (who: AuthSession, body?: Record<string, unknown>) =>
 const status = (who: AuthSession) =>
   authed(request(server()).get(`/v1/children/${a.child.id}/access`), who);
 
-/** The calendar term covering today, from the year's first day. */
-const calendarTerm = () =>
-  calendarTerms(YEAR.startsOn).find((t) => t.startsOn <= TODAY && TODAY <= t.endsOn);
+/**
+ * Runs `body` with the clock at `iso` (Date only), signed in on that clock —
+ * a session from the real "now" would be from the future.
+ */
+async function at<T>(iso: string, body: (session: AuthSession) => Promise<T>): Promise<T> {
+  vi.useFakeTimers({ toFake: ["Date"], now: new Date(iso) });
+  try {
+    return await body(await login(app, a.parentUser.username));
+  } finally {
+    vi.useRealTimers();
+  }
+}
 
-describe("a term or the school year", () => {
-  it("offers both prices while today is in a term", async () => {
-    const res = await status(parent);
+/** The 2026–2027 school year, which the promotion falls in, made current. */
+async function promoYear() {
+  await db.schoolYear.update({
+    where: { id: yearId },
+    data: { startsOn: new Date("2026-09-01"), endsOn: new Date("2027-05-31"), isCurrent: true },
+  });
+}
 
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ required: true, amount: "27000.00" });
-    expect(res.body.termAmount).toBe(calendarTerm() ? "9000.00" : null);
+describe("«I-р улирал» — a fixed last day, 2026-11-30", () => {
+  beforeEach(promoYear);
+
+  it.each([
+    ["18 October", "2026-10-18T03:00:00.000Z"],
+    ["29 November", "2026-11-29T03:00:00.000Z"],
+    // 23:30 on 30 November in Ulaanbaatar — the last day is inclusive.
+    ["the last evening, 30 November", "2026-11-30T15:30:00.000Z"],
+  ])("bought on %s, it charges 5,000₮ and ends on 2026-11-30", async (_label, now) => {
+    const res = await at(now, (session) => ensure(session, { period: "TERM" }));
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body).toMatchObject({ period: "TERM", termNumber: 1, amount: "5000" });
+    expect(res.body.expiresAt.slice(0, 10)).toBe("2026-11-30");
   });
 
-  it("raises one TERM row for the term covering today, apart from the year's", async () => {
-    const term = calendarTerm();
-    if (!term) return; // A summer day is in no term — the next case covers that.
+  it("offers the term beside the year until the cutoff, and only the year after it", async () => {
+    const before = await at("2026-11-30T15:30:00.000Z", (session) => status(session));
+    const after = await at("2026-11-30T16:30:00.000Z", (session) => status(session));
 
-    const first = await ensure(parent, { period: "TERM" });
-    const again = await ensure(parent, { period: "TERM" });
-    const year = await ensure(parent);
-
-    expect(first.status, JSON.stringify(first.body)).toBe(201);
-    expect(first.body).toMatchObject({ period: "TERM", termNumber: term.number });
-    expect(first.body.amount).toBe("9000");
-    expect(first.body.expiresAt.slice(0, 10)).toBe(term.endsOn.toISOString().slice(0, 10));
-    expect(again.body.id).toBe(first.body.id);
-    expect(year.body.period).toBe("YEAR");
-    expect(year.body.id).not.toBe(first.body.id);
+    expect(before.body).toMatchObject({ amount: "22000.00", termAmount: "5000.00" });
+    expect(after.body).toMatchObject({ amount: "22000.00", termAmount: null });
   });
 
-  it("uses the kindergarten's own terms when it has set them up — and only those", async () => {
-    const covering = await db.term.create({
+  it("refuses to sell the term from 1 December, by the API as by the screen", async () => {
+    // 00:30 on 1 December in Ulaanbaatar.
+    const res = await at("2026-11-30T16:30:00.000Z", (session) =>
+      ensure(session, { period: "TERM" }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(res.body.detail).toMatch(/2026\.11\.30/);
+    expect(await db.accessSubscription.count({ where: { period: "TERM" } })).toBe(0);
+  });
+
+  it("refuses an unpaid term raised before the cutoff, rather than letting it be paid after", async () => {
+    const early = await at("2026-11-20T03:00:00.000Z", (session) =>
+      ensure(session, { period: "TERM" }),
+    );
+    expect(early.status).toBe(201);
+
+    const late = await at("2026-12-02T03:00:00.000Z", (session) =>
+      ensure(session, { period: "TERM" }),
+    );
+    expect(late.status).toBe(400);
+  });
+
+  it("raises one TERM row however often it is asked, apart from the year's", async () => {
+    const [first, again, year] = await at("2026-10-18T03:00:00.000Z", async (session) => [
+      await ensure(session, { period: "TERM" }),
+      await ensure(session, { period: "TERM" }),
+      await ensure(session),
+    ]);
+
+    expect(again!.body.id).toBe(first!.body.id);
+    expect(year!.body).toMatchObject({ period: "YEAR", amount: "22000" });
+    expect(year!.body.id).not.toBe(first!.body.id);
+    // The year keeps its own policy: the school year's last day.
+    expect(year!.body.expiresAt.slice(0, 10)).toBe("2027-05-31");
+  });
+
+  it("keeps a term already paid open to its own recorded day after the cutoff", async () => {
+    await db.accessSubscription.create({
       data: {
         kindergartenId: a.kindergarten.id,
+        childId: a.child.id,
         schoolYearId: yearId,
-        number: 2,
-        name: "Намрын улирал",
-        startsOn: new Date(TODAY.getTime() - 86_400_000),
-        endsOn: new Date(TODAY.getTime() + 20 * 86_400_000),
+        period: "TERM",
+        termNumber: 1,
+        amount: "5000.00",
+        status: "ACTIVE",
+        paidAt: new Date("2026-10-20T00:00:00.000Z"),
+        expiresAt: new Date("2026-11-30T00:00:00.000Z"),
       },
     });
 
-    const res = await ensure(parent, { period: "TERM" });
+    const lastDay = await at("2026-11-30T10:00:00.000Z", (session) =>
+      authed(request(server()).get(`/v1/children/${a.child.id}`), session),
+    );
+    const nextDay = await at("2026-12-01T02:00:00.000Z", (session) =>
+      authed(request(server()).get(`/v1/children/${a.child.id}`), session),
+    );
 
-    expect(res.status).toBe(201);
-    expect(res.body.termNumber).toBe(2);
-    expect(res.body.expiresAt.slice(0, 10)).toBe(covering.endsOn.toISOString().slice(0, 10));
-
-    // A day between the kindergarten's terms is in no term.
-    await db.term.update({
-      where: { id: covering.id },
-      data: { startsOn: new Date("2001-01-01"), endsOn: new Date("2001-02-01") },
-    });
-    await db.accessSubscription.deleteMany({ where: { childId: a.child.id } });
-    const between = await ensure(parent, { period: "TERM" });
-    expect(between.status).toBe(400);
+    expect([lastDay.status, nextDay.status]).toEqual([200, 402]);
   });
+});
 
+describe("a term or the school year", () => {
   it("a paid term opens the gate until its own end", async () => {
     await db.accessSubscription.create({
       data: {

@@ -1,5 +1,15 @@
 /** Үнийн саналын нэг эх сурвалж. Бүх дэлгэц дүнг эндээс бодно. */
 
+import {
+  CHILD_PRICES,
+  FIRST_TERM_PROMO,
+  GROUP_PRICES,
+  MONTHS_IN_SCHOOL_YEAR,
+  MONTHS_IN_TERM,
+  firstTermPromoOpen,
+  localDate,
+} from "@kinder/contracts";
+
 export type PlanKey = "child" | "teacher" | "kindergarten";
 export type BillingPeriod = "term" | "year";
 
@@ -14,41 +24,40 @@ export interface Plan {
   features: string[];
 }
 
-/** 9–5 сарын хичээлийн жилийн төлбөртэй сарууд. */
-export const MONTHS_IN_SCHOOL_YEAR = 9;
-
-export const CHILD_MONTHLY_PRICE = 3_000;
-export const CHILD_STANDARD_TERM_PRICE = CHILD_MONTHLY_PRICE * 3;
-export const CHILD_STANDARD_YEAR_PRICE = CHILD_MONTHLY_PRICE * MONTHS_IN_SCHOOL_YEAR;
-/**
- * ★ The prices charged now — the discount is back (the user, 2026-10-13, with
- * a picture of the price page): 5,000₮ a term and 22,000₮ a year for a child,
- * 30,000₮ a year a group; a group's term is below. It had ended on 2026-10-11. The
- * screens show the struck-through standard price and the saving only while a
- * figure here is lower than the standard.
+/*
+ * ★ The figures come from the shared sheet (`@kinder/contracts` `pricing.ts`),
+ * which the API reads too — 2026-10-18, the client's «I-р улирал 2026» brief:
+ * one copy, so the page, the contract and the charge cannot disagree.
  */
-export const CHILD_CURRENT_TERM_PRICE = 5_000;
-export const CHILD_CURRENT_YEAR_PRICE = 22_000;
+export { MONTHS_IN_SCHOOL_YEAR };
 
-export const KINDERGARTEN_MONTHLY_PER_GROUP = 4_000;
-export const KINDERGARTEN_STANDARD_TERM_PER_GROUP = KINDERGARTEN_MONTHLY_PER_GROUP * 3;
-export const KINDERGARTEN_STANDARD_YEAR_PER_GROUP =
-  KINDERGARTEN_MONTHLY_PER_GROUP * MONTHS_IN_SCHOOL_YEAR;
+export const CHILD_MONTHLY_PRICE = CHILD_PRICES.monthly;
+export const CHILD_STANDARD_TERM_PRICE = CHILD_PRICES.termStandard;
+export const CHILD_STANDARD_YEAR_PRICE = CHILD_PRICES.yearStandard;
+export const CHILD_CURRENT_TERM_PRICE = CHILD_PRICES.termPromo;
+export const CHILD_CURRENT_YEAR_PRICE = CHILD_PRICES.year;
+
+export const KINDERGARTEN_MONTHLY_PER_GROUP = GROUP_PRICES.monthly;
+export const KINDERGARTEN_STANDARD_TERM_PER_GROUP = GROUP_PRICES.termStandard;
+export const KINDERGARTEN_STANDARD_YEAR_PER_GROUP = GROUP_PRICES.yearStandard;
 /**
- * ★ The discount is 2,000₮ a group **a month** — the user, 2026-10-14
- * («2,000₮ × 3 сар × 3 бүлэг = 18,000₮», then "Сард 2,000₮"): 6,000₮ a term.
- * It read 2,000₮ a term before.
+ * ★ 6,000₮ a group for «I-р улирал» — never 2,000₮ (the client, 2026-10-18).
+ * It was written as 2,000₮ a month × 3, and the contract printed the 2,000₮.
  */
-export const KINDERGARTEN_DISCOUNT_MONTHLY_PER_GROUP = 2_000;
-export const KINDERGARTEN_CURRENT_TERM_PER_GROUP = KINDERGARTEN_DISCOUNT_MONTHLY_PER_GROUP * 3;
-export const KINDERGARTEN_CURRENT_YEAR_PER_GROUP = 30_000;
+export const KINDERGARTEN_CURRENT_TERM_PER_GROUP = GROUP_PRICES.termPromo;
+export const KINDERGARTEN_CURRENT_YEAR_PER_GROUP = GROUP_PRICES.year;
 
-/** Whether a term is sold below its standard price now — what the discount lines hang on. */
-export const TERM_DISCOUNTED =
-  KINDERGARTEN_CURRENT_TERM_PER_GROUP < KINDERGARTEN_STANDARD_TERM_PER_GROUP;
+/**
+ * Whether «I-р улирал» is still on sale — through 2026-11-30 in Ulaanbaatar.
+ * From 1 December the page offers the year alone: no term price is defined
+ * after it, and none is invented here.
+ */
+export function termOnSale(today: string = localDate()): boolean {
+  return firstTermPromoOpen(today);
+}
 
-/** The discounted first term runs to this day — the user, 2026-10-13. */
-export const DISCOUNT_PERIOD_LABEL = "I-р улирал : 2026.11.30 хүртэл";
+/** «I-р улирал · 2026.11.30 хүртэл хүчинтэй». */
+export const DISCOUNT_PERIOD_LABEL = `${FIRST_TERM_PROMO.label} · ${FIRST_TERM_PROMO.validityLabel}`;
 
 export const PLANS: Plan[] = [
   {
@@ -108,8 +117,16 @@ export const PLANS: Plan[] = [
   },
 ];
 
-export function kindergartenTermPrice(groups: number): number {
-  return Math.max(1, Math.trunc(groups)) * KINDERGARTEN_CURRENT_TERM_PER_GROUP;
+/**
+ * A kindergarten's term, all groups: «I-р улирал» at 6,000₮ a group through
+ * 2026-11-30, and the standard 12,000₮ (4,000₮ × 3) after it — the user's
+ * rule of 2026-10-14, which `contractSchedule` applies term by term.
+ */
+export function kindergartenTermPrice(groups: number, today: string = localDate()): number {
+  const perGroup = termOnSale(today)
+    ? KINDERGARTEN_CURRENT_TERM_PER_GROUP
+    : KINDERGARTEN_STANDARD_TERM_PER_GROUP;
+  return Math.max(1, Math.trunc(groups)) * perGroup;
 }
 
 export function kindergartenYearlyPrice(groups: number): number {
@@ -139,17 +156,17 @@ export function tugrik(amount: number): string {
 }
 
 /**
- * The discounted term price holds for a term that begins on or before this day
- * — «I-р улирал : 2026.11.30 хүртэл» (the user, 2026-10-13). The year's price
- * has no end date: 30,000₮ a group stays after it (the user, 2026-10-14).
+ * The promotional term price holds for a term that begins on or before this
+ * day. The year's price has no end date: 30,000₮ a group stays after it.
  */
-export const TERM_DISCOUNT_ENDS = "2026-11-30";
-
-const MONTHS_IN_TERM = 3;
+export const TERM_DISCOUNT_ENDS = FIRST_TERM_PROMO.endsOn;
 
 export interface ContractLine {
   label: string;
-  /** A term's monthly rate a group, or `null` for a school year. */
+  /**
+   * A standard term's monthly rate a group; `null` for a school year and for
+   * «I-р улирал», which is priced as a term (6,000₮), not as a month.
+   */
   perMonth: number | null;
   /** 3 for a term, `null` for a school year. */
   months: number | null;
@@ -229,14 +246,14 @@ export function contractSchedule(
       const from = `${term.fromNext ? year + 1 : year}-${term.from}`;
       const to = `${term.toNext ? year + 1 : year}-${term.to}`;
       if (from > endsOn || to < startsOn) continue;
-      const discounted = from <= TERM_DISCOUNT_ENDS && TERM_DISCOUNTED;
-      const perMonth = discounted
-        ? KINDERGARTEN_DISCOUNT_MONTHLY_PER_GROUP
-        : KINDERGARTEN_MONTHLY_PER_GROUP;
-      const perGroup = perMonth * MONTHS_IN_TERM;
+      const discounted = from <= TERM_DISCOUNT_ENDS;
+      // A promotional term is priced as a term (6,000₮), never as a month.
+      const perGroup = discounted
+        ? KINDERGARTEN_CURRENT_TERM_PER_GROUP
+        : KINDERGARTEN_STANDARD_TERM_PER_GROUP;
       lines.push({
         label: first === last ? term.name : `${span} · ${term.name}`,
-        perMonth,
+        perMonth: discounted ? null : KINDERGARTEN_MONTHLY_PER_GROUP,
         months: MONTHS_IN_TERM,
         groups,
         perGroup,

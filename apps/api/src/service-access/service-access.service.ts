@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { localDate } from "@kinder/contracts";
+import { FIRST_TERM_PROMO, GROUP_PRICES, firstTermPromoOpen, localDate } from "@kinder/contracts";
 import Decimal from "decimal.js";
 import { AuditRepository } from "../audit/audit.repository";
 import type { Actor } from "../authz/actor";
@@ -25,8 +25,9 @@ type Period = keyof typeof MONTHS;
  * ★ A director of a **contracted** kindergarten only. A solo workspace never
  * pays (teachers never pay — #195), so it is a 404 here.
  *
- * ★★ The price is the contract's frozen `perGroupMonthlyFee`, × the groups
- * running now × 3 or 9 months — not a third copy of the price sheet. A
+ * ★★ The price is the shared sheet's (`@kinder/contracts` `GROUP_PRICES`)
+ * for a contract at the standard monthly fee, × the groups running now, and
+ * `perGroupMonthlyFee × months` for a negotiated one — `perGroupFor`. A
  * contract from before per-group pricing has none, and its renewal is the
  * operator's to quote.
  *
@@ -110,6 +111,8 @@ export class ServiceAccessService {
       months: MONTHS[period],
       groupCount,
       perGroupMonthlyFee: fee,
+      perGroupAmount: perGroupFor(fee, period),
+      periodLabel: periodLabelFor(fee, period),
       amount: amountFor(fee, groupCount, period),
       kindergartenName: kindergarten.name,
       contractNumber: contract.number,
@@ -226,8 +229,39 @@ export class ServiceAccessService {
 }
 
 /** fee × groups × months, in decimal.js — never floats for money (§2.2). */
+/**
+ * One group's price for the period.
+ *
+ * ★ The price sheet's, when the contract is at the standard 4,000₮ a month —
+ * 2026-10-18, the client's brief. `fee × 9` made a year 36,000₮ a group where
+ * the agreed year is 30,000₮, and a term 12,000₮ while «I-р улирал» is
+ * 6,000₮ (through 2026-11-30, then the standard 12,000₮). A contract signed
+ * at a negotiated monthly fee keeps `fee × months`: that figure is the
+ * operator's agreement, not the sheet's.
+ */
+function perGroupFor(fee: string, period: Period, today: string = localDate()): string {
+  if (new Decimal(fee).equals(GROUP_PRICES.monthly)) {
+    const sheet =
+      period === "YEAR"
+        ? GROUP_PRICES.year
+        : firstTermPromoOpen(today)
+          ? GROUP_PRICES.termPromo
+          : GROUP_PRICES.termStandard;
+    return new Decimal(sheet).toFixed(2);
+  }
+  return new Decimal(fee).times(MONTHS[period]).toFixed(2);
+}
+
 function amountFor(fee: string, groups: number, period: Period): string {
-  return new Decimal(fee).times(groups).times(MONTHS[period]).toFixed(2);
+  return new Decimal(perGroupFor(fee, period)).times(groups).toFixed(2);
+}
+
+/** «I-р улирал · 2026.11.30 хүртэл» while the promotion prices the term. */
+function periodLabelFor(fee: string, period: Period, today: string = localDate()): string {
+  if (period === "YEAR") return "Хичээлийн жил";
+  return new Decimal(fee).equals(GROUP_PRICES.monthly) && firstTermPromoOpen(today)
+    ? `${FIRST_TERM_PROMO.label} · ${FIRST_TERM_PROMO.endsOn.replaceAll("-", ".")} хүртэл`
+    : "Нэг улирал";
 }
 
 /** Whole days from Ulaanbaatar's today to a DATE column's day. */

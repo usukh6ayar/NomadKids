@@ -187,6 +187,21 @@ describe("reconciling a payment", () => {
     expect(h.repo.findById).toHaveBeenCalled();
   });
 
+  /* ★ 2026-10-18: a short payment opens nothing — the amount is the row's, never assumed. */
+  it("opens nothing when QPay reports less paid than the row's amount", async () => {
+    const h = harness();
+    h.checkPayment.mockResolvedValueOnce({
+      count: 1,
+      rows: [{ payment_id: "p-1", payment_status: "PAID", payment_amount: "100" }],
+    });
+
+    const result = await h.service.status(actor, "child-1");
+
+    expect(h.markPaid).not.toHaveBeenCalled();
+    expect(h.repo.claimForPayment).not.toHaveBeenCalled();
+    expect(result.status).toBe("PENDING");
+  });
+
   it("changes nothing while QPay has not confirmed payment yet", async () => {
     const h = harness();
     h.checkPayment.mockResolvedValueOnce({ count: 0, rows: [] });

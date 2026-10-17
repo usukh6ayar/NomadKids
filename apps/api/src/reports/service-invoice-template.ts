@@ -46,7 +46,51 @@ ${baseCss()}
   <p><strong>Төлөгч:</strong> ${esc(data.kindergartenName)}</p>
   <p><strong>Хүлээн авагч:</strong> ${esc(data.bank.holder)}</p>
 
-  <table>
+  ${data.perGroupAmount ? periodTable(data) : monthlyTable(data)}
+
+  <dl class="bank">
+    <dt>Банк</dt><dd>${esc(data.bank.name)}</dd>
+    <dt>Дансны дугаар</dt><dd>${esc(data.bank.account)}</dd>
+    <dt>Данс эзэмшигч</dt><dd>${esc(data.bank.holder)}</dd>
+    <dt>Гүйлгээний утга</dt><dd>${esc(data.contractNumber)} ${esc(data.kindergartenName)}</dd>
+  </dl>
+</main>
+</body>
+</html>`;
+}
+
+export function serviceInvoiceChrome(kindergartenName: string) {
+  return reportChrome("Нэхэмжлэх", kindergartenName);
+}
+
+/** Since 2026-10-18: one group's price for the period, as the price sheet states it. */
+function periodTable(data: ServiceInvoiceParams): string {
+  return `<table>
+    <thead>
+      <tr>
+        <th>Үйлчилгээ</th>
+        <th class="num">Бүлэг</th>
+        <th class="num">Нэг бүлгийн төлбөр</th>
+        <th class="num">Дүн</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>NomadKids үйлчилгээний эрх — ${esc(data.periodLabel ?? PERIOD_LABEL[data.period])}</td>
+        <td class="num">${esc(data.groupCount)}</td>
+        <td class="num">${esc(money(data.perGroupAmount ?? "0"))}</td>
+        <td class="num">${esc(money(data.amount))}</td>
+      </tr>
+    </tbody>
+    <tfoot>
+      <tr><td colspan="3">Нийт төлөх дүн</td><td class="num">${esc(money(data.amount))}</td></tr>
+    </tfoot>
+  </table>`;
+}
+
+/** An invoice queued before 2026-10-18 — the monthly fee × months it was issued with. */
+function monthlyTable(data: ServiceInvoiceParams): string {
+  return `<table>
     <thead>
       <tr>
         <th>Үйлчилгээ</th>
@@ -68,19 +112,5 @@ ${baseCss()}
     <tfoot>
       <tr><td colspan="4">Нийт төлөх дүн</td><td class="num">${esc(money(data.amount))}</td></tr>
     </tfoot>
-  </table>
-
-  <dl class="bank">
-    <dt>Банк</dt><dd>${esc(data.bank.name)}</dd>
-    <dt>Дансны дугаар</dt><dd>${esc(data.bank.account)}</dd>
-    <dt>Данс эзэмшигч</dt><dd>${esc(data.bank.holder)}</dd>
-    <dt>Гүйлгээний утга</dt><dd>${esc(data.contractNumber)} ${esc(data.kindergartenName)}</dd>
-  </dl>
-</main>
-</body>
-</html>`;
-}
-
-export function serviceInvoiceChrome(kindergartenName: string) {
-  return reportChrome("Нэхэмжлэх", kindergartenName);
+  </table>`;
 }
