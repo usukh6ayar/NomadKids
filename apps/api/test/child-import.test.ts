@@ -257,3 +257,61 @@ describe("rosters in the shapes kindergartens actually have", () => {
     expect(JSON.stringify(res.body)).toContain(".xlsx");
   });
 });
+
+/*
+ * ★ 2026-10-18, the user: «овог нэр регистер төрсөн он сар хүйс» — headings
+ * as teachers write them, columns in any order, the register standing in for
+ * an empty birth date and sex, and the template's «Жишээ» rows never imported.
+ */
+describe("a roster as teachers write it", () => {
+  async function workbook(rows: unknown[][]) {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Sheet1");
+    for (const row of rows) ws.addRow(row);
+    return Buffer.from(await wb.xlsx.writeBuffer());
+  }
+
+  it("reads «Регистер» and «Төрсөн он сар» in any order, and the register's birth date and sex", async () => {
+    const { parseChildWorkbook } = await import("../src/children/child-import");
+    const result = await parseChildWorkbook(
+      await workbook([
+        ["Хүйс", "Регистер", "Нэр", "Төрсөн он сар", "Овог"],
+        ["Эрэгтэй", "УП21241512", "Тэмүүлэн", "2021-04-15", "Батын"],
+        [null, "УП20310324", "Анужин", null, "Доржийн"],
+      ]),
+    );
+
+    expect(result.problems).toEqual([]);
+    expect(
+      result.rows.map((r) => [r.lastName, r.firstName, r.sex, r.dateOfBirth, r.nationalId]),
+    ).toEqual([
+      ["Батын", "Тэмүүлэн", "MALE", "2021-04-15", "УП21241512"],
+      ["Доржийн", "Анужин", "FEMALE", "2020-11-03", "УП20310324"],
+    ]);
+  });
+
+  it("reads a heading with a note after it", async () => {
+    const { parseChildWorkbook } = await import("../src/children/child-import");
+    const result = await parseChildWorkbook(
+      await workbook([
+        ["Овог", "Нэр", "Төрсөн огноо (жил-сар-өдөр)", "Хүйс (эр/эм)"],
+        ["Батын", "Тэмүүлэн", "2021-04-15", "эр"],
+      ]),
+    );
+
+    expect(result.rows).toHaveLength(1);
+  });
+
+  it("imports nothing from the template's «Жишээ» rows", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { parseChildWorkbook } = await import("../src/children/child-import");
+    const template = readFileSync(
+      join(__dirname, "../../web/public/templates/huuhdiin-burtgel-zagvar.xlsx"),
+    );
+
+    const result = await parseChildWorkbook(template);
+
+    expect(result).toEqual({ rows: [], problems: [] });
+  });
+});

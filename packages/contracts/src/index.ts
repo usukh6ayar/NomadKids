@@ -42,6 +42,7 @@ export * from "./pagination";
 export * from "./password";
 export * from "./phone-verification";
 export * from "./pricing";
+export * from "./register";
 export * from "./working-days";
 export * from "./problem";
 export * from "./solo-teacher";

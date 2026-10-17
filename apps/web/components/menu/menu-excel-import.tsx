@@ -149,6 +149,18 @@ export function MenuExcelImport({
         ) : null}
       </div>
 
+      {/* One fixed template, examples marked «Жишээ» — 2026-10-18, the user. */}
+      <p className="text-caption text-muted">
+        Загвар: Огноо · Хоолны цаг · Хоолны нэр · Порц · Ккал ·{" "}
+        <a
+          href="/templates/hoolny-tses-zagvar.xlsx"
+          download
+          className="font-medium text-primary hover:underline"
+        >
+          Загвар татах
+        </a>
+      </p>
+
       {file ? <p className="truncate text-caption text-muted">{file.name}</p> : null}
       {run.isPending && !preview ? (
         <p className="text-caption text-muted">Файлыг шалгаж байна…</p>
