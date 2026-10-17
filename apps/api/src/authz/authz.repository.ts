@@ -667,9 +667,7 @@ export class AuthzRepository {
     return child !== null;
   }
 
-  async loadOwnKindergartens(
-    actor: Actor,
-  ): Promise<
+  async loadOwnKindergartens(actor: Actor): Promise<
     {
       id: string;
       name: string;
