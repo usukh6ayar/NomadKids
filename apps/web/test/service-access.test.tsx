@@ -229,6 +229,42 @@ describe("the director's «Үйлчилгээний эрх»", () => {
     ).toEqual({ period: "year" });
   });
 
+  /*
+   * ★ The user, 2026-10-18: from December «Жилээр» is what is left of the
+   * school year, priced as terms — never called cheap, and named by its terms.
+   */
+  it("names the year's remainder by its terms, and never calls it cheap", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: "/service-access",
+        body: {
+          expiresAt: inDays(7),
+          period: "term",
+          groupCount: 2,
+          termAmount: "24000.00",
+          yearAmount: "48000.00",
+          termCoversTo: "2027-02-28",
+          yearCoversTo: "2027-05-31",
+          termLabel: "II улирал (2026.12.01 – 2027.02.28)",
+          yearLabel: "2026–2027 хичээлийн жил, II улирал, III улирал",
+          yearWhole: false,
+        },
+      },
+    ]);
+    renderWithProviders(<AdminServiceAccessPage />);
+
+    expect(
+      await screen.findByText(/II улирал \(2026\.12\.01 – 2027\.02\.28\)/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "Жилээр — хямд" })).toBeNull();
+
+    await user.click(screen.getByRole("radio", { name: "Жилээр" }));
+    expect(screen.getByText(/2026–2027 хичээлийн жил, II улирал, III улирал/)).toBeInTheDocument();
+    expect(screen.getByText("48,000₮")).toBeInTheDocument();
+  });
+
   it("says the contract details are coming while the API does not answer", async () => {
     stubApi([{ path: "/auth/me", body: sessionFor(["ADMIN"]) }]);
     renderWithProviders(<AdminServiceAccessPage />);

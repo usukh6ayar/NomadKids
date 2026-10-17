@@ -66,6 +66,8 @@ export class ServiceAccessService {
     const expiresAt = contract?.endsOn ?? null;
     const daysLeft = expiresAt ? daysUntil(expiresAt) : null;
     const fee = contract?.perGroupMonthlyFee ?? null;
+    const term = contract ? quote(contract, groupCount, "TERM") : null;
+    const year = contract ? quote(contract, groupCount, "YEAR") : null;
 
     return {
       kindergartenId: kindergarten.id,
@@ -80,11 +82,22 @@ export class ServiceAccessService {
       daysLeft,
       remind: daysLeft !== null && daysLeft <= REMIND_DAYS,
       perGroupMonthlyFee: fee?.toString() ?? null,
-      termAmount: fee && contract ? quote(contract, groupCount, "TERM").amount : null,
-      yearAmount: fee && contract ? quote(contract, groupCount, "YEAR").amount : null,
+      termAmount: fee ? (term?.amount ?? null) : null,
+      yearAmount: fee ? (year?.amount ?? null) : null,
       // What each would extend the contract to — said before the QR (№6).
-      termCoversTo: contract ? quote(contract, groupCount, "TERM").coversTo : null,
-      yearCoversTo: contract ? quote(contract, groupCount, "YEAR").coversTo : null,
+      termCoversTo: term?.coversTo ?? null,
+      yearCoversTo: year?.coversTo ?? null,
+      /*
+       * What each period is, as the invoice and the QR name it — «II улирал
+       * (2026.12.01 – 2027.02.28)», «2026–2027 хичээлийн жил, II улирал, III
+       * улирал». From December "the year" is what is left of it, priced as
+       * terms (the user, 2026-10-18), so the screen cannot say «хичээлийн жил»
+       * on its own.
+       */
+      termLabel: term?.label ?? null,
+      yearLabel: year?.label ?? null,
+      // Whether «Жилээр» is the whole school year at the year's price.
+      yearWhole: year ? year.months === MONTHS.YEAR : null,
     };
   }
 
@@ -120,7 +133,7 @@ export class ServiceAccessService {
     const priced = quote(contract, groupCount, period);
     const invoice: ServiceInvoiceParams = {
       period,
-      months: MONTHS[period],
+      months: priced.months,
       groupCount,
       perGroupMonthlyFee: fee,
       perGroupAmount: priced.perGroup,
@@ -218,19 +231,13 @@ export class ServiceAccessService {
 
     const priced = quote(contract, groupCount, period);
     const coversFrom = new Date(`${priced.coversFrom}T00:00:00.000Z`);
+    const alreadyPaid = () => new BadRequestException("Энэ хугацааны төлбөр аль хэдийн төлөгдсөн.");
+
     let payment = await this.repo.findPayment(contract.id, period, coversFrom);
-    if (payment?.status === "PAID") {
-      throw new BadRequestException("Энэ хугацааны төлбөр аль хэдийн төлөгдсөн.");
-    }
-    if (payment && payment.amount.toFixed(2) !== priced.amount) {
-      await this.repo.repricePending(payment.id, {
-        groupCount,
-        perGroupAmount: priced.perGroup,
-        amount: priced.amount,
-      });
-    }
     if (!payment) {
-      payment = await this.repo.createPayment({
+      // ★ Two requests at once (a double tap, two tabs) both find nothing; the
+      // unique key lets one create, and the other reads that row back.
+      const { row, created } = await this.repo.createPayment({
         kindergartenId: kindergarten.id,
         contractId: contract.id,
         period,
@@ -242,13 +249,40 @@ export class ServiceAccessService {
         amount: priced.amount,
         createdById: actor.userId,
       });
+      payment = row;
+      if (created) {
+        await this.audit.append({
+          action: "CREATE",
+          kindergartenId: kindergarten.id,
+          actorUserId: actor.userId,
+          objectType: "ContractPayment",
+          objectId: row.id,
+          metadata: { period, coversTo: priced.coversTo, groupCount, amount: priced.amount },
+        });
+      }
+    }
+    if (payment.status === "PAID") throw alreadyPaid();
+
+    if (payment.amount.toFixed(2) !== priced.amount) {
+      // ★ The groups changed since the last QR. An older QR may still be paid
+      // at its own amount — the claim records what QPay took, not this
+      // (`QpayRepository.markContractPaymentPaid`).
+      const before = {
+        groupCount: payment.groupCount,
+        perGroupAmount: payment.perGroupAmount.toFixed(2),
+        amount: payment.amount.toFixed(2),
+      };
+      const after = { groupCount, perGroupAmount: priced.perGroup, amount: priced.amount };
+      const repriced = await this.repo.repricePending(payment.id, after);
+      // Paid between the read and the update — never draw a second QR for it.
+      if (repriced.count === 0) throw alreadyPaid();
       await this.audit.append({
-        action: "CREATE",
+        action: "UPDATE",
         kindergartenId: kindergarten.id,
         actorUserId: actor.userId,
         objectType: "ContractPayment",
         objectId: payment.id,
-        metadata: { period, coversTo: priced.coversTo, groupCount, amount: priced.amount },
+        metadata: { before, after },
       });
     }
 
@@ -258,7 +292,10 @@ export class ServiceAccessService {
       amount: priced.amount,
       description: `${kindergarten.name}, ${priced.label}`,
     });
-    return { payment: paymentView({ ...payment, amount: priced.amount }), attempt };
+    return {
+      payment: paymentView({ ...payment, groupCount, amount: priced.amount }),
+      attempt,
+    };
   }
 
   /** One of this kindergarten's contract payments and its latest QR, reconciled. */
@@ -330,6 +367,12 @@ type ContractForQuote = { perGroupMonthlyFee: { toString(): string } | null; end
  * periods, as a contract starting mid-term pays the whole term (the user,
  * 2026-10-14).
  *
+ * ★ A year never re-sells a term already paid (review of #258, 2026-10-18).
+ * From inside a school year — a contract running to 2026-11-30 after
+ * «I-р улирал» — "the year" is what is left of it, from the term that day
+ * falls in to 31 May, priced as those terms: `endsOn` 2026-11-30 bought
+ * 2026-09-01..2027-05-31 at the whole year's 30,000₮ a group before.
+ *
  * ★★ The price is the sheet's for a contract at the standard 4,000₮ a month
  * — 30,000₮ a group a year, «I-р улирал» 6,000₮ through 2026-11-30, then
  * 12,000₮ a term — and `fee × months` for a negotiated monthly fee, which is
@@ -344,45 +387,68 @@ export function quote(
   coversFrom: string;
   coversTo: string;
   term: SchoolTerm | null;
+  months: number;
   perGroup: string;
   amount: string;
   label: string;
 } {
   const ends = contract.endsOn.toISOString().slice(0, 10);
   const start = ends >= today ? addDay(ends) : today;
-
-  let coversFrom: string;
-  let coversTo: string;
-  let term: SchoolTerm | null = null;
-  if (period === "TERM") {
-    term = schoolTermOn(start) ?? schoolTermOn(`${Number(start.slice(0, 4))}-09-01`)!;
-    coversFrom = term.startsOn;
-    coversTo = term.endsOn;
-  } else {
-    const year = Number(start.slice(0, 4));
-    const month = Number(start.slice(5, 7));
-    const first = month >= 6 ? year : year - 1;
-    coversFrom = `${first}-09-01`;
-    coversTo = `${first + 1}-05-31`;
-  }
-
   const fee = contract.perGroupMonthlyFee?.toString() ?? "0";
   const standard = new Decimal(fee).equals(GROUP_PRICES.monthly);
-  const perGroup = standard
-    ? new Decimal(period === "YEAR" ? GROUP_PRICES.year : groupTermPrice(term!))
-    : new Decimal(fee).times(MONTHS[period]);
-  const label =
-    period === "YEAR"
-      ? `${coversFrom.slice(0, 4)}–${coversTo.slice(0, 4)} хичээлийн жил`
-      : `${term!.label} (${coversFrom.replaceAll("-", ".")} – ${coversTo.replaceAll("-", ".")})`;
+  const termPrice = (term: SchoolTerm) =>
+    standard ? new Decimal(groupTermPrice(term)) : new Decimal(fee).times(MONTHS.TERM);
 
+  if (period === "TERM") {
+    const term = schoolTermOn(start) ?? schoolTermOn(`${Number(start.slice(0, 4))}-09-01`)!;
+    const perGroup = termPrice(term);
+    return {
+      coversFrom: term.startsOn,
+      coversTo: term.endsOn,
+      term,
+      months: MONTHS.TERM,
+      perGroup: perGroup.toFixed(2),
+      amount: perGroup.times(Math.max(0, groups)).toFixed(2),
+      label: `${term.label} (${term.startsOn.replaceAll("-", ".")} – ${term.endsOn.replaceAll("-", ".")})`,
+    };
+  }
+
+  const year = Number(start.slice(0, 4));
+  const month = Number(start.slice(5, 7));
+  const first = month >= 6 ? year : year - 1;
+  const yearStart = `${first}-09-01`;
+  const coversTo = `${first + 1}-05-31`;
+  const terms = [`${first}-09-01`, `${first}-12-01`, `${first + 1}-03-01`].map((day) =>
+    schoolTermOn(day)!,
+  );
+  const whole = start <= yearStart || schoolTermOn(start)!.startsOn === yearStart;
+  const schoolYear = `${first}–${first + 1} хичээлийн жил`;
+
+  if (whole) {
+    const perGroup = standard
+      ? new Decimal(GROUP_PRICES.year)
+      : new Decimal(fee).times(MONTHS.YEAR);
+    return {
+      coversFrom: yearStart,
+      coversTo,
+      term: null,
+      months: MONTHS.YEAR,
+      perGroup: perGroup.toFixed(2),
+      amount: perGroup.times(Math.max(0, groups)).toFixed(2),
+      label: schoolYear,
+    };
+  }
+
+  const left = terms.filter((term) => term.endsOn >= start);
+  const perGroup = left.reduce((sum, term) => sum.plus(termPrice(term)), new Decimal(0));
   return {
-    coversFrom,
+    coversFrom: left[0]!.startsOn,
     coversTo,
-    term,
+    term: null,
+    months: MONTHS.TERM * left.length,
     perGroup: perGroup.toFixed(2),
     amount: perGroup.times(Math.max(0, groups)).toFixed(2),
-    label,
+    label: `${schoolYear}, ${left.map((term) => term.label).join(", ")}`,
   };
 }
 
