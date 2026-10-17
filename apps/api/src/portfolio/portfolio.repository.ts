@@ -52,6 +52,22 @@ export class PortfolioRepository {
     });
   }
 
+  async findGraduationLetter(childId: string) {
+    return this.prisma.childProfile.findFirst({
+      where: { childId, deletedAt: null },
+      select: { graduationLetter: true },
+    });
+  }
+
+  async upsertGraduationLetter(childId: string, kindergartenId: string, letter: string | null) {
+    return this.prisma.childProfile.upsert({
+      where: { childId },
+      create: { childId, kindergartenId, graduationLetter: letter },
+      update: { graduationLetter: letter, deletedAt: null },
+      select: { id: true, graduationLetter: true },
+    });
+  }
+
   // ── Age profiles ──────────────────────────────────────────────────────────
 
   async listAgeProfiles(childId: string) {

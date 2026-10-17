@@ -993,3 +993,56 @@ describe("parent B isolation", () => {
     expect([read.status, write.status]).toEqual([404, 404]);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The graduation letter — staff write it, kept apart from the age notes
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("graduation letter", () => {
+  const letterRoute = (childId: string) => `/v1/children/${childId}/graduation-letter`;
+
+  it("a teacher writes it and reads it back", async () => {
+    const save = await authed(request(server()).patch(letterRoute(a.child.id)), teacherA).send({
+      letter: "Хайрт шавьдаа",
+    });
+    expect(save.status).toBe(200);
+
+    const read = await request(server())
+      .get(letterRoute(a.child.id))
+      .set("Cookie", teacherA.cookies);
+    expect(read.body).toEqual({ letter: "Хайрт шавьдаа" });
+  });
+
+  it("a guardian cannot write it — 404", async () => {
+    const res = await authed(request(server()).patch(letterRoute(a.child.id)), parentA).send({
+      letter: "халдлага",
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("teacher from another group gets 404", async () => {
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Өөр бүлэг");
+    const child = await createChild(a.kindergarten.id, { firstName: "Хол" });
+    await enrollChild(a.kindergarten.id, child.id, other.id, a.schoolYear.id);
+
+    const read = await request(server()).get(letterRoute(child.id)).set("Cookie", teacherA.cookies);
+    const write = await authed(request(server()).patch(letterRoute(child.id)), teacherA).send({
+      letter: "халдлага",
+    });
+    expect([read.status, write.status]).toEqual([404, 404]);
+  });
+
+  it("guardian of another child gets 404", async () => {
+    const res = await request(server()).get(letterRoute(b.child.id)).set("Cookie", parentA.cookies);
+    expect(res.status).toBe(404);
+  });
+
+  it("user from another kindergarten gets 404", async () => {
+    const adminB = await login(app, b.adminUser.username);
+    const read = await request(server()).get(letterRoute(a.child.id)).set("Cookie", adminB.cookies);
+    const write = await authed(request(server()).patch(letterRoute(a.child.id)), adminB).send({
+      letter: "халдлага",
+    });
+    expect([read.status, write.status]).toEqual([404, 404]);
+  });
+});

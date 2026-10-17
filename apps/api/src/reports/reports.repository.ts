@@ -335,6 +335,7 @@ export class ReportsRepository {
       birthdayNotes,
       observations,
       assessments,
+      artworks,
       artworkComparisons,
       growthMeasurements,
       milestones,
@@ -378,6 +379,27 @@ export class ReportsRepository {
           term: { select: { name: true } },
           domain: { select: { name: true } },
           level: { select: { label: true, color: true } },
+        },
+      }),
+      // Every saved work, not only works that have been paired into an
+      // advancement comparison. `activityName` is the selected ARTWORK_TYPES
+      // value on an artwork observation.
+      this.prisma.mediaFile.findMany({
+        where: {
+          childId,
+          deletedAt: null,
+          status: "READY",
+          OR: [{ category: "ARTWORK" }, { observation: { is: { type: { code: "artwork" } } } }],
+        },
+        orderBy: [{ takenAt: { sort: "asc", nulls: "last" } }, { uploadedAt: "asc" }],
+        select: {
+          id: true,
+          storageKey: true,
+          age: true,
+          caption: true,
+          takenAt: true,
+          uploadedAt: true,
+          observation: { select: { activityName: true, observedOn: true } },
         },
       }),
       /*
@@ -431,8 +453,11 @@ export class ReportsRepository {
           status: "READY",
           purpose: "CHILD_PHOTO",
           observationId: null,
-          age: { in: [2, 3, 4, 5] },
-          OR: [{ category: { in: [...AGE_ALBUM_CATEGORIES] } }, { albumCategoryId: { not: null } }],
+          OR: [
+            { category: { in: [...AGE_ALBUM_CATEGORIES, "FIRST_DAY", "GRADUATION"] } },
+            { albumCategoryId: { not: null } },
+            { attribution: "TEACHER" },
+          ],
         },
         orderBy: [
           { age: "asc" },
@@ -447,12 +472,10 @@ export class ReportsRepository {
           caption: true,
           takenAt: true,
           category: true,
+          attribution: true,
           albumCoverAge: true,
           albumCategory: { select: { name: true } },
         },
-        // The service keeps at most three per age. This cap also protects a
-        // child whose historical rows predate the current per-card limit.
-        take: 40,
       }),
     ]);
 
@@ -467,6 +490,7 @@ export class ReportsRepository {
       birthdayNotes,
       observations,
       assessments,
+      artworks,
       artworkComparisons,
       growthMeasurements,
       milestones,
@@ -623,7 +647,24 @@ export class ReportsRepository {
             endedOn: true,
             status: true,
             kindergarten: { select: { name: true } },
-            group: { select: { name: true } },
+            group: {
+              select: {
+                name: true,
+                teachers: {
+                  where: {
+                    deletedAt: null,
+                    endedOn: null,
+                    membership: { is: { isActive: true, deletedAt: null } },
+                  },
+                  orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+                  select: {
+                    membership: {
+                      select: { user: { select: { lastName: true, firstName: true } } },
+                    },
+                  },
+                },
+              },
+            },
             schoolYear: { select: { name: true } },
           },
           orderBy: { startedOn: "asc" },

@@ -6,7 +6,12 @@ import { isGuardianOf } from "../authz/child-access";
 import type { Actor } from "../authz/actor";
 import { PortfolioRepository } from "./portfolio.repository";
 import { rejectedAgeProfileFields } from "./portfolio-fields";
-import type { UpdateAboutMeDto, UpdateAgeProfileDto, UpdateBirthdayNoteDto } from "./portfolio.dto";
+import type {
+  UpdateAboutMeDto,
+  UpdateAgeProfileDto,
+  UpdateBirthdayNoteDto,
+  UpdateGraduationLetterDto,
+} from "./portfolio.dto";
 
 /**
  * The child's portfolio: "Миний тухай", ages 2–5, birthday notes.
@@ -149,6 +154,34 @@ export class PortfolioService {
     }
 
     return saved;
+  }
+
+  async getGraduationLetter(actor: Actor, childId: string) {
+    await this.childAccess.assertCanAccess(actor, childId);
+    const row = await this.repo.findGraduationLetter(childId);
+    return { letter: row?.graduationLetter ?? null };
+  }
+
+  async updateGraduationLetter(actor: Actor, childId: string, dto: UpdateGraduationLetterDto) {
+    const facts = await this.childAccess.assertCanRecord(actor, childId);
+    const letter = dto.letter?.trim() || null;
+    const saved = await this.repo.upsertGraduationLetter(
+      childId,
+      facts.childKindergartenId,
+      letter,
+    );
+
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId: facts.childKindergartenId,
+      actorUserId: actor.userId,
+      objectType: "ChildProfile",
+      objectId: saved.id,
+      childId,
+      metadata: { fields: ["graduationLetter"] },
+    });
+
+    return { letter: saved.graduationLetter };
   }
 
   // ── Age profiles ──────────────────────────────────────────────────────────

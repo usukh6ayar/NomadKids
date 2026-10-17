@@ -36,6 +36,7 @@ import { MY_CHILDREN } from "@/lib/vocabulary";
 import { z } from "zod";
 import { ChildPhotoButton } from "@/components/child/child-photo-button";
 import { GroupGuardianInvitations } from "@/components/child/group-guardian-invitations";
+import { GroupGraduationLetter } from "@/components/child/group-graduation-letter";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
 
 const listSchema = paginated(childSummarySchema);
@@ -129,6 +130,14 @@ const ROSTER_SIZE = 100;
  */
 const PHONE_COMPACT =
   "max-sm:h-10 max-sm:flex-auto max-sm:gap-1 max-sm:px-1.5 max-sm:text-compact max-sm:[&_svg]:size-3";
+
+/**
+ * «Excel · Импорт · Бүлгээр урих» as icons alone on a phone — the user,
+ * 2026-10-17, so «Захиа» fits the same line. The words stay for a screen
+ * reader (`max-sm:sr-only`) and come back from `sm`.
+ */
+const PHONE_ICON = "max-sm:h-10 max-sm:flex-none max-sm:px-2.5 max-sm:[&_svg]:size-4";
+const PHONE_HIDDEN_LABEL = "max-sm:sr-only";
 
 function StaffChildren() {
   const { primaryKindergartenId, hasRole } = useSession();
@@ -256,7 +265,8 @@ function StaffChildren() {
             ★ One line on a phone — client, 2026-10-06: «Excel · Импорт ·
             Бүлгээр урих · Хүүхэд» side by side, filling the line exactly (13px
             against 15px, `PHONE_COMPACT`). From `sm` the buttons are their
-            usual size.
+            usual size. Since 2026-10-17 «Захиа» joins them and the first three
+            are icons alone on a phone (`PHONE_ICON`).
 
             ★★ `flex-wrap` stays as the guard it always was: at 390px this row
             once pushed the page to 469px wide. Sized as it is the row fits one
@@ -277,18 +287,20 @@ function StaffChildren() {
             */}
             {primaryKindergartenId ? (
               <>
-                <Button asChild size="sm" variant="secondary" className={PHONE_COMPACT}>
+                <Button asChild size="sm" variant="secondary" className={PHONE_ICON}>
                   <a
                     href={downloadUrl(
                       `/kindergartens/${primaryKindergartenId}/children/export${exportQuery}`,
                     )}
                   >
-                    <Download size={16} aria-hidden /> Excel
+                    <Download size={16} aria-hidden />{" "}
+                    <span className={PHONE_HIDDEN_LABEL}>Excel</span>
                   </a>
                 </Button>
-                <Button asChild size="sm" variant="secondary" className={PHONE_COMPACT}>
+                <Button asChild size="sm" variant="secondary" className={PHONE_ICON}>
                   <Link href="/children/import">
-                    <Upload size={16} aria-hidden /> Импорт
+                    <Upload size={16} aria-hidden />{" "}
+                    <span className={PHONE_HIDDEN_LABEL}>Импорт</span>
                   </Link>
                 </Button>
               </>
@@ -303,8 +315,17 @@ function StaffChildren() {
                 groupId={myGroup.id}
                 groupName={myGroup.name}
                 label="Бүлгээр урих"
-                className={PHONE_COMPACT}
+                className={PHONE_ICON}
+                labelClassName={PHONE_HIDDEN_LABEL}
               />
+            ) : null}
+            {/*
+              ★ «Захиа» — one graduation letter for the teacher's group or for
+              children picked by name (the user, 2026-10-17). A teacher's only —
+              a director's `myGroup` is merely the first of every group.
+            */}
+            {myGroup && !isAdmin ? (
+              <GroupGraduationLetter groupId={myGroup.id} className={PHONE_COMPACT} />
             ) : null}
             <Button asChild size="sm" className={PHONE_COMPACT}>
               <Link href="/children/new">

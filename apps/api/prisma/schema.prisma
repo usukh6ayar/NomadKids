@@ -1571,6 +1571,11 @@ model ChildProfile {
   bloodType  String?
   eyeColor   String?
 
+  /// The teacher's final letter for the completed 5-year-old portfolio.
+  /// Deliberately separate from ChildAgeProfile.teacherNote: the latter is an
+  /// age-specific observation, while this is the closing graduation letter.
+  graduationLetter String?
+
   /// A guardian's own pick, overriding `birthFacts()`'s computed answer for
   /// §4.2's "Монгол жилийн амьтан" and "Өрнийн орд" — added the same day, on
   /// the same instruction, after the client asked specifically for the

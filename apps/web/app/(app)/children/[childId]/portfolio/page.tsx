@@ -1,11 +1,13 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ChevronRight, FileText } from "lucide-react";
+import { ChevronRight, FileText, Mail } from "lucide-react";
+import { useEffect, useState } from "react";
+import { z } from "zod";
 import { childDetailSchema } from "@kinder/contracts";
-import { get } from "@/lib/api/browser";
+import { get, mutate } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, isNotFound } from "@/lib/api/errors";
 import { BackButton } from "@/components/ui/back-button";
@@ -14,6 +16,10 @@ import { ErrorState, LoadingState } from "@/components/ui/states";
 import { ReportDialog } from "@/components/reports/report-dialog";
 import { PORTFOLIO } from "@/lib/vocabulary";
 import { Art, type ArtName } from "@/components/ui/art";
+import { FormDialog } from "@/components/ui/form-dialog";
+import { Textarea } from "@/components/ui/field";
+import { useSession } from "@/lib/auth/session";
+import { useToast } from "@/components/ui/toast";
 
 /**
  * The portfolio — RFP §4.3.
@@ -113,8 +119,97 @@ export default function PortfolioPage() {
         />
       </div>
 
+      <GraduationLetter childId={childId} />
+
       <PortfolioHubNav childId={childId} />
     </div>
+  );
+}
+
+const graduationLetterSchema = z.object({ letter: z.string().nullable() });
+
+/** Staff write the one closing letter here; it is not an age-profile note. */
+function GraduationLetter({ childId }: { childId: string }) {
+  const { hasRole } = useSession();
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
+  const [open, setOpen] = useState(false);
+  const [letter, setLetter] = useState("");
+  const queryKey = ["children", childId, "graduation-letter"] as const;
+  const letterQuery = useQuery({
+    queryKey,
+    queryFn: () => get(`/children/${childId}/graduation-letter`, graduationLetterSchema),
+    enabled: isStaff,
+  });
+
+  useEffect(() => {
+    if (open) setLetter(letterQuery.data?.letter ?? "");
+  }, [open, letterQuery.data?.letter]);
+
+  const save = useMutation({
+    mutationFn: () =>
+      mutate(`/children/${childId}/graduation-letter`, graduationLetterSchema, {
+        method: "PATCH",
+        body: { letter: letter.trim() || null },
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(queryKey, data);
+      toast.success("Багшийн захиа хадгалагдлаа.");
+      setOpen(false);
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  if (!isStaff) return null;
+
+  return (
+    <>
+      <section className="flex flex-col gap-3 rounded-card border border-[#f3dfaa] bg-[#fffaf0] p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#ffeab7] text-[#95661c]">
+            <Mail size={20} aria-hidden="true" />
+          </span>
+          <div>
+            <h2 className="font-semibold text-ink">Багшийн захиа</h2>
+            <p className="mt-0.5 text-body text-muted">
+              5 нас / төгсөлтийн үед бичнэ. PDF-ийн хамгийн сүүлийн хуудсанд орно.
+            </p>
+          </div>
+        </div>
+        <Button variant="secondary" onClick={() => setOpen(true)}>
+          {letterQuery.data?.letter ? "Захиа засах" : "Захиа бичих"}
+        </Button>
+      </section>
+
+      <FormDialog
+        open={open}
+        onOpenChange={setOpen}
+        title="Багшийн захиа"
+        description="Төгсөлтийн захиа нь нас тус бүрийн багшийн тэмдэглэлээс тусдаа хадгалагдана."
+        busy={save.isPending}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setOpen(false)} disabled={save.isPending}>
+              Цуцлах
+            </Button>
+            <Button onClick={() => save.mutate()} disabled={save.isPending}>
+              {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
+            </Button>
+          </>
+        }
+      >
+        <Textarea
+          aria-label="Төгсөлтийн багшийн захиа"
+          value={letter}
+          maxLength={5000}
+          rows={12}
+          placeholder="Хайрт сурагчдаа…"
+          onChange={(event) => setLetter(event.target.value)}
+        />
+        <p className="mt-1 text-right text-caption text-faint">{letter.length}/5000</p>
+      </FormDialog>
+    </>
   );
 }
 

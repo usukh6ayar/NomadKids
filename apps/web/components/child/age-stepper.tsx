@@ -66,7 +66,7 @@ export function AgeStepper({ childId }: { childId: string }) {
         2-5 насны мэдээлэл
       </Link>
 
-      <ul className="grid grid-cols-2 gap-3 sm:gap-4">
+      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-3">
         {PORTFOLIO_AGES.map((age) => {
           const look = AGE_LOOK[age];
           return (
@@ -74,7 +74,7 @@ export function AgeStepper({ childId }: { childId: string }) {
               <Link
                 href={`/children/${childId}/portfolio/growth/age/${age}`}
                 aria-label={`${age} нас`}
-                className="group relative flex aspect-[9/10] flex-col items-center justify-center overflow-hidden rounded-card px-4 py-5 text-ink transition-all hover:-translate-y-0.5 hover:shadow-md"
+                className="group relative flex aspect-[9/10] flex-col items-center justify-center overflow-hidden rounded-card px-4 py-5 text-ink transition-all hover:-translate-y-0.5 hover:shadow-md sm:aspect-square sm:px-3 sm:py-4"
               >
                 {/*
                   The wash, top-lit — the drawing's cards are palest where the
@@ -109,10 +109,10 @@ export function AgeStepper({ childId }: { childId: string }) {
                   alt=""
                   width={96}
                   height={96}
-                  className="relative size-[4.5rem] object-contain transition-transform group-hover:scale-105 sm:size-24"
+                  className="relative size-[4.5rem] object-contain transition-transform group-hover:scale-105 sm:size-16 lg:size-[4.5rem]"
                 />
 
-                <span className="relative mt-1 text-lead font-bold text-ink sm:text-title">
+                <span className="relative mt-1 text-lead font-bold text-ink sm:text-body lg:text-lead">
                   {age} нас
                 </span>
 
@@ -124,9 +124,9 @@ export function AgeStepper({ childId }: { childId: string }) {
                 */}
                 <span
                   aria-hidden="true"
-                  className="relative mt-3 grid size-9 place-items-center rounded-pill bg-surface shadow-sm transition-transform group-hover:translate-x-0.5"
+                  className="relative mt-3 grid size-9 place-items-center rounded-pill bg-surface shadow-sm transition-transform group-hover:translate-x-0.5 sm:mt-2 sm:size-7 lg:size-8"
                 >
-                  <ChevronRight className={cn("size-5", look.arrow)} />
+                  <ChevronRight className={cn("size-5 sm:size-4", look.arrow)} />
                 </span>
               </Link>
             </li>

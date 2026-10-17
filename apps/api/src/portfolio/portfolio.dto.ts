@@ -169,6 +169,12 @@ export const updateBirthdayNoteSchema = z
   .strict();
 export type UpdateBirthdayNoteDto = z.infer<typeof updateBirthdayNoteSchema>;
 
+/** One closing letter for the whole portfolio, written at age five/graduation. */
+export const updateGraduationLetterSchema = z
+  .object({ letter: z.string().max(5000).nullable() })
+  .strict();
+export type UpdateGraduationLetterDto = z.infer<typeof updateGraduationLetterSchema>;
+
 /** Ages 2–5 — RFP §4.3. Anything else is a 400, not a silent no-op. */
 export const ageParamSchema = z.object({
   id: z.uuid(),
