@@ -19,6 +19,7 @@ import { downloadUrl } from "@/lib/api/client";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
+import { useEsisLinked } from "@/lib/use-esis-linked";
 import { EsisPullButton } from "@/components/esis/esis-pull-button";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
@@ -70,6 +71,8 @@ function ImportChildren() {
   const router = useRouter();
   const { primaryKindergartenId, hasRole } = useSession();
   const isAdmin = hasRole("ADMIN");
+  // The ESIS source only where there is ESIS (2026-10-17).
+  const esisLinked = useEsisLinked() === true;
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [file, setFile] = useState<File | null>(null);
@@ -113,7 +116,7 @@ function ImportChildren() {
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader title="Хүүхэд импортлох" />
 
-      {isAdmin ? (
+      {isAdmin && esisLinked ? (
         <div
           role="tablist"
           aria-label="Импортын эх сурвалж"
@@ -136,7 +139,7 @@ function ImportChildren() {
         </div>
       ) : null}
 
-      {source === "esis" && isAdmin ? (
+      {source === "esis" && isAdmin && esisLinked ? (
         <EsisImportEntry kindergartenId={primaryKindergartenId} />
       ) : (
         <>

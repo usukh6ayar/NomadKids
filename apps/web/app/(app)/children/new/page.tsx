@@ -24,6 +24,7 @@ import { FormError } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
+import { useEsisLinked } from "@/lib/use-esis-linked";
 import { groupLabel } from "@/lib/format";
 
 /**
@@ -96,6 +97,7 @@ function NewChild() {
     queryFn: () => get("/groups", groupsSchema),
   });
 
+  const esisLinked = useEsisLinked() === true;
   const esisTemplate = useQuery({
     queryKey: qk.esisStudentRegistration(primaryKindergartenId ?? "none"),
     queryFn: () =>
@@ -103,8 +105,8 @@ function NewChild() {
         `/kindergartens/${primaryKindergartenId}/esis/student-registration-template`,
         esisStudentRegistrationTemplateSchema,
       ),
-    enabled: Boolean(primaryKindergartenId),
-    // A kindergarten with no ESIS answers 503 every time; asking again is noise.
+    // Not asked at all where there is no ESIS; asked once where there is.
+    enabled: Boolean(primaryKindergartenId) && esisLinked,
     retry: false,
   });
   /*

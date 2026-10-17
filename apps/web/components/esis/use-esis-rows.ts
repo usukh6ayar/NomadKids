@@ -1,5 +1,6 @@
 "use client";
 
+import { useEsisLinked } from "@/lib/use-esis-linked";
 import { useQuery } from "@tanstack/react-query";
 import {
   esisResourceReadSchema,
@@ -78,7 +79,9 @@ export function useEsisRows(
     }
     query.set(name, value);
   }
-  const wanted = enabled && !missingParam;
+  // Nothing is asked of ESIS where there is no ESIS (2026-10-17).
+  const esisLinked = useEsisLinked() === true;
+  const wanted = enabled && !missingParam && esisLinked;
 
   const catalog = useQuery({
     queryKey: qk.esisCatalog(primaryKindergartenId ?? "none"),

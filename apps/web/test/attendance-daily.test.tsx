@@ -50,9 +50,13 @@ function row(day: number, group = "Дэлбээ бүлэг", sent = false) {
   };
 }
 
-function stub(items: ReturnType<typeof row>[]) {
+function stub(items: ReturnType<typeof row>[], esis = true) {
   return stubApi([
-    { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+    // A kindergarten with ESIS: its columns and «Илгээх» are drawn.
+    {
+      path: "/auth/me",
+      body: { ...sessionFor(["ADMIN"]), esisKindergartenIds: esis ? [KG] : [] },
+    },
     {
       path: `/kindergartens/${KG}/attendance/daily`,
       body: {
@@ -118,6 +122,18 @@ describe("the four views", () => {
 });
 
 describe("the daily attendance register", () => {
+  /* ★ 2026-10-17: no ESIS columns and no «Илгээх» where there is no ESIS. */
+  it("draws no ESIS columns in a kindergarten without ESIS", async () => {
+    stub([row(25, "Дэлбээ бүлэг")], false);
+    renderWithProviders(<DailyAttendancePage />);
+
+    await userEvent.click(await screen.findByRole("tab", { name: "Өдрөөр" }));
+    const table = await screen.findByRole("table", { name: "Өдөр тутмын ирцийн бүртгэл" });
+    const groups = [...table.querySelectorAll('th[scope="colgroup"]')].map((th) => th.textContent);
+    expect(groups).toEqual(["Ирц", "Баталгаажуулалт"]);
+    expect(within(table).queryByRole("button", { name: "Илгээх" })).toBeNull();
+  });
+
   it("draws the day under grouped headings, inventing nothing", async () => {
     stub([row(25, "Дэлбээ бүлэг", true)]);
     renderWithProviders(<DailyAttendancePage />);

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEsisLinked } from "@/lib/use-esis-linked";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { EsisButton } from "@/components/esis/esis-button";
@@ -26,7 +27,7 @@ import { useToast } from "@/components/ui/toast";
  * a second press changes nothing the first did not — rather than a dialog
  * nobody reads twice.
  */
-export function EsisRosterImportButton({ kindergartenId }: { kindergartenId: string }) {
+function EsisRosterImportButtonInner({ kindergartenId }: { kindergartenId: string }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
@@ -107,4 +108,14 @@ function summarise(result: EsisRosterImport): string {
   if (parts.length === 0)
     return "Шинээр нэмэгдэх зүйл олдсонгүй — бүх мэдээлэл шинэчлэгдсэн байна.";
   return parts.join(", ") + ".";
+}
+
+/**
+ * ★ Nothing where the kindergarten has no ESIS — 2026-10-17, the user:
+ * "ESIS-гүй цэцэрлэгүүд ч адилхан ашиглаж болдог байх, ESIS-ээс зүгээр дата
+ * авахгүй, дата явуулахгүй". Gated here, once, rather than at every screen
+ * that draws one: no request leaves, and no "ESIS хариу өгсөнгүй" is drawn.
+ */
+export function EsisRosterImportButton(props: Parameters<typeof EsisRosterImportButtonInner>[0]) {
+  return useEsisLinked() === true ? <EsisRosterImportButtonInner {...props} /> : null;
 }

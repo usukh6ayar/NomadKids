@@ -1,5 +1,6 @@
 "use client";
 
+import { useEsisLinked } from "@/lib/use-esis-linked";
 import { formatDateTime } from "@/lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { CloudDownload, Clock3, Database, Search } from "lucide-react";
@@ -79,7 +80,7 @@ import { cn } from "@/lib/utils";
  * name of the thing, a sentence about it, how many records came back, a button
  * to refresh, and the rows.
  */
-export function EsisDataPanel({
+function EsisDataPanelInner({
   resource,
   params,
   rows: given,
@@ -745,4 +746,14 @@ export function EsisDataPanel({
       </Card>
     </section>
   );
+}
+
+/**
+ * ★ Nothing where the kindergarten has no ESIS — 2026-10-17, the user:
+ * "ESIS-гүй цэцэрлэгүүд ч адилхан ашиглаж болдог байх, ESIS-ээс зүгээр дата
+ * авахгүй, дата явуулахгүй". Gated here, once, rather than at every screen
+ * that draws one: no request leaves, and no "ESIS хариу өгсөнгүй" is drawn.
+ */
+export function EsisDataPanel(props: Parameters<typeof EsisDataPanelInner>[0]) {
+  return useEsisLinked() === true ? <EsisDataPanelInner {...props} /> : null;
 }

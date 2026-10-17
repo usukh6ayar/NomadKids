@@ -31,6 +31,7 @@ import { SearchField } from "@/components/ui/search-field";
 import { AttendanceBreakdown } from "@/components/attendance/attendance-breakdown";
 import { ChildAttendance } from "@/components/attendance/child-attendance";
 import { YearlyAttendance } from "@/components/attendance/yearly-attendance";
+import { useEsisLinked } from "@/lib/use-esis-linked";
 import { useDebounced } from "@/lib/use-debounced";
 import { cn } from "@/lib/utils";
 
@@ -89,6 +90,7 @@ const VIEWS: readonly View[] = ["child", "day", "breakdown", "year"];
  */
 function DailyAttendance() {
   const { primaryKindergartenId, hasRole } = useSession();
+  const esisLinked = useEsisLinked() === true;
   const backHref = useBackHref();
 
   const searchParams = useSearchParams();
@@ -335,7 +337,7 @@ function DailyAttendance() {
         />
       ) : (
         <>
-          <DayTable rows={visible} kindergartenId={primaryKindergartenId ?? ""} />
+          <DayTable rows={visible} kindergartenId={primaryKindergartenId ?? ""} esis={esisLinked} />
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-lead text-muted">
               Нийт <span className="font-bold tabular-nums text-ink">{rows.length}</span> бичлэг
@@ -354,9 +356,15 @@ const GROUP_HEAD = "border-b border-border px-3 py-2 text-center text-body font-
 function DayTable({
   rows,
   kindergartenId,
+  esis,
 }: {
   rows: DailyAttendanceRow[];
   kindergartenId: string;
+  /**
+   * The ESIS columns and «Илгээх» — only where the kindergarten has ESIS
+   * (2026-10-17, the user: without it nothing is sent to the ministry).
+   */
+  esis: boolean;
 }) {
   return (
     // `overflow-x-auto`: thirteen columns do not fit every width, and the
@@ -386,9 +394,11 @@ function DayTable({
             <th scope="colgroup" colSpan={3} className={cn(GROUP_HEAD, "bg-sun")}>
               Баталгаажуулалт
             </th>
-            <th scope="colgroup" colSpan={3} className={cn(GROUP_HEAD, "bg-mint")}>
-              ESIS
-            </th>
+            {esis ? (
+              <th scope="colgroup" colSpan={3} className={cn(GROUP_HEAD, "bg-mint")}>
+                ESIS
+              </th>
+            ) : null}
             <th
               scope="col"
               rowSpan={2}
@@ -407,9 +417,13 @@ function DayTable({
               ["Зөвшөөрсөн", "bg-sun/60"],
               ["Татгалзсан", "bg-sun/60"],
               ["Хүлээгдэж байгаа", "bg-sun/60"],
-              ["Илгээсэн", "bg-mint/60"],
-              ["Амжилттай", "bg-mint/60"],
-              ["Алдаатай", "bg-mint/60"],
+              ...(esis
+                ? [
+                    ["Илгээсэн", "bg-mint/60"],
+                    ["Амжилттай", "bg-mint/60"],
+                    ["Алдаатай", "bg-mint/60"],
+                  ]
+                : []),
             ].map(([label, tone]) => (
               <th
                 key={label}
@@ -441,29 +455,35 @@ function DayTable({
               <NumberCell value={row.requests.approved} tone="text-mint-ink" />
               <NumberCell value={row.requests.rejected} tone="text-danger" />
               <NumberCell value={row.requests.pending} tone="text-sun-ink" />
-              <td className="px-2 py-1.5 text-center">
-                {row.sentAt ? (
-                  <span className="font-semibold text-mint-ink" title={formatStamp(row.sentAt)}>
-                    ✓
-                  </span>
-                ) : row.complete && kindergartenId ? (
-                  <SendDayButton kindergartenId={kindergartenId} row={row} />
-                ) : (
-                  <span className="text-faint" title="Ирц бүрэн бүртгэгдээгүй">
-                    —
-                  </span>
-                )}
-              </td>
-              {/* ESIS send attempts for this group-day (#149). */}
-              <NumberCell value={row.esis.succeeded} tone="text-mint-ink" />
-              <td
-                className="px-2 py-1.5 text-center font-semibold tabular-nums text-danger"
-                title={
-                  row.esis.lastOutcome === "FAILED" ? (row.esis.lastError ?? undefined) : undefined
-                }
-              >
-                {row.esis.failed}
-              </td>
+              {esis ? (
+                <>
+                  <td className="px-2 py-1.5 text-center">
+                    {row.sentAt ? (
+                      <span className="font-semibold text-mint-ink" title={formatStamp(row.sentAt)}>
+                        ✓
+                      </span>
+                    ) : row.complete && kindergartenId ? (
+                      <SendDayButton kindergartenId={kindergartenId} row={row} />
+                    ) : (
+                      <span className="text-faint" title="Ирц бүрэн бүртгэгдээгүй">
+                        —
+                      </span>
+                    )}
+                  </td>
+                  {/* ESIS send attempts for this group-day (#149). */}
+                  <NumberCell value={row.esis.succeeded} tone="text-mint-ink" />
+                  <td
+                    className="px-2 py-1.5 text-center font-semibold tabular-nums text-danger"
+                    title={
+                      row.esis.lastOutcome === "FAILED"
+                        ? (row.esis.lastError ?? undefined)
+                        : undefined
+                    }
+                  >
+                    {row.esis.failed}
+                  </td>
+                </>
+              ) : null}
               <td className="px-2 py-1 text-center">
                 <Button asChild size="sm" variant="secondary">
                   <Link href={`/groups/${row.groupId}/attendance?date=${row.date.slice(0, 10)}`}>
