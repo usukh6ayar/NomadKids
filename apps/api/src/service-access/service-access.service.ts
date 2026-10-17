@@ -66,6 +66,8 @@ export class ServiceAccessService {
     const expiresAt = contract?.endsOn ?? null;
     const daysLeft = expiresAt ? daysUntil(expiresAt) : null;
     const fee = contract?.perGroupMonthlyFee ?? null;
+    const term = contract ? quote(contract, groupCount, "TERM") : null;
+    const year = contract ? quote(contract, groupCount, "YEAR") : null;
 
     return {
       kindergartenId: kindergarten.id,
@@ -80,11 +82,20 @@ export class ServiceAccessService {
       daysLeft,
       remind: daysLeft !== null && daysLeft <= REMIND_DAYS,
       perGroupMonthlyFee: fee?.toString() ?? null,
-      termAmount: fee && contract ? quote(contract, groupCount, "TERM").amount : null,
-      yearAmount: fee && contract ? quote(contract, groupCount, "YEAR").amount : null,
+      termAmount: fee ? (term?.amount ?? null) : null,
+      yearAmount: fee ? (year?.amount ?? null) : null,
       // What each would extend the contract to — said before the QR (№6).
-      termCoversTo: contract ? quote(contract, groupCount, "TERM").coversTo : null,
-      yearCoversTo: contract ? quote(contract, groupCount, "YEAR").coversTo : null,
+      termCoversTo: term?.coversTo ?? null,
+      yearCoversTo: year?.coversTo ?? null,
+      /*
+       * What each period is, as the invoice and the QR name it — «II улирал
+       * (2026.12.01 – 2027.02.28)», «2026–2027 хичээлийн жил, II улирал, III
+       * улирал». From December "the year" is what is left of it, priced as
+       * terms (the user, 2026-10-18), so the screen cannot say «хичээлийн жил»
+       * on its own.
+       */
+      termLabel: term?.label ?? null,
+      yearLabel: year?.label ?? null,
     };
   }
 

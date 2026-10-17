@@ -154,6 +154,38 @@ describe("what renewing buys and costs", () => {
     const negotiated = { perGroupMonthlyFee: "3500.00", endsOn: day("2026-11-30") };
     expect(quote(negotiated, 1, "YEAR", "2026-11-20").perGroup).toBe("21000.00");
   });
+
+  it("names the year's remainder by its terms, never as a whole year", () => {
+    expect(quote(standard("2026-11-30"), 1, "YEAR", "2026-11-20").label).toBe(
+      "2026–2027 хичээлийн жил, II улирал, III улирал",
+    );
+    expect(quote(standard("2026-08-31"), 1, "YEAR", "2026-10-18").label).toBe(
+      "2026–2027 хичээлийн жил",
+    );
+  });
+});
+
+describe("GET /service-access — what each period is", () => {
+  // The screen says what the QR buys: from December «Жилээр» is the terms left.
+  it("names the term and the year as the invoice and the QR do", async () => {
+    await contract(a, "2026-11-30");
+
+    const res = await authed(request(server()).get("/v1/service-access"), adminA);
+
+    expect(res.status).toBe(200);
+    const signed = { perGroupMonthlyFee: "4000.00", endsOn: day("2026-11-30") };
+    expect(res.body).toMatchObject({
+      termLabel: quote(signed, res.body.groupCount, "TERM").label,
+      yearLabel: quote(signed, res.body.groupCount, "YEAR").label,
+    });
+  });
+
+  it("answers no labels without a contract", async () => {
+    const res = await authed(request(server()).get("/v1/service-access"), adminA);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ termLabel: null, yearLabel: null });
+  });
 });
 
 describe("POST /service-access/qpay", () => {
