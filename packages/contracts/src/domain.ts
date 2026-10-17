@@ -295,6 +295,13 @@ export const sessionSchema = z.object({
    * kindergarten: ESIS, finance, kitchen, staff.
    */
   soloKindergartenIds: z.array(z.string()).default([]),
+  /**
+   * The actor's kindergartens mapped to an ESIS institution. ★ 2026-10-17,
+   * the user: a kindergarten without ESIS works the same and is shown no ESIS
+   * step — nothing is read from or sent to the ministry. Every member gets
+   * this, a teacher included; `GET /kindergartens/:id` is an administrator's.
+   */
+  esisKindergartenIds: z.array(z.string()).default([]),
   csrfToken: z.string().nullish(),
 });
 export type Session = z.infer<typeof sessionSchema>;

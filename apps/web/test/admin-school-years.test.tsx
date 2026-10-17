@@ -254,9 +254,8 @@ describe("ESIS-гүй цэцэрлэг", () => {
     renderWithProviders(<AdminSchoolYearsPage />);
 
     expect(await screen.findByRole("button", { name: /Жил нэмэх/ })).toBeInTheDocument();
-    await waitFor(() =>
-      expect(api.calls.some((c) => c.url.endsWith(`/kindergartens/${KG}`))).toBe(true),
-    );
+    // The mapping arrives with the session (2026-10-17), so it is known by now.
+    expect(api.calls.some((c) => c.url === "/auth/me")).toBe(true);
     expect(screen.queryByText("Нээсэн ба хаасан огноо, идэвхтэй жил")).toBeNull();
   });
 });

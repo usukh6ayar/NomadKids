@@ -669,12 +669,19 @@ export class AuthzRepository {
 
   async loadOwnKindergartens(
     actor: Actor,
-  ): Promise<{ id: string; name: string; kind: "CONTRACTED" | "SOLO_TEACHER" }[]> {
+  ): Promise<
+    {
+      id: string;
+      name: string;
+      kind: "CONTRACTED" | "SOLO_TEACHER";
+      esisInstitutionId: string | null;
+    }[]
+  > {
     const ids = [...new Set(actor.memberships.map((m) => m.kindergartenId))];
     if (ids.length === 0) return [];
     return this.prisma.kindergarten.findMany({
       where: { id: { in: ids }, deletedAt: null },
-      select: { id: true, name: true, kind: true },
+      select: { id: true, name: true, kind: true, esisInstitutionId: true },
       orderBy: { name: "asc" },
     });
   }

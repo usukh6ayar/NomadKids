@@ -114,11 +114,31 @@ export function stubApi(routes: RouteStub[]) {
     }
 
     const status = route.status ?? 200;
+    if (path === "/auth/me" && status === 200) {
+      return jsonResponse(status, withEsisMapping(route.body, routes));
+    }
     return jsonResponse(status, route.body ?? null);
   });
 
   vi.stubGlobal("fetch", fetchMock);
   return { calls, fetchMock };
+}
+
+/**
+ * The session's `esisKindergartenIds`, as the API derives it — from the same
+ * `esisInstitutionId` a test stubs on `GET /kindergartens/:id`. A test says
+ * "this kindergarten has ESIS" once, and the session and the profile agree,
+ * as they do on the server. A session that names its own list keeps it.
+ */
+function withEsisMapping(body: unknown, routes: RouteStub[]): unknown {
+  if (typeof body !== "object" || body === null || "esisKindergartenIds" in body) return body;
+  const mapped = routes.flatMap((route) => {
+    const match = /^\/kindergartens\/([^/?]+)$/.exec(route.path);
+    const institution = (route.body as { esisInstitutionId?: unknown } | undefined)
+      ?.esisInstitutionId;
+    return match && institution ? [match[1]!] : [];
+  });
+  return { ...body, esisKindergartenIds: mapped };
 }
 
 function lowerCased(headers: HeadersInit | undefined): Record<string, string> {

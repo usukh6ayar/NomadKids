@@ -88,7 +88,7 @@ const VIEWS: readonly View[] = ["child", "day", "breakdown", "year"];
  * through `POST …/attendance/daily/submit`, after a confirmation.
  */
 function DailyAttendance() {
-  const { primaryKindergartenId } = useSession();
+  const { primaryKindergartenId, hasRole } = useSession();
   const backHref = useBackHref();
 
   const searchParams = useSearchParams();
@@ -301,7 +301,27 @@ function DailyAttendance() {
       {yearly ? (
         <YearlyAttendance />
       ) : view === "breakdown" ? (
-        <AttendanceBreakdown from={from} to={to} groupId={groupId} />
+        <>
+          {/*
+            ★ The director corrects a month too — 2026-10-17, the client: "ирц
+            сараар засаж болдог багш, удирдлага". This view stays the read-out;
+            the edit is the group register's own «Сараар нөхөх», opened on this
+            month, so a month has one editor however it is reached. The
+            accountant reads (the API's `PUT …/attendance/range` is TEACHER and
+            ADMIN).
+          */}
+          {groupId && hasRole("ADMIN") ? (
+            <div className="flex justify-end">
+              <Button asChild variant="secondary" size="sm">
+                <Link href={`/groups/${groupId}/attendance?journal=${month}`}>
+                  <Pencil aria-hidden />
+                  Сараар засах
+                </Link>
+              </Button>
+            </div>
+          ) : null}
+          <AttendanceBreakdown from={from} to={to} groupId={groupId} />
+        </>
       ) : byChild ? (
         <ChildAttendance from={from} to={to} groupId={groupId} status={status} q={childQ} />
       ) : daily.isError ? (

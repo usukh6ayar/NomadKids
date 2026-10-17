@@ -377,6 +377,41 @@ describe("Сараар", () => {
   });
 });
 
+describe("Сараар засах", () => {
+  /*
+   * ★ 2026-10-17, the client: "ирц сараар засаж болдог багш, удирдлага". The
+   * read-out links the director to the group's own month fill, on this month.
+   */
+  it("sends the director to the group's month, ready to fill in", async () => {
+    const user = userEvent.setup();
+    setSearchParams(`from=2026-09-01&groupId=${GROUP}`);
+    stubRegister();
+    renderWithProviders(<DailyAttendancePage />);
+
+    await user.click(await screen.findByRole("tab", { name: "Сараар" }));
+    expect(await screen.findByRole("link", { name: /Сараар засах/ })).toHaveAttribute(
+      "href",
+      `/groups/${GROUP}/attendance?journal=2026-09`,
+    );
+  });
+
+  it("is not offered to the accountant, who reads", async () => {
+    const user = userEvent.setup();
+    setSearchParams(`from=2026-09-01&groupId=${GROUP}`);
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ACCOUNTANT"]) },
+      {
+        path: `/kindergartens/${KG}/attendance/register`,
+        body: { items: [], total: 0, page: 1, pageSize: 200, totalPages: 1 },
+      },
+    ]);
+    renderWithProviders(<DailyAttendancePage />);
+
+    await user.click(await screen.findByRole("tab", { name: "Сараар" }));
+    expect(screen.queryByRole("link", { name: /Сараар засах/ })).toBeNull();
+  });
+});
+
 describe("Жилээр", () => {
   it("merges safe API windows into one September–June grid", async () => {
     const user = userEvent.setup();

@@ -66,6 +66,9 @@ const MONDAY = (() => {
 /** A day that is always in the span and never today — the read-only column. */
 const EARLIER = `${TODAY.slice(0, 7)}-01`;
 
+/** The kindergarten `sessionFor` puts on every membership. */
+const KINDERGARTEN = "33333333-3333-4333-8333-333333333333";
+
 const CHILDREN = [
   { id: CHILD_A, lastName: "Батжаргал", firstName: "Ануужин" },
   { id: CHILD_B, lastName: "Ганболд", firstName: "Батбаяр" },
@@ -74,7 +77,8 @@ const CHILDREN = [
 function stubRegister({
   recorded = false,
   pendingRequests = 0,
-}: { recorded?: boolean; pendingRequests?: number } = {}) {
+  esis = true,
+}: { recorded?: boolean; pendingRequests?: number; esis?: boolean } = {}) {
   const daySheet = CHILDREN.map((child, index) => ({
     child,
     enrollmentId: index === 0 ? ENROL_A : ENROL_B,
@@ -82,7 +86,10 @@ function stubRegister({
   }));
 
   return stubApi([
-    { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+    {
+      path: "/auth/me",
+      body: { ...sessionFor(["TEACHER"]), esisKindergartenIds: esis ? [KINDERGARTEN] : [] },
+    },
     {
       path: `/groups/${GROUP}/attendance/range`,
       method: "GET",
@@ -405,6 +412,21 @@ describe("the register's panels", () => {
   });
 
   /*
+   * ★ The director's «Сараар засах» lands here on its month — 2026-10-17.
+   */
+  it("opens the journal on the month a link names", async () => {
+    const month = TODAY.slice(0, 7);
+    setSearchParams(`journal=${month}`);
+    stubRegister();
+    renderWithProviders(<GroupAttendancePage />);
+
+    // The register and the month's journal: two grids.
+    expect(await screen.findAllByRole("table", { name: /Бүлгийн ирцийн бүртгэл/ })).toHaveLength(2);
+    expect(door("Ирцийн дэлгэрэнгүй")).toHaveAttribute("aria-expanded", "true");
+    expect(await screen.findByRole("button", { name: /Сараар нөхөх/ })).toBeInTheDocument();
+  });
+
+  /*
    * ★ «Өнөөдөр» · «Сар» opens with the journal only — client, 2026-10-07.
    * «Чөлөөний хүсэлт» and «Гараас гарт» draw no chart.
    */
@@ -667,6 +689,21 @@ describe("the register's controls", () => {
     const table = await grid();
     await user.selectOptions(within(table).getAllByRole("combobox")[0]!, "SICK");
     expect(screen.getByRole("button", { name: /Ирц бүртгэх/ })).toBeEnabled();
+  });
+
+  /*
+   * ★ 2026-10-17, the user: a kindergarten without ESIS works the same, and
+   * nothing is read from or sent to the ministry — no ESIS button, no
+   * preview request, no red "ESIS код тохируулагдаагүй".
+   */
+  it("offers no ESIS step, and asks ESIS nothing, in a kindergarten without ESIS", async () => {
+    const api = stubRegister({ recorded: true, esis: false });
+    renderWithProviders(<GroupAttendancePage />);
+    await grid();
+
+    expect(screen.getByRole("button", { name: /Засах/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /илгээх/ })).toBeNull();
+    expect(api.calls.some((c) => c.url.includes("esis-preview"))).toBe(false);
   });
 
   /*
