@@ -357,6 +357,13 @@ export const a79GroupSummarySchema = z.object({
       firstName: z.string(),
       lastName: z.string(),
       level: z.enum(A79_LEVEL_KEYS),
+      /**
+       * ★ A solo workspace's child whose family has not paid the portal fee
+       * (CLAUDE.md §1.7) — named, as the roster is, with every figure withheld
+       * (0 / 0, no parts). Until 2026-10-17 such a child was left out, and a
+       * group of unpaid children read «Бүлэгт хүүхэд алга».
+       */
+      feeDue: z.boolean(),
       achieved: z.number().int(),
       total: z.number().int(),
       byDomain: z.array(

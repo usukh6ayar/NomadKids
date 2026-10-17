@@ -186,18 +186,18 @@ describe("what the layout intercepts", () => {
    * ★ A solo teacher's workspace (2026-10-11): an unpaid child is 402 for the
    * teacher too. They are told the family has not paid — and offered no pay
    * button, because teachers never pay.
+   *
+   * ★★ 2026-10-17: a solo teacher is TEACHER only, and `/access` is not
+   * theirs — it answers 404. The gate used to wait on it and draw nothing, a
+   * blank page the client read as broken. The stub answers as the API does.
    */
   it("tells a solo teacher the family has not paid, without a pay button", async () => {
     stubApi([
-      { path: "/auth/me", body: sessionFor(["ADMIN", "TEACHER"]) },
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
       {
         path: `/children/${CHILD_ID}/access`,
-        body: {
-          required: true,
-          active: false,
-          amount: "27000.00",
-          subscription: null,
-        },
+        status: 404,
+        body: problem(404, "Олдсонгүй."),
       },
       {
         path: `/children/${CHILD_ID}`,

@@ -7,6 +7,7 @@ import { childDetailSchema, observationSchema, type Observation } from "@kinder/
 import { ObservationDetailDialog } from "@/components/child/child-observations";
 import { useToast } from "@/components/ui/toast";
 import { A79NotReady } from "@/components/assessment/a79-group-summary";
+import { UnpaidForStaff } from "@/components/child/access-gate";
 import { ChildAvatar } from "@/components/media/media-image";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
@@ -20,7 +21,7 @@ import { Field, Select } from "@/components/ui/field";
 import { ErrorState, LoadingState } from "@/components/ui/states";
 import { get } from "@/lib/api/browser";
 import { qk } from "@/lib/api/keys";
-import { errorMessage, isNotFound } from "@/lib/api/errors";
+import { errorMessage, isNotFound, isPaymentRequired } from "@/lib/api/errors";
 import type { A79Domain } from "@/lib/a79-assessment";
 import {
   A79_BAND_LABEL,
@@ -96,7 +97,12 @@ function ChildResult() {
       <PageHeader title="Үр дүнгийн үнэлгээ" backHref={`/groups/${groupId}/results`} />
 
       {child.isLoading ? <LoadingState rows={4} /> : null}
-      {child.isError ? <ErrorState description={errorMessage(child.error)} /> : null}
+      {/* A solo workspace's unpaid child — told so, not an error (2026-10-17). */}
+      {child.isError && isPaymentRequired(child.error) ? (
+        <UnpaidForStaff backHref={null} />
+      ) : child.isError ? (
+        <ErrorState description={errorMessage(child.error)} />
+      ) : null}
 
       {child.data ? (
         // ★ No card behind it, pulled up under the title — 2026-10-08, the client.

@@ -104,6 +104,8 @@ export const a79GroupSummarySchema = z.object({
       firstName: z.string(),
       lastName: z.string(),
       level: z.enum(A79_LEVEL_KEYS),
+      /** Unpaid portal fee in a solo workspace — named, figures withheld. */
+      feeDue: z.boolean().default(false),
       achieved: z.number().int(),
       total: z.number().int(),
       byDomain: z.array(
