@@ -75,10 +75,14 @@ export interface ServiceInvoiceParams {
   /**
    * One group's price for the period, and the period as printed — since
    * 2026-10-18. Absent on invoices queued before it, which print the old
-   * monthly columns.
+   * monthly columns. `null` (2026-10-18) when the period's sum does not
+   * divide by the groups — a contract's own negotiated `periodFee` — and the
+   * column prints «—» rather than a figure that does not add up.
    */
-  perGroupAmount?: string;
+  perGroupAmount?: string | null;
   periodLabel?: string;
+  /** The `ContractPayment` the transfer settles — the operator records it against this. */
+  contractPaymentId?: string;
   amount: string;
   kindergartenName: string;
   contractNumber: string;

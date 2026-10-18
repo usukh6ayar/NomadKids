@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, Req } from "@nestjs/common";
 import { idParamSchema } from "@kinder/contracts";
+import type { Request } from "express";
 import { z } from "zod";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
@@ -8,6 +9,20 @@ import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { ServiceAccessService } from "./service-access.service";
 
 const kindergartenQuerySchema = z.object({ kindergartenId: z.string().uuid().optional() });
+
+const kindergartenBodySchema = z.object({ kindergartenId: z.string().uuid().optional() });
+
+/**
+ * The director's acceptance — `accepted: true` said out loud, and the
+ * `version` they read (the user, 2026-10-18: «онлайнаар гэрээ байгуулдаг»).
+ */
+const acceptContractSchema = z
+  .object({
+    accepted: z.literal(true),
+    version: z.number().int().min(1),
+    kindergartenId: z.string().uuid().optional(),
+  })
+  .strict();
 
 const invoiceRequestSchema = z.object({
   period: z.enum(["term", "year"]),
@@ -66,6 +81,51 @@ export class ServiceAccessController {
     @Query(new ZodValidationPipe(kindergartenQuerySchema)) query: { kindergartenId?: string },
   ) {
     return this.service.qpayStatus(actor, params.id, query.kindergartenId);
+  }
+
+  /** The contract's PDF for its own director — the document they accept. */
+  @Get("contracts/:id/download")
+  contractPdf(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(kindergartenQuerySchema)) query: { kindergartenId?: string },
+  ) {
+    return this.service.contractPdfUrl(actor, params.id, query.kindergartenId);
+  }
+
+  /** The director accepts the contract online; it becomes ACTIVE (2026-10-18). */
+  @Post("contracts/:id/accept")
+  acceptContract(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(acceptContractSchema))
+    body: { version: number; kindergartenId?: string },
+    @Req() req: Request,
+  ) {
+    return this.service.acceptContract(actor, params.id, body, {
+      ipAddress: req.ip ?? null,
+      userAgent: req.headers["user-agent"] ?? null,
+    });
+  }
+
+  /** The contract's first period, by QPay, at the accepted figure. */
+  @Post("qpay/:id")
+  payDueWithQpay(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(kindergartenBodySchema)) body: { kindergartenId?: string },
+  ) {
+    return this.service.payDueWithQpay(actor, params.id, body.kindergartenId);
+  }
+
+  /** An invoice for one unpaid period — a state kindergarten pays it by transfer. */
+  @Post("payments/:id/invoice")
+  paymentInvoice(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(kindergartenBodySchema)) body: { kindergartenId?: string },
+  ) {
+    return this.service.paymentInvoice(actor, params.id, body.kindergartenId);
   }
 
   @Get("invoices/:id")

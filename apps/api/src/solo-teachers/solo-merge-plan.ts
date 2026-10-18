@@ -23,9 +23,15 @@ export type MergeClass = "MOVE" | "BLOCK" | "KEEP" | "SPECIAL";
 
 export const SPECIAL_TABLES = ["memberships", "school_years"] as const;
 
-// `contract_payments` (№6, 2026-10-18) go with `contracts`: a solo
-// workspace has no contract, so it has no contract payment to move.
-const KEEP = new Set(["audit_logs", "contracts", "contract_payments", "kindergarten_applications"]);
+// `contract_payments` (№6) and `contract_acceptances` (2026-10-18) go with
+// `contracts`: a solo workspace has no contract, so it has neither to move.
+const KEEP = new Set([
+  "audit_logs",
+  "contracts",
+  "contract_payments",
+  "contract_acceptances",
+  "kindergarten_applications",
+]);
 
 const BLOCK = new Set([
   // Configuration a director owns.

@@ -2,7 +2,7 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, FileDown, QrCode, X } from "lucide-react";
+import { CalendarClock, FileDown, FileText, QrCode, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { qpayInvoiceAttemptSchema } from "@kinder/contracts";
@@ -56,7 +56,39 @@ const serviceAccessSchema = z.object({
   yearLabel: z.string().nullish(),
   /** The whole school year at the year's price — the only one «хямд» is said of. */
   yearWhole: z.boolean().nullish(),
+  /**
+   * The contract issued and waiting for the director's acceptance — accepted
+   * online (the user, 2026-10-18).
+   */
+  contractToSign: z
+    .object({
+      id: z.string(),
+      number: z.string(),
+      version: z.number().int(),
+      groupCount: z.number().int().nullable(),
+      period: z.enum(["term", "year"]).nullable(),
+      periodFee: z.string().nullable(),
+      startsOn: z.string(),
+      endsOn: z.string(),
+      pdfReady: z.boolean(),
+    })
+    .nullish(),
+  /** The accepted contract's first period, unpaid — by QPay or by transfer. */
+  due: z
+    .object({
+      id: z.string(),
+      contractNumber: z.string(),
+      coversFrom: z.string(),
+      coversTo: z.string(),
+      groupCount: z.number().int(),
+      amount: z.string(),
+      label: z.string(),
+    })
+    .nullish(),
 });
+
+/** Where a QR or an invoice is asked for — the next period, or the one owed. */
+type PayRequest = { path: string; body: Record<string, unknown> };
 
 const contractQpaySchema = z.object({
   payment: z.object({
@@ -75,6 +107,7 @@ const invoiceJobSchema = z.object({
   errorMessage: z.string().nullish(),
 });
 const invoiceDownloadSchema = z.object({ url: z.string() });
+const acceptSchema = z.object({ contract: z.object({ id: z.string(), status: z.string() }) });
 
 /** The reminder window — the user, 2026-10-12. */
 const REMIND_DAYS = 14;
@@ -106,6 +139,9 @@ function ServiceAccess() {
     (period === "year" ? "хичээлийн жил" : "улирал");
   // An API from before the labels sends no `yearWhole`: the year was always whole then.
   const yearWhole = access.data?.yearWhole ?? true;
+  const toSign = access.data?.contractToSign ?? null;
+  const due = access.data?.due ?? null;
+  const renewal: PayRequest = { path: "/service-access/qpay", body: { period } };
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
@@ -122,6 +158,14 @@ function ServiceAccess() {
         ) : access.isError ? (
           <p className="rounded-control bg-canvas px-3.5 py-3 text-caption text-muted">
             {errorMessage(access.error)}
+          </p>
+        ) : toSign ? (
+          <p role="status" className="text-body font-semibold text-danger">
+            Гэрээ баталгаажаагүй байна. Доорх гэрээг уншаад баталгаажуулна уу.
+          </p>
+        ) : due ? (
+          <p role="status" className="text-body font-semibold text-danger">
+            Гэрээний төлбөр төлөгдмөгц эрх {formatDate(due.coversTo)} хүртэл хүчинтэй болно.
           </p>
         ) : access.data.expiresAt && daysLeft !== null ? (
           <div className="flex flex-col gap-2">
@@ -147,63 +191,189 @@ function ServiceAccess() {
         )}
       </Card>
 
-      <Card pad="roomy" className="flex flex-col gap-4">
-        <SectionHeader title="Сунгах" lede="Улирлаар эсвэл жилээр сонгоод QPay-ээр төлнө." />
+      {toSign ? <ContractToSign contract={toSign} /> : null}
+      {due ? <ContractDue due={due} /> : null}
 
-        <div
-          role="radiogroup"
-          aria-label="Төлбөрийн хугацаа"
-          className="grid max-w-[420px] grid-cols-2 gap-1 rounded-pill bg-canvas p-1"
-        >
-          {(
-            [
-              ["term", "Улирлаар"],
-              ["year", yearWhole ? "Жилээр — хямд" : "Жилээр"],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              aria-checked={period === value}
-              onClick={() => setPeriod(value)}
-              className={cn(
-                "min-h-11 rounded-pill px-3 text-body font-semibold transition-colors",
-                period === value ? "bg-primary text-white shadow-sm" : "text-muted",
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+      {toSign || due ? null : (
+        <Card pad="roomy" className="flex flex-col gap-4">
+          <SectionHeader
+            title="Сунгах"
+            lede="Улирлаар эсвэл жилээр сонгоод QPay-ээр, эсвэл нэхэмжлэхээр төлнө."
+          />
 
-        <p aria-live="polite" className="text-body text-ink">
-          {price ? (
-            <>
-              {groups} бүлэг · <strong className="text-title">{tugrik(Number(price))}</strong> /{" "}
-              {periodLabel}
-            </>
-          ) : access.isSuccess ? (
-            "Гэрээнд бүлгийн төлбөр тогтоогоогүй байна. NomadKids-тэй холбогдож нэхэмжлэх авна уу."
-          ) : null}
-        </p>
+          <div
+            role="radiogroup"
+            aria-label="Төлбөрийн хугацаа"
+            className="grid max-w-[420px] grid-cols-2 gap-1 rounded-pill bg-canvas p-1"
+          >
+            {(
+              [
+                ["term", "Улирлаар"],
+                ["year", yearWhole ? "Жилээр — хямд" : "Жилээр"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={period === value}
+                onClick={() => setPeriod(value)}
+                className={cn(
+                  "min-h-11 rounded-pill px-3 text-body font-semibold transition-colors",
+                  period === value ? "bg-primary text-white shadow-sm" : "text-muted",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
-        {price && coversTo ? (
-          <p className="text-body text-muted">
-            Төлмөгц эрх <strong className="text-ink">{formatDate(coversTo)}</strong> хүртэл
-            сунгагдана.
+          <p aria-live="polite" className="text-body text-ink">
+            {price ? (
+              <>
+                {groups} бүлэг · <strong className="text-title">{tugrik(Number(price))}</strong> /{" "}
+                {periodLabel}
+              </>
+            ) : access.isSuccess ? (
+              "Гэрээнд бүлгийн төлбөр тогтоогоогүй байна. NomadKids-тэй холбогдож нэхэмжлэх авна уу."
+            ) : null}
           </p>
-        ) : null}
 
-        <div className="flex flex-wrap gap-2">
-          <ContractPayDialog period={period} disabled={!price} />
-          <InvoiceButton period={period} disabled={!price} />
-        </div>
-        <p className="text-caption text-muted">
-          QPay-ээр төлсөн даруйд эрх сунгагдана. Нэхэмжлэхийг баримтад хадгалж болно.
-        </p>
-      </Card>
+          {price && coversTo ? (
+            <p className="text-body text-muted">
+              Төлмөгц эрх <strong className="text-ink">{formatDate(coversTo)}</strong> хүртэл
+              сунгагдана.
+            </p>
+          ) : null}
+
+          <div className="flex flex-wrap gap-2">
+            <ContractPayDialog request={renewal} disabled={!price} />
+            <InvoiceButton
+              request={{ path: "/service-access/invoices", body: { period } }}
+              disabled={!price}
+            />
+          </div>
+          <p className="text-caption text-muted">{PAID_HOW}</p>
+        </Card>
+      )}
     </div>
+  );
+}
+
+const PAID_HOW =
+  "QPay-ээр төлсөн даруйд эрх сунгагдана. Нэхэмжлэхээр дансаар шилжүүлсэн бол NomadKids төлбөрийг бүртгэмэгц сунгагдана.";
+
+/**
+ * «Гэрээ байгуулах» — the director reads the contract and accepts it online
+ * (the user, 2026-10-18). The server records who, when, and which version of
+ * which PDF; the contract becomes ACTIVE and its first period is owed.
+ */
+function ContractToSign({
+  contract,
+}: {
+  contract: NonNullable<z.infer<typeof serviceAccessSchema>["contractToSign"]>;
+}) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [agreed, setAgreed] = useState(false);
+
+  const pdf = useMutation({
+    mutationFn: () =>
+      get(`/service-access/contracts/${contract.id}/download`, invoiceDownloadSchema),
+    // ★ Fetched and followed per click: a presigned URL sitting in the page is a credential.
+    onSuccess: (result) => window.open(result.url, "_blank", "noopener"),
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const accept = useMutation({
+    mutationFn: () =>
+      mutate(`/service-access/contracts/${contract.id}/accept`, acceptSchema, {
+        method: "POST",
+        body: { accepted: true, version: contract.version },
+      }),
+    onSuccess: () => {
+      toast.success("Гэрээ баталгаажлаа.");
+      void queryClient.invalidateQueries({ queryKey: qk.serviceAccess() });
+    },
+  });
+
+  return (
+    <Card pad="roomy" className="flex flex-col gap-4">
+      <SectionHeader
+        title="Гэрээ байгуулах"
+        lede="Гэрээгээ уншаад зөвшөөрвөл доор баталгаажуулна уу."
+      />
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-body">
+        <dt className="text-muted">Гэрээний дугаар</dt>
+        <dd className="font-semibold text-ink">№{contract.number}</dd>
+        <dt className="text-muted">Хугацаа</dt>
+        <dd className="text-ink">
+          {formatDate(contract.startsOn)} – {formatDate(contract.endsOn)}
+        </dd>
+        {contract.groupCount ? (
+          <>
+            <dt className="text-muted">Бүлэг</dt>
+            <dd className="text-ink">{contract.groupCount}</dd>
+          </>
+        ) : null}
+        {contract.periodFee ? (
+          <>
+            <dt className="text-muted">Нийт төлбөр</dt>
+            <dd className="font-semibold text-ink">{tugrik(Number(contract.periodFee))}</dd>
+          </>
+        ) : null}
+      </dl>
+
+      <Button
+        variant="secondary"
+        className="self-start"
+        onClick={() => pdf.mutate()}
+        disabled={!contract.pdfReady || pdf.isPending}
+      >
+        <FileText aria-hidden="true" />
+        {contract.pdfReady ? "Гэрээ унших (PDF)" : "Гэрээ бэлтгэгдэж байна…"}
+      </Button>
+
+      <label className="flex items-start gap-2 text-body text-ink">
+        <input
+          type="checkbox"
+          className="mt-1 size-4"
+          checked={agreed}
+          onChange={(event) => setAgreed(event.target.checked)}
+        />
+        <span>Гэрээний нөхцөлийг уншиж танилцсан бөгөөд зөвшөөрч байна.</span>
+      </label>
+
+      <FormError message={accept.isError ? errorMessage(accept.error) : null} />
+      <Button
+        className="self-start"
+        onClick={() => accept.mutate()}
+        disabled={!agreed || !contract.pdfReady || accept.isPending}
+      >
+        {accept.isPending ? "Баталгаажуулж байна…" : "Гэрээг баталгаажуулах"}
+      </Button>
+      <p className="text-caption text-muted">
+        Баталгаажуулахад таны нэр, огноо, гэрээний хувилбар бүртгэгдэнэ.
+      </p>
+    </Card>
+  );
+}
+
+/** «Гэрээний төлбөр» — the accepted contract's first period, at its own figure. */
+function ContractDue({ due }: { due: NonNullable<z.infer<typeof serviceAccessSchema>["due"]> }) {
+  return (
+    <Card pad="roomy" className="flex flex-col gap-4">
+      <SectionHeader title="Гэрээний төлбөр" lede={due.label} />
+      <p className="text-body text-ink">
+        {due.groupCount} бүлэг ·{" "}
+        <strong className="text-title">{tugrik(Number(due.amount))}</strong>
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <ContractPayDialog request={{ path: `/service-access/qpay/${due.id}`, body: {} }} />
+        <InvoiceButton request={{ path: `/service-access/payments/${due.id}/invoice`, body: {} }} />
+      </div>
+      <p className="text-caption text-muted">{PAID_HOW}</p>
+    </Card>
   );
 }
 
@@ -211,13 +381,13 @@ function ServiceAccess() {
  * «Нэхэмжлэх татах» — queued, polled, then opened. The same shape as the
  * finance PDFs: Chromium never runs inside a request (CLAUDE.md §6).
  */
-function InvoiceButton({ period, disabled }: { period: BillingPeriod; disabled: boolean }) {
+function InvoiceButton({ request, disabled = false }: { request: PayRequest; disabled?: boolean }) {
   const toast = useToast();
   const [jobId, setJobId] = useState<string | null>(null);
 
   const queue = useMutation({
     mutationFn: () =>
-      mutate("/service-access/invoices", invoiceJobSchema, { method: "POST", body: { period } }),
+      mutate(request.path, invoiceJobSchema, { method: "POST", body: request.body }),
     onSuccess: (job) => setJobId(job.id),
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -275,11 +445,17 @@ function InvoiceButton({ period, disabled }: { period: BillingPeriod; disabled: 
 }
 
 /**
- * «QPay-ээр төлөх» — the next period of the contract (№6). The QR comes
- * from the server's price; the dialog follows the attempt until QPay
- * confirms, then the contract's new end is read back.
+ * «QPay-ээр төлөх» — the next period of the contract (№6), or the one owed.
+ * The QR comes from the server's price; the dialog follows the attempt until
+ * QPay confirms, then the contract's new end is read back.
  */
-function ContractPayDialog({ period, disabled }: { period: BillingPeriod; disabled: boolean }) {
+function ContractPayDialog({
+  request,
+  disabled = false,
+}: {
+  request: PayRequest;
+  disabled?: boolean;
+}) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -287,7 +463,7 @@ function ContractPayDialog({ period, disabled }: { period: BillingPeriod; disabl
 
   const create = useMutation({
     mutationFn: () =>
-      mutate("/service-access/qpay", contractQpaySchema, { method: "POST", body: { period } }),
+      mutate(request.path, contractQpaySchema, { method: "POST", body: request.body }),
     onSuccess: (result) => {
       queryClient.setQueryData(["service-access", "qpay", result.payment.id], result);
       setPaymentId(result.payment.id);
