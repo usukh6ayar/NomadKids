@@ -456,7 +456,12 @@ export class ReportsRepository {
           OR: [
             { category: { in: [...AGE_ALBUM_CATEGORIES, "FIRST_DAY", "GRADUATION"] } },
             { albumCategoryId: { not: null } },
-            { attribution: "TEACHER" },
+            // A teacher's artwork has its own pages (`artworks` above), never
+            // the album as well.
+            {
+              attribution: "TEACHER",
+              OR: [{ category: null }, { category: { not: "ARTWORK" } }],
+            },
           ],
         },
         orderBy: [

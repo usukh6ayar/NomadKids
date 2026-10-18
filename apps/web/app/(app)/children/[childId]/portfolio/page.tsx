@@ -167,7 +167,7 @@ function GraduationLetter({ childId }: { childId: string }) {
     <>
       <section className="flex flex-col gap-3 rounded-card border border-[#f3dfaa] bg-[#fffaf0] p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#ffeab7] text-[#95661c]">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-pill bg-[#ffeab7] text-[#95661c]">
             <Mail size={20} aria-hidden="true" />
           </span>
           <div>

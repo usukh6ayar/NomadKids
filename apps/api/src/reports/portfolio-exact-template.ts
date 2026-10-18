@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ARTWORK_TYPES } from "@kinder/contracts";
+import { ARTWORK_TYPES, birthFacts, YEAR_ANIMALS, ZODIAC_SIGNS } from "@kinder/contracts";
 import { esc, fontFaceCss, formatDate, paragraphs } from "./template-utils";
 import type { PortfolioAgeProfile, PortfolioData } from "./portfolio-template";
 
@@ -195,7 +195,9 @@ function albumPages(data: PortfolioData) {
 
 function teacherPhotoPages(data: PortfolioData) {
   const items = flattenedAlbums(data)
-    .filter((album) => album.label === "Багшийн илгээсэн зураг" || album.attribution === "TEACHER")
+    // Only the uncategorised ones — a teacher's photo with a category is
+    // already on that category's album page.
+    .filter((album) => album.label === "Багшийн илгээсэн зураг")
     .flatMap((album) => album.items);
   return AGES.flatMap((age) => {
     const ageItems = items.filter((item) => item.age === age);
@@ -244,6 +246,14 @@ export function renderExactPortfolioHtml(data: PortfolioData): string {
     .filter((item) => Number.isFinite(Number(item.weightKg)))
     .map((item) => ({ value: Number(item.weightKg), label: formatDate(item.measuredOn) }));
   const photoCount = data.photoAlbums.reduce((sum, album) => sum + album.photos.length, 0);
+  // A guardian's pick overrides the computed answer, as on the web (RFP §4.2).
+  const computedBirthFacts = birthFacts(data.child.dateOfBirth);
+  const zodiac =
+    ZODIAC_SIGNS.find((item) => item.code === data.aboutMe?.zodiacCode) ??
+    computedBirthFacts.zodiac;
+  const yearAnimal =
+    YEAR_ANIMALS.find((item) => item.code === data.aboutMe?.yearAnimalCode) ??
+    computedBirthFacts.yearAnimal;
 
   const pages = [
     exactPage(
@@ -252,7 +262,7 @@ export function renderExactPortfolioHtml(data: PortfolioData): string {
     ),
     exactPage(
       2,
-      `${data.child.photoDataUri ? `<img class="child-photo" src="${data.child.photoDataUri}" alt="">` : ""}<div class="profile-age"></div><div class="identity-name">${esc(data.child.firstName)}<small>${current?.age || 5} нас</small></div><dl class="identity-values">${[data.aboutMe?.clanName, fullName, formatDate(data.child.dateOfBirth), data.child.sex === "FEMALE" ? "Эмэгтэй" : "Эрэгтэй", data.aboutMe?.nickname, data.aboutMe?.birthplace, data.aboutMe?.bloodType, data.group?.name].map((value) => `<dd>${esc(value)}</dd>`).join("")}</dl><div class="completion"><div><strong>Явцын үнэлгээ</strong><b>${data.observations.length} тэмдэглэл</b></div><div><strong>Миний тухай</strong><b>${data.aboutMe ? "Бүрэн" : "Дутуу"}</b></div><div><strong>Зургийн цомог</strong><b>${photoCount} зураг</b></div><div><strong>2-5 насны мэдээлэл</strong><b>${data.ageProfiles.length}/4 нас</b></div></div>`,
+      `${data.child.photoDataUri ? `<img class="child-photo" src="${data.child.photoDataUri}" alt="">` : ""}<div class="profile-age"></div><div class="identity-name">${esc(data.child.firstName)}<small>${current?.age || 5} нас</small></div><dl class="identity-values">${[data.aboutMe?.clanName, fullName, formatDate(data.child.dateOfBirth), data.child.sex === "FEMALE" ? "Эмэгтэй" : "Эрэгтэй", `${yearAnimal.name} жил`, zodiac.name, data.aboutMe?.bloodType, data.group?.name].map((value) => `<dd>${esc(value)}</dd>`).join("")}</dl><div class="completion"><div><strong>Явцын үнэлгээ</strong><b>${data.observations.length} тэмдэглэл</b></div><div><strong>Миний тухай</strong><b>${data.aboutMe ? "Бүрэн" : "Дутуу"}</b></div><div><strong>Зургийн цомог</strong><b>${photoCount} зураг</b></div><div><strong>2-5 насны мэдээлэл</strong><b>${data.ageProfiles.length}/4 нас</b></div></div>`,
     ),
     exactPage(
       3,
