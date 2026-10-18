@@ -35,10 +35,17 @@ beforeEach(async () => {
 const summary = () =>
   authed(request(server()).get(`/v1/groups/${a.group.id}/a79-summary`), teacherA);
 const server = () => app.getHttpServer();
-const childIds = (body: { children: { childId: string }[] }) => body.children.map((c) => c.childId);
+type Row = { childId: string; feeDue: boolean; total: number; byDomain: unknown[] };
+const rowOf = (body: { children: Row[] }, childId: string) =>
+  body.children.find((c) => c.childId === childId);
 
 describe("the А/79 summary and the portal fee", () => {
-  it("a solo teacher's unpaid child is out of the record until the family pays", async () => {
+  /*
+   * ★ Named, with every figure withheld — 2026-10-17. The child used to be
+   * left out, and a solo teacher whose families had not paid yet read
+   * «Бүлэгт хүүхэд алга» on a group full of children.
+   */
+  it("a solo teacher's unpaid child is listed as fee-due, with no figures, until the family pays", async () => {
     await db.kindergarten.update({
       where: { id: a.kindergarten.id },
       data: { kind: "SOLO_TEACHER" },
@@ -46,7 +53,7 @@ describe("the А/79 summary and the portal fee", () => {
 
     const unpaid = await summary();
     expect(unpaid.status).toBe(200);
-    expect(childIds(unpaid.body)).not.toContain(a.child.id);
+    expect(rowOf(unpaid.body, a.child.id)).toMatchObject({ feeDue: true, total: 0, byDomain: [] });
 
     await db.accessSubscription.create({
       data: {
@@ -60,10 +67,12 @@ describe("the А/79 summary and the portal fee", () => {
         expiresAt: new Date(Date.now() + 30 * 86_400_000),
       },
     });
-    expect(childIds((await summary()).body)).toContain(a.child.id);
+    const paid = rowOf((await summary()).body, a.child.id);
+    expect(paid?.feeDue).toBe(false);
+    expect(paid?.total).toBeGreaterThan(0);
   });
 
   it("a contracted kindergarten's staff are never gated", async () => {
-    expect(childIds((await summary()).body)).toContain(a.child.id);
+    expect(rowOf((await summary()).body, a.child.id)).toMatchObject({ feeDue: false });
   });
 });

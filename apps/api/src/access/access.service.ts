@@ -1,4 +1,4 @@
-import { localDate, type AccessPeriod } from "@kinder/contracts";
+import { childTermPrice, localDate, schoolTermOn, type AccessPeriod } from "@kinder/contracts";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { AuditRepository } from "../audit/audit.repository";
 import { ChildAccessService } from "../authz/child-access.service";
@@ -56,7 +56,8 @@ export class AccessService {
     const day = today();
     const covering = await this.repo.findActiveCovering(facts.childId, day);
     const year = await this.currentYear(facts);
-    const term = year && this.sellsTerms ? await this.termCovering(year, day) : null;
+    // The calendar term today falls in — none in summer (2026-10-18).
+    const term = year && this.sellsTerms ? schoolTermOn(localDate()) : null;
     const subscription =
       covering ?? (year ? await this.repo.findForChildYear(facts.childId, year.id) : null);
 
@@ -64,7 +65,7 @@ export class AccessService {
       required: true,
       active: covering !== null,
       amount: this.feeAmount,
-      termAmount: term ? this.termFeeAmount : null,
+      termAmount: term ? termAmount(term) : null,
       subscription: subscription && view(subscription),
     };
   }
@@ -102,11 +103,21 @@ export class AccessService {
       );
     }
 
+    /*
+     * ★ A term is the calendar's, priced by the sheet — 2026-10-18, the
+     * client's brief and the user: «I-р улирал» ends on 2026-11-30 whenever it
+     * is bought (5,000₮), and II and III follow at the standard 9,000₮ to the
+     * end of February and of May. Never the purchase day plus three months,
+     * never the kindergarten's own term (a solo workspace has none), and no
+     * past month on top. A term not paid by its last day is not sold after
+     * it: the next ask raises the next term's row. A term already paid keeps
+     * the day it was paid to (`findActiveCovering` above).
+     */
     if (period === "TERM") {
       if (!this.sellsTerms) {
         throw new BadRequestException("Улирлаар төлөх боломжгүй. Жилээр төлнө үү.");
       }
-      const term = await this.termCovering(year, day);
+      const term = schoolTermOn(localDate());
       if (!term) {
         throw new BadRequestException("Одоо хичээлийн улирал биш байна. Жилээр төлнө үү.");
       }
@@ -117,10 +128,9 @@ export class AccessService {
         schoolYearId: year.id,
         period: "TERM",
         termNumber: term.number,
-        amount: this.termFeeAmount,
-        // Frozen from the term at issue — see `expiresAt`'s schema comment.
-        expiresAt: term.endsOn,
-        label: `${year.name}, ${term.name}`,
+        amount: termAmount(term),
+        expiresAt: new Date(`${term.endsOn}T00:00:00.000Z`),
+        label: `${year.name}, ${term.label}`,
       });
     }
 
@@ -192,25 +202,6 @@ export class AccessService {
     return true;
   }
 
-  /**
-   * The term of this school year that covers `day` (#211).
-   *
-   * ★ The kindergarten's own `Term` rows when it has set any up — and then
-   * only those: a day between its terms is in no term. A year with none (a
-   * solo workspace, or a kindergarten that has not configured terms) is cut
-   * into three three-month terms from its start — September–November,
-   * December–February, March–May — the months a term's price is three of.
-   */
-  private async termCovering(
-    year: { id: string; startsOn: Date },
-    day: Date,
-  ): Promise<{ number: number; name: string; endsOn: Date } | null> {
-    const own = await this.repo.termsOfYear(year.id);
-    const terms = own.length > 0 ? own : calendarTerms(year.startsOn);
-    const term = terms.find((t) => t.startsOn <= day && day <= t.endsOn);
-    return term ? { number: term.number, name: term.name, endsOn: term.endsOn } : null;
-  }
-
   /** The kindergarten's current school year for this child. */
   private async currentYear(facts: Parameters<typeof childKindergartenIds>[0]) {
     const kindergartenId = [...childKindergartenIds(facts)][0];
@@ -232,24 +223,15 @@ function view(subscription: Awaited<ReturnType<AccessRepository["findForChildYea
   };
 }
 
-/** Three three-month terms from a school year's first day — see `termCovering`. */
-export function calendarTerms(startsOn: Date) {
-  const y = startsOn.getUTCFullYear();
-  const m = startsOn.getUTCMonth();
-  const day = (months: number, d: number) => new Date(Date.UTC(y, m + months, d));
-  // Day 0 of a month is the last day of the one before, leap February included.
-  return [1, 2, 3].map((number) => ({
-    number,
-    name: `${number}-р улирал`,
-    startsOn: day((number - 1) * 3, 1),
-    endsOn: day(number * 3, 0),
-  }));
-}
-
 /**
  * Today's DATE-column key: UTC midnight of Ulaanbaatar's calendar day. The
  * UTC date alone is yesterday until 08:00 local.
  */
 function today(): Date {
   return new Date(`${localDate()}T00:00:00.000Z`);
+}
+
+/** A term's price as the API's decimal string — the sheet's, never the client's. */
+function termAmount(term: NonNullable<ReturnType<typeof schoolTermOn>>): string {
+  return `${childTermPrice(term)}.00`;
 }

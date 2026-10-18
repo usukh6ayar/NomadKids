@@ -37,10 +37,63 @@ import { AccessPeriodPicker } from "@/components/child/access-period-picker";
  */
 export function AccessGate({ childId }: { childId: string }) {
   const { hasRole } = useSession();
-  const [period, setPeriod] = useState<AccessPeriod>("YEAR");
   const isStaff = hasRole("TEACHER") || hasRole("ADMIN");
-  // A family's own list — staff never read `/children/mine`.
-  const childName = useOwnChildName(childId, !isStaff);
+  /*
+    ★ A solo teacher meets this too (2026-10-11): in their own workspace a child
+    is inactive until the family pays. They are told so — and are not offered
+    the pay button, because teachers never pay.
+
+    ★★ Without asking `/access` — 2026-10-17, the client: the screen "цайрч
+    харагдаад … эвдэрсэн юм шиг". That route is a guardian's and the finance
+    staff's (`assertCanViewFinance`); a solo teacher is TEACHER only and gets
+    404 there, so the gate waited on it, found no answer and drew nothing. The
+    402 that brought us here is the whole fact the teacher needs.
+  */
+  if (isStaff) return <UnpaidForStaff />;
+  return <GuardianGate childId={childId} />;
+}
+
+/**
+ * What a teacher sees for a child whose family has not paid the portal fee —
+ * on the child's own pages and wherever a group screen names them.
+ */
+export function UnpaidForStaff({
+  backHref = "/children",
+}: {
+  /** `null` where the page's own header already has one. */
+  backHref?: string | null;
+}) {
+  return (
+    <div className="mx-auto mt-4 flex w-full max-w-md flex-col gap-3">
+      {backHref ? (
+        <Button
+          asChild
+          variant="ghost"
+          size="icon"
+          className="shrink-0 self-start border border-border-soft bg-surface text-ink shadow-none transition-colors hover:bg-primary-soft hover:text-primary sm:h-10 sm:w-10"
+        >
+          <Link href={backHref} aria-label="Буцах">
+            <ChevronLeft size={22} strokeWidth={2.5} aria-hidden />
+          </Link>
+        </Button>
+      ) : null}
+      <Card className="flex flex-col gap-2 p-6 text-center">
+        <h2 className="text-title text-ink">Төлбөр төлөгдөөгүй</h2>
+        <p className="text-body text-muted">
+          Энэ хүүхдийн эцэг эх хандалтын төлбөрөө төлөөгүй байна. Төлбөр төлөгдсөний дараа хүүхдийн
+          бүртгэл, ажиглалт, судалгаа нээгдэнэ.
+        </p>
+        <p className="text-caption text-muted">
+          Эцэг эхийг урьж амжаагүй бол «Суралцагч» хэсгээс урина уу.
+        </p>
+      </Card>
+    </div>
+  );
+}
+
+function GuardianGate({ childId }: { childId: string }) {
+  const [period, setPeriod] = useState<AccessPeriod>("YEAR");
+  const childName = useOwnChildName(childId, true);
   const status = useQuery({
     queryKey: qk.childAccess(childId),
     queryFn: () => get(`/children/${childId}/access`, accessStatusSchema),
@@ -56,26 +109,6 @@ export function AccessGate({ childId }: { childId: string }) {
   const year = subscription?.schoolYear.name;
   // Without a term price the year is the only choice, whatever was picked.
   const chosen: AccessPeriod = termAmount ? period : "YEAR";
-
-  /*
-    ★ A solo teacher meets this too (2026-10-11): in their own workspace a child
-    is inactive until the family pays. They are told so — and are not offered
-    the pay button, because teachers never pay.
-  */
-  if (isStaff) {
-    return (
-      <Card className="mx-auto mt-6 flex max-w-md flex-col gap-2 p-6 text-center">
-        <h2 className="text-title text-ink">Төлбөр төлөгдөөгүй</h2>
-        <p className="text-body text-muted">
-          Энэ хүүхдийн эцэг эх{year ? ` ${year} оны хичээлийн жилийн` : ""} хандалтын төлбөрөө
-          төлөөгүй байна. Төлбөр төлөгдсөний дараа хүүхдийн бүртгэл, ажиглалт нээгдэнэ.
-        </p>
-        <p className="text-caption text-muted">
-          Эцэг эхийг урьж амжаагүй бол «Суралцагч» хэсгээс урина уу.
-        </p>
-      </Card>
-    );
-  }
 
   return (
     <div className="mx-auto mt-4 flex max-w-md flex-col gap-3">

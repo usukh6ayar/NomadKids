@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "./support/render";
 import { PricingContent } from "@/components/public/pricing";
 import {
@@ -22,7 +22,7 @@ import {
 describe("the current school-year prices", () => {
   /*
    * ★ The discount is back (the user, 2026-10-13, after it ended on
-   * 2026-10-11): 5,000₮ / 22,000₮ a child and 6,000₮ (2,000₮ a month) / 30,000₮ a group, below
+   * 2026-10-11): 5,000₮ / 22,000₮ a child and 6,000₮ a term / 30,000₮ a group, below
    * the standard 3,000₮ and 4,000₮ a month.
    */
   it("charges the discounted price below the standard", () => {
@@ -31,8 +31,8 @@ describe("the current school-year prices", () => {
     expect(KINDERGARTEN_CURRENT_TERM_PER_GROUP).toBe(6_000);
     expect(KINDERGARTEN_CURRENT_YEAR_PER_GROUP).toBe(30_000);
 
-    // The user's example: 2,000₮ × 3 months × 3 groups.
-    expect(kindergartenTermPrice(3)).toBe(18_000);
+    // 6,000₮ a group for «I-р улирал», three groups.
+    expect(kindergartenTermPrice(3, "2026-10-18")).toBe(18_000);
     expect(kindergartenYearlyPrice(3)).toBe(90_000);
     expect(yearlySavingAmount(kindergartenStandardYearPrice(3), kindergartenYearlyPrice(3))).toBe(
       18_000,
@@ -45,13 +45,24 @@ describe("the current school-year prices", () => {
   });
 });
 
+/** The page reads «today» for the promotion — pin it (Date only, so timers still run). */
+function onDay(iso: string) {
+  vi.useFakeTimers({ toFake: ["Date"], now: new Date(iso) });
+}
+
 describe("the pricing page", () => {
+  beforeEach(() => onDay("2026-10-18T03:00:00.000Z"));
+  afterEach(() => vi.useRealTimers());
+
   it("shows the discounted prices with the standard struck through", () => {
     render(<PricingContent />);
 
     const child = within(screen.getByRole("article", { name: "Хүүхэд" }));
     expect(child.getByText("Суурь үнэ: сар бүр 3,000₮")).toBeInTheDocument();
-    expect(screen.getByText("I-р улирал : 2026.11.30 хүртэл")).toBeInTheDocument();
+    expect(screen.getByText("I-р улирал · 2026.11.30 хүртэл хүчинтэй")).toBeInTheDocument();
+    // On the term's own price, before anyone pays (2026-10-18).
+    expect(child.getByText("2026.11.30 хүртэл хүчинтэй")).toBeInTheDocument();
+    expect(child.getByText("/ I-р улирал")).toBeInTheDocument();
     expect(child.getByText("9,000₮")).toHaveClass("line-through");
     expect(child.getByText("5,000₮")).toBeInTheDocument();
     expect(child.getByText("27,000₮")).toHaveClass("line-through");
@@ -93,7 +104,7 @@ describe("the pricing page", () => {
     const user = userEvent.setup();
     render(<PricingContent />);
 
-    const term = screen.getByRole("radio", { name: "Улирлаар" });
+    const term = screen.getByRole("radio", { name: "I-р улирал" });
     const year = screen.getByRole("radio", { name: "Жилээр" });
     expect(term).toHaveAttribute("aria-checked", "true");
     await user.click(year);
@@ -144,7 +155,52 @@ describe("the pricing page", () => {
   });
 });
 
+/*
+ * ★ After «I-р улирал» — the terms at the standard price: 9,000₮ a child (the
+ * user, 2026-10-18) and 12,000₮ a group; the promotion's label is gone.
+ */
+describe("the pricing page from 1 December 2026", () => {
+  beforeEach(() => onDay("2026-12-01T03:00:00.000Z"));
+  afterEach(() => vi.useRealTimers());
+
+  it("prices the term at the standard 9,000₮ a child and 12,000₮ a group", () => {
+    render(<PricingContent />);
+
+    expect(screen.queryByText(/2026\.11\.30 хүртэл хүчинтэй/)).toBeNull();
+    expect(screen.getByRole("radio", { name: "Улирлаар" })).toBeInTheDocument();
+
+    const child = within(screen.getByRole("article", { name: "Хүүхэд" }));
+    expect(child.queryByText("5,000₮")).toBeNull();
+    expect(child.getByText("9,000₮")).not.toHaveClass("line-through");
+    expect(child.getByText("22,000₮")).toBeInTheDocument();
+
+    const kindergarten = within(screen.getByRole("article", { name: "Цэцэрлэг" }));
+    expect(kindergarten.getByText("12,000₮")).not.toHaveClass("line-through");
+    expect(kindergarten.queryByText("6,000₮")).toBeNull();
+    expect(kindergartenTermPrice(3, "2026-12-01")).toBe(36_000);
+  });
+});
+
 describe("a kindergarten contract's terms", () => {
+  /*
+   * ★ «I-р улирал» is 6,000₮ a group — the contract used to print 2,000₮
+   * (a month) for it, read as the term's price (the client, 2026-10-18).
+   */
+  it("prices «I-р улирал» as a 6,000₮ term, never as a 2,000₮ month", () => {
+    const schedule = contractSchedule(3, "term", "2026-09-01", "2027-05-31")!;
+    const [first, second] = schedule.lines;
+    expect(first).toMatchObject({
+      perGroup: 6_000,
+      perMonth: null,
+      amount: 18_000,
+      discounted: true,
+    });
+    expect(second).toMatchObject({ perGroup: 12_000, perMonth: 4_000, discounted: false });
+    expect(schedule.lines.some((line) => line.perMonth === 2_000 || line.perGroup === 2_000)).toBe(
+      false,
+    );
+  });
+
   /*
    * ★ A contract approved mid-term pays that whole term — the user,
    * 2026-10-14 («бүтнээр»).

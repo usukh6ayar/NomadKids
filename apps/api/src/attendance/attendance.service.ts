@@ -1342,7 +1342,7 @@ export class AttendanceService {
 
   /** Records or updates one child's status for one day. Staff only. */
   async record(actor: Actor, childId: string, dateIso: string, dto: RecordAttendanceDto) {
-    await this.childAccess.assertCanRecord(actor, childId);
+    await this.childAccess.assertCanRecordAttendance(actor, childId);
 
     const date = new Date(`${dateIso}T00:00:00.000Z`);
     if (isFutureDate(date)) {
@@ -1489,7 +1489,7 @@ export class AttendanceService {
    * morning's `status`.
    */
   async recordPickup(actor: Actor, childId: string, dateIso: string, dto: RecordPickupDto) {
-    await this.childAccess.assertCanRecord(actor, childId);
+    await this.childAccess.assertCanRecordAttendance(actor, childId);
 
     const date = new Date(`${dateIso}T00:00:00.000Z`);
     if (isFutureDate(date)) {
@@ -1714,7 +1714,7 @@ export class AttendanceService {
     const row = await this.repo.findRequestForAuthorization(requestId);
     if (!row) throw new NotFoundException();
 
-    await this.childAccess.assertCanRecord(actor, row.childId);
+    await this.childAccess.assertCanRecordAttendance(actor, row.childId);
 
     if (row.reviewStatus !== "PENDING") {
       throw new BadRequestException("Энэ хүсэлтийг аль хэдийн шийдвэрлэсэн байна");

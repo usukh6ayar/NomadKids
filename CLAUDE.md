@@ -118,7 +118,8 @@ The same 402 now also reaches **the staff of a solo teacher's workspace**
 (`Kindergarten.kind = SOLO_TEACHER`, the user 2026-10-11): no contract pays
 there, so an unpaid child is inactive for the teacher too. The argument holds —
 they have passed `canAccessChild` first. Inviting the family
-(`assertCanInviteGuardian`) and the roster stay open; a contracted
+(`assertCanInviteGuardian`), the roster and attendance
+(`assertCanRecordAttendance`, the user 2026-10-18) stay open; a contracted
 kindergarten's staff are never gated.
 
 ★ **A solo teacher is TEACHER only, never ADMIN** (the user, 2026-10-14). They
@@ -362,7 +363,9 @@ a family goes through QPay.
 ★ **The line moved twice** (the user, 2026-10-16): a kindergarten pays its
 **platform contract** — the per-group term or year — through QPay too, not by
 bank transfer. Every payment to the platform is QPay, so the revenue page and
-the partners' shares count it without anyone typing it in (backend list №6).
+the partners' shares count it without anyone typing it in (backend list №6 —
+built 2026-10-18: `ContractPayment`, `POST /service-access/qpay`; paid, the
+contract runs to the period's end).
 It is the operator's revenue like the fee — no `Payment` row. A kindergarten's
 own tuition and meal invoices to families still never touch QPay.
 

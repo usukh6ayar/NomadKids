@@ -12,6 +12,7 @@ import {
   paginated,
 } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
+import { useEsisLinked } from "@/lib/use-esis-linked";
 import { EsisDataPanel } from "@/components/esis/esis-data-panel";
 import { AdminRoster, StudentRosterTable } from "@/components/child/admin-roster";
 import { CardRoster } from "@/components/child/card-roster";
@@ -163,6 +164,14 @@ function StaffChildren() {
    * panels to be smaller, not for a director to stop seeing them.
    */
   const isAdmin = hasRole("ADMIN");
+  /*
+   * ★ The ESIS panels only where there is ESIS — 2026-10-17, the user:
+   * "ESIS-гүй цэцэрлэгүүд ч адилхан ашиглаж болдог байх, ESIS-ээс зүгээр дата
+   * авахгүй, дата явуулахгүй". Without it the register search and the
+   * ministry's roll could only say ESIS did not answer; the kindergarten's own
+   * roster below is the screen for them, as for a teacher.
+   */
+  const esisLinked = useEsisLinked() === true;
 
   /*
    * ★ A search box on the screen again — 2026-09-09, at the client's request
@@ -350,36 +359,38 @@ function StaffChildren() {
         The teacher's count lives on `LocalRoster`'s own header instead, over
         the rows they can actually see.
       */}
-      {isAdmin ? <RosterSummary /> : null}
+      {isAdmin && esisLinked ? <RosterSummary /> : null}
 
-      <EsisDataPanel
-        resource="studentByRegister"
-        title="ESIS-ээс регистрээр хайх"
-        description="Регистрийн дугаараар ESIS-ээс хайж, манай бүртгэлтэй тулгана"
-        registerSearchCompact
-        compactSearchValue={typed}
-        onCompactSearchChange={setTyped}
-        hasLocalRegisterMatch={(register) =>
-          (data?.items ?? []).some(
-            (child) => child.nationalId?.replace(/\s/g, "").toUpperCase() === register,
-          )
-        }
-        liveHref={childHref}
-        linkField="firstName"
-        rowActions={(row) => {
-          const href = childHref(row);
-          return href ? (
-            <Badge tone="mint">Манай системд бүртгэлтэй</Badge>
-          ) : (
-            <span className="flex flex-wrap items-center justify-end gap-2">
-              <Badge tone="sun">Манай системд бүртгэлгүй</Badge>
-              <Button asChild size="sm">
-                <Link href="/children/new">Суралцагчаар бүртгэх</Link>
-              </Button>
-            </span>
-          );
-        }}
-      />
+      {esisLinked ? (
+        <EsisDataPanel
+          resource="studentByRegister"
+          title="ESIS-ээс регистрээр хайх"
+          description="Регистрийн дугаараар ESIS-ээс хайж, манай бүртгэлтэй тулгана"
+          registerSearchCompact
+          compactSearchValue={typed}
+          onCompactSearchChange={setTyped}
+          hasLocalRegisterMatch={(register) =>
+            (data?.items ?? []).some(
+              (child) => child.nationalId?.replace(/\s/g, "").toUpperCase() === register,
+            )
+          }
+          liveHref={childHref}
+          linkField="firstName"
+          rowActions={(row) => {
+            const href = childHref(row);
+            return href ? (
+              <Badge tone="mint">Манай системд бүртгэлтэй</Badge>
+            ) : (
+              <span className="flex flex-wrap items-center justify-end gap-2">
+                <Badge tone="sun">Манай системд бүртгэлгүй</Badge>
+                <Button asChild size="sm">
+                  <Link href="/children/new">Суралцагчаар бүртгэх</Link>
+                </Button>
+              </span>
+            );
+          }}
+        />
+      ) : null}
 
       {/*
         ★ The kindergarten's own roster, scoped by the API — 2026-09-22.
@@ -426,7 +437,7 @@ function StaffChildren() {
         both ADMIN and TEACHER, while every other role receives neither the
         catalog entry nor permission to call it.
       */}
-      {isAdmin ? (
+      {isAdmin && esisLinked ? (
         <EsisDataPanel
           resource="students"
           /*

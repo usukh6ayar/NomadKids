@@ -1,4 +1,5 @@
 import type { INestApplication } from "@nestjs/common";
+import { quote } from "../src/service-access/service-access.service";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -108,7 +109,9 @@ const requestInvoice = (who: AuthSession, period: string) =>
 
 describe("GET /service-access", () => {
   it("reads the contract in force, priced on the groups running now", async () => {
-    await contract(10);
+    const signed = await contract(10);
+    // The period after the contract's end, at the sheet's price (2026-10-18).
+    const next = (period: "TERM" | "YEAR") => quote(signed, 1, period);
 
     const res = await status(adminA);
 
@@ -119,12 +122,23 @@ describe("GET /service-access", () => {
       daysLeft: 10,
       remind: true,
       perGroupMonthlyFee: "4000",
-      termAmount: "12000.00",
-      yearAmount: "36000.00",
+      // The price sheet's (2026-10-18): «I-р улирал» 6,000₮ through
+      // 2026-11-30, then 12,000₮; the year 30,000₮ — never 4,000 × 9.
+      termAmount: next("TERM").amount,
+      yearAmount: "30000.00",
+      termCoversTo: next("TERM").coversTo,
     });
     expect(res.body.expiresAt).toBe(
       new Date(TODAY.getTime() + 10 * DAY).toISOString().slice(0, 10),
     );
+  });
+
+  it("keeps a negotiated monthly fee as agreed — fee × 3 and fee × 9", async () => {
+    await contract(10, "3500.00");
+
+    const res = await status(adminA);
+
+    expect(res.body).toMatchObject({ termAmount: "10500.00", yearAmount: "31500.00" });
   });
 
   it("does not remind more than 14 days out", async () => {
@@ -193,7 +207,8 @@ describe("the renewal invoice", () => {
 
       const queued = await requestInvoice(adminA, "year");
       expect(queued.status, JSON.stringify(queued.body)).toBe(201);
-      expect(queued.body).toMatchObject({ period: "year", amount: "36000.00" });
+      // The sheet's 30,000₮ a group, not 4,000 × 9 (2026-10-18).
+      expect(queued.body).toMatchObject({ period: "year", amount: "30000.00" });
 
       expect((await generator.run(queued.body.id as string)).status).toBe("DONE");
       const job = await db.reportJob.findUniqueOrThrow({
@@ -206,7 +221,9 @@ describe("the renewal invoice", () => {
 
       expect(text).toContain("Нэхэмжлэх");
       expect(text).toContain(a.kindergarten.name);
-      expect(text).toMatch(/36 000₮/);
+      expect(text).toMatch(/30 000₮/);
+      expect(text).toContain("Нэг бүлгийн төлбөр");
+      expect(text).not.toMatch(/36 000₮/);
       expect(text).toContain("5000123456");
       expect(text).toContain(signed.number);
 

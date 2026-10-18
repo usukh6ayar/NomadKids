@@ -70,10 +70,11 @@ export class PlatformRevenueService {
     this.platform.assertSuperAdmin(actor);
 
     const { first, next } = monthBounds(month);
-    const [rows, fees, materials] = await Promise.all([
+    const [rows, fees, materials, contracts] = await Promise.all([
       this.repo.monthByKindergarten(first),
       this.repo.accessFeesByKindergarten(first, next),
       this.repo.materialSales(first, next),
+      this.repo.contractFees(first, next),
     ]);
 
     const feeById = new Map(fees.map((row) => [row.kindergartenId, row]));
@@ -118,6 +119,7 @@ export class PlatformRevenueService {
 
     const accessFees = sumMoney(fees.map((r) => r.accessFees));
     const materialSales = parseMoney(materials.materialSales);
+    const contractFees = parseMoney(contracts.contractFees);
 
     return {
       month,
@@ -132,7 +134,9 @@ export class PlatformRevenueService {
         accessPayments: fees.reduce((sum, row) => sum + row.accessPayments, 0),
         materialSales: formatMoney(materialSales),
         materialPayments: materials.materialPayments,
-        total: formatMoney(accessFees + materialSales),
+        contractFees: formatMoney(contractFees),
+        contractPayments: contracts.contractPayments,
+        total: formatMoney(accessFees + materialSales + contractFees),
       },
     };
   }
@@ -159,7 +163,7 @@ export class PlatformRevenueService {
     this.platform.assertSuperAdmin(actor);
 
     const { first, last, next } = monthBounds(month);
-    const [fees, materials, partners] = await Promise.all([
+    const [fees, materials, partners, contracts] = await Promise.all([
       /*
        * ★★★ Access fees, **not** `monthByKindergarten`.
        *
@@ -171,12 +175,15 @@ export class PlatformRevenueService {
       this.repo.accessFeesByKindergarten(first, next),
       this.repo.materialSales(first, next),
       this.repo.partnersInForce(last),
+      this.repo.contractFees(first, next),
     ]);
 
     const accessFees = sumMoney(fees.map((row) => row.accessFees));
     const accessPayments = fees.reduce((sum, row) => sum + row.accessPayments, 0);
     const materialSales = parseMoney(materials.materialSales);
-    const total = accessFees + materialSales;
+    // Kindergartens' contracts paid by QPay are divided too (№6, 2026-10-18).
+    const contractFees = parseMoney(contracts.contractFees);
+    const total = accessFees + materialSales + contractFees;
     const allocated = sumMoney(partners.map((p) => p.sharePercent));
 
     const shares = partners.map((partner) => ({
@@ -200,6 +207,8 @@ export class PlatformRevenueService {
       accessPayments,
       materialSales: formatMoney(materialSales),
       materialPayments: materials.materialPayments,
+      contractFees: formatMoney(contractFees),
+      contractPayments: contracts.contractPayments,
       total: formatMoney(total),
       allocatedPercent: formatPercent(allocated),
       unallocated: formatMoney(total - paidOut),

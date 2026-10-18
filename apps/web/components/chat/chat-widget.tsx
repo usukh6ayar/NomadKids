@@ -295,7 +295,9 @@ export function ChatWidget() {
         data-print-hide
         className={cn(
           "fixed right-4 z-30 grid size-14 place-items-center rounded-pill bg-transparent shadow-lg transition-transform hover:scale-105",
-          "bottom-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom)+0.5rem)] lg:bottom-6 lg:right-6",
+          // `--chat-lift`: room a screen's own corner buttons claim under it
+          // (the teacher survey sheet's Буцах · Хадгалах, 2026-10-18).
+          "bottom-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom)+0.5rem+var(--chat-lift,0px))] lg:bottom-[calc(1.5rem+var(--chat-lift,0px))] lg:right-6",
         )}
       >
         <Art name="chat" size={56} className="size-14 object-contain" />

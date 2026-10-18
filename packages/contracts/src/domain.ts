@@ -295,6 +295,13 @@ export const sessionSchema = z.object({
    * kindergarten: ESIS, finance, kitchen, staff.
    */
   soloKindergartenIds: z.array(z.string()).default([]),
+  /**
+   * The actor's kindergartens mapped to an ESIS institution. ★ 2026-10-17,
+   * the user: a kindergarten without ESIS works the same and is shown no ESIS
+   * step — nothing is read from or sent to the ministry. Every member gets
+   * this, a teacher included; `GET /kindergartens/:id` is an administrator's.
+   */
+  esisKindergartenIds: z.array(z.string()).default([]),
   csrfToken: z.string().nullish(),
 });
 export type Session = z.infer<typeof sessionSchema>;
@@ -5276,7 +5283,10 @@ export const platformRevenueSchema = z.object({
      */
     materialSales: z.string(),
     materialPayments: z.number(),
-    /** `accessFees + materialSales` — the platform's whole income. */
+    /** Kindergartens' contract periods paid by QPay (№6, 2026-10-18). */
+    contractFees: z.string().default("0"),
+    contractPayments: z.number().default(0),
+    /** `accessFees + materialSales + contractFees` — the platform's whole income. */
     total: z.string(),
   }),
 });
@@ -5322,7 +5332,10 @@ export const revenueDistributionSchema = z.object({
   /** Paid teaching-material sales — divided too (the user, 2026-10-12). */
   materialSales: z.string(),
   materialPayments: z.number(),
-  /** `accessFees + materialSales` — the sum being divided. */
+  /** Kindergartens' contract periods paid by QPay — divided too (№6). */
+  contractFees: z.string().default("0"),
+  contractPayments: z.number().default(0),
+  /** `accessFees + materialSales + contractFees` — the sum being divided. */
   total: z.string(),
   allocatedPercent: z.string(),
   unallocated: z.string(),

@@ -178,7 +178,10 @@ describe("the child photo card in settings", () => {
   it("fills the empty fields from ESIS without saving, and leaves typed words alone", async () => {
     const user = userEvent.setup();
     const api = stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: "/auth/me",
+        body: { ...sessionFor(["TEACHER"]), esisKindergartenIds: [KINDERGARTEN_ID] },
+      },
       {
         path: `/kindergartens/${KINDERGARTEN_ID}/esis/my-profile`,
         body: {

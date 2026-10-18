@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
-import type { Prisma } from "../../generated/prisma/client";
+import { Prisma } from "../../generated/prisma/client";
 
 /**
  * Persistence for `QpayInvoice` — one payment attempt against one
@@ -66,6 +66,90 @@ export class QpayRepository {
     return result.count > 0;
   }
 
+  /** The latest attempt to pay for one period of a kindergarten's contract. */
+  async findLatestForContractPayment(contractPaymentId: string) {
+    return this.prisma.qpayInvoice.findFirst({
+      where: { contractPaymentId },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  /**
+   * PENDING → PAID on a contract period, once, and the contract's end moved
+   * to what it now covers — one transaction, so a paid period can never leave
+   * the contract short (№6, 2026-10-18). `false` means another call did it.
+   *
+   * ★ `endsOn` only ever moves forward: a period paid out of order cannot
+   * shorten a contract already paid further.
+   *
+   * ★★ `amount` is what QPay charged — the attempt's (review of #258). A QR
+   * drawn before the groups changed and paid after records what moved, not
+   * the re-priced figure, or the revenue and the partners' shares count money
+   * that never arrived. The material twin is `markMaterialPurchasePaid`.
+   * `before` is the row's figure when it differed (§3.2), `overlaps` whether
+   * another paid period of the contract already covers part of this one.
+   */
+  async markContractPaymentPaid(
+    contractPaymentId: string,
+    paidAt: Date,
+    amount: string,
+  ): Promise<
+    | { claimed: false }
+    | { claimed: true; before: { amount: string; groupCount: number } | null; overlaps: boolean }
+  > {
+    return this.prisma.$transaction(async (tx) => {
+      const current = await tx.contractPayment.findUniqueOrThrow({
+        where: { id: contractPaymentId },
+        select: {
+          contractId: true,
+          coversFrom: true,
+          coversTo: true,
+          groupCount: true,
+          perGroupAmount: true,
+          amount: true,
+        },
+      });
+      const paid = new Prisma.Decimal(amount);
+      const differs = !paid.equals(current.amount);
+      // The groups the QR was drawn for, when the period's per-group price divides it.
+      const groups =
+        differs && current.perGroupAmount.gt(0) ? paid.div(current.perGroupAmount) : null;
+
+      const claimed = await tx.contractPayment.updateMany({
+        where: { id: contractPaymentId, status: "PENDING" },
+        data: {
+          status: "PAID",
+          paidAt,
+          amount: paid,
+          ...(groups?.isInteger() ? { groupCount: groups.toNumber() } : {}),
+        },
+      });
+      if (claimed.count === 0) return { claimed: false as const };
+
+      await tx.contract.updateMany({
+        where: { id: current.contractId, endsOn: { lt: current.coversTo } },
+        data: { endsOn: current.coversTo },
+      });
+      const overlapping = await tx.contractPayment.count({
+        where: {
+          id: { not: contractPaymentId },
+          contractId: current.contractId,
+          status: "PAID",
+          deletedAt: null,
+          coversFrom: { lte: current.coversTo },
+          coversTo: { gte: current.coversFrom },
+        },
+      });
+      return {
+        claimed: true as const,
+        before: differs
+          ? { amount: current.amount.toFixed(2), groupCount: current.groupCount }
+          : null,
+        overlaps: overlapping > 0,
+      };
+    });
+  }
+
   /** `where: status: "PENDING"` guards this the same way `claimForPayment` guards itself. */
   async markExpired(id: string): Promise<void> {
     await this.prisma.qpayInvoice.updateMany({
@@ -89,7 +173,9 @@ export class QpayRepository {
    */
   async claimForPayment(id: string, paidAt: Date): Promise<boolean> {
     const result = await this.prisma.qpayInvoice.updateMany({
-      where: { id, status: "PENDING" },
+      // EXPIRED too: QPay can confirm a QR after our own TTL has run out —
+      // `QpayService.reconcile` re-asks only on QPay's callback.
+      where: { id, status: { in: ["PENDING", "EXPIRED"] } },
       data: { status: "PAID", paidAt },
     });
     return result.count > 0;

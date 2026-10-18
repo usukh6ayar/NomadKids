@@ -65,8 +65,11 @@ function harness(rowOverrides: Partial<Record<string, unknown>> = {}) {
      */
     findLatestForMaterialPurchase: vi.fn(async () => row),
     markMaterialPurchasePaid: vi.fn(async () => true),
+    findLatestForContractPayment: vi.fn(async () => row),
+    markContractPaymentPaid: vi.fn(async () => ({ claimed: true, before: null, overlaps: false })),
     claimForPayment: vi.fn(async (_id: string, paidAt: Date) => {
-      if (row.status !== "PENDING") return false;
+      // PENDING, or EXPIRED by our own clock while QPay still took the money.
+      if (row.status !== "PENDING" && row.status !== "EXPIRED") return false;
       claims += 1;
       row = { ...row, status: "PAID", paidAt } as QpayInvoiceRow;
       return true;
@@ -145,6 +148,42 @@ describe("reconciling a teaching-material payment", () => {
   });
 });
 
+describe("reconciling a contract payment", () => {
+  /* ★ Review of #258: what QPay took is what the contract payment records. */
+  it("hands the attempt's own amount to the contract payment", async () => {
+    const h = harness({ subscriptionId: null, contractPaymentId: "cp-1" });
+
+    const result = await h.service.statusForContractPayment("cp-1");
+
+    expect(result?.status).toBe("PAID");
+    expect(h.repo.markContractPaymentPaid).toHaveBeenCalledWith(
+      "cp-1",
+      expect.any(Date),
+      "195000.00",
+    );
+    expect(h.markPaid).not.toHaveBeenCalled();
+  });
+
+  it("asks about the QR before drawing another, and refuses one already paid", async () => {
+    const h = harness({
+      subscriptionId: null,
+      contractPaymentId: "cp-1",
+      expiresAt: new Date(Date.now() - 1000),
+    });
+
+    await expect(
+      h.service.createForContractPayment(actor, {
+        id: "cp-1",
+        kindergartenId: "kg-1",
+        amount: "195000.00",
+        description: "Цэцэрлэг, II улирал",
+      }),
+    ).rejects.toThrow();
+    expect(h.repo.markContractPaymentPaid).toHaveBeenCalledTimes(1);
+    expect(h.client.createInvoice).not.toHaveBeenCalled();
+  });
+});
+
 describe("reconciling a payment", () => {
   it("opens access exactly once when QPay confirms PAID", async () => {
     const h = harness();
@@ -187,6 +226,21 @@ describe("reconciling a payment", () => {
     expect(h.repo.findById).toHaveBeenCalled();
   });
 
+  /* ★ 2026-10-18: a short payment opens nothing — the amount is the row's, never assumed. */
+  it("opens nothing when QPay reports less paid than the row's amount", async () => {
+    const h = harness();
+    h.checkPayment.mockResolvedValueOnce({
+      count: 1,
+      rows: [{ payment_id: "p-1", payment_status: "PAID", payment_amount: "100" }],
+    });
+
+    const result = await h.service.status(actor, "child-1");
+
+    expect(h.markPaid).not.toHaveBeenCalled();
+    expect(h.repo.claimForPayment).not.toHaveBeenCalled();
+    expect(result.status).toBe("PENDING");
+  });
+
   it("changes nothing while QPay has not confirmed payment yet", async () => {
     const h = harness();
     h.checkPayment.mockResolvedValueOnce({ count: 0, rows: [] });
@@ -198,14 +252,64 @@ describe("reconciling a payment", () => {
     expect(result.status).toBe("PENDING");
   });
 
-  it("expires a stale row locally without calling QPay at all", async () => {
+  /*
+   * ★ Review of #258: a stale row used to be expired without asking QPay, so
+   * a QR paid in its last seconds took the money and opened nothing. It is
+   * asked once, then expired.
+   */
+  it("asks QPay once about a stale row before expiring it", async () => {
+    const h = harness({ expiresAt: new Date(Date.now() - 1000) });
+    h.checkPayment.mockResolvedValueOnce({ count: 0, rows: [] });
+
+    const result = await h.service.status(actor, "child-1");
+
+    expect(h.checkPayment).toHaveBeenCalledTimes(1);
+    expect(h.repo.markExpired).toHaveBeenCalledWith("qpay-row-1");
+    expect(result.status).toBe("EXPIRED");
+  });
+
+  it("credits a stale row QPay says was paid", async () => {
     const h = harness({ expiresAt: new Date(Date.now() - 1000) });
 
     const result = await h.service.status(actor, "child-1");
 
+    expect(h.markPaid).toHaveBeenCalledTimes(1);
+    expect(h.repo.markExpired).not.toHaveBeenCalled();
+    expect(result.status).toBe("PAID");
+  });
+
+  it("credits an EXPIRED row when QPay's callback says it was paid after all", async () => {
+    const h = harness({ status: "EXPIRED", expiresAt: new Date(Date.now() - 1000) });
+
+    await h.service.handleCallback("qpay-inv-1");
+
+    expect(h.checkPayment).toHaveBeenCalledTimes(1);
+    expect(h.markPaid).toHaveBeenCalledTimes(1);
+  });
+
+  it("never re-asks QPay about an EXPIRED row on a poll", async () => {
+    const h = harness({ status: "EXPIRED", expiresAt: new Date(Date.now() - 1000) });
+
+    const result = await h.service.status(actor, "child-1");
+
     expect(h.checkPayment).not.toHaveBeenCalled();
-    expect(h.repo.markExpired).toHaveBeenCalledWith("qpay-row-1");
     expect(result.status).toBe("EXPIRED");
+  });
+
+  it("says in the audit when the money credited nothing — the target was already paid", async () => {
+    const h = harness();
+    h.markPaid.mockResolvedValueOnce(false);
+
+    await h.service.status(actor, "child-1");
+
+    expect(h.audit.append).toHaveBeenCalledWith(
+      expect.objectContaining({
+        objectType: "QpayInvoice",
+        metadata: expect.objectContaining({
+          after: expect.objectContaining({ credited: false }),
+        }),
+      }),
+    );
   });
 
   it("leaves a PENDING row untouched when the QPay check itself fails", async () => {

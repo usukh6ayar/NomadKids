@@ -135,7 +135,6 @@ describe("the director's «Үйлчилгээний эрх»", () => {
 
     await user.click(screen.getByRole("radio", { name: "Жилээр — хямд" }));
     expect(screen.getByText("144,000₮")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /QPay/ })).toBeNull();
 
     const api = stubApi([
       {
@@ -154,6 +153,116 @@ describe("the director's «Үйлчилгээний эрх»", () => {
     expect(
       api.calls.find((c) => c.method === "POST" && c.url === "/service-access/invoices")?.body,
     ).toEqual({ period: "year" });
+  });
+
+  /*
+   * ★ №6 — a kindergarten pays its contract by QPay (the user, 2026-10-18):
+   * the day it will run to is said before the QR, and paid, the page reads
+   * the contract's new end back.
+   */
+  // The dialog polls every three seconds, as QPay's own check would be.
+  it("renews by QPay, saying first until when", { timeout: 15_000 }, async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: "/service-access",
+        body: {
+          expiresAt: inDays(7),
+          period: "year",
+          groupCount: 3,
+          termAmount: "18000.00",
+          yearAmount: "90000.00",
+          termCoversTo: "2026-11-30",
+          yearCoversTo: "2027-05-31",
+        },
+      },
+    ]);
+    renderWithProviders(<AdminServiceAccessPage />);
+
+    await user.click(await screen.findByRole("radio", { name: "Жилээр — хямд" }));
+    expect(screen.getByText(/хүртэл\s+сунгагдана/).textContent).toContain("2027.05.31");
+
+    const payment = {
+      id: "88888888-8888-4888-8888-888888888888",
+      coversTo: "2027-05-31",
+      amount: "90000.00",
+    };
+    const attempt = {
+      id: "77777777-7777-4777-8777-777777777777",
+      amount: "90000.00",
+      qrText: "qr",
+      qrImage: null,
+      expiresAt: null,
+      paidAt: null,
+    };
+    const api = stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: "/service-access/qpay",
+        method: "POST",
+        status: 201,
+        body: {
+          payment: { ...payment, status: "PENDING" },
+          attempt: { ...attempt, status: "PENDING" },
+        },
+      },
+      {
+        path: "/service-access/qpay/88888888-8888-4888-8888-888888888888",
+        body: {
+          payment: { ...payment, status: "PAID" },
+          attempt: { ...attempt, status: "PAID", paidAt: "2026-10-18T05:00:00.000Z" },
+        },
+      },
+      {
+        path: "/service-access",
+        body: { expiresAt: "2027-05-31", period: "year", groupCount: 3, yearAmount: "90000.00" },
+      },
+    ]);
+    await user.click(screen.getByRole("button", { name: /QPay-ээр төлөх/ }));
+
+    expect(
+      await screen.findByText("Төлбөр амжилттай хийгдлээ", {}, { timeout: 10_000 }),
+    ).toBeInTheDocument();
+    expect(
+      api.calls.find((c) => c.method === "POST" && c.url === "/service-access/qpay")?.body,
+    ).toEqual({ period: "year" });
+  });
+
+  /*
+   * ★ The user, 2026-10-18: from December «Жилээр» is what is left of the
+   * school year, priced as terms — never called cheap, and named by its terms.
+   */
+  it("names the year's remainder by its terms, and never calls it cheap", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: "/service-access",
+        body: {
+          expiresAt: inDays(7),
+          period: "term",
+          groupCount: 2,
+          termAmount: "24000.00",
+          yearAmount: "48000.00",
+          termCoversTo: "2027-02-28",
+          yearCoversTo: "2027-05-31",
+          termLabel: "II улирал (2026.12.01 – 2027.02.28)",
+          yearLabel: "2026–2027 хичээлийн жил, II улирал, III улирал",
+          yearWhole: false,
+        },
+      },
+    ]);
+    renderWithProviders(<AdminServiceAccessPage />);
+
+    expect(
+      await screen.findByText(/II улирал \(2026\.12\.01 – 2027\.02\.28\)/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "Жилээр — хямд" })).toBeNull();
+
+    await user.click(screen.getByRole("radio", { name: "Жилээр" }));
+    expect(screen.getByText(/2026–2027 хичээлийн жил, II улирал, III улирал/)).toBeInTheDocument();
+    expect(screen.getByText("48,000₮")).toBeInTheDocument();
   });
 
   it("says the contract details are coming while the API does not answer", async () => {

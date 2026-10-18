@@ -50,9 +50,13 @@ function row(day: number, group = "Дэлбээ бүлэг", sent = false) {
   };
 }
 
-function stub(items: ReturnType<typeof row>[]) {
+function stub(items: ReturnType<typeof row>[], esis = true) {
   return stubApi([
-    { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+    // A kindergarten with ESIS: its columns and «Илгээх» are drawn.
+    {
+      path: "/auth/me",
+      body: { ...sessionFor(["ADMIN"]), esisKindergartenIds: esis ? [KG] : [] },
+    },
     {
       path: `/kindergartens/${KG}/attendance/daily`,
       body: {
@@ -118,6 +122,18 @@ describe("the four views", () => {
 });
 
 describe("the daily attendance register", () => {
+  /* ★ 2026-10-17: no ESIS columns and no «Илгээх» where there is no ESIS. */
+  it("draws no ESIS columns in a kindergarten without ESIS", async () => {
+    stub([row(25, "Дэлбээ бүлэг")], false);
+    renderWithProviders(<DailyAttendancePage />);
+
+    await userEvent.click(await screen.findByRole("tab", { name: "Өдрөөр" }));
+    const table = await screen.findByRole("table", { name: "Өдөр тутмын ирцийн бүртгэл" });
+    const groups = [...table.querySelectorAll('th[scope="colgroup"]')].map((th) => th.textContent);
+    expect(groups).toEqual(["Ирц", "Баталгаажуулалт"]);
+    expect(within(table).queryByRole("button", { name: "Илгээх" })).toBeNull();
+  });
+
   it("draws the day under grouped headings, inventing nothing", async () => {
     stub([row(25, "Дэлбээ бүлэг", true)]);
     renderWithProviders(<DailyAttendancePage />);
@@ -374,6 +390,41 @@ describe("Сараар", () => {
 
     const present = table.querySelector("tfoot tr")!.querySelectorAll("td");
     expect([...present].map((cell) => cell.textContent)).toEqual(["1", "1", "0", "2"]);
+  });
+});
+
+describe("Сараар засах", () => {
+  /*
+   * ★ 2026-10-17, the client: "ирц сараар засаж болдог багш, удирдлага". The
+   * read-out links the director to the group's own month fill, on this month.
+   */
+  it("sends the director to the group's month, ready to fill in", async () => {
+    const user = userEvent.setup();
+    setSearchParams(`from=2026-09-01&groupId=${GROUP}`);
+    stubRegister();
+    renderWithProviders(<DailyAttendancePage />);
+
+    await user.click(await screen.findByRole("tab", { name: "Сараар" }));
+    expect(await screen.findByRole("link", { name: /Сараар засах/ })).toHaveAttribute(
+      "href",
+      `/groups/${GROUP}/attendance?journal=2026-09`,
+    );
+  });
+
+  it("is not offered to the accountant, who reads", async () => {
+    const user = userEvent.setup();
+    setSearchParams(`from=2026-09-01&groupId=${GROUP}`);
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ACCOUNTANT"]) },
+      {
+        path: `/kindergartens/${KG}/attendance/register`,
+        body: { items: [], total: 0, page: 1, pageSize: 200, totalPages: 1 },
+      },
+    ]);
+    renderWithProviders(<DailyAttendancePage />);
+
+    await user.click(await screen.findByRole("tab", { name: "Сараар" }));
+    expect(screen.queryByRole("link", { name: /Сараар засах/ })).toBeNull();
   });
 });
 

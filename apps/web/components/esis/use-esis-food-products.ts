@@ -1,5 +1,6 @@
 "use client";
 
+import { useEsisLinked } from "@/lib/use-esis-linked";
 import { useQuery } from "@tanstack/react-query";
 import { esisResourceReadSchema, esisScopedCatalogSchema } from "@kinder/contracts";
 import { get } from "@/lib/api/browser";
@@ -38,12 +39,14 @@ export interface EsisFoodProduct {
  */
 export function useEsisFoodProducts(): EsisFoodProduct[] {
   const { primaryKindergartenId } = useSession();
+  // Nothing is asked of ESIS where there is no ESIS (2026-10-17).
+  const esisLinked = useEsisLinked() === true;
 
   const catalog = useQuery({
     queryKey: qk.esisCatalog(primaryKindergartenId ?? "none"),
     queryFn: () =>
       get(`/kindergartens/${primaryKindergartenId}/esis/catalog`, esisScopedCatalogSchema),
-    enabled: Boolean(primaryKindergartenId),
+    enabled: Boolean(primaryKindergartenId) && esisLinked,
     retry: false,
   });
 

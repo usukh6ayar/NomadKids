@@ -116,6 +116,23 @@ describe("the director's roster", () => {
     expect(screen.queryByRole("link", { name: /Импорт/ })).toBeNull();
   });
 
+  /* ★ 2026-10-18: without ESIS there is no «ESIS татах», so Excel brings the roster in. */
+  it("offers the Excel import in place of «ESIS татах» where there is no ESIS", async () => {
+    stubApi([
+      { path: "/auth/me", body: { ...sessionFor(["ADMIN"]), esisKindergartenIds: [] } },
+      { path: "/children", body: { items: [], page: 1, pageSize: 20, total: 0, totalPages: 0 } },
+      { path: "/groups", body: { items: [], page: 1, pageSize: 100, total: 0, totalPages: 0 } },
+    ]);
+    renderWithProviders(<ChildrenPage />);
+
+    expect(await screen.findByRole("link", { name: /Импорт/ })).toHaveAttribute(
+      "href",
+      "/children/import",
+    );
+    expect(screen.queryByRole("button", { name: /ESIS татах/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /ESIS Хөнгөлөлттэй/ })).toBeNull();
+  });
+
   it("is one compact table with the drawing's columns and no checkboxes", async () => {
     stub();
     renderWithProviders(<ChildrenPage />);

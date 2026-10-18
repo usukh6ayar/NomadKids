@@ -1,9 +1,10 @@
 "use client";
 
+import { useEsisLinked } from "@/lib/use-esis-linked";
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Download, Info, MoreHorizontal, Plus, RefreshCw } from "lucide-react";
+import { Download, Info, MoreHorizontal, Plus, RefreshCw, Upload } from "lucide-react";
 import {
   SEX_LABEL,
   childSummarySchema,
@@ -63,6 +64,8 @@ const PAGE_SIZES = [20, 50, 100] as const;
  */
 export function AdminRoster() {
   const { primaryKindergartenId } = useSession();
+  // ESIS's discount pull and link filter only where there is ESIS (2026-10-17).
+  const esisLinked = useEsisLinked() === true;
   const [typed, setTyped] = useState("");
   const search = useDebounced(typed.trim());
   const [groupId, setGroupId] = useState("");
@@ -185,17 +188,32 @@ export function AdminRoster() {
                 </a>
               </Button>
             ) : null}
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={!primaryKindergartenId || discounts.isFetching}
-              onClick={() =>
-                discountsPulled ? void discounts.refetch() : setDiscountsPulled(true)
-              }
-              title="ESIS-ээс хоолны хөнгөлөлтийн мэдээлэл татах"
-            >
-              <RefreshCw size={16} aria-hidden /> ESIS Хөнгөлөлттэй
-            </Button>
+            {/*
+              ★ The director's Excel import, where there is no ESIS —
+              2026-10-18. The client's drawing has four actions and no import,
+              because «ESIS татах» brings the roster in; a director without
+              ESIS had no way to bring one in from a spreadsheet at all.
+            */}
+            {esisLinked ? null : (
+              <Button asChild size="sm" variant="secondary">
+                <Link href="/children/import">
+                  <Upload size={16} aria-hidden /> Импорт
+                </Link>
+              </Button>
+            )}
+            {esisLinked ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={!primaryKindergartenId || discounts.isFetching}
+                onClick={() =>
+                  discountsPulled ? void discounts.refetch() : setDiscountsPulled(true)
+                }
+                title="ESIS-ээс хоолны хөнгөлөлтийн мэдээлэл татах"
+              >
+                <RefreshCw size={16} aria-hidden /> ESIS Хөнгөлөлттэй
+              </Button>
+            ) : null}
             {/* ★ Was a link to the deleted `/admin/integrations/esis` — a 404. */}
             {primaryKindergartenId ? (
               <EsisRosterImportButton kindergartenId={primaryKindergartenId} />
@@ -267,17 +285,19 @@ export function AdminRoster() {
           Drawn and disabled: the API has no discount field to filter on yet.
           Enabling it before then would filter nothing while claiming to.
         */}
-        <Select
-          aria-label="ESIS төлөв"
-          value={esisState}
-          onChange={(event) =>
-            resetting(setEsisState)(event.target.value as "" | "LINKED" | "UNLINKED")
-          }
-        >
-          <option value="">Бүх ESIS төлөв</option>
-          <option value="LINKED">ESIS-тэй холбогдсон</option>
-          <option value="UNLINKED">ESIS-тэй холбоогүй</option>
-        </Select>
+        {esisLinked ? (
+          <Select
+            aria-label="ESIS төлөв"
+            value={esisState}
+            onChange={(event) =>
+              resetting(setEsisState)(event.target.value as "" | "LINKED" | "UNLINKED")
+            }
+          >
+            <option value="">Бүх ESIS төлөв</option>
+            <option value="LINKED">ESIS-тэй холбогдсон</option>
+            <option value="UNLINKED">ESIS-тэй холбоогүй</option>
+          </Select>
+        ) : null}
         <Select
           aria-label="Хөнгөлөлт"
           value=""
@@ -400,6 +420,8 @@ export function StudentRosterTable({
 }) {
   const router = useRouter();
   const { hasRole } = useSession();
+  // «ESIS төлөв» means nothing where there is no ESIS (2026-10-17).
+  const esisLinked = useEsisLinked() === true;
   // ★ A teacher removes a child of their own group too (the user, 2026-10-14);
   // the API decides which — `canArchiveChild`.
   const canArchive = hasRole("ADMIN") || hasRole("TEACHER");
@@ -418,7 +440,7 @@ export function StudentRosterTable({
             <Th className="py-2">Регистр</Th>
             <Th className="py-2">Хүйс</Th>
             <Th className="py-2">Нас</Th>
-            <Th className="py-2">ESIS төлөв</Th>
+            {esisLinked ? <Th className="py-2">ESIS төлөв</Th> : null}
             {discounts ? <Th className="py-2">Хөнгөлөлт</Th> : null}
             <Th className="w-12 rounded-tr-card py-2">
               <span className="sr-only">Үйлдэл</span>
@@ -469,13 +491,15 @@ export function StudentRosterTable({
                 <Td className="whitespace-nowrap py-1.5 text-muted">
                   {formatAge(child.dateOfBirth)}
                 </Td>
-                <Td className="py-1.5 text-muted">
-                  {child.esisLinked === undefined
-                    ? "—"
-                    : child.esisLinked
-                      ? "Холбогдсон"
-                      : "Холбогдоогүй"}
-                </Td>
+                {esisLinked ? (
+                  <Td className="py-1.5 text-muted">
+                    {child.esisLinked === undefined
+                      ? "—"
+                      : child.esisLinked
+                        ? "Холбогдсон"
+                        : "Холбогдоогүй"}
+                  </Td>
+                ) : null}
                 {discounts ? (
                   <Td className="py-1.5 text-muted">
                     {DISCOUNT_LABEL[discounts.get(child.id) ?? "UNASSESSED"]}
@@ -585,6 +609,8 @@ export function ChildRosterTable({
 }) {
   const router = useRouter();
   const { hasRole } = useSession();
+  // «ESIS төлөв» means nothing where there is no ESIS (2026-10-17).
+  const esisLinked = useEsisLinked() === true;
   // ★ A teacher removes a child of their own group too (the user, 2026-10-14);
   // the API decides which — `canArchiveChild`.
   const canArchive = hasRole("ADMIN") || hasRole("TEACHER");
@@ -602,7 +628,7 @@ export function ChildRosterTable({
             <Th className="py-2">Хүйс</Th>
             <Th className="py-2">Бүлэг</Th>
             <Th className="py-2">Хөнгөлөлт</Th>
-            <Th className="py-2">ESIS төлөв</Th>
+            {esisLinked ? <Th className="py-2">ESIS төлөв</Th> : null}
             <Th className="w-12 rounded-tr-card py-2">
               <span className="sr-only">Үйлдэл</span>
             </Th>
@@ -630,13 +656,15 @@ export function ChildRosterTable({
               <Td className="py-1.5 text-muted">
                 {discounts ? DISCOUNT_LABEL[discounts.get(child.id) ?? "UNASSESSED"] : "—"}
               </Td>
-              <Td className="py-1.5 text-muted">
-                {child.esisLinked === undefined
-                  ? "—"
-                  : child.esisLinked
-                    ? "Холбогдсон"
-                    : "Холбогдоогүй"}
-              </Td>
+              {esisLinked ? (
+                <Td className="py-1.5 text-muted">
+                  {child.esisLinked === undefined
+                    ? "—"
+                    : child.esisLinked
+                      ? "Холбогдсон"
+                      : "Холбогдоогүй"}
+                </Td>
+              ) : null}
               <Td className="py-1 text-right">
                 <RowMenu
                   ariaLabel={`${child.lastName} ${child.firstName} — үйлдэл`}

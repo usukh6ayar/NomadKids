@@ -1,4 +1,5 @@
 import type ExcelJS from "exceljs";
+import { factsFromRegister } from "@kinder/contracts";
 import { cellText, loadSpreadsheet, normalizeHeading } from "../common/spreadsheet";
 
 /**
@@ -95,7 +96,10 @@ const COLUMNS: { field: Field; aliases: string[] }[] = [
       "name",
     ],
   },
-  { field: "sex", aliases: ["хүйс", "хүйс эр эм", "sex", "gender"] },
+  {
+    field: "sex",
+    aliases: ["хүйс", "хүйс эр эм", "хүйс эрэгтэй эмэгтэй", "хүйс хүү охин", "sex", "gender"],
+  },
   {
     field: "dateOfBirth",
     aliases: [
@@ -104,6 +108,11 @@ const COLUMNS: { field: Field; aliases: string[] }[] = [
       "төрсөн он сар өдөр",
       "төрсөн огноо он сар өдөр",
       "төрсөн огноо он сар",
+      // As teachers write it (2026-10-18): «Төрсөн он сар», «Төрсөн».
+      "төрсөн он сар",
+      "төрсөн он",
+      "төрсөн",
+      "он сар өдөр",
       "dateofbirth",
       "date of birth",
       "birthdate",
@@ -119,7 +128,12 @@ const COLUMNS: { field: Field; aliases: string[] }[] = [
       "регистрийн дугаар",
       "регистрийн",
       "регистр дугаар",
+      // «Регистер» with е — the common spelling (2026-10-18).
+      "регистер",
+      "регистерийн дугаар",
+      "регистер дугаар",
       "рд",
+      "рд дугаар",
       "nationalid",
       "national id",
       "register",
@@ -199,8 +213,8 @@ export async function parseChildWorkbook(input: Buffer): Promise<ParseResult> {
     const missing = [
       ...(best.has("lastName") || best.has("fullName") ? [] : ["овог"]),
       ...(best.has("firstName") || best.has("fullName") ? [] : ["нэр"]),
-      ...(best.has("sex") ? [] : ["хүйс"]),
-      ...(best.has("dateOfBirth") ? [] : ["төрсөн огноо"]),
+      ...(best.has("sex") || best.has("nationalId") ? [] : ["хүйс"]),
+      ...(best.has("dateOfBirth") || best.has("nationalId") ? [] : ["төрсөн огноо"]),
     ];
     return {
       rows: [],
@@ -233,20 +247,29 @@ export async function parseChildWorkbook(input: Buffer): Promise<ParseResult> {
     // A wholly blank row is the trailing emptiness every spreadsheet has, not a
     // mistake worth reporting. Skipped silently.
     if (!lastName && !firstName && !read("dateOfBirth") && !read("nationalId")) continue;
+    // The template's example rows (2026-10-18) — marked «Жишээ» in a cell —
+    // are never imported, whether or not the teacher deleted them.
+    if (isExampleRow(row)) continue;
 
     const problem = (message: string) => problems.push({ rowNumber, message });
 
     if (!lastName) problem("Овог хоосон байна");
     if (!firstName) problem("Нэр хоосон байна");
 
-    const sex = parseSex(read("sex"));
+    const nationalIdRaw = read("nationalId");
+    const nationalId = nationalIdRaw ? nationalIdRaw.replace(/\s+/g, "").toUpperCase() : null;
+    // ★ An empty sex or birth date is read from the register (2026-10-18).
+    const fromRegister = nationalId ? factsFromRegister(nationalId) : null;
+
+    const sexRaw = read("sex");
+    const sex = sexRaw ? parseSex(sexRaw) : (fromRegister?.sex ?? null);
     if (sex === null) problem("Хүйс 'Эрэгтэй/Эмэгтэй' эсвэл 'Хүү/Охин' байна");
 
-    const dateOfBirth = parseDate(row, columnIndex.get("dateOfBirth"));
+    const dateRaw = read("dateOfBirth");
+    const dateOfBirth = dateRaw
+      ? parseDate(row, columnIndex.get("dateOfBirth"))
+      : (fromRegister?.dateOfBirth ?? null);
     if (dateOfBirth === null) problem("Төрсөн огноо буруу байна");
-
-    const nationalIdRaw = read("nationalId");
-    const nationalId = nationalIdRaw ? nationalIdRaw.toUpperCase() : null;
 
     if (nationalId !== null && !/^[А-ЯӨҮЁ]{2}\d{8}$/u.test(nationalId)) {
       problem("Регистрийн дугаар УБ12345678 хэлбэртэй байна");
@@ -329,7 +352,16 @@ function headingsOf(row: ExcelJS.Row): Map<Field, number> {
     const heading = normalizeHeading(cellText(cell));
     if (!heading) return;
     for (const spec of COLUMNS) {
-      const rank = spec.aliases.indexOf(heading);
+      let rank = spec.aliases.indexOf(heading);
+      /*
+       * ★ A heading with a note after it — «Төрсөн огноо (жил-сар-өдөр)»,
+       * «Хүйс (эр/эм)» — 2026-10-18. Only for the fields a name cannot be
+       * mistaken for, and ranked after every exact match.
+       */
+      if (rank === -1 && PREFIX_FIELDS.has(spec.field)) {
+        const prefix = spec.aliases.findIndex((alias) => heading.startsWith(`${alias} `));
+        if (prefix !== -1) rank = spec.aliases.length + prefix;
+      }
       if (rank === -1) continue;
       const current = best.get(spec.field);
       if (!current || rank < current.rank) best.set(spec.field, { column, rank });
@@ -338,11 +370,17 @@ function headingsOf(row: ExcelJS.Row): Map<Field, number> {
   return new Map([...best].map(([field, { column }]) => [field, column]));
 }
 
-/** A row carries a roster when it names a child, their sex and their birth date. */
+/**
+ * A row carries a roster when it names a child, and either their sex and
+ * birth date or their register — which holds both (`factsFromRegister`).
+ */
 function isComplete(index: Map<Field, number>): boolean {
   const named = (index.has("lastName") && index.has("firstName")) || index.has("fullName");
-  return named && index.has("sex") && index.has("dateOfBirth");
+  return named && ((index.has("sex") && index.has("dateOfBirth")) || index.has("nationalId"));
 }
+
+/** Fields whose heading may carry a note after it — see `headingsOf`. */
+const PREFIX_FIELDS = new Set<Field>(["sex", "dateOfBirth", "nationalId", "groupName"]);
 
 function findHeader(book: ExcelJS.Workbook): FoundHeader | null {
   let found: FoundHeader | null = null;
@@ -480,4 +518,13 @@ function withinLivingMemory(iso: string): boolean {
 
 function pad(value: number): string {
   return String(value).padStart(2, "0");
+}
+
+/** A template example row: one of its cells says «Жишээ». */
+function isExampleRow(row: ExcelJS.Row): boolean {
+  let example = false;
+  row.eachCell((cell) => {
+    if (normalizeHeading(cellText(cell)) === "жишээ") example = true;
+  });
+  return example;
 }

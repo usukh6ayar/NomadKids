@@ -105,6 +105,29 @@ describe("an unpaid child in a solo workspace", () => {
     expect(write.status).toBe(402);
   });
 
+  /*
+   * ★ Attendance is open whatever the fee — the user, 2026-10-18: «нээчих».
+   * The group register wrote the day while the single mark and «Гараас гарт»
+   * answered 402. The child's record itself stays closed.
+   */
+  it("can still be marked present and handed over, though the record stays closed", async () => {
+    const { localDate } = await import("@kinder/contracts");
+    const day = localDate();
+    const mark = await authed(
+      request(server()).put(`/v1/children/${solo.childId}/attendance/${day}`),
+      solo.session,
+    ).send({ status: "PRESENT" });
+    expect(mark.status, JSON.stringify(mark.body)).toBe(200);
+
+    const pickup = await authed(
+      request(server()).patch(`/v1/children/${solo.childId}/attendance/${day}/pickup`),
+      solo.session,
+    ).send({ pickedUpWith: "MOTHER" });
+    expect(pickup.status, JSON.stringify(pickup.body)).toBe(200);
+
+    expect((await get(solo.session, `/v1/children/${solo.childId}`)).status).toBe(402);
+  });
+
   it("can still have its family invited", async () => {
     const res = await authed(
       request(server()).post(`/v1/children/${solo.childId}/guardian-invitations`),

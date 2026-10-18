@@ -91,12 +91,21 @@ export function a79ChildRows(data: A79GroupSummary): A79ChildRow[] {
 }
 
 /**
+ * The rows with figures — an unpaid solo child (`feeDue`) is named on the
+ * table and counted in no average: their 0 is a withheld figure, not a result.
+ */
+function scored(rows: A79ChildRow[]): A79ChildRow[] {
+  return rows.filter((row) => !row.feeDue);
+}
+
+/**
  * A group's averages — each part and the whole, over its children's own
  * percentages, as the group's result page shows them. `null` with no children.
  */
 export function a79GroupAverages(
-  rows: A79ChildRow[],
+  all: A79ChildRow[],
 ): { total: number; byDomain: Record<A79Domain, number> } | null {
+  const rows = scored(all);
   if (rows.length === 0) return null;
   const mean = (values: number[]) =>
     Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
@@ -143,13 +152,16 @@ function SummaryBody({ groupId, data }: { groupId: string; data: A79GroupSummary
   }
 
   const rows = a79ChildRows(data);
+  const withFigures = scored(rows);
   return (
     <>
-      <A79SummaryChart
-        rows={rows}
-        averageLabel="Бүлгийн дундаж"
-        description={`Бүлгийн дундаж, ${rows.length} хүүхэд. Хүүхдийн хувь бол өөрийн түвшний шалгуурын хэдийг бие даан илрүүлсэн нь.`}
-      />
+      {withFigures.length > 0 ? (
+        <A79SummaryChart
+          rows={withFigures}
+          averageLabel="Бүлгийн дундаж"
+          description={`Бүлгийн дундаж, ${withFigures.length} хүүхэд. Хүүхдийн хувь бол өөрийн түвшний шалгуурын хэдийг бие даан илрүүлсэн нь.`}
+        />
+      ) : null}
 
       <A79ChildrenTable groupId={groupId} rows={rows} />
     </>
@@ -291,7 +303,7 @@ function KindergartenSummaryBody({
   groups: { group: A79ReportGroup; summary: A79GroupSummary }[];
 }) {
   const groupRows = groups.map(({ group, summary }) => {
-    const children = a79ChildRows(summary);
+    const children = scored(a79ChildRows(summary));
     const percent = children.length
       ? Math.round(children.reduce((sum, row) => sum + row.percent, 0) / children.length)
       : null;
@@ -395,6 +407,26 @@ export function A79ChildrenTable({ groupId, rows }: { groupId: string; rows: A79
       </thead>
       <tbody>
         {rows.map((row, index) => {
+          if (row.feeDue) {
+            return (
+              <tr key={row.childId}>
+                <Td className="tabular-nums text-muted">{index + 1}</Td>
+                <Td className="text-ink">{shortName(row)}</Td>
+                <Td>{row.level}</Td>
+                {DOMAINS.map((domain) => (
+                  <Td key={domain} numeric className="text-muted">
+                    —
+                  </Td>
+                ))}
+                <Td numeric className="text-muted">
+                  —
+                </Td>
+                <Td>
+                  <Badge tone="neutral">Төлбөр төлөгдөөгүй</Badge>
+                </Td>
+              </tr>
+            );
+          }
           const band = a79Band(row.percent);
           return (
             <tr key={row.childId}>

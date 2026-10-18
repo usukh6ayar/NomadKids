@@ -141,6 +141,26 @@ describe("filling in a month", () => {
     expect(long.status).toBe(400);
   });
 
+  /*
+   * ★ The director fills a month in too — 2026-10-17, the client: "ирц сараар
+   * засаж болдог багш, удирдлага". Their own kindergarten's groups only.
+   */
+  it("the kindergarten's director fills a month in; another kindergarten's gets 404", async () => {
+    const directorA = await login(app, a.adminUser.username);
+    const own = await save(directorA, a.group.id, [
+      { childId: a.child.id, date: "2026-02-02", status: "PRESENT" },
+    ]);
+    expect(own.status).toBe(200);
+    expect(own.body).toEqual({ created: 1, updated: 0 });
+
+    const directorB = await login(app, b.adminUser.username);
+    const other = await save(directorB, a.group.id, [
+      { childId: a.child.id, date: "2026-02-03", status: "PRESENT" },
+    ]);
+    expect(other.status).toBe(404);
+    expect(await db.attendance.count()).toBe(1);
+  });
+
   it("teacher from another group gets 404", async () => {
     const res = await save(otherGroupTeacher, a.group.id, [
       { childId: a.child.id, date: "2026-02-02", status: "PRESENT" },

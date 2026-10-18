@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useState } from "react";
 import { RegisterDialog } from "@/components/public/register-dialog";
 import { TeacherApplyDialog } from "@/components/public/teacher-apply-dialog";
+import { FIRST_TERM_PROMO } from "@kinder/contracts";
 import {
   CHILD_STANDARD_TERM_PRICE,
   CHILD_STANDARD_YEAR_PRICE,
@@ -12,7 +13,7 @@ import {
   KINDERGARTEN_MONTHLY_PER_GROUP,
   PLANS,
   DISCOUNT_PERIOD_LABEL,
-  TERM_DISCOUNTED,
+  termOnSale,
   kindergartenTermPrice,
   kindergartenStandardYearPrice,
   kindergartenYearlyPrice,
@@ -60,6 +61,12 @@ type Applying = "teacher" | "kindergarten" | null;
  * бүлгийн тоонд суурилсан амьд тооцоолуур нэг дэлгэцэд байна.
  */
 export function PricingContent() {
+  /*
+   * ★ «I-р улирал» is on sale through 2026-11-30 (2026-10-18). From 1
+   * December the terms are at the standard price: 9,000₮ a child (the user,
+   * 2026-10-18) and 12,000₮ a group.
+   */
+  const termOpen = termOnSale();
   const [period, setPeriod] = useState<BillingPeriod>("term");
   const [groupCount, setGroupCount] = useState(1);
   const [applying, setApplying] = useState<Applying>(null);
@@ -70,7 +77,7 @@ export function PricingContent() {
         <h1 className="text-figure font-extrabold leading-tight text-[#102f5d] sm:text-hero">
           Үнийн санал
         </h1>
-        {TERM_DISCOUNTED ? (
+        {termOpen ? (
           <p className="mt-2 text-lead font-extrabold text-[#102f5d]">{DISCOUNT_PERIOD_LABEL}</p>
         ) : null}
 
@@ -81,7 +88,7 @@ export function PricingContent() {
         >
           {(
             [
-              ["term", "Улирлаар"],
+              ["term", termOpen ? FIRST_TERM_PROMO.label : "Улирлаар"],
               ["year", "Жилээр"],
             ] as const
           ).map(([value, label]) => (
@@ -92,7 +99,7 @@ export function PricingContent() {
               aria-checked={period === value}
               onClick={() => setPeriod(value)}
               className={cn(
-                "min-h-11 rounded-pill px-3 text-body font-semibold transition-colors",
+                "min-h-11 rounded-pill px-3 text-body font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40",
                 period === value ? "bg-[#5b4bdb] text-white shadow-sm" : "text-slate-600",
               )}
             >
@@ -111,6 +118,7 @@ export function PricingContent() {
             key={plan.key}
             plan={plan}
             period={period}
+            termOpen={termOpen}
             groupCount={groupCount}
             onGroupCountChange={setGroupCount}
             onApply={() => setApplying(plan.key === "teacher" ? "teacher" : "kindergarten")}
@@ -135,18 +143,26 @@ export function PricingContent() {
 function PlanCard({
   plan,
   period,
+  termOpen,
   groupCount,
   onGroupCountChange,
   onApply,
 }: {
   plan: Plan;
   period: BillingPeriod;
+  termOpen: boolean;
   groupCount: number;
   onGroupCountChange: (count: number) => void;
   onApply: () => void;
 }) {
   const look = LOOK[plan.key];
-  const termAmount = plan.key === "kindergarten" ? kindergartenTermPrice(groupCount) : plan.perTerm;
+  // A child's term exists only as «I-р улирал»; a group's goes on at 12,000₮.
+  const termAmount =
+    plan.key === "kindergarten"
+      ? kindergartenTermPrice(groupCount)
+      : termOpen
+        ? plan.perTerm
+        : CHILD_STANDARD_TERM_PRICE;
   const yearlyAmount =
     plan.key === "kindergarten" ? kindergartenYearlyPrice(groupCount) : plan.perYear;
   return (
@@ -194,11 +210,21 @@ function PlanCard({
                 : groupCount * KINDERGARTEN_MONTHLY_PER_GROUP * 3,
               termAmount,
             )}
-            unit={plan.key === "kindergarten" ? "/ улирал · нийт" : "/ улирал"}
+            unit={
+              termOpen
+                ? plan.key === "kindergarten"
+                  ? "/ I-р улирал · нийт"
+                  : "/ I-р улирал"
+                : plan.key === "kindergarten"
+                  ? "/ улирал · нийт"
+                  : "/ улирал"
+            }
+            note={termOpen ? FIRST_TERM_PROMO.validityLabel : undefined}
             selected={period === "term"}
             textClass={look.text}
             ringClass={look.ring}
           />
+
           <PriceBox
             amount={yearlyAmount}
             was={standardTermIfHigher(
@@ -255,9 +281,9 @@ function GroupCounter({ count, onChange }: { count: number; onChange: (count: nu
           <p className="text-caption text-slate-500">
             1 бүлэг сарын {tugrik(KINDERGARTEN_MONTHLY_PER_GROUP)}
           </p>
-          {TERM_DISCOUNTED ? (
+          {termOnSale() ? (
             <p className="text-compact font-semibold text-[#c2410c]">
-              Улирлын хөнгөлөлттэй үнэ {tugrik(KINDERGARTEN_CURRENT_TERM_PER_GROUP)}
+              {FIRST_TERM_PROMO.label}: 1 бүлэг {tugrik(KINDERGARTEN_CURRENT_TERM_PER_GROUP)}
             </p>
           ) : null}
         </div>
@@ -300,10 +326,13 @@ function PriceBox({
   textClass,
   ringClass,
   badge,
+  note,
 }: {
   amount: number;
   was?: number;
   unit: string;
+  /** Under the unit — «2026.11.30 хүртэл хүчинтэй» on the promotional term. */
+  note?: string;
   selected: boolean;
   textClass: string;
   ringClass: string;
@@ -328,6 +357,7 @@ function PriceBox({
       ) : null}
       <p className={cn("text-title font-extrabold tabular-nums", textClass)}>{tugrik(amount)}</p>
       <p className="text-caption text-slate-500">{unit}</p>
+      {note ? <p className="mt-0.5 text-compact font-semibold text-[#c2410c]">{note}</p> : null}
     </div>
   );
 }

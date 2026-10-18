@@ -114,7 +114,8 @@ export class A79Service {
    *
    * ★★ The portal-fee gate (CLAUDE.md §1.7): a solo teacher's child whose
    * family has not paid is on the roster and out of this record, as their own
-   * progress answers 402.
+   * progress answers 402 — listed with `feeDue` and no figures (2026-10-17;
+   * left out entirely, a group of unpaid children read «Бүлэгт хүүхэд алга»).
    */
   async groupSummary(
     actor: Actor,
@@ -133,12 +134,11 @@ export class A79Service {
     const blocked = await this.childAccess.soloStaffBlockedChildIds(roster.map((c) => c.id));
     const today = new Date(`${localDate()}T00:00:00.000Z`);
     const ageOn = to < today ? to : today;
-    const children = roster
-      .filter((child) => !blocked.has(child.id))
-      .map((child) => ({
-        ...child,
-        level: a79LevelForAge(child.dateOfBirth ? ageInYears(child.dateOfBirth, ageOn) : null),
-      }));
+    const leveled = roster.map((child) => ({
+      ...child,
+      level: a79LevelForAge(child.dateOfBirth ? ageInYears(child.dateOfBirth, ageOn) : null),
+    }));
+    const children = leveled.filter((child) => !blocked.has(child.id));
     const links = await this.repo.linksForChildren(
       children.map((child) => child.id),
       [...new Set(children.map((child) => child.level))],
@@ -161,8 +161,20 @@ export class A79Service {
     }
 
     return {
-      children: children.map((child) => {
+      children: leveled.map((child) => {
         const level = child.level;
+        if (blocked.has(child.id)) {
+          return {
+            childId: child.id,
+            firstName: child.firstName,
+            lastName: child.lastName,
+            level,
+            feeDue: true,
+            achieved: 0,
+            total: 0,
+            byDomain: [],
+          };
+        }
         const criteria = a79Level(level).criteria;
         const forChild = latest.get(child.id);
         const met = (number: number) => {
@@ -176,6 +188,7 @@ export class A79Service {
           firstName: child.firstName,
           lastName: child.lastName,
           level,
+          feeDue: false,
           achieved: numbered.filter((c) => met(c.number)).length,
           total: numbered.length,
           byDomain: A79_DOMAINS.map((domain) => {

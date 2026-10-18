@@ -41,6 +41,7 @@ import {
   useAttendanceRequestCount,
 } from "@/components/attendance/request-queue";
 import { TeacherJournal } from "@/components/attendance/teacher-journal";
+import { useEsisLinked } from "@/lib/use-esis-linked";
 import { AttendanceMonthPanel } from "@/components/attendance/month-panel";
 import { AttendanceWeekGrid, isWeekend } from "@/components/attendance/week-grid";
 import {
@@ -127,28 +128,13 @@ function GroupAttendance() {
   const pendingRequests = useAttendanceRequestCount();
 
   /*
-   * ★ A director reads this sheet; they do not fill it in — 2026-09-06.
-   *
-   * The client was flat about it: "бүлэг рүү орохоор сурагчид чөлөөтэй гэх мэт
-   * тэдгээрийг дарахгүй байх — захирал тэрийг хийхгүй, багш хийгээд тэр
-   * дата-г л захирал харна". The register is the teacher's account of their
-   * own morning, and a second person marking it from another screen is how it
-   * stops being anybody's account: the funding claim is built on these rows,
-   * and "who said this child was here" has to have one answer.
-   *
-   * ★★ Held against ADMIN-without-TEACHER, not against ADMIN.
-   *
-   * A director who also teaches a group is a teacher on the mornings they
-   * teach, and locking them out would leave that group's register with nobody
-   * who can write it. Their membership says which they are; this reads the
-   * same `Membership` the API re-derives per request (§1.3), not a claim baked
-   * into a token.
-   *
-   * ★★★ This is presentation, not authorization. `PUT /children/:id/attendance`
-   * still authorizes the way it always has — a director *can* correct a
-   * register, and there are days when somebody must. What is gone is the
-   * screen that invited it by default. `/attendance/daily` is where a director
-   * is sent, and it links each row here for reading.
+   * ★ A director may fill this sheet in too — 2026-10-17, the client: "ирц
+   * сараар засаж болдог багш, удирдлага". From 2026-09-06 to then it was the
+   * teacher's alone on screen ("захирал тэрийг хийхгүй, багш хийгээд тэр
+   * дата-г л захирал харна"), though `PUT /children/:id/attendance` and
+   * `PUT …/attendance/range` always admitted the kindergarten's ADMIN. The
+   * director reaches a month from «Ирц» › «Сараар» › «Сараар засах», which
+   * opens «Ирцийн дэлгэрэнгүй» here on that month (`?journal=YYYY-MM`).
    */
   /*
    * ★ `?date=` seeds the picker — 2026-09-04.
@@ -160,11 +146,18 @@ function GroupAttendance() {
    * controlled, so changing the picker afterwards does not fight the URL.
    */
   const search = useSearchParams();
+  // «Сараар засах» from the director's «Сараар» — a past or current month.
+  const journalMonth = (() => {
+    const requested = search.get("journal");
+    return requested && /^\d{4}-\d{2}$/.test(requested) && requested <= today().slice(0, 7)
+      ? requested
+      : null;
+  })();
   const [date, setDate] = useState(() => {
     const requested = search.get("date");
     return requested && /^\d{4}-\d{2}-\d{2}$/.test(requested) && requested <= today()
       ? requested
-      : today();
+      : lastWorkingDay(today());
   });
   /*
    * ★ The span the grid draws, and `date` is its last column — 2026-09-10.
@@ -357,11 +350,19 @@ function GroupAttendance() {
     cancelEdit();
   }
 
+  /*
+   * ★ No ESIS step where there is no ESIS — 2026-10-17, the user: "ESIS-гүй
+   * цэцэрлэгүүд ч адилхан ашиглаж болдог байх, ESIS-ээс зүгээр дата авахгүй,
+   * дата явуулахгүй". The preview answered "ESIS код тохируулагдаагүй" in red
+   * under every finished register of such a kindergarten, beside a button
+   * that could never be pressed.
+   */
+  const esisLinked = useEsisLinked() === true;
   const esisPreview = useQuery({
     queryKey: qk.groupAttendanceEsis(groupId, date),
     queryFn: () =>
       get(`/groups/${groupId}/attendance/esis-preview?date=${date}`, esisAttendancePreviewSchema),
-    enabled: savedComplete && !editing,
+    enabled: esisLinked && savedComplete && !editing,
     retry: false,
   });
 
@@ -606,7 +607,9 @@ function GroupAttendance() {
             happens, and each is *disabled* rather than absent when its turn
             has not come: a control that appears only once some other condition
             is met is a control a teacher never learns they have. Болих is the
-            one addition, and only while there is a draft to abandon.
+            one addition, and only while there is a draft to abandon. ESIS
+            илгээх is absent, not disabled, where the kindergarten has no ESIS
+            (2026-10-17) — that turn never comes.
           */}
           {rows.length > 0 ? (
             /*
@@ -652,24 +655,33 @@ function GroupAttendance() {
                 </span>
               </Button>
 
-              <Button
-                variant="secondary"
-                size="sm"
-                className="min-w-0 shrink"
-                onClick={() => submitEsis.mutate()}
-                disabled={editing || !esisPreview.data || submitEsis.isPending}
-              >
-                <span className="truncate">
-                  {submitEsis.isPending
-                    ? "Илгээж байна…"
-                    : submitEsis.data
-                      ? "Дахин илгээх"
-                      : "ESIS илгээх"}
-                </span>
-              </Button>
+              {esisLinked ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="min-w-0 shrink"
+                  onClick={() => submitEsis.mutate()}
+                  disabled={editing || !esisPreview.data || submitEsis.isPending}
+                >
+                  <span className="truncate">
+                    {submitEsis.isPending
+                      ? "Илгээж байна…"
+                      : submitEsis.data
+                        ? "Дахин илгээх"
+                        : "ESIS илгээх"}
+                  </span>
+                </Button>
+              ) : null}
             </div>
           ) : null}
 
+          {closedDay && rows.length > 0 ? (
+            // Said, not only disabled — a shut «Засах» read as broken (2026-10-18).
+            <p className="text-caption text-muted">
+              Амралтын өдөр ирц бүртгэхгүй. Өөр өдрийн ирцийг засахдаа «Дуусах огноо»-д тэр өдрийг
+              сонгоод хайна уу, эсвэл «Ирцийн дэлгэрэнгүй» › «Сараар нөхөх».
+            </p>
+          ) : null}
           <FormError message={save.isError ? errorMessage(save.error) : null} />
 
           {!editing && esisPreview.data ? (
@@ -679,7 +691,7 @@ function GroupAttendance() {
               submittedAt={submitEsis.data?.date === date ? submitEsis.data.submittedAt : undefined}
             />
           ) : null}
-          {!editing && esisPreview.isError ? (
+          {esisLinked && !editing && esisPreview.isError ? (
             <FormError message={errorMessage(esisPreview.error)} />
           ) : null}
         </>
@@ -708,7 +720,8 @@ function GroupAttendance() {
       */}
       <RegisterPanels
         groupId={groupId}
-        month={date.slice(0, 7)}
+        month={journalMonth ?? date.slice(0, 7)}
+        openJournal={journalMonth !== null}
         pendingRequests={pendingRequests}
         monthReport={
           <Card pad="roomy">
@@ -747,17 +760,26 @@ function GroupAttendance() {
 function RegisterPanels({
   groupId,
   month,
+  openJournal = false,
   pendingRequests,
   monthReport,
 }: {
   groupId: string;
   month: string;
+  /** Opened on `month` — the director's «Сараар засах» (2026-10-17). */
+  openJournal?: boolean;
   pendingRequests: number;
   /** «Өнөөдөр» · «Сар» — drawn under the journal, and with no other door. */
   monthReport: ReactNode;
 }) {
-  const [open, setOpen] = useState<"journal" | "requests" | "handover" | null>(null);
+  const [open, setOpen] = useState<"journal" | "requests" | "handover" | null>(
+    openJournal ? "journal" : null,
+  );
   const panelId = "register-panel";
+  // Arrived for the month: bring it into view rather than leave it below the week.
+  useEffect(() => {
+    if (openJournal) document.getElementById(panelId)?.scrollIntoView?.({ block: "start" });
+  }, [openJournal]);
 
   const doors = [
     { key: "journal" as const, label: "Ирцийн дэлгэрэнгүй", count: 0, icon: CalendarRange },
@@ -980,4 +1002,16 @@ function countMismatches(
     stored.delete(key);
   }
   return differ + stored.size;
+}
+
+/**
+ * Today, or on a weekend the Friday before — 2026-10-18, the client: "Ирц
+ * засаж болохгүй байна", said on a Saturday. The register opened on the
+ * weekend, where nothing is marked and «Засах» is shut, with nothing saying
+ * why; a teacher catching up at the weekend wants the week just gone.
+ */
+function lastWorkingDay(day: string): string {
+  let current = day;
+  while (isWeekend(current)) current = addDays(current, -1);
+  return current;
 }

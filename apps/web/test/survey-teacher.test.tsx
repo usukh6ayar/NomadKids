@@ -491,6 +491,28 @@ describe("filling the whole group as one table", () => {
     expect(sizes).toEqual([10, 2]);
   });
 
+  /*
+   * ★ 2026-10-17, the client: Буцах and Хадгалах small, bottom right, always
+   * on screen. Leaving with unsaved rows asks first.
+   */
+  it("keeps Буцах beside Хадгалах, and asks before leaving unsaved rows", async () => {
+    const user = userEvent.setup();
+    stubApi(sheet([bat, saruul]));
+    renderWithProviders(<TeacherSheetPage />);
+
+    expect(await screen.findByRole("link", { name: "Буцах" })).toHaveAttribute(
+      "href",
+      `/surveys/${SURVEY.id}`,
+    );
+
+    await user.click(await screen.findByRole("radio", { name: "Б.Бат: 1" }));
+    await user.click(screen.getByRole("button", { name: "Буцах" }));
+    const dialog = await screen.findByRole("dialog", { name: "Хадгалаагүй өөрчлөлт байна" });
+    expect(within(dialog).getByText("Хадгалаагүй өөрчлөлт байна")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Хадгалахгүй гарах" }));
+    expect(ROUTER.push).toHaveBeenCalledWith(`/surveys/${SURVEY.id}`);
+  });
+
   it("is read-only once the survey is closed", async () => {
     stubApi(sheet([bat, saruul], { ...SURVEY, status: "CLOSED" }));
     renderWithProviders(<TeacherSheetPage />);

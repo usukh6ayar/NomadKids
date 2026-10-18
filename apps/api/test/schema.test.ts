@@ -652,4 +652,26 @@ describe("QPay attempts — exactly one thing paid for", () => {
       insert("11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"),
     ).rejects.toThrow(/qpay_invoices_one_target_check/);
   });
+
+  // №6 (2026-10-18) made a contract period the third target — the CHECK counts it too.
+  it("refuses an attempt for a contract period and anything else at once", async () => {
+    const insert = (subscriptionId: string | null, materialPurchaseId: string | null) =>
+      db.$executeRawUnsafe(
+        `INSERT INTO "qpay_invoices" ("id", "subscriptionId", "materialPurchaseId",
+           "contractPaymentId", "amount", "qpayInvoiceId", "senderInvoiceNo", "updatedAt")
+         VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3::uuid, 1000, $4, $5, now())`,
+        subscriptionId,
+        materialPurchaseId,
+        "33333333-3333-4333-8333-333333333333",
+        uniq("qi"),
+        uniq("sn"),
+      );
+
+    await expect(insert("11111111-1111-4111-8111-111111111111", null)).rejects.toThrow(
+      /qpay_invoices_one_target_check/,
+    );
+    await expect(insert(null, "22222222-2222-4222-8222-222222222222")).rejects.toThrow(
+      /qpay_invoices_one_target_check/,
+    );
+  });
 });

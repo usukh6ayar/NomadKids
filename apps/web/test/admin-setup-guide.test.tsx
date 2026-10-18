@@ -24,9 +24,9 @@ const KG = "33333333-3333-4333-8333-333333333333";
  * `isPending` and every case below fails looking for a dialog, with nothing
  * saying why. Shaped after `admin-dashboard.test.tsx`'s own fixture.
  */
-const overview = (groups: number, staff: number): AdminDashboard => ({
+const overview = (groups: number, staff: number, children = 0, guardians = 0): AdminDashboard => ({
   currentTerm: null,
-  counts: { children: 0, groups, staff, guardians: 0 },
+  counts: { children, groups, staff, guardians },
   childrenAMonthAgo: 0,
   attendanceToday: { expected: 0, recorded: 0, present: 0 },
   attendanceByGroup: [],
@@ -53,16 +53,20 @@ function stub({
   years,
   groups,
   staff,
+  children = 0,
+  guardians = 0,
   esis = null,
 }: {
   years: unknown[];
   groups: number;
   staff: number;
+  children?: number;
+  guardians?: number;
   esis?: string | null;
 }) {
   stubApi([
     { path: "/auth/me", body: sessionFor(["ADMIN"]) },
-    { path: "/dashboard/admin", body: overview(groups, staff) },
+    { path: "/dashboard/admin", body: overview(groups, staff, children, guardians) },
     { path: `/kindergartens/${KG}/school-years`, body: years },
     // After the longer path: the stubs match by prefix.
     { path: `/kindergartens/${KG}`, body: { esisInstitutionId: esis } },
@@ -78,6 +82,8 @@ function stepTitles(): string[] {
     "Бүлэг нэмэх",
     "Багш, ажилтан бүртгэх",
     "Багш, ажилтан урих",
+    "Хүүхэд бүртгэх",
+    "Эцэг эх урих",
   ];
   return (
     within(screen.getByRole("dialog"))
@@ -114,7 +120,13 @@ describe("удирдлагын тохиргооны заавар", () => {
     renderWithProviders(<AdminSetupGuide />);
 
     await screen.findByRole("dialog");
-    expect(stepTitles()).toEqual(["Хичээлийн жил үүсгэх", "Багш, ажилтан урих", "Бүлэг нэмэх"]);
+    expect(stepTitles()).toEqual([
+      "Хичээлийн жил үүсгэх",
+      "Багш, ажилтан урих",
+      "Бүлэг нэмэх",
+      "Хүүхэд бүртгэх",
+      "Эцэг эх урих",
+    ]);
     expect(screen.queryByText(/ESIS дугаараар өөрөө бүртгүүлнэ/)).toBeNull();
   });
 
@@ -123,7 +135,13 @@ describe("удирдлагын тохиргооны заавар", () => {
     renderWithProviders(<AdminSetupGuide />);
 
     await screen.findByRole("dialog");
-    expect(stepTitles()).toEqual(["Хичээлийн жил", "Бүлэг татах", "Багш, ажилтан бүртгэх"]);
+    expect(stepTitles()).toEqual([
+      "Хичээлийн жил",
+      "Бүлэг татах",
+      "Багш, ажилтан бүртгэх",
+      "Хүүхэд бүртгэх",
+      "Эцэг эх урих",
+    ]);
     expect(screen.getByText(/ESIS дугаараар өөрөө бүртгүүлнэ/)).toBeInTheDocument();
   });
 
@@ -139,7 +157,7 @@ describe("удирдлагын тохиргооны заавар", () => {
     renderWithProviders(<AdminSetupGuide />);
 
     await screen.findByRole("dialog");
-    expect(screen.getByText(/1 алхам үлдсэн/)).toBeInTheDocument();
+    expect(screen.getByText(/3 алхам үлдсэн/)).toBeInTheDocument();
     expect(screen.getAllByText("(хийгдсэн)")).toHaveLength(2);
   });
 
@@ -162,7 +180,7 @@ describe("удирдлагын тохиргооны заавар", () => {
   });
 
   it("stays shut on a kindergarten that finished setting up", async () => {
-    stub({ years: [year], groups: 3, staff: 4 });
+    stub({ years: [year], groups: 3, staff: 4, children: 40, guardians: 12 });
     renderWithProviders(<AdminSetupGuide />);
 
     // The reopen button appears once the queries answer; the dialog does not.
@@ -197,6 +215,22 @@ describe("удирдлагын тохиргооны заавар", () => {
    * show three unticked steps to a kindergarten that has all three — the same
    * loading-versus-empty confusion the staff table had.
    */
+  /*
+   * ★ 2026-10-18, the client: the guide also shows how children come in and
+   * how families are invited — ticked from the dashboard's own counts.
+   */
+  it("shows how to register children and invite their families, ticked from the counts", async () => {
+    stub({ years: [year], groups: 3, staff: 4, children: 40, guardians: 0 });
+    renderWithProviders(<AdminSetupGuide />);
+
+    await screen.findByRole("dialog");
+    expect(screen.getByText("Хүүхэд бүртгэх").closest("li")!.textContent).toContain("(хийгдсэн)");
+    const invite = screen.getByText("Эцэг эх урих").closest("li")!;
+    expect(invite.textContent).not.toContain("(хийгдсэн)");
+    expect(invite.textContent).toMatch(/Урих/);
+    expect(screen.getByText(/1 алхам үлдсэн/)).toBeInTheDocument();
+  });
+
   it("draws nothing at all while its queries are in flight", () => {
     stub({ years: [year], groups: 1, staff: 1 });
     const { container } = renderWithProviders(<AdminSetupGuide />);

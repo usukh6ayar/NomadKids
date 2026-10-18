@@ -564,6 +564,7 @@ model User {
   mealsRecorded          MealRecord[]              @relation("MealRecordedBy")
   paymentsRecorded       Payment[]                 @relation("PaymentRecordedBy")
   qpayInvoicesInitiated  QpayInvoice[]             @relation("QpayInvoiceInitiatedBy")
+  contractPaymentsMade   ContractPayment[]         @relation("ContractPaymentInitiatedBy")
   materialPurchases      MaterialPurchase[]
   materialsCreated       TeachingMaterial[]        @relation("TeachingMaterialCreator")
   applicationsReviewed   KindergartenApplication[] @relation("ApplicationReviewer")
@@ -937,6 +938,7 @@ model Kindergarten {
   accessSubscriptions    AccessSubscription[]
   applications           KindergartenApplication[]
   contracts              Contract[]
+  contractPayments       ContractPayment[]
   chatMessages           ChatMessage[]
   chatReads              ChatRead[]
   esisSyncRuns           EsisSyncRun[]
@@ -2807,6 +2809,8 @@ model QpayInvoice {
   /// `20261011110000_teaching_materials`, pinned by `schema.test.ts`.
   subscriptionId     String? @db.Uuid
   materialPurchaseId String? @db.Uuid
+  /// A kindergarten's platform contract — №6, the user 2026-10-18.
+  contractPaymentId  String? @db.Uuid
   amount             Decimal @db.Decimal(12, 2)
 
   /// QPay's own id for this invoice — what the callback and the check API
@@ -2834,10 +2838,12 @@ model QpayInvoice {
   kindergarten     Kindergarten?       @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
   subscription     AccessSubscription? @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
   materialPurchase MaterialPurchase?   @relation(fields: [materialPurchaseId], references: [id], onDelete: Restrict)
+  contractPayment  ContractPayment?    @relation(fields: [contractPaymentId], references: [id], onDelete: Restrict)
   createdBy        User?               @relation("QpayInvoiceInitiatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
   @@index([subscriptionId])
   @@index([materialPurchaseId])
+  @@index([contractPaymentId])
   @@index([kindergartenId, status])
   @@map("qpay_invoices")
 }
@@ -4051,16 +4057,16 @@ model Survey {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  kindergarten Kindergarten      @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
-  createdBy    User?             @relation("SurveyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
-  group        Group?            @relation("SurveyGroup", fields: [groupId], references: [id], onDelete: Restrict)
-  term         Term?             @relation(fields: [termId], references: [id], onDelete: Restrict)
+  kindergarten Kindergarten        @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  createdBy    User?               @relation("SurveyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  group        Group?              @relation("SurveyGroup", fields: [groupId], references: [id], onDelete: Restrict)
+  term         Term?               @relation(fields: [termId], references: [id], onDelete: Restrict)
   questions    SurveyQuestion[]
   responses    SurveyResponse[]
   answerDrafts SurveyAnswerDraft[]
   staffReads   SurveyStaffRead[]
-  clonedFrom   Survey?           @relation("SurveyClone", fields: [clonedFromSurveyId], references: [id], onDelete: SetNull)
-  clones       Survey[]          @relation("SurveyClone")
+  clonedFrom   Survey?             @relation("SurveyClone", fields: [clonedFromSurveyId], references: [id], onDelete: SetNull)
+  clones       Survey[]            @relation("SurveyClone")
 
   @@index([kindergartenId, status])
   @@index([kindergartenId, category])
@@ -4184,11 +4190,11 @@ model SurveyResponse {
 /// wrote it — the same "one assessment per child" a response keeps. A saved
 /// complete row soft-deletes it. The partial unique index is in the migration.
 model SurveyAnswerDraft {
-  id             String    @id @default(uuid()) @db.Uuid
-  kindergartenId String    @db.Uuid
-  surveyId       String    @db.Uuid
-  childId        String    @db.Uuid
-  authorId       String    @db.Uuid
+  id             String @id @default(uuid()) @db.Uuid
+  kindergartenId String @db.Uuid
+  surveyId       String @db.Uuid
+  childId        String @db.Uuid
+  authorId       String @db.Uuid
   /// `[{ questionId, value }]` — the answers given so far, the shape a
   /// response's answers have.
   answers        Json
@@ -5086,6 +5092,7 @@ model Contract {
   application  KindergartenApplication @relation(fields: [applicationId], references: [id], onDelete: Restrict)
   pdf          MediaFile?              @relation("ContractPdf", fields: [pdfMediaFileId], references: [id], onDelete: SetNull)
   kindergarten Kindergarten?           @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  payments     ContractPayment[]
 
   @@index([status, createdAt(sort: Desc)])
   @@index([kindergartenId])
@@ -5649,4 +5656,51 @@ model SongPoemMonth {
   @@unique([groupId, month])
   @@index([kindergartenId])
   @@map("song_poem_months")
+}
+
+/// A kindergarten paying its platform contract through QPay — №6, the user
+/// 2026-10-16 («гэрээт цэцэрлэгүүд … QPay байх», confirmed 2026-10-18). A bank
+/// transfer never reached the system, so the platform's revenue and the
+/// partners' shares could not count it.
+///
+/// ★ One row is one period bought — a calendar term or a school year, after
+/// the contract's current end — priced on the server from the sheet
+/// (`@kinder/contracts` `GROUP_PRICES`) or the contract's negotiated monthly
+/// fee, never from the client. PAID once, through `QpayRepository`'s claim;
+/// paid, it moves `Contract.endsOn` to `coversTo`. No `Payment` row: it is the
+/// operator's revenue, not the kindergarten's ledger (CLAUDE.md §7).
+model ContractPayment {
+  id             String                @id @default(uuid()) @db.Uuid
+  kindergartenId String                @db.Uuid
+  contractId     String                @db.Uuid
+  period         BillingPeriod
+  /// The calendar term (1–3) for TERM; null for YEAR.
+  termNumber     Int?
+  coversFrom     DateTime              @db.Date
+  coversTo       DateTime              @db.Date
+  groupCount     Int
+  perGroupAmount Decimal               @db.Decimal(12, 2)
+  amount         Decimal               @db.Decimal(12, 2)
+  status         ContractPaymentStatus @default(PENDING)
+  paidAt         DateTime?
+  createdById    String?               @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  kindergarten Kindergarten  @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  contract     Contract      @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  createdBy    User?         @relation("ContractPaymentInitiatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  qpayInvoices QpayInvoice[]
+
+  @@unique([contractId, period, coversFrom])
+  @@index([kindergartenId, status])
+  @@index([status, paidAt])
+  @@map("contract_payments")
+}
+
+enum ContractPaymentStatus {
+  PENDING
+  PAID
 }

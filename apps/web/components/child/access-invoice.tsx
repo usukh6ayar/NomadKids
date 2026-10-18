@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Printer } from "lucide-react";
 import { z } from "zod";
-import { childSummarySchema, type AccessPeriod } from "@kinder/contracts";
+import { FIRST_TERM_PROMO, childSummarySchema, type AccessPeriod } from "@kinder/contracts";
 import { money } from "@/components/finance/money";
 import { Button } from "@/components/ui/button";
 import { get } from "@/lib/api/browser";
@@ -59,6 +59,10 @@ function receiptLines(data: AccessInvoiceData) {
   ];
   if (data.state === "paid" && data.expiresAt) {
     service.push(["Хүчинтэй", `${formatDate(data.expiresAt)} хүртэл`]);
+  } else if (data.state === "due" && data.period === "TERM") {
+    // ★ Said before the QR, not after — «I-р улирал» ends on a fixed day
+    // whenever it is bought (2026-10-18).
+    service.push(["Хүчинтэй", `${FIRST_TERM_PROMO.endsOn.replaceAll("-", ".")} хүртэл`]);
   }
 
   const total: [string, string][] =

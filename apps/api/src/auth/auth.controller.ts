@@ -221,6 +221,8 @@ export class AuthController {
       kindergartens: kindergartens.map(({ id, name }) => ({ id, name })),
       // A solo teacher's own workspace — the menu hides ESIS, finance, kitchen, staff.
       soloKindergartenIds: kindergartens.filter((k) => k.kind === "SOLO_TEACHER").map((k) => k.id),
+      // Mapped to an ESIS institution — whether ESIS controls appear at all.
+      esisKindergartenIds: kindergartens.filter((k) => k.esisInstitutionId).map((k) => k.id),
       csrfToken: cookie(req, CSRF_COOKIE) ?? null,
     };
   }

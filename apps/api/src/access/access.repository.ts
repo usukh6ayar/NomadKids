@@ -24,15 +24,6 @@ export class AccessRepository {
     });
   }
 
-  /** The kindergarten's own terms for a school year, if it has set any up. */
-  async termsOfYear(schoolYearId: string) {
-    return this.prisma.term.findMany({
-      where: { schoolYearId, deletedAt: null },
-      select: { number: true, name: true, startsOn: true, endsOn: true },
-      orderBy: { number: "asc" },
-    });
-  }
-
   /** This child's YEAR row for a school year. */
   async findForChildYear(childId: string, schoolYearId: string) {
     return this.prisma.accessSubscription.findFirst({

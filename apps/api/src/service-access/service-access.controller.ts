@@ -45,6 +45,29 @@ export class ServiceAccessController {
     );
   }
 
+  /** №6 — the next period of the contract, by QPay (the user, 2026-10-18). */
+  @Post("qpay")
+  payWithQpay(
+    @CurrentActor() actor: Actor,
+    @Body(new ZodValidationPipe(invoiceRequestSchema))
+    body: { period: "term" | "year"; kindergartenId?: string },
+  ) {
+    return this.service.payWithQpay(
+      actor,
+      body.period === "term" ? "TERM" : "YEAR",
+      body.kindergartenId,
+    );
+  }
+
+  @Get("qpay/:id")
+  qpayStatus(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Query(new ZodValidationPipe(kindergartenQuerySchema)) query: { kindergartenId?: string },
+  ) {
+    return this.service.qpayStatus(actor, params.id, query.kindergartenId);
+  }
+
   @Get("invoices/:id")
   invoice(
     @CurrentActor() actor: Actor,
