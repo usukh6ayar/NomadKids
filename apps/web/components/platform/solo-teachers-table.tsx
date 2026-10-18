@@ -206,12 +206,15 @@ function compareSolo(a: SoloRow, b: SoloRow, key: SoloSortKey, dir: 1 | -1): num
 export function SoloTeachersTable({
   onMerge,
   onDelete,
+  onPurge,
   onResetPassword,
 }: {
   /** Opens the merge here; without it, «⋯» links to «Бие даасан багш». */
   onMerge?: (row: SoloRow) => void;
   /** Offered from day 14 of idleness; without it, «⋯» has no «Устгах». */
   onDelete?: (row: SoloRow) => void;
+  /** «Бүр мөсөн устгах» — only where no family paid (the user, 2026-10-18). */
+  onPurge?: (row: SoloRow) => void;
   /** «Нууц үг сэргээх» — the teacher locked out with no one above them. */
   onResetPassword?: (row: SoloRow) => void;
 }) {
@@ -482,14 +485,25 @@ export function SoloTeachersTable({
                         ...(onResetPassword
                           ? [{ label: "Нууц үг сэргээх", onSelect: () => onResetPassword(row) }]
                           : []),
-                        // From day 14 only — an action that cannot run is not shown.
-                        ...(onDelete && deletable(row) && (idleDays(row) ?? 0) >= IDLE_WARN_DAYS
+                        // ★ At any time — 2026-10-18, the user: the client's trial
+                        // left made-up accounts. The dialog says who paid.
+                        ...(onDelete
                           ? [
                               {
                                 label: "Устгах",
                                 onSelect: () => onDelete(row),
                                 tone: "danger" as const,
                                 separated: true,
+                              },
+                            ]
+                          : []),
+                        // For good — only where no family paid; the server checks again.
+                        ...(onPurge && deletable(row)
+                          ? [
+                              {
+                                label: "Бүр мөсөн устгах",
+                                onSelect: () => onPurge(row),
+                                tone: "danger" as const,
                               },
                             ]
                           : []),

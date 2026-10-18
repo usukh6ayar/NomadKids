@@ -53,6 +53,10 @@ export const soloWorkspaceSchema = z.object({
   /** Where the teacher said they work — what to merge into. */
   workplace: z.string().nullable(),
   childCount: z.number().int(),
+  /** Children whose families ever paid the portal fee — money moved (2026-10-18). */
+  paidChildCount: z.number().int().nullish(),
+  /** What the operator types to delete the workspace for good (2026-10-18). */
+  teacherUsername: z.string().nullable().optional(),
   createdAt: z.string(),
 });
 export type SoloWorkspace = z.infer<typeof soloWorkspaceSchema>;

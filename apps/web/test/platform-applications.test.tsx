@@ -226,6 +226,35 @@ describe("the operator's applications", () => {
     expect(api.calls.some((call) => call.url.endsWith("/approve"))).toBe(false);
   });
 
+  // ★ 2026-10-18, the user: refused straight from the row — the reason still asked.
+  it("refuses from the row too, with a reason", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/auth/me", body: operator() },
+      {
+        path: `/platform/applications/${APPLICATION.id}/reject`,
+        method: "POST",
+        body: { ...APPLICATION, status: "REJECTED", reviewNote: "Туршилтын бүртгэл" },
+      },
+      { path: "/platform/applications", body: list([APPLICATION]) },
+    ]);
+    renderWithProviders(<ApplicationsPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Татгалзах" }));
+    const dialog = await screen.findByRole("dialog", { name: /хүсэлтээс татгалзах уу/ });
+    const refuse = within(dialog).getByRole("button", { name: "Татгалзах" });
+    expect(refuse).toBeDisabled();
+
+    await user.type(within(dialog).getByLabelText(/Татгалзсан шалтгаан/), "Туршилтын бүртгэл");
+    await user.click(refuse);
+
+    await waitFor(() =>
+      expect(api.calls.find((call) => call.url.endsWith("/reject"))?.body).toEqual({
+        reviewNote: "Туршилтын бүртгэл",
+      }),
+    );
+  });
+
   it("reads each state from the API, and says what to wait for when none is there", async () => {
     const user = userEvent.setup();
     const api = stubApi([

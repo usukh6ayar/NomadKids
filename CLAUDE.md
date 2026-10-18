@@ -185,6 +185,15 @@ Set `deletedAt`. **Who** deleted it lives in `AuditLog` (`actorUserId` against a
 overwritten by the next writer. `AuditLog` itself is append-only, never updated,
 never deleted; its repository exposes only `append()`.
 
+★ **One hard delete exists** (the user, 2026-10-18): the operator's «Бүр мөсөн
+устгах» on a **solo teacher's workspace** — the client's trial left made-up
+accounts. `POST /platform/solo-workspaces/:id/purge` (preview first, the
+teacher's username typed) removes the workspace's rows and the people who
+belong nowhere else; it is refused while **any money moved** through it, it
+never touches the audit log, and a person with a row in another kindergarten
+is kept. «Устгах» (`DELETE …/:id`) stays the soft delete. **Do not add a
+second hard delete without the user saying so.**
+
 ★ **Finance is stricter** (`нэмэлт.md` §14): a confirmed financial transaction is
 never deleted at all. A payment is voided with a **reversing row**
 (`Payment.reversalOfId`, `InvoicesRepository.voidPayment()`), and a reversal
