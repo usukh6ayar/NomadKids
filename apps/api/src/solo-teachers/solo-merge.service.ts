@@ -50,6 +50,7 @@ export class SoloMergeService {
     this.platform.assertSuperAdmin(actor);
     const { skip, take } = toSkipTake(query);
     const [rows, total] = await this.repo.listWorkspaces(skip, take);
+    const extras = await this.repo.listExtras(rows.map((row) => row.id));
     const items: SoloWorkspace[] = rows.map((row) => ({
       id: row.id,
       name: row.name,
@@ -58,6 +59,8 @@ export class SoloMergeService {
       location: row.location,
       workplace: row.soloWorkplaceName,
       childCount: row._count.children,
+      paidChildCount: extras.paid.get(row.id) ?? 0,
+      teacherUsername: extras.teachers.get(row.id) ?? null,
       createdAt: row.createdAt.toISOString(),
     }));
     return paginate(items, total, query);
