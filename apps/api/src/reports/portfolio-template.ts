@@ -1,5 +1,5 @@
 import { ageInYears, birthFacts, YEAR_ANIMALS, ZODIAC_SIGNS } from "@kinder/contracts";
-import { baseCss, esc, formatDate, masthead, paragraphs, reportChrome } from "./template-utils";
+import { baseCss, esc, formatDate, masthead, paragraphs } from "./template-utils";
 import { renderExactPortfolioHtml } from "./portfolio-exact-template";
 
 export interface PortfolioAgeProfile {
@@ -675,9 +675,12 @@ ${
 </html>`;
 }
 
-export function portfolioChrome(childName: string, kindergartenName: string) {
-  return {
-    ...reportChrome(`${kindergartenName} · Хүүхдийн хувийн хавтас`, childName),
-    fullBleed: true,
-  };
+/**
+ * ★ No header or footer template — 2026-10-19 review. The exact design is
+ * full-bleed, and at zero margins Chromium clips both to nothing while still
+ * embedding the font into each. The page number (RFP §10.3) is printed by the
+ * template itself (`.sheet::after`).
+ */
+export function portfolioChrome(_childName: string, _kindergartenName: string) {
+  return { fullBleed: true };
 }

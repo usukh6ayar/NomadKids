@@ -455,6 +455,69 @@ describe("portfolio generation", () => {
     expect(countImages(pdf, UPLOAD_SIZE)).toBe(before + 2);
   }, 180_000);
 
+  /*
+    ★ 2026-10-19 review of #260: the artworks query had no visibility filter,
+    so a drawing attached to a teacher's private note reached the family's PDF
+    while the note itself did not.
+  */
+  it("prints an artwork on a private note only in the staff copy", async () => {
+    if (!pdftotextAvailable()) throw new Error("pdftotext (poppler) is required");
+
+    const type = await db.observationType.findFirstOrThrow({ where: { kindergartenId: null } });
+    const hidden = await db.observation.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        childId: a.child.id,
+        enrollmentId: a.enrollment.id,
+        typeId: type.id,
+        source: "TEACHER",
+        observedOn: new Date("2025-10-03"),
+        situation: PRIVATE_NOTE,
+        visibleToParents: false,
+        reviewStatus: "APPROVED",
+        includeInReport: true,
+        authorId: a.teacherUser.id,
+      },
+    });
+    const CAPTION = "Нууц тэмдэглэлийн бүтээл";
+    const upload = await authed(
+      request(app.getHttpServer()).post(`/v1/children/${a.child.id}/media`),
+      teacherA,
+    )
+      .field("category", "ARTWORK")
+      .field("caption", CAPTION)
+      .attach("file", await logoBytes(), "бүтээл.png");
+    expect(upload.status).toBe(201);
+    await db.mediaFile.update({
+      where: { id: upload.body.items[0].id as string },
+      data: { observationId: hidden.id, purpose: "OBSERVATION" },
+    });
+
+    const parentPdf = await generatedPdf(await createJob(parentA, a.child.id));
+    expect(extractText(parentPdf)).not.toContain(CAPTION);
+    expect(countImages(parentPdf, UPLOAD_SIZE)).toBe(0);
+
+    const teacherPdf = await generatedPdf(await createJob(teacherA, a.child.id));
+    expect(extractText(teacherPdf)).toContain(CAPTION);
+    expect(countImages(teacherPdf, UPLOAD_SIZE)).toBe(1);
+  }, 180_000);
+
+  /*
+    The letter lived in the oldest-age `teacherNote` before #260; until a
+    teacher writes the new one, that is what prints.
+  */
+  it("prints the age-profile teacher note when no graduation letter is written", async () => {
+    if (!pdftotextAvailable()) throw new Error("pdftotext (poppler) is required");
+
+    const NOTE = "Чи их зоригтой, уйгагүй хүүхэд";
+    await db.childAgeProfile.create({
+      data: { kindergartenId: a.kindergarten.id, childId: a.child.id, age: 5, teacherNote: NOTE },
+    });
+
+    const text = extractText(await generatedPdf(await createJob(teacherA, a.child.id)));
+    expect(text).toContain(NOTE);
+  }, 120_000);
+
   it("prints representative photographs in the age-album comparison", async () => {
     if (!pdftotextAvailable()) throw new Error("pdftotext (poppler) is required");
 

@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { AGE_ALBUM_CATEGORIES } from "@kinder/contracts";
+import { MAX_PORTFOLIO_ALBUM_PHOTOS, MAX_PORTFOLIO_ARTWORKS } from "./report-images";
 import { PrismaService } from "../prisma/prisma.service";
 import { ObservationsRepository } from "../observations/observations.repository";
 import { toSkipTake, type PageParams } from "../common/pagination";
@@ -381,17 +382,42 @@ export class ReportsRepository {
           level: { select: { label: true, color: true } },
         },
       }),
-      // Every saved work, not only works that have been paired into an
-      // advancement comparison. `activityName` is the selected ARTWORK_TYPES
-      // value on an artwork observation.
+      /*
+        Every saved work, not only works paired into a comparison.
+        `activityName` is the selected ARTWORK_TYPES value on an artwork
+        observation.
+
+        ★★ The same two branches as `MediaRepository.guardianVisibleWhere` —
+        2026-10-19 review. A work outside an observation is the family's own
+        CHILD_PHOTO; one attached to an observation is printed only if that
+        observation is one this viewer may read *and* is in the report,
+        exactly as the observations above. Without the second half a drawing
+        on a private or unreviewed note — or a deleted one — reached the
+        family's PDF while the note itself did not.
+      */
       this.prisma.mediaFile.findMany({
         where: {
           childId,
           deletedAt: null,
           status: "READY",
-          OR: [{ category: "ARTWORK" }, { observation: { is: { type: { code: "artwork" } } } }],
+          OR: [
+            { observationId: null, purpose: "CHILD_PHOTO", category: "ARTWORK" },
+            {
+              observation: {
+                is: {
+                  AND: [
+                    this.observations.readableWhere(childId, viewer),
+                    { includeInReport: true },
+                  ],
+                },
+              },
+              OR: [{ category: "ARTWORK" }, { observation: { is: { type: { code: "artwork" } } } }],
+            },
+          ],
         },
-        orderBy: [{ takenAt: { sort: "asc", nulls: "last" } }, { uploadedAt: "asc" }],
+        // Newest first so the ceiling keeps the latest; put back in order below.
+        orderBy: [{ takenAt: { sort: "desc", nulls: "first" } }, { uploadedAt: "desc" }],
+        take: MAX_PORTFOLIO_ARTWORKS,
         select: {
           id: true,
           storageKey: true,
@@ -460,6 +486,10 @@ export class ReportsRepository {
             // the album as well.
             {
               attribution: "TEACHER",
+              // The exact design prints a teacher's uncategorised photos on
+              // the 2–5 нас pages only; any other age would be downloaded
+              // and printed nowhere.
+              age: { in: [2, 3, 4, 5] },
               OR: [{ category: null }, { category: { not: "ARTWORK" } }],
             },
           ],
@@ -481,12 +511,14 @@ export class ReportsRepository {
           albumCoverAge: true,
           albumCategory: { select: { name: true } },
         },
+        take: MAX_PORTFOLIO_ALBUM_PHOTOS,
       }),
     ]);
 
     // Read newest-first so the ceiling keeps the most recent, then present
     // oldest-first, which is how a portfolio reads.
     observations.reverse();
+    artworks.reverse();
 
     return {
       child,

@@ -126,6 +126,73 @@ describe("renderPortfolioHtml exact dynamic template", () => {
     expect(html).not.toContain("чаддаг уу?");
   });
 
+  // ★ The rows below are 2026-10-19's review of #260.
+
+  it("covers all four sample growth rows drawn into the background", () => {
+    const html = renderPortfolioHtml(portfolio());
+    const table = html.slice(
+      html.indexOf('<table class="growth-table">'),
+      html.indexOf("</table>"),
+    );
+    expect(table.match(/<tr>/g)).toHaveLength(4);
+    expect(table).toContain("108 см");
+  });
+
+  it("does not plot a missing height at 0 см", () => {
+    const html = renderPortfolioHtml(
+      portfolio({
+        growthMeasurements: [
+          { measuredOn: "2026-02-12", heightCm: 108, weightKg: 18 },
+          { measuredOn: "2026-05-12", heightCm: null, weightKg: 19 },
+        ],
+      }),
+    );
+    expect(html).not.toContain(">0см<");
+    expect(html).not.toContain("null см");
+  });
+
+  it("ticks the traits under the web picker's own spelling", () => {
+    const html = renderPortfolioHtml(
+      portfolio({ ageProfiles: [{ age: 5, characterTraits: ["Эелдэг", "Сандруу"] }] }),
+    );
+    expect(html.match(/<div class="fill">✓<\/div>/g)).toHaveLength(2);
+  });
+
+  it("prints a family's ticked questions under their own domain, and its description once", () => {
+    const DESCRIPTION = "Бид таван хүнтэй гэр бүл";
+    const html = renderPortfolioHtml(
+      portfolio({
+        ageProfiles: [
+          {
+            age: 5,
+            familyDescription: DESCRIPTION,
+            familyLearningSkills: ["Хувцсаа ихэнхдээ бие даан өмсөж, тайлж чаддаг уу?"],
+          },
+        ],
+      }),
+    );
+    expect(html.split(DESCRIPTION)).toHaveLength(2);
+    const page8 = html.slice(html.indexOf('class="sheet t8"'), html.indexOf('class="sheet t9"'));
+    expect(page8).toMatch(
+      /<h3>Бие бялдар<\/h3><p>Хувцсаа ихэнхдээ бие даан өмсөж, тайлж чаддаг\.<\/p>/,
+    );
+  });
+
+  it("writes each page background once and numbers every page but the cover", () => {
+    const html = renderPortfolioHtml(
+      portfolio({
+        artworks: Array.from({ length: 9 }, () => ({
+          type: "Зураг",
+          age: 5,
+          dataUri: "data:image/png;base64,AA==",
+        })),
+      }),
+    );
+    expect(html.split(".bg11{")).toHaveLength(2);
+    expect(html.match(/class="page-bg bg11"/g)?.length).toBeGreaterThan(1);
+    expect(html).toContain("counter(sheet)");
+  });
+
   it("escapes user-controlled text", () => {
     const html = renderPortfolioHtml(portfolio({ teacherLetter: "<script>alert(1)</script>" }));
     expect(html).not.toContain("<script>alert(1)</script>");

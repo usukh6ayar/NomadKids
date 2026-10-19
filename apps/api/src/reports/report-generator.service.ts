@@ -7,7 +7,12 @@ import {
 import { StorageService } from "../storage/storage.service";
 import { ReportsRepository } from "./reports.repository";
 import { PdfRendererService } from "./pdf-renderer.service";
-import { ImageBudget } from "./report-images";
+import {
+  ImageBudget,
+  MAX_IMAGE_BYTES_PER_REPORT,
+  MAX_PORTFOLIO_ALBUM_PHOTOS,
+  MAX_PORTFOLIO_ARTWORKS,
+} from "./report-images";
 import { portfolioChrome, renderPortfolioHtml, type PortfolioData } from "./portfolio-template";
 import {
   renderTermReportHtml,
@@ -173,12 +178,15 @@ export class ReportGeneratorService {
     const data = await this.repo.loadPortfolioData(childId, viewer);
     if (!data.child) throw new Error("Child not found");
 
-    // The exact portfolio prints every saved artwork and album photograph.
-    // Size the count to the child's data instead of silently stopping at the
-    // generic 40-image ceiling; downscaling still keeps the renderer bounded.
+    /*
+      ★ A fixed ceiling, never one sized to the child — 2026-10-19 review.
+      `report-images.ts`: "only a count bounds the total". The exact design
+      prints artworks and albums rather than three photos an age, so it gets
+      the room the repository's two `take`s allow — and no more.
+    */
     const budget = new ImageBudget(
-      data.artworks.length + data.albumPhotos.length + 2,
-      96 * 1024 * 1024,
+      MAX_PORTFOLIO_ARTWORKS + MAX_PORTFOLIO_ALBUM_PHOTOS + 2,
+      2 * MAX_IMAGE_BYTES_PER_REPORT,
     );
     const childPhoto = await this.embed(budget, data.child.photo);
     // The identity marks always win the image budget.
@@ -338,7 +346,17 @@ export class ReportGeneratorService {
       artworks,
       photoAlbums,
       albumSummary: [...albumSummary].map(([label, count]) => ({ label, count })),
-      teacherLetter: data.aboutMe?.graduationLetter ?? null,
+      /*
+        The graduation letter, or — until a teacher writes one — the latest
+        age's `teacherNote`, which is where the letter lived before #260. No
+        backfill: the fallback keeps every letter already written in print.
+      */
+      teacherLetter:
+        data.aboutMe?.graduationLetter?.trim() ||
+        ([...data.ageProfiles]
+          .sort((a, b) => b.age - a.age)
+          .find((profile) => profile.teacherNote?.trim())?.teacherNote ??
+          null),
       generatedAt: new Date(),
       omittedPhotoCount: budget.dropped,
     };

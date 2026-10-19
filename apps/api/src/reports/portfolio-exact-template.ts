@@ -1,6 +1,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ARTWORK_TYPES, birthFacts, YEAR_ANIMALS, ZODIAC_SIGNS } from "@kinder/contracts";
+import {
+  AGE_FAMILY_OPTIONS,
+  ARTWORK_TYPES,
+  birthFacts,
+  LEARNING_DOMAINS,
+  YEAR_ANIMALS,
+  ZODIAC_SIGNS,
+  type LearningDomain,
+} from "@kinder/contracts";
 import { esc, fontFaceCss, formatDate, paragraphs } from "./template-utils";
 import type { PortfolioAgeProfile, PortfolioData } from "./portfolio-template";
 
@@ -26,8 +34,46 @@ function pageBackgrounds() {
   return backgrounds;
 }
 
+/*
+  ★ Each background is written once, as a CSS class, however many pages use it
+  — 2026-10-19 review. Inlined per page, a portfolio with ten artwork pages
+  carried ten copies of a 1.4 MB SVG through DevTools into the 2 GB worker.
+*/
 function exactPage(template: number, overlay = "") {
-  return `<section class="sheet t${template}"><img class="page-bg" src="data:image/svg+xml;base64,${pageBackgrounds()[template - 1]}" alt=""><div class="overlay">${overlay}</div></section>`;
+  return `<section class="sheet t${template}"><div class="page-bg bg${template}"></div><div class="overlay">${overlay}</div></section>`;
+}
+
+function backgroundCss(pages: string[]) {
+  const used = [...new Set(pages.join("").match(/ bg\d+"/g) ?? [])].map((match) =>
+    Number(match.slice(3, -1)),
+  );
+  return used
+    .map(
+      (template) =>
+        `.bg${template}{background-image:url("data:image/svg+xml;base64,${pageBackgrounds()[template - 1]}")}`,
+    )
+    .join("");
+}
+
+/** A domain's own note, from `{ "Танин мэдэхүй": "…" }`. */
+function domainNote(notes: unknown, domain: LearningDomain) {
+  if (!notes || typeof notes !== "object" || Array.isArray(notes)) return undefined;
+  return (notes as Record<string, unknown>)[domain];
+}
+
+/** The family questions this child's family ticked, under the domain each belongs to. */
+function familySkills(
+  age: (typeof AGES)[number],
+  skills: string[] | undefined,
+  domain: LearningDomain,
+) {
+  return (skills ?? []).filter((skill) => AGE_FAMILY_OPTIONS[age][domain].includes(skill));
+}
+
+function unplacedFamilySkills(age: (typeof AGES)[number], skills: string[] | undefined) {
+  return (skills ?? []).filter(
+    (skill) => !LEARNING_DOMAINS.some((domain) => AGE_FAMILY_OPTIONS[age][domain].includes(skill)),
+  );
 }
 
 function profile(data: PortfolioData, age: number) {
@@ -224,13 +270,13 @@ export function renderExactPortfolioHtml(data: PortfolioData): string {
     AGES.map((age) => profile(data, age)?.[field]);
   const traits = [
     "Хөгжилтэй",
-    "Өөлдөг",
+    "Эелдэг",
     "Баяр хөөртэй",
     "Тайван",
     "Гунигтай",
     "Зөрүүд",
     "Ууртай",
-    "Сандаруу",
+    "Сандруу",
     "Унтамхай",
     "Ичимхий",
     "Зоригтой",
@@ -239,12 +285,22 @@ export function renderExactPortfolioHtml(data: PortfolioData): string {
     AGES.map((age) => (profile(data, age)?.characterTraits?.includes(trait) ? "✓" : "")),
   );
   const growth = data.growthMeasurements.slice(-4);
+  // `Number(null)` is 0: a weight-only measurement would plot at 0 см.
+  const measured = (value: unknown) =>
+    value !== null && value !== undefined && Number.isFinite(Number(value));
   const height = growth
-    .filter((item) => Number.isFinite(Number(item.heightCm)))
+    .filter((item) => measured(item.heightCm))
     .map((item) => ({ value: Number(item.heightCm), label: formatDate(item.measuredOn) }));
   const weight = growth
-    .filter((item) => Number.isFinite(Number(item.weightKg)))
+    .filter((item) => measured(item.weightKg))
     .map((item) => ({ value: Number(item.weightKg), label: formatDate(item.measuredOn) }));
+  /*
+    ★ Always four rows — 2026-10-19 review. The page's background is the
+    designer's sample, with four made-up measurements («91 см 13.1 кг» …) drawn
+    into it; a table only as tall as this child's rows left the rest showing
+    as if they were the child's (CLAUDE.md §5: never sample figures).
+  */
+  const growthRows = Array.from({ length: 4 }, (_, index) => growth[index]);
   const photoCount = data.photoAlbums.reduce((sum, album) => sum + album.photos.length, 0);
   // A guardian's pick overrides the computed answer, as on the web (RFP §4.2).
   const computedBirthFacts = birthFacts(data.child.dateOfBirth);
@@ -301,20 +357,25 @@ export function renderExactPortfolioHtml(data: PortfolioData): string {
       7,
       `<div class="learning-grid">${AGES.map((age) => {
         const item = profile(data, age);
-        return `<article><h3>Танин мэдэхүй</h3><p>${esc(statements(item?.learningInterest, item?.kindergartenOtherSkill, item?.kindergartenSkillNotes))}</p><h3>Нийгэмшихүй</h3><p>${esc(statements(item?.kindergartenSkills))}</p><h3>Бие бялдар</h3><p>${esc(statements(item?.newSkills))}</p></article>`;
+        const notes = item?.kindergartenSkillNotes;
+        return `<article><h3>Танин мэдэхүй</h3><p>${esc(statements(item?.learningInterest, item?.kindergartenOtherSkill, domainNote(notes, "Танин мэдэхүй")))}</p><h3>Нийгэмшихүй</h3><p>${esc(statements(item?.kindergartenSkills, domainNote(notes, "Нийгэмшихүй")))}</p><h3>Бие бялдар</h3><p>${esc(statements(item?.newSkills, domainNote(notes, "Бие бялдар")))}</p></article>`;
       }).join("")}</div>`,
     ),
     exactPage(
       8,
       `<div class="learning-grid">${AGES.map((age) => {
         const item = profile(data, age);
-        return `<article><h3>Танин мэдэхүй</h3><p>${esc(statements(item?.familyLearningOther, item?.familyLearningNotes))}</p><h3>Нийгэмшихүй</h3><p>${esc(statements(item?.familyLearningSkills))}</p><h3>Бие бялдар</h3><p>${esc(statements(item?.familyDescription))}</p></article>`;
+        // Each ticked question under its own domain; «Бие бялдар» used to
+        // reprint `familyDescription`, which page 6 already shows.
+        const skills = item?.familyLearningSkills;
+        const notes = item?.familyLearningNotes;
+        return `<article><h3>Танин мэдэхүй</h3><p>${esc(statements(familySkills(age, skills, "Танин мэдэхүй"), unplacedFamilySkills(age, skills), item?.familyLearningOther, domainNote(notes, "Танин мэдэхүй")))}</p><h3>Нийгэмшихүй</h3><p>${esc(statements(familySkills(age, skills, "Нийгэмшихүй"), domainNote(notes, "Нийгэмшихүй")))}</p><h3>Бие бялдар</h3><p>${esc(statements(familySkills(age, skills, "Бие бялдар"), domainNote(notes, "Бие бялдар")))}</p></article>`;
       }).join("")}</div>`,
     ),
     ...historyPages(data),
     exactPage(
       10,
-      `<table class="growth-table"><tbody>${growth.map((item) => `<tr><td>${formatDate(item.measuredOn)}</td><td>${esc(item.heightCm)} см</td><td>${esc(item.weightKg)} кг</td></tr>`).join("")}</tbody></table><div class="height-chart">${chart(height, "#317bd6", "см")}</div><div class="weight-chart">${chart(weight, "#43a66f", "кг")}</div>`,
+      `<table class="growth-table"><tbody>${growthRows.map((item) => (item ? `<tr><td>${formatDate(item.measuredOn)}</td><td>${measured(item.heightCm) ? `${esc(item.heightCm)} см` : ""}</td><td>${measured(item.weightKg) ? `${esc(item.weightKg)} кг` : ""}</td></tr>` : "<tr><td></td><td></td><td></td></tr>")).join("")}</tbody></table><div class="height-chart">${chart(height, "#317bd6", "см")}</div><div class="weight-chart">${chart(weight, "#43a66f", "кг")}</div>`,
     ),
     ...artworkPages(data),
     ...albumPages(data),
@@ -327,7 +388,8 @@ export function renderExactPortfolioHtml(data: PortfolioData): string {
 
   return `<!doctype html><html lang="mn"><head><meta charset="utf-8"><title>${esc(fullName)} - хүүхдийн хөгжлийн хувийн хавтас</title><style>
   ${fontFaceCss()}
-  @page{size:A4 portrait;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:"Noto Sans",sans-serif;color:#14385d}.sheet{position:relative;width:210mm;height:297mm;overflow:hidden;break-after:page;page-break-after:always}.sheet:last-child{break-after:auto}.page-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:fill}.overlay{position:absolute;inset:0}
+  ${backgroundCss(pages)}
+  @page{size:A4 portrait;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:"Noto Sans",sans-serif;color:#14385d}.sheet{position:relative;width:210mm;height:297mm;overflow:hidden;break-after:page;page-break-after:always}.sheet:last-child{break-after:auto}.page-bg{position:absolute;inset:0;background-size:100% 100%;background-repeat:no-repeat}body{counter-reset:sheet}.sheet{counter-increment:sheet}.sheet::after{content:counter(sheet);position:absolute;z-index:3;left:0;right:0;bottom:5mm;text-align:center;font-size:8pt;color:#8aa0b9}.t1::after{content:none}.overlay{position:absolute;inset:0}
   .cover-card{position:absolute;left:12.7%;top:13.9%;width:74.3%;height:9.9%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.5mm;border:1px solid #bdd4dd;border-radius:7mm;background:#fff}.cover-card strong{font-size:18pt}.cover-card span{color:#60738b;font-size:9.5pt}.cover-card b{color:#2e78d6;font-size:8.5pt}
   .child-photo{position:absolute;left:9.6%;top:15.4%;width:23.2%;height:23.2%;border-radius:50%;object-fit:cover}.profile-age{position:absolute;left:5%;top:34%;width:18%;height:5%;background:#fff}.identity-name{position:absolute;left:9.7%;top:39%;width:23%;height:7%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;font-size:17pt;font-weight:700}.identity-name small{margin-top:1mm;font-size:9.5pt;font-weight:400;color:#60738b}.identity-values{position:absolute;left:60.4%;top:15.5%;width:30.2%;margin:0;background:#fff}.identity-values dd{height:8.8mm;margin:0;padding:2.1mm 2mm 0;text-align:right;font-weight:700;font-size:9pt;border-bottom:1px solid #dbe5eb}.completion{position:absolute;left:7.5%;top:52.3%;width:85%;height:27.7%;padding:2mm;display:grid;grid-template-columns:1fr 1fr;gap:4mm 7mm;background:#fff}.completion div{display:flex;flex-direction:column;justify-content:center;padding:3mm 6mm;border-radius:5mm;background:#f5fbf8}.completion strong{font-size:8pt;color:#60738b}.completion b{margin-top:2mm;text-align:right;font-size:10pt}
   .enrollment{position:absolute;left:8%;top:18%;width:84%;height:68%;display:flex;flex-direction:column;gap:5mm;background:#fff;overflow:hidden}.enrollment article{min-height:29mm;display:grid;grid-template-columns:12mm 1fr 42%;align-items:center;gap:4mm;padding:4mm 6mm;border-radius:6mm;background:#eff9eb}.enrollment i{display:flex;width:9mm;height:9mm;align-items:center;justify-content:center;border-radius:50%;background:#fff;font-style:normal;font-weight:700}.enrollment div{display:flex;flex-direction:column;gap:2mm}.enrollment span,.enrollment b{font-size:8pt}.enrollment strong{font-size:9pt}.enrollment b{text-align:right}
