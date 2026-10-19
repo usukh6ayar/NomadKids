@@ -46,7 +46,7 @@ ${baseCss()}
   <p><strong>Төлөгч:</strong> ${esc(data.kindergartenName)}</p>
   <p><strong>Хүлээн авагч:</strong> ${esc(data.bank.holder)}</p>
 
-  ${data.perGroupAmount ? periodTable(data) : monthlyTable(data)}
+  ${data.perGroupAmount !== undefined ? periodTable(data) : monthlyTable(data)}
 
   <dl class="bank">
     <dt>Банк</dt><dd>${esc(data.bank.name)}</dd>
@@ -78,7 +78,7 @@ function periodTable(data: ServiceInvoiceParams): string {
       <tr>
         <td>NomadKids үйлчилгээний эрх — ${esc(data.periodLabel ?? PERIOD_LABEL[data.period])}</td>
         <td class="num">${esc(data.groupCount)}</td>
-        <td class="num">${esc(money(data.perGroupAmount ?? "0"))}</td>
+        <td class="num">${data.perGroupAmount ? esc(money(data.perGroupAmount)) : "—"}</td>
         <td class="num">${esc(money(data.amount))}</td>
       </tr>
     </tbody>

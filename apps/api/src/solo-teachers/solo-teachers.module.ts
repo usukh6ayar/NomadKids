@@ -3,6 +3,8 @@ import { UsersModule } from "../users/users.module";
 import { AuthModule } from "../auth/auth.module";
 import { PhoneVerificationModule } from "../phone-verification/phone-verification.module";
 import { PublicKindergartensModule } from "../public-kindergartens/public-kindergartens.module";
+import { SoloDeleteRepository } from "./solo-delete.repository";
+import { SoloDeleteService } from "./solo-delete.service";
 import { SoloMergeController } from "./solo-merge.controller";
 import { SoloMergeRepository } from "./solo-merge.repository";
 import { SoloMergeService } from "./solo-merge.service";
@@ -14,6 +16,13 @@ import { SoloTeachersService } from "./solo-teachers.service";
 @Module({
   imports: [AuthModule, PhoneVerificationModule, PublicKindergartensModule, UsersModule],
   controllers: [SoloTeachersController, SoloMergeController],
-  providers: [SoloTeachersService, SoloTeachersRepository, SoloMergeService, SoloMergeRepository],
+  providers: [
+    SoloTeachersService,
+    SoloTeachersRepository,
+    SoloMergeService,
+    SoloMergeRepository,
+    SoloDeleteService,
+    SoloDeleteRepository,
+  ],
 })
 export class SoloTeachersModule {}

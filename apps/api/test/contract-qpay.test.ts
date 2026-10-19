@@ -388,6 +388,7 @@ describe("a paid period", () => {
     const paid = await db.contractPayment.findUniqueOrThrow({ where: { id: payment.id } });
     expect(paid.amount.toFixed(2)).toBe("30000.00");
     expect(paid.groupCount).toBe(1);
+    expect(paid.method).toBe("QPAY");
   });
 
   it("counts in the platform's income and in what the partners share", async () => {

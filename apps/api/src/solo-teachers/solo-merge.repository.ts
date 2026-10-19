@@ -153,6 +153,41 @@ export class SoloMergeRepository {
   }
 
   /**
+   * For a page of workspaces: the children whose families ever paid (money
+   * moved — the purge refuses those), and each workspace's teacher's
+   * username, which the operator types to purge (2026-10-18). Two queries
+   * for the page, never one per row (§3.4).
+   */
+  async listExtras(ids: string[]) {
+    if (ids.length === 0)
+      return { paid: new Map<string, number>(), teachers: new Map<string, string>() };
+    const [paidRows, teacherRows] = await Promise.all([
+      this.prisma.accessSubscription.groupBy({
+        by: ["kindergartenId", "childId"],
+        where: {
+          kindergartenId: { in: ids },
+          deletedAt: null,
+          paidAt: { not: null },
+          amount: { gt: 0 },
+        },
+      }),
+      this.prisma.membership.findMany({
+        where: { kindergartenId: { in: ids }, role: "TEACHER", deletedAt: null },
+        orderBy: { createdAt: "asc" },
+        select: { kindergartenId: true, user: { select: { username: true } } },
+      }),
+    ]);
+    const paid = new Map<string, number>();
+    for (const row of paidRows)
+      paid.set(row.kindergartenId, (paid.get(row.kindergartenId) ?? 0) + 1);
+    const teachers = new Map<string, string>();
+    for (const row of teacherRows) {
+      if (!teachers.has(row.kindergartenId)) teachers.set(row.kindergartenId, row.user.username);
+    }
+    return { paid, teachers };
+  }
+
+  /**
    * The paid state follows the child. If the solo record's fee for the year is
    * paid and the target record's row is not, the target's row takes it; the
    * solo row stays (as history) on the archived record. The before values are

@@ -185,6 +185,15 @@ Set `deletedAt`. **Who** deleted it lives in `AuditLog` (`actorUserId` against a
 overwritten by the next writer. `AuditLog` itself is append-only, never updated,
 never deleted; its repository exposes only `append()`.
 
+★ **One hard delete exists** (the user, 2026-10-18): the operator's «Бүр мөсөн
+устгах» on a **solo teacher's workspace** — the client's trial left made-up
+accounts. `POST /platform/solo-workspaces/:id/purge` (preview first, the
+teacher's username typed) removes the workspace's rows and the people who
+belong nowhere else; it is refused while **any money moved** through it, it
+never touches the audit log, and a person with a row in another kindergarten
+is kept. «Устгах» (`DELETE …/:id`) stays the soft delete. **Do not add a
+second hard delete without the user saying so.**
+
 ★ **Finance is stricter** (`нэмэлт.md` §14): a confirmed financial transaction is
 never deleted at all. A payment is voided with a **reversing row**
 (`Payment.reversalOfId`, `InvoicesRepository.voidPayment()`), and a reversal
@@ -369,6 +378,22 @@ contract runs to the period's end).
 It is the operator's revenue like the fee — no `Payment` row. A kindergarten's
 own tuition and meal invoices to families still never touch QPay.
 
+★ **The line moved a third time** (client, 2026-10-18): most kindergartens are
+state ones and pay their contract **against an invoice, by bank transfer**;
+some pay by QPay. The operator records a transfer seen on the statement
+(`/platform/contract-payments`, `ContractPaymentsService`) — the same
+settlement QPay runs (`settleContractPayment`), so it still counts in the
+revenue and the partners' shares — and keeps the number of the e-receipt
+issued **by hand on ebarimt**. Nothing talks to ebarimt.
+
+★ **A contract is accepted online** (the user, 2026-10-18): the director reads
+it on «Үйлчилгээний эрх» and accepts it; `ContractAcceptance` (append-only)
+records who, when, from where, and which PDF at which version, and the
+contract becomes ACTIVE. Its first period is owed at its own `periodFee` — the
+sheet's by default, the operator's when negotiated — and is paid before any
+renewal. A record of consent, **not** a certified e-signature, which stays in
+Phase IV; its legal weight against a stamped paper contract is unverified.
+
 ★ **Chat** has **no AI in it** — the client said so three times. It is a group
 message board: membership derived per request, 404 for a room you are not in,
 `kindergartenId` on every row, soft delete, paginated history.
@@ -390,8 +415,8 @@ set. Never show an SMS price in the UI.
 **Still out — RFP Phase IV.** Say which phase it belongs to and ask:
 
 native mobile apps · outbound SMS · push notification · QR pick-up ·
-electronic signature · multi-language · AI observation suggestions ·
-voice-to-text
+certified electronic signature (online contract acceptance moved in,
+2026-10-18) · multi-language · AI observation suggestions · voice-to-text
 
 Pulling work forward silently is how a three-week delivery becomes six.
 

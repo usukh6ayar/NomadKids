@@ -265,6 +265,123 @@ describe("the director's «Үйлчилгээний эрх»", () => {
     expect(screen.getByText("48,000₮")).toBeInTheDocument();
   });
 
+  /*
+   * ★ The user, 2026-10-18: the director accepts the contract online. The
+   * button waits for the box to be ticked, and the version read is sent.
+   */
+  it("accepts the contract online once its terms are agreed to", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: "/service-access",
+        method: "GET",
+        body: {
+          expiresAt: null,
+          period: null,
+          groupCount: 13,
+          remind: true,
+          contractToSign: {
+            id: "99999999-9999-4999-8999-999999999999",
+            number: "NK-2026-000001",
+            version: 1,
+            groupCount: 13,
+            period: "year",
+            periodFee: "270000.00",
+            startsOn: "2026-09-01",
+            endsOn: "2027-05-31",
+            pdfReady: true,
+          },
+          due: null,
+        },
+      },
+    ]);
+    renderWithProviders(<AdminServiceAccessPage />);
+
+    expect(
+      await screen.findByText("Гэрээ баталгаажаагүй байна. Доорх гэрээг уншаад баталгаажуулна уу."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("№NK-2026-000001")).toBeInTheDocument();
+    expect(screen.getByText("270,000₮")).toBeInTheDocument();
+    // No renewal before there is a contract.
+    expect(screen.queryByRole("heading", { name: "Сунгах" })).toBeNull();
+    const confirm = screen.getByRole("button", { name: "Гэрээг баталгаажуулах" });
+    expect(confirm).toBeDisabled();
+
+    const api = stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: "/service-access/contracts/99999999-9999-4999-8999-999999999999/accept",
+        method: "POST",
+        status: 201,
+        body: { contract: { id: "99999999-9999-4999-8999-999999999999", status: "ACTIVE" } },
+      },
+    ]);
+    await user.click(
+      screen.getByRole("checkbox", {
+        name: "Гэрээний нөхцөлийг уншиж танилцсан бөгөөд зөвшөөрч байна.",
+      }),
+    );
+    await user.click(confirm);
+
+    expect(await screen.findByText("Гэрээ баталгаажлаа.")).toBeInTheDocument();
+    expect(api.calls.find((c) => c.method === "POST" && c.url.endsWith("/accept"))?.body).toEqual({
+      accepted: true,
+      version: 1,
+    });
+  });
+
+  it("asks for the contract's first period before any renewal — by QPay or by invoice", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: "/service-access",
+        method: "GET",
+        body: {
+          expiresAt: null,
+          period: "year",
+          groupCount: 13,
+          remind: true,
+          contractToSign: null,
+          due: {
+            id: "66666666-6666-4666-8666-666666666666",
+            contractNumber: "NK-2026-000001",
+            coversFrom: "2026-09-01",
+            coversTo: "2027-05-31",
+            groupCount: 13,
+            amount: "270000.00",
+            label: "Гэрээ №NK-2026-000001 (2026.09.01 – 2027.05.31)",
+          },
+        },
+      },
+    ]);
+    renderWithProviders(<AdminServiceAccessPage />);
+
+    expect(await screen.findByRole("heading", { name: "Гэрээний төлбөр" })).toBeInTheDocument();
+    expect(screen.getByText("Гэрээ №NK-2026-000001 (2026.09.01 – 2027.05.31)")).toBeInTheDocument();
+    expect(screen.getByText("270,000₮")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Сунгах" })).toBeNull();
+
+    const api = stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: "/service-access/payments/66666666-6666-4666-8666-666666666666/invoice",
+        method: "POST",
+        status: 201,
+        body: { id: "job-9", status: "QUEUED", downloadable: false },
+      },
+    ]);
+    await user.click(screen.getByRole("button", { name: "Нэхэмжлэх үүсгэх" }));
+    expect(
+      api.calls.some(
+        (c) =>
+          c.method === "POST" &&
+          c.url === "/service-access/payments/66666666-6666-4666-8666-666666666666/invoice",
+      ),
+    ).toBe(true);
+  });
+
   it("says the contract details are coming while the API does not answer", async () => {
     stubApi([{ path: "/auth/me", body: sessionFor(["ADMIN"]) }]);
     renderWithProviders(<AdminServiceAccessPage />);

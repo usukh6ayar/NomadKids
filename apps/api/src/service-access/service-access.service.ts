@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import {
   GROUP_PRICES,
   groupTermPrice,
@@ -25,21 +31,29 @@ const DOWNLOAD_TTL_SECONDS = 5 * 60;
 
 type Period = keyof typeof MONTHS;
 
+type Kindergarten = { id: string; name: string };
+type ActiveContract = NonNullable<Awaited<ReturnType<ServiceAccessRepository["activeContract"]>>>;
+type PaymentRow = NonNullable<Awaited<ReturnType<ServiceAccessRepository["findPayment"]>>>;
+
 /**
- * A kindergarten's own NomadKids access — how long its contract runs, and the
- * invoice that renews it (#211 items 6–7).
+ * A kindergarten's own NomadKids access — how long its contract runs, the
+ * contract the director accepts online, and how each period is paid (#211
+ * items 6–7, №6).
  *
  * ★ A director of a **contracted** kindergarten only. A solo workspace never
  * pays (teachers never pay — #195), so it is a 404 here.
  *
- * ★★ The price is the shared sheet's (`@kinder/contracts` `GROUP_PRICES`)
- * for a contract at the standard monthly fee, × the groups running now, and
- * `perGroupMonthlyFee × months` for a negotiated one — `perGroupFor`. A
- * contract from before per-group pricing has none, and its renewal is the
- * operator's to quote.
+ * ★★ A renewal is priced by `quote()` from the shared sheet (`@kinder/
+ * contracts` `GROUP_PRICES`), × the groups running now, or `fee × months`
+ * for a negotiated fee. The contract's **first** period is its own
+ * `periodFee`, the figure the PDF prints and the director accepted — the
+ * sheet's by default, the operator's when they negotiated one (the user,
+ * 2026-10-18).
  *
- * ★★★ No QPay (CLAUDE.md §7), and no reminder written anywhere: the bell is
- * the kindergarten's notice board, which families read too. `remind` on the
+ * ★★★ Paid by QPay or by a bank transfer against an invoice, which the
+ * operator records (`ContractPaymentsService`) — state kindergartens pay that
+ * way (client, 2026-10-18). No reminder is written anywhere: the bell is the
+ * kindergarten's notice board, which families read too. `remind` on the
  * status is what the red «1» reads.
  */
 @Injectable()
@@ -58,12 +72,16 @@ export class ServiceAccessService {
 
   async status(actor: Actor, kindergartenId?: string) {
     const kindergarten = await this.resolve(actor, kindergartenId);
-    const [contract, groupCount] = await Promise.all([
+    const [contract, toSign, groupCount] = await Promise.all([
       this.repo.activeContract(kindergarten.id),
+      this.repo.contractToSign(kindergarten.id),
       this.repo.currentGroupCount(kindergarten.id),
     ]);
+    const due = contract ? await this.repo.dueInitial(contract.id) : null;
 
-    const expiresAt = contract?.endsOn ?? null;
+    // ★ An accepted contract whose first period is unpaid runs to nothing yet:
+    // the screen says what is owed, never «2027.05.31 хүртэл».
+    const expiresAt = contract && !due ? contract.endsOn : null;
     const daysLeft = expiresAt ? daysUntil(expiresAt) : null;
     const fee = contract?.perGroupMonthlyFee ?? null;
     const term = contract ? quote(contract, groupCount, "TERM") : null;
@@ -73,14 +91,10 @@ export class ServiceAccessService {
       kindergartenId: kindergarten.id,
       expiresAt: expiresAt ? expiresAt.toISOString().slice(0, 10) : null,
       // ★ Lower case: the web's schema reads "term" | "year".
-      period: contract?.billingPeriod
-        ? contract.billingPeriod === "TERM"
-          ? "term"
-          : "year"
-        : null,
+      period: contract?.billingPeriod ? lower(contract.billingPeriod) : null,
       groupCount,
       daysLeft,
-      remind: daysLeft !== null && daysLeft <= REMIND_DAYS,
+      remind: Boolean(toSign) || Boolean(due) || (daysLeft !== null && daysLeft <= REMIND_DAYS),
       perGroupMonthlyFee: fee?.toString() ?? null,
       termAmount: fee ? (term?.amount ?? null) : null,
       yearAmount: fee ? (year?.amount ?? null) : null,
@@ -98,82 +112,213 @@ export class ServiceAccessService {
       yearLabel: year?.label ?? null,
       // Whether «Жилээр» is the whole school year at the year's price.
       yearWhole: year ? year.months === MONTHS.YEAR : null,
+      /** The contract issued and waiting for the director's acceptance (2026-10-18). */
+      contractToSign: toSign
+        ? {
+            id: toSign.id,
+            number: toSign.number,
+            version: toSign.version,
+            groupCount: toSign.groupCount,
+            period: toSign.billingPeriod ? lower(toSign.billingPeriod) : null,
+            perGroupMonthlyFee: toSign.perGroupMonthlyFee?.toFixed(2) ?? null,
+            periodFee: toSign.periodFee?.toFixed(2) ?? null,
+            startsOn: isoDay(toSign.startsOn),
+            endsOn: isoDay(toSign.endsOn),
+            pdfReady: Boolean(toSign.pdfMediaFileId),
+          }
+        : null,
+      /** The accepted contract's first period, unpaid — paid before any renewal. */
+      due: due && contract ? dueView(due, contract.number) : null,
+    };
+  }
+
+  /**
+   * The contract's PDF for its own director — the document they accept. A
+   * short-lived link, minted after the check: a presigned URL is a credential.
+   */
+  async contractPdfUrl(actor: Actor, contractId: string, kindergartenId?: string) {
+    const kindergarten = await this.resolve(actor, kindergartenId);
+    const contract = await this.repo.contractOf(contractId, kindergarten.id);
+    if (!contract) throw new NotFoundException();
+    if (!contract.pdf || contract.pdf.deletedAt) {
+      throw new BadRequestException(
+        "Гэрээний PDF бэлэн болоогүй байна. Түр хүлээгээд дахин оролдоно уу.",
+      );
+    }
+
+    await this.audit.append({
+      action: "DOWNLOAD",
+      kindergartenId: kindergarten.id,
+      actorUserId: actor.userId,
+      objectType: "Contract",
+      objectId: contract.id,
+    });
+
+    const url = await this.storage.presignedGetUrl(
+      contract.pdf.storageKey,
+      contract.pdf.originalName,
+    );
+    return { url, expiresIn: DOWNLOAD_TTL_SECONDS };
+  }
+
+  /**
+   * The director accepts the contract online — the user, 2026-10-18
+   * («онлайнаар гэрээ байгуулдаг»). The contract becomes ACTIVE, the
+   * acceptance is recorded (who, when, from where, which PDF at which
+   * version, the figures), and the first period is owed at the contract's
+   * own `periodFee`.
+   *
+   * ★ `version` is the one the director read: a contract re-issued meanwhile
+   * is refused rather than accepted unseen. ★★ A record of consent, not a
+   * certified e-signature (RFP Phase IV).
+   */
+  async acceptContract(
+    actor: Actor,
+    contractId: string,
+    body: { version: number; kindergartenId?: string },
+    context: { ipAddress: string | null; userAgent: string | null },
+  ) {
+    const kindergarten = await this.resolve(actor, body.kindergartenId);
+    const contract = await this.repo.contractOf(contractId, kindergarten.id);
+    if (!contract) throw new NotFoundException();
+    if (contract.status !== "PENDING_SIGNATURE") {
+      throw new ConflictException("Гэрээ аль хэдийн баталгаажсан байна.");
+    }
+    if (contract.version !== body.version) {
+      throw new ConflictException("Гэрээ шинэчлэгдсэн байна. Дахин уншаад баталгаажуулна уу.");
+    }
+    if (!contract.pdfMediaFileId || !contract.pdf || contract.pdf.deletedAt) {
+      throw new BadRequestException(
+        "Гэрээний PDF бэлэн болоогүй байна. Түр хүлээгээд дахин оролдоно уу.",
+      );
+    }
+    if (!contract.groupCount || !contract.billingPeriod || !contract.periodFee) {
+      throw new BadRequestException(
+        "Гэрээний нөхцөл бүрэн биш байна. NomadKids-тэй холбогдоно уу.",
+      );
+    }
+
+    const periodFee = new Decimal(contract.periodFee.toString());
+    const terms = {
+      groupCount: contract.groupCount,
+      billingPeriod: contract.billingPeriod,
+      perGroupMonthlyFee: contract.perGroupMonthlyFee?.toFixed(2) ?? null,
+      periodFee: periodFee.toFixed(2),
+      startsOn: isoDay(contract.startsOn),
+      endsOn: isoDay(contract.endsOn),
+    };
+    const accepted = await this.repo.acceptContract({
+      contractId: contract.id,
+      kindergartenId: kindergarten.id,
+      version: contract.version,
+      pdfMediaFileId: contract.pdfMediaFileId,
+      userId: actor.userId,
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent?.slice(0, 500) ?? null,
+      terms,
+      contractNumber: contract.number,
+      acceptedAt: new Date(),
+      initialPayment: periodFee.gt(0)
+        ? {
+            period: contract.billingPeriod,
+            termNumber:
+              contract.billingPeriod === "TERM"
+                ? (schoolTermOn(isoDay(contract.startsOn))?.number ?? null)
+                : null,
+            coversFrom: contract.startsOn,
+            coversTo: contract.endsOn,
+            groupCount: contract.groupCount,
+            perGroupAmount: periodFee.div(contract.groupCount).toFixed(2),
+            amount: periodFee.toFixed(2),
+            createdById: actor.userId,
+          }
+        : null,
+    });
+    // Accepted by another tab, or re-issued, between the read and the claim.
+    if (!accepted) throw new ConflictException("Гэрээ аль хэдийн баталгаажсан байна.");
+
+    await this.audit.append({
+      action: "UPDATE",
+      kindergartenId: kindergarten.id,
+      actorUserId: actor.userId,
+      objectType: "Contract",
+      objectId: contract.id,
+      metadata: {
+        before: { status: "PENDING_SIGNATURE" },
+        after: { status: "ACTIVE" },
+        acceptanceId: accepted.acceptance.id,
+        version: contract.version,
+        ipAddress: context.ipAddress,
+        initialPaymentId: accepted.payment?.id ?? null,
+        amount: terms.periodFee,
+      },
+    });
+
+    return {
+      contract: { id: contract.id, number: contract.number, status: "ACTIVE" as const },
+      due: accepted.payment ? dueView(accepted.payment, contract.number) : null,
     };
   }
 
   /** Queues the renewal invoice; Chromium renders it in the worker (CLAUDE.md §6). */
   async requestInvoice(actor: Actor, period: Period, kindergartenId?: string) {
     const kindergarten = await this.resolve(actor, kindergartenId);
-    const env = loadEnv();
-    const bank = {
-      name: env.SERVICE_INVOICE_BANK_NAME,
-      account: env.SERVICE_INVOICE_BANK_ACCOUNT,
-      holder: env.SERVICE_INVOICE_ACCOUNT_HOLDER,
-    };
-    if (!bank.name || !bank.account || !bank.holder) {
-      throw new BadRequestException(
-        "Нэхэмжлэхийн дансны мэдээлэл тохируулаагүй байна. NomadKids-тэй холбогдоно уу.",
-      );
-    }
-
-    const [contract, groupCount] = await Promise.all([
-      this.repo.activeContract(kindergarten.id),
-      this.repo.currentGroupCount(kindergarten.id),
-    ]);
-    if (!contract?.perGroupMonthlyFee) {
-      throw new BadRequestException(
-        "Гэрээнд бүлгийн төлбөр тогтоогоогүй байна. NomadKids-тэй холбогдож нэхэмжлэх авна уу.",
-      );
-    }
-    if (groupCount === 0) {
-      throw new BadRequestException("Одоогийн хичээлийн жилд идэвхтэй бүлэг алга байна.");
-    }
-
-    const fee = contract.perGroupMonthlyFee.toString();
-    const priced = quote(contract, groupCount, period);
-    const invoice: ServiceInvoiceParams = {
+    const bank = bankDetails();
+    const { contract, groupCount } = await this.renewable(kindergarten.id);
+    // ★ The invoice is for a row the operator can record a transfer against
+    // (client, 2026-10-18): the same period row the QR would pay.
+    const { payment, priced } = await this.renewalRow(
+      actor,
+      kindergarten,
+      contract,
+      groupCount,
+      period,
+    );
+    return this.queueInvoice(actor, kindergarten, {
       period,
       months: priced.months,
       groupCount,
-      perGroupMonthlyFee: fee,
+      perGroupMonthlyFee: contract.perGroupMonthlyFee!.toString(),
       perGroupAmount: priced.perGroup,
       periodLabel: priced.label,
       amount: priced.amount,
       kindergartenName: kindergarten.name,
       contractNumber: contract.number,
+      contractPaymentId: payment.id,
       issuedOn: localDate(),
       bank,
-    };
-
-    const job = await this.reports.createJob({
-      kindergartenId: kindergarten.id,
-      // ★ No child — the guard every child report path opens with.
-      childId: null,
-      type: "SERVICE_INVOICE",
-      params: { serviceInvoice: invoice },
-      requestedById: actor.userId,
     });
+  }
 
-    // After the commit — CLAUDE.md §3.5.
-    try {
-      await this.queue.enqueue(job.id);
-    } catch (error) {
-      this.logger.error(`Could not enqueue service invoice ${job.id}`, error as Error);
-      await this.reports
-        .markFailed(job.id, "Нэхэмжлэхийн дараалал ажиллахгүй байна. Дахин оролдоно уу.")
-        .catch(() => undefined);
-    }
+  /**
+   * An invoice for one unpaid period already owed — the contract's first, for
+   * a state kindergarten paying by transfer (client, 2026-10-18).
+   */
+  async paymentInvoice(actor: Actor, paymentId: string, kindergartenId?: string) {
+    const kindergarten = await this.resolve(actor, kindergartenId);
+    const payment = await this.repo.paymentOf(paymentId, kindergarten.id);
+    if (!payment) throw new NotFoundException();
+    if (payment.status === "PAID") throw alreadyPaid();
+    const bank = bankDetails();
 
-    await this.audit.append({
-      action: "CREATE",
-      kindergartenId: kindergarten.id,
-      actorUserId: actor.userId,
-      objectType: "ServiceInvoice",
-      objectId: job.id,
-      metadata: { period, groupCount, amount: invoice.amount },
+    const amount = new Decimal(payment.amount.toString());
+    const perGroup = amount.div(payment.groupCount);
+    return this.queueInvoice(actor, kindergarten, {
+      period: payment.period,
+      months: MONTHS[payment.period],
+      groupCount: payment.groupCount,
+      perGroupMonthlyFee: "0",
+      // ★ Shown only when it divides exactly — 270,000₮ over 13 groups is not
+      // 20,769.23₮ × 13, and the invoice must not print a sum that is off.
+      perGroupAmount: perGroup.isInteger() ? perGroup.toFixed(2) : null,
+      periodLabel: paymentLabel(payment, payment.contract.number),
+      amount: amount.toFixed(2),
+      kindergartenName: kindergarten.name,
+      contractNumber: payment.contract.number,
+      contractPaymentId: payment.id,
+      issuedOn: localDate(),
+      bank,
     });
-
-    return this.shape(job);
   }
 
   async invoice(actor: Actor, jobId: string) {
@@ -204,10 +349,6 @@ export class ServiceAccessService {
   }
 
   /**
-   * The kindergarten asked about: the one named, or the director's only one.
-   * Anything but a contracted kindergarten they administer is a 404.
-   */
-  /**
    * The next period of the contract, paid by QPay — №6 (the user,
    * 2026-10-16/18). Priced here (`quote`), never from the request; the period
    * row is reused while unpaid and re-priced to the groups running now, and a
@@ -216,22 +357,95 @@ export class ServiceAccessService {
    */
   async payWithQpay(actor: Actor, period: Period, kindergartenId?: string) {
     const kindergarten = await this.resolve(actor, kindergartenId);
+    const { contract, groupCount } = await this.renewable(kindergarten.id);
+    const { payment, priced } = await this.renewalRow(
+      actor,
+      kindergarten,
+      contract,
+      groupCount,
+      period,
+    );
+
+    const attempt = await this.qpay.createForContractPayment(actor, {
+      id: payment.id,
+      kindergartenId: kindergarten.id,
+      amount: priced.amount,
+      description: `${kindergarten.name}, ${priced.label}`,
+    });
+    return {
+      payment: paymentView({ ...payment, groupCount, amount: priced.amount }),
+      attempt,
+    };
+  }
+
+  /**
+   * The contract's first period, paid by QPay — at the figure the director
+   * accepted, never re-priced (2026-10-18). A renewal row goes through
+   * `payWithQpay`, which prices it.
+   */
+  async payDueWithQpay(actor: Actor, paymentId: string, kindergartenId?: string) {
+    const kindergarten = await this.resolve(actor, kindergartenId);
+    const payment = await this.repo.paymentOf(paymentId, kindergarten.id);
+    if (!payment || !payment.initial) throw new NotFoundException();
+    if (payment.status === "PAID") throw alreadyPaid();
+
+    const amount = payment.amount.toFixed(2);
+    const attempt = await this.qpay.createForContractPayment(actor, {
+      id: payment.id,
+      kindergartenId: kindergarten.id,
+      amount,
+      description: `${kindergarten.name}, ${paymentLabel(payment, payment.contract.number)}`,
+    });
+    return { payment: paymentView({ ...payment, amount }), attempt };
+  }
+
+  /** One of this kindergarten's contract payments and its latest QR, reconciled. */
+  async qpayStatus(actor: Actor, paymentId: string, kindergartenId?: string) {
+    const kindergarten = await this.resolve(actor, kindergartenId);
+    const before = await this.repo.paymentOf(paymentId, kindergarten.id);
+    if (!before) throw new NotFoundException();
+    const attempt = await this.qpay.statusForContractPayment(paymentId);
+    const payment = (await this.repo.paymentOf(paymentId, kindergarten.id)) ?? before;
+    return { payment: paymentView(payment), attempt };
+  }
+
+  /**
+   * The contract a renewal extends — ACTIVE, per-group, with groups running,
+   * and its own first period paid (2026-10-18: renewing on top of an unpaid
+   * contract would sell time after time nobody paid for).
+   */
+  private async renewable(kindergartenId: string) {
     const [contract, groupCount] = await Promise.all([
-      this.repo.activeContract(kindergarten.id),
-      this.repo.currentGroupCount(kindergarten.id),
+      this.repo.activeContract(kindergartenId),
+      this.repo.currentGroupCount(kindergartenId),
     ]);
     if (!contract?.perGroupMonthlyFee) {
       throw new BadRequestException(
         "Гэрээнд бүлгийн төлбөр тогтоогоогүй байна. NomadKids-тэй холбогдоно уу.",
       );
     }
+    if (await this.repo.dueInitial(contract.id)) {
+      throw new BadRequestException("Эхлээд гэрээний төлбөрөө төлнө үү.");
+    }
     if (groupCount === 0) {
       throw new BadRequestException("Одоогийн хичээлийн жилд идэвхтэй бүлэг алга байна.");
     }
+    return { contract, groupCount };
+  }
 
+  /**
+   * The renewal row for `period`: created once (two requests at once share
+   * it), re-priced while unpaid to the groups running now, refused once paid.
+   */
+  private async renewalRow(
+    actor: Actor,
+    kindergarten: Kindergarten,
+    contract: ActiveContract,
+    groupCount: number,
+    period: Period,
+  ): Promise<{ payment: PaymentRow; priced: ReturnType<typeof quote> }> {
     const priced = quote(contract, groupCount, period);
     const coversFrom = new Date(`${priced.coversFrom}T00:00:00.000Z`);
-    const alreadyPaid = () => new BadRequestException("Энэ хугацааны төлбөр аль хэдийн төлөгдсөн.");
 
     let payment = await this.repo.findPayment(contract.id, period, coversFrom);
     if (!payment) {
@@ -264,9 +478,9 @@ export class ServiceAccessService {
     if (payment.status === "PAID") throw alreadyPaid();
 
     if (payment.amount.toFixed(2) !== priced.amount) {
-      // ★ The groups changed since the last QR. An older QR may still be paid
-      // at its own amount — the claim records what QPay took, not this
-      // (`QpayRepository.markContractPaymentPaid`).
+      // ★ The groups changed since the last QR or invoice. An older QR may
+      // still be paid at its own amount — the settlement records what moved,
+      // not this (`settleContractPayment`).
       const before = {
         groupCount: payment.groupCount,
         perGroupAmount: payment.perGroupAmount.toFixed(2),
@@ -285,29 +499,54 @@ export class ServiceAccessService {
         metadata: { before, after },
       });
     }
+    return { payment, priced };
+  }
 
-    const attempt = await this.qpay.createForContractPayment(actor, {
-      id: payment.id,
+  private async queueInvoice(
+    actor: Actor,
+    kindergarten: Kindergarten,
+    invoice: ServiceInvoiceParams,
+  ) {
+    const job = await this.reports.createJob({
       kindergartenId: kindergarten.id,
-      amount: priced.amount,
-      description: `${kindergarten.name}, ${priced.label}`,
+      // ★ No child — the guard every child report path opens with.
+      childId: null,
+      type: "SERVICE_INVOICE",
+      params: { serviceInvoice: invoice },
+      requestedById: actor.userId,
     });
-    return {
-      payment: paymentView({ ...payment, groupCount, amount: priced.amount }),
-      attempt,
-    };
+
+    // After the commit — CLAUDE.md §3.5.
+    try {
+      await this.queue.enqueue(job.id);
+    } catch (error) {
+      this.logger.error(`Could not enqueue service invoice ${job.id}`, error as Error);
+      await this.reports
+        .markFailed(job.id, "Нэхэмжлэхийн дараалал ажиллахгүй байна. Дахин оролдоно уу.")
+        .catch(() => undefined);
+    }
+
+    await this.audit.append({
+      action: "CREATE",
+      kindergartenId: kindergarten.id,
+      actorUserId: actor.userId,
+      objectType: "ServiceInvoice",
+      objectId: job.id,
+      metadata: {
+        period: invoice.period,
+        groupCount: invoice.groupCount,
+        amount: invoice.amount,
+        contractPaymentId: invoice.contractPaymentId ?? null,
+      },
+    });
+
+    return this.shape(job);
   }
 
-  /** One of this kindergarten's contract payments and its latest QR, reconciled. */
-  async qpayStatus(actor: Actor, paymentId: string, kindergartenId?: string) {
-    const kindergarten = await this.resolve(actor, kindergartenId);
-    const before = await this.repo.paymentOf(paymentId, kindergarten.id);
-    if (!before) throw new NotFoundException();
-    const attempt = await this.qpay.statusForContractPayment(paymentId);
-    const payment = (await this.repo.paymentOf(paymentId, kindergarten.id)) ?? before;
-    return { payment: paymentView(payment), attempt };
-  }
-
+  /**
+   * The kindergarten asked about: the one named, or the director's only one.
+   * Anything but a contracted kindergarten they administer is a 404.
+   */
   private async resolve(actor: Actor, kindergartenId?: string) {
     const administered = this.tenants.adminKindergartenIds(actor);
     const id = kindergartenId ?? (administered.length === 1 ? administered[0] : undefined);
@@ -352,6 +591,65 @@ export class ServiceAccessService {
       downloadable: job.status === "DONE" && !expired,
     };
   }
+}
+
+function alreadyPaid() {
+  return new BadRequestException("Энэ хугацааны төлбөр аль хэдийн төлөгдсөн.");
+}
+
+/** The account a transfer goes to — a deployment setting; no invoice without it. */
+function bankDetails() {
+  const env = loadEnv();
+  const bank = {
+    name: env.SERVICE_INVOICE_BANK_NAME,
+    account: env.SERVICE_INVOICE_BANK_ACCOUNT,
+    holder: env.SERVICE_INVOICE_ACCOUNT_HOLDER,
+  };
+  if (!bank.name || !bank.account || !bank.holder) {
+    throw new BadRequestException(
+      "Нэхэмжлэхийн дансны мэдээлэл тохируулаагүй байна. NomadKids-тэй холбогдоно уу.",
+    );
+  }
+  return { name: bank.name, account: bank.account, holder: bank.holder };
+}
+
+function lower(period: Period): "term" | "year" {
+  return period === "TERM" ? "term" : "year";
+}
+
+function isoDay(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+/** «Гэрээ №NK-2026-000001 (2026.09.01 – 2027.05.31)» — the first period, named. */
+function paymentLabel(
+  payment: { initial: boolean; coversFrom: Date; coversTo: Date },
+  contractNumber: string,
+): string {
+  const span = `${isoDay(payment.coversFrom).replaceAll("-", ".")} – ${isoDay(payment.coversTo).replaceAll("-", ".")}`;
+  return payment.initial ? `Гэрээ №${contractNumber} (${span})` : `Сунгалт (${span})`;
+}
+
+function dueView(
+  payment: {
+    id: string;
+    initial: boolean;
+    coversFrom: Date;
+    coversTo: Date;
+    groupCount: number;
+    amount: { toString(): string };
+  },
+  contractNumber: string,
+) {
+  return {
+    id: payment.id,
+    contractNumber,
+    coversFrom: isoDay(payment.coversFrom),
+    coversTo: isoDay(payment.coversTo),
+    groupCount: payment.groupCount,
+    amount: new Decimal(payment.amount.toString()).toFixed(2),
+    label: paymentLabel(payment, contractNumber),
+  };
 }
 
 /** fee × groups × months, in decimal.js — never floats for money (§2.2). */
@@ -464,6 +762,7 @@ function daysUntil(day: Date): number {
 
 function paymentView(payment: {
   id: string;
+  initial: boolean;
   period: Period;
   coversFrom: Date;
   coversTo: Date;
@@ -474,6 +773,7 @@ function paymentView(payment: {
 }) {
   return {
     id: payment.id,
+    initial: payment.initial,
     period: payment.period === "TERM" ? "term" : "year",
     coversFrom: payment.coversFrom.toISOString().slice(0, 10),
     coversTo: payment.coversTo.toISOString().slice(0, 10),

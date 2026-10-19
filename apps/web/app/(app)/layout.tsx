@@ -32,6 +32,7 @@ import {
   UsersRound,
   Building2,
   Wallet,
+  Landmark,
   Calculator,
   CalendarCheck,
   BookMarked,
@@ -383,6 +384,7 @@ const ROUTE_ART: Partial<Record<string, ArtName>> = {
   "/admin/funding": "finance",
   "/platform": "kindergarten",
   "/platform/revenue": "finance",
+  "/platform/contract-payments": "finance",
   "/platform/applications": "kindergarten",
   "/admin/kindergarten": "kindergarten",
 };
@@ -1528,7 +1530,15 @@ function platformSections(): NavSection[] {
     },
     {
       title: "Санхүү",
-      entries: [{ href: "/platform/revenue", label: "Орлого", icon: <RailGlyph icon={Wallet} /> }],
+      entries: [
+        { href: "/platform/revenue", label: "Орлого", icon: <RailGlyph icon={Wallet} /> },
+        // Bank transfers recorded, ebarimt numbers kept — the client, 2026-10-18.
+        {
+          href: "/platform/contract-payments",
+          label: "Гэрээний төлбөр",
+          icon: <RailGlyph icon={Landmark} />,
+        },
+      ],
     },
     {
       title: "Агуулга",

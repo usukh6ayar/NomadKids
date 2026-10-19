@@ -15,7 +15,6 @@ import { z } from "zod";
 import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
 import {
   SoloTeachersTable,
-  idleDays,
   teacherName,
   type SoloRow,
 } from "@/components/platform/solo-teachers-table";
@@ -28,7 +27,7 @@ import { FormDialog } from "@/components/ui/form-dialog";
 import { FormError, LoadingState } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { get, mutate } from "@/lib/api/browser";
-import { errorMessage, isNotFound } from "@/lib/api/errors";
+import { errorMessage } from "@/lib/api/errors";
 
 const kindergartensSchema = paginated(platformKindergartenSchema);
 
@@ -54,6 +53,7 @@ export default function SoloWorkspacesPage() {
 function SoloWorkspaces() {
   const [merging, setMerging] = useState<SoloWorkspace | null>(null);
   const [deleting, setDeleting] = useState<SoloRow | null>(null);
+  const [purging, setPurging] = useState<SoloRow | null>(null);
   const [resetting, setResetting] = useState<SoloRow | null>(null);
 
   return (
@@ -67,6 +67,7 @@ function SoloWorkspaces() {
       <SoloTeachersTable
         onMerge={setMerging}
         onDelete={setDeleting}
+        onPurge={setPurging}
         onResetPassword={setResetting}
       />
 
@@ -82,15 +83,16 @@ function SoloWorkspaces() {
       {deleting ? (
         <DeleteSoloDialog workspace={deleting} onClose={() => setDeleting(null)} />
       ) : null}
+      {purging ? <PurgeSoloDialog workspace={purging} onClose={() => setPurging(null)} /> : null}
     </div>
   );
 }
 
 /**
- * «Устгах» from day 14 of idleness — 2026-10-14, the user; day 30 deletes on
- * its own. A soft delete (CLAUDE.md §3.2): `DELETE /platform/solo-workspaces/
- * :id`, asked of the admin. The children whose families paid are named, so
- * the operator deletes knowing it.
+ * «Устгах» — at any time (2026-10-18, the user: the client's trial left
+ * made-up accounts). A soft delete (CLAUDE.md §3.2): `DELETE /platform/
+ * solo-workspaces/:id`. The children whose families paid are named, so the
+ * operator deletes knowing it.
  */
 function DeleteSoloDialog({ workspace, onClose }: { workspace: SoloRow; onClose: () => void }) {
   const toast = useToast();
@@ -103,12 +105,7 @@ function DeleteSoloDialog({ workspace, onClose }: { workspace: SoloRow; onClose:
       void queryClient.invalidateQueries({ queryKey: ["platform"] });
       onClose();
     },
-    onError: (error) =>
-      toast.error(
-        isNotFound(error)
-          ? "Устгах хэсэг хараахан бэлэн болоогүй. 30 хоног болоход автоматаар устна."
-          : errorMessage(error),
-      ),
+    onError: (error) => toast.error(errorMessage(error)),
   });
   const paid = workspace.paidChildCount ?? 0;
 
@@ -117,15 +114,122 @@ function DeleteSoloDialog({ workspace, onClose }: { workspace: SoloRow; onClose:
       open
       onOpenChange={(open) => !open && onClose()}
       title={`${teacherName(workspace)}-г устгах уу?`}
-      description={`${idleDays(workspace) ?? 0} хоног идэвхгүй. ${workspace.childCount} хүүхэд${
+      description={`${workspace.childCount} хүүхэд${
         paid > 0 ? `, үүнээс ${paid} хүүхдийн эцэг эх төлбөр төлсөн` : ""
-      }. Устгасны дараа багш болон эцэг эхчүүд нэвтрэх боломжгүй.`}
+      }. Устгасны дараа багш болон эцэг эхчүүд нэвтрэх боломжгүй. Өгөгдөл нь хадгалагдана.`}
       confirmLabel="Устгах"
       pendingLabel="Устгаж байна…"
       tone="danger"
       pending={remove.isPending}
       onConfirm={() => remove.mutate()}
     />
+  );
+}
+
+const purgePreviewSchema = z.object({
+  purgeable: z.boolean(),
+  deleted: z.record(z.string(), z.number()),
+  usersDeleted: z.number(),
+  usersKept: z.number(),
+  files: z.number(),
+});
+
+/**
+ * «Бүр мөсөн устгах» — the rows go (the user, 2026-10-18; the one exception
+ * to CLAUDE.md §3.2), only where no money moved. The preview runs the purge
+ * and rolls it back, so the counts are what goes; the teacher's username,
+ * typed, is the confirmation.
+ */
+function PurgeSoloDialog({ workspace, onClose }: { workspace: SoloRow; onClose: () => void }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [typed, setTyped] = useState("");
+
+  const preview = useQuery({
+    queryKey: ["platform", "solo-purge-preview", workspace.id],
+    queryFn: () =>
+      mutate(`/platform/solo-workspaces/${workspace.id}/purge-preview`, purgePreviewSchema, {
+        method: "POST",
+      }),
+    retry: false,
+    gcTime: 0,
+  });
+
+  const purge = useMutation({
+    mutationFn: () =>
+      mutate(`/platform/solo-workspaces/${workspace.id}/purge`, z.unknown(), {
+        method: "POST",
+        body: { username: typed.trim() },
+      }),
+    onSuccess: () => {
+      toast.success("Бүртгэлийг бүр мөсөн устгалаа.");
+      void queryClient.invalidateQueries({ queryKey: ["platform"] });
+      onClose();
+    },
+  });
+
+  const counts = preview.data;
+  const rows = counts ? Object.values(counts.deleted).reduce((sum, n) => sum + n, 0) : 0;
+  const username = workspace.teacherUsername ?? "";
+  const ready = Boolean(counts?.purgeable) && username !== "" && typed.trim() === username;
+
+  return (
+    <FormDialog
+      open
+      onOpenChange={(open) => !open && !purge.isPending && onClose()}
+      title={`${teacherName(workspace)}-г бүр мөсөн устгах уу?`}
+      description="Буцаах боломжгүй. Хүүхэд, бүлэг, ажиглалт, зураг, багш болон эцэг эхчүүдийн бүртгэл устна. Audit log хадгалагдана."
+      busy={purge.isPending}
+      footer={
+        <>
+          <Button variant="secondary" size="sm" onClick={onClose} disabled={purge.isPending}>
+            Болих
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => purge.mutate()}
+            disabled={!ready || purge.isPending}
+          >
+            {purge.isPending ? "Устгаж байна…" : "Бүр мөсөн устгах"}
+          </Button>
+        </>
+      }
+    >
+      {preview.isPending ? <LoadingState label="Тоолж байна…" rows={2} /> : null}
+      <FormError message={preview.isError ? errorMessage(preview.error) : null} />
+      {counts && !counts.purgeable ? (
+        <p role="alert" className="text-body font-semibold text-danger">
+          Энэ бүртгэлээр төлбөр төлөгдсөн тул бүр мөсөн устгах боломжгүй. «Устгах»-ыг ашиглана уу.
+        </p>
+      ) : null}
+      {counts?.purgeable ? (
+        <div className="flex flex-col gap-3">
+          <p className="text-body text-ink">
+            {workspace.childCount} хүүхэд, {counts.usersDeleted} хэрэглэгч, {counts.files} файл —
+            нийт {rows} мөр устна.
+            {counts.usersKept > 0
+              ? ` ${counts.usersKept} хүн өөр цэцэрлэгт бүртгэлтэй тул бүртгэл нь үлдэнэ.`
+              : ""}
+          </p>
+          <Field
+            label="Баталгаажуулахын тулд багшийн нэвтрэх нэрийг бичнэ үү"
+            hint={username ? `«${username}»` : "Багшийн нэвтрэх нэр олдсонгүй."}
+          >
+            {({ id, describedBy }) => (
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                value={typed}
+                onChange={(event) => setTyped(event.target.value)}
+                autoComplete="off"
+              />
+            )}
+          </Field>
+          <FormError message={purge.isError ? errorMessage(purge.error) : null} />
+        </div>
+      ) : null}
+    </FormDialog>
   );
 }
 

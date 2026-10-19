@@ -157,6 +157,7 @@ function compareApplications(
 function Applications() {
   const [status, setStatus] = useState<(typeof TABS)[number]["value"]>("PENDING");
   const [reviewing, setReviewing] = useState<KindergartenApplication | null>(null);
+  const [rejecting, setRejecting] = useState<KindergartenApplication | null>(null);
   const [query, setQuery] = useState("");
   const [period, setPeriod] = useState("");
   const [signature, setSignature] = useState("");
@@ -355,6 +356,7 @@ function Applications() {
                     index={index + 1}
                     decided={decided}
                     onReview={() => setReviewing(application)}
+                    onReject={() => setRejecting(application)}
                     onUploadSigned={() => setUploading(application)}
                   />
                 ))}
@@ -375,6 +377,9 @@ function Applications() {
       {reviewing ? (
         <ReviewDialog application={reviewing} onClose={() => setReviewing(null)} />
       ) : null}
+      {rejecting ? (
+        <RejectDialog application={rejecting} onClose={() => setRejecting(null)} />
+      ) : null}
     </div>
   );
 }
@@ -384,12 +389,14 @@ function ApplicationTableRow({
   index,
   decided,
   onReview,
+  onReject,
   onUploadSigned,
 }: {
   application: ApplicationRow;
   index: number;
   decided: boolean;
   onReview: () => void;
+  onReject: () => void;
   onUploadSigned: () => void;
 }) {
   const cell =
@@ -438,9 +445,16 @@ function ApplicationTableRow({
       ) : null}
       <td className={`${cell} whitespace-nowrap`}>
         {application.status === "PENDING" ? (
-          <Button size="sm" onClick={onReview}>
-            Шалгах
-          </Button>
+          <span className="inline-flex gap-2">
+            <Button size="sm" onClick={onReview}>
+              Шалгах
+            </Button>
+            {/* ★ From the row too — 2026-10-18, the user: a request nobody will approve. */}
+            <Button size="sm" variant="secondary" onClick={onReject}>
+              <X size={14} aria-hidden="true" />
+              Татгалзах
+            </Button>
+          </span>
         ) : application.status === "REJECTED" ? (
           <span
             className="block max-w-[280px] truncate whitespace-normal text-muted"
@@ -1150,5 +1164,79 @@ function ContractDraft({ html }: { html: string }) {
         className="h-[60vh] w-full rounded-control border border-border bg-white"
       />
     </section>
+  );
+}
+
+/**
+ * «Татгалзах» straight from the list — 2026-10-18, the user. The reason is
+ * still asked: the applicant is told it, and may apply again
+ * (`POST /platform/applications/:id/reject`, at least 4 characters).
+ */
+function RejectDialog({
+  application,
+  onClose,
+}: {
+  application: KindergartenApplication;
+  onClose: () => void;
+}) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [reviewNote, setReviewNote] = useState("");
+
+  const reject = useMutation({
+    mutationFn: () =>
+      mutate(`/platform/applications/${application.id}/reject`, kindergartenApplicationSchema, {
+        method: "POST",
+        body: { reviewNote: reviewNote.trim() },
+      }),
+    onSuccess: () => {
+      toast.success("Хүсэлтээс татгалзлаа.");
+      void queryClient.invalidateQueries({ queryKey: ["platform", "applications"] });
+      onClose();
+    },
+  });
+
+  const short = reviewNote.trim().length < 4;
+
+  return (
+    <FormDialog
+      open
+      onOpenChange={(open) => !open && !reject.isPending && onClose()}
+      title={`${application.kindergartenName}-ийн хүсэлтээс татгалзах уу?`}
+      description="Шалтгааныг цэцэрлэгт мэдэгдэнэ. Цэцэрлэг дахин бүртгүүлэхдээ шинээр хүсэлт илгээнэ."
+      busy={reject.isPending}
+      footer={
+        <>
+          <Button variant="secondary" size="sm" onClick={onClose} disabled={reject.isPending}>
+            Болих
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => reject.mutate()}
+            disabled={short || reject.isPending}
+          >
+            {reject.isPending ? "Татгалзаж байна…" : "Татгалзах"}
+          </Button>
+        </>
+      }
+    >
+      <FormError message={reject.isError ? errorMessage(reject.error) : null} />
+      <Field
+        label="Татгалзсан шалтгаан"
+        hint="Дор хаяж 4 тэмдэгт. Жишээ нь: «Туршилтын бүртгэл»."
+        required
+      >
+        {({ id, describedBy }) => (
+          <Textarea
+            id={id}
+            aria-describedby={describedBy}
+            value={reviewNote}
+            onChange={(event) => setReviewNote(event.target.value)}
+            autoFocus
+          />
+        )}
+      </Field>
+    </FormDialog>
   );
 }
