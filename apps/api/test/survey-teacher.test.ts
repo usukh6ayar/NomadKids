@@ -467,6 +467,61 @@ describe("running a teacher survey again and comparing", () => {
     expect(await db.surveyAnswer.count({ where: { response: { surveyId } } })).toBe(49);
   });
 
+  /*
+    ★ 2026-10-19: the clone dropped its group, so a teacher's copy became
+    "Бүх бүлэг · 95 хүүхэд" — the whole kindergarten's roster and count.
+  */
+  it("a clone keeps its group, and counts only that group's children", async () => {
+    const elsewhere = await createGroup(a.kindergarten.id, a.schoolYear.id, "Сарны бүлэг");
+    const outsider = await createChild(a.kindergarten.id, { firstName: "Сарнай" });
+    await enrollChild(a.kindergarten.id, outsider.id, elsewhere.id, a.schoolYear.id);
+
+    const { surveyId } = await publishTeacherSurvey(teacherA);
+    const clone = await authed(
+      request(server()).post(`/v1/surveys/${surveyId}/clone`),
+      teacherA,
+    ).send({});
+    expect(clone.status).toBe(201);
+    expect(clone.body.groupId).toBe(a.group.id);
+    const second = clone.body.id as string;
+    await authed(request(server()).post(`/v1/surveys/${second}/publish`), teacherA);
+
+    const roster = await db.enrollment.count({
+      where: { groupId: a.group.id, status: "ACTIVE", deletedAt: null },
+    });
+    const results = await authed(request(server()).get(`/v1/surveys/${second}/results`), teacherA);
+    expect(results.status).toBe(200);
+    expect(results.body.expectedResponses).toBe(roster);
+
+    const participation = await authed(
+      request(server()).get(`/v1/surveys/${second}/participation`),
+      teacherA,
+    );
+    expect(participation.status).toBe(200);
+    expect(participation.body.roster).toBe(roster);
+    expect(
+      participation.body.pending.map((row: { child: { id: string } }) => row.child.id),
+    ).not.toContain(outsider.id);
+  });
+
+  it("a teacher cannot clone the kindergarten-wide survey into one of their own", async () => {
+    const created = await authed(
+      request(server()).post(`/v1/kindergartens/${a.kindergarten.id}/surveys`),
+      adminA,
+    ).send({ title: "Сэтгэл ханамж", scope: "CHILD", groupId: null });
+    expect(created.status).toBe(201);
+    await authed(request(server()).put(`/v1/surveys/${created.body.id}/questions`), adminA).send({
+      questions: [{ order: 0, type: "YES_NO", prompt: "Сэтгэл хангалуун байна уу?" }],
+    });
+
+    const res = await authed(
+      request(server()).post(`/v1/surveys/${created.body.id}/clone`),
+      teacherA,
+    ).send({});
+    expect(res.status).toBe(404);
+    expect(await db.survey.count({ where: { clonedFromSurveyId: created.body.id } })).toBe(0);
+  });
+
   it("another kindergarten's teacher gets 404 on the comparison", async () => {
     const { surveyId } = await publishTeacherSurvey(teacherA);
     const res = await authed(request(server()).get(`/v1/surveys/${surveyId}/comparison`), teacherB);
