@@ -407,6 +407,15 @@ excludes `chat/` from its media mirror. A guardian's message is labelled
 «Г.Батбаярын ээж» (`author.displayName`) with the child's face — and the face is
 staff-only: families see initials.
 
+★ **The portfolio PDF is the client's fixed design** (#260, client-approved
+2026-10-19): the designer's pages as full-bleed backgrounds
+(`reports/portfolio-exact-template.ts`) with the data over them, closed by the
+teacher's graduation letter (`ChildProfile.graduationLetter`). The client
+dropped from it, against RFP §10.1/§10.3: the kindergarten **logo**,
+**milestones**, the **artwork-comparison** summary (artworks print once, by
+type, under «Миний бүтээл»), **birthday notes**, «Энэ бол би», «Миний
+мэдээлэл» and the age dreams. Do not put them back without the client.
+
 ★ **Phone proof through verify.mn** (2026-10-01) is **inbound** — the person
 texts a code _from_ their phone — for password reset, a guardian's phone on an
 invitation, and changing one's own phone. Off unless `VERIFY_MN_API_KEY` is
