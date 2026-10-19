@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, setSearchParams, stubApi } from "./support/render";
 import ChildrenPage from "@/app/(app)/children/page";
@@ -16,30 +16,49 @@ beforeEach(() => {
 });
 
 describe("the teacher's roster header", () => {
-  it("offers «Бүлгээр урих» just before «Хүүхэд», all four small on a phone", async () => {
+  function stub(role: "TEACHER" | "ADMIN") {
     stubApi([
-      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: "/auth/me", body: sessionFor([role]) },
       {
         path: "/groups",
         body: { items: [GROUP], page: 1, pageSize: 100, total: 1, totalPages: 1 },
       },
       { path: "/children", body: { items: [], page: 1, pageSize: 25, total: 0, totalPages: 0 } },
     ]);
+  }
+
+  /*
+    ★ 2026-10-17, the user: «Excel · Импорт · Бүлгээр урих · Захиа · Хүүхэд»
+    on one phone line, the first three as icons alone.
+  */
+  it("reads «Excel · Импорт · Бүлгээр урих · Захиа · Хүүхэд», the first three icons on a phone", async () => {
+    stub("TEACHER");
     renderWithProviders(<ChildrenPage />);
 
     const invite = await screen.findByRole("button", { name: "Бүлгээр урих" });
+    const letter = screen.getByRole("button", { name: "Захиа" });
     // «Хүүхэд бүртгэх» reads «Хүүхэд» since 2026-10-06.
     const register = screen.getByRole("link", { name: "Хүүхэд" });
-    expect(invite.nextElementSibling).toBe(register);
+    expect(invite.nextElementSibling).toBe(letter);
+    expect(letter.nextElementSibling).toBe(register);
 
-    // On a phone the four fill one line exactly (13px type, shared width).
-    for (const control of [
-      screen.getByRole("link", { name: "Excel" }),
-      screen.getByRole("link", { name: "Импорт" }),
-      invite,
-      register,
-    ]) {
+    for (const [control, word] of [
+      [screen.getByRole("link", { name: "Excel" }), "Excel"],
+      [screen.getByRole("link", { name: "Импорт" }), "Импорт"],
+      [invite, "Бүлгээр урих"],
+    ] as const) {
+      expect(within(control).getByText(word)).toHaveClass("max-sm:sr-only");
+    }
+    for (const control of [letter, register]) {
       expect(control).toHaveClass("max-sm:text-compact", "max-sm:flex-auto", "max-sm:px-1.5");
     }
+  });
+
+  it("gives a director no «Захиа»", async () => {
+    stub("ADMIN");
+    renderWithProviders(<ChildrenPage />);
+
+    await screen.findByRole("link", { name: "Excel" });
+    expect(screen.queryByRole("button", { name: "Захиа" })).not.toBeInTheDocument();
   });
 });

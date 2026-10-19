@@ -37,7 +37,6 @@ const db = testDb();
 
 let a: Scenario;
 let b: Scenario;
-let adminA: AuthSession;
 let teacherA: AuthSession;
 let parentA: AuthSession;
 let parentB: AuthSession;
@@ -71,7 +70,6 @@ beforeEach(async () => {
   a = await createScenario("a");
   b = await createScenario("b");
 
-  adminA = await login(app, a.adminUser.username);
   teacherA = await login(app, a.teacherUser.username);
   parentA = await login(app, a.parentUser.username);
   parentB = await login(app, b.parentUser.username);
@@ -152,14 +150,24 @@ function extractText(pdf: Buffer): string {
  * is what distinguishes those, and it is the same reasoning as `PDF_SPIKE.md`
  * §4 — assert on the artefact, not on the intent.
  */
-function countImages(pdf: Buffer): number {
+function countImages(pdf: Buffer, size?: { width: number; height: number }): number {
   const dir = mkdtempSync(join(tmpdir(), "kinder-pdf-"));
   const path = join(dir, "report.pdf");
   writeFileSync(path, pdf);
   const listing = execFileSync("pdfimages", ["-list", path], { encoding: "utf8" });
-  // Two header lines, then one row per image.
-  return listing.trim().split("\n").slice(2).filter(Boolean).length;
+  // Two header lines, then one row per image: page num type width height …
+  const rows = listing.trim().split("\n").slice(2).filter(Boolean);
+  if (!size) return rows.length;
+  // ★ The exact design's pages carry pictures of their own, so a new page adds
+  // many images; counting by the upload's size counts only what was uploaded.
+  return rows.filter((row) => {
+    const [, , type, width, height] = row.trim().split(/\s+/);
+    return type === "image" && Number(width) === size.width && Number(height) === size.height;
+  }).length;
 }
+
+/** `logoBytes()`'s size — what `countImages` looks for. */
+const UPLOAD_SIZE = { width: 64, height: 64 };
 
 function pdftotextAvailable(): boolean {
   try {
@@ -391,60 +399,34 @@ describe("portfolio generation", () => {
    * reach a page — a unit test on `birthFacts` would have passed throughout.
    *
    * The scenario child is born 2021-04-12: Хонь, and an Үхэр year.
+   *
+   * Since the exact design (2026-10-18) they fill the «Монгол жил» and «Өрнийн
+   * орд» rows of «Хүүхдийн ерөнхий мэдээлэл». Those labels are drawn into the
+   * page's artwork, not text, so only the values can be asserted.
    */
-  it("prints the zodiac sign and the year animal in the birthday section", async () => {
+  it("prints the zodiac sign and the year animal on the identity page", async () => {
     if (!pdftotextAvailable()) throw new Error("pdftotext (poppler) is required");
 
     const jobId = await createJob(teacherA, a.child.id);
     const text = extractText(await generatedPdf(jobId));
 
-    expect(text).toContain("Төрсөн өдрийн мэдээлэл");
-    expect(text).toContain("Өрнийн орд");
     expect(text).toContain("Хонь");
-    expect(text).toContain("Монгол жил");
-    expect(text).toContain("Үхэр");
+    expect(text).toContain("Үхэр жил");
   }, 120_000);
 
   /**
-   * RFP §10.3 — "Цэцэрлэгийн лого, нэртэй" on every generated report.
-   *
-   * ★ Measured by counting embedded images before and after, because the name
-   * was already printed and the logo never was. A test that only looked for the
-   * kindergarten's name in the text layer would have passed for months against
-   * a PDF that had no logo in it — which is exactly the state this closes.
+   * «Миний бүтээл» — the works by type, each embedded. The teacher's
+   * comparison conclusion is not printed: the user, 2026-10-18, «ахиц бичих
+   * хэрэггүй, зүгээр бүтээлийн зургууд төрлөөр».
    */
-  it("embeds the kindergarten's logo once it has one", async () => {
+  it("prints artworks by type and leaves the comparison out", async () => {
     if (!pdftotextAvailable()) throw new Error("pdftotext (poppler) is required");
 
-    const before = countImages(await generatedPdf(await createJob(teacherA, a.child.id)));
+    const before = countImages(
+      await generatedPdf(await createJob(teacherA, a.child.id)),
+      UPLOAD_SIZE,
+    );
 
-    const logo = await authed(
-      request(app.getHttpServer()).post(`/v1/kindergartens/${a.kindergarten.id}/logo`),
-      adminA,
-    ).attach("file", await logoBytes(), "лого.png");
-    expect(logo.status).toBe(201);
-
-    const after = countImages(await generatedPdf(await createJob(teacherA, a.child.id)));
-    expect(after).toBe(before + 1);
-
-    // The name is still there — the logo is an addition, not a replacement.
-    const text = extractText(await generatedPdf(await createJob(teacherA, a.child.id)));
-    expect(text).toContain(a.kindergarten.name);
-  }, 180_000);
-
-  /**
-   * RFP §5.3's last bullet — "Харьцуулалтыг PDF тайланд оруулах".
-   *
-   * ★ The conclusion is asserted on extracted text and the pair on the image
-   * count, because the two fail differently: a comparison whose images were
-   * dropped by the budget still prints its sentence, and that is deliberate.
-   */
-  it("prints artwork comparisons without the removed milestone section", async () => {
-    if (!pdftotextAvailable()) throw new Error("pdftotext (poppler) is required");
-
-    const before = countImages(await generatedPdf(await createJob(teacherA, a.child.id)));
-
-    // Two works, six months apart, and the teacher's reading of the change.
     const uploads: string[] = [];
     for (const takenAt of ["2025-01-10", "2025-06-10"]) {
       const res = await authed(
@@ -467,37 +449,82 @@ describe("portfolio generation", () => {
     const pdf = await generatedPdf(await createJob(teacherA, a.child.id));
     const text = extractText(pdf);
 
-    expect(text).toContain("Бүтээлийн ахицын цуваа");
-    expect(text).toContain(CONCLUSION);
-    expect(text).not.toContain("Онцгой үйл явдал");
-
-    // Both works of the pair are embedded, not just referenced.
-    expect(countImages(pdf)).toBe(before + 2);
+    // A work with no activity is filed under «Бусад».
+    expect(text).toContain("Бусад");
+    expect(text).not.toContain(CONCLUSION);
+    expect(countImages(pdf, UPLOAD_SIZE)).toBe(before + 2);
   }, 180_000);
 
-  /**
-   * A suggested milestone needs no title of its own, so the PDF names it by
-   * its kind's label — never the stored code a family cannot read.
-   */
-  it("names an untitled milestone by its kind's Mongolian label", async () => {
+  /*
+    ★ 2026-10-19 review of #260: the artworks query had no visibility filter,
+    so a drawing attached to a teacher's private note reached the family's PDF
+    while the note itself did not.
+  */
+  it("prints an artwork on a private note only in the staff copy", async () => {
     if (!pdftotextAvailable()) throw new Error("pdftotext (poppler) is required");
 
-    const res = await authed(
-      request(app.getHttpServer()).post(`/v1/children/${a.child.id}/milestones`),
+    const type = await db.observationType.findFirstOrThrow({ where: { kindergartenId: null } });
+    const hidden = await db.observation.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        childId: a.child.id,
+        enrollmentId: a.enrollment.id,
+        typeId: type.id,
+        source: "TEACHER",
+        observedOn: new Date("2025-10-03"),
+        situation: PRIVATE_NOTE,
+        visibleToParents: false,
+        reviewStatus: "APPROVED",
+        includeInReport: true,
+        authorId: a.teacherUser.id,
+      },
+    });
+    const CAPTION = "Нууц тэмдэглэлийн бүтээл";
+    const upload = await authed(
+      request(app.getHttpServer()).post(`/v1/children/${a.child.id}/media`),
       teacherA,
-    ).send({ kind: "FIRST_STEP", occurredOn: "2025-03-01" });
-    expect(res.status).toBe(201);
+    )
+      .field("category", "ARTWORK")
+      .field("caption", CAPTION)
+      .attach("file", await logoBytes(), "бүтээл.png");
+    expect(upload.status).toBe(201);
+    await db.mediaFile.update({
+      where: { id: upload.body.items[0].id as string },
+      data: { observationId: hidden.id, purpose: "OBSERVATION" },
+    });
+
+    const parentPdf = await generatedPdf(await createJob(parentA, a.child.id));
+    expect(extractText(parentPdf)).not.toContain(CAPTION);
+    expect(countImages(parentPdf, UPLOAD_SIZE)).toBe(0);
+
+    const teacherPdf = await generatedPdf(await createJob(teacherA, a.child.id));
+    expect(extractText(teacherPdf)).toContain(CAPTION);
+    expect(countImages(teacherPdf, UPLOAD_SIZE)).toBe(1);
+  }, 180_000);
+
+  /*
+    The letter lived in the oldest-age `teacherNote` before #260; until a
+    teacher writes the new one, that is what prints.
+  */
+  it("prints the age-profile teacher note when no graduation letter is written", async () => {
+    if (!pdftotextAvailable()) throw new Error("pdftotext (poppler) is required");
+
+    const NOTE = "Чи их зоригтой, уйгагүй хүүхэд";
+    await db.childAgeProfile.create({
+      data: { kindergartenId: a.kindergarten.id, childId: a.child.id, age: 5, teacherNote: NOTE },
+    });
 
     const text = extractText(await generatedPdf(await createJob(teacherA, a.child.id)));
-
-    expect(text).toContain("Анхны алхам");
-    expect(text).not.toContain("FIRST_STEP");
+    expect(text).toContain(NOTE);
   }, 120_000);
 
   it("prints representative photographs in the age-album comparison", async () => {
     if (!pdftotextAvailable()) throw new Error("pdftotext (poppler) is required");
 
-    const before = countImages(await generatedPdf(await createJob(teacherA, a.child.id)));
+    const before = countImages(
+      await generatedPdf(await createJob(teacherA, a.child.id)),
+      UPLOAD_SIZE,
+    );
     const upload = await authed(
       request(app.getHttpServer()).post(`/v1/children/${a.child.id}/media`),
       teacherA,
@@ -512,10 +539,11 @@ describe("portfolio generation", () => {
     const pdf = await generatedPdf(await createJob(teacherA, a.child.id));
     const text = extractText(pdf);
 
-    expect(text).toContain("Нас насны зургийн цомог");
+    // The album's category is the page title; «Нас насны зургийн цомог» is
+    // drawn into the page's artwork, not text.
     expect(text).toContain("Миний төрсөн өдөр");
     expect(text).toContain("Гурван насны төрсөн өдөр");
-    expect(countImages(pdf)).toBe(before + 1);
+    expect(countImages(pdf, UPLOAD_SIZE)).toBe(before + 1);
   }, 180_000);
 
   /**
@@ -620,7 +648,8 @@ describe("portfolio generation", () => {
     const parentJobId = await createJob(parentA, a.child.id);
     const parentText = extractText(await generatedPdf(parentJobId));
 
-    expect(parentText).toContain("Багшийн ажиглалт");
+    // «Миний түүх» — teacher's and family's notes together, labelled per card.
+    expect(parentText).toContain("БАГШИЙН АЖИГЛАЛТ");
     expect(parentText).toContain(SHARED_NOTE);
     expect(parentText).not.toContain(PRIVATE_NOTE);
 

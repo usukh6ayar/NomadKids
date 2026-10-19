@@ -81,7 +81,9 @@ export class PdfRendererService implements OnModuleDestroy {
         displayHeaderFooter: Boolean(options.headerTemplate ?? options.footerTemplate),
         headerTemplate: options.headerTemplate ?? "<span></span>",
         footerTemplate: options.footerTemplate ?? "<span></span>",
-        margin: { top: "18mm", bottom: "20mm", left: "16mm", right: "16mm" },
+        margin: options.fullBleed
+          ? { top: "0", bottom: "0", left: "0", right: "0" }
+          : { top: "18mm", bottom: "20mm", left: "16mm", right: "16mm" },
       });
 
       return Buffer.from(pdf);
@@ -124,4 +126,6 @@ export interface RenderOptions {
    * portfolio in landscape would be the same mistake in the other direction.
    */
   landscape?: boolean;
+  /** Full-page artwork such as the fixed 16-page portfolio template. */
+  fullBleed?: boolean;
 }

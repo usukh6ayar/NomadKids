@@ -38,6 +38,7 @@ export function GroupGuardianInvitations({
   groupName,
   label = "Бүх эцэг эхийг урих",
   className,
+  labelClassName,
 }: {
   groupId: string;
   groupName: string;
@@ -45,6 +46,8 @@ export function GroupGuardianInvitations({
   label?: string;
   /** Extra classes for the trigger button. */
   className?: string;
+  /** Classes for the label alone — `max-sm:sr-only` leaves the icon on a phone. */
+  labelClassName?: string;
 }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -68,7 +71,7 @@ export function GroupGuardianInvitations({
     <>
       <Button variant="secondary" size="sm" className={className} onClick={() => setOpen(true)}>
         <UsersRound size={18} aria-hidden />
-        {label}
+        <span className={labelClassName}>{label}</span>
       </Button>
 
       {open ? (

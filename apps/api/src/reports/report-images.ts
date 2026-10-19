@@ -36,6 +36,15 @@ const JPEG_QUALITY = 72;
 /** Photographs embedded in one report, across all observations. */
 export const MAX_IMAGES_PER_REPORT = 40;
 
+/**
+ * The portfolio's own ceilings — the exact design (#260) prints the artworks
+ * and the albums, not three photos an age. Each is a `take` in
+ * `loadPortfolioData`, so nothing past them is even downloaded: the newest
+ * artworks, and the album in its own order.
+ */
+export const MAX_PORTFOLIO_ARTWORKS = 32;
+export const MAX_PORTFOLIO_ALBUM_PHOTOS = 32;
+
 /** Total embedded image bytes, measured before base64 expansion. */
 export const MAX_IMAGE_BYTES_PER_REPORT = 24 * 1024 * 1024;
 

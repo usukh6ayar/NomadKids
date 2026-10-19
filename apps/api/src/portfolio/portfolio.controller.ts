@@ -9,10 +9,12 @@ import {
   updateAboutMeSchema,
   updateAgeProfileSchema,
   updateBirthdayNoteSchema,
+  updateGraduationLetterSchema,
   type AgeParams,
   type UpdateAboutMeDto,
   type UpdateAgeProfileDto,
   type UpdateBirthdayNoteDto,
+  type UpdateGraduationLetterDto,
 } from "./portfolio.dto";
 
 /**
@@ -51,6 +53,23 @@ export class PortfolioController {
     @Body(new ZodValidationPipe(updateAboutMeSchema)) body: UpdateAboutMeDto,
   ) {
     return this.service.updateAboutMe(actor, params.id, body);
+  }
+
+  @Get("graduation-letter")
+  async getGraduationLetter(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.getGraduationLetter(actor, params.id);
+  }
+
+  @Patch("graduation-letter")
+  async updateGraduationLetter(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(updateGraduationLetterSchema)) body: UpdateGraduationLetterDto,
+  ) {
+    return this.service.updateGraduationLetter(actor, params.id, body);
   }
 
   @Get("age-profiles")

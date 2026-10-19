@@ -7,7 +7,12 @@ import {
 import { StorageService } from "../storage/storage.service";
 import { ReportsRepository } from "./reports.repository";
 import { PdfRendererService } from "./pdf-renderer.service";
-import { ImageBudget } from "./report-images";
+import {
+  ImageBudget,
+  MAX_IMAGE_BYTES_PER_REPORT,
+  MAX_PORTFOLIO_ALBUM_PHOTOS,
+  MAX_PORTFOLIO_ARTWORKS,
+} from "./report-images";
 import { portfolioChrome, renderPortfolioHtml, type PortfolioData } from "./portfolio-template";
 import {
   renderTermReportHtml,
@@ -173,7 +178,16 @@ export class ReportGeneratorService {
     const data = await this.repo.loadPortfolioData(childId, viewer);
     if (!data.child) throw new Error("Child not found");
 
-    const budget = new ImageBudget();
+    /*
+      ★ A fixed ceiling, never one sized to the child — 2026-10-19 review.
+      `report-images.ts`: "only a count bounds the total". The exact design
+      prints artworks and albums rather than three photos an age, so it gets
+      the room the repository's two `take`s allow — and no more.
+    */
+    const budget = new ImageBudget(
+      MAX_PORTFOLIO_ARTWORKS + MAX_PORTFOLIO_ALBUM_PHOTOS + 2,
+      2 * MAX_IMAGE_BYTES_PER_REPORT,
+    );
     const childPhoto = await this.embed(budget, data.child.photo);
     // The identity marks always win the image budget.
     const logo = await this.embed(budget, data.child.kindergarten.logo);
@@ -191,21 +205,17 @@ export class ReportGeneratorService {
     for (const comparison of data.artworkComparisons) {
       comparisons.push({
         conclusion: comparison.conclusion,
-        earlierDataUri: await this.embed(budget, comparison.earlierMedia),
-        laterDataUri: await this.embed(budget, comparison.laterMedia),
+        earlierDataUri: null,
+        laterDataUri: null,
         earlierTakenAt: comparison.earlierMedia?.takenAt ?? null,
         laterTakenAt: comparison.laterMedia?.takenAt ?? null,
       });
     }
 
     const observations: PortfolioData["observations"] = [];
-    for (const observation of data.observations.filter((item) => item.source === "TEACHER")) {
-      const photoDataUris: string[] = [];
-      for (const photo of observation.media) {
-        const dataUri = await this.embed(budget, photo);
-        if (dataUri) photoDataUris.push(dataUri);
-      }
+    for (const observation of data.observations) {
       observations.push({
+        source: observation.source,
         typeName: observation.type.name,
         observedOn: observation.observedOn,
         activityName: observation.activityName,
@@ -213,23 +223,31 @@ export class ReportGeneratorService {
         childDid: observation.childDid,
         childSaid: observation.childSaid,
         teacherComment: observation.teacherComment,
-        photoDataUris,
+        photoDataUris: [],
+      });
+    }
+
+    const artworks: PortfolioData["artworks"] = [];
+    for (const artwork of data.artworks) {
+      const dataUri = await this.embed(budget, artwork);
+      if (!dataUri) continue;
+      artworks.push({
+        type: artwork.observation?.activityName?.trim() || "Бусад",
+        age: artwork.age,
+        dataUri,
+        caption: artwork.caption,
+        madeOn: artwork.takenAt ?? artwork.observation?.observedOn ?? artwork.uploadedAt,
       });
     }
 
     const milestones: PortfolioData["milestones"] = [];
     for (const milestone of data.milestones) {
-      const photoDataUris: string[] = [];
-      for (const photo of milestone.media) {
-        const dataUri = await this.embed(budget, photo);
-        if (dataUri) photoDataUris.push(dataUri);
-      }
       milestones.push({
         // A suggested kind needs no title of its own; never print its code.
         title: milestone.title?.trim() || MILESTONE_KIND_LABEL[milestone.kind] || "Онцгой мөч",
         occurredOn: milestone.occurredOn,
         description: milestone.description,
-        photoDataUris,
+        photoDataUris: [],
       });
     }
 
@@ -243,12 +261,30 @@ export class ReportGeneratorService {
           : (photo.category ?? "Бусад"));
       albumSummary.set(label, (albumSummary.get(label) ?? 0) + 1);
     }
-    for (const age of [2, 3, 4, 5]) {
-      const photos: PortfolioData["photoAlbums"][number]["photos"] = [];
-      for (const photo of data.albumPhotos.filter((item) => item.age === age).slice(0, 3)) {
+    const albumGroups = new Map<string, PortfolioData["photoAlbums"][number]>();
+    for (const photo of data.albumPhotos) {
+      const isTeacherSent =
+        photo.attribution === "TEACHER" && !photo.category && !photo.albumCategory;
+      const label = isTeacherSent
+        ? "Багшийн илгээсэн зураг"
+        : (photo.albumCategory?.name ??
+          (isAgeAlbumCategory(photo.category)
+            ? AGE_ALBUM_CATEGORY_LABEL[photo.category]
+            : photo.category === "FIRST_DAY"
+              ? "Цэцэрлэгийн анхны өдөр"
+              : photo.category === "GRADUATION"
+                ? "Цэцэрлэгээ төгслөө"
+                : (photo.category ?? "Бусад")));
+      const key = `${photo.age ?? "all"}:${label}`;
+      let group = albumGroups.get(key);
+      if (!group) {
+        group = { key, label, age: photo.age, attribution: photo.attribution, photos: [] };
+        albumGroups.set(key, group);
+      }
+      {
         const dataUri = await this.embed(budget, photo);
         if (!dataUri) continue;
-        photos.push({
+        group.photos.push({
           dataUri,
           caption: photo.caption,
           takenAt: photo.takenAt,
@@ -259,8 +295,8 @@ export class ReportGeneratorService {
               : photo.category),
         });
       }
-      if (photos.length > 0) photoAlbums.push({ age, photos });
     }
+    photoAlbums.push(...albumGroups.values());
 
     const payload: PortfolioData = {
       child: {
@@ -272,6 +308,7 @@ export class ReportGeneratorService {
       },
       kindergarten: { name: data.child.kindergarten.name, logoDataUri: logo },
       group: enrollment?.group ?? null,
+      teachers: enrollment?.group.teachers.map((teacher) => teacher.membership.user) ?? [],
       schoolYear: enrollment?.schoolYear ?? null,
       enrollments: data.child.enrollments.map((item) => ({
         kindergartenName: item.kindergarten.name,
@@ -306,12 +343,20 @@ export class ReportGeneratorService {
       growthMeasurements: data.growthMeasurements,
       milestones,
       artworkComparisons: comparisons,
+      artworks,
       photoAlbums,
       albumSummary: [...albumSummary].map(([label, count]) => ({ label, count })),
+      /*
+        The graduation letter, or — until a teacher writes one — the latest
+        age's `teacherNote`, which is where the letter lived before #260. No
+        backfill: the fallback keeps every letter already written in print.
+      */
       teacherLetter:
-        [...data.ageProfiles]
+        data.aboutMe?.graduationLetter?.trim() ||
+        ([...data.ageProfiles]
           .sort((a, b) => b.age - a.age)
-          .find((profile) => profile.teacherNote?.trim())?.teacherNote ?? null,
+          .find((profile) => profile.teacherNote?.trim())?.teacherNote ??
+          null),
       generatedAt: new Date(),
       omittedPhotoCount: budget.dropped,
     };

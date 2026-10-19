@@ -97,7 +97,7 @@ describe("growth age navigation and editing", () => {
     }
 
     expect(navigation.querySelector("ul")).toHaveClass("grid-cols-2");
-    expect(navigation.querySelector("ul")?.className).not.toContain("sm:grid-cols-4");
+    expect(navigation.querySelector("ul")).toHaveClass("sm:grid-cols-4");
   });
 
   it("shows the five requested sections and a top-right edit menu for each", async () => {

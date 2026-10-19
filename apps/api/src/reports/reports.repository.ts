@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { AGE_ALBUM_CATEGORIES } from "@kinder/contracts";
+import { MAX_PORTFOLIO_ALBUM_PHOTOS, MAX_PORTFOLIO_ARTWORKS } from "./report-images";
 import { PrismaService } from "../prisma/prisma.service";
 import { ObservationsRepository } from "../observations/observations.repository";
 import { toSkipTake, type PageParams } from "../common/pagination";
@@ -335,6 +336,7 @@ export class ReportsRepository {
       birthdayNotes,
       observations,
       assessments,
+      artworks,
       artworkComparisons,
       growthMeasurements,
       milestones,
@@ -378,6 +380,52 @@ export class ReportsRepository {
           term: { select: { name: true } },
           domain: { select: { name: true } },
           level: { select: { label: true, color: true } },
+        },
+      }),
+      /*
+        Every saved work, not only works paired into a comparison.
+        `activityName` is the selected ARTWORK_TYPES value on an artwork
+        observation.
+
+        ★★ The same two branches as `MediaRepository.guardianVisibleWhere` —
+        2026-10-19 review. A work outside an observation is the family's own
+        CHILD_PHOTO; one attached to an observation is printed only if that
+        observation is one this viewer may read *and* is in the report,
+        exactly as the observations above. Without the second half a drawing
+        on a private or unreviewed note — or a deleted one — reached the
+        family's PDF while the note itself did not.
+      */
+      this.prisma.mediaFile.findMany({
+        where: {
+          childId,
+          deletedAt: null,
+          status: "READY",
+          OR: [
+            { observationId: null, purpose: "CHILD_PHOTO", category: "ARTWORK" },
+            {
+              observation: {
+                is: {
+                  AND: [
+                    this.observations.readableWhere(childId, viewer),
+                    { includeInReport: true },
+                  ],
+                },
+              },
+              OR: [{ category: "ARTWORK" }, { observation: { is: { type: { code: "artwork" } } } }],
+            },
+          ],
+        },
+        // Newest first so the ceiling keeps the latest; put back in order below.
+        orderBy: [{ takenAt: { sort: "desc", nulls: "first" } }, { uploadedAt: "desc" }],
+        take: MAX_PORTFOLIO_ARTWORKS,
+        select: {
+          id: true,
+          storageKey: true,
+          age: true,
+          caption: true,
+          takenAt: true,
+          uploadedAt: true,
+          observation: { select: { activityName: true, observedOn: true } },
         },
       }),
       /*
@@ -431,8 +479,20 @@ export class ReportsRepository {
           status: "READY",
           purpose: "CHILD_PHOTO",
           observationId: null,
-          age: { in: [2, 3, 4, 5] },
-          OR: [{ category: { in: [...AGE_ALBUM_CATEGORIES] } }, { albumCategoryId: { not: null } }],
+          OR: [
+            { category: { in: [...AGE_ALBUM_CATEGORIES, "FIRST_DAY", "GRADUATION"] } },
+            { albumCategoryId: { not: null } },
+            // A teacher's artwork has its own pages (`artworks` above), never
+            // the album as well.
+            {
+              attribution: "TEACHER",
+              // The exact design prints a teacher's uncategorised photos on
+              // the 2–5 нас pages only; any other age would be downloaded
+              // and printed nowhere.
+              age: { in: [2, 3, 4, 5] },
+              OR: [{ category: null }, { category: { not: "ARTWORK" } }],
+            },
+          ],
         },
         orderBy: [
           { age: "asc" },
@@ -447,18 +507,18 @@ export class ReportsRepository {
           caption: true,
           takenAt: true,
           category: true,
+          attribution: true,
           albumCoverAge: true,
           albumCategory: { select: { name: true } },
         },
-        // The service keeps at most three per age. This cap also protects a
-        // child whose historical rows predate the current per-card limit.
-        take: 40,
+        take: MAX_PORTFOLIO_ALBUM_PHOTOS,
       }),
     ]);
 
     // Read newest-first so the ceiling keeps the most recent, then present
     // oldest-first, which is how a portfolio reads.
     observations.reverse();
+    artworks.reverse();
 
     return {
       child,
@@ -467,6 +527,7 @@ export class ReportsRepository {
       birthdayNotes,
       observations,
       assessments,
+      artworks,
       artworkComparisons,
       growthMeasurements,
       milestones,
@@ -623,7 +684,24 @@ export class ReportsRepository {
             endedOn: true,
             status: true,
             kindergarten: { select: { name: true } },
-            group: { select: { name: true } },
+            group: {
+              select: {
+                name: true,
+                teachers: {
+                  where: {
+                    deletedAt: null,
+                    endedOn: null,
+                    membership: { is: { isActive: true, deletedAt: null } },
+                  },
+                  orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+                  select: {
+                    membership: {
+                      select: { user: { select: { lastName: true, firstName: true } } },
+                    },
+                  },
+                },
+              },
+            },
             schoolYear: { select: { name: true } },
           },
           orderBy: { startedOn: "asc" },
