@@ -1349,11 +1349,15 @@ export class SurveysService {
       which cannot see enrolments or memberships and would have to guess from
       the group list — a guess that would be wrong for every family with two
       children.
+
+      ★ Without a filter it is the survey's own audience, as on the list card
+      (`expectedRespondents`) — 2026-10-19. It used to fall back to the whole
+      kindergarten, so a group survey's header read "1А бүлэг · 95 хүүхэд".
     */
     const expectedResponses = await this.repo.countExpectedRespondents(
       survey.kindergartenId,
       survey.scope,
-      groupId ?? null,
+      groupId ?? survey.groupId ?? null,
     );
 
     const totalResponses = responseCount(selected);
@@ -1387,11 +1391,19 @@ export class SurveysService {
    * ★★ The clone is always a DRAFT, whatever the source's status. A copy that
    * arrived already published could collect answers before anyone checked that
    * last year's wording still applies.
+   *
+   * ★★★ The clone keeps its source's audience, and passes `create`'s check for
+   * it — 2026-10-19. The group used to be dropped, so a teacher's copy of their
+   * own group's survey came back as `groupId: null` — "Бүх бүлэг", counted
+   * against the whole kindergarten and shown to every family in it: the one
+   * audience `create` refuses a teacher.
    */
   async clone(actor: Actor, surveyId: string, dto: CloneSurveyDto) {
     const source = await this.repo.findWithQuestions(surveyId);
     if (!source) throw new NotFoundException();
-    this.tenants.assertStaff(actor, source.kindergartenId);
+    await this.tenants.assertCanAddressAudience(actor, source.kindergartenId, {
+      groupIds: [source.groupId],
+    });
 
     if (source.questions.length === 0) {
       throw new BadRequestException("Асуулт байхгүй судалгааг хувилах боломжгүй");
@@ -1403,8 +1415,10 @@ export class SurveysService {
       description: source.description,
       category: source.category,
       scope: source.scope,
+      kind: source.kind,
       // A teacher assessment cloned for the next wave is still one.
       respondent: source.respondent,
+      groupId: source.groupId,
       createdById: actor.userId,
       schoolYear: dto.schoolYear ?? source.schoolYear,
       period: dto.period ?? null,
