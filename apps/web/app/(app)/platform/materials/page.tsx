@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link2, List, MoreVertical, Pencil, Plus, RefreshCw, Store, Trash2 } from "lucide-react";
 import { StorePreview } from "@/components/materials/teaching-materials";
+import { OfficialDocumentsAdmin } from "@/components/platform/official-documents-admin";
 import { useState } from "react";
 import { z } from "zod";
 import { PlatformPageHeading } from "@/components/platform/platform-page-heading";
@@ -16,6 +17,7 @@ import { FormDialog } from "@/components/ui/form-dialog";
 import { RowMenu } from "@/components/ui/menu";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { TableShell, Td, Th } from "@/components/ui/table";
+import { SearchField } from "@/components/ui/search-field";
 import { useToast } from "@/components/ui/toast";
 import { get, mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors, isNotFound } from "@/lib/api/errors";
@@ -32,6 +34,7 @@ import {
   type PlatformMaterial,
 } from "@/lib/materials";
 import { LEARNING_AREAS } from "@/lib/routine";
+import { cn } from "@/lib/utils";
 import { CANONICAL_ORIGIN } from "@/lib/canonical-host";
 
 /**
@@ -71,6 +74,9 @@ function PlatformMaterials() {
   const [removing, setRemoving] = useState<PlatformMaterial | null>(null);
   /** «Дэлгүүр» — the shop as the teachers see it (2026-10-14, the user). */
   const [shop, setShop] = useState(false);
+  /** «Үндсэн баримт бичиг» beside the materials — 2026-10-20, the user. */
+  const [tab, setTab] = useState<"materials" | "documents">("materials");
+  const [search, setSearch] = useState("");
   const copyLink = (m: PlatformMaterial) => {
     // A production build must never put localhost into a link, even when its
     // public-site build argument was omitted or the page is served by an old
@@ -98,7 +104,10 @@ function PlatformMaterials() {
   });
   // ★ No sample catalog on a 404 any more (2026-10-11): the API answers, so an
   // error is shown as the error it is.
-  const items: PlatformMaterial[] = list.data ?? [];
+  const all: PlatformMaterial[] = list.data ?? [];
+  // Нэрээр хайх — 2026-10-20, the user. The catalog is one bounded read already.
+  const term = search.trim().toLocaleLowerCase("mn");
+  const items = term ? all.filter((m) => m.title.toLocaleLowerCase("mn").includes(term)) : all;
 
   const regenerate = useMutation({
     mutationFn: (id: string) =>
@@ -125,40 +134,89 @@ function PlatformMaterials() {
     <div className="flex flex-col gap-4">
       <PlatformPageHeading
         title="Сургалтын хэрэглэгдэхүүн"
-        lede="Багш нарт зарах бэлэн үзүүлэн, хичээлүүд."
+        lede={
+          tab === "documents"
+            ? "Яамны хөтөлбөр, журам — бүх цэцэрлэгийн багш нарт үнэгүй."
+            : "Багш нарт зарах бэлэн үзүүлэн, хичээлүүд."
+        }
         mark={<Art name="adminCurriculum" size={44} />}
         actions={
-          <span className="flex gap-2">
-            <Button size="sm" onClick={() => setEditing("new")}>
-              <Plus size={16} aria-hidden="true" /> Нэмэх
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              aria-pressed={shop}
-              onClick={() => setShop((open) => !open)}
-            >
-              {shop ? (
-                <>
-                  <List size={16} aria-hidden="true" /> Каталог
-                </>
-              ) : (
-                <>
-                  <Store size={16} aria-hidden="true" /> Дэлгүүр
-                </>
-              )}
-            </Button>
-          </span>
+          tab === "documents" ? null : (
+            <span className="flex gap-2">
+              <Button size="sm" onClick={() => setEditing("new")}>
+                <Plus size={16} aria-hidden="true" /> Нэмэх
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                aria-pressed={shop}
+                onClick={() => setShop((open) => !open)}
+              >
+                {shop ? (
+                  <>
+                    <List size={16} aria-hidden="true" /> Каталог
+                  </>
+                ) : (
+                  <>
+                    <Store size={16} aria-hidden="true" /> Дэлгүүр
+                  </>
+                )}
+              </Button>
+            </span>
+          )
         }
       />
 
-      {shop ? (
+      <div
+        role="tablist"
+        aria-label="Платформын агуулга"
+        className="grid w-full max-w-md grid-cols-2 gap-1 rounded-control bg-canvas p-1"
+      >
+        {(
+          [
+            ["materials", "Сургалтын хэрэглэгдэхүүн"],
+            ["documents", "Үндсэн баримт бичиг"],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={tab === key}
+            onClick={() => setTab(key)}
+            className={cn(
+              "min-h-[40px] rounded-control px-2 text-caption font-semibold transition-colors sm:text-body",
+              tab === key ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "documents" ? (
+        <OfficialDocumentsAdmin />
+      ) : shop ? (
         <StorePreview />
       ) : (
         <>
           {list.isLoading ? <LoadingState rows={5} /> : null}
           {list.isError ? <ErrorState description={errorMessage(list.error)} /> : null}
-          {list.data && items.length === 0 ? (
+          {all.length > 0 ? (
+            <SearchField
+              label="Хэрэглэгдэхүүн хайх"
+              placeholder="Нэрээр хайх..."
+              value={search}
+              onChange={setSearch}
+            />
+          ) : null}
+          {list.data && all.length > 0 && items.length === 0 ? (
+            <EmptyState
+              title="Олдсонгүй"
+              description={`«${search.trim()}» нэртэй хэрэглэгдэхүүн алга.`}
+            />
+          ) : null}
+          {list.data && all.length === 0 ? (
             <EmptyState
               title="Хэрэглэгдэхүүн нэмээгүй байна"
               description="«Нэмэх»-ээр PDF эсвэл PowerPoint файлаа оруулна уу."
@@ -175,6 +233,7 @@ function PlatformMaterials() {
                   <Th>Төрөл</Th>
                   <Th numeric>Үнэ</Th>
                   <Th numeric>Борлуулалт</Th>
+                  <Th numeric>Орлого</Th>
                   <Th>Жишээ хуудас</Th>
                   <Th>Төлөв</Th>
                   <Th className="w-10">
@@ -191,6 +250,11 @@ function PlatformMaterials() {
                     <Td>{m.fileType}</Td>
                     <Td numeric>{materialPrice(m.price)}</Td>
                     <Td numeric>{m.sales}</Td>
+                    <Td numeric>
+                      {m.revenue === null || m.revenue === undefined
+                        ? "—"
+                        : `${m.revenue.toLocaleString("en-US")}₮`}
+                    </Td>
                     <Td>
                       <Badge tone={PREVIEW_TONE[m.previewStatus]}>
                         {PREVIEW_STATUS_LABEL[m.previewStatus]}
@@ -256,7 +320,11 @@ function PlatformMaterials() {
         open={removing !== null}
         onOpenChange={(next) => (next ? undefined : setRemoving(null))}
         title="Дэлгүүрээс хасах уу?"
-        description="Худалдаж авсан багш нар санд нь хадгалсаар байна."
+        description={
+          removing && removing.sales > 0
+            ? `Худалдаж авсан ${removing.sales} багш материалаа хадгалсаар байна — зөвхөн дэлгүүрээс хасагдана.`
+            : "Дэлгүүрээс хасагдана. Одоогоор хэн ч худалдаж аваагүй."
+        }
         confirmLabel="Устгах"
         pendingLabel="Устгаж байна…"
         tone="danger"

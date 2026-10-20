@@ -30,13 +30,13 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { PeriodFilter } from "@/components/survey/period-buttons";
 import { SearchField } from "@/components/ui/search-field";
 import {
-  AdministrationSurveysCard,
   GroupLinkRow,
   SchoolYearSelect,
   schoolYearStart,
   schoolYearsOf,
 } from "@/components/survey/survey-hub-parts";
 import { CreateSurveyWizard } from "@/components/survey/create-survey-wizard";
+import { ChildPickerDialog } from "@/components/child/child-picker-dialog";
 import { canManageSurvey, staffSurveysSchema, type StaffSurvey } from "@/lib/survey-access";
 import { TableShell, Td, Th } from "@/components/ui/table";
 import { SURVEY_CATEGORY_META } from "@/lib/survey-meta";
@@ -81,6 +81,7 @@ function TeacherSurveys() {
   const { primaryKindergartenId, hasRole, session } = useSession();
   const isAdmin = hasRole("ADMIN");
   const [creating, setCreating] = useState(false);
+  const [pickingChild, setPickingChild] = useState(false);
   const [search, setSearch] = useState("");
   const [schoolYear, setSchoolYear] = useState(() => schoolYearStart(new Date().toISOString()));
   const router = useRouter();
@@ -143,7 +144,7 @@ function TeacherSurveys() {
       {/*
         ★ The families' hub, drawn for the teacher — client, 2026-09-25: "одоо
         багшийн хэсгийг яг энэ загвараар". Title and school year, the card that
-        starts a survey, the four waves, the administration's card, the list.
+        starts a survey, the four waves, the list.
 
         One card where the families' hub has two: a teacher survey is always a
         Судалгаа — the API refuses a teacher Асуулга (`SurveysService.create`:
@@ -183,8 +184,11 @@ function TeacherSurveys() {
 
       {isAdmin && !groupId ? null : (
         <>
-          <AdministrationSurveysCard />
-
+          {/*
+            ★ No «Удирдлагын судалгаа» card here — 2026-10-20, the client: it
+            lists what the office asked families, so it belongs on the
+            families' hub (`/surveys/parents`), not on the teacher's.
+          */}
           <section aria-labelledby="teacher-surveys" className="flex flex-col gap-2.5">
             {/*
               ★ «Бүлгийн судалгаа» with «+ Шинэ» beside it, then search and the
@@ -201,7 +205,7 @@ function TeacherSurveys() {
                 Бүлгийн судалгаа
               </h2>
               {isAdmin ? null : (
-                <Button className="shrink-0" onClick={() => setCreating(true)}>
+                <Button className="shrink-0" onClick={() => setPickingChild(true)}>
                   <Plus size={18} aria-hidden="true" />
                   Шинэ
                 </Button>
@@ -267,6 +271,19 @@ function TeacherSurveys() {
           </section>
         </>
       )}
+
+      {/*
+        ★ «+ Шинэ» picks a child first — 2026-10-20, the client: the progress
+        assessment's «Хүүхэд сонгох» table, several children at once, then the create wizard as before.
+      */}
+      {pickingChild ? (
+        <ChildPickerDialog
+          title="Хүүхэд сонгох"
+          layout="table"
+          onClose={() => setPickingChild(false)}
+          onSelectMany={() => setCreating(true)}
+        />
+      ) : null}
 
       {creating && primaryKindergartenId ? (
         <CreateSurveyWizard

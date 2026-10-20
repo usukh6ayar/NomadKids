@@ -23,6 +23,7 @@ import { ToggleActiveButton } from "@/components/admin/toggle-kindergarten-activ
 import { DeleteKindergartenButton } from "@/components/admin/delete-kindergarten-button";
 import { KindergartenAdmins } from "@/components/platform/kindergarten-admins";
 import { KindergartenPayments } from "@/components/platform/kindergarten-payments";
+import { KindergartenAccessFees } from "@/components/platform/kindergarten-access-fees";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
@@ -130,6 +131,9 @@ function KindergartenDetail() {
 
       {/* What it has paid, and the way to record it — 2026-10-14, the user. */}
       <KindergartenPayments kindergartenId={kg.id} />
+
+      {/* How many families paid the portal fee — counts, no names (2026-10-20). */}
+      <KindergartenAccessFees kindergartenId={kg.id} />
 
       <EsisMappingCard kindergarten={kg} />
 

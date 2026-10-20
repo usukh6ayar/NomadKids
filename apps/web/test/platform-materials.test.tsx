@@ -42,6 +42,38 @@ describe("the platform's teaching materials", () => {
     expect(within(line).getByText("Зарагдаж буй")).toBeInTheDocument();
   });
 
+  it("shows what a material took only when the server says — never sales × price", async () => {
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      {
+        path: "/platform/materials",
+        body: [row, { ...row, id: "m2", title: "Өнгө", sales: 2, revenue: 18000 }],
+      },
+    ]);
+    renderWithProviders(<PlatformMaterialsPage />);
+    const table = await screen.findByRole("table", { name: "Сургалтын хэрэглэгдэхүүний каталог" });
+    // 3 × 12,000 would be 36,000₮ — not shown: the price may have changed since.
+    expect(
+      within(within(table).getByText("Тоо 1–5").closest("tr")!).getByText("—"),
+    ).toBeInTheDocument();
+    expect(
+      within(within(table).getByText("Өнгө").closest("tr")!).getByText("18,000₮"),
+    ).toBeInTheDocument();
+  });
+
+  it("finds a material by its name", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/materials", body: [row, { ...row, id: "m2", title: "Өнгө" }] },
+    ]);
+    renderWithProviders(<PlatformMaterialsPage />);
+    await user.type(await screen.findByLabelText("Хэрэглэгдэхүүн хайх"), "өнг");
+    const table = screen.getByRole("table", { name: "Сургалтын хэрэглэгдэхүүний каталог" });
+    expect(within(table).getByText("Өнгө")).toBeInTheDocument();
+    expect(within(table).queryByText("Тоо 1–5")).toBeNull();
+  });
+
   it("uploads a PDF with its details as one multipart request", async () => {
     const user = userEvent.setup();
     const api = stubApi([
@@ -182,7 +214,8 @@ describe("the platform's teaching materials", () => {
     expect(api.calls.some((c) => c.method === "DELETE")).toBe(false);
 
     const confirm = screen.getByRole("dialog", { name: "Дэлгүүрээс хасах уу?" });
-    expect(confirm).toHaveTextContent("Худалдаж авсан багш нар санд нь хадгалсаар байна.");
+    // The three who bought it keep it — said with the count (2026-10-20).
+    expect(confirm).toHaveTextContent("Худалдаж авсан 3 багш материалаа хадгалсаар байна");
     await user.click(within(confirm).getByRole("button", { name: "Устгах" }));
 
     await waitFor(() =>
