@@ -4,6 +4,7 @@ import { AuditRepository } from "../audit/audit.repository";
 import { ChildAccessService } from "../authz/child-access.service";
 import type { Actor } from "../authz/actor";
 import { childKindergartenIds } from "../authz/child-access";
+import { isPortalFeeCharging } from "../authz/portal-access";
 import { loadEnv } from "../config/env";
 import { AccessRepository } from "./access.repository";
 
@@ -25,6 +26,7 @@ import { AccessRepository } from "./access.repository";
 export class AccessService {
   private readonly feeAmount = loadEnv().ACCESS_FEE_AMOUNT;
   private readonly termFeeAmount = loadEnv().ACCESS_FEE_TERM_AMOUNT;
+  private readonly freeUntil = loadEnv().ACCESS_FEE_FREE_UNTIL;
 
   constructor(
     private readonly repo: AccessRepository,
@@ -32,9 +34,17 @@ export class AccessService {
     private readonly audit: AuditRepository,
   ) {}
 
-  /** Whether the deployment charges at all. "0" means the gate does not exist. */
+  /**
+   * Whether the deployment charges today. "0" means the gate does not exist;
+   * a free period (`ACCESS_FEE_FREE_UNTIL`) means it does not exist yet.
+   */
   get isCharging(): boolean {
-    return this.feeAmount !== "0";
+    return isPortalFeeCharging({ amount: this.feeAmount, freeUntil: this.freeUntil }, localDate());
+  }
+
+  /** The free period's last day while it runs — what the screen can say. */
+  private get freeUntilNow(): string | null {
+    return this.feeAmount !== "0" && !this.isCharging ? this.freeUntil : null;
   }
 
   /** Whether a term can be bought instead of the year (#211). */
@@ -50,7 +60,14 @@ export class AccessService {
     const facts = await this.childAccess.assertCanViewFinance(actor, childId);
 
     if (!this.isCharging) {
-      return { required: false, active: true, amount: null, termAmount: null, subscription: null };
+      return {
+        required: false,
+        active: true,
+        amount: null,
+        termAmount: null,
+        freeUntil: this.freeUntilNow,
+        subscription: null,
+      };
     }
 
     const day = today();
@@ -66,6 +83,7 @@ export class AccessService {
       active: covering !== null,
       amount: this.feeAmount,
       termAmount: term ? termAmount(term) : null,
+      freeUntil: null,
       subscription: subscription && view(subscription),
     };
   }
@@ -86,7 +104,14 @@ export class AccessService {
   async ensureForChild(actor: Actor, childId: string, period: AccessPeriod = "YEAR") {
     const facts = await this.childAccess.assertCanViewFinance(actor, childId);
     if (!this.isCharging) {
-      throw new BadRequestException("Энэ системд хандалтын төлбөр тогтоогүй байна.");
+      // ★ Nothing is sold during a free period: a year bought now would charge
+      // for the weeks it gives away.
+      const freeUntil = this.freeUntilNow;
+      throw new BadRequestException(
+        freeUntil
+          ? `${freeUntil} хүртэл хандалт үнэгүй тул одоогоор төлбөр шаардлагагүй.`
+          : "Энэ системд хандалтын төлбөр тогтоогүй байна.",
+      );
     }
 
     const day = today();

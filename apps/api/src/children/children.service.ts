@@ -10,6 +10,7 @@ import { AuthzRepository } from "../authz/authz.repository";
 import { loadEnv } from "../config/env";
 import { ChildAccessService } from "../authz/child-access.service";
 import { seesFullChildCard } from "../authz/child-access";
+import { isPortalFeeCharging, type PortalFeeSettings } from "../authz/portal-access";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import type { Actor } from "../authz/actor";
 import { paginate, type PageParams } from "../common/pagination";
@@ -83,7 +84,15 @@ export class ChildrenService {
   }
 
   /** "0" means no fee anywhere — read once, like `ChildAccessService`. */
-  private readonly feeConfigured = loadEnv().ACCESS_FEE_AMOUNT !== "0";
+  private readonly fee: PortalFeeSettings = {
+    amount: loadEnv().ACCESS_FEE_AMOUNT,
+    freeUntil: loadEnv().ACCESS_FEE_FREE_UNTIL,
+  };
+
+  /** No fee, or its free period — the roster shows no Төлөгдсөн/Төлөгдөөгүй. */
+  private get feeConfigured(): boolean {
+    return isPortalFeeCharging(this.fee, localDate());
+  }
 
   /**
    * The children this actor may see.

@@ -5864,6 +5864,12 @@ export const accessStatusSchema = z.object({
    * configured, or the kindergarten's current school year has no term today.
    */
   termAmount: z.string().nullable().optional(),
+  /**
+   * `YYYY-MM-DD` — the last day of a free period (`ACCESS_FEE_FREE_UNTIL`, the
+   * user 2026-10-21) while it runs: `required` is false until then, and the
+   * fee returns by itself the day after. Null when there is no free period.
+   */
+  freeUntil: z.string().nullable().optional(),
   subscription: accessSubscriptionSchema.nullable(),
 });
 export type AccessStatus = z.infer<typeof accessStatusSchema>;

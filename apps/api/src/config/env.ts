@@ -221,6 +221,18 @@ export const envSchema = z.object({
     .default("0"),
 
   /**
+   * The portal fee is not charged through this day — `YYYY-MM-DD`, inclusive,
+   * Ulaanbaatar's calendar (the user, 2026-10-21: "11 сарын 30 хүртэл үнэгүй").
+   * While it runs the gate is off exactly as with `ACCESS_FEE_AMOUNT=0`; the
+   * day after, the price set above applies again with nobody touching the
+   * deployment. Empty is no free period. A paid subscription is unaffected.
+   */
+  ACCESS_FEE_FREE_UNTIL: z
+    .string()
+    .regex(/^(\d{4}-\d{2}-\d{2})?$/, "ACCESS_FEE_FREE_UNTIL нь огноо байна (жишээ: 2026-11-30)")
+    .default(""),
+
+  /**
    * How many devices one account may be signed in on at once (#211, the user
    * 2026-10-12). A device is a refresh-token family — one sign-in and its
    * rotations. `0` turns the limit off. A platform operator is never limited.

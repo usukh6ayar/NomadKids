@@ -3,7 +3,12 @@ import { localDate } from "@kinder/contracts";
 import { AuthzRepository } from "./authz.repository";
 import { loadEnv } from "../config/env";
 import type { Actor } from "./actor";
-import { isPortalAccessBlocked, PaymentRequiredException } from "./portal-access";
+import {
+  isPortalAccessBlocked,
+  isPortalFeeCharging,
+  PaymentRequiredException,
+  type PortalFeeSettings,
+} from "./portal-access";
 import {
   canAccessChild,
   canAdministerChild,
@@ -42,9 +47,17 @@ export class ChildAccessService {
   /**
    * "0" means no gate. Read once at construction: it is a deployment setting,
    * not something an administrator edits at runtime, and re-reading it per
-   * request would put a config parse on every child lookup.
+   * request would put a config parse on every child lookup. The free period's
+   * date is compared per request — `isPortalFeeCharging`.
    */
-  private readonly feeConfigured = loadEnv().ACCESS_FEE_AMOUNT !== "0";
+  private readonly fee: PortalFeeSettings = {
+    amount: loadEnv().ACCESS_FEE_AMOUNT,
+    freeUntil: loadEnv().ACCESS_FEE_FREE_UNTIL,
+  };
+
+  private get feeConfigured(): boolean {
+    return isPortalFeeCharging(this.fee, localDate());
+  }
 
   constructor(private readonly repo: AuthzRepository) {}
 
