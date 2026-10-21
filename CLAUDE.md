@@ -363,7 +363,9 @@ merchant serves every kindergarten, so credentials and price are deployment
 settings. **No `Payment` row is written for a fee** — it is the platform
 operator's revenue, not the kindergarten's. Tuition and meal invoices are
 settled in cash or by transfer, recorded by the accountant, never through
-the gateway.
+the gateway. `ACCESS_FEE_FREE_UNTIL` (the user, 2026-10-21: free to
+2026-11-30) opens the gate through that Ulaanbaatar day with the price still
+set, sells nothing meanwhile, and the fee returns by itself the day after.
 
 ★ **The line moved once** (client, 2026-10-09, confirmed by the user
 2026-10-11): a teacher may also buy a **teaching material** from the platform's

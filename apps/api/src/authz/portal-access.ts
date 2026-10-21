@@ -45,6 +45,25 @@ export class PaymentRequiredException extends ForbiddenException {
   }
 }
 
+/** The deployment's fee settings — `ACCESS_FEE_AMOUNT`, `ACCESS_FEE_FREE_UNTIL`. */
+export interface PortalFeeSettings {
+  readonly amount: string;
+  /** `YYYY-MM-DD`, inclusive, or "" for none. */
+  readonly freeUntil: string;
+}
+
+/**
+ * Whether the portal fee is charged on `today` (Ulaanbaatar's `YYYY-MM-DD`).
+ *
+ * "0" never charges. A free period (the user, 2026-10-21) charges nobody
+ * through its last day and ends by itself — a date compared per request, not
+ * a flag read at boot, or the gate would stay open until the next deploy.
+ */
+export function isPortalFeeCharging(fee: PortalFeeSettings, today: string): boolean {
+  if (fee.amount === "0") return false;
+  return !(fee.freeUntil && today <= fee.freeUntil);
+}
+
 /** What the gate needs to know, loaded only when a fee is actually configured. */
 export interface PortalAccessFact {
   /** False when `ACCESS_FEE_AMOUNT` is "0" — the gate does not exist. */
