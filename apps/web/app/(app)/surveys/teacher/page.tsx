@@ -280,6 +280,7 @@ function TeacherSurveys() {
         <ChildPickerDialog
           title="Хүүхэд сонгох"
           layout="table"
+          namesOnly
           onClose={() => setPickingChild(false)}
           onSelectMany={() => setCreating(true)}
         />

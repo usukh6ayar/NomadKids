@@ -54,6 +54,7 @@ export function ChildPickerDialog({
   onTabChange,
   onSelect,
   onSelectMany,
+  namesOnly = false,
   onClose,
 }: {
   /**
@@ -97,6 +98,12 @@ export function ChildPickerDialog({
    * hands back every one ticked. ★ The teacher survey's «+ Шинэ», 2026-10-20.
    */
   onSelectMany?: (childIds: string[]) => void;
+  /**
+   * The table as «Д.Намуун» and nothing else — no Нас, no Бүлэг — so it fits a
+   * phone without scrolling sideways. ★ The teacher survey, 2026-10-21, the
+   * user: a teacher surveys their own group, the age and group say nothing.
+   */
+  namesOnly?: boolean;
   onClose: () => void;
 }) {
   const multiple = Boolean(onSelectMany);
@@ -286,7 +293,12 @@ export function ChildPickerDialog({
             aria-label={title}
             className="min-h-0 flex-1 overflow-auto rounded-card border border-border"
           >
-            <table className="w-full min-w-[640px] border-collapse text-body">
+            <table
+              className={cn(
+                "w-full border-collapse text-body",
+                namesOnly ? "min-w-0" : "min-w-[640px]",
+              )}
+            >
               <caption className="sr-only">{title}</caption>
               <thead className="sticky top-0 z-10">
                 <tr>
@@ -313,8 +325,8 @@ export function ChildPickerDialog({
                     №
                   </Th>
                   <Th>Овог, нэр</Th>
-                  <Th>Нас</Th>
-                  {groupId ? null : <Th>Бүлэг</Th>}
+                  {namesOnly ? null : <Th>Нас</Th>}
+                  {groupId || namesOnly ? null : <Th>Бүлэг</Th>}
                   {coverage ? <Th numeric>{coverage.columnLabel ?? "Ажиглалт"}</Th> : null}
                 </tr>
               </thead>
@@ -359,11 +371,15 @@ export function ChildPickerDialog({
                       <Td numeric className="text-muted">
                         {index + 1}
                       </Td>
-                      <Td className="font-medium text-ink">{fullName(child)}</Td>
-                      <Td className="whitespace-nowrap text-muted">
-                        {formatAge(child.dateOfBirth)}
+                      <Td className="font-medium text-ink">
+                        {namesOnly ? shortName(child) : fullName(child)}
                       </Td>
-                      {groupId ? null : <Td className="text-muted">{group ?? "—"}</Td>}
+                      {namesOnly ? null : (
+                        <Td className="whitespace-nowrap text-muted">
+                          {formatAge(child.dateOfBirth)}
+                        </Td>
+                      )}
+                      {groupId || namesOnly ? null : <Td className="text-muted">{group ?? "—"}</Td>}
                       {coverage ? (
                         <Td
                           numeric

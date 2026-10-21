@@ -169,6 +169,46 @@ describe("the teacher's surveys", () => {
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
+  /*
+    «+ Шинэ» picks children first — the names alone, «Д.Намуун», no Нас and no
+    Бүлэг (2026-10-21, the user): a teacher surveys their own group, and the
+    table must fit a phone. Several may be ticked.
+  */
+  it("picks the children by name only, several at once", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: `/kindergartens/${KINDERGARTEN_ID}/surveys`, body: [] },
+      {
+        path: "/children",
+        body: {
+          items: [
+            {
+              id: "77777777-7777-4777-8777-777777777777",
+              kindergartenId: KINDERGARTEN_ID,
+              lastName: "Дорж",
+              firstName: "Намуун",
+              dateOfBirth: "2022-03-10",
+              status: "ACTIVE",
+            },
+          ],
+          total: 1,
+          page: 1,
+          pageSize: 100,
+          totalPages: 1,
+        },
+      },
+    ]);
+    renderWithProviders(<TeacherSurveysPage />);
+
+    await user.click(await screen.findByRole("button", { name: "Шинэ" }));
+    const picker = await screen.findByRole("dialog", { name: "Хүүхэд сонгох" });
+    expect(await within(picker).findByText("Д.Намуун")).toBeInTheDocument();
+    expect(within(picker).queryByRole("columnheader", { name: "Нас" })).toBeNull();
+    expect(within(picker).queryByRole("columnheader", { name: "Бүлэг" })).toBeNull();
+    expect(within(picker).getByRole("checkbox", { name: "Бүгдийг сонгох" })).toBeInTheDocument();
+  });
+
   /**
    * ⋯ → Засах · Эксэл татах · Дахин ашиглах · Устгах — client, 2026-09-22.
    * The families' card's own actions, less Оролцоо, which it did not ask for.
