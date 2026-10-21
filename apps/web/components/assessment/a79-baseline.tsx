@@ -8,6 +8,7 @@ import {
   A79ChildrenTable,
   A79SummaryChart,
   a79ChildRows,
+  useA79GroupSummary,
 } from "@/components/assessment/a79-group-summary";
 import { teacherSheetRowSchema } from "@/components/survey/teacher-sheet";
 import { buttonVariants } from "@/components/ui/button";
@@ -17,7 +18,7 @@ import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
-import { asGroupSummary, baselineLevel, mergeBaselines } from "@/lib/a79-baseline";
+import { asGroupSummary, baselineLevel, mergeBaselines, withFeeDue } from "@/lib/a79-baseline";
 import { formatDate, shortName } from "@/lib/format";
 import { staffSurveysSchema, type StaffSurvey } from "@/lib/survey-access";
 
@@ -28,6 +29,9 @@ const sheetSchema = z.object({ survey: surveySchema, rows: z.array(teacherSheetR
  * surveys of the Гарааны wave whose questions are one level's criteria. A
  * class may have one per level (2026-10-21, the user: five children on IV,
  * seven on III). A Гарааны survey that is not А/79 is not one of them.
+ *
+ * ★ A survey addressed to no one group (a director's «бүх бүлэг») counts too:
+ * its sheet names each row's group, and the panel keeps this group's rows.
  */
 function useBaselineSurveys(groupId: string) {
   const { primaryKindergartenId } = useSession();
@@ -40,7 +44,7 @@ function useBaselineSurveys(groupId: string) {
     (s: StaffSurvey) =>
       s.respondent === "TEACHER" &&
       s.period === "BASELINE" &&
-      s.groupId === groupId &&
+      (s.groupId === groupId || !s.groupId) &&
       s.status !== "DRAFT" &&
       baselineLevel(s.questions) !== null,
   );
@@ -71,9 +75,18 @@ export function A79BaselinePanel({
     })),
   });
   const sheetError = sheets.find((sheet) => sheet.isError)?.error;
+  /*
+    ★ Who the server withholds figures for — a solo workspace's unpaid child
+    (CLAUDE.md §1.7). Only the flag is read from the result summary; nothing
+    of the result itself is shown here. Absent (404, not built), nobody is.
+  */
+  const results = useA79GroupSummary(groupId);
+  const feeDue = new Set(
+    (results.data?.children ?? []).filter((c) => c.feeDue).map((c) => c.childId),
+  );
 
   const body = (() => {
-    if (isLoading || sheets.some((sheet) => sheet.isLoading)) return <LoadingState rows={4} />;
+    if (isLoading) return <LoadingState rows={4} />;
     if (error) return <ErrorState description={errorMessage(error)} />;
     if (baselines.length === 0) {
       return (
@@ -88,13 +101,26 @@ export function A79BaselinePanel({
         />
       );
     }
+    // The fee flags are awaited only once there is a baseline to withhold from.
+    if (results.isLoading || sheets.some((sheet) => sheet.isLoading)) {
+      return <LoadingState rows={4} />;
+    }
     if (sheetError) return <ErrorState description={errorMessage(sheetError)} />;
 
-    const merged = mergeBaselines(
+    const mergedRaw = mergeBaselines(
       sheets.flatMap((sheet) =>
-        sheet.data ? [{ questions: sheet.data.survey.questions, rows: sheet.data.rows }] : [],
+        sheet.data
+          ? [
+              {
+                questions: sheet.data.survey.questions,
+                // This group's children only — a «бүх бүлэг» survey holds every group's.
+                rows: sheet.data.rows.filter((row) => !row.group || row.group.id === groupId),
+              },
+            ]
+          : [],
       ),
     );
+    const merged = mergedRaw ? withFeeDue(mergedRaw, feeDue) : null;
     if (!merged || merged.children.length === 0) {
       return (
         <EmptyState
@@ -104,6 +130,8 @@ export function A79BaselinePanel({
       );
     }
     const rows = a79ChildRows(asGroupSummary(merged));
+    // Named on the table, counted in no average — the result screen's rule.
+    const scored = rows.filter((row) => !row.feeDue);
     const notAssessed = merged.children.filter((c) => c.notFilled);
     const twice = merged.children.filter((c) => c.assessedTwice);
 
@@ -126,11 +154,13 @@ export function A79BaselinePanel({
 
         {rows.length > 0 ? (
           <>
-            <A79SummaryChart
-              rows={rows}
-              averageLabel="Гарааны дундаж"
-              description={`Бүлгийн гарааны дундаж, ${rows.length} хүүхэд. Хүүхдийн хувь бол өөрийн түвшний шалгуурын хэдийг гарааны үнэлгээнд биелүүлсэн нь.`}
-            />
+            {scored.length > 0 ? (
+              <A79SummaryChart
+                rows={scored}
+                averageLabel="Гарааны дундаж"
+                description={`Бүлгийн гарааны дундаж, ${scored.length} хүүхэд. Хүүхдийн хувь бол өөрийн түвшний шалгуурын хэдийг гарааны үнэлгээнд биелүүлсэн нь.`}
+              />
+            ) : null}
             <A79ChildrenTable groupId={groupId} rows={rows} linkChildren={false} />
           </>
         ) : (

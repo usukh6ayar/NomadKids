@@ -40,8 +40,12 @@ export interface BaselineChild {
   firstName: string;
   lastName: string;
   level: A79Level["key"];
-  /** Never set here — the baseline is the teacher's own survey, not fee-gated. */
-  feeDue: false;
+  /**
+   * A solo workspace's child whose family has not paid the portal fee — named,
+   * every figure withheld, as the result screen does (CLAUDE.md §1.7). The
+   * teacher sheet does not say it; the caller marks it (`withFeeDue`).
+   */
+  feeDue: boolean;
   achieved: number;
   total: number;
   byDomain: { domain: A79Domain; achieved: number; total: number }[];
@@ -125,6 +129,27 @@ export function baselineSummary(
   });
 
   return { level: level.key, children, unmatched, lastSubmittedAt };
+}
+
+/** Marks the children the server withholds figures for, by id. */
+export function withFeeDue<T extends { children: BaselineChild[] }>(
+  summary: T,
+  feeDue: ReadonlySet<string>,
+): T {
+  if (feeDue.size === 0) return summary;
+  return {
+    ...summary,
+    children: summary.children.map((child) =>
+      feeDue.has(child.childId)
+        ? {
+            ...child,
+            feeDue: true,
+            achieved: 0,
+            byDomain: child.byDomain.map((d) => ({ ...d, achieved: 0 })),
+          }
+        : child,
+    ),
+  };
 }
 
 /** The filled-in children, in the result screen's own shape. */

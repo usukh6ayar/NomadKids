@@ -190,3 +190,85 @@ describe("the baseline panel", () => {
     expect(screen.queryByRole("link", { name: "Д.Намуун" })).toBeNull();
   });
 });
+
+describe("the baseline panel — the two rules a review found (2026-10-21)", () => {
+  const NAMUUN = "77777777-7777-4777-8777-777777777777";
+  const OTHER_GROUP_CHILD = "12121212-1212-4121-8121-121212121212";
+  const sent = {
+    id: "88888888-8888-4888-8888-888888888888",
+    submittedAt: "2026-09-15T00:00:00Z",
+    respondent: { id: "99999999-9999-4999-8999-999999999999", lastName: "Б", firstName: "Багш" },
+    answers: SURVEY.questions.map((q) => ({ questionId: q.id, value: "1" })),
+  };
+
+  it("withholds an unpaid solo child's figures, as the result screen does", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: `/kindergartens/${KG}/surveys`, body: [SURVEY] },
+      {
+        path: `/groups/${GROUP}/a79-summary`,
+        body: {
+          children: [
+            {
+              childId: NAMUUN,
+              firstName: "Намуун",
+              lastName: "Дорж",
+              level: "I",
+              feeDue: true,
+              achieved: 0,
+              total: 0,
+              byDomain: [],
+            },
+          ],
+        },
+      },
+      {
+        path: `/surveys/${SURVEY.id}/teacher-sheet`,
+        body: {
+          survey: SURVEY,
+          rows: [
+            {
+              child: { id: NAMUUN, firstName: "Намуун", lastName: "Дорж" },
+              group: { id: GROUP, name: "Дэлбээ" },
+              response: sent,
+            },
+          ],
+        },
+      },
+    ]);
+    renderWithProviders(<A79BaselinePanel groupId={GROUP} />);
+    expect(await screen.findByText("Төлбөр төлөгдөөгүй")).toBeInTheDocument();
+    expect(screen.queryByText("100%")).toBeNull();
+    expect(screen.queryByText(/Гарааны дундаж/)).toBeNull();
+  });
+
+  it("counts a survey addressed to every group, keeping this group's children", async () => {
+    const everyGroup = { ...SURVEY, groupId: null, group: null };
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: `/kindergartens/${KG}/surveys`, body: [everyGroup] },
+      {
+        path: `/surveys/${SURVEY.id}/teacher-sheet`,
+        body: {
+          survey: everyGroup,
+          rows: [
+            {
+              child: { id: NAMUUN, firstName: "Намуун", lastName: "Дорж" },
+              group: { id: GROUP, name: "Дэлбээ" },
+              response: sent,
+            },
+            {
+              child: { id: OTHER_GROUP_CHILD, firstName: "Сувд", lastName: "Гэрэл" },
+              group: { id: "13131313-1313-4131-8131-131313131313", name: "Нар" },
+              response: sent,
+            },
+          ],
+        },
+      },
+    ]);
+    renderWithProviders(<A79BaselinePanel groupId={GROUP} />);
+    expect(await screen.findByText("Д.Намуун")).toBeInTheDocument();
+    expect(screen.queryByText("Г.Сувд")).toBeNull();
+    expect(screen.getByText(/1\/1 хүүхэд үнэлэгдсэн/)).toBeInTheDocument();
+  });
+});
