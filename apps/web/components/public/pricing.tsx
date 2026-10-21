@@ -355,7 +355,9 @@ function PriceBox({
           {tugrik(was)}
         </p>
       ) : null}
-      <p className={cn("text-title font-extrabold tabular-nums", textClass)}>{tugrik(amount)}</p>
+      <p className={cn("text-title font-extrabold tabular-nums", textClass)}>
+        {amount === 0 ? "Үнэгүй" : tugrik(amount)}
+      </p>
       <p className="text-caption text-slate-500">{unit}</p>
       {note ? <p className="mt-0.5 text-compact font-semibold text-[#c2410c]">{note}</p> : null}
     </div>

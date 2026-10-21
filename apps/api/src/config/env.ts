@@ -211,7 +211,7 @@ export const envSchema = z.object({
    * year alone. Meaningless while `ACCESS_FEE_AMOUNT` is "0".
    *
    * ★ Since 2026-10-18 any other value only switches terms on: a term's price
-   * is the price sheet's (`@kinder/contracts` `childTermPrice` — 5,000₮ for
+   * is the price sheet's (`@kinder/contracts` `childTermPrice` — free for
    * «I-р улирал» to 2026-11-30, then 9,000₮), because it changes on a date
    * and a deployment setting cannot.
    */

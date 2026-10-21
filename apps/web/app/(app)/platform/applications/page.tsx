@@ -1058,7 +1058,7 @@ function ReviewDialog({
   );
 }
 
-/** «6,000₮». */
+/** «4,000₮». */
 function tugrug(value: number): string {
   return `${value.toLocaleString("en-US")}₮`;
 }
