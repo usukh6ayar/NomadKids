@@ -11,6 +11,7 @@ import {
   A79GroupSummaryPanel,
   A79KindergartenSummaryPanel,
 } from "@/components/assessment/a79-group-summary";
+import { A79BaselinePanel } from "@/components/assessment/a79-baseline";
 import { useSession } from "@/lib/auth/session";
 import { RequireRole } from "@/components/shell/require-role";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
@@ -71,6 +72,8 @@ type Period = "month" | "term" | "year";
 const TABS = [
   { key: "summary", label: "Нэгтгэл" },
   { key: "attendance", label: "Ирцийн тайлан" },
+  // The group's А/79 baseline, read from the teacher's survey — 2026-10-21.
+  { key: "baseline", label: "Гарааны үнэлгээ" },
   { key: "assessment", label: "Явцын үнэлгээ" },
   // The group's А/79 result — client, 2026-10-08.
   { key: "results", label: "Үр дүнгийн үнэлгээ" },
@@ -500,6 +503,7 @@ function ReportBody({
             to={report.range.to}
           />
         ) : null}
+        {tab === "baseline" ? <A79BaselinePanel groupId={report.group.id} /> : null}
         {tab === "results" ? (
           director ? (
             <A79KindergartenSummaryPanel

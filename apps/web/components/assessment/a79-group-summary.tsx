@@ -173,7 +173,7 @@ function domainAverage(rows: A79ChildRow[], domain: A79Domain): number {
   return Math.round(rows.reduce((sum, row) => sum + (row.domain[domain] ?? 0), 0) / rows.length);
 }
 
-function A79SummaryChart({
+export function A79SummaryChart({
   rows,
   averageLabel,
   description,
@@ -388,7 +388,19 @@ function KindergartenSummaryBody({
  * — on Тайлан and on «Үр дүнгийн үнэлгээ» alike (client, 2026-10-08). The
  * name opens the child's own result.
  */
-export function A79ChildrenTable({ groupId, rows }: { groupId: string; rows: A79ChildRow[] }) {
+export function A79ChildrenTable({
+  groupId,
+  rows,
+  linkChildren = true,
+}: {
+  groupId: string;
+  rows: A79ChildRow[];
+  /**
+   * Off on «Гарааны үнэлгээ» (2026-10-21): a child's page is their result,
+   * built from observations, not the baseline survey this row was read from.
+   */
+  linkChildren?: boolean;
+}) {
   return (
     <TableShell caption="Хүүхэд бүрийн үр дүн" minWidth="min-w-[560px]">
       <thead>
@@ -432,12 +444,16 @@ export function A79ChildrenTable({ groupId, rows }: { groupId: string; rows: A79
             <tr key={row.childId}>
               <Td className="tabular-nums text-muted">{index + 1}</Td>
               <Td>
-                <Link
-                  href={`/groups/${groupId}/results/${row.childId}`}
-                  className="font-medium text-primary hover:underline"
-                >
-                  {shortName(row)}
-                </Link>
+                {linkChildren ? (
+                  <Link
+                    href={`/groups/${groupId}/results/${row.childId}`}
+                    className="font-medium text-primary hover:underline"
+                  >
+                    {shortName(row)}
+                  </Link>
+                ) : (
+                  <span className="font-medium text-ink">{shortName(row)}</span>
+                )}
               </Td>
               <Td>{row.level}</Td>
               {DOMAINS.map((domain) => (
