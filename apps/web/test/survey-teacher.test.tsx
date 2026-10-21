@@ -170,11 +170,11 @@ describe("the teacher's surveys", () => {
   });
 
   /*
-    «+ Шинэ» picks children first — the names alone, «Д.Намуун», no Нас and no
-    Бүлэг (2026-10-21, the user): a teacher surveys their own group, and the
-    table must fit a phone. Several may be ticked.
+    «+ Шинэ» picks children first — «Д.Намуун» and the age, no Бүлэг
+    (2026-10-21, the user): a teacher surveys their own group, and the table
+    must fit a phone. Several may be ticked.
   */
-  it("picks the children by name only, several at once", async () => {
+  it("picks the children by short name and age, without the group", async () => {
     const user = userEvent.setup();
     stubApi([
       { path: "/auth/me", body: sessionFor(["TEACHER"]) },
@@ -204,7 +204,7 @@ describe("the teacher's surveys", () => {
     await user.click(await screen.findByRole("button", { name: "Шинэ" }));
     const picker = await screen.findByRole("dialog", { name: "Хүүхэд сонгох" });
     expect(await within(picker).findByText("Д.Намуун")).toBeInTheDocument();
-    expect(within(picker).queryByRole("columnheader", { name: "Нас" })).toBeNull();
+    expect(within(picker).getByRole("columnheader", { name: "Нас" })).toBeInTheDocument();
     expect(within(picker).queryByRole("columnheader", { name: "Бүлэг" })).toBeNull();
     expect(within(picker).getByRole("checkbox", { name: "Бүгдийг сонгох" })).toBeInTheDocument();
   });

@@ -54,7 +54,7 @@ export function ChildPickerDialog({
   onTabChange,
   onSelect,
   onSelectMany,
-  namesOnly = false,
+  ownGroup = false,
   onClose,
 }: {
   /**
@@ -99,11 +99,12 @@ export function ChildPickerDialog({
    */
   onSelectMany?: (childIds: string[]) => void;
   /**
-   * The table as «Д.Намуун» and nothing else — no Нас, no Бүлэг — so it fits a
-   * phone without scrolling sideways. ★ The teacher survey, 2026-10-21, the
-   * user: a teacher surveys their own group, the age and group say nothing.
+   * The table for a teacher's own group: «Д.Намуун» and the age, no Бүлэг, so
+   * it fits a phone without scrolling sideways. ★ The teacher survey,
+   * 2026-10-21, the user: a teacher surveys their own group, so the group says
+   * nothing — the age stays ("нас хэрэгтэй").
    */
-  namesOnly?: boolean;
+  ownGroup?: boolean;
   onClose: () => void;
 }) {
   const multiple = Boolean(onSelectMany);
@@ -296,7 +297,7 @@ export function ChildPickerDialog({
             <table
               className={cn(
                 "w-full border-collapse text-body",
-                namesOnly ? "min-w-0" : "min-w-[640px]",
+                ownGroup ? "min-w-0" : "min-w-[640px]",
               )}
             >
               <caption className="sr-only">{title}</caption>
@@ -325,8 +326,8 @@ export function ChildPickerDialog({
                     №
                   </Th>
                   <Th>Овог, нэр</Th>
-                  {namesOnly ? null : <Th>Нас</Th>}
-                  {groupId || namesOnly ? null : <Th>Бүлэг</Th>}
+                  <Th>Нас</Th>
+                  {groupId || ownGroup ? null : <Th>Бүлэг</Th>}
                   {coverage ? <Th numeric>{coverage.columnLabel ?? "Ажиглалт"}</Th> : null}
                 </tr>
               </thead>
@@ -372,14 +373,12 @@ export function ChildPickerDialog({
                         {index + 1}
                       </Td>
                       <Td className="font-medium text-ink">
-                        {namesOnly ? shortName(child) : fullName(child)}
+                        {ownGroup ? shortName(child) : fullName(child)}
                       </Td>
-                      {namesOnly ? null : (
-                        <Td className="whitespace-nowrap text-muted">
-                          {formatAge(child.dateOfBirth)}
-                        </Td>
-                      )}
-                      {groupId || namesOnly ? null : <Td className="text-muted">{group ?? "—"}</Td>}
+                      <Td className="whitespace-nowrap text-muted">
+                        {formatAge(child.dateOfBirth)}
+                      </Td>
+                      {groupId || ownGroup ? null : <Td className="text-muted">{group ?? "—"}</Td>}
                       {coverage ? (
                         <Td
                           numeric
