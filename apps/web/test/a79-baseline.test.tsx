@@ -43,6 +43,25 @@ describe("baselineSummary", () => {
     expect(baselineSummary(reworded, [])!.unmatched).toBe(1);
   });
 
+  it("still counts a criterion whose spelling was corrected after the survey was made", () => {
+    // #211 changed «Үндсэний» to «Үндэсний»; older surveys keep the old text.
+    const old = questions.map((q) =>
+      q.prompt.includes("Үндэсний хувцас")
+        ? { ...q, prompt: q.prompt.replace("Үндэсний", "Үндсэний") }
+        : q,
+    );
+    expect(old.some((q) => q.prompt.includes("Үндсэний"))).toBe(true);
+    const summary = baselineSummary(old, [])!;
+    expect(summary.unmatched).toBe(0);
+  });
+
+  it("does not take a reworded question for a criterion", () => {
+    const changed = questions.map((q, i) =>
+      i === 0 ? { ...q, prompt: `${q.prompt.split(":")[0]}: Огт өөр асуулт бичсэн байна.` } : q,
+    );
+    expect(baselineSummary(changed, [])!.unmatched).toBe(1);
+  });
+
   it("is nothing for a survey that is not А/79", () => {
     expect(baselineSummary([{ id: "x", prompt: "Хоол таалагдсан уу?" }], [])).toBeNull();
   });

@@ -80,6 +80,71 @@ export function baselineLevel(questions: BaselineQuestion[]): A79Level | null {
   return best?.level ?? null;
 }
 
+/**
+ * Each question's criterion — once each, exact text first.
+ *
+ * ★ Then a near match (2026-10-22): #211 corrected «Үндсэний» to «Үндэсний»
+ * in one level-I criterion, and every baseline made before it kept the old
+ * spelling — a criterion silently missing from those children's totals. A
+ * prompt a few letters off one criterion of the same domain, and clearly
+ * closer to it than to any other, is that criterion; a reworded one is not.
+ */
+function matchCriteria(
+  level: A79Level,
+  questions: BaselineQuestion[],
+): { id: string; domain: A79Domain }[] {
+  const criteria = level.criteria.map((c) => ({
+    domain: c.domain,
+    prompt: normalise(promptOf(c.domain, c.text)),
+  }));
+  const claimed = new Set<number>();
+  const found = new Map<string, A79Domain>();
+
+  for (const q of questions) {
+    const index = criteria.findIndex((c, i) => !claimed.has(i) && c.prompt === normalise(q.prompt));
+    if (index >= 0) {
+      claimed.add(index);
+      found.set(q.id, criteria[index]!.domain);
+    }
+  }
+  for (const q of questions) {
+    if (found.has(q.id)) continue;
+    const prompt = normalise(q.prompt);
+    const near = criteria
+      .map((c, i) => ({ i, c, d: claimed.has(i) ? Infinity : editDistance(prompt, c.prompt) }))
+      .filter(({ c }) => prompt.startsWith(`${c.domain}:`))
+      .sort((x, y) => x.d - y.d);
+    const [best, next] = near;
+    const limit = Math.max(2, Math.floor((best?.c.prompt.length ?? 0) * 0.05));
+    if (best && best.d <= limit && (!next || next.d > best.d * 2)) {
+      claimed.add(best.i);
+      found.set(q.id, best.c.domain);
+    }
+  }
+  return questions.flatMap((q) => {
+    const domain = found.get(q.id);
+    return domain ? [{ id: q.id, domain }] : [];
+  });
+}
+
+/** Letters to change, add or remove to turn one text into the other. */
+function editDistance(a: string, b: string): number {
+  if (Math.abs(a.length - b.length) > 8) return Infinity;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) {
+      row[j] = Math.min(
+        prev[j]! + 1,
+        row[j - 1]! + 1,
+        prev[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    prev = row;
+  }
+  return prev[b.length]!;
+}
+
 /** A «1» — the template's options are "0" and "1"; a number is accepted too. */
 function met(value: unknown): boolean {
   return value === "1" || value === 1 || value === true;
@@ -92,12 +157,7 @@ export function baselineSummary(
   const level = baselineLevel(questions);
   if (!level) return null;
 
-  const byPrompt = new Map(
-    level.criteria.map((c) => [normalise(promptOf(c.domain, c.text)), c.domain] as const),
-  );
-  const counted = questions
-    .map((q) => ({ id: q.id, domain: byPrompt.get(normalise(q.prompt)) }))
-    .filter((q): q is { id: string; domain: A79Domain } => Boolean(q.domain));
+  const counted = matchCriteria(level, questions);
   const unmatched = questions.length - counted.length;
 
   let lastSubmittedAt: string | null = null;
