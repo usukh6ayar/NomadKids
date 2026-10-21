@@ -884,6 +884,13 @@ fieldset {
  */
 @utility table-scroll {
   overflow-x: auto;
+  /*
+   * ★ The containing block for what is absolutely placed inside — 2026-10-21.
+   * A header's `sr-only` «Үйлдэл» is `position: absolute`; with no positioned
+   * ancestor here it escaped the scroll, widened a phone's page to 601px and
+   * dragged the fixed bottom bar and every dialog off the screen with it.
+   */
+  position: relative;
 
   /*
    * ★ No `scrollbar-width` / `scrollbar-color`: Chrome 121+ ignores the

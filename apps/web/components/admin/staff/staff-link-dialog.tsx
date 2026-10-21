@@ -87,7 +87,7 @@ export function StaffLinkDialog({
       aria-modal="true"
       aria-label="Бүртгэлтэй холбох"
       {...backdrop}
-      className="fixed inset-0 z-[60] grid place-items-center overflow-y-auto bg-ink/50 p-4"
+      className="fixed inset-0 z-[60] grid grid-cols-[minmax(0,1fr)] place-items-center overflow-y-auto bg-ink/50 p-4"
     >
       <div className="w-full max-w-[440px] rounded-card border border-border bg-surface p-5">
         <form

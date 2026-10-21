@@ -192,7 +192,7 @@ export function ManageTeachersDialog({
       aria-modal="true"
       aria-label={`${groupName} — багш хуваарилалт`}
       {...backdrop}
-      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
+      className="fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] place-items-center overflow-y-auto bg-ink/50 p-4"
     >
       <div className="w-full max-w-[460px] rounded-card border border-border bg-surface p-5">
         <div className="flex flex-col gap-4">
