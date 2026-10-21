@@ -626,7 +626,7 @@ function ManageTeachersDialog({
       role="dialog"
       aria-modal="true"
       aria-label={`${groupName} — багш`}
-      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
+      className="fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] place-items-center overflow-y-auto bg-ink/50 p-4"
     >
       <div className="relative flex w-full max-w-[480px] flex-col gap-3 rounded-card border border-border bg-surface p-5">
         <button
@@ -861,7 +861,7 @@ function GroupFormDialog({
       role="dialog"
       aria-modal="true"
       aria-label={editing ? "Мэдээлэл засах" : "Бүлэг нэмэх"}
-      className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4"
+      className="fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] place-items-center bg-ink/50 p-4"
     >
       <div className="w-full max-w-[560px] rounded-card border border-border bg-surface p-5">
         <form

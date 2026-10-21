@@ -162,11 +162,17 @@ export function ChildPickerDialog({
         on a phone, and since 2026-10-12 it opens in the middle rather than
         from the bottom, like every other window.
       */
-      className="fixed inset-0 z-50 grid place-items-center bg-ink/50 p-4"
+      /*
+        ★ `minmax(0,1fr)` and `min-w-0` — 2026-10-21, the user: on a phone the
+        table's width stretched the window past the screen and took Сонгох
+        with it. A grid track sizes to its content's min-content unless told
+        otherwise.
+      */
+      className="fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] place-items-center bg-ink/50 p-4"
     >
       <div
         className={cn(
-          "flex max-h-[calc(100dvh-2rem)] w-full flex-col gap-3 rounded-card border border-border bg-surface p-4 shadow-lg sm:p-5",
+          "flex max-h-[calc(100dvh-2rem)] w-full min-w-0 flex-col gap-3 rounded-card border border-border bg-surface p-4 shadow-lg sm:p-5",
           layout === "table" ? "max-w-[640px]" : "max-w-[480px]",
         )}
       >
@@ -294,16 +300,20 @@ export function ChildPickerDialog({
             aria-label={title}
             className="min-h-0 flex-1 overflow-auto rounded-card border border-border"
           >
+            {/*
+              ★ A phone gets the checkbox and the name, with age and group
+              under it — № and the separate columns return from `sm`. The
+              table never needs a sideways scroll to be chosen from. A
+              teacher's own group (`ownGroup`) keeps «Д.Намуун» and Нас as
+              columns at every width: they fit.
+            */}
             <table
-              className={cn(
-                "w-full border-collapse text-body",
-                ownGroup ? "min-w-0" : "min-w-[640px]",
-              )}
+              className={cn("w-full border-collapse text-body", !ownGroup && "sm:min-w-[560px]")}
             >
               <caption className="sr-only">{title}</caption>
               <thead className="sticky top-0 z-10">
                 <tr>
-                  <Th className="w-10">
+                  <Th className="w-10 pr-1 sm:pr-3">
                     {multiple ? (
                       <input
                         type="checkbox"
@@ -316,18 +326,18 @@ export function ChildPickerDialog({
                               : current.filter((id) => !items.some((child) => child.id === id)),
                           )
                         }
-                        className="size-4 accent-primary"
+                        className="size-5 accent-primary"
                       />
                     ) : (
                       <span className="sr-only">Сонгох</span>
                     )}
                   </Th>
-                  <Th numeric className="w-10">
+                  <Th numeric className="hidden w-10 sm:table-cell">
                     №
                   </Th>
                   <Th>Овог, нэр</Th>
-                  <Th>Нас</Th>
-                  {groupId || ownGroup ? null : <Th>Бүлэг</Th>}
+                  <Th className={ownGroup ? undefined : "hidden sm:table-cell"}>Нас</Th>
+                  {groupId || ownGroup ? null : <Th className="hidden sm:table-cell">Бүлэг</Th>}
                   {coverage ? <Th numeric>{coverage.columnLabel ?? "Ажиглалт"}</Th> : null}
                 </tr>
               </thead>
@@ -350,7 +360,7 @@ export function ChildPickerDialog({
                         chosen ? "bg-primary-soft" : "bg-surface hover:bg-canvas",
                       )}
                     >
-                      <Td>
+                      <Td className="pr-1 sm:pr-3">
                         <input
                           type={multiple ? "checkbox" : "radio"}
                           name="child-picker"
@@ -366,19 +376,33 @@ export function ChildPickerDialog({
                                 }`
                               : fullName(child)
                           }
-                          className="size-4 accent-primary"
+                          className="size-5 accent-primary"
                         />
                       </Td>
-                      <Td numeric className="text-muted">
+                      <Td numeric className="hidden text-muted sm:table-cell">
                         {index + 1}
                       </Td>
                       <Td className="font-medium text-ink">
                         {ownGroup ? shortName(child) : fullName(child)}
+                        {ownGroup ? null : (
+                          <span className="block text-caption font-normal text-muted sm:hidden">
+                            {[formatAge(child.dateOfBirth), groupId ? null : group]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </span>
+                        )}
                       </Td>
-                      <Td className="whitespace-nowrap text-muted">
+                      <Td
+                        className={cn(
+                          "whitespace-nowrap text-muted",
+                          !ownGroup && "hidden sm:table-cell",
+                        )}
+                      >
                         {formatAge(child.dateOfBirth)}
                       </Td>
-                      {groupId || ownGroup ? null : <Td className="text-muted">{group ?? "—"}</Td>}
+                      {groupId || ownGroup ? null : (
+                        <Td className="hidden text-muted sm:table-cell">{group ?? "—"}</Td>
+                      )}
                       {coverage ? (
                         <Td
                           numeric
@@ -498,7 +522,11 @@ export function ChildPickerDialog({
 
         <Button
           size={layout === "table" ? "sm" : "lg"}
-          className={layout === "table" ? "self-end rounded-pill px-6" : "w-full"}
+          className={
+            layout === "table"
+              ? "w-full shrink-0 rounded-pill sm:w-auto sm:self-end sm:px-6"
+              : "w-full"
+          }
           disabled={multiple ? picked.length === 0 : !pending}
           onClick={() => {
             if (multiple) onSelectMany?.(picked);

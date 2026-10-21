@@ -68,7 +68,7 @@ function PaymentCheck() {
 
       <SearchField
         label="Төлбөрийн дугаар эсвэл утас"
-        placeholder="Баримтын дугаар (3F2A9C1B) эсвэл утас"
+        placeholder="Дугаар (3F2A9C1B) эсвэл утас"
         value={query}
         onChange={setQuery}
       />

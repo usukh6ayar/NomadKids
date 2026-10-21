@@ -1050,7 +1050,7 @@ function EditUserDialog({
       role="dialog"
       aria-modal="true"
       aria-label="Мэдээлэл засах"
-      className="fixed inset-0 z-[60] grid place-items-center bg-ink/50 p-4"
+      className="fixed inset-0 z-[60] grid grid-cols-[minmax(0,1fr)] place-items-center bg-ink/50 p-4"
     >
       <form
         onSubmit={(e) => {
@@ -1191,7 +1191,7 @@ function RoleDialog({
       role="dialog"
       aria-modal="true"
       aria-label="Системийн эрх тохируулах"
-      className="fixed inset-0 z-[60] grid place-items-center bg-ink/50 p-4"
+      className="fixed inset-0 z-[60] grid grid-cols-[minmax(0,1fr)] place-items-center bg-ink/50 p-4"
     >
       <form
         onSubmit={(e) => {

@@ -102,8 +102,14 @@ export function ModalOverlay({
       aria-modal="true"
       aria-label={label}
       {...backdrop}
+      /*
+        ★ `minmax(0,1fr)` — 2026-10-21. An auto grid track grows to its
+        content's min-content, so a wide table or an unbroken word inside a
+        window made it wider than a phone and pushed its buttons off screen
+        (the child picker's Сонгох). Every centred window carries it.
+      */
       className={cn(
-        "fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4",
+        "fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] place-items-center overflow-y-auto bg-ink/50 p-4",
         className,
       )}
     >
