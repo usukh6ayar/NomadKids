@@ -1,6 +1,8 @@
 /**
  * The platform's price sheet — one copy for the price page, the contract and
- * the API (2026-10-18, the client's «I-р улирал 2026» brief). Whole tugrik.
+ * the API (2026-10-18, the client's «I-р улирал 2026» brief; revised by the
+ * user 2026-10-21: a child's «I-р улирал» free and the year 18,000₮, a
+ * group's «I-р улирал» 4,000₮ and the year 28,000₮). Whole tugrik.
  *
  * ★ What a family is actually charged for portal access is still the
  * deployment's `ACCESS_FEE_AMOUNT` / `ACCESS_FEE_TERM_AMOUNT` (CLAUDE.md §7:
@@ -18,18 +20,22 @@ export const MONTHS_IN_TERM = 3;
 export const CHILD_PRICES = {
   monthly: 3_000,
   termStandard: 3_000 * MONTHS_IN_TERM, // 9,000₮
-  termPromo: 5_000,
+  /**
+   * ★ Free (the user, 2026-10-21). Never sold: QPay draws no 0₮ QR, and the
+   * portal is open to 2026-11-30 anyway (`ACCESS_FEE_FREE_UNTIL`).
+   */
+  termPromo: 0,
   yearStandard: 3_000 * MONTHS_IN_SCHOOL_YEAR, // 27,000₮
-  year: 22_000,
+  year: 18_000,
 } as const;
 
 /** Цэцэрлэг / Бүлэг — a kindergarten's contract, per group. */
 export const GROUP_PRICES = {
   monthly: 4_000,
   termStandard: 4_000 * MONTHS_IN_TERM, // 12,000₮
-  termPromo: 6_000,
+  termPromo: 4_000,
   yearStandard: 4_000 * MONTHS_IN_SCHOOL_YEAR, // 36,000₮
-  year: 30_000,
+  year: 28_000,
 } as const;
 
 /** Багш — a solo teacher never pays (#195). */
@@ -95,14 +101,14 @@ export function schoolTermOn(day: string): SchoolTerm | null {
   return terms.find((term) => term.startsOn <= day && day <= term.endsOn) ?? null;
 }
 
-/** A child's price for a term: «I-р улирал» 5,000₮ through 2026-11-30, then 9,000₮. */
+/** A child's price for a term: «I-р улирал» free through 2026-11-30, then 9,000₮. */
 export function childTermPrice(term: SchoolTerm): number {
   return term.endsOn <= FIRST_TERM_PROMO.endsOn
     ? CHILD_PRICES.termPromo
     : CHILD_PRICES.termStandard;
 }
 
-/** A group's price for a term: «I-р улирал» 6,000₮ through 2026-11-30, then 12,000₮. */
+/** A group's price for a term: «I-р улирал» 4,000₮ through 2026-11-30, then 12,000₮. */
 export function groupTermPrice(term: SchoolTerm): number {
   return term.endsOn <= FIRST_TERM_PROMO.endsOn
     ? GROUP_PRICES.termPromo

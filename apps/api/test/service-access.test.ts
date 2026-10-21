@@ -122,10 +122,10 @@ describe("GET /service-access", () => {
       daysLeft: 10,
       remind: true,
       perGroupMonthlyFee: "4000",
-      // The price sheet's (2026-10-18): «I-р улирал» 6,000₮ through
-      // 2026-11-30, then 12,000₮; the year 30,000₮ — never 4,000 × 9.
+      // The price sheet's (2026-10-18, -21): «I-р улирал» 4,000₮ through
+      // 2026-11-30, then 12,000₮; the year 28,000₮ — never 4,000 × 9.
       termAmount: next("TERM").amount,
-      yearAmount: "30000.00",
+      yearAmount: "28000.00",
       termCoversTo: next("TERM").coversTo,
     });
     expect(res.body.expiresAt).toBe(
@@ -207,8 +207,8 @@ describe("the renewal invoice", () => {
 
       const queued = await requestInvoice(adminA, "year");
       expect(queued.status, JSON.stringify(queued.body)).toBe(201);
-      // The sheet's 30,000₮ a group, not 4,000 × 9 (2026-10-18).
-      expect(queued.body).toMatchObject({ period: "year", amount: "30000.00" });
+      // The sheet's 28,000₮ a group, not 4,000 × 9 (2026-10-18, -21).
+      expect(queued.body).toMatchObject({ period: "year", amount: "28000.00" });
 
       expect((await generator.run(queued.body.id as string)).status).toBe("DONE");
       const job = await db.reportJob.findUniqueOrThrow({
@@ -221,7 +221,7 @@ describe("the renewal invoice", () => {
 
       expect(text).toContain("Нэхэмжлэх");
       expect(text).toContain(a.kindergarten.name);
-      expect(text).toMatch(/30 000₮/);
+      expect(text).toMatch(/28 000₮/);
       expect(text).toContain("Нэг бүлгийн төлбөр");
       expect(text).not.toMatch(/36 000₮/);
       expect(text).toContain("5000123456");

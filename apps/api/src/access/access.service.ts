@@ -73,8 +73,9 @@ export class AccessService {
     const day = today();
     const covering = await this.repo.findActiveCovering(facts.childId, day);
     const year = await this.currentYear(facts);
-    // The calendar term today falls in — none in summer (2026-10-18).
-    const term = year && this.sellsTerms ? schoolTermOn(localDate()) : null;
+    // The calendar term today falls in — none in summer (2026-10-18), and
+    // none that is free (`sellableTermOn`).
+    const term = year && this.sellsTerms ? sellableTermOn(localDate()) : null;
     const subscription =
       covering ?? (year ? await this.repo.findForChildYear(facts.childId, year.id) : null);
 
@@ -131,7 +132,8 @@ export class AccessService {
     /*
      * ★ A term is the calendar's, priced by the sheet — 2026-10-18, the
      * client's brief and the user: «I-р улирал» ends on 2026-11-30 whenever it
-     * is bought (5,000₮), and II and III follow at the standard 9,000₮ to the
+     * is bought (free since 2026-10-21, so not sold), and II and III follow
+     * at the standard 9,000₮ to the
      * end of February and of May. Never the purchase day plus three months,
      * never the kindergarten's own term (a solo workspace has none), and no
      * past month on top. A term not paid by its last day is not sold after
@@ -145,6 +147,9 @@ export class AccessService {
       const term = schoolTermOn(localDate());
       if (!term) {
         throw new BadRequestException("Одоо хичээлийн улирал биш байна. Жилээр төлнө үү.");
+      }
+      if (childTermPrice(term) === 0) {
+        throw new BadRequestException(`${term.label} үнэгүй тул төлбөр шаардлагагүй.`);
       }
       const existing = await this.repo.findForChildTerm(facts.childId, year.id, term.number);
       if (existing) return existing;
@@ -254,6 +259,15 @@ function view(subscription: Awaited<ReturnType<AccessRepository["findForChildYea
  */
 function today(): Date {
   return new Date(`${localDate()}T00:00:00.000Z`);
+}
+
+/**
+ * The term `day` falls in, if it is for sale. A free term (`childTermPrice`
+ * 0 — «I-р улирал», the user 2026-10-21) is never offered: QPay draws no 0₮ QR.
+ */
+function sellableTermOn(day: string) {
+  const term = schoolTermOn(day);
+  return term && childTermPrice(term) > 0 ? term : null;
 }
 
 /** A term's price as the API's decimal string — the sheet's, never the client's. */

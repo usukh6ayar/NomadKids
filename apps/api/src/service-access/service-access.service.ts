@@ -669,10 +669,10 @@ type ContractForQuote = { perGroupMonthlyFee: { toString(): string } | null; end
  * From inside a school year — a contract running to 2026-11-30 after
  * «I-р улирал» — "the year" is what is left of it, from the term that day
  * falls in to 31 May, priced as those terms: `endsOn` 2026-11-30 bought
- * 2026-09-01..2027-05-31 at the whole year's 30,000₮ a group before.
+ * 2026-09-01..2027-05-31 at the whole year's price a group before.
  *
  * ★★ The price is the sheet's for a contract at the standard 4,000₮ a month
- * — 30,000₮ a group a year, «I-р улирал» 6,000₮ through 2026-11-30, then
+ * — 28,000₮ a group a year, «I-р улирал» 4,000₮ through 2026-11-30, then
  * 12,000₮ a term — and `fee × months` for a negotiated monthly fee, which is
  * the operator's agreement rather than the sheet's.
  */
