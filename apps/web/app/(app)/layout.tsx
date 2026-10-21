@@ -1478,21 +1478,29 @@ function supportSections(isCook: boolean): NavSection[] {
 }
 
 /**
- * Platform-operator navigation.
+ * Platform-operator navigation — the phone's bottom bar, and «Самбар» on top
+ * of the sidebar (which draws the rest from `platformSections`).
  *
- * Two items, because the operator's whole job in this MVP is registering
- * kindergartens — everything else (their teachers, groups, children) belongs
- * to the kindergarten's own admin from that point on. §7 keeps this MVP's
- * platform surface deliberately small.
+ * ★ Four destinations and «Цэс» — 2026-10-21, the user ("утсан дээр ...
+ * responsive"). Every section entry used to be a tab: by nine the last,
+ * «Хувийн тохиргоо», sat past a 390px screen's edge and could not be
+ * reached. «Цэс» is `/settings`, which `AppShell` turns into the drawer that
+ * lists every section — the way the staff and family bars already work.
  */
 function platformNav(): NavItem[] {
   return [
     // What is waiting, first — 2026-10-13. The sidebar draws the first item on
     // its own above the groups, as it does the director's «Самбар».
     { href: "/platform/overview", label: "Самбар", icon: <RailGlyph icon={LayoutGrid} /> },
-    ...platformSections().flatMap((section) =>
-      section.entries.map((entry) => ({ ...entry, href: entry.href! }) as NavItem),
-    ),
+    { href: "/platform", label: "Цэцэрлэгүүд", icon: <RailGlyph icon={Building2} /> },
+    {
+      href: "/platform/applications",
+      label: "Хүсэлт",
+      icon: <RailGlyph icon={Inbox} />,
+      badge: "platformApplications",
+    },
+    { href: "/platform/revenue", label: "Орлого", icon: <RailGlyph icon={Wallet} /> },
+    { href: "/settings", label: "Цэс", icon: <Menu {...iconProps} /> },
   ];
 }
 

@@ -106,7 +106,7 @@ export function GoalDialog({
           aria-modal="true"
           aria-label="Зорилго засах"
           {...backdrop}
-          className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-ink/50 p-4"
+          className="fixed inset-0 z-50 grid grid-cols-[minmax(0,1fr)] place-items-center overflow-y-auto bg-ink/50 p-4"
         >
           <div className="w-full max-w-[420px] rounded-card border border-border bg-surface p-5 shadow-lg">
             <div className="flex items-center gap-2 border-b border-border-soft pb-3">
