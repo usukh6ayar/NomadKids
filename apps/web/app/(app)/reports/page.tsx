@@ -11,7 +11,10 @@ import {
   A79GroupSummaryPanel,
   A79KindergartenSummaryPanel,
 } from "@/components/assessment/a79-group-summary";
-import { A79BaselinePanel } from "@/components/assessment/a79-baseline";
+import {
+  A79BaselineKindergartenPanel,
+  A79BaselinePanel,
+} from "@/components/assessment/a79-baseline";
 import { useSession } from "@/lib/auth/session";
 import { RequireRole } from "@/components/shell/require-role";
 import { useMyGroup } from "@/components/dashboard/use-my-group";
@@ -503,7 +506,14 @@ function ReportBody({
             to={report.range.to}
           />
         ) : null}
-        {tab === "baseline" ? <A79BaselinePanel groupId={report.group.id} /> : null}
+        {tab === "baseline" ? (
+          // A director sees the groups first, as on «Үр дүнгийн үнэлгээ» (2026-10-22).
+          director ? (
+            <A79BaselineKindergartenPanel groups={groups} />
+          ) : (
+            <A79BaselinePanel groupId={report.group.id} />
+          )
+        ) : null}
         {tab === "results" ? (
           director ? (
             <A79KindergartenSummaryPanel

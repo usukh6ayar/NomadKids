@@ -3,12 +3,13 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { z } from "zod";
-import { surveySchema } from "@kinder/contracts";
+import { a79GroupSummarySchema, surveySchema } from "@kinder/contracts";
 import {
   A79ChildrenTable,
   A79SummaryChart,
+  KindergartenSummaryBody,
   a79ChildRows,
-  useA79GroupSummary,
+  type A79ReportGroup,
 } from "@/components/assessment/a79-group-summary";
 import { teacherSheetRowSchema } from "@/components/survey/teacher-sheet";
 import { buttonVariants } from "@/components/ui/button";
@@ -24,16 +25,28 @@ import { staffSurveysSchema, type StaffSurvey } from "@/lib/survey-access";
 
 const sheetSchema = z.object({ survey: surveySchema, rows: z.array(teacherSheetRowSchema) });
 
+const isA79Baseline = (s: StaffSurvey) =>
+  s.respondent === "TEACHER" &&
+  s.period === "BASELINE" &&
+  s.status !== "DRAFT" &&
+  baselineLevel(s.questions) !== null;
+
 /**
- * Every А/79 baseline survey of the group — published or closed teacher
- * surveys of the Гарааны wave whose questions are one level's criteria. A
- * class may have one per level (2026-10-21, the user: five children on IV,
- * seven on III). A Гарааны survey that is not А/79 is not one of them.
+ * The А/79 baselines of some groups, merged per group — one survey list, one
+ * sheet per survey, one fee read per group, however many groups ask.
  *
- * ★ A survey addressed to no one group (a director's «бүх бүлэг») counts too:
- * its sheet names each row's group, and the panel keeps this group's rows.
+ * ★ A group's baselines are its published or closed teacher surveys of the
+ * Гарааны wave whose questions are one level's criteria. A class may have one
+ * per level (2026-10-21, the user: five children on IV, seven on III); a
+ * Гарааны survey that is not А/79 is not one of them. A survey addressed to
+ * no one group (a director's «бүх бүлэг») counts for each group, its rows
+ * narrowed to that group's children.
+ *
+ * ★★ Who the server withholds figures for — a solo workspace's unpaid child
+ * (CLAUDE.md §1.7) — is read from the result summary's flag alone; nothing of
+ * the result itself is shown. Absent (404, not built), nobody is.
  */
-function useBaselineSurveys(groupId: string) {
+function useGroupBaselines(groupIds: string[]) {
   const { primaryKindergartenId } = useSession();
   const surveys = useQuery({
     queryKey: qk.kindergartenSurveys(primaryKindergartenId ?? ""),
@@ -41,14 +54,55 @@ function useBaselineSurveys(groupId: string) {
     enabled: Boolean(primaryKindergartenId),
   });
   const baselines = (surveys.data ?? []).filter(
-    (s: StaffSurvey) =>
-      s.respondent === "TEACHER" &&
-      s.period === "BASELINE" &&
-      (s.groupId === groupId || !s.groupId) &&
-      s.status !== "DRAFT" &&
-      baselineLevel(s.questions) !== null,
+    (s) => isA79Baseline(s) && (!s.groupId || groupIds.includes(s.groupId)),
   );
-  return { baselines, isLoading: surveys.isLoading, error: surveys.error };
+  const sheets = useQueries({
+    queries: baselines.map((survey) => ({
+      queryKey: ["survey", survey.id, "teacher-sheet"],
+      queryFn: () => get(`/surveys/${survey.id}/teacher-sheet`, sheetSchema),
+    })),
+  });
+  const fees = useQueries({
+    queries: groupIds.map((id) => ({
+      // The key `useA79GroupSummary` uses — one read shared with the result screen.
+      queryKey: ["group", id, "a79-summary", null, null],
+      queryFn: () => get(`/groups/${id}/a79-summary`, a79GroupSummarySchema),
+      retry: false,
+      enabled: baselines.length > 0,
+    })),
+  });
+
+  const isLoading =
+    surveys.isLoading ||
+    (baselines.length > 0 && (sheets.some((q) => q.isLoading) || fees.some((q) => q.isLoading)));
+  const error = surveys.error ?? sheets.find((q) => q.isError)?.error ?? null;
+
+  const byGroup = new Map(
+    groupIds.map((groupId, index) => {
+      const feeDue = new Set(
+        (fees[index]?.data?.children ?? []).filter((c) => c.feeDue).map((c) => c.childId),
+      );
+      const own = baselines.flatMap((survey, i) =>
+        (!survey.groupId || survey.groupId === groupId) && sheets[i]?.data
+          ? [
+              {
+                questions: sheets[i]!.data!.survey.questions,
+                rows: sheets[i]!.data!.rows.filter((row) => !row.group || row.group.id === groupId),
+              },
+            ]
+          : [],
+      );
+      const merged = mergeBaselines(own);
+      return [
+        groupId,
+        {
+          hasSurvey: baselines.some((s) => !s.groupId || s.groupId === groupId),
+          merged: merged ? withFeeDue(merged, feeDue) : null,
+        },
+      ] as const;
+    }),
+  );
+  return { isLoading, error, byGroup };
 }
 
 /**
@@ -67,28 +121,13 @@ export function A79BaselinePanel({
   groupId: string;
   heading?: boolean;
 }) {
-  const { baselines, isLoading, error } = useBaselineSurveys(groupId);
-  const sheets = useQueries({
-    queries: baselines.map((survey) => ({
-      queryKey: ["survey", survey.id, "teacher-sheet"],
-      queryFn: () => get(`/surveys/${survey.id}/teacher-sheet`, sheetSchema),
-    })),
-  });
-  const sheetError = sheets.find((sheet) => sheet.isError)?.error;
-  /*
-    ★ Who the server withholds figures for — a solo workspace's unpaid child
-    (CLAUDE.md §1.7). Only the flag is read from the result summary; nothing
-    of the result itself is shown here. Absent (404, not built), nobody is.
-  */
-  const results = useA79GroupSummary(groupId);
-  const feeDue = new Set(
-    (results.data?.children ?? []).filter((c) => c.feeDue).map((c) => c.childId),
-  );
+  const { isLoading, error, byGroup } = useGroupBaselines([groupId]);
+  const group = byGroup.get(groupId);
 
   const body = (() => {
     if (isLoading) return <LoadingState rows={4} />;
     if (error) return <ErrorState description={errorMessage(error)} />;
-    if (baselines.length === 0) {
+    if (!group?.hasSurvey) {
       return (
         <EmptyState
           title="Гарааны үнэлгээ хараахан аваагүй байна"
@@ -101,26 +140,7 @@ export function A79BaselinePanel({
         />
       );
     }
-    // The fee flags are awaited only once there is a baseline to withhold from.
-    if (results.isLoading || sheets.some((sheet) => sheet.isLoading)) {
-      return <LoadingState rows={4} />;
-    }
-    if (sheetError) return <ErrorState description={errorMessage(sheetError)} />;
-
-    const mergedRaw = mergeBaselines(
-      sheets.flatMap((sheet) =>
-        sheet.data
-          ? [
-              {
-                questions: sheet.data.survey.questions,
-                // This group's children only — a «бүх бүлэг» survey holds every group's.
-                rows: sheet.data.rows.filter((row) => !row.group || row.group.id === groupId),
-              },
-            ]
-          : [],
-      ),
-    );
-    const merged = mergedRaw ? withFeeDue(mergedRaw, feeDue) : null;
+    const merged = group.merged;
     if (!merged || merged.children.length === 0) {
       return (
         <EmptyState
@@ -188,6 +208,46 @@ export function A79BaselinePanel({
     <section className="flex flex-col gap-3">
       {heading ? <SectionHeader title="Гарааны үнэлгээ" as="h2" /> : null}
       {body}
+    </section>
+  );
+}
+
+/**
+ * The director's «Гарааны үнэлгээ» — the kindergarten chart and one row per
+ * group, as the result tab draws its own (2026-10-22, the user: a director
+ * sees every group, so the groups first; a group's children one click on).
+ * «6/8» is how many of the group were assessed; a group with no А/79
+ * baseline says so instead of a 0.
+ */
+export function A79BaselineKindergartenPanel({ groups }: { groups: A79ReportGroup[] }) {
+  const { isLoading, error, byGroup } = useGroupBaselines(groups.map((g) => g.id));
+
+  return (
+    <section className="mt-3 flex flex-col gap-3">
+      <SectionHeader title="Гарааны үнэлгээ" as="h2" />
+      {isLoading ? <LoadingState rows={3} /> : null}
+      {error ? <ErrorState description={errorMessage(error)} /> : null}
+      {!isLoading && !error && groups.length === 0 ? (
+        <EmptyState title="Бүлэг бүртгэгдээгүй байна" />
+      ) : null}
+      {!isLoading && !error && groups.length > 0 ? (
+        <KindergartenSummaryBody
+          groups={groups.map((group) => ({
+            group,
+            summary: asGroupSummary(byGroup.get(group.id)?.merged ?? { children: [] }),
+          }))}
+          hrefFor={(groupId) => `/groups/${groupId}/baseline`}
+          countFor={(groupId) => {
+            const merged = byGroup.get(groupId)?.merged;
+            if (!merged) return "—";
+            const assessed = merged.children.filter((c) => !c.notFilled).length;
+            return `${assessed}/${merged.children.length}`;
+          }}
+          noDataLabel="Гарааны үнэлгээ аваагүй"
+          emptyTitle="Гарааны үнэлгээ хараахан аваагүй байна"
+          emptyDescription="Багш нар «А/79 Гарааны үнэлгээ» судалгааг бөглөсний дараа бүлгийн үзүүлэлтүүд энд харагдана."
+        />
+      ) : null}
     </section>
   );
 }

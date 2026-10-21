@@ -2,7 +2,10 @@ import { screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { A79_LEVELS } from "@kinder/contracts";
 import { renderWithProviders, sessionFor, stubApi } from "./support/render";
-import { A79BaselinePanel } from "@/components/assessment/a79-baseline";
+import {
+  A79BaselineKindergartenPanel,
+  A79BaselinePanel,
+} from "@/components/assessment/a79-baseline";
 import { baselineSummary, mergeBaselines } from "@/lib/a79-baseline";
 import { a79Questions } from "@/lib/a79-assessment";
 
@@ -289,5 +292,64 @@ describe("the baseline panel — the two rules a review found (2026-10-21)", () 
     expect(await screen.findByText("Д.Намуун")).toBeInTheDocument();
     expect(screen.queryByText("Г.Сувд")).toBeNull();
     expect(screen.getByText(/1\/1 хүүхэд үнэлэгдсэн/)).toBeInTheDocument();
+  });
+});
+
+describe("the director's baseline — the groups first (2026-10-22)", () => {
+  it("draws one row per group, links it to the group's baseline, and names a group without one", async () => {
+    const EMPTY_GROUP = "14141414-1414-4141-8141-141414141414";
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      { path: `/kindergartens/${KG}/surveys`, body: [SURVEY] },
+      {
+        path: `/surveys/${SURVEY.id}/teacher-sheet`,
+        body: {
+          survey: SURVEY,
+          rows: [
+            {
+              child: {
+                id: "77777777-7777-4777-8777-777777777777",
+                firstName: "Намуун",
+                lastName: "Дорж",
+              },
+              group: { id: GROUP, name: "Дэлбээ" },
+              response: {
+                id: "88888888-8888-4888-8888-888888888888",
+                submittedAt: "2026-09-15T00:00:00Z",
+                respondent: {
+                  id: "99999999-9999-4999-8999-999999999999",
+                  lastName: "Б",
+                  firstName: "Багш",
+                },
+                answers: SURVEY.questions.map((q) => ({ questionId: q.id, value: "1" })),
+              },
+            },
+            {
+              child: {
+                id: "66666666-6666-4666-8666-666666666666",
+                firstName: "Тэмүүлэн",
+                lastName: "Бат",
+              },
+              group: { id: GROUP, name: "Дэлбээ" },
+              response: null,
+            },
+          ],
+        },
+      },
+    ]);
+    renderWithProviders(
+      <A79BaselineKindergartenPanel
+        groups={[
+          { id: GROUP, name: "Дэлбээ" },
+          { id: EMPTY_GROUP, name: "Солонго" },
+        ]}
+      />,
+    );
+    const link = await screen.findByRole("link", { name: "Дэлбээ" });
+    expect(link).toHaveAttribute("href", `/groups/${GROUP}/baseline`);
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+    expect(screen.getByText("Гарааны үнэлгээ аваагүй")).toBeInTheDocument();
+    // No child's name on the director's overview.
+    expect(screen.queryByText("Д.Намуун")).toBeNull();
   });
 });

@@ -297,10 +297,26 @@ export function A79KindergartenSummaryPanel({
   );
 }
 
-function KindergartenSummaryBody({
+/**
+ * The kindergarten chart and one row per group. Exported for «Гарааны
+ * үнэлгээ» (2026-10-21), which draws the same table from the baseline
+ * surveys; every option defaults to the result screen's own wording.
+ */
+export function KindergartenSummaryBody({
   groups,
+  hrefFor = (groupId) => `/groups/${groupId}/results`,
+  countFor,
+  noDataLabel = "Мэдээлэл алга",
+  emptyTitle = "Цэцэрлэгт хүүхдийн үр дүн алга",
+  emptyDescription = "Хүүхдийн үнэлгээ бүртгэгдсэний дараа бүлгийн үзүүлэлтүүд энд харагдана.",
 }: {
   groups: { group: A79ReportGroup; summary: A79GroupSummary }[];
+  hrefFor?: (groupId: string) => string;
+  /** The «Хүүхэд» cell — the scored count unless given. */
+  countFor?: (groupId: string, scored: number) => string;
+  noDataLabel?: string;
+  emptyTitle?: string;
+  emptyDescription?: string;
 }) {
   const groupRows = groups.map(({ group, summary }) => {
     const children = scored(a79ChildRows(summary));
@@ -312,12 +328,7 @@ function KindergartenSummaryBody({
   const children = groupRows.flatMap((row) => row.children);
 
   if (children.length === 0) {
-    return (
-      <EmptyState
-        title="Цэцэрлэгт хүүхдийн үр дүн алга"
-        description="Хүүхдийн үнэлгээ бүртгэгдсэний дараа бүлгийн үзүүлэлтүүд энд харагдана."
-      />
-    );
+    return <EmptyState title={emptyTitle} description={emptyDescription} />;
   }
 
   return (
@@ -352,13 +363,15 @@ function KindergartenSummaryBody({
                 <Td className="tabular-nums text-muted">{index + 1}</Td>
                 <Td>
                   <Link
-                    href={`/groups/${row.group.id}/results`}
+                    href={hrefFor(row.group.id)}
                     className="font-medium text-primary hover:underline"
                   >
                     {row.group.name}
                   </Link>
                 </Td>
-                <Td numeric>{row.children.length}</Td>
+                <Td numeric>
+                  {countFor ? countFor(row.group.id, row.children.length) : row.children.length}
+                </Td>
                 {DOMAINS.map((domain) => (
                   <Td key={domain} numeric>
                     {row.children.length ? `${domainAverage(row.children, domain)}%` : "—"}
@@ -371,7 +384,7 @@ function KindergartenSummaryBody({
                   {band ? (
                     <Badge tone={BAND_TONE[band]}>{A79_BAND_LABEL[band]}</Badge>
                   ) : (
-                    <Badge tone="neutral">Мэдээлэл алга</Badge>
+                    <Badge tone="neutral">{noDataLabel}</Badge>
                   )}
                 </Td>
               </tr>
