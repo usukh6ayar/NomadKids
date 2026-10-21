@@ -1,10 +1,47 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
-import type { Prisma } from "../../generated/prisma/client";
+import type { Prisma, QpayReviewReason } from "../../generated/prisma/client";
 import {
   settleContractPayment,
   type SettleResult,
 } from "../../service-access/contract-payments.repository";
+
+/** What the operator's «Төлбөр шалгах» reads of one attempt — no child, no QR. */
+const OPERATOR_SELECT = {
+  id: true,
+  status: true,
+  reviewReason: true,
+  amount: true,
+  createdAt: true,
+  paidAt: true,
+  subscriptionId: true,
+  materialPurchaseId: true,
+  contractPaymentId: true,
+  kindergarten: { select: { id: true, name: true } },
+  // The payer's phone, masked by the service before it leaves the API.
+  createdBy: { select: { phone: true } },
+  subscription: {
+    select: {
+      period: true,
+      termNumber: true,
+      expiresAt: true,
+      schoolYear: { select: { name: true } },
+    },
+  },
+  materialPurchase: { select: { material: { select: { title: true } } } },
+  contractPayment: { select: { coversFrom: true, coversTo: true } },
+} satisfies Prisma.QpayInvoiceSelect;
+
+export type OperatorQpayRow = Prisma.QpayInvoiceGetPayload<{ select: typeof OPERATOR_SELECT }>;
+
+/** The lowest and highest uuid sharing a hex prefix — Postgres orders uuids byte-wise. */
+function uuidPrefixRange(prefix: string): { gte: string; lte: string } {
+  const pad = (fill: string) => {
+    const hex = prefix.padEnd(32, fill);
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  };
+  return { gte: pad("0"), lte: pad("f") };
+}
 
 /**
  * Persistence for `QpayInvoice` — one payment attempt against one
@@ -92,6 +129,63 @@ export class QpayRepository {
     return this.prisma.$transaction((tx) =>
       settleContractPayment(tx, contractPaymentId, { paidAt, amount, method: "QPAY" }),
     );
+  }
+
+  /**
+   * Every QPay attempt, for the platform operator's «Төлбөр шалгах» — newest
+   * first, one page (§3.4).
+   *
+   * `numberPrefix` is the receipt's «Дугаар»: the first hex characters of the
+   * target's id — the subscription's on a family's receipt
+   * (`access-invoice.tsx`), the purchase's or contract period's otherwise.
+   * `phoneDigits` matches the payer's phone. Both given, either matches.
+   */
+  async listForOperator(query: {
+    numberPrefix: string | null;
+    phoneDigits: string | null;
+    status: "PENDING" | "PAID" | "EXPIRED" | "CANCELLED" | "NEEDS_REVIEW" | null;
+    page: number;
+    pageSize: number;
+  }) {
+    const search: Prisma.QpayInvoiceWhereInput[] = [];
+    if (query.numberPrefix) {
+      const range = uuidPrefixRange(query.numberPrefix);
+      search.push(
+        { subscriptionId: range },
+        { materialPurchaseId: range },
+        { contractPaymentId: range },
+      );
+    }
+    if (query.phoneDigits) search.push({ createdBy: { phone: { contains: query.phoneDigits } } });
+
+    const where: Prisma.QpayInvoiceWhereInput = {
+      ...(search.length > 0 ? { OR: search } : {}),
+      ...(query.status === "NEEDS_REVIEW"
+        ? { reviewReason: { not: null } }
+        : query.status
+          ? { status: query.status }
+          : {}),
+    };
+    const [rows, total] = await Promise.all([
+      this.prisma.qpayInvoice.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+        select: OPERATOR_SELECT,
+      }),
+      this.prisma.qpayInvoice.count({ where }),
+    ]);
+    return { rows, total };
+  }
+
+  findForOperator(id: string) {
+    return this.prisma.qpayInvoice.findUnique({ where: { id }, select: OPERATOR_SELECT });
+  }
+
+  /** Money QPay reported that nothing was opened for — `reviewReason`'s comment. */
+  async markForReview(id: string, reason: QpayReviewReason): Promise<void> {
+    await this.prisma.qpayInvoice.update({ where: { id }, data: { reviewReason: reason } });
   }
 
   /** `where: status: "PENDING"` guards this the same way `claimForPayment` guards itself. */

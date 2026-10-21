@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { QpayService } from "./qpay.service";
+import { PlatformAccessService } from "../../authz/platform-access.service";
 import type { QpayRepository } from "./qpay.repository";
 import type { QpayClient } from "./qpay.client";
 import type { QpayConfig } from "./qpay.config";
@@ -52,6 +53,7 @@ function harness(rowOverrides: Partial<Record<string, unknown>> = {}) {
   const repo = {
     findLatestForSubscription: vi.fn(async () => row),
     findById: vi.fn(async () => row),
+    markForReview: vi.fn(async () => {}),
     findByQpayInvoiceId: vi.fn(async () => row),
     create: vi.fn(async () => row),
     markExpired: vi.fn(async () => {
@@ -111,7 +113,15 @@ function harness(rowOverrides: Partial<Record<string, unknown>> = {}) {
 
   const audit = { append: vi.fn(async () => {}) } as unknown as AuditRepository;
 
-  const service = new QpayService(repo, client, config, access, childAccess, audit);
+  const service = new QpayService(
+    repo,
+    client,
+    config,
+    access,
+    childAccess,
+    audit,
+    new PlatformAccessService(),
+  );
 
   return {
     service,
@@ -239,6 +249,8 @@ describe("reconciling a payment", () => {
     expect(h.markPaid).not.toHaveBeenCalled();
     expect(h.repo.claimForPayment).not.toHaveBeenCalled();
     expect(result.status).toBe("PENDING");
+    // ★ 2026-10-21: and the row waits for a person on «Төлбөр шалгах».
+    expect(h.repo.markForReview).toHaveBeenCalledWith("qpay-row-1", "AMOUNT_SHORT");
   });
 
   it("changes nothing while QPay has not confirmed payment yet", async () => {

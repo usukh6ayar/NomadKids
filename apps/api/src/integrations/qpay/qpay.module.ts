@@ -1,7 +1,11 @@
 import { Module } from "@nestjs/common";
 import { loadEnv } from "../../config/env";
 import { AccessModule } from "../../access/access.module";
-import { ChildAccessQpayController, QpayCallbackController } from "./qpay.controller";
+import {
+  ChildAccessQpayController,
+  PlatformQpayController,
+  QpayCallbackController,
+} from "./qpay.controller";
 import { QpayClient } from "./qpay.client";
 import { QpayConfig } from "./qpay.config";
 import { QpayRepository } from "./qpay.repository";
@@ -17,7 +21,7 @@ import { QpayService } from "./qpay.service";
  */
 @Module({
   imports: [AccessModule],
-  controllers: [ChildAccessQpayController, QpayCallbackController],
+  controllers: [ChildAccessQpayController, QpayCallbackController, PlatformQpayController],
   providers: [
     // A factory, same reason as `EsisModule`: `QpayConfig` takes the parsed
     // `Env`, which is a type rather than a provider, and reading it here means
