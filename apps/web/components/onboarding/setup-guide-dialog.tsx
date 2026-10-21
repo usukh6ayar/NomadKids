@@ -85,19 +85,22 @@ export function SetupGuideDialog({
 
   if (!ready) return null;
 
+  /*
+    ★ A small grey link, not a button on its own row — 2026-10-20, the client:
+    "маш минимал болгоод анзаарагдахааргүй зай бага эзлэх". It sits in the
+    page header beside what is already there.
+  */
   if (!open) {
     return (
-      <div className="flex justify-end">
-        <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
-          <ListChecks size={16} aria-hidden />
-          {buttonLabel}
-          {remaining > 0 ? (
-            <span className="ml-1 rounded-pill bg-primary-soft px-2 py-0.5 text-caption font-semibold text-primary">
-              {remaining}
-            </span>
-          ) : null}
-        </Button>
-      </div>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex min-h-6 items-center gap-1 rounded-control text-caption text-faint transition-colors hover:text-primary"
+      >
+        <ListChecks size={13} aria-hidden />
+        {buttonLabel}
+        {remaining > 0 ? <span className="tabular-nums">· {remaining}</span> : null}
+      </button>
     );
   }
 

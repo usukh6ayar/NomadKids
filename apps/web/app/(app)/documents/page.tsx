@@ -4,14 +4,28 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState, type ReactNode } from "react";
 import { TeachingMaterials } from "@/components/materials/teaching-materials";
+import { OfficialDocuments } from "@/components/documents/official-documents";
+import { ViewToggle, useLibraryView, type LibraryView } from "@/components/documents/view-toggle";
+import { FilterButton } from "@/components/ui/filter-chip";
+import { SearchField } from "@/components/ui/search-field";
 import { cn } from "@/lib/utils";
-import { Bookmark, BookmarkCheck, FileText, Pencil, Search, Trash2, Upload } from "lucide-react";
+import {
+  ArrowLeft,
+  Bookmark,
+  BookmarkCheck,
+  ChevronRight,
+  FileText,
+  Pencil,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { z } from "zod";
 import {
   documentSchema,
   groupListItemSchema,
   paginated,
   DOCUMENT_CATEGORIES,
+  MAX_PAGE_SIZE,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
 import { mediaUrl } from "@/lib/api/client";
@@ -35,6 +49,21 @@ import { RequireRole } from "@/components/shell/require-role";
 const listSchema = paginated(documentSchema);
 const groupsSchema = paginated(groupListItemSchema);
 const categoriesSchema = z.array(z.string());
+
+type LibraryDoc = z.infer<typeof documentSchema>;
+type LibraryGroup = z.infer<typeof groupListItemSchema>;
+type LibrarySort = "new" | "az";
+
+/** How many covers a shelf shows before «Бүгдийг харах» — one row on a wide screen. */
+const SHELF_SIZE = 6;
+
+/** The shelf a document without a category sits on — not a filter the API knows. */
+const UNFILED = "Ангилалгүй";
+
+function sortDocuments(docs: LibraryDoc[], sort: LibrarySort) {
+  if (sort === "new") return docs; // The API's own order: newest published first.
+  return [...docs].sort((a, b) => a.title.localeCompare(b.title, "mn"));
+}
 
 /**
  * The document library — RFP §9.
@@ -68,20 +97,32 @@ function DocumentsHome() {
   const teacher = hasRole("TEACHER");
   // A shared material's link opens on the materials (2026-10-14, the user).
   const fromLink = Boolean(useSearchParams().get("material"));
-  const [tab, setTab] = useState<"docs" | "materials">(fromLink ? "materials" : "docs");
+  const [tab, setTab] = useState<"docs" | "official" | "materials">(
+    fromLink ? "materials" : "docs",
+  );
 
-  const switcher = teacher ? (
+  /*
+    ★ Two libraries, two tabs — 2026-10-20, the user: «Цэцэрлэгийн баримт
+    бичиг» (what this kindergarten published) and «Үндсэн баримт бичиг» (the
+    ministry's curricula and regulations, linked out). A teacher also keeps
+    «Сургалтын хэрэглэгдэхүүн».
+  */
+  const tabs = [
+    ["docs", "Цэцэрлэгийн баримт бичиг"],
+    ["official", "Үндсэн баримт бичиг"],
+    ...(teacher ? ([["materials", "Сургалтын хэрэглэгдэхүүн"]] as const) : []),
+  ] as const;
+
+  const switcher = (
     <div
       role="tablist"
       aria-label="Баримт бичгийн сангийн хэсэг"
-      className="grid w-full max-w-md grid-cols-2 gap-1 rounded-control bg-canvas p-1"
+      className={cn(
+        "grid w-full gap-1 rounded-control bg-canvas p-1",
+        tabs.length === 3 ? "max-w-2xl grid-cols-3" : "max-w-md grid-cols-2",
+      )}
     >
-      {(
-        [
-          ["docs", "Баримт бичиг"],
-          ["materials", "Сургалтын хэрэглэгдэхүүн"],
-        ] as const
-      ).map(([key, label]) => (
+      {tabs.map(([key, label]) => (
         <button
           key={key}
           type="button"
@@ -89,7 +130,7 @@ function DocumentsHome() {
           aria-selected={tab === key}
           onClick={() => setTab(key)}
           className={cn(
-            "min-h-[40px] rounded-control px-2 text-caption font-semibold transition-colors sm:text-body",
+            "min-h-[40px] rounded-control px-2 text-caption font-semibold leading-tight transition-colors sm:text-body",
             tab === key ? "bg-surface text-ink shadow-sm" : "text-muted hover:text-ink",
           )}
         >
@@ -97,8 +138,9 @@ function DocumentsHome() {
         </button>
       ))}
     </div>
-  ) : null;
+  );
 
+  if (tab === "official") return <OfficialLibrary switcher={switcher} />;
   if (teacher && tab === "materials") {
     return (
       <div className="flex flex-col gap-4">
@@ -111,6 +153,23 @@ function DocumentsHome() {
   return <DocumentLibrary switcher={switcher} />;
 }
 
+/** «Үндсэн баримт бичиг» — the ministry's register, links out, nothing stored. */
+function OfficialLibrary({ switcher }: { switcher: ReactNode }) {
+  const { hasRole } = useSession();
+  // Who the register is for: a teacher, a director, or both.
+  const audience = [
+    ...(hasRole("TEACHER") ? (["Багш"] as const) : []),
+    ...(hasRole("ADMIN") ? (["Эрхлэгч"] as const) : []),
+  ];
+  return (
+    <div className="flex flex-col gap-4">
+      <PageHeader title="Баримт бичгийн сан" backHref="/dashboard" />
+      {switcher}
+      <OfficialDocuments audience={audience} />
+    </div>
+  );
+}
+
 function DocumentLibrary({ switcher }: { switcher?: ReactNode }) {
   const { primaryKindergartenId } = useSession();
   const kindergartenId = primaryKindergartenId ?? "";
@@ -118,6 +177,9 @@ function DocumentLibrary({ switcher }: { switcher?: ReactNode }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
   const [bookmarkedOnly, setBookmarkedOnly] = useState(false);
+  const [sort, setSort] = useState<LibrarySort>("new");
+  const [view, setView] = useLibraryView();
+  const [filterOpen, setFilterOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const search = useDebounced(query.trim());
 
@@ -126,7 +188,7 @@ function DocumentLibrary({ switcher }: { switcher?: ReactNode }) {
   const documents = useQuery({
     queryKey: qk.documents(kindergartenId, filters),
     queryFn: () => {
-      const params = new URLSearchParams({ page: "1", pageSize: "50" });
+      const params = new URLSearchParams({ page: "1", pageSize: String(MAX_PAGE_SIZE) });
       if (search) params.set("q", search);
       if (category) params.set("category", category);
       if (bookmarkedOnly) params.set("bookmarkedOnly", "true");
@@ -152,6 +214,23 @@ function DocumentLibrary({ switcher }: { switcher?: ReactNode }) {
     staleTime: 60_000,
   });
 
+  const focused = Boolean(search || category || bookmarkedOnly);
+  const showAll = () => {
+    setQuery("");
+    setCategory("");
+    setBookmarkedOnly(false);
+  };
+  const docs = sortDocuments(documents.data?.items ?? [], sort);
+  const collection = (items: LibraryDoc[]) => (
+    <DocumentCollection
+      documents={items}
+      view={view}
+      kindergartenId={kindergartenId}
+      filters={filters}
+      groups={groups.data?.items ?? []}
+    />
+  );
+
   return (
     <div className="flex flex-col gap-6 lg:gap-8">
       <PageHeader
@@ -176,69 +255,95 @@ function DocumentLibrary({ switcher }: { switcher?: ReactNode }) {
         />
       ) : null}
 
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="relative min-w-[200px] flex-1">
-          <Search
-            size={18}
-            aria-hidden="true"
-            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted"
-          />
-          <Input
-            type="search"
-            aria-label="Баримтын нэрээр хайх"
+      {/*
+        ★ One row — 2026-10-20, the user: "цэгцтэй ойлгомжтой зай бага эзлэх".
+        Search, the filter button and Хавтсаар/Жагсаалтаар; Ангилал and Эрэмбэ
+        open under the filter button, as the materials shop's do. The filter's
+        count says when either is set, so nothing narrows the shelf unseen.
+
+        The category list is the four shelves plus whatever older rows carry:
+        the vocabulary unconditionally, so a shelf exists to file into even
+        when empty, unioned with the endpoint's distinct values, so a document
+        filed under an old spelling is still reachable.
+      */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <SearchField
+            label="Баримтын нэрээр хайх"
             placeholder="Нэрээр хайх"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="pl-11"
+            onChange={setQuery}
+            className="min-w-0"
           />
+          <FilterButton
+            expanded={filterOpen}
+            controls="document-filters"
+            count={(category ? 1 : 0) + (sort === "az" ? 1 : 0)}
+            onClick={() => setFilterOpen((open) => !open)}
+          />
+          <ViewToggle value={view} onChange={setView} />
         </div>
-
-        {/*
-          ★ The four shelves, plus whatever older rows actually carry.
-
-          The endpoint returns the distinct categories in use, which before this
-          change was whatever anybody had typed. Listing the vocabulary
-          unconditionally means a shelf exists to file into even when it is
-          empty — a teacher looking for Журам should find the option rather than
-          conclude the library has none — and unioning the two means a document
-          filed under an old spelling is still reachable rather than orphaned by
-          a filter that no longer names it.
-        */}
-        <Field label="Ангилал" className="min-w-[160px]">
-          {({ id }) => (
-            <Select id={id} value={category} onChange={(e) => setCategory(e.target.value)}>
-              <option value="">Бүгд</option>
-              {[
-                ...DOCUMENT_CATEGORIES,
-                ...(categories.data ?? []).filter(
-                  (name) => !DOCUMENT_CATEGORIES.includes(name as never),
-                ),
-              ].map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
-
-        <Button
-          variant={bookmarkedOnly ? "primary" : "secondary"}
-          size="sm"
-          aria-pressed={bookmarkedOnly}
-          onClick={() => setBookmarkedOnly((on) => !on)}
+        <div
+          id="document-filters"
+          hidden={!filterOpen}
+          className={cn("flex-wrap gap-2", filterOpen && "flex")}
         >
-          <Bookmark size={16} aria-hidden="true" />
-          Тэмдэглэсэн
-        </Button>
+          <div className="w-48">
+            <Field label="Ангиллаар шүүх" labelHidden>
+              {({ id }) => (
+                <Select id={id} value={category} onChange={(e) => setCategory(e.target.value)}>
+                  <option value="">Бүх ангилал</option>
+                  {[
+                    ...DOCUMENT_CATEGORIES,
+                    ...(categories.data ?? []).filter(
+                      (name) => !DOCUMENT_CATEGORIES.includes(name as never),
+                    ),
+                  ].map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+          </div>
+          <div className="w-44">
+            <Field label="Эрэмбэлэх" labelHidden>
+              {({ id }) => (
+                <Select
+                  id={id}
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value as LibrarySort)}
+                >
+                  <option value="new">Эрэмбэ: шинэ нь эхэндээ</option>
+                  <option value="az">Эрэмбэ: А–Я</option>
+                </Select>
+              )}
+            </Field>
+          </div>
+        </div>
       </div>
+
+      {focused ? (
+        <div className="-mb-2 flex items-center gap-2 lg:-mb-4">
+          <Button variant="ghost" size="sm" onClick={showAll}>
+            <ArrowLeft size={16} aria-hidden />
+            Бүх тавиур
+          </Button>
+          <span className="min-w-0 truncate text-body font-semibold text-ink">
+            {bookmarkedOnly ? "Таалагдсан" : category || "Хайлтын үр дүн"}
+          </span>
+        </div>
+      ) : null}
 
       {documents.isPending ? <LoadingState rows={4} /> : null}
       {documents.isError ? <ErrorState description={errorMessage(documents.error)} /> : null}
 
       {documents.data && documents.data.items.length === 0 ? (
         <EmptyState
-          title={search || category || bookmarkedOnly ? "Олдсонгүй" : "Баримт нэмээгүй байна"}
+          title={
+            search || category || bookmarkedOnly ? "Олдсонгүй" : "Цэцэрлэгийн баримт нэмээгүй байна"
+          }
           description={
             search || category || bookmarkedOnly
               ? "Өөр шүүлтээр хайж үзнэ үү."
@@ -269,20 +374,127 @@ function DocumentLibrary({ switcher }: { switcher?: ReactNode }) {
         arrive only where there is width to spend: five from `lg`, six from
         `xl`, which lands each cover back around 200px.
       */}
-      {documents.data && documents.data.items.length > 0 ? (
-        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-          {documents.data.items.map((doc) => (
-            <DocumentCard
-              key={doc.id}
-              document={doc}
-              kindergartenId={kindergartenId}
-              filters={filters}
-              groups={groups.data?.items ?? []}
-            />
+      {documents.data && docs.length > 0 && focused ? collection(docs) : null}
+
+      {/*
+        ★ Shelves, the way a shop is laid out — 2026-10-20, the user: "дэлгүүр
+        шиг ... таалагдсан эсвэл төрөлжүүл". «Таалагдсан» first and always
+        there, so a reader sees where a liked document goes; then one shelf per
+        category. «Бүгдийг харах» narrows to that shelf on the server, so it
+        shows every document rather than the first page's share.
+      */}
+      {documents.data && docs.length > 0 && !focused ? (
+        <>
+          {/* Only once something is liked — an empty shelf was a line of noise. */}
+          {docs.some((doc) => doc.isBookmarked) ? (
+            <Shelf
+              title="Таалагдсан"
+              count={docs.filter((doc) => doc.isBookmarked).length}
+              onSeeAll={() => setBookmarkedOnly(true)}
+            >
+              {collection(docs.filter((doc) => doc.isBookmarked).slice(0, SHELF_SIZE))}
+            </Shelf>
+          ) : null}
+          {shelvesOf(docs).map(([name, items]) => (
+            <Shelf
+              key={name}
+              title={name}
+              count={items.length}
+              onSeeAll={name === UNFILED ? undefined : () => setCategory(name)}
+            >
+              {collection(name === UNFILED ? items : items.slice(0, SHELF_SIZE))}
+            </Shelf>
           ))}
-        </ul>
+        </>
       ) : null}
     </div>
+  );
+}
+
+/** The documents by category, in the vocabulary's order, then any older spelling. */
+function shelvesOf(docs: LibraryDoc[]): [string, LibraryDoc[]][] {
+  const byName = new Map<string, LibraryDoc[]>();
+  for (const doc of docs) {
+    const name = doc.category || UNFILED;
+    byName.set(name, [...(byName.get(name) ?? []), doc]);
+  }
+  const order = [...DOCUMENT_CATEGORIES, ...byName.keys()];
+  return [...new Set(order)]
+    .filter((name) => byName.has(name))
+    .sort((a, b) => Number(a === UNFILED) - Number(b === UNFILED))
+    .map((name) => [name, byName.get(name)!]);
+}
+
+function Shelf({
+  title,
+  count,
+  onSeeAll,
+  children,
+}: {
+  title: string;
+  count: number;
+  onSeeAll?: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <section aria-label={title} className="flex flex-col gap-3">
+      <div className="flex items-center gap-3">
+        <h2 className="min-w-0 flex-1 truncate text-lead font-semibold leading-heading text-ink">
+          {title}
+          <span className="ml-2 text-caption font-normal tabular-nums text-muted">{count}</span>
+        </h2>
+        {onSeeAll && count > SHELF_SIZE ? (
+          <button
+            type="button"
+            onClick={onSeeAll}
+            className="inline-flex shrink-0 items-center gap-0.5 text-caption font-semibold text-primary hover:underline"
+          >
+            Бүгдийг харах
+            <ChevronRight size={15} aria-hidden />
+          </button>
+        ) : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * One set of documents, as covers or as rows — the same cards either way, so
+ * the bookmark, Засах and Устгах behave identically in both.
+ */
+function DocumentCollection({
+  documents,
+  view,
+  kindergartenId,
+  filters,
+  groups,
+}: {
+  documents: LibraryDoc[];
+  view: LibraryView;
+  kindergartenId: string;
+  filters: Record<string, unknown>;
+  groups: LibraryGroup[];
+}) {
+  return (
+    <ul
+      className={
+        view === "grid"
+          ? "grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6"
+          : "flex flex-col overflow-hidden rounded-card border border-border-soft bg-surface"
+      }
+    >
+      {documents.map((doc) => (
+        <DocumentCard
+          key={doc.id}
+          document={doc}
+          view={view}
+          kindergartenId={kindergartenId}
+          filters={filters}
+          groups={groups}
+        />
+      ))}
+    </ul>
   );
 }
 
@@ -305,11 +517,13 @@ type CardDialog = "edit" | "delete" | null;
 
 function DocumentCard({
   document,
+  view = "grid",
   kindergartenId,
   filters,
   groups,
 }: {
   document: z.infer<typeof documentSchema>;
+  view?: LibraryView;
   kindergartenId: string;
   filters: Record<string, unknown>;
   groups: z.infer<typeof groupListItemSchema>[];
@@ -350,6 +564,94 @@ function DocumentCard({
       onSelect: () => setDialog("delete"),
     },
   ];
+
+  const bookmarkButton = (
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-pressed={document.isBookmarked}
+      aria-label={
+        document.isBookmarked
+          ? `${document.title} — тэмдэглэгээг авах`
+          : `${document.title} — тэмдэглэх`
+      }
+      disabled={toggle.isPending}
+      onClick={() => toggle.mutate()}
+    >
+      {document.isBookmarked ? (
+        <BookmarkCheck size={18} aria-hidden="true" className="text-primary" />
+      ) : (
+        <Bookmark size={18} aria-hidden="true" />
+      )}
+    </Button>
+  );
+
+  const dialogs = (
+    <>
+      {dialog === "edit" ? (
+        <EditDocumentDialog
+          document={document}
+          groups={groups}
+          onClose={() => setDialog(null)}
+          onSaved={refresh}
+        />
+      ) : null}
+
+      <ConfirmDialog
+        open={dialog === "delete"}
+        onOpenChange={(next) => setDialog(next ? "delete" : null)}
+        title="Баримтыг устгах уу?"
+        description={`"${document.title}" номын сангаас хасагдана. Файл нь архивт хадгалагдана.`}
+        confirmLabel="Устгах"
+        pendingLabel="Устгаж байна…"
+        tone="danger"
+        pending={remove.isPending}
+        onConfirm={() => remove.mutate()}
+      />
+    </>
+  );
+
+  // Жагсаалт — a row: a small first page, the title and its facts, the two controls.
+  if (view === "list") {
+    return (
+      <li className="flex items-center gap-3 border-b border-border-soft px-3 py-2 last:border-b-0">
+        <a
+          href={mediaUrl(document.fileMediaFileId)}
+          target="_blank"
+          rel="noreferrer"
+          className="flex min-w-0 flex-1 items-center gap-3"
+        >
+          <span className="grid h-12 w-9 shrink-0 place-items-center overflow-hidden rounded-check bg-sunken">
+            {document.coverMediaFileId ? (
+              <img
+                src={mediaUrl(document.coverMediaFileId)}
+                alt=""
+                loading="lazy"
+                className="size-full object-cover object-top"
+              />
+            ) : (
+              <FileText size={16} aria-hidden="true" className="text-faint" />
+            )}
+          </span>
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate text-body font-medium text-ink">{document.title}</span>
+            <span className="truncate text-caption text-muted">
+              {[
+                document.category,
+                document.group?.name ?? "Бүх багш",
+                document.publishedAt ? formatDate(document.publishedAt) : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          </span>
+        </a>
+        {bookmarkButton}
+        <RowMenu ariaLabel={`${document.title} — үйлдэл`} items={items} />
+        {dialogs}
+      </li>
+    );
+  }
 
   return (
     <li className="group relative flex flex-col">
@@ -420,49 +722,13 @@ function DocumentCard({
         </a>
 
         <div className="flex items-center justify-between border-t border-border-soft px-1.5 py-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-pressed={document.isBookmarked}
-            aria-label={
-              document.isBookmarked
-                ? `${document.title} — тэмдэглэгээг авах`
-                : `${document.title} — тэмдэглэх`
-            }
-            disabled={toggle.isPending}
-            onClick={() => toggle.mutate()}
-          >
-            {document.isBookmarked ? (
-              <BookmarkCheck size={18} aria-hidden="true" className="text-primary" />
-            ) : (
-              <Bookmark size={18} aria-hidden="true" />
-            )}
-          </Button>
+          {bookmarkButton}
 
           <RowMenu ariaLabel={`${document.title} — үйлдэл`} items={items} />
         </div>
       </Card>
 
-      {dialog === "edit" ? (
-        <EditDocumentDialog
-          document={document}
-          groups={groups}
-          onClose={() => setDialog(null)}
-          onSaved={refresh}
-        />
-      ) : null}
-
-      <ConfirmDialog
-        open={dialog === "delete"}
-        onOpenChange={(next) => setDialog(next ? "delete" : null)}
-        title="Баримтыг устгах уу?"
-        description={`"${document.title}" номын сангаас хасагдана. Файл нь архивт хадгалагдана.`}
-        confirmLabel="Устгах"
-        pendingLabel="Устгаж байна…"
-        tone="danger"
-        pending={remove.isPending}
-        onConfirm={() => remove.mutate()}
-      />
+      {dialogs}
     </li>
   );
 }

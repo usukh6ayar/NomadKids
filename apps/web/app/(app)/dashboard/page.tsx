@@ -221,9 +221,13 @@ function TeacherDashboard() {
             </p>
           ) : null}
         </div>
-        <p className="min-w-0 pt-0.5 text-right text-compact leading-snug text-faint">
-          {formatLongDate(today)} · {weekday}
-        </p>
+        <div className="flex min-w-0 flex-col items-end gap-0.5 pt-0.5">
+          <p className="text-right text-compact leading-snug text-faint">
+            {formatLongDate(today)} · {weekday}
+          </p>
+          {/* Эхлэх алхам — opens itself until done or closed (2026-10-18). */}
+          <TeacherSetupGuide />
+        </div>
       </div>
       <div className="teacher-dashboard-banner">
         <Image
@@ -306,9 +310,6 @@ function TeacherDashboard() {
     // the grouping is visible without a divider.
     <div className="page-band">
       {header}
-
-      {/* Эхлэх алхам — opens itself until done or closed (2026-10-18). */}
-      <TeacherSetupGuide />
 
       {needsSetUp ? (
         <div className="flex flex-wrap items-center gap-3 rounded-card border border-border bg-surface p-4">

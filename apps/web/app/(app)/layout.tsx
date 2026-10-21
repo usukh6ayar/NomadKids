@@ -1538,6 +1538,12 @@ function platformSections(): NavSection[] {
           label: "Гэрээний төлбөр",
           icon: <RailGlyph icon={Landmark} />,
         },
+        // "I paid, check it" — search a QPay payment (2026-10-20, the user).
+        {
+          href: "/platform/payment-check",
+          label: "Төлбөр шалгах",
+          icon: <RailGlyph icon={SearchCheck} />,
+        },
       ],
     },
     {

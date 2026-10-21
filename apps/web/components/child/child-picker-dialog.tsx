@@ -53,6 +53,7 @@ export function ChildPickerDialog({
   activeTab,
   onTabChange,
   onSelect,
+  onSelectMany,
   onClose,
 }: {
   /**
@@ -90,9 +91,20 @@ export function ChildPickerDialog({
     title?: string;
     columnLabel?: string;
   };
-  onSelect: (childId: string) => void;
+  onSelect?: (childId: string) => void;
+  /**
+   * Several children at once — the table layout draws checkboxes and Сонгох
+   * hands back every one ticked. ★ The teacher survey's «+ Шинэ», 2026-10-20.
+   */
+  onSelectMany?: (childIds: string[]) => void;
   onClose: () => void;
 }) {
+  const multiple = Boolean(onSelectMany);
+  const [picked, setPicked] = useState<string[]>([]);
+  const toggle = (id: string) =>
+    setPicked((current) =>
+      current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
+    );
   const [search, setSearch] = useState("");
   const [pending, setPending] = useState(selectedId ?? "");
   const [filter, setFilter] = useState<"all" | "incomplete" | "complete">("all");
@@ -270,7 +282,7 @@ export function ChildPickerDialog({
 
         {items.length > 0 && layout === "table" ? (
           <div
-            role="radiogroup"
+            role={multiple ? "group" : "radiogroup"}
             aria-label={title}
             className="min-h-0 flex-1 overflow-auto rounded-card border border-border"
           >
@@ -279,7 +291,23 @@ export function ChildPickerDialog({
               <thead className="sticky top-0 z-10">
                 <tr>
                   <Th className="w-10">
-                    <span className="sr-only">Сонгох</span>
+                    {multiple ? (
+                      <input
+                        type="checkbox"
+                        aria-label="Бүгдийг сонгох"
+                        checked={items.every((child) => picked.includes(child.id))}
+                        onChange={(event) =>
+                          setPicked((current) =>
+                            event.target.checked
+                              ? [...new Set([...current, ...items.map((child) => child.id)])]
+                              : current.filter((id) => !items.some((child) => child.id === id)),
+                          )
+                        }
+                        className="size-4 accent-primary"
+                      />
+                    ) : (
+                      <span className="sr-only">Сонгох</span>
+                    )}
                   </Th>
                   <Th numeric className="w-10">
                     №
@@ -292,7 +320,8 @@ export function ChildPickerDialog({
               </thead>
               <tbody>
                 {items.map((child, index) => {
-                  const chosen = pending === child.id;
+                  const chosen = multiple ? picked.includes(child.id) : pending === child.id;
+                  const choose = () => (multiple ? toggle(child.id) : setPending(child.id));
                   const group = capitalize(
                     child.enrollments?.find((row) => row.group)?.group?.name,
                   );
@@ -302,7 +331,7 @@ export function ChildPickerDialog({
                   return (
                     <tr
                       key={child.id}
-                      onClick={() => setPending(child.id)}
+                      onClick={choose}
                       className={cn(
                         "cursor-pointer",
                         chosen ? "bg-primary-soft" : "bg-surface hover:bg-canvas",
@@ -310,10 +339,11 @@ export function ChildPickerDialog({
                     >
                       <Td>
                         <input
-                          type="radio"
+                          type={multiple ? "checkbox" : "radio"}
                           name="child-picker"
                           checked={chosen}
-                          onChange={() => setPending(child.id)}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={choose}
                           aria-label={
                             coverage
                               ? `${fullName(child)} — ${
@@ -454,13 +484,14 @@ export function ChildPickerDialog({
         <Button
           size={layout === "table" ? "sm" : "lg"}
           className={layout === "table" ? "self-end rounded-pill px-6" : "w-full"}
-          disabled={!pending}
+          disabled={multiple ? picked.length === 0 : !pending}
           onClick={() => {
-            onSelect(pending);
+            if (multiple) onSelectMany?.(picked);
+            else onSelect?.(pending);
             onClose();
           }}
         >
-          Сонгох
+          {multiple && picked.length > 0 ? `Сонгох (${picked.length})` : "Сонгох"}
         </Button>
       </div>
     </div>

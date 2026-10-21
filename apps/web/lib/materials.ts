@@ -140,6 +140,12 @@ export function materialBuyPath(id: string, take = false): string {
 export const platformMaterialSchema = materialSchema.omit({ owned: true }).extend({
   published: z.boolean(),
   sales: z.number().int().default(0),
+  /**
+   * What its PAID purchases took, in ₮ — asked of the admin (2026-10-20, the
+   * user: "5 зарагдсан, 50,000₮"). Not `sales × price`: the price may have
+   * changed since, and a discount would be a different amount. «—» until sent.
+   */
+  revenue: z.number().int().nullish(),
   fileName: z.string().nullish(),
   /** Whose sample pages these are — uploaded by hand, or the server's job. */
   previewStatus: z.enum(PREVIEW_STATUSES).default("MANUAL"),

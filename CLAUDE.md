@@ -304,6 +304,8 @@ as a defect until shown otherwise.
 - Every field has a `<label>`, every image an `alt`
 - **Mobile-first.** It works on a phone before it works anywhere else
 - Empty states say what to do next — and never show sample figures in their place
+  (one exception, the user 2026-10-20: «Миний сан» of teaching materials says only
+  «Сургалтын хэрэглэгдэхүүн байхгүй» — the «Дэлгүүр» tab beside it is the way on)
 - Restyle through the token layer (`globals.css` `@theme` + shared primitives)
 - Web redesigns and new screens come from the client's frontend developer's
   PRs. Backend, contracts, migrations and deploy are ours; write web code only

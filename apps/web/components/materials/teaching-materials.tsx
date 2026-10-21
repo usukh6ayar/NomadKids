@@ -38,6 +38,7 @@ import {
 } from "@/lib/materials";
 import { AREA_IMAGE, LEARNING_AREAS } from "@/lib/routine";
 import { cn } from "@/lib/utils";
+import { ViewToggle, useLibraryView, type LibraryView } from "@/components/documents/view-toggle";
 import { useSession } from "@/lib/auth/session";
 import { useDebounced } from "@/lib/use-debounced";
 
@@ -134,9 +135,13 @@ function arrange(items: Material[], f: MaterialFilters): Material[] {
 function MaterialsToolbar({
   filters,
   onChange,
+  view,
+  onView,
 }: {
   filters: MaterialFilters;
   onChange: (next: MaterialFilters) => void;
+  view: LibraryView;
+  onView: (next: LibraryView) => void;
 }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
@@ -160,6 +165,7 @@ function MaterialsToolbar({
           count={active}
           onClick={() => setOpen(!open)}
         />
+        <ViewToggle value={view} onChange={onView} />
       </div>
       <div id={panelId} hidden={!open} className={cn("flex-wrap gap-2", open && "flex")}>
         <div className="w-52">
@@ -250,6 +256,7 @@ const NO_FILTERS: MaterialFilters = { q: "", area: "", level: "", price: "", sor
  */
 export function StorePreview() {
   const [filters, setFilters] = useState<MaterialFilters>(NO_FILTERS);
+  const [view, setView] = useLibraryView();
   const [previewing, setPreviewing] = useState<Material | null>(null);
   const catalog = useQuery({
     queryKey: ["platform", "materials"],
@@ -266,7 +273,7 @@ export function StorePreview() {
         Багш нар «Дэлгүүр»-ийг ингэж харна. Зөвхөн «Зарагдаж буй» хэрэглэгдэхүүн харагдана. Энд
         худалдан авах боломжгүй.
       </p>
-      <MaterialsToolbar filters={filters} onChange={setFilters} />
+      <MaterialsToolbar filters={filters} onChange={setFilters} view={view} onView={setView} />
 
       {catalog.isLoading ? <LoadingState rows={4} shape="cards" /> : null}
       {catalog.isError ? <ErrorState description={errorMessage(catalog.error)} /> : null}
@@ -277,10 +284,10 @@ export function StorePreview() {
         />
       ) : null}
 
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <ul className={materialListClass(view)}>
         {items.map((material) => (
           <li key={material.id}>
-            <MaterialCard material={material}>
+            <MaterialCard view={view} material={material}>
               <span className="flex gap-1.5">
                 <Button size="sm" variant="ghost" onClick={() => setPreviewing(material)}>
                   Харах
@@ -312,6 +319,7 @@ function Store({
   take?: boolean;
 }) {
   const [filters, setFilters] = useState<MaterialFilters>(NO_FILTERS);
+  const [view, setView] = useLibraryView();
   const { area, level } = filters;
   const q = useDebounced(filters.q.trim());
   const [buying, setBuying] = useState<Material | null>(null);
@@ -374,7 +382,7 @@ function Store({
 
   return (
     <section aria-label="Дэлгүүр" className="flex flex-col gap-3">
-      <MaterialsToolbar filters={filters} onChange={setFilters} />
+      <MaterialsToolbar filters={filters} onChange={setFilters} view={view} onView={setView} />
 
       {catalog.isLoading ? <LoadingState rows={4} shape="cards" /> : null}
       {catalog.isError ? <ErrorState description={errorMessage(catalog.error)} /> : null}
@@ -385,10 +393,10 @@ function Store({
         />
       ) : null}
 
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <ul className={materialListClass(view)}>
         {items.map((material) => (
           <li key={material.id}>
-            <MaterialCard material={material}>
+            <MaterialCard view={view} material={material}>
               <span className="flex gap-1.5">
                 <Button size="sm" variant="ghost" onClick={() => setPreviewing(material)}>
                   Харах
@@ -440,6 +448,7 @@ function Store({
 
 function Mine() {
   const [filters, setFilters] = useState<MaterialFilters>(NO_FILTERS);
+  const [view, setView] = useLibraryView();
   const owned = useQuery({
     queryKey: ["materials", "mine"],
     queryFn: () => get("/me/materials", ownedMaterialsSchema),
@@ -452,7 +461,9 @@ function Mine() {
 
   return (
     <section aria-label="Миний сан" className="flex flex-col gap-3">
-      {all.length > 0 ? <MaterialsToolbar filters={filters} onChange={setFilters} /> : null}
+      {all.length > 0 ? (
+        <MaterialsToolbar filters={filters} onChange={setFilters} view={view} onView={setView} />
+      ) : null}
       {owned.isLoading ? <LoadingState rows={3} /> : null}
       {owned.isError && !notReady ? <ErrorState description={errorMessage(owned.error)} /> : null}
       {all.length > 0 && items.length === 0 ? (
@@ -462,15 +473,15 @@ function Mine() {
         />
       ) : null}
       {notReady || (owned.data && all.length === 0) ? (
-        <EmptyState
-          title="Худалдаж авсан хэрэглэгдэхүүн алга"
-          description="«Дэлгүүр»-ээс сонгоод худалдаж авбал энд нэмэгдэж, шууд татаж ашиглана."
-        />
+        // ★ Title only — 2026-10-20, the user: "Сургалтын хэрэглэгдэхүүн байхгүй
+        // гэчих". The «Дэлгүүр» tab sits right above, so the way on is in view;
+        // CLAUDE.md §5 records this as the one exception.
+        <EmptyState title="Сургалтын хэрэглэгдэхүүн байхгүй" />
       ) : null}
-      <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <ul className={materialListClass(view)}>
         {items.map((material) => (
           <li key={material.id}>
-            <MaterialCard material={material} showPrice={false}>
+            <MaterialCard view={view} material={material} showPrice={false}>
               {/* A navigation, not a fetch: the server checks ownership and
                   redirects to a 5-minute presigned URL (`lib/materials.ts`). */}
               <span className="flex gap-1.5">
@@ -489,18 +500,72 @@ function Mine() {
   );
 }
 
+/** Хавтсаар — three across; Жагсаалтаар — one bordered column of rows. */
+function materialListClass(view: LibraryView) {
+  return view === "list"
+    ? "flex flex-col overflow-hidden rounded-card border border-border-soft bg-surface [&>li:last-child>article]:border-b-0"
+    : "grid gap-3 sm:grid-cols-2 lg:grid-cols-3";
+}
+
 function MaterialCard({
   material,
   showPrice = true,
+  view = "grid",
   children,
 }: {
   material: Material;
   showPrice?: boolean;
+  view?: LibraryView;
   children: React.ReactNode;
 }) {
   const FileIcon = material.fileType === "PPT" ? Presentation : FileText;
   const cover = material.previewUrl ?? material.previewUrls[0] ?? null;
   const picture = cover ?? AREA_IMAGE[material.area] ?? null;
+
+  // Жагсаалт — a small picture, the title and its facts, the price, the buttons.
+  if (view === "list") {
+    return (
+      <article
+        aria-label={material.title}
+        className="flex flex-wrap items-center gap-3 border-b border-border-soft px-3 py-2 sm:flex-nowrap"
+      >
+        <div className="grid h-9 w-16 shrink-0 place-items-center overflow-hidden rounded-row bg-canvas">
+          {picture ? (
+            <Image
+              src={picture}
+              alt=""
+              width={64}
+              height={36}
+              unoptimized={Boolean(cover)}
+              className={cn(cover ? "size-full object-cover" : "h-8 w-auto object-contain")}
+            />
+          ) : (
+            <FileIcon size={18} aria-hidden="true" className="text-muted" />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-body font-medium text-ink">{material.title}</h3>
+          <p className="truncate text-caption text-muted">
+            {[
+              material.fileType,
+              material.area,
+              material.level ? `${material.level} түвшин` : null,
+              material.pages ? `${material.pages} хуудас` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        </div>
+        {showPrice ? (
+          <span className="shrink-0 text-body font-bold tabular-nums text-ink">
+            {materialPrice(material.price)}
+          </span>
+        ) : null}
+        <div className="shrink-0">{children}</div>
+      </article>
+    );
+  }
+
   return (
     <article
       aria-label={material.title}
