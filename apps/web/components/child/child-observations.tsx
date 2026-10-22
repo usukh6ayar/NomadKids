@@ -42,7 +42,6 @@ import { cn } from "@/lib/utils";
 import { KIND_LOOK, PICK, PICK_FIELD } from "@/lib/observation-look";
 import { A79LinksField } from "@/components/assessment/a79-links";
 import {
-  A79_LEVEL_KEYS,
   a79LevelForAge,
   observationA79LinksSchema,
   type A79Link,
@@ -1258,11 +1257,8 @@ export function EditObservationDialog({
           <A79LinksField
             links={a79Links}
             onChange={setEditedLinks}
-            defaultLevel={
-              indicatorLevel
-                ? A79_LEVEL_KEYS[Number(indicatorLevel) - 1]!
-                : a79LevelForAge(ageInYears(child.data?.dateOfBirth))
-            }
+            // The child's age's level, as on the compose form (2026-10-22).
+            defaultLevel={a79LevelForAge(ageInYears(child.data?.dateOfBirth))}
             text={situation}
           />
         ) : null}

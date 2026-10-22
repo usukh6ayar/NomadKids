@@ -21,6 +21,7 @@ import {
   type A79GroupSummary,
 } from "@/lib/a79-progress";
 import { shortName } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 const DOMAINS: A79Domain[] = ["Мэдлэг", "Чадвар", "Төлөвшил"];
 const BAND_TONE: Record<A79Band, "mint" | "sun" | "peach"> = {
@@ -173,6 +174,24 @@ function domainAverage(rows: A79ChildRow[], domain: A79Domain): number {
   );
 }
 
+/**
+ * The figure in an А/79 ring, to its one decimal — the shared `Ring` rounds to
+ * a whole percent, and 79.5% must not read 80% beside «Ахиж байна» (А/79
+ * §2.10, 2026-10-22). A decimal takes a size down to fit the hole.
+ */
+export function A79RingFigure({ percent }: { percent: number }) {
+  return (
+    <span
+      className={cn(
+        "font-semibold tabular-nums text-ink",
+        Number.isInteger(percent) ? "text-title" : "text-lead",
+      )}
+    >
+      {percent}%
+    </span>
+  );
+}
+
 export function A79SummaryChart({
   rows,
   averageLabel,
@@ -199,7 +218,9 @@ export function A79SummaryChart({
           size="lg"
           fadeTo="var(--color-violet-chart)"
           label={`${averageLabel}: ${average}%`}
-        />
+        >
+          <A79RingFigure percent={average} />
+        </Ring>
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <p className="text-body text-ink">{description}</p>
           <ul aria-label="Хүүхдийн тоо, бүсээр" className="flex flex-wrap gap-2">

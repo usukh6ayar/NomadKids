@@ -42,7 +42,6 @@ import { KIND_LOOK, PICK, PICK_FIELD } from "@/lib/observation-look";
 import { readDraft, useDraftAutosave } from "@/lib/use-form-draft";
 import { A79LinksField } from "@/components/assessment/a79-links";
 import {
-  A79_LEVEL_KEYS,
   A79_NOT_READY,
   a79LevelForAge,
   a79LinkSchema,
@@ -1072,11 +1071,14 @@ function NewObservationForm() {
             <A79LinksField
               links={a79Links}
               onChange={setA79Links}
-              defaultLevel={
-                indicatorLevel
-                  ? A79_LEVEL_KEYS[Number(indicatorLevel) - 1]!
-                  : a79LevelForAge(ageInYears(child.data?.dateOfBirth))
-              }
+              /*
+                ★ The child's age's level, as «Үр дүнгийн үнэлгээ» opens and
+                the group's result counts — 2026-10-22, the user: a criterion
+                picked here must show there. It followed the note's «Түвшин»
+                until then, and landed on a level the result never opened.
+                The dialog still lets the teacher choose another.
+              */
+              defaultLevel={a79LevelForAge(ageInYears(child.data?.dateOfBirth))}
               // On a conversation, the teacher's questions — 2026-10-08, the client.
               text={isConversation ? qaQuestions(talk.pairs, talk.title) : situation}
             />

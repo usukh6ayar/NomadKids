@@ -526,8 +526,53 @@ describe("«Үр дүнгийн үнэлгээ»", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
     const untouched = screen.getByText("Хоёр хөл дээрээ үсэрч буудаг.").closest("tr")!;
-    expect(within(untouched).getByText("Ажиглалт холбогдоогүй")).toBeInTheDocument();
+    expect(within(untouched).getByText("Тэмдэглэл холбоогүй")).toBeInTheDocument();
     expect(screen.queryByText(/Жишээ үр дүн/)).toBeNull();
+  });
+
+  /*
+   * ★ 2026-10-22, the user: a criterion picked on a note must show in this
+   * table. A two-year-old's page opens at level I; their note linked at III
+   * used to read «Тэмдэглэл холбоогүй» there. The page opens the level that
+   * holds the notes, and says when another level holds some too.
+   */
+  it("opens the level that holds the child's notes, not an empty age level", async () => {
+    setParams({ groupId: GROUP, childId: CHILD });
+    const evidence = (level: string) => ({
+      level,
+      criteria: [
+        {
+          number: 1,
+          status: "DEVELOPING",
+          evidence: [
+            {
+              observationId: NOTE,
+              observedOn: "2026-10-08",
+              status: "DEVELOPING",
+              typeName: "Бүтээл",
+              note: "Цамхаг зурав.",
+            },
+          ],
+        },
+      ],
+    });
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      // Longest first: the stub matches by prefix, and «?level=I» would take III and IV.
+      { path: `/children/${CHILD}/a79-progress?level=IV`, body: { level: "IV", criteria: [] } },
+      { path: `/children/${CHILD}/a79-progress?level=III`, body: evidence("III") },
+      { path: `/children/${CHILD}/a79-progress?level=II`, body: { level: "II", criteria: [] } },
+      { path: `/children/${CHILD}/a79-progress?level=I`, body: { level: "I", criteria: [] } },
+      { path: `/children/${CHILD}`, body: CHILD_DETAIL },
+    ]);
+    renderWithProviders(<ChildResultPage />);
+
+    const picker = await screen.findByRole("combobox", { name: "Түвшин" });
+    // The level that holds the note, named with how many it holds.
+    await waitFor(() => expect(picker).toHaveTextContent("III түвшин (1)"));
+    expect(
+      await screen.findByRole("button", { name: /2026\.10\.08 Бүтээл — нээх/ }),
+    ).toBeInTheDocument();
   });
 
   /*

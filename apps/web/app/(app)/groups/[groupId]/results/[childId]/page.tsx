@@ -1,12 +1,12 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { childDetailSchema, observationSchema, type Observation } from "@kinder/contracts";
 import { ObservationDetailDialog } from "@/components/child/child-observations";
 import { useToast } from "@/components/ui/toast";
-import { A79NotReady } from "@/components/assessment/a79-group-summary";
+import { A79NotReady, A79RingFigure } from "@/components/assessment/a79-group-summary";
 import { UnpaidForStaff } from "@/components/child/access-gate";
 import { ChildAvatar } from "@/components/media/media-image";
 import { PageHeader } from "@/components/shell/app-shell";
@@ -83,14 +83,39 @@ function ChildResult() {
   });
   const age = ageInYears(child.data?.dateOfBirth);
   const [chosenLevel, setChosenLevel] = useState<A79LevelKey | "">("");
-  const level = chosenLevel || a79LevelForAge(age);
 
-  const progress = useQuery({
-    queryKey: [...qk.child(childId), "a79-progress", level],
-    queryFn: () => get(`/children/${childId}/a79-progress?level=${level}`, a79ProgressSchema),
-    enabled: child.isSuccess,
-    retry: false,
+  /*
+    ★ Every level read, not the age's alone — 2026-10-22, the user: a
+    criterion picked on a note must show in this table. A teacher may link a
+    note at a level other than the child's age (the note's own «Түвшин» chose
+    it until today), and the page opened at the age's level showed that
+    criterion «Тэмдэглэл холбоогүй». Four reads, the same keys one level used.
+  */
+  const levels = useQueries({
+    queries: A79_LEVEL_KEYS.map((key) => ({
+      queryKey: [...qk.child(childId), "a79-progress", key],
+      queryFn: () => get(`/children/${childId}/a79-progress?level=${key}`, a79ProgressSchema),
+      enabled: child.isSuccess,
+      retry: false,
+    })),
   });
+  const notesAt = (key: A79LevelKey) =>
+    new Set(
+      (levels[A79_LEVEL_KEYS.indexOf(key)]?.data?.criteria ?? []).flatMap((c) =>
+        c.evidence.map((e) => e.observationId),
+      ),
+    ).size;
+  const ageLevel = a79LevelForAge(age);
+  // The age's level, unless it holds no note and another level does.
+  const withNotes = A79_LEVEL_KEYS.filter((key) => notesAt(key) > 0);
+  const level =
+    chosenLevel ||
+    (notesAt(ageLevel) === 0 && withNotes.length > 0
+      ? withNotes.reduce((best, key) => (notesAt(key) > notesAt(best) ? key : best))
+      : ageLevel);
+  const elsewhere = withNotes.filter((key) => key !== level);
+
+  const progress = levels[A79_LEVEL_KEYS.indexOf(level)]!;
   const notReady = progress.isError && isNotFound(progress.error);
   const data: A79Progress | undefined = progress.data;
 
@@ -118,7 +143,7 @@ function ChildResult() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-40">
+            <div className="w-44">
               <Field label="Түвшин" labelHidden>
                 {({ id }) => (
                   <Select
@@ -128,7 +153,9 @@ function ChildResult() {
                   >
                     {A79_LEVEL_KEYS.map((key) => (
                       <option key={key} value={key}>
-                        {key} түвшин
+                        {notesAt(key) > 0
+                          ? `${key} түвшин (${notesAt(key)})`
+                          : `${key} түвшин`}
                       </option>
                     ))}
                   </Select>
@@ -147,6 +174,22 @@ function ChildResult() {
         </div>
       ) : null}
 
+      {elsewhere.length > 0 && data ? (
+        <p role="status" className="rounded-control bg-sun px-3 py-2 text-caption text-sun-ink">
+          {elsewhere.map((key) => `${key} түвшинд ${notesAt(key)} тэмдэглэл`).join(", ")} холбогдсон
+          байна.{" "}
+          {elsewhere.map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setChosenLevel(key)}
+              className="mr-2 font-semibold underline underline-offset-2"
+            >
+              {key} түвшин харах
+            </button>
+          ))}
+        </p>
+      ) : null}
       {notReady ? <A79NotReady /> : null}
       {progress.isLoading ? <LoadingState rows={4} /> : null}
       {progress.isError && !notReady ? (
@@ -207,7 +250,9 @@ function ResultBody({ progress, childId }: { progress: A79Progress; childId: str
             size="lg"
             fadeTo="var(--color-violet-chart)"
             className="shadow-[0_6px_20px_-8px_var(--color-violet-chart)]"
-          />
+          >
+            <A79RingFigure percent={score.percent} />
+          </Ring>
           <div className="min-w-0 flex-1">
             <Badge tone={BAND_TONE[band]}>{A79_BAND_LABEL[band]}</Badge>
             <p className="mt-2 text-body text-ink">
@@ -364,9 +409,7 @@ function ResultBody({ progress, childId }: { progress: A79Progress; childId: str
                                   ))}
                                 </ul>
                               ) : !row && status === "NOT_YET" ? (
-                                <span className="text-caption text-muted">
-                                  Ажиглалт холбогдоогүй
-                                </span>
+                                <span className="text-caption text-muted">Тэмдэглэл холбоогүй</span>
                               ) : null}
                             </Td>
                           );
