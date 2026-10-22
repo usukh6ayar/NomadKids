@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import {
   GROUP_PRICES,
+  groupYearMonths,
   groupTermPrice,
   localDate,
   schoolTermOn,
@@ -110,6 +111,9 @@ export class ServiceAccessService {
        */
       termLabel: term?.label ?? null,
       yearLabel: year?.label ?? null,
+      // How many months each charges — a year bought later is its months left (2026-10-22).
+      termMonths: term?.months ?? null,
+      yearMonths: year?.months ?? null,
       // Whether «Жилээр» is the whole school year at the year's price.
       yearWhole: year ? year.months === MONTHS.YEAR : null,
       /** The contract issued and waiting for the director's acceptance (2026-10-18). */
@@ -700,14 +704,17 @@ export function quote(
   if (period === "TERM") {
     const term = schoolTermOn(start) ?? schoolTermOn(`${Number(start.slice(0, 4))}-09-01`)!;
     const perGroup = termPrice(term);
+    // ★ The III term runs to 30 June — June is a bonus, not charged (2026-10-22,
+    // the user). `schoolTermOn` keeps 31 May: the family fee reads it too.
+    const coversTo = term.number === 3 ? juneBonus(term.endsOn) : term.endsOn;
     return {
       coversFrom: term.startsOn,
-      coversTo: term.endsOn,
+      coversTo,
       term,
       months: MONTHS.TERM,
       perGroup: perGroup.toFixed(2),
       amount: perGroup.times(Math.max(0, groups)).toFixed(2),
-      label: `${term.label} (${term.startsOn.replaceAll("-", ".")} – ${term.endsOn.replaceAll("-", ".")})`,
+      label: `${term.label} (${term.startsOn.replaceAll("-", ".")} – ${coversTo.replaceAll("-", ".")})`,
     };
   }
 
@@ -715,17 +722,13 @@ export function quote(
   const month = Number(start.slice(5, 7));
   const first = month >= 6 ? year : year - 1;
   const yearStart = `${first}-09-01`;
-  const coversTo = `${first + 1}-05-31`;
-  const terms = [`${first}-09-01`, `${first}-12-01`, `${first + 1}-03-01`].map((day) =>
-    schoolTermOn(day)!,
-  );
-  const whole = start <= yearStart || schoolTermOn(start)!.startsOn === yearStart;
+  // ★ To 30 June — nine months charged, June a bonus (2026-10-22, the user).
+  const coversTo = `${first + 1}-06-30`;
   const schoolYear = `${first}–${first + 1} хичээлийн жил`;
+  const monthly = new Decimal(standard ? GROUP_PRICES.monthly : fee);
 
-  if (whole) {
-    const perGroup = standard
-      ? new Decimal(GROUP_PRICES.year)
-      : new Decimal(fee).times(MONTHS.YEAR);
+  if (start <= yearStart) {
+    const perGroup = standard ? new Decimal(GROUP_PRICES.year) : monthly.times(MONTHS.YEAR);
     return {
       coversFrom: yearStart,
       coversTo,
@@ -737,17 +740,29 @@ export function quote(
     };
   }
 
-  const left = terms.filter((term) => term.endsOn >= start);
-  const perGroup = left.reduce((sum, term) => sum.plus(termPrice(term)), new Decimal(0));
+  /*
+   * ★ A year bought after it began — 2026-10-22, the user: charged from the
+   * NEXT month to May at the monthly price, valid from today to 30 June. On
+   * 22 October that is November–May, seven months: 28,000₮ a group. A
+   * renewal that starts on the 1st (the old period ran to the month's end)
+   * charges that month too — nothing of it has been used.
+   */
+  const monthsLeft = groupYearMonths(start);
+  const perGroup = monthly.times(monthsLeft);
   return {
-    coversFrom: left[0]!.startsOn,
+    coversFrom: start,
     coversTo,
     term: null,
-    months: MONTHS.TERM * left.length,
+    months: monthsLeft,
     perGroup: perGroup.toFixed(2),
     amount: perGroup.times(Math.max(0, groups)).toFixed(2),
-    label: `${schoolYear}, ${left.map((term) => term.label).join(", ")}`,
+    label: `${schoolYear} (${start.replaceAll("-", ".")} – ${coversTo.replaceAll("-", ".")})`,
   };
+}
+
+/** 31 May → 30 June of the same year: the bonus month on the III term. */
+function juneBonus(mayEnd: string): string {
+  return `${mayEnd.slice(0, 4)}-06-30`;
 }
 
 function addDay(day: string): string {

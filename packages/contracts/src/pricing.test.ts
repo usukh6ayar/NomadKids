@@ -23,13 +23,14 @@ describe("the price sheet", () => {
     });
   });
 
-  it("prices a group at 4,000₮ a month, 4,000₮ (of 12,000₮) for «I-р улирал» and 28,000₮ (of 36,000₮) a year", () => {
+  // The user's prices, 2026-10-22: the I term's launch 4,000₮; a year 9 × 4,000₮.
+  it("prices a group at 4,000₮ a month, 4,000₮ (of 12,000₮) the I term, and 36,000₮ a year", () => {
     expect(GROUP_PRICES).toEqual({
       monthly: 4_000,
       termStandard: 12_000,
       termPromo: 4_000,
       yearStandard: 36_000,
-      year: 28_000,
+      year: 36_000,
     });
   });
 

@@ -33,9 +33,12 @@ export const CHILD_PRICES = {
 export const GROUP_PRICES = {
   monthly: 4_000,
   termStandard: 4_000 * MONTHS_IN_TERM, // 12,000₮
+  // The I term's launch price — 2026-10-22, the user: 4,000₮ a group.
   termPromo: 4_000,
   yearStandard: 4_000 * MONTHS_IN_SCHOOL_YEAR, // 36,000₮
-  year: 28_000,
+  // A whole school year is nine months at the monthly price, June a bonus —
+  // 2026-10-22, the user. A year bought later is priced by its months (`quote()`).
+  year: 4_000 * MONTHS_IN_SCHOOL_YEAR, // 36,000₮
 } as const;
 
 /** Багш — a solo teacher never pays (#195). */
@@ -106,6 +109,29 @@ export function childTermPrice(term: SchoolTerm): number {
   return term.endsOn <= FIRST_TERM_PROMO.endsOn
     ? CHILD_PRICES.termPromo
     : CHILD_PRICES.termStandard;
+}
+
+/**
+ * The months a kindergarten's year bought on `day` charges — 2026-10-22, the
+ * user: nine for the whole school year (bought before 1 September, or in
+ * June–August for the next one); a year bought later from the NEXT month to
+ * May — on 22 October, November–May, seven. A period that starts on the 1st
+ * charges that month too (nothing of it has been used). June is always a
+ * bonus month, never charged.
+ */
+export function groupYearMonths(day: string): number {
+  const month = Number(day.slice(5, 7));
+  if (month >= 6 && month <= 8) return MONTHS_IN_SCHOOL_YEAR;
+  if (month === 9 && Number(day.slice(8, 10)) === 1) return MONTHS_IN_SCHOOL_YEAR;
+  const first = Number(day.slice(8, 10)) === 1 ? month : month + 1;
+  const m = ((first - 1) % 12) + 1;
+  if (m >= 6 && m <= 8) return 0;
+  return m >= 9 ? 12 - m + 6 : 6 - m;
+}
+
+/** One group's year bought on `day`, at the standard monthly price. */
+export function groupYearPrice(day: string): number {
+  return GROUP_PRICES.monthly * groupYearMonths(day);
 }
 
 /** A group's price for a term: «I-р улирал» 4,000₮ through 2026-11-30, then 12,000₮. */
