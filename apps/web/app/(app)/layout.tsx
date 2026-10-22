@@ -658,6 +658,16 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         entries: [
           entry("Хоолны цэс", "/menu", "food"),
           entry("Санхүү", "/finance", "finance"),
+          /*
+            ★ «Үйлчилгээний эрх» — where a director pays NomadKids (QPay, the
+            contract by term or year). Added here 2026-10-22: the row was
+            written in the non-director menu below, so no director ever saw
+            it; the user could not find where to pay.
+          */
+          {
+            ...entry("Үйлчилгээний эрх", "/admin/service-access", "navParentAccess"),
+            badge: "serviceAccess" as const,
+          },
           // «Төлбөрийн тайлан» is «Санхүү» → «Жилийн тайлан» since 2026-10-01.
           // «Ирцийн дэлгэрэнгүй» removed 2026-10-01 — «Ирц» carries its views.
         ],
