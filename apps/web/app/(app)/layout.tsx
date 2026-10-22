@@ -658,16 +658,6 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         entries: [
           entry("Хоолны цэс", "/menu", "food"),
           entry("Санхүү", "/finance", "finance"),
-          /*
-            ★ «Үйлчилгээний эрх» — where a director pays NomadKids (QPay, the
-            contract by term or year). Added here 2026-10-22: the row was
-            written in the non-director menu below, so no director ever saw
-            it; the user could not find where to pay.
-          */
-          {
-            ...entry("Үйлчилгээний эрх", "/admin/service-access", "navParentAccess"),
-            badge: "serviceAccess" as const,
-          },
           // «Төлбөрийн тайлан» is «Санхүү» → «Жилийн тайлан» since 2026-10-01.
           // «Ирцийн дэлгэрэнгүй» removed 2026-10-01 — «Ирц» carries its views.
         ],
@@ -677,6 +667,22 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         entries: [
           entry("Тайлан", "/reports", "adminReport"),
           entry("Баримт бичгийн сан", "/documents", "adminDocuments"),
+        ],
+      },
+      /*
+        ★ «Үйлчилгээний эрх» last, so it sits right above «Хувийн тохиргоо»
+        (which the shell draws after every section) — 2026-10-22, the user.
+        Where a director pays NomadKids: the contract by term or year, by
+        QPay. It was written in the non-director menu below, so until this
+        change no director ever saw it.
+      */
+      {
+        title: "",
+        entries: [
+          {
+            ...entry("Үйлчилгээний эрх", "/admin/service-access", "navParentAccess"),
+            badge: "serviceAccess" as const,
+          },
         ],
       },
       /*
@@ -1169,6 +1175,8 @@ const ADMIN_RAIL_ICON: Record<string, LucideIcon> = {
   "/chat": MessageCircle,
   "/menu": Utensils,
   "/finance": Wallet,
+  // The director's «Үйлчилгээний эрх» — a line glyph like its neighbours (2026-10-22).
+  "/admin/service-access": ReceiptText,
   "/admin/funding": Calculator,
   "/attendance/journal": CalendarCheck,
   "/reports": SearchCheck,
