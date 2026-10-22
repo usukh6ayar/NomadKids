@@ -180,8 +180,10 @@ describe("the director's «Үйлчилгээний эрх»", () => {
     ]);
     renderWithProviders(<AdminServiceAccessPage />);
 
-    await user.click(await screen.findByRole("radio", { name: "Жилээр — хямд" }));
-    expect(screen.getByText(/хүртэл\s+сунгагдана/).textContent).toContain("2027.05.31");
+    // The day it will run to is on the chosen card, before the QR (2026-10-22).
+    const year = await screen.findByRole("radio", { name: "Жилээр — хямд" });
+    await user.click(year);
+    expect(year).toHaveAccessibleDescription(/2027\.05\.31 хүртэл/);
 
     const payment = {
       id: "88888888-8888-4888-8888-888888888888",
