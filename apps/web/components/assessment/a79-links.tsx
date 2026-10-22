@@ -12,9 +12,10 @@ import { useSession } from "@/lib/auth/session";
 import type { A79Domain } from "@/lib/a79-assessment";
 import {
   A79_LEVEL_KEYS,
-  A79_STATUSES,
+  A79_CHOICES,
   A79_STATUS_HINT,
   A79_STATUS_LABEL,
+  a79Choice,
   a79Code,
   a79CriterionText,
   a79Level,
@@ -215,9 +216,9 @@ function LinkCard({
         <legend className="mb-1 text-caption font-semibold text-ink">
           Чадварын илрэлийн байдал <span className="text-danger">*</span>
         </legend>
-        <div className="grid gap-1.5 sm:grid-cols-2">
-          {A79_STATUSES.map((status) => {
-            const chosen = link.status === status;
+        <div className="grid gap-1.5 sm:grid-cols-3">
+          {A79_CHOICES.map((status) => {
+            const chosen = a79Choice(link.status) === status;
             return (
               <label
                 key={status}

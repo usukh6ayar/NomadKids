@@ -14,6 +14,8 @@ import GroupResultsPage from "@/app/(app)/groups/[groupId]/results/page";
 import ChildResultPage from "@/app/(app)/groups/[groupId]/results/[childId]/page";
 import {
   A79_BAND_LABEL,
+  A79_STATUS_LABEL,
+  a79Choice,
   a79Band,
   a79Csv,
   a79LevelForAge,
@@ -91,6 +93,9 @@ describe("А/79 scoring", () => {
     expect(a79Band(a79Percent(49, 99))).toBe("DEVELOPING");
     expect(a79Band(79.9)).toBe("PROGRESSING");
     expect(a79Band(49.9)).toBe("DEVELOPING");
+    // A link saved as «Хараахан ажиглагдаагүй» before 2026-10-22 reads as «Хөгжиж байна».
+    expect(a79Choice("NOT_YET")).toBe("DEVELOPING");
+    expect(A79_STATUS_LABEL.NOT_YET).toBe("Хөгжиж байна");
   });
 
   it("bands at 80 and 50, and levels by age", () => {
@@ -143,15 +148,15 @@ describe("А/79 result as Excel", () => {
     );
     const lines = csv.split("\r\n");
     expect(lines[0]).toBe('"Хүүхэд","Ганболд Батбаяр"');
-    expect(lines[3]).toBe('"Бие даан илрүүлсэн","1 / 37 (2.7%)"');
+    expect(lines[3]).toBe('"Хангалттай эзэмшсэн","1 / 37 (2.7%)"');
     expect(csv).toContain(
-      '"Хэсэг","№","Шалгуур","Одоогийн төлөв","Бие даан","Дэмжлэгтэй","Хөгжиж байна","Хараахан ажиглагдаагүй"',
+      '"Хэсэг","№","Шалгуур","Одоогийн төлөв","Хангалттай эзэмшиж байна","Ахиж байна","Хөгжиж байна"',
     );
     expect(csv).toContain(
-      '"Чадвар","24","Том, жижгийг ялгадаг.","Бие даан","2026.10.08 Ажиглалт — Том, жижиг алимийг ялгав.","2026.09.22","",""',
+      '"Чадвар","24","Том, жижгийг ялгадаг.","Хангалттай эзэмшиж байна","2026.10.08 Ажиглалт — Том, жижиг алимийг ялгав.","2026.09.22",""',
     );
     expect(csv).toContain(
-      '"Мэдлэг","1","Чанаж болгоогүй хүнсийг идэж болохгүйг мэддэг.","Хараахан ажиглагдаагүй","","","",""',
+      '"Мэдлэг","1","Чанаж болгоогүй хүнсийг идэж болохгүйг мэддэг.","Тэмдэглэл холбоогүй","","",""',
     );
   });
 });
@@ -262,7 +267,7 @@ describe("linking an observation to А/79", () => {
 
       const second = screen.getByRole("group", { name: "А/79 · I · Ш24" });
       expect(within(second).getByText("Том, жижгийг ялгадаг.")).toBeInTheDocument();
-      await user.click(within(second).getByRole("radio", { name: /Дэмжлэгтэй/ }));
+      await user.click(within(second).getByRole("radio", { name: /Ахиж байна/ }));
       await user.type(within(second).getByLabelText(/Тайлбар/), "2 алимийг ялгав.");
 
       await user.click(screen.getByRole("button", { name: "Хадгалах" }));
@@ -494,22 +499,24 @@ describe("«Үр дүнгийн үнэлгээ»", () => {
     renderWithProviders(<ChildResultPage />);
 
     const summary = (await screen.findByText(/37 шалгуураас/)).closest("div")!;
-    expect(summary).toHaveTextContent("37 шалгуураас 1-г бие даан илрүүлсэн.");
+    expect(summary).toHaveTextContent("37 шалгуураас 1-г хангалттай эзэмшсэн.");
     expect(within(summary).getByText("Хөгжиж байна")).toBeInTheDocument();
     expect(screen.getByRole("progressbar", { name: "Чадвар: 4.5%" })).toBeInTheDocument();
     // A row per criterion; each note under the status it was given.
     const counted = screen.getByText("3 хүртэлх тоглоом, юмсыг тоолдог.").closest("tr")!;
     const cells = within(counted).getAllByRole("cell");
     expect(cells[2]).toHaveTextContent("2026.10.08Ажиглалт3 алимийг зөв тоолов.");
-    expect(cells[2]).toHaveAccessibleName("Бие даан — одоогийн");
+    expect(cells[2]).toHaveAccessibleName("Хангалттай эзэмшиж байна — одоогийн");
     expect(cells[3]).toHaveTextContent("2026.09.28Ярилцлага");
     expect(cells[4]).toBeEmptyDOMElement();
     // The column heads carry the part's share at each status.
     const skills = screen.getByRole("table", { name: /^Чадвар/ });
     const heads = within(skills).getAllByRole("columnheader");
-    expect(heads[2]).toHaveTextContent("Бие даан4.5%");
-    expect(heads[3]).toHaveTextContent("Дэмжлэгтэй4.5%");
-    expect(heads[5]).toHaveTextContent("Хараахан ажиглагдаагүй90.9%");
+    // The result's three words, not four statuses of their own (2026-10-22).
+    expect(heads).toHaveLength(5);
+    expect(heads[2]).toHaveTextContent("Хангалттай эзэмшиж байна4.5%");
+    expect(heads[3]).toHaveTextContent("Ахиж байна4.5%");
+    expect(heads[4]).toHaveTextContent("Хөгжиж байна0%");
 
     // Pressing a piece of evidence opens the note itself.
     await user.click(

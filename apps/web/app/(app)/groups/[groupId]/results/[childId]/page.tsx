@@ -28,20 +28,21 @@ import {
   A79_BAND_RULE,
   A79_DOMAIN_FILL,
   A79_LEVEL_KEYS,
-  A79_STATUSES,
+  A79_CHOICES,
   A79_STATUS_LABEL,
   a79Band,
   a79Csv,
   a79Level,
   a79LevelForAge,
   a79ProgressSchema,
+  a79Choice,
   a79Percent,
   a79Score,
   type A79Band,
   type A79Evidence,
   type A79LevelKey,
   type A79Progress,
-  type A79Status,
+  type A79Choice,
 } from "@/lib/a79-progress";
 import { ageInYears, formatDate, fullName } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -53,16 +54,15 @@ const BAND_TONE: Record<A79Band, "mint" | "sun" | "peach"> = {
 };
 
 /** The cell the child is in now, tinted in its status's colour. */
-const STATUS_CELL: Record<A79Status, string> = {
+const STATUS_CELL: Record<A79Choice, string> = {
   INDEPENDENT: "bg-mint/50",
   SUPPORTED: "bg-sky/50",
   DEVELOPING: "bg-sun/50",
-  NOT_YET: "bg-canvas",
 };
 
 /**
  * One child's А/79 result — the client's design, 2026-10-08: the share of the
- * level's criteria shown «Бие даан», by part, and every criterion with its
+ * level's criteria «Хангалттай эзэмшиж байна», by part, and every criterion with its
  * latest evidence. Read from `GET /children/:id/a79-progress`
  * (`lib/a79-progress.ts`); a 404 draws `A79NotReady`, never sample evidence
  * (`a79-group-summary.tsx` says why).
@@ -153,9 +153,7 @@ function ChildResult() {
                   >
                     {A79_LEVEL_KEYS.map((key) => (
                       <option key={key} value={key}>
-                        {notesAt(key) > 0
-                          ? `${key} түвшин (${notesAt(key)})`
-                          : `${key} түвшин`}
+                        {notesAt(key) > 0 ? `${key} түвшин (${notesAt(key)})` : `${key} түвшин`}
                       </option>
                     ))}
                   </Select>
@@ -228,13 +226,16 @@ function ResultBody({ progress, childId }: { progress: A79Progress; childId: str
   const band = a79Band(score.percent);
   const byNumber = new Map(progress.criteria.map((row) => [row.number, row]));
   /**
-   * Where each part's criteria are now, by status — «Бие даан 23%» in the
-   * column heads (client, 2026-10-08). A criterion with no note counts as
-   * «Хараахан ажиглагдаагүй», so the four add up to the part.
+   * Where each part's criteria are now, by status — «Хангалттай эзэмшиж
+   * байна 23%» in the column heads (client, 2026-10-08). A criterion with no
+   * note is in none of the three (2026-10-22: the fourth column went).
    */
-  const shareByDomain = (domain: A79Domain, status: A79Status) => {
+  const shareByDomain = (domain: A79Domain, status: A79Choice) => {
     const numbers = criteria.filter((c) => c.domain === domain).map((c) => c.number);
-    const hits = numbers.filter((n) => (byNumber.get(n)?.status ?? "NOT_YET") === status).length;
+    const hits = numbers.filter((n) => {
+      const row = byNumber.get(n);
+      return row ? a79Choice(row.status) === status : false;
+    }).length;
     return a79Percent(hits, numbers.length);
   };
   const criteria = a79Level(progress.level).criteria.map((c, i) => ({ ...c, number: i + 1 }));
@@ -256,7 +257,7 @@ function ResultBody({ progress, childId }: { progress: A79Progress; childId: str
           <div className="min-w-0 flex-1">
             <Badge tone={BAND_TONE[band]}>{A79_BAND_LABEL[band]}</Badge>
             <p className="mt-2 text-body text-ink">
-              {score.total} шалгуураас <b>{score.achieved}</b>-г бие даан илрүүлсэн.
+              {score.total} шалгуураас <b>{score.achieved}</b>-г хангалттай эзэмшсэн.
             </p>
             <p className="text-caption text-muted">{A79_BAND_RULE}</p>
           </div>
@@ -349,7 +350,7 @@ function ResultBody({ progress, childId }: { progress: A79Progress; childId: str
                 <tr>
                   <Th className="w-10">№</Th>
                   <Th className="w-[30%]">Шалгуур</Th>
-                  {A79_STATUSES.map((status) => (
+                  {A79_CHOICES.map((status) => (
                     <Th key={status}>
                       <span className="block">{A79_STATUS_LABEL[status]}</span>
                       <span className="block text-lead font-semibold tabular-nums text-ink">
@@ -364,13 +365,22 @@ function ResultBody({ progress, childId }: { progress: A79Progress; childId: str
                   .filter((c) => c.domain === domain)
                   .map((c) => {
                     const row = byNumber.get(c.number);
-                    const now = row?.status ?? "NOT_YET";
+                    const now = row ? a79Choice(row.status) : null;
                     return (
                       <tr key={c.number} className="align-top">
                         <Td className="tabular-nums text-muted">{c.number}</Td>
                         <Td className="text-ink">{c.text}</Td>
-                        {A79_STATUSES.map((status) => {
-                          const items = (row?.evidence ?? []).filter((e) => e.status === status);
+                        {/*
+                          ★ No note yet: one cell across the three — the
+                          criterion is not assessed, not «Хөгжиж байна».
+                        */}
+                        {!row ? (
+                          <Td colSpan={A79_CHOICES.length}>
+                            <span className="text-caption text-muted">Тэмдэглэл холбоогүй</span>
+                          </Td>
+                        ) : null}
+                        {(row ? A79_CHOICES : []).map((status) => {
+                          const items = row!.evidence.filter((e) => a79Choice(e.status) === status);
                           return (
                             <Td
                               key={status}
@@ -408,8 +418,6 @@ function ResultBody({ progress, childId }: { progress: A79Progress; childId: str
                                     </li>
                                   ))}
                                 </ul>
-                              ) : !row && status === "NOT_YET" ? (
-                                <span className="text-caption text-muted">Тэмдэглэл холбоогүй</span>
                               ) : null}
                             </Td>
                           );

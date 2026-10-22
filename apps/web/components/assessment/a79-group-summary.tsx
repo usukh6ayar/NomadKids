@@ -159,7 +159,7 @@ function SummaryBody({ groupId, data }: { groupId: string; data: A79GroupSummary
         <A79SummaryChart
           rows={withFigures}
           averageLabel="Бүлгийн дундаж"
-          description={`Бүлгийн дундаж, ${withFigures.length} хүүхэд. Хүүхдийн хувь бол өөрийн түвшний шалгуурын хэдийг бие даан илрүүлсэн нь.`}
+          description={`Бүлгийн дундаж, ${withFigures.length} хүүхэд. Хүүхдийн хувь бол өөрийн түвшний шалгуурын хэдийг хангалттай эзэмшсэн нь.`}
         />
       ) : null}
 

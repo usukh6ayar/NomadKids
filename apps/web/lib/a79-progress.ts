@@ -28,18 +28,33 @@ export type A79LevelKey = (typeof A79_LEVEL_KEYS)[number];
 export const A79_STATUSES = ["INDEPENDENT", "SUPPORTED", "DEVELOPING", "NOT_YET"] as const;
 export type A79Status = (typeof A79_STATUSES)[number];
 
+/**
+ * ★ The three a teacher chooses from, and the result table's three columns —
+ * 2026-10-22, the user: the result's own words, «Хангалттай эзэмшиж байна /
+ * Ахиж байна / Хөгжиж байна», not four statuses of their own. The stored
+ * values stay (no migration): INDEPENDENT, SUPPORTED, DEVELOPING. NOT_YET is
+ * no longer offered; a link saved with it reads as «Хөгжиж байна».
+ */
+export const A79_CHOICES = ["INDEPENDENT", "SUPPORTED", "DEVELOPING"] as const;
+export type A79Choice = (typeof A79_CHOICES)[number];
+
+/** The column a stored status reads under — NOT_YET under «Хөгжиж байна». */
+export function a79Choice(status: A79Status): A79Choice {
+  return status === "NOT_YET" ? "DEVELOPING" : status;
+}
+
 export const A79_STATUS_LABEL: Record<A79Status, string> = {
-  INDEPENDENT: "Бие даан",
-  SUPPORTED: "Дэмжлэгтэй",
+  INDEPENDENT: "Хангалттай эзэмшиж байна",
+  SUPPORTED: "Ахиж байна",
   DEVELOPING: "Хөгжиж байна",
-  NOT_YET: "Хараахан ажиглагдаагүй",
+  NOT_YET: "Хөгжиж байна",
 };
 
 export const A79_STATUS_HINT: Record<A79Status, string> = {
-  INDEPENDENT: "Тусламжгүйгээр илэрсэн.",
-  SUPPORTED: "Асуулт, сануулга, үлгэрлэл, багахан тусламжтайгаар илэрсэн.",
-  DEVELOPING: "Чадварын эхлэл байгаа ч тогтвортой биш.",
-  NOT_YET: "Одоогоор дүгнэх нотолгоо байхгүй.",
+  INDEPENDENT: "Тусламжгүйгээр, тогтвортой илэрсэн.",
+  SUPPORTED: "Сануулга, дэмжлэгтэйгээр илэрсэн.",
+  DEVELOPING: "Чадварын эхлэл бий, тогтвортой биш.",
+  NOT_YET: "Чадварын эхлэл бий, тогтвортой биш.",
 };
 
 export const a79LinkSchema = z.object({
@@ -247,13 +262,13 @@ export function a79Csv(
     ["Хүүхэд", child.name],
     ["Нас", child.age ?? ""],
     ["Түвшин", `${progress.level} түвшин`],
-    ["Бие даан илрүүлсэн", `${score.achieved} / ${score.total} (${score.percent}%)`],
+    ["Хангалттай эзэмшсэн", `${score.achieved} / ${score.total} (${score.percent}%)`],
     ...score.byDomain.map((row) => [
       row.domain,
       `${row.achieved} / ${row.total} (${row.percent}%)`,
     ]),
     [],
-    ["Хэсэг", "№", "Шалгуур", "Одоогийн төлөв", ...A79_STATUSES.map((s) => A79_STATUS_LABEL[s])],
+    ["Хэсэг", "№", "Шалгуур", "Одоогийн төлөв", ...A79_CHOICES.map((s) => A79_STATUS_LABEL[s])],
   ];
   a79Level(progress.level).criteria.forEach((criterion, index) => {
     const row = byNumber.get(index + 1);
@@ -261,10 +276,10 @@ export function a79Csv(
       criterion.domain,
       index + 1,
       criterion.text,
-      A79_STATUS_LABEL[row?.status ?? "NOT_YET"],
-      ...A79_STATUSES.map((status) =>
+      row ? A79_STATUS_LABEL[row.status] : "Тэмдэглэл холбоогүй",
+      ...A79_CHOICES.map((status) =>
         (row?.evidence ?? [])
-          .filter((e) => e.status === status)
+          .filter((e) => a79Choice(e.status) === status)
           .map((e) =>
             [formatDay(e.observedOn), e.typeName, e.note ? `— ${e.note}` : ""]
               .filter(Boolean)
