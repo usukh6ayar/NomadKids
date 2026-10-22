@@ -2,10 +2,10 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, FileDown, FileText, QrCode, X } from "lucide-react";
+import { CalendarClock, FileDown, FileText, Minus, Plus, QrCode, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
-import { qpayInvoiceAttemptSchema } from "@kinder/contracts";
+import { MONTHS_IN_TERM, qpayInvoiceAttemptSchema } from "@kinder/contracts";
 import { QpayProgress } from "@/components/child/access-pay-dialog";
 import { FormError } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
@@ -122,6 +122,11 @@ export default function AdminServiceAccessPage() {
 
 function ServiceAccess() {
   const [period, setPeriod] = useState<BillingPeriod>("term");
+  /**
+   * «+ / −» on the group count — 2026-10-22, the user. Null follows the
+   * server's count (the kindergarten's groups); a number is the director's.
+   */
+  const [chosenGroups, setChosenGroups] = useState<number | null>(null);
 
   const access = useQuery({
     queryKey: qk.serviceAccess(),
@@ -131,6 +136,17 @@ function ServiceAccess() {
 
   const notReady = access.isError && isNotFound(access.error);
   const groups = access.data?.groupCount ?? 0;
+  const shownGroups = chosenGroups ?? groups;
+  /*
+    ★ The server prices `groups` groups and charges exactly that. A different
+    count is a preview only — QPay and the invoice stay off until the server
+    can price and charge the chosen count (asked of the admin): a screen that
+    showed 5 groups' sum and charged 3 groups' would be the worst kind of bug.
+  */
+  const countChanged = groups > 0 && shownGroups !== groups;
+  /** One group's price for a period: the server's amount over the groups it priced. */
+  const perGroupOf = (amount: string | null | undefined) =>
+    amount && groups > 0 ? Number(amount) / groups : null;
   const daysLeft = access.data?.expiresAt ? daysUntil(access.data.expiresAt) : null;
   const price = period === "year" ? access.data?.yearAmount : access.data?.termAmount;
   const coversTo = period === "year" ? access.data?.yearCoversTo : access.data?.termCoversTo;
@@ -198,6 +214,14 @@ function ServiceAccess() {
             lede="Улирлаар эсвэл жилээр сонгоод QPay-ээр, эсвэл нэхэмжлэхээр төлнө."
           />
 
+          {groups > 0 ? (
+            <GroupStepper
+              value={shownGroups}
+              registered={groups}
+              onChange={(next) => setChosenGroups(next === groups ? null : next)}
+            />
+          ) : null}
+
           {/*
             ★ Each choice shows what it buys — 2026-10-22, the user: «Улирлаар» and
             «Жилээр» with the period and the amount on the choice itself, so
@@ -217,6 +241,7 @@ function ServiceAccess() {
                   amount: access.data?.termAmount,
                   coversTo: access.data?.termCoversTo,
                   label: access.data?.termLabel ?? "улирал",
+                  months: MONTHS_IN_TERM,
                 },
                 {
                   value: "year",
@@ -224,11 +249,13 @@ function ServiceAccess() {
                   amount: access.data?.yearAmount,
                   coversTo: access.data?.yearCoversTo,
                   label: access.data?.yearLabel ?? "хичээлийн жил",
+                  months: yearMonths(access.data?.yearLabel, yearWhole),
                 },
               ] as const
             ).map((option) => {
               const chosen = period === option.value;
-              const total = option.amount ? Number(option.amount) : null;
+              const perGroup = perGroupOf(option.amount);
+              const total = perGroup !== null ? Math.round(perGroup * shownGroups) : null;
               return (
                 <button
                   key={option.value}
@@ -252,13 +279,15 @@ function ServiceAccess() {
                     {option.title}
                   </span>
                   <span id={`period-${option.value}-details`} className="flex flex-col gap-1">
-                    <span className="text-caption text-muted">{option.label}</span>
+                    <span className="text-caption text-muted">
+                      {option.label} · {option.months} сар
+                    </span>
                     <span className="text-title font-bold tabular-nums text-ink">
                       {total !== null ? tugrik(total) : "—"}
                     </span>
-                    {total !== null && groups > 0 ? (
+                    {perGroup !== null ? (
                       <span className="text-caption tabular-nums text-muted">
-                        {groups} бүлэг × {tugrik(Math.round(total / groups))}
+                        {shownGroups} бүлэг × {tugrik(Math.round(perGroup))}
                       </span>
                     ) : null}
                     {option.coversTo ? (
@@ -285,11 +314,18 @@ function ServiceAccess() {
             </p>
           ) : null}
 
+          {countChanged ? (
+            <p role="status" className="rounded-control bg-sun px-3 py-2 text-caption text-sun-ink">
+              {shownGroups} бүлгээр тооцоолж харууллаа. Одоогоор {groups} бүлгээр төлөх боломжтой —
+              бүлгийн тоог өөрчлөх бол NomadKids-тэй холбогдож гэрээгээ шинэчилнэ үү.
+            </p>
+          ) : null}
+
           <div className="flex flex-wrap gap-2">
-            <ContractPayDialog request={renewal} disabled={!price} />
+            <ContractPayDialog request={renewal} disabled={!price || countChanged} />
             <InvoiceButton
               request={{ path: "/service-access/invoices", body: { period } }}
-              disabled={!price}
+              disabled={!price || countChanged}
             />
           </div>
           <p className="text-caption text-muted">{PAID_HOW}</p>
@@ -589,5 +625,63 @@ function ContractPayDialog({
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+/**
+ * The year's months — nine for the whole school year; from December «the
+ * year» is what is left of it, named by its terms («…, II улирал, III
+ * улирал»), three months each.
+ */
+function yearMonths(label: string | null | undefined, whole: boolean): number {
+  if (whole || !label) return MONTHS_IN_TERM * 3;
+  const terms = label.match(/[IV]+ улирал/g)?.length ?? 3;
+  return MONTHS_IN_TERM * terms;
+}
+
+/** «Бүлгийн тоо» with «−» and «+» — what the amounts below are figured for. */
+function GroupStepper({
+  value,
+  registered,
+  onChange,
+}: {
+  value: number;
+  registered: number;
+  onChange: (next: number) => void;
+}) {
+  const MAX = 99;
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-card bg-canvas px-4 py-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-body font-semibold text-ink">Бүлгийн тоо</p>
+        <p className="text-caption text-muted">Бүртгэлтэй: {registered} бүлэг</p>
+      </div>
+      <div role="group" aria-label="Бүлгийн тоо" className="flex items-center gap-2">
+        <Button
+          variant="secondary"
+          size="icon"
+          aria-label="Бүлэг хасах"
+          disabled={value <= 1}
+          onClick={() => onChange(value - 1)}
+        >
+          <Minus size={18} aria-hidden />
+        </Button>
+        <span
+          aria-live="polite"
+          className="w-10 text-center text-title font-bold tabular-nums text-ink"
+        >
+          {value}
+        </span>
+        <Button
+          variant="secondary"
+          size="icon"
+          aria-label="Бүлэг нэмэх"
+          disabled={value >= MAX}
+          onClick={() => onChange(value + 1)}
+        >
+          <Plus size={18} aria-hidden />
+        </Button>
+      </div>
+    </div>
   );
 }

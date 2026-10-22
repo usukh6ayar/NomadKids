@@ -267,6 +267,50 @@ describe("the director's «Үйлчилгээний эрх»", () => {
     expect(year).toHaveAccessibleDescription(/48,000₮.*2 бүлэг × 24,000₮.*2027\.05\.31 хүртэл/);
   });
 
+  /*
+    «+ / −» on the group count — 2026-10-22, the user. The amounts follow the
+    chosen count; paying stays off until the server can charge it, so the
+    screen never shows one sum and charges another.
+  */
+  it("figures the amounts for the chosen group count, and pays only the counted one", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: "/service-access",
+        body: {
+          expiresAt: inDays(7),
+          period: "term",
+          groupCount: 2,
+          termAmount: "24000.00",
+          yearAmount: "48000.00",
+          termCoversTo: "2027-02-28",
+          yearCoversTo: "2027-05-31",
+          termLabel: "II улирал (2026.12.01 – 2027.02.28)",
+          yearLabel: "2026–2027 хичээлийн жил, II улирал, III улирал",
+          yearWhole: false,
+        },
+      },
+    ]);
+    renderWithProviders(<AdminServiceAccessPage />);
+    await screen.findByText("7 хоногийн дараа дуусна. Сунгана уу.");
+
+    const term = screen.getByRole("radio", { name: "Улирлаар" });
+    // 2 groups × 12,000₮ over three months; the year's rest is two terms, six months.
+    expect(term).toHaveAccessibleDescription(/3 сар.*24,000₮.*2 бүлэг × 12,000₮/);
+    expect(screen.getByRole("radio", { name: "Жилээр" })).toHaveAccessibleDescription(/6 сар/);
+    expect(screen.getByRole("button", { name: /QPay-ээр төлөх/ })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "Бүлэг нэмэх" }));
+    expect(term).toHaveAccessibleDescription(/36,000₮.*3 бүлэг × 12,000₮/);
+    expect(screen.getByText(/3 бүлгээр тооцоолж харууллаа/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /QPay-ээр төлөх/ })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Бүлэг хасах" }));
+    expect(term).toHaveAccessibleDescription(/24,000₮.*2 бүлэг × 12,000₮/);
+    expect(screen.getByRole("button", { name: /QPay-ээр төлөх/ })).toBeEnabled();
+  });
+
   it("names the year's remainder by its terms, and never calls it cheap", async () => {
     const user = userEvent.setup();
     stubApi([
