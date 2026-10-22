@@ -152,12 +152,85 @@ export class PlatformRepository {
           email: true,
           isActive: true,
           createdAt: true,
+          propertyType: true,
+          province: true,
+          district: true,
+          esisInstitutionId: true,
+          // The contract in force — for «… хүртэл» and the operator's reminders
+          // (2026-10-22). Nested in this one query, never one read per row (§3.4).
+          contracts: {
+            where: { status: "ACTIVE", deletedAt: null },
+            orderBy: { endsOn: "desc" },
+            take: 1,
+            select: {
+              startsOn: true,
+              endsOn: true,
+              billingPeriod: true,
+              signedAt: true,
+              activatedAt: true,
+              payments: {
+                where: { status: "PAID", deletedAt: null },
+                select: { coversFrom: true, coversTo: true },
+              },
+            },
+          },
         },
       }),
       this.prisma.kindergarten.count({ where }),
     ]);
 
     return { items, total };
+  }
+
+  /**
+   * The list's figures for one page of kindergartens — the detail view's
+   * counting rules (`DashboardRepository.kindergartenCounts`), grouped by
+   * kindergarten: a fixed handful of queries per page, never one per row (§3.4).
+   */
+  async listFigures(kindergartenIds: string[]) {
+    const kindergartenId = { in: kindergartenIds };
+    const staffWhere = {
+      kindergartenId,
+      deletedAt: null,
+      isActive: true,
+      role: { in: ["TEACHER" as const, "ADMIN" as const] },
+    };
+    const [groups, children, esisChildren, staff, esisStaff] = await Promise.all([
+      this.prisma.group.groupBy({
+        by: ["kindergartenId"],
+        where: { kindergartenId, deletedAt: null, status: "ACTIVE" },
+        _count: { _all: true },
+      }),
+      this.prisma.child.groupBy({
+        by: ["kindergartenId"],
+        where: { kindergartenId, deletedAt: null, status: "ACTIVE" },
+        _count: { _all: true },
+      }),
+      this.prisma.child.groupBy({
+        by: ["kindergartenId"],
+        where: { kindergartenId, deletedAt: null, status: "ACTIVE", esisPersonId: { not: null } },
+        _count: { _all: true },
+      }),
+      this.prisma.membership.groupBy({
+        by: ["kindergartenId"],
+        where: staffWhere,
+        _count: { _all: true },
+      }),
+      this.prisma.membership.groupBy({
+        by: ["kindergartenId"],
+        where: { ...staffWhere, user: { esisPersonId: { not: null } } },
+        _count: { _all: true },
+      }),
+    ]);
+    const byId = (rows: { kindergartenId: string | null; _count: { _all: number } }[]) =>
+      new Map(rows.map((r) => [r.kindergartenId, r._count._all]));
+    return {
+      groups: byId(groups),
+      children: byId(children),
+      esisChildren: byId(esisChildren),
+      staff: byId(staff),
+      esisStaff: byId(esisStaff),
+    };
   }
 
   /**

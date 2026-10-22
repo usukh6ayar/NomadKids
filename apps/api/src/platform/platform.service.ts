@@ -245,7 +245,40 @@ export class PlatformService {
 
     const page: PageParams = { page: query.page, pageSize: query.pageSize };
     const { items, total } = await this.repo.list({ q: query.q, isActive: query.isActive }, page);
-    return paginate(items, total, page);
+    const figures = await this.repo.listFigures(items.map((row) => row.id));
+    const day = (d: Date) => d.toISOString().slice(0, 10);
+    const today = day(new Date());
+    return paginate(
+      items.map(({ contracts, ...row }) => {
+        const contract = contracts[0];
+        const linked = Boolean(row.esisInstitutionId);
+        const count = (map: Map<string | null, number>) => map.get(row.id) ?? 0;
+        return {
+          ...row,
+          groupCount: count(figures.groups),
+          childCount: count(figures.children),
+          staffCount: count(figures.staff),
+          esisConnected: linked,
+          esisStaffLinked: linked ? count(figures.esisStaff) : null,
+          esisChildrenLinked: linked ? count(figures.esisChildren) : null,
+          contractStartsOn: contract ? day(contract.startsOn) : null,
+          contractEndsOn: contract ? day(contract.endsOn) : null,
+          contractSignedAt: contract
+            ? ((contract.activatedAt ?? contract.signedAt)?.toISOString() ?? null)
+            : null,
+          billingPeriod: contract?.billingPeriod
+            ? contract.billingPeriod === "TERM"
+              ? "term"
+              : "year"
+            : null,
+          paymentStatus: contract
+            ? paymentStatus(day(contract.endsOn), contract.payments, today)
+            : null,
+        };
+      }),
+      total,
+      page,
+    );
   }
 
   /**
@@ -541,4 +574,27 @@ function isUniqueViolation(error: unknown): boolean {
 function uniqueViolationMentions(error: unknown, column: string): boolean {
   const meta = (error as { meta?: unknown } | null)?.meta;
   return meta !== undefined && meta !== null && JSON.stringify(meta).includes(column);
+}
+
+/**
+ * The platform contract's payment state, for the operator's list (2026-10-22,
+ * the user: «хаахгүйгээр» — told, never blocked; nothing reads this to gate).
+ * Ended → «Хоцорсон»; ending within 14 days → «Төлөх хугацаа ойртсон»; a paid
+ * period covering today → «Төлсөн»; otherwise the period is still unpaid.
+ * Never «suspended»: no kindergarten is suspended (CLAUDE.md §1.7).
+ */
+export function paymentStatus(
+  endsOn: string,
+  paid: { coversFrom: Date; coversTo: Date }[],
+  today: string,
+): "paid" | "due" | "overdue" {
+  if (endsOn < today) return "overdue";
+  const days = (Date.parse(endsOn) - Date.parse(today)) / 86_400_000;
+  if (days <= 14) return "due";
+  const covered = paid.some(
+    (p) =>
+      p.coversFrom.toISOString().slice(0, 10) <= today &&
+      p.coversTo.toISOString().slice(0, 10) >= today,
+  );
+  return covered ? "paid" : "due";
 }
