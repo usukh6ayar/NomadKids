@@ -40,12 +40,8 @@ import { DAILY_ACTIVITIES } from "@/components/assessment/group-coverage";
 import { ageInYears, excerpt, formatDate, formatLongDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { KIND_LOOK, PICK, PICK_FIELD } from "@/lib/observation-look";
-import { A79LinksField } from "@/components/assessment/a79-links";
-import {
-  a79LevelForAge,
-  observationA79LinksSchema,
-  type A79Link,
-} from "@/lib/a79-progress";
+import { A79LinksField, ObservationA79Summary } from "@/components/assessment/a79-links";
+import { a79LevelForAge, observationA79LinksSchema, type A79Link } from "@/lib/a79-progress";
 
 const observationsSchema = paginated(observationSchema);
 const termsSchema = z.array(termSchema);
@@ -847,6 +843,9 @@ export function ObservationDetailDialog({
             ) : null}
             <p className="whitespace-pre-wrap text-body text-ink">{text || "Тэмдэглэл"}</p>
           </section>
+          {observation.source !== "PARENT" ? (
+            <ObservationA79Summary observationId={observation.id} />
+          ) : null}
         </div>
       ) : null}
     </FormDialog>

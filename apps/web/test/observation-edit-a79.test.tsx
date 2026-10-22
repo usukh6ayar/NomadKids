@@ -2,7 +2,10 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders, sessionFor, stubApi } from "./support/render";
-import { EditObservationDialog } from "@/components/child/child-observations";
+import {
+  EditObservationDialog,
+  ObservationDetailDialog,
+} from "@/components/child/child-observations";
 
 /**
  * «Тэмдэглэл засах» and the note's А/79 criteria — 2026-10-22, the user: a
@@ -44,11 +47,7 @@ function render(links: { status?: number; body: unknown }) {
     { path: `/observations/${NOTE}`, method: "PATCH", body: observation },
   ]);
   renderWithProviders(
-    <EditObservationDialog
-      childId={CHILD}
-      observation={observation as never}
-      onClose={() => {}}
-    />,
+    <EditObservationDialog childId={CHILD} observation={observation as never} onClose={() => {}} />,
   );
   return api;
 }
@@ -99,5 +98,46 @@ describe("editing a note linked to А/79", () => {
     await userEvent.click(screen.getByRole("button", { name: "Хадгалах" }));
     await waitFor(() => expect(api.calls.some((c) => c.method === "PATCH")).toBe(true));
     expect(api.calls.some((c) => c.method === "PUT")).toBe(false);
+  });
+});
+
+/*
+ * The enlarged note says what it is evidence of — 2026-10-22, the user: an
+ * observation, a conversation or an artwork opened large shows its criteria.
+ */
+describe("the enlarged note", () => {
+  const open = (roles: string[]) => {
+    const api = stubApi([
+      { path: "/auth/me", body: sessionFor(roles as never) },
+      {
+        path: `/observations/${NOTE}/a79-links`,
+        method: "GET",
+        body: { links: [{ level: "IV", number: 12, status: "DEVELOPING", note: "Сануулгатай" }] },
+      },
+    ]);
+    renderWithProviders(
+      <ObservationDetailDialog
+        observation={observation as never}
+        showTeacherMetadata
+        onClose={() => {}}
+      />,
+    );
+    return api;
+  };
+
+  it("shows the teacher the А/79 criteria the note is linked to", async () => {
+    open(["TEACHER"]);
+    const section = await screen.findByRole("region", { name: "А/79 шалгуур" });
+    expect(section).toHaveTextContent("А/79 · IV · Ш12");
+    expect(section).toHaveTextContent("Хөгжиж байна");
+    expect(section).toHaveTextContent("Сануулгатай");
+  });
+
+  it("asks nothing for a family", async () => {
+    const api = open(["PARENT"]);
+    await screen.findByRole("dialog");
+    await waitFor(() => expect(api.calls.some((c) => c.url === "/auth/me")).toBe(true));
+    expect(api.calls.some((c) => c.url.endsWith("/a79-links"))).toBe(false);
+    expect(screen.queryByRole("region", { name: "А/79 шалгуур" })).not.toBeInTheDocument();
   });
 });
