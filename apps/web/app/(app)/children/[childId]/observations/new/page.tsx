@@ -1067,7 +1067,13 @@ function NewObservationForm() {
             </div>
           ) : null}
 
-          {isStaff && !fromProgress && !specialistOnly ? (
+          {/*
+            ★ On every kind — an observation, a conversation and an artwork,
+            the artwork tab's «Шинэ бүтээл нэмэх» too (2026-10-22, the user:
+            "3лаа харагдана"). It was left off that form, so an artwork filed
+            there could never be evidence in «Үр дүнгийн үнэлгээ».
+          */}
+          {isStaff && !specialistOnly ? (
             <A79LinksField
               links={a79Links}
               onChange={setA79Links}
