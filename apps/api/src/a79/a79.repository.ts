@@ -69,6 +69,15 @@ export class A79Repository {
     });
   }
 
+  /** A note's live links, as `replaceLinks` answers them. */
+  liveLinks(observationId: string) {
+    return this.prisma.observationA79Link.findMany({
+      where: { observationId, deletedAt: null },
+      select: { level: true, number: true, status: true, note: true },
+      orderBy: [{ level: "asc" }, { number: "asc" }],
+    });
+  }
+
   /** One child's evidence at one level, newest note first. */
   evidenceForChild(childId: string, level: A79LevelKey) {
     return this.prisma.observationA79Link.findMany({

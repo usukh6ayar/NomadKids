@@ -167,6 +167,39 @@ describe("PUT /observations/:id/a79-links", () => {
   });
 });
 
+describe("GET /observations/:id/a79-links", () => {
+  const getLinks = (session: AuthSession, observationId: string) =>
+    authed(request(server()).get(`/v1/observations/${observationId}/a79-links`), session);
+
+  it("gives the note's live set, for editing it", async () => {
+    const id = await note();
+    await putLinks(teacherA, id, [link(3), link(4)]);
+    await putLinks(teacherA, id, [{ ...link(12, "SUPPORTED"), note: "Сануулгатай" }]);
+
+    const res = await getLinks(teacherA, id);
+    expect(res.status).toBe(200);
+    expect(res.body.links).toEqual([
+      { level: "IV", number: 12, status: "SUPPORTED", note: "Сануулгатай" },
+    ]);
+    expect((await getLinks(teacherA, await note())).body.links).toEqual([]);
+  });
+
+  it("teacher from another group gets 404", async () => {
+    const id = await note();
+    expect((await getLinks(otherGroupTeacher, id)).status).toBe(404);
+  });
+
+  it("guardian of the child gets 404", async () => {
+    const id = await note();
+    expect((await getLinks(parentA, id)).status).toBe(404);
+  });
+
+  it("user from another kindergarten gets 404", async () => {
+    const id = await note();
+    expect((await getLinks(teacherB, id)).status).toBe(404);
+  });
+});
+
 describe("GET /children/:id/a79-progress", () => {
   it("gives each criterion the latest note's status and every note, newest first", async () => {
     const older = await note("2026-01-10", "Эхний тэмдэглэл");
