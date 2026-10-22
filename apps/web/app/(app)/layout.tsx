@@ -667,18 +667,15 @@ function staffSections(isAdmin: boolean, groupId: string | null): NavSection[] {
         entries: [
           entry("Тайлан", "/reports", "adminReport"),
           entry("Баримт бичгийн сан", "/documents", "adminDocuments"),
-        ],
-      },
-      /*
-        ★ «Үйлчилгээний эрх» last, so it sits right above «Хувийн тохиргоо»
-        (which the shell draws after every section) — 2026-10-22, the user.
-        Where a director pays NomadKids: the contract by term or year, by
-        QPay. It was written in the non-director menu below, so until this
-        change no director ever saw it.
-      */
-      {
-        title: "",
-        entries: [
+          /*
+            ★ «Үйлчилгээний эрх» last, so it sits right above «Хувийн тохиргоо»
+            (which the shell draws after every section) — 2026-10-22, the user.
+            Where a director pays NomadKids: the contract by term or year, by
+            QPay. It was written in the non-director menu below, so until this
+            change no director ever saw it. In this section rather than an
+            untitled one: sections are keyed by their title, and the first is
+            untitled already.
+          */
           {
             ...entry("Үйлчилгээний эрх", "/admin/service-access", "navParentAccess"),
             badge: "serviceAccess" as const,

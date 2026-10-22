@@ -134,9 +134,6 @@ function ServiceAccess() {
   const daysLeft = access.data?.expiresAt ? daysUntil(access.data.expiresAt) : null;
   const price = period === "year" ? access.data?.yearAmount : access.data?.termAmount;
   const coversTo = period === "year" ? access.data?.yearCoversTo : access.data?.termCoversTo;
-  const periodLabel =
-    (period === "year" ? access.data?.yearLabel : access.data?.termLabel) ??
-    (period === "year" ? "хичээлийн жил" : "улирал");
   // An API from before the labels sends no `yearWhole`: the year was always whole then.
   const yearWhole = access.data?.yearWhole ?? true;
   const toSign = access.data?.contractToSign ?? null;
@@ -201,46 +198,88 @@ function ServiceAccess() {
             lede="Улирлаар эсвэл жилээр сонгоод QPay-ээр, эсвэл нэхэмжлэхээр төлнө."
           />
 
+          {/*
+            ★ Each choice shows what it buys — 2026-10-22, the user: «Улирлаар» and
+            «Жилээр» with the period and the amount on the choice itself, so
+            the two can be compared before paying. The amounts and dates are
+            the server's (`termAmount`, `termCoversTo`, `termLabel` …).
+          */}
           <div
             role="radiogroup"
             aria-label="Төлбөрийн хугацаа"
-            className="grid max-w-[420px] grid-cols-2 gap-1 rounded-pill bg-canvas p-1"
+            className="grid max-w-xl grid-cols-2 gap-2"
           >
             {(
               [
-                ["term", "Улирлаар"],
-                ["year", yearWhole ? "Жилээр — хямд" : "Жилээр"],
+                {
+                  value: "term",
+                  title: "Улирлаар",
+                  amount: access.data?.termAmount,
+                  coversTo: access.data?.termCoversTo,
+                  label: access.data?.termLabel ?? "улирал",
+                },
+                {
+                  value: "year",
+                  title: yearWhole ? "Жилээр — хямд" : "Жилээр",
+                  amount: access.data?.yearAmount,
+                  coversTo: access.data?.yearCoversTo,
+                  label: access.data?.yearLabel ?? "хичээлийн жил",
+                },
               ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={period === value}
-                onClick={() => setPeriod(value)}
-                className={cn(
-                  "min-h-11 rounded-pill px-3 text-body font-semibold transition-colors",
-                  period === value ? "bg-primary text-white shadow-sm" : "text-muted",
-                )}
-              >
-                {label}
-              </button>
-            ))}
+            ).map((option) => {
+              const chosen = period === option.value;
+              const total = option.amount ? Number(option.amount) : null;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={chosen}
+                  // Named by the choice; what it buys is its description.
+                  aria-label={option.title}
+                  aria-describedby={`period-${option.value}-details`}
+                  onClick={() => setPeriod(option.value)}
+                  className={cn(
+                    "flex flex-col items-start gap-1 rounded-card border-2 p-3 text-left transition-colors",
+                    chosen
+                      ? "border-primary bg-primary-soft"
+                      : "border-border-soft bg-surface hover:border-border",
+                  )}
+                >
+                  <span
+                    className={cn("text-body font-semibold", chosen ? "text-primary" : "text-ink")}
+                  >
+                    {option.title}
+                  </span>
+                  <span id={`period-${option.value}-details`} className="flex flex-col gap-1">
+                    <span className="text-caption text-muted">{option.label}</span>
+                    <span className="text-title font-bold tabular-nums text-ink">
+                      {total !== null ? tugrik(total) : "—"}
+                    </span>
+                    {total !== null && groups > 0 ? (
+                      <span className="text-caption tabular-nums text-muted">
+                        {groups} бүлэг × {tugrik(Math.round(total / groups))}
+                      </span>
+                    ) : null}
+                    {option.coversTo ? (
+                      <span className="text-caption text-ink">
+                        {formatDate(option.coversTo)} хүртэл
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
-          <p aria-live="polite" className="text-body text-ink">
-            {price ? (
-              <>
-                {groups} бүлэг · <strong className="text-title">{tugrik(Number(price))}</strong> /{" "}
-                {periodLabel}
-              </>
-            ) : access.isSuccess ? (
-              "Гэрээнд бүлгийн төлбөр тогтоогоогүй байна. NomadKids-тэй холбогдож нэхэмжлэх авна уу."
-            ) : null}
-          </p>
+          {!price && access.isSuccess ? (
+            <p className="text-body text-ink">
+              Гэрээнд бүлгийн төлбөр тогтоогоогүй байна. NomadKids-тэй холбогдож нэхэмжлэх авна уу.
+            </p>
+          ) : null}
 
           {price && coversTo ? (
-            <p className="text-body text-muted">
+            <p aria-live="polite" className="text-body text-muted">
               Төлмөгц эрх <strong className="text-ink">{formatDate(coversTo)}</strong> хүртэл
               сунгагдана.
             </p>

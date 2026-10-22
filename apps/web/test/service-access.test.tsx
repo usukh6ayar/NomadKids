@@ -233,6 +233,40 @@ describe("the director's «Үйлчилгээний эрх»", () => {
    * ★ The user, 2026-10-18: from December «Жилээр» is what is left of the
    * school year, priced as terms — never called cheap, and named by its terms.
    */
+  /*
+    Each choice shows what it buys — 2026-10-22, the user: the period, the
+    total, per group, and until when — so the two compare before paying.
+  */
+  it("shows each choice's period, amount and end date on the choice itself", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: "/service-access",
+        body: {
+          expiresAt: inDays(7),
+          period: "term",
+          groupCount: 2,
+          termAmount: "24000.00",
+          yearAmount: "48000.00",
+          termCoversTo: "2027-02-28",
+          yearCoversTo: "2027-05-31",
+          termLabel: "II улирал (2026.12.01 – 2027.02.28)",
+          yearLabel: "2026–2027 хичээлийн жил, II улирал, III улирал",
+          yearWhole: false,
+        },
+      },
+    ]);
+    renderWithProviders(<AdminServiceAccessPage />);
+
+    await screen.findByText("7 хоногийн дараа дуусна. Сунгана уу.");
+    const term = screen.getByRole("radio", { name: "Улирлаар" });
+    expect(term).toHaveAccessibleDescription(
+      /II улирал.*24,000₮.*2 бүлэг × 12,000₮.*2027\.02\.28 хүртэл/,
+    );
+    const year = screen.getByRole("radio", { name: "Жилээр" });
+    expect(year).toHaveAccessibleDescription(/48,000₮.*2 бүлэг × 24,000₮.*2027\.05\.31 хүртэл/);
+  });
+
   it("names the year's remainder by its terms, and never calls it cheap", async () => {
     const user = userEvent.setup();
     stubApi([
