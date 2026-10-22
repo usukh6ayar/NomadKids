@@ -241,7 +241,7 @@ describe("the administrator report", () => {
     ).toBeInTheDocument();
     // Child-weighted: (80 + 50 + 20) / 3 = 50%, not the two group averages' 43%.
     expect(within(panel).getByRole("img", { name: "Цэцэрлэгийн дундаж: 50%" })).toBeInTheDocument();
-    expect(within(panel).getByText("Хангалттай · 1")).toBeInTheDocument();
+    expect(within(panel).getByText("Хангалттай эзэмшиж байна · 1")).toBeInTheDocument();
     expect(within(panel).getByText("Ахиж байна · 1")).toBeInTheDocument();
     expect(within(panel).getByText("Хөгжиж байна · 1")).toBeInTheDocument();
 
@@ -258,7 +258,7 @@ describe("the administrator report", () => {
       within(first.closest("tr")!)
         .getAllByRole("cell")
         .map((cell) => cell.textContent),
-    ).toEqual(["1", "Дэлбээ", "2", "65%", "64%", "69%", "65%", "Ахиж байна"]);
+    ).toEqual(["1", "Дэлбээ", "2", "65%", "64%", "68.1%", "65.2%", "Ахиж байна"]);
 
     const second = within(table).getByRole("link", { name: "Нархан" });
     expect(second).toHaveAttribute("href", `/groups/${SECOND_GROUP}/results`);

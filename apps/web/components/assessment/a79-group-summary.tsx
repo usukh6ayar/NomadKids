@@ -15,6 +15,8 @@ import {
   A79_DOMAIN_FILL,
   a79Band,
   a79GroupSummarySchema,
+  a79MeanShare,
+  a79Percent,
   type A79Band,
   type A79GroupSummary,
 } from "@/lib/a79-progress";
@@ -27,8 +29,7 @@ const BAND_TONE: Record<A79Band, "mint" | "sun" | "peach"> = {
   DEVELOPING: "peach",
 };
 
-const pct = (achieved: number, total: number) =>
-  total > 0 ? Math.round((achieved / total) * 100) : 0;
+const pct = a79Percent;
 
 /**
  * «Үр дүнгийн үнэлгээ» on Тайлан — the group's А/79 result in one place
@@ -107,14 +108,12 @@ export function a79GroupAverages(
 ): { total: number; byDomain: Record<A79Domain, number> } | null {
   const rows = scored(all);
   if (rows.length === 0) return null;
-  const mean = (values: number[]) =>
-    Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
   return {
-    total: mean(rows.map((row) => row.percent)),
+    total: a79MeanShare(rows),
     byDomain: {
-      Мэдлэг: mean(rows.map((row) => row.domain.Мэдлэг ?? 0)),
-      Чадвар: mean(rows.map((row) => row.domain.Чадвар ?? 0)),
-      Төлөвшил: mean(rows.map((row) => row.domain.Төлөвшил ?? 0)),
+      Мэдлэг: domainAverage(rows, "Мэдлэг"),
+      Чадвар: domainAverage(rows, "Чадвар"),
+      Төлөвшил: domainAverage(rows, "Төлөвшил"),
     },
   };
 }
@@ -169,8 +168,9 @@ function SummaryBody({ groupId, data }: { groupId: string; data: A79GroupSummary
 }
 
 function domainAverage(rows: A79ChildRow[], domain: A79Domain): number {
-  if (rows.length === 0) return 0;
-  return Math.round(rows.reduce((sum, row) => sum + (row.domain[domain] ?? 0), 0) / rows.length);
+  return a79MeanShare(
+    rows.map((row) => row.byDomain.find((d) => d.domain === domain) ?? { achieved: 0, total: 0 }),
+  );
 }
 
 export function A79SummaryChart({
@@ -184,7 +184,7 @@ export function A79SummaryChart({
   description: string;
   title?: string;
 }) {
-  const average = Math.round(rows.reduce((sum, row) => sum + row.percent, 0) / rows.length);
+  const average = a79MeanShare(rows);
   const bands = (["MASTERED", "PROGRESSING", "DEVELOPING"] as const).map((band) => ({
     band,
     count: rows.filter((row) => a79Band(row.percent) === band).length,
@@ -320,9 +320,7 @@ export function KindergartenSummaryBody({
 }) {
   const groupRows = groups.map(({ group, summary }) => {
     const children = scored(a79ChildRows(summary));
-    const percent = children.length
-      ? Math.round(children.reduce((sum, row) => sum + row.percent, 0) / children.length)
-      : null;
+    const percent = children.length ? a79MeanShare(children) : null;
     return { group, children, percent };
   });
   const children = groupRows.flatMap((row) => row.children);

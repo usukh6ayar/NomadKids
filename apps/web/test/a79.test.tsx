@@ -12,7 +12,14 @@ import {
 import NewObservationPage from "@/app/(app)/children/[childId]/observations/new/page";
 import GroupResultsPage from "@/app/(app)/groups/[groupId]/results/page";
 import ChildResultPage from "@/app/(app)/groups/[groupId]/results/[childId]/page";
-import { a79Band, a79Csv, a79LevelForAge, a79Score } from "@/lib/a79-progress";
+import {
+  A79_BAND_LABEL,
+  a79Band,
+  a79Csv,
+  a79LevelForAge,
+  a79Percent,
+  a79Score,
+} from "@/lib/a79-progress";
 import { suggestA79 } from "@/lib/a79-suggest";
 
 /*
@@ -64,9 +71,26 @@ describe("А/79 scoring", () => {
     });
     expect(score.achieved).toBe(2);
     expect(score.total).toBe(37);
-    expect(score.percent).toBe(5);
+    // 2 of 37 is 5.405…% — cut to one decimal, never rounded (А/79 §2.10).
+    expect(score.percent).toBe(5.4);
     const knowledge = score.byDomain.find((row) => row.domain === "Мэдлэг")!;
     expect(knowledge).toMatchObject({ achieved: 1, total: 11, percent: 9 });
+  });
+
+  /*
+   * ★ А/79 §2.10 (the user, 2026-10-22): 80.0% and above «Хангалттай эзэмшиж
+   * байна», 50.0–79.0% «Ахиж байна», 49.0% and below «Хөгжиж байна». A share
+   * is cut to one decimal, never rounded up into the band above.
+   */
+  it("bands as the regulation does — 39 of 49 is 79.5%, not «Хангалттай»", () => {
+    expect(a79Percent(39, 49)).toBe(79.5);
+    expect(A79_BAND_LABEL[a79Band(a79Percent(39, 49))]).toBe("Ахиж байна");
+    expect(a79Percent(40, 50)).toBe(80);
+    expect(A79_BAND_LABEL[a79Band(80)]).toBe("Хангалттай эзэмшиж байна");
+    // 49 of 99 is 49.4% — below 50.
+    expect(a79Band(a79Percent(49, 99))).toBe("DEVELOPING");
+    expect(a79Band(79.9)).toBe("PROGRESSING");
+    expect(a79Band(49.9)).toBe("DEVELOPING");
   });
 
   it("bands at 80 and 50, and levels by age", () => {
@@ -119,7 +143,7 @@ describe("А/79 result as Excel", () => {
     );
     const lines = csv.split("\r\n");
     expect(lines[0]).toBe('"Хүүхэд","Ганболд Батбаяр"');
-    expect(lines[3]).toBe('"Бие даан илрүүлсэн","1 / 37 (3%)"');
+    expect(lines[3]).toBe('"Бие даан илрүүлсэн","1 / 37 (2.7%)"');
     expect(csv).toContain(
       '"Хэсэг","№","Шалгуур","Одоогийн төлөв","Бие даан","Дэмжлэгтэй","Хөгжиж байна","Хараахан ажиглагдаагүй"',
     );
@@ -375,7 +399,7 @@ describe("«Үр дүнгийн үнэлгээ»", () => {
       within(row)
         .getAllByRole("cell")
         .map((td) => td.textContent),
-    ).toEqual(["1", "Б.Ану", "III", "44%", "55%", "100%", "59%", "Ахиж байна"]);
+    ).toEqual(["1", "Б.Ану", "III", "44.4%", "55.1%", "100%", "58.6%", "Ахиж байна"]);
     expect(screen.queryByText(/Жишээ үр дүн/)).toBeNull();
   });
 
@@ -472,7 +496,7 @@ describe("«Үр дүнгийн үнэлгээ»", () => {
     const summary = (await screen.findByText(/37 шалгуураас/)).closest("div")!;
     expect(summary).toHaveTextContent("37 шалгуураас 1-г бие даан илрүүлсэн.");
     expect(within(summary).getByText("Хөгжиж байна")).toBeInTheDocument();
-    expect(screen.getByRole("progressbar", { name: "Чадвар: 5%" })).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "Чадвар: 4.5%" })).toBeInTheDocument();
     // A row per criterion; each note under the status it was given.
     const counted = screen.getByText("3 хүртэлх тоглоом, юмсыг тоолдог.").closest("tr")!;
     const cells = within(counted).getAllByRole("cell");
@@ -483,9 +507,9 @@ describe("«Үр дүнгийн үнэлгээ»", () => {
     // The column heads carry the part's share at each status.
     const skills = screen.getByRole("table", { name: /^Чадвар/ });
     const heads = within(skills).getAllByRole("columnheader");
-    expect(heads[2]).toHaveTextContent("Бие даан5%");
-    expect(heads[3]).toHaveTextContent("Дэмжлэгтэй5%");
-    expect(heads[5]).toHaveTextContent("Хараахан ажиглагдаагүй91%");
+    expect(heads[2]).toHaveTextContent("Бие даан4.5%");
+    expect(heads[3]).toHaveTextContent("Дэмжлэгтэй4.5%");
+    expect(heads[5]).toHaveTextContent("Хараахан ажиглагдаагүй90.9%");
 
     // Pressing a piece of evidence opens the note itself.
     await user.click(

@@ -25,6 +25,7 @@ import { errorMessage, isNotFound, isPaymentRequired } from "@/lib/api/errors";
 import type { A79Domain } from "@/lib/a79-assessment";
 import {
   A79_BAND_LABEL,
+  A79_BAND_RULE,
   A79_DOMAIN_FILL,
   A79_LEVEL_KEYS,
   A79_STATUSES,
@@ -34,6 +35,7 @@ import {
   a79Level,
   a79LevelForAge,
   a79ProgressSchema,
+  a79Percent,
   a79Score,
   type A79Band,
   type A79Evidence,
@@ -190,7 +192,7 @@ function ResultBody({ progress, childId }: { progress: A79Progress; childId: str
   const shareByDomain = (domain: A79Domain, status: A79Status) => {
     const numbers = criteria.filter((c) => c.domain === domain).map((c) => c.number);
     const hits = numbers.filter((n) => (byNumber.get(n)?.status ?? "NOT_YET") === status).length;
-    return numbers.length ? Math.round((hits / numbers.length) * 100) : 0;
+    return a79Percent(hits, numbers.length);
   };
   const criteria = a79Level(progress.level).criteria.map((c, i) => ({ ...c, number: i + 1 }));
   const domains = [...new Set(criteria.map((c) => c.domain))] as A79Domain[];
@@ -211,9 +213,7 @@ function ResultBody({ progress, childId }: { progress: A79Progress; childId: str
             <p className="mt-2 text-body text-ink">
               {score.total} шалгуураас <b>{score.achieved}</b>-г бие даан илрүүлсэн.
             </p>
-            <p className="text-caption text-muted">
-              80%-аас дээш Хангалттай · 50–79% Ахиж байна · 50%-аас доош Хөгжиж байна
-            </p>
+            <p className="text-caption text-muted">{A79_BAND_RULE}</p>
           </div>
         </div>
 
