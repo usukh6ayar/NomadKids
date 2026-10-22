@@ -7,6 +7,7 @@ import {
   MONTHS_IN_SCHOOL_YEAR,
   MONTHS_IN_TERM,
   firstTermPromoOpen,
+  groupYearPrice,
   localDate,
 } from "@kinder/contracts";
 
@@ -45,7 +46,15 @@ export const KINDERGARTEN_STANDARD_YEAR_PER_GROUP = GROUP_PRICES.yearStandard;
  * user), never a monthly rate × 3 (the client, 2026-10-18).
  */
 export const KINDERGARTEN_CURRENT_TERM_PER_GROUP = GROUP_PRICES.termPromo;
-export const KINDERGARTEN_CURRENT_YEAR_PER_GROUP = GROUP_PRICES.year;
+/**
+ * ★ A group's year bought today — 2026-10-22, the user: the months left from
+ * the next month to May × 4,000₮ (on 22 October, 7 × 4,000₮ = 28,000₮),
+ * June a bonus; 9 × 4,000₮ = 36,000₮ for a whole year. The server prices the
+ * same way (`groupYearPrice`, `quote()`).
+ */
+export function kindergartenYearPerGroup(today: string = localDate()): number {
+  return groupYearPrice(today);
+}
 
 /**
  * Whether «I-р улирал» is still on sale — through 2026-11-30 in Ulaanbaatar.
@@ -102,7 +111,10 @@ export const PLANS: Plan[] = [
     name: "Цэцэрлэг",
     audience: "Бүх багш, бүлгээрээ",
     perTerm: KINDERGARTEN_CURRENT_TERM_PER_GROUP,
-    perYear: KINDERGARTEN_CURRENT_YEAR_PER_GROUP,
+    // Read when drawn — the year's price follows the day (2026-10-22).
+    get perYear() {
+      return kindergartenYearPerGroup();
+    },
     features: [
       "Бүлэг, багш, ажилтны эрхийн удирдлага",
       "Хөгжлийн цахим хавтас: Бүх бүлгийн суралцагчийн ахиц хөгжил",
@@ -129,8 +141,8 @@ export function kindergartenTermPrice(groups: number, today: string = localDate(
   return Math.max(1, Math.trunc(groups)) * perGroup;
 }
 
-export function kindergartenYearlyPrice(groups: number): number {
-  return Math.max(1, Math.trunc(groups)) * KINDERGARTEN_CURRENT_YEAR_PER_GROUP;
+export function kindergartenYearlyPrice(groups: number, today: string = localDate()): number {
+  return Math.max(1, Math.trunc(groups)) * kindergartenYearPerGroup(today);
 }
 
 export function kindergartenStandardYearPrice(groups: number): number {
@@ -234,9 +246,12 @@ export function contractSchedule(
         perMonth: null,
         months: null,
         groups,
-        perGroup: KINDERGARTEN_CURRENT_YEAR_PER_GROUP,
-        amount: groups * KINDERGARTEN_CURRENT_YEAR_PER_GROUP,
-        discounted: KINDERGARTEN_CURRENT_YEAR_PER_GROUP < KINDERGARTEN_STANDARD_YEAR_PER_GROUP,
+        // The first year from the day it starts (its months left); a later one whole.
+        perGroup: year === first ? groupYearPrice(startsOn) : GROUP_PRICES.year,
+        amount: groups * (year === first ? groupYearPrice(startsOn) : GROUP_PRICES.year),
+        discounted:
+          (year === first ? groupYearPrice(startsOn) : GROUP_PRICES.year) <
+          KINDERGARTEN_STANDARD_YEAR_PER_GROUP,
         dueOn: `${year}-09-01`,
       });
       standardTotal += groups * KINDERGARTEN_STANDARD_YEAR_PER_GROUP;

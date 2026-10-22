@@ -54,6 +54,9 @@ const serviceAccessSchema = z.object({
    */
   termLabel: z.string().nullish(),
   yearLabel: z.string().nullish(),
+  /** Months each period charges — the server's (2026-10-22); derived when absent. */
+  termMonths: z.number().int().nullish(),
+  yearMonths: z.number().int().nullish(),
   /** The whole school year at the year's price — the only one «хямд» is said of. */
   yearWhole: z.boolean().nullish(),
   /**
@@ -241,7 +244,7 @@ function ServiceAccess() {
                   amount: access.data?.termAmount,
                   coversTo: access.data?.termCoversTo,
                   label: access.data?.termLabel ?? "улирал",
-                  months: MONTHS_IN_TERM,
+                  months: access.data?.termMonths ?? MONTHS_IN_TERM,
                 },
                 {
                   value: "year",
@@ -249,7 +252,7 @@ function ServiceAccess() {
                   amount: access.data?.yearAmount,
                   coversTo: access.data?.yearCoversTo,
                   label: access.data?.yearLabel ?? "хичээлийн жил",
-                  months: yearMonths(access.data?.yearLabel, yearWhole),
+                  months: access.data?.yearMonths ?? yearMonths(access.data?.yearLabel, yearWhole),
                 },
               ] as const
             ).map((option) => {
