@@ -34,7 +34,8 @@ export const platformQpayInvoiceSchema = z.object({
   status: z.enum(QPAY_INVOICE_STATUSES),
   /** QPay reported a different amount — nothing opened; a person decides. */
   needsReview: z.boolean().default(false),
-  amount: z.number(),
+  /** A decimal string from the API («22000.00») — money is never a JSON number. */
+  amount: z.coerce.number(),
   createdAt: z.string(),
   paidAt: z.string().nullish(),
   kindergarten: z.object({ id: z.string(), name: z.string() }).nullish(),
