@@ -2828,6 +2828,11 @@ model QpayInvoice {
 
   status QpayInvoiceStatus @default(PENDING)
 
+  /// Money QPay reports and nothing opened for it — a person must look
+  /// («Төлбөр шалгах», 2026-10-21). Set by `QpayService.reconcile`, never
+  /// cleared by it: the refund or the credit is done by hand.
+  reviewReason QpayReviewReason?
+
   /// Who pressed "pay" — audit's "Хэн" for a credit that, once it happens, is
   /// triggered by an unauthenticated webhook rather than a logged-in request.
   createdById String? @db.Uuid
@@ -2860,6 +2865,14 @@ enum QpayInvoiceStatus {
   PAID
   EXPIRED
   CANCELLED
+}
+
+/// Why a QPay attempt waits for a person — `QpayInvoice.reviewReason`.
+enum QpayReviewReason {
+  /// QPay reported less than the row's amount: nothing was opened.
+  AMOUNT_SHORT
+  /// Paid, but its target had already been paid by another QR: refund by hand.
+  TARGET_ALREADY_PAID
 }
 
 /// Whether one child's family may use the portal for one school year.

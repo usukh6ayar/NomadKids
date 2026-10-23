@@ -20,7 +20,7 @@ const pending = {
   number: "3F2A9C1B",
   kind: "ACCESS_FEE",
   status: "PENDING",
-  amount: 22000,
+  amount: "22000.00",
   createdAt: "2026-10-12T06:32:00.000Z",
   paidAt: null,
   kindergarten: { id: "kg-1", name: "Нарны цэцэрлэг" },

@@ -3,11 +3,13 @@ import { randomUUID } from "node:crypto";
 import type { AccessPeriod } from "@kinder/contracts";
 import { AuditRepository } from "../../audit/audit.repository";
 import { ChildAccessService } from "../../authz/child-access.service";
+import { PlatformAccessService } from "../../authz/platform-access.service";
 import type { Actor } from "../../authz/actor";
 import { AccessService } from "../../access/access.service";
 import { QpayClient, QpayError } from "./qpay.client";
 import { QpayConfig } from "./qpay.config";
-import { QpayRepository } from "./qpay.repository";
+import { QpayRepository, type OperatorQpayRow } from "./qpay.repository";
+import type { ListOperatorQpayQuery } from "./qpay.dto";
 
 /**
  * How long a QR stays offered before a fresh one replaces it.
@@ -18,6 +20,12 @@ import { QpayRepository } from "./qpay.repository";
  * about it before giving up and reporting EXPIRED locally.
  */
 const QPAY_INVOICE_TTL_MS = 30 * 60 * 1000;
+
+/** How far back the sweep re-asks about an EXPIRED QR — a late settlement is hours, not days. */
+const SWEEP_EXPIRED_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+/** The most attempts one sweep asks QPay about — newest first; the rest wait ten minutes. */
+const SWEEP_BATCH = 100;
 
 const GENERIC_FAILURE_MESSAGE = "QPay-тай холбогдоход алдаа гарлаа. Дараа дахин оролдоно уу.";
 
@@ -48,6 +56,7 @@ export class QpayService {
     private readonly access: AccessService,
     private readonly childAccess: ChildAccessService,
     private readonly audit: AuditRepository,
+    private readonly platform: PlatformAccessService,
   ) {}
 
   /** Whether this deployment can talk to QPay at all — the pay button's own gate. */
@@ -300,6 +309,38 @@ export class QpayService {
   }
 
   /**
+   * The sweep — asks QPay again about every attempt nobody is asking about.
+   *
+   * ★ A family that pays and closes the tab, whose callback never reaches us,
+   * would otherwise have paid and stayed locked out until someone called the
+   * operator: `status()` only runs while the QR is on screen, and the
+   * callback is the only other caller that re-asks about an EXPIRED row.
+   * `QpaySweepScheduler` runs this every ten minutes; the same `reconcile`
+   * settles, so a sweep racing a callback credits once.
+   *
+   * One row's failure is logged and the rest still run.
+   */
+  async sweepUnsettled(now = new Date()): Promise<{ checked: number; paid: number }> {
+    if (!this.isConfigured) return { checked: 0, paid: 0 };
+
+    const rows = await this.repo.findUnsettled(
+      new Date(now.getTime() - SWEEP_EXPIRED_WINDOW_MS),
+      SWEEP_BATCH,
+    );
+    let paid = 0;
+    for (const row of rows) {
+      try {
+        const after = await this.reconcile(row, { recheckExpired: true });
+        if (after.status === "PAID") paid += 1;
+      } catch (error) {
+        this.logger.error(`QPay sweep failed on ${row.qpayInvoiceId}`, error as Error);
+      }
+    }
+    if (paid > 0) this.logger.log(`QPay sweep settled ${paid} of ${rows.length}`);
+    return { checked: rows.length, paid };
+  }
+
+  /**
    * The one place that decides "has this been paid" and credits it — called
    * from both `status()` (poll) and the callback.
    *
@@ -366,7 +407,8 @@ export class QpayService {
       this.logger.error(
         `QPay reported ${String(paidRow.payment_amount)} paid against ${row.amount.toFixed(2)} on ${row.qpayInvoiceId}; not settled`,
       );
-      return row;
+      await this.repo.markForReview(row.id, "AMOUNT_SHORT");
+      return { ...row, reviewReason: "AMOUNT_SHORT" as const };
     }
 
     const claimed = await this.repo.claimForPayment(row.id, now);
@@ -415,6 +457,7 @@ export class QpayService {
       this.logger.error(
         `QPay ${row.qpayInvoiceId} paid ${row.amount.toFixed(2)} for a target already paid; refund by hand`,
       );
+      await this.repo.markForReview(row.id, "TARGET_ALREADY_PAID");
     }
 
     await this.audit.append({
@@ -441,6 +484,81 @@ export class QpayService {
     return (await this.repo.findById(row.id)) ?? row;
   }
 
+  /**
+   * «Төлбөр шалгах» — the platform operator answering "I paid, check it"
+   * (2026-10-20/21, the user). Every QPay attempt, searched by the receipt's
+   * «Дугаар» or the payer's phone.
+   *
+   * ★ Superadmin only, 404 for anyone else (§1.7). ★★ No child: no name, no
+   * id, and the payer's phone masked here — the operator does not read
+   * children (`authz/platform-access.service.ts`).
+   */
+  async listForOperator(actor: Actor, query: ListOperatorQpayQuery) {
+    this.platform.assertSuperAdmin(actor);
+    const q = query.q?.trim() ?? "";
+    // A receipt number is 4–8 hex characters; a phone is digits (an 8-digit
+    // number is both, and either may match).
+    const hex = q.toLowerCase();
+    const numberPrefix = /^[0-9a-f]{4,8}$/.test(hex) ? hex : null;
+    const digits = q.replace(/\D/g, "");
+    const phoneDigits = digits.length >= 4 && /^[\d\s+()-]+$/.test(q) ? digits : null;
+    // A search that can match nothing answers nothing, not every row.
+    if (q && !numberPrefix && !phoneDigits) {
+      return { items: [], total: 0, page: query.page, pageSize: query.pageSize };
+    }
+
+    const { rows, total } = await this.repo.listForOperator({
+      numberPrefix,
+      phoneDigits,
+      status: query.status ?? null,
+      page: query.page,
+      pageSize: query.pageSize,
+    });
+    return {
+      items: rows.map(operatorView),
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+    };
+  }
+
+  /**
+   * Asks QPay again about one attempt and settles it if paid — the same
+   * `reconcile` the callback runs, EXPIRED included, since a family that
+   * paid after our 30 minutes and whose callback never came is exactly who
+   * calls the operator.
+   */
+  async recheckForOperator(actor: Actor, id: string) {
+    this.platform.assertSuperAdmin(actor);
+    const row = await this.repo.findById(id);
+    if (!row) throw new NotFoundException();
+
+    if (row.status === "PENDING" || row.status === "EXPIRED") {
+      if (!this.isConfigured) {
+        throw new BadRequestException("QPay холболт тохируулагдаагүй байна.");
+      }
+      const after = await this.reconcile(row, { recheckExpired: true });
+      // Who asked — the settlement itself is audited as the payer's.
+      await this.audit.append({
+        action: "UPDATE",
+        kindergartenId: row.kindergartenId,
+        actorUserId: actor.userId,
+        objectType: "QpayInvoice",
+        objectId: row.id,
+        metadata: {
+          recheck: true,
+          before: { status: row.status },
+          after: { status: after.status },
+          qpayInvoiceId: row.qpayInvoiceId,
+        },
+      });
+    }
+
+    const latest = await this.repo.findForOperator(id);
+    if (!latest) throw new NotFoundException();
+    return operatorView(latest);
+  }
+
   private toHttpError(cause: unknown, context: string): BadRequestException {
     if (cause instanceof QpayError) {
       this.logger.warn(`QPay ${context} failed (${cause.kind}): ${cause.message}`);
@@ -449,4 +567,54 @@ export class QpayService {
     }
     return new BadRequestException(GENERIC_FAILURE_MESSAGE);
   }
+}
+
+/** «99••••12» — the first two and last two digits; never the whole number. */
+export function maskPhone(phone: string | null | undefined): string | null {
+  const digits = (phone ?? "").replace(/\D/g, "").slice(-8);
+  if (digits.length < 4) return null;
+  return `${digits.slice(0, 2)}${"•".repeat(digits.length - 4)}${digits.slice(-2)}`;
+}
+
+const TERM_NUMERALS = ["I", "II", "III"];
+
+/** One attempt as «Төлбөр шалгах» shows it — `apps/web/lib/platform-qpay.ts`. */
+function operatorView(row: OperatorQpayRow) {
+  const targetId = row.subscriptionId ?? row.materialPurchaseId ?? row.contractPaymentId ?? row.id;
+  const kind = row.subscriptionId ? "ACCESS_FEE" : row.materialPurchaseId ? "MATERIAL" : "CONTRACT";
+  const paid = row.status === "PAID";
+
+  let periodLabel: string | null = null;
+  let validUntil: Date | null = null;
+  if (row.subscription) {
+    const term = row.subscription.termNumber;
+    periodLabel =
+      row.subscription.period === "TERM" && term
+        ? `${row.subscription.schoolYear.name}, ${TERM_NUMERALS[term - 1] ?? term} улирал`
+        : row.subscription.schoolYear.name;
+    validUntil = row.subscription.expiresAt;
+  } else if (row.contractPayment) {
+    const day = (date: Date) => date.toISOString().slice(0, 10);
+    periodLabel = `${day(row.contractPayment.coversFrom)} – ${day(row.contractPayment.coversTo)}`;
+    validUntil = row.contractPayment.coversTo;
+  } else if (row.materialPurchase) {
+    periodLabel = row.materialPurchase.material.title;
+  }
+
+  return {
+    id: row.id,
+    number: targetId.slice(0, 8).toUpperCase(),
+    kind,
+    status: row.status,
+    needsReview: row.reviewReason !== null,
+    reviewReason: row.reviewReason,
+    amount: row.amount.toFixed(2),
+    createdAt: row.createdAt,
+    paidAt: row.paidAt,
+    kindergarten: row.kindergarten,
+    payerPhone: maskPhone(row.createdBy?.phone),
+    periodLabel,
+    // Only once paid: an unpaid row's frozen date would read as a promise.
+    validUntil: paid && validUntil ? validUntil.toISOString().slice(0, 10) : null,
+  };
 }

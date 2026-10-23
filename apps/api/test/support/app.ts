@@ -5,6 +5,7 @@ import cookieParser from "cookie-parser";
 import { AppModule } from "../../src/app.module";
 import { ProblemExceptionFilter } from "../../src/common/filters/problem.filter";
 import { QpayService } from "../../src/integrations/qpay/qpay.service";
+import { QpayClient } from "../../src/integrations/qpay/qpay.client";
 import { EsisService } from "../../src/integrations/esis/esis.service";
 import { VerifyMnClient } from "../../src/integrations/verify-mn/verify-mn.client";
 
@@ -47,6 +48,9 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<INest
   if (options.qpay) {
     builder = builder.overrideProvider(QpayService).useValue(options.qpay);
   }
+  if (options.qpayClient) {
+    builder = builder.overrideProvider(QpayClient).useValue(options.qpayClient);
+  }
   if (options.esis) {
     builder = builder.overrideProvider(EsisService).useValue(options.esis);
   }
@@ -70,6 +74,11 @@ export async function createTestApp(options: TestAppOptions = {}): Promise<INest
 export interface TestAppOptions {
   /** A stand-in for the payment provider. See the note above. */
   qpay?: Partial<QpayService>;
+  /**
+   * QPay's transport alone — `QpayService`, its reconcile and settlement stay
+   * real. The test also sets the five `QPAY_*` variables so it is configured.
+   */
+  qpayClient?: Partial<QpayClient>;
   /** ESIS transport stand-in. Authorization and persistence stay real. */
   esis?: Partial<EsisService>;
   /**

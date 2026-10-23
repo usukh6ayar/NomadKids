@@ -10,6 +10,7 @@ import { CurrentActor } from "../../auth/decorators/actor.decorator";
 import { Public } from "../../auth/decorators/public.decorator";
 import { RateLimit, RateLimitGuard } from "../../common/rate-limit/rate-limit.guard";
 import type { Actor } from "../../authz/actor";
+import { listOperatorQpayQuerySchema, type ListOperatorQpayQuery } from "./qpay.dto";
 import { QpayService } from "./qpay.service";
 
 const HOUR = 60 * 60 * 1000;
@@ -103,4 +104,37 @@ function extractQpayInvoiceId(query: Record<string, unknown>, body: unknown): st
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+/**
+ * «Төлбөр шалгах» — the platform operator looking up a QPay payment and
+ * asking QPay about it again (2026-10-21, the user).
+ *
+ * ★ No `@Roles`, as `ContractPaymentsController`: `assertSuperAdmin`, first in
+ * each service method, is the only thing that reads `isSuperAdmin`. Anyone
+ * else gets 404.
+ */
+@Controller("platform/qpay/invoices")
+@UseGuards(RateLimitGuard)
+export class PlatformQpayController {
+  constructor(private readonly service: QpayService) {}
+
+  @Get()
+  list(
+    @CurrentActor() actor: Actor,
+    @Query(new ZodValidationPipe(listOperatorQpayQuerySchema)) query: ListOperatorQpayQuery,
+  ) {
+    return this.service.listForOperator(actor, query);
+  }
+
+  /** Each press is a call to QPay — bounded like the family's own polls. */
+  @Post(":id/recheck")
+  @HttpCode(200)
+  @RateLimit({ limit: 60, windowMs: 10 * MINUTE, byUser: true })
+  recheck(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.recheckForOperator(actor, params.id);
+  }
 }
