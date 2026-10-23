@@ -1,20 +1,25 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { BookOpen, Lightbulb, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Select, Textarea } from "@/components/ui/field";
 import { FormDialog } from "@/components/ui/form-dialog";
 import { SearchField } from "@/components/ui/search-field";
+import { get } from "@/lib/api/browser";
+import { useSession } from "@/lib/auth/session";
 import type { A79Domain } from "@/lib/a79-assessment";
 import {
   A79_LEVEL_KEYS,
-  A79_STATUSES,
+  A79_CHOICES,
   A79_STATUS_HINT,
   A79_STATUS_LABEL,
+  a79Choice,
   a79Code,
   a79CriterionText,
   a79Level,
+  observationA79LinksSchema,
   type A79LevelKey,
   type A79Link,
   type A79Status,
@@ -80,7 +85,7 @@ export function A79LinksField({
               А/79 шалгууртай холбох
             </h3>
             <p className="text-caption text-muted">
-              Нэг ажиглалтыг хэд хэдэн шалгууртай холбож болно.
+              Нэг тэмдэглэлийг хэд хэдэн шалгууртай холбож болно.
             </p>
           </div>
         </div>
@@ -211,9 +216,9 @@ function LinkCard({
         <legend className="mb-1 text-caption font-semibold text-ink">
           Чадварын илрэлийн байдал <span className="text-danger">*</span>
         </legend>
-        <div className="grid gap-1.5 sm:grid-cols-2">
-          {A79_STATUSES.map((status) => {
-            const chosen = link.status === status;
+        <div className="grid gap-1.5 sm:grid-cols-3">
+          {A79_CHOICES.map((status) => {
+            const chosen = a79Choice(link.status) === status;
             return (
               <label
                 key={status}
@@ -404,5 +409,51 @@ export function A79PickerDialog({
         )}
       </div>
     </FormDialog>
+  );
+}
+
+/**
+ * The note's А/79 criteria in its enlarged view — 2026-10-22, the user: an
+ * observation, a conversation or an artwork opened large says what it is
+ * evidence of. Read-only; «Засах» is where they change. The class teacher's
+ * and the director's alone (the links' own reach), so a family, or a PE or
+ * music teacher, sees nothing here — and nothing is asked for them.
+ */
+export function ObservationA79Summary({ observationId }: { observationId: string }) {
+  const { hasRole } = useSession();
+  const canRead = hasRole("TEACHER") || hasRole("ADMIN");
+  const links = useQuery({
+    // The key «Тэмдэглэл засах» reads and refreshes after a save.
+    queryKey: ["observation", observationId, "a79-links"],
+    queryFn: () => get(`/observations/${observationId}/a79-links`, observationA79LinksSchema),
+    enabled: canRead,
+    retry: false,
+  });
+  const rows = links.data?.links ?? [];
+  if (!canRead || rows.length === 0) return null;
+
+  return (
+    <section aria-labelledby={`a79-of-${observationId}`} className="flex flex-col gap-2">
+      <h3 id={`a79-of-${observationId}`} className="text-caption font-semibold text-muted">
+        А/79 шалгуур
+      </h3>
+      <ul className="flex flex-col gap-2">
+        {rows.map((link) => (
+          <li
+            key={`${link.level}-${link.number}`}
+            className={cn("flex flex-col gap-1 rounded-row border p-3", STATUS_LOOK[link.status])}
+          >
+            <span className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-caption font-medium text-primary">{a79Code(link)}</span>
+              <span className="text-caption font-semibold text-ink">
+                {A79_STATUS_LABEL[link.status]}
+              </span>
+            </span>
+            <span className="text-body text-ink">{a79CriterionText(link.level, link.number)}</span>
+            {link.note ? <span className="text-caption text-muted">{link.note}</span> : null}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

@@ -147,9 +147,9 @@ describe("the operator's applications", () => {
     await user.click(await screen.findByRole("button", { name: "Шалгах" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByLabelText(/Бүлгийн тоо/)).toHaveValue("6");
-    // 6 groups × 28,000₮ for the school year — the discounted price sheet.
+    // 6 groups × 36,000₮ (9 × 4,000₮) for the whole school year — 2026-10-22.
     const breakdown = within(dialog).getByRole("region", { name: "Төлбөрийн задаргаа" });
-    expect(breakdown).toHaveTextContent("Гэрээний нийт дүн168,000₮");
+    expect(breakdown).toHaveTextContent("Гэрээний нийт дүн216,000₮");
 
     await user.clear(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/));
     await user.type(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/), "azjargal");
@@ -163,7 +163,7 @@ describe("the operator's applications", () => {
         groupCount: 6,
         billingPeriod: "year",
         perGroupMonthlyFee: "4000",
-        periodFee: "168000",
+        periodFee: "216000",
       });
     });
   });
@@ -183,8 +183,8 @@ describe("the operator's applications", () => {
     expect(breakdown).toHaveTextContent("Бүлгийн тоо, гэрээний огноог оруулахад дүн бодогдоно.");
 
     await user.type(within(dialog).getByLabelText(/Бүлгийн тоо/), "3");
-    // 3 groups × 28,000₮ for the year — the discounted price sheet.
-    expect(breakdown).toHaveTextContent("Гэрээний нийт дүн84,000₮");
+    // 3 groups × 36,000₮ for the whole year — 2026-10-22.
+    expect(breakdown).toHaveTextContent("Гэрээний нийт дүн108,000₮");
   });
 
   it("refuses only with a reason, and sends it", async () => {
@@ -468,7 +468,7 @@ describe("the operator's applications", () => {
     expect(html).toContain("<th>Байгууллагын нэр</th><td>Аз жаргал цэцэрлэг</td>");
     expect(html).toContain("<th>Эрхлэгчийн нэр</th><td>Дорж Сараа</td>");
     expect(html).toContain("<th>Бүлгийн тоо</th><td>6</td>");
-    expect(html).toContain("<th>Нийт төлбөр</th><td>168 000₮</td>");
+    expect(html).toContain("<th>Нийт төлбөр</th><td>216 000₮</td>");
     expect(within(dialog).getByRole("button", { name: "Хэвлэх" })).toBeInTheDocument();
     expect(approve).toBeEnabled();
 

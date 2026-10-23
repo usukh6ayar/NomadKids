@@ -24,6 +24,15 @@ import { A79Service } from "./a79.service";
 export class ObservationA79LinksController {
   constructor(private readonly service: A79Service) {}
 
+  @Get()
+  @Roles("TEACHER", "ADMIN")
+  async list(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.links(actor, params.id);
+  }
+
   @Put()
   @Roles("TEACHER", "ADMIN")
   async replace(

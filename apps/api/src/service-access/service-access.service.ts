@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import {
   GROUP_PRICES,
+  groupYearMonths,
   groupTermPrice,
   localDate,
   schoolTermOn,
@@ -97,7 +98,9 @@ export class ServiceAccessService {
       remind: Boolean(toSign) || Boolean(due) || (daysLeft !== null && daysLeft <= REMIND_DAYS),
       perGroupMonthlyFee: fee?.toString() ?? null,
       termAmount: fee ? (term?.amount ?? null) : null,
-      yearAmount: fee ? (year?.amount ?? null) : null,
+      // ★ No year to sell from 2 May (`months: 0`): no amount, so the screen
+      // offers none — a 0₮ QR is refused (review of #270).
+      yearAmount: fee && year && year.months > 0 ? year.amount : null,
       // What each would extend the contract to — said before the QR (№6).
       termCoversTo: term?.coversTo ?? null,
       yearCoversTo: year?.coversTo ?? null,
@@ -110,6 +113,9 @@ export class ServiceAccessService {
        */
       termLabel: term?.label ?? null,
       yearLabel: year?.label ?? null,
+      // How many months each charges — a year bought later is its months left (2026-10-22).
+      termMonths: term?.months ?? null,
+      yearMonths: year?.months ?? null,
       // Whether «Жилээр» is the whole school year at the year's price.
       yearWhole: year ? year.months === MONTHS.YEAR : null,
       /** The contract issued and waiting for the director's acceptance (2026-10-18). */
@@ -373,7 +379,12 @@ export class ServiceAccessService {
       description: `${kindergarten.name}, ${priced.label}`,
     });
     return {
-      payment: paymentView({ ...payment, groupCount, amount: priced.amount }),
+      payment: paymentView({
+        ...payment,
+        groupCount,
+        amount: priced.amount,
+        coversTo: new Date(`${priced.coversTo}T00:00:00.000Z`),
+      }),
       attempt,
     };
   }
@@ -445,6 +456,13 @@ export class ServiceAccessService {
     period: Period,
   ): Promise<{ payment: PaymentRow; priced: ReturnType<typeof quote> }> {
     const priced = quote(contract, groupCount, period);
+    // ★ From 2 May «the next month to May» leaves nothing to charge: never a
+    // 0₮ row, invoice or QR (review of #270, the user 2026-10-23).
+    if (priced.months === 0) {
+      throw new BadRequestException(
+        "Энэ хичээлийн жилд жилээр төлөх сар үлдээгүй. Улирлаар сунгана уу.",
+      );
+    }
     const coversFrom = new Date(`${priced.coversFrom}T00:00:00.000Z`);
 
     let payment = await this.repo.findPayment(contract.id, period, coversFrom);
@@ -477,17 +495,31 @@ export class ServiceAccessService {
     }
     if (payment.status === "PAID") throw alreadyPaid();
 
-    if (payment.amount.toFixed(2) !== priced.amount) {
-      // ★ The groups changed since the last QR or invoice. An older QR may
-      // still be paid at its own amount — the settlement records what moved,
-      // not this (`settleContractPayment`).
+    if (
+      payment.amount.toFixed(2) !== priced.amount ||
+      isoDay(payment.coversTo) !== priced.coversTo
+    ) {
+      // ★ The groups changed since the last QR or invoice — or the rule did:
+      // a row drawn before June became a bonus month ends 31 May, and paid
+      // as it stood would lose June (review of #270). An older QR may still
+      // be paid at its own amount — the settlement records what moved, not
+      // this (`settleContractPayment`); the end it extends to is this row's.
       const before = {
         groupCount: payment.groupCount,
         perGroupAmount: payment.perGroupAmount.toFixed(2),
         amount: payment.amount.toFixed(2),
+        coversTo: isoDay(payment.coversTo),
       };
-      const after = { groupCount, perGroupAmount: priced.perGroup, amount: priced.amount };
-      const repriced = await this.repo.repricePending(payment.id, after);
+      const after = {
+        groupCount,
+        perGroupAmount: priced.perGroup,
+        amount: priced.amount,
+        coversTo: priced.coversTo,
+      };
+      const repriced = await this.repo.repricePending(payment.id, {
+        ...after,
+        coversTo: new Date(`${after.coversTo}T00:00:00.000Z`),
+      });
       // Paid between the read and the update — never draw a second QR for it.
       if (repriced.count === 0) throw alreadyPaid();
       await this.audit.append({
@@ -665,14 +697,15 @@ type ContractForQuote = { perGroupMonthlyFee: { toString(): string } | null; end
  * periods, as a contract starting mid-term pays the whole term (the user,
  * 2026-10-14).
  *
- * ★ A year never re-sells a term already paid (review of #258, 2026-10-18).
- * From inside a school year — a contract running to 2026-11-30 after
- * «I-р улирал» — "the year" is what is left of it, from the term that day
- * falls in to 31 May, priced as those terms: `endsOn` 2026-11-30 bought
- * 2026-09-01..2027-05-31 at the whole year's price a group before.
+ * ★ A year never re-sells a month already paid (review of #258, 2026-10-18).
+ * Bought before 1 September it is the whole school year; from inside one it
+ * is charged from the next month to May (`groupYearMonths`, 2026-10-22, the
+ * user); from 2 May nothing is left — `months: 0`, which `renewalRow`
+ * refuses to sell. Every year and III term runs to 30 June — June is a
+ * bonus, never charged.
  *
  * ★★ The price is the sheet's for a contract at the standard 4,000₮ a month
- * — 28,000₮ a group a year, «I-р улирал» 4,000₮ through 2026-11-30, then
+ * — 36,000₮ a group a year, «I-р улирал» 4,000₮ through 2026-11-30, then
  * 12,000₮ a term — and `fee × months` for a negotiated monthly fee, which is
  * the operator's agreement rather than the sheet's.
  */
@@ -700,14 +733,17 @@ export function quote(
   if (period === "TERM") {
     const term = schoolTermOn(start) ?? schoolTermOn(`${Number(start.slice(0, 4))}-09-01`)!;
     const perGroup = termPrice(term);
+    // ★ The III term runs to 30 June — June is a bonus, not charged (2026-10-22,
+    // the user). `schoolTermOn` keeps 31 May: the family fee reads it too.
+    const coversTo = term.number === 3 ? juneBonus(term.endsOn) : term.endsOn;
     return {
       coversFrom: term.startsOn,
-      coversTo: term.endsOn,
+      coversTo,
       term,
       months: MONTHS.TERM,
       perGroup: perGroup.toFixed(2),
       amount: perGroup.times(Math.max(0, groups)).toFixed(2),
-      label: `${term.label} (${term.startsOn.replaceAll("-", ".")} – ${term.endsOn.replaceAll("-", ".")})`,
+      label: `${term.label} (${term.startsOn.replaceAll("-", ".")} – ${coversTo.replaceAll("-", ".")})`,
     };
   }
 
@@ -715,17 +751,13 @@ export function quote(
   const month = Number(start.slice(5, 7));
   const first = month >= 6 ? year : year - 1;
   const yearStart = `${first}-09-01`;
-  const coversTo = `${first + 1}-05-31`;
-  const terms = [`${first}-09-01`, `${first}-12-01`, `${first + 1}-03-01`].map((day) =>
-    schoolTermOn(day)!,
-  );
-  const whole = start <= yearStart || schoolTermOn(start)!.startsOn === yearStart;
+  // ★ To 30 June — nine months charged, June a bonus (2026-10-22, the user).
+  const coversTo = `${first + 1}-06-30`;
   const schoolYear = `${first}–${first + 1} хичээлийн жил`;
+  const monthly = new Decimal(standard ? GROUP_PRICES.monthly : fee);
 
-  if (whole) {
-    const perGroup = standard
-      ? new Decimal(GROUP_PRICES.year)
-      : new Decimal(fee).times(MONTHS.YEAR);
+  if (start <= yearStart) {
+    const perGroup = standard ? new Decimal(GROUP_PRICES.year) : monthly.times(MONTHS.YEAR);
     return {
       coversFrom: yearStart,
       coversTo,
@@ -737,17 +769,39 @@ export function quote(
     };
   }
 
-  const left = terms.filter((term) => term.endsOn >= start);
-  const perGroup = left.reduce((sum, term) => sum.plus(termPrice(term)), new Decimal(0));
+  /*
+   * ★ A year bought after it began — 2026-10-22, the user: charged from the
+   * NEXT month to May at the monthly price, valid from today to 30 June. On
+   * 22 October that is November–May, seven months: 28,000₮ a group. A
+   * renewal that starts on the 1st (the old period ran to the month's end)
+   * charges that month too — nothing of it has been used.
+   */
+  const monthsLeft = groupYearMonths(start);
+  const perGroup = monthly.times(monthsLeft);
+  // ★ Once the contract has lapsed `start` is today, and `findPayment` keys
+  // the pending row on `coversFrom`: a new row and QR every day, the one
+  // before never asked about (review of #270). The month's first day, or
+  // the day after the old end within it, holds still through the month; the
+  // months charged are still counted from today.
+  const coversFrom = ends >= today ? start : laterDay(addDay(ends), `${today.slice(0, 7)}-01`);
   return {
-    coversFrom: left[0]!.startsOn,
+    coversFrom,
     coversTo,
     term: null,
-    months: MONTHS.TERM * left.length,
+    months: monthsLeft,
     perGroup: perGroup.toFixed(2),
     amount: perGroup.times(Math.max(0, groups)).toFixed(2),
-    label: `${schoolYear}, ${left.map((term) => term.label).join(", ")}`,
+    label: `${schoolYear} (${coversFrom.replaceAll("-", ".")} – ${coversTo.replaceAll("-", ".")})`,
   };
+}
+
+/** 31 May → 30 June of the same year: the bonus month on the III term. */
+function juneBonus(mayEnd: string): string {
+  return `${mayEnd.slice(0, 4)}-06-30`;
+}
+
+function laterDay(a: string, b: string): string {
+  return a > b ? a : b;
 }
 
 function addDay(day: string): string {

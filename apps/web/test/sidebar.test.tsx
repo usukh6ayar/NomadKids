@@ -217,6 +217,8 @@ describe("navigation icons", () => {
       "Мэдээ",
       "Чат",
       "Санхүү",
+      // Where a director pays NomadKids — missing from this menu until 2026-10-22.
+      "Үйлчилгээний эрх",
       "Тайлан",
       "Баримт бичгийн сан",
     ];

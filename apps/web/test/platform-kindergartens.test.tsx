@@ -287,7 +287,8 @@ describe("the operator's kindergartens table", () => {
 
     // On top — the header's second row (the user: "доор биш дээр").
     const totals = () => table.querySelectorAll("thead tr")[1]!;
-    expect(await within(table).findByText(/Идэвхтэй эцэг эх: 250/)).toBeInTheDocument();
+    // Shortened to two lines on the totals row (2026-10-22).
+    expect(await within(table).findByText("250 эцэг эх")).toBeInTheDocument();
     expect(totals()).toHaveTextContent("Нийт: 2 цэцэрлэг");
     expect(totals()).toHaveTextContent("300");
     expect(totals()).toHaveTextContent("1 / 2"); // ESIS: one of the two linked

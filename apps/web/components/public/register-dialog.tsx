@@ -13,12 +13,12 @@ import { mutate } from "@/lib/api/browser";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import {
   KINDERGARTEN_CURRENT_TERM_PER_GROUP,
-  KINDERGARTEN_CURRENT_YEAR_PER_GROUP,
   KINDERGARTEN_MONTHLY_PER_GROUP,
   termOnSale,
   kindergartenPrice,
   kindergartenStandardYearPrice,
   kindergartenTermPrice,
+  kindergartenYearPerGroup,
   kindergartenYearlyPrice,
   savingPercent,
   tugrik,
@@ -360,7 +360,7 @@ function RegisterForm({
             <p className="text-caption font-semibold text-slate-600">Тооцоолсон төлбөр</p>
             <p className="text-caption text-slate-500">
               {billingPeriod === "year"
-                ? groupCount + " бүлэг × " + tugrik(KINDERGARTEN_CURRENT_YEAR_PER_GROUP)
+                ? groupCount + " бүлэг × " + tugrik(kindergartenYearPerGroup())
                 : groupCount + " бүлэг × " + tugrik(KINDERGARTEN_CURRENT_TERM_PER_GROUP)}
             </p>
             <p className="text-compact text-slate-500">

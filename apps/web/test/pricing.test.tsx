@@ -10,7 +10,7 @@ import {
   CHILD_STANDARD_TERM_PRICE,
   CHILD_STANDARD_YEAR_PRICE,
   KINDERGARTEN_CURRENT_TERM_PER_GROUP,
-  KINDERGARTEN_CURRENT_YEAR_PER_GROUP,
+  kindergartenYearPerGroup,
   KINDERGARTEN_STANDARD_TERM_PER_GROUP,
   kindergartenStandardYearPrice,
   kindergartenTermPrice,
@@ -21,22 +21,28 @@ import {
 
 describe("the current school-year prices", () => {
   /*
-   * ★ The user, 2026-10-21: a child's «I-р улирал» free and the year 18,000₮,
-   * a group's «I-р улирал» 4,000₮ and the year 28,000₮ — below the standard
-   * 3,000₮ and 4,000₮ a month.
+   * ★ The user, 2026-10-21: a child's «I-р улирал» free and the year 18,000₮;
+   * a group's I term 4,000₮ and its year
+   * the months left × 4,000₮ (the user, 2026-10-22) — on 18 October, November–May.
    */
   it("charges the discounted price below the standard", () => {
     expect(CHILD_CURRENT_TERM_PRICE).toBe(0);
     expect(CHILD_CURRENT_YEAR_PRICE).toBe(18_000);
     expect(KINDERGARTEN_CURRENT_TERM_PER_GROUP).toBe(4_000);
-    expect(KINDERGARTEN_CURRENT_YEAR_PER_GROUP).toBe(28_000);
+    // Seven months — November to May — 28,000₮; the whole year 9 × 4,000₮.
+    expect(kindergartenYearPerGroup("2026-10-18")).toBe(28_000);
+    expect(kindergartenYearPerGroup("2026-08-18")).toBe(36_000);
+    expect(kindergartenYearPerGroup("2026-12-15")).toBe(20_000);
 
     // 4,000₮ a group for «I-р улирал», three groups.
     expect(kindergartenTermPrice(3, "2026-10-18")).toBe(12_000);
-    expect(kindergartenYearlyPrice(3)).toBe(84_000);
-    expect(yearlySavingAmount(kindergartenStandardYearPrice(3), kindergartenYearlyPrice(3))).toBe(
-      24_000,
-    );
+    expect(kindergartenYearlyPrice(3, "2026-10-18")).toBe(84_000);
+    expect(
+      yearlySavingAmount(
+        kindergartenStandardYearPrice(3),
+        kindergartenYearlyPrice(3, "2026-10-18"),
+      ),
+    ).toBe(24_000);
     expect(savingPercent(CHILD_STANDARD_TERM_PRICE, CHILD_CURRENT_TERM_PRICE)).toBe(100);
     expect(savingPercent(CHILD_STANDARD_YEAR_PRICE, CHILD_CURRENT_YEAR_PRICE)).toBe(33.3);
     expect(
@@ -185,11 +191,10 @@ describe("the pricing page from 1 December 2026", () => {
 
 describe("a kindergarten contract's terms", () => {
   /*
-   * ★ «I-р улирал» is a term's price — 4,000₮ a group since 2026-10-21. The
-   * contract used to print 2,000₮ (a month) for it, read as the term's price
-   * (the client, 2026-10-18).
+   * ★ «I-р улирал» is 4,000₮ a group (2026-10-22) — the contract used to print 2,000₮
+   * (a month) for it, read as the term's price (the client, 2026-10-18).
    */
-  it("prices «I-р улирал» as a 4,000₮ term, never as a 2,000₮ month", () => {
+  it("prices «I-р улирал» as a 4,000₮ term, never as a month", () => {
     const schedule = contractSchedule(3, "term", "2026-09-01", "2027-05-31")!;
     const [first, second] = schedule.lines;
     expect(first).toMatchObject({

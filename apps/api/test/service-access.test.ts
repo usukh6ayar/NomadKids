@@ -5,7 +5,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import request from "supertest";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { localDate } from "@kinder/contracts";
 import { createTestApp } from "./support/app";
 import { resetData, testDb, uniq } from "./support/db";
@@ -122,10 +122,10 @@ describe("GET /service-access", () => {
       daysLeft: 10,
       remind: true,
       perGroupMonthlyFee: "4000",
-      // The price sheet's (2026-10-18, -21): «I-р улирал» 4,000₮ through
-      // 2026-11-30, then 12,000₮; the year 28,000₮ — never 4,000 × 9.
+      // The user's prices (2026-10-22): «I-р улирал» 4,000₮ through
+      // 2026-11-30, then 12,000₮; a year is its months left × 4,000₮.
       termAmount: next("TERM").amount,
-      yearAmount: "28000.00",
+      yearAmount: next("YEAR").amount,
       termCoversTo: next("TERM").coversTo,
     });
     expect(res.body.expiresAt).toBe(
@@ -133,12 +133,15 @@ describe("GET /service-access", () => {
     );
   });
 
-  it("keeps a negotiated monthly fee as agreed — fee × 3 and fee × 9", async () => {
-    await contract(10, "3500.00");
+  it("keeps a negotiated monthly fee as agreed — fee × 3 and fee × the months", async () => {
+    const signed = await contract(10, "3500.00");
 
     const res = await status(adminA);
 
-    expect(res.body).toMatchObject({ termAmount: "10500.00", yearAmount: "31500.00" });
+    expect(res.body).toMatchObject({
+      termAmount: "10500.00",
+      yearAmount: quote(signed, 1, "YEAR").amount,
+    });
   });
 
   it("does not remind more than 14 days out", async () => {
@@ -175,6 +178,69 @@ describe("GET /service-access", () => {
 });
 
 describe("the renewal invoice", () => {
+  // From 2 May a year has no month left to charge — refused, never a 0₮
+  // invoice or QR (review of #270, the user 2026-10-23).
+  it("refuses a year from 2 May, and the status offers none", async () => {
+    const signed = await contract(10);
+    await db.contract.update({
+      where: { id: signed.id },
+      data: { endsOn: new Date("2027-04-30T00:00:00.000Z") },
+    });
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2027-05-10T04:00:00.000Z") });
+    try {
+      // Signed in on the faked day, so the session is not already past.
+      const admin = await login(app, a.adminUser.username);
+
+      const year = await requestInvoice(admin, "year");
+      const pay = await authed(request(server()).post("/v1/service-access/qpay"), admin).send({
+        period: "year",
+      });
+      const shown = await status(admin);
+
+      expect(year.status).toBe(400);
+      expect(pay.status).toBe(400);
+      expect(shown.body.yearAmount).toBeNull();
+      expect(await db.contractPayment.count({ where: { contractId: signed.id } })).toBe(0);
+      expect(await db.reportJob.count()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // A row drawn before June became a bonus ended 31 May; paid as it stood,
+  // the settlement would have ended the contract there (review of #270).
+  it("moves a pending row's end to the rule's when it is reused", async () => {
+    const signed = await contract(10);
+    const priced = quote(signed, 1, "YEAR");
+    const mayEnd = `${priced.coversTo.slice(0, 4)}-05-31`;
+    const row = await db.contractPayment.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        contractId: signed.id,
+        period: "YEAR",
+        coversFrom: new Date(`${priced.coversFrom}T00:00:00.000Z`),
+        coversTo: new Date(`${mayEnd}T00:00:00.000Z`),
+        groupCount: 1,
+        perGroupAmount: priced.perGroup,
+        amount: priced.amount,
+      },
+    });
+
+    const res = await requestInvoice(adminA, "year");
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const after = await db.contractPayment.findUniqueOrThrow({ where: { id: row.id } });
+    expect(after.coversTo.toISOString().slice(0, 10)).toBe(priced.coversTo);
+    expect(await db.contractPayment.count({ where: { contractId: signed.id } })).toBe(1);
+    const audit = await db.auditLog.findFirst({
+      where: { objectType: "ContractPayment", objectId: row.id, action: "UPDATE" },
+    });
+    expect(audit?.metadata).toMatchObject({
+      before: { coversTo: mayEnd },
+      after: { coversTo: priced.coversTo },
+    });
+  });
+
   it("refuses a contract with no per-group fee — the operator quotes that one", async () => {
     await contract(10, null);
 
@@ -207,8 +273,11 @@ describe("the renewal invoice", () => {
 
       const queued = await requestInvoice(adminA, "year");
       expect(queued.status, JSON.stringify(queued.body)).toBe(201);
-      // The sheet's 28,000₮ a group, not 4,000 × 9 (2026-10-18, -21).
-      expect(queued.body).toMatchObject({ period: "year", amount: "28000.00" });
+      // The year's months left × 4,000₮ (2026-10-22), as the status quotes it.
+      expect(queued.body).toMatchObject({
+        period: "year",
+        amount: quote(signed, 1, "YEAR").amount,
+      });
 
       expect((await generator.run(queued.body.id as string)).status).toBe("DONE");
       const job = await db.reportJob.findUniqueOrThrow({
@@ -221,9 +290,13 @@ describe("the renewal invoice", () => {
 
       expect(text).toContain("Нэхэмжлэх");
       expect(text).toContain(a.kindergarten.name);
-      expect(text).toMatch(/28 000₮/);
-      expect(text).toContain("Нэг бүлгийн төлбөр");
-      expect(text).not.toMatch(/36 000₮/);
+      // The PDF prints the quoted amount — «24 000₮» style, thin-spaced.
+      const quoted = Number(quote(signed, 1, "YEAR").amount)
+        .toLocaleString("en-US")
+        .replace(",", " ");
+      expect(text).toContain(`${quoted}₮`);
+      // A long period label wraps the table's header — compare the text flattened.
+      expect(text.replace(/\s+/g, " ")).toContain("Нэг бүлгийн төлбөр");
       expect(text).toContain("5000123456");
       expect(text).toContain(signed.number);
 

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
-import type { EsisInstitutionStaff } from "@kinder/contracts";
+import { localDate, type EsisInstitutionStaff } from "@kinder/contracts";
 import { AuditRepository } from "../audit/audit.repository";
 import { PasswordService } from "../auth/password.service";
 import { TokenService } from "../auth/token.service";
@@ -245,7 +245,41 @@ export class PlatformService {
 
     const page: PageParams = { page: query.page, pageSize: query.pageSize };
     const { items, total } = await this.repo.list({ q: query.q, isActive: query.isActive }, page);
-    return paginate(items, total, page);
+    const figures = await this.repo.listFigures(items.map((row) => row.id));
+    const day = (d: Date) => d.toISOString().slice(0, 10);
+    // Ulaanbaatar's day, as the contract and pricing code count it.
+    const today = localDate();
+    return paginate(
+      items.map(({ contracts, ...row }) => {
+        const contract = contracts[0];
+        const linked = Boolean(row.esisInstitutionId);
+        const count = (map: Map<string | null, number>) => map.get(row.id) ?? 0;
+        return {
+          ...row,
+          groupCount: count(figures.groups),
+          childCount: count(figures.children),
+          staffCount: count(figures.staff),
+          esisConnected: linked,
+          esisStaffLinked: linked ? count(figures.esisStaff) : null,
+          esisChildrenLinked: linked ? count(figures.esisChildren) : null,
+          contractStartsOn: contract ? day(contract.startsOn) : null,
+          contractEndsOn: contract ? day(contract.endsOn) : null,
+          contractSignedAt: contract
+            ? ((contract.activatedAt ?? contract.signedAt)?.toISOString() ?? null)
+            : null,
+          billingPeriod: contract?.billingPeriod
+            ? contract.billingPeriod === "TERM"
+              ? "term"
+              : "year"
+            : null,
+          paymentStatus: contract
+            ? paymentStatus(day(contract.endsOn), contract.payments, today)
+            : null,
+        };
+      }),
+      total,
+      page,
+    );
   }
 
   /**
@@ -541,4 +575,30 @@ function isUniqueViolation(error: unknown): boolean {
 function uniqueViolationMentions(error: unknown, column: string): boolean {
   const meta = (error as { meta?: unknown } | null)?.meta;
   return meta !== undefined && meta !== null && JSON.stringify(meta).includes(column);
+}
+
+/**
+ * The platform contract's payment state, for the operator's list (2026-10-22,
+ * the user: «хаахгүйгээр» — told, never blocked; nothing reads this to gate).
+ * Ended → «Хоцорсон»; ending within 14 days → «Төлөх хугацаа ойртсон»; an
+ * unpaid period covering today (the first period of a contract accepted
+ * online, not yet paid) → due; otherwise «Төлсөн». Keyed on what is owed,
+ * not on what was paid: a contract activated before `ContractPayment`
+ * existed has no rows at all, and is not owing for its whole life.
+ * Never «suspended»: no kindergarten is suspended (CLAUDE.md §1.7).
+ */
+export function paymentStatus(
+  endsOn: string,
+  unpaid: { coversFrom: Date; coversTo: Date }[],
+  today: string,
+): "paid" | "due" | "overdue" {
+  if (endsOn < today) return "overdue";
+  const days = (Date.parse(endsOn) - Date.parse(today)) / 86_400_000;
+  if (days <= 14) return "due";
+  const owed = unpaid.some(
+    (p) =>
+      p.coversFrom.toISOString().slice(0, 10) <= today &&
+      p.coversTo.toISOString().slice(0, 10) >= today,
+  );
+  return owed ? "due" : "paid";
 }

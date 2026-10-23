@@ -12,7 +12,9 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The API suite alone reached 20 minutes on #270 and the run was
+    # cancelled mid-test — 35 leaves room for it to grow (2026-10-23).
+    timeout-minutes: 35
 
     # ★ The API's tests run against a real database, a real Redis and real
     # object storage — deliberately, because the thing under test is whether an

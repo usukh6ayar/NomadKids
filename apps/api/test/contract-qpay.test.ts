@@ -82,12 +82,18 @@ async function contract(scenario: Scenario, endsOn: string, fee = "4000.00") {
 }
 
 describe("what renewing buys and costs", () => {
+  /*
+   * ★ The prices the user set, 2026-10-22: 4,000₮ a group a month; the I term
+   * at the launch price 4,000₮; II and III 12,000₮; a whole year 9 × 4,000₮
+   * = 36,000₮; a year bought after it began charged from the NEXT month to
+   * May; the III term and every year valid to 30 June — June a bonus.
+   */
   const standard = (endsOn: string) => ({ perGroupMonthlyFee: "4000.00", endsOn: day(endsOn) });
 
-  it("prices «I-р улирал» at 4,000₮ a group and the year at 28,000₮ — from the sheet", () => {
-    // A contract that ended in August, renewed on 18 October.
-    const term = quote(standard("2026-08-31"), 3, "TERM", "2026-10-18");
-    const year = quote(standard("2026-08-31"), 3, "YEAR", "2026-10-18");
+  it("prices «I-р улирал» at 4,000₮ a group, and a year from 22 October at November–May", () => {
+    // A contract that ended in August, renewed on 22 October.
+    const term = quote(standard("2026-08-31"), 3, "TERM", "2026-10-22");
+    const year = quote(standard("2026-08-31"), 3, "YEAR", "2026-10-22");
 
     expect(term).toMatchObject({
       coversFrom: "2026-09-01",
@@ -95,11 +101,24 @@ describe("what renewing buys and costs", () => {
       perGroup: "4000.00",
       amount: "12000.00",
     });
+    // Seven months, 7 × 4,000₮ = 28,000₮ a group, valid to 30 June — from the
+    // month's first day, which holds still while the director comes back
+    // (review of #270).
     expect(year).toMatchObject({
-      coversFrom: "2026-09-01",
-      coversTo: "2027-05-31",
+      coversFrom: "2026-10-01",
+      coversTo: "2027-06-30",
+      months: 7,
       perGroup: "28000.00",
       amount: "84000.00",
+    });
+  });
+
+  it("charges a whole school year 9 × 4,000₮, to 30 June", () => {
+    expect(quote(standard("2026-05-31"), 1, "YEAR", "2026-08-20")).toMatchObject({
+      coversFrom: "2026-09-01",
+      coversTo: "2027-06-30",
+      months: 9,
+      perGroup: "36000.00",
     });
   });
 
@@ -109,57 +128,63 @@ describe("what renewing buys and costs", () => {
       coversTo: "2027-02-28",
       amount: "24000.00",
     });
-    // From the end of May the next is September's term and school year.
-    expect(quote(standard("2027-05-31"), 1, "TERM", "2027-05-20")).toMatchObject({
+    // The III term runs to 30 June: June is a bonus.
+    expect(quote(standard("2027-02-28"), 1, "TERM", "2027-02-20")).toMatchObject({
+      coversFrom: "2027-03-01",
+      coversTo: "2027-06-30",
+      perGroup: "12000.00",
+    });
+    // From the end of June the next is September's term and school year.
+    expect(quote(standard("2027-06-30"), 1, "TERM", "2027-06-20")).toMatchObject({
       coversFrom: "2027-09-01",
       coversTo: "2027-11-30",
       perGroup: "12000.00",
     });
-    expect(quote(standard("2027-05-31"), 1, "YEAR", "2027-05-20")).toMatchObject({
+    expect(quote(standard("2027-06-30"), 1, "YEAR", "2027-06-20")).toMatchObject({
       coversFrom: "2027-09-01",
-      coversTo: "2028-05-31",
+      coversTo: "2028-06-30",
     });
   });
 
-  it("keeps a negotiated monthly fee as agreed — fee × 3, fee × 9", () => {
+  it("keeps a negotiated monthly fee as agreed — fee × 3, fee × the months", () => {
     const negotiated = { perGroupMonthlyFee: "3500.00", endsOn: day("2026-08-31") };
     expect(quote(negotiated, 2, "TERM", "2026-10-18").amount).toBe("21000.00");
-    expect(quote(negotiated, 2, "YEAR", "2026-10-18").amount).toBe("63000.00");
+    // From 18 October: November–May, seven months.
+    expect(quote(negotiated, 2, "YEAR", "2026-10-18").amount).toBe("49000.00");
+    expect(quote(negotiated, 2, "YEAR", "2026-08-18").amount).toBe("63000.00");
   });
 
   /*
-   * ★ Review of #258: a contract paid through «I-р улирал» bought the whole
-   * 2026–2027 year again, term 1 included, at 30,000₮ a group. A year from
-   * inside a school year is what is left of it, priced as those terms.
+   * ★ Review of #258: never sell a paid month again. A renewal that starts on
+   * the 1st charges that month on; one bought mid-month, from the next.
    */
-  it("never sells a paid term again — a year from inside one is the terms left", () => {
+  it("never sells a paid month again — a year from inside one is the months left", () => {
     expect(quote(standard("2026-11-30"), 2, "YEAR", "2026-11-20")).toMatchObject({
       coversFrom: "2026-12-01",
-      coversTo: "2027-05-31",
+      coversTo: "2027-06-30",
       months: 6,
       perGroup: "24000.00",
       amount: "48000.00",
     });
-    // After II улирал, only III is left — the term's price, not the year's.
     expect(quote(standard("2027-02-28"), 1, "YEAR", "2027-02-20")).toMatchObject({
       coversFrom: "2027-03-01",
-      coversTo: "2027-05-31",
+      coversTo: "2027-06-30",
+      months: 3,
       perGroup: "12000.00",
     });
-    // Lapsed and renewed in January: from the term that day falls in.
-    expect(quote(standard("2026-08-31"), 1, "YEAR", "2027-01-10")).toMatchObject({
+    // Lapsed and renewed on 15 December: January–May, from 1 December.
+    expect(quote(standard("2026-08-31"), 1, "YEAR", "2026-12-15")).toMatchObject({
       coversFrom: "2026-12-01",
-      perGroup: "24000.00",
+      months: 5,
+      perGroup: "20000.00",
     });
-    const negotiated = { perGroupMonthlyFee: "3500.00", endsOn: day("2026-11-30") };
-    expect(quote(negotiated, 1, "YEAR", "2026-11-20").perGroup).toBe("21000.00");
   });
 
-  it("names the year's remainder by its terms, never as a whole year", () => {
+  it("names the year by its dates when it is not the whole one", () => {
     expect(quote(standard("2026-11-30"), 1, "YEAR", "2026-11-20").label).toBe(
-      "2026–2027 хичээлийн жил, II улирал, III улирал",
+      "2026–2027 хичээлийн жил (2026.12.01 – 2027.06.30)",
     );
-    expect(quote(standard("2026-08-31"), 1, "YEAR", "2026-10-18").label).toBe(
+    expect(quote(standard("2026-05-31"), 1, "YEAR", "2026-08-18").label).toBe(
       "2026–2027 хичээлийн жил",
     );
   });

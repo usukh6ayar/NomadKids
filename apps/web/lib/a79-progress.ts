@@ -28,18 +28,33 @@ export type A79LevelKey = (typeof A79_LEVEL_KEYS)[number];
 export const A79_STATUSES = ["INDEPENDENT", "SUPPORTED", "DEVELOPING", "NOT_YET"] as const;
 export type A79Status = (typeof A79_STATUSES)[number];
 
+/**
+ * ★ The three a teacher chooses from, and the result table's three columns —
+ * 2026-10-22, the user: the result's own words, «Хангалттай эзэмшиж байна /
+ * Ахиж байна / Хөгжиж байна», not four statuses of their own. The stored
+ * values stay (no migration): INDEPENDENT, SUPPORTED, DEVELOPING. NOT_YET is
+ * no longer offered; a link saved with it reads as «Хөгжиж байна».
+ */
+export const A79_CHOICES = ["INDEPENDENT", "SUPPORTED", "DEVELOPING"] as const;
+export type A79Choice = (typeof A79_CHOICES)[number];
+
+/** The column a stored status reads under — NOT_YET under «Хөгжиж байна». */
+export function a79Choice(status: A79Status): A79Choice {
+  return status === "NOT_YET" ? "DEVELOPING" : status;
+}
+
 export const A79_STATUS_LABEL: Record<A79Status, string> = {
-  INDEPENDENT: "Бие даан",
-  SUPPORTED: "Дэмжлэгтэй",
+  INDEPENDENT: "Хангалттай эзэмшиж байна",
+  SUPPORTED: "Ахиж байна",
   DEVELOPING: "Хөгжиж байна",
-  NOT_YET: "Хараахан ажиглагдаагүй",
+  NOT_YET: "Хөгжиж байна",
 };
 
 export const A79_STATUS_HINT: Record<A79Status, string> = {
-  INDEPENDENT: "Тусламжгүйгээр илэрсэн.",
-  SUPPORTED: "Асуулт, сануулга, үлгэрлэл, багахан тусламжтайгаар илэрсэн.",
-  DEVELOPING: "Чадварын эхлэл байгаа ч тогтвортой биш.",
-  NOT_YET: "Одоогоор дүгнэх нотолгоо байхгүй.",
+  INDEPENDENT: "Тусламжгүйгээр, тогтвортой илэрсэн.",
+  SUPPORTED: "Сануулга, дэмжлэгтэйгээр илэрсэн.",
+  DEVELOPING: "Чадварын эхлэл бий, тогтвортой биш.",
+  NOT_YET: "Чадварын эхлэл бий, тогтвортой биш.",
 };
 
 export const a79LinkSchema = z.object({
@@ -150,13 +165,47 @@ export function a79CriterionText(level: A79LevelKey, number: number): string {
 
 export type A79Band = "MASTERED" | "PROGRESSING" | "DEVELOPING";
 
+/** The regulation's own words — А/79 §2.10 (the user, 2026-10-22). */
 export const A79_BAND_LABEL: Record<A79Band, string> = {
-  MASTERED: "Хангалттай",
+  MASTERED: "Хангалттай эзэмшиж байна",
   PROGRESSING: "Ахиж байна",
   DEVELOPING: "Хөгжиж байна",
 };
 
-/** 80% and above, 50–79%, below 50% — the bands on the client's design. */
+/**
+ * А/79 §2.10: 80.0% and above «Хангалттай эзэмшиж байна», 50.0–79.0%
+ * «Ахиж байна», 49.0% and below «Хөгжиж байна». The regulation leaves the
+ * gaps between (79.0–80.0, 49.0–50.0) unnamed; they fall to the band below
+ * the next threshold — under 80 is not «Хангалттай», under 50 is «Хөгжиж».
+ */
+export const A79_BAND_RULE =
+  "80.0% ба түүнээс дээш — Хангалттай эзэмшиж байна · 50.0–79.9% — Ахиж байна · 49.9% ба түүнээс доош — Хөгжиж байна";
+
+/**
+ * A percentage to one decimal, as the regulation writes them — cut, never
+ * rounded up (2026-10-22, the user): 39 of 49 is 79.5…%, and rounded to 80
+ * it read «Хангалттай» where the regulation says «Ахиж байна». Cut, the
+ * figure shown and the band beside it always agree.
+ */
+export function a79Percent(achieved: number, total: number): number {
+  return total > 0 ? Math.floor((achieved * 1000) / total + 1e-9) / 10 : 0;
+}
+
+/**
+ * The mean of several children's shares, cut to one decimal once, at the end.
+ * Averaged from each child's exact share, never from their cut percentages:
+ * 80.43%, 50% and 19.57% average to 50.0%, where their cut 80.4, 50 and 19.5
+ * would read 49.9% — «Хөгжиж байна» for a group that is not.
+ */
+export function a79MeanShare(rows: { achieved: number; total: number }[]): number {
+  if (rows.length === 0) return 0;
+  const sum = rows.reduce(
+    (total, row) => total + (row.total > 0 ? row.achieved / row.total : 0),
+    0,
+  );
+  return Math.floor((sum * 1000) / rows.length + 1e-9) / 10;
+}
+
 export function a79Band(percent: number): A79Band {
   if (percent >= 80) return "MASTERED";
   if (percent >= 50) return "PROGRESSING";
@@ -181,7 +230,7 @@ export function a79Score(progress: A79Progress): A79Score {
   const met = new Set(
     progress.criteria.filter((row) => row.status === "INDEPENDENT").map((row) => row.number),
   );
-  const pct = (a: number, t: number) => (t > 0 ? Math.round((a / t) * 100) : 0);
+  const pct = a79Percent;
   const domains = [...new Set(level.criteria.map((c) => c.domain))];
   const byDomain = domains.map((domain) => {
     const numbers = level.criteria.flatMap((c, i) => (c.domain === domain ? [i + 1] : []));
@@ -213,13 +262,13 @@ export function a79Csv(
     ["Хүүхэд", child.name],
     ["Нас", child.age ?? ""],
     ["Түвшин", `${progress.level} түвшин`],
-    ["Бие даан илрүүлсэн", `${score.achieved} / ${score.total} (${score.percent}%)`],
+    ["Хангалттай эзэмшсэн", `${score.achieved} / ${score.total} (${score.percent}%)`],
     ...score.byDomain.map((row) => [
       row.domain,
       `${row.achieved} / ${row.total} (${row.percent}%)`,
     ]),
     [],
-    ["Хэсэг", "№", "Шалгуур", "Одоогийн төлөв", ...A79_STATUSES.map((s) => A79_STATUS_LABEL[s])],
+    ["Хэсэг", "№", "Шалгуур", "Одоогийн төлөв", ...A79_CHOICES.map((s) => A79_STATUS_LABEL[s])],
   ];
   a79Level(progress.level).criteria.forEach((criterion, index) => {
     const row = byNumber.get(index + 1);
@@ -227,10 +276,10 @@ export function a79Csv(
       criterion.domain,
       index + 1,
       criterion.text,
-      A79_STATUS_LABEL[row?.status ?? "NOT_YET"],
-      ...A79_STATUSES.map((status) =>
+      row ? A79_STATUS_LABEL[row.status] : "Тэмдэглэл холбоогүй",
+      ...A79_CHOICES.map((status) =>
         (row?.evidence ?? [])
-          .filter((e) => e.status === status)
+          .filter((e) => a79Choice(e.status) === status)
           .map((e) =>
             [formatDay(e.observedOn), e.typeName, e.note ? `— ${e.note}` : ""]
               .filter(Boolean)

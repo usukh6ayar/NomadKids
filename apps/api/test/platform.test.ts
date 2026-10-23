@@ -538,6 +538,101 @@ describe("GET /platform/kindergartens", () => {
     expect(res.body.total).toBeGreaterThanOrEqual(2);
   });
 
+  // The contract in force on each row — the operator's reminders read it (2026-10-22).
+  it("names the active contract's dates, and none without one", async () => {
+    const application = await db.kindergartenApplication.create({
+      data: {
+        kindergartenName: a.kindergarten.name,
+        registrationNumber: "1234567",
+        directorName: "Бат Сүх",
+        phone: "99001122",
+        email: `${uniq("kg")}@example.mn`,
+        groupCount: 1,
+        status: "APPROVED",
+        kindergartenId: a.kindergarten.id,
+      },
+    });
+    await db.contract.create({
+      data: {
+        applicationId: application.id,
+        kindergartenId: a.kindergarten.id,
+        number: `NK-2026-${uniq("n").slice(-6)}`,
+        status: "ACTIVE",
+        groupCount: 1,
+        billingPeriod: "TERM",
+        perGroupMonthlyFee: "4000.00",
+        startsOn: new Date("2026-09-01T00:00:00.000Z"),
+        endsOn: new Date("2026-11-30T00:00:00.000Z"),
+      },
+    });
+
+    const res = await request(app.getHttpServer())
+      .get("/v1/platform/kindergartens")
+      .set("Cookie", superadmin.cookies);
+
+    const row = (id: string) => res.body.items.find((k: { id: string }) => k.id === id);
+    expect(row(a.kindergarten.id)).toMatchObject({
+      contractStartsOn: "2026-09-01",
+      contractEndsOn: "2026-11-30",
+      billingPeriod: "term",
+    });
+    expect(row(b.kindergarten.id)).toMatchObject({
+      contractStartsOn: null,
+      contractEndsOn: null,
+      billingPeriod: null,
+      paymentStatus: null,
+    });
+    expect(row(a.kindergarten.id)).not.toHaveProperty("contracts");
+  });
+
+  it("counts each row as the detail view does", async () => {
+    const list = await request(app.getHttpServer())
+      .get("/v1/platform/kindergartens")
+      .set("Cookie", superadmin.cookies);
+    const detail = await request(app.getHttpServer())
+      .get(`/v1/platform/kindergartens/${a.kindergarten.id}`)
+      .set("Cookie", superadmin.cookies);
+
+    const row = list.body.items.find((k: { id: string }) => k.id === a.kindergarten.id);
+    expect(row).toMatchObject({
+      groupCount: detail.body.counts.groups,
+      childCount: detail.body.counts.children,
+      staffCount: detail.body.counts.staff,
+    });
+    expect(detail.body.counts.children).toBeGreaterThan(0);
+  });
+
+  // The director's ESIS figures (`DashboardRepository.esisCounts`): every
+  // role but PARENT, a child of any status, never a deleted account.
+  it("counts ESIS links as the director's dashboard does", async () => {
+    await db.kindergarten.update({
+      where: { id: a.kindergarten.id },
+      data: { esisInstitutionId: "ESIS-LIST-1" },
+    });
+    for (const role of ["COOK", "ACCOUNTANT"] as const) {
+      const user = await createUser({ username: uniq(role.toLowerCase()) });
+      await db.user.update({ where: { id: user.id }, data: { esisPersonId: uniq("p") } });
+      await createMembership(user.id, a.kindergarten.id, role);
+    }
+    const gone = await createUser({ username: uniq("gone") });
+    await db.user.update({
+      where: { id: gone.id },
+      data: { esisPersonId: uniq("p"), deletedAt: new Date() },
+    });
+    await createMembership(gone.id, a.kindergarten.id, "TEACHER");
+    await db.child.update({
+      where: { id: a.child.id },
+      data: { esisPersonId: uniq("c"), status: "ON_LEAVE" },
+    });
+
+    const res = await request(app.getHttpServer())
+      .get("/v1/platform/kindergartens")
+      .set("Cookie", superadmin.cookies);
+
+    const row = res.body.items.find((k: { id: string }) => k.id === a.kindergarten.id);
+    expect(row).toMatchObject({ esisStaffLinked: 2, esisChildrenLinked: 1 });
+  });
+
   it("filters by name", async () => {
     const res = await request(app.getHttpServer())
       .get(`/v1/platform/kindergartens?q=${encodeURIComponent(a.kindergarten.name)}`)

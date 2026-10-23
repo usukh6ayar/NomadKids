@@ -8,6 +8,7 @@ import {
   MAX_PAGE_SIZE,
   ARTWORK_TYPES,
   assessmentConfigSchema,
+  childDetailSchema,
   curriculumCodeAtLevel,
   curriculumIndicatorSchema,
   observationSchema,
@@ -36,9 +37,11 @@ import { MediaThumb } from "@/components/media/media-image";
 import { ObservationRow } from "@/components/observations/observation-row";
 import { ObservationPhotos } from "@/components/observations/observation-photos";
 import { DAILY_ACTIVITIES } from "@/components/assessment/group-coverage";
-import { excerpt, formatDate, formatLongDate } from "@/lib/format";
+import { ageInYears, excerpt, formatDate, formatLongDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { KIND_LOOK, PICK, PICK_FIELD } from "@/lib/observation-look";
+import { A79LinksField, ObservationA79Summary } from "@/components/assessment/a79-links";
+import { a79LevelForAge, observationA79LinksSchema, type A79Link } from "@/lib/a79-progress";
 
 const observationsSchema = paginated(observationSchema);
 const termsSchema = z.array(termSchema);
@@ -840,6 +843,9 @@ export function ObservationDetailDialog({
             ) : null}
             <p className="whitespace-pre-wrap text-body text-ink">{text || "Тэмдэглэл"}</p>
           </section>
+          {observation.source !== "PARENT" ? (
+            <ObservationA79Summary observationId={observation.id} />
+          ) : null}
         </div>
       ) : null}
     </FormDialog>
@@ -901,6 +907,28 @@ export function EditObservationDialog({
   // A PE or music teacher writes observations too (2026-10-15).
   const isStaff =
     hasRole("TEACHER") || hasRole("ADMIN") || hasRole("PE_TEACHER") || hasRole("MUSIC_TEACHER");
+  // The А/79 links are the class teacher's, as on the compose form (2026-10-15).
+  const canLinkA79 = hasRole("TEACHER") || hasRole("ADMIN");
+
+  /*
+    ★ «А/79 шалгууртай холбох» while editing — 2026-10-22, the user: the note's
+    criteria did not show here. They are read first and saved back only when
+    the teacher changed them; a read that failed shows no field, so a save
+    can never replace the links with an empty set.
+  */
+  const savedLinks = useQuery({
+    queryKey: ["observation", observation.id, "a79-links"],
+    queryFn: () => get(`/observations/${observation.id}/a79-links`, observationA79LinksSchema),
+    enabled: canLinkA79,
+    retry: false,
+  });
+  const [editedLinks, setEditedLinks] = useState<A79Link[] | null>(null);
+  const a79Links = editedLinks ?? savedLinks.data?.links ?? [];
+  const child = useQuery({
+    queryKey: qk.child(childId),
+    queryFn: () => get(`/children/${childId}`, childDetailSchema),
+    enabled: canLinkA79,
+  });
 
   const [observedOn, setObservedOn] = useState(observation.observedOn.slice(0, 10));
   const [observedTime, setObservedTime] = useState(observation.observedTime?.slice(0, 5) ?? "");
@@ -999,6 +1027,28 @@ export function EditObservationDialog({
             ? { childDid: null, childSaid: null, teacherComment: null, nextSteps: null }
             : {}),
         },
+      }).then(async (saved) => {
+        // After the note, as on the compose form: a link that failed must not
+        // cost the teacher the note's own corrections.
+        if (canLinkA79 && savedLinks.isSuccess && editedLinks !== null) {
+          try {
+            await mutate(`/observations/${observation.id}/a79-links`, observationA79LinksSchema, {
+              method: "PUT",
+              body: {
+                links: editedLinks.map((link) => ({
+                  ...link,
+                  note: link.note?.trim() ? link.note.trim() : null,
+                })),
+              },
+            });
+            await queryClient.invalidateQueries({
+              queryKey: ["observation", observation.id, "a79-links"],
+            });
+          } catch (error: unknown) {
+            toast.error(errorMessage(error));
+          }
+        }
+        return saved;
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: qk.child(childId) });
@@ -1198,6 +1248,17 @@ export function EditObservationDialog({
             className="[&_span]:font-normal [&_span]:text-muted"
             checked={visibleToParents}
             onChange={(event) => setVisibleToParents(event.target.checked)}
+          />
+        ) : null}
+
+        {canLinkA79 && savedLinks.isLoading ? <LoadingState rows={1} /> : null}
+        {canLinkA79 && savedLinks.isSuccess ? (
+          <A79LinksField
+            links={a79Links}
+            onChange={setEditedLinks}
+            // The child's age's level, as on the compose form (2026-10-22).
+            defaultLevel={a79LevelForAge(ageInYears(child.data?.dateOfBirth))}
+            text={situation}
           />
         ) : null}
 

@@ -2,10 +2,10 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, FileDown, FileText, QrCode, X } from "lucide-react";
+import { FileDown, FileText, Minus, Plus, QrCode, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
-import { qpayInvoiceAttemptSchema } from "@kinder/contracts";
+import { MONTHS_IN_TERM, qpayInvoiceAttemptSchema } from "@kinder/contracts";
 import { QpayProgress } from "@/components/child/access-pay-dialog";
 import { FormError } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
@@ -54,6 +54,9 @@ const serviceAccessSchema = z.object({
    */
   termLabel: z.string().nullish(),
   yearLabel: z.string().nullish(),
+  /** Months each period charges — the server's (2026-10-22); derived when absent. */
+  termMonths: z.number().int().nullish(),
+  yearMonths: z.number().int().nullish(),
   /** The whole school year at the year's price — the only one «хямд» is said of. */
   yearWhole: z.boolean().nullish(),
   /**
@@ -122,6 +125,11 @@ export default function AdminServiceAccessPage() {
 
 function ServiceAccess() {
   const [period, setPeriod] = useState<BillingPeriod>("term");
+  /**
+   * «+ / −» on the group count — 2026-10-22, the user. Null follows the
+   * server's count (the kindergarten's groups); a number is the director's.
+   */
+  const [chosenGroups, setChosenGroups] = useState<number | null>(null);
 
   const access = useQuery({
     queryKey: qk.serviceAccess(),
@@ -131,133 +139,187 @@ function ServiceAccess() {
 
   const notReady = access.isError && isNotFound(access.error);
   const groups = access.data?.groupCount ?? 0;
+  const shownGroups = chosenGroups ?? groups;
+  /*
+    ★ The server prices `groups` groups and charges exactly that. A different
+    count is a preview only — QPay and the invoice stay off until the server
+    can price and charge the chosen count (asked of the admin): a screen that
+    showed 5 groups' sum and charged 3 groups' would be the worst kind of bug.
+  */
+  const countChanged = groups > 0 && shownGroups !== groups;
+  /** One group's price for a period: the server's amount over the groups it priced. */
+  const perGroupOf = (amount: string | null | undefined) =>
+    amount && groups > 0 ? Number(amount) / groups : null;
   const daysLeft = access.data?.expiresAt ? daysUntil(access.data.expiresAt) : null;
   const price = period === "year" ? access.data?.yearAmount : access.data?.termAmount;
-  const coversTo = period === "year" ? access.data?.yearCoversTo : access.data?.termCoversTo;
-  const periodLabel =
-    (period === "year" ? access.data?.yearLabel : access.data?.termLabel) ??
-    (period === "year" ? "хичээлийн жил" : "улирал");
   // An API from before the labels sends no `yearWhole`: the year was always whole then.
   const yearWhole = access.data?.yearWhole ?? true;
   const toSign = access.data?.contractToSign ?? null;
   const due = access.data?.due ?? null;
   const renewal: PayRequest = { path: "/service-access/qpay", body: { period } };
 
+  /*
+    ★ Minimal — 2026-10-22, the user: "хэт их бичиг". The state is one line
+    under the title; the renewal is the group count, two cards (the amount
+    and the dates), and the two ways to pay. What a card buys in full — the
+    period's name, its months, «N бүлэг × per group» — is its description,
+    and shows on the chosen card only.
+  */
+  const status = access.isPending
+    ? "Ачаалж байна…"
+    : access.data?.expiresAt && !due
+      ? `${formatDate(access.data.expiresAt)} хүртэл · ${groups} бүлэг`
+      : access.isSuccess && !toSign && !due
+        ? "Төлөгдсөн хугацаа алга"
+        : undefined;
+  const alert = notReady
+    ? "Үйлчилгээний эрхийн мэдээлэл удахгүй харагдана."
+    : access.isError
+      ? errorMessage(access.error)
+      : toSign
+        ? "Гэрээ баталгаажаагүй байна. Доорх гэрээг уншаад баталгаажуулна уу."
+        : due
+          ? `Гэрээний төлбөр төлөгдмөгц эрх ${formatDate(due.coversTo)} хүртэл хүчинтэй болно.`
+          : daysLeft !== null && access.data?.expiresAt
+            ? daysLeft < 0
+              ? "Хугацаа дууссан. Сунгана уу."
+              : daysLeft <= REMIND_DAYS
+                ? `${daysLeft} хоногийн дараа дуусна. Сунгана уу.`
+                : null
+            : null;
+
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-      <PageHeader title="Үйлчилгээний эрх" lede="Байгууллагын үйлчилгээний хугацаа, сунгалт." />
-
-      <Card pad="roomy" className="flex flex-col gap-3">
-        <SectionHeader title="Одоогийн эрх" />
-        {access.isPending ? (
-          <LoadingState label="Ачаалж байна…" rows={2} />
-        ) : notReady ? (
-          <p className="rounded-control bg-canvas px-3.5 py-3 text-caption text-muted">
-            Үйлчилгээний эрхийн мэдээлэл удахгүй харагдана.
-          </p>
-        ) : access.isError ? (
-          <p className="rounded-control bg-canvas px-3.5 py-3 text-caption text-muted">
-            {errorMessage(access.error)}
-          </p>
-        ) : toSign ? (
-          <p role="status" className="text-body font-semibold text-danger">
-            Гэрээ баталгаажаагүй байна. Доорх гэрээг уншаад баталгаажуулна уу.
-          </p>
-        ) : due ? (
-          <p role="status" className="text-body font-semibold text-danger">
-            Гэрээний төлбөр төлөгдмөгц эрх {formatDate(due.coversTo)} хүртэл хүчинтэй болно.
-          </p>
-        ) : access.data.expiresAt && daysLeft !== null ? (
-          <div className="flex flex-col gap-2">
-            <p className="flex items-center gap-2 text-body text-ink">
-              <CalendarClock className="size-5 shrink-0 text-muted" aria-hidden="true" />
-              <span>
-                <strong>{formatDate(access.data.expiresAt)}</strong> хүртэл ·{" "}
-                {access.data.period === "year" ? "Жилээр" : "Улирлаар"} · {groups} бүлэг
-              </span>
-            </p>
-            {daysLeft < 0 ? (
-              <p role="status" className="text-caption font-semibold text-danger">
-                Хугацаа дууссан. Сунгана уу.
-              </p>
-            ) : daysLeft <= REMIND_DAYS ? (
-              <p role="status" className="text-caption font-semibold text-danger">
-                {daysLeft} хоногийн дараа дуусна. Сунгана уу.
-              </p>
-            ) : null}
-          </div>
-        ) : (
-          <p className="text-body text-muted">Төлөгдсөн хугацаа алга. Доороос сунгана уу.</p>
-        )}
-      </Card>
+      <PageHeader title="Үйлчилгээний эрх" lede={status} />
+      {alert ? (
+        <p role="status" className="-mt-2 text-caption font-semibold text-danger">
+          {alert}
+        </p>
+      ) : null}
+      {access.isPending ? <LoadingState label="Ачаалж байна…" rows={2} /> : null}
 
       {toSign ? <ContractToSign contract={toSign} /> : null}
       {due ? <ContractDue due={due} /> : null}
 
-      {toSign || due ? null : (
+      {/* While the API does not answer (404), the card stays with its buttons off. */}
+      {toSign || due || access.isPending || (access.isError && !notReady) ? null : (
         <Card pad="roomy" className="flex flex-col gap-4">
-          <SectionHeader
-            title="Сунгах"
-            lede="Улирлаар эсвэл жилээр сонгоод QPay-ээр, эсвэл нэхэмжлэхээр төлнө."
-          />
+          {groups > 0 ? (
+            <GroupStepper
+              value={shownGroups}
+              registered={groups}
+              onChange={(next) => setChosenGroups(next === groups ? null : next)}
+            />
+          ) : null}
 
-          <div
-            role="radiogroup"
-            aria-label="Төлбөрийн хугацаа"
-            className="grid max-w-[420px] grid-cols-2 gap-1 rounded-pill bg-canvas p-1"
-          >
+          <div role="radiogroup" aria-label="Төлбөрийн хугацаа" className="grid grid-cols-2 gap-2">
             {(
               [
-                ["term", "Улирлаар"],
-                ["year", yearWhole ? "Жилээр — хямд" : "Жилээр"],
+                {
+                  value: "term",
+                  title: "Улирлаар",
+                  amount: access.data?.termAmount,
+                  coversTo: access.data?.termCoversTo,
+                  label: access.data?.termLabel ?? "улирал",
+                  months: access.data?.termMonths ?? MONTHS_IN_TERM,
+                },
+                {
+                  value: "year",
+                  title: yearWhole ? "Жилээр — хямд" : "Жилээр",
+                  amount: access.data?.yearAmount,
+                  coversTo: access.data?.yearCoversTo,
+                  label: access.data?.yearLabel ?? "хичээлийн жил",
+                  months: access.data?.yearMonths ?? yearMonths(access.data?.yearLabel, yearWhole),
+                },
               ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={period === value}
-                onClick={() => setPeriod(value)}
-                className={cn(
-                  "min-h-11 rounded-pill px-3 text-body font-semibold transition-colors",
-                  period === value ? "bg-primary text-white shadow-sm" : "text-muted",
-                )}
-              >
-                {label}
-              </button>
-            ))}
+            ).map((option) => {
+              const chosen = period === option.value;
+              const perGroup = perGroupOf(option.amount);
+              const total = perGroup !== null ? Math.round(perGroup * shownGroups) : null;
+              const span = dateSpan(option.label, option.coversTo);
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={chosen}
+                  // Named by the choice; what it buys is its description.
+                  aria-label={option.title}
+                  aria-describedby={`period-${option.value}-details`}
+                  onClick={() => setPeriod(option.value)}
+                  className={cn(
+                    "flex flex-col items-start gap-0.5 rounded-card border-2 px-3 py-2.5 text-left transition-colors",
+                    chosen
+                      ? "border-primary bg-primary-soft"
+                      : "border-border-soft bg-surface hover:border-border",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "text-caption font-semibold",
+                      chosen ? "text-primary" : "text-muted",
+                    )}
+                  >
+                    {option.title}
+                  </span>
+                  <span className="text-title font-bold tabular-nums text-ink">
+                    {total !== null ? tugrik(total) : "—"}
+                  </span>
+                  {span ? <span className="text-caption text-muted">{span}</span> : null}
+                  {chosen && perGroup !== null ? (
+                    <span className="text-caption tabular-nums text-muted">
+                      {shownGroups} бүлэг × {tugrik(Math.round(perGroup))} · {option.months} сар
+                    </span>
+                  ) : null}
+                  <span id={`period-${option.value}-details`} className="sr-only">
+                    {option.label} · {option.months} сар · {total !== null ? tugrik(total) : "—"}
+                    {perGroup !== null
+                      ? ` · ${shownGroups} бүлэг × ${tugrik(Math.round(perGroup))}`
+                      : ""}
+                    {option.coversTo ? ` · ${formatDate(option.coversTo)} хүртэл` : ""}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
-          <p aria-live="polite" className="text-body text-ink">
-            {price ? (
-              <>
-                {groups} бүлэг · <strong className="text-title">{tugrik(Number(price))}</strong> /{" "}
-                {periodLabel}
-              </>
-            ) : access.isSuccess ? (
-              "Гэрээнд бүлгийн төлбөр тогтоогоогүй байна. NomadKids-тэй холбогдож нэхэмжлэх авна уу."
-            ) : null}
-          </p>
-
-          {price && coversTo ? (
-            <p className="text-body text-muted">
-              Төлмөгц эрх <strong className="text-ink">{formatDate(coversTo)}</strong> хүртэл
-              сунгагдана.
+          {!price ? (
+            <p className="text-caption text-muted">
+              Гэрээнд бүлгийн төлбөр тогтоогоогүй байна. NomadKids-тэй холбогдоно уу.
             </p>
           ) : null}
 
-          <div className="flex flex-wrap gap-2">
-            <ContractPayDialog request={renewal} disabled={!price} />
+          {countChanged ? (
+            <p role="status" className="rounded-control bg-sun px-3 py-2 text-caption text-sun-ink">
+              {shownGroups} бүлгээр тооцоолж харууллаа. Одоогоор {groups} бүлгээр төлөх боломжтой —
+              бүлгийн тоог өөрчлөх бол NomadKids-тэй холбогдож гэрээгээ шинэчилнэ үү.
+            </p>
+          ) : null}
+
+          <div className="flex flex-wrap items-center gap-2">
+            <ContractPayDialog request={renewal} disabled={!price || countChanged} />
             <InvoiceButton
               request={{ path: "/service-access/invoices", body: { period } }}
-              disabled={!price}
+              disabled={!price || countChanged}
             />
           </div>
-          <p className="text-caption text-muted">{PAID_HOW}</p>
+          <p className="-mt-2 text-caption text-muted">
+            Дансаар шилжүүлбэл бүртгэгдмэгц сунгагдана.
+          </p>
         </Card>
       )}
     </div>
   );
+}
+
+/**
+ * «2026.12.01 – 2027.02.28» — the dates out of the server's label, or
+ * «… хүртэл» when the label names none (a whole year).
+ */
+function dateSpan(label: string, coversTo: string | null | undefined): string | null {
+  const inLabel = label.match(/\(([^)]+)\)/)?.[1];
+  if (inLabel) return inLabel;
+  return coversTo ? `${formatDate(coversTo)} хүртэл` : null;
 }
 
 const PAID_HOW =
@@ -550,5 +612,65 @@ function ContractPayDialog({
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+/**
+ * The year's months — nine for the whole school year; from December «the
+ * year» is what is left of it, named by its terms («…, II улирал, III
+ * улирал»), three months each.
+ */
+function yearMonths(label: string | null | undefined, whole: boolean): number {
+  if (whole || !label) return MONTHS_IN_TERM * 3;
+  const terms = label.match(/[IV]+ улирал/g)?.length ?? 3;
+  return MONTHS_IN_TERM * terms;
+}
+
+/** «Бүлэг − N +» — what the amounts below are figured for; the registered count when changed. */
+function GroupStepper({
+  value,
+  registered,
+  onChange,
+}: {
+  value: number;
+  registered: number;
+  onChange: (next: number) => void;
+}) {
+  const MAX = 99;
+  return (
+    <div className="flex items-center gap-3">
+      <span className="min-w-0 flex-1 text-body font-semibold text-ink">
+        Бүлэг
+        {value !== registered ? (
+          <span className="ml-2 text-caption font-normal text-muted">Бүртгэлтэй: {registered}</span>
+        ) : null}
+      </span>
+      <div role="group" aria-label="Бүлгийн тоо" className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Бүлэг хасах"
+          disabled={value <= 1}
+          onClick={() => onChange(value - 1)}
+        >
+          <Minus size={18} aria-hidden />
+        </Button>
+        <span
+          aria-live="polite"
+          className="w-8 text-center text-lead font-bold tabular-nums text-ink"
+        >
+          {value}
+        </span>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Бүлэг нэмэх"
+          disabled={value >= MAX}
+          onClick={() => onChange(value + 1)}
+        >
+          <Plus size={18} aria-hidden />
+        </Button>
+      </div>
+    </div>
   );
 }

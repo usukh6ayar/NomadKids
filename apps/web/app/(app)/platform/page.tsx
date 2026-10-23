@@ -743,11 +743,17 @@ function KindergartenTotals({
   return (
     <tr>
       <td className={`${cell} ${FROZEN_NO}`} />
-      <td className={`${cell} ${FROZEN_NAME} whitespace-nowrap`}>
-        Нийт: {figure(platform ? platform.kindergartens : rows.length)} цэцэрлэг
+      {/*
+        ★ Narrow — 2026-10-22, the user: on a phone the frozen first column was
+        as wide as «Нийт: 12 цэцэрлэг · Идэвхтэй эцэг эх: 9». Two short lines.
+      */}
+      <td className={`${cell} ${FROZEN_NAME}`}>
+        <span className="block whitespace-nowrap">
+          Нийт: {figure(platform ? platform.kindergartens : rows.length)} цэцэрлэг
+        </span>
         {platform ? (
-          <span className="font-normal text-muted">
-            {" · "}Идэвхтэй эцэг эх: {figure(platform.guardians)}
+          <span className="block text-caption font-normal text-muted">
+            {figure(platform.guardians)} эцэг эх
           </span>
         ) : null}
       </td>

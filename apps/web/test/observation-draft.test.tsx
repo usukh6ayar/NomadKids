@@ -1041,6 +1041,8 @@ describe("Шинэ ажиглалт — зураг", () => {
       expect(screen.getByRole("combobox", { name: /^Төрөл/ })).toHaveTextContent("Наамал"),
     );
     expect(screen.getByRole("heading", { name: "Шинэ бүтээл нэмэх" })).toBeInTheDocument();
+    // An artwork is А/79 evidence too — 2026-10-22, the user.
+    expect(screen.getByRole("button", { name: "А/79 шалгуур нэмэх" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Хадгалах" }));
     expect(screen.getByRole("alert")).toHaveTextContent("Бүтээлийн зураг нэмнэ үү.");
     expect(calls.some((call) => call.method === "POST")).toBe(false);

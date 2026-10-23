@@ -43,6 +43,21 @@ export class A79Service {
   ) {}
 
   /**
+   * A note's links, for «Тэмдэглэл засах» (2026-10-22, the user: editing a
+   * note lost its А/79 criteria — the form could not read them, and its save
+   * would have replaced them with none). The same reach as replacing them.
+   */
+  async links(actor: Actor, observationId: string) {
+    const row = await this.repo.findObservation(observationId);
+    if (!row) throw new NotFoundException();
+
+    const facts = await this.childAccess.assertCanReadObservations(actor, row.childId);
+    if (!canEditObservationAsStaff(actor, facts, row)) throw new NotFoundException();
+
+    return { links: await this.repo.liveLinks(row.id) };
+  }
+
+  /**
    * Replaces the note's links. A teacher or an administrator who may edit the
    * note as staff — `canEditObservationAsStaff`, the rule `PATCH
    * /observations/:id` keeps — may link it; anyone else gets 404. The route's

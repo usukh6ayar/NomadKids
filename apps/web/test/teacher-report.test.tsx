@@ -197,18 +197,19 @@ describe("the teacher's report", () => {
 
     await user.click(screen.getByRole("tab", { name: "Үр дүнгийн үнэлгээ" }));
     const panel = screen.getByRole("tabpanel", { name: "Үр дүнгийн үнэлгээ" });
-    // 80% and 43% → a group average of 62%, one child in each of two bands.
+    // 80.4% and 43.4% → a group average of 61.9% (cut, not rounded up), one
+    // child in each of two bands.
     expect(
-      await within(panel).findByRole("img", { name: "Бүлгийн дундаж: 62%" }),
+      await within(panel).findByRole("img", { name: "Бүлгийн дундаж: 61.9%" }),
     ).toBeInTheDocument();
-    expect(within(panel).getByText("Хангалттай · 1")).toBeInTheDocument();
+    expect(within(panel).getByText("Хангалттай эзэмшиж байна · 1")).toBeInTheDocument();
     expect(within(panel).getByText("Хөгжиж байна · 1")).toBeInTheDocument();
     const anu = within(panel).getByRole("link", { name: "Б.Ану" });
     expect(anu).toHaveAttribute(
       "href",
       `/groups/${GROUP_ID}/results/c1111111-1111-4111-8111-111111111111`,
     );
-    expect(anu.closest("tr")).toHaveTextContent("80%");
+    expect(anu.closest("tr")).toHaveTextContent("80.4%");
   });
 
   it("breaks the notes down by kind", async () => {

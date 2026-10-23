@@ -15,10 +15,13 @@ import {
   A79_DOMAIN_FILL,
   a79Band,
   a79GroupSummarySchema,
+  a79MeanShare,
+  a79Percent,
   type A79Band,
   type A79GroupSummary,
 } from "@/lib/a79-progress";
 import { shortName } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 const DOMAINS: A79Domain[] = ["Мэдлэг", "Чадвар", "Төлөвшил"];
 const BAND_TONE: Record<A79Band, "mint" | "sun" | "peach"> = {
@@ -27,8 +30,7 @@ const BAND_TONE: Record<A79Band, "mint" | "sun" | "peach"> = {
   DEVELOPING: "peach",
 };
 
-const pct = (achieved: number, total: number) =>
-  total > 0 ? Math.round((achieved / total) * 100) : 0;
+const pct = a79Percent;
 
 /**
  * «Үр дүнгийн үнэлгээ» on Тайлан — the group's А/79 result in one place
@@ -107,14 +109,12 @@ export function a79GroupAverages(
 ): { total: number; byDomain: Record<A79Domain, number> } | null {
   const rows = scored(all);
   if (rows.length === 0) return null;
-  const mean = (values: number[]) =>
-    Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
   return {
-    total: mean(rows.map((row) => row.percent)),
+    total: a79MeanShare(rows),
     byDomain: {
-      Мэдлэг: mean(rows.map((row) => row.domain.Мэдлэг ?? 0)),
-      Чадвар: mean(rows.map((row) => row.domain.Чадвар ?? 0)),
-      Төлөвшил: mean(rows.map((row) => row.domain.Төлөвшил ?? 0)),
+      Мэдлэг: domainAverage(rows, "Мэдлэг"),
+      Чадвар: domainAverage(rows, "Чадвар"),
+      Төлөвшил: domainAverage(rows, "Төлөвшил"),
     },
   };
 }
@@ -159,7 +159,7 @@ function SummaryBody({ groupId, data }: { groupId: string; data: A79GroupSummary
         <A79SummaryChart
           rows={withFigures}
           averageLabel="Бүлгийн дундаж"
-          description={`Бүлгийн дундаж, ${withFigures.length} хүүхэд. Хүүхдийн хувь бол өөрийн түвшний шалгуурын хэдийг бие даан илрүүлсэн нь.`}
+          description={`Бүлгийн дундаж, ${withFigures.length} хүүхэд. Хүүхдийн хувь бол өөрийн түвшний шалгуурын хэдийг хангалттай эзэмшсэн нь.`}
         />
       ) : null}
 
@@ -169,11 +169,30 @@ function SummaryBody({ groupId, data }: { groupId: string; data: A79GroupSummary
 }
 
 function domainAverage(rows: A79ChildRow[], domain: A79Domain): number {
-  if (rows.length === 0) return 0;
-  return Math.round(rows.reduce((sum, row) => sum + (row.domain[domain] ?? 0), 0) / rows.length);
+  return a79MeanShare(
+    rows.map((row) => row.byDomain.find((d) => d.domain === domain) ?? { achieved: 0, total: 0 }),
+  );
 }
 
-function A79SummaryChart({
+/**
+ * The figure in an А/79 ring, to its one decimal — the shared `Ring` rounds to
+ * a whole percent, and 79.5% must not read 80% beside «Ахиж байна» (А/79
+ * §2.10, 2026-10-22). A decimal takes a size down to fit the hole.
+ */
+export function A79RingFigure({ percent }: { percent: number }) {
+  return (
+    <span
+      className={cn(
+        "font-semibold tabular-nums text-ink",
+        Number.isInteger(percent) ? "text-title" : "text-lead",
+      )}
+    >
+      {percent}%
+    </span>
+  );
+}
+
+export function A79SummaryChart({
   rows,
   averageLabel,
   description,
@@ -184,7 +203,7 @@ function A79SummaryChart({
   description: string;
   title?: string;
 }) {
-  const average = Math.round(rows.reduce((sum, row) => sum + row.percent, 0) / rows.length);
+  const average = a79MeanShare(rows);
   const bands = (["MASTERED", "PROGRESSING", "DEVELOPING"] as const).map((band) => ({
     band,
     count: rows.filter((row) => a79Band(row.percent) === band).length,
@@ -199,7 +218,9 @@ function A79SummaryChart({
           size="lg"
           fadeTo="var(--color-violet-chart)"
           label={`${averageLabel}: ${average}%`}
-        />
+        >
+          <A79RingFigure percent={average} />
+        </Ring>
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <p className="text-body text-ink">{description}</p>
           <ul aria-label="Хүүхдийн тоо, бүсээр" className="flex flex-wrap gap-2">
@@ -297,27 +318,36 @@ export function A79KindergartenSummaryPanel({
   );
 }
 
-function KindergartenSummaryBody({
+/**
+ * The kindergarten chart and one row per group. Exported for «Гарааны
+ * үнэлгээ» (2026-10-21), which draws the same table from the baseline
+ * surveys; every option defaults to the result screen's own wording.
+ */
+export function KindergartenSummaryBody({
   groups,
+  hrefFor = (groupId) => `/groups/${groupId}/results`,
+  countFor,
+  noDataLabel = "Мэдээлэл алга",
+  emptyTitle = "Цэцэрлэгт хүүхдийн үр дүн алга",
+  emptyDescription = "Хүүхдийн үнэлгээ бүртгэгдсэний дараа бүлгийн үзүүлэлтүүд энд харагдана.",
 }: {
   groups: { group: A79ReportGroup; summary: A79GroupSummary }[];
+  hrefFor?: (groupId: string) => string;
+  /** The «Хүүхэд» cell — the scored count unless given. */
+  countFor?: (groupId: string, scored: number) => string;
+  noDataLabel?: string;
+  emptyTitle?: string;
+  emptyDescription?: string;
 }) {
   const groupRows = groups.map(({ group, summary }) => {
     const children = scored(a79ChildRows(summary));
-    const percent = children.length
-      ? Math.round(children.reduce((sum, row) => sum + row.percent, 0) / children.length)
-      : null;
+    const percent = children.length ? a79MeanShare(children) : null;
     return { group, children, percent };
   });
   const children = groupRows.flatMap((row) => row.children);
 
   if (children.length === 0) {
-    return (
-      <EmptyState
-        title="Цэцэрлэгт хүүхдийн үр дүн алга"
-        description="Хүүхдийн үнэлгээ бүртгэгдсэний дараа бүлгийн үзүүлэлтүүд энд харагдана."
-      />
-    );
+    return <EmptyState title={emptyTitle} description={emptyDescription} />;
   }
 
   return (
@@ -352,13 +382,15 @@ function KindergartenSummaryBody({
                 <Td className="tabular-nums text-muted">{index + 1}</Td>
                 <Td>
                   <Link
-                    href={`/groups/${row.group.id}/results`}
+                    href={hrefFor(row.group.id)}
                     className="font-medium text-primary hover:underline"
                   >
                     {row.group.name}
                   </Link>
                 </Td>
-                <Td numeric>{row.children.length}</Td>
+                <Td numeric>
+                  {countFor ? countFor(row.group.id, row.children.length) : row.children.length}
+                </Td>
                 {DOMAINS.map((domain) => (
                   <Td key={domain} numeric>
                     {row.children.length ? `${domainAverage(row.children, domain)}%` : "—"}
@@ -371,7 +403,7 @@ function KindergartenSummaryBody({
                   {band ? (
                     <Badge tone={BAND_TONE[band]}>{A79_BAND_LABEL[band]}</Badge>
                   ) : (
-                    <Badge tone="neutral">Мэдээлэл алга</Badge>
+                    <Badge tone="neutral">{noDataLabel}</Badge>
                   )}
                 </Td>
               </tr>
@@ -388,7 +420,19 @@ function KindergartenSummaryBody({
  * — on Тайлан and on «Үр дүнгийн үнэлгээ» alike (client, 2026-10-08). The
  * name opens the child's own result.
  */
-export function A79ChildrenTable({ groupId, rows }: { groupId: string; rows: A79ChildRow[] }) {
+export function A79ChildrenTable({
+  groupId,
+  rows,
+  linkChildren = true,
+}: {
+  groupId: string;
+  rows: A79ChildRow[];
+  /**
+   * Off on «Гарааны үнэлгээ» (2026-10-21): a child's page is their result,
+   * built from observations, not the baseline survey this row was read from.
+   */
+  linkChildren?: boolean;
+}) {
   return (
     <TableShell caption="Хүүхэд бүрийн үр дүн" minWidth="min-w-[560px]">
       <thead>
@@ -432,12 +476,16 @@ export function A79ChildrenTable({ groupId, rows }: { groupId: string; rows: A79
             <tr key={row.childId}>
               <Td className="tabular-nums text-muted">{index + 1}</Td>
               <Td>
-                <Link
-                  href={`/groups/${groupId}/results/${row.childId}`}
-                  className="font-medium text-primary hover:underline"
-                >
-                  {shortName(row)}
-                </Link>
+                {linkChildren ? (
+                  <Link
+                    href={`/groups/${groupId}/results/${row.childId}`}
+                    className="font-medium text-primary hover:underline"
+                  >
+                    {shortName(row)}
+                  </Link>
+                ) : (
+                  <span className="font-medium text-ink">{shortName(row)}</span>
+                )}
               </Td>
               <Td>{row.level}</Td>
               {DOMAINS.map((domain) => (
