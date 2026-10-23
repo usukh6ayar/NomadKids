@@ -249,6 +249,74 @@ export class PlatformRepository {
    * — §3.4, one query per concern rather than an ad-hoc `_count` growing a
    * field at a time.
    */
+  /** This kindergarten's current school year — the one the portal fee is counted over. */
+  currentSchoolYear(kindergartenId: string) {
+    return this.prisma.schoolYear.findFirst({
+      where: { kindergartenId, deletedAt: null, isCurrent: true },
+      select: { id: true, name: true },
+    });
+  }
+
+  /**
+   * The portal fee in one kindergarten's school year, for the operator —
+   * counts only, never a child (backend list №4, 2026-10-20 the user).
+   *
+   * ★ Over the year's ACTIVE enrolments: a child who graduated, left or was
+   * deleted is neither paid nor unpaid. «Paid» is the gate's own question
+   * (`AccessRepository.findActiveCovering`): an ACTIVE subscription running
+   * through `today`. The amount is what this kindergarten's families paid
+   * for this year. A fixed handful of aggregates, no row per child (§3.4).
+   */
+  async accessFeeFigures(kindergartenId: string, schoolYearId: string, today: Date) {
+    const enrolled = {
+      kindergartenId,
+      schoolYearId,
+      status: "ACTIVE" as const,
+      deletedAt: null,
+      child: { deletedAt: null },
+    };
+    const covered = {
+      accessSubscriptions: {
+        some: { status: "ACTIVE" as const, deletedAt: null, expiresAt: { gte: today } },
+      },
+    };
+    const [children, paid, byGroup, paidByGroup, amount] = await Promise.all([
+      this.prisma.child.count({
+        where: { deletedAt: null, enrollments: { some: enrolled } },
+      }),
+      this.prisma.child.count({
+        where: { deletedAt: null, enrollments: { some: enrolled }, ...covered },
+      }),
+      this.prisma.enrollment.groupBy({ by: ["groupId"], where: enrolled, _count: { _all: true } }),
+      this.prisma.enrollment.groupBy({
+        by: ["groupId"],
+        where: { ...enrolled, child: { deletedAt: null, ...covered } },
+        _count: { _all: true },
+      }),
+      this.prisma.accessSubscription.aggregate({
+        where: { kindergartenId, schoolYearId, deletedAt: null, paidAt: { not: null } },
+        _sum: { amount: true },
+      }),
+    ]);
+    const groups = await this.prisma.group.findMany({
+      where: { id: { in: byGroup.map((row) => row.groupId) } },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+    return {
+      children,
+      paid,
+      // A whole-tugrik string from the decimal itself — never a float sum.
+      amount: amount._sum.amount?.toFixed(0) ?? "0",
+      groups: groups.map((group) => ({
+        id: group.id,
+        name: group.name,
+        children: byGroup.find((row) => row.groupId === group.id)?._count._all ?? 0,
+        paid: paidByGroup.find((row) => row.groupId === group.id)?._count._all ?? 0,
+      })),
+    };
+  }
+
   async findById(id: string) {
     return this.prisma.kindergarten.findFirst({ where: { id, deletedAt: null } });
   }

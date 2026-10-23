@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
 import { localDate, type EsisInstitutionStaff } from "@kinder/contracts";
+import { AccessService } from "../access/access.service";
 import { AuditRepository } from "../audit/audit.repository";
 import { PasswordService } from "../auth/password.service";
 import { TokenService } from "../auth/token.service";
@@ -47,6 +48,7 @@ export class PlatformService {
     private readonly audit: AuditRepository,
     private readonly dashboard: DashboardRepository,
     private readonly lookup: EsisInstitutionLookupService,
+    private readonly access: AccessService,
   ) {}
 
   async create(actor: Actor, dto: CreateKindergartenDto) {
@@ -310,6 +312,43 @@ export class PlatformService {
       assessmentCoverage,
       recentActivity,
       admins,
+    };
+  }
+
+  /**
+   * The families' portal access fee in one kindergarten this school year —
+   * «хэдэн хүүхдийн төлбөр орсон» (2026-10-20, the user): paid and unpaid
+   * counts, by group, and what was paid.
+   *
+   * ★ Superadmin only, 404 otherwise (§1.7). ★★ Counts, never a child: the
+   * operator does not read children (`authz/platform-access.service.ts`); a
+   * single payment is looked up on «Төлбөр шалгах».
+   *
+   * `required` is the gate's own `isCharging` — false at "0" and through the
+   * free period (`ACCESS_FEE_FREE_UNTIL`), when nothing is sold.
+   */
+  async accessFees(actor: Actor, id: string) {
+    this.platform.assertSuperAdmin(actor);
+    const kindergarten = await this.repo.findById(id);
+    if (!kindergarten) throw new NotFoundException();
+
+    const year = await this.repo.currentSchoolYear(id);
+    const none = { paid: 0, unpaid: 0, amount: 0, groups: [] };
+    if (!this.access.isCharging) {
+      return { required: false, schoolYear: year?.name ?? null, ...none };
+    }
+    if (!year) return { required: true, schoolYear: null, ...none };
+
+    const today = new Date(`${localDate()}T00:00:00.000Z`);
+    const figures = await this.repo.accessFeeFigures(id, year.id, today);
+    return {
+      required: true,
+      schoolYear: year.name,
+      paid: figures.paid,
+      unpaid: figures.children - figures.paid,
+      // Whole tugrik — the web reads a number here (`kindergarten-access-fees.tsx`).
+      amount: Number(figures.amount),
+      groups: figures.groups,
     };
   }
 
