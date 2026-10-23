@@ -21,27 +21,27 @@ import {
 
 describe("the current school-year prices", () => {
   /*
-   * ★ The discount is back (the user, 2026-10-13, after it ended on
-   * 2026-10-11): 5,000₮ / 22,000₮ a child and 6,000₮ a term / 30,000₮ a group, below
-   * the standard 3,000₮ and 4,000₮ a month.
+   * ★ The user, 2026-10-21: a child's «I-р улирал» free and the year 18,000₮,
+   * a group's «I-р улирал» 4,000₮ and the year 28,000₮ — below the standard
+   * 3,000₮ and 4,000₮ a month.
    */
   it("charges the discounted price below the standard", () => {
-    expect(CHILD_CURRENT_TERM_PRICE).toBe(5_000);
-    expect(CHILD_CURRENT_YEAR_PRICE).toBe(22_000);
-    expect(KINDERGARTEN_CURRENT_TERM_PER_GROUP).toBe(6_000);
-    expect(KINDERGARTEN_CURRENT_YEAR_PER_GROUP).toBe(30_000);
+    expect(CHILD_CURRENT_TERM_PRICE).toBe(0);
+    expect(CHILD_CURRENT_YEAR_PRICE).toBe(18_000);
+    expect(KINDERGARTEN_CURRENT_TERM_PER_GROUP).toBe(4_000);
+    expect(KINDERGARTEN_CURRENT_YEAR_PER_GROUP).toBe(28_000);
 
-    // 6,000₮ a group for «I-р улирал», three groups.
-    expect(kindergartenTermPrice(3, "2026-10-18")).toBe(18_000);
-    expect(kindergartenYearlyPrice(3)).toBe(90_000);
+    // 4,000₮ a group for «I-р улирал», three groups.
+    expect(kindergartenTermPrice(3, "2026-10-18")).toBe(12_000);
+    expect(kindergartenYearlyPrice(3)).toBe(84_000);
     expect(yearlySavingAmount(kindergartenStandardYearPrice(3), kindergartenYearlyPrice(3))).toBe(
-      18_000,
+      24_000,
     );
-    expect(savingPercent(CHILD_STANDARD_TERM_PRICE, CHILD_CURRENT_TERM_PRICE)).toBe(44.4);
-    expect(savingPercent(CHILD_STANDARD_YEAR_PRICE, CHILD_CURRENT_YEAR_PRICE)).toBe(18.5);
+    expect(savingPercent(CHILD_STANDARD_TERM_PRICE, CHILD_CURRENT_TERM_PRICE)).toBe(100);
+    expect(savingPercent(CHILD_STANDARD_YEAR_PRICE, CHILD_CURRENT_YEAR_PRICE)).toBe(33.3);
     expect(
       savingPercent(KINDERGARTEN_STANDARD_TERM_PER_GROUP, KINDERGARTEN_CURRENT_TERM_PER_GROUP),
-    ).toBe(50);
+    ).toBe(66.7);
   });
 });
 
@@ -64,9 +64,11 @@ describe("the pricing page", () => {
     expect(child.getByText("2026.11.30 хүртэл хүчинтэй")).toBeInTheDocument();
     expect(child.getByText("/ I-р улирал")).toBeInTheDocument();
     expect(child.getByText("9,000₮")).toHaveClass("line-through");
-    expect(child.getByText("5,000₮")).toBeInTheDocument();
+    // A free term says so — never «0₮» (the user, 2026-10-21).
+    expect(child.getByText("Үнэгүй")).toBeInTheDocument();
+    expect(child.queryByText("0₮")).toBeNull();
     expect(child.getByText("27,000₮")).toHaveClass("line-through");
-    expect(child.getByText("22,000₮")).toBeInTheDocument();
+    expect(child.getByText("18,000₮")).toBeInTheDocument();
 
     const teacher = within(screen.getByRole("article", { name: "Багш" }));
     expect(teacher.getByText("Үнэгүй")).toHaveClass("text-title");
@@ -77,9 +79,9 @@ describe("the pricing page", () => {
     expect(kindergarten.getByText("1 бүлэг сарын 4,000₮")).toBeInTheDocument();
     expect(kindergarten.queryByText(/11 сар хүртэл/)).toBeNull();
     expect(kindergarten.getByText("12,000₮")).toHaveClass("line-through");
-    expect(kindergarten.getByText("6,000₮")).toBeInTheDocument();
+    expect(kindergarten.getByText("4,000₮")).toBeInTheDocument();
     expect(kindergarten.getByText("36,000₮")).toHaveClass("line-through");
-    expect(kindergarten.getByText("30,000₮")).toBeInTheDocument();
+    expect(kindergarten.getByText("28,000₮")).toBeInTheDocument();
     expect(
       kindergarten.getByText("ESIS-тэй холболт: Суралцагч, ажилтны бүртгэл, мэргэшлийн зэрэг"),
     ).toBeInTheDocument();
@@ -122,9 +124,9 @@ describe("the pricing page", () => {
 
     await user.click(kindergarten.getByRole("button", { name: "Бүлгийн тоо нэмэх" }));
     expect(kindergarten.getByLabelText("Сонгосон бүлгийн тоо")).toHaveTextContent("2");
-    // 2 groups: 2 × 6,000₮ a term, 2 × 30,000₮ a year.
-    expect(kindergarten.getAllByText("12,000₮").length).toBeGreaterThan(0);
-    expect(kindergarten.getByText("60,000₮")).toBeInTheDocument();
+    // 2 groups: 2 × 4,000₮ a term, 2 × 28,000₮ a year.
+    expect(kindergarten.getAllByText("8,000₮").length).toBeGreaterThan(0);
+    expect(kindergarten.getByText("56,000₮")).toBeInTheDocument();
 
     await user.click(subtract);
     expect(kindergarten.getByLabelText("Сонгосон бүлгийн тоо")).toHaveTextContent("1");
@@ -142,7 +144,7 @@ describe("the pricing page", () => {
     const dialog = within(screen.getByRole("dialog", { name: "Байгууллагын бүртгэл" }));
     expect(dialog.getByRole("spinbutton", { name: /Бүлгийн тоо/ })).toHaveValue(2);
     expect(dialog.getByRole("combobox", { name: /Төлбөрийн хугацаа/ })).toHaveTextContent("Жилээр");
-    expect(dialog.getByText("60,000₮")).toBeInTheDocument();
+    expect(dialog.getByText("56,000₮")).toBeInTheDocument();
   });
 
   it("seats the children on the kindergarten card", () => {
@@ -170,29 +172,30 @@ describe("the pricing page from 1 December 2026", () => {
     expect(screen.getByRole("radio", { name: "Улирлаар" })).toBeInTheDocument();
 
     const child = within(screen.getByRole("article", { name: "Хүүхэд" }));
-    expect(child.queryByText("5,000₮")).toBeNull();
+    expect(child.queryByText("Үнэгүй")).toBeNull();
     expect(child.getByText("9,000₮")).not.toHaveClass("line-through");
-    expect(child.getByText("22,000₮")).toBeInTheDocument();
+    expect(child.getByText("18,000₮")).toBeInTheDocument();
 
     const kindergarten = within(screen.getByRole("article", { name: "Цэцэрлэг" }));
     expect(kindergarten.getByText("12,000₮")).not.toHaveClass("line-through");
-    expect(kindergarten.queryByText("6,000₮")).toBeNull();
+    expect(kindergarten.queryByText("4,000₮")).toBeNull();
     expect(kindergartenTermPrice(3, "2026-12-01")).toBe(36_000);
   });
 });
 
 describe("a kindergarten contract's terms", () => {
   /*
-   * ★ «I-р улирал» is 6,000₮ a group — the contract used to print 2,000₮
-   * (a month) for it, read as the term's price (the client, 2026-10-18).
+   * ★ «I-р улирал» is a term's price — 4,000₮ a group since 2026-10-21. The
+   * contract used to print 2,000₮ (a month) for it, read as the term's price
+   * (the client, 2026-10-18).
    */
-  it("prices «I-р улирал» as a 6,000₮ term, never as a 2,000₮ month", () => {
+  it("prices «I-р улирал» as a 4,000₮ term, never as a 2,000₮ month", () => {
     const schedule = contractSchedule(3, "term", "2026-09-01", "2027-05-31")!;
     const [first, second] = schedule.lines;
     expect(first).toMatchObject({
-      perGroup: 6_000,
+      perGroup: 4_000,
       perMonth: null,
-      amount: 18_000,
+      amount: 12_000,
       discounted: true,
     });
     expect(second).toMatchObject({ perGroup: 12_000, perMonth: 4_000, discounted: false });
@@ -208,7 +211,7 @@ describe("a kindergarten contract's terms", () => {
   it("charges the whole term a contract starts in", () => {
     const fromSeptember = contractSchedule(3, "term", "2026-09-01", "2027-05-31")!;
     const fromMidOctober = contractSchedule(3, "term", "2026-10-14", "2027-05-31")!;
-    expect(fromMidOctober.lines.map((line) => line.amount)).toEqual([18_000, 36_000, 36_000]);
+    expect(fromMidOctober.lines.map((line) => line.amount)).toEqual([12_000, 36_000, 36_000]);
     expect(fromMidOctober.total).toBe(fromSeptember.total);
   });
 });

@@ -11,10 +11,11 @@ import { currentSchoolYear } from "./support/school-year";
 /**
  * Child access by term as well as by the school year (#211, the user
  * 2026-10-12) — and since 2026-10-18 the terms are the calendar's, priced by
- * the sheet (`@kinder/contracts`): «I-р улирал» 5,000₮ ending on 2026-11-30
- * whenever it is bought, then II and III at 9,000₮; the year 22,000₮.
+ * the sheet (`@kinder/contracts`): «I-р улирал» ending on 2026-11-30 — free
+ * since 2026-10-21 (the user), so never sold — then II and III at 9,000₮; the
+ * year 18,000₮.
  */
-process.env.ACCESS_FEE_AMOUNT = "22000.00";
+process.env.ACCESS_FEE_AMOUNT = "18000.00";
 process.env.ACCESS_FEE_TERM_AMOUNT = "5000.00";
 
 let app: INestApplication;
@@ -89,20 +90,20 @@ describe("«I-р улирал» — a fixed last day, 2026-11-30", () => {
     ["29 November", "2026-11-29T03:00:00.000Z"],
     // 23:30 on 30 November in Ulaanbaatar — the last day is inclusive.
     ["the last evening, 30 November", "2026-11-30T15:30:00.000Z"],
-  ])("bought on %s, it charges 5,000₮ and ends on 2026-11-30", async (_label, now) => {
+  ])("asked on %s, the free «I-р улирал» is refused — no 0₮ row", async (_label, now) => {
     const res = await at(now, (session) => ensure(session, { period: "TERM" }));
 
-    expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(res.body).toMatchObject({ period: "TERM", termNumber: 1, amount: "5000" });
-    expect(res.body.expiresAt.slice(0, 10)).toBe("2026-11-30");
+    // ★ Free since 2026-10-21 (the user): QPay draws no 0₮ QR.
+    expect(res.status, JSON.stringify(res.body)).toBe(400);
+    expect(await db.accessSubscription.count({ where: { childId: a.child.id } })).toBe(0);
   });
 
-  it("offers 5,000₮ for «I-р улирал» to the cutoff, and 9,000₮ for II after it", async () => {
+  it("offers no term while «I-р улирал» is free, and 9,000₮ for II after it", async () => {
     const before = await at("2026-11-30T15:30:00.000Z", (session) => status(session));
     const after = await at("2026-11-30T16:30:00.000Z", (session) => status(session));
 
-    expect(before.body).toMatchObject({ amount: "22000.00", termAmount: "5000.00" });
-    expect(after.body).toMatchObject({ amount: "22000.00", termAmount: "9000.00" });
+    expect(before.body).toMatchObject({ amount: "18000.00", termAmount: null });
+    expect(after.body).toMatchObject({ amount: "18000.00", termAmount: "9000.00" });
   });
 
   /* ★ II and III at the standard 9,000₮ (the user, 2026-10-18). */
@@ -130,28 +131,16 @@ describe("«I-р улирал» — a fixed last day, 2026-11-30", () => {
     expect(june.status).toBe(400);
   });
 
-  it("never lets an unpaid «I-р улирал» be paid after it — the next ask raises II", async () => {
-    const early = await at("2026-11-20T03:00:00.000Z", (session) =>
-      ensure(session, { period: "TERM" }),
-    );
-    const late = await at("2026-12-02T03:00:00.000Z", (session) =>
-      ensure(session, { period: "TERM" }),
-    );
-
-    expect(early.body).toMatchObject({ termNumber: 1, amount: "5000" });
-    expect(late.body).toMatchObject({ termNumber: 2, amount: "9000" });
-    expect(late.body.id).not.toBe(early.body.id);
-  });
-
   it("raises one TERM row however often it is asked, apart from the year's", async () => {
-    const [first, again, year] = await at("2026-10-18T03:00:00.000Z", async (session) => [
+    const [first, again, year] = await at("2026-12-10T03:00:00.000Z", async (session) => [
       await ensure(session, { period: "TERM" }),
       await ensure(session, { period: "TERM" }),
       await ensure(session),
     ]);
 
     expect(again!.body.id).toBe(first!.body.id);
-    expect(year!.body).toMatchObject({ period: "YEAR", amount: "22000" });
+    expect(first!.body).toMatchObject({ termNumber: 2, amount: "9000" });
+    expect(year!.body).toMatchObject({ period: "YEAR", amount: "18000" });
     expect(year!.body.id).not.toBe(first!.body.id);
     // The year keeps its own policy: the school year's last day.
     expect(year!.body.expiresAt.slice(0, 10)).toBe("2027-05-31");

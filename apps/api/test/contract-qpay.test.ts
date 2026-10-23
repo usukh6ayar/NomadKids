@@ -84,7 +84,7 @@ async function contract(scenario: Scenario, endsOn: string, fee = "4000.00") {
 describe("what renewing buys and costs", () => {
   const standard = (endsOn: string) => ({ perGroupMonthlyFee: "4000.00", endsOn: day(endsOn) });
 
-  it("prices «I-р улирал» at 6,000₮ a group and the year at 30,000₮ — from the sheet", () => {
+  it("prices «I-р улирал» at 4,000₮ a group and the year at 28,000₮ — from the sheet", () => {
     // A contract that ended in August, renewed on 18 October.
     const term = quote(standard("2026-08-31"), 3, "TERM", "2026-10-18");
     const year = quote(standard("2026-08-31"), 3, "YEAR", "2026-10-18");
@@ -92,14 +92,14 @@ describe("what renewing buys and costs", () => {
     expect(term).toMatchObject({
       coversFrom: "2026-09-01",
       coversTo: "2026-11-30",
-      perGroup: "6000.00",
-      amount: "18000.00",
+      perGroup: "4000.00",
+      amount: "12000.00",
     });
     expect(year).toMatchObject({
       coversFrom: "2026-09-01",
       coversTo: "2027-05-31",
-      perGroup: "30000.00",
-      amount: "90000.00",
+      perGroup: "28000.00",
+      amount: "84000.00",
     });
   });
 

@@ -41,8 +41,8 @@ export const KINDERGARTEN_MONTHLY_PER_GROUP = GROUP_PRICES.monthly;
 export const KINDERGARTEN_STANDARD_TERM_PER_GROUP = GROUP_PRICES.termStandard;
 export const KINDERGARTEN_STANDARD_YEAR_PER_GROUP = GROUP_PRICES.yearStandard;
 /**
- * ★ 6,000₮ a group for «I-р улирал» — never 2,000₮ (the client, 2026-10-18).
- * It was written as 2,000₮ a month × 3, and the contract printed the 2,000₮.
+ * ★ «I-р улирал» is priced as a term — 4,000₮ a group since 2026-10-21 (the
+ * user), never a monthly rate × 3 (the client, 2026-10-18).
  */
 export const KINDERGARTEN_CURRENT_TERM_PER_GROUP = GROUP_PRICES.termPromo;
 export const KINDERGARTEN_CURRENT_YEAR_PER_GROUP = GROUP_PRICES.year;
@@ -118,7 +118,7 @@ export const PLANS: Plan[] = [
 ];
 
 /**
- * A kindergarten's term, all groups: «I-р улирал» at 6,000₮ a group through
+ * A kindergarten's term, all groups: «I-р улирал» at 4,000₮ a group through
  * 2026-11-30, and the standard 12,000₮ (4,000₮ × 3) after it — the user's
  * rule of 2026-10-14, which `contractSchedule` applies term by term.
  */
@@ -157,7 +157,7 @@ export function tugrik(amount: number): string {
 
 /**
  * The promotional term price holds for a term that begins on or before this
- * day. The year's price has no end date: 30,000₮ a group stays after it.
+ * day. The year's price has no end date: 28,000₮ a group stays after it.
  */
 export const TERM_DISCOUNT_ENDS = FIRST_TERM_PROMO.endsOn;
 
@@ -165,7 +165,7 @@ export interface ContractLine {
   label: string;
   /**
    * A standard term's monthly rate a group; `null` for a school year and for
-   * «I-р улирал», which is priced as a term (6,000₮), not as a month.
+   * «I-р улирал», which is priced as a term (4,000₮), not as a month.
    */
   perMonth: number | null;
   /** 3 for a term, `null` for a school year. */
@@ -247,7 +247,7 @@ export function contractSchedule(
       const to = `${term.toNext ? year + 1 : year}-${term.to}`;
       if (from > endsOn || to < startsOn) continue;
       const discounted = from <= TERM_DISCOUNT_ENDS;
-      // A promotional term is priced as a term (6,000₮), never as a month.
+      // A promotional term is priced as a term (4,000₮), never as a month.
       const perGroup = discounted
         ? KINDERGARTEN_CURRENT_TERM_PER_GROUP
         : KINDERGARTEN_STANDARD_TERM_PER_GROUP;

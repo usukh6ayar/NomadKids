@@ -147,9 +147,9 @@ describe("the operator's applications", () => {
     await user.click(await screen.findByRole("button", { name: "Шалгах" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByLabelText(/Бүлгийн тоо/)).toHaveValue("6");
-    // 6 groups × 30,000₮ for the school year — the discounted price sheet.
+    // 6 groups × 28,000₮ for the school year — the discounted price sheet.
     const breakdown = within(dialog).getByRole("region", { name: "Төлбөрийн задаргаа" });
-    expect(breakdown).toHaveTextContent("Гэрээний нийт дүн180,000₮");
+    expect(breakdown).toHaveTextContent("Гэрээний нийт дүн168,000₮");
 
     await user.clear(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/));
     await user.type(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/), "azjargal");
@@ -163,7 +163,7 @@ describe("the operator's applications", () => {
         groupCount: 6,
         billingPeriod: "year",
         perGroupMonthlyFee: "4000",
-        periodFee: "180000",
+        periodFee: "168000",
       });
     });
   });
@@ -183,8 +183,8 @@ describe("the operator's applications", () => {
     expect(breakdown).toHaveTextContent("Бүлгийн тоо, гэрээний огноог оруулахад дүн бодогдоно.");
 
     await user.type(within(dialog).getByLabelText(/Бүлгийн тоо/), "3");
-    // 3 groups × 30,000₮ for the year — the discounted price sheet.
-    expect(breakdown).toHaveTextContent("Гэрээний нийт дүн90,000₮");
+    // 3 groups × 28,000₮ for the year — the discounted price sheet.
+    expect(breakdown).toHaveTextContent("Гэрээний нийт дүн84,000₮");
   });
 
   it("refuses only with a reason, and sends it", async () => {
@@ -358,13 +358,13 @@ describe("the operator's applications", () => {
       .getAllByRole("listitem")
       .map((li) => li.textContent);
     expect(lines).toEqual([
-      // «I-р улирал» as a 6,000₮ term, never a 2,000₮ month (2026-10-18).
-      "I улирал (9–11 сар)Төлөх: 2026.09.016,000₮ × 3 бүлэг18,000₮Хямдрал",
+      // «I-р улирал» as a 4,000₮ term, never a 2,000₮ month (2026-10-18, -21).
+      "I улирал (9–11 сар)Төлөх: 2026.09.014,000₮ × 3 бүлэг12,000₮Хямдрал",
       "II улирал (12–2 сар)Төлөх: 2026.12.014,000₮ × 3 сар × 3 бүлэг36,000₮",
       "III улирал (3–5 сар)Төлөх: 2027.03.014,000₮ × 3 сар × 3 бүлэг36,000₮",
     ]);
-    expect(breakdown).toHaveTextContent("Гэрээний нийт дүн90,000₮");
-    expect(breakdown).toHaveTextContent("Суурь үнээр 108,000₮ — 18,000₮ хэмнэлт");
+    expect(breakdown).toHaveTextContent("Гэрээний нийт дүн84,000₮");
+    expect(breakdown).toHaveTextContent("Суурь үнээр 108,000₮ — 24,000₮ хэмнэлт");
 
     await user.clear(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/));
     await user.type(within(dialog).getByLabelText(/Эрхлэгчийн нэвтрэх нэр/), "azjargal");
@@ -375,7 +375,7 @@ describe("the operator's applications", () => {
         groupCount: 3,
         billingPeriod: "term",
         perGroupMonthlyFee: "4000",
-        periodFee: "90000",
+        periodFee: "84000",
       }),
     );
   });
@@ -468,7 +468,7 @@ describe("the operator's applications", () => {
     expect(html).toContain("<th>Байгууллагын нэр</th><td>Аз жаргал цэцэрлэг</td>");
     expect(html).toContain("<th>Эрхлэгчийн нэр</th><td>Дорж Сараа</td>");
     expect(html).toContain("<th>Бүлгийн тоо</th><td>6</td>");
-    expect(html).toContain("<th>Нийт төлбөр</th><td>180 000₮</td>");
+    expect(html).toContain("<th>Нийт төлбөр</th><td>168 000₮</td>");
     expect(within(dialog).getByRole("button", { name: "Хэвлэх" })).toBeInTheDocument();
     expect(approve).toBeEnabled();
 

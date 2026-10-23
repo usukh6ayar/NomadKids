@@ -13,23 +13,23 @@ import {
 
 /** The confirmed sheet — the client's «I-р улирал 2026» brief, 2026-10-18. */
 describe("the price sheet", () => {
-  it("prices a child at 3,000₮ a month, 5,000₮ (of 9,000₮) a term, 22,000₮ (of 27,000₮) a year", () => {
+  it("prices a child at 3,000₮ a month, «I-р улирал» free (of 9,000₮), 18,000₮ (of 27,000₮) a year", () => {
     expect(CHILD_PRICES).toEqual({
       monthly: 3_000,
       termStandard: 9_000,
-      termPromo: 5_000,
+      termPromo: 0,
       yearStandard: 27_000,
-      year: 22_000,
+      year: 18_000,
     });
   });
 
-  it("prices a group at 4,000₮ a month, 6,000₮ (of 12,000₮) a term — not 2,000₮ — and 30,000₮ (of 36,000₮) a year", () => {
+  it("prices a group at 4,000₮ a month, 4,000₮ (of 12,000₮) for «I-р улирал» and 28,000₮ (of 36,000₮) a year", () => {
     expect(GROUP_PRICES).toEqual({
       monthly: 4_000,
       termStandard: 12_000,
-      termPromo: 6_000,
+      termPromo: 4_000,
       yearStandard: 36_000,
-      year: 30_000,
+      year: 28_000,
     });
   });
 
@@ -67,10 +67,10 @@ describe("the terms after «I-р улирал»", () => {
   });
 
   it("prices II and III at 9,000₮ a child and 12,000₮ a group", () => {
-    expect(childTermPrice(schoolTermOn("2026-10-18")!)).toBe(5_000);
+    expect(childTermPrice(schoolTermOn("2026-10-18")!)).toBe(0);
     expect(childTermPrice(schoolTermOn("2026-12-01")!)).toBe(9_000);
     expect(childTermPrice(schoolTermOn("2027-04-01")!)).toBe(9_000);
-    expect(groupTermPrice(schoolTermOn("2026-11-30")!)).toBe(6_000);
+    expect(groupTermPrice(schoolTermOn("2026-11-30")!)).toBe(4_000);
     expect(groupTermPrice(schoolTermOn("2026-12-01")!)).toBe(12_000);
     // Next year's first term is not the 2026 promotion.
     expect(childTermPrice(schoolTermOn("2027-10-01")!)).toBe(9_000);
