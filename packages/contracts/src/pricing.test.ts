@@ -9,6 +9,7 @@ import {
   GROUP_PRICES,
   TEACHER_PRICE,
   firstTermPromoOpen,
+  groupYearMonths,
 } from "./pricing";
 
 /** The confirmed sheet — the client's «I-р улирал 2026» brief, 2026-10-18. */
@@ -75,5 +76,23 @@ describe("the terms after «I-р улирал»", () => {
     expect(groupTermPrice(schoolTermOn("2026-12-01")!)).toBe(12_000);
     // Next year's first term is not the 2026 promotion.
     expect(childTermPrice(schoolTermOn("2027-10-01")!)).toBe(9_000);
+  });
+});
+
+describe("a kindergarten's year, by the day it is bought", () => {
+  it("charges from the next month to May, the 1st's own month included", () => {
+    expect(groupYearMonths("2026-08-20")).toBe(9);
+    expect(groupYearMonths("2026-09-01")).toBe(9);
+    expect(groupYearMonths("2026-10-22")).toBe(7);
+    expect(groupYearMonths("2026-12-01")).toBe(6);
+    expect(groupYearMonths("2027-05-01")).toBe(1);
+  });
+
+  // Review of #270: «next month to May» leaves nothing after 1 May — 0,
+  // which the server refuses to sell (the user, 2026-10-23).
+  it("has nothing left to charge from 2 May", () => {
+    for (const day of ["2027-05-02", "2027-05-10", "2027-05-31"]) {
+      expect(groupYearMonths(day)).toBe(0);
+    }
   });
 });

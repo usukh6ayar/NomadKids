@@ -43,13 +43,6 @@ export class A79Service {
   ) {}
 
   /**
-   * Replaces the note's links. A teacher or an administrator who may edit the
-   * note as staff — `canEditObservationAsStaff`, the rule `PATCH
-   * /observations/:id` keeps — may link it; anyone else gets 404. The route's
-   * `@Roles("TEACHER", "ADMIN")` keeps a PE/music teacher out even of their own
-   * note: А/79 is the class teacher's assessment (the web's contract).
-   */
-  /**
    * A note's links, for «Тэмдэглэл засах» (2026-10-22, the user: editing a
    * note lost its А/79 criteria — the form could not read them, and its save
    * would have replaced them with none). The same reach as replacing them.
@@ -64,6 +57,13 @@ export class A79Service {
     return { links: await this.repo.liveLinks(row.id) };
   }
 
+  /**
+   * Replaces the note's links. A teacher or an administrator who may edit the
+   * note as staff — `canEditObservationAsStaff`, the rule `PATCH
+   * /observations/:id` keeps — may link it; anyone else gets 404. The route's
+   * `@Roles("TEACHER", "ADMIN")` keeps a PE/music teacher out even of their own
+   * note: А/79 is the class teacher's assessment (the web's contract).
+   */
   async replaceLinks(actor: Actor, observationId: string, dto: ObservationA79Links) {
     const row = await this.repo.findObservation(observationId);
     if (!row) throw new NotFoundException();

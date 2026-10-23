@@ -5,7 +5,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import request from "supertest";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { localDate } from "@kinder/contracts";
 import { createTestApp } from "./support/app";
 import { resetData, testDb, uniq } from "./support/db";
@@ -178,6 +178,69 @@ describe("GET /service-access", () => {
 });
 
 describe("the renewal invoice", () => {
+  // From 2 May a year has no month left to charge — refused, never a 0₮
+  // invoice or QR (review of #270, the user 2026-10-23).
+  it("refuses a year from 2 May, and the status offers none", async () => {
+    const signed = await contract(10);
+    await db.contract.update({
+      where: { id: signed.id },
+      data: { endsOn: new Date("2027-04-30T00:00:00.000Z") },
+    });
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2027-05-10T04:00:00.000Z") });
+    try {
+      // Signed in on the faked day, so the session is not already past.
+      const admin = await login(app, a.adminUser.username);
+
+      const year = await requestInvoice(admin, "year");
+      const pay = await authed(request(server()).post("/v1/service-access/qpay"), admin).send({
+        period: "year",
+      });
+      const shown = await status(admin);
+
+      expect(year.status).toBe(400);
+      expect(pay.status).toBe(400);
+      expect(shown.body.yearAmount).toBeNull();
+      expect(await db.contractPayment.count({ where: { contractId: signed.id } })).toBe(0);
+      expect(await db.reportJob.count()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // A row drawn before June became a bonus ended 31 May; paid as it stood,
+  // the settlement would have ended the contract there (review of #270).
+  it("moves a pending row's end to the rule's when it is reused", async () => {
+    const signed = await contract(10);
+    const priced = quote(signed, 1, "YEAR");
+    const mayEnd = `${priced.coversTo.slice(0, 4)}-05-31`;
+    const row = await db.contractPayment.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        contractId: signed.id,
+        period: "YEAR",
+        coversFrom: new Date(`${priced.coversFrom}T00:00:00.000Z`),
+        coversTo: new Date(`${mayEnd}T00:00:00.000Z`),
+        groupCount: 1,
+        perGroupAmount: priced.perGroup,
+        amount: priced.amount,
+      },
+    });
+
+    const res = await requestInvoice(adminA, "year");
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const after = await db.contractPayment.findUniqueOrThrow({ where: { id: row.id } });
+    expect(after.coversTo.toISOString().slice(0, 10)).toBe(priced.coversTo);
+    expect(await db.contractPayment.count({ where: { contractId: signed.id } })).toBe(1);
+    const audit = await db.auditLog.findFirst({
+      where: { objectType: "ContractPayment", objectId: row.id, action: "UPDATE" },
+    });
+    expect(audit?.metadata).toMatchObject({
+      before: { coversTo: mayEnd },
+      after: { coversTo: priced.coversTo },
+    });
+  });
+
   it("refuses a contract with no per-group fee — the operator quotes that one", async () => {
     await contract(10, null);
 

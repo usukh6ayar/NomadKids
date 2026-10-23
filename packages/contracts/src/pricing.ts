@@ -125,6 +125,8 @@ export function groupYearMonths(day: string): number {
   if (month === 9 && Number(day.slice(8, 10)) === 1) return MONTHS_IN_SCHOOL_YEAR;
   const first = Number(day.slice(8, 10)) === 1 ? month : month + 1;
   const m = ((first - 1) % 12) + 1;
+  // From 2 May nothing of this year is left to charge — 0, which the server
+  // refuses to sell (review of #270, the user 2026-10-23).
   if (m >= 6 && m <= 8) return 0;
   return m >= 9 ? 12 - m + 6 : 6 - m;
 }

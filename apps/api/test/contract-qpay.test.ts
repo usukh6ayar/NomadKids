@@ -101,9 +101,11 @@ describe("what renewing buys and costs", () => {
       perGroup: "4000.00",
       amount: "12000.00",
     });
-    // Seven months, 7 × 4,000₮ = 28,000₮ a group, valid to 30 June.
+    // Seven months, 7 × 4,000₮ = 28,000₮ a group, valid to 30 June — from the
+    // month's first day, which holds still while the director comes back
+    // (review of #270).
     expect(year).toMatchObject({
-      coversFrom: "2026-10-22",
+      coversFrom: "2026-10-01",
       coversTo: "2027-06-30",
       months: 7,
       perGroup: "28000.00",
@@ -170,9 +172,9 @@ describe("what renewing buys and costs", () => {
       months: 3,
       perGroup: "12000.00",
     });
-    // Lapsed and renewed on 15 December: January–May.
+    // Lapsed and renewed on 15 December: January–May, from 1 December.
     expect(quote(standard("2026-08-31"), 1, "YEAR", "2026-12-15")).toMatchObject({
-      coversFrom: "2026-12-15",
+      coversFrom: "2026-12-01",
       months: 5,
       perGroup: "20000.00",
     });

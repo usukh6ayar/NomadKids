@@ -168,8 +168,10 @@ export class PlatformRepository {
               billingPeriod: true,
               signedAt: true,
               activatedAt: true,
+              // Only the unpaid: a contract is «Төлсөн» unless a period
+              // covering today is still owed (`paymentStatus`).
               payments: {
-                where: { status: "PAID", deletedAt: null },
+                where: { status: "PENDING", deletedAt: null },
                 select: { coversFrom: true, coversTo: true },
               },
             },
@@ -208,7 +210,9 @@ export class PlatformRepository {
       }),
       this.prisma.child.groupBy({
         by: ["kindergartenId"],
-        where: { kindergartenId, deletedAt: null, status: "ACTIVE", esisPersonId: { not: null } },
+        // ★ The ESIS figures are `DashboardRepository.esisCounts`' rules, not
+        // the staff and child totals' above: any status, any role but PARENT.
+        where: { kindergartenId, deletedAt: null, esisPersonId: { not: null } },
         _count: { _all: true },
       }),
       this.prisma.membership.groupBy({
@@ -218,7 +222,13 @@ export class PlatformRepository {
       }),
       this.prisma.membership.groupBy({
         by: ["kindergartenId"],
-        where: { ...staffWhere, user: { esisPersonId: { not: null } } },
+        where: {
+          kindergartenId,
+          deletedAt: null,
+          isActive: true,
+          role: { not: "PARENT" },
+          user: { deletedAt: null, esisPersonId: { not: null } },
+        },
         _count: { _all: true },
       }),
     ]);

@@ -180,7 +180,10 @@ export class ServiceAccessRepository {
    * paid against it, and the next QR must ask for what is owed today. An
    * initial row never matches.
    */
-  repricePending(id: string, data: { groupCount: number; perGroupAmount: string; amount: string }) {
+  repricePending(
+    id: string,
+    data: { groupCount: number; perGroupAmount: string; amount: string; coversTo: Date },
+  ) {
     return this.prisma.contractPayment.updateMany({
       where: { id, initial: false, status: "PENDING" },
       data,

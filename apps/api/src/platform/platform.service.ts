@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
-import type { EsisInstitutionStaff } from "@kinder/contracts";
+import { localDate, type EsisInstitutionStaff } from "@kinder/contracts";
 import { AuditRepository } from "../audit/audit.repository";
 import { PasswordService } from "../auth/password.service";
 import { TokenService } from "../auth/token.service";
@@ -247,7 +247,8 @@ export class PlatformService {
     const { items, total } = await this.repo.list({ q: query.q, isActive: query.isActive }, page);
     const figures = await this.repo.listFigures(items.map((row) => row.id));
     const day = (d: Date) => d.toISOString().slice(0, 10);
-    const today = day(new Date());
+    // Ulaanbaatar's day, as the contract and pricing code count it.
+    const today = localDate();
     return paginate(
       items.map(({ contracts, ...row }) => {
         const contract = contracts[0];
@@ -579,22 +580,25 @@ function uniqueViolationMentions(error: unknown, column: string): boolean {
 /**
  * The platform contract's payment state, for the operator's list (2026-10-22,
  * the user: «хаахгүйгээр» — told, never blocked; nothing reads this to gate).
- * Ended → «Хоцорсон»; ending within 14 days → «Төлөх хугацаа ойртсон»; a paid
- * period covering today → «Төлсөн»; otherwise the period is still unpaid.
+ * Ended → «Хоцорсон»; ending within 14 days → «Төлөх хугацаа ойртсон»; an
+ * unpaid period covering today (the first period of a contract accepted
+ * online, not yet paid) → due; otherwise «Төлсөн». Keyed on what is owed,
+ * not on what was paid: a contract activated before `ContractPayment`
+ * existed has no rows at all, and is not owing for its whole life.
  * Never «suspended»: no kindergarten is suspended (CLAUDE.md §1.7).
  */
 export function paymentStatus(
   endsOn: string,
-  paid: { coversFrom: Date; coversTo: Date }[],
+  unpaid: { coversFrom: Date; coversTo: Date }[],
   today: string,
 ): "paid" | "due" | "overdue" {
   if (endsOn < today) return "overdue";
   const days = (Date.parse(endsOn) - Date.parse(today)) / 86_400_000;
   if (days <= 14) return "due";
-  const covered = paid.some(
+  const owed = unpaid.some(
     (p) =>
       p.coversFrom.toISOString().slice(0, 10) <= today &&
       p.coversTo.toISOString().slice(0, 10) >= today,
   );
-  return covered ? "paid" : "due";
+  return owed ? "due" : "paid";
 }

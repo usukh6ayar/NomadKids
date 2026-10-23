@@ -602,6 +602,37 @@ describe("GET /platform/kindergartens", () => {
     expect(detail.body.counts.children).toBeGreaterThan(0);
   });
 
+  // The director's ESIS figures (`DashboardRepository.esisCounts`): every
+  // role but PARENT, a child of any status, never a deleted account.
+  it("counts ESIS links as the director's dashboard does", async () => {
+    await db.kindergarten.update({
+      where: { id: a.kindergarten.id },
+      data: { esisInstitutionId: "ESIS-LIST-1" },
+    });
+    for (const role of ["COOK", "ACCOUNTANT"] as const) {
+      const user = await createUser({ username: uniq(role.toLowerCase()) });
+      await db.user.update({ where: { id: user.id }, data: { esisPersonId: uniq("p") } });
+      await createMembership(user.id, a.kindergarten.id, role);
+    }
+    const gone = await createUser({ username: uniq("gone") });
+    await db.user.update({
+      where: { id: gone.id },
+      data: { esisPersonId: uniq("p"), deletedAt: new Date() },
+    });
+    await createMembership(gone.id, a.kindergarten.id, "TEACHER");
+    await db.child.update({
+      where: { id: a.child.id },
+      data: { esisPersonId: uniq("c"), status: "ON_LEAVE" },
+    });
+
+    const res = await request(app.getHttpServer())
+      .get("/v1/platform/kindergartens")
+      .set("Cookie", superadmin.cookies);
+
+    const row = res.body.items.find((k: { id: string }) => k.id === a.kindergarten.id);
+    expect(row).toMatchObject({ esisStaffLinked: 2, esisChildrenLinked: 1 });
+  });
+
   it("filters by name", async () => {
     const res = await request(app.getHttpServer())
       .get(`/v1/platform/kindergartens?q=${encodeURIComponent(a.kindergarten.name)}`)
