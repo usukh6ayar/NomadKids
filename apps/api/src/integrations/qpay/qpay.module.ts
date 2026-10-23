@@ -10,6 +10,7 @@ import { QpayClient } from "./qpay.client";
 import { QpayConfig } from "./qpay.config";
 import { QpayRepository } from "./qpay.repository";
 import { QpayService } from "./qpay.service";
+import { QpaySweepScheduler } from "./qpay-sweep.scheduler";
 
 /**
  * The QPay integration boundary — нэмэлт.md §8.
@@ -30,6 +31,7 @@ import { QpayService } from "./qpay.service";
     QpayClient,
     QpayRepository,
     QpayService,
+    QpaySweepScheduler,
   ],
   exports: [QpayService, QpayConfig],
 })

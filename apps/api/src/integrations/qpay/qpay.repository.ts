@@ -188,6 +188,26 @@ export class QpayRepository {
     await this.prisma.qpayInvoice.update({ where: { id }, data: { reviewReason: reason } });
   }
 
+  /**
+   * What the sweep asks QPay about again — every PENDING attempt, and the
+   * EXPIRED ones drawn since `expiredSince`. Newest first, at most `limit`.
+   *
+   * A row already set aside for a person (`reviewReason`) is left to them:
+   * asking again would only log the same short payment every ten minutes.
+   * A stale PENDING row leaves the set on its first unpaid check, when
+   * `reconcile` expires it.
+   */
+  async findUnsettled(expiredSince: Date, limit: number) {
+    return this.prisma.qpayInvoice.findMany({
+      where: {
+        reviewReason: null,
+        OR: [{ status: "PENDING" }, { status: "EXPIRED", createdAt: { gte: expiredSince } }],
+      },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    });
+  }
+
   /** `where: status: "PENDING"` guards this the same way `claimForPayment` guards itself. */
   async markExpired(id: string): Promise<void> {
     await this.prisma.qpayInvoice.updateMany({

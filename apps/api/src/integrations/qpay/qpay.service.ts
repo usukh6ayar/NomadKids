@@ -21,6 +21,12 @@ import type { ListOperatorQpayQuery } from "./qpay.dto";
  */
 const QPAY_INVOICE_TTL_MS = 30 * 60 * 1000;
 
+/** How far back the sweep re-asks about an EXPIRED QR — a late settlement is hours, not days. */
+const SWEEP_EXPIRED_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+/** The most attempts one sweep asks QPay about — newest first; the rest wait ten minutes. */
+const SWEEP_BATCH = 100;
+
 const GENERIC_FAILURE_MESSAGE = "QPay-тай холбогдоход алдаа гарлаа. Дараа дахин оролдоно уу.";
 
 /**
@@ -300,6 +306,38 @@ export class QpayService {
     if (!row) return;
 
     await this.reconcile(row, { recheckExpired: true });
+  }
+
+  /**
+   * The sweep — asks QPay again about every attempt nobody is asking about.
+   *
+   * ★ A family that pays and closes the tab, whose callback never reaches us,
+   * would otherwise have paid and stayed locked out until someone called the
+   * operator: `status()` only runs while the QR is on screen, and the
+   * callback is the only other caller that re-asks about an EXPIRED row.
+   * `QpaySweepScheduler` runs this every ten minutes; the same `reconcile`
+   * settles, so a sweep racing a callback credits once.
+   *
+   * One row's failure is logged and the rest still run.
+   */
+  async sweepUnsettled(now = new Date()): Promise<{ checked: number; paid: number }> {
+    if (!this.isConfigured) return { checked: 0, paid: 0 };
+
+    const rows = await this.repo.findUnsettled(
+      new Date(now.getTime() - SWEEP_EXPIRED_WINDOW_MS),
+      SWEEP_BATCH,
+    );
+    let paid = 0;
+    for (const row of rows) {
+      try {
+        const after = await this.reconcile(row, { recheckExpired: true });
+        if (after.status === "PAID") paid += 1;
+      } catch (error) {
+        this.logger.error(`QPay sweep failed on ${row.qpayInvoiceId}`, error as Error);
+      }
+    }
+    if (paid > 0) this.logger.log(`QPay sweep settled ${paid} of ${rows.length}`);
+    return { checked: rows.length, paid };
   }
 
   /**

@@ -13,6 +13,7 @@ import {
   type Scenario,
 } from "./support/fixtures";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
+import { QpayService } from "../src/integrations/qpay/qpay.service";
 
 /**
  * «Төлбөр шалгах» — the operator answering "I paid, check it" (2026-10-21).
@@ -195,5 +196,55 @@ describe("the re-check", () => {
 
   it("answers 404 for an attempt that does not exist", async () => {
     expect((await recheck(operator, randomUUID())).status).toBe(404);
+  });
+});
+
+describe("the sweep", () => {
+  it("lets a family in whose QR was paid late and whose callback never came", async () => {
+    const { subscription, invoice } = await expiredAttempt();
+    const child = () => authed(request(server()).get(`/v1/children/${a.child.id}`), parent);
+    expect((await child()).status).toBe(402);
+    checkPayment.mockResolvedValue(paid("22000.00"));
+
+    // No callback, no poll, no operator — only the ten-minute job.
+    const result = await app.get(QpayService).sweepUnsettled();
+
+    expect(result).toEqual({ checked: 1, paid: 1 });
+    expect((await child()).status).toBe(200);
+    expect((await db.qpayInvoice.findUniqueOrThrow({ where: { id: invoice.id } })).status).toBe(
+      "PAID",
+    );
+    expect(
+      (await db.accessSubscription.findUniqueOrThrow({ where: { id: subscription.id } })).status,
+    ).toBe("ACTIVE");
+  });
+
+  it("leaves alone a QR expired two days ago and one set aside for a person", async () => {
+    const old = await expiredAttempt();
+    await db.qpayInvoice.update({
+      where: { id: old.invoice.id },
+      data: { createdAt: new Date(Date.now() - 49 * 60 * 60_000) },
+    });
+    const short = await db.qpayInvoice.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        subscriptionId: old.subscription.id,
+        amount: "22000.00",
+        qpayInvoiceId: `qpay-${randomUUID()}`,
+        senderInvoiceNo: randomUUID(),
+        status: "EXPIRED",
+        reviewReason: "AMOUNT_SHORT",
+        createdById: a.parentUser.id,
+        expiresAt: new Date(Date.now() - 10 * 60_000),
+      },
+    });
+
+    const result = await app.get(QpayService).sweepUnsettled();
+
+    expect(result).toEqual({ checked: 0, paid: 0 });
+    expect(checkPayment).not.toHaveBeenCalled();
+    expect((await db.qpayInvoice.findUniqueOrThrow({ where: { id: short.id } })).status).toBe(
+      "EXPIRED",
+    );
   });
 });
