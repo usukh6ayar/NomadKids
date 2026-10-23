@@ -69,6 +69,15 @@ export class PlatformController {
     return this.service.get(actor, params.id);
   }
 
+  /** The families' portal fee this school year — counts by group, no child (backend list №4). */
+  @Get("kindergartens/:id/access-fees")
+  async accessFees(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.accessFees(actor, params.id);
+  }
+
   @Patch("kindergartens/:id")
   async update(
     @CurrentActor() actor: Actor,

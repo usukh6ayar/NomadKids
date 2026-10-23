@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { AccessModule } from "../access/access.module";
 import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
 import { DashboardModule } from "../dashboard/dashboard.module";
@@ -21,7 +22,7 @@ import { PlatformService } from "./platform.service";
   // screen afterwards. Importing it is this module saying out loud that it
   // reaches the integration — see EsisModule's own note on why it is not
   // `@Global()`.
-  imports: [AuditModule, AuthModule, UsersModule, DashboardModule, EsisModule],
+  imports: [AuditModule, AuthModule, UsersModule, DashboardModule, EsisModule, AccessModule],
   controllers: [PlatformController, PlatformRevenueController],
   providers: [
     PlatformService,
