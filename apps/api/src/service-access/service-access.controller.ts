@@ -6,7 +6,7 @@ import { CurrentActor } from "../auth/decorators/actor.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
 import type { Actor } from "../authz/actor";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
-import { ServiceAccessService } from "./service-access.service";
+import { MAX_GROUP_COUNT, ServiceAccessService } from "./service-access.service";
 
 const kindergartenQuerySchema = z.object({ kindergartenId: z.string().uuid().optional() });
 
@@ -27,7 +27,11 @@ const acceptContractSchema = z
 const invoiceRequestSchema = z.object({
   period: z.enum(["term", "year"]),
   kindergartenId: z.string().uuid().optional(),
+  /** «Бүлэг − N +» — the groups to price; the service refuses fewer than run now. */
+  groupCount: z.number().int().min(1).max(MAX_GROUP_COUNT).optional(),
 });
+
+type InvoiceRequest = z.infer<typeof invoiceRequestSchema>;
 
 /**
  * «Үйлчилгээний эрх» for a director (#211) — `apps/web/app/(app)/admin/
@@ -50,13 +54,13 @@ export class ServiceAccessController {
   @Post("invoices")
   requestInvoice(
     @CurrentActor() actor: Actor,
-    @Body(new ZodValidationPipe(invoiceRequestSchema))
-    body: { period: "term" | "year"; kindergartenId?: string },
+    @Body(new ZodValidationPipe(invoiceRequestSchema)) body: InvoiceRequest,
   ) {
     return this.service.requestInvoice(
       actor,
       body.period === "term" ? "TERM" : "YEAR",
       body.kindergartenId,
+      body.groupCount,
     );
   }
 
@@ -64,13 +68,13 @@ export class ServiceAccessController {
   @Post("qpay")
   payWithQpay(
     @CurrentActor() actor: Actor,
-    @Body(new ZodValidationPipe(invoiceRequestSchema))
-    body: { period: "term" | "year"; kindergartenId?: string },
+    @Body(new ZodValidationPipe(invoiceRequestSchema)) body: InvoiceRequest,
   ) {
     return this.service.payWithQpay(
       actor,
       body.period === "term" ? "TERM" : "YEAR",
       body.kindergartenId,
+      body.groupCount,
     );
   }
 

@@ -30,6 +30,9 @@ export const REMIND_DAYS = 14;
 const MONTHS = { TERM: 3, YEAR: 9 } as const;
 const DOWNLOAD_TTL_SECONDS = 5 * 60;
 
+/** The most groups a renewal is priced for — the director's «+» stops here. */
+export const MAX_GROUP_COUNT = 99;
+
 type Period = keyof typeof MONTHS;
 
 type Kindergarten = { id: string; name: string };
@@ -114,6 +117,9 @@ export class ServiceAccessService {
       termLabel: term?.label ?? null,
       yearLabel: year?.label ?? null,
       // How many months each charges — a year bought later is its months left (2026-10-22).
+      // «Бүлэг − N +»: never below the groups running now (№5, 2026-10-23).
+      groupCountMin: groupCount,
+      groupCountMax: MAX_GROUP_COUNT,
       termMonths: term?.months ?? null,
       yearMonths: year?.months ?? null,
       // Whether «Жилээр» is the whole school year at the year's price.
@@ -267,10 +273,15 @@ export class ServiceAccessService {
   }
 
   /** Queues the renewal invoice; Chromium renders it in the worker (CLAUDE.md §6). */
-  async requestInvoice(actor: Actor, period: Period, kindergartenId?: string) {
+  async requestInvoice(
+    actor: Actor,
+    period: Period,
+    kindergartenId?: string,
+    requestedGroups?: number,
+  ) {
     const kindergarten = await this.resolve(actor, kindergartenId);
     const bank = bankDetails();
-    const { contract, groupCount } = await this.renewable(kindergarten.id);
+    const { contract, groupCount } = await this.renewable(kindergarten.id, requestedGroups);
     // ★ The invoice is for a row the operator can record a transfer against
     // (client, 2026-10-18): the same period row the QR would pay.
     const { payment, priced } = await this.renewalRow(
@@ -361,9 +372,14 @@ export class ServiceAccessService {
    * period already paid is refused. Paid, the contract runs to `coversTo`
    * (`QpayRepository.markContractPaymentPaid`).
    */
-  async payWithQpay(actor: Actor, period: Period, kindergartenId?: string) {
+  async payWithQpay(
+    actor: Actor,
+    period: Period,
+    kindergartenId?: string,
+    requestedGroups?: number,
+  ) {
     const kindergarten = await this.resolve(actor, kindergartenId);
-    const { contract, groupCount } = await this.renewable(kindergarten.id);
+    const { contract, groupCount } = await this.renewable(kindergarten.id, requestedGroups);
     const { payment, priced } = await this.renewalRow(
       actor,
       kindergarten,
@@ -425,8 +441,16 @@ export class ServiceAccessService {
    * and its own first period paid (2026-10-18: renewing on top of an unpaid
    * contract would sell time after time nobody paid for).
    */
-  private async renewable(kindergartenId: string) {
-    const [contract, groupCount] = await Promise.all([
+  /**
+   * The contract a renewal extends, and the groups it is priced for.
+   *
+   * ★ «Бүлэг − N +» (backend list №5, the user 2026-10-23): the director may
+   * pay for more groups than run now — groups about to open — never fewer.
+   * Fewer would pay for a kindergarten smaller than the one using the
+   * platform. Without a count, the groups running now.
+   */
+  private async renewable(kindergartenId: string, requestedGroups?: number) {
+    const [contract, registered] = await Promise.all([
       this.repo.activeContract(kindergartenId),
       this.repo.currentGroupCount(kindergartenId),
     ]);
@@ -438,8 +462,14 @@ export class ServiceAccessService {
     if (await this.repo.dueInitial(contract.id)) {
       throw new BadRequestException("Эхлээд гэрээний төлбөрөө төлнө үү.");
     }
-    if (groupCount === 0) {
+    if (registered === 0) {
       throw new BadRequestException("Одоогийн хичээлийн жилд идэвхтэй бүлэг алга байна.");
+    }
+    const groupCount = requestedGroups ?? registered;
+    if (groupCount < registered) {
+      throw new BadRequestException(
+        `Бүлгийн тоо бүртгэлтэй ${registered} бүлгээс цөөн байж болохгүй.`,
+      );
     }
     return { contract, groupCount };
   }
