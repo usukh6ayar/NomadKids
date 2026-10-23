@@ -36,6 +36,8 @@ const MATERIAL_SELECT = {
   level: true,
   fileType: true,
   price: true,
+  discountPrice: true,
+  discountEndsOn: true,
   contents: true,
   pages: true,
   published: true,
@@ -50,6 +52,9 @@ export interface MaterialData {
   area: string;
   level: MaterialLevel | null;
   price: number;
+  /** «Хямдрал» — both null for none (№6). */
+  discountPrice: number | null;
+  discountEndsOn: Date | null;
   contents: string[];
   published: boolean;
   /** MANUAL for the operator's own pictures, PENDING while the server draws them. */
@@ -228,15 +233,22 @@ export class MaterialsRepository {
     });
   }
 
-  /** PAID purchases per material — one grouped query, never one per row. */
-  async salesFor(materialIds: string[]): Promise<Map<string, number>> {
+  /**
+   * PAID purchases per material, and what they took — one grouped query,
+   * never one per row. The sum is of what each purchase was charged (a
+   * discount, an old price), never `count × price` (№6).
+   */
+  async salesFor(materialIds: string[]): Promise<Map<string, { sales: number; revenue: number }>> {
     if (materialIds.length === 0) return new Map();
     const rows = await this.prisma.materialPurchase.groupBy({
       by: ["materialId"],
       where: { materialId: { in: materialIds }, status: "PAID" },
       _count: { _all: true },
+      _sum: { amount: true },
     });
-    return new Map(rows.map((r) => [r.materialId, r._count._all]));
+    return new Map(
+      rows.map((r) => [r.materialId, { sales: r._count._all, revenue: r._sum.amount ?? 0 }]),
+    );
   }
 
   create(data: MaterialData & MaterialFileData, previews: PreviewData[], createdById: string) {

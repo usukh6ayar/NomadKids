@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import {
+  localDate,
   MATERIAL_PREVIEWS_MAX,
   type Material,
   type MaterialPreviewStatus,
@@ -24,7 +25,12 @@ import {
   type MaterialFileData,
   type PreviewData,
 } from "./materials.repository";
-import { materialView, platformMaterialView, publicMaterialView } from "./materials.view";
+import {
+  chargedPrice,
+  materialView,
+  platformMaterialView,
+  publicMaterialView,
+} from "./materials.view";
 
 export interface UploadedPart {
   buffer: Buffer;
@@ -107,12 +113,15 @@ export class MaterialsService {
     const material = await this.repo.findOnSale(materialId);
     if (!material) throw new NotFoundException();
 
-    const purchase = await this.repo.ensurePurchase(material.id, actor.userId, material.price);
+    // ★ The discount while it runs (№6) — the figure the shop showed. A QR
+    // drawn at it and paid after it ends settles at what it charged.
+    const price = chargedPrice(material);
+    const purchase = await this.repo.ensurePurchase(material.id, actor.userId, price);
     if (purchase.status === "PAID") {
       throw new BadRequestException("Энэ хэрэглэгдэхүүн таны санд аль хэдийн байна.");
     }
 
-    if (material.price === 0) {
+    if (price === 0) {
       const now = new Date();
       if (await this.repo.markFree(purchase.id, now)) {
         await this.audit.append({
@@ -127,12 +136,12 @@ export class MaterialsService {
     }
 
     // While unpaid, the purchase follows the price a new QR is drawn for.
-    if (purchase.amount !== material.price) {
-      await this.repo.setUnpaidAmount(purchase.id, material.price);
+    if (purchase.amount !== price) {
+      await this.repo.setUnpaidAmount(purchase.id, price);
     }
     const row = await this.qpay.createForMaterialPurchase(actor, {
       id: purchase.id,
-      amount: material.price,
+      amount: price,
       title: material.title,
     });
     return attemptView(row);
@@ -184,7 +193,7 @@ export class MaterialsService {
   async catalog(actor: Actor): Promise<PlatformMaterial[]> {
     this.platform.assertSuperAdmin(actor);
     const { items, sales } = await this.repo.listAll();
-    return items.map((row) => platformMaterialView(row, sales.get(row.id) ?? 0));
+    return items.map((row) => platformMaterialView(row, sales.get(row.id)));
   }
 
   async create(
@@ -211,7 +220,11 @@ export class MaterialsService {
       await this.removeObjects(keys);
       throw error;
     }
-    await this.record(actor, "CREATE", id, { title: data.title, price: data.price });
+    await this.record(actor, "CREATE", id, {
+      title: data.title,
+      price: data.price,
+      discountPrice: data.discountPrice,
+    });
     // After the commit (§3.5): the worker must find the row.
     if (auto) await this.previewQueue.enqueue({ materialId: id, storageKey: stored.storageKey });
     return this.platformView(id);
@@ -267,8 +280,20 @@ export class MaterialsService {
     await this.removeObjects(unused);
 
     await this.record(actor, "UPDATE", id, {
-      before: { title: before.title, price: before.price, published: before.published },
-      after: { title: data.title, price: data.price, published: data.published },
+      before: {
+        title: before.title,
+        price: before.price,
+        discountPrice: before.discountPrice,
+        discountEndsOn: before.discountEndsOn?.toISOString().slice(0, 10) ?? null,
+        published: before.published,
+      },
+      after: {
+        title: data.title,
+        price: data.price,
+        discountPrice: data.discountPrice,
+        discountEndsOn: data.discountEndsOn?.toISOString().slice(0, 10) ?? null,
+        published: data.published,
+      },
       fileReplaced: Boolean(file),
       previewsReplaced: Boolean(pages),
       previewStatus: { before: before.previewStatus, after: data.previewStatus },
@@ -322,6 +347,7 @@ export class MaterialsService {
       area: form.area,
       level: form.level ?? null,
       price: form.price,
+      ...discountOf(form),
       contents: form.contents,
       published: form.published,
       previewStatus,
@@ -382,7 +408,7 @@ export class MaterialsService {
     const row = await this.repo.findLive(id);
     if (!row) throw new NotFoundException();
     const sales = await this.repo.salesFor([id]);
-    return platformMaterialView(row, sales.get(id) ?? 0);
+    return platformMaterialView(row, sales.get(id));
   }
 
   private record(
@@ -431,5 +457,21 @@ function freeAttempt(purchaseId: string, paidAt: Date): QpayInvoiceAttempt {
     qrImage: null,
     expiresAt: null,
     paidAt: paidAt.toISOString(),
+  };
+}
+
+/**
+ * «Хямдрал» from the form — none when absent (the form's toggle off), and
+ * never one ending before today in Ulaanbaatar (№6). `materialFormSchema`
+ * has already checked it is below the price.
+ */
+function discountOf(form: MaterialForm): Pick<MaterialData, "discountPrice" | "discountEndsOn"> {
+  if (form.discountPrice === undefined) return { discountPrice: null, discountEndsOn: null };
+  if (form.discountEndsOn && form.discountEndsOn < localDate()) {
+    throw new BadRequestException("Хямдрал дуусах өдөр өнгөрсөн байна.");
+  }
+  return {
+    discountPrice: form.discountPrice,
+    discountEndsOn: form.discountEndsOn ? new Date(`${form.discountEndsOn}T00:00:00.000Z`) : null,
   };
 }

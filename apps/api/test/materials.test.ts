@@ -78,6 +78,8 @@ interface Fields {
   /** Sent only when given — the operator's own pictures are the default. */
   autoPreview?: string;
   contents?: string[];
+  discountPrice?: string;
+  discountEndsOn?: string;
 }
 
 function upload(
@@ -93,6 +95,8 @@ function upload(
     .field("price", fields.price ?? "12000")
     .field("published", fields.published ?? "true");
   if (fields.autoPreview) req = req.field("autoPreview", fields.autoPreview);
+  if (fields.discountPrice) req = req.field("discountPrice", fields.discountPrice);
+  if (fields.discountEndsOn) req = req.field("discountEndsOn", fields.discountEndsOn);
   for (const line of fields.contents ?? ["1–5 хүртэл тоолох", "Их, бага харьцуулах"]) {
     req = req.field("contents", line);
   }
@@ -472,5 +476,80 @@ describe("buying and owning", () => {
 
     const res = await authed(request(server()).get("/v1/platform/materials"), operator);
     expect(res.body[0]).toMatchObject({ id: material.id, sales: 2 });
+  });
+});
+
+describe("«Хямдрал» — a discount until a day (№6, 2026-10-23)", () => {
+  const catalog = () => authed(request(server()).get("/v1/platform/materials"), operator);
+  const purchaseOf = (materialId: string) =>
+    db.materialPurchase.findFirstOrThrow({ where: { materialId } });
+
+  it("is what the shop shows and what the purchase is charged; the operator keeps the list price", async () => {
+    const material = await createMaterial({
+      price: "12000",
+      discountPrice: "7500",
+      discountEndsOn: "2099-12-31",
+    });
+
+    const item = (await shop(teacher)).body.items[0];
+    expect(item).toMatchObject({ price: 7500, regularPrice: 12000, discountEndsOn: "2099-12-31" });
+    // QPay is unconfigured here; the purchase is priced before it is asked.
+    await buy(teacher, material.id);
+    expect((await purchaseOf(material.id)).amount).toBe(7500);
+
+    const row = (await catalog()).body.find((m: { id: string }) => m.id === material.id);
+    expect(row).toMatchObject({ price: 12000, discountPrice: 7500, discountEndsOn: "2099-12-31" });
+  });
+
+  it("ends after its last day — the next attempt is at the list price", async () => {
+    const material = await createMaterial({ price: "12000", discountPrice: "7500" });
+    await buy(teacher, material.id);
+    expect((await purchaseOf(material.id)).amount).toBe(7500);
+
+    await db.teachingMaterial.update({
+      where: { id: material.id },
+      data: { discountEndsOn: new Date(Date.now() - 2 * 86_400_000) },
+    });
+
+    expect((await shop(teacher)).body.items[0]).toMatchObject({ price: 12000, regularPrice: null });
+    await buy(teacher, material.id);
+    expect((await purchaseOf(material.id)).amount).toBe(12000);
+  });
+
+  it("refuses a discount at or above the price, on a free material, without a price, or ended", async () => {
+    const send = (fields: Fields) =>
+      upload("post", "/platform/materials", operator, fields, {
+        file: [PDF, "тоолох.pdf"],
+        previews: 1,
+      });
+
+    expect((await send({ price: "12000", discountPrice: "12000" })).status).toBe(400);
+    expect((await send({ price: "0", discountPrice: "100" })).status).toBe(400);
+    expect((await send({ price: "12000", discountEndsOn: "2099-12-31" })).status).toBe(400);
+    expect(
+      (await send({ price: "12000", discountPrice: "7500", discountEndsOn: "2020-01-01" })).status,
+    ).toBe(400);
+    expect(await db.teachingMaterial.count()).toBe(0);
+  });
+
+  it("counts revenue as what each paid purchase took, not sales × price", async () => {
+    const material = await createMaterial({ price: "12000" });
+    const buyer = (userId: string, amount: number, status: "PAID" | "UNPAID") =>
+      db.materialPurchase.create({
+        data: {
+          materialId: material.id,
+          userId,
+          amount,
+          status,
+          paidAt: status === "PAID" ? new Date() : null,
+        },
+      });
+    // One paid at a discount, one at the list price, one never paid.
+    await buyer(a.teacherUser.id, 7500, "PAID");
+    await buyer(a.adminUser.id, 12000, "PAID");
+    await buyer(a.parentUser.id, 12000, "UNPAID");
+
+    const row = (await catalog()).body.find((m: { id: string }) => m.id === material.id);
+    expect(row).toMatchObject({ sales: 2, revenue: 19500 });
   });
 });
