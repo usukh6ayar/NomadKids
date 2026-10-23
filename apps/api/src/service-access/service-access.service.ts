@@ -783,8 +783,7 @@ export function quote(
   // before never asked about (review of #270). The month's first day, or
   // the day after the old end within it, holds still through the month; the
   // months charged are still counted from today.
-  const coversFrom =
-    ends >= today ? start : laterDay(addDay(ends), `${today.slice(0, 7)}-01`);
+  const coversFrom = ends >= today ? start : laterDay(addDay(ends), `${today.slice(0, 7)}-01`);
   return {
     coversFrom,
     coversTo,
