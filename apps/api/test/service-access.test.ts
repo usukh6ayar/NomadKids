@@ -9,7 +9,14 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { localDate } from "@kinder/contracts";
 import { createTestApp } from "./support/app";
 import { resetData, testDb, uniq } from "./support/db";
-import { authed, createScenario, login, type AuthSession, type Scenario } from "./support/fixtures";
+import {
+  authed,
+  createGroup,
+  createScenario,
+  login,
+  type AuthSession,
+  type Scenario,
+} from "./support/fixtures";
 import { RateLimitService } from "../src/common/rate-limit/rate-limit.service";
 import { ReportGeneratorService } from "../src/reports/report-generator.service";
 import { StorageService } from "../src/storage/storage.service";
@@ -174,6 +181,38 @@ describe("GET /service-access", () => {
 
     expect(other.body.expiresAt).toBeNull();
     expect([named.status, byTeacher.status, solo.status]).toEqual([404, 404, 404]);
+  });
+});
+
+describe("the group count — «Бүлэг − N +» (№5, 2026-10-23)", () => {
+  it("prices and records the groups the director chose", async () => {
+    const signed = await contract(10);
+
+    const res = await authed(request(server()).post("/v1/service-access/invoices"), adminA).send({
+      period: "term",
+      groupCount: 3,
+    });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body.amount).toBe(quote(signed, 3, "TERM").amount);
+    const row = await db.contractPayment.findFirstOrThrow({ where: { contractId: signed.id } });
+    expect(row.groupCount).toBe(3);
+    expect(row.amount.toFixed(2)).toBe(quote(signed, 3, "TERM").amount);
+  });
+
+  it("refuses fewer groups than run now, and says the least", async () => {
+    const signed = await contract(10);
+    await createGroup(a.kindergarten.id, a.schoolYear.id, "Хоёрдугаар бүлэг");
+
+    const fewer = await authed(request(server()).post("/v1/service-access/qpay"), adminA).send({
+      period: "term",
+      groupCount: 1,
+    });
+    const shown = await status(adminA);
+
+    expect(fewer.status).toBe(400);
+    expect(await db.contractPayment.count({ where: { contractId: signed.id } })).toBe(0);
+    expect(shown.body).toMatchObject({ groupCount: 2, groupCountMin: 2, groupCountMax: 99 });
   });
 });
 
