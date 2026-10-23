@@ -19,4 +19,15 @@ export class PlatformAccessService {
   assertSuperAdmin(actor: Actor): void {
     if (!actor.isSuperAdmin) throw new NotFoundException();
   }
+
+  /**
+   * «Үндсэн баримт бичиг» — the platform-wide register (№7, 2026-10-23):
+   * the operator, and the staff of any kindergarten — every role but
+   * PARENT. A family's shell has no shelf of ministry rules; 404 otherwise.
+   */
+  assertCanReadOfficialDocuments(actor: Actor): void {
+    if (actor.isSuperAdmin) return;
+    if (actor.memberships.some((m) => m.role !== "PARENT")) return;
+    throw new NotFoundException();
+  }
 }

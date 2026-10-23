@@ -31,5 +31,10 @@ export const listDocumentsQuerySchema = paginationQuerySchema.extend({
   q: searchTermSchema,
   category: z.string().max(80).optional(),
   bookmarkedOnly: z.coerce.boolean().optional(),
+  /**
+   * «Шинэ» — newest published first (the default); «А–Я» — by title. On the
+   * server, so the order runs across pages, not inside one (№7, 2026-10-23).
+   */
+  sort: z.enum(["new", "title"]).default("new"),
 });
 export type ListDocumentsQuery = z.infer<typeof listDocumentsQuerySchema>;
