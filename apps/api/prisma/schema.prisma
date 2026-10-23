@@ -5530,20 +5530,25 @@ enum MaterialPurchaseStatus {
 /// object key lives here and `MaterialsService` serves it after its own check —
 /// private bucket, random key, 302 to a presigned URL (CLAUDE.md §1.4).
 model TeachingMaterial {
-  id            String                @id @default(uuid()) @db.Uuid
-  title         String
-  description   String?
+  id             String                @id @default(uuid()) @db.Uuid
+  title          String
+  description    String?
   /// A system `DevelopmentDomain` name (`kindergartenId IS NULL`), checked on write.
-  area          String
-  level         MaterialLevel?
-  fileType      MaterialFileType
+  area           String
+  level          MaterialLevel?
+  fileType       MaterialFileType
   /// Whole tugrik. An integer is exact, and a material is never priced in möngö.
-  price         Int
+  price          Int
+  /// «Хямдрал» (backend list №6, 2026-10-23): a lower whole-tugrik price,
+  /// charged through `discountEndsOn` (inclusive, Ulaanbaatar), or with no
+  /// end while it is NULL. Both NULL — no discount.
+  discountPrice  Int?
+  discountEndsOn DateTime?             @db.Date
   /// «Агуулга», a line each.
-  contents      String[]
-  pages         Int?
-  published     Boolean               @default(true)
-  previewStatus MaterialPreviewStatus @default(MANUAL)
+  contents       String[]
+  pages          Int?
+  published      Boolean               @default(true)
+  previewStatus  MaterialPreviewStatus @default(MANUAL)
 
   storageKey   String @unique
   originalName String
