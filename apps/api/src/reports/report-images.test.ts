@@ -28,6 +28,19 @@ describe("ImageBudget", () => {
     expect(budget.dropped).toBe(0);
   });
 
+  it("prints a transparent PNG on white, not as a black square", async () => {
+    const png = await sharp({
+      create: { width: 40, height: 40, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    })
+      .png()
+      .toBuffer();
+    const uri = await new ImageBudget().add(png);
+    const decoded = Buffer.from(uri!.split(",")[1]!, "base64");
+    const { data } = await sharp(decoded).raw().toBuffer({ resolveWithObject: true });
+
+    expect([data[0], data[1], data[2]].every((channel) => channel! > 245)).toBe(true);
+  });
+
   it("downscales a large photo well below its original size", async () => {
     const source = await jpeg(4000, 3000);
     const budget = new ImageBudget();

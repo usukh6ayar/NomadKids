@@ -128,14 +128,93 @@ describe("renderPortfolioHtml exact dynamic template", () => {
 
   // ★ The rows below are 2026-10-19's review of #260.
 
-  it("covers all four sample growth rows drawn into the background", () => {
+  it("fills the growth table's four rows under its own header", () => {
     const html = renderPortfolioHtml(portfolio());
     const table = html.slice(
       html.indexOf('<table class="growth-table">'),
       html.indexOf("</table>"),
     );
-    expect(table.match(/<tr>/g)).toHaveLength(4);
+    const body = table.slice(table.indexOf("<tbody>"));
+    expect(body.match(/<tr>/g)).toHaveLength(4);
+    expect(table).toContain("<th>Огноо</th>");
     expect(table).toContain("108 см");
+  });
+
+  /*
+   * ★ 2026-10-24, the user's review of a downloaded portfolio. The page
+   * backgrounds are the designer's pages with the sample child taken out
+   * (`scripts/portfolio-backgrounds.ts`), as JPEGs: no SVG masks left for
+   * Chromium to frame in black, and nothing for a white box to hide.
+   */
+  it("draws the cleaned backgrounds, not the designer's sample SVGs", () => {
+    const html = renderPortfolioHtml(portfolio());
+    expect(html).toContain("data:image/jpeg;base64,");
+    expect(html).not.toContain("data:image/svg+xml");
+  });
+
+  it("prints the child's age from the birth date, never a default of 5", () => {
+    const html = renderPortfolioHtml(
+      portfolio({
+        child: {
+          lastName: "Батжаргал",
+          firstName: "Ану",
+          dateOfBirth: "2022-01-25",
+          sex: "FEMALE",
+        },
+        ageProfiles: [],
+        generatedAt: new Date("2026-10-24T00:00:00.000Z"),
+      }),
+    );
+    expect(html).toContain("<b>4 нас · NomadKids цэцэрлэг</b>");
+    expect(html).toContain("<small>4 нас</small>");
+  });
+
+  it("tells a story card by its kind, in sentences, and leaves an empty note out", () => {
+    const html = renderPortfolioHtml(
+      portfolio({
+        observations: [
+          {
+            source: "TEACHER",
+            typeName: "Ярилцлага",
+            observedOn: "2026-02-12",
+            activityName: "Өглөөний дугуйлан",
+            situation: "Уулзалтын үеэр.",
+            childDid: "Өөрийн тухай ярьсан",
+            photoDataUris: [],
+          },
+          { source: "TEACHER", typeName: "Ажиглалт", observedOn: "2026-02-14", photoDataUris: [] },
+          {
+            source: "PARENT",
+            typeName: "Гэр бүлээс ирсэн",
+            observedOn: "2026-02-13",
+            childDid: "Дүүгээ асарсан.",
+            photoDataUris: [],
+          },
+        ],
+      }),
+    );
+    expect(html).toContain("Уулзалтын үеэр. Өөрийн тухай ярьсан.");
+    expect(html).not.toContain("., ");
+    expect(html).toContain("<strong>Ярилцлага</strong>");
+    expect(html).toContain("<strong>Эцэг эхийн тэмдэглэл</strong>");
+    expect(html).not.toContain("ЭЦЭГ ЭХИЙН ЯРИЛЦЛАГА");
+    // Two cards, no blank ones for the empty note or an unfilled column.
+    expect(html.match(/<article class="history-card/g)).toHaveLength(2);
+  });
+
+  it("calls «Миний тухай» complete only when what it asks is filled in", () => {
+    expect(renderPortfolioHtml(portfolio())).toContain('<b class="figure about">Дутуу</b>');
+    const complete = renderPortfolioHtml(
+      portfolio({
+        aboutMe: {
+          clanName: "Боржигон",
+          birthplace: "Улаанбаатар",
+          bloodType: "A+",
+          eyeColor: "Хар",
+        },
+      }),
+    );
+    expect(complete).toContain('<b class="figure about">Бүрэн</b>');
   });
 
   it("does not plot a missing height at 0 см", () => {
@@ -155,7 +234,7 @@ describe("renderPortfolioHtml exact dynamic template", () => {
     const html = renderPortfolioHtml(
       portfolio({ ageProfiles: [{ age: 5, characterTraits: ["Эелдэг", "Сандруу"] }] }),
     );
-    expect(html.match(/<div class="fill">✓<\/div>/g)).toHaveLength(2);
+    expect(html.match(/<div class="fill fit">✓<\/div>/g)).toHaveLength(2);
   });
 
   it("prints a family's ticked questions under their own domain, and its description once", () => {
@@ -191,6 +270,18 @@ describe("renderPortfolioHtml exact dynamic template", () => {
     expect(html.split(".bg11{")).toHaveLength(2);
     expect(html.match(/class="page-bg bg11"/g)?.length).toBeGreaterThan(1);
     expect(html).toContain("counter(sheet)");
+  });
+
+  /*
+   * ★ 2026-10-24: the design's boxes are fixed, what people write is not (a
+   * letter up to 5,000 characters). Text is shrunk to fit in the page itself,
+   * and marked «…» if it still does not — never cut without a sign.
+   */
+  it("fits long text to its box rather than cutting it silently", () => {
+    const html = renderPortfolioHtml(portfolio({ teacherLetter: "Урт захиа. ".repeat(400) }));
+    expect(html).toContain('<div class="letter-body fit">');
+    expect(html).toContain("document.fonts.ready.then(");
+    expect(html).toContain('.fit.cut::after{content:"…"');
   });
 
   it("escapes user-controlled text", () => {

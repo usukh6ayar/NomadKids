@@ -13,10 +13,18 @@ import { esc, fontFaceCss, formatDate, paragraphs } from "./template-utils";
 import type { PortfolioAgeProfile, PortfolioData } from "./portfolio-template";
 
 const AGES = [2, 3, 4, 5] as const;
-let backgrounds: string[] | null = null;
+const backgrounds = new Map<number, string>();
 
+/*
+  ★ The designer's pages with their sample content taken out —
+  `scripts/portfolio-backgrounds.ts` builds `clean-<n>.jpg` from `<n>.svg`
+  (2026-10-24, the user: the sample child showed through, white boxes laid
+  over it showed as extra squares, and Chromium framed every masked picture
+  in a black hairline). Nothing here hides anything any more: each overlay
+  writes into a place the background leaves empty.
+*/
 function templateAsset(page: number) {
-  const fileName = `${page}.svg`;
+  const fileName = `clean-${page}.jpg`;
   const candidates = [
     join(__dirname, "assets", "portfolio-template", fileName),
     join(process.cwd(), "src", "reports", "assets", "portfolio-template", fileName),
@@ -27,17 +35,19 @@ function templateAsset(page: number) {
   return asset;
 }
 
-function pageBackgrounds() {
-  backgrounds ??= Array.from({ length: 19 }, (_, index) =>
-    readFileSync(templateAsset(index + 1)).toString("base64"),
-  );
-  return backgrounds;
+function pageBackground(page: number) {
+  let encoded = backgrounds.get(page);
+  if (!encoded) {
+    encoded = readFileSync(templateAsset(page)).toString("base64");
+    backgrounds.set(page, encoded);
+  }
+  return encoded;
 }
 
 /*
   ★ Each background is written once, as a CSS class, however many pages use it
   — 2026-10-19 review. Inlined per page, a portfolio with ten artwork pages
-  carried ten copies of a 1.4 MB SVG through DevTools into the 2 GB worker.
+  carried ten copies of the image through DevTools into the 2 GB worker.
 */
 function exactPage(template: number, overlay = "") {
   return `<section class="sheet t${template}"><div class="page-bg bg${template}"></div><div class="overlay">${overlay}</div></section>`;
@@ -50,7 +60,7 @@ function backgroundCss(pages: string[]) {
   return used
     .map(
       (template) =>
-        `.bg${template}{background-image:url("data:image/svg+xml;base64,${pageBackgrounds()[template - 1]}")}`,
+        `.bg${template}{background-image:url("data:image/jpeg;base64,${pageBackground(template)}")}`,
     )
     .join("");
 }
@@ -96,8 +106,17 @@ function declarative(value: string) {
   return /[.!?]$/u.test(clean) ? clean : `${clean}.`;
 }
 
-function text(...values: unknown[]) {
-  return values.flatMap(deepText).filter(Boolean).join(", ");
+/** Whole years from a birth date to a day — null without a valid date. */
+function ageOn(dateOfBirth: Date | string, day: Date | string) {
+  const born = new Date(dateOfBirth);
+  const on = new Date(day);
+  if (Number.isNaN(born.getTime()) || Number.isNaN(on.getTime())) return null;
+  let years = on.getUTCFullYear() - born.getUTCFullYear();
+  const before =
+    on.getUTCMonth() < born.getUTCMonth() ||
+    (on.getUTCMonth() === born.getUTCMonth() && on.getUTCDate() < born.getUTCDate());
+  if (before) years -= 1;
+  return years >= 0 ? years : null;
 }
 
 function statements(...values: unknown[]) {
@@ -105,7 +124,7 @@ function statements(...values: unknown[]) {
 }
 
 function matrix(cells: unknown[], className: string) {
-  return `<div class="matrix ${className}">${cells.map((cell) => `<div class="fill">${esc(cell || "")}</div>`).join("")}</div>`;
+  return `<div class="matrix ${className}">${cells.map((cell) => `<div class="fill fit">${esc(cell || "")}</div>`).join("")}</div>`;
 }
 
 function chunks<T>(items: T[], size: number) {
@@ -135,31 +154,44 @@ function byAgeRoundRobin<T extends { age?: number | null }>(items: T[]) {
   }
 }
 
+/** What a note says, as sentences — never «үеэр., Өөрийн» (2026-10-24). */
+function noteText(item: PortfolioData["observations"][number]) {
+  return statements(item.situation, item.childDid, item.childSaid, item.teacherComment);
+}
+
+/**
+ * The card's kind: the note's own type for a teacher's («Ажиглалт»,
+ * «Ярилцлага», «Бүтээл», …) and «Эцэг эхийн тэмдэглэл» for a family's — it
+ * used to say «ЭЦЭГ ЭХИЙН ЯРИЛЦЛАГА» for every family note and «БАГШИЙН
+ * АЖИГЛАЛТ» for every teacher's, a conversation or an artwork included.
+ */
+function noteKind(item: PortfolioData["observations"][number]) {
+  return item.source === "PARENT" ? "Эцэг эхийн тэмдэглэл" : item.typeName || "Ажиглалт";
+}
+
 function observationCards(items: PortfolioData["observations"]) {
-  const teacher = items.filter((item) => item.source === "TEACHER");
-  const parent = items.filter((item) => item.source === "PARENT");
-  return [0, 1, 2]
-    .flatMap((index) => [teacher[index], parent[index]])
-    .map((item, index) => {
-      const source = index % 2 === 0 ? "teacher" : "parent";
-      if (!item) return `<article class="history-card ${source}"></article>`;
-      return `<article class="history-card ${source}"><div class="history-head"><strong>${source === "teacher" ? "БАГШИЙН АЖИГЛАЛТ" : "ЭЦЭГ ЭХИЙН ЯРИЛЦЛАГА"}</strong><time>${formatDate(item.observedOn)}</time></div><h3>${esc(item.activityName || item.typeName)}</h3>${paragraphs(text(item.situation, item.childDid, item.childSaid, item.teacherComment))}</article>`;
+  return items
+    .map((item) => {
+      const source = item.source === "PARENT" ? "parent" : "teacher";
+      const title =
+        item.activityName && item.activityName !== item.typeName ? item.activityName : "";
+      return `<article class="history-card fit ${source}"><div class="history-head"><strong>${esc(noteKind(item))}</strong><time>${formatDate(item.observedOn)}</time></div>${title ? `<h3>${esc(title)}</h3>` : ""}${paragraphs(noteText(item))}</article>`;
     })
     .join("");
 }
 
+/**
+ * «Хүүхдийн түүх» — the notes in the order they were written, six a page.
+ * ★ No empty cards: they used to be filed teacher left, family right, three
+ * of each, so a page of teacher notes carried three blank family cards.
+ * ★★ A note with nothing written in it is left out — a card with a date and
+ * no words is not part of a child's story.
+ */
 function historyPages(data: PortfolioData) {
-  const teacher = data.observations.filter((item) => item.source === "TEACHER");
-  const parent = data.observations.filter((item) => item.source === "PARENT");
-  const count = Math.max(1, Math.ceil(teacher.length / 3), Math.ceil(parent.length / 3));
-  return Array.from({ length: count }, (_, index) =>
-    exactPage(
-      9,
-      `<div class="history-grid">${observationCards([
-        ...teacher.slice(index * 3, index * 3 + 3),
-        ...parent.slice(index * 3, index * 3 + 3),
-      ])}</div>`,
-    ),
+  const notes = data.observations.filter((item) => noteText(item));
+  if (notes.length === 0) return [];
+  return chunks(notes, 6).map((pageItems) =>
+    exactPage(9, `<div class="history-grid">${observationCards(pageItems)}</div>`),
   );
 }
 
@@ -173,7 +205,7 @@ function chart(values: { value: number; label: string }[], color: string, unit: 
     x: values.length === 1 ? 150 : 24 + (index * 252) / (values.length - 1),
     y: 105 - ((item.value - min) / span) * 75,
   }));
-  return `<svg viewBox="0 0 300 130"><polyline points="${points.map((item) => `${item.x},${item.y}`).join(" ")}" fill="none" stroke="${color}" stroke-width="4"/>${points.map((item) => `<circle cx="${item.x}" cy="${item.y}" r="5" fill="${color}"/><text x="${item.x}" y="${item.y - 9}" text-anchor="middle">${item.value}${unit}</text><text x="${item.x}" y="124" text-anchor="middle">${esc(item.label)}</text>`).join("")}</svg>`;
+  return `<svg viewBox="0 0 300 130"><polyline points="${points.map((item) => `${item.x},${item.y}`).join(" ")}" fill="none" stroke="${color}" stroke-width="4"/>${points.map((item) => `<circle cx="${item.x}" cy="${item.y}" r="5" fill="${color}"/><text x="${item.x}" y="${item.y - 9}" text-anchor="middle">${item.value} ${unit}</text><text x="${item.x}" y="124" text-anchor="middle">${esc(item.label)}</text>`).join("")}</svg>`;
 }
 
 type VisualItem = {
@@ -184,18 +216,51 @@ type VisualItem = {
   age?: number | null;
 };
 
-function artGrid(items: VisualItem[], type: string) {
-  return `<div class="art-grid">${Array.from({ length: 4 }, (_, index) => {
-    const item = items[index];
-    return `<figure>${item ? `<img src="${item.dataUri}" alt="${esc(type)}"><figcaption><strong>${item.age ? `${item.age} нас` : ""}</strong><span>${esc(item.caption || type)}${item.madeOn ? ` · ${formatDate(item.madeOn)}` : ""}</span></figcaption>` : ""}</figure>`;
-  }).join("")}</div>`;
+/** A picture with the category it is filed under — a page may hold several. */
+type FiledItem = VisualItem & { label: string };
+
+/**
+ * ★ Categories share a page (2026-10-24): one page per category printed
+ * thirteen pages for thirteen single photographs. A category still starts in
+ * order and keeps its pictures together; a page holding more than one names
+ * them all in its title, and each picture says which it is.
+ */
+function filedPages(groups: [string, VisualItem[]][], perPage: number) {
+  const items: FiledItem[] = groups.flatMap(([label, list]) =>
+    byAgeRoundRobin(list).map((item) => ({ ...item, label })),
+  );
+  return chunks(items, perPage).map((pageItems) => ({
+    title: [...new Set(pageItems.map((item) => item.label))].join(" · "),
+    mixed: new Set(pageItems.map((item) => item.label)).size > 1,
+    items: pageItems,
+  }));
 }
 
-function albumGrid(items: VisualItem[]) {
-  return `<div class="album-grid">${Array.from({ length: 6 }, (_, index) => {
-    const item = items[index];
-    return `<figure>${item ? `<img src="${item.dataUri}" alt=""><figcaption><strong>${item.age ? `${item.age} нас` : ""}</strong><span>${esc(item.caption || (item.takenAt ? formatDate(item.takenAt) : ""))}</span></figcaption>` : ""}</figure>`;
-  }).join("")}</div>`;
+function artGrid(items: FiledItem[], mixed: boolean) {
+  // Only the works there are — an empty slot drew a blank card (2026-10-24).
+  return `<div class="art-grid">${items
+    .map((item) => {
+      const caption = [
+        mixed ? item.label : "",
+        item.age ? `${item.age} нас` : "",
+        item.madeOn ? formatDate(item.madeOn) : "",
+        item.caption || "",
+      ].filter(Boolean);
+      return `<figure><div class="frame"><img src="${item.dataUri}" alt="${esc(item.label)}"></div><figcaption>${esc(caption.join(" · "))}</figcaption></figure>`;
+    })
+    .join("")}</div>`;
+}
+
+function albumGrid(items: (VisualItem & { label?: string })[], mixed = false) {
+  return `<div class="album-grid">${items
+    .map((item) => {
+      const caption = item.caption || (item.takenAt ? formatDate(item.takenAt) : "");
+      // The category once — a caption often already names it («Цээж зураг (4 нас)»).
+      const named = mixed && item.label && !caption.includes(item.label);
+      const right = [named ? item.label : "", caption].filter(Boolean).join(" · ");
+      return `<figure><img src="${item.dataUri}" alt=""><figcaption><strong>${item.age ? `${item.age} нас` : ""}</strong><span>${esc(right)}</span></figcaption></figure>`;
+    })
+    .join("")}</div>`;
 }
 
 function artworkPages(data: PortfolioData) {
@@ -204,15 +269,15 @@ function artworkPages(data: PortfolioData) {
     ...ARTWORK_TYPES.filter((type) => actual.includes(type)),
     ...actual.filter((type) => !ARTWORK_TYPES.includes(type as (typeof ARTWORK_TYPES)[number])),
   ];
-  return types.flatMap((type) => {
-    const items = byAgeRoundRobin(data.artworks.filter((item) => item.type === type));
-    return chunks(items, 4).map((pageItems) =>
-      exactPage(
-        11,
-        `<div class="section-title art-title">${esc(type)}</div>${artGrid(pageItems, type)}`,
-      ),
-    );
-  });
+  const groups = types.map(
+    (type) => [type, data.artworks.filter((item) => item.type === type)] as [string, VisualItem[]],
+  );
+  return filedPages(groups, 4).map((page) =>
+    exactPage(
+      11,
+      `<div class="section-title art-title"${page.mixed ? ' style="--title-size:13pt"' : ""}>${esc(page.title)}</div>${artGrid(page.items, page.mixed)}`,
+    ),
+  );
 }
 
 function flattenedAlbums(data: PortfolioData) {
@@ -229,12 +294,10 @@ function albumPages(data: PortfolioData) {
     if (album.label === "Багшийн илгээсэн зураг") continue;
     grouped.set(album.label, [...(grouped.get(album.label) ?? []), ...album.items]);
   }
-  return [...grouped].flatMap(([label, items]) =>
-    chunks(byAgeRoundRobin(items), 6).map((pageItems) =>
-      exactPage(
-        12,
-        `<div class="section-title album-title">${esc(label)}</div>${albumGrid(pageItems)}`,
-      ),
+  return filedPages([...grouped], 6).map((page) =>
+    exactPage(
+      12,
+      `<div class="section-title album-title"${page.mixed ? ' style="--title-size:13pt"' : ""}>${esc(page.title)}</div>${albumGrid(page.items, page.mixed)}`,
     ),
   );
 }
@@ -263,9 +326,52 @@ function teacherSignature(data: PortfolioData) {
   return `${groupLabel} багш${people.length > 1 ? " нар" : ""}${people.length ? `: ${people.join(", ")}` : ""}`;
 }
 
+/*
+  ★ Text that does not fit its box is made to fit, never cut without a sign
+  (2026-10-24). The design's boxes are fixed while what a teacher or a family
+  may write is not — a letter may be 5,000 characters, a note 1,000, an age's
+  answers 2,000 each — and `overflow:hidden` dropped the rest silently. Each
+  `.fit` box's text is scaled down step by step to 65 % of its size; still too
+  long, the box is marked `.cut` and ends in «…».
+
+  It runs once the fonts are ready: measured in a fallback font it would fit
+  the wrong text. The renderer awaits `document.fonts.ready` after this callback
+  was registered, so the fitting is done before the PDF is printed.
+*/
+const FIT_TEXT = `document.fonts.ready.then(function () {
+  var boxes = document.querySelectorAll(".fit");
+  for (var i = 0; i < boxes.length; i++) {
+    var box = boxes[i];
+    var over = function () { return box.scrollHeight > box.clientHeight + 1 || box.scrollWidth > box.clientWidth + 1; };
+    if (!over()) continue;
+    var parts = [box].concat(Array.prototype.slice.call(box.querySelectorAll("*")));
+    var sizes = parts.map(function (el) { return parseFloat(getComputedStyle(el).fontSize); });
+    for (var scale = 0.95; scale >= 0.649 && over(); scale -= 0.05) {
+      for (var k = 0; k < parts.length; k++) parts[k].style.fontSize = (sizes[k] * scale) + "px";
+    }
+    if (over()) box.classList.add("cut");
+  }
+});`;
+
 export function renderExactPortfolioHtml(data: PortfolioData): string {
   const fullName = `${data.child.lastName} ${data.child.firstName}`.trim();
-  const current = data.ageProfiles.at(-1);
+  /*
+    ★ The child's age on the day the portfolio is made, from the birth date
+    (2026-10-24). It was the last age record's, else 5: a four-year-old with
+    no age records printed «5 нас» on the cover.
+  */
+  const age = ageOn(data.child.dateOfBirth, data.generatedAt);
+  const notes = data.observations.filter((item) => noteText(item));
+  /*
+    «Миний тухай» is «Бүрэн» only when what it asks is filled in — it said
+    «Бүрэн» for any record, with the clan name and blood type empty.
+  */
+  const aboutMeComplete = [
+    data.aboutMe?.clanName,
+    data.aboutMe?.birthplace,
+    data.aboutMe?.bloodType,
+    data.aboutMe?.eyeColor,
+  ].every((value) => typeof value === "string" && value.trim());
   const favorites = (field: keyof PortfolioAgeProfile) =>
     AGES.map((age) => profile(data, age)?.[field]);
   const traits = [
@@ -314,19 +420,19 @@ export function renderExactPortfolioHtml(data: PortfolioData): string {
   const pages = [
     exactPage(
       1,
-      `<div class="cover-card"><strong>${esc(fullName.toUpperCase())}</strong><span>${esc(data.group?.name || "")} · ${esc(data.schoolYear?.name || "")}</span><b>${current?.age || 5} нас · ${esc(data.kindergarten.name)}</b></div>`,
+      `<div class="cover-card"><strong>${esc(fullName.toUpperCase())}</strong><span>${esc([data.group?.name, data.schoolYear?.name].filter(Boolean).join(" · "))}</span><b>${esc([age === null ? "" : `${age} нас`, data.kindergarten.name].filter(Boolean).join(" · "))}</b></div>`,
     ),
     exactPage(
       2,
-      `${data.child.photoDataUri ? `<img class="child-photo" src="${data.child.photoDataUri}" alt="">` : ""}<div class="profile-age"></div><div class="identity-name">${esc(data.child.firstName)}<small>${current?.age || 5} нас</small></div><dl class="identity-values">${[data.aboutMe?.clanName, fullName, formatDate(data.child.dateOfBirth), data.child.sex === "FEMALE" ? "Эмэгтэй" : "Эрэгтэй", `${yearAnimal.name} жил`, zodiac.name, data.aboutMe?.bloodType, data.group?.name].map((value) => `<dd>${esc(value)}</dd>`).join("")}</dl><div class="completion"><div><strong>Явцын үнэлгээ</strong><b>${data.observations.length} тэмдэглэл</b></div><div><strong>Миний тухай</strong><b>${data.aboutMe ? "Бүрэн" : "Дутуу"}</b></div><div><strong>Зургийн цомог</strong><b>${photoCount} зураг</b></div><div><strong>2-5 насны мэдээлэл</strong><b>${data.ageProfiles.length}/4 нас</b></div></div>`,
+      `${data.child.photoDataUri ? `<img class="child-photo" src="${data.child.photoDataUri}" alt="">` : ""}<div class="identity-name"><strong>${esc(data.child.firstName)}</strong>${age === null ? "" : `<small>${age} нас</small>`}${data.group?.name ? `<span class="pill">${esc(data.group.name)}</span>` : ""}</div><dl class="identity-values">${[data.aboutMe?.clanName, fullName, formatDate(data.child.dateOfBirth), data.child.sex === "FEMALE" ? "Эмэгтэй" : "Эрэгтэй", `${yearAnimal.name} жил`, zodiac.name, data.aboutMe?.bloodType, data.group?.name].map((value) => `<dd class="fit">${esc(value)}</dd>`).join("")}</dl><b class="figure about">${aboutMeComplete ? "Бүрэн" : "Дутуу"}</b><b class="figure ages">${data.ageProfiles.length}/4 нас</b><b class="figure notes">${notes.length} тэмдэглэл</b><b class="figure photos">${photoCount} зураг</b>`,
     ),
     exactPage(
       3,
-      `<div class="enrollment">${data.enrollments.map((item, index) => `<article><i>${index + 1}</i><div><strong>${esc(item.groupName)} · ${esc(item.schoolYearName)}</strong><span>${formatDate(item.startedOn)} - ${item.endedOn ? formatDate(item.endedOn) : "Одоо"}</span></div><b>${esc(item.kindergartenName)}</b></article>`).join("")}</div>`,
+      `<div class="enrollment">${data.enrollments.map((item, index) => `<article><i>${index + 1}</i><div><strong>${esc(item.kindergartenName)}</strong><span><b>${esc(item.groupName)}</b> · ${esc(item.schoolYearName)}</span><small>${formatDate(item.startedOn)} - ${item.endedOn ? formatDate(item.endedOn) : "Одоо"}</small></div></article>`).join("")}</div>`,
     ),
     exactPage(
       4,
-      `${matrix(traitCells, "traits")}<div class="trait-notes">${AGES.map((age) => `<article><strong>${age} нас</strong><p>${esc(profile(data, age)?.characterObservation || "")}</p></article>`).join("")}</div>`,
+      `${matrix(traitCells, "traits")}${AGES.map((year, index) => `<article class="trait-note fit n${index}"><strong>${year} нас</strong><p>${esc(profile(data, year)?.characterObservation || "")}</p></article>`).join("")}`,
     ),
     exactPage(
       5,
@@ -348,57 +454,71 @@ export function renderExactPortfolioHtml(data: PortfolioData): string {
     ),
     exactPage(
       6,
-      `<div class="family-grid">${AGES.map((age) => {
-        const item = profile(data, age);
-        return `<article><strong>Манай гэр бүл ам бүл ${item?.familySize || "-"}</strong><p>${esc(text(item?.familyDescription, item?.familyMembers, list(item?.familyMemberTypes), item?.familyMemories))}</p></article>`;
-      }).join("")}</div>`,
+      AGES.map((year, index) => {
+        const item = profile(data, year);
+        // No «ам бүл -» when the size is not known (2026-10-24).
+        const size = item?.familySize
+          ? `<strong>Манай гэр бүл ам бүл ${item.familySize}</strong>`
+          : "";
+        return `<article class="family-card fit c${index}">${size}<p>${esc(statements(item?.familyDescription, item?.familyMembers, list(item?.familyMemberTypes), item?.familyMemories))}</p></article>`;
+      }).join(""),
     ),
     exactPage(
       7,
-      `<div class="learning-grid">${AGES.map((age) => {
-        const item = profile(data, age);
+      `${AGES.map((year, index) => {
+        const item = profile(data, year);
         const notes = item?.kindergartenSkillNotes;
-        return `<article><h3>Танин мэдэхүй</h3><p>${esc(statements(item?.learningInterest, item?.kindergartenOtherSkill, domainNote(notes, "Танин мэдэхүй")))}</p><h3>Нийгэмшихүй</h3><p>${esc(statements(item?.kindergartenSkills, domainNote(notes, "Нийгэмшихүй")))}</p><h3>Бие бялдар</h3><p>${esc(statements(item?.newSkills, domainNote(notes, "Бие бялдар")))}</p></article>`;
-      }).join("")}</div>`,
+        return `<article class="learning-card fit c${index}"><h3>Танин мэдэхүй</h3><p>${esc(statements(item?.learningInterest, item?.kindergartenOtherSkill, domainNote(notes, "Танин мэдэхүй")))}</p><h3>Нийгэмшихүй</h3><p>${esc(statements(item?.kindergartenSkills, domainNote(notes, "Нийгэмшихүй")))}</p><h3>Бие бялдар</h3><p>${esc(statements(item?.newSkills, domainNote(notes, "Бие бялдар")))}</p></article>`;
+      }).join("")}`,
     ),
     exactPage(
       8,
-      `<div class="learning-grid">${AGES.map((age) => {
-        const item = profile(data, age);
+      `${AGES.map((year, index) => {
+        const item = profile(data, year);
         // Each ticked question under its own domain; «Бие бялдар» used to
         // reprint `familyDescription`, which page 6 already shows.
         const skills = item?.familyLearningSkills;
         const notes = item?.familyLearningNotes;
-        return `<article><h3>Танин мэдэхүй</h3><p>${esc(statements(familySkills(age, skills, "Танин мэдэхүй"), unplacedFamilySkills(age, skills), item?.familyLearningOther, domainNote(notes, "Танин мэдэхүй")))}</p><h3>Нийгэмшихүй</h3><p>${esc(statements(familySkills(age, skills, "Нийгэмшихүй"), domainNote(notes, "Нийгэмшихүй")))}</p><h3>Бие бялдар</h3><p>${esc(statements(familySkills(age, skills, "Бие бялдар"), domainNote(notes, "Бие бялдар")))}</p></article>`;
-      }).join("")}</div>`,
+        return `<article class="learning-card fit c${index}"><h3>Танин мэдэхүй</h3><p>${esc(statements(familySkills(year, skills, "Танин мэдэхүй"), unplacedFamilySkills(year, skills), item?.familyLearningOther, domainNote(notes, "Танин мэдэхүй")))}</p><h3>Нийгэмшихүй</h3><p>${esc(statements(familySkills(year, skills, "Нийгэмшихүй"), domainNote(notes, "Нийгэмшихүй")))}</p><h3>Бие бялдар</h3><p>${esc(statements(familySkills(year, skills, "Бие бялдар"), domainNote(notes, "Бие бялдар")))}</p></article>`;
+      }).join("")}`,
     ),
     ...historyPages(data),
     exactPage(
       10,
-      `<table class="growth-table"><tbody>${growthRows.map((item) => (item ? `<tr><td>${formatDate(item.measuredOn)}</td><td>${measured(item.heightCm) ? `${esc(item.heightCm)} см` : ""}</td><td>${measured(item.weightKg) ? `${esc(item.weightKg)} кг` : ""}</td></tr>` : "<tr><td></td><td></td><td></td></tr>")).join("")}</tbody></table><div class="height-chart">${chart(height, "#317bd6", "см")}</div><div class="weight-chart">${chart(weight, "#43a66f", "кг")}</div>`,
+      `<table class="growth-table"><thead><tr><th>Огноо</th><th>Өндөр</th><th>Жин</th></tr></thead><tbody>${growthRows.map((item) => (item ? `<tr><td>${formatDate(item.measuredOn)}</td><td>${measured(item.heightCm) ? `${esc(item.heightCm)} см` : ""}</td><td>${measured(item.weightKg) ? `${esc(item.weightKg)} кг` : ""}</td></tr>` : "<tr><td></td><td></td><td></td></tr>")).join("")}</tbody></table><div class="height-chart">${chart(height, "#317bd6", "см")}</div><div class="weight-chart">${chart(weight, "#43a66f", "кг")}</div>`,
     ),
     ...artworkPages(data),
     ...albumPages(data),
     ...teacherPhotoPages(data),
     exactPage(
       19,
-      `<div class="letter-name">Хайртай шүү, бяцхан шавь ${esc(data.child.firstName)} минь.</div><div class="letter-body">${data.teacherLetter ? paragraphs(data.teacherLetter) : ""}</div><div class="letter-sign">${esc(teacherSignature(data))}</div><div class="letter-date">${formatDate(data.generatedAt)}</div>`,
+      `<div class="letter-name">Бяцхан шавь ${esc(data.child.firstName)} минь,</div><div class="letter-body fit">${data.teacherLetter ? paragraphs(data.teacherLetter) : ""}</div><div class="letter-sign"><strong>Хайртай шүү, бяцхан шавь минь.</strong><span>${esc(teacherSignature(data))}</span></div><div class="letter-date">${formatDate(data.generatedAt)}</div>`,
     ),
   ];
 
   return `<!doctype html><html lang="mn"><head><meta charset="utf-8"><title>${esc(fullName)} - хүүхдийн хөгжлийн хувийн хавтас</title><style>
   ${fontFaceCss()}
   ${backgroundCss(pages)}
-  @page{size:A4 portrait;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:"Noto Sans",sans-serif;color:#14385d}.sheet{position:relative;width:210mm;height:297mm;overflow:hidden;break-after:page;page-break-after:always}.sheet:last-child{break-after:auto}.page-bg{position:absolute;inset:0;background-size:100% 100%;background-repeat:no-repeat}body{counter-reset:sheet}.sheet{counter-increment:sheet}.sheet::after{content:counter(sheet);position:absolute;z-index:3;left:0;right:0;bottom:5mm;text-align:center;font-size:8pt;color:#8aa0b9}.t1::after{content:none}.overlay{position:absolute;inset:0}
-  .cover-card{position:absolute;left:12.7%;top:13.9%;width:74.3%;height:9.9%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1.5mm;border:1px solid #bdd4dd;border-radius:7mm;background:#fff}.cover-card strong{font-size:18pt}.cover-card span{color:#60738b;font-size:9.5pt}.cover-card b{color:#2e78d6;font-size:8.5pt}
-  .child-photo{position:absolute;left:9.6%;top:15.4%;width:23.2%;height:23.2%;border-radius:50%;object-fit:cover}.profile-age{position:absolute;left:5%;top:34%;width:18%;height:5%;background:#fff}.identity-name{position:absolute;left:9.7%;top:39%;width:23%;height:7%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#fff;font-size:17pt;font-weight:700}.identity-name small{margin-top:1mm;font-size:9.5pt;font-weight:400;color:#60738b}.identity-values{position:absolute;left:60.4%;top:15.5%;width:30.2%;margin:0;background:#fff}.identity-values dd{height:8.8mm;margin:0;padding:2.1mm 2mm 0;text-align:right;font-weight:700;font-size:9pt;border-bottom:1px solid #dbe5eb}.completion{position:absolute;left:7.5%;top:52.3%;width:85%;height:27.7%;padding:2mm;display:grid;grid-template-columns:1fr 1fr;gap:4mm 7mm;background:#fff}.completion div{display:flex;flex-direction:column;justify-content:center;padding:3mm 6mm;border-radius:5mm;background:#f5fbf8}.completion strong{font-size:8pt;color:#60738b}.completion b{margin-top:2mm;text-align:right;font-size:10pt}
-  .enrollment{position:absolute;left:8%;top:18%;width:84%;height:68%;display:flex;flex-direction:column;gap:5mm;background:#fff;overflow:hidden}.enrollment article{min-height:29mm;display:grid;grid-template-columns:12mm 1fr 42%;align-items:center;gap:4mm;padding:4mm 6mm;border-radius:6mm;background:#eff9eb}.enrollment i{display:flex;width:9mm;height:9mm;align-items:center;justify-content:center;border-radius:50%;background:#fff;font-style:normal;font-weight:700}.enrollment div{display:flex;flex-direction:column;gap:2mm}.enrollment span,.enrollment b{font-size:8pt}.enrollment strong{font-size:9pt}.enrollment b{text-align:right}
-  .matrix{position:absolute;display:grid;grid-template-columns:repeat(4,1fr)}.matrix .fill{display:flex;align-items:center;justify-content:center;padding:1mm;background:#fff;text-align:center;font-size:8pt;line-height:1.2;overflow:hidden}.traits{left:27%;top:13.7%;width:65.2%;height:50.2%;grid-template-rows:repeat(11,1fr);gap:3mm 2.6mm}.traits .fill{color:#43a66f;font-size:14pt;font-weight:700}.trait-notes{position:absolute;left:9.6%;top:64.2%;width:80.8%;height:34.8%;display:grid;grid-template-rows:repeat(4,1fr);gap:2mm}.trait-notes article{padding:2.8mm 5mm;background:#eff8f5;border-radius:7mm;overflow:hidden}.trait-notes strong{display:block;margin-bottom:1.2mm;color:#07559f;font-size:8pt}.trait-notes p{margin:0;color:#07559f;font-size:7.5pt;line-height:1.3}.favorites{left:27%;top:15.5%;width:65.2%;height:47.8%;grid-template-rows:repeat(10,1fr);gap:4mm 2.7mm}
-  .family-grid{position:absolute;left:10.7%;top:23.6%;width:82%;height:43.5%;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:17mm 8mm}.family-grid article{padding:4mm 5mm;background:#fff;border-radius:3mm;overflow:hidden}.family-grid strong{display:block;text-align:center;font-size:9pt}.family-grid p{font-size:8.5pt;line-height:1.4;color:#07559f}.learning-grid{position:absolute;left:9.3%;top:16.6%;width:82.5%;height:74.8%;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:12mm 9.7mm}.learning-grid article{padding:3mm 2mm;background:#fff;overflow:hidden}.learning-grid h3{margin:0 0 1mm;color:#07559f;font-size:9pt}.learning-grid p{min-height:27mm;margin:0;color:#07559f;font-size:8pt;line-height:1.3}
-  .history-grid{position:absolute;left:7%;top:14.9%;width:86%;height:66.3%;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,1fr);gap:4mm 7mm}.history-card{padding:6mm;border-radius:7mm;overflow:hidden}.history-card.teacher{background:#e8f6fc}.history-card.parent{background:#fff0e7}.history-head{display:flex;justify-content:space-between;font-size:7.5pt;color:#2e78d6}.history-card.parent .history-head{color:#ff7849}.history-head time{color:#8aa0b9}.history-card h3{margin:3mm 0 2mm 20mm;font-size:10pt}.history-card p{margin:0;color:#26384c;font-size:8pt;line-height:1.35}
-  .growth-table{position:absolute;left:7.6%;top:20.5%;width:84.8%;border-collapse:collapse;background:#fff;font-size:8.5pt}.growth-table td{height:10.7mm;padding:2.5mm 3mm;border:1px solid #dbe3e8}.height-chart,.weight-chart{position:absolute;top:46.9%;width:41%;height:26.5%;padding:11mm 5mm 5mm;background:#fff}.height-chart::before,.weight-chart::before{position:absolute;left:6mm;top:5mm;font-size:10pt;font-weight:700}.height-chart::before{content:"Өндрийн өсөлт"}.weight-chart::before{content:"Жингийн өсөлт"}.height-chart{left:6%}.weight-chart{left:50.7%}.height-chart svg,.weight-chart svg{width:100%;height:100%}svg text{fill:#60738b;font-size:7px}
-  .section-title{position:absolute;z-index:2;background:#fff;color:#14385d;font-size:20pt;font-weight:700}.art-title{left:9.8%;top:12.1%;width:67%;height:5.5%}.album-title{left:6%;top:10.8%;width:82%;height:7%;padding:2mm 0 0 3%}.art-grid{position:absolute;left:13.5%;top:16.8%;width:72.5%;height:69.8%;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:12mm 14mm}.art-grid figure{margin:0;overflow:hidden;background:#fff;border-radius:5mm}.art-grid img{width:100%;height:87%;object-fit:contain}.art-grid figcaption{display:flex;justify-content:space-between;padding:2mm;text-align:center;font-size:8pt;color:#ff7849}.art-grid figcaption strong{color:#14385d}
-  .album-grid{position:absolute;left:7%;top:16.8%;width:86%;height:71.8%;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,1fr);gap:7mm 6mm}.album-grid figure{position:relative;margin:0;overflow:hidden;border-radius:6mm;background:#fff}.album-grid figure:nth-child(1),.album-grid figure:nth-child(6){background:#eaf8fc}.album-grid figure:nth-child(2){background:#eef9f1}.album-grid figure:nth-child(3){background:#fff0e7}.album-grid figure:nth-child(4){background:#f1edff}.album-grid figure:nth-child(5){background:#fff8dc}.album-grid img{width:100%;height:82%;object-fit:contain}.album-grid figcaption{position:absolute;left:4mm;right:4mm;bottom:3mm;display:flex;justify-content:space-between;font-size:8pt;color:#60738b}.album-grid figcaption strong{color:#14385d}
-  .letter-name{position:absolute;left:18%;top:17.4%;width:64%;height:4.5%;background:#fffdf4;text-align:center;color:#ff7849;font-size:13pt;font-weight:700}.letter-body{position:absolute;left:14%;top:26.5%;width:72%;height:47%;padding:4mm;background:#fff;color:#26384c;font-size:9.5pt;line-height:1.55;overflow:hidden}.letter-body p{margin:0 0 5mm}.letter-sign{position:absolute;left:14.8%;top:68.5%;width:70%;height:7%;background:#fff;color:#f06487;font-size:9pt;font-weight:700}.letter-date{position:absolute;right:14.8%;top:72.4%;width:27%;height:3.5%;background:#fff;color:#60738b;text-align:right;font-size:8.5pt}
-  </style></head><body>${pages.join("")}</body></html>`;
+  /*
+    ★ Every place below is measured on the designer's page in CSS pixels
+    (A4 = 794 × 1123 px), and every background is clean
+    (scripts/portfolio-backgrounds.ts): nothing here is a white box hiding
+    the sample — the overlays are transparent and write into empty places.
+  */
+  @page{size:A4 portrait;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:"Noto Sans",sans-serif;color:#14385d}.sheet{position:relative;width:210mm;height:297mm;overflow:hidden;break-after:page;page-break-after:always}.sheet:last-child{break-after:auto}.page-bg{position:absolute;inset:0;background-size:100% 100%;background-repeat:no-repeat}body{counter-reset:sheet}.sheet{counter-increment:sheet}.sheet::after{content:counter(sheet);position:absolute;z-index:3;left:0;right:0;bottom:5mm;text-align:center;font-size:8pt;color:#8aa0b9}.t1::after{content:none}.overlay{position:absolute;inset:0}.overlay>*{position:absolute}
+  .cover-card{left:108px;top:166px;width:580px;height:94px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;text-align:center}.cover-card strong{font-size:16pt;color:#163a63}.cover-card span{color:#60738b;font-size:10pt}.cover-card b{color:#2e78d6;font-size:8.5pt}
+  .child-photo{left:67px;top:172px;width:215px;height:160px;border-radius:6px;object-fit:cover}.identity-name{left:55px;top:350px;width:247px;height:112px;display:flex;flex-direction:column;align-items:center;gap:3px}.identity-name strong{font-size:16pt}.identity-name small{font-size:9pt;color:#60738b}.identity-name .pill{margin-top:8px;padding:5px 22px;border-radius:999px;background:#dcecfb;color:#2e78d6;font-size:8pt;font-weight:700;text-transform:uppercase}.identity-values{left:468px;top:176px;width:247px;margin:0}.identity-values dd{height:33px;margin:0;display:flex;align-items:center;justify-content:flex-end;font-weight:700;font-size:9pt;line-height:1.15;overflow:hidden;text-align:right}.figure{width:96px;height:27px;display:flex;align-items:center;justify-content:flex-end;font-size:8.5pt;font-weight:400;color:#60738b}.figure.about{left:280px;top:595px}.figure.notes{left:280px;top:651px}.figure.ages{left:608px;top:595px}.figure.photos{left:608px;top:651px}
+  .enrollment{left:72px;top:86px;width:676px;height:960px;display:flex;flex-direction:column;gap:16px;overflow:hidden}.enrollment article{flex:none;height:94px;display:flex;align-items:center;gap:26px;padding:0 24px;border-radius:18px;background:#eff9eb}.enrollment i{flex:none;display:flex;width:42px;height:42px;align-items:center;justify-content:center;border-radius:50%;background:#63bf60;color:#fff;font-style:normal;font-weight:700}.enrollment div{display:flex;flex-direction:column;gap:2px}.enrollment strong{font-size:10.5pt}.enrollment span{font-size:9.5pt}.enrollment small{font-size:8pt;color:#8aa0b9}
+  .matrix{display:grid;grid-template-columns:repeat(4,1fr)}.matrix .fill{display:flex;align-items:center;justify-content:center;padding:2px 4px;text-align:center;font-size:8pt;line-height:1.2;overflow:hidden}.traits{left:215px;top:125px;width:520px;height:563px;grid-template-rows:repeat(11,1fr);column-gap:10px;row-gap:12px}.traits .fill{color:#43a66f;font-size:14pt;font-weight:700}.favorites{left:215px;top:173px;width:520px;height:537px;grid-template-rows:repeat(10,1fr);column-gap:10px;row-gap:14px}
+  .trait-note{left:77px;width:636px;height:86px;padding:10px 20px;overflow:hidden}.trait-note.n0{top:712px}.trait-note.n1{top:815px}.trait-note.n2{top:918px}.trait-note.n3{top:1022px}.trait-note strong{display:block;margin-bottom:3px;color:#07559f;font-size:8.5pt}.trait-note p{margin:0;color:#07559f;font-size:8pt;line-height:1.35}
+  .family-card{width:275px;height:130px;padding:10px 16px;overflow:hidden;text-align:center}.family-card.c0{left:100px;top:258px}.family-card.c1{left:448px;top:258px}.family-card.c2{left:106px;top:571px}.family-card.c3{left:457px;top:571px}.family-card strong{display:block;font-size:9pt;color:#07559f}.family-card p{margin:6px 0 0;font-size:8.5pt;line-height:1.4;color:#07559f}
+  .learning-card{width:268px;height:356px;padding:8px 6px;overflow:hidden}.learning-card.c0{left:84px;top:190px}.learning-card.c1{left:431px;top:190px}.learning-card.c2{left:84px;top:676px}.learning-card.c3{left:437px;top:680px}.learning-card h3{margin:0 0 2px;color:#07559f;font-size:9pt}.learning-card p{min-height:92px;margin:0 0 6px;color:#07559f;font-size:8pt;line-height:1.3}
+  .history-grid{left:55px;top:165px;width:685px;height:750px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,238px);gap:18px 26px}.history-card{padding:18px 20px;border-radius:24px;overflow:hidden}.history-card.teacher{background:#e8f6fc}.history-card.parent{background:#fff0e7}.history-head{display:flex;justify-content:space-between;gap:8px;font-size:7.5pt;color:#2e78d6;text-transform:uppercase}.history-card.parent .history-head{color:#ff7849}.history-head time{color:#8aa0b9}.history-card h3{margin:8px 0 4px;font-size:10pt}.history-card p{margin:6px 0 0;color:#26384c;font-size:8pt;line-height:1.4}
+  .growth-table{left:62px;top:190px;width:671px;border-collapse:collapse;table-layout:fixed;font-size:8.5pt}.growth-table th,.growth-table td{height:40px;padding:0 12px;text-align:left;font-weight:400}.growth-table th{color:#07559f;font-weight:700}.growth-table th:nth-child(1){width:270px}.growth-table th:nth-child(2){width:205px}.height-chart,.weight-chart{top:574px;width:308px;height:236px}.height-chart{left:60px}.weight-chart{left:412px}.height-chart svg,.weight-chart svg{width:100%;height:100%}svg text{fill:#60738b;font-size:7px}
+  .section-title{color:#14385d;font-size:20pt;font-weight:700}.art-title{left:78px;top:128px;width:640px;height:56px;display:flex;align-items:center;font-size:var(--title-size,20pt);line-height:1.15;overflow:hidden}.album-title{left:42px;top:128px;width:690px;height:56px;display:flex;align-items:center;font-size:var(--title-size,20pt);font-weight:400;line-height:1.15;overflow:hidden}
+  .art-grid{left:75px;top:190px;width:660px;height:880px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(2,421px);gap:18px 8px}.art-grid figure{margin:0;display:flex;flex-direction:column}.art-grid .frame{flex:1;display:flex;align-items:center;justify-content:center;padding:14px;border-radius:20px;background:#fff8dc}.art-grid img{max-width:100%;max-height:100%;object-fit:contain}.art-grid figcaption{height:24px;display:flex;align-items:center;justify-content:center;font-size:7.5pt;font-weight:700;color:#ff7849;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .album-grid{left:57px;top:190px;width:680px;height:805px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,250px);gap:27px 27px}.album-grid figure{position:relative;margin:0;padding:14px 14px 36px;overflow:hidden;border-radius:20px;background:#eaf8fc}.album-grid figure:nth-child(2){background:#eef9f1}.album-grid figure:nth-child(3){background:#fff0e7}.album-grid figure:nth-child(4){background:#f1edff}.album-grid figure:nth-child(5){background:#fff8dc}.album-grid img{width:100%;height:100%;object-fit:contain}.album-grid figcaption{position:absolute;left:16px;right:16px;bottom:10px;display:flex;justify-content:space-between;gap:8px;font-size:8pt;color:#60738b}.album-grid figcaption strong{flex:none;white-space:nowrap;color:#14385d}.album-grid figcaption span{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .letter-name{left:195px;top:200px;width:405px;text-align:center;color:#ff7849;font-size:13pt;font-weight:700}.letter-body{left:115px;top:300px;width:570px;height:470px;color:#26384c;font-size:10pt;line-height:1.6;overflow:hidden}.letter-body p{margin:0 0 14px}.letter-sign{left:117px;top:786px;width:380px;display:flex;flex-direction:column;gap:3px}.letter-sign strong{color:#f06487;font-size:10pt}.letter-sign span{color:#60738b;font-size:9pt}.letter-date{right:118px;top:820px;width:200px;text-align:right;color:#60738b;font-size:9pt}
+  .fit{overflow:hidden}.history-card.fit,.matrix .fit{position:relative}.fit.cut::after{content:"…";position:absolute;right:6px;bottom:2px;padding-left:6px;background:inherit;font-weight:700}
+  </style></head><body>${pages.join("")}<script>${FIT_TEXT}</script></body></html>`;
 }
