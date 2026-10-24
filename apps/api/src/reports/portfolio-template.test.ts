@@ -234,7 +234,7 @@ describe("renderPortfolioHtml exact dynamic template", () => {
     const html = renderPortfolioHtml(
       portfolio({ ageProfiles: [{ age: 5, characterTraits: ["Эелдэг", "Сандруу"] }] }),
     );
-    expect(html.match(/<div class="fill">✓<\/div>/g)).toHaveLength(2);
+    expect(html.match(/<div class="fill fit">✓<\/div>/g)).toHaveLength(2);
   });
 
   it("prints a family's ticked questions under their own domain, and its description once", () => {
@@ -270,6 +270,18 @@ describe("renderPortfolioHtml exact dynamic template", () => {
     expect(html.split(".bg11{")).toHaveLength(2);
     expect(html.match(/class="page-bg bg11"/g)?.length).toBeGreaterThan(1);
     expect(html).toContain("counter(sheet)");
+  });
+
+  /*
+   * ★ 2026-10-24: the design's boxes are fixed, what people write is not (a
+   * letter up to 5,000 characters). Text is shrunk to fit in the page itself,
+   * and marked «…» if it still does not — never cut without a sign.
+   */
+  it("fits long text to its box rather than cutting it silently", () => {
+    const html = renderPortfolioHtml(portfolio({ teacherLetter: "Урт захиа. ".repeat(400) }));
+    expect(html).toContain('<div class="letter-body fit">');
+    expect(html).toContain("document.fonts.ready.then(");
+    expect(html).toContain('.fit.cut::after{content:"…"');
   });
 
   it("escapes user-controlled text", () => {

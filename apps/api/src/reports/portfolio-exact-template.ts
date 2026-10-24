@@ -124,7 +124,7 @@ function statements(...values: unknown[]) {
 }
 
 function matrix(cells: unknown[], className: string) {
-  return `<div class="matrix ${className}">${cells.map((cell) => `<div class="fill">${esc(cell || "")}</div>`).join("")}</div>`;
+  return `<div class="matrix ${className}">${cells.map((cell) => `<div class="fill fit">${esc(cell || "")}</div>`).join("")}</div>`;
 }
 
 function chunks<T>(items: T[], size: number) {
@@ -175,7 +175,7 @@ function observationCards(items: PortfolioData["observations"]) {
       const source = item.source === "PARENT" ? "parent" : "teacher";
       const title =
         item.activityName && item.activityName !== item.typeName ? item.activityName : "";
-      return `<article class="history-card ${source}"><div class="history-head"><strong>${esc(noteKind(item))}</strong><time>${formatDate(item.observedOn)}</time></div>${title ? `<h3>${esc(title)}</h3>` : ""}${paragraphs(noteText(item))}</article>`;
+      return `<article class="history-card fit ${source}"><div class="history-head"><strong>${esc(noteKind(item))}</strong><time>${formatDate(item.observedOn)}</time></div>${title ? `<h3>${esc(title)}</h3>` : ""}${paragraphs(noteText(item))}</article>`;
     })
     .join("");
 }
@@ -326,6 +326,33 @@ function teacherSignature(data: PortfolioData) {
   return `${groupLabel} багш${people.length > 1 ? " нар" : ""}${people.length ? `: ${people.join(", ")}` : ""}`;
 }
 
+/*
+  ★ Text that does not fit its box is made to fit, never cut without a sign
+  (2026-10-24). The design's boxes are fixed while what a teacher or a family
+  may write is not — a letter may be 5,000 characters, a note 1,000, an age's
+  answers 2,000 each — and `overflow:hidden` dropped the rest silently. Each
+  `.fit` box's text is scaled down step by step to 65 % of its size; still too
+  long, the box is marked `.cut` and ends in «…».
+
+  It runs once the fonts are ready: measured in a fallback font it would fit
+  the wrong text. The renderer awaits `document.fonts.ready` after this callback
+  was registered, so the fitting is done before the PDF is printed.
+*/
+const FIT_TEXT = `document.fonts.ready.then(function () {
+  var boxes = document.querySelectorAll(".fit");
+  for (var i = 0; i < boxes.length; i++) {
+    var box = boxes[i];
+    var over = function () { return box.scrollHeight > box.clientHeight + 1 || box.scrollWidth > box.clientWidth + 1; };
+    if (!over()) continue;
+    var parts = [box].concat(Array.prototype.slice.call(box.querySelectorAll("*")));
+    var sizes = parts.map(function (el) { return parseFloat(getComputedStyle(el).fontSize); });
+    for (var scale = 0.95; scale >= 0.649 && over(); scale -= 0.05) {
+      for (var k = 0; k < parts.length; k++) parts[k].style.fontSize = (sizes[k] * scale) + "px";
+    }
+    if (over()) box.classList.add("cut");
+  }
+});`;
+
 export function renderExactPortfolioHtml(data: PortfolioData): string {
   const fullName = `${data.child.lastName} ${data.child.firstName}`.trim();
   /*
@@ -397,7 +424,7 @@ export function renderExactPortfolioHtml(data: PortfolioData): string {
     ),
     exactPage(
       2,
-      `${data.child.photoDataUri ? `<img class="child-photo" src="${data.child.photoDataUri}" alt="">` : ""}<div class="identity-name"><strong>${esc(data.child.firstName)}</strong>${age === null ? "" : `<small>${age} нас</small>`}${data.group?.name ? `<span class="pill">${esc(data.group.name)}</span>` : ""}</div><dl class="identity-values">${[data.aboutMe?.clanName, fullName, formatDate(data.child.dateOfBirth), data.child.sex === "FEMALE" ? "Эмэгтэй" : "Эрэгтэй", `${yearAnimal.name} жил`, zodiac.name, data.aboutMe?.bloodType, data.group?.name].map((value) => `<dd>${esc(value)}</dd>`).join("")}</dl><b class="figure about">${aboutMeComplete ? "Бүрэн" : "Дутуу"}</b><b class="figure ages">${data.ageProfiles.length}/4 нас</b><b class="figure notes">${notes.length} тэмдэглэл</b><b class="figure photos">${photoCount} зураг</b>`,
+      `${data.child.photoDataUri ? `<img class="child-photo" src="${data.child.photoDataUri}" alt="">` : ""}<div class="identity-name"><strong>${esc(data.child.firstName)}</strong>${age === null ? "" : `<small>${age} нас</small>`}${data.group?.name ? `<span class="pill">${esc(data.group.name)}</span>` : ""}</div><dl class="identity-values">${[data.aboutMe?.clanName, fullName, formatDate(data.child.dateOfBirth), data.child.sex === "FEMALE" ? "Эмэгтэй" : "Эрэгтэй", `${yearAnimal.name} жил`, zodiac.name, data.aboutMe?.bloodType, data.group?.name].map((value) => `<dd class="fit">${esc(value)}</dd>`).join("")}</dl><b class="figure about">${aboutMeComplete ? "Бүрэн" : "Дутуу"}</b><b class="figure ages">${data.ageProfiles.length}/4 нас</b><b class="figure notes">${notes.length} тэмдэглэл</b><b class="figure photos">${photoCount} зураг</b>`,
     ),
     exactPage(
       3,
@@ -405,7 +432,7 @@ export function renderExactPortfolioHtml(data: PortfolioData): string {
     ),
     exactPage(
       4,
-      `${matrix(traitCells, "traits")}${AGES.map((year, index) => `<article class="trait-note n${index}"><strong>${year} нас</strong><p>${esc(profile(data, year)?.characterObservation || "")}</p></article>`).join("")}`,
+      `${matrix(traitCells, "traits")}${AGES.map((year, index) => `<article class="trait-note fit n${index}"><strong>${year} нас</strong><p>${esc(profile(data, year)?.characterObservation || "")}</p></article>`).join("")}`,
     ),
     exactPage(
       5,
@@ -433,7 +460,7 @@ export function renderExactPortfolioHtml(data: PortfolioData): string {
         const size = item?.familySize
           ? `<strong>Манай гэр бүл ам бүл ${item.familySize}</strong>`
           : "";
-        return `<article class="family-card c${index}">${size}<p>${esc(statements(item?.familyDescription, item?.familyMembers, list(item?.familyMemberTypes), item?.familyMemories))}</p></article>`;
+        return `<article class="family-card fit c${index}">${size}<p>${esc(statements(item?.familyDescription, item?.familyMembers, list(item?.familyMemberTypes), item?.familyMemories))}</p></article>`;
       }).join(""),
     ),
     exactPage(
@@ -441,7 +468,7 @@ export function renderExactPortfolioHtml(data: PortfolioData): string {
       `${AGES.map((year, index) => {
         const item = profile(data, year);
         const notes = item?.kindergartenSkillNotes;
-        return `<article class="learning-card c${index}"><h3>Танин мэдэхүй</h3><p>${esc(statements(item?.learningInterest, item?.kindergartenOtherSkill, domainNote(notes, "Танин мэдэхүй")))}</p><h3>Нийгэмшихүй</h3><p>${esc(statements(item?.kindergartenSkills, domainNote(notes, "Нийгэмшихүй")))}</p><h3>Бие бялдар</h3><p>${esc(statements(item?.newSkills, domainNote(notes, "Бие бялдар")))}</p></article>`;
+        return `<article class="learning-card fit c${index}"><h3>Танин мэдэхүй</h3><p>${esc(statements(item?.learningInterest, item?.kindergartenOtherSkill, domainNote(notes, "Танин мэдэхүй")))}</p><h3>Нийгэмшихүй</h3><p>${esc(statements(item?.kindergartenSkills, domainNote(notes, "Нийгэмшихүй")))}</p><h3>Бие бялдар</h3><p>${esc(statements(item?.newSkills, domainNote(notes, "Бие бялдар")))}</p></article>`;
       }).join("")}`,
     ),
     exactPage(
@@ -452,7 +479,7 @@ export function renderExactPortfolioHtml(data: PortfolioData): string {
         // reprint `familyDescription`, which page 6 already shows.
         const skills = item?.familyLearningSkills;
         const notes = item?.familyLearningNotes;
-        return `<article class="learning-card c${index}"><h3>Танин мэдэхүй</h3><p>${esc(statements(familySkills(year, skills, "Танин мэдэхүй"), unplacedFamilySkills(year, skills), item?.familyLearningOther, domainNote(notes, "Танин мэдэхүй")))}</p><h3>Нийгэмшихүй</h3><p>${esc(statements(familySkills(year, skills, "Нийгэмшихүй"), domainNote(notes, "Нийгэмшихүй")))}</p><h3>Бие бялдар</h3><p>${esc(statements(familySkills(year, skills, "Бие бялдар"), domainNote(notes, "Бие бялдар")))}</p></article>`;
+        return `<article class="learning-card fit c${index}"><h3>Танин мэдэхүй</h3><p>${esc(statements(familySkills(year, skills, "Танин мэдэхүй"), unplacedFamilySkills(year, skills), item?.familyLearningOther, domainNote(notes, "Танин мэдэхүй")))}</p><h3>Нийгэмшихүй</h3><p>${esc(statements(familySkills(year, skills, "Нийгэмшихүй"), domainNote(notes, "Нийгэмшихүй")))}</p><h3>Бие бялдар</h3><p>${esc(statements(familySkills(year, skills, "Бие бялдар"), domainNote(notes, "Бие бялдар")))}</p></article>`;
       }).join("")}`,
     ),
     ...historyPages(data),
@@ -465,7 +492,7 @@ export function renderExactPortfolioHtml(data: PortfolioData): string {
     ...teacherPhotoPages(data),
     exactPage(
       19,
-      `<div class="letter-name">Бяцхан шавь ${esc(data.child.firstName)} минь,</div><div class="letter-body">${data.teacherLetter ? paragraphs(data.teacherLetter) : ""}</div><div class="letter-sign"><strong>Хайртай шүү, бяцхан шавь минь.</strong><span>${esc(teacherSignature(data))}</span></div><div class="letter-date">${formatDate(data.generatedAt)}</div>`,
+      `<div class="letter-name">Бяцхан шавь ${esc(data.child.firstName)} минь,</div><div class="letter-body fit">${data.teacherLetter ? paragraphs(data.teacherLetter) : ""}</div><div class="letter-sign"><strong>Хайртай шүү, бяцхан шавь минь.</strong><span>${esc(teacherSignature(data))}</span></div><div class="letter-date">${formatDate(data.generatedAt)}</div>`,
     ),
   ];
 
@@ -480,7 +507,7 @@ export function renderExactPortfolioHtml(data: PortfolioData): string {
   */
   @page{size:A4 portrait;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:"Noto Sans",sans-serif;color:#14385d}.sheet{position:relative;width:210mm;height:297mm;overflow:hidden;break-after:page;page-break-after:always}.sheet:last-child{break-after:auto}.page-bg{position:absolute;inset:0;background-size:100% 100%;background-repeat:no-repeat}body{counter-reset:sheet}.sheet{counter-increment:sheet}.sheet::after{content:counter(sheet);position:absolute;z-index:3;left:0;right:0;bottom:5mm;text-align:center;font-size:8pt;color:#8aa0b9}.t1::after{content:none}.overlay{position:absolute;inset:0}.overlay>*{position:absolute}
   .cover-card{left:108px;top:166px;width:580px;height:94px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;text-align:center}.cover-card strong{font-size:16pt;color:#163a63}.cover-card span{color:#60738b;font-size:10pt}.cover-card b{color:#2e78d6;font-size:8.5pt}
-  .child-photo{left:67px;top:172px;width:215px;height:160px;border-radius:6px;object-fit:cover}.identity-name{left:55px;top:350px;width:247px;height:112px;display:flex;flex-direction:column;align-items:center;gap:3px}.identity-name strong{font-size:16pt}.identity-name small{font-size:9pt;color:#60738b}.identity-name .pill{margin-top:8px;padding:5px 22px;border-radius:999px;background:#dcecfb;color:#2e78d6;font-size:8pt;font-weight:700;text-transform:uppercase}.identity-values{left:468px;top:176px;width:247px;margin:0}.identity-values dd{height:33px;margin:0;display:flex;align-items:center;justify-content:flex-end;font-weight:700;font-size:9pt;white-space:nowrap;overflow:hidden}.figure{width:96px;height:27px;display:flex;align-items:center;justify-content:flex-end;font-size:8.5pt;font-weight:400;color:#60738b}.figure.about{left:280px;top:595px}.figure.notes{left:280px;top:651px}.figure.ages{left:608px;top:595px}.figure.photos{left:608px;top:651px}
+  .child-photo{left:67px;top:172px;width:215px;height:160px;border-radius:6px;object-fit:cover}.identity-name{left:55px;top:350px;width:247px;height:112px;display:flex;flex-direction:column;align-items:center;gap:3px}.identity-name strong{font-size:16pt}.identity-name small{font-size:9pt;color:#60738b}.identity-name .pill{margin-top:8px;padding:5px 22px;border-radius:999px;background:#dcecfb;color:#2e78d6;font-size:8pt;font-weight:700;text-transform:uppercase}.identity-values{left:468px;top:176px;width:247px;margin:0}.identity-values dd{height:33px;margin:0;display:flex;align-items:center;justify-content:flex-end;font-weight:700;font-size:9pt;line-height:1.15;overflow:hidden;text-align:right}.figure{width:96px;height:27px;display:flex;align-items:center;justify-content:flex-end;font-size:8.5pt;font-weight:400;color:#60738b}.figure.about{left:280px;top:595px}.figure.notes{left:280px;top:651px}.figure.ages{left:608px;top:595px}.figure.photos{left:608px;top:651px}
   .enrollment{left:72px;top:86px;width:676px;height:960px;display:flex;flex-direction:column;gap:16px;overflow:hidden}.enrollment article{flex:none;height:94px;display:flex;align-items:center;gap:26px;padding:0 24px;border-radius:18px;background:#eff9eb}.enrollment i{flex:none;display:flex;width:42px;height:42px;align-items:center;justify-content:center;border-radius:50%;background:#63bf60;color:#fff;font-style:normal;font-weight:700}.enrollment div{display:flex;flex-direction:column;gap:2px}.enrollment strong{font-size:10.5pt}.enrollment span{font-size:9.5pt}.enrollment small{font-size:8pt;color:#8aa0b9}
   .matrix{display:grid;grid-template-columns:repeat(4,1fr)}.matrix .fill{display:flex;align-items:center;justify-content:center;padding:2px 4px;text-align:center;font-size:8pt;line-height:1.2;overflow:hidden}.traits{left:215px;top:125px;width:520px;height:563px;grid-template-rows:repeat(11,1fr);column-gap:10px;row-gap:12px}.traits .fill{color:#43a66f;font-size:14pt;font-weight:700}.favorites{left:215px;top:173px;width:520px;height:537px;grid-template-rows:repeat(10,1fr);column-gap:10px;row-gap:14px}
   .trait-note{left:77px;width:636px;height:86px;padding:10px 20px;overflow:hidden}.trait-note.n0{top:712px}.trait-note.n1{top:815px}.trait-note.n2{top:918px}.trait-note.n3{top:1022px}.trait-note strong{display:block;margin-bottom:3px;color:#07559f;font-size:8.5pt}.trait-note p{margin:0;color:#07559f;font-size:8pt;line-height:1.35}
@@ -492,5 +519,6 @@ export function renderExactPortfolioHtml(data: PortfolioData): string {
   .art-grid{left:75px;top:190px;width:660px;height:880px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(2,421px);gap:18px 8px}.art-grid figure{margin:0;display:flex;flex-direction:column}.art-grid .frame{flex:1;display:flex;align-items:center;justify-content:center;padding:14px;border-radius:20px;background:#fff8dc}.art-grid img{max-width:100%;max-height:100%;object-fit:contain}.art-grid figcaption{height:24px;display:flex;align-items:center;justify-content:center;font-size:7.5pt;font-weight:700;color:#ff7849;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .album-grid{left:57px;top:190px;width:680px;height:805px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,250px);gap:27px 27px}.album-grid figure{position:relative;margin:0;padding:14px 14px 36px;overflow:hidden;border-radius:20px;background:#eaf8fc}.album-grid figure:nth-child(2){background:#eef9f1}.album-grid figure:nth-child(3){background:#fff0e7}.album-grid figure:nth-child(4){background:#f1edff}.album-grid figure:nth-child(5){background:#fff8dc}.album-grid img{width:100%;height:100%;object-fit:contain}.album-grid figcaption{position:absolute;left:16px;right:16px;bottom:10px;display:flex;justify-content:space-between;gap:8px;font-size:8pt;color:#60738b}.album-grid figcaption strong{flex:none;white-space:nowrap;color:#14385d}.album-grid figcaption span{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
   .letter-name{left:195px;top:200px;width:405px;text-align:center;color:#ff7849;font-size:13pt;font-weight:700}.letter-body{left:115px;top:300px;width:570px;height:470px;color:#26384c;font-size:10pt;line-height:1.6;overflow:hidden}.letter-body p{margin:0 0 14px}.letter-sign{left:117px;top:786px;width:380px;display:flex;flex-direction:column;gap:3px}.letter-sign strong{color:#f06487;font-size:10pt}.letter-sign span{color:#60738b;font-size:9pt}.letter-date{right:118px;top:820px;width:200px;text-align:right;color:#60738b;font-size:9pt}
-  </style></head><body>${pages.join("")}</body></html>`;
+  .fit{overflow:hidden}.history-card.fit,.matrix .fit{position:relative}.fit.cut::after{content:"…";position:absolute;right:6px;bottom:2px;padding-left:6px;background:inherit;font-weight:700}
+  </style></head><body>${pages.join("")}<script>${FIT_TEXT}</script></body></html>`;
 }
