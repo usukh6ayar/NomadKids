@@ -15,6 +15,7 @@ import { ServiceAccessModule } from "./service-access/service-access.module";
 import { SoloTeachersModule } from "./solo-teachers/solo-teachers.module";
 import { SongsPoemsModule } from "./songs-poems/songs-poems.module";
 import { MaterialsModule } from "./materials/materials.module";
+import { OfficialDocumentsModule } from "./official-documents/official-documents.module";
 import { KitchenModule } from "./kitchen/kitchen.module";
 import { ArtworkModule } from "./artwork/artwork.module";
 import { DocumentsModule } from "./documents/documents.module";
@@ -95,6 +96,7 @@ import { UsersModule } from "./users/users.module";
     SoloTeachersModule,
     SongsPoemsModule,
     MaterialsModule,
+    OfficialDocumentsModule,
     ArtworkModule,
     DocumentsModule,
     ConsentModule,

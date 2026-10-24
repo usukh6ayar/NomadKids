@@ -178,6 +178,13 @@ in `apps/web/lib/api/` sets it by default.
 Denormalised even when reachable through a relation. One filter enforces the
 isolation.
 
+★ **One platform-wide table exists** (the user, 2026-10-23): `OfficialDocument`,
+«Үндсэн баримт бичиг» — the ministry's register, the same for every
+kindergarten, with no child in it. No `kindergartenId`; the operator writes it
+(soft delete, audited), any kindergarten's staff read it
+(`PlatformAccessService.assertCanReadOfficialDocuments`). **Do not add a second
+without the user saying so.**
+
 ### 3.2 No hard deletes
 
 Set `deletedAt`. **Who** deleted it lives in `AuditLog` (`actorUserId` against a

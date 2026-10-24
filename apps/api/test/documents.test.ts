@@ -225,6 +225,21 @@ describe("finding", () => {
     expect(bySearch.body.items).toHaveLength(1);
   });
 
+  // On the server, so «А–Я» runs across pages, not inside one (№7, 2026-10-23).
+  it("sorts by title across pages, and newest first by default", async () => {
+    for (const title of ["Ваар", "Алим", "Гэр"]) await publish(teacherA, { title });
+    const page = (query: string) =>
+      authed(
+        request(server()).get(`/v1/kindergartens/${a.kindergarten.id}/documents?${query}`),
+        teacherA,
+      );
+    const titles = (res: request.Response) => res.body.items.map((d: { title: string }) => d.title);
+
+    expect(titles(await page("sort=title&page=1&pageSize=2"))).toEqual(["Алим", "Ваар"]);
+    expect(titles(await page("sort=title&page=2&pageSize=2"))).toEqual(["Гэр"]);
+    expect(titles(await page("page=1&pageSize=3"))).toEqual(["Гэр", "Алим", "Ваар"]);
+  });
+
   it("lists the categories in use", async () => {
     await publish(teacherA, { title: "A", category: "Хөтөлбөр" });
     await publish(teacherA, { title: "B", category: "Журам" });

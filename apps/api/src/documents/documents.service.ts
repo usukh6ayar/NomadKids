@@ -62,6 +62,7 @@ export class DocumentsService {
         category: query.category,
         bookmarkedOnly: query.bookmarkedOnly,
         visibleGroupIds,
+        sort: query.sort,
       },
       page,
     );

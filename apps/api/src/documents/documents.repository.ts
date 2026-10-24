@@ -42,6 +42,8 @@ export class DocumentsRepository {
        * the correct answer and not an empty result.
        */
       visibleGroupIds?: string[] | null;
+      /** By title, or newest first. The id breaks ties so pages never overlap. */
+      sort?: "new" | "title";
     },
     page: PageParams,
   ) {
@@ -66,7 +68,10 @@ export class DocumentsRepository {
     const [items, total] = await Promise.all([
       this.prisma.document.findMany({
         where,
-        orderBy: { publishedAt: "desc" },
+        orderBy:
+          filters.sort === "title"
+            ? [{ title: "asc" as const }, { id: "asc" as const }]
+            : [{ publishedAt: "desc" as const }, { id: "asc" as const }],
         skip,
         take,
         include: {

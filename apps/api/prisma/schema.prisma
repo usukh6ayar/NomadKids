@@ -515,6 +515,7 @@ model User {
   uploadedMedia            MediaFile[]               @relation("MediaUploader")
   albumCategoriesCreated   AlbumCategory[]           @relation("AlbumCategoryCreatedBy")
   memberships              Membership[]
+  officialDocumentsCreated OfficialDocument[]        @relation("OfficialDocumentCreator")
   guardianships            Guardianship[]
   agreementAcceptances     AgreementAcceptance[]
   authTokens               AuthToken[]
@@ -5782,4 +5783,55 @@ model ContractAcceptance {
   @@unique([contractId, contractVersion])
   @@index([kindergartenId])
   @@map("contract_acceptances")
+}
+
+/// How close a register entry's link is to the document itself — the
+/// ministry register's `source_level`. A system value: the card's action
+/// («PDF нээх», «Албан эхийг нээх», «Эх сурвалж үзэх») follows it.
+enum OfficialSourceLevel {
+  official_pdf
+  official_full_text
+  official_repository_page
+  official_notice_only
+  official_index_only
+}
+
+/// «Үндсэн баримт бичиг» — the ministry's preschool laws, rules and
+/// programmes every kindergarten's staff can open (backend list №7,
+/// 2026-10-23). Links out: nothing is stored or proxied.
+///
+/// ★ **No `kindergartenId`** — the one platform-wide register, the same for
+/// every kindergarten, holding no child data (CLAUDE.md §3.1's exception, the
+/// user 2026-10-23). Staff of any kindergarten read it; only the platform
+/// operator writes it, soft delete, audited.
+model OfficialDocument {
+  id             String              @id @default(uuid()) @db.Uuid
+  /// The register's own code — «SOB-007» — which keeps a shipped cover matched.
+  code           String?             @unique
+  category       String
+  title          String
+  year           Int
+  /// The act's number — «А/569».
+  number         String?
+  url            String
+  sourceLevel    OfficialSourceLevel
+  /// The original not yet matched against its source — the card says so.
+  reviewRequired Boolean             @default(false)
+  /// «Эрхлэгч», «Арга зүйч», «Багш» — who it is for.
+  audience       String[]
+  notes          String?
+  /// The day it was last checked against its source.
+  checkedOn      DateTime?           @db.Date
+  /// «Онцлох» — shown first, with a badge.
+  featured       Boolean             @default(false)
+
+  createdById String?   @db.Uuid
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  createdBy User? @relation("OfficialDocumentCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([deletedAt, featured])
+  @@map("official_documents")
 }
