@@ -6,8 +6,10 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import {
   NOTIFICATION_CATEGORIES,
   NOTIFICATION_CATEGORY_LABEL,
+  groupListItemSchema,
   mediaSchema,
   notificationSchema,
+  paginated,
   type NotificationCategory,
 } from "@kinder/contracts";
 import {
@@ -16,6 +18,7 @@ import {
   type Audience,
 } from "@/components/notifications/audience-picker";
 import { get, mutate } from "@/lib/api/browser";
+import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
 import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
@@ -253,7 +256,7 @@ function ComposeNotice() {
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!busy) publishAll.mutate();
+    if (!busy && !noRecipient) publishAll.mutate();
   }
 
   /** What the folded audience row says on its right — see the edit screen. */
@@ -261,6 +264,29 @@ function ComposeNotice() {
   const authorName = isTeacher
     ? fullName(profile.data) || "Бүлгийн багш"
     : (kindergarten.data?.name ?? "Цэцэрлэг");
+
+  /*
+    ★ Whom a teacher's post can reach — 2026-10-25, the user: «Олдсонгүй.
+    гээд нийтлэж болохгүй хэвээр». A teacher posts to their groups only, and
+    the API answers anything else with 404 «Олдсонгүй», which says nothing.
+    So the screen says it first: a teacher in no group is told to ask the
+    director, a teacher who unticked everyone to choose again, and «Нийтлэх»
+    waits. The same `/groups` read the picker makes — one request.
+  */
+  const teacherGroups = useQuery({
+    queryKey: qk.groups({ pageSize: 100 }),
+    queryFn: () => get("/groups?page=1&pageSize=100", paginated(groupListItemSchema)),
+    enabled: isTeacher,
+    staleTime: 60_000,
+  });
+  const unassigned = isTeacher && teacherGroups.isSuccess && teacherGroups.data.items.length === 0;
+  const noRecipient =
+    isTeacher && (audience === null || audience.groupIds.length + audience.childIds.length === 0);
+  const recipientProblem = unassigned
+    ? "Та бүлэгт хуваарилагдаагүй тул мэдээ нийтлэх боломжгүй. Эрхлэгч таныг бүлэгт хуваарилсны дараа нийтэлнэ."
+    : noRecipient && teacherGroups.isSuccess
+      ? "«Хэнд харагдах»-аас бүлэг эсвэл хүүхдээ сонгоно уу."
+      : null;
 
   const audienceHint =
     audience === null
@@ -482,8 +508,16 @@ function ComposeNotice() {
             </div>
           </div>
 
-          <div className="border-t border-border-soft p-4 sm:p-5">
-            <Button type="submit" disabled={busy} className="w-full">
+          <div className="flex flex-col gap-2 border-t border-border-soft p-4 sm:p-5">
+            {recipientProblem ? (
+              <p
+                role="alert"
+                className="rounded-control bg-sun px-3 py-2 text-caption text-sun-ink"
+              >
+                {recipientProblem}
+              </p>
+            ) : null}
+            <Button type="submit" disabled={busy || noRecipient} className="w-full">
               {step === "saving"
                 ? "Хадгалж байна…"
                 : step === "uploading"

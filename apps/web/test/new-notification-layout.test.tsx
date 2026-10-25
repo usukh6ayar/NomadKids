@@ -176,6 +176,16 @@ describe("new notification composer", () => {
     expect(created.body).toMatchObject({ targets: [{ groupId: GROUP_ID }] });
   });
 
+  // ★ 2026-10-25: a teacher in no group got «Олдсонгүй» (404) and nothing more.
+  it("tells a teacher in no group why they cannot post, and holds «Нийтлэх»", async () => {
+    const api = stub("TEACHER");
+    renderWithProviders(<NewNotificationPage />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("бүлэгт хуваарилагдаагүй");
+    expect(screen.getByRole("button", { name: "Нийтлэх" })).toBeDisabled();
+    expect(api.calls.some((c) => c.method === "POST")).toBe(false);
+  });
+
   it("posts as the kindergarten for the administration, with Чухал", async () => {
     const user = userEvent.setup();
     stub("ADMIN");
