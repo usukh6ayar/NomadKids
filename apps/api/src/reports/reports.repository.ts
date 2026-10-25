@@ -354,7 +354,17 @@ export class ReportsRepository {
       }),
       this.prisma.observation.findMany({
         where: {
-          AND: [this.observations.readableWhere(childId, viewer), { includeInReport: true }],
+          /*
+            ★ Only approved notes (2026-10-24): a family's note a teacher has
+            not approved — waiting (PENDING) or sent back (RETURNED) — is not
+            in anyone's copy; the form tells a parent «багш хянаад хавтаст
+            нэмнэ». A teacher's private note stays in the staff copy only, as
+            `readableWhere` decides (#245).
+          */
+          AND: [
+            this.observations.readableWhere(childId, viewer),
+            { includeInReport: true, reviewStatus: "APPROVED" },
+          ],
         },
         orderBy: { observedOn: "desc" },
         take: MAX_OBSERVATIONS_PER_REPORT,

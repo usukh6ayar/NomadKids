@@ -381,9 +381,14 @@ describe("the report reads the same observations as the list", () => {
 
     return {
       report: new Set(report.observations.map((o) => o.id)),
-      // The report additionally drops `includeInReport: false`, so the
-      // comparison is against the same subset of the list.
-      listReportable: new Set(listed.items.filter((o) => o.includeInReport).map((o) => o.id)),
+      // The report additionally drops `includeInReport: false` and, since
+      // 2026-10-24, any note the teacher has not approved (PENDING, RETURNED),
+      // so the comparison is against the same subset of the list.
+      listReportable: new Set(
+        listed.items
+          .filter((o) => o.includeInReport && o.reviewStatus === "APPROVED")
+          .map((o) => o.id),
+      ),
     };
   }
 

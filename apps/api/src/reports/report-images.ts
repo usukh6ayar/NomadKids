@@ -103,6 +103,9 @@ export class ImageBudget {
         // Re-encoding also drops any metadata that survived upload. sharp does
         // not copy EXIF unless asked, so this is a second line of defence on
         // the GPS coordinates stripped at upload time.
+        // ★ JPEG has no transparency: without a background a transparent PNG
+        // (a drawing, a sticker) printed as a black square (2026-10-24).
+        .flatten({ background: "#ffffff" })
         .jpeg({ quality: JPEG_QUALITY, mozjpeg: true })
         .toBuffer();
     } catch {

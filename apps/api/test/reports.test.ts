@@ -386,7 +386,8 @@ describe("portfolio generation", () => {
     // …and the actual identity content, not just chrome — and, since the
     // 2026-10-16 redesign (#245, accepted by the user), the teacher's notes.
     expect(text).toContain(a.child.lastName);
-    expect(text).toContain("Миний тухай");
+    // «Миний тухай» is drawn into the page's artwork; its figure is text.
+    expect(text).toContain("тэмдэглэл");
     expect(text).toContain(SHARED_NOTE);
   }, 120_000);
 
@@ -648,8 +649,7 @@ describe("portfolio generation", () => {
     const parentJobId = await createJob(parentA, a.child.id);
     const parentText = extractText(await generatedPdf(parentJobId));
 
-    // «Миний түүх» — teacher's and family's notes together, labelled per card.
-    expect(parentText).toContain("БАГШИЙН АЖИГЛАЛТ");
+    // «Хүүхдийн түүх» — each card labelled by its note's own kind (2026-10-24).
     expect(parentText).toContain(SHARED_NOTE);
     expect(parentText).not.toContain(PRIVATE_NOTE);
 
@@ -659,6 +659,41 @@ describe("portfolio generation", () => {
     expect(teacherText).toContain(SHARED_NOTE);
     expect(teacherText).toContain(PRIVATE_NOTE);
   }, 180_000);
+
+  /*
+   * ★ 2026-10-24, the user: a family's note waiting for the teacher (PENDING)
+   * or sent back (RETURNED) was printed in the portfolio, while the form tells
+   * the parent «багш хянаад хавтаст нэмнэ». Only an approved one is.
+   */
+  it("prints a family's note only once the teacher has approved it", async () => {
+    if (!pdftotextAvailable()) throw new Error("pdftotext (poppler) is required");
+
+    const type = await db.observationType.findFirstOrThrow({ where: { kindergartenId: null } });
+    const note = (situation: string, reviewStatus: "PENDING" | "APPROVED" | "RETURNED") =>
+      db.observation.create({
+        data: {
+          kindergartenId: a.kindergarten.id,
+          childId: a.child.id,
+          enrollmentId: a.enrollment.id,
+          typeId: type.id,
+          source: "PARENT",
+          observedOn: new Date("2025-10-03"),
+          situation,
+          visibleToParents: true,
+          reviewStatus,
+          includeInReport: true,
+          authorId: a.parentUser.id,
+        },
+      });
+    await note("Батлагдсан гэр бүлийн тэмдэглэл.", "APPROVED");
+    await note("Хүлээгдэж буй гэр бүлийн тэмдэглэл.", "PENDING");
+    await note("Буцаагдсан гэр бүлийн тэмдэглэл.", "RETURNED");
+
+    const text = extractText(await generatedPdf(await createJob(teacherA, a.child.id)));
+    expect(text).toContain("Батлагдсан гэр бүлийн тэмдэглэл.");
+    expect(text).not.toContain("Хүлээгдэж буй");
+    expect(text).not.toContain("Буцаагдсан");
+  }, 120_000);
 
   it("is idempotent — a repeated run does not produce a second file", async () => {
     await seedObservations(a);
