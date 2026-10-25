@@ -114,6 +114,68 @@ describe("new notification composer", () => {
     expect(screen.getByText(/Тодорхой хүүхэд сонгох/)).toBeInTheDocument();
   });
 
+  /**
+   * ★ 2026-10-25: a teacher who wrote a post and pressed Нийтлэх without
+   * opening the audience pill sent no targets — the whole kindergarten, which
+   * a teacher may not address — and met «Олдсонгүй.». Their group is ticked
+   * whether or not the picker was ever opened.
+   */
+  it("posts a teacher's note to their own group without opening the picker", async () => {
+    const user = userEvent.setup();
+    const NOTICE = {
+      id: "55555555-5555-4555-8555-555555555555",
+      kindergartenId: KG,
+      title: null,
+      body: "Маргааш бүх хүүхэд малгайтай ирээрэй.",
+      category: "OTHER",
+      status: "DRAFT",
+      isImportant: false,
+      startsOn: null,
+      endsOn: null,
+      publishedAt: null,
+      createdAt: "2026-10-25T00:00:00.000Z",
+      updatedAt: "2026-10-25T00:00:00.000Z",
+      targets: [{ groupId: GROUP_ID, childId: null }],
+    };
+    const api = stub("TEACHER", [
+      {
+        path: "/groups",
+        body: {
+          items: [{ id: GROUP_ID, name: "Дэлбээ бүлэг", ageBand: "MIDDLE", childCount: 1 }],
+          page: 1,
+          pageSize: 100,
+          total: 1,
+          totalPages: 1,
+        },
+      },
+      {
+        path: "/children",
+        body: { items: [CHILD], page: 1, pageSize: 100, total: 1, totalPages: 1 },
+      },
+      { path: `/kindergartens/${KG}/notifications`, method: "POST", body: NOTICE },
+      {
+        path: `/notifications/${NOTICE.id}/publish`,
+        method: "POST",
+        body: { ...NOTICE, status: "PUBLISHED" },
+      },
+    ]);
+    renderWithProviders(<NewNotificationPage />);
+
+    expect(
+      await screen.findByRole("button", { name: "Хэнд харагдах: 1 бүлэг · 0 хүүхэд" }),
+    ).toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText("Юу мэдэгдэх вэ?"), NOTICE.body);
+    await user.click(screen.getByRole("button", { name: "Нийтлэх" }));
+
+    await vi.waitFor(() =>
+      expect(api.calls.some((call) => call.url.endsWith("/publish"))).toBe(true),
+    );
+    const created = api.calls.find(
+      (call) => call.method === "POST" && call.url === `/kindergartens/${KG}/notifications`,
+    );
+    expect((created?.body as { targets: unknown }).targets).toEqual([{ groupId: GROUP_ID }]);
+  });
+
   it("posts as the kindergarten for the administration, with Чухал", async () => {
     const user = userEvent.setup();
     stub("ADMIN");
