@@ -218,6 +218,41 @@ describe("menu spreadsheet import", () => {
     expect(result.days.map((day) => day.date)).toEqual(["2026-09-21", "2026-09-22"]);
   });
 
+  /*
+   * ★ 2026-10-25, the user: "Хоолны цэс бас олон янзаар таньдаггүй". A matrix
+   * row whose sitting the parser cannot name imported "successfully" with its
+   * dishes missing. It is reported now — and still never guessed.
+   */
+  it("reports a matrix row under an unrecognised sitting instead of dropping it", async () => {
+    const input = await workbook([
+      ["", "2026-09-21", "2026-09-22"],
+      ["Өглөөний хоол 08:30", "Сүүтэй будаа", "Каш"],
+      ["Үдийн хоол", "Шөл", "Цуйван"],
+      ["Баталсан: эрхлэгч"],
+    ]);
+    const result = await parseMenuWorkbook(input);
+    expect(result.problems).toEqual([
+      { rowNumber: 2, message: 'Хоолны цаг танигдсангүй: "Өглөөний хоол 08:30"' },
+    ]);
+    expect(result.days).toEqual([
+      { date: "2026-09-21", dishes: [expect.objectContaining({ name: "Шөл", kind: "LUNCH" })] },
+      { date: "2026-09-22", dishes: [expect.objectContaining({ name: "Цуйван", kind: "LUNCH" })] },
+    ]);
+  });
+
+  it("reports a rotated grid's unrecognised column once", async () => {
+    const input = await workbook([
+      ["Огноо", "Өглөөний хоол", "Өдрийн хоол", "1. Их үдийн цай"],
+      ["2026-09-21", "Каш", "Шөл", "Тараг"],
+      ["2026-09-22", "Будаа", "Цуйван", "Сүү"],
+    ]);
+    const result = await parseMenuWorkbook(input);
+    expect(result.problems).toEqual([
+      { rowNumber: 1, message: 'Хоолны цаг танигдсангүй: "1. Их үдийн цай"' },
+    ]);
+    expect(result.days.map((day) => day.dishes.length)).toEqual([2, 2]);
+  });
+
   it("reads a CSV the same way as a workbook", async () => {
     const csv = Buffer.from(
       "Огноо;Хоолны цаг;Хоолны нэр;Илчлэг\n2026-09-21;Өглөөний цай;Будаатай сүү;180\n2026-09-21;Үдийн хоол;Цуйван;420\n",
