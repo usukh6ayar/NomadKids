@@ -368,21 +368,28 @@ function ComposeNotice() {
               </div>
             </div>
 
-            {audienceOpen ? (
-              <div
-                id={audiencePanelId}
-                className="rounded-card border border-border-soft bg-canvas p-3"
-              >
-                <AudiencePicker
-                  value={audience}
-                  onChange={setAudience}
-                  disabled={busy}
-                  showSummary={false}
-                  legendHidden
-                  allowChildren={isTeacher}
-                />
-              </div>
-            ) : null}
+            {/*
+              ★ Always mounted, folded with `hidden` — 2026-10-25, the user:
+              «төрөл сонгохоор олдсонгүй гээд нийтлэгдэхгүй». The picker is
+              what ticks a teacher's own group (a teacher may not post to the
+              whole kindergarten — 404 «Олдсонгүй»); mounted only while the
+              panel was open, a teacher who never opened it posted to
+              everyone, and every post failed, whatever its category.
+            */}
+            <div
+              id={audiencePanelId}
+              hidden={!audienceOpen}
+              className="rounded-card border border-border-soft bg-canvas p-3"
+            >
+              <AudiencePicker
+                value={audience}
+                onChange={setAudience}
+                disabled={busy}
+                showSummary={false}
+                legendHidden
+                allowChildren={isTeacher}
+              />
+            </div>
 
             <Field label="Дэлгэрэнгүй" labelHidden error={errors.body} required>
               {({ id, describedBy, invalid }) => (

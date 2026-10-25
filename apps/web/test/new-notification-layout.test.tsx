@@ -114,6 +114,68 @@ describe("new notification composer", () => {
     expect(screen.getByText(/Тодорхой хүүхэд сонгох/)).toBeInTheDocument();
   });
 
+  /*
+   * ★ 2026-10-25, the user: «төрөл сонгохоор олдсонгүй гээд нийтлэгдэхгүй».
+   * A teacher may not post to the whole kindergarten (404), and the picker
+   * that ticks their own group was mounted only while its panel was open —
+   * so a teacher who never opened it sent every post to everyone.
+   */
+  it("sends a teacher's post to their own group without opening «Хэнд харагдах»", async () => {
+    const user = userEvent.setup();
+    const NOTICE = {
+      id: "55555555-5555-4555-8555-555555555555",
+      kindergartenId: KG,
+      title: null,
+      body: "Маргааш зугаалгаар явна",
+      category: "INFORMATION",
+      isImportant: false,
+      status: "DRAFT",
+      publishedAt: null,
+      createdAt: "2026-10-25T00:00:00.000Z",
+      targets: [],
+      media: [],
+    };
+    const api = stub("TEACHER", [
+      {
+        path: "/groups",
+        body: {
+          items: [{ id: GROUP_ID, name: "Дэлбээ бүлэг", ageBand: "MIDDLE", childCount: 1 }],
+          page: 1,
+          pageSize: 100,
+          total: 1,
+          totalPages: 1,
+        },
+      },
+      {
+        path: "/children",
+        body: { items: [CHILD], page: 1, pageSize: 100, total: 1, totalPages: 1 },
+      },
+      { path: `/kindergartens/${KG}/notifications`, method: "POST", status: 201, body: NOTICE },
+      {
+        path: `/notifications/${NOTICE.id}/publish`,
+        method: "POST",
+        body: { ...NOTICE, status: "PUBLISHED" },
+      },
+    ]);
+    renderWithProviders(<NewNotificationPage />);
+
+    // Their group is chosen with the panel still folded.
+    expect(
+      await screen.findByRole("button", { name: /^Хэнд харагдах: 1 бүлэг/ }),
+    ).toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText("Юу мэдэгдэх вэ?"), "Маргааш зугаалгаар явна");
+    await user.click(screen.getByRole("button", { name: "Нийтлэх" }));
+
+    const created = await vi.waitFor(() => {
+      const call = api.calls.find(
+        (c) => c.url === `/kindergartens/${KG}/notifications` && c.method === "POST",
+      );
+      expect(call).toBeTruthy();
+      return call!;
+    });
+    expect(created.body).toMatchObject({ targets: [{ groupId: GROUP_ID }] });
+  });
+
   it("posts as the kindergarten for the administration, with Чухал", async () => {
     const user = userEvent.setup();
     stub("ADMIN");
