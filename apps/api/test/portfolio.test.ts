@@ -1013,6 +1013,18 @@ describe("graduation letter", () => {
     expect(read.body).toEqual({ letter: "Хайрт шавьдаа" });
   });
 
+  // ★ 3,500 — what the PDF's letter page holds (2026-10-26).
+  it("takes a letter up to 3,500 characters and refuses a longer one", async () => {
+    const fits = await authed(request(server()).patch(letterRoute(a.child.id)), teacherA).send({
+      letter: "а".repeat(3500),
+    });
+    expect(fits.status).toBe(200);
+    const over = await authed(request(server()).patch(letterRoute(a.child.id)), teacherA).send({
+      letter: "а".repeat(3501),
+    });
+    expect(over.status).toBe(400);
+  });
+
   it("a guardian cannot write it — 404", async () => {
     const res = await authed(request(server()).patch(letterRoute(a.child.id)), parentA).send({
       letter: "халдлага",

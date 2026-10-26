@@ -169,9 +169,16 @@ export const updateBirthdayNoteSchema = z
   .strict();
 export type UpdateBirthdayNoteDto = z.infer<typeof updateBirthdayNoteSchema>;
 
-/** One closing letter for the whole portfolio, written at age five/graduation. */
+/**
+ * One closing letter for the whole portfolio, written at age five/graduation.
+ *
+ * ★ 3,500 characters (2026-10-26, the user) — what the PDF's letter page holds
+ * at a readable size (#275). It was 5,000, and past ~3,500 the page shrank the
+ * text and then ended it with «…». No letter on record was longer when cut.
+ */
+export const GRADUATION_LETTER_MAX = 3500;
 export const updateGraduationLetterSchema = z
-  .object({ letter: z.string().max(5000).nullable() })
+  .object({ letter: z.string().max(GRADUATION_LETTER_MAX).nullable() })
   .strict();
 export type UpdateGraduationLetterDto = z.infer<typeof updateGraduationLetterSchema>;
 
