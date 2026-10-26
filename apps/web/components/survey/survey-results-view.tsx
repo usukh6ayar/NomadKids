@@ -252,6 +252,7 @@ export function SurveyResultsView({
             // Who is done, capped at the audience (backend list №9) — rows on
             // record could read past 100%. An older API sends no such field.
             answered={data!.completedResponses ?? data!.totalResponses}
+            tallied={data!.totalResponses}
             expected={data!.expectedResponses}
             questions={questions}
             respondent={data!.survey.respondent}
@@ -456,16 +457,23 @@ function a79DomainSummaries(
 
 function Coverage({
   answered,
+  tallied,
   expected,
   questions,
   respondent,
 }: {
   answered: number;
+  /**
+   * Every response the question counts were tallied from. An А/79 domain's
+   * average divides those counts, so it divides by this — never by
+   * `answered`, which counts a child once and would push a percent past 100.
+   */
+  tallied: number;
   expected: number;
   questions: SurveyQuestionResult[];
   respondent: SurveyRespondent;
 }) {
-  const domains = a79DomainSummaries(respondent, questions, answered);
+  const domains = a79DomainSummaries(respondent, questions, tallied);
   if (domains) return <A79Coverage answered={answered} domains={domains} />;
 
   const missing = Math.max(0, expected - answered);
