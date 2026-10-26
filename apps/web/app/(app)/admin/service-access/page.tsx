@@ -42,6 +42,9 @@ const serviceAccessSchema = z.object({
   expiresAt: z.string().nullish(),
   period: z.enum(["term", "year"]).nullish(),
   groupCount: z.number().int().nonnegative(),
+  /** «Бүлэг − N +»'s bounds — never below the groups running now (№5). */
+  groupCountMin: z.number().int().nullish(),
+  groupCountMax: z.number().int().nullish(),
   termAmount: z.string().nullish(),
   yearAmount: z.string().nullish(),
   /** What each period would extend the contract to (№6). */
@@ -141,12 +144,16 @@ function ServiceAccess() {
   const groups = access.data?.groupCount ?? 0;
   const shownGroups = chosenGroups ?? groups;
   /*
-    ★ The server prices `groups` groups and charges exactly that. A different
-    count is a preview only — QPay and the invoice stay off until the server
-    can price and charge the chosen count (asked of the admin): a screen that
-    showed 5 groups' sum and charged 3 groups' would be the worst kind of bug.
+    ★ The chosen count is sent with the QR and the invoice (№5, 2026-10-23):
+    the server prices and charges exactly that many groups, never fewer than
+    run now. Before it could, a changed count only previewed and the buttons
+    stayed off — a screen that showed 5 groups' sum and charged 3 groups'
+    would be the worst kind of bug, and sending the count is what rules it out.
   */
-  const countChanged = groups > 0 && shownGroups !== groups;
+  const minGroups = access.data?.groupCountMin ?? groups;
+  const maxGroups = access.data?.groupCountMax ?? 99;
+  const countChanged = chosenGroups !== null && chosenGroups !== groups;
+  const groupBody = countChanged ? { groupCount: chosenGroups } : {};
   /** One group's price for a period: the server's amount over the groups it priced. */
   const perGroupOf = (amount: string | null | undefined) =>
     amount && groups > 0 ? Number(amount) / groups : null;
@@ -156,7 +163,7 @@ function ServiceAccess() {
   const yearWhole = access.data?.yearWhole ?? true;
   const toSign = access.data?.contractToSign ?? null;
   const due = access.data?.due ?? null;
-  const renewal: PayRequest = { path: "/service-access/qpay", body: { period } };
+  const renewal: PayRequest = { path: "/service-access/qpay", body: { period, ...groupBody } };
 
   /*
     ★ Minimal — 2026-10-22, the user: "хэт их бичиг". The state is one line
@@ -208,6 +215,8 @@ function ServiceAccess() {
             <GroupStepper
               value={shownGroups}
               registered={groups}
+              min={minGroups}
+              max={maxGroups}
               onChange={(next) => setChosenGroups(next === groups ? null : next)}
             />
           ) : null}
@@ -289,18 +298,11 @@ function ServiceAccess() {
             </p>
           ) : null}
 
-          {countChanged ? (
-            <p role="status" className="rounded-control bg-sun px-3 py-2 text-caption text-sun-ink">
-              {shownGroups} бүлгээр тооцоолж харууллаа. Одоогоор {groups} бүлгээр төлөх боломжтой —
-              бүлгийн тоог өөрчлөх бол NomadKids-тэй холбогдож гэрээгээ шинэчилнэ үү.
-            </p>
-          ) : null}
-
           <div className="flex flex-wrap items-center gap-2">
-            <ContractPayDialog request={renewal} disabled={!price || countChanged} />
+            <ContractPayDialog request={renewal} disabled={!price} />
             <InvoiceButton
-              request={{ path: "/service-access/invoices", body: { period } }}
-              disabled={!price || countChanged}
+              request={{ path: "/service-access/invoices", body: { period, ...groupBody } }}
+              disabled={!price}
             />
           </div>
           <p className="-mt-2 text-caption text-muted">
@@ -630,13 +632,17 @@ function yearMonths(label: string | null | undefined, whole: boolean): number {
 function GroupStepper({
   value,
   registered,
+  min,
+  max,
   onChange,
 }: {
   value: number;
   registered: number;
+  /** The groups running now — the server refuses to price fewer. */
+  min: number;
+  max: number;
   onChange: (next: number) => void;
 }) {
-  const MAX = 99;
   return (
     <div className="flex items-center gap-3">
       <span className="min-w-0 flex-1 text-body font-semibold text-ink">
@@ -650,7 +656,7 @@ function GroupStepper({
           variant="ghost"
           size="icon"
           aria-label="Бүлэг хасах"
-          disabled={value <= 1}
+          disabled={value <= Math.max(1, min)}
           onClick={() => onChange(value - 1)}
         >
           <Minus size={18} aria-hidden />
@@ -665,7 +671,7 @@ function GroupStepper({
           variant="ghost"
           size="icon"
           aria-label="Бүлэг нэмэх"
-          disabled={value >= MAX}
+          disabled={value >= max}
           onClick={() => onChange(value + 1)}
         >
           <Plus size={18} aria-hidden />
