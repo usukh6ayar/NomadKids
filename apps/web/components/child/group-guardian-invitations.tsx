@@ -138,6 +138,19 @@ function Intro({
   );
 }
 
+/**
+ * What the press did, in one line — 2026-10-26: a child whose card is still out
+ * was called «холбогдсон», and a teacher read that as the parents having joined.
+ */
+function summaryOf(result: GroupGuardianInvitations): string {
+  const parts = [
+    result.skipped > 0 ? `${result.skipped} хүүхдийн эцэг эх бүртгүүлсэн` : null,
+    result.pending > 0 ? `${result.pending} хүүхдийн урилга хүчинтэй хэвээр` : null,
+  ].filter(Boolean);
+  if (parts.length > 0) return `${parts.join(", ")} тул алгассан.`;
+  return result.items.length > 0 ? "Бүлгийн бүх хүүхдэд урилга үүслээ." : "";
+}
+
 function Sheet({
   groupName,
   result,
@@ -152,11 +165,7 @@ function Sheet({
       <div className="flex flex-wrap items-start justify-between gap-3 print:hidden">
         <div className="min-w-0">
           <h2 className="text-title font-semibold text-ink">{result.items.length} урилга бэлэн</h2>
-          <p className="mt-0.5 text-body text-muted">
-            {result.skipped > 0
-              ? `${result.skipped} хүүхэд аль хэдийн холбогдсон тул алгассан.`
-              : "Бүлгийн бүх хүүхдэд урилга үүслээ."}
-          </p>
+          <p className="mt-0.5 text-body text-muted">{summaryOf(result)}</p>
         </div>
 
         <span className="flex flex-wrap gap-2">
@@ -172,7 +181,11 @@ function Sheet({
 
       {result.items.length === 0 ? (
         <p className="rounded-control bg-canvas px-3.5 py-2.5 text-body text-muted print:hidden">
-          Урих хүүхэд алга — бүлгийн бүх хүүхэд аль хэдийн асран хамгаалагчтай.
+          {result.empty
+            ? "Бүлэгт хүүхэд бүртгэгдээгүй байна. Эхлээд «Хүүхэд бүртгэх»-ээр хүүхдээ нэмнэ үү."
+            : result.pending > 0
+              ? "Урих хүүхэд алга. Өмнө өгсөн урилгууд хүчинтэй хэвээр — хугацаа нь дуусмагц энд дахин урьж болно."
+              : "Урих хүүхэд алга — бүлгийн бүх хүүхдийн эцэг эх бүртгүүлсэн."}
         </p>
       ) : (
         <>

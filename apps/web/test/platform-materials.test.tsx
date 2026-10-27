@@ -369,6 +369,59 @@ describe("the platform's teaching materials", () => {
     });
   });
 
+  /*
+   * ★ 2026-10-26: the edit form opened with «Хямдрал зарлах» unticked, and a
+   * save with no discount removes it — editing a title ended a running sale.
+   */
+  it("opens an edit on the running discount and saves it back", async () => {
+    const user = userEvent.setup();
+    const api = stubApi([
+      { path: "/auth/me", body: operator() },
+      { path: "/platform/materials/m1", method: "PUT", body: {} },
+      {
+        path: "/platform/materials",
+        body: [{ ...row, discountPrice: 9000, discountEndsOn: "2099-12-31" }],
+      },
+    ]);
+    renderWithProviders(<PlatformMaterialsPage />);
+
+    const table = await screen.findByRole("table", { name: "Сургалтын хэрэглэгдэхүүний каталог" });
+    await user.click(within(table).getByRole("button", { name: "Тоо 1–5 — үйлдэл" }));
+    await user.click(screen.getByRole("menuitem", { name: /Засах/ }));
+    const dialog = screen.getByRole("dialog", { name: "Хэрэглэгдэхүүн засах" });
+
+    expect(within(dialog).getByRole("checkbox", { name: "Хямдрал зарлах" })).toBeChecked();
+    expect(within(dialog).getByLabelText(/Хямдралтай үнэ/)).toHaveValue("9000");
+    expect(within(dialog).getByLabelText(/Дуусах огноо/)).toHaveValue("2099-12-31");
+    expect(dialog).toHaveTextContent("25% хямдрал");
+
+    await user.click(within(dialog).getByRole("button", { name: "Хадгалах" }));
+    await waitFor(() => {
+      const form = api.calls.find((c) => c.method === "PUT")?.body as FormData;
+      expect(form.get("price")).toBe("12000");
+      expect(form.get("discountPrice")).toBe("9000");
+      expect(form.get("discountEndsOn")).toBe("2099-12-31");
+    });
+  });
+
+  it("opens an edit unticked when the discount has already ended", async () => {
+    const user = userEvent.setup();
+    stubApi([
+      { path: "/auth/me", body: operator() },
+      {
+        path: "/platform/materials",
+        body: [{ ...row, discountPrice: 9000, discountEndsOn: "2020-01-31" }],
+      },
+    ]);
+    renderWithProviders(<PlatformMaterialsPage />);
+
+    const table = await screen.findByRole("table", { name: "Сургалтын хэрэглэгдэхүүний каталог" });
+    await user.click(within(table).getByRole("button", { name: "Тоо 1–5 — үйлдэл" }));
+    await user.click(screen.getByRole("menuitem", { name: /Засах/ }));
+    const dialog = screen.getByRole("dialog", { name: "Хэрэглэгдэхүүн засах" });
+    expect(within(dialog).getByRole("checkbox", { name: "Хямдрал зарлах" })).not.toBeChecked();
+  });
+
   it("hides the price when the material is free", async () => {
     const user = userEvent.setup();
     stubApi([

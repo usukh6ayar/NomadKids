@@ -172,6 +172,81 @@ export class ChildrenRepository {
     });
   }
 
+  /**
+   * The group's children with a guardian row whose every guardian is an
+   * **unclaimed placeholder** — `createPlaceholderGuardianAccount`'s account,
+   * invited, never signed in, no phone, its invitation never accepted. These are the
+   * cards handed out that nobody used (2026-10-26). Each comes back with the
+   * placeholder to re-issue onto and whether its newest card still works.
+   *
+   * ★ A child with any claimed guardian is never here — a re-issued link on
+   * a real person's account would let whoever printed it set their password.
+   * One query for the group (§3.4).
+   */
+  async listGroupChildrenWithUnclaimedInvitations(
+    visible: VisibleChildrenFilter,
+    groupId: string,
+    now: Date,
+  ) {
+    // `guardian-…` is the handle only `createPlaceholderGuardianAccount`
+    // gives; an account somebody made by hand, or one that was ever
+    // invited and accepted, can never match all five.
+    const unclaimed = {
+      username: { startsWith: "guardian-" },
+      lastLoginAt: null,
+      phone: null,
+      AND: [
+        { authTokens: { some: { purpose: "INVITATION" as const } } },
+        { authTokens: { none: { purpose: "INVITATION" as const, usedAt: { not: null } } } },
+      ],
+    };
+    const rows = await this.prisma.child.findMany({
+      where: {
+        AND: [
+          visible,
+          { status: "ACTIVE" },
+          { enrollments: { some: { deletedAt: null, groupId, status: "ACTIVE" } } },
+          { guardianships: { some: { deletedAt: null } } },
+          {
+            guardianships: {
+              every: { OR: [{ deletedAt: { not: null } }, { guardian: unclaimed }] },
+            },
+          },
+        ],
+      },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      select: {
+        id: true,
+        lastName: true,
+        firstName: true,
+        guardianships: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            guardianUserId: true,
+            guardian: {
+              select: {
+                authTokens: {
+                  where: { purpose: "INVITATION", usedAt: null, expiresAt: { gt: now } },
+                  select: { id: true },
+                  take: 1,
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      lastName: row.lastName,
+      firstName: row.firstName,
+      placeholderUserId: row.guardianships[0]!.guardianUserId,
+      cardStillValid: row.guardianships[0]!.guardian.authTokens.length > 0,
+    }));
+  }
+
   /** How many of this group's children the caller may see at all. */
   async countGroupChildren(visible: VisibleChildrenFilter, groupId: string) {
     return this.prisma.child.count({

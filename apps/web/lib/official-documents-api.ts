@@ -16,11 +16,11 @@ import {
  * The official register through the API — built ahead of it, 2026-10-20, the
  * user: "супер админ ... засаж устгаж шинээр нэмж".
  *
- * ★ Asked of the admin, not yet built: `GET /official-documents` (any
+ * ★ Built in #274 (2026-10-24): `GET /official-documents` (any
  * kindergarten's staff and the operator), `POST`, `PATCH /:id`, `DELETE /:id`
- * (operator only, soft delete, audited). Until `GET` answers, it is 404 and
- * every screen reads the list in `lib/official-documents.ts` instead — the
- * shelf looks the same either way, and the operator's form says «удахгүй».
+ * (operator only, soft delete, audited), seeded with the 37 entries of
+ * `lib/official-documents.ts`. That list stays only as the fallback while the
+ * read loads or fails — the shelf looks the same either way.
  */
 
 export const OFFICIAL_SOURCE_LEVELS = [
