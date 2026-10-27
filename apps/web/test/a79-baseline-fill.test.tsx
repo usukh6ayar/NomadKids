@@ -252,7 +252,7 @@ describe("filling one child in", () => {
     await user.click(cell("Мэдлэг", 2, "0"));
     await user.click(cell("Мэдлэг", 3, "1"));
     // The child's total under the table, drawn as the group's is.
-    expect(screen.getByText(/37 шалгуурын 2-г биелүүлсэн/)).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: /^Мэдлэг: 18/ })).toBeInTheDocument();
     expect(screen.getByRole("list", { name: "Хэсгийн дундаж" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /^Чадвар/ }));
 

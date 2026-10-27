@@ -197,11 +197,7 @@ export function A79BaselinePanel({
         {rows.length > 0 ? (
           <>
             {scored.length > 0 ? (
-              <A79SummaryChart
-                rows={scored}
-                averageLabel="Гарааны дундаж"
-                description={`Бүлгийн гарааны дундаж, ${scored.length} хүүхэд. Хүүхдийн хувь бол өөрийн түвшний шалгуурын хэдийг гарааны үнэлгээнд биелүүлсэн нь.`}
-              />
+              <A79SummaryChart rows={scored} averageLabel="Гарааны дундаж" />
             ) : null}
             <A79ChildrenTable
               groupId={groupId}

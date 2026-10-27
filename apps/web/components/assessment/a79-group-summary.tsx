@@ -217,7 +217,8 @@ export function A79SummaryChart({
 }: {
   rows: A79ChildRow[];
   averageLabel: string;
-  description: string;
+  /** Off on «Гарааны үнэлгээ» (2026-10-27, the user): the figures say it. */
+  description?: string;
   title?: string;
 }) {
   const average = a79MeanShare(rows);
@@ -239,7 +240,7 @@ export function A79SummaryChart({
           <A79RingFigure percent={average} />
         </Ring>
         <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <p className="text-body text-ink">{description}</p>
+          {description ? <p className="text-body text-ink">{description}</p> : null}
           <ul aria-label="Хүүхдийн тоо, бүсээр" className="flex flex-wrap gap-2">
             {bands.map(({ band, count }) => (
               <li key={band}>

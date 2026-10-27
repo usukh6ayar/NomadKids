@@ -467,7 +467,7 @@ function ChildForm({
         title="Нийт дүн"
         rows={result}
         averageLabel={`${name}-ын гарааны дүн`}
-        description={`${name}, ${sheet.level} түвшин — өөрийн түвшний ${result[0]!.total} шалгуурын ${result[0]!.achieved}-г биелүүлсэн. Бөглөөгүй шалгуур биелээгүйд тооцогдоно.`}
+        description={name}
       />
 
       <DomainTabs criteria={sheet.criteria} active={domain} onSelect={setDomain} />
