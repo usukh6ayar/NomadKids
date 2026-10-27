@@ -93,11 +93,22 @@ export function a79ChildRows(data: A79GroupSummary): A79ChildRow[] {
 }
 
 /**
- * The rows with figures — an unpaid solo child (`feeDue`) is named on the
- * table and counted in no average: their 0 is a withheld figure, not a result.
+ * ★ A child no note is linked to (2026-10-27, the user's director report:
+ * eighteen children «0% · Хөгжиж байна»). Not assessed is not «Хөгжиж байна»
+ * — the regulation's band is a judgement made from evidence (А/79 §2.9).
+ * `assessed` is absent from an older server, which leaves the row as it was.
+ */
+function unassessed(row: A79ChildRow): boolean {
+  return row.assessed === 0;
+}
+
+/**
+ * The rows with figures — an unpaid solo child (`feeDue`) and a child with no
+ * note linked are named on the table and counted in no average: their 0 is a
+ * withheld or a missing figure, not a result.
  */
 function scored(rows: A79ChildRow[]): A79ChildRow[] {
-  return rows.filter((row) => !row.feeDue);
+  return rows.filter((row) => !row.feeDue && !unassessed(row));
 }
 
 /**
@@ -161,6 +172,12 @@ function SummaryBody({ groupId, data }: { groupId: string; data: A79GroupSummary
           averageLabel="Бүлгийн дундаж"
           description={`Бүлгийн дундаж, ${withFigures.length} хүүхэд. Хүүхдийн хувь бол өөрийн түвшний шалгуурын хэдийг хангалттай эзэмшсэн нь.`}
         />
+      ) : null}
+      {rows.some(unassessed) ? (
+        <p className="text-caption text-muted">
+          {rows.filter(unassessed).length} хүүхдэд тэмдэглэл холбогдоогүй тул дунджид ороогүй. Явцын
+          үнэлгээний тэмдэглэлийг А/79 шалгуурт холбоход энд гарна.
+        </p>
       ) : null}
 
       <A79ChildrenTable groupId={groupId} rows={rows} />
@@ -451,11 +468,22 @@ export function A79ChildrenTable({
       </thead>
       <tbody>
         {rows.map((row, index) => {
-          if (row.feeDue) {
+          if (row.feeDue || unassessed(row)) {
             return (
               <tr key={row.childId}>
                 <Td className="tabular-nums text-muted">{index + 1}</Td>
-                <Td className="text-ink">{shortName(row)}</Td>
+                <Td>
+                  {linkChildren && !row.feeDue ? (
+                    <Link
+                      href={`/groups/${groupId}/results/${row.childId}`}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {shortName(row)}
+                    </Link>
+                  ) : (
+                    <span className="text-ink">{shortName(row)}</span>
+                  )}
+                </Td>
                 <Td>{row.level}</Td>
                 {DOMAINS.map((domain) => (
                   <Td key={domain} numeric className="text-muted">
@@ -466,7 +494,9 @@ export function A79ChildrenTable({
                   —
                 </Td>
                 <Td>
-                  <Badge tone="neutral">Төлбөр төлөгдөөгүй</Badge>
+                  <Badge tone="neutral">
+                    {row.feeDue ? "Төлбөр төлөгдөөгүй" : "Тэмдэглэл холбоогүй"}
+                  </Badge>
                 </Td>
               </tr>
             );

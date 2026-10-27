@@ -123,6 +123,8 @@ export const a79GroupSummarySchema = z.object({
       feeDue: z.boolean().default(false),
       achieved: z.number().int(),
       total: z.number().int(),
+      /** Criteria any note is linked to; 0 is not assessed (2026-10-27). */
+      assessed: z.number().int().nullish(),
       byDomain: z.array(
         z.object({
           domain: z.enum(["Мэдлэг", "Чадвар", "Төлөвшил"]),

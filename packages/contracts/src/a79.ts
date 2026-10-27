@@ -366,6 +366,13 @@ export const a79GroupSummarySchema = z.object({
       feeDue: z.boolean(),
       achieved: z.number().int(),
       total: z.number().int(),
+      /**
+       * ★ How many of the level's criteria any note is linked to (2026-10-27,
+       * the user's director report: eighteen children «0% · Хөгжиж байна»).
+       * 0 is a child nobody has linked a note for — not assessed, which is not
+       * «Хөгжиж байна». Absent from an older server.
+       */
+      assessed: z.number().int().nullish(),
       byDomain: z.array(
         z.object({
           domain: z.enum(A79_DOMAINS),
