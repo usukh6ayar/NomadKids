@@ -33,6 +33,14 @@ export interface BaselineQuestion {
 export interface BaselineRow {
   child: { id: string; firstName: string; lastName?: string | null };
   response: { submittedAt: string; answers: { questionId: string; value: unknown }[] } | null;
+  /**
+   * ★ A row saved before every question was answered (2026-10-27, the user:
+   * «багш бөглөхөд харагдахгүй … дутуу бөглөсөн үед»). The sheet keeps such
+   * a row as a draft, and on А/79 that is the usual case — a teacher ticks
+   * what the child does and leaves the rest. It counts as the child's
+   * baseline, its unanswered criteria not met, and says it is partial.
+   */
+  draft?: { updatedAt: string; answers: { questionId: string; value: unknown }[] } | null;
 }
 
 export interface BaselineChild {
@@ -49,8 +57,12 @@ export interface BaselineChild {
   achieved: number;
   total: number;
   byDomain: { domain: A79Domain; achieved: number; total: number }[];
-  /** No submitted response — not assessed (absent), never a 0. */
+  /** Neither a response nor a draft — not assessed (absent), never a 0. */
   notFilled: boolean;
+  /** From a draft: some criteria unanswered, counted as not met. */
+  partial: boolean;
+  /** How many of the level's criteria the row answers. */
+  answered: number;
   /** When the row was sent; null when it was not. */
   submittedAt: string | null;
 }
@@ -161,11 +173,17 @@ export function baselineSummary(
   const unmatched = questions.length - counted.length;
 
   let lastSubmittedAt: string | null = null;
-  const children: BaselineChild[] = rows.map(({ child, response }) => {
+  const children: BaselineChild[] = rows.map(({ child, response: submitted, draft }) => {
+    const response =
+      submitted ?? (draft ? { submittedAt: draft.updatedAt, answers: draft.answers } : null);
     if (response && (!lastSubmittedAt || response.submittedAt > lastSubmittedAt)) {
       lastSubmittedAt = response.submittedAt;
     }
     const answers = new Map((response?.answers ?? []).map((a) => [a.questionId, a.value]));
+    const answered = counted.filter((q) => {
+      const value = answers.get(q.id);
+      return value !== undefined && value !== null && value !== "";
+    }).length;
     const byDomain = A79_DOMAINS.map((domain) => {
       const inDomain = counted.filter((q) => q.domain === domain);
       return {
@@ -184,6 +202,8 @@ export function baselineSummary(
       total: counted.length,
       byDomain,
       notFilled: !response,
+      partial: !submitted && Boolean(draft) && answered < counted.length,
+      answered,
       submittedAt: response?.submittedAt ?? null,
     };
   });
@@ -214,7 +234,12 @@ export function withFeeDue<T extends { children: BaselineChild[] }>(
 
 /** The filled-in children, in the result screen's own shape. */
 export function asGroupSummary(summary: { children: BaselineChild[] }): A79GroupSummary {
-  return { children: summary.children.filter((c) => !c.notFilled) };
+  return {
+    children: summary.children
+      .filter((c) => !c.notFilled)
+      // A filled row is assessed — never «Тэмдэглэл холбоогүй» on the baseline.
+      .map((c) => ({ ...c, assessed: Math.max(c.answered, 1) })),
+  };
 }
 
 /** One А/79 baseline survey's sheet — what `mergeBaselines` takes. */

@@ -153,6 +153,7 @@ export function A79BaselinePanel({
     // Named on the table, counted in no average — the result screen's rule.
     const scored = rows.filter((row) => !row.feeDue);
     const notAssessed = merged.children.filter((c) => c.notFilled);
+    const partial = merged.children.filter((c) => c.partial);
     const twice = merged.children.filter((c) => c.assessedTwice);
 
     return (
@@ -192,6 +193,12 @@ export function A79BaselinePanel({
         {rows.length > 0 && notAssessed.length > 0 ? (
           <p className="text-caption text-muted">
             Гарааны үнэлгээнд хамрагдаагүй: {notAssessed.map((c) => shortName(c)).join(", ")}
+          </p>
+        ) : null}
+        {partial.length > 0 ? (
+          <p className="text-caption text-muted">
+            Дутуу бөглөсөн (хариулаагүй шалгуурыг биелээгүйд тооцов):{" "}
+            {partial.map((c) => `${shortName(c)} (${c.answered}/${c.total})`).join(", ")}
           </p>
         ) : null}
         {twice.length > 0 ? (
