@@ -5,7 +5,6 @@ import { useState } from "react";
 import {
   A79_LEVEL_KEYS,
   a79BaselineSetupSchema,
-  a79Level,
   type A79BaselineSetup,
   type A79LevelKey,
 } from "@kinder/contracts";
@@ -101,8 +100,7 @@ export function A79BaselineStartDialog({
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={adding ? "Гарааны үнэлгээнд хүүхэд нэмэх" : "Шинэ гарааны үнэлгээ"}
-      description="Хүүхэд бүрийн түвшинг наснаас нь санал болгосон. Хүсвэл өөрчилж, үнэлэхгүй хүүхдээ «—» болгоно уу."
+      title={adding ? "Гарааны үнэлгээнд хүүхэд нэмэх" : "Гарааны үнэлгээ"}
       busy={create.isPending}
       footer={
         <>
@@ -129,14 +127,20 @@ export function A79BaselineStartDialog({
         {offered.length === 0 ? (
           <p className="text-body text-muted">Бүлгийн бүх хүүхэд гарааны үнэлгээнд орсон байна.</p>
         ) : (
-          <div className="rounded-control border border-border">
-            <table className="w-full border-collapse text-body">
+          <div className="w-fit max-w-full rounded-control border border-border">
+            <table className="border-collapse text-body">
               <caption className="sr-only">Хүүхэд бүрийн түвшин</caption>
               <thead className="sticky top-0 z-[1]">
                 <tr className="bg-canvas">
                   <th
                     scope="col"
-                    className="bg-canvas px-2 py-2 text-left text-caption font-semibold text-muted sm:px-3"
+                    className="w-8 bg-canvas py-2 pl-2 text-left text-caption font-semibold text-muted sm:pl-3"
+                  >
+                    №
+                  </th>
+                  <th
+                    scope="col"
+                    className="bg-canvas px-2 py-2 text-left text-caption font-semibold text-muted"
                   >
                     Хүүхдийн нэр
                   </th>
@@ -155,13 +159,14 @@ export function A79BaselineStartDialog({
                 </tr>
               </thead>
               <tbody>
-                {offered.map((child) => {
+                {offered.map((child, index) => {
                   const name = shortName(child);
                   return (
                     <tr key={child.childId} className="border-t border-border-soft">
+                      <td className="py-2 pl-2 tabular-nums text-muted sm:pl-3">{index + 1}</td>
                       <th
                         scope="row"
-                        className="px-2 py-2 text-left font-normal leading-snug text-ink sm:px-3"
+                        className="px-2 py-2 text-left font-normal leading-snug text-ink"
                       >
                         {name}
                       </th>
@@ -187,16 +192,6 @@ export function A79BaselineStartDialog({
             </table>
           </div>
         )}
-        {levels.length > 0 ? (
-          <p className="text-caption text-muted">
-            {levels
-              .map(
-                (entry) =>
-                  `${entry.level} түвшин (${a79Level(entry.level).criteria.length} шалгуур) · ${entry.childIds.length} хүүхэд`,
-              )
-              .join(" · ")}
-          </p>
-        ) : null}
       </div>
     </FormDialog>
   );

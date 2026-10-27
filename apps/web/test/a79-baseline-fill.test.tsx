@@ -160,7 +160,7 @@ describe("«Шинэ гарааны үнэлгээ»", () => {
       within(table)
         .getAllByRole("columnheader")
         .map((h) => h.textContent),
-    ).toEqual(["Хүүхдийн нэр", "I0", "II0", "III1", "IV1", "—0"]);
+    ).toEqual(["№", "Хүүхдийн нэр", "I0", "II0", "III1", "IV1", "—0"]);
     expect(screen.getByRole("radio", { name: "Б.Ану — IV түвшин" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "Б.Тэмүүлэн — III түвшин" })).toBeChecked();
     // The teacher's choice wins: Тэмүүлэн on II, then Ану left out.
