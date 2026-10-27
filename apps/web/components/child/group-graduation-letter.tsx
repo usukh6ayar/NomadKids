@@ -210,13 +210,13 @@ export function GroupGraduationLetter({
             <Textarea
               aria-label="Төгсөлтийн багшийн захиа"
               value={letter}
-              maxLength={5000}
+              maxLength={3500}
               rows={8}
               placeholder="Хайрт сурагчдаа…"
               onChange={(event) => setLetter(event.target.value)}
               disabled={saving}
             />
-            <p className="mt-1 text-right text-caption text-faint">{letter.length}/5000</p>
+            <p className="mt-1 text-right text-caption text-faint">{letter.length}/3500</p>
           </div>
 
           {roster.isLoading ? <LoadingState rows={2} /> : null}

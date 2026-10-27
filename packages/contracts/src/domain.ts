@@ -4119,8 +4119,16 @@ export const groupGuardianInvitationsSchema = z.object({
       invitationToken: z.string(),
     }),
   ),
-  /** Children in the group this press passed over — already invited or linked. */
+  /** Children passed over because a parent has joined (2026-10-26: no longer invited-but-unused). */
   skipped: z.number(),
+  /**
+   * Children whose card is out and still valid — left alone, so a card in a
+   * parent's hand keeps working. Once one expires unused, the next press
+   * invites that child again. Defaulted for an older API.
+   */
+  pending: z.number().default(0),
+  /** The group has no child yet — the press had nobody to invite. */
+  empty: z.boolean().default(false),
 });
 export type GroupGuardianInvitations = z.infer<typeof groupGuardianInvitationsSchema>;
 
