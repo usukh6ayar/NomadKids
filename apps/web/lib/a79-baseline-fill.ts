@@ -2,19 +2,17 @@ import { A79_DOMAINS, type A79Domain } from "@kinder/contracts";
 import type { BaselineCriterion, BaselineQuestion } from "@/lib/a79-baseline";
 
 /**
- * Filling «Гарааны үнэлгээ» in — by child or by group, one domain at a time
- * (2026-10-27, the user: «мэдлэг гээд тэндээс сонгож, чадвар гээд тусдаа»).
- * The arithmetic only; `components/assessment/a79-baseline-fill.tsx` draws it.
+ * Filling «Гарааны үнэлгээ» in for one child, one domain at a time
+ * (2026-10-27, the user: «мэдлэг гээд тэндээс сонгож, чадвар гээд тусдаа»),
+ * a «0» or «1» per criterion. The arithmetic only;
+ * `components/assessment/a79-baseline-fill.tsx` draws it.
  *
- * ★ A domain is saved whole: its ticked criteria «1», the rest «0». A tick
- * is the teacher's «биелсэн»; an unticked criterion of a saved domain was
- * looked at and is not met. A domain never saved has no answers at all, so
- * «Чадвар 0/28» and «Чадвар —» stay two different things.
+ * ★ A criterion left blank has no answer, so «Чадвар 0/28» and «Чадвар —»
+ * stay two different things. «Дуусгах» counts the blanks «0».
  *
  * ★★ The row goes to the server as the teacher sheet keeps it: every question
  * answered is the child's response, anything less a draft to continue.
  */
-
 /** One question of the survey, as much of it as finishing a row reads. */
 export interface FillQuestion extends BaselineQuestion {
   type: string;
@@ -29,7 +27,8 @@ export function isMet(value: unknown): boolean {
   return value === "1" || value === 1 || value === true;
 }
 
-function isAnswered(value: unknown): boolean {
+/** Any answer at all — a «0» too. */
+export function isAnswered(value: unknown): boolean {
   return value !== undefined && value !== null && value !== "";
 }
 

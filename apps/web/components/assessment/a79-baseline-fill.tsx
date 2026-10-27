@@ -6,12 +6,17 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { z } from "zod";
-import { A79_DOMAINS, surveySchema, type A79Domain } from "@kinder/contracts";
-import { teacherSheetRowSchema, type TeacherSheetRow } from "@/components/survey/teacher-sheet";
+import { A79_DOMAINS, surveySchema, type A79Domain, type A79LevelKey } from "@kinder/contracts";
+
+type TeacherSheetQuestion = z.infer<typeof surveySchema>["questions"][number];
+import { A79SummaryChart, a79ChildRows } from "@/components/assessment/a79-group-summary";
+import {
+  TeacherSheet,
+  teacherSheetRowSchema,
+  type TeacherSheetRow,
+} from "@/components/survey/teacher-sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { CheckControl } from "@/components/ui/field";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState, ErrorState, FormError, LoadingState } from "@/components/ui/states";
 import { TabButton, Tabs } from "@/components/ui/tabs";
@@ -30,10 +35,10 @@ import {
   answersBody,
   domainProgress,
   finishAnswers,
+  isAnswered,
   isMet,
   rowAnswers,
   saveKind,
-  settleDomain,
   type FillAnswers,
   type FillQuestion,
 } from "@/lib/a79-baseline-fill";
@@ -55,6 +60,8 @@ export interface BaselineSheetData {
   label: string;
   editable: boolean;
   questions: FillQuestion[];
+  /** The survey's questions whole — what the teacher sheet's table draws. */
+  surveyQuestions: TeacherSheetQuestion[];
   criteria: BaselineCriterion[];
   others: FillQuestion[];
   rows: TeacherSheetRow[];
@@ -103,6 +110,7 @@ export function useBaselineSheets(groupId: string) {
           createdAt: survey.createdAt,
           editable: sheet.survey.status === "PUBLISHED",
           questions,
+          surveyQuestions: sheet.survey.questions,
           criteria: form.criteria,
           others: questions.filter((q) => otherIds.has(q.id)),
           rows: sheet.rows.filter((row) => !row.group || row.group.id === groupId),
@@ -114,6 +122,8 @@ export function useBaselineSheets(groupId: string) {
   return {
     isLoading: surveys.isLoading || sheets.some((q) => q.isLoading),
     error: surveys.error ?? sheets.find((q) => q.isError)?.error ?? null,
+    /** The last sheet read — a save reloads the table from it, as «Судалгаа» does. */
+    dataUpdatedAt: Math.max(0, ...sheets.map((q) => q.dataUpdatedAt)),
     sheets: data.map(({ createdAt, ...sheet }) => ({
       ...sheet,
       label:
@@ -360,6 +370,30 @@ export function A79BaselineChildFill({ groupId, childId }: { groupId: string; ch
   );
 }
 
+/** The child's figures now, as the group's table and chart read a row — a blank not met. */
+function childResult(sheet: BaselineSheetData, row: TeacherSheetRow, answers: FillAnswers) {
+  const progress = domainProgress(sheet.criteria, answers);
+  return {
+    childId: row.child.id,
+    firstName: row.child.firstName,
+    lastName: row.child.lastName ?? "",
+    level: sheet.level as A79LevelKey,
+    feeDue: false,
+    achieved: progress.reduce((sum, d) => sum + d.met, 0),
+    total: progress.reduce((sum, d) => sum + d.total, 0),
+    byDomain: progress.map((d) => ({ domain: d.domain, achieved: d.met, total: d.total })),
+  };
+}
+
+/**
+ * One child, a domain at a time — № · Шалгуур · 0 · 1, the teacher sheet's
+ * cells (2026-10-27, the user: «тоо шалгуур ард нь 0 1 гэсэн чеклэх хэсэг»),
+ * and under it the child's total drawn as the group's chart is.
+ *
+ * ★ «Хадгалах» saves what is marked — the rest is continued later.
+ * «Дуусгах» saves the row whole: a criterion left blank is asked about
+ * first, then counted «0».
+ */
 function ChildForm({
   groupId,
   sheet,
@@ -378,27 +412,23 @@ function ChildForm({
   const backHref = `/groups/${groupId}/baseline`;
   const [answers, setAnswers] = useState<FillAnswers>(() => startingAnswers(sheet, row));
   const [domain, setDomain] = useState<A79Domain>(() => firstDomain(sheet.criteria));
-  const [touched, setTouched] = useState<Set<A79Domain>>(new Set());
+  const [dirty, setDirty] = useState(false);
   const [finished, setFinished] = useState(Boolean(row.response));
   const [asking, setAsking] = useState(false);
   const [leaving, setLeaving] = useState(false);
 
   const inDomain = sheet.criteria.filter((c) => c.domain === domain);
-  const progress = domainProgress(sheet.criteria, answers);
-  const unopened = progress.filter((d) => !d.done && !touched.has(d.domain) && d.domain !== domain);
-  const dirty = touched.size > 0;
+  const blank = sheet.criteria.filter((c) => !isAnswered(answers[c.questionId])).length;
   const next = nextDomain(sheet.criteria, domain);
+  const name = shortName(row.child);
+  const result = a79ChildRows({ children: [childResult(sheet, row, answers)] });
 
   const save = useMutation({
     mutationFn: async (mode: { finish: boolean; then?: A79Domain }) => {
-      let settled = answers;
-      if (mode.finish) settled = finishAnswers(sheet.criteria, sheet.others, answers);
-      else
-        for (const d of new Set([...touched, domain]))
-          settled = settleDomain(sheet.criteria, settled, d);
+      const settled = mode.finish ? finishAnswers(sheet.criteria, sheet.others, answers) : answers;
       const kind = saveKind(sheet.questions, settled, Boolean(row.response));
       if (kind === "blocked")
-        throw new Error("Хадгалагдсан үнэлгээг засахдаа бүх асуултад хариулна уу.");
+        throw new Error("Хадгалагдсан үнэлгээг засахдаа бүх шалгуурыг бөглөнө үү.");
       await saveRows(sheet, [
         { childId: row.child.id, answers: settled, hasResponse: Boolean(row.response) },
       ]);
@@ -406,11 +436,11 @@ function ChildForm({
     },
     onSuccess: ({ settled, kind, mode }) => {
       setAnswers(settled);
-      setTouched(new Set());
+      setDirty(false);
       if (kind === "response") setFinished(true);
       toast.success(
         kind === "response"
-          ? `${shortName(row.child)}-ын гарааны үнэлгээ хадгалагдлаа.`
+          ? `${name}-ын гарааны үнэлгээ хадгалагдлаа.`
           : "Хадгалагдлаа — дараа нь үргэлжлүүлж бөглөнө.",
       );
       if (mode.then) setDomain(mode.then);
@@ -422,9 +452,14 @@ function ChildForm({
     onError: (e) => toast.error(errorMessage(e)),
   });
 
-  const toggle = (questionId: string) => {
-    setAnswers((current) => ({ ...current, [questionId]: isMet(current[questionId]) ? "0" : "1" }));
-    setTouched((current) => new Set(current).add(domain));
+  const mark = (questionId: string, value: "0" | "1" | undefined) => {
+    setAnswers((current) => {
+      const nextAnswers = { ...current };
+      if (value === undefined) delete nextAnswers[questionId];
+      else nextAnswers[questionId] = value;
+      return nextAnswers;
+    });
+    setDirty(true);
   };
 
   return (
@@ -437,7 +472,7 @@ function ChildForm({
     >
       <div className="flex flex-col gap-1.5">
         <p className="flex flex-wrap items-center gap-2 text-body text-ink">
-          <span className="font-semibold">{shortName(row.child)}</span>
+          <span className="font-semibold">{name}</span>
           <span className="text-muted">{sheet.label}</span>
           {finished ? <Badge tone="mint">Дууссан</Badge> : null}
         </p>
@@ -452,38 +487,79 @@ function ChildForm({
 
       <DomainTabs criteria={sheet.criteria} active={domain} onSelect={setDomain} />
       <p className="text-caption text-muted">
-        Хүүхэд биелүүлсэн шалгуурыг чагтална уу. Чагтлаагүй шалгуур биелээгүйд тооцогдоно.
+        Шалгуур бүрт биелсэн бол «1», биелээгүй бол «0» гэж тэмдэглэнэ үү.
       </p>
-      <ul aria-label={domain} className="flex flex-col gap-2">
-        {inDomain.map((criterion, index) => {
-          const id = `c-${criterion.questionId}`;
-          const checked = isMet(answers[criterion.questionId]);
-          return (
-            <li key={criterion.questionId}>
-              <label
-                htmlFor={id}
-                className={cn(
-                  "flex min-h-[52px] cursor-pointer select-none items-start gap-3 rounded-card border px-3 py-3 transition-colors",
-                  checked ? "border-primary bg-primary-soft" : "border-border bg-surface",
-                  !sheet.editable && "cursor-not-allowed opacity-70",
-                )}
+      <div className="table-scroll rounded-control border border-border">
+        <table className="w-full border-collapse text-body">
+          <caption className="sr-only">{domain}</caption>
+          <thead>
+            <tr className="bg-canvas">
+              <th
+                scope="col"
+                className="w-10 px-2 py-2.5 text-left text-caption font-semibold text-muted"
               >
-                <CheckControl
-                  id={id}
-                  className="mt-0.5"
-                  checked={checked}
-                  disabled={!sheet.editable || save.isPending}
-                  onChange={() => toggle(criterion.questionId)}
-                />
-                <span className="text-body leading-snug text-ink">
-                  <span className="mr-1 tabular-nums text-muted">{index + 1}.</span>
+                №
+              </th>
+              <th
+                scope="col"
+                className="px-2 py-2.5 text-left text-caption font-semibold text-muted"
+              >
+                Шалгуур
+              </th>
+              {(["0", "1"] as const).map((value) => (
+                <th
+                  key={value}
+                  scope="col"
+                  className="w-12 px-2 py-2.5 text-center text-caption font-semibold text-ink"
+                >
+                  {value}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {inDomain.map((criterion, index) => (
+              <tr key={criterion.questionId} className="border-t border-border-soft">
+                <td className="px-2 py-2.5 align-top tabular-nums text-muted">{index + 1}</td>
+                <th scope="row" className="px-2 py-2.5 text-left font-normal leading-snug text-ink">
                   {criterion.text}
-                </span>
-              </label>
-            </li>
-          );
-        })}
-      </ul>
+                </th>
+                {(["0", "1"] as const).map((value) => {
+                  const selected =
+                    answers[criterion.questionId] !== undefined &&
+                    (isMet(answers[criterion.questionId]) ? "1" : "0") === value;
+                  return (
+                    <td key={value} className="px-2 py-2.5 text-center">
+                      <input
+                        type="radio"
+                        name={`c-${criterion.questionId}`}
+                        aria-label={`${index + 1}-р шалгуур: ${value}`}
+                        checked={selected}
+                        onClick={(event) => {
+                          if (selected) {
+                            event.preventDefault();
+                            mark(criterion.questionId, undefined);
+                          }
+                        }}
+                        onChange={() => mark(criterion.questionId, value)}
+                        disabled={!sheet.editable || save.isPending}
+                        className="size-5 cursor-pointer align-middle accent-primary disabled:cursor-default"
+                      />
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <A79SummaryChart
+        title="Нийт дүн"
+        rows={result}
+        averageLabel={`${name}-ын гарааны дүн`}
+        description={`${name}, ${sheet.level} түвшин — өөрийн түвшний ${result[0]!.total} шалгуурын ${result[0]!.achieved}-г биелүүлсэн. Бөглөөгүй шалгуур биелээгүйд тооцогдоно.`}
+      />
 
       {finished && nextHref && !dirty ? (
         <Link
@@ -544,9 +620,7 @@ function ChildForm({
                 size="sm"
                 className="h-9 rounded-pill px-4"
                 disabled={save.isPending}
-                onClick={() =>
-                  unopened.length > 0 ? setAsking(true) : save.mutate({ finish: true })
-                }
+                onClick={() => (blank > 0 ? setAsking(true) : save.mutate({ finish: true }))}
               >
                 {save.isPending ? "Хадгалж байна…" : "Дуусгах"}
               </Button>
@@ -558,8 +632,8 @@ function ChildForm({
       <ConfirmDialog
         open={asking}
         onOpenChange={setAsking}
-        title="Бөглөөгүй хэсэг байна"
-        description={`${unopened.map((d) => d.domain).join(", ")} хэсгийг бөглөөгүй байна. Дуусгавал чагтлаагүй шалгуурууд биелээгүйд тооцогдоно.`}
+        title="Бөглөөгүй шалгуур байна"
+        description={`${blank} шалгуурыг бөглөөгүй байна. Дуусгавал тэдгээр нь биелээгүй («0») гэж тооцогдоно.`}
         confirmLabel="Дуусгах"
         cancelLabel="Буцаж бөглөх"
         pending={save.isPending}
@@ -586,18 +660,12 @@ function ChildForm({
 }
 
 /**
- * The whole group at once, a domain at a time — a card per criterion with the
- * level's children under it as chips (2026-10-27, the user: «утсан дээр
- * харагдах боломжийг бас тусга»). A table of 49 criteria by 20 children does
- * not fit a phone; a card does, and a tap marks the child «биелсэн».
- *
- * ★ Saved per child as by the child: a child the teacher marked in a domain,
- * or whose domain was already saved, has that domain saved whole. A child
- * marked nowhere in it is left as they were — they may not have been looked
- * at — and is filled from their own page.
+ * «Бүлгээр бөглөх» — the teacher sheet's own table, the one «Судалгаа» fills
+ * a survey in with (2026-10-27, the user: «хуучин байсан хүснэгтээр
+ * бөглөх»), for each level's baseline of the group in turn.
  */
 export function A79BaselineGroupFill({ groupId }: { groupId: string }) {
-  const { isLoading, error, sheets } = useBaselineSheets(groupId);
+  const { isLoading, error, sheets, dataUpdatedAt } = useBaselineSheets(groupId);
   const [chosen, setChosen] = useState<string | null>(null);
 
   if (isLoading) return <LoadingState rows={6} />;
@@ -641,239 +709,19 @@ export function A79BaselineGroupFill({ groupId }: { groupId: string }) {
           {sheet.label} · {sheet.rows.length} хүүхэд
         </p>
       )}
-      <GroupForm key={sheet.surveyId} groupId={groupId} sheet={sheet} />
-    </div>
-  );
-}
-
-function GroupForm({ groupId, sheet }: { groupId: string; sheet: BaselineSheetData }) {
-  useChatLift();
-  const toast = useToast();
-  const router = useRouter();
-  const queryClient = useQueryClient();
-  const backHref = `/groups/${groupId}/baseline`;
-  const [answers, setAnswers] = useState<Record<string, FillAnswers>>(() =>
-    Object.fromEntries(sheet.rows.map((row) => [row.child.id, startingAnswers(sheet, row)])),
-  );
-  const [domain, setDomain] = useState<A79Domain>(() => firstDomain(sheet.criteria));
-  /** `childId|domain` the teacher marked something in. */
-  const [touched, setTouched] = useState<Set<string>>(new Set());
-  const [leaving, setLeaving] = useState(false);
-
-  const inDomain = sheet.criteria.filter((c) => c.domain === domain);
-  const touchedChildren = new Set([...touched].map((key) => key.split("|")[0]!));
-  const blocked = sheet.rows.filter((row) => {
-    if (!touchedChildren.has(row.child.id)) return false;
-    return saveKind(sheet.questions, settledFor(row.child.id), Boolean(row.response)) === "blocked";
-  });
-
-  function settledFor(childId: string): FillAnswers {
-    let next = answers[childId] ?? {};
-    for (const key of touched) {
-      const [id, d] = key.split("|") as [string, A79Domain];
-      if (id === childId) next = settleDomain(sheet.criteria, next, d);
-    }
-    return next;
-  }
-
-  const toggle = (childId: string, questionId: string) => {
-    setAnswers((current) => {
-      const own = current[childId] ?? {};
-      return {
-        ...current,
-        [childId]: { ...own, [questionId]: isMet(own[questionId]) ? "0" : "1" },
-      };
-    });
-    setTouched((current) => new Set(current).add(`${childId}|${domain}`));
-  };
-
-  const toggleAll = (questionId: string) => {
-    const all = sheet.rows.every((row) => isMet(answers[row.child.id]?.[questionId]));
-    setAnswers((current) =>
-      Object.fromEntries(
-        sheet.rows.map((row) => [
-          row.child.id,
-          { ...(current[row.child.id] ?? {}), [questionId]: all ? "0" : "1" },
-        ]),
-      ),
-    );
-    setTouched((current) => {
-      const next = new Set(current);
-      for (const row of sheet.rows) next.add(`${row.child.id}|${domain}`);
-      return next;
-    });
-  };
-
-  const save = useMutation({
-    mutationFn: () =>
-      saveRows(
-        sheet,
-        sheet.rows
-          .filter((row) => touchedChildren.has(row.child.id))
-          .map((row) => ({
-            childId: row.child.id,
-            answers: settledFor(row.child.id),
-            hasResponse: Boolean(row.response),
-          })),
-      ),
-    onSuccess: ({ finished, drafted }) => {
-      setAnswers((current) =>
-        Object.fromEntries(
-          sheet.rows.map((row) => [
-            row.child.id,
-            touchedChildren.has(row.child.id) ? settledFor(row.child.id) : current[row.child.id]!,
-          ]),
-        ),
-      );
-      setTouched(new Set());
-      toast.success(
-        [
-          finished > 0 ? `${finished} хүүхдийн гарааны үнэлгээ хадгалагдлаа.` : null,
-          drafted > 0 ? `${drafted} хүүхдийнх дутуу хадгалагдлаа — дараа нь үргэлжлүүлнэ.` : null,
-        ]
-          .filter(Boolean)
-          .join(" "),
-      );
-      void queryClient.invalidateQueries({ queryKey: ["survey", sheet.surveyId] });
-    },
-    onError: (e) => toast.error(errorMessage(e)),
-  });
-
-  return (
-    <form
-      className="flex flex-col gap-3 pb-20"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!save.isPending && touched.size > 0 && blocked.length === 0) save.mutate();
-      }}
-      noValidate
-    >
       {!sheet.editable ? (
-        <p role="status" className="rounded-control bg-sun px-3 py-2 text-caption text-sun-ink">
-          Энэ гарааны үнэлгээ хаагдсан тул засах боломжгүй.
+        <p className="rounded-card bg-sunken px-4 py-3 text-body text-muted">
+          Энэ гарааны үнэлгээ хаагдсан тул зөвхөн харах боломжтой.
         </p>
       ) : null}
-      <FormError message={save.isError ? errorMessage(save.error) : null} />
-      <DomainTabs criteria={sheet.criteria} active={domain} onSelect={setDomain} />
-      <p className="text-caption text-muted">
-        Шалгуурыг биелүүлсэн хүүхдийн нэр дээр дарна уу. Хадгалахад тэмдэглэсэн хүүхдийн энэ хэсгийн
-        чагтлаагүй шалгуур биелээгүйд тооцогдоно.
-      </p>
-      {blocked.length > 0 ? (
-        <p role="status" className="rounded-control bg-sun px-3 py-2 text-caption text-sun-ink">
-          Хадгалагдсан үнэлгээг засахдаа бүх асуултад хариулна уу:{" "}
-          {blocked.map((row) => shortName(row.child)).join(", ")}.
-        </p>
-      ) : null}
-
-      <ul aria-label={domain} className="flex flex-col gap-2">
-        {inDomain.map((criterion, index) => {
-          const all = sheet.rows.every((row) =>
-            isMet(answers[row.child.id]?.[criterion.questionId]),
-          );
-          const count = sheet.rows.filter((row) =>
-            isMet(answers[row.child.id]?.[criterion.questionId]),
-          ).length;
-          return (
-            <li key={criterion.questionId}>
-              <Card pad="compact" className="flex flex-col gap-2">
-                <p className="text-body leading-snug text-ink">
-                  <span className="mr-1 tabular-nums text-muted">{index + 1}.</span>
-                  {criterion.text}
-                </p>
-                <div
-                  role="group"
-                  aria-label={`${index + 1}-р шалгуур`}
-                  className="flex flex-wrap gap-1.5"
-                >
-                  {sheet.rows.map((row) => {
-                    const on = isMet(answers[row.child.id]?.[criterion.questionId]);
-                    const name = shortName(row.child);
-                    return (
-                      <button
-                        key={row.child.id}
-                        type="button"
-                        aria-pressed={on}
-                        aria-label={`${name} — ${index + 1}-р шалгуур биелсэн`}
-                        disabled={!sheet.editable || save.isPending}
-                        onClick={() => toggle(row.child.id, criterion.questionId)}
-                        className={cn(
-                          "inline-flex h-[44px] items-center gap-1 rounded-pill border px-3 text-body transition-colors disabled:cursor-not-allowed disabled:opacity-60",
-                          on
-                            ? "border-primary bg-primary-soft font-semibold text-primary"
-                            : "border-border bg-surface text-ink",
-                        )}
-                      >
-                        {on ? <Check aria-hidden className="size-4" /> : null}
-                        {name}
-                      </button>
-                    );
-                  })}
-                  {sheet.rows.length > 1 ? (
-                    <button
-                      type="button"
-                      aria-pressed={all}
-                      disabled={!sheet.editable || save.isPending}
-                      onClick={() => toggleAll(criterion.questionId)}
-                      className="inline-flex h-[44px] items-center rounded-pill px-3 text-caption font-semibold text-primary disabled:opacity-60"
-                    >
-                      {all ? "Бүгдийг болиулах" : "Бүгд"}
-                    </button>
-                  ) : null}
-                </div>
-                <p className="text-caption text-muted">
-                  {count}/{sheet.rows.length} хүүхэд биелүүлсэн
-                </p>
-              </Card>
-            </li>
-          );
-        })}
-      </ul>
-
-      <div data-print-hide className={FLOATING_BAR}>
-        {touched.size > 0 ? (
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            className="h-9 rounded-pill px-3"
-            onClick={() => setLeaving(true)}
-          >
-            <ChevronLeft aria-hidden />
-            Буцах
-          </Button>
-        ) : (
-          <Button asChild variant="secondary" size="sm" className="h-9 rounded-pill px-3">
-            <Link href={backHref}>
-              <ChevronLeft aria-hidden />
-              Буцах
-            </Link>
-          </Button>
-        )}
-        {sheet.editable ? (
-          <Button
-            type="submit"
-            size="sm"
-            className="h-9 rounded-pill px-4"
-            disabled={save.isPending || touched.size === 0 || blocked.length > 0}
-          >
-            {save.isPending ? "Хадгалж байна…" : "Хадгалах"}
-          </Button>
-        ) : null}
-      </div>
-      <ConfirmDialog
-        open={leaving}
-        onOpenChange={setLeaving}
-        title="Хадгалаагүй өөрчлөлт байна"
-        description={`${touchedChildren.size} хүүхдийн өөрчлөлт хадгалагдаагүй байна. Хадгалахгүйгээр гарвал алга болно.`}
-        confirmLabel="Хадгалахгүй гарах"
-        cancelLabel="Үлдэх"
-        tone="danger"
-        onConfirm={() => {
-          setLeaving(false);
-          router.push(backHref);
-        }}
+      <TeacherSheet
+        key={`${sheet.surveyId}-${dataUpdatedAt}`}
+        surveyId={sheet.surveyId}
+        questions={sheet.surveyQuestions}
+        rows={sheet.rows}
+        editable={sheet.editable}
+        backHref={`/groups/${groupId}/baseline`}
       />
-    </form>
+    </div>
   );
 }

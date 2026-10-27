@@ -6,8 +6,8 @@ import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
 
 /**
- * «Бүлгээр бөглөх» — the group's А/79 baseline for every child at once, a
- * domain at a time (2026-10-27, the user). See `a79-baseline-fill.tsx`.
+ * «Бүлгээр бөглөх» — the group's А/79 baseline for every child at once, in
+ * the teacher sheet's table (2026-10-27, the user). See `a79-baseline-fill.tsx`.
  */
 export default function GroupBaselineFillPage() {
   return (

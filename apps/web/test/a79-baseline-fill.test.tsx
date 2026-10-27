@@ -229,7 +229,12 @@ describe("the group's page", () => {
 });
 
 describe("filling one child in", () => {
-  it("shows Мэдлэг, Чадвар, Төлөвшил as tabs, and saves a domain as a draft to continue", async () => {
+  /** Мэдлэг's table: a row per criterion, «0» and «1» across. */
+  const table = (domain: string) => screen.getByRole("table", { name: domain });
+  const cell = (domain: string, n: number, value: "0" | "1") =>
+    within(table(domain)).getByRole("radio", { name: `${n}-р шалгуур: ${value}` });
+
+  it("shows Мэдлэг, Чадвар, Төлөвшил as tabs, each a 0 · 1 table, and saves a draft to continue", async () => {
     const api = stubSheet([row(ANU, "Ану"), row(BAT, "Тэмүүлэн")]);
     const user = userEvent.setup();
     renderWithProviders(<A79BaselineChildFill groupId={GROUP} childId={ANU} />);
@@ -240,11 +245,14 @@ describe("filling one child in", () => {
         .getAllByRole("tab")
         .map((t) => t.textContent),
     ).toEqual(["Мэдлэг11", "Чадвар22", "Төлөвшил4"]);
-    const knowledge = screen.getByRole("list", { name: "Мэдлэг" });
-    expect(within(knowledge).getAllByRole("checkbox")).toHaveLength(11);
+    expect(within(table("Мэдлэг")).getAllByRole("radio")).toHaveLength(22);
 
-    await user.click(within(knowledge).getAllByRole("checkbox")[0]!);
-    await user.click(within(knowledge).getAllByRole("checkbox")[2]!);
+    await user.click(cell("Мэдлэг", 1, "1"));
+    await user.click(cell("Мэдлэг", 2, "0"));
+    await user.click(cell("Мэдлэг", 3, "1"));
+    // The child's total under the table, drawn as the group's is.
+    expect(screen.getByText(/37 шалгуурын 2-г биелүүлсэн/)).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Хэсгийн дундаж" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /^Чадвар/ }));
 
     await waitFor(() => {
@@ -253,31 +261,28 @@ describe("filling one child in", () => {
         drafts: [
           {
             childId: ANU,
-            answers: domainIds("Мэдлэг").map((questionId, i) => ({
-              questionId,
-              value: i === 0 || i === 2 ? "1" : "0",
-            })),
+            answers: domainIds("Мэдлэг")
+              .slice(0, 3)
+              .map((questionId, i) => ({ questionId, value: i === 1 ? "0" : "1" })),
           },
         ],
       });
     });
     // Only this child is sent, and the next domain is open.
-    expect(await screen.findByRole("list", { name: "Чадвар" })).toBeInTheDocument();
+    expect(await screen.findByRole("table", { name: "Чадвар" })).toBeInTheDocument();
   });
 
-  it("«Дуусгах» asks about an unopened domain, then saves the row whole", async () => {
+  it("«Дуусгах» asks about the blank criteria, then saves the row whole", async () => {
     const api = stubSheet([row(ANU, "Ану")]);
     const user = userEvent.setup();
     renderWithProviders(<A79BaselineChildFill groupId={GROUP} childId={ANU} />);
 
     await user.click(await screen.findByRole("tab", { name: /Төлөвшил/ }));
-    await user.click(
-      within(screen.getByRole("list", { name: "Төлөвшил" })).getAllByRole("checkbox")[0]!,
-    );
+    await user.click(cell("Төлөвшил", 1, "1"));
     await user.click(screen.getByRole("button", { name: "Дуусгах" }));
 
     const dialog = await screen.findByRole("alertdialog").catch(() => screen.findByRole("dialog"));
-    expect(dialog).toHaveTextContent("Мэдлэг, Чадвар");
+    expect(dialog).toHaveTextContent("36 шалгуурыг бөглөөгүй");
     await user.click(within(dialog).getByRole("button", { name: "Дуусгах" }));
 
     await waitFor(() => {
@@ -305,9 +310,16 @@ describe("filling one child in", () => {
       }),
     ]);
     renderWithProviders(<A79BaselineChildFill groupId={GROUP} childId={ANU} />);
-    const knowledge = await screen.findByRole("list", { name: "Мэдлэг" });
-    const boxes = within(knowledge).getAllByRole("checkbox") as HTMLInputElement[];
-    expect(boxes.filter((b) => b.checked)).toHaveLength(3);
+    await screen.findByRole("table", { name: "Мэдлэг" });
+    const checked = (within(table("Мэдлэг")).getAllByRole("radio") as HTMLInputElement[]).filter(
+      (r) => r.checked,
+    );
+    expect(checked.map((r) => r.getAttribute("aria-label")?.slice(-1))).toEqual([
+      "1",
+      "1",
+      "1",
+      ...Array(8).fill("0"),
+    ]);
   });
 
   it("opens a recorded response with its blanks not met, and saves it whole", async () => {
@@ -330,9 +342,7 @@ describe("filling one child in", () => {
     renderWithProviders(<A79BaselineChildFill groupId={GROUP} childId={ANU} />);
     expect(await screen.findAllByLabelText("бөглөсөн")).toHaveLength(3);
 
-    await user.click(
-      within(screen.getByRole("list", { name: "Мэдлэг" })).getAllByRole("checkbox")[1]!,
-    );
+    await user.click(cell("Мэдлэг", 2, "1"));
     await user.click(screen.getByRole("button", { name: "Хадгалах" }));
     await waitFor(() => {
       const saved = api.calls.find(
@@ -384,45 +394,23 @@ describe("filling one child in", () => {
 });
 
 describe("filling the group in", () => {
-  it("marks a child under a criterion and saves only the children marked", async () => {
+  /** 2026-10-27, the user: «Бүлгээр бөглөх» is the table «Судалгаа» fills a survey in with. */
+  it("fills the level's baseline in the teacher sheet's table", async () => {
     const api = stubSheet([row(ANU, "Ану"), row(BAT, "Тэмүүлэн")]);
     const user = userEvent.setup();
     renderWithProviders(<A79BaselineGroupFill groupId={GROUP} />);
 
-    const first = await screen.findByRole("group", { name: "1-р шалгуур" });
-    await user.click(within(first).getByRole("button", { name: /Б\.Ану/ }));
-    expect(within(first).getByRole("button", { name: /Б\.Ану/ })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    await user.click(screen.getByRole("button", { name: "Хадгалах" }));
+    expect(await screen.findByText("I түвшин · 2 хүүхэд")).toBeInTheDocument();
+    const anu = screen.getAllByRole("radio", { name: "Б.Ану: 1" });
+    expect(anu).toHaveLength(37);
+    await user.click(anu[0]!);
+    await user.click(screen.getByRole("button", { name: /Хадгалах/ }));
 
     await waitFor(() => {
       const draft = api.calls.find((c) => c.url.endsWith("/teacher-sheet/drafts"));
       expect(draft?.body).toEqual({
-        drafts: [
-          {
-            childId: ANU,
-            answers: domainIds("Мэдлэг").map((questionId, i) => ({
-              questionId,
-              value: i === 0 ? "1" : "0",
-            })),
-          },
-        ],
+        drafts: [{ childId: ANU, answers: [{ questionId: questions[0]!.id, value: "1" }] }],
       });
     });
-  });
-
-  it("«Бүгд» marks every child under the criterion", async () => {
-    stubSheet([row(ANU, "Ану"), row(BAT, "Тэмүүлэн")]);
-    const user = userEvent.setup();
-    renderWithProviders(<A79BaselineGroupFill groupId={GROUP} />);
-    const first = await screen.findByRole("group", { name: "1-р шалгуур" });
-    await user.click(within(first).getByRole("button", { name: "Бүгд" }));
-    expect(
-      within(first)
-        .getAllByRole("button", { pressed: true })
-        .map((b) => b.textContent),
-    ).toEqual(["Б.Ану", "Б.Тэмүүлэн", "Бүгдийг болиулах"]);
   });
 });
