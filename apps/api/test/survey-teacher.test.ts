@@ -762,3 +762,157 @@ describe("a half-done row, saved and continued", () => {
     expect(await db.surveyAnswerDraft.count({ where: { surveyId } })).toBe(0);
   });
 });
+
+/*
+ * Backend list №9, 2026-10-25: a teacher takes a saved child's row back
+ * whole, and «Бөглөсөн» counts who is done rather than rows on record.
+ */
+describe("clearing a child's row, and what counts as done", () => {
+  const clearRow = (session: AuthSession, surveyId: string, childId: string) =>
+    authed(request(server()).delete(`/v1/surveys/${surveyId}/teacher-sheet/${childId}`), session);
+
+  const full = (questionIds: string[]) => [
+    { questionId: questionIds[0], value: 4 },
+    { questionId: questionIds[1], value: true },
+  ];
+
+  it("clears the saved answers and the draft, audited, and the child is pending again", async () => {
+    const { surveyId, questionIds } = await publishTeacherSurvey(teacherA);
+    expect(
+      (await saveSheet(teacherA, surveyId, [{ childId: a.child.id, answers: full(questionIds) }]))
+        .status,
+    ).toBe(200);
+
+    const res = await clearRow(teacherA, surveyId, a.child.id);
+    expect(res.status).toBe(200);
+    expect(res.body.cleared).toBe(1);
+
+    const sheet = await authed(
+      request(server()).get(`/v1/surveys/${surveyId}/teacher-sheet`),
+      teacherA,
+    );
+    const row = sheet.body.rows.find((r: { child: { id: string } }) => r.child.id === a.child.id);
+    expect(row.response).toBeNull();
+    expect(row.draft).toBeNull();
+
+    const results = await authed(
+      request(server()).get(`/v1/surveys/${surveyId}/results`),
+      teacherA,
+    );
+    expect(results.body.totalResponses).toBe(0);
+    expect(results.body.completedResponses).toBe(0);
+
+    // Soft-deleted, never removed (§3.2), and the audit names the response.
+    const kept = await db.surveyResponse.findFirstOrThrow({ where: { surveyId } });
+    expect(kept.deletedAt).not.toBeNull();
+    const logged = await db.auditLog.findFirst({
+      where: { action: "DELETE", objectType: "SurveyResponse", objectId: kept.id },
+    });
+    expect(logged?.childId).toBe(a.child.id);
+
+    // The child can be assessed again.
+    expect(
+      (await saveSheet(teacherA, surveyId, [{ childId: a.child.id, answers: full(questionIds) }]))
+        .status,
+    ).toBe(200);
+  });
+
+  it("clears a half-done draft the same way", async () => {
+    const { surveyId, questionIds } = await publishTeacherSurvey(teacherA);
+    await authed(
+      request(server()).put(`/v1/surveys/${surveyId}/teacher-sheet/drafts`),
+      teacherA,
+    ).send({
+      drafts: [{ childId: a.child.id, answers: [{ questionId: questionIds[0], value: 2 }] }],
+    });
+
+    const res = await clearRow(teacherA, surveyId, a.child.id);
+    expect(res.status).toBe(200);
+    expect(await db.surveyAnswerDraft.count({ where: { surveyId, deletedAt: null } })).toBe(0);
+  });
+
+  it("refuses a closed survey", async () => {
+    const { surveyId, questionIds } = await publishTeacherSurvey(teacherA);
+    await saveSheet(teacherA, surveyId, [{ childId: a.child.id, answers: full(questionIds) }]);
+    await authed(request(server()).post(`/v1/surveys/${surveyId}/close`), teacherA);
+
+    expect((await clearRow(teacherA, surveyId, a.child.id)).status).toBe(400);
+    expect(await db.surveyResponse.count({ where: { surveyId, deletedAt: null } })).toBe(1);
+  });
+
+  it("teacher from another group gets 404", async () => {
+    const { surveyId, questionIds } = await publishTeacherSurvey(adminA);
+    await saveSheet(adminA, surveyId, [{ childId: a.child.id, answers: full(questionIds) }]);
+
+    expect((await clearRow(otherGroupTeacher, surveyId, a.child.id)).status).toBe(404);
+    expect(await db.surveyResponse.count({ where: { surveyId, deletedAt: null } })).toBe(1);
+  });
+
+  it("guardian gets 404 — even for their own child", async () => {
+    const { surveyId, questionIds } = await publishTeacherSurvey(teacherA);
+    await saveSheet(teacherA, surveyId, [{ childId: a.child.id, answers: full(questionIds) }]);
+
+    expect((await clearRow(parentA, surveyId, a.child.id)).status).toBe(404);
+    expect(await db.surveyResponse.count({ where: { surveyId, deletedAt: null } })).toBe(1);
+  });
+
+  it("user from another kindergarten gets 404", async () => {
+    const { surveyId, questionIds } = await publishTeacherSurvey(teacherA);
+    await saveSheet(teacherA, surveyId, [{ childId: a.child.id, answers: full(questionIds) }]);
+
+    expect((await clearRow(teacherB, surveyId, a.child.id)).status).toBe(404);
+    expect(await db.surveyResponse.count({ where: { surveyId, deletedAt: null } })).toBe(1);
+  });
+
+  it("counts a half-answered response on record as not done, and a child once", async () => {
+    const { surveyId, questionIds } = await publishTeacherSurvey(teacherA);
+    const second = await createChild(a.kindergarten.id, { firstName: "Номин" });
+    await enrollChild(a.kindergarten.id, second.id, a.group.id, a.schoolYear.id);
+
+    // One child answered in full — twice on record, as two respondents may.
+    await saveSheet(teacherA, surveyId, [{ childId: a.child.id, answers: full(questionIds) }]);
+    const extra = await db.surveyResponse.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        surveyId,
+        childId: a.child.id,
+        respondentId: a.adminUser.id,
+      },
+    });
+    await db.surveyAnswer.createMany({
+      data: full(questionIds).map((row) => ({
+        kindergartenId: a.kindergarten.id,
+        responseId: extra.id,
+        questionId: row.questionId!,
+        value: row.value,
+      })),
+    });
+    // The other child half-answered, as rows saved before #253 are.
+    const half = await db.surveyResponse.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        surveyId,
+        childId: second.id,
+        respondentId: a.teacherUser.id,
+      },
+    });
+    await db.surveyAnswer.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        responseId: half.id,
+        questionId: questionIds[0]!,
+        value: 3,
+      },
+    });
+
+    const results = await authed(
+      request(server()).get(`/v1/surveys/${surveyId}/results`),
+      teacherA,
+    );
+    expect(results.status).toBe(200);
+    expect(results.body.totalResponses).toBe(3);
+    expect(results.body.completedResponses).toBe(1);
+    expect(results.body.missingResponses).toBe(results.body.expectedResponses - 1);
+    expect(results.body.completedResponses).toBeLessThanOrEqual(results.body.expectedResponses);
+  });
+});
