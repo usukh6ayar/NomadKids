@@ -913,6 +913,7 @@ model Kindergarten {
   surveyResponses        SurveyResponse[]
   surveyAnswers          SurveyAnswer[]
   surveyAnswerDrafts     SurveyAnswerDraft[]
+  surveyChildren         SurveyChild[]
   growthMeasurements     GrowthMeasurement[]
   milestones             Milestone[]
   allergies              AllergyRecord[]
@@ -1458,6 +1459,7 @@ model Child {
   attendanceRequests  AttendanceRequest[]
   surveyResponses     SurveyResponse[]
   surveyAnswerDrafts  SurveyAnswerDraft[]
+  surveyChildren      SurveyChild[]
   growthMeasurements  GrowthMeasurement[]
   milestones          Milestone[]
   allergies           AllergyRecord[]
@@ -4070,6 +4072,14 @@ model Survey {
   /// published survey is not a case that should be reachable at all.
   groupId String? @db.Uuid
 
+  /// ★ An А/79 baseline made from «Гарааны үнэлгээ» — 2026-10-27, the user:
+  /// the teacher starts it there, picks each child's level, and fills it in
+  /// by child or by group. One survey per level per group; its children are
+  /// `SurveyChild`, and only they are on its sheet. Such a survey is not
+  /// listed under «Судалгаа». Null is every other survey, the А/79 baselines
+  /// made from the survey wizard before this included.
+  a79Level A79Level?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -4081,6 +4091,7 @@ model Survey {
   questions    SurveyQuestion[]
   responses    SurveyResponse[]
   answerDrafts SurveyAnswerDraft[]
+  children     SurveyChild[]
   staffReads   SurveyStaffRead[]
   clonedFrom   Survey?             @relation("SurveyClone", fields: [clonedFromSurveyId], references: [id], onDelete: SetNull)
   clones       Survey[]            @relation("SurveyClone")
@@ -4093,6 +4104,7 @@ model Survey {
   @@index([kindergartenId, schoolYear, period])
   /// The staff list grouped by term, and the FK's own lookups.
   @@index([kindergartenId, termId])
+  @@index([groupId, a79Level])
   @@map("surveys")
 }
 
@@ -4192,6 +4204,31 @@ model SurveyResponse {
   @@index([surveyId, childId])
   @@index([surveyId, respondentId])
   @@map("survey_responses")
+}
+
+/// The children an А/79 baseline (`Survey.a79Level`) is for — 2026-10-27, the
+/// user: in one class five children are assessed on level IV and seven on III,
+/// so each level's survey carries its own children instead of the whole group.
+///
+/// ★ A survey with no `a79Level` has no rows here and its sheet stays the
+/// group's roster. A child is on at most one of a group's baselines; the
+/// service refuses a second. Rows are only added, never removed.
+model SurveyChild {
+  id             String    @id @default(uuid()) @db.Uuid
+  kindergartenId String    @db.Uuid
+  surveyId       String    @db.Uuid
+  childId        String    @db.Uuid
+  createdAt      DateTime  @default(now())
+  deletedAt      DateTime?
+
+  kindergarten Kindergarten @relation(fields: [kindergartenId], references: [id], onDelete: Restrict)
+  survey       Survey       @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  child        Child        @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@unique([surveyId, childId])
+  @@index([childId])
+  @@index([kindergartenId])
+  @@map("survey_children")
 }
 
 /// A teacher survey's row for one child, saved before it is complete —

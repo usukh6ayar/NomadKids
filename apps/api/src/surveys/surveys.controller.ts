@@ -1,6 +1,12 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query, Res } from "@nestjs/common";
 import type { Response } from "express";
-import { idParamSchema, paginationQuerySchema, uuidSchema } from "@kinder/contracts";
+import {
+  a79BaselineCreateSchema,
+  idParamSchema,
+  paginationQuerySchema,
+  uuidSchema,
+  type A79BaselineCreate,
+} from "@kinder/contracts";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
@@ -29,6 +35,35 @@ import {
   type SubmitResponseDto,
   type SurveyResultsQuery,
 } from "./surveys.dto";
+
+/**
+ * «Гарааны үнэлгээ» started from its own page — 2026-10-27, the user. The
+ * group's administrator or assigned teacher; anyone else 404. Filling it in
+ * goes through `/surveys/:id/teacher-sheet`, as every teacher survey does.
+ */
+@Controller("groups/:id/a79-baseline")
+export class GroupA79BaselineController {
+  constructor(private readonly service: SurveysService) {}
+
+  @Get()
+  @Roles("TEACHER", "ADMIN")
+  async setup(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.service.a79BaselineSetup(actor, params.id);
+  }
+
+  @Post()
+  @Roles("TEACHER", "ADMIN")
+  async create(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+    @Body(new ZodValidationPipe(a79BaselineCreateSchema)) body: A79BaselineCreate,
+  ) {
+    return this.service.createA79Baseline(actor, params.id, body);
+  }
+}
 
 /** Kindergarten-scoped survey management — staff only. */
 @Controller("kindergartens/:id/surveys")

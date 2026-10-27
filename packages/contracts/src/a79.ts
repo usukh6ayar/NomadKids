@@ -384,3 +384,66 @@ export const a79GroupSummarySchema = z.object({
   ),
 });
 export type A79GroupSummary = z.infer<typeof a79GroupSummarySchema>;
+
+/**
+ * The prompt of an А/79 baseline question — «Мэдлэг: <criterion>». The web's
+ * survey template (`a79Questions`) and `lib/a79-baseline.ts` read the same
+ * text; a baseline made from «Гарааны үнэлгээ» is written with it.
+ */
+export function a79CriterionPrompt(criterion: { domain: A79Domain; text: string }): string {
+  return `${criterion.domain}: ${criterion.text}`;
+}
+
+/**
+ * Starting «Гарааны үнэлгээ», or adding children to it — 2026-10-27, the user:
+ * the teacher picks each child's level (suggested from age) and a survey per
+ * level is made for the group. A level that already has one gains the children.
+ */
+export const a79BaselineCreateSchema = z
+  .object({
+    levels: z
+      .array(
+        z
+          .object({
+            level: z.enum(A79_LEVEL_KEYS),
+            childIds: z.array(z.string().uuid()).min(1).max(200),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(A79_LEVEL_KEYS.length),
+  })
+  .strict()
+  .refine(({ levels }) => new Set(levels.map((l) => l.level)).size === levels.length, {
+    message: "Нэг түвшинг хоёр удаа өгөх боломжгүй",
+    path: ["levels"],
+  })
+  .refine(
+    ({ levels }) => {
+      const ids = levels.flatMap((l) => l.childIds);
+      return new Set(ids).size === ids.length;
+    },
+    { message: "Нэг хүүхэд нэг л түвшинд үнэлэгдэнэ", path: ["levels"] },
+  );
+export type A79BaselineCreate = z.infer<typeof a79BaselineCreateSchema>;
+
+/**
+ * The group's baselines made from «Гарааны үнэлгээ», and its children with the
+ * level their age suggests — what the start dialog and the fill screens read.
+ * `surveyId` is null for a child on none of them.
+ */
+export const a79BaselineSetupSchema = z.object({
+  surveys: z.array(
+    z.object({ id: z.string(), level: z.enum(A79_LEVEL_KEYS), childIds: z.array(z.string()) }),
+  ),
+  roster: z.array(
+    z.object({
+      childId: z.string(),
+      firstName: z.string(),
+      lastName: z.string().nullish(),
+      suggestedLevel: z.enum(A79_LEVEL_KEYS),
+      surveyId: z.string().nullish(),
+    }),
+  ),
+});
+export type A79BaselineSetup = z.infer<typeof a79BaselineSetupSchema>;

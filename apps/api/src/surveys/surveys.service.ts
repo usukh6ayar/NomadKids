@@ -3,6 +3,7 @@ import { AuditRepository } from "../audit/audit.repository";
 import { ChildAccessService } from "../authz/child-access.service";
 import { TenantAccessService } from "../authz/tenant-access.service";
 import { AuthzRepository } from "../authz/authz.repository";
+import { GroupAccessService } from "../authz/group-access.service";
 import { hasRoleIn } from "../authz/actor";
 import { Role } from "../domain/enums";
 import { paginate, toSkipTake, type PageParams } from "../common/pagination";
@@ -13,7 +14,16 @@ import { buildSurveyWorkbook, type SurveyWave } from "./survey-workbook";
 import { compareQuestions, compareWaves, compareWavesByChild } from "./survey-comparison";
 import { MAX_POLL_OPTIONS, matrixOptions, optionStrings } from "./survey-scoring";
 import { withIndicatorKeys } from "./indicator-key";
-import { hasOptionList } from "@kinder/contracts";
+import {
+  a79CriterionPrompt,
+  a79Level,
+  a79LevelForAge,
+  ageInYears,
+  hasOptionList,
+  localDate,
+  type A79BaselineCreate,
+  type A79BaselineSetup,
+} from "@kinder/contracts";
 import type {
   CloneSurveyDto,
   CreateSurveyDto,
@@ -73,6 +83,7 @@ export class SurveysService {
     private readonly tenants: TenantAccessService,
     private readonly audit: AuditRepository,
     private readonly authz: AuthzRepository,
+    private readonly groups: GroupAccessService,
   ) {}
 
   // ── Management — staff only ─────────────────────────────────────────────
@@ -911,13 +922,17 @@ export class SurveysService {
    */
   private async assertCanAssess(
     actor: Actor,
-    survey: { kindergartenId: string; groupId: string | null },
+    survey: { id: string; kindergartenId: string; groupId: string | null; a79Level: string | null },
     childId: string | null | undefined,
   ): Promise<string> {
     if (!childId) throw new BadRequestException("Хүүхэд сонгоно уу");
 
     const facts = await this.childAccess.assertCanRecord(actor, childId);
     if (!childKindergartenIds(facts).has(survey.kindergartenId)) throw new NotFoundException();
+    // An А/79 baseline is for its own children only — another is not on it (§1.7).
+    if (survey.a79Level && !(await this.repo.surveyChildIds(survey.id)).includes(childId)) {
+      throw new NotFoundException();
+    }
 
     if (survey.groupId) {
       const groupId = await this.repo.activeGroupIdForChild(childId);
@@ -956,6 +971,23 @@ export class SurveysService {
   }
 
   /**
+   * The children on a teacher survey's sheet: the actor's reach of the group,
+   * and of an А/79 baseline (`a79Level`) only the children it is for.
+   */
+  private async sheetRoster(
+    survey: { id: string; kindergartenId: string; a79Level: string | null },
+    groupIds: string[] | "all",
+  ) {
+    const roster =
+      groupIds !== "all" && groupIds.length === 0
+        ? []
+        : await this.repo.teacherSheetRoster(survey.kindergartenId, groupIds);
+    if (!survey.a79Level) return roster;
+    const own = new Set(await this.repo.surveyChildIds(survey.id));
+    return roster.filter((row) => own.has(row.child.id));
+  }
+
+  /**
    * A teacher survey as one table — a row per child, with whatever has been
    * written for them. Client, 2026-09-21.
    */
@@ -964,10 +996,7 @@ export class SurveysService {
     if (!survey) throw new NotFoundException();
     const groupIds = await this.teacherSheetScope(actor, survey);
 
-    const roster =
-      groupIds !== "all" && groupIds.length === 0
-        ? []
-        : await this.repo.teacherSheetRoster(survey.kindergartenId, groupIds);
+    const roster = await this.sheetRoster(survey, groupIds);
     const responses = await this.repo.teacherSheetResponses(
       surveyId,
       roster.map((row) => row.child.id),
@@ -1029,10 +1058,7 @@ export class SurveysService {
       throw new BadRequestException("Энэ судалгаа одоогоор бөглөх боломжгүй байна");
     }
 
-    const roster =
-      groupIds !== "all" && groupIds.length === 0
-        ? []
-        : await this.repo.teacherSheetRoster(survey.kindergartenId, groupIds);
+    const roster = await this.sheetRoster(survey, groupIds);
     const allowed = new Set(roster.map((row) => row.child.id));
     if (dto.drafts.some((row) => !allowed.has(row.childId))) throw new NotFoundException();
 
@@ -1134,10 +1160,7 @@ export class SurveysService {
       throw new BadRequestException("Энэ судалгаа одоогоор бөглөх боломжгүй байна");
     }
 
-    const roster =
-      groupIds !== "all" && groupIds.length === 0
-        ? []
-        : await this.repo.teacherSheetRoster(survey.kindergartenId, groupIds);
+    const roster = await this.sheetRoster(survey, groupIds);
     const allowed = new Set(roster.map((row) => row.child.id));
     if (dto.responses.some((row) => !allowed.has(row.childId))) throw new NotFoundException();
 
@@ -1172,6 +1195,122 @@ export class SurveysService {
     }
 
     return { saved: created.length };
+  }
+
+  // ── «Гарааны үнэлгээ» — the А/79 baseline started from its own page ──────
+
+  /**
+   * The group's baselines made from «Гарааны үнэлгээ», and its children with
+   * the level their age suggests — 2026-10-27, the user: «багшид хялбар байх
+   * үүднээс бэлэн гаргаж болно, гэхдээ багш хүсвэл сольж болно». The
+   * suggestion is only that: the teacher's choice is what is saved.
+   *
+   * ★ The group's administrator or its assigned teacher; anyone else 404
+   * (`assertCanReadGroup`, §1.7).
+   */
+  async a79BaselineSetup(actor: Actor, groupId: string): Promise<A79BaselineSetup> {
+    await this.groups.assertCanReadGroup(actor, groupId);
+
+    const [surveys, roster] = await Promise.all([
+      this.repo.a79BaselinesForGroup(groupId),
+      this.repo.a79BaselineRoster(groupId),
+    ]);
+    const surveyOf = new Map(
+      surveys.flatMap((survey) => survey.children.map((c) => [c.childId, survey.id] as const)),
+    );
+    const today = new Date(`${localDate()}T00:00:00.000Z`);
+
+    return {
+      surveys: surveys.map((survey) => ({
+        id: survey.id,
+        level: survey.a79Level!,
+        childIds: survey.children.map((c) => c.childId),
+      })),
+      roster: roster.map(({ child }) => ({
+        childId: child.id,
+        firstName: child.firstName,
+        lastName: child.lastName,
+        suggestedLevel: a79LevelForAge(
+          child.dateOfBirth ? ageInYears(child.dateOfBirth, today) : null,
+        ),
+        surveyId: surveyOf.get(child.id) ?? null,
+      })),
+    };
+  }
+
+  /**
+   * Starts the group's baseline, or adds children to it: per level, a survey
+   * of that level's criteria for the chosen children, published as it is made
+   * — or, when the level already has one, the children are added to it.
+   *
+   * ★ A child of the group now (else 404, §1.7), on none of the group's
+   * baselines yet: one child, one level, one assessment.
+   */
+  async createA79Baseline(actor: Actor, groupId: string, dto: A79BaselineCreate) {
+    const group = await this.groups.assertCanReadGroup(actor, groupId);
+
+    const roster = new Set(
+      (await this.repo.a79BaselineRoster(groupId)).map(({ child }) => child.id),
+    );
+    const requested = dto.levels.flatMap((entry) => entry.childIds);
+    if (requested.some((childId) => !roster.has(childId))) throw new NotFoundException();
+
+    const existing = await this.repo.a79BaselinesForGroup(groupId);
+    const onBaseline = new Set(existing.flatMap((s) => s.children.map((c) => c.childId)));
+    if (requested.some((childId) => onBaseline.has(childId))) {
+      throw new BadRequestException("Хүүхэд гарааны үнэлгээнд аль хэдийн орсон байна");
+    }
+    const byLevel = new Map(existing.map((survey) => [survey.a79Level, survey]));
+    if (dto.levels.some((entry) => byLevel.get(entry.level)?.status === "CLOSED")) {
+      throw new BadRequestException("Энэ түвшний гарааны үнэлгээ хаагдсан байна");
+    }
+
+    const yearName = (await this.repo.groupSchoolYear(groupId))?.schoolYear?.name ?? null;
+    const schoolYear = yearName && /^\d{4}-\d{4}$/.test(yearName) ? yearName : null;
+
+    for (const entry of dto.levels) {
+      const survey = byLevel.get(entry.level);
+      if (survey) {
+        await this.repo.addSurveyChildren(group.kindergartenId, survey.id, entry.childIds);
+        await this.audit.append({
+          action: "UPDATE",
+          kindergartenId: group.kindergartenId,
+          actorUserId: actor.userId,
+          objectType: "Survey",
+          objectId: survey.id,
+          metadata: { a79Level: entry.level, groupId, addedChildren: entry.childIds },
+        });
+        continue;
+      }
+      const questions = withIndicatorKeys(
+        a79Level(entry.level).criteria.map((criterion, order) => ({
+          order,
+          prompt: a79CriterionPrompt(criterion),
+          options: ["0", "1"],
+          indicatorKey: null,
+        })),
+      );
+      const created = await this.repo.createA79Baseline({
+        kindergartenId: group.kindergartenId,
+        groupId,
+        createdById: actor.userId,
+        level: entry.level,
+        title: `А/79 Гарааны үнэлгээ — ${entry.level} түвшин`,
+        schoolYear,
+        questions,
+        childIds: entry.childIds,
+      });
+      await this.audit.append({
+        action: "CREATE",
+        kindergartenId: group.kindergartenId,
+        actorUserId: actor.userId,
+        objectType: "Survey",
+        objectId: created.id,
+        metadata: { a79Level: entry.level, groupId, children: entry.childIds },
+      });
+    }
+
+    return this.a79BaselineSetup(actor, groupId);
   }
 
   // ── Results — staff only ────────────────────────────────────────────────

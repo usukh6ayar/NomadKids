@@ -1535,6 +1535,12 @@ export const surveySchema = z.object({
   groupId: uuidSchema.nullish(),
   /** The group's name, for the staff list. Absent when `groupId` is null. */
   group: namedRefSchema.nullish(),
+  /**
+   * ★ Set on an А/79 baseline made from «Гарааны үнэлгээ» (2026-10-27) — the
+   * level its children are assessed on. Such a survey is not listed under
+   * «Судалгаа». Null on every other survey.
+   */
+  a79Level: z.enum(["I", "II", "III", "IV"]).nullish(),
   questions: z.array(surveyQuestionSchema).default([]),
   /** Set only on the child-facing list — has this guardian already answered
    * for this child (or, for a KINDERGARTEN-scope survey, at all)? */
