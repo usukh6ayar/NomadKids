@@ -8,9 +8,11 @@ import { z } from "zod";
 import { a79GroupSummarySchema, surveySchema } from "@kinder/contracts";
 import {
   A79ChildrenTable,
+  A79ExcelButton,
   A79SummaryChart,
   KindergartenSummaryBody,
   a79ChildRows,
+  type A79ChildRow,
   type A79ReportGroup,
 } from "@/components/assessment/a79-group-summary";
 import { useBaselineSheets } from "@/components/assessment/a79-baseline-fill";
@@ -186,7 +188,7 @@ export function A79BaselinePanel({
 
     return (
       <>
-        {fill ? <BaselineFillSection groupId={groupId} /> : null}
+        {fill ? <BaselineFillSection groupId={groupId} rows={tableRows} /> : null}
         <p className="text-caption text-muted">
           {[
             `${rows.length}/${merged.children.length} хүүхэд үнэлэгдсэн`,
@@ -292,7 +294,7 @@ function BaselineStart({ groupId }: { groupId: string }) {
  * «Бүлгээр бөглөх» and «Хүүхэд нэмэх» above the report on the group's own
  * page — a child is filled in from their name on the table.
  */
-function BaselineFillSection({ groupId }: { groupId: string }) {
+function BaselineFillSection({ groupId, rows }: { groupId: string; rows: A79ChildRow[] }) {
   const setup = useBaselineSetup(groupId);
   const { sheets } = useBaselineSheets(groupId);
   const [adding, setAdding] = useState(false);
@@ -306,7 +308,18 @@ function BaselineFillSection({ groupId }: { groupId: string }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {left.length > 0 ? (
+          <Button type="button" variant="secondary" size="sm" onClick={() => setAdding(true)}>
+            <Plus aria-hidden />
+            Хүүхэд нэмэх ({left.length})
+          </Button>
+        ) : null}
+        <A79ExcelButton
+          rows={rows}
+          fileName={`garaany-unelgee-${new Date().toISOString().slice(0, 10)}`}
+          unassessedLabel="Бөглөөгүй"
+        />
         {anyRows ? (
           <Link
             href={`/groups/${groupId}/baseline/fill`}
@@ -314,12 +327,6 @@ function BaselineFillSection({ groupId }: { groupId: string }) {
           >
             Бүлгээр бөглөх
           </Link>
-        ) : null}
-        {left.length > 0 ? (
-          <Button type="button" variant="secondary" size="sm" onClick={() => setAdding(true)}>
-            <Plus aria-hidden />
-            Хүүхэд нэмэх ({left.length})
-          </Button>
         ) : null}
       </div>
       {adding && setup.data ? (

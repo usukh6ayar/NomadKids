@@ -227,6 +227,53 @@ describe("the group's page", () => {
     expect(bat.closest("tr")).toHaveTextContent("Бөглөөгүй");
     expect(screen.getByText(/1\/2 хүүхэд үнэлэгдсэн/)).toBeInTheDocument();
   });
+
+  it("downloads the table as Excel, the not-started child «Бөглөөгүй»", async () => {
+    const answered = questions.map((q) => ({ questionId: q.id, value: "1" }));
+    stubSheet(
+      [
+        row(ANU, "Ану", {
+          response: {
+            id: "88888888-8888-4888-8888-888888888888",
+            submittedAt: "2026-10-27T00:00:00Z",
+            respondent: {
+              id: "99999999-9999-4999-8999-999999999999",
+              lastName: "Б",
+              firstName: "Багш",
+            },
+            answers: answered,
+          },
+        }),
+        row(BAT, "Тэмүүлэн"),
+      ],
+      [{ path: `/groups/${GROUP}/a79-baseline`, body: { surveys: [], roster: [] } }],
+    );
+    let blob: Blob | null = null;
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: (b: Blob) => ((blob = b), "blob:x"),
+      revokeObjectURL: () => {},
+    });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const user = userEvent.setup();
+    renderWithProviders(<A79BaselinePanel groupId={GROUP} fill />);
+
+    await user.click(await screen.findByRole("button", { name: /Excel/ }));
+    expect(click).toHaveBeenCalled();
+    const lines = (
+      await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.readAsText(blob!);
+      })
+    )
+      .replace(/^\uFEFF/, "")
+      .split("\r\n");
+    expect(lines[0]).toBe('"№","Нэр","Түвшин","Мэдлэг","Чадвар","Төлөвшил","Нийт","Үр дүн"');
+    expect(lines[1]).toContain('"Б.Ану","I","100%","100%","100%","100%"');
+    expect(lines[2]).toBe('"2","Б.Тэмүүлэн","I","—","—","—","—","Бөглөөгүй"');
+    click.mockRestore();
+  });
 });
 
 describe("filling one child in", () => {

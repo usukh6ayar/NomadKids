@@ -1,8 +1,10 @@
 "use client";
 
 import { useQueries, useQuery } from "@tanstack/react-query";
+import { Download } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Ring } from "@/components/ui/chart/ring";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
@@ -430,6 +432,60 @@ export function KindergartenSummaryBody({
         </tbody>
       </TableShell>
     </>
+  );
+}
+
+/**
+ * «Excel» — the children's table as a CSV Excel opens (the BOM keeps the
+ * Cyrillic readable), its columns those of `A79ChildrenTable`. 2026-10-27,
+ * the user: on «Гарааны үнэлгээ» and on «Үр дүнгийн үнэлгээ».
+ */
+export function A79ExcelButton({
+  rows,
+  fileName,
+  unassessedLabel = "Тэмдэглэл холбоогүй",
+}: {
+  rows: A79ChildRow[];
+  /** Without the extension. */
+  fileName: string;
+  unassessedLabel?: string;
+}) {
+  const download = () => {
+    const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+    const header = ["№", "Нэр", "Түвшин", ...DOMAINS, "Нийт", "Үр дүн"];
+    const body = rows.map((row, index) => {
+      const none = row.feeDue || unassessed(row);
+      return [
+        index + 1,
+        shortName(row),
+        row.level,
+        ...DOMAINS.map((domain) => (none ? "—" : `${row.domain[domain] ?? 0}%`)),
+        none ? "—" : `${row.percent}%`,
+        row.feeDue
+          ? "Төлбөр төлөгдөөгүй"
+          : none
+            ? unassessedLabel
+            : A79_BAND_LABEL[a79Band(row.percent)],
+      ];
+    });
+    const csv = [header, ...body].map((line) => line.map(quote).join(",")).join("\r\n");
+    const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${fileName}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="secondary"
+      disabled={rows.length === 0}
+      onClick={download}
+    >
+      <Download size={16} aria-hidden /> Excel
+    </Button>
   );
 }
 
