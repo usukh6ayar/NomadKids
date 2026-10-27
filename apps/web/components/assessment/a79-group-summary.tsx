@@ -172,7 +172,7 @@ function SummaryBody({ groupId, data }: { groupId: string; data: A79GroupSummary
         <A79SummaryChart
           rows={withFigures}
           averageLabel="Бүлгийн дундаж"
-          description={`Бүлгийн дундаж, ${withFigures.length} хүүхэд. Хүүхдийн хувь бол өөрийн түвшний шалгуурын хэдийг хангалттай эзэмшсэн нь.`}
+          description={`Бүлгийн дундаж, ${withFigures.length} хүүхэд`}
         />
       ) : null}
       {rows.some(unassessed) ? (
@@ -376,7 +376,7 @@ export function KindergartenSummaryBody({
         rows={children}
         averageLabel="Цэцэрлэгийн дундаж"
         title="Цэцэрлэгийн нэгтгэл график"
-        description={`Цэцэрлэгийн дундаж, ${children.length} хүүхэд · ${groups.length} бүлэг. Бүлгийн хэмжээнээс үл хамааран хүүхэд бүр ижил жинтэй тооцогдоно.`}
+        description={`Цэцэрлэгийн дундаж, ${children.length} хүүхэд · ${groups.length} бүлэг`}
       />
 
       <TableShell caption="Бүлэг бүрийн үзүүлэлт" minWidth="min-w-[720px]">
