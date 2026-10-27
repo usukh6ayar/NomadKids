@@ -114,28 +114,26 @@ describe("new notification composer", () => {
     expect(screen.getByText(/Тодорхой хүүхэд сонгох/)).toBeInTheDocument();
   });
 
-  /**
-   * ★ 2026-10-25: a teacher who wrote a post and pressed Нийтлэх without
-   * opening the audience pill sent no targets — the whole kindergarten, which
-   * a teacher may not address — and met «Олдсонгүй.». Their group is ticked
-   * whether or not the picker was ever opened.
+  /*
+   * ★ 2026-10-25, the user: «төрөл сонгохоор олдсонгүй гээд нийтлэгдэхгүй».
+   * A teacher may not post to the whole kindergarten (404), and the picker
+   * that ticks their own group was mounted only while its panel was open —
+   * so a teacher who never opened it sent every post to everyone.
    */
-  it("posts a teacher's note to their own group without opening the picker", async () => {
+  it("sends a teacher's post to their own group without opening «Хэнд харагдах»", async () => {
     const user = userEvent.setup();
     const NOTICE = {
       id: "55555555-5555-4555-8555-555555555555",
       kindergartenId: KG,
       title: null,
-      body: "Маргааш бүх хүүхэд малгайтай ирээрэй.",
-      category: "OTHER",
-      status: "DRAFT",
+      body: "Маргааш зугаалгаар явна",
+      category: "INFORMATION",
       isImportant: false,
-      startsOn: null,
-      endsOn: null,
+      status: "DRAFT",
       publishedAt: null,
       createdAt: "2026-10-25T00:00:00.000Z",
-      updatedAt: "2026-10-25T00:00:00.000Z",
-      targets: [{ groupId: GROUP_ID, childId: null }],
+      targets: [],
+      media: [],
     };
     const api = stub("TEACHER", [
       {
@@ -152,7 +150,7 @@ describe("new notification composer", () => {
         path: "/children",
         body: { items: [CHILD], page: 1, pageSize: 100, total: 1, totalPages: 1 },
       },
-      { path: `/kindergartens/${KG}/notifications`, method: "POST", body: NOTICE },
+      { path: `/kindergartens/${KG}/notifications`, method: "POST", status: 201, body: NOTICE },
       {
         path: `/notifications/${NOTICE.id}/publish`,
         method: "POST",
@@ -161,19 +159,31 @@ describe("new notification composer", () => {
     ]);
     renderWithProviders(<NewNotificationPage />);
 
+    // Their group is chosen with the panel still folded.
     expect(
-      await screen.findByRole("button", { name: "Хэнд харагдах: 1 бүлэг · 0 хүүхэд" }),
+      await screen.findByRole("button", { name: /^Хэнд харагдах: 1 бүлэг/ }),
     ).toBeInTheDocument();
-    await user.type(screen.getByPlaceholderText("Юу мэдэгдэх вэ?"), NOTICE.body);
+    await user.type(screen.getByPlaceholderText("Юу мэдэгдэх вэ?"), "Маргааш зугаалгаар явна");
     await user.click(screen.getByRole("button", { name: "Нийтлэх" }));
 
-    await vi.waitFor(() =>
-      expect(api.calls.some((call) => call.url.endsWith("/publish"))).toBe(true),
-    );
-    const created = api.calls.find(
-      (call) => call.method === "POST" && call.url === `/kindergartens/${KG}/notifications`,
-    );
-    expect((created?.body as { targets: unknown }).targets).toEqual([{ groupId: GROUP_ID }]);
+    const created = await vi.waitFor(() => {
+      const call = api.calls.find(
+        (c) => c.url === `/kindergartens/${KG}/notifications` && c.method === "POST",
+      );
+      expect(call).toBeTruthy();
+      return call!;
+    });
+    expect(created.body).toMatchObject({ targets: [{ groupId: GROUP_ID }] });
+  });
+
+  // ★ 2026-10-25: a teacher in no group got «Олдсонгүй» (404) and nothing more.
+  it("tells a teacher in no group why they cannot post, and holds «Нийтлэх»", async () => {
+    const api = stub("TEACHER");
+    renderWithProviders(<NewNotificationPage />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("бүлэгт хуваарилагдаагүй");
+    expect(screen.getByRole("button", { name: "Нийтлэх" })).toBeDisabled();
+    expect(api.calls.some((c) => c.method === "POST")).toBe(false);
   });
 
   it("posts as the kindergarten for the administration, with Чухал", async () => {
