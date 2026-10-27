@@ -21,6 +21,9 @@ jobs:
   checks:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # `prisma generate` reads the config, which names this; nothing connects.
+      DATABASE_URL: postgresql://kinder:kinder@localhost:5432/kinder
     steps:
       - uses: actions/checkout@v4
 
@@ -59,6 +62,7 @@ jobs:
     timeout-minutes: 15
     env:
       NODE_ENV: test
+      DATABASE_URL: postgresql://kinder:kinder@localhost:5432/kinder
     steps:
       - uses: actions/checkout@v4
 
