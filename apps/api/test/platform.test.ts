@@ -450,6 +450,70 @@ describe("GET /platform/stats", () => {
   });
 
   /*
+   * ★ «Хэрэглэгчид» — the user, 2026-10-27: how many parents and teachers are
+   * on the platform, as people. An invited family who has not accepted is
+   * counted apart from one who has.
+   */
+  it("counts people: joined parents apart from cards not yet used", async () => {
+    const before = await request(app.getHttpServer())
+      .get("/v1/platform/stats")
+      .set("Cookie", superadmin.cookies);
+    const base = before.body.people;
+    expect(base).toMatchObject({
+      kindergartens: { contracted: 2, solo: 0 },
+      teachers: 2,
+      soloTeachers: 0,
+      directors: 2,
+    });
+
+    // A card handed out and not yet used.
+    const pending = await createUser({ username: `guardian-${uniq("p")}` });
+    await createMembership(pending.id, a.kindergarten.id, "PARENT");
+    await db.guardianship.create({
+      data: {
+        kindergartenId: a.kindergarten.id,
+        childId: a.child.id,
+        guardianUserId: pending.id,
+        relation: "OTHER",
+        isPrimary: false,
+      },
+    });
+    await db.authToken.create({
+      data: {
+        userId: pending.id,
+        purpose: "INVITATION",
+        tokenHash: uniq("hash"),
+        expiresAt: new Date(Date.now() + 86_400_000),
+      },
+    });
+
+    const after = await request(app.getHttpServer())
+      .get("/v1/platform/stats")
+      .set("Cookie", superadmin.cookies);
+    expect(after.body.people.parentsInvited).toBe(base.parentsInvited + 1);
+    expect(after.body.people.parentsJoined).toBe(base.parentsJoined);
+    // The old figure counted the card as a guardian; the split does not.
+    expect(after.body.guardians).toBe(before.body.guardians + 1);
+
+    // Accepted: now a joined parent, and one who joined this week.
+    await db.authToken.updateMany({ where: { userId: pending.id }, data: { usedAt: new Date() } });
+    const joined = await request(app.getHttpServer())
+      .get("/v1/platform/stats")
+      .set("Cookie", superadmin.cookies);
+    expect(joined.body.people.parentsJoined).toBe(base.parentsJoined + 1);
+    expect(joined.body.people.parentsInvited).toBe(base.parentsInvited);
+    expect(joined.body.people.joinedLast7Days).toBe(base.joinedLast7Days + 1);
+  });
+
+  it("is the operator's alone — a director gets 404", async () => {
+    const director = await login(app, a.adminUser.username);
+    const res = await request(app.getHttpServer())
+      .get("/v1/platform/stats")
+      .set("Cookie", director.cookies);
+    expect(res.status).toBe(404);
+  });
+
+  /*
    * ЭСИС-тэй тулгалт, platform-wide — 2026-09-24, at the client's request.
    *
    * ★ **Sums across tenants, and no call to the ministry.** `EsisStaffRoster`

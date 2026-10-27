@@ -1356,7 +1356,47 @@ describe("POST /children/:id/guardian-invitations", () => {
     firstName: "Сарнай",
     phone: "99001122",
     relation: "MOTHER",
+    // `a.child`'s, from `createChild` — the family's check (2026-10-27).
+    childBirthDate: "2021-04-12",
     ...extra,
+  });
+
+  /*
+   * ★ 2026-10-27: a parent scanned another child's card and became that
+   * child's guardian. The form now names the child and asks the birth date.
+   */
+  it("names the child on the invitation and refuses a wrong birth date without spending it", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/guardian-invitations`),
+      teacherA,
+    ).send(invitation());
+    const token = res.body.invitationToken as string;
+
+    const described = await request(server()).get(`/v1/auth/invitation/${token}`);
+    expect(described.body).toMatchObject({ valid: true, kind: "guardian" });
+    expect(described.body.children).toEqual([
+      `${a.child.lastName.charAt(0)}. ${a.child.firstName}`,
+    ]);
+
+    const wrong = await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send(acceptance(token, { childBirthDate: "2020-01-01" }));
+    expect(wrong.status).toBe(400);
+    expect(wrong.body.detail ?? wrong.body.message ?? JSON.stringify(wrong.body)).toMatch(
+      /төрсөн огноо таарахгүй/,
+    );
+    const missing = await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send(acceptance(token, { childBirthDate: undefined }));
+    expect(missing.status).toBe(400);
+    // Nothing written: still the placeholder, the link still good.
+    const user = await db.user.findUniqueOrThrow({ where: { id: res.body.user.id } });
+    expect(user.phone).toBeNull();
+
+    const right = await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send(acceptance(token));
+    expect(right.status).toBe(204);
   });
 
   it("a teacher can invite a guardian for a child in their group", async () => {

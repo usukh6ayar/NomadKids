@@ -531,6 +531,95 @@ export class PlatformRepository {
   }
 
   /**
+   * Who is on the platform — the operator's «Хэрэглэгчид» (the user,
+   * 2026-10-27: «хэдэн эцэг эх, хэдэн багш бүртгэгдсэн»). People, not
+   * memberships: one teacher in two kindergartens is one teacher.
+   *
+   * ★ A family's invitation creates its account at once, so «эцэг эх» is
+   * split: `parentsJoined` accepted their invitation (it was used, or they
+   * have signed in), `parentsInvited` hold a card nobody has used yet. The
+   * old `guardians` figure counted both.
+   *
+   * Counts only, never a name (§1.7). A handful of queries, platform-wide.
+   */
+  async platformPeople(since: Date) {
+    const live = { deletedAt: null, isActive: true } as const;
+    const user = { deletedAt: null, isSuperAdmin: false } as const;
+    const joined = {
+      OR: [
+        { lastLoginAt: { not: null } },
+        { authTokens: { some: { purpose: "INVITATION" as const, usedAt: { not: null } } } },
+      ],
+    };
+    const guardianOf = { guardianships: { some: { deletedAt: null, child: { deletedAt: null } } } };
+    const staffIn = (role: "TEACHER" | "ADMIN", kind?: "CONTRACTED" | "SOLO_TEACHER") =>
+      this.prisma.user.count({
+        where: {
+          ...user,
+          memberships: {
+            some: { ...live, role, ...(kind ? { kindergarten: { kind, deletedAt: null } } : {}) },
+          },
+        },
+      });
+
+    const [
+      teachers,
+      soloTeachers,
+      directors,
+      otherStaff,
+      parentsJoined,
+      parentsInvited,
+      childrenWithParent,
+      activeLast7Days,
+      joinedLast7Days,
+      contracted,
+      solo,
+    ] = await Promise.all([
+      staffIn("TEACHER", "CONTRACTED"),
+      staffIn("TEACHER", "SOLO_TEACHER"),
+      staffIn("ADMIN"),
+      this.prisma.user.count({
+        where: {
+          ...user,
+          memberships: { some: { ...live, role: { notIn: ["TEACHER", "ADMIN", "PARENT"] } } },
+        },
+      }),
+      this.prisma.user.count({ where: { ...user, ...guardianOf, ...joined } }),
+      this.prisma.user.count({
+        where: { ...user, ...guardianOf, lastLoginAt: null, NOT: joined },
+      }),
+      this.prisma.child.count({
+        where: {
+          deletedAt: null,
+          status: "ACTIVE",
+          guardianships: {
+            some: { deletedAt: null, canView: true, guardian: { ...user, ...joined } },
+          },
+        },
+      }),
+      this.prisma.user.count({ where: { ...user, lastLoginAt: { gte: since } } }),
+      this.prisma.authToken.count({
+        where: { purpose: "INVITATION", usedAt: { gte: since }, user: { ...user } },
+      }),
+      this.prisma.kindergarten.count({ where: { deletedAt: null, kind: "CONTRACTED" } }),
+      this.prisma.kindergarten.count({ where: { deletedAt: null, kind: "SOLO_TEACHER" } }),
+    ]);
+
+    return {
+      kindergartens: { contracted, solo },
+      teachers,
+      soloTeachers,
+      directors,
+      otherStaff,
+      parentsJoined,
+      parentsInvited,
+      childrenWithParent,
+      activeLast7Days,
+      joinedLast7Days,
+    };
+  }
+
+  /**
    * The same ESIS comparison the director's dashboard makes, platform-wide.
    *
    * ★ **Sums, not an ESIS call per kindergarten.** `EsisStaffRoster` holds the
