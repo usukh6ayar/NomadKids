@@ -41,6 +41,30 @@ function expectedRespondents(
   return survey.groupId ? (counts.childrenByGroup.get(survey.groupId) ?? 0) : counts.childrenTotal;
 }
 
+/**
+ * Every question answered — a TEXT more than blanks, a CHECKBOX a choice, a
+ * MATRIX every row (#253). What a submit must be, and what `results` counts
+ * as «Бөглөсөн»: a response saved before that rule, or before a question was
+ * added, is on record but not complete.
+ */
+function isComplete(
+  questions: QuestionForValidation[],
+  answers: { questionId: string; value: unknown }[],
+): boolean {
+  const given = new Map(answers.map((answer) => [answer.questionId, answer.value]));
+  return questions.every((question) => {
+    const value = given.get(question.id);
+    if (value === undefined) return false;
+    if (question.type === "TEXT") return typeof value === "string" && value.trim().length > 0;
+    if (question.type === "CHECKBOX") return Array.isArray(value) && value.length > 0;
+    if (question.type === "MATRIX") {
+      const cells = (value ?? {}) as Record<string, unknown>;
+      return (matrixOptions(question)?.rows ?? []).every((row) => cells[row.key] !== undefined);
+    }
+    return true;
+  });
+}
+
 @Injectable()
 export class SurveysService {
   constructor(
@@ -788,19 +812,7 @@ export class SurveysService {
     questions: QuestionForValidation[],
     answers: { questionId: string; value: unknown }[],
   ) {
-    const given = new Map(answers.map((answer) => [answer.questionId, answer.value]));
-    const answered = (question: QuestionForValidation) => {
-      const value = given.get(question.id);
-      if (value === undefined) return false;
-      if (question.type === "TEXT") return typeof value === "string" && value.trim().length > 0;
-      if (question.type === "CHECKBOX") return Array.isArray(value) && value.length > 0;
-      if (question.type === "MATRIX") {
-        const cells = (value ?? {}) as Record<string, unknown>;
-        return (matrixOptions(question)?.rows ?? []).every((row) => cells[row.key] !== undefined);
-      }
-      return true;
-    };
-    if (!questions.every(answered)) {
+    if (!isComplete(questions, answers)) {
       throw new BadRequestException("Бүх асуултад хариулна уу");
     }
   }
@@ -1053,6 +1065,59 @@ export class SurveysService {
     });
 
     return { saved: created.length };
+  }
+
+  /**
+   * Clears one child's row whole — the saved answers and any draft (backend
+   * list №9, 2026-10-25). A teacher who assessed the wrong child, or a child
+   * who left, had no way to take a row back: a correction must answer every
+   * question, and an empty draft clears only the draft.
+   *
+   * ★ The same gate as the sheet's saves: open survey, this actor's sheet, a
+   * child outside it 404 (§1.7). Soft deletes (§3.2); each ended response is
+   * audited as a DELETE naming it. Clearing an empty row is not an error.
+   */
+  async clearTeacherSheetRow(actor: Actor, surveyId: string, childId: string) {
+    const survey = await this.repo.findWithQuestions(surveyId);
+    if (!survey) throw new NotFoundException();
+    const groupIds = await this.teacherSheetScope(actor, survey);
+
+    const roster =
+      groupIds !== "all" && groupIds.length === 0
+        ? []
+        : await this.repo.teacherSheetRoster(survey.kindergartenId, groupIds);
+    if (!roster.some((row) => row.child.id === childId)) throw new NotFoundException();
+
+    if (survey.status !== "PUBLISHED") {
+      throw new BadRequestException("Энэ судалгаа одоогоор бөглөх боломжгүй байна");
+    }
+
+    const cleared = await this.repo.clearTeacherSheetRow(surveyId, childId);
+
+    for (const responseId of cleared.responseIds) {
+      await this.audit.append({
+        action: "DELETE",
+        kindergartenId: survey.kindergartenId,
+        actorUserId: actor.userId,
+        objectType: "SurveyResponse",
+        objectId: responseId,
+        childId,
+        metadata: { surveyId },
+      });
+    }
+    if (cleared.drafts > 0) {
+      await this.audit.append({
+        action: "DELETE",
+        kindergartenId: survey.kindergartenId,
+        actorUserId: actor.userId,
+        objectType: "SurveyAnswerDraft",
+        objectId: surveyId,
+        childId,
+        metadata: { surveyId },
+      });
+    }
+
+    return { cleared: cleared.responseIds.length + cleared.drafts };
   }
 
   /**
@@ -1362,17 +1427,45 @@ export class SurveysService {
 
     const totalResponses = responseCount(selected);
 
+    /*
+      ★ «Бөглөсөн» counts who is done, not rows on record — backend list №9,
+      2026-10-25. A response missing an answer (saved before #253, or before a
+      question was added) is not done; two guardians answering about one child
+      are one child done, not two. Without this the header read 110%.
+    */
+    const byResponse = new Map<
+      string,
+      { subject: string; answers: { questionId: string; value: unknown }[] }
+    >();
+    for (const row of selected) {
+      const subject =
+        survey.scope === "KINDERGARTEN"
+          ? row.respondentId
+          : (row.childId ?? `respondent:${row.respondentId}`);
+      const entry = byResponse.get(row.responseId) ?? { subject, answers: [] };
+      entry.answers.push({ questionId: row.questionId, value: row.value });
+      byResponse.set(row.responseId, entry);
+    }
+    const done = new Set<string>();
+    for (const { subject, answers: given } of byResponse.values()) {
+      if (isComplete(withQuestions.questions, given)) done.add(subject);
+    }
+    // Still capped: a child who answered and has since left is done but no
+    // longer expected, and a percentage past 100 says nothing true.
+    const completedResponses = Math.min(done.size, expectedResponses);
+
     return {
       survey: withQuestions,
       totalResponses,
       expectedResponses,
+      completedResponses,
       /*
         Never negative. A child who enrolled after answering, or a guardian
         whose membership was revoked, can leave more responses on record than
         the population currently expects — and "-2 бөглөөгүй" is worse than a
         zero that reads as "everyone we are waiting on has answered".
       */
-      missingResponses: Math.max(0, expectedResponses - totalResponses),
+      missingResponses: Math.max(0, expectedResponses - completedResponses),
       groupId: groupId ?? null,
       questions: tally(selected),
       byGroup,

@@ -1754,6 +1754,13 @@ export const surveyResultsSchema = z.object({
    * headline of zero rather than crashing on a missing key.
    */
   expectedResponses: z.number().default(0),
+  /**
+   * Who is done — distinct children (or guardians, for a KINDERGARTEN survey)
+   * with a response that answers every question, capped at
+   * `expectedResponses`. The «Бөглөсөн» figure; `totalResponses` is rows on
+   * record. `missingResponses` is `expectedResponses` minus this.
+   */
+  completedResponses: z.number().optional(),
   missingResponses: z.number().default(0),
   /** Which group the headline is narrowed to. Null when it covers everyone. */
   groupId: uuidSchema.nullish(),
