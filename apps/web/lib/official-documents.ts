@@ -3,10 +3,11 @@
  * staff can open, 2026-10-20, the user: "ачаалал үүсгэхгүй ... дарахаар шууд
  * линк орж pdf нээгдээд татаж болдог".
  *
- * ★ A list in the code, links out. Nothing is stored, uploaded or proxied:
- * a card is an `<a target="_blank">` to the official source, so a download is
- * the source site's traffic, never the VPS's. Adding a document is an edit
- * here and a web deploy.
+ * ★ Links out. Nothing is stored, uploaded or proxied: a card is an
+ * `<a target="_blank">` to the official source, so a download is the source
+ * site's traffic, never the VPS's. The register lives in the database since
+ * #274 and the operator edits it (`lib/official-documents-api.ts`); this list
+ * is the fallback while that read loads or fails, and the seed it came from.
  *
  * ★★ The register's own warning (sob-documents.json, as of 2026-10-19):
  * every entry is `requires_final_verification`, so nothing here may say
