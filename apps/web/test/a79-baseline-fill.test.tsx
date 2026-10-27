@@ -341,7 +341,13 @@ describe("filling one child in", () => {
     ]);
     const user = userEvent.setup();
     renderWithProviders(<A79BaselineChildFill groupId={GROUP} childId={ANU} />);
-    expect(await screen.findAllByLabelText("бөглөсөн")).toHaveLength(3);
+    // Opened whole: every criterion marked, the blanks «0».
+    await screen.findByRole("table", { name: "Мэдлэг" });
+    expect(
+      (within(table("Мэдлэг")).getAllByRole("radio") as HTMLInputElement[]).filter(
+        (r) => r.checked,
+      ),
+    ).toHaveLength(8 + 3);
 
     await user.click(cell("Мэдлэг", 2, "1"));
     await user.click(screen.getByRole("button", { name: "Хадгалах" }));

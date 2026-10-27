@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -200,27 +200,6 @@ function useChatLift() {
 const FLOATING_BAR =
   "fixed bottom-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom)+0.5rem)] right-4 z-30 flex items-center gap-1.5 rounded-pill border border-border bg-surface p-1.5 shadow-lg lg:bottom-6 lg:right-6";
 
-/** «Мэдлэг ✓», «Чадвар 12/28», «Төлөвшил —» — how far a child's row is. */
-function DomainMarks({
-  criteria,
-  answers,
-}: {
-  criteria: BaselineCriterion[];
-  answers: FillAnswers;
-}) {
-  return (
-    <span className="flex flex-wrap gap-1">
-      {domainProgress(criteria, answers).map((d) => (
-        <Badge key={d.domain} tone={d.done ? "mint" : d.answered > 0 ? "sun" : "neutral"}>
-          {d.domain} {d.done ? <Check aria-label="бөглөсөн" className="inline size-3.5" /> : null}
-          {!d.done && d.answered > 0 ? `${d.answered}/${d.total}` : null}
-          {d.answered === 0 ? "—" : null}
-        </Badge>
-      ))}
-    </span>
-  );
-}
-
 /**
  * The children on the group's baselines whom the report's table does not
  * name yet — never started — each a way into filling them in (2026-10-27,
@@ -388,7 +367,7 @@ function childResult(sheet: BaselineSheetData, row: TeacherSheetRow, answers: Fi
 /**
  * One child, a domain at a time — № · Шалгуур · 0 · 1, the teacher sheet's
  * cells (2026-10-27, the user: «тоо шалгуур ард нь 0 1 гэсэн чеклэх хэсэг»),
- * and under it the child's total drawn as the group's chart is.
+ * under the child's total drawn as the group's chart is.
  *
  * ★ «Хадгалах» saves what is marked — the rest is continued later.
  * «Дуусгах» saves the row whole: a criterion left blank is asked about
@@ -476,7 +455,6 @@ function ChildForm({
           <span className="text-muted">{sheet.label}</span>
           {finished ? <Badge tone="mint">Дууссан</Badge> : null}
         </p>
-        <DomainMarks criteria={sheet.criteria} answers={answers} />
       </div>
       {!sheet.editable ? (
         <p role="status" className="rounded-control bg-sun px-3 py-2 text-caption text-sun-ink">
@@ -485,10 +463,14 @@ function ChildForm({
       ) : null}
       <FormError message={save.isError ? errorMessage(save.error) : null} />
 
+      <A79SummaryChart
+        title="Нийт дүн"
+        rows={result}
+        averageLabel={`${name}-ын гарааны дүн`}
+        description={`${name}, ${sheet.level} түвшин — өөрийн түвшний ${result[0]!.total} шалгуурын ${result[0]!.achieved}-г биелүүлсэн. Бөглөөгүй шалгуур биелээгүйд тооцогдоно.`}
+      />
+
       <DomainTabs criteria={sheet.criteria} active={domain} onSelect={setDomain} />
-      <p className="text-caption text-muted">
-        Шалгуур бүрт биелсэн бол «1», биелээгүй бол «0» гэж тэмдэглэнэ үү.
-      </p>
       <div className="table-scroll rounded-control border border-border">
         <table className="w-full border-collapse text-body">
           <caption className="sr-only">{domain}</caption>
@@ -553,13 +535,6 @@ function ChildForm({
           </tbody>
         </table>
       </div>
-
-      <A79SummaryChart
-        title="Нийт дүн"
-        rows={result}
-        averageLabel={`${name}-ын гарааны дүн`}
-        description={`${name}, ${sheet.level} түвшин — өөрийн түвшний ${result[0]!.total} шалгуурын ${result[0]!.achieved}-г биелүүлсэн. Бөглөөгүй шалгуур биелээгүйд тооцогдоно.`}
-      />
 
       {finished && nextHref && !dirty ? (
         <Link
