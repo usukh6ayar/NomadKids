@@ -285,7 +285,13 @@ export class AuthRepository {
         esisPersonId: true,
         firstName: true,
         phone: true,
-        _count: { select: { memberships: true } },
+        /*
+          ★ Staff memberships only (2026-10-27). A family's placeholder holds a
+          PARENT membership from the moment it is invited, so counting every
+          membership called each guardian invitation "staff" — the form asked
+          a parent for a surname and skipped the child check.
+        */
+        _count: { select: { memberships: { where: { role: { not: "PARENT" } } } } },
       },
     });
     return {
@@ -296,6 +302,20 @@ export class AuthRepository {
       hasPhone: Boolean(user?.phone),
       phone: user?.phone ?? null,
     };
+  }
+
+  /**
+   * The children a guardian invitation is for — each live guardianship of the
+   * invited account. For the acceptance's child check (2026-10-27): the name
+   * the card already prints, and the birth date only the family knows.
+   */
+  async findInvitationChildren(userId: string) {
+    const rows = await this.prisma.guardianship.findMany({
+      where: { guardianUserId: userId, deletedAt: null, child: { deletedAt: null } },
+      orderBy: { createdAt: "asc" },
+      select: { child: { select: { lastName: true, firstName: true, dateOfBirth: true } } },
+    });
+    return rows.map((row) => row.child);
   }
 
   async consumeAuthToken(id: string): Promise<void> {

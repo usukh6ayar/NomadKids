@@ -235,11 +235,13 @@ export class PlatformService {
      * separately would let an operator watch the two disagree while one was
      * still in flight.
      */
-    const [totals, esis] = await Promise.all([
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const [totals, esis, people] = await Promise.all([
       this.repo.platformTotals(),
       this.repo.platformEsisTotals(),
+      this.repo.platformPeople(since),
     ]);
-    return { ...totals, esis };
+    return { ...totals, esis, people };
   }
 
   async list(actor: Actor, query: ListPlatformKindergartensQuery) {
