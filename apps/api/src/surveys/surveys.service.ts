@@ -1108,10 +1108,7 @@ export class SurveysService {
     if (!survey) throw new NotFoundException();
     const groupIds = await this.teacherSheetScope(actor, survey);
 
-    const roster =
-      groupIds !== "all" && groupIds.length === 0
-        ? []
-        : await this.repo.teacherSheetRoster(survey.kindergartenId, groupIds);
+    const roster = await this.sheetRoster(survey, groupIds);
     if (!roster.some((row) => row.child.id === childId)) throw new NotFoundException();
 
     if (survey.status !== "PUBLISHED") {

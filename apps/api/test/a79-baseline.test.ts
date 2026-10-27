@@ -272,6 +272,11 @@ describe("filling in a level's sheet", () => {
       teacherA,
     ).send({ childId: younger.id, answers });
     expect(single.status).toBe(404);
+    const cleared = await authed(
+      request(server()).delete(`/v1/surveys/${surveyId}/teacher-sheet/${younger.id}`),
+      teacherA,
+    );
+    expect(cleared.status).toBe(404);
   });
 });
 
