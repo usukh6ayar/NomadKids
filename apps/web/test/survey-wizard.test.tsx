@@ -432,13 +432,11 @@ function findCall(api: ReturnType<typeof stubApi>, method: string, url: string) 
 
 describe("the А/79 assessment, ready for a teacher", () => {
   /*
-    ★ The picker only — selecting a level renders 37–49 question editors, which
-    takes ~8 s in jsdom and a minute in a full run, starving the files beside
-    it (2026-09-22: `finance-dashboard` timed out behind it). What a level
-    turns into is asserted on `a79Questions` below, which is pure.
+    ★ 2026-10-27, the user: «Гарааны үнэлгээ» is started from its own page,
+    each child on their own level — the survey wizard no longer offers А/79,
+    and a teacher survey has no template to pick.
   */
-  it("offers the four levels on a teacher survey, and not the families' templates", async () => {
-    const user = userEvent.setup();
+  it("offers no template on a teacher survey — А/79 starts on «Гарааны үнэлгээ»", async () => {
     stubWizard(["TEACHER"]);
     renderWithProviders(
       <CreateSurveyWizard
@@ -449,14 +447,8 @@ describe("the А/79 assessment, ready for a teacher", () => {
       />,
     );
 
-    await user.click(await screen.findByLabelText("Бэлэн загвараас эхлэх"));
-    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
-      "Загвар сонгох…",
-      "А/79 хөгжлийн үнэлгээ — I түвшин (37 шалгуур)",
-      "А/79 хөгжлийн үнэлгээ — II түвшин (41 шалгуур)",
-      "А/79 хөгжлийн үнэлгээ — III түвшин (46 шалгуур)",
-      "А/79 хөгжлийн үнэлгээ — IV түвшин (49 шалгуур)",
-    ]);
+    expect(await screen.findByLabelText("Үнэлгээний төрөл")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Бэлэн загвараас эхлэх")).not.toBeInTheDocument();
   });
 
   it("carries all 173 criteria, each a 0/1 question led by its domain", () => {

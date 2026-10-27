@@ -79,6 +79,25 @@ export interface BaselineSummary {
 const promptOf = (domain: A79Domain, text: string) => `${domain}: ${text}`;
 const normalise = (value: string) => value.replace(/\s+/g, " ").trim();
 
+/**
+ * An А/79 baseline: a published or closed teacher survey of the Гарааны wave
+ * whose questions are one level's criteria — the wizard's before 2026-10-27,
+ * and every one «Гарааны үнэлгээ» makes since.
+ */
+export function isA79BaselineSurvey(survey: {
+  respondent?: string | null;
+  period?: string | null;
+  status: string;
+  questions: BaselineQuestion[];
+}): boolean {
+  return (
+    survey.respondent === "TEACHER" &&
+    survey.period === "BASELINE" &&
+    survey.status !== "DRAFT" &&
+    baselineLevel(survey.questions) !== null
+  );
+}
+
 /** The level whose criteria the survey's prompts match most. */
 export function baselineLevel(questions: BaselineQuestion[]): A79Level | null {
   const prompts = new Set(questions.map((q) => normalise(q.prompt)));
@@ -137,6 +156,43 @@ function matchCriteria(
     const domain = found.get(q.id);
     return domain ? [{ id: q.id, domain }] : [];
   });
+}
+
+/** One criterion of a baseline survey, as the fill screens draw it. */
+export interface BaselineCriterion {
+  questionId: string;
+  domain: A79Domain;
+  /** The criterion without its «Мэдлэг: » lead — the tab already says it. */
+  text: string;
+}
+
+/**
+ * A baseline survey's criteria by domain, matched as the report matches them
+ * (`matchCriteria`), for the fill screens — 2026-10-27, the user: «мэдлэг
+ * гээд тэндээс сонгож, чадвар гээд тусдаа». `others` are its questions that
+ * are no criterion of the level; they are not shown, and finishing a row
+ * answers them «0» when they allow it. Null when the survey is no А/79 one.
+ */
+export function baselineForm(
+  questions: BaselineQuestion[],
+): { level: A79Level; criteria: BaselineCriterion[]; others: BaselineQuestion[] } | null {
+  const level = baselineLevel(questions);
+  if (!level) return null;
+  const domainOf = new Map(matchCriteria(level, questions).map((q) => [q.id, q.domain]));
+  const criteria = questions.flatMap((q) => {
+    const domain = domainOf.get(q.id);
+    if (!domain) return [];
+    const prompt = normalise(q.prompt);
+    const lead = `${domain}:`;
+    return [
+      {
+        questionId: q.id,
+        domain,
+        text: prompt.startsWith(lead) ? prompt.slice(lead.length).trim() : prompt,
+      },
+    ];
+  });
+  return { level, criteria, others: questions.filter((q) => !domainOf.has(q.id)) };
 }
 
 /** Letters to change, add or remove to turn one text into the other. */
