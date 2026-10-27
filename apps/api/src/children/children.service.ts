@@ -507,11 +507,40 @@ export class ChildrenService {
      * *subset* of a non-empty roster is an honest zero.
      */
     const roster = await this.repo.countGroupChildren(visible, groupId);
-    if (roster === 0) throw new NotFoundException();
+    if (roster === 0) {
+      /*
+        ★ A group of one's own with nobody in it yet is an honest empty —
+        2026-10-26: 36 groups on production had a teacher and no child, and
+        «Бүлгээр урих» answered them «Олдсонгүй.». A group the actor may not
+        open is still 404: the two are told apart only for one's own groups.
+      */
+      if (await this.mayOpenGroup(actor, groupId)) {
+        return { items: [], skipped: 0, pending: 0, empty: true };
+      }
+      throw new NotFoundException();
+    }
 
     const children = await this.repo.listGroupChildrenWithoutGuardian(visible, groupId);
+    /*
+      ★ A card handed out and never used is invited again — 2026-10-26, from
+      production: a group of 23 answered «0 урилга» because each child already
+      had the guardian row an expired invitation left behind, so the press
+      skipped them as «холбогдсон» for good.
 
-    if (children.length > MAX_BULK_INVITATIONS) {
+      Only once the card has **expired**: one still valid is in a parent's
+      hand, and pressing again must not spend it. It is counted as `pending`.
+      The new card goes onto the same placeholder (the old link is spent with
+      it), never a second account, and never onto an account anybody claimed.
+    */
+    const unclaimed = await this.repo.listGroupChildrenWithUnclaimedInvitations(
+      visible,
+      groupId,
+      new Date(),
+    );
+    const expired = unclaimed.filter((child) => !child.cardStillValid);
+    const pending = unclaimed.length - expired.length;
+
+    if (children.length + expired.length > MAX_BULK_INVITATIONS) {
       throw new BadRequestException(
         `Нэг удаад ${MAX_BULK_INVITATIONS} хүртэл урилга үүсгэнэ. Бүлгээ шалгана уу.`,
       );
@@ -534,10 +563,39 @@ export class ChildrenService {
       });
     }
 
-    // `skipped` is the children this press deliberately passed over — already
-    // invited, or already connected. The screen says so rather than leaving the
+    for (const child of expired) {
+      // The same gate as a first invitation, child by child (§1.1).
+      await this.childAccess.assertCanInviteGuardian(actor, child.id);
+      const invitationToken = await this.users.issueAccountLink(
+        actor.userId,
+        child.placeholderUserId,
+        "INVITATION",
+      );
+      items.push({
+        childId: child.id,
+        lastName: child.lastName,
+        firstName: child.firstName,
+        invitationToken,
+      });
+    }
+    items.sort((x, y) =>
+      `${x.lastName} ${x.firstName}`.localeCompare(`${y.lastName} ${y.firstName}`, "mn"),
+    );
+
+    // `skipped` is the children with a parent who has joined; `pending`, those
+    // whose card is still valid. The screen says both rather than leaving the
     // teacher to count.
-    return { items, skipped: roster - items.length };
+    return { items, skipped: roster - items.length - pending, pending, empty: false };
+  }
+
+  /** The actor's own group: they administer its kindergarten, or teach it now. */
+  private async mayOpenGroup(actor: Actor, groupId: string): Promise<boolean> {
+    const teaching = await this.authz.loadActiveTeachingGroupIds(actor);
+    if (teaching.includes(groupId)) return true;
+    for (const kindergartenId of this.tenants.adminKindergartenIds(actor)) {
+      if (await this.repo.findGroupInKindergarten(groupId, kindergartenId)) return true;
+    }
+    return false;
   }
 
   /**

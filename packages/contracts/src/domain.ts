@@ -302,6 +302,15 @@ export const sessionSchema = z.object({
    * this, a teacher included; `GET /kindergartens/:id` is an administrator's.
    */
   esisKindergartenIds: z.array(z.string()).default([]),
+  /**
+   * ★ Where this person is staff but the kindergarten's paid service has
+   * lapsed — more than seven days past its end (the user, 2026-10-27). Not in
+   * `memberships`: the API answers there as if they were not staff. A
+   * director is sent to «Үйлчилгээний эрх», the one screen still open.
+   */
+  lapsed: z
+    .array(z.object({ kindergartenId: z.string(), role: roleSchema, name: z.string() }))
+    .default([]),
   csrfToken: z.string().nullish(),
 });
 export type Session = z.infer<typeof sessionSchema>;
@@ -1754,6 +1763,13 @@ export const surveyResultsSchema = z.object({
    * headline of zero rather than crashing on a missing key.
    */
   expectedResponses: z.number().default(0),
+  /**
+   * Who is done — distinct children (or guardians, for a KINDERGARTEN survey)
+   * with a response that answers every question, capped at
+   * `expectedResponses`. The «Бөглөсөн» figure; `totalResponses` is rows on
+   * record. `missingResponses` is `expectedResponses` minus this.
+   */
+  completedResponses: z.number().optional(),
   missingResponses: z.number().default(0),
   /** Which group the headline is narrowed to. Null when it covers everyone. */
   groupId: uuidSchema.nullish(),
@@ -4001,7 +4017,30 @@ export const primaryDashboardSchema = z.object({
  * `GET /platform/stats` — system-wide totals, RFP §12.2's "Администраторын
  * хяналтын самбар": нийт цэцэрлэг/бүлэг/хүүхэд/багш/идэвхтэй эцэг эх.
  */
+/** `GET /platform/stats` → `people` — who is on the platform, as people (2026-10-27). */
+export const platformPeopleSchema = z.object({
+  kindergartens: z.object({ contracted: z.number(), solo: z.number() }),
+  /** Teachers of contracted kindergartens; a solo teacher is counted in `soloTeachers`. */
+  teachers: z.number(),
+  soloTeachers: z.number(),
+  directors: z.number(),
+  /** Accountants, cooks, PE/music teachers, doctors. */
+  otherStaff: z.number(),
+  /** Accepted their invitation (or have signed in). */
+  parentsJoined: z.number(),
+  /** Hold an invitation card nobody has used yet. */
+  parentsInvited: z.number(),
+  /** Active children with at least one joined parent who can see them. */
+  childrenWithParent: z.number(),
+  /** Anyone (not the operator) signed in within the last seven days. */
+  activeLast7Days: z.number(),
+  /** Invitations accepted within the last seven days. */
+  joinedLast7Days: z.number(),
+});
+export type PlatformPeople = z.infer<typeof platformPeopleSchema>;
+
 export const platformStatsSchema = z.object({
+  people: platformPeopleSchema.nullish(),
   kindergartens: z.number(),
   groups: z.number(),
   children: z.number(),
@@ -4112,8 +4151,16 @@ export const groupGuardianInvitationsSchema = z.object({
       invitationToken: z.string(),
     }),
   ),
-  /** Children in the group this press passed over — already invited or linked. */
+  /** Children passed over because a parent has joined (2026-10-26: no longer invited-but-unused). */
   skipped: z.number(),
+  /**
+   * Children whose card is out and still valid — left alone, so a card in a
+   * parent's hand keeps working. Once one expires unused, the next press
+   * invites that child again. Defaulted for an older API.
+   */
+  pending: z.number().default(0),
+  /** The group has no child yet — the press had nobody to invite. */
+  empty: z.boolean().default(false),
 });
 export type GroupGuardianInvitations = z.infer<typeof groupGuardianInvitationsSchema>;
 

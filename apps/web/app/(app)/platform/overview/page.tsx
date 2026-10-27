@@ -15,6 +15,7 @@ import {
   usePendingApplicationsCount,
   useSoloWorkspacesCount,
 } from "@/components/platform/platform-counts";
+import { PlatformPeople } from "@/components/platform/platform-people";
 import { PlatformStatsStrip } from "@/components/platform/platform-stats-strip";
 import { RequireSuperAdmin } from "@/components/shell/require-role";
 import { LoadingState } from "@/components/ui/states";
@@ -195,6 +196,7 @@ function Overview() {
       </section>
 
       {stats.data ? <PlatformStatsStrip stats={stats.data} /> : null}
+      {stats.data?.people ? <PlatformPeople people={stats.data.people} /> : null}
 
       {revenue.data ? (
         <section

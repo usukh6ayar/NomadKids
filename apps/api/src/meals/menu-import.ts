@@ -290,12 +290,24 @@ function parseMenuMatrix(
       const label = text(row.getCell(1));
       const recognizedKind = label ? (KIND_ALIASES[normalize(label)] ?? null) : null;
       if (recognizedKind) previousKind = recognizedKind;
+      /*
+        ★ A row with food under the dates but no sitting it can be filed
+        under is reported, not dropped (2026-10-25). «Өглөөний хоол 08:30» or
+        «1. Өглөөний цай» in column A used to import "successfully" with that
+        row's dishes missing. It is still never guessed into a sitting — the
+        aliases match exactly so «бага үдийн цай» cannot swallow «үдийн цай».
+      */
+      const hasFood = [...dates.keys()].some((column) => text(row.getCell(column)));
       if (label && !recognizedKind) {
         // A title, note, or an unfamiliar row is not a dish row. Do not turn
         // it into an accidental menu item or erase an existing day.
+        if (hasFood) problems.push({ rowNumber, message: `Хоолны цаг танигдсангүй: "${label}"` });
         continue;
       }
-      if (!previousKind) continue;
+      if (!previousKind) {
+        if (hasFood) problems.push({ rowNumber, message: "Хоолны цаг бичигдээгүй мөр" });
+        continue;
+      }
 
       for (const [column, date] of dates) {
         const name = text(row.getCell(column));
@@ -330,20 +342,32 @@ function parseMenuMatrixRotated(
   isoDate: (raw: string) => string | null,
 ): MenuParseResult {
   const byDate = new Map<string, ParsedMenuDish[]>();
+  const problems: MenuParseResult["problems"] = [];
 
   for (let headerRow = 1; headerRow <= Math.min(sheet.rowCount, 30); headerRow++) {
     const kinds = new Map<number, string>();
+    // Headings beside the sitting names that are not one — reported below if
+    // food sits under them, the same as the matrix's unread rows.
+    const unread = new Map<number, string>();
     for (let column = 2; column <= sheet.columnCount; column++) {
-      const kind = KIND_ALIASES[normalize(text(sheet.getRow(headerRow).getCell(column)))];
+      const heading = text(sheet.getRow(headerRow).getCell(column));
+      const kind = KIND_ALIASES[normalize(heading)];
       if (kind) kinds.set(column, kind);
+      else if (heading) unread.set(column, heading);
     }
     // Two meal times in one row is the header; one could be a stray word.
     if (kinds.size < 2) continue;
 
+    const reported = new Set<number>();
     for (let rowNumber = headerRow + 1; rowNumber <= sheet.rowCount; rowNumber++) {
       const row = sheet.getRow(rowNumber);
       const date = isoDate(text(row.getCell(1)));
       if (!date) continue;
+      for (const [column, heading] of unread) {
+        if (reported.has(column) || !text(row.getCell(column))) continue;
+        reported.add(column);
+        problems.push({ rowNumber: headerRow, message: `Хоолны цаг танигдсангүй: "${heading}"` });
+      }
       for (const [column, kind] of kinds) {
         const name = text(row.getCell(column));
         if (!name) continue;
@@ -365,7 +389,7 @@ function parseMenuMatrixRotated(
     days: [...byDate.entries()]
       .map(([date, dishes]) => ({ date, dishes }))
       .sort((a, b) => a.date.localeCompare(b.date)),
-    problems: [],
+    problems,
   };
 }
 

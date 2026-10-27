@@ -49,6 +49,12 @@ export interface InvitationDescription {
   knows: { name: boolean; phone: boolean };
   /** The known phone's last digits, masked («••••2233») — what the SMS step names. */
   phoneHint?: string;
+  /**
+   * ★ A family's invitation: the children it is for, as the printed card names
+   * them («Б. Сараа»), so a parent holding the wrong card sees it before
+   * anything is written (2026-10-27). Their birth date is then asked.
+   */
+  children?: string[];
 }
 
 @Injectable()
@@ -340,11 +346,13 @@ export class AuthService {
     const user = await this.repo.findById(userId);
     if (!user) return null;
 
+    const access = await this.authz.loadMembershipAccess(userId);
     return {
       userId,
       sessionId,
       isSuperAdmin: user.isSuperAdmin,
-      memberships: await this.authz.loadMemberships(userId),
+      memberships: access.memberships,
+      lapsedMemberships: access.lapsed,
     };
   }
 
@@ -533,9 +541,12 @@ export class AuthService {
     */
     const account = await this.repo.findInvitedAccount(row.userId);
     const knownPhone = this.knownPhone(account);
+    const children =
+      account.kind === "guardian" ? await this.repo.findInvitationChildren(row.userId) : [];
     return {
       valid: true,
       kind: account.kind,
+      ...(children.length > 0 ? { children: children.map(cardName) } : {}),
       /*
         ★ An account a director invited from the ESIS roster carries the
         ministry's name (2026-10-15) — not asked again, like a self-registration.
@@ -564,6 +575,7 @@ export class AuthService {
     },
     phoneVerification: string | undefined,
     ctx: RequestContext,
+    childBirthDate?: string,
   ) {
     const errors = validatePasswordStrength(password);
     if (errors.length > 0) throw new UnauthorizedException(errors.join(". "));
@@ -591,6 +603,30 @@ export class AuthService {
      * Checking first means a recoverable mistake stays recoverable — the link
      * still works, and the message names the field to change.
      */
+    /*
+     * ★ The child's birth date, for a family's invitation — 2026-10-27: a
+     * parent scanned another child's card and became that child's guardian.
+     * The card prints the name; the birth date is what the family knows and a
+     * wrong card's holder does not. Checked first, before the contact check,
+     * the SMS and the token, so a mismatch leaves the link working.
+     */
+    const account = await this.repo.findInvitedAccount(row.userId);
+    if (account.kind === "guardian") {
+      const children = await this.repo.findInvitationChildren(row.userId);
+      if (children.length > 0) {
+        const matches = children.some(
+          (child) => child.dateOfBirth.toISOString().slice(0, 10) === childBirthDate,
+        );
+        if (!matches) {
+          throw new BadRequestException(
+            `Хүүхдийн төрсөн огноо таарахгүй байна. Энэ урилга ${children
+              .map(cardName)
+              .join(", ")}-д зориулагдсан — картаа шалгана уу.`,
+          );
+        }
+      }
+    }
+
     const taken = await this.repo.findOtherUserByContact(row.userId, {
       phone: profile.phone,
     });
@@ -792,4 +828,10 @@ function deviceView(device: {
     createdAt: device.createdAt.toISOString(),
     lastUsedAt: device.lastUsedAt.toISOString(),
   };
+}
+
+/** «Б. Сараа» — a child as the printed invitation card names them. */
+function cardName(child: { lastName: string; firstName: string }): string {
+  const initial = child.lastName.trim().charAt(0);
+  return initial ? `${initial}. ${child.firstName}` : child.firstName;
 }

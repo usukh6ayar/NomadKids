@@ -355,6 +355,12 @@ export type AddPollOptionDto = z.infer<typeof addPollOptionSchema>;
  * the service's own 404 for a question that belongs to another survey is a
  * different check from "is this a uuid at all".
  */
+/** `DELETE /surveys/:id/teacher-sheet/:childId` — one child's row, cleared whole. */
+export const teacherSheetRowParamsSchema = z.object({
+  id: uuidSchema,
+  childId: uuidSchema,
+});
+
 export const questionAnswersParamsSchema = z.object({
   id: uuidSchema,
   questionId: uuidSchema,

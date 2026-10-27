@@ -120,7 +120,17 @@ there, so an unpaid child is inactive for the teacher too. The argument holds �
 they have passed `canAccessChild` first. Inviting the family
 (`assertCanInviteGuardian`), the roster and attendance
 (`assertCanRecordAttendance`, the user 2026-10-18) stay open; a contracted
-kindergarten's staff are never gated.
+kindergarten's staff are never gated by a family's fee.
+
+★ **A contracted kindergarten's staff are closed out when its own service
+lapses** (the user, 2026-10-27): more than `SERVICE_GRACE_DAYS` (7) past the
+latest end of its ACTIVE contract, their memberships there move to
+`Actor.lapsedMemberships` and every rule answers **404** as if they were not
+staff (`AuthzRepository.loadMembershipAccess`). Only routes marked
+`@AllowLapsed` — «Үйлчилгээний эрх», paying for the service — get them back.
+Families are never closed by it. No contract yet, or a first period owed, is
+not lapsed. **Do not add `@AllowLapsed` to a route that serves kindergarten
+data.**
 
 ★ **A solo teacher is TEACHER only, never ADMIN** (the user, 2026-10-14). They
 set up their own school year and one group a year
@@ -295,7 +305,8 @@ leaked connections (every file closes its app), `resetData` missing a table.
 - A killed api run can leave `kinder_test` poisoned (failures that move around
   and name `system-config.ts`) — recreate it rather than bisect.
 - The api suite takes ~21 minutes. Run it in the background with
-  `--reporter=verbose` written to a file **before** grepping.
+  `--reporter=verbose` written to a file **before** grepping. CI runs it in four
+  shards on four machines, the web suite on its own (2026-10-27).
 
 ★★ **A cross-kindergarten isolation failure must never be waved through.** If it
 recurs with nothing else running, capture the full reporter output and treat it
@@ -450,21 +461,26 @@ MinIO (`storage`), Caddy. Cloudflare is DNS only. Vercel and Railway still
 build from `main` and **serve nothing** — their status says nothing about
 `nomadkids.mn`.
 
-**A merge to `main` deploys nothing.** To deploy:
+**A merge to `main` deploys nothing.** It builds the images:
+`.github/workflows/images.yml` pushes `ghcr.io/usukh6ayar/nomadkids-api` and
+`-web`, tagged with the commit and `main`. To deploy, once that run is green:
 
 ```bash
 ssh root@202.131.1.111
-cd /opt/nomadkids
-sudo -u deploy git pull --ff-only origin main      # git as deploy, never root
-nohup setsid docker compose -f docker-compose.prod.yml up -d --build [service] \
-  > /tmp/deploy.log 2>&1 < /dev/null &
+cd /opt/nomadkids && scripts/deploy.sh          # the latest main
+scripts/deploy.sh <sha>                          # a given commit — a rollback
 ```
 
-- The api entrypoint runs `prisma migrate deploy`; rebuild `api` **and**
-  `reports-worker` when the api or a migration changed (Chromium image, 20+ min).
-  Web-only changes rebuild `web` alone.
-- Watch `/tmp/deploy.log` and `docker compose ps`, never
-  `pgrep -f "…up -d --build"` — it matches its own shell.
+★ **Never build on the VPS** (2026-10-27): building api, reports-worker and web
+there ran the 4 GB machine out of memory, the kernel OOM-killed the live web
+and worker, and the API answered 502. `up -d --build` still works as a last
+resort — one service at a time, never all three.
+
+- The api entrypoint runs `prisma migrate deploy`. `deploy.sh` swaps `api`,
+  `reports-worker` (the same image) and `web` from what CI built; a commit CI
+  has not finished building fails at `pull`, with nothing changed.
+- The packages are private: the VPS holds a `docker login ghcr.io` with a
+  `read:packages` token.
 - `.env` is a symlink to `.env.production`. `up -d --build` does not re-read
   `env_file`: a changed variable needs `--force-recreate`.
 - Take a `pg_dump` to `/root/backups/` before any manual prod DB write, and ask

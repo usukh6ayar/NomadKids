@@ -274,16 +274,27 @@ describe("the director's «Үйлчилгээний эрх»", () => {
     chosen count; paying stays off until the server can charge it, so the
     screen never shows one sum and charges another.
   */
-  it("figures the amounts for the chosen group count, and pays only the counted one", async () => {
+  /*
+   * №5 (2026-10-23): the chosen count is priced and charged by the server, so
+   * the screen sends it — never fewer groups than run now.
+   */
+  it("figures the amounts for the chosen group count, and sends that count to pay", async () => {
     const user = userEvent.setup();
-    stubApi([
+    const api = stubApi([
       { path: "/auth/me", body: sessionFor(["ADMIN"]) },
+      {
+        path: "/service-access/invoices",
+        method: "POST",
+        body: { id: "job-1", status: "QUEUED", downloadable: false },
+      },
       {
         path: "/service-access",
         body: {
           expiresAt: inDays(7),
           period: "term",
           groupCount: 2,
+          groupCountMin: 2,
+          groupCountMax: 99,
           termAmount: "24000.00",
           yearAmount: "48000.00",
           termCoversTo: "2027-02-28",
@@ -301,16 +312,23 @@ describe("the director's «Үйлчилгээний эрх»", () => {
     // 2 groups × 12,000₮ over three months; the year's rest is two terms, six months.
     expect(term).toHaveAccessibleDescription(/3 сар.*24,000₮.*2 бүлэг × 12,000₮/);
     expect(screen.getByRole("radio", { name: "Жилээр" })).toHaveAccessibleDescription(/6 сар/);
-    expect(screen.getByRole("button", { name: /QPay-ээр төлөх/ })).toBeEnabled();
+    // Never below the groups running now.
+    expect(screen.getByRole("button", { name: "Бүлэг хасах" })).toBeDisabled();
 
     await user.click(screen.getByRole("button", { name: "Бүлэг нэмэх" }));
     expect(term).toHaveAccessibleDescription(/36,000₮.*3 бүлэг × 12,000₮/);
-    expect(screen.getByText(/3 бүлгээр тооцоолж харууллаа/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /QPay-ээр төлөх/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /QPay-ээр төлөх/ })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "Нэхэмжлэх үүсгэх" }));
+    await vi.waitFor(() =>
+      expect(
+        api.calls.find((call) => call.method === "POST" && call.url === "/service-access/invoices")
+          ?.body,
+      ).toEqual({ period: "term", groupCount: 3 }),
+    );
 
     await user.click(screen.getByRole("button", { name: "Бүлэг хасах" }));
     expect(term).toHaveAccessibleDescription(/24,000₮.*2 бүлэг × 12,000₮/);
-    expect(screen.getByRole("button", { name: /QPay-ээр төлөх/ })).toBeEnabled();
   });
 
   it("names the year's remainder by its terms, and never calls it cheap", async () => {

@@ -34,6 +34,7 @@ import {
   type PlatformMaterial,
 } from "@/lib/materials";
 import { LEARNING_AREAS } from "@/lib/routine";
+import { todayLocal } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { CANONICAL_ORIGIN } from "@/lib/canonical-host";
 
@@ -359,13 +360,25 @@ function MaterialDialog({
   /*
    * ★ «Үнэгүй» and «Хямдрал» — 2026-10-14, the user. Free sends a price of 0.
    * A discount (a lower price, until a day) is sent as `discountPrice` /
-   * `discountEndsOn`; the API does not keep it yet (asked of the admin), and
-   * the form says so.
+   * `discountEndsOn`, kept and charged since #273.
+   *
+   * ★★ The form opens on the stored discount (2026-10-26). It opened unticked,
+   * and a save sends no discount — which the API reads as "remove it" — so
+   * editing a title silently ended a running discount. One that has already
+   * ended opens unticked: it no longer runs, and sending its past end day back
+   * would be refused.
    */
   const [free, setFree] = useState(material ? material.price === 0 : false);
-  const [discounted, setDiscounted] = useState(false);
-  const [discountPrice, setDiscountPrice] = useState("");
-  const [discountEndsOn, setDiscountEndsOn] = useState("");
+  const running =
+    typeof material?.discountPrice === "number" &&
+    (!material.discountEndsOn || material.discountEndsOn >= todayLocal());
+  const [discounted, setDiscounted] = useState(running);
+  const [discountPrice, setDiscountPrice] = useState(
+    running ? String(material!.discountPrice) : "",
+  );
+  const [discountEndsOn, setDiscountEndsOn] = useState(
+    running ? (material!.discountEndsOn ?? "") : "",
+  );
   const full = Number(price);
   const cut = Number(discountPrice);
   const percent =
@@ -591,10 +604,6 @@ function MaterialDialog({
                       />
                     )}
                   </Field>
-                  <p className="col-span-2 text-caption text-muted">
-                    Хямдрал хадгалах хэсэг хараахан бэлэн болоогүй тул одоохондоо дэлгүүрт
-                    харагдахгүй.
-                  </p>
                 </div>
               ) : null}
             </>

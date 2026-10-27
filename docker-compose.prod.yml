@@ -53,6 +53,10 @@ services:
 
   # ── Application ────────────────────────────────────────────────────────────
   web:
+    # ★ Built by `.github/workflows/images.yml` and pulled (2026-10-27) —
+    # `scripts/deploy.sh`. `build:` stays as the fallback: `up -d --build web`
+    # still builds here, on a machine that cannot really afford it.
+    image: ${IMAGE_REGISTRY:-ghcr.io/usukh6ayar}/nomadkids-web:${IMAGE_TAG:-main}
     build:
       context: .
       dockerfile: apps/web/Dockerfile
@@ -91,6 +95,7 @@ services:
   # deploy`, which takes an advisory lock, so the second replica waits and then
   # finds nothing to do.
   api:
+    image: ${IMAGE_REGISTRY:-ghcr.io/usukh6ayar}/nomadkids-api:${IMAGE_TAG:-main}
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -158,6 +163,8 @@ services:
   # a queue that drains slightly slower is the right trade against a machine
   # that swaps.
   reports-worker:
+    # The API's image — one pull serves both.
+    image: ${IMAGE_REGISTRY:-ghcr.io/usukh6ayar}/nomadkids-api:${IMAGE_TAG:-main}
     build:
       context: .
       dockerfile: apps/api/Dockerfile

@@ -204,7 +204,8 @@ export class AuthController {
   /** The current user, their memberships and a CSRF token. */
   @Get("me")
   async me(@CurrentActor() actor: Actor, @Req() req: Request) {
-    const [user, kindergartens] = await Promise.all([
+    const lapsed = actor.lapsedMemberships ?? [];
+    const [user, kindergartens, lapsedKindergartens] = await Promise.all([
       this.users.findById(actor.userId),
       /*
        * ★ The names of the actor's own kindergartens — 2026-09-26, for the
@@ -214,10 +215,24 @@ export class AuthController {
        * none, gets an empty list.
        */
       this.authz.loadOwnKindergartens(actor),
+      lapsed.length > 0
+        ? this.authz.loadOwnKindergartens({ ...actor, memberships: lapsed })
+        : Promise.resolve([]),
     ]);
     return {
       user,
       memberships: actor.memberships,
+      /*
+        ★ Where this person is staff but the paid service has lapsed (the user,
+        2026-10-27). The web shows a director «Үйлчилгээний эрх» alone and
+        anyone else a notice; every other route answers as if they were not
+        staff there. See `Actor.lapsedMemberships`.
+      */
+      lapsed: lapsed.map((m) => ({
+        kindergartenId: m.kindergartenId,
+        role: m.role,
+        name: lapsedKindergartens.find((k) => k.id === m.kindergartenId)?.name ?? "",
+      })),
       kindergartens: kindergartens.map(({ id, name }) => ({ id, name })),
       // A solo teacher's own workspace — the menu hides ESIS, finance, kitchen, staff.
       soloKindergartenIds: kindergartens.filter((k) => k.kind === "SOLO_TEACHER").map((k) => k.id),
@@ -335,6 +350,7 @@ export class AuthController {
       },
       body.phoneVerification,
       context(req),
+      body.childBirthDate,
     );
     // Any session this account had was revoked server-side; clear the browser's
     // cookies too, so the next step is a deliberate login.

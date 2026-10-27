@@ -202,12 +202,12 @@ function GraduationLetter({ childId }: { childId: string }) {
         <Textarea
           aria-label="Төгсөлтийн багшийн захиа"
           value={letter}
-          maxLength={5000}
+          maxLength={3500}
           rows={12}
           placeholder="Хайрт сурагчдаа…"
           onChange={(event) => setLetter(event.target.value)}
         />
-        <p className="mt-1 text-right text-caption text-faint">{letter.length}/5000</p>
+        <p className="mt-1 text-right text-caption text-faint">{letter.length}/3500</p>
       </FormDialog>
     </>
   );

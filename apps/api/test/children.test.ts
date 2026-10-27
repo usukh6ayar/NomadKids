@@ -1175,9 +1175,141 @@ describe("POST /groups/:id/guardian-invitations", () => {
     ).send();
 
     // The guardianship exists from the moment the invitation is issued, so the
-    // same children are now excluded — pressing twice is safe.
+    // same children are now excluded — pressing twice is safe. Their cards
+    // still work, so they are `pending`, not «холбогдсон» (2026-10-26).
     expect(again.body.items).toHaveLength(0);
-    expect(again.body.skipped).toBe(3);
+    expect(again.body.pending).toBe(2);
+    expect(again.body.skipped).toBe(1);
+  });
+
+  /*
+   * ★ 2026-10-26, from production: a group of 23 answered «0 урилга» — every
+   * child kept the guardian row an expired, never-used invitation left, and
+   * was skipped as connected for good.
+   */
+  it("invites again once a card has expired unused — onto the same account", async () => {
+    const [first] = await twoUninvited();
+    const press = () =>
+      authed(
+        request(server()).post(`/v1/groups/${a.group.id}/guardian-invitations`),
+        teacherA,
+      ).send();
+
+    const before = await press();
+    const old = before.body.items.find((row: { childId: string }) => row.childId === first!.id);
+    const link = await db.guardianship.findFirstOrThrow({
+      where: { childId: first!.id, deletedAt: null },
+    });
+    await db.authToken.updateMany({
+      where: { userId: link.guardianUserId, purpose: "INVITATION" },
+      data: { expiresAt: new Date(Date.now() - 60_000) },
+    });
+
+    const again = await press();
+    expect(again.status).toBe(201);
+    const fresh = again.body.items.find((row: { childId: string }) => row.childId === first!.id);
+    expect(fresh.invitationToken).toEqual(expect.any(String));
+    expect(fresh.invitationToken).not.toBe(old.invitationToken);
+    // The other child's card is still good: left alone, counted as pending.
+    expect(again.body.items).toHaveLength(1);
+    expect(again.body.pending).toBe(1);
+
+    // No second account or guardianship; the old link is spent.
+    const links = await db.guardianship.findMany({
+      where: { childId: first!.id, deletedAt: null },
+    });
+    expect(links.map((row) => row.guardianUserId)).toEqual([link.guardianUserId]);
+    const live = await db.authToken.count({
+      where: {
+        userId: link.guardianUserId,
+        purpose: "INVITATION",
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+    });
+    expect(live).toBe(1);
+  });
+
+  it("never re-issues onto an account a parent has claimed", async () => {
+    const [first] = await twoUninvited();
+    const press = () =>
+      authed(
+        request(server()).post(`/v1/groups/${a.group.id}/guardian-invitations`),
+        teacherA,
+      ).send();
+    await press();
+    const link = await db.guardianship.findFirstOrThrow({
+      where: { childId: first!.id, deletedAt: null },
+    });
+    // Accepted: the token used, then every card on it long expired.
+    await db.authToken.updateMany({
+      where: { userId: link.guardianUserId, purpose: "INVITATION" },
+      data: { usedAt: new Date(), expiresAt: new Date(Date.now() - 60_000) },
+    });
+
+    const again = await press();
+    expect(again.body.items.map((row: { childId: string }) => row.childId)).not.toContain(
+      first!.id,
+    );
+    expect(
+      await db.authToken.count({
+        where: { userId: link.guardianUserId, purpose: "INVITATION", usedAt: null },
+      }),
+    ).toBe(0);
+  });
+
+  it("answers a teacher's own empty group with nothing to do, not «Олдсонгүй»", async () => {
+    const empty = await createGroup(a.kindergarten.id, a.schoolYear.id, "Хоосон бүлэг");
+    const membership = await db.membership.findFirstOrThrow({
+      where: { userId: a.teacherUser.id, kindergartenId: a.kindergarten.id, role: "TEACHER" },
+    });
+    await assignTeacher(a.kindergarten.id, empty.id, membership.id);
+
+    const own = await authed(
+      request(server()).post(`/v1/groups/${empty.id}/guardian-invitations`),
+      teacherA,
+    ).send();
+    expect(own.status).toBe(201);
+    expect(own.body).toMatchObject({ items: [], empty: true });
+
+    // Another kindergarten's teacher still learns nothing about it.
+    const outsider = await authed(
+      request(server()).post(`/v1/groups/${empty.id}/guardian-invitations`),
+      teacherB,
+    ).send();
+    expect(outsider.status).toBe(404);
+  });
+
+  it("teacher from another group gets 404 — even with a card to re-issue", async () => {
+    await twoUninvited();
+    await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/guardian-invitations`),
+      teacherA,
+    ).send();
+    await db.authToken.updateMany({
+      where: { purpose: "INVITATION" },
+      data: { expiresAt: new Date(Date.now() - 60_000) },
+    });
+
+    const other = await createGroup(a.kindergarten.id, a.schoolYear.id, "Нарны бүлэг");
+    const teacher = await createUser({ username: `teacher-other-${Date.now()}` });
+    const membership = await createMembership(teacher.id, a.kindergarten.id, "TEACHER");
+    await assignTeacher(a.kindergarten.id, other.id, membership.id);
+    const session = await login(app, teacher.username);
+
+    const res = await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/guardian-invitations`),
+      session,
+    ).send();
+    expect(res.status).toBe(404);
+  });
+
+  it("guardian gets 404 — even for their own child's group", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/groups/${a.group.id}/guardian-invitations`),
+      parentA,
+    ).send();
+    expect(res.status).toBe(404);
   });
 
   it("a teacher from another kindergarten gets 404", async () => {
@@ -1224,7 +1356,47 @@ describe("POST /children/:id/guardian-invitations", () => {
     firstName: "Сарнай",
     phone: "99001122",
     relation: "MOTHER",
+    // `a.child`'s, from `createChild` — the family's check (2026-10-27).
+    childBirthDate: "2021-04-12",
     ...extra,
+  });
+
+  /*
+   * ★ 2026-10-27: a parent scanned another child's card and became that
+   * child's guardian. The form now names the child and asks the birth date.
+   */
+  it("names the child on the invitation and refuses a wrong birth date without spending it", async () => {
+    const res = await authed(
+      request(server()).post(`/v1/children/${a.child.id}/guardian-invitations`),
+      teacherA,
+    ).send(invitation());
+    const token = res.body.invitationToken as string;
+
+    const described = await request(server()).get(`/v1/auth/invitation/${token}`);
+    expect(described.body).toMatchObject({ valid: true, kind: "guardian" });
+    expect(described.body.children).toEqual([
+      `${a.child.lastName.charAt(0)}. ${a.child.firstName}`,
+    ]);
+
+    const wrong = await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send(acceptance(token, { childBirthDate: "2020-01-01" }));
+    expect(wrong.status).toBe(400);
+    expect(wrong.body.detail ?? wrong.body.message ?? JSON.stringify(wrong.body)).toMatch(
+      /төрсөн огноо таарахгүй/,
+    );
+    const missing = await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send(acceptance(token, { childBirthDate: undefined }));
+    expect(missing.status).toBe(400);
+    // Nothing written: still the placeholder, the link still good.
+    const user = await db.user.findUniqueOrThrow({ where: { id: res.body.user.id } });
+    expect(user.phone).toBeNull();
+
+    const right = await request(server())
+      .post("/v1/auth/invitation/accept")
+      .send(acceptance(token));
+    expect(right.status).toBe(204);
   });
 
   it("a teacher can invite a guardian for a child in their group", async () => {
