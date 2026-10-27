@@ -273,6 +273,16 @@ describe("the administrator report", () => {
     }
   });
 
+  // 2026-10-27, the user: the director's «Нэгтгэл» compares the groups too.
+  it("compares the groups on «Нэгтгэл» as well", async () => {
+    renderAdminReport();
+    const panel = await screen.findByRole("tabpanel", { name: "Нэгтгэл" });
+    const table = await within(panel).findByRole("table", { name: "Бүлэг бүрийн үзүүлэлт" });
+    expect(within(table).getByRole("link", { name: "Дэлбээ" })).toBeInTheDocument();
+    expect(within(table).getByRole("link", { name: "Нархан" })).toBeInTheDocument();
+    expect(within(panel).queryByRole("table", { name: "Хүүхэд бүрийн үр дүн" })).toBeNull();
+  });
+
   // ★ No invented figures while the endpoint answers 404 — 2026-10-08.
   it("says there is no result yet, and draws no chart, while the groups' endpoint answers 404", async () => {
     const user = userEvent.setup();
