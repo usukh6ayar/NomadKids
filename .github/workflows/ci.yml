@@ -285,12 +285,14 @@ jobs:
       # one until the job's 20-minute limit. `pdftotext` is how the report
       # tests read a PDF back (CLAUDE.md §4.3); ffmpeg/ffprobe are the chat
       # video transcoder, as in the Dockerfile.
-      - name: poppler and ffmpeg (cached)
-        timeout-minutes: 12
-        uses: awalsh128/cache-apt-pkgs-action@v1
+      # The .deb files themselves, so `apt-get install` below downloads nothing
+      # on a warm run. (awalsh128/cache-apt-pkgs-action installed nothing on
+      # ubuntu-24.04 and was dropped.)
+      - name: poppler and ffmpeg packages (cached)
+        uses: actions/cache@v4
         with:
-          packages: poppler-utils ffmpeg
-          version: 1
+          path: ~/apt-archives
+          key: apt-${{ runner.os }}-poppler-ffmpeg-v1
 
       - name: Chrome (cached)
         uses: actions/cache@v4
@@ -319,9 +321,15 @@ jobs:
 
           retry() { for n in 1 2 3; do timeout 180 "$@" && return 0; echo "attempt $n failed: $*" >&2; sleep 5; done; return 1; }
 
-          # From the cache above; a miss would have failed that step.
-          command -v pdftotext >/dev/null || { echo "pdftotext missing" >&2; exit 1; }
-          command -v ffmpeg >/dev/null || { echo "ffmpeg missing" >&2; exit 1; }
+          # `pdftotext` reads a report back (CLAUDE.md §4.3); ffmpeg/ffprobe are
+          # the chat video transcoder, as in the Dockerfile. Installed from the
+          # cached archives when they are there — only the index is fetched.
+          mkdir -p ~/apt-archives/partial
+          APT="-o Dir::Cache::Archives=$HOME/apt-archives -o Acquire::Retries=3 -o Acquire::http::Timeout=30"
+          retry sudo apt-get $APT update -qq
+          retry sudo apt-get $APT install -y --no-install-recommends poppler-utils ffmpeg
+          sudo chown -R "$USER" ~/apt-archives
+          rm -rf ~/apt-archives/partial ~/apt-archives/lock
 
           # A no-op when ~/.cache/puppeteer was restored.
           retry pnpm --filter @kinder/api exec puppeteer browsers install chrome
