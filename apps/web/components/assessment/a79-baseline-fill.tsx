@@ -200,45 +200,6 @@ function useChatLift() {
 const FLOATING_BAR =
   "fixed bottom-[calc(var(--size-bottom-nav)+env(safe-area-inset-bottom)+0.5rem)] right-4 z-30 flex items-center gap-1.5 rounded-pill border border-border bg-surface p-1.5 shadow-lg lg:bottom-6 lg:right-6";
 
-/**
- * The children on the group's baselines whom the report's table does not
- * name yet — never started — each a way into filling them in (2026-10-27,
- * the user: the table is the list; a child on it opens by their name).
- */
-export function A79BaselineNotStarted({
-  groupId,
-  listed,
-}: {
-  groupId: string;
-  /** The children the table already names. */
-  listed: ReadonlySet<string>;
-}) {
-  const { sheets } = useBaselineSheets(groupId);
-  const children = new Map<string, TeacherSheetRow["child"]>();
-  for (const sheet of sheets) {
-    for (const row of sheet.rows) {
-      if (!listed.has(row.child.id)) children.set(row.child.id, row.child);
-    }
-  }
-  if (children.size === 0) return null;
-  return (
-    <p className="text-caption text-muted">
-      Бөглөж эхлээгүй:{" "}
-      {[...children.values()].map((child, index) => (
-        <span key={child.id}>
-          {index > 0 ? ", " : null}
-          <Link
-            href={`/groups/${groupId}/baseline/${child.id}`}
-            className="font-medium text-primary hover:underline"
-          >
-            {shortName(child)}
-          </Link>
-        </span>
-      ))}
-    </p>
-  );
-}
-
 function DomainTabs({
   criteria,
   active,

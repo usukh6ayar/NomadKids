@@ -13,10 +13,7 @@ import {
   a79ChildRows,
   type A79ReportGroup,
 } from "@/components/assessment/a79-group-summary";
-import {
-  A79BaselineNotStarted,
-  useBaselineSheets,
-} from "@/components/assessment/a79-baseline-fill";
+import { useBaselineSheets } from "@/components/assessment/a79-baseline-fill";
 import {
   A79BaselineStartDialog,
   useBaselineSetup,
@@ -170,6 +167,17 @@ export function A79BaselinePanel({
       );
     }
     const rows = a79ChildRows(asGroupSummary(merged));
+    // ★ On the group's own page every child on the baseline is a row — one
+    // not started yet too, «—» and «Бөглөөгүй», a tap from their form
+    // (2026-10-27, the user: «0 байсан ч хүүхдүүдийн нэр бүр харагдана»).
+    const tableRows = fill
+      ? a79ChildRows({
+          children: merged.children.map((c) => ({
+            ...c,
+            assessed: c.notFilled ? 0 : Math.max(c.answered, 1),
+          })),
+        })
+      : rows;
     // Named on the table, counted in no average — the result screen's rule.
     const scored = rows.filter((row) => !row.feeDue);
     const notAssessed = merged.children.filter((c) => c.notFilled);
@@ -194,16 +202,17 @@ export function A79BaselinePanel({
           </p>
         ) : null}
 
-        {rows.length > 0 ? (
+        {tableRows.length > 0 ? (
           <>
             {scored.length > 0 ? (
               <A79SummaryChart rows={scored} averageLabel="Гарааны дундаж" />
             ) : null}
             <A79ChildrenTable
               groupId={groupId}
-              rows={rows}
+              rows={tableRows}
               linkChildren={fill}
               childHref={(childId) => `/groups/${groupId}/baseline/${childId}`}
+              unassessedLabel="Бөглөөгүй"
             />
           </>
         ) : (
@@ -212,12 +221,6 @@ export function A79BaselinePanel({
           </p>
         )}
 
-        {fill ? (
-          <A79BaselineNotStarted
-            groupId={groupId}
-            listed={new Set(rows.map((row) => row.childId))}
-          />
-        ) : null}
         {!fill && rows.length > 0 && notAssessed.length > 0 ? (
           <p className="text-caption text-muted">
             Гарааны үнэлгээнд хамрагдаагүй: {notAssessed.map((c) => shortName(c)).join(", ")}
@@ -287,7 +290,7 @@ function BaselineStart({ groupId }: { groupId: string }) {
 
 /**
  * «Бүлгээр бөглөх» and «Хүүхэд нэмэх» above the report on the group's own
- * page — a child is filled in from their name on the table, or under it.
+ * page — a child is filled in from their name on the table.
  */
 function BaselineFillSection({ groupId }: { groupId: string }) {
   const setup = useBaselineSetup(groupId);

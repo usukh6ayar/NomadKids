@@ -193,7 +193,7 @@ describe("«Шинэ гарааны үнэлгээ»", () => {
 
 describe("the group's page", () => {
   /** 2026-10-27, the user: the table is the list — no second one above it. */
-  it("opens a child from their name on the table, and names who has not started", async () => {
+  it("lists every child on the baseline, a name opening their form", async () => {
     const answered = questions.map((q) => ({ questionId: q.id, value: "1" }));
     stubSheet(
       [
@@ -221,11 +221,11 @@ describe("the group's page", () => {
       `/groups/${GROUP}/baseline/${ANU}`,
     );
     expect(screen.queryByRole("list", { name: "Гарааны үнэлгээний хүүхдүүд" })).toBeNull();
-    const notStarted = screen.getByText(/Бөглөж эхлээгүй/);
-    expect(within(notStarted).getByRole("link", { name: "Б.Тэмүүлэн" })).toHaveAttribute(
-      "href",
-      `/groups/${GROUP}/baseline/${BAT}`,
-    );
+    // A child not started yet is a row too — «Бөглөөгүй», and a way into their form.
+    const bat = within(table).getByRole("link", { name: "Б.Тэмүүлэн" });
+    expect(bat).toHaveAttribute("href", `/groups/${GROUP}/baseline/${BAT}`);
+    expect(bat.closest("tr")).toHaveTextContent("Бөглөөгүй");
+    expect(screen.getByText(/1\/2 хүүхэд үнэлэгдсэн/)).toBeInTheDocument();
   });
 });
 

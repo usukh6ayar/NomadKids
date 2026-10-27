@@ -443,6 +443,7 @@ export function A79ChildrenTable({
   rows,
   linkChildren = true,
   childHref = (childId) => `/groups/${groupId}/results/${childId}`,
+  unassessedLabel = "Тэмдэглэл холбоогүй",
 }: {
   groupId: string;
   rows: A79ChildRow[];
@@ -453,6 +454,8 @@ export function A79ChildrenTable({
   linkChildren?: boolean;
   /** Where a name leads — the group's «Гарааны үнэлгээ» page opens the child's baseline. */
   childHref?: (childId: string) => string;
+  /** What a row with no figures says — «Бөглөөгүй» on a baseline not filled in yet. */
+  unassessedLabel?: string;
 }) {
   return (
     <TableShell caption="Хүүхэд бүрийн үр дүн" minWidth="min-w-[560px]">
@@ -499,7 +502,7 @@ export function A79ChildrenTable({
                 </Td>
                 <Td>
                   <Badge tone="neutral">
-                    {row.feeDue ? "Төлбөр төлөгдөөгүй" : "Тэмдэглэл холбоогүй"}
+                    {row.feeDue ? "Төлбөр төлөгдөөгүй" : unassessedLabel}
                   </Badge>
                 </Td>
               </tr>
