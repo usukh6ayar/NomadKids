@@ -9,12 +9,88 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# ★ Split across machines (2026-10-27): one job ran typecheck, lint, both test
+# suites and formatting in ~16 minutes, the API suite alone ~12 of them, and
+# with the api and web suites on one machine at once — the full-run flakiness
+# CLAUDE.md §4.4 warns of. Now the checks, the web suite and four shards of
+# the API suite run side by side, each shard with its own database.
+#
+# ★★ `verify` stays the one required check: it passes only when every job
+# here did, so branch protection did not have to change.
 jobs:
-  verify:
+  checks:
     runs-on: ubuntu-latest
-    # The API suite alone reached 20 minutes on #270 and the run was
-    # cancelled mid-test — 35 leaves room for it to grow (2026-10-23).
-    timeout-minutes: 35
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate the Prisma client
+        run: pnpm --filter @kinder/api prisma:generate
+
+      - name: Build the contracts package
+        run: pnpm --filter @kinder/contracts build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Contracts tests
+        run: pnpm --filter @kinder/contracts test
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate the Prisma client
+        run: pnpm --filter @kinder/api prisma:generate
+
+      - name: Build the contracts package
+        run: pnpm --filter @kinder/contracts build
+
+      - name: Web tests
+        run: pnpm --filter @kinder/web test
+
+  api:
+    runs-on: ubuntu-latest
+    # The whole suite reached 20 minutes on #270; a quarter of it with room.
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
 
     # ★ The API's tests run against a real database, a real Redis and real
     # object storage — deliberately, because the thing under test is whether an
@@ -116,11 +192,7 @@ jobs:
         # apps/* import its compiled output, so it must exist first.
         run: pnpm --filter @kinder/contracts build
 
-      - name: Typecheck
-        run: pnpm typecheck
 
-      - name: Lint
-        run: pnpm lint
 
       - name: Start object storage
         # The suite needs something that speaks S3: `StorageService` calls
@@ -247,7 +319,16 @@ jobs:
       - name: Test
         # Includes the Prisma-boundary test — the check that stops a service
         # reaching past the repository layer. See CLAUDE.md §2.2.
-        run: pnpm test
+        # One quarter of the files per machine; each has its own database.
+        run: pnpm --filter @kinder/api exec vitest run --shard=${{ matrix.shard }}/4
 
-      - name: Check formatting
-        run: pnpm format:check
+  verify:
+    # The required check — green only when every job above is.
+    if: always()
+    needs: [checks, web, api]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job passed
+        run: |
+          echo 'checks=${{ needs.checks.result }} web=${{ needs.web.result }} api=${{ needs.api.result }}'
+          [ "${{ needs.checks.result }}" = success ] && [ "${{ needs.web.result }}" = success ] && [ "${{ needs.api.result }}" = success ]
