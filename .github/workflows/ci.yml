@@ -192,8 +192,6 @@ jobs:
         # apps/* import its compiled output, so it must exist first.
         run: pnpm --filter @kinder/contracts build
 
-
-
       - name: Start object storage
         # The suite needs something that speaks S3: `StorageService` calls
         # `HeadBucket` on boot and the media tests put, get, presign and delete.
