@@ -16,6 +16,7 @@ import {
   saveQuestionsSchema,
   saveTeacherSheetDraftsSchema,
   saveTeacherSheetSchema,
+  teacherSheetRowParamsSchema,
   submitResponseSchema,
   surveyResultsQuerySchema,
   type AddPollOptionDto,
@@ -199,6 +200,17 @@ export class SurveysController {
     @Body(new ZodValidationPipe(saveTeacherSheetDraftsSchema)) body: SaveTeacherSheetDraftsDto,
   ) {
     return this.service.saveTeacherSheetDrafts(actor, params.id, body);
+  }
+
+  /** One child's row cleared whole — answers and draft (backend list №9). */
+  @Delete(":id/teacher-sheet/:childId")
+  @Roles("TEACHER", "ADMIN")
+  async clearTeacherSheetRow(
+    @CurrentActor() actor: Actor,
+    @Param(new ZodValidationPipe(teacherSheetRowParamsSchema))
+    params: { id: string; childId: string },
+  ) {
+    return this.service.clearTeacherSheetRow(actor, params.id, params.childId);
   }
 
   @Get(":id")

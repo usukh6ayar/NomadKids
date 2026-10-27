@@ -583,6 +583,33 @@ export class SurveysRepository {
   }
 
   /**
+   * Clears one child's row of a teacher's table — the saved response and any
+   * draft, both soft-deleted (§3.2) in one transaction. Answers stay on the
+   * deleted response for the audit; every read filters `deletedAt: null`.
+   * Returns the response ids it ended, so the caller can record them.
+   */
+  async clearTeacherSheetRow(surveyId: string, childId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const responses = await tx.surveyResponse.findMany({
+        where: { surveyId, childId, deletedAt: null },
+        select: { id: true },
+      });
+      const now = new Date();
+      if (responses.length > 0) {
+        await tx.surveyResponse.updateMany({
+          where: { id: { in: responses.map((row) => row.id) }, deletedAt: null },
+          data: { deletedAt: now },
+        });
+      }
+      const drafts = await tx.surveyAnswerDraft.updateMany({
+        where: { surveyId, childId, deletedAt: null },
+        data: { deletedAt: now },
+      });
+      return { responseIds: responses.map((row) => row.id), drafts: drafts.count };
+    });
+  }
+
+  /**
    * Replaces the children's drafts in one transaction: the live ones are
    * soft-deleted (§3.2) and a row with answers is written anew; a row with
    * none only clears. Two writes for the whole batch (§3.4).
@@ -765,7 +792,7 @@ export class SurveysRepository {
           questionId: true,
           value: true,
           responseId: true,
-          response: { select: { childId: true } },
+          response: { select: { childId: true, respondentId: true } },
         },
       }),
       this.prisma.enrollment.findMany({
@@ -782,6 +809,8 @@ export class SurveysRepository {
       questionId: answer.questionId,
       value: answer.value,
       responseId: answer.responseId,
+      childId: answer.response.childId,
+      respondentId: answer.response.respondentId,
       group: answer.response.childId ? (groupOfChild.get(answer.response.childId) ?? null) : null,
     }));
   }
