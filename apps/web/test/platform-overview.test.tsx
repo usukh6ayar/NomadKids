@@ -53,7 +53,25 @@ describe("the operator's dashboard", () => {
       { path: "/platform/solo-workspaces", body: page(0) },
       {
         path: "/platform/stats",
-        body: { kindergartens: 12, groups: 48, children: 1250, staff: 160, guardians: 980 },
+        body: {
+          kindergartens: 12,
+          groups: 48,
+          children: 1250,
+          staff: 160,
+          guardians: 980,
+          people: {
+            kindergartens: { contracted: 12, solo: 31 },
+            teachers: 120,
+            soloTeachers: 31,
+            directors: 12,
+            otherStaff: 9,
+            parentsJoined: 640,
+            parentsInvited: 340,
+            childrenWithParent: 610,
+            activeLast7Days: 402,
+            joinedLast7Days: 58,
+          },
+        },
       },
       {
         path: "/platform/revenue",
@@ -83,6 +101,17 @@ describe("the operator's dashboard", () => {
     ] as const) {
       expect(within(figures).getByText(label).nextElementSibling).toHaveTextContent(value);
     }
+
+    // ★ «Хэрэглэгчид» (2026-10-27): people, and a used invitation apart from one not yet.
+    const people = screen.getByRole("region", { name: "Хэрэглэгчид" });
+    expect(within(people).getByText("Эцэг эх бүртгүүлсэн").nextElementSibling).toHaveTextContent(
+      "640",
+    );
+    expect(people).toHaveTextContent("340 урилга ашиглагдаагүй");
+    expect(within(people).getByText("Багш").nextElementSibling).toHaveTextContent("151");
+    expect(within(people).getByText("7 хоногт нэвтэрсэн").nextElementSibling).toHaveTextContent(
+      "402",
+    );
 
     const income = await screen.findByRole("region", { name: "Энэ сарын орлого" });
     expect(income).toHaveTextContent("23,000₮");
