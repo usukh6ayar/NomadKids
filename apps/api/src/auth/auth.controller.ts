@@ -335,6 +335,7 @@ export class AuthController {
       },
       body.phoneVerification,
       context(req),
+      body.childBirthDate,
     );
     // Any session this account had was revoked server-side; clear the browser's
     // cookies too, so the next step is a deliberate login.
