@@ -154,17 +154,18 @@ describe("«Шинэ гарааны үнэлгээ»", () => {
       />,
     );
 
-    expect(await screen.findByRole("button", { name: "Б.Ану — IV түвшин" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    expect(screen.getByRole("button", { name: "Б.Тэмүүлэн — III түвшин" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    // A table: a child per row, the levels across.
+    const table = await screen.findByRole("table", { name: "Хүүхэд бүрийн түвшин" });
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((h) => h.textContent),
+    ).toEqual(["Хүүхдийн нэр", "I0", "II0", "III1", "IV1", "—0"]);
+    expect(screen.getByRole("radio", { name: "Б.Ану — IV түвшин" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Б.Тэмүүлэн — III түвшин" })).toBeChecked();
     // The teacher's choice wins: Тэмүүлэн on II, then Ану left out.
-    await user.click(screen.getByRole("button", { name: "Б.Тэмүүлэн — II түвшин" }));
-    await user.click(screen.getByRole("button", { name: "Б.Ану — үнэлэхгүй" }));
+    await user.click(screen.getByRole("radio", { name: "Б.Тэмүүлэн — II түвшин" }));
+    await user.click(screen.getByRole("radio", { name: "Б.Ану — үнэлэхгүй" }));
     await user.click(screen.getByRole("button", { name: "Үүсгэх" }));
 
     await waitFor(() =>

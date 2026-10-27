@@ -18,7 +18,6 @@ import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
 import { shortName } from "@/lib/format";
-import { cn } from "@/lib/utils";
 
 export const baselineSetupKey = (groupId: string) => ["group", groupId, "a79-baseline"] as const;
 
@@ -32,6 +31,8 @@ export function useBaselineSetup(groupId: string) {
 
 type Choice = A79LevelKey | "NONE";
 
+const CHOICES: Choice[] = [...A79_LEVEL_KEYS, "NONE"];
+
 /**
  * «Шинэ гарааны үнэлгээ» and «Хүүхэд нэмэх» — 2026-10-27, the user: each
  * child's level is suggested from their age («багшид хялбар байх үүднээс
@@ -40,8 +41,9 @@ type Choice = A79LevelKey | "NONE";
  * that already has one gains the children.
  *
  * ★ Only the children on none of the group's baselines are offered — one
- * child, one level, one assessment. Mobile-first: a child per row, the name
- * above its five 44px choices on a phone, beside them from `sm`.
+ * child, one level, one assessment. A table, the teacher sheet's way (the
+ * user, 2026-10-27: a group of forty): a child per row, I · II · III · IV · —
+ * across, each column counting its children, the header kept in view.
  */
 export function A79BaselineStartDialog({
   groupId,
@@ -127,43 +129,63 @@ export function A79BaselineStartDialog({
         {offered.length === 0 ? (
           <p className="text-body text-muted">Бүлгийн бүх хүүхэд гарааны үнэлгээнд орсон байна.</p>
         ) : (
-          <ul className="flex flex-col divide-y divide-border-soft">
-            {offered.map((child) => {
-              const name = shortName(child);
-              return (
-                <li
-                  key={child.childId}
-                  className="flex flex-col gap-1.5 py-2 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <span className="text-body font-medium text-ink">{name}</span>
-                  <div role="group" aria-label={`${name} — түвшин`} className="flex gap-1">
-                    {[...A79_LEVEL_KEYS, "NONE" as const].map((value) => {
-                      const active = choiceOf(child.childId) === value;
-                      return (
-                        <button
-                          key={value}
-                          type="button"
-                          aria-pressed={active}
-                          aria-label={
-                            value === "NONE" ? `${name} — үнэлэхгүй` : `${name} — ${value} түвшин`
-                          }
-                          onClick={() => setChoices((c) => ({ ...c, [child.childId]: value }))}
-                          className={cn(
-                            "h-[44px] min-w-[44px] rounded-control border px-2 text-body font-semibold transition-colors",
-                            active
-                              ? "border-primary bg-primary-soft text-primary"
-                              : "border-border bg-surface text-muted hover:text-ink",
-                          )}
-                        >
-                          {value === "NONE" ? "—" : value}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+          <div className="rounded-control border border-border">
+            <table className="w-full border-collapse text-body">
+              <caption className="sr-only">Хүүхэд бүрийн түвшин</caption>
+              <thead className="sticky top-0 z-[1]">
+                <tr className="bg-canvas">
+                  <th
+                    scope="col"
+                    className="bg-canvas px-2 py-2 text-left text-caption font-semibold text-muted sm:px-3"
+                  >
+                    Хүүхдийн нэр
+                  </th>
+                  {CHOICES.map((value) => (
+                    <th
+                      key={value}
+                      scope="col"
+                      className="w-10 bg-canvas px-0.5 py-2 text-center text-caption font-semibold text-ink sm:w-14"
+                    >
+                      {value === "NONE" ? "—" : value}
+                      <span className="block font-normal tabular-nums text-muted">
+                        {offered.filter((c) => choiceOf(c.childId) === value).length}
+                      </span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {offered.map((child) => {
+                  const name = shortName(child);
+                  return (
+                    <tr key={child.childId} className="border-t border-border-soft">
+                      <th
+                        scope="row"
+                        className="px-2 py-2 text-left font-normal leading-snug text-ink sm:px-3"
+                      >
+                        {name}
+                      </th>
+                      {CHOICES.map((value) => (
+                        <td key={value} className="px-0.5 py-2 text-center">
+                          <input
+                            type="radio"
+                            name={`level-${child.childId}`}
+                            aria-label={
+                              value === "NONE" ? `${name} — үнэлэхгүй` : `${name} — ${value} түвшин`
+                            }
+                            checked={choiceOf(child.childId) === value}
+                            onChange={() => setChoices((c) => ({ ...c, [child.childId]: value }))}
+                            disabled={create.isPending}
+                            className="size-5 cursor-pointer align-middle accent-primary disabled:cursor-default"
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
         {levels.length > 0 ? (
           <p className="text-caption text-muted">
