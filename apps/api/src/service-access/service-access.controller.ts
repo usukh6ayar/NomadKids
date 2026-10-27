@@ -4,6 +4,7 @@ import type { Request } from "express";
 import { z } from "zod";
 import { CurrentActor } from "../auth/decorators/actor.decorator";
 import { Roles } from "../auth/decorators/roles.decorator";
+import { AllowLapsed } from "../auth/decorators/allow-lapsed.decorator";
 import type { Actor } from "../authz/actor";
 import { ZodValidationPipe } from "../common/pipes/zod-validation.pipe";
 import { MAX_GROUP_COUNT, ServiceAccessService } from "./service-access.service";
@@ -40,6 +41,8 @@ type InvoiceRequest = z.infer<typeof invoiceRequestSchema>;
  */
 @Controller("service-access")
 @Roles("ADMIN")
+// ★ Open to a director whose service has lapsed — paying is how it reopens (2026-10-27).
+@AllowLapsed()
 export class ServiceAccessController {
   constructor(private readonly service: ServiceAccessService) {}
 

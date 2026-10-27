@@ -10,6 +10,7 @@ import { QpayProgress } from "@/components/child/access-pay-dialog";
 import { FormError } from "@/components/ui/states";
 import { PageHeader } from "@/components/shell/app-shell";
 import { RequireRole } from "@/components/shell/require-role";
+import { useSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { LoadingState } from "@/components/ui/states";
@@ -119,6 +120,12 @@ const acceptSchema = z.object({ contract: z.object({ id: z.string(), status: z.s
 const REMIND_DAYS = 14;
 
 export default function AdminServiceAccessPage() {
+  const { session, isLoading } = useSession();
+  /*
+    ★ A director whose service has lapsed holds no live ADMIN membership —
+    the API opens this page alone to them (2026-10-27), so the guard does too.
+  */
+  if (!isLoading && session?.lapsed.some((m) => m.role === "ADMIN")) return <ServiceAccess />;
   return (
     <RequireRole roles={["ADMIN"]}>
       <ServiceAccess />

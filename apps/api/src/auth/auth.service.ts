@@ -346,11 +346,13 @@ export class AuthService {
     const user = await this.repo.findById(userId);
     if (!user) return null;
 
+    const access = await this.authz.loadMembershipAccess(userId);
     return {
       userId,
       sessionId,
       isSuperAdmin: user.isSuperAdmin,
-      memberships: await this.authz.loadMemberships(userId),
+      memberships: access.memberships,
+      lapsedMemberships: access.lapsed,
     };
   }
 

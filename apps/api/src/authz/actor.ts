@@ -19,6 +19,16 @@ export interface Actor {
    */
   readonly isSuperAdmin: boolean;
   readonly memberships: readonly ActorMembership[];
+  /**
+   * ★ Staff memberships of a contracted kindergarten whose paid service has
+   * lapsed — more than `SERVICE_GRACE_DAYS` past the contract's end (the user,
+   * 2026-10-27: «эрх дуусвал зөвхөн төлбөрийн хуудас нээгдэж, бусад ажил
+   * хаагдана»). Kept out of `memberships`, so every rule that reads them
+   * answers as if the person were not staff there; a route marked
+   * `@AllowLapsed` (paying for the service) gets them back. A guardian's
+   * membership never lapses — families pay their own fee. CLAUDE.md §1.7.
+   */
+  readonly lapsedMemberships?: readonly ActorMembership[];
 }
 
 export interface ActorMembership {
