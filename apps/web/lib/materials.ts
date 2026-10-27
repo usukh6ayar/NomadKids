@@ -146,6 +146,12 @@ export const platformMaterialSchema = materialSchema.omit({ owned: true }).exten
    * changed since, and a discount would be a different amount. «—» until sent.
    */
   revenue: z.number().int().nullish(),
+  /**
+   * The STORED discount, whether or not it still runs (#273) — `price` here is
+   * the list price. The edit form opens on it, so a save keeps it.
+   */
+  discountPrice: z.number().int().positive().nullish(),
+  discountEndsOn: z.string().nullish(),
   fileName: z.string().nullish(),
   /** Whose sample pages these are — uploaded by hand, or the server's job. */
   previewStatus: z.enum(PREVIEW_STATUSES).default("MANUAL"),
