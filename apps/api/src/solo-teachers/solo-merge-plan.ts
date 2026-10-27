@@ -120,6 +120,8 @@ const MOVE = new Set([
   "special_need_records",
   "survey_answer_drafts",
   "survey_answers",
+  // «Гарааны үнэлгээ»'s children per level (#285) — moves with its survey.
+  "survey_children",
   "survey_questions",
   "survey_responses",
   "survey_staff_reads",
