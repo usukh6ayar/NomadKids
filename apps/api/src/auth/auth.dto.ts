@@ -103,6 +103,15 @@ export const invitationAcceptSchema = z.object({
    * `VERIFY_MN_API_KEY` is set, ignored otherwise. `AuthService.acceptInvitation`.
    */
   phoneVerification: z.string().min(20).max(200).optional(),
+  /**
+   * ★ The child's birth date, `YYYY-MM-DD` — a family's invitation only
+   * (2026-10-27, after a parent scanned another child's card). Must match a
+   * child the invitation is for; checked before anything is written.
+   */
+  childBirthDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Хүүхдийн төрсөн огноог оруулна уу")
+    .optional(),
 });
 export type InvitationAcceptDto = z.infer<typeof invitationAcceptSchema>;
 
