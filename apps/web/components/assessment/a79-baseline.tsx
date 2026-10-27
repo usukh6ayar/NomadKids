@@ -13,7 +13,10 @@ import {
   a79ChildRows,
   type A79ReportGroup,
 } from "@/components/assessment/a79-group-summary";
-import { A79BaselineChildList, useBaselineSheets } from "@/components/assessment/a79-baseline-fill";
+import {
+  A79BaselineNotStarted,
+  useBaselineSheets,
+} from "@/components/assessment/a79-baseline-fill";
 import {
   A79BaselineStartDialog,
   useBaselineSetup,
@@ -200,7 +203,12 @@ export function A79BaselinePanel({
                 description={`Бүлгийн гарааны дундаж, ${scored.length} хүүхэд. Хүүхдийн хувь бол өөрийн түвшний шалгуурын хэдийг гарааны үнэлгээнд биелүүлсэн нь.`}
               />
             ) : null}
-            <A79ChildrenTable groupId={groupId} rows={rows} linkChildren={false} />
+            <A79ChildrenTable
+              groupId={groupId}
+              rows={rows}
+              linkChildren={fill}
+              childHref={(childId) => `/groups/${groupId}/baseline/${childId}`}
+            />
           </>
         ) : (
           <p className="py-6 text-center text-body text-muted">
@@ -208,7 +216,13 @@ export function A79BaselinePanel({
           </p>
         )}
 
-        {rows.length > 0 && notAssessed.length > 0 ? (
+        {fill ? (
+          <A79BaselineNotStarted
+            groupId={groupId}
+            listed={new Set(rows.map((row) => row.childId))}
+          />
+        ) : null}
+        {!fill && rows.length > 0 && notAssessed.length > 0 ? (
           <p className="text-caption text-muted">
             Гарааны үнэлгээнд хамрагдаагүй: {notAssessed.map((c) => shortName(c)).join(", ")}
           </p>
@@ -276,8 +290,8 @@ function BaselineStart({ groupId }: { groupId: string }) {
 }
 
 /**
- * «Бүлгээр бөглөх», «Хүүхэд нэмэх» and the children to fill one by one —
- * above the report on the group's own page.
+ * «Бүлгээр бөглөх» and «Хүүхэд нэмэх» above the report on the group's own
+ * page — a child is filled in from their name on the table, or under it.
  */
 function BaselineFillSection({ groupId }: { groupId: string }) {
   const setup = useBaselineSetup(groupId);
@@ -309,7 +323,6 @@ function BaselineFillSection({ groupId }: { groupId: string }) {
           </Button>
         ) : null}
       </div>
-      <A79BaselineChildList groupId={groupId} sheets={sheets} />
       {adding && setup.data ? (
         <A79BaselineStartDialog
           groupId={groupId}

@@ -190,6 +190,44 @@ describe("«Шинэ гарааны үнэлгээ»", () => {
   });
 });
 
+describe("the group's page", () => {
+  /** 2026-10-27, the user: the table is the list — no second one above it. */
+  it("opens a child from their name on the table, and names who has not started", async () => {
+    const answered = questions.map((q) => ({ questionId: q.id, value: "1" }));
+    stubSheet(
+      [
+        row(ANU, "Ану", {
+          response: {
+            id: "88888888-8888-4888-8888-888888888888",
+            submittedAt: "2026-10-27T00:00:00Z",
+            respondent: {
+              id: "99999999-9999-4999-8999-999999999999",
+              lastName: "Б",
+              firstName: "Багш",
+            },
+            answers: answered,
+          },
+        }),
+        row(BAT, "Тэмүүлэн"),
+      ],
+      [{ path: `/groups/${GROUP}/a79-baseline`, body: { surveys: [], roster: [] } }],
+    );
+    renderWithProviders(<A79BaselinePanel groupId={GROUP} fill />);
+
+    const table = await screen.findByRole("table");
+    expect(within(table).getByRole("link", { name: "Б.Ану" })).toHaveAttribute(
+      "href",
+      `/groups/${GROUP}/baseline/${ANU}`,
+    );
+    expect(screen.queryByRole("list", { name: "Гарааны үнэлгээний хүүхдүүд" })).toBeNull();
+    const notStarted = screen.getByText(/Бөглөж эхлээгүй/);
+    expect(within(notStarted).getByRole("link", { name: "Б.Тэмүүлэн" })).toHaveAttribute(
+      "href",
+      `/groups/${GROUP}/baseline/${BAT}`,
+    );
+  });
+});
+
 describe("filling one child in", () => {
   it("shows Мэдлэг, Чадвар, Төлөвшил as tabs, and saves a domain as a draft to continue", async () => {
     const api = stubSheet([row(ANU, "Ану"), row(BAT, "Тэмүүлэн")]);

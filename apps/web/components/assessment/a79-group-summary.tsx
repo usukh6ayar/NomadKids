@@ -441,6 +441,7 @@ export function A79ChildrenTable({
   groupId,
   rows,
   linkChildren = true,
+  childHref = (childId) => `/groups/${groupId}/results/${childId}`,
 }: {
   groupId: string;
   rows: A79ChildRow[];
@@ -449,6 +450,8 @@ export function A79ChildrenTable({
    * built from observations, not the baseline survey this row was read from.
    */
   linkChildren?: boolean;
+  /** Where a name leads — the group's «Гарааны үнэлгээ» page opens the child's baseline. */
+  childHref?: (childId: string) => string;
 }) {
   return (
     <TableShell caption="Хүүхэд бүрийн үр дүн" minWidth="min-w-[560px]">
@@ -475,7 +478,7 @@ export function A79ChildrenTable({
                 <Td>
                   {linkChildren && !row.feeDue ? (
                     <Link
-                      href={`/groups/${groupId}/results/${row.childId}`}
+                      href={childHref(row.childId)}
                       className="font-medium text-primary hover:underline"
                     >
                       {shortName(row)}
@@ -508,7 +511,7 @@ export function A79ChildrenTable({
               <Td>
                 {linkChildren ? (
                   <Link
-                    href={`/groups/${groupId}/results/${row.childId}`}
+                    href={childHref(row.childId)}
                     className="font-medium text-primary hover:underline"
                   >
                     {shortName(row)}

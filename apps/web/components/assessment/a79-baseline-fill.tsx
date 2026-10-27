@@ -211,58 +211,42 @@ function DomainMarks({
   );
 }
 
-function rowStatus(row: TeacherSheetRow): { label: string; tone: "mint" | "sun" | "neutral" } {
-  if (row.response) return { label: "Дууссан", tone: "mint" };
-  if (row.draft) return { label: "Дутуу", tone: "sun" };
-  return { label: "Эхлээгүй", tone: "neutral" };
-}
-
 /**
- * The children on the group's baselines, each with how far their row is —
- * the way into filling one child in (2026-10-27, the user: «хүүхэд дээр
- * дарахад зөвхөн тухайн хүүхдийг засаж үргэлжлүүлнэ»).
+ * The children on the group's baselines whom the report's table does not
+ * name yet — never started — each a way into filling them in (2026-10-27,
+ * the user: the table is the list; a child on it opens by their name).
  */
-export function A79BaselineChildList({
+export function A79BaselineNotStarted({
   groupId,
-  sheets,
+  listed,
 }: {
   groupId: string;
-  sheets: BaselineSheetData[];
+  /** The children the table already names. */
+  listed: ReadonlySet<string>;
 }) {
-  // One line a child — on two baselines (the wizard's), the one saved last.
-  const byChild = new Map<string, { sheet: BaselineSheetData; row: TeacherSheetRow }>();
+  const { sheets } = useBaselineSheets(groupId);
+  const children = new Map<string, TeacherSheetRow["child"]>();
   for (const sheet of sheets) {
     for (const row of sheet.rows) {
-      const seen = byChild.get(row.child.id);
-      if (!seen || savedAt(row) > savedAt(seen.row)) byChild.set(row.child.id, { sheet, row });
+      if (!listed.has(row.child.id)) children.set(row.child.id, row.child);
     }
   }
-  const entries = [...byChild.values()];
-  if (entries.length === 0) return null;
+  if (children.size === 0) return null;
   return (
-    <ul aria-label="Гарааны үнэлгээний хүүхдүүд" className="flex flex-col gap-2">
-      {entries.map(({ sheet, row }) => {
-        const status = rowStatus(row);
-        return (
-          <li key={row.child.id}>
-            <Link
-              href={`/groups/${groupId}/baseline/${row.child.id}`}
-              className="flex min-h-[56px] flex-col gap-1.5 rounded-card border border-border bg-surface px-3 py-2.5 transition-colors hover:border-faint sm:flex-row sm:items-center sm:justify-between"
-            >
-              <span className="flex items-center gap-2">
-                <span className="text-body font-semibold text-ink">{shortName(row.child)}</span>
-                <span className="text-caption text-muted">{sheet.label}</span>
-                <Badge tone={status.tone}>{status.label}</Badge>
-              </span>
-              <span className="flex items-center gap-2">
-                <DomainMarks criteria={sheet.criteria} answers={startingAnswers(sheet, row)} />
-                <ChevronRight aria-hidden className="hidden size-4 text-faint sm:block" />
-              </span>
-            </Link>
-          </li>
-        );
-      })}
-    </ul>
+    <p className="text-caption text-muted">
+      Бөглөж эхлээгүй:{" "}
+      {[...children.values()].map((child, index) => (
+        <span key={child.id}>
+          {index > 0 ? ", " : null}
+          <Link
+            href={`/groups/${groupId}/baseline/${child.id}`}
+            className="font-medium text-primary hover:underline"
+          >
+            {shortName(child)}
+          </Link>
+        </span>
+      ))}
+    </p>
   );
 }
 
