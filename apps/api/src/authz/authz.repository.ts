@@ -1,4 +1,4 @@
-import { guardianChatName } from "@kinder/contracts";
+import { guardianChatName, localDate } from "@kinder/contracts";
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import type { Actor, ActorMembership } from "./actor";
@@ -14,6 +14,13 @@ import type { ChatAccessFacts } from "./chat-access";
  * `child-access.ts`. Keeping the two apart is what lets the rules be tested
  * exhaustively without a database.
  */
+/**
+ * Days a contracted kindergarten's staff keep working after its paid period
+ * ends — the user, 2026-10-27: a state kindergarten pays against an invoice by
+ * bank transfer, and a week covers the transfer being seen and recorded.
+ */
+export const SERVICE_GRACE_DAYS = 7;
+
 @Injectable()
 export class AuthzRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -23,11 +30,59 @@ export class AuthzRepository {
    * than baked into the JWT, so revoking a role takes effect immediately.
    */
   async loadMemberships(userId: string): Promise<ActorMembership[]> {
+    return (await this.loadMembershipAccess(userId)).memberships;
+  }
+
+  /**
+   * The live memberships, split by whether the kindergarten's paid service
+   * has lapsed — see `Actor.lapsedMemberships`. One query (it runs on every
+   * request): each membership with its kindergarten's kind and the latest end
+   * of an ACTIVE contract.
+   *
+   * ★ Lapsed only with a contract that ran out: an ACTIVE contract whose
+   * latest end is more than `SERVICE_GRACE_DAYS` behind today in
+   * Ulaanbaatar. A kindergarten that has not accepted one yet, or whose first
+   * period is owed (its end is the contract's own, ahead), is not lapsed.
+   */
+  async loadMembershipAccess(
+    userId: string,
+    today: string = localDate(),
+  ): Promise<{ memberships: ActorMembership[]; lapsed: ActorMembership[] }> {
     const rows = await this.prisma.membership.findMany({
       where: { userId, isActive: true, deletedAt: null },
-      select: { id: true, kindergartenId: true, role: true },
+      select: {
+        id: true,
+        kindergartenId: true,
+        role: true,
+        kindergarten: {
+          select: {
+            kind: true,
+            contracts: {
+              where: { status: "ACTIVE", deletedAt: null },
+              orderBy: { endsOn: "desc" },
+              take: 1,
+              select: { endsOn: true },
+            },
+          },
+        },
+      },
     });
-    return rows;
+
+    const cutoff = new Date(`${today}T00:00:00.000Z`);
+    cutoff.setUTCDate(cutoff.getUTCDate() - SERVICE_GRACE_DAYS);
+    const memberships: ActorMembership[] = [];
+    const lapsed: ActorMembership[] = [];
+    for (const row of rows) {
+      const membership = { id: row.id, kindergartenId: row.kindergartenId, role: row.role };
+      const end = row.kindergarten.contracts[0]?.endsOn;
+      const isLapsed =
+        row.role !== "PARENT" &&
+        row.kindergarten.kind === "CONTRACTED" &&
+        end !== undefined &&
+        end.getTime() < cutoff.getTime();
+      (isLapsed ? lapsed : memberships).push(membership);
+    }
+    return { memberships, lapsed };
   }
 
   /**

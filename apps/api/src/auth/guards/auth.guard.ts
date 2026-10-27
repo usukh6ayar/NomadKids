@@ -5,6 +5,7 @@ import { AuthService } from "../auth.service";
 import { TokenService } from "../token.service";
 import { ACCESS_COOKIE } from "../cookies";
 import { IS_PUBLIC } from "../decorators/public.decorator";
+import { ALLOW_LAPSED } from "../decorators/allow-lapsed.decorator";
 import type { Actor } from "../../authz/actor";
 
 /**
@@ -47,7 +48,16 @@ export class AuthGuard implements CanActivate {
     const actor = await this.auth.resolveActor(payload.sub, payload.sid);
     if (!actor) throw new UnauthorizedException();
 
-    request.actor = actor;
+    // ★ Paying for a lapsed service is the one thing its staff may still do
+    // (2026-10-27) — on a route that says so, their memberships come back.
+    const allowLapsed = this.reflector.getAllAndOverride<boolean>(ALLOW_LAPSED, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    request.actor =
+      allowLapsed && actor.lapsedMemberships?.length
+        ? { ...actor, memberships: [...actor.memberships, ...actor.lapsedMemberships] }
+        : actor;
     return true;
   }
 }

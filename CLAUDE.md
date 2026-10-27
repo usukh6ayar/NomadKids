@@ -120,7 +120,17 @@ there, so an unpaid child is inactive for the teacher too. The argument holds �
 they have passed `canAccessChild` first. Inviting the family
 (`assertCanInviteGuardian`), the roster and attendance
 (`assertCanRecordAttendance`, the user 2026-10-18) stay open; a contracted
-kindergarten's staff are never gated.
+kindergarten's staff are never gated by a family's fee.
+
+★ **A contracted kindergarten's staff are closed out when its own service
+lapses** (the user, 2026-10-27): more than `SERVICE_GRACE_DAYS` (7) past the
+latest end of its ACTIVE contract, their memberships there move to
+`Actor.lapsedMemberships` and every rule answers **404** as if they were not
+staff (`AuthzRepository.loadMembershipAccess`). Only routes marked
+`@AllowLapsed` — «Үйлчилгээний эрх», paying for the service — get them back.
+Families are never closed by it. No contract yet, or a first period owed, is
+not lapsed. **Do not add `@AllowLapsed` to a route that serves kindergarten
+data.**
 
 ★ **A solo teacher is TEACHER only, never ADMIN** (the user, 2026-10-14). They
 set up their own school year and one group a year

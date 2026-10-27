@@ -77,6 +77,10 @@ function RootRedirect() {
      */
     else if (hasRole("COOK")) router.replace("/kitchen/dashboard");
     else if (hasRole("ACCOUNTANT")) router.replace("/finance/dashboard");
+    // ★ A director whose kindergarten's service has lapsed (2026-10-27): the
+    // one screen still open is paying for it — before their own child's page.
+    else if (session.lapsed.some((m) => m.role === "ADMIN"))
+      router.replace("/admin/service-access");
     else if (hasRole("PARENT")) router.replace("/home");
     // Signed in with no membership — a real state after a revocation, and one
     // that must not redirect in a loop.

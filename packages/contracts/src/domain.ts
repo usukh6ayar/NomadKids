@@ -302,6 +302,15 @@ export const sessionSchema = z.object({
    * this, a teacher included; `GET /kindergartens/:id` is an administrator's.
    */
   esisKindergartenIds: z.array(z.string()).default([]),
+  /**
+   * ★ Where this person is staff but the kindergarten's paid service has
+   * lapsed — more than seven days past its end (the user, 2026-10-27). Not in
+   * `memberships`: the API answers there as if they were not staff. A
+   * director is sent to «Үйлчилгээний эрх», the one screen still open.
+   */
+  lapsed: z
+    .array(z.object({ kindergartenId: z.string(), role: roleSchema, name: z.string() }))
+    .default([]),
   csrfToken: z.string().nullish(),
 });
 export type Session = z.infer<typeof sessionSchema>;
