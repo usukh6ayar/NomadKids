@@ -86,6 +86,7 @@ export default function AcceptInvitationPage() {
   const [phoneProof, setPhoneProof] = useState<{ phone: string; handle: string } | null>(null);
   const phoneEnabled = usePhoneVerificationEnabled();
   const [relation, setRelation] = useState<string>("MOTHER");
+  const [childBirthDate, setChildBirthDate] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
@@ -117,6 +118,7 @@ export default function AcceptInvitationPage() {
             .object({ name: z.boolean(), phone: z.boolean() })
             .default({ name: false, phone: false }),
           phoneHint: z.string().optional(),
+          children: z.array(z.string()).optional(),
         }),
       ),
     retry: false,
@@ -131,6 +133,13 @@ export default function AcceptInvitationPage() {
     the code to the number it holds when none is given.
   */
   const askName = !invitation.data?.knows.name;
+  /*
+    ★ The child this card is for, and their birth date — 2026-10-27, after a
+    parent scanned another child's card. The name is on the card already; the
+    birth date is what the family knows and the holder of a wrong card does not.
+  */
+  const children = isStaff ? [] : (invitation.data?.children ?? []);
+  const askChild = children.length > 0;
   const knownPhone = Boolean(invitation.data?.knows.phone);
   const askPhone = !knownPhone;
   /** What a proof is for: the typed number, or the one given at sign-up. */
@@ -153,6 +162,7 @@ export default function AcceptInvitationPage() {
           ...(isStaff ? (askName ? { lastName: lastName.trim() } : {}) : { relation }),
           ...(askPhone ? { phone: phone.trim() } : {}),
           ...(phoneProof?.phone === proofFor ? { phoneVerification: phoneProof.handle } : {}),
+          ...(askChild ? { childBirthDate } : {}),
         },
       }),
     onSuccess: () => {
@@ -168,6 +178,11 @@ export default function AcceptInvitationPage() {
     event.preventDefault();
     if (accept.isPending) return;
 
+    // First: it sits at the top of the form, and a wrong card ends here.
+    if (askChild && !childBirthDate) {
+      setLocalError("Хүүхдийн төрсөн огноог оруулна уу.");
+      return;
+    }
     const weaknesses = validatePasswordStrength(password);
     if (weaknesses.length > 0) {
       setLocalError(`${weaknesses.join(". ")}.`);
@@ -238,6 +253,28 @@ export default function AcceptInvitationPage() {
 
       <form onSubmit={onSubmit} className="flex flex-col gap-3" noValidate>
         <FormError message={localError ?? (accept.isError ? errorMessage(accept.error) : null)} />
+
+        {askChild ? (
+          <div className="flex flex-col gap-3 rounded-control bg-primary-soft px-3.5 py-3">
+            <p className="text-body text-ink">
+              Энэ урилга <strong>{children.join(", ")}</strong>-д зориулагдсан. Таны хүүхэд мөн үү?
+              Биш бол бүртгүүлэхгүй, багшаас өөрийн хүүхдийн картыг аваарай.
+            </p>
+            <Field label="Хүүхдийн төрсөн огноо" error={errors.childBirthDate} required>
+              {({ id, describedBy, invalid }) => (
+                <Input
+                  id={id}
+                  type="date"
+                  className={COMPACT_INPUT}
+                  aria-describedby={describedBy}
+                  aria-invalid={invalid}
+                  value={childBirthDate}
+                  onChange={(e) => setChildBirthDate(e.target.value)}
+                />
+              )}
+            </Field>
+          </div>
+        ) : null}
 
         {/*
           ★ The guardian introduces themselves here, and the teacher no longer
