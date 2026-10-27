@@ -495,16 +495,24 @@ function ReportBody({
       <div role="tabpanel" aria-label={TABS.find((entry) => entry.key === tab)!.label}>
         {tab === "summary" || tab === "attendance" ? <AttendancePanel report={report} /> : null}
         {tab === "summary" || tab === "assessment" ? <AssessmentPanel report={report} /> : null}
-        {/* The summary remains scoped to the selected group like every card
-            above it. Only the director's dedicated results tab widens to the
-            whole kindergarten — otherwise one page would silently mix two
-            populations in adjacent figures. */}
+        {/* ★ A director's summary compares the groups — the kindergarten
+            chart and a row per group, as on «Үр дүнгийн үнэлгээ» (2026-10-27,
+            the user: «бүлэг бүрийн нэгтгэл харьцуулагдана»). A teacher's
+            stays their group's, like every card above it. */}
         {tab === "summary" ? (
-          <A79GroupSummaryPanel
-            groupId={report.group.id}
-            from={report.range.from}
-            to={report.range.to}
-          />
+          director ? (
+            <A79KindergartenSummaryPanel
+              groups={groups}
+              from={report.range.from}
+              to={report.range.to}
+            />
+          ) : (
+            <A79GroupSummaryPanel
+              groupId={report.group.id}
+              from={report.range.from}
+              to={report.range.to}
+            />
+          )
         ) : null}
         {tab === "baseline" ? (
           // A director sees the groups first, as on «Үр дүнгийн үнэлгээ» (2026-10-22).

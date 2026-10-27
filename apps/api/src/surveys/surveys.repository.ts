@@ -9,6 +9,7 @@ import type {
   SurveyScope,
   SurveyStatus,
 } from "../domain/enums";
+import type { A79LevelKey } from "@kinder/contracts";
 
 const questionOrder = { order: "asc" as const };
 
@@ -185,6 +186,8 @@ export class SurveysRepository {
         // Which group was asked. `participation` builds its roster from it,
         // and null is every group — see `Survey.groupId`.
         groupId: true,
+        // An А/79 baseline's sheet is its own children — `assertCanAssess`.
+        a79Level: true,
       },
     });
   }
@@ -1040,5 +1043,112 @@ export class SurveysRepository {
     });
 
     return questions.length;
+  }
+
+  // ── «Гарааны үнэлгээ» — the А/79 baseline started from its own page ──────
+
+  /** The group's baselines made from «Гарааны үнэлгээ», with their children. */
+  async a79BaselinesForGroup(groupId: string) {
+    return this.prisma.survey.findMany({
+      where: { groupId, a79Level: { not: null }, deletedAt: null },
+      orderBy: { a79Level: "asc" },
+      select: {
+        id: true,
+        a79Level: true,
+        status: true,
+        children: { where: { deletedAt: null }, select: { childId: true } },
+      },
+    });
+  }
+
+  /** The group's school year — its name is the survey's `schoolYear`. */
+  async groupSchoolYear(groupId: string) {
+    return this.prisma.group.findFirst({
+      where: { id: groupId, deletedAt: null },
+      select: { schoolYear: { select: { name: true } } },
+    });
+  }
+
+  /** The group's children now, with the birth date the suggested level reads. */
+  async a79BaselineRoster(groupId: string) {
+    return this.prisma.enrollment.findMany({
+      where: { groupId, status: "ACTIVE", deletedAt: null, child: { deletedAt: null } },
+      orderBy: { child: { firstName: "asc" } },
+      select: {
+        child: { select: { id: true, lastName: true, firstName: true, dateOfBirth: true } },
+      },
+    });
+  }
+
+  /**
+   * One level's baseline for a group, published as it is made, in one
+   * transaction: the survey, its questions and its children.
+   */
+  async createA79Baseline(data: {
+    kindergartenId: string;
+    groupId: string;
+    createdById: string;
+    level: A79LevelKey;
+    title: string;
+    schoolYear: string | null;
+    questions: { order: number; prompt: string; options: string[]; indicatorKey: string | null }[];
+    childIds: string[];
+  }) {
+    return this.prisma.$transaction(async (tx) => {
+      const survey = await tx.survey.create({
+        data: {
+          kindergartenId: data.kindergartenId,
+          groupId: data.groupId,
+          createdById: data.createdById,
+          title: data.title,
+          category: "OTHER",
+          scope: "CHILD",
+          kind: "FORM",
+          respondent: "TEACHER",
+          period: "BASELINE",
+          schoolYear: data.schoolYear,
+          status: "PUBLISHED",
+          publishedAt: new Date(),
+          a79Level: data.level,
+        },
+        select: { id: true },
+      });
+      await tx.surveyQuestion.createMany({
+        data: data.questions.map((q) => ({
+          kindergartenId: data.kindergartenId,
+          surveyId: survey.id,
+          order: q.order,
+          type: "SINGLE_CHOICE" as const,
+          prompt: q.prompt,
+          options: q.options,
+          indicatorKey: q.indicatorKey,
+        })),
+      });
+      await tx.surveyChild.createMany({
+        data: data.childIds.map((childId) => ({
+          kindergartenId: data.kindergartenId,
+          surveyId: survey.id,
+          childId,
+        })),
+      });
+      return survey;
+    });
+  }
+
+  /** Adds children to a level's baseline; one already on it is left as it is. */
+  async addSurveyChildren(kindergartenId: string, surveyId: string, childIds: string[]) {
+    return this.prisma.surveyChild.createMany({
+      data: childIds.map((childId) => ({ kindergartenId, surveyId, childId })),
+      skipDuplicates: true,
+    });
+  }
+
+  /** The children an А/79 baseline is for — `SurveyChild`. */
+  async surveyChildIds(surveyId: string): Promise<string[]> {
+    const rows = await this.prisma.surveyChild.findMany({
+      where: { surveyId, deletedAt: null },
+      select: { childId: true },
+    });
+    return rows.map((row) => row.childId);
   }
 }

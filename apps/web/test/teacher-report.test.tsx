@@ -186,6 +186,8 @@ describe("the teacher's report", () => {
           children: [
             child("c1111111-1111-4111-8111-111111111111", "Ану", 37),
             child("c2222222-2222-4222-8222-222222222222", "Сарнай", 20),
+            // No note linked (2026-10-27): named, in no average.
+            { ...child("c3333333-3333-4333-8333-333333333333", "Нэгүүн", 0), assessed: 0 },
           ],
         },
       },
@@ -204,6 +206,7 @@ describe("the teacher's report", () => {
     ).toBeInTheDocument();
     expect(within(panel).getByText("Хангалттай эзэмшиж байна · 1")).toBeInTheDocument();
     expect(within(panel).getByText("Хөгжиж байна · 1")).toBeInTheDocument();
+    expect(within(panel).getByText(/1 хүүхдэд тэмдэглэл холбогдоогүй/)).toBeInTheDocument();
     const anu = within(panel).getByRole("link", { name: "Б.Ану" });
     expect(anu).toHaveAttribute(
       "href",

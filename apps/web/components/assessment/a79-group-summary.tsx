@@ -1,8 +1,10 @@
 "use client";
 
 import { useQueries, useQuery } from "@tanstack/react-query";
+import { Download } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { Ring } from "@/components/ui/chart/ring";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
@@ -93,11 +95,22 @@ export function a79ChildRows(data: A79GroupSummary): A79ChildRow[] {
 }
 
 /**
- * The rows with figures — an unpaid solo child (`feeDue`) is named on the
- * table and counted in no average: their 0 is a withheld figure, not a result.
+ * ★ A child no note is linked to (2026-10-27, the user's director report:
+ * eighteen children «0% · Хөгжиж байна»). Not assessed is not «Хөгжиж байна»
+ * — the regulation's band is a judgement made from evidence (А/79 §2.9).
+ * `assessed` is absent from an older server, which leaves the row as it was.
+ */
+function unassessed(row: A79ChildRow): boolean {
+  return row.assessed === 0;
+}
+
+/**
+ * The rows with figures — an unpaid solo child (`feeDue`) and a child with no
+ * note linked are named on the table and counted in no average: their 0 is a
+ * withheld or a missing figure, not a result.
  */
 function scored(rows: A79ChildRow[]): A79ChildRow[] {
-  return rows.filter((row) => !row.feeDue);
+  return rows.filter((row) => !row.feeDue && !unassessed(row));
 }
 
 /**
@@ -159,8 +172,14 @@ function SummaryBody({ groupId, data }: { groupId: string; data: A79GroupSummary
         <A79SummaryChart
           rows={withFigures}
           averageLabel="Бүлгийн дундаж"
-          description={`Бүлгийн дундаж, ${withFigures.length} хүүхэд. Хүүхдийн хувь бол өөрийн түвшний шалгуурын хэдийг хангалттай эзэмшсэн нь.`}
+          description={`Бүлгийн дундаж, ${withFigures.length} хүүхэд`}
         />
+      ) : null}
+      {rows.some(unassessed) ? (
+        <p className="text-caption text-muted">
+          {rows.filter(unassessed).length} хүүхдэд тэмдэглэл холбогдоогүй тул дунджид ороогүй. Явцын
+          үнэлгээний тэмдэглэлийг А/79 шалгуурт холбоход энд гарна.
+        </p>
       ) : null}
 
       <A79ChildrenTable groupId={groupId} rows={rows} />
@@ -200,7 +219,8 @@ export function A79SummaryChart({
 }: {
   rows: A79ChildRow[];
   averageLabel: string;
-  description: string;
+  /** Off on «Гарааны үнэлгээ» (2026-10-27, the user): the figures say it. */
+  description?: string;
   title?: string;
 }) {
   const average = a79MeanShare(rows);
@@ -222,7 +242,7 @@ export function A79SummaryChart({
           <A79RingFigure percent={average} />
         </Ring>
         <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <p className="text-body text-ink">{description}</p>
+          {description ? <p className="text-body text-ink">{description}</p> : null}
           <ul aria-label="Хүүхдийн тоо, бүсээр" className="flex flex-wrap gap-2">
             {bands.map(({ band, count }) => (
               <li key={band}>
@@ -356,7 +376,7 @@ export function KindergartenSummaryBody({
         rows={children}
         averageLabel="Цэцэрлэгийн дундаж"
         title="Цэцэрлэгийн нэгтгэл график"
-        description={`Цэцэрлэгийн дундаж, ${children.length} хүүхэд · ${groups.length} бүлэг. Бүлгийн хэмжээнээс үл хамааран хүүхэд бүр ижил жинтэй тооцогдоно.`}
+        description={`Цэцэрлэгийн дундаж, ${children.length} хүүхэд · ${groups.length} бүлэг`}
       />
 
       <TableShell caption="Бүлэг бүрийн үзүүлэлт" minWidth="min-w-[720px]">
@@ -416,6 +436,60 @@ export function KindergartenSummaryBody({
 }
 
 /**
+ * «Excel» — the children's table as a CSV Excel opens (the BOM keeps the
+ * Cyrillic readable), its columns those of `A79ChildrenTable`. 2026-10-27,
+ * the user: on «Гарааны үнэлгээ» and on «Үр дүнгийн үнэлгээ».
+ */
+export function A79ExcelButton({
+  rows,
+  fileName,
+  unassessedLabel = "Тэмдэглэл холбоогүй",
+}: {
+  rows: A79ChildRow[];
+  /** Without the extension. */
+  fileName: string;
+  unassessedLabel?: string;
+}) {
+  const download = () => {
+    const quote = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+    const header = ["№", "Нэр", "Түвшин", ...DOMAINS, "Нийт", "Үр дүн"];
+    const body = rows.map((row, index) => {
+      const none = row.feeDue || unassessed(row);
+      return [
+        index + 1,
+        shortName(row),
+        row.level,
+        ...DOMAINS.map((domain) => (none ? "—" : `${row.domain[domain] ?? 0}%`)),
+        none ? "—" : `${row.percent}%`,
+        row.feeDue
+          ? "Төлбөр төлөгдөөгүй"
+          : none
+            ? unassessedLabel
+            : A79_BAND_LABEL[a79Band(row.percent)],
+      ];
+    });
+    const csv = [header, ...body].map((line) => line.map(quote).join(",")).join("\r\n");
+    const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${fileName}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="secondary"
+      disabled={rows.length === 0}
+      onClick={download}
+    >
+      <Download size={16} aria-hidden /> Excel
+    </Button>
+  );
+}
+
+/**
  * A row per child — Нэр · Түвшин · Мэдлэг · Чадвар · Төлөвшил · Нийт · Үр дүн
  * — on Тайлан and on «Үр дүнгийн үнэлгээ» alike (client, 2026-10-08). The
  * name opens the child's own result.
@@ -424,6 +498,8 @@ export function A79ChildrenTable({
   groupId,
   rows,
   linkChildren = true,
+  childHref = (childId) => `/groups/${groupId}/results/${childId}`,
+  unassessedLabel = "Тэмдэглэл холбоогүй",
 }: {
   groupId: string;
   rows: A79ChildRow[];
@@ -432,6 +508,10 @@ export function A79ChildrenTable({
    * built from observations, not the baseline survey this row was read from.
    */
   linkChildren?: boolean;
+  /** Where a name leads — the group's «Гарааны үнэлгээ» page opens the child's baseline. */
+  childHref?: (childId: string) => string;
+  /** What a row with no figures says — «Бөглөөгүй» on a baseline not filled in yet. */
+  unassessedLabel?: string;
 }) {
   return (
     <TableShell caption="Хүүхэд бүрийн үр дүн" minWidth="min-w-[560px]">
@@ -451,11 +531,22 @@ export function A79ChildrenTable({
       </thead>
       <tbody>
         {rows.map((row, index) => {
-          if (row.feeDue) {
+          if (row.feeDue || unassessed(row)) {
             return (
               <tr key={row.childId}>
                 <Td className="tabular-nums text-muted">{index + 1}</Td>
-                <Td className="text-ink">{shortName(row)}</Td>
+                <Td>
+                  {linkChildren && !row.feeDue ? (
+                    <Link
+                      href={childHref(row.childId)}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {shortName(row)}
+                    </Link>
+                  ) : (
+                    <span className="text-ink">{shortName(row)}</span>
+                  )}
+                </Td>
                 <Td>{row.level}</Td>
                 {DOMAINS.map((domain) => (
                   <Td key={domain} numeric className="text-muted">
@@ -466,7 +557,9 @@ export function A79ChildrenTable({
                   —
                 </Td>
                 <Td>
-                  <Badge tone="neutral">Төлбөр төлөгдөөгүй</Badge>
+                  <Badge tone="neutral">
+                    {row.feeDue ? "Төлбөр төлөгдөөгүй" : unassessedLabel}
+                  </Badge>
                 </Td>
               </tr>
             );
@@ -478,7 +571,7 @@ export function A79ChildrenTable({
               <Td>
                 {linkChildren ? (
                   <Link
-                    href={`/groups/${groupId}/results/${row.childId}`}
+                    href={childHref(row.childId)}
                     className="font-medium text-primary hover:underline"
                   >
                     {shortName(row)}

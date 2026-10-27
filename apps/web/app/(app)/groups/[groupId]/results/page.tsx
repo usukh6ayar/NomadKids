@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import {
   A79ChildrenTable,
+  A79ExcelButton,
   A79NotReady,
   a79ChildRows,
   useA79GroupSummary,
@@ -38,9 +39,8 @@ function GroupResults() {
   const { data, notReady, isLoading, error } = useA79GroupSummary(groupId);
 
   const needle = query.trim().toLowerCase();
-  const rows = data
-    ? a79ChildRows(data).filter((row) => !needle || fullName(row).toLowerCase().includes(needle))
-    : [];
+  const all = data ? a79ChildRows(data) : [];
+  const rows = all.filter((row) => !needle || fullName(row).toLowerCase().includes(needle));
 
   return (
     <div className="flex flex-col gap-4">
@@ -60,7 +60,14 @@ function GroupResults() {
 
       {data && data.children.length > 0 ? (
         <>
-          <SearchField label="Хүүхдийн нэрээр хайх" value={query} onChange={setQuery} />
+          {/* The search and «Excel» on one line — 2026-10-27, the user. The whole group goes out. */}
+          <div className="flex items-center gap-2">
+            <SearchField label="Хүүхдийн нэрээр хайх" value={query} onChange={setQuery} />
+            <A79ExcelButton
+              rows={all}
+              fileName={`ur-dungiin-unelgee-${new Date().toISOString().slice(0, 10)}`}
+            />
+          </div>
           {rows.length === 0 ? (
             <p className="py-8 text-center text-body text-muted">Хайлтад тохирох хүүхэд алга.</p>
           ) : (

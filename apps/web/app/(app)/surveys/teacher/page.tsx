@@ -121,9 +121,12 @@ function TeacherSurveys() {
     enabled: Boolean(primaryKindergartenId),
   });
 
+  // ★ An А/79 baseline made from «Гарааны үнэлгээ» lives on that page, not here.
   const mine = (surveys.data ?? []).filter(
     (survey) =>
-      survey.respondent === "TEACHER" && canManageSurvey(survey, session?.user.id, isAdmin),
+      survey.respondent === "TEACHER" &&
+      !survey.a79Level &&
+      canManageSurvey(survey, session?.user.id, isAdmin),
   );
   const schoolYears = schoolYearsOf(mine);
   const inYear = mine.filter((survey) => schoolYearStart(survey.createdAt) === schoolYear);

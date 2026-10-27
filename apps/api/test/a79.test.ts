@@ -278,7 +278,14 @@ describe("GET /groups/:id/a79-summary", () => {
     expect(res.status).toBe(200);
     expect(res.body.children).toHaveLength(1);
     const row = res.body.children[0];
-    expect(row).toMatchObject({ childId: a.child.id, level: "IV", achieved: 1, total: 49 });
+    // Three criteria carry a note: assessed, whatever their status (2026-10-27).
+    expect(row).toMatchObject({
+      childId: a.child.id,
+      level: "IV",
+      achieved: 1,
+      total: 49,
+      assessed: 3,
+    });
     expect(row.byDomain).toEqual([
       { domain: "Мэдлэг", achieved: 1, total: inDomain("Мэдлэг") },
       { domain: "Чадвар", achieved: 0, total: inDomain("Чадвар") },
@@ -290,7 +297,8 @@ describe("GET /groups/:id/a79-summary", () => {
     const res = await summary(teacherA);
     expect(res.status).toBe(200);
     expect(res.body.children).toEqual([
-      expect.objectContaining({ childId: a.child.id, achieved: 0, total: 49 }),
+      // No note linked: not assessed — never «Хөгжиж байна» (2026-10-27).
+      expect.objectContaining({ childId: a.child.id, achieved: 0, total: 49, assessed: 0 }),
     ]);
   });
 

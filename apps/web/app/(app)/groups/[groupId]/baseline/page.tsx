@@ -8,7 +8,7 @@ import { RequireRole } from "@/components/shell/require-role";
 
 /**
  * «Гарааны үнэлгээ» — the group's А/79 baseline, beside Явцын and Үр дүнгийн
- * (2026-10-21, the user). Read from the teacher's baseline survey; see
+ * (2026-10-21, the user). Started, filled in and read here (2026-10-27); see
  * `components/assessment/a79-baseline.tsx`.
  */
 export default function GroupBaselinePage() {
@@ -25,7 +25,7 @@ function GroupBaseline() {
     <div className="flex flex-col gap-4">
       <PageHeader title="Гарааны үнэлгээ" backHref="/dashboard" />
       <AssessmentSwitch groupId={groupId} active="baseline" />
-      <A79BaselinePanel groupId={groupId} heading={false} />
+      <A79BaselinePanel groupId={groupId} heading={false} fill />
     </div>
   );
 }

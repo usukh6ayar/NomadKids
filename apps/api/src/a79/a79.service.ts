@@ -206,6 +206,8 @@ export class A79Service {
           feeDue: false,
           achieved: numbered.filter((c) => met(c.number)).length,
           total: numbered.length,
+          // Criteria any note in the span is linked to — 0 is not assessed.
+          assessed: numbered.filter((c) => forChild?.has(`${level}-${c.number}`)).length,
           byDomain: A79_DOMAINS.map((domain) => {
             const inDomain = numbered.filter((c) => c.domain === domain);
             return {

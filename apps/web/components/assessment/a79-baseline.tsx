@@ -1,35 +1,43 @@
 "use client";
 
 import { useQueries, useQuery } from "@tanstack/react-query";
+import { Plus } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 import { z } from "zod";
 import { a79GroupSummarySchema, surveySchema } from "@kinder/contracts";
 import {
   A79ChildrenTable,
+  A79ExcelButton,
   A79SummaryChart,
   KindergartenSummaryBody,
   a79ChildRows,
+  type A79ChildRow,
   type A79ReportGroup,
 } from "@/components/assessment/a79-group-summary";
+import { useBaselineSheets } from "@/components/assessment/a79-baseline-fill";
+import {
+  A79BaselineStartDialog,
+  useBaselineSetup,
+} from "@/components/assessment/a79-baseline-start";
 import { teacherSheetRowSchema } from "@/components/survey/teacher-sheet";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { SectionHeader } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { get } from "@/lib/api/browser";
 import { errorMessage } from "@/lib/api/errors";
 import { qk } from "@/lib/api/keys";
 import { useSession } from "@/lib/auth/session";
-import { asGroupSummary, baselineLevel, mergeBaselines, withFeeDue } from "@/lib/a79-baseline";
+import {
+  asGroupSummary,
+  isA79BaselineSurvey,
+  mergeBaselines,
+  withFeeDue,
+} from "@/lib/a79-baseline";
 import { formatDate, shortName } from "@/lib/format";
-import { staffSurveysSchema, type StaffSurvey } from "@/lib/survey-access";
+import { staffSurveysSchema } from "@/lib/survey-access";
 
 const sheetSchema = z.object({ survey: surveySchema, rows: z.array(teacherSheetRowSchema) });
-
-const isA79Baseline = (s: StaffSurvey) =>
-  s.respondent === "TEACHER" &&
-  s.period === "BASELINE" &&
-  s.status !== "DRAFT" &&
-  baselineLevel(s.questions) !== null;
 
 /**
  * The А/79 baselines of some groups, merged per group — one survey list, one
@@ -54,7 +62,7 @@ function useGroupBaselines(groupIds: string[]) {
     enabled: Boolean(primaryKindergartenId),
   });
   const baselines = (surveys.data ?? []).filter(
-    (s) => isA79Baseline(s) && (!s.groupId || groupIds.includes(s.groupId)),
+    (s) => isA79BaselineSurvey(s) && (!s.groupId || groupIds.includes(s.groupId)),
   );
   const sheets = useQueries({
     queries: baselines.map((survey) => ({
@@ -111,15 +119,22 @@ function useGroupBaselines(groupIds: string[]) {
  * is `lib/a79-baseline.ts`.
  *
  * ★ A child no survey was filled for is listed as not assessed and nothing
- * more: they were absent. No «Бөглөх» link, no fill button — a teacher must
- * never be nudged into filling a row for a child who was not there.
+ * more: they were absent. The report itself has no fill button for them.
+ *
+ * ★★ `fill` — the group's «Гарааны үнэлгээ» page (2026-10-27, the user): the
+ * baseline is started there («Шинэ гарааны үнэлгээ», each child's level
+ * chosen), filled by group or by child, and children are added to it. Only
+ * the children the teacher put on it are offered to fill; the report pages
+ * leave `fill` off and only read.
  */
 export function A79BaselinePanel({
   groupId,
   heading = true,
+  fill = false,
 }: {
   groupId: string;
   heading?: boolean;
+  fill?: boolean;
 }) {
   const { isLoading, error, byGroup } = useGroupBaselines([groupId]);
   const group = byGroup.get(groupId);
@@ -128,13 +143,17 @@ export function A79BaselinePanel({
     if (isLoading) return <LoadingState rows={4} />;
     if (error) return <ErrorState description={errorMessage(error)} />;
     if (!group?.hasSurvey) {
+      if (fill) return <BaselineStart groupId={groupId} />;
       return (
         <EmptyState
           title="Гарааны үнэлгээ хараахан аваагүй байна"
-          description="«Багшийн судалгаа» хэсгээс «А/79 Гарааны үнэлгээ» загвараар судалгаа үүсгэнэ үү."
+          description="Багш бүлгийн «Гарааны үнэлгээ» хуудаснаас «Шинэ гарааны үнэлгээ» товчоор эхлүүлнэ."
           action={
-            <Link href="/surveys/teacher" className={buttonVariants({ variant: "secondary" })}>
-              Багшийн судалгаа
+            <Link
+              href={`/groups/${groupId}/baseline`}
+              className={buttonVariants({ variant: "secondary" })}
+            >
+              Гарааны үнэлгээ
             </Link>
           }
         />
@@ -150,13 +169,26 @@ export function A79BaselinePanel({
       );
     }
     const rows = a79ChildRows(asGroupSummary(merged));
+    // ★ On the group's own page every child on the baseline is a row — one
+    // not started yet too, «—» and «Бөглөөгүй», a tap from their form
+    // (2026-10-27, the user: «0 байсан ч хүүхдүүдийн нэр бүр харагдана»).
+    const tableRows = fill
+      ? a79ChildRows({
+          children: merged.children.map((c) => ({
+            ...c,
+            assessed: c.notFilled ? 0 : Math.max(c.answered, 1),
+          })),
+        })
+      : rows;
     // Named on the table, counted in no average — the result screen's rule.
     const scored = rows.filter((row) => !row.feeDue);
     const notAssessed = merged.children.filter((c) => c.notFilled);
+    const partial = merged.children.filter((c) => c.partial);
     const twice = merged.children.filter((c) => c.assessedTwice);
 
     return (
       <>
+        {fill ? <BaselineFillSection groupId={groupId} rows={tableRows} /> : null}
         <p className="text-caption text-muted">
           {[
             `${rows.length}/${merged.children.length} хүүхэд үнэлэгдсэн`,
@@ -172,16 +204,18 @@ export function A79BaselinePanel({
           </p>
         ) : null}
 
-        {rows.length > 0 ? (
+        {tableRows.length > 0 ? (
           <>
             {scored.length > 0 ? (
-              <A79SummaryChart
-                rows={scored}
-                averageLabel="Гарааны дундаж"
-                description={`Бүлгийн гарааны дундаж, ${scored.length} хүүхэд. Хүүхдийн хувь бол өөрийн түвшний шалгуурын хэдийг гарааны үнэлгээнд биелүүлсэн нь.`}
-              />
+              <A79SummaryChart rows={scored} averageLabel="Гарааны дундаж" />
             ) : null}
-            <A79ChildrenTable groupId={groupId} rows={rows} linkChildren={false} />
+            <A79ChildrenTable
+              groupId={groupId}
+              rows={tableRows}
+              linkChildren={fill}
+              childHref={(childId) => `/groups/${groupId}/baseline/${childId}`}
+              unassessedLabel="Бөглөөгүй"
+            />
           </>
         ) : (
           <p className="py-6 text-center text-body text-muted">
@@ -189,9 +223,15 @@ export function A79BaselinePanel({
           </p>
         )}
 
-        {rows.length > 0 && notAssessed.length > 0 ? (
+        {!fill && rows.length > 0 && notAssessed.length > 0 ? (
           <p className="text-caption text-muted">
             Гарааны үнэлгээнд хамрагдаагүй: {notAssessed.map((c) => shortName(c)).join(", ")}
+          </p>
+        ) : null}
+        {partial.length > 0 ? (
+          <p className="text-caption text-muted">
+            Дутуу бөглөсөн (хариулаагүй шалгуурыг биелээгүйд тооцов):{" "}
+            {partial.map((c) => `${shortName(c)} (${c.answered}/${c.total})`).join(", ")}
           </p>
         ) : null}
         {twice.length > 0 ? (
@@ -209,6 +249,96 @@ export function A79BaselinePanel({
       {heading ? <SectionHeader title="Гарааны үнэлгээ" as="h2" /> : null}
       {body}
     </section>
+  );
+}
+
+/** «Шинэ гарааны үнэлгээ» — the group has no baseline yet. */
+function BaselineStart({ groupId }: { groupId: string }) {
+  const setup = useBaselineSetup(groupId);
+  const [open, setOpen] = useState(false);
+  if (setup.isLoading) return <LoadingState rows={2} />;
+  if (setup.error) return <ErrorState description={errorMessage(setup.error)} />;
+  const roster = setup.data?.roster ?? [];
+  return (
+    <>
+      <EmptyState
+        title="Гарааны үнэлгээ хараахан аваагүй байна"
+        description={
+          roster.length > 0
+            ? "Хүүхдүүдээ сонгож, түвшинг нь тогтоогоод гарааны үнэлгээг эхлүүлнэ үү."
+            : "Хүүхэд бүлэгт бүртгэгдсэний дараа гарааны үнэлгээ эхлүүлнэ."
+        }
+        action={
+          roster.length > 0 ? (
+            <Button type="button" onClick={() => setOpen(true)}>
+              <Plus aria-hidden />
+              Шинэ гарааны үнэлгээ
+            </Button>
+          ) : undefined
+        }
+      />
+      {open ? (
+        <A79BaselineStartDialog
+          groupId={groupId}
+          roster={roster}
+          adding={false}
+          open={open}
+          onOpenChange={setOpen}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * «Бүлгээр бөглөх» and «Хүүхэд нэмэх» above the report on the group's own
+ * page — a child is filled in from their name on the table.
+ */
+function BaselineFillSection({ groupId, rows }: { groupId: string; rows: A79ChildRow[] }) {
+  const setup = useBaselineSetup(groupId);
+  const { sheets } = useBaselineSheets(groupId);
+  const [adding, setAdding] = useState(false);
+  // Children join a baseline made on this page — never the wizard's, which
+  // already holds the whole group.
+  const left =
+    (setup.data?.surveys.length ?? 0) > 0
+      ? (setup.data?.roster ?? []).filter((child) => !child.surveyId)
+      : [];
+  const anyRows = sheets.some((sheet) => sheet.rows.length > 0);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {left.length > 0 ? (
+          <Button type="button" variant="secondary" size="sm" onClick={() => setAdding(true)}>
+            <Plus aria-hidden />
+            Хүүхэд нэмэх ({left.length})
+          </Button>
+        ) : null}
+        <A79ExcelButton
+          rows={rows}
+          fileName={`garaany-unelgee-${new Date().toISOString().slice(0, 10)}`}
+          unassessedLabel="Бөглөөгүй"
+        />
+        {anyRows ? (
+          <Link
+            href={`/groups/${groupId}/baseline/fill`}
+            className={buttonVariants({ variant: "primary", size: "sm" })}
+          >
+            Бүлгээр бөглөх
+          </Link>
+        ) : null}
+      </div>
+      {adding && setup.data ? (
+        <A79BaselineStartDialog
+          groupId={groupId}
+          roster={setup.data.roster}
+          adding
+          open={adding}
+          onOpenChange={setAdding}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -245,7 +375,7 @@ export function A79BaselineKindergartenPanel({ groups }: { groups: A79ReportGrou
           }}
           noDataLabel="Гарааны үнэлгээ аваагүй"
           emptyTitle="Гарааны үнэлгээ хараахан аваагүй байна"
-          emptyDescription="Багш нар «А/79 Гарааны үнэлгээ» судалгааг бөглөсний дараа бүлгийн үзүүлэлтүүд энд харагдана."
+          emptyDescription="Багш нар бүлгийн «Гарааны үнэлгээ»-г бөглөсний дараа бүлгийн үзүүлэлтүүд энд харагдана."
         />
       ) : null}
     </section>

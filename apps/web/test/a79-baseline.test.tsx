@@ -97,6 +97,72 @@ const SURVEY = {
   closedAt: null,
 };
 
+describe("a half-done row — the sheet's draft", () => {
+  /*
+   * ★ 2026-10-27, the user: «багш бөглөхөд харагдахгүй … дутуу бөглөсөн үед».
+   * The sheet saves a row with questions left blank as a draft, and on А/79
+   * that is the usual way to fill it: tick what the child does. It used to
+   * read as «Гарааны үнэлгээнд хамрагдаагүй».
+   */
+  it("counts a draft as the child's baseline, its blanks not met, and says it is partial", () => {
+    const answers = questions
+      .slice(0, 5)
+      .map((q, i) => ({ questionId: q.id, value: i < 4 ? "1" : "0" }));
+    const summary = baselineSummary(questions, [
+      {
+        child: { id: "c1", firstName: "Намуун" },
+        response: null,
+        draft: { updatedAt: "2026-10-20T00:00:00Z", answers },
+      },
+    ])!;
+    const [child] = summary.children;
+    expect(child).toMatchObject({ notFilled: false, partial: true, answered: 5, achieved: 4 });
+    expect(child!.total).toBe(level.criteria.length);
+  });
+
+  it("names a partial child on the report with how much was answered", async () => {
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      { path: `/kindergartens/${KG}/surveys`, body: [SURVEY] },
+      {
+        path: `/surveys/${SURVEY.id}/teacher-sheet`,
+        body: {
+          survey: SURVEY,
+          rows: [
+            {
+              child: {
+                id: "77777777-7777-4777-8777-777777777777",
+                firstName: "Намуун",
+                lastName: "Дорж",
+              },
+              group: { id: GROUP, name: "Дэлбээ" },
+              response: null,
+              draft: {
+                updatedAt: "2026-10-20T00:00:00Z",
+                author: {
+                  id: "99999999-9999-4999-8999-999999999999",
+                  lastName: "Б",
+                  firstName: "Багш",
+                },
+                answers: SURVEY.questions
+                  .slice(0, 2)
+                  .map((q) => ({ questionId: q.id, value: "1" })),
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    renderWithProviders(<A79BaselinePanel groupId={GROUP} />);
+
+    expect(await screen.findByText(/Дутуу бөглөсөн/)).toHaveTextContent(
+      `Д.Намуун (2/${level.criteria.length})`,
+    );
+    expect(screen.getByText(/1\/1 хүүхэд үнэлэгдсэн/)).toBeInTheDocument();
+    expect(screen.queryByText(/хамрагдаагүй/)).toBeNull();
+  });
+});
+
 describe("mergeBaselines — one class, two levels", () => {
   // 2026-10-21, the user: the teacher picks five children for the IV-level
   // survey and seven for the III; the report shows all twelve.

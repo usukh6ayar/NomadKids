@@ -33,6 +33,14 @@ export interface BaselineQuestion {
 export interface BaselineRow {
   child: { id: string; firstName: string; lastName?: string | null };
   response: { submittedAt: string; answers: { questionId: string; value: unknown }[] } | null;
+  /**
+   * ★ A row saved before every question was answered (2026-10-27, the user:
+   * «багш бөглөхөд харагдахгүй … дутуу бөглөсөн үед»). The sheet keeps such
+   * a row as a draft, and on А/79 that is the usual case — a teacher ticks
+   * what the child does and leaves the rest. It counts as the child's
+   * baseline, its unanswered criteria not met, and says it is partial.
+   */
+  draft?: { updatedAt: string; answers: { questionId: string; value: unknown }[] } | null;
 }
 
 export interface BaselineChild {
@@ -49,8 +57,12 @@ export interface BaselineChild {
   achieved: number;
   total: number;
   byDomain: { domain: A79Domain; achieved: number; total: number }[];
-  /** No submitted response — not assessed (absent), never a 0. */
+  /** Neither a response nor a draft — not assessed (absent), never a 0. */
   notFilled: boolean;
+  /** From a draft: some criteria unanswered, counted as not met. */
+  partial: boolean;
+  /** How many of the level's criteria the row answers. */
+  answered: number;
   /** When the row was sent; null when it was not. */
   submittedAt: string | null;
 }
@@ -66,6 +78,25 @@ export interface BaselineSummary {
 
 const promptOf = (domain: A79Domain, text: string) => `${domain}: ${text}`;
 const normalise = (value: string) => value.replace(/\s+/g, " ").trim();
+
+/**
+ * An А/79 baseline: a published or closed teacher survey of the Гарааны wave
+ * whose questions are one level's criteria — the wizard's before 2026-10-27,
+ * and every one «Гарааны үнэлгээ» makes since.
+ */
+export function isA79BaselineSurvey(survey: {
+  respondent?: string | null;
+  period?: string | null;
+  status: string;
+  questions: BaselineQuestion[];
+}): boolean {
+  return (
+    survey.respondent === "TEACHER" &&
+    survey.period === "BASELINE" &&
+    survey.status !== "DRAFT" &&
+    baselineLevel(survey.questions) !== null
+  );
+}
 
 /** The level whose criteria the survey's prompts match most. */
 export function baselineLevel(questions: BaselineQuestion[]): A79Level | null {
@@ -127,6 +158,43 @@ function matchCriteria(
   });
 }
 
+/** One criterion of a baseline survey, as the fill screens draw it. */
+export interface BaselineCriterion {
+  questionId: string;
+  domain: A79Domain;
+  /** The criterion without its «Мэдлэг: » lead — the tab already says it. */
+  text: string;
+}
+
+/**
+ * A baseline survey's criteria by domain, matched as the report matches them
+ * (`matchCriteria`), for the fill screens — 2026-10-27, the user: «мэдлэг
+ * гээд тэндээс сонгож, чадвар гээд тусдаа». `others` are its questions that
+ * are no criterion of the level; they are not shown, and finishing a row
+ * answers them «0» when they allow it. Null when the survey is no А/79 one.
+ */
+export function baselineForm(
+  questions: BaselineQuestion[],
+): { level: A79Level; criteria: BaselineCriterion[]; others: BaselineQuestion[] } | null {
+  const level = baselineLevel(questions);
+  if (!level) return null;
+  const domainOf = new Map(matchCriteria(level, questions).map((q) => [q.id, q.domain]));
+  const criteria = questions.flatMap((q) => {
+    const domain = domainOf.get(q.id);
+    if (!domain) return [];
+    const prompt = normalise(q.prompt);
+    const lead = `${domain}:`;
+    return [
+      {
+        questionId: q.id,
+        domain,
+        text: prompt.startsWith(lead) ? prompt.slice(lead.length).trim() : prompt,
+      },
+    ];
+  });
+  return { level, criteria, others: questions.filter((q) => !domainOf.has(q.id)) };
+}
+
 /** Letters to change, add or remove to turn one text into the other. */
 function editDistance(a: string, b: string): number {
   if (Math.abs(a.length - b.length) > 8) return Infinity;
@@ -161,11 +229,17 @@ export function baselineSummary(
   const unmatched = questions.length - counted.length;
 
   let lastSubmittedAt: string | null = null;
-  const children: BaselineChild[] = rows.map(({ child, response }) => {
+  const children: BaselineChild[] = rows.map(({ child, response: submitted, draft }) => {
+    const response =
+      submitted ?? (draft ? { submittedAt: draft.updatedAt, answers: draft.answers } : null);
     if (response && (!lastSubmittedAt || response.submittedAt > lastSubmittedAt)) {
       lastSubmittedAt = response.submittedAt;
     }
     const answers = new Map((response?.answers ?? []).map((a) => [a.questionId, a.value]));
+    const answered = counted.filter((q) => {
+      const value = answers.get(q.id);
+      return value !== undefined && value !== null && value !== "";
+    }).length;
     const byDomain = A79_DOMAINS.map((domain) => {
       const inDomain = counted.filter((q) => q.domain === domain);
       return {
@@ -184,6 +258,8 @@ export function baselineSummary(
       total: counted.length,
       byDomain,
       notFilled: !response,
+      partial: !submitted && Boolean(draft) && answered < counted.length,
+      answered,
       submittedAt: response?.submittedAt ?? null,
     };
   });
@@ -214,7 +290,12 @@ export function withFeeDue<T extends { children: BaselineChild[] }>(
 
 /** The filled-in children, in the result screen's own shape. */
 export function asGroupSummary(summary: { children: BaselineChild[] }): A79GroupSummary {
-  return { children: summary.children.filter((c) => !c.notFilled) };
+  return {
+    children: summary.children
+      .filter((c) => !c.notFilled)
+      // A filled row is assessed — never «Тэмдэглэл холбоогүй» on the baseline.
+      .map((c) => ({ ...c, assessed: Math.max(c.answered, 1) })),
+  };
 }
 
 /** One А/79 baseline survey's sheet — what `mergeBaselines` takes. */

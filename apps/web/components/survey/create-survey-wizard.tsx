@@ -39,7 +39,6 @@ import {
   localDate,
 } from "@kinder/contracts";
 import { get, mutate } from "@/lib/api/browser";
-import { A79_LEVELS, a79Questions } from "@/lib/a79-assessment";
 import { PARENT_SURVEY_TEMPLATES } from "@/lib/parent-survey-templates";
 import { qk } from "@/lib/api/keys";
 import { errorMessage, fieldErrors } from "@/lib/api/errors";
@@ -104,23 +103,6 @@ type SurveyTemplate = {
  * (сэтгэл ханамж, хөгжил, хоол) were taken off at their request.
  */
 const SURVEY_TEMPLATES: Record<string, SurveyTemplate> = PARENT_SURVEY_TEMPLATES;
-
-/**
- * А/79 — the ministry's four-level development assessment, ready for a
- * teacher to run as Гарааны үнэлгээ. Client, 2026-09-21. Every criterion is a
- * 0/1 choice, which the teacher's sheet draws as the document's own table.
- */
-const A79_TEMPLATES: Record<string, SurveyTemplate> = Object.fromEntries(
-  A79_LEVELS.map((level) => [
-    `a79-${level.key}`,
-    {
-      title: `А/79 Гарааны үнэлгээ — ${level.key} түвшин`,
-      category: "OTHER",
-      period: "BASELINE",
-      questions: a79Questions(level),
-    } satisfies SurveyTemplate,
-  ]),
-);
 
 const cloneQuestions = (questions: DraftQuestion[]) =>
   questions.map((question) => ({ ...question, options: [...question.options] }));
@@ -432,21 +414,20 @@ export function CreateSurveyWizard({
   const heading = created ? `${noun} үүслээ` : `Шинэ ${noun.toLowerCase()}`;
 
   /*
-    The А/79 levels for a teacher survey; the families' three otherwise. A flat
+    The families' templates; none for a teacher survey. ★ А/79 left this list
+    on 2026-10-27 (the user): «Гарааны үнэлгээ» is started from its own page,
+    each child on their own level, so there is one way to make it. A flat
     list, because `Select` reads its `<option>` children directly.
   */
   const templateOptions = isTeacher
-    ? A79_LEVELS.map((level) => ({
-        value: `a79-${level.key}`,
-        label: `А/79 хөгжлийн үнэлгээ — ${level.key} түвшин (${level.criteria.length} шалгуур)`,
-      }))
+    ? []
     : Object.entries(PARENT_SURVEY_TEMPLATES).map(([value, template]) => ({
         value,
         label: template.label,
       }));
 
   const applyTemplate = (key: string) => {
-    const template = SURVEY_TEMPLATES[key] ?? A79_TEMPLATES[key];
+    const template = SURVEY_TEMPLATES[key];
     if (!template) return;
     setTitle(template.title);
     /*
@@ -540,7 +521,7 @@ export function CreateSurveyWizard({
                   ))}
                 </Select>
 
-                {!isPoll ? (
+                {!isPoll && templateOptions.length > 0 ? (
                   <>
                     <label htmlFor="survey-template" className="sr-only">
                       Бэлэн загвараас эхлэх

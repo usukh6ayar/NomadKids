@@ -409,6 +409,59 @@ describe("«Үр дүнгийн үнэлгээ»", () => {
   });
 
   /*
+   * ★ 2026-10-27, the user's director report: eighteen children «0% · Хөгжиж
+   * байна» — none had a note linked. Not assessed is not «Хөгжиж байна»: such
+   * a child reads «Тэмдэглэл холбоогүй» and is in no average.
+   */
+  it("calls a child with no note linked unassessed, and leaves them out of the average", async () => {
+    setParams({ groupId: GROUP });
+    const parts = (n: number) => [
+      { domain: "Мэдлэг", achieved: n, total: 9 },
+      { domain: "Чадвар", achieved: 0, total: 29 },
+      { domain: "Төлөвшил", achieved: 0, total: 8 },
+    ];
+    stubApi([
+      { path: "/auth/me", body: sessionFor(["TEACHER"]) },
+      {
+        path: `/groups/${GROUP}/a79-summary`,
+        body: {
+          children: [
+            {
+              childId: CHILD,
+              firstName: "Ану",
+              lastName: "Батжаргал",
+              level: "III",
+              achieved: 9,
+              total: 46,
+              assessed: 12,
+              byDomain: parts(9),
+            },
+            {
+              childId: "99999999-9999-4999-8999-999999999990",
+              firstName: "Нэгүүн",
+              lastName: "Алтан",
+              level: "III",
+              achieved: 0,
+              total: 46,
+              assessed: 0,
+              byDomain: parts(0),
+            },
+          ],
+        },
+      },
+    ]);
+    renderWithProviders(<GroupResultsPage />);
+
+    const table = await screen.findByRole("table", { name: "Хүүхэд бүрийн үр дүн" });
+    const row = within(table).getByRole("link", { name: "А.Нэгүүн" }).closest("tr")!;
+    expect(
+      within(row)
+        .getAllByRole("cell")
+        .map((td) => td.textContent),
+    ).toEqual(["2", "А.Нэгүүн", "III", "—", "—", "—", "—", "Тэмдэглэл холбоогүй"]);
+  });
+
+  /*
    * ★ 2026-10-17, the client: a solo teacher's group of unpaid children read
    * «Бүлэгт хүүхэд алга». They are listed now, named, with no figures.
    */

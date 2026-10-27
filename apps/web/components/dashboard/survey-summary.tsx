@@ -49,7 +49,8 @@ export function SurveySummary() {
     enabled: Boolean(primaryKindergartenId),
   });
 
-  const active = surveys?.find((s) => s.status === "PUBLISHED") ?? null;
+  // An А/79 baseline made from «Гарааны үнэлгээ» is not one of «Судалгаа»'s.
+  const active = surveys?.find((s) => s.status === "PUBLISHED" && !s.a79Level) ?? null;
 
   const { data: results, isLoading: resultsLoading } = useQuery({
     queryKey: qk.surveyResults(active?.id ?? ""),
