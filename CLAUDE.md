@@ -305,7 +305,8 @@ leaked connections (every file closes its app), `resetData` missing a table.
 - A killed api run can leave `kinder_test` poisoned (failures that move around
   and name `system-config.ts`) — recreate it rather than bisect.
 - The api suite takes ~21 minutes. Run it in the background with
-  `--reporter=verbose` written to a file **before** grepping.
+  `--reporter=verbose` written to a file **before** grepping. CI runs it in four
+  shards on four machines, the web suite on its own (2026-10-27).
 
 ★★ **A cross-kindergarten isolation failure must never be waved through.** If it
 recurs with nothing else running, capture the full reporter output and treat it
