@@ -280,10 +280,27 @@ jobs:
 
           echo "storage ready, bucket $STORAGE_BUCKET created and private"
 
+      # ★ Cached, not downloaded on every run (2026-10-28): the runners' Ubuntu
+      # mirror served ffmpeg's 41 MB at ~60 KB/s and two shards hung here —
+      # one until the job's 20-minute limit. `pdftotext` is how the report
+      # tests read a PDF back (CLAUDE.md §4.3); ffmpeg/ffprobe are the chat
+      # video transcoder, as in the Dockerfile.
+      - name: poppler and ffmpeg (cached)
+        timeout-minutes: 12
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: poppler-utils ffmpeg
+          version: 1
+
+      - name: Chrome (cached)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/puppeteer
+          key: puppeteer-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
       - name: Install Chrome, the Cyrillic fonts and poppler
-        # ★ Bounded (2026-10-28): a shard hung here once and sat until the job's
-        # 20-minute limit. Each download now gives up after 3 minutes and is
-        # retried, and the step fails in 8 — a fast red X, not a stuck run.
+        # Bounded: each download gives up after 3 minutes and is retried, and
+        # the step fails in 8 — a fast red X, not a stuck run.
         timeout-minutes: 8
         # ★ The report tests render real PDFs and assert on extracted text.
         #
@@ -300,18 +317,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          # `pdftotext` is how the report tests read the PDF back. Asserting on
-          # extracted text rather than on a file existing is CLAUDE.md §4.3, and
-          # it is the only check that can tell a real report from a megabyte of
-          # blank pages.
           retry() { for n in 1 2 3; do timeout 180 "$@" && return 0; echo "attempt $n failed: $*" >&2; sleep 5; done; return 1; }
-          APT="-o Acquire::Retries=3 -o Acquire::http::Timeout=30"
 
-          retry sudo apt-get $APT update -qq
-          retry sudo apt-get $APT install -y --no-install-recommends poppler-utils
-          # ffmpeg/ffprobe — the chat video transcoder, as in the Dockerfile.
-          command -v ffmpeg >/dev/null || retry sudo apt-get $APT install -y --no-install-recommends ffmpeg
+          # From the cache above; a miss would have failed that step.
+          command -v pdftotext >/dev/null || { echo "pdftotext missing" >&2; exit 1; }
+          command -v ffmpeg >/dev/null || { echo "ffmpeg missing" >&2; exit 1; }
 
+          # A no-op when ~/.cache/puppeteer was restored.
           retry pnpm --filter @kinder/api exec puppeteer browsers install chrome
           sudo mkdir -p /usr/share/fonts/truetype/kinder
           sudo cp apps/api/assets/fonts/*.ttf /usr/share/fonts/truetype/kinder/
